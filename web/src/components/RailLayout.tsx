@@ -109,8 +109,8 @@ function Scroller({ page, className, children, ...rest }: { page?: string; class
 
 /** The narrow layout in a pane scrolls itself (a phone's, the window does), at the reading width. */
 function PageScroller({ children, ...rest }: { children: ReactNode } & Attrs) {
-  const { group } = usePane()
-  if (!group) return <div {...rest}>{children}</div>
+  const { pane: own } = usePane()
+  if (!own) return <div {...rest}>{children}</div>
   return (
     <Scroller className="h-full [scrollbar-gutter:stable]" {...rest}>
       <div className="mx-auto max-w-[912px] px-8 pb-6">{children}</div>
@@ -132,7 +132,7 @@ type Search = {
 export function RailLayout({ rail: [ref, wide], search, side, page, title, children }: {
   rail: Rail; search?: Search; side: ReactNode; page: string; title?: string; children: ReactNode
 }) {
-  const { group } = usePane()
+  const { pane: own } = usePane()
   const keys = (e: KeyboardEvent) => {
     if (!search?.onMove || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return
     e.preventDefault()
@@ -145,7 +145,7 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
     </form>
   )
   // In a pane (not a phone's page, which the window scrolls): the layout scrolls itself.
-  if (wide && group) {
+  if (wide && own) {
     return (
       <div ref={ref} className="flex h-full" data-rail-layout="wide">
         <div className="flex w-60 shrink-0 flex-col pr-2 pl-6" data-rail>
@@ -159,7 +159,7 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
     )
   }
   return (
-    <div ref={ref} className={cn(group && "h-full")} data-rail-layout="narrow">
+    <div ref={ref} className={cn(own && "h-full")} data-rail-layout="narrow">
       <PageScroller>
         {title && <PageHeader title={title} />}
         {field && <div className="mb-4">{field}</div>}

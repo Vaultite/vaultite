@@ -50,7 +50,7 @@ const numbers = async () => {
 const lit = () => page.$eval(SWITCHER, (e) => e.getAttribute("data-workspace-switcher")).catch(() => null)
 /** Click workspace n in the list (opening it first). */
 const pick = async (n) => { await openList(); await row(n).click() }
-const tabs = () => page.$$eval("section[data-group] [role=tab]", (els) => els.map((t) => t.innerText.trim()))
+const tabs = () => page.$$eval("[data-tab-strip] [role=tab]", (els) => els.map((t) => t.innerText.trim()))
 const text = () => terminalText(page)
 const menuItem = (name) => page.locator("[role=menuitemcheckbox], [role=menuitem]", { hasText: name }).first()
 let sid = null
@@ -189,14 +189,14 @@ try {
   const other = watch(await ctx2.newPage(), { label: "other" })
   await other.goto(B)
   await other.waitForSelector(SWITCHER)
-  const otherTabs = () => other.$$eval("section[data-group] [role=tab]", (els) => els.map((t) => t.innerText.trim()))
+  const otherTabs = () => other.$$eval("[data-tab-strip] [role=tab]", (els) => els.map((t) => t.innerText.trim()))
   check("move: the other window is on 1", !!(await until(async () => (await other.$eval(SWITCHER, (e) => e.getAttribute("data-workspace-switcher")).catch(() => null)) === "1", 6000)))
   check("move: ...showing 1's tabs", !!(await until(async () => (await otherTabs()).some((t) => t.includes("Alpha")), 6000)), await otherTabs())
   // In a new tab beside the terminal's (the address fills the blank tab).
-  await page.click("section[data-group] button[aria-label='New tab']"); await wait(200)
+  await page.click("[data-tab-strip] button[aria-label='New tab']"); await wait(200)
   await page.evaluate(() => { location.hash = `#file/${encodeURIComponent("Qa ws move.md")}` })
   check("move: a file opened in 2 (saved)", !!(await until(async () => (await tabs()).some((t) => t.includes("Qa ws move")) && JSON.stringify(data()[1]?.layout ?? {}).includes("Qa ws move.md"), 6000)), [await tabs(), data()[1]])
-  const tabBox = await page.locator("section[data-group] [role=tab]", { hasText: "Qa ws move" }).boundingBox()
+  const tabBox = await page.locator("[data-tab-strip] [role=tab]", { hasText: "Qa ws move" }).boundingBox()
   const dropLit = () => page.$$eval(`${LIST} [data-workspace][data-drop]`, (els) => els.map((e) => e.getAttribute("data-workspace")))
   const center = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 } }
   /** Mid-drag: over the switcher (its list springs open), then onto row n. */
@@ -244,33 +244,36 @@ try {
     return seen
   }
   const mid = async (loc) => { await loc.scrollIntoViewIfNeeded(); const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 } }
-  const groups = () => page.$$eval("section[data-group]", (els) => els.map((e) => ({ id: e.getAttribute("data-group"), tabs: [...e.querySelectorAll("[role=tab]")].map((t) => t.innerText.trim()) })))
+  /** The panes on screen, left to right, each with what it shows. */
+  const groups = () => page.$$eval("[data-pane-area] > section[data-pane-frame]:not([data-away])", (els) => els.map((e) => ({ id: e.getAttribute("data-pane-frame"), x: e.getBoundingClientRect().x, tabs: [e.getAttribute("aria-label") ?? ""] })).sort((a, b) => a.x - b.x))
+  /** A file in a tab of its own, then joined to the terminal's tab on its right (the terminal's tab on screen). */
   const openRight = async (file) => {
-    await page.click("section[data-group] button[aria-label='New tab']"); await wait(200)
+    await page.click("[data-tab-strip] button[aria-label='New tab']"); await wait(200)
     await page.evaluate((f) => { location.hash = `#file/${encodeURIComponent(f)}` }, file)
     await until(async () => (await tabs()).some((t) => t.includes(file.replace(/\.md$/, ""))), 6000)
-    await page.click(`section[data-group] [role=tab]:has-text("${file.replace(/\.md$/, "")}")`, { button: "right" })
-    await menuItem("Split right").hover(); await wait(300); await menuItem("Move to new split right").click()
+    await page.click(`[data-tab-strip] [role=tab]:has-text("Terminal")`); await wait(300)
+    await page.click(`[data-tab-strip] [role=tab]:has-text("${file.replace(/\.md$/, "")}")`, { button: "right" })
+    await menuItem("Open in split right").click()
     return until(async () => { const g = await groups(); return g.length === 2 ? g : null }, 6000)
   }
   writeFileSync(paneFile, "A pane on its own.\n")
   let gs = await openRight("Qa ws pane.md")
-  check("pane: a split with the file on the right", gs?.length === 2, gs)
-  const handle = (gid) => page.locator(`[data-pane-handle='${gid}']`)
-  await page.hover(`[data-tab-bar='${gs[1].id}']`)
+  check("pane: a split with the file on the right", gs?.length === 2 && gs[1].tabs[0].includes("Qa ws pane"), gs)
+  const handle = (id) => page.locator(`[data-pane-handle='${id}']`)
+  await page.hover(`[data-pane-bar='${gs[1].id}']`)
   // It fades in: wait for the end of the transition (a loaded machine is slow).
   const opacity = await until(async () => { const o = await handle(gs[1].id).evaluate((e) => getComputedStyle(e).opacity); return o === "1" ? o : null }, 6000)
     ?? await handle(gs[1].id).evaluate((e) => getComputedStyle(e).opacity)
   check("pane: its handle shows while the pointer is over its bar", opacity === "1", opacity)
-  // Onto the other pane's middle: its tabs join that pane, the pane closes.
+  // Onto the other pane's middle: the two swap places (Rex's).
   let seen = await drag(await mid(handle(gs[1].id)), await mid(page.locator(`[data-pane-body='${gs[0].id}']`)))
   check("pane onto another pane's middle: it lights up, the ghost names the pane", seen.zone === "center" && seen.ghost.includes("Qa ws pane"), seen)
-  check("...dropped: one pane with both tabs", !!(await until(async () => { const g = await groups(); return g.length === 1 && g[0].tabs.some((t) => t.includes("Qa ws pane")) && g[0].tabs.some((t) => t.includes("Terminal")) }, 6000)), await groups())
-  // A split again, then that pane onto number 3 (unused): 3 is made with it, this window keeps its other pane.
-  await page.click(`section[data-group] [role=tab]:has-text("Qa ws pane")`, { button: "right" })
-  await menuItem("Split right").hover(); await wait(300); await menuItem("Move to new split right").click()
-  gs = await until(async () => { const g = await groups(); return g.length === 2 ? g : null }, 6000)
-  seen = await drag(await mid(handle(gs[1].id)), 3)
+  check("...dropped: the two swap places", !!(await until(async () => { const g = await groups(); return g.length === 2 && g[0].tabs[0].includes("Qa ws pane") && g[1].id === gs[0].id }, 6000)), await groups())
+  // That pane onto number 3 (unused): 3 is made with it, this window keeps the terminal's pane.
+  gs = await groups()
+  const moving = gs.find((g) => g.tabs[0].includes("Qa ws pane"))
+  await page.hover(`[data-pane-bar='${moving.id}']`); await wait(300)
+  seen = await drag(await mid(handle(moving.id)), 3)
   check("pane onto an unused number: it lights up, 'Move pane to workspace 3'", JSON.stringify(seen.lit) === "[\"3\"]" && seen.ghost.includes("Move pane to workspace 3"), seen)
   check("...3 has the pane", !!(await until(() => JSON.stringify(data()[2]?.layout ?? {}).includes("Qa ws pane.md"), 6000)), data()[2])
   check("...this window keeps one pane, on 2", !!(await until(async () => { const g = await groups(); return g.length === 1 && !g[0].tabs.some((t) => t.includes("Qa ws pane")) }, 6000)) && (await lit()) === "2", await groups())
@@ -341,7 +344,7 @@ try {
   check("5 (unused): lit, a blank tab, sidebars.json's panels", !!(await until(async () => (await lit()) === "5" && (await tabs()).length === 1 && (await panels()).length === 4, 6000)), [await numbers(), await tabs()])
   await page.evaluate(() => { location.hash = `#file/${encodeURIComponent("Qa ws open.md")}` })
   check("...a file opened there makes it", !!(await until(() => JSON.stringify(data()[4]?.layout ?? {}).includes("Qa ws open.md"), 6000)), data()[4])
-  await page.click("section[data-group] [data-tab-close]")
+  await page.click("[data-tab-strip] [data-tab-close]")
   check("...its last tab closed (a blank tab again): unused, not kept", !!(await until(() => !data()[4], 6000)) && !!(await until(async () => !(await numbers())[4].used || (await lit()) === "5", 6000)), data())
   // Deleting the current one: this window stays on it, blank; Undo puts its tabs back.
   await pick(4)
@@ -380,7 +383,9 @@ try {
   await pick(2)
   await until(async () => (await lit()) === "2", 6000)
   // A tab dragged over the rail's switcher opens its list too; let go on the list's heading (no row): nothing moves.
-  const railTab = await center(page.locator("section[data-group] [role=tab]", { hasText: "Terminal" }).first())
+  // (once the tab bar has settled beside the rail: it slides with the sidebar's edge)
+  const termTab = page.locator("[data-tab-strip] [role=tab]", { hasText: "Terminal" }).first()
+  const railTab = await until(async () => { const a = await center(termTab); await wait(150); const b = await center(termTab); return a.x === b.x && a.y === b.y ? b : null }, 3000) ?? await center(termTab)
   const tabsNow = JSON.stringify(await tabs())
   await page.mouse.move(railTab.x, railTab.y); await page.mouse.down()
   await page.mouse.move(railTab.x + 10, railTab.y + 6, { steps: 3 })

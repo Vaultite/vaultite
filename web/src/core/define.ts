@@ -225,7 +225,7 @@ export type ViewDef = {
   /** Its tab's icon. */
   icon: LucideIcon
   /** Picks its tab's icon per tab (a Claude Code terminal), else `icon`. Its own field, as an icon can be a plain
-   *  function too (a brand's mark). `tab`: the tab's id, where it's drawn for one (not a pin). */
+   *  function too (a brand's mark). `tab`: its pane's id, where it's drawn for one (not a pin). */
   iconFor?: (arg: string, tab?: string) => LucideIcon
   /** A small icon at its tab's end, a button of its own (a page playing sound: its speaker, a click mutes it), its
    *  `label` the tooltip; beside the tab's icon, not in its place, so the tab stays recognisable. null: none. */
@@ -266,7 +266,7 @@ export type ViewDef = {
   /** The tab a new tab of it opens beside, in that tab's pane and tab group, when one shows it (`file:Notes/Idea.md`: a
    *  session started on that note), as a browser opens a tab beside the one it came from; null: beside the current one. */
   opensBeside?: (arg: string) => string | null
-  /** A history of its own (a web page's), walked before the tab's, in tab `tab` (null: none now): whether it can go
+  /** A history of its own (a web page's), walked before the pane's, in pane `tab` (null: none now): whether it can go
    *  `dir`, and going, false when it couldn't (then the tab's history, or its opener). */
   history?: (arg: string, tab: string, dir: -1 | 1) => OwnHistory | null
   /** Its tab is its own (a terminal): opening anything else from it (a link, the sidebar, Graph view) opens beside it,
@@ -278,7 +278,7 @@ export type ViewDef = {
   /** Items for its pane's top while its tab is on screen (the tab bar's empty space; with the tab bar off, the pane's
    *  title or strip, first there): the Browser's Hide page bar. */
   paneMenu?: (arg: string, tab: string) => FileMenuItem[]
-  /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session); `tab`: its id. */
+  /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session); `tab`: its pane's id. */
   tabMenu?: (arg: string, tab: string) => (FileMenuItem & { danger?: boolean })[]
   /** The arg its pin keeps (Pinned; null: this one can't be): unset, its arg as is (none: `view:<name>`, in Pinned's
    *  menu). Else a lasting one (a terminal's conversation), `(a) => a || null` (it needs one), `() => null` (never). */
@@ -292,8 +292,8 @@ export type ViewDef = {
   /** The last tab showing it was closed (not moved, not navigated away from: it's still in that tab's history then;
    *  not while another tab has it, here or in another workspace). */
   onClose?: (arg: string) => void
-  /** A tab showing it left this window: closed (each one, before `onClose`), or taken out to another window (`moved`,
-   *  its id kept there). What the tab had of its own ends, or goes with it (its web page); `tab`: `usePane().tab`. */
+  /** A pane showing it left this window: closed (each one, before `onClose`), or taken out to another window (`moved`,
+   *  its id kept there). What the pane had of its own ends, or goes with it (its web page); `tab`: `usePane().pane`. */
   onTabClose?: (arg: string, tab: string, moved: boolean) => void
   /** Before its last tabs close: what to ask, or null to close without asking. Only for what closing would lose (a
    *  terminal doesn't ask: its process keeps running); closing from its own ctx never asks. */
@@ -302,7 +302,7 @@ export type ViewDef = {
 export type ViewCtx = { store: Store; arg: string
   /** Its pane is the focused one (keyboard focus goes there). */
   focused: boolean
-  /** Close its tab (as if the user did: onClose runs). */
+  /** Close its pane (its tab, if it's the tab's only one; as if the user did: onClose runs). */
   close: () => void
   /** Change its tab's arg in place (no history entry): `view:search/<query>` as the query is typed (see `argState`). */
   setArg: (arg: string) => void }

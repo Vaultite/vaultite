@@ -291,13 +291,14 @@ running terminal) asks on that device first.
   did: (p) => ({ action: "ui", text: `Closed tabs on ${p.device}` }),
 })
 
-// ---------- the user's window's tabs and tab groups (vau tabs): asked of the window, which has them ----------
+// ---------- the user's window's tabs, their panes and tab groups (vau tabs): asked of the window, which has them ----------
 
-type ReportTab = { id: string; to: string; active?: boolean; pinned?: boolean; group?: string }
+type ReportPane = { id: string; to: string; path?: string; focused?: boolean; floating?: boolean; zoomed?: boolean }
+type ReportTab = { id: string; active?: boolean; pinned?: boolean; name?: string; group?: string; panes: ReportPane[] }
 type ReportGroup = { id: string; name: string; color: string; collapsed?: boolean; tabs: number }
-type Report = { panes: { pane: number; id: string; focused: boolean; tabs: ReportTab[]; groups: ReportGroup[] }[] }
+type Report = { tabs: ReportTab[]; groups: ReportGroup[]; window?: string; windows?: { id: string; tabs: ReportTab[] }[] }
 
-/** Ask the window the user was in last (core/live.ts' asks; web/src/core/tabsets.ts answers, the archive Tabs' `answers`). */
+/** Ask the window the user was in last (core/live.ts' asks; web/src/core/tabgroups.ts answers, the archive Tabs' `answers`). */
 async function ask(ctx: OpCtx, msg: Record<string, unknown>) {
   try { return await ctx.ui({ action: "tabs", ...msg }) } catch (e) {
     if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
@@ -305,51 +306,133 @@ async function ask(ctx: OpCtx, msg: Record<string, unknown>) {
   }
 }
 const groupLine = (g: ReportGroup) => `${g.name ? `"${g.name}"` : "(no name)"} ${g.color}${g.collapsed ? ", collapsed" : ""} (${g.id})`
+const SIDES = ["left", "right", "top", "bottom"]
 
-const HELP = `The user's window's tabs (the one they used last), pane by pane, with their tab groups: like a browser's,
-a group is a named, coloured run of a pane's tabs, side by side, that folds to its name (collapsed). With Workspaces on
-they're the current workspace's (vau workspace tabs lists every workspace's, from their files).
+const HELP = `The user's window's tabs (the one they used last), in order: each tab holds one pane or several (a split tab),
+each pane one view with its own history. Tab groups, as a browser's: a named, coloured run of tabs side by side that
+folds to its name (collapsed). With Workspaces on they're the current workspace's (vau workspace tabs lists every
+workspace's, from what's kept).
 
-tabs: each tab's id and what it shows (file:<path>, view:<view>, new for a blank tab); * marks the one on screen in
-each pane, a group's tabs are indented under it.
+tabs: each tab's id (* the one on screen) and its panes: each pane's id and what it shows (file:<path>, view:<view>,
+new for a blank pane), > the focused pane of a split; a group's tabs are indented under it; pop-out windows' tabs after.
 
-group: makes the tabs a new group where the first of them is (tabs from other panes move there), or with --group
-<id> adds them to that one; --name, --color (${COLORS.join(", ")}; default the first no group has) and --collapsed
-true/false name, colour or fold it (with --group alone: an existing one). Name tabs by id, by what they show
-(file:Notes/a.md, view:terminal/x) or by a file's path or name. A new group's name, left out, is the folder or site
-its tabs share, else none.
+Name a tab or pane by its id, by what a pane shows (file:Notes/a.md, view:terminal/x) or by a file's path or name; a
+tab named where a pane is wanted means its focused pane.
+
+split: splits a pane (--side right, default; left, top, bottom): it opens again beside itself, or --to <target> opens
+something else there. move: a tab or pane --into <pane> (--side: right, left, top, bottom split beside it; center
+takes its place: a tab's panes replace it and what it showed becomes a tab of its own; a pane swaps with it), or --at
+<n> (a place in the list, 0 first: a tab moves there, a pane of a split becomes a tab of its own there); a pane alone,
+out of its split into a tab of its own after it. swap: two panes trade places (across tabs too). focus: show a tab, or
+a pane (its tab shown, the pane focused). The user sees each at once.
+
+group: makes the tabs a new group where the first of them is, or with --group <id> adds them to that one; --name,
+--color (${COLORS.join(", ")}; default the first no group has) and --collapsed true/false name, colour or fold it (with
+--group alone: an existing one). A new group's name, left out, is the folder or site its tabs share, else none.
 
 ungroup: --group <id> ungroups it (its tabs stay where they are); tabs without --group leave their groups, each going
 right after its group, as dragging it out would.
 
   vau tabs
+  vau tabs split p1k2x9a0 --side bottom
+  vau tabs split Notes/Idea.md --to Notes/Plan.md
+  vau tabs move t1k2x9a0 --into p1k2x9a1 --side right
+  vau tabs move p1k2x9a1 --at 0
+  vau tabs swap p1k2x9a0 p1k2x9a1
+  vau tabs focus Notes/Plan.md
   vau tabs group "Notes/Idea.md" "Notes/Plan.md" --name Lighthouse --color teal
-  vau tabs group t1k2x9a0 --group s1k2x9a1
-  vau tabs group --group s1k2x9a1 --collapsed true
-  vau tabs ungroup --group s1k2x9a1
-  vau tabs ungroup "Notes/Plan.md"`
+  vau tabs group --group g1k2x9a1 --collapsed true
+  vau tabs ungroup --group g1k2x9a1`
+
+const paneLine = (p: ReportPane, split: boolean) => `${split ? (p.focused ? "  > " : "    ") : ""}${p.id}  ${p.to}${p.floating ? " (floating)" : ""}${p.zoomed ? " (zoomed)" : ""}`
+function listText(r: Report) {
+  const out: string[] = []
+  const list = (tabs: ReportTab[], groups: ReportGroup[], pad = "") => {
+    let open: string | undefined
+    for (const t of tabs) {
+      if (t.group !== open) { open = t.group; const g = groups.find((x) => x.id === t.group); if (g) out.push(`${pad}group ${groupLine(g)}`) }
+      const p = `${pad}${t.group ? "  " : ""}`, mark = `${t.active ? "* " : "  "}${t.id}${t.pinned ? " (pinned)" : ""}${t.name ? ` "${t.name}"` : ""}`
+      if (t.panes.length === 1) out.push(`${p}${mark}  ${paneLine(t.panes[0], false)}`)
+      else { out.push(`${p}${mark}  split of ${t.panes.length}`); for (const x of t.panes) out.push(`${p}    ${paneLine(x, true)}`) }
+    }
+  }
+  list(r.tabs, r.groups)
+  for (const w of r.windows ?? []) { out.push(`window ${w.id}`); list(w.tabs, [], "  ") }
+  return out.join("\n")
+}
 
 plugin.op({
   id: "tabs.list",
   cli: "tabs",
-  summary: "The user's window's tabs, pane by pane, with their tab groups (name, colour, folded).",
+  summary: "The user's window's tabs, each with its panes (ids and what each shows), and their tab groups.",
   help: HELP,
   kind: "read",
   run: (_p, ctx) => ask(ctx, { do: "list" }),
-  text: (r: Report) => r.panes.flatMap((p) => {
-    const out = [...(r.panes.length > 1 ? [`pane ${p.pane}${p.focused ? " (focused)" : ""}`] : [])]
-    const pad = r.panes.length > 1 ? "  " : ""
-    let open: string | undefined
-    for (const t of p.tabs) {
-      if (t.group !== open) {
-        open = t.group
-        const g = p.groups.find((x) => x.id === t.group)
-        if (g) out.push(`${pad}group ${groupLine(g)}`)
-      }
-      out.push(`${pad}${t.group ? "  " : ""}${t.active ? "* " : "  "}${t.id}  ${t.to}${t.pinned ? " (pinned)" : ""}`)
-    }
-    return out
-  }).join("\n"),
+  text: listText,
+})
+
+plugin.op({
+  id: "tabs.split",
+  cli: "tabs split",
+  summary: "Split a pane in the user's window: it opens again beside itself, or something else does (to).",
+  help: HELP,
+  kind: "write",
+  params: {
+    pane: { type: "string", required: true, description: "the pane (or a tab: its focused pane), by id or by what it shows" },
+    side: { type: "string", enum: SIDES, description: "where the new pane goes (default right)" },
+    to: { type: "string", description: "what the new pane shows (file:<path>, view:<view>); left out, the same as the pane" },
+  },
+  args: ["pane"],
+  run: (p, ctx) => ask(ctx, { do: "split", ...p, ...(p.to && !/^(file|view):/.test(p.to) && p.to !== "new" ? { to: `file:${p.to}` } : {}) }),
+  text: (r) => `Split: pane ${r.pane} in tab ${r.tab}.`,
+  did: (p) => ({ action: "ui", text: `Split pane ${p.pane}` }),
+})
+
+plugin.op({
+  id: "tabs.move",
+  cli: "tabs move",
+  summary: "Move a tab or pane in the user's window: into a pane (beside it, or in its place), to a place in the list, or a pane out to a tab of its own.",
+  help: HELP,
+  kind: "write",
+  params: {
+    what: { type: "string", required: true, description: "the tab or pane: its id, or what a pane shows" },
+    into: { type: "string", description: "the pane to put it by (or in place of, with side center)" },
+    side: { type: "string", enum: [...SIDES, "center"], description: "with into: which side of it, or center (default right)" },
+    at: { type: "integer", minimum: 0, description: "a place in the list of tabs (0 first)" },
+  },
+  args: ["what"],
+  run: (p, ctx) => ask(ctx, { do: "move", ...p }),
+  text: listText,
+  did: (p) => ({ action: "ui", text: `Moved ${p.what}${p.into ? ` to pane ${p.into}` : ""}` }),
+})
+
+plugin.op({
+  id: "tabs.swap",
+  cli: "tabs swap",
+  summary: "Swap two panes in the user's window (they trade places, across tabs too).",
+  help: HELP,
+  kind: "write",
+  params: {
+    pane: { type: "string", required: true, description: "one pane (id, or what it shows)" },
+    with: { type: "string", required: true, description: "the other" },
+  },
+  args: ["pane", "with"],
+  run: (p, ctx) => ask(ctx, { do: "swap", ...p }),
+  text: listText,
+  did: (p) => ({ action: "ui", text: `Swapped panes ${p.pane} and ${p.with}` }),
+})
+
+plugin.op({
+  id: "tabs.focus",
+  cli: "tabs focus",
+  summary: "Show a tab in the user's window, or focus a pane (its tab shown).",
+  help: HELP,
+  kind: "write",
+  params: { what: { type: "string", required: true, description: "the tab or pane: its id, or what a pane shows" } },
+  args: ["what"],
+  run: (p, ctx) => ask(ctx, { do: "focus", ...p }),
+  text: (r) => `Showing tab ${r.tab}, pane ${r.pane} focused.`,
+  did: (p) => ({ action: "ui", text: `Showed ${p.what}` }),
 })
 
 type ArchivedReport = { archived: { id: string; to: string; title: string; archived: string }[] }
@@ -385,7 +468,7 @@ plugin.op({
     if (!p.group && !p.tabs?.length) throw new OpError("say which tabs to group (or `group` to change one)", 400)
     return ask(ctx, { do: "group", ...p })
   },
-  text: (r) => `Group ${groupLine({ ...r.group, tabs: r.group.tabs.length })}: ${r.group.tabs.map((t: ReportTab) => t.to).join(", ")}.`,
+  text: (r) => `Group ${groupLine({ ...r.group, tabs: r.group.tabs.length })}: ${r.group.tabs.map((t: ReportTab) => t.panes.map((x) => x.to).join(" + ")).join(", ")}.`,
   did: (p) => ({ action: "ui", text: p.group ? `Changed tab group ${p.group}` : `Grouped ${p.tabs?.length ?? 0} tab(s)${p.name ? ` as "${p.name}"` : ""}` }),
 })
 

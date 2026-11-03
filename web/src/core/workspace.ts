@@ -1,81 +1,129 @@
-// The tabs on screen: groups of tabs, in a tree of splits (core/layout.ts, core/splits.ts), each tab
-// with its own history. This device's (localStorage), or with Workspaces the current workspace's, shared across devices.
+// The tabs on screen: a list of tabs (core/layout.ts), each a split tree of panes with their own history. This device's
+// (localStorage), or with Workspaces the workspace's, shared across devices; a pop-out has its own list in it.
 import { backDetail, hashChanged, route } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
-import { HISTORY, beside, blankGroup, clean, dropBlank, fixAllSets, foldedAway, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, okGroup, putBack, settled, shownTab, spotOf, tidy, vaultPath, type Group, type Layout, type Spot, type Tab, type Workspace, focusAfter, withoutTabs } from "../../../core/layout.ts"
+import {
+  HISTORY, allPanes, beside, blankList, clean, fixGroups, focusedPane, foldedAway, inGroup, isBlank, isBlankTab, mapPane, mapPanes, mapTab, mapTabs, migrate, moveOn,
+  newPaneId, newTabId, panesOf, putBack, settledTab, shownTab, spotOf, tabOf, tabOfPane, tabWith, tabWithout, vaultPath, withoutTabs,
+  type Pane, type Spot, type Tab, type TabList, type Window, type Workspace,
+} from "../../../core/layout.ts"
 import { signal } from "@/core/signal"
+import { tabsChanged } from "@/core/tabevents"
 
 const enc = encodeURIComponent
-/** This window is a pop-out (`?popout=<id>`: a tab moved or opened out of the main window, popOut):
- *  its own tabs, kept for the window (sessionStorage), no sidebars. */
+/** This window is a pop-out (`?popout=<id>`: tabs moved or opened out of the main window, popOut): its own list in the
+ *  workspace (`windows`), no sidebars. */
 const POPOUT = new URLSearchParams(location.search).get("popout")
 export const isPopout = () => !!POPOUT
-const KEY = POPOUT ? `vaultite.popout.${POPOUT}` : "vaultite.tabs"
+export const popoutId = () => POPOUT
+const KEY = "vaultite.tabs"
 if (POPOUT) document.documentElement.dataset.popout = "" // (index.css: the lights' room)
-/** Where the tabs are kept: this device's (a pop-out's: this window's). */
-const tabStore = () => (POPOUT ? sessionStorage : localStorage)
+const tabStore = () => localStorage
 
 /** Nothing was saved on this device yet: its first tab is blank until where it starts is known (fillFirstTab). */
 let unsaved = false
-/** Asked to start on a new tab (the crash screen's "Reload with a new tab"): the tabs come back in one pane with a new
- *  tab shown, so the one that stopped the app isn't drawn. Workspaces saves that rather than undoes it. */
+/** Asked to start on a new tab (the crash screen's "Reload with a new tab"): the tabs come back with a new tab shown, so
+ *  the one that stopped the app isn't drawn. Workspaces saves that rather than undoes it. */
 export const startedFresh = (() => {
   try { const v = sessionStorage.getItem("vaultite.freshStart"); sessionStorage.removeItem("vaultite.freshStart"); return !!v } catch { return false }
 })()
-function fresh(root: Layout): Workspace {
-  const seen = new Set<string>()
-  const tabs = leaves(root).flatMap((g) => g.tabs).filter((t) => !isBlank(t) && !seen.has(t.id) && !!seen.add(t.id))
-  const blank = { id: newId(), to: "new" }
-  return { root: { id: "g0", tabs: [...tabs, blank], active: blank.id }, focus: "g0" }
+/** What a page saved before tabs held panes: one group (`{tabs, active}`), or a main one and a right split. */
+function older(t: Record<string, unknown>): unknown {
+  if (Array.isArray(t.groups) && !Array.isArray(t.tabs)) return migrate({ root: { id: "s0", dir: "row", kids: t.groups.slice(0, 2), sizes: [1 - (Number(t.split) || 0.42), Number(t.split) || 0.42] } })
+  if (Array.isArray(t.tabs) && t.tabs.some((x) => x && typeof x === "object" && !("root" in x))) return migrate({ root: { id: "g0", tabs: t.tabs, active: t.active } })
+  return t
 }
 function load(): Workspace {
   try {
-    const t = JSON.parse(tabStore().getItem(KEY) ?? "null") as (Workspace & Partial<Group> & { groups?: Group[]; split?: number }) | null
-    let root: Layout | null = null
-    if (t?.root) root = tidy(clean(t.root))
-    // One group, or a main one and a right split: { groups, split } (the right one's share).
-    else if (t && Array.isArray(t.groups)) {
-      const gs = t.groups.filter(okGroup).slice(0, 2)
-      root = tidy({ id: "s0", dir: "row", kids: gs, sizes: [1 - (t.split || 0.42), t.split || 0.42] })
+    const t = JSON.parse(tabStore().getItem(KEY) ?? "null") as Record<string, unknown> | null
+    let w = t ? clean(older(t)) : null
+    // (a pop-out opened just now has its tabs handed over: popOut)
+    if (POPOUT && !w?.windows?.some((x) => x.id === POPOUT)) {
+      const handed = clean(JSON.parse(sessionStorage.getItem(`vaultite.popout.${POPOUT}`) ?? "null"))
+      if (handed) w = { ...(w ?? blankList()), windows: [...(w?.windows ?? []), { id: POPOUT, tabs: handed.tabs, ...(handed.groups ? { groups: handed.groups } : {}), active: handed.active }] }
     }
-    // Before splits: { tabs, active }.
-    else if (t && okGroup({ id: "g0", tabs: t.tabs!, active: t.active! })) root = { id: "g0", tabs: t.tabs!, active: t.active! }
-    if (root && startedFresh) return fresh(root)
-    if (root) { const gs = leaves(root), focus = gs.some((g) => g.id === t!.focus) ? t!.focus : gs[0].id; return settled({ root, focus, zoom: t!.zoom }) }
+    if (w && startedFresh) w = withList(w, fresh(listIn(w)))
+    if (w) return w
   } catch { /* private mode */ }
   unsaved = true
-  return { root: blankGroup("g0"), focus: "g0" }
+  return blankList()
 }
-/** The file in the focused pane or, while that shows something else (a view, like the links tab), the file focused
+/** The tabs again, a new blank tab shown (startedFresh). */
+function fresh(l: TabList): TabList {
+  const kept = l.tabs.filter((t) => !isBlankTab(t)), blank = tabOf("new")
+  return { ...l, tabs: [...kept, blank], active: blank.id }
+}
+/** This window's list in workspace `w`. */
+const listIn = (w: Workspace): TabList => (POPOUT ? w.windows?.find((x) => x.id === POPOUT) ?? { tabs: [], active: "" } : w)
+/** Workspace `w` with this window's list `l`. */
+function withList(w: Workspace, l: TabList): Workspace {
+  const own = { tabs: l.tabs, ...(l.groups ? { groups: l.groups } : {}), active: l.active }
+  if (!POPOUT) return { ...own, ...(w.windows?.length ? { windows: w.windows } : {}) }
+  const win: Window = { id: POPOUT, ...own }
+  const ws = w.windows ?? []
+  return { ...w, windows: ws.some((x) => x.id === POPOUT) ? ws.map((x) => (x.id === POPOUT ? win : x)) : [...ws, win] }
+}
+
+/** The file in the focused pane or, while that shows something else (a view, like the links pane), the file focused
  *  last, and the pane it's in: what a view that follows the other panes shows (a linked pane). */
-export type FocusedFile = { path: string; group: string }
-let lastFile: FocusedFile = { path: "", group: "" }
+export type FocusedFile = { path: string; pane: string }
+let lastFile: FocusedFile = { path: "", pane: "" }
 function noteFile() {
-  const g = leaves(state.root).find((x) => x.id === state.focus)
-  const to = (g && shownTab(g)?.to) ?? ""
-  if (to.startsWith("file:") && (to.slice(5) !== lastFile.path || g!.id !== lastFile.group)) lastFile = { path: to.slice(5), group: g!.id }
-  else if (lastFile.path && !leaves(state.root).some((x) => x.id === lastFile.group && x.tabs.some((t) => t.to === `file:${lastFile.path}`))) {
-    lastFile = { path: "", group: "" } // its tab closed
-  }
+  const p = activePane(), to = p?.to ?? ""
+  if (to.startsWith("file:") && (to.slice(5) !== lastFile.path || p!.id !== lastFile.pane)) lastFile = { path: to.slice(5), pane: p!.id }
+  else if (lastFile.path && !allPanes(here()).some((x) => x.id === lastFile.pane && x.to === `file:${lastFile.path}`)) lastFile = { path: "", pane: "" } // (its pane closed)
 }
 let state = load()
-noteFile()
 const changed = signal()
-/** The next workspace, tidied (an emptied group closes; with none left, a blank tab; tab groups as they must be:
- *  fixSets). A focused group that closed hands the focus to its neighbour. */
-export function set(next: Workspace) {
-  const was = shownTab(focused())?.id ?? ""
-  const root = stamped(tidy(fixAllSets(next.root)) ?? blankGroup(), state.root)
-  // (a zoom outlives changes that leave the focus on its pane: settled drops it otherwise)
-  state = settled({ root, focus: focusAfter(state.root, root, next.focus), zoom: "zoom" in next ? next.zoom : state.zoom })
+/** This window's tabs. */
+export const here = (): TabList => listIn(state)
+noteFile()
+
+/** The next list of this window's tabs, tidied: tabs as they must be (settledTab), groups too (fixGroups), with none
+ *  left a blank tab. */
+export function set(next: TabList) {
+  const was = here(), wasTab = was.active, wasPane = activePane()?.id ?? ""
+  const tabs = next.tabs.map(settledTab)
+  let l: TabList = tabs.length ? fixGroups({ ...next, tabs, active: tabs.some((t) => t.id === next.active) ? next.active : tabs[0].id }) : blankList()
+  l = stamped(l, was)
+  state = withList(state, l)
   quietNow = replacing || quiet > 0
-  if (leaves(root).find((g) => g.id === state.focus)?.float) raised = [...raised.filter((id) => id !== state.focus), state.focus]
-  try { tabStore().setItem(KEY, JSON.stringify(state)) } catch { /* private mode */ }
-  const now = activeTab().id
-  if (now !== was) { if (!kin(was, now)) openers.clear(); if (lastChild?.opener !== now) lastChild = null; leftTab(was) }
+  const p = activePane()
+  if (p?.float) raised = [...raised.filter((id) => id !== p.id), p.id]
+  save()
+  if (l.active !== wasTab) { if (!kin(wasTab, l.active)) openers.clear(); if (lastChild?.opener !== l.active) lastChild = null; leftTab(wasTab) }
   noteFile()
+  tabsChanged(was, l, wasPane, p?.id ?? "")
   changed.notify()
 }
+/** Kept on this device, this window's list put into what's kept (another window's are theirs). */
+function save() {
+  try {
+    const kept = clean(JSON.parse(tabStore().getItem(KEY) ?? "null"))
+    tabStore().setItem(KEY, JSON.stringify(kept ? mineInto(kept) : state))
+  } catch { /* private mode */ }
+}
+/** Workspace `w` (saved elsewhere: another window, another device) with this window's own tabs: the main window's list
+ *  and which pop-outs there are (it opens and closes them), or a pop-out's list. */
+export function mineInto(w: Workspace): Workspace {
+  if (POPOUT) return withList(w, here())
+  const theirs = new Map((w.windows ?? []).map((x) => [x.id, x]))
+  const windows = (state.windows ?? []).map((x) => theirs.get(x.id) ?? x)
+  return { ...withList({ ...w, windows: [] }, state), ...(windows.length ? { windows } : {}) }
+}
+// Another window of this device saved: its tabs are taken in (this one's stay as they are).
+addEventListener("storage", (e) => {
+  if (e.key !== KEY || !e.newValue || replacing) return
+  try { const w = clean(JSON.parse(e.newValue)); if (w) adopt(w) } catch { /* not ours */ }
+})
+/** The other windows' tabs from `w`, this one's as they are. */
+function adopt(w: Workspace) {
+  const next = POPOUT ? { ...withList(w, here()) } : { ...withList(w, here()), ...(w.windows?.length ? { windows: w.windows } : {}) }
+  if (JSON.stringify(next.windows ?? []) === JSON.stringify(state.windows ?? [])) return
+  state = next
+  changed.notify()
+}
+
 export const getWorkspace = () => state
 let quiet = 0, quietNow = false
 /** Run `fn`, its layout changes drawn at once rather than moving there (a divider or a floating pane dragged). */
@@ -85,41 +133,48 @@ export const layoutQuiet = () => quietNow
 /** Floating panes focused, the last one latest: the one drawn on top. */
 let raised: string[] = []
 export const floatOrder = (ids: string[]) => [...ids.filter((id) => !raised.includes(id)), ...raised.filter((id) => ids.includes(id))]
+/** The whole workspace, live. */
 export const useWorkspace = () => changed.use(() => state)
+/** This window's tabs, live. */
+export const useTabList = () => changed.use(here)
 /** Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged). */
 export const onWorkspaceChange = changed.subscribe
 let replacing = false
 /** The change being told is a whole layout put in place (replaceWorkspace): nothing the user did here. */
 export const replacingWorkspace = () => replacing
-/** Put a whole other layout in place (Workspaces switching). Nothing is "closed" (a terminal's tab reattaches when it
- *  comes back). `merge`: the same workspace changed on another device, so what's on screen here stays where it can. */
+/** Put a whole other workspace in place (Workspaces switching). Nothing is "closed" (a terminal's pane reattaches when
+ *  it comes back). `merge`: the same workspace changed on another device, so what's on screen here stays where it can. */
 export function replaceWorkspace(next: unknown, opts: { merge?: boolean } = {}) {
   unsaved = false
-  const w = next as Partial<Workspace> | null
-  let root = w ? tidy(clean(w.root)) : null
-  let gs = root ? leaves(root) : []
-  let focus = gs.some((g) => g.id === w!.focus) ? w!.focus! : gs[0]?.id
-  let zoom = w?.zoom
-  if (root && opts.merge) {
-    const had = new Map(groups().map((g) => [g.id, g]))
-    const tabs = new Map(groups().flatMap((g) => g.tabs).map((t) => [t.id, t]))
-    root = mapGroups(root, (g) => {
-      const mine = had.get(g.id)
-      return {
-        ...g,
-        active: mine && g.tabs.some((t) => t.id === mine.active) ? mine.active : g.active,
-        tabs: g.tabs.map((t) => {
-          const o = tabs.get(t.id), seen = Math.max(t.seen ?? 0, o?.seen ?? 0) || undefined
-          return o && o.to === t.to && !t.back && !t.fwd ? { ...t, back: o.back, fwd: o.fwd, from: o.from, seen } : seen === t.seen ? t : { ...t, seen }
-        }),
-      }
+  let w: Workspace = clean(next) ?? blankList()
+  if (opts.merge) {
+    // What each device keeps for itself: the tab it shows, each tab's focused and zoomed pane, the panes' history.
+    const mine = here(), tabs = new Map(mine.tabs.map((t) => [t.id, t])), panes = new Map(allPanes(mine).map((p) => [p.id, p]))
+    const keep = (l: TabList): TabList => ({
+      ...l,
+      active: l.tabs.some((t) => t.id === mine.active) ? mine.active : l.active,
+      tabs: l.tabs.map((t) => {
+        const o = tabs.get(t.id)
+        const root = mapPanes(t.root, (p) => {
+          const q = panes.get(p.id), seen = Math.max(p.seen ?? 0, q?.seen ?? 0) || undefined
+          return q && q.to === p.to && !p.back && !p.fwd ? { ...p, back: q.back, fwd: q.fwd, from: q.from, seen } : seen === p.seen ? p : { ...p, seen }
+        })
+        return settledTab({ ...t, root, ...(o ? { focus: o.focus, zoom: o.zoom } : {}) })
+      }),
     })
-    gs = leaves(root)
-    if (gs.some((g) => g.id === state.focus)) focus = state.focus
-    zoom = state.zoom
+    w = withList(w, keep(listIn(w)))
   }
   replacing = true
-  try { set(root ? { root, focus, zoom } : { root: { id: "g0", tabs: [], active: "" }, focus: "g0", zoom: undefined }) } finally { replacing = false }
+  try {
+    const was = here(), wasPane = activePane()?.id ?? ""
+    state = { ...w }
+    if (POPOUT && !w.windows?.some((x) => x.id === POPOUT)) state = withList(state, was)
+    quietNow = true
+    save()
+    noteFile()
+    tabsChanged(was, here(), wasPane, activePane()?.id ?? "")
+    changed.notify()
+  } finally { replacing = false }
   showActiveUnder()
 }
 
@@ -129,31 +184,35 @@ export function fillFirstTab(to: string) {
   if (!unsaved) return
   unsaved = false
   if (![undefined, "", "new"].includes(route().tab)) return
-  const gs = groups()
-  if (gs.length !== 1 || gs[0].tabs.length !== 1 || gs[0].tabs[0].to !== "new") return
-  set(withGroup(gs[0].id, (g) => mapTabs(g, g.active, (t) => ({ ...t, to }))))
+  const l = here()
+  if (l.tabs.length !== 1 || !isBlankTab(l.tabs[0])) return
+  set(mapPane(l, l.tabs[0].focus, (p) => ({ ...p, to })))
   showActive()
 }
 
 export const useFocusedFile = () => changed.use(() => lastFile)
-/** Whether the focused tab shows a file (not a view or a new tab). */
-export const useFileTab = () => changed.use(() => !!activeTab()?.to.startsWith("file:"))
-export const groups = () => leaves(state.root)
-/** A group's tabs (the focused group's by default). */
-export function useTabs(group?: string): Group {
-  const gs = leaves(useWorkspace().root)
-  return gs.find((g) => g.id === (group || state.focus)) ?? gs[0]
-}
-const focused = () => groups().find((g) => g.id === state.focus) ?? groups()[0]
-export const groupOfTab = (id: string) => groups().find((g) => g.tabs.some((t) => t.id === id))
-/** The vault file in the focused tab ("" when it shows something else, or a file from outside the vault). */
-export const currentFile = () => vaultPath(activeTab()?.to ?? "") ?? ""
-export const activeTab = () => shownTab(focused())!
-/** Change one group. */
-export const withGroup = (gid: string, fn: (g: Group) => Group, extra: Partial<Workspace> = {}): Workspace =>
-  ({ ...state, ...extra, root: mapGroups(state.root, (g) => (g.id === gid ? fn(g) : g)) })
+/** Whether the focused pane shows a file (not a view or a blank pane). */
+export const useFileTab = () => changed.use(() => !!activePane()?.to.startsWith("file:"))
+/** The tab on screen in this window. */
+export function activeTab(): Tab { return shownTab(here()) ?? here().tabs[0] }
+/** The pane focused in the tab on screen: where the address, the commands and what's opened go. */
+export function activePane(): Pane { const t = activeTab(); return t && focusedPane(t) }
+/** The panes of the tab on screen. */
+export const panes = () => (activeTab() ? panesOf(activeTab()) : [])
+/** This window's tabs. */
+export const tabs = () => here().tabs
+export const tabById = (id: string) => here().tabs.find((t) => t.id === id)
+/** The tab that has pane `id` (in this window). */
+export const paneTab = (id: string) => tabOfPane(here(), id)
+export const paneById = (id: string) => allPanes(here()).find((p) => p.id === id)
+/** The vault file in the focused pane ("" when it shows something else, or a file from outside the vault). */
+export const currentFile = () => vaultPath(activePane()?.to ?? "") ?? ""
+/** This window's list with pane `id` changed. */
+export const withPane = (id: string, fn: (p: Pane) => Pane): TabList => mapPane(here(), id, fn)
+/** This window's list with tab `id` changed. */
+export const withTab = (id: string, fn: (t: Tab) => Tab, extra: Partial<TabList> = {}): TabList => ({ ...mapTab(here(), id, fn), ...extra })
 
-/** The hash for a tab's target: "file/Notes%2FIdea.md", "view/terminal%2Fabc", "new". */
+/** The hash for a target: "file/Notes%2FIdea.md", "view/terminal%2Fabc", "new". */
 export const hashOf = (to: string) => (to.startsWith("file:") ? `file/${enc(to.slice(5))}` : to.startsWith("view:") ? `view/${enc(to.slice(5))}` : to)
 /** The target for a route's tab ("file/Notes%2FIdea.md" -> "file:Notes/Idea.md"). */
 export function targetOf(tab: string) {
@@ -164,71 +223,71 @@ export function targetOf(tab: string) {
 }
 const isFile = (to: string) => to.startsWith("file:")
 
-/** Back (-1) or forward (1) in the active tab's history. Back closes an open sheet first; Back from the first place
- *  of a tab opened for something (`from`) closes it and shows that one again, like a browser tab opened from a link. */
+/** Back (-1) or forward (1) in the focused pane's history. Back closes an open sheet first; Back from the first place
+ *  of a pane opened for something (`from`) closes it and shows that one again, like a browser tab opened from a link. */
 export function navigate(dir: -1 | 1) {
   if (dir < 0 && route().detail) return backDetail()
-  const cur = activeTab()
+  const cur = activePane()
   // (its own history is asked, not what it last told: a key just after a page moved went nowhere)
   const own = ownHistory(cur, dir)
-  if (own) return void own.go().then((went) => { if (!went && activeTab().id === cur.id) walkTab(dir) })
-  walkTab(dir)
+  if (own) return void own.go().then((went) => { if (!went && activePane().id === cur.id) walkPane(dir) })
+  walkPane(dir)
 }
-function walkTab(dir: -1 | 1) {
-  const cur = activeTab()
+function walkPane(dir: -1 | 1) {
+  const cur = activePane()
   const back = [...(cur.back ?? [])], fwd = [...(cur.fwd ?? [])]
   const to = dir < 0 ? back.pop() : fwd.shift()
-  if (!to && dir < 0 && opener(cur)) { const from = cur.from!; return guarded([cur], () => { closeTab(cur.id, true); selectTab(from) }) }
+  if (!to && dir < 0 && opener(cur)) { const from = cur.from!; return guarded([cur], () => { closePane(cur.id, true); selectPane(from) }) }
   if (!to) return
   if (dir < 0) fwd.unshift(cur.to); else back.push(cur.to)
-  set(withGroup(state.focus, (g) => mapTabs(g, cur.id, (t) => ({ ...t, to, back, fwd }))))
+  set(withPane(cur.id, (p) => ({ ...p, to, back, fwd })))
   show(to, false)
 }
-export const canNavigate = (t: Tab | undefined, dir: -1 | 1) => !!(dir < 0 ? t?.back : t?.fwd)?.length || (dir < 0 && !!opener(t)) || (!!t && !!ownHistory(t, dir)?.can)
-/** A view's own history (a web page's), walked before its tab's, in tab `t` (null: it has none now). Set by the app. */
-let ownHistory: (t: Tab, dir: -1 | 1) => OwnHistory | null = () => null
+export const canNavigate = (p: Pane | undefined, dir: -1 | 1) => !!(dir < 0 ? p?.back : p?.fwd)?.length || (dir < 0 && !!opener(p)) || (!!p && !!ownHistory(p, dir)?.can)
+/** A view's own history (a web page's), walked before its pane's, in pane `p` (null: it has none now). Set by the app. */
+let ownHistory: (p: Pane, dir: -1 | 1) => OwnHistory | null = () => null
 export const setOwnHistory = (fn: typeof ownHistory) => { ownHistory = fn }
 /** `can`: it can go that way, as it last told; `go`: go if it can now, answering whether it went. */
 export type OwnHistory = { can: boolean; go: () => Promise<boolean> }
-/** The tab `t` was opened beside, if it's still open. */
-const opener = (t: Tab | undefined) => (t?.from && t.from !== t.id && groupOfTab(t.from) ? t.from : null)
+/** The pane `p` was opened from, if it's still open. */
+const opener = (p: Pane | undefined) => (p?.from && p.from !== p.id && paneById(p.from) ? p.from : null)
 
-/** Each history entry says which tab it's a place of (`tab`: phones find the tab to go back to by it; followHash). */
-type Entry = { tab?: string; sheet?: number; prev?: string } | null
+/** Each history entry says which pane it's a place of (`pane`: phones find the one to go back to by it; followHash). */
+type Entry = { pane?: string; sheet?: number; prev?: string } | null
 const entry = () => history.state as Entry
 /** The address shows `to` (a new history entry with `push`). */
 export function show(to: string, push: boolean) {
   const h = `#${hashOf(to)}`
   if (location.hash === h) { stamp(); return hashChanged() }
-  const st = { tab: activeTab().id }
+  const st = { pane: activePane().id }
   if (push) history.pushState(st, "", h); else history.replaceState(st, "", h)
   hashChanged()
 }
-/** Mark the entry on screen as the active tab's place, if nothing said whose it is (a link followed, a sheet closed). */
+/** Mark the entry on screen as the focused pane's place, if nothing said whose it is (a link followed, a sheet closed). */
 function stamp() {
   const e = entry()
-  if (!e?.tab) history.replaceState({ ...e, tab: activeTab().id }, "")
+  if (!e?.pane) history.replaceState({ ...e, pane: activePane().id }, "")
 }
-// The address changed to what the active tab shows (a sheet opened or closed over it): that entry is this tab's. A new
-// place (a link) is stamped once followHash has put it in a tab.
-addEventListener("hashchange", () => { if (targetOf(route().tab) === activeTab().to) stamp() })
-/** The address shows the focused group's active tab. */
-export const showActive = () => show(activeTab().to, false)
+// The address changed to what the focused pane shows (a sheet opened or closed over it): that entry is this pane's. A
+// new place (a link) is stamped once followHash has put it in a pane.
+addEventListener("hashchange", () => { if (targetOf(route().tab) === activePane().to) stamp() })
+/** The address shows the focused pane. */
+export const showActive = () => show(activePane().to, false)
 
-/** What sort of thing a tab shows, for go(): a page, a file, or a view by name, so Graph view never replaces a
- *  terminal. A view that keeps its tab (`keepsTab`) is a sort of its own: nothing opens in its place. */
+/** What sort of thing a pane shows, for go(): a page, a file, or a view by name, so Graph view never replaces a
+ *  terminal. A view that keeps its pane (`keepsTab`) is a sort of its own: nothing opens in its place. */
 function sortOf(to: string) {
   if (to.startsWith("view:")) return keeps(to) ? to : `view:${to.slice(5).split("/")[0]}`
   return isFile(to) && !isPage(to.slice(5)) ? "file" : "page"
 }
-/** Whether a view's tab is its own (ViewDef.keepsTab). Set by the app, which knows the views. */
+/** Whether a view's pane is its own (ViewDef.keepsTab). Set by the app, which knows the views. */
 let keeps: (to: string) => boolean = () => false
 export const setTabKeeper = (fn: (to: string) => boolean) => { keeps = fn }
 export const keepsTab = (to: string) => keeps(to)
 /** Whether a view's arg is a vault path (ViewDef.pathArg: a folder's page), which retarget follows. Set by the app. */
 let pathView: (to: string) => boolean = () => false
 export const setPathView = (fn: (to: string) => boolean) => { pathView = fn }
-/** The tab a new tab of `to` opens beside (ViewDef.opensBeside: a session dispatched from a note, by that note's), or
+/** The pane a new tab of `to` opens beside (ViewDef.opensBeside: a session dispatched from a note, by that note's), or
  *  null for the current one. Set by the app, which knows the views. */
 let besideOf: (to: string) => string | null = () => null
 export const setOpener = (fn: (to: string) => string | null) => { besideOf = fn }
@@ -236,56 +295,71 @@ export const setOpener = (fn: (to: string) => string | null) => { besideOf = fn 
 let isPage: (path: string) => boolean = () => false
 export const setPageTest = (fn: (path: string) => boolean) => { isPage = fn }
 
-/** Where a target is open (any of several: a page's tabs), the focused group first. */
+/** Where a target is open (any of several: a page's tabs): the tab and pane, the tab on screen first. */
 export function findOpen(...to: string[]) {
-  for (const g of [focused(), ...groups().filter((x) => x.id !== state.focus)]) {
-    const t = g.tabs.find((x) => to.includes(x.to))
-    if (t) return { g, t }
+  for (const t of [activeTab(), ...here().tabs.filter((x) => x.id !== here().active)]) {
+    if (!t) continue
+    const p = (t.id === here().active ? [focusedPane(t), ...panesOf(t)] : panesOf(t)).find((x) => to.includes(x.to))
+    if (p) return { t, p }
   }
   return null
 }
 
-/** Switch to tab `t` of group `gid`, which has what was just opened from the active tab: a blank one is left behind
- *  closed (layout.ts, dropBlank). `from`: it was opened from that tab (Tab.from). */
-function switchTo(gid: string, t: Tab, from?: string) {
+/** Show pane `p` of tab `t`, which has what was just opened from the focused pane: a blank tab is left behind closed.
+ *  `from`: it was opened from that pane (Pane.from). */
+function switchTo(t: Tab, p: Pane, from?: string) {
   const cur = activeTab()
-  const ws = withGroup(gid, (g) => ({ ...(from ? mapTabs(g, t.id, (x) => ({ ...x, from })) : g), active: t.id }), { focus: gid })
-  set(isBlank(cur) && cur.id !== t.id ? { ...ws, root: dropBlank(ws.root, cur.id, isDesktop()) } : ws)
+  let l = withTab(t.id, (x) => ({ ...(from ? { ...x, root: mapPanes(x.root, (y) => (y.id === p.id ? { ...y, from } : y)) } : x), focus: p.id }), { active: t.id })
+  if (isBlankTab(cur) && cur.id !== t.id) l = withoutTabs(l, new Set([cur.id])) ?? l
+  set(l)
 }
 
-/** Where the tabs made now go in their pane: beside the active tab, or at its end (`newTabsAt`). */
+/** Where the tabs made now go in the list: beside the tab on screen, or at its end (`newTabsAt`). */
 let placing: "end" | undefined
-/** Runs `fn` with the tabs it makes in a pane put at its end, in no tab group, instead of beside the active tab: a tab
- *  bar's + and the Tabs panel's New tab row, whose place the new tab takes. */
+/** Runs `fn` with the tabs it makes put at the list's end, in no tab group, instead of beside the tab on screen: a
+ *  tab bar's + and the Tabs panel's New tab row, whose place the new tab takes. */
 export function newTabsAt<T>(at: "end" | undefined, fn: () => T): T {
   const was = placing
   placing = at
   try { return fn() } finally { placing = was }
 }
 
-/** Go somewhere: an open tab that has it, else the current tab when it shows the same sort of thing (or nothing), else a
- *  new tab beside it, so a person opened from People opens beside it and Back returns there. Blank tabs are never kept. */
+/** The pane of the tab on screen that `to` opens in: the focused one when it shows the same sort of thing (or
+ *  nothing), else another of the tab's that does (a split's note beside its terminal), else none (a new tab). */
+function paneFor(to: string, newTab: boolean): Pane | null {
+  const t = activeTab(), cur = activePane()
+  if (isBlank(cur)) return cur
+  if (newTab || t.pinned) return null
+  const fits = (p: Pane) => isBlank(p) || (sortOf(p.to) === sortOf(to) && !keeps(p.to))
+  return fits(cur) ? cur : panesOf(t).find((p) => p.id !== cur.id && fits(p)) ?? null
+}
+
+/** Go somewhere: a pane that has it, else the focused pane (or another of its split) showing the same sort of thing or
+ *  nothing, else a new tab beside it (a person from People: Back returns there). Blank tabs are never kept. */
 export function go(to: string, newTab = false, push = true) {
-  const cur = activeTab()
+  const cur = activePane()
   const open = findOpen(to)
   // Opened from a page into a tab of its own (not asked for one): Back returns to the page.
   const from = !newTab && !isBlank(cur) && sortOf(cur.to) === "page" && sortOf(to) !== "page" ? cur.id : undefined
-  // Another tab: on phones a history entry, like selectTab (Back returns to the tab it was opened from; replacing the
-  // entry would lose that place, and Back would skip it).
-  if (open && (!newTab || isBlank(cur))) { switchTo(open.g.id, open.t, open.t.id === cur.id ? undefined : from); return show(to, push && !isDesktop() && open.t.id !== cur.id && !isBlank(cur)) }
-  // Opened by another tab (its opener): beside that one, in its pane and its tab group, as a browser opens a link.
+  // Another tab: on phones a history entry, like selectTab (Back returns to the tab it was opened from).
+  if (open && (!newTab || isBlank(cur))) {
+    switchTo(open.t, open.p, open.p.id === cur.id || open.t.id === activeTab().id ? undefined : from)
+    return show(to, push && !isDesktop() && open.p.id !== cur.id && !isBlank(cur))
+  }
+  // Opened by another pane (its opener): a tab beside that one's, in its tab group, as a browser opens a link.
   const by = isBlank(cur) || placing ? null : besideOf(to)
   const at = by && by !== cur.to ? findOpen(by) : null
   if (at) {
-    set(withGroup(at.g.id, (g) => withTabAfter(g, at.t.id, to), { focus: at.g.id }))
+    set(withTabAfter(here(), at.t.id, to))
     return show(to, push)
   }
-  if (isBlank(cur) || (!newTab && !cur.pinned && sortOf(cur.to) === sortOf(to))) {
-    set(withGroup(state.focus, (g) => mapTabs(g, cur.id, (t) => moveOn(t, to))))
+  const into = paneFor(to, newTab)
+  if (into) {
+    set(withTab(activeTab().id, (t) => ({ ...t, focus: into.id, root: mapPanes(t.root, (p) => (p.id === into.id ? moveOn(p, to) : p)) })))
     return show(to, push)
   }
-  set(withGroup(state.focus, (g) => withTabAfter(g, cur.id, to, from)))
-  if (from) openers.set(activeTab().id, from)
+  set(withTabAfter(here(), activeTab().id, to, from))
+  if (from) openers.set(activeTab().id, here().tabs.find((t) => panesOf(t).some((p) => p.id === from))?.id ?? "")
   show(to, push)
 }
 
@@ -299,91 +373,99 @@ const kin = (a: string, b: string) => {
 /** The tab opened last from `opener` while it stayed on screen: the next opened from it goes after it (Chrome's order). */
 let lastChild: { opener: string; tab: string } | null = null
 
-/** `to` in a new tab of its own though another may show it, after `from` (default: the active tab) and the ones opened
- *  from it before, in its tab group; `background`: the user stays (agents' always). `id`: a page was handed it first. */
-export function openTab(to: string, { background = false, from, id = newId() }: { background?: boolean; from?: string; id?: string } = {}): string {
-  const g = (from && groupOfTab(from)) || focused(), cur = shownTab(g)!
-  if (!from && !background && isBlank(cur)) {
-    set(withGroup(g.id, (x) => ({ ...x, tabs: x.tabs.map((t) => (t.id === cur.id ? { id, to, ...(cur.set ? { set: cur.set } : {}) } : t)), active: id }), { focus: g.id }))
+/** `to` in a new tab though another may show it, after pane `from`'s tab (default: the one on screen) and those it opened,
+ *  in its group; `background`: the user stays (agents'). `id`: the new pane's (a page handed it first). Returns it. */
+export function openTab(to: string, { background = false, from, id = newPaneId() }: { background?: boolean; from?: string; id?: string } = {}): string {
+  const l = here(), owner = (from && tabOfPane(l, from)) || activeTab(), cur = activePane()
+  if (!from && !background && isBlankTab(owner)) {
+    const t: Tab = { ...tabOf(to, { pane: id, id: owner.id }), ...(owner.group ? { group: owner.group } : {}) }
+    set({ ...mapTab(l, owner.id, () => t), active: t.id })
     show(to, true)
     return id
   }
-  const opener = from && g.tabs.some((t) => t.id === from) ? from : cur.id
-  const tab: Tab = { id, to, from: opener }
-  const after = background && lastChild?.opener === opener && g.tabs.some((t) => t.id === lastChild!.tab) ? lastChild.tab : opener
-  const set0 = g.tabs.find((t) => t.id === opener)?.set
-  set(withGroup(g.id, (x) => {
-    const at = x.tabs.findIndex((t) => t.id === after) + 1
-    return { ...x, tabs: [...x.tabs.slice(0, at), set0 ? { ...tab, set: set0 } : tab, ...x.tabs.slice(at)], active: background ? x.active : id }
-  }, background ? {} : { focus: g.id }))
-  openers.set(id, opener)
-  if (background) lastChild = { opener, tab: id }
+  const fromPane = from && panesOf(owner).some((p) => p.id === from) ? from : owner.id === activeTab().id ? cur.id : focusedPane(owner).id
+  const tab = tabOf(to, { pane: id, from: fromPane })
+  const after = background && lastChild?.opener === owner.id && l.tabs.some((t) => t.id === lastChild!.tab) ? lastChild.tab : owner.id
+  const at = l.tabs.findIndex((t) => t.id === after) + 1
+  const placed = owner.group ? inGroup(tab, owner.group) : tab
+  set({ ...l, tabs: [...l.tabs.slice(0, at), placed, ...l.tabs.slice(at)], active: background ? l.active : tab.id })
+  openers.set(tab.id, owner.id)
+  if (background) lastChild = { opener: owner.id, tab: tab.id }
   else show(to, true)
   return id
 }
 
-/** A group with a new tab showing `to` right after tab `after`, active (`from`: the tab it was opened from, Tab.from),
+/** A list with a new tab showing `to` right after tab `after`, shown (`from`: the pane it was opened from, Pane.from),
  *  in `after`'s tab group, as a browser's link opened from a grouped tab is (or at its end: `newTabsAt`). */
-function withTabAfter(g: Group, after: string, to: string, from?: string): Group {
-  const id = newId(), at = placing === "end" ? g.tabs.length : g.tabs.findIndex((t) => t.id === after) + 1
-  const set = placing === "end" ? undefined : g.tabs[at - 1]?.set
-  const tab: Tab = { id, to, ...(from ? { from } : {}), ...(set ? { set } : {}) }
-  return { ...g, tabs: [...g.tabs.slice(0, at), tab, ...g.tabs.slice(at)], active: id }
+function withTabAfter(l: TabList, after: string, to: string, from?: string): TabList {
+  const at = placing === "end" ? l.tabs.length : l.tabs.findIndex((t) => t.id === after) + 1
+  const group = placing === "end" ? undefined : l.tabs[at - 1]?.group
+  const tab = inGroup(tabOf(to, from ? { from } : {}), group)
+  return { ...l, tabs: [...l.tabs.slice(0, at), tab, ...l.tabs.slice(at)], active: tab.id }
 }
 
-/** Change what a tab shows in place, with no history entry (a view's own state in its arg: a search's query as it's
- *  typed, `ViewCtx.setArg`). The address follows when it's the tab on screen. */
+/** Change what a pane shows in place, with no history entry (a view's own state in its arg: a search's query as it's
+ *  typed, `ViewCtx.setArg`). The address follows when it's the pane focused. */
 export function replaceTabTarget(id: string, to: string) {
-  const g = groupOfTab(id)
-  if (!g || g.tabs.find((t) => t.id === id)?.to === to) return
-  set(withGroup(g.id, (x) => mapTabs(x, id, (t) => ({ ...t, to }))))
-  if (g.id === state.focus && g.active === id) show(to, false)
+  const p = paneById(id)
+  if (!p || p.to === to) return
+  set(withPane(id, (x) => ({ ...x, to })))
+  if (activePane().id === id) show(to, false)
 }
 
-/** Show `to` in the active tab whatever it held (a page's tabs, List -> Map: the same place, its own history). */
+/** Show `to` in the focused pane whatever it held (a page's tabs, List -> Map: the same place, its own history). */
 export function goHere(to: string) {
-  const cur = activeTab()
+  const cur = activePane()
   if (cur.to === to) return
-  set(withGroup(state.focus, (g) => mapTabs(g, cur.id, (t) => moveOn(t, to))))
+  set(withPane(cur.id, (p) => moveOn(p, to)))
   show(to, true)
 }
 
-/** The address changed by itself (back, forward, a typed URL): show it in the tab that has it. Every place a phone
- *  shows is its own history entry, marked with its tab, so Back and Forward land on exactly what a swipe slid in. */
+/** The address changed by itself (back, forward, a typed URL): show it in the pane that has it. Every place a phone
+ *  shows is its own history entry, marked with its pane, so Back and Forward land on exactly what a swipe slid in. */
 export function followHash(tab: string) {
   const to = targetOf(tab)
-  let cur = activeTab()
+  let cur = activePane()
   if (cur.to === to) return stamp()
-  const owner = isDesktop() ? undefined : entry()?.tab
-  const g = owner && owner !== cur.id ? groupOfTab(owner) : undefined
-  if (g) { set(withGroup(g.id, (x) => ({ ...x, active: owner! }), { focus: g.id })); cur = activeTab(); if (cur.to === to) return }
-  // A link (no owner yet): the tab that has it, as on desktop (a blank tab it was followed from closes: go).
+  const owner = isDesktop() ? undefined : entry()?.pane
+  const t = owner && owner !== cur.id ? tabOfPane(here(), owner) : undefined
+  if (t) { set(withTab(t.id, (x) => ({ ...x, focus: owner! }), { active: t.id })); cur = activePane(); if (cur.to === to) return }
+  // A link (no owner yet): the pane that has it, as on desktop (a blank tab it was followed from closes: go).
   const open = findOpen(to)
-  if (open && !owner) { switchTo(open.g.id, open.t); return stamp() }
+  if (open && !owner) { switchTo(open.t, open.p); return stamp() }
   if (!isDesktop()) {
     const back = [...(cur.back ?? [])], fwd = [...(cur.fwd ?? [])]
-    const walk = (t: Partial<Tab>) => { set(withGroup(state.focus, (x) => mapTabs(x, cur.id, (c) => ({ ...c, to, ...t })))); stamp() }
+    const walk = (x: Partial<Pane>) => { set(withPane(cur.id, (c) => ({ ...c, to, ...x }))); stamp() }
     if (back.at(-1) === to) { back.pop(); return walk({ back, fwd: [cur.to, ...fwd] }) }
     if (fwd[0] === to) { fwd.shift(); return walk({ back: [...back, cur.to].slice(-HISTORY), fwd }) }
   }
-  if (open && !g) switchTo(open.g.id, open.t)
-  else if (keeps(cur.to) || cur.pinned) set(withGroup(state.focus, (x) => withTabAfter(x, cur.id, to)))
-  else set(withGroup(state.focus, (x) => mapTabs(x, cur.id, (t) => moveOn(t, to))))
+  if (open && !t) switchTo(open.t, open.p)
+  else if (keeps(cur.to) || activeTab().pinned) set(withTabAfter(here(), activeTab().id, to))
+  else set(withPane(cur.id, (p) => moveOn(p, to)))
   stamp()
 }
 
 /** Show a tab (false: there's none). On phones that's a history entry (Back returns to the tab that was on screen); on
  *  desktop the address just follows. */
 export function selectTab(id: string) {
-  const g = groupOfTab(id)
-  if (!g) return false
-  set(withGroup(g.id, (x) => ({ ...x, active: id }), { focus: g.id }))
-  show(g.tabs.find((t) => t.id === id)!.to, !isDesktop())
+  const t = tabById(id)
+  if (!t) return false
+  set({ ...here(), active: id })
+  show(focusedPane(t).to, !isDesktop())
+  return true
+}
+/** Show pane `id`: its tab on screen, the pane focused (false: there's none). */
+export function selectPane(id: string) {
+  const t = tabOfPane(here(), id)
+  if (!t) return false
+  if (here().active === t.id && t.focus === id) return true
+  set(withTab(t.id, (x) => ({ ...x, focus: id }), { active: t.id }))
+  show(activePane().to, here().active !== t.id && !isDesktop())
   return true
 }
 
-/** The tabs focused in this window since it opened, the one left last first (Search tabs' order). One focused only on
- *  the way to another isn't (a click in another pane shows its tab before the one clicked). */
+/** The tabs on screen in this window since it opened, the one left last first (Search tabs' order). One shown only on
+ *  the way to another isn't. */
 const recent: string[] = []
 let focusedAt = 0
 function leftTab(id: string) {
@@ -395,361 +477,403 @@ function leftTab(id: string) {
   if (i !== 0) recent.unshift(id)
   recent.length = Math.min(recent.length, 200)
 }
-/** Every open tab, the one focused first, then the others by when they were left here; those not focused since the
- *  window opened after them, the ones on screen first, then by when they were last seen (Tab.seen) and their place. */
+/** When a tab was last on screen (its panes' latest). */
+export const seenOf = (t: Tab) => Math.max(0, ...panesOf(t).map((p) => p.seen ?? 0))
+/** Every open tab, the one on screen first, then the others by when they were left here; those not shown since the
+ *  window opened after them, by when they were last seen and their place. */
 export function tabsByRecent(): Tab[] {
-  const cur = activeTab().id, on = new Set(groups().map((g) => g.active)), order = new Map(recent.map((id, i) => [id, i]))
+  const cur = here().active, order = new Map(recent.map((id, i) => [id, i]))
   const rank = (t: Tab) => (t.id === cur ? -1 : order.get(t.id) ?? Infinity)
-  return groups().flatMap((g) => g.tabs).map((t, i) => ({ t, i, r: rank(t) }))
-    .sort((a, b) => a.r - b.r || Number(on.has(b.t.id)) - Number(on.has(a.t.id)) || (b.t.seen ?? 0) - (a.t.seen ?? 0) || a.i - b.i).map((x) => x.t)
+  return here().tabs.map((t, i) => ({ t, i, r: rank(t) })).sort((a, b) => a.r - b.r || seenOf(b.t) - seenOf(a.t) || a.i - b.i).map((x) => x.t)
 }
 
-/** How many tabs the focused pane has. */
-export const tabsHere = () => focused().tabs.length
-/** The next (1) or previous (-1) tab in the focused pane, round from the last to the first. */
+/** How many tabs this window has. */
+export const tabsHere = () => here().tabs.length
+/** The next (1) or previous (-1) tab, round from the last to the first (past folded groups). */
 export function cycleTab(dir: 1 | -1) {
-  const g = focused()
-  if (g.tabs.length < 2) return
-  const i = g.tabs.findIndex((t) => t.id === g.active)
-  selectTab(g.tabs[(i + dir + g.tabs.length) % g.tabs.length].id)
+  const l = here(), open = l.tabs.filter((t) => !foldedAway(l, t) || t.id === l.active)
+  if (open.length < 2) return
+  const i = open.findIndex((t) => t.id === l.active)
+  selectTab(open[(i + dir + open.length) % open.length].id)
 }
-
-/** Show the focused pane's nth tab (1-based; -1: its last), like a browser's ⌘1–⌘9. */
+/** Show the nth tab (1-based; -1: the last), like a browser's ⌘1–⌘9. */
 export function selectTabAt(n: number) {
-  const g = focused()
-  const t = n < 0 ? g.tabs.at(-1) : g.tabs[n - 1]
+  const l = here(), t = n < 0 ? l.tabs.at(-1) : l.tabs[n - 1]
   if (t) selectTab(t.id)
 }
 
-/** Open tabs `ids` in a window of their own (a pop-out: POPOUT) with their history; `move`: and take them out of this
- *  one (not closed: a terminal's shell goes on there). `at`: the screen point to open it under (a tab dragged out). */
+// ---------- pop-outs: windows with tabs of their own (core/windows.ts moves tabs between them) ----------
+
+/** The pop-outs this device opened, open now. */
+const opened = new Map<string, globalThis.Window>()
+/** Open tabs `ids` in a window of their own (a pop-out: POPOUT), panes, history and all; `move`: and take them out of
+ *  this one (not closed: a terminal's shell goes on there). `at`: the screen point to open it under (dragged out). */
 export function popOut(ids: string | string[], move = false, at?: { x: number; y: number }) {
-  const all = groups().flatMap((g) => g.tabs)
-  const tabs = [ids].flat().map((id) => all.find((t) => t.id === id)).filter((t): t is Tab => !!t && t.to !== "new")
+  const want = [ids].flat()
+  const tabs = here().tabs.filter((t) => want.includes(t.id) && !isBlankTab(t))
   if (!tabs.length) return
-  const g = groupOfTab(tabs[0].id)!, shown = tabs.find((t) => t.id === g.active) ?? tabs.at(-1)!
-  const pid = newId(), key = `vaultite.popout.${pid}`
-  // The new window starts with a copy of this one's sessionStorage (window.open): its tabs, history and all.
-  const root = { id: "g0", tabs: tabs.map(({ id, to, back, fwd, pinned }) => ({ id, to, back, fwd, pinned })), active: shown.id }
-  try { sessionStorage.setItem(key, JSON.stringify({ root, focus: "g0" })) } catch { /* the address is enough */ }
+  const shown = tabs.find((t) => t.id === here().active) ?? tabs.at(-1)!
+  const pid = newTabId().slice(1)
+  // (copied, a new window's tabs need ids of their own)
+  const theirs = move ? tabs : tabs.map((t) => ({ ...t, id: newTabId(), root: mapPanes(t.root, (p) => ({ ...p, id: newPaneId() })), focus: "" }))
+  const list: TabList = { tabs: theirs.map((t) => ({ ...t, group: undefined })), active: theirs[tabs.indexOf(shown)].id }
+  try { sessionStorage.setItem(`vaultite.popout.${pid}`, JSON.stringify(list)) } catch { /* the workspace is enough */ }
   // (its first tab under the pointer: past a Mac's traffic lights, half a tab bar down)
   const place = at ? `,left=${Math.round(at.x - 120)},top=${Math.round(at.y - 20)}` : ""
-  const w = window.open(`${location.pathname}?popout=${pid}#${hashOf(shown.to)}`, `vaultite-${pid}`, `popup,width=960,height=760${place}`)
-  try { sessionStorage.removeItem(key) } catch { /* private mode */ }
-  if (w && move) takeOut(tabs.map((t) => t.id))
+  const first = focusedPane(clean(list)!.tabs.find((t) => t.id === list.active) ?? clean(list)!.tabs[0])
+  const w = window.open(`${location.pathname}?popout=${pid}#${hashOf(first.to)}`, `vaultite-${pid}`, `popup,width=960,height=760${place}`)
+  try { sessionStorage.removeItem(`vaultite.popout.${pid}`) } catch { /* private mode */ }
+  if (!w) return
+  opened.set(pid, w)
+  state = { ...state, windows: [...(state.windows ?? []), { id: pid, ...clean(list)! }] }
+  if (move) takeOut(tabs.map((t) => t.id))
+  else { save(); changed.notify() }
+  watchWindows()
 }
+let watching = 0
+/** A pop-out closed: its tabs close with it, as a browser window's do. */
+function watchWindows() {
+  if (watching || POPOUT) return
+  watching = window.setInterval(() => {
+    const gone = [...opened].filter(([, w]) => w.closed).map(([id]) => id)
+    if (!gone.length) return
+    for (const id of gone) opened.delete(id)
+    if (!opened.size) { clearInterval(watching); watching = 0 }
+    const windows = (state.windows ?? []).filter((x) => !gone.includes(x.id))
+    state = { tabs: state.tabs, ...(state.groups ? { groups: state.groups } : {}), active: state.active, ...(windows.length ? { windows } : {}) }
+    save()
+    changed.notify()
+  }, 1000)
+}
+/** The pop-outs this device had open (a reload, a relaunch): opened again, or where a browser won't, their tabs back
+ *  in this window. Others' (another device's) are theirs. */
+export function reopenWindows() {
+  if (POPOUT) return
+  let mine: string[] = []
+  try { mine = JSON.parse(localStorage.getItem("vaultite.popouts") ?? "[]") } catch { /* none */ }
+  for (const w of state.windows ?? []) {
+    if (!mine.includes(w.id) || opened.has(w.id)) continue
+    const first = focusedPane(shownTab(w) ?? w.tabs[0])
+    const win = window.open(`${location.pathname}?popout=${w.id}#${hashOf(first.to)}`, `vaultite-${w.id}`, "popup,width=960,height=760")
+    if (win) { opened.set(w.id, win); continue }
+    const l = here()
+    state = { ...state, windows: state.windows!.filter((x) => x.id !== w.id) }
+    set({ ...l, tabs: [...l.tabs, ...w.tabs.map((t) => inGroup(t, undefined))] })
+  }
+  if (opened.size) watchWindows()
+}
+onWorkspaceChange(() => {
+  if (POPOUT) return
+  try { localStorage.setItem("vaultite.popouts", JSON.stringify([...opened.keys()])) } catch { /* private mode */ }
+})
 
 /** Take tabs out of this window without closing them: they go on in another (popOut, core/windows.ts' moveToMain). */
 export function takeOut(ids: string[]) {
-  for (const id of ids) {
-    const g = groupOfTab(id)
-    const t = g?.tabs.find((x) => x.id === id)
-    if (!g || !t) continue
-    if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, false, true)
-    const left = withoutTabs(g, new Set([id]))
-    leave(g.id, left.tabs, left.active)
-  }
+  const going = here().tabs.filter((t) => ids.includes(t.id))
+  for (const t of going) for (const p of panesOf(t)) if (p.to.startsWith("view:")) onClosed?.(p.to, p.id, false, true)
+  leave(withoutTabs(here(), new Set(going.map((t) => t.id))))
 }
 
-/** Whether the focused pane's tabs are stacked. */
-export const isStacked = () => !!focused()?.stacked
-/** Stack a pane's tabs, or put them back in a row (Group.stacked). */
-export function toggleStacked(gid = state.focus) {
-  set(withGroup(gid, (g) => { const { stacked, ...rest } = g; return stacked ? rest : { ...rest, stacked: true } }))
-}
-
-/** Pin or unpin a tab (Tab.pinned). */
+/** Pin or unpin a tab (Tab.pinned): its panes' places now are where ⌘W takes them back. */
 export function togglePinTab(id: string) {
-  const g = groupOfTab(id)
-  if (!g) return
-  set(withGroup(g.id, (x) => mapTabs(x, id, (t) => { const { pinned, home, ...rest } = t; return pinned ? rest : { ...rest, pinned: true, home: t.to } })))
+  set(withTab(id, (t) => {
+    if (t.pinned) { const { pinned: _, ...rest } = t; return { ...rest, root: mapPanes(t.root, (p) => { const { home: _h, ...x } = p; return x }) } }
+    return { ...t, pinned: true, root: mapPanes(t.root, (p) => ({ ...p, home: p.to })) }
+  }))
 }
 /** Name a tab (Tab.name: Rename tab), or "" to give it back the name of what it shows. */
 export function nameTab(id: string, name: string) {
-  const g = groupOfTab(id), clean = name.replace(/\s+/g, " ").trim().slice(0, 80)
-  if (!g) return
-  set(withGroup(g.id, (x) => mapTabs(x, id, (t) => { const { name: _, ...rest } = t; return clean ? { ...rest, name: clean } : rest })))
+  const clean = name.replace(/\s+/g, " ").trim().slice(0, 80)
+  set(withTab(id, (t) => { const { name: _, ...rest } = t; return clean ? { ...rest, name: clean } : rest }))
 }
-/** ⌘W on a pinned tab, as Arc's: the pane shows the next tab, and one with a page of its own here (a web page) ends it
- *  and goes back to its `home`, as a fresh tab that loads it when shown; others (a note, a terminal) stay as they are. */
+/** ⌘W on a pinned tab, as Arc's: the next tab shows, and a pane with a page of its own here (a web page) ends it and
+ *  goes back to its `home`, as a fresh pane that loads it when shown; others (a note, a terminal) stay as they are. */
 export function restTab(id: string) {
-  const g = groupOfTab(id), t = g?.tabs.find((x) => x.id === id)
-  if (!g || !t) return
-  const ended = t.to.startsWith("view:") && !!onClosed?.(t.to, t.id, false, false)
-  const next: Tab = ended ? { id: newId(), to: t.home ?? t.to, pinned: true, ...(t.home ? { home: t.home } : {}), ...(t.set ? { set: t.set } : {}), ...(t.name ? { name: t.name } : {}) } : t
-  const active = g.tabs.length > 1 ? withoutTabs(g, new Set([id])).active : next.id
-  set(withGroup(g.id, (x) => ({ ...x, tabs: x.tabs.map((y) => (y.id === id ? next : y)), active })))
+  const t = tabById(id)
+  if (!t) return
+  const root = mapPanes(t.root, (p) => {
+    const ended = p.to.startsWith("view:") && !!onClosed?.(p.to, p.id, false, false)
+    return ended ? { id: newPaneId(), to: p.home ?? p.to, ...(p.home ? { home: p.home } : {}), ...(p.float ? { float: p.float } : {}) } : p
+  })
+  const ids = new Map(panesOf(t).map((p, i) => [p.id, panesOf({ ...t, root })[i].id]))
+  const l = here(), active = l.tabs.length > 1 && l.active === id ? nextShown_(l, id) : l.active
+  set({ ...mapTab(l, id, () => ({ ...t, root, focus: ids.get(t.focus) ?? t.focus, zoom: undefined })), active })
   showActiveUnder()
 }
+const nextShown_ = (l: TabList, id: string) => withoutTabs(l, new Set([id]))?.active ?? id
 
-/** Clicking in a group's pane gives it the focus (the address shows its tab; commands act on it). */
-export function focusGroup(gid: string) {
-  if (state.focus === gid || !groups().some((g) => g.id === gid)) return
-  set({ ...state, focus: gid })
+/** Clicking in a pane gives it the focus (the address shows it; commands act on it). */
+export function setFocusedPane(id: string) {
+  const t = activeTab()
+  if (t.focus === id || !panesOf(t).some((p) => p.id === id)) return
+  set(withTab(t.id, (x) => ({ ...x, focus: id })))
   showActive()
 }
 
-/** After tabs close: the address shows the active tab, keeping a sheet that's open over it (tabs closed from the
+/** After tabs close: the address shows the focused pane, keeping a sheet that's open over it (tabs closed from the
  *  phone's tab switcher, a sheet itself, leave it open). */
 function showActiveUnder() {
-  const to = activeTab().to, { tab, detail } = route()
+  const to = activePane().to, { tab, detail } = route()
   if (!detail) return showActive()
   if (tab !== hashOf(to)) history.replaceState(history.state, "", `#${hashOf(to)}/${detail}`)
   hashChanged()
 }
 
-/** A group left with `tabs` (none: it closes, and the tree closes up around it). A pop-out whose last tab closed closes. */
-function leave(gid: string, tabs: Tab[], active: string) {
-  set(withGroup(gid, (g) => ({ ...g, tabs, active })))
-  if (POPOUT && tabCount() === 1 && isBlank(activeTab())) { window.close(); return }
+/** This window's list now `l` (null: no tab left, a blank one). A pop-out whose last tab closed closes. */
+function leave(l: TabList | null) {
+  set(l ?? blankList())
+  if (POPOUT && !l) { window.close(); return }
   showActiveUnder()
 }
 
-/** How many tabs are open, in every pane (the phone's tab switcher button). */
-export const tabCount = (ws: Workspace = state) => leaves(ws.root).reduce((n, g) => n + g.tabs.length, 0)
+/** How many tabs are open (the phone's tab switcher button). */
+export const tabCount = (l: TabList = here()) => l.tabs.length
 
-/** Views hear each tab of theirs leaving this window (closed, or taken out to another), `last` once no tab anywhere shows
- *  that place (other workspaces too: `setOpenElsewhere`; a terminal ends its shell). Moving between panes isn't leaving. */
-let onClosed: ((to: string, tab: string, last: boolean, moved: boolean) => boolean) | null = null
-/** `fn` answers whether something of the tab's own ended (its web page); `moved`: the tab went on in another window. */
-export const setTabCloser = (fn: (to: string, tab: string, last: boolean, moved: boolean) => boolean) => { onClosed = fn }
+/** Views hear each pane of theirs leaving this window (closed, or taken out to another), `last` once no pane anywhere
+ *  shows that place (other workspaces too: `setOpenElsewhere`; a terminal ends its shell). Moving isn't leaving. */
+let onClosed: ((to: string, pane: string, last: boolean, moved: boolean) => boolean) | null = null
+/** `fn` answers whether something of the pane's own ended (its web page); `moved`: it went on in another window. */
+export const setTabCloser = (fn: (to: string, pane: string, last: boolean, moved: boolean) => boolean) => { onClosed = fn }
 /** Whether a place is open in tabs kept elsewhere (Workspaces: the other workspaces' tabs). Set by the app. */
 let elsewhere: (to: string) => boolean = () => false
 export const setOpenElsewhere = (fn: (to: string) => boolean) => { elsewhere = fn }
-/** The views whose last tab is among `tabs` (each once). */
-function lastOf(tabs: Tab[]) {
-  const going = new Set(tabs.map((t) => t.id))
-  const left = new Set(groups().flatMap((g) => g.tabs).filter((t) => !going.has(t.id)).map((t) => t.to))
-  return [...new Set(tabs.map((t) => t.to))].filter((to) => to.startsWith("view:") && !left.has(to) && !elsewhere(to))
+/** The views whose last pane is among `panes` (each once). */
+function lastOf(going: Pane[]) {
+  const ids = new Set(going.map((p) => p.id))
+  const left = new Set(allPanes(state).concat((state.windows ?? []).flatMap(allPanes)).filter((p) => !ids.has(p.id)).map((p) => p.to))
+  return [...new Set(going.map((p) => p.to))].filter((to) => to.startsWith("view:") && !left.has(to) && !elsewhere(to))
 }
-function closed(tabs: Tab[], pane?: Group) {
-  remember(tabs, pane)
-  heard(tabs)
-}
-/** Views hear their tabs leave (`last` once a place: with the last of its tabs). */
-function heard(tabs: Tab[]) {
-  const last = new Set(lastOf(tabs))
-  tabs.forEach((t, i) => { if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, last.has(t.to) && !tabs.slice(i + 1).some((x) => x.to === t.to), false) })
+/** Views hear their panes leave (`last` once a place: with the last of its panes). */
+function heard(going: Pane[]) {
+  const last = new Set(lastOf(going))
+  going.forEach((p, i) => { if (p.to.startsWith("view:")) onClosed?.(p.to, p.id, last.has(p.to) && !going.slice(i + 1).some((x) => x.to === p.to), false) })
 }
 
-/** A closed tab, with its pane and its place there: what ⌘⇧T and the archived tabs (core/tabarchive.ts) bring back. */
-export type ClosedTab = { tab: Tab; group: string; at: number }
-/** Tabs closed lately (`closed`: when), for ⌘⇧T, with their place; or a pane (closePane) with where it sat. Kept with
- *  the tabs, across relaunches; never blank tabs, nor views that end with their tab (a terminal's shell). */
-type Closed = (ClosedTab | { pane: Group; spot: Spot | null }) & { closed?: number }
-const CLOSED_KEY = `${KEY}.closed`
+/** A closed tab and its place in the list: what ⌘⇧T and the archived tabs (core/tabarchive.ts) bring back. */
+export type ClosedTab = { tab: Tab; at: number }
+/** Tabs closed lately (`closed`: when), with their place; or a pane of a split, with its tab and where it sat. Kept
+ *  with the tabs, across relaunches; never blank ones, nor views that end with their pane (a terminal's shell). */
+type Closed = (ClosedTab | { pane: Pane; tab: string; spot: Spot | null }) & { closed?: number }
+const CLOSED_KEY = `${KEY}.closed${POPOUT ? `.${POPOUT}` : ""}`
+/** A closed entry saved before tabs held panes: a tab (now a tab of one pane) or a pane's tabs (each a tab). */
+function closedOf(e: Record<string, unknown>): Closed[] {
+  const tab = e.tab as Record<string, unknown> | undefined, at = typeof e.at === "number" ? e.at : 0, when = typeof e.closed === "number" ? { closed: e.closed } : {}
+  if (tab && typeof tab.to === "string" && typeof tab.id === "string") return [{ tab: tabOf(tab.to, { id: `t${tab.id}`, pane: tab.id }), at, ...when }]
+  const ok = tab ? clean({ tabs: [tab], active: tab.id }) : null
+  if (ok) return [{ tab: ok.tabs[0], at, ...when }]
+  const pane = e.pane as Record<string, unknown> | undefined
+  if (pane && Array.isArray(pane.tabs)) return (pane.tabs as { id: string; to: string }[]).filter((t) => typeof t?.id === "string" && typeof t.to === "string").map((t) => ({ tab: tabOf(t.to, { id: `t${t.id}`, pane: t.id }), at: Infinity, ...when }))
+  if (pane && typeof pane.to === "string" && typeof pane.id === "string" && typeof e.tab === "string") return [{ pane: pane as Pane, tab: e.tab, spot: (e.spot as Spot) ?? null, ...when }]
+  return []
+}
 const reopenable: Closed[] = (() => {
-  try { const l = JSON.parse(tabStore().getItem(CLOSED_KEY) ?? "[]"); return Array.isArray(l) ? l.filter((e) => e && typeof e === "object" && ("pane" in e ? okGroup(e.pane) : typeof e.tab?.id === "string" && typeof e.tab.to === "string")) : [] } catch { return [] }
+  try { const l = JSON.parse(tabStore().getItem(CLOSED_KEY) ?? "[]"); return Array.isArray(l) ? l.flatMap((e) => (e && typeof e === "object" ? closedOf(e) : [])) : [] } catch { return [] }
 })()
 const keepClosed = () => { try { tabStore().setItem(CLOSED_KEY, JSON.stringify(reopenable)) } catch { /* private mode */ } }
-const keptTab = (t: Tab): Tab => ({ id: t.id, to: t.to, back: t.back, fwd: t.fwd, ...(t.pinned ? { pinned: true } : {}), ...(t.home ? { home: t.home } : {}), ...(t.set ? { set: t.set } : {}) })
+/** What's kept of a pane closed: its place and history, not this visit's opener nor its float. */
+const keptPane = (p: Pane): Pane => ({ id: p.id, to: p.to, ...(p.back ? { back: p.back } : {}), ...(p.fwd ? { fwd: p.fwd } : {}), ...(p.home ? { home: p.home } : {}) })
+const keptTab = (t: Tab): Tab => ({ ...t, root: mapPanes(t.root, keptPane) })
 function closedEntry(t: Tab): ClosedTab | null {
-  const g = groupOfTab(t.id)
-  return g ? { tab: keptTab(t), group: g.id, at: g.tabs.indexOf(t) } : null
+  const at = here().tabs.findIndex((x) => x.id === t.id)
+  return at >= 0 ? { tab: keptTab(t), at } : null
 }
-function remember(tabs: Tab[], pane?: Group) {
-  const ending = new Set(lastOf(tabs).filter(keeps))
-  if (pane) {
-    const kept = pane.tabs.filter((t) => !isBlank(t) && !ending.has(t.to)).map(keptTab)
-    if (kept.length) reopenable.push({ pane: { ...pane, tabs: kept }, spot: spotOf(state.root, pane.id), closed: Date.now() })
+/** Remember tabs closing (and panes of tabs that stay), for ⌘⇧T. */
+function remember(tabs: Tab[], panes: Pane[] = []) {
+  const ending = new Set(lastOf([...tabs.flatMap(panesOf), ...panes]).filter(keeps))
+  const keep = (p: Pane) => !isBlank(p) && !ending.has(p.to)
+  for (const p of panes) {
+    const t = tabOfPane(here(), p.id)
+    if (t && keep(p)) reopenable.push({ pane: keptPane(p), tab: t.id, spot: spotOf(t.root, p.id), closed: Date.now() })
   }
   // The last first: reopened one by one, each goes back in front of those after it.
-  else for (const t of [...tabs].reverse()) {
-    const e = isBlank(t) || ending.has(t.to) ? null : closedEntry(t)
+  for (const t of [...tabs].reverse()) {
+    const left = panesOf(t).filter(keep)
+    if (!left.length) continue
+    const kept = left.length === panesOf(t).length ? t : tabWithout(t, new Set(panesOf(t).filter((p) => !keep(p)).map((p) => p.id)))
+    const e = kept && closedEntry({ ...kept, id: t.id })
     if (e) reopenable.push({ ...e, closed: Date.now() })
   }
   reopenable.splice(0, Math.max(0, reopenable.length - 50))
   keepClosed()
 }
+const isOpen = (id: string) => !!tabById(id) || !!paneById(id)
 export const canReopenTab = () => reopenable.length > 0
-/** The tabs closed lately that aren't open again, the latest first (a closed pane's each), with when they closed. */
+/** The tabs closed lately that aren't open again, the latest first (a closed pane's as a tab), with when they closed. */
 export function closedTabs(): (ClosedTab & { closed: number })[] {
-  return reopenable.flatMap((r) => ("pane" in r ? r.pane.tabs.map((tab, at) => ({ tab, group: r.pane.id, at, closed: r.closed ?? 0 })) : [{ ...r, closed: r.closed ?? 0 }]))
-    .filter((r) => !groupOfTab(r.tab.id)).reverse()
+  return reopenable.map((r) => ("pane" in r ? { tab: tabWith(r.pane, `t${r.pane.id}`), at: Infinity, closed: r.closed ?? 0 } : { ...r, closed: r.closed ?? 0 }))
+    .filter((r) => !panesOf(r.tab).some((p) => isOpen(p.id))).reverse()
 }
-/** Reopen one of closedTabs() where it was (restoreTab; a closed pane's alone, at the focused pane's end): it leaves the list. */
+/** Reopen one of closedTabs() (by its tab's id) where it was (restoreTab): it leaves the list. */
 export function reopenClosed(id: string) {
   for (let i = reopenable.length - 1; i >= 0; i--) {
     const r = reopenable[i]
-    const at = "pane" in r ? r.pane.tabs.findIndex((t) => t.id === id) : r.tab.id === id ? r.at : -1
-    if (at < 0) continue
-    const tab = "pane" in r ? r.pane.tabs[at] : r.tab
-    if ("pane" in r && r.pane.tabs.length > 1) r.pane = { ...r.pane, tabs: r.pane.tabs.filter((t) => t.id !== id) }
-    else reopenable.splice(i, 1)
+    const tab = "pane" in r ? tabWith(r.pane, `t${r.pane.id}`) : r.tab
+    if (tab.id !== id) continue
+    reopenable.splice(i, 1)
     keepClosed()
-    return restoreTab("pane" in r ? { tab, group: r.pane.id, at: Infinity } : { tab, group: r.group, at })
+    return restoreTab({ tab, at: "pane" in r ? Infinity : r.at })
   }
 }
-/** When the tab ⌘⇧T would reopen was closed (0: none). */
+/** When what ⌘⇧T would reopen was closed (0: nothing). */
 export const lastClosedAt = () => reopenable.at(-1)?.closed ?? 0
-/** Reopen the tab closed last where it was (restoreTab), even where another tab has its place (a browser's way); skips
- *  `gone` ones. A pane closed last comes back whole (reopenPane). */
+/** Reopen what closed last (restoreTab), even where another tab has its place (a browser's way); skips `gone` ones. A
+ *  pane of a split goes back where it sat in its tab, if that's still open (reopenPane). */
 export function reopenTab(gone: (to: string) => boolean = () => false) {
-  const back = (t: Tab) => !gone(t.to) && !groupOfTab(t.id)
+  const back = (p: Pane) => !gone(p.to) && !isOpen(p.id)
   let last = reopenable.pop()
-  while (last && ("pane" in last ? !last.pane.tabs.some(back) : !back(last.tab))) last = reopenable.pop()
+  while (last && ("pane" in last ? !back(last.pane) : !panesOf(last.tab).some(back))) last = reopenable.pop()
   keepClosed()
   if (!last) return
-  if ("pane" in last) return reopenPane(last.pane, last.spot, back)
-  restoreTab(last)
+  if ("pane" in last) return reopenPane(last.pane, last.tab, last.spot)
+  const kept = tabWithout(last.tab, new Set(panesOf(last.tab).filter((p) => !back(p)).map((p) => p.id)))
+  if (kept) restoreTab({ tab: kept, at: last.at })
 }
-/** Put a closed tab back where it was (its pane gone: the focused one), with its history and tab group (if still
- *  there): shown, a blank active tab there making way for it, or (`shown` false) behind the one on screen. */
+/** Put a closed tab back at its place in the list, with its panes' history and its tab group (if still there): shown,
+ *  a blank tab on screen making way for it, or (`shown` false) behind the one on screen. */
 export function restoreTab(r: ClosedTab, shown = true) {
-  const { tab } = r
-  const gid = groups().some((g) => g.id === r.group) ? r.group : state.focus
-  set(withGroup(gid, (g) => {
-    const cur = shownTab(g)
-    const tabs = g.tabs.filter((t) => t.id !== tab.id && !(shown && isBlank(t) && t === cur))
-    const at = Math.min(r.at, tabs.length)
-    return { ...g, tabs: [...tabs.slice(0, at), tab, ...tabs.slice(at)], active: shown ? tab.id : g.active }
-  }, shown ? { focus: gid } : {}))
-  if (shown) show(tab.to, !isDesktop())
+  const l = here(), cur = activeTab()
+  const tab = tabById(r.tab.id) ? { ...r.tab, id: newTabId() } : r.tab
+  const tabs = l.tabs.filter((t) => !(shown && isBlankTab(t) && t === cur))
+  const at = Math.min(r.at, tabs.length)
+  set({ ...l, tabs: [...tabs.slice(0, at), tab, ...tabs.slice(at)], active: shown ? tab.id : l.active })
+  if (shown) show(focusedPane(tab).to, !isDesktop())
 }
-/** A closed pane back where it sat (putBack; the part it sat by gone: beside the focused pane, on that side), with its
- *  tabs that `back` keeps, their pins and tab groups, and its tab shown, focused. */
-function reopenPane(p: Group, spot: Spot | null, back: (t: Tab) => boolean) {
-  const tabs = p.tabs.filter(back)
-  const g = { ...p, id: groups().some((x) => x.id === p.id) ? `g${newId()}` : p.id, tabs, active: tabs.some((t) => t.id === p.active) ? p.active : tabs[0].id }
+/** A closed pane back where it sat in its tab (putBack; that gone, beside the focused pane), focused; its tab gone, as
+ *  a tab of its own. */
+function reopenPane(p: Pane, tabId: string, spot: Spot | null) {
+  const t = tabById(tabId)
+  if (!t) return restoreTab({ tab: tabWith(p), at: Infinity })
   const side = !spot ? "right" : spot.dir === "row" ? (spot.after ? "right" : "left") : spot.after ? "bottom" : "top"
-  set({ root: (spot && putBack(state.root, g, spot)) ?? beside(state.root, state.focus, g, side), focus: g.id })
-  show(shownTab(g)!.to, !isDesktop())
+  const root = (spot && putBack(t.root, p, spot)) ?? beside(t.root, t.focus, p, side)
+  set(withTab(t.id, (x) => ({ ...x, root, focus: p.id }), { active: t.id }))
+  show(p.to, !isDesktop())
 }
 
-/** Before tabs close, their views may ask first (a terminal with a program running in it): resolves true to go ahead.
- *  Set by the app; tabs that aren't views never ask, and they close at once. */
+/** Before panes close, their views may ask first (a terminal with a program running in it): resolves true to go ahead.
+ *  Set by the app; panes that aren't views never ask, and they close at once. */
 let closeGuard: ((tos: string[]) => Promise<boolean>) | null = null
 export const setCloseGuard = (fn: (tos: string[]) => Promise<boolean>) => { closeGuard = fn }
-/** Whether `tabs` may close: at once, or once the views among them have said (only those whose last tab it is: see
- *  `closed`); a view asking first takes a moment even when it says yes. */
-export function mayClose(tabs: Tab[]): true | Promise<boolean> {
-  const views = lastOf(tabs)
+/** Whether `panes` may close: at once, or once the views among them have said (only those whose last pane it is). */
+export function mayClose(going: Pane[]): true | Promise<boolean> {
+  const views = lastOf(going)
   return !views.length || !closeGuard ? true : closeGuard(views)
 }
-/** Run `close` now, or once the views among `tabs` said yes. */
-export function guarded(tabs: Tab[], close: () => void) {
-  const ok = mayClose(tabs)
+/** Run `close` now, or once the views among `panes` said yes. */
+export function guarded(going: Pane[], close: () => void) {
+  const ok = mayClose(going)
   if (ok === true) return close()
   void ok.then((yes) => { if (yes) close() })
 }
 
-/** Close a tab (`force`: without its view asking first, e.g. its shell already ended). */
+/** Close a tab, every pane in it (`force`: without its views asking first, e.g. its shell already ended). */
 export function closeTab(id: string, force = false) {
-  const g = groupOfTab(id)
-  if (!g) return
-  if (!force) return guarded(g.tabs.filter((t) => t.id === id), () => closeTab(id, true))
-  closed(g.tabs.filter((t) => t.id === id))
-  const left = withoutTabs(g, new Set([id]))
-  leave(g.id, left.tabs, (g.active === id && openerNext(g, id)) || left.active)
+  const t = tabById(id)
+  if (!t) return
+  if (!force) return guarded(panesOf(t), () => closeTab(id, true))
+  remember([t])
+  heard(panesOf(t))
+  const l = here()
+  const next = withoutTabs(l, new Set([id]))
+  leave(next && (l.active === id ? { ...next, active: openerNext(l, id) ?? next.active } : next))
   // (those it opened are now its opener's, as Chrome's are)
   const up = openers.get(id)
   openers.delete(id)
-  for (const [t, o] of openers) if (o === id) { if (up) openers.set(t, up); else openers.delete(t) }
+  for (const [x, o] of openers) if (o === id) { if (up) openers.set(x, up); else openers.delete(x) }
 }
-/** Chrome's tab after closing the active one: the next it opened, else the next its opener opened (each to the right,
- *  else the left), else its opener, none folded away in a tab group; null when none is kept (`openers`): withoutTabs'. */
-function openerNext(g: Group, id: string) {
-  const i = g.tabs.findIndex((t) => t.id === id), by = openers.get(id)
-  const ok = (t: Tab, o: string | undefined) => openers.get(t.id) === o && !foldedAway(g, t)
-  const next = (o: string | undefined) => (o ? g.tabs.slice(i + 1).find((t) => ok(t, o)) ?? g.tabs.slice(0, i).findLast((t) => ok(t, o)) : undefined)
-  return (next(id) ?? next(by) ?? g.tabs.find((t) => t.id === by && t.id !== id && !foldedAway(g, t)))?.id ?? null
+/** Chrome's tab after closing the one on screen: the next it opened, else the next its opener opened (each to the
+ *  right, else the left), else its opener, none folded away in a tab group; null when none is kept (`openers`). */
+function openerNext(l: TabList, id: string) {
+  const i = l.tabs.findIndex((t) => t.id === id), by = openers.get(id)
+  const ok = (t: Tab, o: string | undefined) => openers.get(t.id) === o && !foldedAway(l, t)
+  const next = (o: string | undefined) => (o ? l.tabs.slice(i + 1).find((t) => ok(t, o)) ?? l.tabs.slice(0, i).findLast((t) => ok(t, o)) : undefined)
+  return (next(id) ?? next(by) ?? l.tabs.find((t) => t.id === by && t.id !== id && !foldedAway(l, t)))?.id ?? null
 }
 
-/** Whether a pane can be closed: not the only one (closing its tabs leaves a blank one: Close all). */
-export const canClosePane = () => groups().length > 1
-/** Close a pane (the focused one), every tab in it, pinned ones too: that was asked for. ⌘⇧T brings it back whole. */
-export function closePane(gid = state.focus, force = false) {
-  const g = groups().find((x) => x.id === gid)
-  if (!g || !canClosePane()) return
-  if (!force) return guarded(g.tabs, () => closePane(gid, true))
-  closed(g.tabs, g)
-  leave(g.id, [], "")
+/** Whether the focused pane can close on its own: its tab has others (else it's Close tab). */
+export const canClosePane = () => panes().length > 1
+/** Close a pane (the focused one): its tab keeps the others; its last pane closes the tab. ⌘⇧T brings it back. */
+export function closePane(id = activePane().id, force = false) {
+  const t = tabOfPane(here(), id), p = paneById(id)
+  if (!t || !p) return
+  if (panesOf(t).length < 2) return closeTab(t.id, force)
+  if (!force) return guarded([p], () => closePane(id, true))
+  remember([], [p])
+  heard([p])
+  leave(mapTab(here(), t.id, (x) => tabWithout(x, new Set([id]))!))
 }
 
 /** Close several tabs at once (the tab menu: others, to the right, all); keeps `id` open if it's left, and pinned
  *  tabs. */
 export function closeTabs(which: "others" | "right" | "all", id: string, force = false) {
-  const g = groupOfTab(id)
-  if (!g) return
-  const i = g.tabs.findIndex((t) => t.id === id)
-  const kept = which === "others" ? [g.tabs[i]] : which === "right" ? g.tabs.slice(0, i + 1) : []
-  const rest = g.tabs.filter((t) => kept.includes(t) || t.pinned)
-  if (!force) return guarded(g.tabs.filter((t) => !rest.includes(t)), () => closeTabs(which, id, true))
-  closed(g.tabs.filter((t) => !rest.includes(t)))
-  leave(g.id, rest, rest.some((t) => t.id === g.active) ? g.active : rest.some((t) => t.id === id) ? id : rest[0]?.id ?? id)
+  const l = here(), i = l.tabs.findIndex((t) => t.id === id)
+  if (i < 0) return
+  const kept = which === "others" ? [l.tabs[i]] : which === "right" ? l.tabs.slice(0, i + 1) : []
+  const going = l.tabs.filter((t) => !kept.includes(t) && !t.pinned)
+  closeTabIds(going.map((t) => t.id), { force })
 }
 
-/** Close the tabs `ids` (selected together: core/select.ts), wherever they are, pinned ones too: they were picked.
- *  `keep`: close every other tab in their panes instead (pinned ones stay). */
+/** Close the tabs `ids` (selected together: core/select.ts), pinned ones too: they were picked. `keep`: close every
+ *  other tab instead (pinned ones stay). */
 export function closeTabIds(ids: string[], { keep = false, force = false }: { keep?: boolean; force?: boolean } = {}) {
   const chosen = new Set(ids)
-  const panes = groups().filter((g) => g.tabs.some((t) => chosen.has(t.id)))
-  const going = panes.flatMap((g) => g.tabs.filter((t) => (keep ? !chosen.has(t.id) && !t.pinned : chosen.has(t.id))))
+  const going = here().tabs.filter((t) => (keep ? !chosen.has(t.id) && !t.pinned : chosen.has(t.id)))
   if (!going.length) return
-  if (!force) return guarded(going, () => closeTabIds(ids, { keep, force: true }))
-  closed(going)
-  without(going)
-}
-/** The panes left without `going`, which closed. */
-function without(going: Tab[]) {
-  const gone = new Set(going.map((t) => t.id))
-  for (const g of groups().filter((x) => x.tabs.some((t) => gone.has(t.id)))) {
-    const left = withoutTabs(g, gone)
-    leave(g.id, left.tabs, left.active)
-  }
+  if (!force) return guarded(going.flatMap(panesOf), () => closeTabIds(ids, { keep, force: true }))
+  remember(going)
+  heard(going.flatMap(panesOf))
+  leave(withoutTabs(here(), new Set(going.map((t) => t.id))))
 }
 
 // ---------- tabs that archive themselves: an unpinned tab unseen a while (Tabs' setting; core/tabarchive.ts) ----------
 
-/** How long a tab may go unseen before it archives itself (0: never, and no tab is stamped `seen`). */
+/** How long a tab may go unseen before it archives itself (0: never, and no pane is stamped `seen`). */
 let archiveAfter = 0
 export function setArchiveAfter(ms: number) { archiveAfter = ms; touchSeen() }
 export const archivesAfter = () => archiveAfter
 const minute = () => Math.floor(Date.now() / 60_000) * 60_000
-/** `root` with its tabs on screen, or on screen until now in `was`, stamped as seen now (and any never stamped). */
-function stamped(root: Layout, was: Layout): Layout {
-  if (!archiveAfter) return root
-  const now = minute(), on = new Set([...leaves(was), ...leaves(root)].map((g) => g.active))
-  const due = (t: Tab) => !isBlank(t) && (on.has(t.id) || typeof t.seen !== "number") && t.seen !== now
-  if (!leaves(root).some((g) => g.tabs.some(due))) return root
-  return mapGroups(root, (g) => (g.tabs.some(due) ? { ...g, tabs: g.tabs.map((t) => (due(t) ? { ...t, seen: now } : t)) } : g))
+/** `l` with the panes of its tab on screen, or on screen until now in `was`, stamped as seen now (and any never). */
+function stamped(l: TabList, was: TabList): TabList {
+  if (!archiveAfter) return l
+  const now = minute(), on = new Set([was.active, l.active])
+  const due = (t: Tab, p: Pane) => !isBlank(p) && (on.has(t.id) || typeof p.seen !== "number") && p.seen !== now
+  if (!l.tabs.some((t) => panesOf(t).some((p) => due(t, p)))) return l
+  return mapTabs(l, (t) => (panesOf(t).some((p) => due(t, p)) ? { ...t, root: mapPanes(t.root, (p) => (due(t, p) ? { ...p, seen: now } : p)) } : t))
 }
-/** The tabs on screen are being looked at (the window is in view): stamped as seen now. */
-export function touchSeen() { if (stamped(state.root, state.root) !== state.root) set(state) }
-const seenIn = (l: unknown) => {
-  const root = clean((l as Partial<Workspace> | null)?.root)
-  return new Map(root ? leaves(root).flatMap((g) => g.tabs).map((t) => [t.id, typeof t.seen === "number" ? t.seen : 0]) : [])
+/** The tab on screen is being looked at (the window is in view): its panes stamped as seen now. */
+export function touchSeen() { if (stamped(here(), here()) !== here()) set(here()) }
+const seenIn = (w: unknown) => {
+  const l = clean(w)
+  return new Map(l ? [l, ...(l.windows ?? [])].flatMap(allPanes).map((p) => [p.id, typeof p.seen === "number" ? p.seen : 0]) : [])
 }
-/** Another copy of these tabs (the workspace's file, from another device): where it saw a tab later, that's taken. */
+/** Another copy of these tabs (the workspace's file, from another device): where it saw a pane later, that's taken. */
 export function mergeSeen(other: unknown) {
   const theirs = seenIn(other)
-  const later = (t: Tab) => (theirs.get(t.id) ?? 0) > (t.seen ?? 0)
-  if (!groups().some((g) => g.tabs.some(later))) return
-  set({ ...state, root: mapGroups(state.root, (g) => ({ ...g, tabs: g.tabs.map((t) => (later(t) ? { ...t, seen: theirs.get(t.id) } : t)) })) })
+  const later = (p: Pane) => (theirs.get(p.id) ?? 0) > (p.seen ?? 0)
+  if (!allPanes(here()).some(later)) return
+  set(mapTabs(here(), (t) => ({ ...t, root: mapPanes(t.root, (p) => (later(p) ? { ...p, seen: theirs.get(p.id) } : p)) })))
 }
-/** Whether a tab was seen here later than `saved` (the workspace's file) says, by more than a quarter of the archive
+/** Whether a pane was seen here later than `saved` (the workspace's file) says, by more than a quarter of the archive
  *  time: worth a write of its own. Else the stamps ride on writes that happen anyway, so they cost iCloud nothing. */
 export function seenSince(saved: unknown) {
   if (!archiveAfter) return false
   const theirs = seenIn(saved)
-  return groups().some((g) => g.tabs.some((t) => typeof t.seen === "number" && t.seen - (theirs.get(t.id) ?? 0) > archiveAfter / 4))
+  return allPanes(here()).some((p) => typeof p.seen === "number" && p.seen - (theirs.get(p.id) ?? 0) > archiveAfter / 4)
 }
-/** Whether a tab may archive itself (ViewDef.archives; a file with unsaved edits mayn't). Set by the app. */
-let archivable: (t: Tab) => boolean = () => false
-export const setArchivable = (fn: (t: Tab) => boolean) => { archivable = fn }
-/** The tabs unseen since `before` that may archive themselves: unpinned, on screen in no pane, nothing lost closing them. */
+/** Whether a pane may archive itself (ViewDef.archives; a file with unsaved edits mayn't). Set by the app. */
+let archivable: (p: Pane) => boolean = () => false
+export const setArchivable = (fn: (p: Pane) => boolean) => { archivable = fn }
+/** The tabs unseen since `before` that may archive themselves: unpinned, not on screen, nothing lost closing them. */
 export function unseenTabs(before: number): Tab[] {
-  const on = new Set(groups().map((g) => g.active))
-  return groups().flatMap((g) => g.tabs).filter((t) => !t.pinned && !isBlank(t) && !on.has(t.id) && typeof t.seen === "number" && t.seen < before && archivable(t))
+  const l = here()
+  return l.tabs.filter((t) => !t.pinned && !isBlankTab(t) && t.id !== l.active && panesOf(t).every((p) => typeof p.seen === "number" && p.seen < before && archivable(p)))
 }
 /** Close tabs into the archive: without asking (what's archived loses nothing), and not for ⌘⇧T. */
 export function closeToArchive(ids: string[]): ClosedTab[] {
-  const want = new Set(ids)
-  const going = groups().flatMap((g) => g.tabs).filter((t) => want.has(t.id))
+  const going = here().tabs.filter((t) => ids.includes(t.id))
   const out = going.flatMap((t) => closedEntry(t) ?? [])
   if (!going.length) return out
-  heard(going)
-  without(going)
+  heard(going.flatMap(panesOf))
+  leave(withoutTabs(here(), new Set(going.map((t) => t.id))))
   return out
 }
 
@@ -758,71 +882,69 @@ let toRename: string | null = null
 export function askRename(path: string) { toRename = path; dispatchEvent(new Event("vaultite:rename")) }
 export const takeRename = (path: string) => { if (toRename !== path) return false; toRename = null; return true }
 
-/** A new tab, in the focused group (or `gid`'s), next to the active one (or at the end: `newTabsAt`, its tab bar's +): a
- *  blank tab, one per pane (the blank tab it has already moves there instead; the active one itself: nothing moves). */
-export function newTab(gid = state.focus) {
+/** A new blank tab next to the one on screen (or at the end: `newTabsAt`, a tab bar's +): one blank tab at a time (the
+ *  one there is moves there instead; on screen already: nothing moves). */
+export function newTab() {
   // (asked for before the vault arrived, on a first visit's blank tab: it stays one, not filled with the home page)
   unsaved = false
-  set(withGroup(gid, (g) => {
-    if (isBlank(shownTab(g))) return g
-    const had = g.tabs.find(isBlank), blank = had ? inSet(had, undefined) : { id: newId(), to: "new" }
-    const tabs = g.tabs.filter((t) => t.id !== blank.id)
-    const at = placing === "end" ? tabs.length : tabs.findIndex((t) => t.id === g.active) + 1
-    return { ...g, tabs: [...tabs.slice(0, at), blank, ...tabs.slice(at)], active: blank.id }
-  }, { focus: gid }))
+  const l = here()
+  if (isBlankTab(activeTab())) return show("new", true)
+  const had = l.tabs.find(isBlankTab), blank = had ? inGroup(had, undefined) : tabOf("new")
+  const tabs = l.tabs.filter((t) => t.id !== blank.id)
+  const at = placing === "end" ? tabs.length : tabs.findIndex((t) => t.id === l.active) + 1
+  set({ ...l, tabs: [...tabs.slice(0, at), blank, ...tabs.slice(at)], active: blank.id })
   show("new", true)
 }
 
 // ---------- files moving and going (core/files.ts calls these after the server did it) ----------
 
-/** Every tab in every group, changed by `fn`. */
-function everyTab(fn: (t: Tab) => Tab): Workspace {
-  return { ...state, root: mapGroups(state.root, (g) => ({ ...g, tabs: g.tabs.map(fn) })) }
-}
+/** Every pane of this window's, changed by `fn`. */
+const everyPane = (fn: (p: Pane) => Pane): TabList => mapTabs(here(), (t) => ({ ...t, root: mapPanes(t.root, fn) }))
 
-/** A file was renamed or moved (or a folder with it): tabs showing it follow. */
+/** A file was renamed or moved (or a folder with it): panes showing it follow. */
 export function retarget(from: string, to: string) {
   const map = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : null)
-  let changed = false
+  let moved = false
   const one = (to: string) => {
     // (a view of a path: view:<name>/<path>, its arg mapped as a file's path is)
     const view = !isFile(to) && to.includes("/") && pathView(to) ? to.slice(0, to.indexOf("/") + 1) : ""
     const m = isFile(to) ? map(to.slice(5)) : view ? map(to.slice(view.length)) : null
     if (m === null) return to
-    changed = true
+    moved = true
     return view ? view + m : `file:${m}`
   }
-  const next = everyTab((t) => ({ ...t, to: one(t.to), back: t.back?.map(one), fwd: t.fwd?.map(one) }))
-  const moved = changed
-  const follow = (t: Tab) => ({ ...t, to: one(t.to), back: t.back?.map(one), fwd: t.fwd?.map(one) })
-  for (const r of reopenable) { if ("pane" in r) r.pane = { ...r.pane, tabs: r.pane.tabs.map(follow) }; else r.tab = follow(r.tab) }
+  const follow = (p: Pane) => ({ ...p, to: one(p.to), back: p.back?.map(one), fwd: p.fwd?.map(one) })
+  const next = everyPane(follow)
+  const didMove = moved
+  for (const r of reopenable) { if ("pane" in r) r.pane = follow(r.pane); else r.tab = { ...r.tab, root: mapPanes(r.tab.root, follow) } }
   keepClosed()
-  if (!moved) return
+  if (!didMove) return
   set(next)
-  const cur = activeTab()
+  const cur = activePane()
   if (isFile(cur.to) || pathView(cur.to)) history.replaceState(history.state, "", `#${hashOf(cur.to)}`)
   hashChanged()
 }
 
 const showing = (path: string) => (to: string) => isFile(to) && (to.slice(5) === path || to.slice(5).startsWith(`${path}/`))
 
-/** Close the tabs showing a file, or what's in a folder; they stay reopenable. Returns whether any was. */
+/** Close the panes showing a file, or what's in a folder; they stay reopenable. Returns whether any was. */
 export function closeFileTabs(path: string) {
-  const ids = groups().flatMap((g) => g.tabs).filter((t) => showing(path)(t.to)).map((t) => t.id)
-  for (const id of ids) closeTab(id, true)
+  const ids = allPanes(here()).filter((p) => showing(path)(p.to)).map((p) => p.id)
+  for (const id of ids) closePane(id, true)
   return ids.length > 0
 }
 
-/** A file or folder was deleted: close its tabs, and it leaves every tab's history. */
+/** A file or folder was deleted: close its panes, and it leaves every pane's history. */
 export function dropTabs(path: string) {
   const gone = showing(path)
   const clean = (l?: string[]) => l?.filter((to) => !gone(to)).filter((to, i, a) => to !== a[i - 1])
-  set(everyTab((t) => ({ ...t, back: clean(t.back), fwd: clean(t.fwd) })))
+  set(everyPane((p) => ({ ...p, back: clean(p.back), fwd: clean(p.fwd) })))
   closeFileTabs(path)
   for (let i = reopenable.length - 1; i >= 0; i--) {
-    const r = reopenable[i], left = "pane" in r ? r.pane.tabs.filter((t) => !gone(t.to)) : []
-    if ("pane" in r && left.length) r.pane = { ...r.pane, tabs: left }
-    else if ("pane" in r || gone(r.tab.to)) reopenable.splice(i, 1)
+    const r = reopenable[i]
+    if ("pane" in r) { if (gone(r.pane.to)) reopenable.splice(i, 1); continue }
+    const left = tabWithout(r.tab, new Set(panesOf(r.tab).filter((p) => gone(p.to)).map((p) => p.id)))
+    if (left) r.tab = left; else reopenable.splice(i, 1)
   }
   keepClosed()
 }

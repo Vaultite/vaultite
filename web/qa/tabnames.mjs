@@ -75,7 +75,7 @@ try {
   await page.keyboard.type("Work"); await wait(200)
   check("it offers a new group so named", (await palette.innerText()).includes('New group "Work"'), await palette.innerText())
   // (an open group's count is drawn, hidden, to open out as it folds: 601da867)
-  const chip = () => page.evaluate(() => [...document.querySelectorAll("[data-set-chip]")].map((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-set-count][aria-hidden]")) x.remove(); return c.textContent?.trim() }).join(","))
+  const chip = () => page.evaluate(() => [...document.querySelectorAll("[data-group-chip]")].map((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent?.trim() }).join(","))
   await page.keyboard.press("Enter"); await until(async () => (await chip()) === "Work", 15_000)
   check("the tab is in group Work", (await chip()) === "Work", await chip())
   await command("Rename tab group…")
@@ -89,8 +89,8 @@ try {
   await page.locator("[data-tab-id]", { hasText: "Shells" }).first().click(); await wait(300)
   await command("Add current tab to group…")
   check("with groups: they're listed", (await palette.innerText()).includes("Ops"), await palette.innerText())
-  await page.keyboard.press("Enter"); await page.waitForFunction(() => document.querySelectorAll("[data-in-set]").length === 2, null, { timeout: 15_000 }).catch(() => {})
-  const inOps = await page.evaluate(() => document.querySelectorAll("[data-in-set]").length)
+  await page.keyboard.press("Enter"); await page.waitForFunction(() => document.querySelectorAll("[data-in-group]").length === 2, null, { timeout: 15_000 }).catch(() => {})
+  const inOps = await page.evaluate(() => document.querySelectorAll("[data-in-group]").length)
   check("Enter adds it to the group listed", inOps === 2, inOps)
 
   // The tab menu has it for a view's tab.

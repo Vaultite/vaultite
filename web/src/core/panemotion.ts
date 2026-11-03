@@ -3,21 +3,20 @@
 import { useLayoutEffect, useRef, type RefObject } from "react"
 import { moves, timing } from "@/core/animation"
 import { stillCopy } from "@/core/snapshot"
-import { floatOrder, getWorkspace, groupOfTab, groups, layoutQuiet, onWorkspaceChange } from "@/core/workspace"
-import { layout, leaves, type Rect, type Workspace } from "../../../core/layout.ts"
+import { activeTab, floatOrder, layoutQuiet, onWorkspaceChange } from "@/core/workspace"
+import { layout, leaves, type Rect, type Tab } from "../../../core/layout.ts"
 
 /** A pane as drawn: its place (shares of the workspace), whether it's a rounded card, and its layer (0: tiled;
  *  above: zoomed or floating, with a z-index of their own). */
 export type PaneBox = { id: string; rect: Rect; round?: boolean; layer: number }
 const r4 = (n: number) => Math.round(n * 1e4)
 const FULL: Rect = { x: 0, y: 0, w: 1, h: 1 }
-/** Each pane of `w` as drawn, in the tree's order (moving an element reloads its frames): tiled, zoomed, or floating
- *  (the one focused last on top). */
-export function paneBoxes({ root, zoom }: Workspace): PaneBox[] {
-  const all = leaves(root), tile = new Map(layout(root).panes.map((p) => [p.group.id, p.rect]))
-  const stack = floatOrder(all.filter((g) => g.float).map((g) => g.id))
-  return all.map((g) => (g.float ? { id: g.id, rect: g.float, round: true, layer: 2 + stack.indexOf(g.id) }
-    : { id: g.id, rect: g.id === zoom ? FULL : tile.get(g.id) ?? FULL, layer: g.id === zoom ? 1 : 0 }))
+/** Each pane of tab `t` as drawn, in the tree's order: tiled, zoomed, or floating (the one focused last on top). */
+export function paneBoxes({ root, zoom }: Tab): PaneBox[] {
+  const all = leaves(root), tile = new Map(layout(root).panes.map((p) => [p.pane.id, p.rect]))
+  const stack = floatOrder(all.filter((p) => p.float).map((p) => p.id))
+  return all.map((p) => (p.float ? { id: p.id, rect: p.float, round: true, layer: 2 + stack.indexOf(p.id) }
+    : { id: p.id, rect: p.id === zoom ? FULL : tile.get(p.id) ?? FULL, layer: p.id === zoom ? 1 : 0 }))
 }
 /** The room around and between tiled panes, in px (appearance `paneCards`: index.css' --pane-gap; else 0). */
 export const paneGap = (el: Element) => parseFloat(getComputedStyle(el).getPropertyValue("--pane-gap")) || 0
@@ -30,13 +29,13 @@ type Snap = { at: { x: number; y: number }; rects: Map<string, Box>; up: string 
 const ID = "pane-motion"
 const near = (a: Box, b: Box) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.w - b.w) < 0.5 && Math.abs(a.h - b.h) < 0.5
 const plateOf = (box: HTMLElement, id: string) => box.querySelector<HTMLElement>(`:scope > [data-plate="${CSS.escape(id)}"]`)
-const sectionOf = (box: HTMLElement, id: string) => box.querySelector<HTMLElement>(`:scope > [data-group="${CSS.escape(id)}"]`)
+const sectionOf = (box: HTMLElement, id: string) => box.querySelector<HTMLElement>(`:scope > [data-pane-frame="${CSS.escape(id)}"]`)
 const within = (r: DOMRect, b: DOMRect): Box => ({ x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height })
 
 /** Where panes dropped next start from (viewport px: the card dragged), instead of where they are (landFrom). */
 const landing = new Map<string, DOMRect>()
-/** The next move of pane `id` starts at `rect` (viewport px), where its drag left it; a tab's id: the pane it's in after,
- *  if that's a new one (a tab dropped on an edge). Call it just before the drop. */
+/** The next move of pane `id` starts at `rect` (viewport px), where its drag left it (a pane, or a tab's pane dropped
+ *  on an edge). Call it just before the drop. */
 export function landFrom(id: string, rect: DOMRect) { landing.set(id, rect) }
 
 /** A move of panes as it starts: the sections moving, and when they're all still. */
@@ -59,19 +58,23 @@ function boxAt(box: HTMLElement, [left, right]: string[]) {
     probe?.remove()
     probe = document.createElement("div")
     probe.setAttribute("aria-hidden", "")
-    probe.style.cssText = "position: fixed; visibility: hidden; pointer-events: none; top: 0; bottom: 0"
+    probe.style.cssText = "position: fixed; visibility: hidden; pointer-events: none"
     box.after(probe)
     probes.set(box, probe)
   }
+  // (as tall as the box: under the tab bar, if there's one)
+  const b = box.getBoundingClientRect()
+  probe.style.top = `${b.top}px`
+  probe.style.bottom = `${innerHeight - b.bottom}px`
   probe.style.left = left
   probe.style.right = right
   return probe.getBoundingClientRect()
 }
 
-/** Moves `box`'s panes (`[data-group]`, each with a `[data-plate]`) when their places change, or `area` (the box's
- *  left and right) does; `raise`: the pane drawn over the others while moving (the one the user moved). */
-export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox[], raise: string, area: string[]) {
-  const key = keyOf(panes), edges = area.join("|")
+/** Moves `box`'s panes (`[data-pane-frame]`, each over its `[data-plate]`) when their places in tab `tab` or `area` (the
+ *  box's left and right) change; `raise`: the one drawn on top (the user moved it). Another tab shows at once. */
+export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, panes: PaneBox[], raise: string, area: string[]) {
+  const key = `${tab}|${keyOf(panes)}`, edges = area.join("|")
   const snap = useRef<Snap | "quiet" | null>(null)
   const run = useRef(0)
   /** The last move's animations: a pane closed mid-move takes its own out of the box, held paused at its start. */
@@ -81,19 +84,18 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox
   // A change that moves panes, before React draws it: where each is on screen now (mid-move too), copies of those going.
   useLayoutEffect(() => onWorkspaceChange(() => {
     const el = box.current
-    if (snap.current || keyOf(paneBoxes(getWorkspace())) === drawn.current) return
-    if (layoutQuiet() || !moves()) snap.current = "quiet"
+    const t = activeTab()
+    if (snap.current || `${t.id}|${keyOf(paneBoxes(t))}` === drawn.current) return
+    if (layoutQuiet() || !moves() || !drawn.current.startsWith(`${t.id}|`)) snap.current = "quiet"
     if (!el || snap.current) return
-    const b = el.getBoundingClientRect(), ids = new Set(groups().map((g) => g.id)), rects = new Map<string, Box>()
+    const b = el.getBoundingClientRect(), ids = new Set(leaves(t.root).map((p) => p.id)), rects = new Map<string, Box>()
     for (const p of el.querySelectorAll<HTMLElement>(":scope > [data-plate]")) rects.set(p.dataset.plate!, within(p.getBoundingClientRect(), b))
     let up: string | null = null
-    for (const [id, r] of landing) {
-      const g = groups().some((x) => x.id === id) ? id : !rects.has(groupOfTab(id)?.id ?? "") ? groupOfTab(id)?.id : undefined
-      if (g) { rects.set(g, within(r, b)); up ??= g }
-    }
-    const gone = [...el.querySelectorAll<HTMLElement>(":scope > [data-group]")].filter((s) => !ids.has(s.dataset.group!) && rects.has(s.dataset.group!))
-      .map((s) => ({ ...copyOf(s), at: rects.get(s.dataset.group!)! }))
-    snap.current = { at: { x: b.left, y: b.top }, rects, up: up ?? el.querySelector<HTMLElement>(":scope > [data-zoomed]")?.dataset.group ?? null, gone }
+    for (const [id, r] of landing) if (ids.has(id)) { rects.set(id, within(r, b)); up ??= id }
+    // (one leaving the tab on screen, closed or to another tab kept drawn hidden: a copy of it goes)
+    const gone = [...el.querySelectorAll<HTMLElement>(":scope > [data-pane-frame]:not([data-away])")].filter((s) => !ids.has(s.dataset.paneFrame!) && rects.has(s.dataset.paneFrame!))
+      .map((s) => ({ ...copyOf(s), at: rects.get(s.dataset.paneFrame!)! }))
+    snap.current = { at: { x: b.left, y: b.top }, rects, up: up ?? el.querySelector<HTMLElement>(":scope > [data-zoomed]")?.dataset.paneFrame ?? null, gone }
   }), [box])
   useLayoutEffect(() => {
     const el = box.current, was = drawnArea.current
@@ -197,7 +199,7 @@ function copyOf(sec: HTMLElement) {
   }
   for (const x of [el, ...el.querySelectorAll("*")]) {
     x.removeAttribute("id")
-    for (const a of ["data-group", "data-pane", "data-pane-body", "data-tab-bar", "data-kept", "data-tab-id", "data-pane-handle", "data-stack"]) x.removeAttribute(a)
+    for (const a of ["data-pane-frame", "data-pane", "data-pane-body", "data-pane-bar", "data-kept", "data-tab-body", "data-pane-handle", "data-ui"]) x.removeAttribute(a)
   }
   el.inert = true
   el.removeAttribute("aria-label")

@@ -3,7 +3,7 @@
 import { useRef, type ReactNode } from "react"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useCommandKeys } from "@/core/commands"
-import { canNavigate, navigate, useTabs } from "@/core/workspace"
+import { canNavigate, navigate, paneById, useTabList } from "@/core/workspace"
 import { usePane, usePaneTopBar } from "@/core/pane"
 import { cn } from "@/lib/utils"
 
@@ -11,18 +11,19 @@ import { cn } from "@/lib/utils"
 export const barButton = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
 
 function NavButtons() {
-  // This pane's tab (the buttons act on the focused one: clicking here focuses this pane first).
-  const { tabs, active } = useTabs(usePane().group)
-  const tab = tabs.find((t) => t.id === active)
+  // This pane's history (the buttons act on the focused one: clicking here focuses this pane first).
+  const { pane } = usePane()
+  useTabList()
+  const p = paneById(pane)
   const back = useCommandKeys("nav:back", true), forward = useCommandKeys("nav:forward", true)
   return (
     // (a pane too narrow for the bar's buttons: forward, then back wrap out of sight, so the view's buttons stay put)
     <div className="flex h-7 min-w-0 flex-wrap items-center overflow-clip [overflow-clip-margin:4px]">
 
-      <button type="button" onClick={() => navigate(-1)} disabled={!canNavigate(tab, -1)} aria-label="Navigate back" data-ui="button:nav:back" data-tip={`Navigate back${back}`} className={barButton}>
+      <button type="button" onClick={() => navigate(-1)} disabled={!canNavigate(p, -1)} aria-label="Navigate back" data-ui="button:nav:back" data-tip={`Navigate back${back}`} className={barButton}>
         <ArrowLeft className="size-4" strokeWidth={2} />
       </button>
-      <button type="button" onClick={() => navigate(1)} disabled={!canNavigate(tab, 1)} aria-label="Navigate forward" data-ui="button:nav:forward" data-tip={`Navigate forward${forward}`} className={barButton}>
+      <button type="button" onClick={() => navigate(1)} disabled={!canNavigate(p, 1)} aria-label="Navigate forward" data-ui="button:nav:forward" data-tip={`Navigate forward${forward}`} className={barButton}>
         <ArrowRight className="size-4" strokeWidth={2} />
       </button>
     </div>

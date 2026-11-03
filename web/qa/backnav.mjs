@@ -32,7 +32,7 @@ const open = async (w, h, mobile = false) => {
 {
   const { ctx, page } = await open(1440, 700)
   await page.goto(`${B}#file/${enc(PEOPLE)}`); await wait(2500)
-  const tabs = () => page.evaluate(() => [...document.querySelectorAll("section[data-group] [role=tab]")].map((t) => ({ name: t.innerText.trim(), on: t.getAttribute("aria-selected") === "true" })))
+  const tabs = () => page.evaluate(() => [...document.querySelectorAll("[data-tab-strip] [role=tab]")].map((t) => ({ name: t.innerText.trim(), on: t.getAttribute("aria-selected") === "true" })))
   const active = async () => (await tabs()).find((t) => t.on)?.name
   const scrollTop = () => page.evaluate(() => document.getElementById("main-scroll")?.scrollTop ?? 0)
   // A person the page lists on its first screen, low enough to stay in sight once it's scrolled (clicking one out of

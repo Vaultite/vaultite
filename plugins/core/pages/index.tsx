@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { Pin, PinOff } from "lucide-react"
 import {
-  currentEditor, currentFile, definePlugin, getTabLayout, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
+  currentEditor, currentFile, definePlugin, focusedPane, getTabLayout, shownTab, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
   usePane, useViewsVersion, useWorkspaceVersion, viewPinLabel, type Store, type TabLayout,
 } from "@vaultite"
 import { PinCurrent, pinChecklist, PinnedPages, showAsMenu } from "./Pinned"
@@ -28,13 +28,10 @@ function headingHere() {
   return found.length ? `${ed.path}#${found[found.length - 1]}` : null
 }
 
-/** The focused pane's active tab's target. */
+/** The focused pane's target. */
 function activeTarget(w: TabLayout) {
-  const walk = (n: TabLayout["root"]): string | null => {
-    if ("kids" in n) { for (const k of n.kids) { const t = walk(k); if (t !== null) return t } return null }
-    return n.id === w.focus ? n.tabs.find((t) => t.id === n.active)?.to ?? null : null
-  }
-  return walk(w.root)
+  const t = shownTab(w)
+  return t ? focusedPane(t).to : null
 }
 /** The search on screen (a search tab with a query), as a pin ("search:<query>"), or null. */
 function searchHere() {
@@ -47,13 +44,13 @@ function searchHere() {
 function PinnedView({ store }: { store: Store }) {
   // Pages open beside this tab: in the pane of the file focused last when that's another pane (like Links).
   const focused = useFocusedFile()
-  const own = usePane().group
+  const own = usePane().pane
   return (
     <div data-pages-view>
       <p className="mb-3 text-[13px] text-muted-foreground max-md:text-[15px]">The sidebar's pages, in its order.<span className="max-md:hidden"> Drag one to reorder it, or onto a pane to open it there.</span></p>
       {/* The panel's list, a size up (`data-size-up`). */}
       <div className="size-up-bleed"><div data-size-up>
-        <PinnedPages store={store} open file={focused.path} tab="" pane={focused.group && focused.group !== own ? focused.group : undefined} />
+        <PinnedPages store={store} open file={focused.path} tab="" pane={focused.pane && focused.pane !== own ? focused.pane : undefined} />
       </div></div>
     </div>
   )

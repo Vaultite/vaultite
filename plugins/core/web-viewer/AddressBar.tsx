@@ -2,7 +2,7 @@
 // tabs, bookmarks, history) over the native page. What's typed is the tab's draft (drafts.ts), kept on leaving the field.
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { ArrowRight, Search, Star, X } from "lucide-react"
-import { closeTab, cn, getTabLayout, isMac, openMenu, panesOf, selectTab, useStore, webPages, type MenuItem, type WebPageInfo } from "@vaultite"
+import { closePane, cn, getTabLayout, isMac, openMenu, allPanes, selectPane, useStore, webPages, type MenuItem, type WebPageInfo } from "@vaultite"
 import { addressOf, guessedHttps, hostOf, searchUrl } from "./address"
 import { matchBookmarks, type Bookmark } from "./bookmarks"
 import { argOf, colorOf, containerById, containerOfProfile } from "./containers"
@@ -34,7 +34,7 @@ type OpenTab = WebPageInfo & { arg: string; tab: string; container: string | nul
 /** The web pages of this window that a tab of this workspace has open (shown or kept in the background). */
 async function openTabs(): Promise<OpenTab[]> {
   const list = await webPages?.list?.().catch(() => []) ?? []
-  const mine = profile(), here = new Set(panesOf(getTabLayout().root).flatMap((g) => g.tabs.map((t) => t.id)))
+  const mine = profile(), here = new Set(allPanes(getTabLayout()).map((p) => p.id))
   return list.flatMap((p) => {
     const c = containerOfProfile(p.profile)
     return /^https?:/i.test(p.url) && p.tab && here.has(p.tab) && (c || p.profile === mine) ? [{ ...p, arg: argOf(p.url, c), tab: p.tab, container: c }] : []
@@ -156,9 +156,9 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
     if (r.kind !== "tab") return go(r.url, r.kind === "bookmark" ? "bookmark" : "typed", place, r.kind === "url" && r.guessed)
     setDraft(null)
     closeList()
-    selectTab(r.tab)
+    selectPane(r.tab)
     // (a new tab that was only for finding it isn't left behind)
-    if (blank) closeTab(tab)
+    if (blank) closePane(tab)
   }
   const forget = async (r: Row) => {
     if (r.kind !== "history") return

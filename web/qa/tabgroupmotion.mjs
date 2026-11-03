@@ -17,18 +17,20 @@ const appearance = (v) => writeFileSync(look.p, JSON.stringify({ ...lookNow(), .
 
 // [Start here] (A "Lighthouse": two tabs) (B, no name, folded: two) (C, no name: two) [blank]
 const f = (p) => `file:${p}`
+// (each a tab of one pane: tab "a1", its pane "pa1")
+const t = (id, to, group) => ({ id, root: { id: `p${id}`, to }, focus: `p${id}`, ...(group ? { group } : {}) })
 const seed = {
-  root: { id: "g1", active: "a2", sets: [{ id: "sA", name: "Lighthouse", color: "blue" }, { id: "sB", name: "", color: "green", collapsed: true }, { id: "sC", name: "", color: "purple" }],
-    tabs: [{ id: "p0", to: f("Start here.md") }, { id: "a1", to: f("Projects/Lighthouse.md"), set: "sA" }, { id: "a2", to: f("Projects/Garden planner.md"), set: "sA" },
-      { id: "b1", to: f("ME.md"), set: "sB" }, { id: "b2", to: f("Notes/Lisbon trip.md"), set: "sB" }, { id: "c1", to: "view:search", set: "sC" }, { id: "c2", to: "view:graph", set: "sC" }, { id: "x", to: "new" }] },
-  focus: "g1",
+  groups: [{ id: "sA", name: "Lighthouse", color: "blue" }, { id: "sB", name: "", color: "green", collapsed: true }, { id: "sC", name: "", color: "purple" }],
+  tabs: [t("p0", f("Start here.md")), t("a1", f("Projects/Lighthouse.md"), "sA"), t("a2", f("Projects/Garden planner.md"), "sA"),
+    t("b1", f("ME.md"), "sB"), t("b2", f("Notes/Lisbon trip.md"), "sB"), t("c1", "view:search", "sC"), t("c2", "view:graph", "sC"), t("x", "new")],
+  active: "a2",
 }
 async function open(dpr = 2, start = seed) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 600 }, deviceScaleFactor: dpr })
   await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(start))
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#file/${encodeURIComponent("Projects/Garden planner.md")}`)
-  await page.waitForSelector("[data-set-chip], [data-set-row]")
+  await page.waitForSelector("[data-group-chip], [data-group-row]")
   await wait(1000)
   await page.mouse.move(640, 500)
   return { ctx, page }
@@ -48,9 +50,9 @@ async function frames(page, probe, id, act, ms = 700) {
 /** A click on the group's chip or row from inside the page after `ms` (Playwright's own waits for it to stop moving). */
 const clickIn = (page, sel, ms = 0) => page.evaluate(([sel, ms]) => new Promise((r) => setTimeout(() => { document.querySelector(sel).click(); r() }, ms)), [sel, ms])
 const barProbe = (id) => {
-  const chip = document.querySelector(`[data-set-chip="${id}"]`), count = chip?.querySelector("[data-set-count]"), line = document.querySelector(`[data-tab-row] [data-set-line="${id}"]`)
+  const chip = document.querySelector(`[data-group-chip="${id}"]`), count = chip?.querySelector("[data-group-count]"), line = document.querySelector(`[data-tab-row] [data-group-line="${id}"]`)
   return { chip: chip ? chip.getBoundingClientRect().width : 0, count: count ? +getComputedStyle(count).opacity : 0, line: line ? +getComputedStyle(line).opacity : 0,
-    tabs: [...document.querySelectorAll(`[data-tab-bar] [data-in-set="${id}"]`)].map((e) => e.getBoundingClientRect().width),
+    tabs: [...document.querySelectorAll(`[data-tab-bar] [data-in-group="${id}"]`)].map((e) => e.getBoundingClientRect().width),
     shown: document.querySelector("[data-tab-bar] [role=tab][aria-selected=true]")?.closest("[data-tab-id]")?.dataset.tabId }
 }
 const rising = (xs, d = 0.6) => xs.every((x, i) => !i || x >= xs[i - 1] - d)
@@ -64,9 +66,9 @@ const goneForGood = (fs) => {
 /** A group's line and its tabs as drawn (the bar's along x, the panel's down y); `next`: where the tab after its first
  *  (c2) is drawn. */
 const lineProbe = (id) => {
-  const panel = !!document.querySelector("[data-tabs-pane]"), root = document.querySelector(panel ? "[data-tabs-pane]" : "[data-tab-row]")
+  const panel = !!document.querySelector("[data-open-tabs]"), root = document.querySelector(panel ? "[data-open-tabs]" : "[data-tab-row]")
   const span = (e) => { const b = e.getBoundingClientRect(); return panel ? [b.top, b.bottom] : [b.left, b.right] }
-  const line = root.querySelector(`:scope > [data-set-line="${id}"]`), next = root.querySelector("[data-slide='c2']")
+  const line = root.querySelector(`:scope > [data-group-line="${id}"]`), next = root.querySelector("[data-slide='c2']")
   return { line: line ? span(line) : null, tabs: [...root.querySelectorAll(`[data-line-of="${id}"]`)].map(span), next: next ? span(next)[0] : null }
 }
 /** Each tab within its line's reach: along the bar under it (a spring going a pixel past it), down the panel by it
@@ -84,10 +86,10 @@ try {
       await page.evaluate((d) => { document.documentElement.dataset.density = d }, density); await wait(300)
       const g = await page.evaluate(() => {
         const r = (e) => e.getBoundingClientRect()
-        return [...document.querySelectorAll("[data-set-chip][aria-expanded=true]")].map((chip) => {
-          const id = chip.dataset.setChip, tabs = [...document.querySelectorAll(`[data-tab-bar] [data-in-set="${id}"]`)]
-          const line = r(document.querySelector(`[data-tab-row] [data-set-line="${id}"]`))
-          return { id, label: r(chip.querySelector("[data-set-label]")).left, last: r(tabs.at(-1)).right, bottom: r(tabs[0]).bottom, line: [line.left, line.right, line.top, line.height] }
+        return [...document.querySelectorAll("[data-group-chip][aria-expanded=true]")].map((chip) => {
+          const id = chip.dataset.groupChip, tabs = [...document.querySelectorAll(`[data-tab-bar] [data-in-group="${id}"]`)]
+          const line = r(document.querySelector(`[data-tab-row] [data-group-line="${id}"]`))
+          return { id, label: r(chip.querySelector("[data-group-name]")).left, last: r(tabs.at(-1)).right, bottom: r(tabs[0]).bottom, line: [line.left, line.right, line.top, line.height] }
         })
       })
       const bad = g.filter((x) => {
@@ -105,14 +107,14 @@ try {
   {
     const { ctx, page } = await open()
     const full = (await page.evaluate(barProbe, "sC")).tabs
-    const fold = await frames(page, barProbe, "sC", () => clickIn(page, "[data-set-chip='sC']"))
+    const fold = await frames(page, barProbe, "sC", () => clickIn(page, "[data-group-chip='sC']"))
     const moving = fold.filter((x) => x.tabs.length && x.tabs.some((w) => w > 1 && w < full[0] - 1))
     check("folding: its tabs shrink into the chip, the count opening out and the line going as they do, not after",
       moving.length >= 3 && moving.some((x) => x.count > 0.2 && x.count < 0.95) && moving.some((x) => x.line > 0.05 && x.line < 0.95), moving.map((x) => [x.tabs.map(Math.round), x.count.toFixed(2), x.line.toFixed(2)]))
     check("  each frame further: the chip widens, the tabs narrow, the count shows more, the line less", rising(fold.map((x) => x.chip)) && falling(fold.map((x) => Math.max(0, ...x.tabs)))
       && rising(fold.map((x) => x.count), 0.01) && falling(fold.map((x) => x.line), 0.01), fold.map((x) => [Math.round(x.chip), x.tabs.map(Math.round)]))
     check("  no frame shows its tabs or line again once they've gone", goneForGood(fold) && fold.at(-1).count === 1 && fold.at(-1).line === 0, fold.slice(-4))
-    const opening = await frames(page, barProbe, "sC", () => clickIn(page, "[data-set-chip='sC']"))
+    const opening = await frames(page, barProbe, "sC", () => clickIn(page, "[data-group-chip='sC']"))
     check("opening: they grow back out of it, the count closing up and the line coming as they do",
       opening.some((x) => x.tabs.length && x.tabs.every((w) => w > 1 && w < full[0] - 1) && x.count > 0.05 && x.count < 0.8) && falling(opening.map((x) => x.chip)) && falling(opening.map((x) => x.count), 0.01),
       opening.map((x) => [Math.round(x.chip), x.tabs.map(Math.round), x.count.toFixed(2)]))
@@ -120,20 +122,20 @@ try {
     check("  each tab ends where it's laid out, with no jump at the end", end.length === full.length && end.every((w, i) => Math.abs(w - full[i]) < 1)
       && opening.filter((x) => x.tabs.length === full.length).every((x) => x.tabs.every((w, i) => w <= full[i] + 1.5)), opening.map((x) => x.tabs.map(Math.round)))
     // Turned round mid-way, either way: from where it had got to, back.
-    const back = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-set-chip='sC']"); await clickIn(page, "[data-set-chip='sC']", 90) })
+    const back = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-group-chip='sC']"); await clickIn(page, "[data-group-chip='sC']", 90) })
     const low = Math.min(...back.filter((x) => x.tabs.length).map((x) => Math.max(...x.tabs)))
     check("a click mid-fold turns it round from where it was: the tabs never vanish, and end as they were", low > 1 && low < full[0] - 4 && back.every((x) => x.tabs.length === full.length)
       && back.at(-1).tabs.every((w, i) => Math.abs(w - full[i]) < 1) && back.at(-1).count === 0 && back.at(-1).line === 1, back.map((x) => x.tabs.map(Math.round)))
-    await clickIn(page, "[data-set-chip='sC']"); await wait(500)
-    const again = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-set-chip='sC']"); await clickIn(page, "[data-set-chip='sC']", 90) })
+    await clickIn(page, "[data-group-chip='sC']"); await wait(500)
+    const again = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-group-chip='sC']"); await clickIn(page, "[data-group-chip='sC']", 90) })
     check("a click mid-opening folds it from where it was", again.some((x) => x.tabs.length && x.tabs.every((w) => w > 4)) && goneForGood(again) && again.at(-1).count === 1, again.map((x) => x.tabs.map(Math.round)))
-    await clickIn(page, "[data-set-chip='sC']"); await wait(500)
+    await clickIn(page, "[data-group-chip='sC']"); await wait(500)
     // The group on screen turned round mid-fold: its tab shows again.
-    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-set-chip='sA']"); await clickIn(page, "[data-set-chip='sA']", 90) })
+    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-group-chip='sA']"); await clickIn(page, "[data-group-chip='sA']", 90) })
     check("a click mid-fold of the group on screen turns it round to its own tab again", sway.some((x) => x.shown === "c1") && sway.at(-1).shown === "a2", sway.map((x) => x.shown))
     await wait(300)
     // Folding the group on screen: the page changes at the click, to the nearest tab not folded away (past folded B).
-    const handing = await frames(page, barProbe, "sA", () => clickIn(page, "[data-set-chip='sA']"))
+    const handing = await frames(page, barProbe, "sA", () => clickIn(page, "[data-group-chip='sA']"))
     const first = handing.findIndex((x) => x.shown !== "a2")
     check("folding the group on screen: another tab shows at the click, not once they've gone, past a folded group", first >= 0 && handing[first].shown === "c1" && handing[first].tabs.length === 2
       && handing[first].tabs.every((w) => w > 20), handing.map((x) => [x.shown, x.tabs.map(Math.round)]))
@@ -143,9 +145,9 @@ try {
 
   // ---------- turned round mid-fold with no other tab to hand over to: the blank tab made meanwhile goes ----------
   {
-    const alone = { root: { id: "g1", active: "a2", sets: [{ id: "sA", name: "Lighthouse", color: "blue" }], tabs: seed.root.tabs.filter((t) => t.set === "sA") }, focus: "g1" }
+    const alone = { groups: [{ id: "sA", name: "Lighthouse", color: "blue" }], tabs: seed.tabs.filter((t) => t.group === "sA"), active: "a2" }
     const { ctx, page } = await open(2, alone)
-    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-set-chip='sA']"); await clickIn(page, "[data-set-chip='sA']", 90) })
+    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-group-chip='sA']"); await clickIn(page, "[data-group-chip='sA']", 90) })
     const ids = await page.evaluate(() => [...document.querySelectorAll("[data-tab-bar] [data-tab-id]")].map((e) => e.dataset.tabId))
     check("the only group turned round mid-fold: a blank tab meanwhile, then its own tab again and no blank tab left", sway.some((x) => x.shown && !x.shown.startsWith("a"))
       && sway.at(-1).shown === "a2" && ids.join() === "a1,a2", { shown: sway.map((x) => x.shown), ids })
@@ -155,20 +157,20 @@ try {
   // ---------- the chip by pointer and keyboard; tabs sliding as they're regrouped; ungrouping fading ----------
   {
     const { ctx, page } = await open()
-    const halo = () => page.$eval("[data-set-chip='sA'] > [data-set-label]", (e) => getComputedStyle(e).boxShadow)
+    const halo = () => page.$eval("[data-group-chip='sA'] > [data-group-name]", (e) => getComputedStyle(e).boxShadow)
     const off = await halo()
-    await page.hover("[data-set-chip='sA']"); await wait(350)
+    await page.hover("[data-group-chip='sA']"); await wait(350)
     check("a chip under the pointer shows a halo of its colour", off === "none" && (await halo()) !== "none", [off, await halo()])
     await page.mouse.move(640, 500)
     await page.locator("[data-tab-id='a2'] [role=tab]").focus()
     await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight")
-    const on = await page.evaluate(() => { const a = document.activeElement, l = a?.querySelector("[data-set-label]"); return { chip: a?.dataset.setChip, ring: l && getComputedStyle(l).outlineStyle } })
+    const on = await page.evaluate(() => { const a = document.activeElement, l = a?.querySelector("[data-group-name]"); return { chip: a?.dataset.groupChip, ring: l && getComputedStyle(l).outlineStyle } })
     check("the arrows reach a chip as they do the tabs, its ring showing", on.chip === "sC" && on.ring === "solid", on)
-    const expanded = () => page.$eval("[data-set-chip='sC']", (e) => e.getAttribute("aria-expanded"))
+    const expanded = () => page.$eval("[data-group-chip='sC']", (e) => e.getAttribute("aria-expanded"))
     await page.keyboard.press("Enter"); await wait(500)
     const folded = await expanded()
     await page.keyboard.press(" "); await wait(500)
-    check("Enter folds it, Space opens it, the keyboard staying on it", folded === "false" && (await expanded()) === "true" && await page.evaluate(() => document.activeElement?.dataset.setChip === "sC"), [folded, await expanded()])
+    check("Enter folds it, Space opens it, the keyboard staying on it", folded === "false" && (await expanded()) === "true" && await page.evaluate(() => document.activeElement?.dataset.groupChip === "sC"), [folded, await expanded()])
     await page.keyboard.press("Shift+F10"); await wait(300)
     check("⇧F10 opens its editor", (await page.locator("[role=menu] [data-menu-field] input").count()) === 1)
     await page.keyboard.press("Escape"); await wait(200)
@@ -186,10 +188,10 @@ try {
     // Ungrouped: its chip shrinks away and its line fades, not cut at once.
     await xs("c1")
     await page.evaluate(() => { const out = window.__ug = [], end = performance.now() + 1000
-      const tick = () => { const ps = [...document.querySelectorAll("[data-tab-row] [data-set-line='sC']")], chip = [...document.querySelectorAll("[data-tab-bar] [data-set-label]")].find((l) => l.style.background.includes("purple"))
+      const tick = () => { const ps = [...document.querySelectorAll("[data-tab-row] [data-group-line='sC']")], chip = [...document.querySelectorAll("[data-tab-bar] [data-group-name]")].find((l) => l.style.background.includes("purple"))
         out.push({ line: ps.length ? Math.max(...ps.map((p) => +getComputedStyle(p).opacity)) : 0, chip: chip ? chip.parentElement.getBoundingClientRect().width : 0 })
         if (performance.now() < end) requestAnimationFrame(tick) }; requestAnimationFrame(tick) })
-    await page.click("[data-set-chip='sC']", { button: "right" }); await wait(200)
+    await page.click("[data-group-chip='sC']", { button: "right" }); await wait(200)
     await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Ungroup", exact: true }).click(); await wait(900)
     const ug = await page.evaluate(() => window.__ug)
     check("ungrouped: its chip shrinks away and its line fades out", ug.some((x) => x.line > 0.1 && x.line < 0.9) && ug.some((x) => x.chip > 1 && x.chip < 13) && ug.at(-1).line === 0 && ug.at(-1).chip === 0, ug.map((x) => [x.line.toFixed(2), Math.round(x.chip)]))
@@ -218,7 +220,7 @@ try {
   {
     const { ctx, page } = await open()
     const shown = () => page.$eval("[data-tab-bar] [role=tab][aria-selected=true]", (e) => e.closest("[data-tab-id]").dataset.tabId)
-    const folded = () => page.$$eval("[data-set-chip]", (els) => els.filter((e) => e.getAttribute("aria-expanded") === "false").map((e) => e.dataset.setChip).join())
+    const folded = () => page.$$eval("[data-group-chip]", (els) => els.filter((e) => e.getAttribute("aria-expanded") === "false").map((e) => e.dataset.groupChip).join())
     const close = async (id) => { const t = page.locator(`[data-tab-id="${id}"]`); await t.hover(); await t.locator("[data-tab-close]").click(); await wait(400); await page.mouse.move(640, 500); await wait(300) }
     await close("a2")
     check("closing a group's tab shows another of the group (before it, as none is after)", (await shown()) === "a1" && (await folded()) === "sB", [await shown(), await folded()])
@@ -233,15 +235,15 @@ try {
   await wait(800)
   {
     const { ctx, page } = await open()
-    const geo = await page.evaluate(() => [...document.querySelectorAll("[data-set-row]")].map((row) => {
-      const r = (e) => e.getBoundingClientRect(), label = r(row.querySelector("[data-set-label]")), box = r(row), line = row.closest("[data-tabs-pane]").querySelector(`:scope > [data-set-line="${row.dataset.setRow}"]`)
-      return { id: row.dataset.setRow, open: row.getAttribute("aria-expanded") === "true", mid: [label.top + label.height / 2, box.top + box.height / 2], rail: line && [r(line).left, r(line).top], label: [label.left, label.right, label.top, label.bottom] }
+    const geo = await page.evaluate(() => [...document.querySelectorAll("[data-group-row]")].map((row) => {
+      const r = (e) => e.getBoundingClientRect(), label = r(row.querySelector("[data-group-name]")), box = r(row), line = row.closest("[data-open-tabs]").querySelector(`:scope > [data-group-line="${row.dataset.groupRow}"]`)
+      return { id: row.dataset.groupRow, open: row.getAttribute("aria-expanded") === "true", mid: [label.top + label.height / 2, box.top + box.height / 2], rail: line && [r(line).left, r(line).top], label: [label.left, label.right, label.top, label.bottom] }
     }))
     check("the panel: each group's chip sits in the middle of its row (a square without a name too), its line coming out from under it (a folded one's gone)",
       geo.length === 3 && geo.every((x) => Math.abs(x.mid[0] - x.mid[1]) < 0.6 && (x.open ? x.rail && x.rail[0] > x.label[0] && x.rail[0] < x.label[1] && x.rail[1] > x.label[2] && x.rail[1] < x.label[3] : !x.rail)), geo)
     // Dragged within its group: the tabs slide past each other, and the line stays one, by each of them wherever it's drawn.
     {
-      const a = await page.locator("[data-tabs-pane] [data-slide='a1']").boundingBox(), b = await page.locator("[data-tabs-pane] [data-slide='a2']").boundingBox()
+      const a = await page.locator("[data-open-tabs] [data-slide='a1']").boundingBox(), b = await page.locator("[data-open-tabs] [data-slide='a2']").boundingBox()
       await page.mouse.move(a.x + 60, a.y + a.height / 2); await page.mouse.down()
       const fs = await frames(page, lineProbe, "sA", async () => { await page.mouse.move(a.x + 60, a.y + a.height / 2 + 8, { steps: 3 }); await page.mouse.move(a.x + 60, b.y + b.height * 0.7, { steps: 10 }) }, 600)
       await page.mouse.up(); await wait(500)
@@ -249,21 +251,21 @@ try {
       check("the panel: dragged within its group, the line runs by each of its tabs in every frame as they slide", moved && fs.every(besideAll("y")), fs.filter((x) => !besideAll("y")(x)).slice(0, 4))
     }
     const panelProbe = (id) => {
-      const row = document.querySelector(`[data-set-row="${id}"]`), count = row?.querySelector("[data-set-count]"), rail = row?.closest("[data-tabs-pane]").querySelector(`:scope > [data-set-line="${id}"]`)
-      return { chip: row ? row.querySelector("[data-set-label]").getBoundingClientRect().width : 0, count: count ? +getComputedStyle(count).opacity : 0, line: rail ? +getComputedStyle(rail).opacity : 0,
-        tabs: [...document.querySelectorAll(`[data-tabs-panel] [data-in-set="${id}"]`)].map((e) => e.getBoundingClientRect().height) }
+      const row = document.querySelector(`[data-group-row="${id}"]`), count = row?.querySelector("[data-group-count]"), rail = row?.closest("[data-open-tabs]").querySelector(`:scope > [data-group-line="${id}"]`)
+      return { chip: row ? row.querySelector("[data-group-name]").getBoundingClientRect().width : 0, count: count ? +getComputedStyle(count).opacity : 0, line: rail ? +getComputedStyle(rail).opacity : 0,
+        tabs: [...document.querySelectorAll(`[data-tabs-panel] [data-in-group="${id}"]`)].map((e) => e.getBoundingClientRect().height) }
     }
-    const fold = await frames(page, panelProbe, "sC", () => clickIn(page, "[data-set-row='sC']"))
+    const fold = await frames(page, panelProbe, "sC", () => clickIn(page, "[data-group-row='sC']"))
     check("the panel: folding, its rows shrink up into the row of its chip, which grows its count as they do, the line going", fold.some((x) => x.tabs.length && x.tabs.some((h) => h > 2 && h < 26) && x.count > 0.1 && x.count < 0.95)
       && goneForGood(fold) && rising(fold.map((x) => x.chip)) && fold.at(-1).count === 1 && fold.at(-1).line === 0, fold.map((x) => [x.tabs.map(Math.round), x.count.toFixed(2), Math.round(x.chip)]))
-    const opening = await frames(page, panelProbe, "sC", () => clickIn(page, "[data-set-row='sC']"))
+    const opening = await frames(page, panelProbe, "sC", () => clickIn(page, "[data-group-row='sC']"))
     check("the panel: opening, they grow back down, the count closing up as they do", opening.some((x) => x.tabs.length && x.tabs.every((h) => h > 1 && h < 26) && x.count > 0.05 && x.count < 0.9)
       && opening.at(-1).count === 0 && opening.at(-1).line === 1 && opening.at(-1).tabs.every((h) => Math.abs(h - 28) < 1), opening.map((x) => [x.tabs.map(Math.round), x.count.toFixed(2)]))
     // A view's tab closed (it asks its view first, a moment even when it says yes): it shrinks away once, the line's
     // end rising with it, never back for a frame.
     {
-      await page.hover("[data-tabs-pane] [data-slide='c1']"); await wait(200)
-      const fs = await frames(page, lineProbe, "sC", () => page.locator("[data-tabs-pane] [data-slide='c1'] button[aria-label^='Close']").click(), 700)
+      await page.hover("[data-open-tabs] [data-slide='c1']"); await wait(200)
+      const fs = await frames(page, lineProbe, "sC", () => page.locator("[data-open-tabs] [data-slide='c1'] button[aria-label^='Close']").click(), 700)
       const ys = fs.map((x) => x.next)
       check("the panel: a view's tab closed shrinks away once, the tab under it rising and never jumping back", ys[0] - ys.at(-1) > 20 && falling(ys, 0.5) && fs.every((x) => !x.tabs.length || besideAll("y")(x)), ys.map(Math.round))
     }
@@ -279,9 +281,9 @@ try {
     await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(seed))
     const page = watch(await ctx.newPage())
     await page.goto(B); await page.waitForSelector("[data-phone-bar]"); await wait(1200)
-    await page.click("[aria-label='Open sidebar']"); await page.waitForSelector("[data-phone-drawer] [data-set-row='sB']"); await wait(800)
-    const probe = (id) => [...document.querySelectorAll(`[data-phone-drawer] [data-in-set="${id}"]`)].map((e) => e.getBoundingClientRect().height)
-    const fs = await frames(page, probe, "sB", () => clickIn(page, "[data-phone-drawer] [data-set-row='sB']"), 600)
+    await page.click("[aria-label='Open sidebar']"); await page.waitForSelector("[data-phone-drawer] [data-group-row='sB']"); await wait(800)
+    const probe = (id) => [...document.querySelectorAll(`[data-phone-drawer] [data-in-group="${id}"]`)].map((e) => e.getBoundingClientRect().height)
+    const fs = await frames(page, probe, "sB", () => clickIn(page, "[data-phone-drawer] [data-group-row='sB']"), 600)
     const end = fs.at(-1), hs = fs.filter((x) => x.length === 2).map((x) => x[0])
     check("a phone's drawer: a group opened, its tabs grow straight to their size, never past it", end.length === 2 && end[0] > 30 && hs.length > 3 && rising(hs, 0.3) && hs.every((h) => h <= end[0] + 0.5), hs.map(Math.round))
     await ctx.close()

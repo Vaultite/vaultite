@@ -1,6 +1,6 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
-import { agentsOn, canRunAgents, cell, del, detailPath, fetchMachines, get, getTabLayout, isDesktop, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openView, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
+import { agentsOn, canRunAgents, cell, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, shownTab, isDesktop, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openView, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
 import type { InboxEvent } from "./types"
@@ -220,9 +220,6 @@ export function openEvent(e: InboxEvent) {
 
 /** The focused tab's target ("view:terminal/abc"), to tell whether the user is looking at what an event is about. */
 export function focusedTarget(layout: TabLayout = getTabLayout()): string {
-  const walk = (n: TabLayout["root"]): string | null => {
-    if ("kids" in n) { for (const k of n.kids) { const t = walk(k); if (t !== null) return t } return null }
-    return n.id === layout.focus ? n.tabs.find((t) => t.id === n.active)?.to ?? "" : null
-  }
-  return walk(layout.root) ?? ""
+  const t = shownTab(layout)
+  return t ? focusedPane(t).to : ""
 }

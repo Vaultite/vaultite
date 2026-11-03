@@ -41,7 +41,7 @@ await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorag
 const page = watch(await ctx.newPage(), { console: true })
 const shot = (n) => page.screenshot({ path: `${OUT}renamelinks-${n}.png` })
 const go = (p) => page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(p)}`)
-const panes = () => page.locator("section[data-group]")
+const panes = () => page.locator("[data-pane-area] > section[data-pane-frame]:not([data-away])")
 const shown = (pane) => panes().nth(pane).locator(".file-view:not([data-kept] *) .cm-content").first()
 const paneText = (pane) => shown(pane).evaluate((el) => [...el.querySelectorAll(".cm-line")].map((l) => l.textContent).join("\n")).catch(() => "")
 const row = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"]`).first()
@@ -51,7 +51,7 @@ const backlinks = async (p) => ((await api("GET", `file/linked?path=${encodeURIC
 
 // The app: one pane on the linking note, a second on the note to rename.
 await page.goto(`${B}#file/${encodeURIComponent(linker)}`)
-await page.waitForSelector("[data-tab-bar] [data-tab-id]", { timeout: 30000 })
+await page.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 30000 })
 for (let i = 0; i < 8 && (await panes().count()) > 1; i++) await command(page, "Close pane")
 await command(page, "Close all other tabs")
 await until(async () => (await paneText(0)).includes("[[Lighthouse plan]]"), 8000)
@@ -100,7 +100,7 @@ await follows("renamed from the title", "Qa links/Lighthouse roadmap.md", {
   [typed]: { has: "Typed [[Lighthouse roadmap]]" },
 })
 check("…its tab follows", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)) === `#file/${at}`, 3000)
-  && (await panes().nth(1).locator("[role=tab][aria-selected=true]").innerText()).trim() === "Lighthouse roadmap", await page.evaluate(() => location.hash))
+  && (await panes().nth(1).getAttribute("aria-label")) === "Lighthouse roadmap", await page.evaluate(() => location.hash))
 check("…and still shows the note", (await paneText(1)).includes("Ship it."))
 await shot("title")
 
@@ -125,7 +125,7 @@ await follows("renamed in the tree", "Qa links/Lighthouse brief.md", {
   [onDisk]: "Disk [[Lighthouse brief|plan]] and [[Qa links/Lighthouse brief]]\n",
   [typed]: { has: "Typed [[Lighthouse brief]]" },
 })
-check("…its tab follows", await until(async () => (await panes().nth(1).locator("[role=tab][aria-selected=true]").innerText()).trim() === "Lighthouse brief", 3000))
+check("…its tab follows", await until(async () => (await panes().nth(1).getAttribute("aria-label")) === "Lighthouse brief", 3000))
 
 // 3. Move file to…, into another folder: relative links climb out to it.
 await row(at).click({ button: "right" })

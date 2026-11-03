@@ -14,7 +14,9 @@ for (const [i, p] of N.entries()) await api("POST", "file", { path: p, text: `# 
 const looks = await api("GET", "config/appearance")
 const was = (await api("GET", "workspaces")).workspaces?.find((w) => w.n === 1 || w.slot === 1)
 const put = (layout) => api("PUT", "workspaces/1", { layout })
-const g = (id, to) => ({ id, tabs: [{ id: `t-${id}`, to }], active: `t-${id}` })
+/** A pane (the tabs' layouts hold panes: one tab of them all, core/layout.ts). */
+const g = (id, to) => ({ id, to })
+const tabsOf = (root, focus) => ({ tabs: [{ id: "tqa", root, focus }], active: "tqa" })
 const row = (...kids) => ({ id: "s0", dir: "row", kids, sizes: kids.map(() => 1 / kids.length) })
 const file = (p) => `file:${p}`
 
@@ -31,15 +33,15 @@ try {
   /** Lay the panes out, and load the app on them. */
   const open = async (layout, focus) => {
     // (this device's tabs, set before the app runs, and the workspace's, which it would otherwise take on)
-    await put({ root: layout, focus })
-    await page.goto("about:blank"); await page.goto(`${B}?qa-tabs=${encodeURIComponent(JSON.stringify({ root: layout, focus }))}`)
-    await until(() => page.evaluate(() => document.querySelectorAll("section[data-group]").length), 15000)
+    await put(tabsOf(layout, focus))
+    await page.goto("about:blank"); await page.goto(`${B}?qa-tabs=${encodeURIComponent(JSON.stringify(tabsOf(layout, focus)))}`)
+    await until(() => page.evaluate(() => document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])").length), 15000)
     await still()
   }
   /** Each pane's box, and each part of the bar drawn: its box and what it says. */
   const look = () => page.evaluate(() => {
     const box = (el) => { const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), w: Math.round(r.width) } }
-    const panes = Object.fromEntries([...document.querySelectorAll("section[data-group]")].map((s) => [s.dataset.group, box(s)]))
+    const panes = Object.fromEntries([...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => [s.dataset.paneFrame, box(s)]))
     const parts = [...document.querySelectorAll("[data-status-bar]")].filter((el) => el.offsetWidth).map((el) => ({
       kind: "statusLeft" in el.dataset ? "left" : "statusRight" in el.dataset ? "right" : "statusPane" in el.dataset ? "pane" : "word",
       ...box(el), text: el.innerText.replace(/\s+/g, " ").trim(),
@@ -72,7 +74,7 @@ try {
   await page.locator('[data-status-word="ga"]').click(); await wait(600)
   l = await look()
   check("its word clicked: the left pane focused, its items back under it", within(part(l, "pane"), l.panes.ga) && part(l, "pane").keys.includes("core:words")
-    && await page.evaluate(() => !!document.querySelector('section[data-group="ga"][data-focused]')), l.parts)
+    && await page.evaluate(() => !!document.querySelector('section[data-pane-frame="ga"][data-focused]')), l.parts)
 
   // 3. A note beside a chat: nothing over the chat's foot (its input); the right corner at the note's right.
   await open(row(g("ga", file(N[0])), g("gc", "view:claude-session/new")), "ga")

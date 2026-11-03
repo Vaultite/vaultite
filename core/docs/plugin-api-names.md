@@ -7,6 +7,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ActionButtons({ phone, open, panel, dock })`: The commands newtab.json lists (else the default) that exist now, drawn as the command is.
 - `activeFile()`
 - `ActiveFile`
+- `activePane()`: The pane focused in the tab on screen: where the address, the commands and what's opened go.
+- `activeTab()`: The tab on screen in this window.
 - `ActivityNote`
 - `AddButton()`: The buttons' heading's +.
 - `addDays(s, n)`
@@ -39,6 +41,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentUsageBlock({ src, options, fm })`: Its value estimated at list prices (or tokens) per day, today and the period (`days: 30`).
 - `AgentWindow`
 - `aiOn()`: Whether AI is on (the default).
+- `allPanes(l)`: Every pane of every tab.
 - `AmbientButton({ icon, text, tip, tint, onClick, className })`
 - `AmbientItem`: Drawn in the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click away from its page.
 - `announce(text, opts?)`: Say `text` to a screen reader: politely, after what it's reading, or `assertive` (an error) at once.
@@ -54,7 +57,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `appWindows`: The desktop app's other apps' windows, or null (a browser, an app build from before App windows).
 - `AppWindows`: Other Mac apps' windows in the desktop app's tabs (see electron/apps.ts): kept right behind the window, under a part of the page left see-through.
 - `ARCHIVE_DIR`: The hidden folder archived files move into, inside their own folder (the Archive plugin).
-- `ArchivedTab`: An archived tab: what it showed and was called, where it was (its pane, its place there, its tab group), and when it was archived.
+- `ArchivedTab`: An archived tab: its panes (`tab`), what its focused pane showed (`to`) and what it was called, its place in the list, and when it was archived.
 - `archivedTabs()`: The archived tabs, the latest first.
 - `archiveTwin(rel)`: The same path archived or not: People/Kai.md <-> People/.archive/Kai.md.
 - `archiveUnseen(title)`: Archive the tabs unseen for longer than the setting says (none while it's Never), named by `title` as their tab is.
@@ -90,8 +93,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Button({ look, size, className, type, busy, disabled, children, … })`: A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it.
 - `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
-- `canDropTab(item, d)`: Would that drop (in a list of a pane's tabs drawn elsewhere: the Tabs panel) change anything?
-- `canNavigate(t, dir)`
+- `canDropTab(item, d)`: Would that drop change anything?
+- `canNavigate(p, dir)`
 - `canRunAgents()`: Whether agents can run here: the Terminal plugin is on.
 - `canvases()`: The canvases in the page (a hidden tab's too: `canvasShown` tells).
 - `CanvasItem`: A thing on a canvas as others read it, in the canvas's units (x/y its top left): a shape, a text, an arrow joining `from` and `to` (items' ids).
@@ -118,9 +121,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `chooseDefaultPlace()`: Choose where new terminals and agents open in the current workspace: a machine, and the agent's account there.
 - `chooseFolder(label, onPick)`: A folder for a setting: one of the vault's (not hidden or archive ones), or one typed, made first.
 - `choosePlace(opts?)`: Choose where to open a terminal or an agent (`agent`: only that one's places), then open it.
+- `cleanTabLayout(w)`: A saved workspace, checked; one saved before tabs held panes (`{root, focus, zoom}`) is migrated.
 - `clearSelection()`
-- `closeTab(id, force?)`: Close a tab (`force`: without its view asking first, e.g.
-- `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
+- `closePane(id?, force?)`: Close a pane (the focused one): its tab keeps the others; its last pane closes the tab.
+- `closeTab(id, force?)`: Close a tab, every pane in it (`force`: without its views asking first, e.g.
+- `closeView(to)`: Close every pane showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudAccount`: A claude.ai organization whose sessions are read: its name (a personal one's: its login's email), and the logins (profiles) it's in.
 - `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with, `account` its organization's id (older builds don't say).
 - `CloudState`: `signedIn`: a profile named is signed in to claude.ai (from its cookies: nothing asked); the rest once read.
@@ -145,7 +150,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `createNamed(folder, typed, text?)`: A note named as typed (a link's target, the switcher's query): with "/" from the vault's top, else in `folder`.
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
 - `currentEditor()`: The editor the user means now, or null (the focused tab isn't a text file: a dashboard's grid, a terminal).
-- `currentFile()`: The vault file in the focused tab ("" when it shows something else, or a file from outside the vault).
+- `currentFile()`: The vault file in the focused pane ("" when it shows something else, or a file from outside the vault).
 - `currentRow()`: The row that has the keyboard, or null.
 - `currentWorkspace()`: The current workspace (null: no plugin keeps workspaces).
 - `DateOptions`: How weeks count: the day they start on (`start`, 0 Sunday … 6 Saturday) and the day of January week 1 holds (`jan`, moment's doy: 1 for the week of January 1st); unset, ISO's (1 and 4).
@@ -177,11 +182,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dotIcon(color)`: A colour's dot (a CSS colour), as a menu row's icon.
 - `dow(s)`
 - `DragItem`
-- `dragTab(e, tab, opts?)`: Press on a tab: it drags, or (one of several selected) they all do.
+- `dragTab(e, tab, opts?)`: Press on a tab: it drags (all its panes), or (one of several selected) they all do.
 - `DrawnLines`: Where drawn Markdown is in its file (a note's block in the editor): its lines (0-based) now and the file's text, null once it's gone.
 - `drawnLink(el)`: The link drawn at `el` in rendered Markdown (a note's, a sheet's) and its text, or null.
 - `dropHighlightEmoji(md)`: Each `==🟢` at a highlight's start back to `==`, for text shown without its marks (previews, sorting).
-- `dropTab(item, d)`: Drop `item` there: a pane or a tab moves, a file opens in a new tab (or its tab in that bar moves there).
+- `dropTab(item, d)`: Drop `item` there: a tab, a pane or a group moves, a file opens (a tab of its own in the list, or in a pane).
 - `edgeScroller(axis?)`: Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the pointer leaves or the drag ends.
 - `Editable({ value, set, placeholder, className, children })`: A value a block shows that can be changed in place (a person's context): click, type, Enter.
 - `editAt(path, line, opts?)`: Open a file in editing (its view may be on its way), the cursor at a 0-based line counting frontmatter (`col` in it, or `find` selected there), scrolled to; `from`: a line (numbered the same) on…
@@ -226,9 +231,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `fmtStamp(t, seconds?)`: A moment in full, for a tooltip: "Sat, Oct 10, 4:05 PM" (`seconds`: 4:05:09 PM).
 - `fmtTime(isoStr)`
 - `fnDictation(begin)`: The fn key (the menu-bar helper's) as the dictation command's key: a tap starts and the next stops, held it listens till let go; with another key it was fn+key, and what it started is dropped.
-- `FocusedFile`: The file in the focused pane or, while that shows something else (a view, like the links tab), the file focused last, and the pane it's in: what a view that follows the other panes shows (a linked…
-- `focusGroup(gid)`: Clicking in a group's pane gives it the focus (the address shows its tab; commands act on it).
-- `focusPane(gid?)`: Put the keyboard in pane `gid` (the focused one by default): its editor or terminal, if it shows one.
+- `FocusedFile`: The file in the focused pane or, while that shows something else (a view, like the links pane), the file focused last, and the pane it's in: what a view that follows the other panes shows (a…
+- `focusedPane(t)`: The pane a tab has focused.
+- `focusPane(gid?)`: Put the keyboard in pane `gid` (its id) (the focused one by default): its editor or terminal, if it shows one.
 - `focusSidebar(side)`: Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree, else its first row.
 - `Foldable({ title, count, big, keep, dflt, children, … })`: Rows under a heading that folds them (a panel's sections).
 - `folderBar(path)`: The desktop bar's crumbs (the vault, then each folder down to this one) and its buttons: Show as, Sort, More.
@@ -237,9 +242,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `folderOf(path)`
 - `FolderPage({ store, path })`: A folder's page: its header, then what it holds as a list or a grid, or a calm line when it's empty or gone.
 - `folderTabMenu()`: Show as ▸ List, Grid (every folder's page the same) and Sort by ▸ (the file tree's order): its tab's menu.
+- `foldGroup(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
+- `foldGroupMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or they grow out of it.
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
-- `foldSet(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
-- `foldSetMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or they grow out of it.
 - `followLink(s, link, how, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
@@ -252,15 +257,19 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `getTabLayout()`
 - `GitHubIcon`: GitHub's mark: a project's repository, a plugin's on GitHub.
 - `glide()`: A scroll's `behavior`: smooth, unless things are kept still.
-- `goHere(to)`: Show `to` in the active tab whatever it held (a page's tabs, List -> Map: the same place, its own history).
+- `goHere(to)`: Show `to` in the focused pane whatever it held (a page's tabs, List -> Map: the same place, its own history).
 - `GridCard`: A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its fence's layout: core/blocks.ts fenceLayout).
 - `GridEdit`: What changes a run of blocks in the file, each block by its index in the run (found where it is now).
 - `Group({ children })`: Inset grouped list, like iOS Settings (detail sheets).
 - `grouped(groups)`: A menu made of groups, a line between each two (empty groups left out): the file menus' one shape.
+- `GroupLabel({ g, n, target, className })`: A tab group's name in a solid chip of its colour (the tab bar's, the Tabs panel's), its text white or dark by it; no name, a small square.
+- `groupMenu(id, at)`: A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then what it does.
+- `groupName(g)`: What a tab group is called: its name, or its colour's ("Blue group").
+- `groupsAsDrawn(tabs)`: Each tab's group as drawn (a preview's while dragging): its line runs by it.
 - `guestEdits()`: Whether the guest may change notes (else the app is read-only for them).
 - `haptic(weight?)`
 - `Haptic`: iOS's kinds: impacts (light: a menu, a swipe past its mark, a tick; medium: picked up, put down, a row's action done), `selection` (an item passing another, a choice ticked), notifications…
-- `hashOf(to)`: The hash for a tab's target: "file/Notes%2FIdea.md", "view/terminal%2Fabc", "new".
+- `hashOf(to)`: The hash for a target: "file/Notes%2FIdea.md", "view/terminal%2Fabc", "new".
 - `hasSettings(p, files?)`: Whether a plugin has anything to set (whether it's on or not).
 - `hasTag(tags, want)`: Whether a file's tags have this one, or one nested under it (`project` matches `project/lighthouse`).
 - `HeaderItem`: Drawn at the right end of the sidebar's header (Workspaces' numbers); with the sidebar folded, at the top of the 28px icon rail with `open: false`; on phones at the top of the tab list with…
@@ -299,7 +308,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `iso(d)`
 - `isPage(path, store?)`: A page: a file a plugin draws as one (a dashboard).
 - `isPopout()`
-- `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
+- `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a pane somewhere.
 - `isWindows`: A Windows computer.
 - `joinText(before, text)`: `text` said after `before` (what precedes where it goes): a space between words, none before punctuation or at a line's start.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
@@ -351,7 +360,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `MenuItem`
 - `menuShowing()`: A menu is showing.
 - `merge3`
-- `mergeTabsSeen(other)`: Another copy of these tabs (the workspace's file, from another device): where it saw a tab later, that's taken.
+- `mergeTabsSeen(other)`: Another copy of these tabs (the workspace's file, from another device): where it saw a pane later, that's taken.
 - `mintedHere(id)`: Whether this page made terminal `id` ("claude-k3j2h1g0@studio" too) just now, so its tab may start it: a tab put back (a reload, the app reopened, another device) only attaches, and never starts…
 - `modifiedSteps()`: The first steps of the commands' keys that hold ⌘, ⌃ or ⌥: what a widget keeping the keyboard outside the page (the desktop Browser) hands back as keydowns for `runShortcut`.
 - `modKey`: The app's Mod key in words, for "⌘-click" / "Ctrl-click".
@@ -361,10 +370,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `moves()`: Whether things move: nothing asks for stillness, and Web Animations are there.
 - `mutate(f)`: Change the store optimistically, after a write: f returns a new store, with new objects where it changed (never one changed in place: the store's objects are also the server's last state, which…
 - `namedIcon(name?)`: An icon by its name (`dumbbell`): one of ICONS, one a plugin adds, any other of Lucide's, or an emoji; null for none.
-- `navigate(dir)`: Back (-1) or forward (1) in the active tab's history.
+- `navigate(dir)`: Back (-1) or forward (1) in the focused pane's history.
 - `NewFile`: A kind of file it makes, in the New submenu: `make` writes one in `folder` ("" the top) and answers its path, which opens with its name ready to type.
 - `newNoteFolder(s, from?)`: The folder every new note goes in ("" = the top), unless the vault says otherwise.
-- `newTab(gid?)`: A new tab, in the focused group (or `gid`'s), next to the active one (or at the end: `newTabsAt`, its tab bar's +): a blank tab, one per pane (the blank tab it has already moves there instead; the…
+- `newPaneId()`: A new pane's id (panes opened before tabs held panes kept their tabs' "t…" ids).
+- `newTab()`: A new blank tab next to the one on screen (or at the end: `newTabsAt`, a tab bar's +): one blank tab at a time (the one there is moves there instead; on screen already: nothing moves).
 - `NewTabCtx`
 - `newTabId()`
 - `NewTabSection`: A section of a blank tab's page, among the app's (Buttons 10, Recently opened here 20, Recently changed 30), in newtab.json's order, else by `sort`.
@@ -394,6 +404,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, a note's callouts and tables, with their lines): plugins that change rendered Markdown (another app's…
 - `onPaneMotion(fn)`: Hear each move of panes as it starts; a promise back holds it at its start till it settles (at most HOLD_MS): what a pane shows outside the page (a web page's native view) stands in a picture of…
 - `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
+- `onTabsEvent(fn)`: Hear every change of this window's tabs as events; returns the unsubscribe.
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`
 - `op(id, params?)`: Run an operation of the API (core/ops.ts: `POST /api/ops/<id>`): its result.
@@ -407,23 +418,23 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openFile(path, opts?)`: Open a file in a tab (go), on phones too; Back returns.
 - `OpenFile`: The file a status item is drawn for: its head, and its whole text, frontmatter included ("" for a file that isn't text: an image), as typed (each change redraws it, a moment after the keystroke).
 - `openFolder(path, opts?)`: Open a folder's page, as openFile opens a file: in the current tab when it shows a folder, else beside it.
+- `openInGroup(to, name, beside?)`: `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"); none such: a new one after the tab on screen (`beside`: in a split beside the focused pane, its…
 - `openingSoon(path, now?)`
 - `openInList(newTab?)`: Do what a click on the row does (`newTab`: as a ⌘-click, opening a file in a new tab).
-- `openInSet(to, name, here?)`: `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"), the focus staying; no such group: beside the focused pane (`here`: in it, after its tab), in a…
-- `openInSplit(to, side?, focusIt?, tabId?)`: `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
+- `openInSplit(to, side?, focusIt?, paneId?)`: `to` in a pane beside the focused one (right or below, made if none, or beside one keeping its view); `focusIt` false: the focus stays.
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
 - `openLinkMenu(link, at, opts?)`
 - `openMenu(at, items, up?, again?)`
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
-- `openNewTab({ pane, set, at }?)`: A new tab in the focused pane (or `pane`'s; or at the end of tab group `set`, a phone's open one): a blank one, or newtab.json's `opens`.
+- `openNewTab({ group, at }?)`: A new tab (or at the end of tab group `group`, a phone's open one): a blank one, or newtab.json's `opens`.
 - `openPermissions`: Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older build).
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
 - `openSession(src, s, terminalOn, e?, machine?)`: Open a session: the terminal tab it runs in (Terminal plugin), or its conversation in a tab (not a private one's).
-- `openTab(to, { background, from, id }?)`: `to` in a new tab of its own though another may show it, after `from` (default: the active tab) and the ones opened from it before, in its tab group; `background`: the user stays (agents' always).
+- `openTab(to, { background, from, id }?)`: `to` in a new tab though another may show it, after pane `from`'s tab (default: the one on screen) and those it opened, in its group; `background`: the user stays (agents').
 - `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in Obsidian.
 - `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
-- `openView(to, opts?)`: Open a plugin's view, shown once: a tab that has it shows it (no two terminal tabs fighting over its size), else a new tab or the group to the right.
+- `openView(to, opts?)`: Open a plugin's view, shown once: a pane that has it shows it (no two terminal panes fighting over its size), else a new tab or the pane to the right.
 - `openWebLink(url, how?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).
@@ -432,12 +443,15 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pageOf(store, plugin, name)`: A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined.
 - `PageView`: A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview, laid out as read with `editGrid`.
 - `PaletteFrame({ label, onClose, onKeyDown, children })`: The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held still under it; Escape or a click outside closes it, and the keyboard goes back.
+- `Pane`: One view with its own history: what a tab shows, or one part of a split tab.
+- `paneById(id)`
 - `Panel({ title, icon, tint, action, className, children })`: A card, headed like the Health app: small symbol and title in the category colour.
 - `PanelFold`
 - `panelMenu(key?, side?)`: Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`).
 - `panelSide(key, s?)`: Which sidebar a panel is in (null: hidden).
 - `PaneMotion`: A move of panes as it starts: the sections moving, and when they're all still.
-- `panesOf(n)`: Every group, left to right and top to bottom.
+- `panesOf(t)`: A tab's panes.
+- `paneTab(id)`: The tab that has pane `id` (in this window).
 - `paragraphAt(doc, pos)`: The lines of the soft-wrapped paragraph around `pos`: up to a blank line or a line that starts another block (list item, quote, heading, fence, table, math, HTML, footnote definition, callout…
 - `parse(s)`
 - `parseCsv(text)`: Rows of fields.
@@ -553,19 +567,17 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `selectedText(ed?)`: The text selected in an editor (the one the user means by default): its selections, or in reading view the page's selection inside it; "" for none.
 - `selectionFor(list, key, letGo?)`: What a right-click or a drag on this row is about: every selected key when it's one of several, else null (and a right-click elsewhere lets the selection go, as in Finder).
 - `selectItem(list, key)`: Phones (no keys): "Select" in a row's menu starts selecting with it.
+- `selectPane(id)`: Show pane `id`: its tab on screen, the pane focused (false: there's none).
 - `selectTab(id)`: Show a tab (false: there's none).
 - `sessionTitle(src, id)`: A session tab's label: its title once a block has seen it, else "<label> session".
 - `setAi(on)`: Turn AI on or off: the plugins for AI follow at once, their own switches untouched.
 - `setArchiveAfter(ms)`
 - `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
-- `SetLabel({ s, n, target, className })`: A tab group's name in a solid chip of its colour (the tab bar's, the Tabs panel's), its text white or dark by it; no name, a small square.
-- `setMenu(id, at)`: A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then what it does.
-- `setName(s)`: What a tab group is called: its name, or its colour's ("Blue group").
+- `setFocusedPane(id)`: Clicking in a pane gives it the focus (the address shows it; commands act on it).
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
-- `setsAsDrawn(tabs)`: Each tab's group as drawn (a preview's while dragging): its line runs by it.
 - `setSidebarMode(key)`: Show panel `key` alone in the left sidebar, the sidebar open (null: its panels again).
-- `setTabLayout(next, opts?)`: Put a whole other layout in place (Workspaces switching).
+- `setTabLayout(next, opts?)`: Put a whole other workspace in place (Workspaces switching).
 - `setTextSize(kind, percent)`: Set a kind's size, in percent (kept within STEPS' range).
 - `SettingDecl`: A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip it).
 - `SettingDecls`
@@ -583,6 +595,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `showInTree(path)`: A file or folder in the file tree, flashed (hidden files turned on first when it's in a dot folder).
 - `showLabel`: The same for a toast's action, on something just saved.
 - `shownName(path)`: A file or folder as the app names it: a note without .md, other files with their extension.
+- `shownTab(l)`: The tab on screen in a list.
 - `SidebarCtx`
 - `SidebarHeading`
 - `sidebarMode(prefs?)`: The panel the left sidebar shows alone now (its key), or null: its panels.
@@ -605,11 +618,14 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `spelling`: The spell checker sees a right-click only once the page leaves it to the system (not prevented): `at` answers what it said of the word under it (null: nothing came), `learn` adds a word to its…
 - `splitFm(text)`: Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body.
 - `splitMachine(id)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
+- `springing()`: Whether a row is about to spring open (drawn lit, as Rex's).
+- `springOver(tab, item)`: What's dragged is over tab `tab`'s row (null: over none): held there about a second, that tab opens, so what's dragged can go into its panes.
+- `springTabAt(item, x, y)`: The tab whose chip or row (`data-spring-tab`) a dragged pane or tab is held on the middle of: there it opens that tab after a moment (drop.ts' springOver) rather than making way; its edges still…
 - `stampMs`
 - `standingIn(app, id)`: The opt-in plugins on that stand in for another app's plugin (`standingIn("obsidian", "dataview")`): its original stays off while one is.
 - `startDictation(target, o, failed)`: Listen, typing into `target` (`hold`: push to talk, the key still down).
 - `startDrag(e, item, { touch }?)`: Press on something draggable: a mouse or pen, or a finger where `touch` says a phone has somewhere to drop it (else a finger scrolls or taps).
-- `startedFresh`: Asked to start on a new tab (the crash screen's "Reload with a new tab"): the tabs come back in one pane with a new tab shown, so the one that stopped the app isn't drawn.
+- `startedFresh`: Asked to start on a new tab (the crash screen's "Reload with a new tab"): the tabs come back with a new tab shown, so the one that stopped the app isn't drawn.
 - `startMap(ml, box, zoom, fail, onLoad)`: A map in `box` as the app draws one: no rotation or tilt, the attribution folded to its "i", the scheme's colours followed.
 - `startSelecting(list)`: Start a phone's select mode in a list with nothing picked yet (a list's own Select button).
 - `Stat({ label, value, unit, hint })`
@@ -624,20 +640,22 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Switch({ on, onChange, label, disabled })`: A small switch in the app's accent colour.
 - `switchPreview(text, …, value, set)`: A switch's preview: Off and On.
 - `systemNotify(title, body?)`: In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the window then comes to the front), false when it's dismissed; null in a browser, or…
-- `Tab`
-- `TabDrop`: Where a dragged tab or file would land: a place in a tab bar (`set`: the tab group it joins there, null none), or a pane's edge or middle.
-- `TabGroup`
+- `Tab`: A tab: its panes in a tree of splits (one pane, mostly), the one `focus`ed, and the one filling it for now (`zoom`, tmux's).
+- `TabDrop`: Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none), or a pane's edge or middle.
+- `TabGroup`: A tab group, as browsers have them: a named, coloured run of tabs side by side (those whose `group` is its id), folded to its name while `collapsed`.
 - `TabInfo`: `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting).
 - `tabLabel(t, store)`: The same outside a render (what the quick switcher finds).
-- `TabLayout`
-- `tabMenuOf(id)`: A tab's right-click menu, the one its bar has.
-- `tabPreview(g, item, d)`
-- `tabPreviewOrder(g, p)`: What a pane's tabs show in that order (useSlide's keys): each tab group's name (`set:<id>`) before its tabs, which a folded one hides.
-- `TABS`: The tabs' selection (core/select.ts): by tab id, the bars', the Tabs panel's and the phone's cards alike.
-- `TabSet`: A tab group, as browsers have them: a named, coloured run of a pane's tabs (those whose `set` is its id, side by side), folded to its name while `collapsed`.
-- `tabSlot(g, slots, pos, axis)`: Where `pos` along a pane's tabs as drawn lands: before which tab (`index`), in which tab group.
-- `tabsMenu(ids, phone?)`: What tabs selected together can do: close them (or the others), pin them, move them into a split of their own.
-- `tabsSeenSince(saved)`: Whether a tab was seen here later than `saved` (the workspace's file) says, by more than a quarter of the archive time: worth a write of its own.
+- `TabLayout`: A workspace: the main window's tabs, and its pop-outs'.
+- `TabList`: A window's tabs, in order, their groups (in the order their tabs are) and the one on screen.
+- `tabMenuOf(id)`: A tab's right-click menu, the one its chip has.
+- `tabOfPane(l, id)`: The tab that has pane `id`.
+- `tabPreview(l, item, d)`
+- `tabPreviewOrder(l, p)`: What the tabs show in that order (useSlide's keys): each tab group's name (`group:<id>`) before its tabs, which a folded one hides.
+- `TABS`: The tabs' selection (core/select.ts): by tab id, the bar's, the Tabs panel's and the phone's cards alike.
+- `TabsEvent`
+- `tabSlot(l, slots, pos, axis)`: Where `pos` along the tabs as drawn lands: before which tab (`index`), in which tab group.
+- `tabsMenu(ids, phone?)`: What tabs selected together can do: close them (or the others), pin them, group them, move them to a window.
+- `tabsSeenSince(saved)`: Whether a pane was seen here later than `saved` (the workspace's file) says, by more than a quarter of the archive time: worth a write of its own.
 - `tagName(t)`: A tag written the way it's matched: no #, no slashes at its ends.
 - `tagsOf(fm, body)`: A file's tags: its frontmatter `tags` (or `tag`), then its inline #tags, each once.
 - `takeAppErrors()`: The errors waiting to be sent, oldest first; they're the caller's now (the queue is emptied).
@@ -662,7 +680,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `tokens(n)`
 - `Tooltips`: The tooltips of `data-tip` in window `win`: the app's, or a popup's it draws in from here (a presenter view).
 - `touches(paths, path)`: Does this change touch `path` (the file itself, or a folder it's in)?
-- `touchTabsSeen()`: The tabs on screen are being looked at (the window is in view): stamped as seen now.
+- `touchTabsSeen()`: The tab on screen is being looked at (the window is in view): its panes stamped as seen now.
 - `trace(topic, event)`: Something the app did, under `topic`: plain values only, never a file's text.
 - `TraceEvent`
 - `treeShownItems({ reveal }?)`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse);…
@@ -690,6 +708,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useEnabled()`
 - `useFileIcon(store)`: A file's icon as the file tree draws it (its own, a dashboard's or a person's, in its colour), by path.
 - `useFocusedFile()`
+- `useGroupIn(ref, id)`: A tab group's chip or row, made just now: it comes in where it stays (its editor opens under it at once).
 - `useGroupLines(root, axis)`: `root`'s tab groups' lines: a group's chip is its `data-line-head` (its colour `--line`), each tab drawn in it (a drag's preview's, a closed one's copy) `data-line-of`; along the bar (x) or down…
 - `useGrowIn(ref, tab)`: A tab's element grows in as it's drawn: a new tab (springing), or one of a group just opened (as the others fold).
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
@@ -703,27 +722,27 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`.
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
 - `usePane()`
-- `usePaneTopBar(ref, title?)`: A view's top bar (ViewBar, the Browser's): without a tab bar its pane's title row (Tabs.tsx; not with `title` false, one sliding over the view), clear of what's fixed over the window's corners…
+- `usePaneTopBar(ref, title?)`: A view's top bar (ViewBar, the Browser's): without pane titles its pane's title row (Tabs.tsx; not with `title` false, one sliding over the view), clear of what's fixed over the window's corners…
 - `usePatched(path, version?)`: useLive for an answer the server keeps frozen (the graph), asked again on `version` and its plugin's changes as a patch of the one it has (?patch=<v>, core/app.ts patched): only what changed…
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
-- `useReflow(box, g)`: A pane's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not opened or closed (grouped, ungrouped, moved by a menu or a drop) slide from where…
+- `useReflow(box, l)`: The window's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not opened or closed (grouped, ungrouped, moved by a menu or a drop) slide from where…
 - `useRowsNear(total, step?)`: How many of `total` rows to draw: a first `step`, then `step` more whenever the mark (`ref` it: an element after the last row drawn) comes within a few screens of what scrolls it.
 - `useScopedState(key, fallback, scope?)`: The same as a hook: [value, set], redrawn when it changes (here, another device on the workspace, a switch).
 - `useSelectable(list, def)`: Make a list's rows selectable while mounted: its container says `data-select-list={list}`, each row `data-select-key`; their order on screen is the order a ⇧-click takes.
 - `useSelected(list, key)`: Whether this row is selected: drawn again only when that changes.
 - `useSelectedKeys(list)`: The keys selected in a list, live (for a short list drawn in one piece; long ones ask per row: useSelected).
 - `useSelecting(list?)`: A phone selecting (in this list): taps pick rows, and swipes rest.
-- `useSetIn(ref, id)`: A tab group's chip or row, made just now: it comes in where it stays (its editor opens under it at once).
 - `useSheetGuard(lost)`: A form in a sheet that isn't saved as you type: closing the sheet while `lost()` has lines asks first, showing them.
-- `useShrinkOut(ref, what)`: A tab, or a tab group's chip or row, gone from a tab bar or the Tabs panel however it went shrinks away: a copy, as React takes it out.
+- `useShrinkOut(ref, what)`: A tab, or a tab group's chip or row, gone from the tab bar or the Tabs panel however it went shrinks away: a copy, as React takes it out.
 - `useSidebarMode()`
 - `useSidebars()`
 - `useSlide(box, order, axis)`: Slide `box`'s `[data-slide]` items (its children, `box` positioned) into `order`, their keys; those left out fade.
 - `useStore()`: The store and the last error loading it, redrawn when either changes.
-- `useTabLabels(store)`: What each tab shows (its label and icon), as its bar does: for plugins (the Tabs panel).
-- `useTabLayout()`
+- `useTabLabels(store)`: What each tab or pane shows (its label and icon), as the bar does: for plugins (the Tabs panel).
+- `useTabLayout()`: The whole workspace, live.
+- `useTabList()`: This window's tabs, live.
 - `useTerminalAccount(id, a)`: The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the first (its bare name's).
 - `useTextSize(kind)`: A kind's size, redrawn when it changes (any pref change redraws; it's cheap).
 - `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` (Pinch to resize text) is on (off as in Obsidian: pinches set it off by accident).
@@ -736,7 +755,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `vaultSidebars(prefs?)`: sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows).
 - `ViewCtx`
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
-- `viewInfo(to, disabled?, tab?)`: A view's tab as it shows (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too); `tab`: the tab's id, for what's that tab's (its icon's action).
+- `viewInfo(to, disabled?, pane?)`: A view as it shows in a tab (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too); `pane`: the pane's id, for what's that pane's (its icon's action).
 - `viewMenuItems(target, disabled?)`: The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target.
 - `viewOnScreen(target, disabled?)`: Whether what a view target shows is on screen in another form (its view's `onScreen`).
 - `viewPinLabel(target, disabled?)`: A pinned view's name now, when its view knows it (its `pinLabel`: a web page's title, once loaded), else null.
@@ -756,8 +775,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `WeeksGrid({ tip, tint, goal, weeks, onOpen })`
 - `weekStart(s)`
 - `WIKI`
+- `withMyTabs(w)`: Workspace `w` (saved elsewhere: another window, another device) with this window's own tabs: the main window's list and which pop-outs there are (it opens and closes them), or a pop-out's list.
 - `withoutBlocks(text)`: A text without its views (each with the blank lines after it), and blank lines at its ends when it had any.
-- `withoutTabsIn(w, ids)`: Workspace `w` without the tabs `ids`: panes left with none close.
+- `withoutPanes(l, ids)`: List `l` without the panes `ids`: a tab left with none goes (withoutTabs).
+- `withoutTabs(l, ids)`: List `l` without the tabs `ids`: the tab shown, if it goes, hands over to the next (nextShown).
 - `workspaceChanged()`: Tell the app the current workspace, or something kept in it, changed (the plugin keeping workspaces calls it).
 - `WorkspaceHost`: A plugin that keeps workspaces.
 - `WorkspaceInfo`: A workspace as other plugins see it: its number, its name (or "Workspace 2") and the places its tabs show (tab targets: "view:terminal/abc", "file:Notes/Idea.md").

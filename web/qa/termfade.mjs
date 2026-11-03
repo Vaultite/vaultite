@@ -36,7 +36,7 @@ async function inked(sel, name) {
 
 try {
   await page.goto(B)
-  await page.waitForSelector("section[data-group]", { timeout: 30000 }); await wait(800)
+  await page.waitForSelector("section[data-pane-frame]", { timeout: 30000 }); await wait(800)
   await command(page, "Split right", 600)
   await page.evaluate((s) => { location.hash = `#view/terminal%2F${s}` }, id)
   await until(() => page.$(".xterm-screen canvas"), 10000)
@@ -47,12 +47,12 @@ try {
   const webgl = await page.evaluate(() => !!document.querySelector(".xterm-screen canvas:not(.xterm-link-layer)"))
   check("it draws with WebGL", webgl)
   await wait(500)
-  const pane = await page.evaluate(() => document.querySelector(".xterm").closest("section[data-group]").dataset.group)
-  const live = await inked(`section[data-group="${pane}"] .xterm-screen`, "live")
+  const pane = await page.evaluate(() => document.querySelector(".xterm").closest("section[data-pane-frame]").dataset.paneFrame)
+  const live = await inked(`section[data-pane-frame="${pane}"] .xterm-screen`, "live")
 
-  // Lifted as a card, by its pane's handle or its tab: the card's copy shows its lines too.
-  for (const [what, grip] of [["pane", `[data-pane-handle="${pane}"]`], ["tab", `section[data-group="${pane}"] [data-tab-bar] [data-tab-id]`]]) {
-    await page.hover(`section[data-group="${pane}"] [data-tab-bar]`)
+  // Lifted as a card, by its pane's handle or its (split) tab's chip: the card's copy shows its lines too.
+  for (const [what, grip] of [["pane", `[data-pane-handle="${pane}"]`], ["tab", "[data-tab-strip] [data-tab-id]:has([role=tab][aria-selected=true])"]]) {
+    await page.hover(`[data-pane-bar="${pane}"]`)
     const h = await page.locator(grip).first().boundingBox()
     await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2); await page.mouse.down()
     await page.mouse.move(h.x - 120, h.y + 200, { steps: 8 }); await wait(700)

@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, type OpCtx, OpError, type Param, pathAsSaid, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
 import { ConfigError, type Item } from "../../../core/vault.ts"
-import { clean, isSplit, leaves, mapGroups, newId, tidy, withoutTabsIn, type Group, type Tab, type TabSet, type Workspace } from "../../../core/layout.ts"
+import { allPanes, blankList, clean, mapPanes, newPaneId, newTabId, panesOf, tabWith, tabWithout, withoutPanes, withoutTabs, type Group, type Pane, type Tab, type TabList, type Workspace } from "../../../core/layout.ts"
 import { blankLayout, isBlank } from "./blank.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -65,7 +65,18 @@ plugin.onSync((vault) => {
     const own = filePart(d)
     plugin.saveSettings(Object.keys(own).length ? own : null, String(i + 1))
   }
+  migrateLayouts()
 })
+/** Layouts kept from before tabs held panes, rewritten in the new shape once (clean migrates them; every device
+ *  migrates one alike, so this changes no id another has). */
+function migrateLayouts() {
+  for (let i = 0; i < MAX; i++) {
+    const k = keptOfSlot(i), l = k.layout as Item | undefined
+    if (!l || typeof l !== "object" || Array.isArray(l.tabs) || !l.root) continue
+    const w = clean(l)
+    plugin.keep(String(i + 1), { ...k, layout: w ?? undefined }, { shared: true })
+  }
+}
 
 /** Refuse (409, 503) when slot i's file (or with no i, any slot's) is there but doesn't read now: what's shown of it may
  *  not be what it holds, and a write would lose that. */
@@ -116,8 +127,11 @@ const localPlace = (to: string, self = selfNow) =>
 /** A tab's place as it's saved: a terminal of this machine's with "@<this machine>". */
 const savedPlace = (to: string, self = selfNow) =>
   self && to.startsWith(TERM) && to.length > TERM.length && !to.includes("@") ? `${to}@${self}` : to
-/** A layout with each tab's place changed by f. */
-const placesMapped = (l: Workspace, f: (to: string) => string): Workspace => ({ ...l, root: mapGroups(l.root, (g) => ({ ...g, tabs: g.tabs.map((t) => ({ ...t, to: f(t.to) })) })) })
+/** A layout with each pane's place changed by f (its pop-outs' too). */
+const placesMapped = (l: Workspace, f: (to: string) => string): Workspace => {
+  const list = <L extends TabList>(x: L): L => ({ ...x, tabs: x.tabs.map((t) => ({ ...t, root: mapPanes(t.root, (p) => ({ ...p, to: f(p.to) })) })) })
+  return { ...list(l), ...(l.windows ? { windows: l.windows.map(list) } : {}) }
+}
 /** The slots as this machine's app has them (`localPlace`). */
 const shownSlot = (d: Item | null, self = selfNow): Item | null => {
   const l = self ? layoutOf(d) : null
@@ -151,7 +165,8 @@ function putSlot(i: number, body: unknown) {
   const next: Item = { ...(list[i] ?? {}) }
   // The tabs as this machine's app has them, saved with their machine (a terminal tab new to the file is this one's).
   for (const [k, v] of Object.entries(body)) {
-    if (k === "layout" && v !== null) { next.layout = placesMapped(v, (to) => savedPlace(to)); continue }
+    // (checked as the app reads it: one in the old shape is migrated, one that isn't tabs is none)
+    if (k === "layout" && v !== null) { const w = clean(v); if (w) next.layout = placesMapped(w, (to) => savedPlace(to)); else delete next.layout; continue }
     if (k === "state" && v !== null) {
       // Key by key: a device saving the files it opened doesn't put back another's open folders.
       const st = { ...obj(next.state) }
@@ -231,12 +246,8 @@ function follow(src: string, dst: string | null) {
     if (pins && pinned!.join("\n") !== pins.join("\n")) { changed = true; next.pinned = pinned }
     const l = layoutOf(d)
     if (l && dst !== null) {
-      const root = mapGroups(l.root, (g) => ({ ...g, tabs: g.tabs.map((t) => {
-        if (typeof t.to !== "string" || !t.to.startsWith("file:")) return t
-        const to = moved(t.to.slice(5))
-        return to && to !== t.to.slice(5) ? { ...t, to: `file:${to}` } : t
-      }) }))
-      if (JSON.stringify(root) !== JSON.stringify(l.root)) { changed = true; next.layout = { ...l, root } }
+      const after = placesMapped(l, (to) => { if (!to.startsWith("file:")) return to; const m = moved(to.slice(5)); return m ? `file:${m}` : to })
+      if (JSON.stringify(after) !== JSON.stringify(l)) { changed = true; next.layout = after }
     }
     return next
   })
@@ -248,7 +259,7 @@ plugin.onMove(follow)
  *  nobody's looking at isn't idle. */
 plugin.provide("tabs:open", () => shown().flatMap((d) => {
   const l = layoutOf(d)
-  return l ? leaves(l.root).flatMap((g) => g.tabs.map((t) => t.to)).filter((t): t is string => typeof t === "string") : []
+  return l ? [l, ...(l.windows ?? [])].flatMap(allPanes).map((p) => p.to) : []
 }))
 
 plugin.route("DELETE", "workspaces/*", (req) => {
@@ -259,65 +270,50 @@ plugin.route("DELETE", "workspaces/*", (req) => {
 })
 
 // ---------- moving tabs and panes to another workspace, or opening files there ----------
-/** A slot's layout (core/layout.ts), checked as the app checks it, since the file is written by hand too. */
-function layoutOf(d: Item | null): Workspace | null {
-  const l = d?.layout as Partial<Workspace> | undefined
-  const root = l && typeof l === "object" ? tidy(clean(l.root)) : null
-  if (!root) return null
-  return { root, focus: leaves(root).some((g) => g.id === l!.focus) ? l!.focus! : leaves(root)[0].id }
-}
+/** A slot's tabs (core/layout.ts), checked as the app checks them, since they're written by other devices too. */
+const layoutOf = (d: Item | null): Workspace | null => clean(d?.layout)
+/** Whether a layout is nothing yet (blank.ts). */
+const nothing = (l: Workspace | null) => !l || blankLayout(l)
 
-/** The layout without the tabs `ids`, as closing them would leave it (without closing anything: a terminal's shell
- *  runs on). A workspace left with none gets one blank tab. */
-function without(l: Workspace, ids: Set<string>): Workspace {
-  const left = withoutTabsIn(l, ids)
-  if (left) return left
-  const t = newId(), g = leaves(l.root)[0]?.id ?? "g0"
-  return { root: { id: g, tabs: [{ id: t, to: "new" }], active: t }, focus: g }
+/** The layout without the tabs `tabs` and panes `panes`, as closing them would leave it (without closing anything: a
+ *  terminal's shell runs on). A workspace left with none gets one blank tab. */
+function without(l: Workspace, tabs: Set<string>, panes = new Set<string>()): Workspace {
+  const left = withoutPanes(withoutTabs(l, tabs) ?? blankList(), panes)
+  return { ...(left ?? blankList()), ...(l.windows ? { windows: l.windows } : {}) }
 }
 
 /** Tabs coming into a layout, with new ids where theirs are taken there (ids are made per device). */
 function freshIds(l: Workspace | null, tabs: Tab[]): Tab[] {
-  const taken = new Set(l ? leaves(l.root).flatMap((g) => g.tabs.map((t) => t.id)) : [])
-  return tabs.map((t) => { const out = taken.has(t.id) ? { ...t, id: newId() } : t; taken.add(out.id); return out })
+  const taken = new Set(l ? [l, ...(l.windows ?? [])].flatMap((x) => x.tabs.flatMap((t) => [t.id, ...panesOf(t).map((p) => p.id)])) : [])
+  return tabs.map((t) => {
+    const ids = new Map(panesOf(t).map((p) => [p.id, taken.has(p.id) ? newPaneId() : p.id]))
+    const out = { ...t, id: taken.has(t.id) ? newTabId() : t.id, root: mapPanes(t.root, (p) => ({ ...p, id: ids.get(p.id)! })), focus: ids.get(t.focus) ?? t.focus }
+    taken.add(out.id); ids.forEach((id) => taken.add(id))
+    return out
+  })
 }
-/** The layout with `tabs` added at the end of the group focused last (not shown: each device keeps the tab it shows).
- *  A workspace with no tabs yet, or only one blank one, gets them in its place. */
+/** The layout with `tabs` added at the end of its list (not shown: each device keeps the tab it shows), out of any tab
+ *  group. A workspace with nothing yet gets them in its place. */
 function withTabs(l: Workspace | null, tabs: Tab[]): { layout: Workspace; tabs: Tab[] } {
-  if (blankLayout(l)) {
-    const g = l ? leaves(l.root)[0]?.id ?? "g0" : "g0"
-    return { layout: { root: { id: g, tabs, active: tabs[0].id }, focus: g }, tabs }
-  }
-  tabs = freshIds(l, tabs)
-  const gs = leaves(l!.root)
-  const into = gs.find((g) => g.id === l!.focus) ?? gs[0]
-  const root = mapGroups(l!.root, (g) => (g.id !== into.id ? g : { ...g, tabs: [...g.tabs, ...tabs], active: g.tabs.some((t) => t.id === g.active) ? g.active : tabs[0].id }))
-  return { layout: { ...l!, root }, tabs }
-}
-
-/** The layout with a whole pane (a group and its tabs) added as a new pane on the right, taking its share of the width;
- *  the focus stays where it was. A workspace with nothing yet is that pane. */
-function withPane(l: Workspace | null, g: Group): { layout: Workspace; tabs: Tab[]; group: string } {
-  if (blankLayout(l)) return { layout: { root: g, focus: g.id }, tabs: g.tabs, group: g.id }
-  const tabs = freshIds(l, g.tabs)
-  const active = tabs[Math.max(0, g.tabs.findIndex((t) => t.id === g.active))].id
-  const id = leaves(l!.root).some((x) => x.id === g.id) ? `g${newId()}` : g.id
-  const k = isSplit(l!.root) && l!.root.dir === "row" ? l!.root.kids.length : 1
-  const root = tidy({ id: `s${newId()}`, dir: "row", kids: [l!.root, { id, tabs, active, ...(g.sets ? { sets: g.sets } : {}) }], sizes: [k / (k + 1), 1 / (k + 1)] })!
-  return { layout: { ...l!, root }, tabs, group: id }
+  const bare = tabs.map((t) => { const { group: _, ...rest } = t; return rest })
+  if (nothing(l)) return { layout: { tabs: bare, active: bare[0].id }, tabs: bare }
+  const fresh = freshIds(l, bare)
+  return { layout: { ...l!, tabs: [...l!.tabs, ...fresh] }, tabs: fresh }
 }
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : null)
-/** A tab's target from a path: "Notes/Idea.md" -> "file:Notes/Idea.md"; "view:…" and "new" as they are. */
+/** A target from a path: "Notes/Idea.md" -> "file:Notes/Idea.md"; "view:…" and "new" as they are. */
 const targetOf = (p: string) => { const x = p.replace(/^\/+/, ""); return x.startsWith("view:") || x.startsWith("file:") || x === "new" ? x : `file:${x}` }
+/** Where a pane or tab is in a layout. */
+type Found = { tab: Tab; pane?: Pane }
 
 plugin.route("POST", "workspaces/move", (req) => {
   const body = (req.body ?? {}) as Item
   const to = slot(String(body.to ?? ""))
-  const id = str(body.tab), gid = str(body.group), file = str(body.path)
+  const id = str(body.tab), pid = str(body.pane), file = str(body.path)
   const open = (Array.isArray(body.open) ? body.open : [body.open]).filter((x): x is string => typeof x === "string" && !!x)
-  if ([id, gid, file, open.length ? "open" : null].filter(Boolean).length !== 1) {
-    throw new HTTPError(400, "say what, one of: `tab` (a tab's id), `group` (a pane's id: all its tabs), `path` (the file a tab shows) or `open` (files to open there)")
+  if ([id, pid, file, open.length ? "open" : null].filter(Boolean).length !== 1) {
+    throw new HTTPError(400, "say what, one of: `tab` (a tab's id: all its panes), `pane` (a pane's id: out of its split), `path` (the file a pane shows) or `open` (files to open there)")
   }
   readable()
   const list = slots()
@@ -328,25 +324,31 @@ plugin.route("POST", "workspaces/move", (req) => {
   // is left as it is.
   if (open.length) {
     const l = layoutOf(dest)
-    const there = new Set(l ? leaves(l.root).flatMap((g) => g.tabs.map((t) => localPlace(t.to))) : [])
+    const there = new Set(l ? allPanes(l).map((p) => localPlace(p.to)) : [])
     const want = [...new Set(open.map((x) => localPlace(targetOf(x))))].filter((t) => t !== "new" && !there.has(t))
     for (const t of want) {
       if (t.startsWith("file:") && !fs.existsSync(path.join(plugin.vault.path, t.slice(5)))) throw new HTTPError(404, `there's no ${t.slice(5)} in the vault`)
     }
     if (!want.length) return { to: to + 1, tabs: [], workspaces: shown() }
-    const put = withTabs(l, want.map((t) => ({ id: newId(), to: savedPlace(t) })))
+    const put = withTabs(l, want.map((t) => tabWith({ id: newPaneId(), to: savedPlace(t) })))
     list[to] = { ...dest, layout: put.layout }
     save(list)
-    return { to: to + 1, tabs: put.tabs.map((t) => ({ ...t, to: localPlace(t.to) })), tab: { ...put.tabs[0], to: localPlace(put.tabs[0].to) }, workspaces: shown() }
+    const tabs = put.tabs.map(local)
+    return { to: to + 1, tabs, tab: tabs[0], workspaces: shown() }
   }
 
-  // Where it is: workspace `from`, or the one workspace that has it. A pane is found by its group's id (ids repeat
-  // between workspaces: "g0" is everywhere, so say `from`), a tab by its id or the file it shows.
+  // Where it is: workspace `from`, or the one workspace that has it. A tab or pane by its id, or the pane showing a file.
   const target = file ? localPlace(targetOf(file)) : null
-  const what = id ? `tab ${id}` : gid ? `pane ${gid}` : file!
-  const has = (i: number): Group | null => {
+  const what = id ? `tab ${id}` : pid ? `pane ${pid}` : file!
+  const has = (i: number): Found | null => {
     const l = layoutOf(list[i])
-    return l ? leaves(l.root).find((g) => (gid ? g.id === gid : g.tabs.some((t) => (id ? t.id === id : localPlace(t.to) === target)))) ?? null : null
+    if (!l) return null
+    for (const t of l.tabs) {
+      if (id && t.id === id) return { tab: t }
+      const p = panesOf(t).find((x) => (pid ? x.id === pid : !id && localPlace(x.to) === target))
+      if (p) return { tab: t, pane: p }
+    }
+    return null
   }
   let from: number
   if (body.from !== undefined && body.from !== null) {
@@ -359,49 +361,52 @@ plugin.route("POST", "workspaces/move", (req) => {
     from = where[0]
   }
   if (from === to) throw new HTTPError(400, `${what} is already in workspace ${to + 1}`)
-  const g = has(from)!
-  // (a whole pane keeps its tab groups; a tab alone leaves its group)
-  const moving = (gid ? g.tabs : g.tabs.filter((t) => (id ? t.id === id : localPlace(t.to) === target)).slice(0, 1)).map((t) => ({ id: t.id, to: t.to, ...(gid && t.set ? { set: t.set } : {}) }))
-  list[from] = { ...list[from]!, layout: without(layoutOf(list[from])!, new Set(moving.map((t) => t.id))) }
-  // What's open there already isn't opened twice (two tabs of one terminal would fight over its size): it just leaves
-  // here, and the tab there stays as it is.
+  const f = has(from)!
+  // A pane of a split goes alone, as a tab of its own; a tab (or a tab's only pane) goes whole, panes and all.
+  const alone = f.pane && panesOf(f.tab).length > 1 ? f.pane : null
+  const moving: Tab = alone ? tabWith(alone, `t${alone.id}`) : f.tab
+  list[from] = { ...list[from]!, layout: alone ? without(layoutOf(list[from])!, new Set(), new Set([alone.id])) : without(layoutOf(list[from])!, new Set([f.tab.id])) }
+  // What's open there already isn't opened twice (two panes of one terminal would fight over its size): it just leaves
+  // here, and the one there stays as it is.
   const dl = layoutOf(dest)
-  const there = new Set(dl ? leaves(dl.root).flatMap((x) => x.tabs.map((t) => localPlace(t.to))) : [])
-  const coming = moving.filter((t) => t.to === "new" || !there.has(localPlace(t.to)))
-  if (!coming.length) {
+  const there = new Set(dl ? allPanes(dl).map((p) => localPlace(p.to)) : [])
+  const going = panesOf(moving).filter((p) => p.to !== "new" && there.has(localPlace(p.to)))
+  const coming = going.length ? tabWithout(moving, new Set(going.map((p) => p.id))) : moving
+  if (!coming) {
     save(list)
     return { from: from + 1, to: to + 1, tabs: [], workspaces: shown() }
   }
-  const active = coming.some((t) => t.id === g.active) ? g.active : coming[0].id
-  const put = gid ? withPane(dl, { id: g.id, tabs: coming, active, ...(Array.isArray(g.sets) ? { sets: g.sets } : {}) }) : withTabs(dl, coming)
+  const put = withTabs(dl, [coming])
   list[to] = { ...dest, layout: put.layout }
   save(list)
-  const tabs = put.tabs.map((t) => ({ ...t, to: localPlace(t.to) }))
-  return { from: from + 1, to: to + 1, tabs, tab: tabs[0], ...("group" in put ? { group: put.group } : {}), workspaces: shown() }
+  const tabs = put.tabs.map(local)
+  return { from: from + 1, to: to + 1, tabs, tab: tabs[0], workspaces: shown() }
 })
+/** A tab as this machine's app has it: its terminals without "@<this machine>". */
+const local = (t: Tab): Tab => ({ ...t, root: mapPanes(t.root, (p) => ({ ...p, to: localPlace(p.to) })) })
 
 plugin.route("POST", "workspaces/close", async (req) => {
   const body = (req.body ?? {}) as Item
   const id = str(body.tab), file = str(body.path)
-  if ([id, file].filter(Boolean).length !== 1) throw new HTTPError(400, "say what, one of: `tab` (a tab's id) or `path` (what its tabs show: a file, or view:terminal/<id>)")
+  if ([id, file].filter(Boolean).length !== 1) throw new HTTPError(400, "say what, one of: `tab` (a tab's or pane's id) or `path` (what its panes show: a file, or view:terminal/<id>)")
   const self = await selfId()
   const only = body.from !== undefined && body.from !== null ? slot(String(body.from)) : null
   readable(only ?? undefined)
   const list = slots()
   // As this machine's app has them: its own terminals without "@<this machine>", whichever way they're saved or named.
   const target = file ? localPlace(targetOf(file), self) : null
-  // A tab by its id (in `from`, or the one workspace that has it), or every tab showing `path` (in `from`, or in every
-  // workspace): like closing them in the app, without ending anything (a terminal's shell runs on).
+  // A tab or pane by its id (in `from`, or the one workspace that has it), or every pane showing `path` (in `from`, or in
+  // every workspace): like closing them in the app, without ending anything (a terminal's shell runs on).
   const closing = list.map((w, i) => {
     const l = layoutOf(w)
     if (!l || (only !== null && i !== only)) return []
-    return leaves(l.root).flatMap((g) => g.tabs.filter((t) => (id ? t.id === id : localPlace(t.to, self) === target)).map((t) => ({ id: t.id, to: localPlace(t.to, self) })))
+    return l.tabs.flatMap((t) => (id === t.id ? panesOf(t) : panesOf(t).filter((p) => (id ? p.id === id : localPlace(p.to, self) === target))).map((p) => ({ id: p.id, tab: t.id, to: localPlace(p.to, self) })))
   })
   const where = closing.flatMap((tabs, i) => (tabs.length ? [i] : []))
   const what = id ? `tab ${id}` : target!.replace(/^file:/, "")
   if (!where.length) throw new HTTPError(404, `${what} isn't open in ${only !== null ? `workspace ${only + 1}` : "any workspace"}`)
   if (id && where.length > 1) throw new HTTPError(409, `${what} is open in workspaces ${where.map((i) => i + 1).join(" and ")}: say which with \`from\``)
-  for (const i of where) list[i] = { ...list[i]!, layout: without(layoutOf(list[i])!, new Set(closing[i].map((t) => t.id))) }
+  for (const i of where) list[i] = { ...list[i]!, layout: without(layoutOf(list[i])!, new Set(), new Set(closing[i].map((t) => t.id))) }
   save(list)
   return { closed: where.flatMap((i) => closing[i].map((t) => ({ workspace: i + 1, ...t }))), workspaces: shown(self) }
 })
@@ -434,22 +439,18 @@ plugin.provide("context", ({ workspace: n }: { workspace: number | null }) => {
   return { data: { workspace: { n, label } }, text: `Workspace: ${n} (${label}), the one the user's window is on (vau workspace lists them)` }
 })
 
-type PaneTabs = { pane: number; group: string; focused: boolean; tabs: { id: string; to: string; path?: string; group?: string }[]; groups: TabSet[] }
+type TabRow = { id: string; active?: boolean; pinned?: boolean; name?: string; group?: string; panes: { id: string; to: string; path?: string; focused?: boolean }[] }
 
-/** A workspace's tabs, pane by pane (left to right, top to bottom). */
+/** A workspace's tabs in order, each with its panes, and its tab groups. */
 function workspaceTabs(w: Item, n: number) {
-  const panes: PaneTabs[] = []
   const l = layoutOf(w)
-  for (const g of l ? leaves(l.root) : []) {
-    const sets = g.sets ?? []
-    panes.push({ pane: panes.length + 1, group: g.id, focused: g.id === l!.focus,
-      tabs: g.tabs.map((t) => ({ id: t.id, to: t.to, ...(t.to.startsWith("file:") ? { path: t.to.slice(5) } : {}),
-        ...(t.set && sets.some((x) => x.id === t.set) ? { group: t.set } : {}) })),
-      groups: sets.map((x) => ({ ...x })) })
-  }
-  return { workspace: n, name: nameOf(w, n), panes }
+  const tabs: TabRow[] = (l?.tabs ?? []).map((t) => ({ id: t.id, ...(t.pinned ? { pinned: true } : {}), ...(t.name ? { name: t.name } : {}), ...(t.group ? { group: t.group } : {}),
+    panes: panesOf(t).map((p) => ({ id: p.id, to: p.to, ...(p.to.startsWith("file:") ? { path: p.to.slice(5) } : {}), ...(p.id === t.focus && panesOf(t).length > 1 ? { focused: true } : {}) })) }))
+  return { workspace: n, name: nameOf(w, n), tabs, groups: (l?.groups ?? []) as Group[], windows: (l?.windows ?? []).length }
 }
 const allTabs = () => shown().flatMap((w, i) => (w ? [workspaceTabs(w, i + 1)] : []))
+/** Every pane of every workspace, with its tab and workspace. */
+const allPanesIn = () => allTabs().flatMap((w) => w.tabs.flatMap((t) => t.panes.map((p) => ({ ...p, tab: t.id, alone: t.panes.length === 1, workspace: w.workspace }))))
 
 /** The workspace the user's window is on (the app tells the server), or null. */
 async function windowOn(ctx: OpCtx): Promise<number | null> {
@@ -469,24 +470,23 @@ sidebars and only a blank tab counts as unused: it's listed as such and never ke
 user was in last switches to it (the command workspace:<n>; an unused one shows sidebars.json's sidebars and a blank
 tab, and is made once something changes there).
 
-tabs: each workspace's tabs (or workspace <n>'s), pane by pane: the tab's id and what it shows (a file's path, or
-view:terminal/<id>, new for a blank tab), a tab group's tabs under it (vau tabs group changes them). Panes are numbered
-left to right, top to bottom; * marks the one focused last.
+tabs: each workspace's tabs in order (or workspace <n>'s): each tab's id and its panes (a split tab has several), each
+pane's id and what it shows (a file's path, or view:terminal/<id>, new for a blank pane), a tab group's tabs under it
+(vau tabs group changes them); * marks a split tab's focused pane.
 
-move: moves a tab to workspace <n> (POST /api/workspaces/move), like dragging it onto that number in the sidebar's
-header: it leaves its workspace (its pane closes if it was the last tab there; a workspace's only tab leaves a blank
-one) and goes at the end of <n>'s pane focused last (made with plugins.json's sidebar if <n> is empty). Name it by
-its tab id (from vau workspace tabs) or by the file it shows (a path or a name, like vau open); if that file is open in
-several workspaces, say which with --from <m>. --pane moves the whole pane that has it, all its tabs, like dragging
-the pane by its handle onto the number: it becomes a pane of its own on the right of <n>'s. Every open window on either
-workspace follows at once; nobody is switched, and nothing is closed (a terminal's shell keeps running).
+move: moves a tab, or a pane out of its split, to workspace <n> (POST /api/workspaces/move), like dragging it onto
+that number in the sidebar's header: it leaves its workspace (a workspace's only tab leaves a blank one) and goes at
+the end of <n>'s tabs as a tab (its panes with it). Name it by a tab's or pane's id (from vau workspace tabs) or by the
+file a pane shows (a path or a name, like vau open: that pane, alone if it's in a split; --whole: its whole tab); if
+it's open in several workspaces, say which with --from <m>. Every open window on either workspace follows at once;
+nobody is switched, and nothing is closed (a terminal's shell keeps running).
 
-open: opens a file in workspace <n> (a new tab at the end of its pane focused last, not shown there; nothing if it's
-already open there), like dragging it from the file tree onto the number. Nobody is switched.
+open: opens a file in workspace <n> (a new tab at the end of its tabs, not shown there; nothing if it's already open
+there), like dragging it from the file tree onto the number. Nobody is switched.
 
-close: closes a tab by its id, or every tab showing a file or a view (view:terminal/<id>), in every workspace or in
---from <m>'s (POST /api/workspaces/close). Every open window follows at once. Closing a terminal's tab doesn't end
-its session (vau terminal end does both).
+close: closes a tab or pane by its id, or every pane showing a file or a view (view:terminal/<id>), in every workspace
+or in --from <m>'s (POST /api/workspaces/close); a tab goes with its last pane. Every open window follows at once.
+Closing a terminal's pane doesn't end its session (vau terminal end does both).
 
   vau workspace
   vau workspace 2
@@ -495,7 +495,7 @@ its session (vau terminal end does both).
   vau workspace move "Notes/Idea.md" 2
   vau workspace move Idea 3 --from 1
   vau workspace move t1k2x9a0 2
-  vau workspace move Idea 2 --pane
+  vau workspace move Idea 2 --whole
   vau workspace open "Notes/Idea.md" 3
   vau workspace close t1k2x9a0
   vau workspace close view:terminal/claude-k3j2h1g0
@@ -526,7 +526,7 @@ function listText(r: { workspaces: (Item | null)[]; window: number | null }) {
     const sb = w.sidebars as { left?: unknown; right?: unknown } | undefined
     const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
     const panels = sb ? `left ${strs(sb.left).join(", ") || "(none)"}; right ${strs(sb.right).join(", ") || "(none)"}` : "sidebars.json's sidebars"
-    const count = workspaceTabs(w, i + 1).panes.reduce((t, p) => t + p.tabs.length, 0)
+    const count = workspaceTabs(w, i + 1).tabs.length
     const pins = pinsOf(w) ? `pinned: ${pinsOf(w)!.join(", ") || "(none)"}` : "pages.json's pinned pages"
     return `${i + 1}. ${nameOf(w, i + 1)}${here}: ${panels}; ${pins}; ${count || 1} tab(s)`
   })
@@ -556,7 +556,7 @@ plugin.op({
 plugin.op({
   id: "workspace.tabs",
   cli: "workspace tabs",
-  summary: "Each workspace's tabs (or one's), pane by pane: the tab's id and what it shows.",
+  summary: "Each workspace's tabs (or one's), each with its panes: their ids and what each pane shows.",
   help: HELP,
   kind: "read",
   params: { n: N("only this workspace", false) },
@@ -568,12 +568,14 @@ plugin.op({
   },
   text: (out: ReturnType<typeof workspaceTabs>[]) => {
     const rows = out.flatMap((w) => [
-      `${w.workspace}. ${w.name}`,
-      ...(w.panes.length ? w.panes.flatMap((p) => [`  pane ${p.pane}${p.focused ? " *" : ""}`, ...p.tabs.flatMap((t, i) => {
-        const g = t.group && t.group !== p.tabs[i - 1]?.group ? p.groups.find((x) => x.id === t.group) : null
-        const head = g ? [`    group ${g.name ? `"${g.name}"` : "(no name)"} ${g.color}${g.collapsed ? ", collapsed" : ""} (${g.id})`] : []
-        return [...head, `    ${t.group ? "  " : ""}${t.id}  ${t.path ?? t.to}`]
-      })]) : ["  (one blank tab)"]),
+      `${w.workspace}. ${w.name}${w.windows ? ` (and ${w.windows} pop-out window${w.windows === 1 ? "" : "s"})` : ""}`,
+      ...(w.tabs.length ? w.tabs.flatMap((t, i) => {
+        const g = t.group && t.group !== w.tabs[i - 1]?.group ? w.groups.find((x) => x.id === t.group) : null
+        const head = g ? [`  group ${g.name ? `"${g.name}"` : "(no name)"} ${g.color}${g.collapsed ? ", collapsed" : ""} (${g.id})`] : []
+        const pad = t.group ? "    " : "  ", what = (p: TabRow["panes"][number]) => p.path ?? p.to
+        if (t.panes.length === 1) return [...head, `${pad}${t.id}  pane ${t.panes[0].id}  ${what(t.panes[0])}${t.pinned ? " (pinned)" : ""}`]
+        return [...head, `${pad}${t.id}  split${t.name ? ` "${t.name}"` : ""}${t.pinned ? " (pinned)" : ""}`, ...t.panes.map((p) => `${pad}  ${p.focused ? "*" : " "} pane ${p.id}  ${what(p)}`)]
+      }) : ["  (one blank tab)"]),
     ])
     return rows.length ? rows.join("\n") : "(no workspaces yet: the sidebar uses .vaultite/plugins.json)"
   },
@@ -582,39 +584,31 @@ plugin.op({
 plugin.op({
   id: "workspace.move",
   cli: "workspace move",
-  summary: "Move a tab (or with pane, the whole pane that has it) to another workspace, like dragging it onto its number.",
+  summary: "Move a tab (all its panes), or a pane out of its split, to another workspace, like dragging it onto its number.",
   help: HELP,
   kind: "write",
   params: {
-    tab: { type: "string", required: true, description: "the tab: its id (vau workspace tabs), or the file or view it shows (a path or a name)" },
+    tab: { type: "string", required: true, description: "the tab or pane: its id (vau workspace tabs), or the file or view a pane shows (a path or a name)" },
     to: N("the workspace to move it to"),
     from: FROM,
-    pane: { type: "boolean", description: "move the whole pane that has it, all its tabs" },
+    whole: { type: "boolean", description: "named by a pane in a split: move its whole tab" },
   },
   args: ["tab", "to"],
-  run: async ({ tab: what, to, from, pane }, ctx) => {
-    const all = allTabs()
-    const tabs = all.flatMap((w) => w.panes.flatMap((p) => p.tabs.map((t) => ({ ...t, workspace: w.workspace }))))
-    const { id, target } = await tabNamed(ctx, what, new Set(tabs.map((t) => t.id)))
+  run: async ({ tab: what, to, from, whole }, ctx) => {
+    const panes = allPanesIn()
+    const ids = new Set([...panes.map((p) => p.id), ...panes.map((p) => p.tab)])
+    const { id, target } = await tabNamed(ctx, what, ids)
     const shows = target && (target.startsWith("view:") || target === "new" ? target : `file:${target}`)
-    const found = tabs.filter((t) => (id ? t.id === id : t.to === shows) && (!from || t.workspace === from))
-    if (!id) {
-      const where = [...new Set(tabs.filter((t) => t.to === shows).map((t) => t.workspace))]
-      if (!where.length) throw new OpError(`${target} isn't open in any workspace (vau workspace tabs lists them)`, 404)
-      if (where.length > 1 && !from) throw new OpError(`${target} is open in workspaces ${where.join(" and ")}: say which with \`from\``, 409)
-    }
-    if (pane) {
-      // The pane that has it, by its group's id (ids repeat between workspaces, so with its workspace).
-      const t = found[0]
-      if (!t) throw new OpError(`${id ? `tab ${id}` : target} isn't open${from ? ` in workspace ${from}` : ""}`, 404)
-      const p = all.find((w) => w.workspace === t.workspace)!.panes.find((x) => x.tabs.some((y) => y.id === t.id))!
-      const r = await ctx.api("POST", "workspaces/move", { from: t.workspace, to, group: p.group })
-      return { ...r, moved: `pane ${p.pane} (${p.tabs.length} tab${p.tabs.length === 1 ? "" : "s"})` }
-    }
-    const r = await ctx.api("POST", "workspaces/move", { to, ...(from ? { from } : {}), ...(id ? { tab: id } : { path: target }) })
-    return { ...r, moved: `${id ? `tab ${id}` : target}`, ...(r.tab?.id && r.tab.id !== what ? { as: r.tab.id } : {}) }
+    const found = panes.filter((p) => (id ? p.id === id || p.tab === id : p.to === shows) && (!from || p.workspace === from))
+    if (!found.length) throw new OpError(`${id ? id : target} isn't open${from ? ` in workspace ${from}` : " in any workspace"} (vau workspace tabs lists them)`, 404)
+    const where = [...new Set(found.map((p) => p.workspace))]
+    if (where.length > 1 && !from) throw new OpError(`${id ?? target} is open in workspaces ${where.join(" and ")}: say which with \`from\``, 409)
+    const p = found[0], at = from ?? p.workspace
+    const byTab = id === p.tab || whole || p.alone
+    const r = await ctx.api("POST", "workspaces/move", { from: at, to, ...(byTab ? { tab: p.tab } : { pane: p.id }) })
+    return { ...r, moved: byTab ? `tab ${p.tab}` : `pane ${p.id}`, ...(r.tab?.id && r.tab.id !== p.tab ? { as: r.tab.id } : {}) }
   },
-  text: (r) => `Moved ${r.moved} from workspace ${r.from} to workspace ${r.to}${r.as && !r.moved.startsWith("pane") ? ` (tab ${r.as})` : ""}.`,
+  text: (r) => `Moved ${r.moved} from workspace ${r.from} to workspace ${r.to}${r.as ? ` (tab ${r.as} there)` : ""}.`,
 })
 
 plugin.op({
@@ -635,22 +629,22 @@ plugin.op({
 plugin.op({
   id: "workspace.close",
   cli: "workspace close",
-  summary: "Close a tab by its id, or every tab showing a file or a view, in every workspace or one (nothing is ended).",
+  summary: "Close a tab or pane by its id, or every pane showing a file or a view, in every workspace or one (nothing is ended).",
   help: HELP,
   kind: "write",
   params: {
-    tab: { type: "string", required: true, description: "the tab's id, or the file or view (view:terminal/<id>) its tabs show" },
+    tab: { type: "string", required: true, description: "a tab's or pane's id, or the file or view (view:terminal/<id>) its panes show" },
     from: { ...FROM, description: "only in this workspace" },
   },
   args: ["tab"],
   run: async ({ tab: what, from }, ctx) => {
-    const ids = new Set(allTabs().flatMap((w) => w.panes.flatMap((p) => p.tabs.map((t) => t.id))))
+    const ids = new Set(allPanesIn().flatMap((p) => [p.id, p.tab]))
     const { id, target } = await tabNamed(ctx, what, ids)
     return { ...await ctx.api("POST", "workspaces/close", { ...(from ? { from } : {}), ...(id ? { tab: id } : { path: target }) }), what }
   },
   text: (r) => {
     const closed = r.closed as { workspace: number; id: string; to: string }[]
     const at = [...new Set(closed.map((t) => t.workspace))].join(", ")
-    return `Closed ${closed.length === 1 ? closed[0].to.replace(/^file:/, "") : `${closed.length} tabs of ${r.what}`} in workspace ${at}.`
+    return `Closed ${closed.length === 1 ? closed[0].to.replace(/^file:/, "") : `${closed.length} panes of ${r.what}`} in workspace ${at}.`
   },
 })

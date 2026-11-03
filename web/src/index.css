@@ -498,30 +498,30 @@ html[data-dragging] [data-tab-bar] [data-slide] { transition-duration: var(--mot
 [data-tab-bar] > [data-tab-row] > [data-slide=incoming] { top: calc(var(--spacing) * 1.5); top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
 /* A group's line (core/tabline.ts): one element, from its chip past its last tab as they're drawn. In the bar, 2px on a
    whole pixel under the tabs; in the Tabs panel, down their left from under the chip, ending rounded. */
-[data-set-line] { position: absolute; pointer-events: none; transition: background-color var(--motion) var(--ease-out); }
-[data-set-line][data-axis=x] {
+[data-group-line] { position: absolute; pointer-events: none; transition: background-color var(--motion) var(--ease-out); }
+[data-group-line][data-axis=x] {
   height: 2px; border-radius: 1px;
   top: calc(var(--spacing) * 8.5 + 1px);
   top: calc(round(nearest, calc(var(--spacing) * 1.5), 1px) + round(up, calc(var(--spacing) * 7 + 1px), 1px));
 }
-[data-set-line][data-axis=y] { left: 9px; width: 2px; border-radius: 0 0 9999px 9999px; }
+[data-group-line][data-axis=y] { left: 9px; width: 2px; border-radius: 0 0 9999px 9999px; }
 /* Its chip answers the pointer and the keyboard as a browser's does: a halo of its colour on hover, the ring on focus. */
-html:not([data-dragging]) [data-set-chip]:hover > [data-set-label] { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tint) 35%, transparent); }
-[data-set-chip]:focus-visible { outline: none; }
-[data-set-chip]:focus-visible > [data-set-label] { outline: 2px solid var(--ring); outline-offset: 2px; }
+html:not([data-dragging]) [data-group-chip]:hover > [data-group-name] { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tint) 35%, transparent); }
+[data-group-chip]:focus-visible { outline: none; }
+[data-group-chip]:focus-visible > [data-group-name] { outline: 2px solid var(--ring); outline-offset: 2px; }
 /* Folded, its chip shows its count (a square without a name grows into a pill around it) and its line goes. All at
-   once as a click folds it, moving while its tabs do (`data-set-moving`, core/tabfold.ts); an agent's fold just shows. */
-[data-set-label][data-bare] { height: calc(var(--spacing) * 3.5); min-width: calc(var(--spacing) * 3.5); border-radius: 4px; }
-[data-set-count] { display: grid; grid-template-columns: 0fr; opacity: 0; }
-[data-set-count] > span { min-width: 0; overflow: hidden; }
-:is([data-set-chip], [data-set-row])[aria-expanded=false] :is([data-set-label][data-bare]) { height: calc(var(--spacing) * 5); padding-inline: calc(var(--spacing) * 1.5); border-radius: 6px; }
-:is([data-set-chip], [data-set-row])[aria-expanded=false] [data-set-count] { grid-template-columns: 1fr; opacity: 1; }
-[data-set-line][data-folded] { opacity: 0; }
-[data-set-moving] :is([data-set-label][data-bare], [data-set-count]) {
+   once as a click folds it, moving while its tabs do (`data-group-moving`, core/tabfold.ts); an agent's fold just shows. */
+[data-group-name][data-bare] { height: calc(var(--spacing) * 3.5); min-width: calc(var(--spacing) * 3.5); border-radius: 4px; }
+[data-group-count] { display: grid; grid-template-columns: 0fr; opacity: 0; }
+[data-group-count] > span { min-width: 0; overflow: hidden; }
+:is([data-group-chip], [data-group-row])[aria-expanded=false] :is([data-group-name][data-bare]) { height: calc(var(--spacing) * 5); padding-inline: calc(var(--spacing) * 1.5); border-radius: 6px; }
+:is([data-group-chip], [data-group-row])[aria-expanded=false] [data-group-count] { grid-template-columns: 1fr; opacity: 1; }
+[data-group-line][data-folded] { opacity: 0; }
+[data-group-moving] :is([data-group-name][data-bare], [data-group-count]) {
   transition: height var(--motion) var(--ease-out), padding var(--motion) var(--ease-out), border-radius var(--motion) var(--ease-out),
     grid-template-columns var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out), background-color var(--motion) var(--ease-out);
 }
-[data-set-line][data-moving] { transition: background-color var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out); }
+[data-group-line][data-moving] { transition: background-color var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out); }
 /* The left sidebar switching to a panel alone (its mode) or back: the new body fades in, as Rex's activity mode does. */
 [data-mode-fade] { animation: mode-fade var(--motion) var(--ease-out) both; }
 @keyframes mode-fade { from { opacity: 0; } }
@@ -1121,8 +1121,8 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 }
 
 /* With no right sidebar on screen (data-right-sidebar, App.tsx), its toggle (fixed in the window's top-right corner)
-   sits at the end of the top-right pane's tab bar: the bar keeps clear of it. */
-:root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [data-tab-bar] { padding-right: calc(var(--spacing) * 10); }
+   sits at the end of the tab bar (without it, the top-right pane's bar): the bar keeps clear of it. */
+:root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [data-title-row] { padding-right: calc(var(--spacing) * 10); }
 /* Without pane titles, a corner the toggle sits in keeps a title bar's height, so it covers no page. */
 :root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
 /* Nor tabs, with a top bar (merged: a file's, the Browser's): a pane at the window's top has no strip, its bar is the title
@@ -1134,9 +1134,9 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
    folded to its rail the top-left pane's tab bar makes room for both. Elsewhere the window keeps its own title bar. */
 /* Only the tabs row itself drags (not the bar's padding, where the sidebar toggle sits when folded: a drag region
    drawn after the toggle would swallow its clicks). */
-html[data-electron] [data-titlebar], html[data-electron] [data-top] > [data-tab-bar] > div:first-child { -webkit-app-region: drag; }
-html[data-electron] [data-top] > [data-tab-bar] > div:first-child { align-self: stretch; }
-html[data-electron] [data-tab-bar] [role="presentation"], html[data-electron] :is([data-tab-bar], [role="tablist"]) button,
+html[data-electron] [data-titlebar], html[data-electron] [data-top] > [data-title-row] > div:first-child { -webkit-app-region: drag; }
+html[data-electron] [data-top] > [data-title-row] > div:first-child { align-self: stretch; }
+html[data-electron] [data-title-row] [role="presentation"], html[data-electron] :is([data-title-row], [role="tablist"]) button,
 html[data-electron] [data-sidebar-toggle] { -webkit-app-region: no-drag; }
 html[data-electron] [data-header-item] { -webkit-app-region: no-drag; }
 /* A top bar that's its pane's title row (merged, above) drags the window by its empty part. */
@@ -1156,10 +1156,10 @@ html[data-electron] :is(body > :not(#root), .fixed.inset-0, [role=menu], [role=d
    Sidebar.tsx): in compact 112px, and with the rail (11 units) the first tab 12px after the toggle. */
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-titlebar] { padding-left: calc(88px + var(--spacing) * 6); }
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-sidebar-toggle=""] { left: 88px; }
-html[data-electron][data-platform=darwin][data-left-rail]:not([data-fullscreen]) [data-corner] > [data-tab-bar] { padding-left: calc(88px - var(--spacing)); }
+html[data-electron][data-platform=darwin][data-left-rail]:not([data-fullscreen]) [data-corner] > [data-title-row] { padding-left: calc(88px - var(--spacing)); }
 html[data-electron][data-platform=darwin]:is([data-left-rail], [data-popout]):not([data-fullscreen]) [data-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
 /* A pop-out window (no sidebars): its top-left tab bar makes room for the lights. */
-html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [data-corner] > [data-tab-bar] { padding-left: calc(88px - var(--spacing)); }
+html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [data-corner] > [data-title-row] { padding-left: calc(88px - var(--spacing)); }
 /* Stand-ins for the traffic lights while the sidebar slides (core/peek.ts places and shows them): the Mac's colours as
    macOS 26 draws them (Display P3), and out of focus its grey, which lightens what's under it (darkens, in light mode). */
 [data-lights-ghost] { position: absolute; display: flex; gap: calc(var(--light-pitch) - var(--light-size)); pointer-events: none; }
@@ -1173,7 +1173,7 @@ html[data-window-inactive] [data-lights-ghost] > i { --light: rgb(35 35 35); --l
 @media (prefers-color-scheme: light) { html[data-window-inactive] [data-lights-ghost] > i { mix-blend-mode: difference; } }
 /* In step with the panes sliding (core/panemotion.ts, on the spring), so the first tab never passes
    under the lights while the sidebar opens or folds. */
-html[data-electron] [data-corner] > [data-tab-bar] { transition: padding-left var(--motion-spring) var(--spring); }
+html[data-electron] [data-corner] > [data-title-row] { transition: padding-left var(--motion-spring) var(--spring); }
 /* Folded to its rail, the lights are wider than it: the rail's top row looks like the tab bar beside it (one title bar),
    and its edge starts under that row instead of running between the lights. */
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed] { border-right-width: 0; }
@@ -1192,11 +1192,11 @@ html[data-electron] .vault-manager-drag { -webkit-app-region: drag; }
    --window-controls wide (electron/preload.cjs): the right sidebar's toggle moves left of them, and the top-right pane's
    tab bar makes room for both (with a right rail: the controls are wider than it, as the Mac's lights are than the left). */
 html[data-electron][data-platform=win32]:not([data-fullscreen]) [data-sidebar-toggle=right] { right: calc(var(--window-controls, 138px) + 8px); }
-html[data-electron][data-platform=win32]:not([data-fullscreen]):not([data-right-sidebar]) [data-right-corner] > [data-tab-bar] { padding-right: calc(var(--spacing) * 10 + var(--window-controls, 138px)); }
-html[data-electron][data-platform=win32][data-no-rails]:not([data-fullscreen]):not([data-right-sidebar]) [data-right-corner] > [data-tab-bar] { padding-right: calc(var(--window-controls, 138px) + 8px); }
-html[data-electron][data-platform=win32][data-right-rail]:not([data-fullscreen]) [data-right-corner] > [data-tab-bar] { padding-right: calc(var(--window-controls, 138px) - var(--spacing)); }
+html[data-electron][data-platform=win32]:not([data-fullscreen]):not([data-right-sidebar]) [data-right-corner] > [data-title-row] { padding-right: calc(var(--spacing) * 10 + var(--window-controls, 138px)); }
+html[data-electron][data-platform=win32][data-no-rails]:not([data-fullscreen]):not([data-right-sidebar]) [data-right-corner] > [data-title-row] { padding-right: calc(var(--window-controls, 138px) + 8px); }
+html[data-electron][data-platform=win32][data-right-rail]:not([data-fullscreen]) [data-right-corner] > [data-title-row] { padding-right: calc(var(--window-controls, 138px) - var(--spacing)); }
 html[data-electron][data-platform=win32]:not([data-fullscreen]):is(:not([data-right-sidebar]), [data-right-rail]) [data-right-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
-html[data-electron][data-platform=win32] [data-right-corner] > [data-tab-bar] { transition: padding-right var(--motion-spring) var(--spring); }
+html[data-electron][data-platform=win32] [data-right-corner] > [data-title-row] { transition: padding-right var(--motion-spring) var(--spring); }
 
 /* Phones: a drawer (components/PhoneDrawer.tsx) is swiped closed sideways from anywhere on it. touch-action stops at
    the nearest scroller, so every element in it says so, or the panels' scroller would hand a sideways swipe to the
@@ -1260,8 +1260,8 @@ section[data-moving="up"] { z-index: 4; }
   content: ""; position: absolute; inset: 0; z-index: 19; pointer-events: none; opacity: 0;
   background: color-mix(in srgb, var(--background) 90%, black); transition: opacity var(--motion-fast) var(--ease-out);
 }
-:root[data-dim-panes] section[data-group]:not([data-focused], [inert]) > [data-pane-body]::after { opacity: 0.3; }
-:root.dark[data-dim-panes] section[data-group]:not([data-focused], [inert]) > [data-pane-body]::after { opacity: 0.38; }
+:root[data-dim-panes] section[data-pane-frame]:not([data-focused], [inert]) > [data-pane-body]::after { opacity: 0.3; }
+:root.dark[data-dim-panes] section[data-pane-frame]:not([data-focused], [inert]) > [data-pane-body]::after { opacity: 0.38; }
 
 /* Panes as cards (appearance `paneCards`, desktop): each tiled pane an inset, rounded card, the sidebars' colour in the
    gaps around and between them (Workspace.tsx places panes and dividers by --pane-gap, the dividers in the gaps). The
@@ -1274,14 +1274,14 @@ section[data-moving="up"] { z-index: 4; }
 }
 :root.dark[data-pane-cards] { --card-edge: 0 0 0 0.5px color-mix(in srgb, var(--foreground) 12%, transparent); --card-lift: 0 1px 3px -1px rgb(0 0 0 / 0.4); }
 :root[data-pane-cards] [data-pane-area] { background: var(--sidebar); }
-:root[data-pane-cards] [data-pane-area] > :is(section[data-group]:not([data-floating]), [data-pane-gone]) {
+:root[data-pane-cards] [data-pane-area] > :is(section[data-pane-frame]:not([data-floating]), [data-pane-gone]) {
   border-width: 0; border-radius: 10px; overflow: hidden; background: var(--background); box-shadow: var(--card-edge), var(--card-lift);
   transition: box-shadow var(--motion-fast) var(--ease-out);
 }
-:root[data-pane-cards] [data-pane-area][data-split] > section[data-group][data-focused]:not([data-floating]) {
+:root[data-pane-cards] [data-pane-area][data-split] > section[data-pane-frame][data-focused]:not([data-floating]) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--foreground) 24%, transparent), 0 2px 8px -2px rgb(0 0 0 / 0.14);
 }
-:root.dark[data-pane-cards] [data-pane-area][data-split] > section[data-group][data-focused]:not([data-floating]) {
+:root.dark[data-pane-cards] [data-pane-area][data-split] > section[data-pane-frame][data-focused]:not([data-floating]) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--foreground) 26%, transparent), 0 2px 8px -2px rgb(0 0 0 / 0.5);
 }
 :root[data-pane-cards] [data-pane-area] > [data-plate] { border-radius: 10px; }
@@ -1289,11 +1289,11 @@ section[data-moving="up"] { z-index: 4; }
 :root[data-pane-cards] aside[data-side]:not([data-peek]) { border-color: transparent; }
 html[data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before,
 html[data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::after { content: none; }
-/* With no right sidebar, its toggle sits in the top-right card's tab bar: as far in as the card is. */
-:root[data-pane-cards]:not([data-right-sidebar]) [data-sidebar-toggle=right] { translate: calc(var(--pane-gap) * -0.5) var(--pane-gap); }
+/* With no right sidebar and no tab bar, its toggle sits in the top-right card's bar: as far in as the card is. */
+:root[data-pane-cards]:not([data-right-sidebar]):not([data-top-tabs]) [data-sidebar-toggle=right] { translate: calc(var(--pane-gap) * -0.5) var(--pane-gap); }
 html[data-translucent][data-pane-cards] [data-pane-area] { background: var(--chrome-sidebar); }
-html[data-translucent][data-pane-cards] [data-pane-area] > section[data-group]:not([data-floating]) { background: none; }
-html[data-translucent][data-pane-cards] section[data-group] > [data-tab-bar] { background: var(--chrome); }
+html[data-translucent][data-pane-cards] [data-pane-area] > section[data-pane-frame]:not([data-floating]) { background: none; }
+html[data-translucent][data-pane-cards] section[data-pane-frame] > [data-pane-bar] { background: var(--chrome); }
 
 /* The bars above files fading (appearance `fileBarFade`, core/barfade.ts): slower than they come back. Typing in a
    file, or always, back while the pointer is at one (or the keyboard in it); leaving it, a moment's grace first. */
@@ -1328,7 +1328,7 @@ html[data-translucent] {
 html[data-translucent], html[data-translucent] body { background: transparent; }
 html[data-translucent] [data-pane-body] { background: var(--background); }
 html[data-translucent] aside[data-side] { background: var(--chrome-sidebar); }
-html[data-translucent] section[data-top] > [data-tab-bar] { background: var(--chrome); }
+html[data-translucent] [data-top] > [data-title-row] { background: var(--chrome); }
 /* The rail's top row is the tab bar's, one title bar (above): its colour, over nothing else. */
 html[data-translucent][data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed] {
   background: linear-gradient(var(--chrome), var(--chrome)) top / 100% calc(var(--spacing) * 10) no-repeat, var(--chrome-sidebar);
@@ -1356,9 +1356,6 @@ html[data-translucent][data-translucent-pages] {
   & [data-pane-body] { background: var(--page-glass); }
   /* What paints the page's own ground over it lets it through: terminals (their theme too), canvases, the graph. */
   & [data-pane-body] :is([data-terminal-view], [data-terminal-view] .xterm-viewport, [data-canvas-board], [data-graph-view]) { background: transparent; }
-  /* Stacked tabs slide over each other: each carries the glass, blurring the one under it, over a bare pane. */
-  & [data-pane-body]:has(> [data-stack]) { background: none; }
-  & [data-stacked-tab] { background: var(--page-glass); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); }
   /* A file's bar: clear at the top, the page blurred under it once it scrolls (sticky: stuck). */
   & [data-pane-body] [data-view-bar] { background: none; container-type: scroll-state; }
 }

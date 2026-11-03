@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react"
 import { ArrowUp, Bot, Check, ChevronRight, CircleAlert, Crosshair, Ellipsis, Eraser, Eye, FilePen, FileText, Highlighter, History, MessageCircle, MessageSquare,
   MessageSquareText, MousePointerClick, Pencil, Replace, RotateCcw, Search, Shapes, ShieldQuestion, SquareTerminal, User, X } from "lucide-react"
-import { Button, cn, fmtStamp, fmtTime, getTabLayout, isDesktop, isViewOpen, Markdown, menuBelow, notifyError, op, openFile, openView, panesOf, plural, usePane } from "@vaultite"
+import { Button, cn, fmtStamp, fmtTime, getTabLayout, isDesktop, isViewOpen, Markdown, menuBelow, notifyError, op, openFile, openView, allPanes, panesOf, plural, tabOfPane, usePane } from "@vaultite"
 import type { ChatLive } from "@plugins/claude-code/driven"
 import { getState, sendMoment, subscribe, type Agent } from "./live"
 import type { Lines, Message, Read } from "./moments"
@@ -20,9 +20,9 @@ const linesOf = (s: string) => (s ? s.replace(/\n$/, "").split("\n") : [])
 /** Go to a place in a note: its tab if it's open, else beside this pane (on a desktop with another), then its line. */
 function jump(p: Place, pane: string) {
   if (!p.path) return
-  const path = p.path, groups = panesOf(getTabLayout().root)
-  const open = groups.some((g) => g.tabs.some((t) => t.to === `file:${path}`))
-  const other = groups.find((g) => g.id !== pane)
+  const path = p.path, l = getTabLayout(), mine = tabOfPane(l, pane)
+  const open = allPanes(l).some((x) => x.to === `file:${path}`)
+  const other = mine && panesOf(mine).find((x) => x.id !== pane)
   openFile(path, !open && other && isDesktop() ? { pane: other.id } : {})
   follow({ name: "", path, line: p.line ?? 1, find: p.find })
 }
@@ -37,7 +37,7 @@ export function CompanionView({ id, c, chat }: { id: string; c: ChatLive; chat: 
   const turns = useMemo(() => turnsOf(c.entries), [c.entries])
   const open = useMemo(() => new Set(s.notes.map((n) => n.id)), [s.notes])
   const tasks = useTasks(id, turns)
-  const { group: pane } = usePane()
+  const { pane } = usePane()
   // (items it left anywhere here: an answer to one shows on it, not again as a row)
   const items = useMemo(() => new Set(turns.flatMap((t) => t.acts.flatMap((a) => (a.item ? [a.item] : [])))), [turns])
   const groups = useMemo(() => groupsOf(turns, items), [turns, items])

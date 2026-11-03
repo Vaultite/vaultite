@@ -93,12 +93,13 @@ const pages = () => app.evaluate(({ BaseWindow, BrowserWindow }) => {
 const shownUrl = async () => (await pages()).find((p) => p.visible)?.url
 /** The focused pane's tabs (web ones by their address, a container's as @id/address) and the active one. */
 const tabs = () => win.evaluate(() => {
+  // (the window's tabs, each by what its focused pane shows)
   const w = JSON.parse(localStorage.getItem("vaultite.tabs"))
-  const g = (function walk(n) { return n.tabs ? n : walk(n.kids.find((k) => JSON.stringify(k).includes(w.focus)) ?? n.kids[0]) })(w.root)
-  const name = (t) => t.to.replace(/^view:web\//, "")
-  return { list: g.tabs.map(name), active: name(g.tabs.find((t) => t.id === g.active)), ids: g.tabs.map((t) => t.id), activeId: g.active }
+  const leaf = (n) => (n.kids ? n.kids.flatMap(leaf) : [n])
+  const name = (t) => (leaf(t.root).find((p) => p.id === t.focus) ?? leaf(t.root)[0]).to.replace(/^view:web\//, "")
+  return { list: w.tabs.map(name), active: name(w.tabs.find((t) => t.id === w.active)), ids: w.tabs.map((t) => t.id), activeId: w.active }
 })
-const paneCount = () => win.locator("section[data-group]").count()
+const paneCount = () => win.locator("[data-pane-area] > section[data-pane-frame]:not([data-away])").count()
 /** A click in the visible page as a person's (real input), with modifiers or another button. */
 const clickInPage = (sel, modifiers = [], button = "left") => app.evaluate(async ({ BaseWindow, BrowserWindow }, [sel, modifiers, button]) => {
   const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow))
@@ -112,7 +113,7 @@ const menuLabels = (items) => app.evaluate((_e, sub) => { const at = sub ? globa
 const pick = (label, sub) => app.evaluate((_e, [label, sub]) => { const at = sub ? globalThis.__menu.find((i) => i.label === sub).submenu : globalThis.__menu; at.find((i) => i.label === label).click() }, [label, sub])
 const at = (p) => `${SITE}${p}`
 /** Show the tab of an address (the first). */
-const showTab = async (to) => { const t = await tabs(); await win.locator(`[data-tab-id="${t.ids[t.list.indexOf(to)]}"]`).first().click() }
+const showTab = async (to) => { const t = await tabs(); await win.locator(`[data-tab-strip] [data-tab-id="${t.ids[t.list.indexOf(to)]}"] [role=tab]`).first().click() }
 async function openOpener() {
   await ui({ action: "open", path: at("/opener"), newTab: true })
   check("(the opener's page is shown)", await until(async () => (await shownUrl()) === at("/opener"), 30000), await pages())

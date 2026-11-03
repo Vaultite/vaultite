@@ -18,7 +18,7 @@ import { listOrders, rowMenu, selectClick, selectedAttr, selectionFor, useSelect
 import { cell } from "@/core/signal"
 import { openInSplit } from "@/core/splits"
 import { useVirtual } from "@/core/virtual"
-import { focusGroup, go, useFocusedFile } from "@/core/workspace"
+import { setFocusedPane, go, useFocusedFile } from "@/core/workspace"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { fileMenu, filesMenu, folderMenu, grouped, openItem, remove } from "@/components/FileActions"
 import { rawUrl } from "@/components/FileViewers"
@@ -70,10 +70,10 @@ function pageMenu(path: string): MenuItem[] {
 
 /** Go to another folder in this tab: a step in its history (on a phone the page moves as Back or Forward, `dir`). */
 function useEnter() {
-  const { group } = usePane()
+  const { pane: own } = usePane()
   const desk = useDesktop()
   return (folder: string, dir: -1 | 1, newTab = false) => {
-    const change = () => { if (group) focusGroup(group); go(folderTarget(folder), newTab) }
+    const change = () => { if (own) setFocusedPane(own); go(folderTarget(folder), newTab) }
     if (desk || newTab) change(); else step(dir, change)
   }
 }
@@ -164,9 +164,9 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
   const desk = useDesktop()
   const got = useMemo(() => folderItems(store.files, path, fileSort, showArchived), [store.files, path, fileSort, showArchived])
   // Files open beside it: in the pane of the file focused last when that's another pane (as the Files tab opens them).
-  const { group } = usePane()
+  const { pane: own } = usePane()
   const focused = useFocusedFile()
-  const pane = focused.group && focused.group !== group ? focused.group : undefined
+  const pane = focused.pane && focused.pane !== own ? focused.pane : undefined
   const enter = useEnter()
   const renaming = naming.use((r) => r?.path ?? null)
   const root = useRef<HTMLDivElement>(null)

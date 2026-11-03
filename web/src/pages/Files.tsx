@@ -12,11 +12,11 @@ export function Files({ store }: { store: Store }) {
   const subtitle = `${count} files in your vault`
   // A tab opens files beside itself: in the pane of the file focused last when that's another pane (like Links).
   const focused = useFocusedFile()
-  const own = usePane().group
+  const own = usePane().pane
   if (isDesktop()) {
     return (
       <div data-files-view className="-mx-1.5">
-        <FileTree store={store} active={focused.path} title={subtitle} pane={focused.group && focused.group !== own ? focused.group : undefined} />
+        <FileTree store={store} active={focused.path} title={subtitle} pane={focused.pane && focused.pane !== own ? focused.pane : undefined} />
       </div>
     )
   }

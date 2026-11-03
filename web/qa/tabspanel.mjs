@@ -145,29 +145,30 @@ try {
 
   // The bar off, live.
   writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTitles: true }) + "\n")
-  const off = await until(() => page.$("[data-tabs-hidden]"), 8000)
-  check("tabBar false: the bar shows no tabs", !!off && (await page.$$("[data-tab-bar] [role=tab]")).length === 0)
-  const title = () => page.$eval("[data-pane-title]", (e) => e.textContent.trim()).catch(() => null)
+  const off = await until(async () => !(await page.$("[data-tab-strip]")), 8000)
+  check("tabBar false: no tab bar, no tabs above the panes", !!off && (await page.$$("[role=tab]")).length === 0)
+  const title = () => page.$eval("[data-pane-area] > section:not([data-away]) [data-pane-title]", (e) => e.textContent.trim()).catch(() => null)
   r = await rows()
-  check("its bar shows the tab on screen and how many", (await title())?.startsWith(r.find((x) => x.on).label) && (await title()).endsWith(`${r.length} tabs`), [await title(), r])
-  check("the bar keeps its height", (await page.$eval("[data-tab-bar]", (e) => e.getBoundingClientRect().height)) === 40)
+  check("its pane's bar names what it shows", (await title())?.startsWith(r.find((x) => x.on).label), [await title(), r])
+  check("the pane's bar is a title bar's height", (await page.$eval("[data-pane-area] > section:not([data-away]) [data-pane-bar]", (e) => e.getBoundingClientRect().height)) === 40)
   const other = r.find((x) => !x.on)
   await page.click(`[data-open-tab="${other.id}"]`); await wait(300)
   check("the panel still switches tabs", (await title())?.startsWith(other.label), await title())
   await page.screenshot({ path: `${OUT}bar-off.png` })
 
-  // A split: each pane under its number.
+  // A split: one joined row, a half per pane.
+  await page.click(`[data-open-tab="${other.id}"]`); await wait(200)
   await page.click(`[data-open-tab="${other.id}"]`, { button: "right" }); await wait(200)
   await page.click("[role=menu] >> text=Split right"); await wait(400)
-  const heads = await page.$$eval("[data-tabs-pane]", (els) => els.length)
-  check("a split lists each pane under its number", heads === 2 && (await page.$$("[data-pane-title]")).length === 2, heads)
+  const halves = await page.$$eval(`[data-open-tab="${other.id}"] [data-ui^="pane:"]`, (els) => els.length)
+  check("a split is one row with a half per pane", halves === 2, halves)
   await page.screenshot({ path: `${OUT}split.png` })
 
   // Nor pane titles: a note's bar is its pane's title row.
   writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTitles: false }) + "\n")
   const bare = await until(async () => (await page.$$("[data-bare][data-merged]")).length === 2, 8000)
   // Both show notes, whose bar is then the pane's title row: no strip over it, clear of the sidebars' toggles.
-  const tops = await page.$$eval("[data-group]", (els) => {
+  const tops = await page.$$eval("[data-pane-area] > section[data-pane-frame]:not([data-away])", (els) => {
     const toggles = [...document.querySelectorAll("[data-sidebar-toggle]")].map((t) => t.getBoundingClientRect())
     return els.map((s) => {
       const strip = s.querySelector("[data-bare]").getBoundingClientRect(), bar = [...s.querySelectorAll("[data-view-bar]")].map((b) => b.getBoundingClientRect()).find((r) => r.width)
@@ -181,7 +182,7 @@ try {
 
   // Back on.
   writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: true }) + "\n")
-  check("tabBar true again: the tabs come back", !!(await until(async () => (await page.$$("[data-tab-bar] [role=tab]")).length > 0, 8000)))
+  check("tabBar true again: the tabs come back", !!(await until(async () => (await page.$$("[data-tab-strip] [role=tab]")).length > 0, 8000)))
 } finally {
   await browser.close()
   for (const f of [sidebars, look, hotkeys, newtab]) if (f.was === null) rmSync(f.p, { force: true }); else writeFileSync(f.p, f.was)

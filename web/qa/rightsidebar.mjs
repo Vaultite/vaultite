@@ -44,7 +44,7 @@ try {
   const aside = await (await right()).boundingBox()
   const status = await (await page.$("[data-status-right]"))?.boundingBox()
   check("the status bar keeps clear of it", !!status && status.x + status.width <= aside.x + 1, [status, aside])
-  const panes = await page.$eval("section[data-group]", (e) => e.closest(".fixed").getBoundingClientRect().right)
+  const panes = await page.$eval("section[data-pane-frame]:not([data-away])", (e) => e.closest(".fixed").getBoundingClientRect().right)
   check("the panes end where it starts", Math.abs(panes - aside.x) < 2, [panes, aside.x])
   await page.screenshot({ path: `${OUT}open.png` })
 

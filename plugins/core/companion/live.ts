@@ -155,7 +155,7 @@ export function viewOf(path: string): EditorView | null {
 let drawings: { where: () => { open: string[]; focus: Target | null }; draw: (m: Record<string, unknown>) => void } | null = null
 export const setDrawings = (d: typeof drawings) => { drawings = d }
 /** The window's panes (panes.ts registers them): each pane's tab and title, and the focused one. */
-let panes: (() => { panes: { id: string; to: string; title: string; group?: string }[]; pane?: string }) | null = null
+let panes: (() => { panes: { id: string; to: string; title: string; tab?: string; group?: string }[]; pane?: string }) | null = null
 export const setPanes = (fn: typeof panes) => { panes = fn }
 /** What folds an agent's lines by its cursor back into a bubble (editor.ts, once loaded): its run, or null. */
 let folder: ((path: string, agent: string, line?: number) => (() => void) | null) | null = null

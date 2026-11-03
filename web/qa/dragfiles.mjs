@@ -28,17 +28,22 @@ const shot = (name) => page.screenshot({ path: `${OUT}dragfiles-${name}.png` })
 
 const row = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"]`).first()
 const pinRow = (p) => page.locator(`aside nav[aria-label=Pages] [data-pin="${p}"]`).first()
-const panes = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => {
+/** The panes on screen: where each is and what it shows. */
+const panes = () => page.evaluate(() => [...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => {
   const r = s.getBoundingClientRect()
-  return { id: s.dataset.group, x: Math.round(r.x), y: Math.round(r.y), tabs: [...s.querySelectorAll("[role=tab]")].map((t) => t.innerText.trim()),
-    active: s.querySelector("[role=tab][aria-selected=true]")?.innerText.trim() }
+  return { id: s.dataset.paneFrame, x: Math.round(r.x), y: Math.round(r.y), shows: s.getAttribute("aria-label") }
 }).sort((a, b) => a.x - b.x || a.y - b.y))
+/** The tab bar's tabs, each its panes' names (a split's halves), and the one on screen. */
+const tabs = () => page.evaluate(() => [...document.querySelectorAll("[data-tab-strip] [data-tab-id]")].map((c) => {
+  const halves = [...c.querySelectorAll("[data-pane-half]")].map((h) => h.innerText.trim())
+  return { id: c.dataset.tabId, panes: halves.length ? halves : [c.querySelector("[role=tab]").innerText.trim()], on: c.querySelector("[role=tab]").getAttribute("aria-selected") === "true" }
+}))
 async function spot(gid, where) {
   const r = await page.locator(`[data-pane-body="${gid}"]`).boundingBox()
   const at = { left: [0.08, 0.5], right: [0.92, 0.5], top: [0.5, 0.08], bottom: [0.5, 0.92], center: [0.5, 0.5] }[where]
   return [r.x + r.width * at[0], r.y + r.height * at[1]]
 }
-const barStart = async (gid) => { const r = await page.locator(`section[data-group="${gid}"] [data-tab-id]`).first().boundingBox(); return [r.x + 4, r.y + r.height / 2] }
+const barStart = async () => { const r = await page.locator("[data-tab-strip] [data-tab-id]").first().boundingBox(); return [r.x + 4, r.y + r.height / 2] }
 const center = async (loc) => { await loc.scrollIntoViewIfNeeded(); const b = await loc.boundingBox(); return [b.x + Math.min(60, b.width / 2), b.y + b.height / 2] }
 /** Drag `from` to (x, y); before letting go, what's offered (a pane zone, a bar or the pages making way, a highlighted folder, the ghost's hint). */
 async function drag(from, [x, y], { drop = true, name } = {}) {
@@ -65,15 +70,15 @@ await page.goto(`${B}#file/${encodeURIComponent("Qa drag/One.md")}`); await wait
 // (Its folder opened as a user does: open folders are the workspace's, files:open, 02c5ae8.)
 await row("Qa drag").click(); await row("Qa drag/Two.md").waitFor()
 let ps = await panes()
-check("starts with one pane showing One", ps.length === 1 && ps[0].active === "One", ps)
+check("starts with one pane showing One", ps.length === 1 && ps[0].shows === "One", ps)
 const g0 = ps[0].id
 
-// A file onto its pane's middle: opens there (a new tab after the active one).
+// A file onto its pane's middle: opens there (where the pane was goes into its history).
 let o = await drag(row("Qa drag/Two.md"), await spot(g0, "center"), { name: "tree-center" })
 ps = await panes()
 check("tree file over a pane's middle: the whole pane lights up", o.zone === "center" && o.ghost?.includes("Two"), o)
-check("...dropped: it opens there, active", ps.length === 1 && ps[0].active === "Two" && ps[0].tabs.includes("One"), ps)
-check("...the drop didn't also open it by click in another tab", ps[0].tabs.filter((t) => t === "Two").length === 1, ps)
+check("...dropped: it opens there", ps.length === 1 && ps[0].shows === "Two", ps)
+check("...the drop didn't also open it by click in another tab", (await tabs()).length === 1, await tabs())
 // Onto a pane already showing it: not offered.
 o = await drag(row("Qa drag/Two.md"), await spot(g0, "center"))
 check("the file its pane already shows isn't offered in the middle", o.zone === null && o.dim, o)
@@ -82,14 +87,16 @@ check("the file its pane already shows isn't offered in the middle", o.zone === 
 o = await drag(row("Qa drag/Three.md"), await spot(g0, "right"), { name: "tree-right" })
 ps = await panes()
 check("tree file over a pane's right edge: the right half lights up", o.zone === "right", o)
-check("...dropped: a split on the right with it", ps.length === 2 && ps[1].tabs.join() === "Three", ps)
+check("...dropped: a split on the right with it", ps.length === 2 && ps[1].shows === "Three" && (await tabs()).length === 1, ps)
 const g1 = ps[1].id
 
-// Onto a tab bar: a tab at that place.
-o = await drag(row("Qa drag/One.md"), await barStart(g1))
-ps = await panes()
-check("tree file over a tab bar: the tabs make way where it goes", o.line, o)
-check("...dropped: first tab there, active", ps[1].tabs[0] === "One" && ps[1].active === "One", ps)
+// Onto the tab bar: a tab at that place.
+o = await drag(row("Qa drag/One.md"), await barStart())
+let ts = await tabs()
+check("tree file over the tab bar: the tabs make way where it goes", o.line, o)
+check("...dropped: first tab there, on screen", ts[0].panes.join() === "One" && ts[0].on && ts.length === 2, ts)
+// (back to the split)
+await page.locator("[data-tab-strip] [data-tab-id][data-split] [role=tab]").click(); await wait(400)
 
 // Onto the bottom edge of the right pane.
 o = await drag(row("Qa drag/Two.md"), await spot(g1, "bottom"))
@@ -105,7 +112,7 @@ check("Escape cancels a tree drag", o.zone === "left" && JSON.stringify(await pa
 o = await drag(row("Qa drag/Sub"), await spot(g0, "center"))
 ps = await panes()
 check("a folder over a pane: its middle offered", o.zone === "center", o)
-check("...dropped: its page in that pane", ps.find((p) => p.id === g0)?.active === "Sub", ps)
+check("...dropped: its page in that pane", ps.find((p) => p.id === g0)?.shows === "Sub", ps)
 
 // Within the tree it still moves.
 o = await drag(row("Qa drag/Three.md"), await center(row("Qa drag/Sub")))
@@ -128,7 +135,7 @@ const p2 = await pins()
 check("pinned page dragged down: the others make way, then it moves after the third", o.pinWay && !o.pinGap && p2.indexOf(p[0]) === 2, { o, p2 })
 o = await drag(pinRow("Qa drag/One.md"), await spot(g0, "top"), { name: "pin-top" })
 ps = await panes()
-check("pinned page onto a pane's top edge: a split above with it", o.zone === "top" && ps.some((x) => x.tabs.join() === "One" && x.y < 200), { o, ps })
+check("pinned page onto a pane's top edge: a split above with it", o.zone === "top" && ps.some((x) => x.shows === "One" && x.y < 200), { o, ps })
 check("...still pinned", (await pins()).includes("Qa drag/One.md"))
 o = await drag(pinRow("Qa drag/One.md"), await center(row("Qa drag/Two.md")), { name: "pin-out" })
 await wait(300)
@@ -136,13 +143,12 @@ check("pinned page over the tree: 'Unpin' on it, the rest close up, no folder li
 check("...dropped: unpinned", !(await pins()).includes("Qa drag/One.md"), await pins())
 
 // A tab onto the pages: pinned.
-ps = await panes()
-const withTwo = ps.find((x) => x.tabs.includes("Two"))
-const tabLoc = page.locator(`section[data-group="${withTwo.id}"] [data-tab-id]`, { has: page.locator("[role=tab]", { hasText: "Two" }) }).first()
+const lone = (await tabs()).find((x) => x.panes.join() === "One")
+const tabLoc = page.locator(`[data-tab-strip] [data-tab-id="${lone.id}"]`)
 o = await drag(tabLoc, await (async () => { const b = await pinRow((await pins())[0]).boundingBox(); return [b.x + 40, b.y + 3] })())
 await wait(300)
-check("a tab onto the pages: a gap opens, pinned", (await pins())[0] === "Qa drag/Two.md" && o.pinGap, { o, pins: await pins() })
-check("...and the tab stays where it was", (await panes()).find((x) => x.id === withTwo.id)?.tabs.includes("Two"))
+check("a tab onto the pages: a gap opens, pinned", (await pins())[0] === "Qa drag/One.md" && o.pinGap, { o, pins: await pins() })
+check("...and the tab stays where it was", (await tabs()).some((x) => x.id === lone.id))
 
 // A plain click on a tree file still opens it.
 await row("Qa drag/Sub/Three.md").click().catch(async () => { await row("Qa drag/Sub").locator("button").first().click(); await wait(200); await row("Qa drag/Sub/Three.md").click() })

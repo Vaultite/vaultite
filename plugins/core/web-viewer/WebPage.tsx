@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
   Search, ShieldAlert, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
-  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
+  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
   type MenuItem, type PaneMotion, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
@@ -59,12 +59,12 @@ const ownPage = (u: string) => http(u) || /^(chrome-extension:\/\/|view-source:h
 /** Whether tab `id` still shows a web page (else it went elsewhere: its page ends; gone, it closed or is in another
  *  workspace's tabs). */
 const stillWeb = (id: string) => {
-  const t = panesOf(getTabLayout().root).flatMap((g) => g.tabs).find((x) => x.id === id)
+  const t = allPanes(getTabLayout()).find((x) => x.id === id)
   return !t || t.to === "view:web" || t.to.startsWith("view:web/")
 }
 
 function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: WebPages }) {
-  const { group, tab = "", hidden: tabHidden } = usePane()
+  const { pane: tab, hidden: tabHidden } = usePane(), group = tab
   // (a tab's container never changes under its page: index.tsx draws a page afresh for another)
   const { container, url: arg } = splitArg(tabArg)
   const setArg = (url: string) => setTabArg(argOf(url, container))
@@ -421,7 +421,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const onWeb = http(state.url)
   const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []
   // Back and Forward walk the page's history, then the tab's (Back from a page opened from another tab goes back to it).
-  const me = panesOf(getTabLayout().root).flatMap((g) => g.tabs).find((t) => t.id === tab)
+  const me = allPanes(getTabLayout()).find((t) => t.id === tab)
   const back = state.back || canNavigate(me, -1), forward = state.forward || canNavigate(me, 1)
   const walk = (dir: -1 | 1) => { if (dir < 0 ? state.back : state.forward) void web.go(id, dir < 0 ? "back" : "forward"); else navigate(dir) }
   /** Back's or Forward's places, nearest first, as a menu under its button. */

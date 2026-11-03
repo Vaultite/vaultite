@@ -246,7 +246,7 @@ export function LinksPanel({ store, open, file: focused, tab }: SidebarCtx) {
 /** The tab (view:links): the same, for the file of the pane focused last, following it as a linked pane;
  *  what it opens goes to that pane. */
 export function LinksView({ store }: { store: Store }) {
-  const { path, group } = useFocusedFile()
+  const { path, pane: group } = useFocusedFile()
   return (
     <div className="pb-10" data-links-view>
       <h1 className="mb-1 truncate text-[22px] leading-[28px] font-bold max-md:hidden">{path ? stem(path) : "Links"}</h1>

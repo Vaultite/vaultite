@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyPlus, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, LayoutTemplate, Link, ListChecks, ListTree, Moon, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, Store as StoreIcon, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyPlus, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, LayoutTemplate, Link, ListChecks, ListTree, Moon, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, Store as StoreIcon, SquareArrowOutUpRight, SquareSplitHorizontal, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
 import { cell } from "@/core/signal"
 import { getStore, onState, reload, useStore, vaultName as vaultNameOf, type Store } from "@/core/data"
 import { share } from "@/core/share"
@@ -16,18 +16,18 @@ import { keepTypingInSight } from "@/core/sight"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
-import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
+import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, activePane, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
 import { restTab } from "@/core/workspace"
-import { canNudge, evenOutAll, focusByOrder, focusLastPane, hasLastPane, hasNeighbour, hasSiblings, severalPanes, movePane, moveTabBy, moveToSplit, nudgePane, splitTab, splitToFit, canFloat, canZoom, isFloating, isZoomed, toggleFloat, zoomPane } from "@/core/splits"
+import { canNudge, evenOutAll, focusByOrder, focusLastPane, hasLastPane, hasNeighbour, severalPanes, movePane, moveTabBy, nudgePane, paneToTab, splitPane, splitToFit, canFloat, canZoom, isFloating, isZoomed, toggleFloat, zoomPane } from "@/core/splits"
 import { Maximize2, PictureInPicture2 } from "lucide-react"
 import { hasMainWindow, moveToMain } from "@/core/windows"
-import { vaultPath, type Tab } from "../../core/layout.ts"
+import { vaultPath, type Pane, type Tab } from "../../core/layout.ts"
 import { backDetail, closeDetail, openDetail, replaceHash, route, setDetailRedirect, takeScroll } from "@/core/nav"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { currentWorkspace, noteOpened, subscribeScoped } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
 import { backgrounds, detailFor, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, shownHeaderItems, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
-import { leaveSet } from "@/core/tabsets"
+import { leaveGroup } from "@/core/tabgroups"
 import { canRenameTab, chooseTabGroup, renameTab, renameTabGroup } from "@/core/tabnames"
 import { canReopen, reopenLatest } from "@/core/tabarchive"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -106,8 +106,8 @@ const ImportBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default
 const IncomingBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.IncomingBundle })))
 
 // The app's own pages (core/apppages.ts), each drawn from its lazy chunk: Setup on the tab its address names.
-const DRAW: Record<AppPage["id"], (store: Store, to: string, tab: Tab | null) => React.ReactNode> = {
-  setup: (store, to, tab) => <Suspense><Setup store={store} tab={isSetupTab(to) ? to : "plugins"} at={tab?.id} /></Suspense>,
+const DRAW: Record<AppPage["id"], (store: Store, to: string, pane: Pane | null) => React.ReactNode> = {
+  setup: (store, to, pane) => <Suspense><Setup store={store} tab={isSetupTab(to) ? to : "plugins"} at={pane?.id} /></Suspense>,
   settings: (store) => <Suspense><Settings store={store} /></Suspense>,
 }
 const pageTabOf = (to: string) => { const p = appPageOf(to); return p && { ...p, render: DRAW[p.id] } }
@@ -116,7 +116,7 @@ const mac = (k: string, other?: string) => (isMac ? [k] : other ? [other] : unde
 /** The X of the bar's tab that has the keyboard, if it has one (a pinned tab, the last blank one: none). */
 const focusedTabClose = () => {
   const a = document.activeElement
-  return a?.matches("[data-tab-bar] [role=tab]") ? a.closest("[data-tab-id]")?.querySelector<HTMLElement>(":scope > [data-tab-close]") ?? null : null
+  return a?.matches("[data-tab-strip] [role=tab]") ? a.closest("[data-tab-id]")?.querySelector<HTMLElement>(":scope > [data-tab-close]") ?? null : null
 }
 /** The sidebar: open (its edge drags between these px widths, double-click resets) or an icon rail (RAIL: in spacing
  *  units, so it follows density; `railPx` is what it measures now). */
@@ -306,14 +306,14 @@ export default function App() {
   const known = isFileTab || isViewTab || isNewTab || !!appPageOf(tab)
   useEffect(() => {
     if (known) followHash(tab)
-    else if (desktop && !detail && store) replaceHash(hashOf(activeTab().to))
+    else if (desktop && !detail && store) replaceHash(hashOf(activePane().to))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, desktop, known, !!store])
   useEffect(() => takeLinks({ command: runCommandLink, open: (p) => { const s = getStore(); if (!s?.files.files.some((f) => f.path === p)) return false; openFile(p); return true },
     bundle: (repo) => { if (!getStore()) return false; void openImport(repo); return true } }), [])
   // First load with no address: show the tab that was open last time.
   useEffect(() => {
-    if (!location.hash) replaceHash(hashOf(activeTab().to))
+    if (!location.hash) replaceHash(hashOf(activePane().to))
   }, [])
   const filePath = isFileTab ? targetOf(tab).slice(5) : ""
   const active = appPageOf(tab)
@@ -324,7 +324,7 @@ export default function App() {
     if (kind !== "file") return
     let f: string | null = null
     try { f = decodeURIComponent(arg ?? "") } catch { f = null }
-    if (f) { history.replaceState(null, "", `#${hashOf(activeTab().to)}`); go(`file:${f}`, false, false) }
+    if (f) { history.replaceState(null, "", `#${hashOf(activePane().to)}`); go(`file:${f}`, false, false) }
   }, [desktop, store, detail])
   const pageInfo = (id: string) => { const p = appPageOf(hashOf(id)); return p ? { label: p.label, icon: p.icon, tint: p.tint } : null }
   const tabInfo = useTabInfo(store, pageInfo)
@@ -367,13 +367,12 @@ export default function App() {
     { id: "tab:new", name: "Open new tab", keys: desktopApp ? ["Mod+T"] : undefined, when: isDesktop, run: () => openNewTab(), icon: Plus },
     // ⌘D and ⇧⌘D as Rex and Ghostty have them, in every pane: an editor's ⌘D (Delete paragraph) moved. Only what's
     // more particular keeps ⌘D: a focused web page bookmarks, a file tree row duplicates (they have a `when`).
-    { id: "split:right", name: "Split right", keys: ["Mod+D", "Mod+Alt+\\"], desktop: true, run: () => splitTab("right"), icon: Columns2 },
-    { id: "split:down", name: "Split down", keys: ["Mod+Shift+D"], desktop: true, run: () => splitTab("bottom"), icon: Rows2 },
-    { id: "split:left", name: "Split left", desktop: true, run: () => splitTab("left"), icon: Columns2 },
-    { id: "split:up", name: "Split up", desktop: true, run: () => splitTab("top"), icon: Rows2 },
+    { id: "split:right", name: "Split right", keys: ["Mod+D", "Mod+Alt+\\"], desktop: true, run: () => splitPane("right"), icon: Columns2 },
+    { id: "split:down", name: "Split down", keys: ["Mod+Shift+D"], desktop: true, run: () => splitPane("bottom"), icon: Rows2 },
+    { id: "split:left", name: "Split left", desktop: true, run: () => splitPane("left"), icon: Columns2 },
+    { id: "split:up", name: "Split up", desktop: true, run: () => splitPane("top"), icon: Rows2 },
     { id: "split:fit", name: "Split along the longer side", desktop: true, words: "best fit", run: splitToFit, icon: LayoutPanelLeft },
-    { id: "split:move-right", name: "Move current tab to new split right", when: () => isDesktop() && hasSiblings(activeTab().id), run: () => moveToSplit("right"), icon: SquareSplitHorizontal },
-    { id: "split:move-down", name: "Move current tab to new split down", when: () => isDesktop() && hasSiblings(activeTab().id), run: () => moveToSplit("bottom"), icon: SquareSplitVertical },
+    { id: "pane:to-tab", name: "Move pane to new tab", when: () => isDesktop() && severalPanes(), words: "separate split out", run: () => paneToTab(activePane().id), icon: SquareSplitHorizontal },
     // A pane filling the workspace for now (Ghostty's and tmux's zoom), or floating over it, docked where it sits (Rex's).
     { id: "pane:zoom", name: "Zoom pane", keys: ["Mod+Shift+Enter"], when: () => isDesktop() && canZoom(), run: () => zoomPane(), icon: Maximize2, nameWhenOn: "Unzoom pane", on: isZoomed },
     { id: "pane:float", name: "Float pane", keys: ["Mod+Alt+Enter"], when: () => isDesktop() && (canFloat() || isFloating()), run: toggleFloat, icon: PictureInPicture2,
@@ -408,7 +407,7 @@ export default function App() {
     // A tab with the keyboard (Tab to it): Delete does what its X does, which a tablist can't hold as a stop of its own.
     { id: "tab:close-focused", name: "Close the tab that has the keyboard", keys: isMac ? ["Backspace", "Delete"] : ["Delete"], label: "Close tab", icon: X,
       when: () => !!focusedTabClose(), run: () => {
-        const x = focusedTabClose()!, bar = x.closest<HTMLElement>("[data-tab-bar]")
+        const x = focusedTabClose()!, bar = x.closest<HTMLElement>("[data-tab-strip]")
         x.click()
         // (the keyboard stays in the bar, on the tab shown now)
         requestAnimationFrame(() => bar?.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus())
@@ -416,20 +415,19 @@ export default function App() {
     // (⇧⌘W closes the window: ⌥⇧⌘W, beside ⌥⌘W's Close all other tabs.)
     { id: "pane:close", name: "Close pane", keys: ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
-    { id: "tab:toggle-stacked", name: "Stack tabs", when: isDesktop, run: () => toggleStacked(), icon: Layers, nameWhenOn: "Unstack tabs", on: isStacked },
     // Vertical tabs, one switch: the tab bar or the Tabs panel at the top of the left sidebar (core/plugins.ts).
     { id: "tab:sidebar", name: "Show tabs in the sidebar", when: () => isDesktop() && !isPopout() && !!tabListPanel(), run: () => showTabsIn(tabsInSidebar() ? "top" : "sidebar"),
       icon: PanelLeft, nameWhenOn: "Show tabs on top", on: () => tabsInSidebar() },
     // (the palette as a field: what the name belongs to is what the tab shows, core/tabnames.tsx)
     { id: "tab:rename", name: "Rename tab…", when: () => canRenameTab(activeTab()), run: () => renameTab(), icon: PencilLine },
     { id: "tab:group", name: "Add current tab to group…", when: isDesktop, run: chooseTabGroup, icon: GroupIcon },
-    { id: "tab:rename-group", name: "Rename tab group…", when: () => isDesktop() && !!activeTab().set, run: renameTabGroup, icon: PencilLine },
-    { id: "tab:ungroup", name: "Remove current tab from group", when: () => isDesktop() && !!activeTab().set, run: () => leaveSet([activeTab().id]), icon: Ungroup },
+    { id: "tab:rename-group", name: "Rename tab group…", when: () => isDesktop() && !!activeTab().group, run: renameTabGroup, icon: PencilLine },
+    { id: "tab:ungroup", name: "Remove current tab from group", when: () => isDesktop() && !!activeTab().group, run: () => leaveGroup([activeTab().id]), icon: Ungroup },
     // A window of its own (a pop-out): no sidebars, its own tabs.
-    { id: "tab:move-to-window", name: "Move current tab to new window", when: () => isDesktop() && activeTab().to !== "new", run: () => popOut(activeTab().id, true), icon: AppWindow },
+    { id: "tab:move-to-window", name: "Move current tab to new window", when: () => isDesktop() && activePane().to !== "new", run: () => popOut(activeTab().id, true), icon: AppWindow },
     { id: "tab:move-to-main", name: "Move current tab to main window", when: hasMainWindow, run: () => moveToMain([activeTab().id]), icon: AppWindow },
-    { id: "tab:open-in-window", name: "Open current tab in new window", when: () => isDesktop() && activeTab().to !== "new", run: () => popOut(activeTab().id), icon: SquareArrowOutUpRight },
-    // ⌘1–⌘8 the nth tab of the pane, ⌘9 its last, like a browser's (the browser's own keys: the desktop app has them).
+    { id: "tab:open-in-window", name: "Open current tab in new window", when: () => isDesktop() && activePane().to !== "new", run: () => popOut(activeTab().id), icon: SquareArrowOutUpRight },
+    // ⌘1–⌘8 the nth tab, ⌘9 the last, like a browser's (the browser's own keys: the desktop app has them).
     ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: `tab:goto-${n}`, name: `Go to tab #${n}`, keys: desktopApp ? [`Mod+${n}`] : undefined,
       when: () => isDesktop() && tabsHere() >= n, run: () => selectTabAt(n), icon: Hash })),
     { id: "tab:goto-last", name: "Go to last tab", keys: desktopApp ? ["Mod+9"] : undefined, when: isDesktop, run: () => selectTabAt(-1), icon: ArrowRightToLine },
@@ -661,9 +659,9 @@ export default function App() {
             {error && !store && <p className="mt-10 text-muted-foreground">{error}</p>}
             {!error && !store && <VaultLoading />}
             {store && <Guard what="This tab" size="tab" reset={tab} close={() => closeTab(activeTab().id)}>
-              <PhoneFiles store={store} tab={activeTab().id} path={isFileTab ? filePath : null} />
+              <PhoneFiles store={store} pane={activePane().id} path={isFileTab ? filePath : null} />
               {(isNewTab || isViewTab) && <PhoneTab key={isViewTab && viewFor(targetOf(tab), disabled)?.def.argState ? targetOf(tab).split("/")[0] : tab} store={store} to={targetOf(tab)} />}
-              {active && !isFileTab && <div key={active.id}><Drawn draw={() => DRAW[active.id](store, tab, activeTab())} /></div>}
+              {active && !isFileTab && <div key={active.id}><Drawn draw={() => DRAW[active.id](store, tab, activePane())} /></div>}
             </Guard>}
           </main>
           {/* What a finger drags (a file, a page, a panel: core/drag.ts); a computer's is the Workspace's. */}

@@ -283,9 +283,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       cmd("tab:previous", "Previous tab", "chevron-left", { key: "Ctrl+Shift+Tab", always: true }),
       cmd("tab:search", "Search tabs…", "search", { key: "Mod+Shift+A", always: true }),
       cmd("tab:toggle-pin", "Pin tab", "pin", { always: true, named: true }),
-      cmd("tab:toggle-stacked", "Stack tabs", "layers", { always: true, named: true }),
-      cmd("split:move-right", "Move tab to new split right"),
-      cmd("split:move-down", "Move tab to new split down"),
+      cmd("pane:to-tab", "Move pane to new tab"),
       sub("Panes", "columns-2", items(
         cmd("pane:focus-next", "Focus next pane"), cmd("pane:focus-previous", "Focus previous pane"), cmd("pane:focus-last", "Focus last pane"),
         sep,
@@ -323,4 +321,4 @@ const CORE = new Set(["page:settings", "page:setup", "hotkeys:open", "file:new",
   "file:rename", "file:duplicate", "file:reveal-finder", "tab:close", "tab:close-others", "pane:close", "tab:reopen", "find:open", "find:replace",
   "file:copy-link", "file:copy-path", "palette:open", "sidebar:toggle", "sidebar:toggle-right", "view:toggle",
   "setting:line-numbers", "split:right", "split:down", "vault:reload", "nav:back", "nav:forward", "tab:next", "tab:previous",
-  "tab:toggle-pin", "tab:toggle-stacked", "tab:search"])
+  "tab:toggle-pin", "tab:search"])

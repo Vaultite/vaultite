@@ -54,7 +54,7 @@ export { moves } from "@/core/animation"
 export { pickIcon } from "@/components/IconPicker"
 export { BrandIcon, GitHubIcon } from "@/core/icons"
 // The tabs and splits as a whole (Workspaces keeps one per workspace).
-export { getWorkspace as getTabLayout, onWorkspaceChange as onTabLayoutChange, replaceWorkspace as setTabLayout } from "@/core/workspace"
+export { getWorkspace as getTabLayout, onWorkspaceChange as onTabLayoutChange, replaceWorkspace as setTabLayout, mineInto as withMyTabs } from "@/core/workspace"
 export { type Workspace as TabLayout } from "../../core/layout.ts"
 export { startedFresh } from "@/core/workspace"
 // When each tab was last on screen, which archives unpinned ones unseen a while (Tabs' setting): Workspaces carries it.
@@ -62,22 +62,23 @@ export { mergeSeen as mergeTabsSeen, seenSince as tabsSeenSince, setArchiveAfter
 export { archivedTabs, archiveUnseen, removeArchived, reopenArchived, restoreArchived, retargetArchived, useArchivedTabs, type ArchivedTab } from "@/core/tabarchive"
 // Its tabs one by one (the Tabs panel): the layout live, its panes, showing, closing and opening a tab, and what each
 // tab shows and its menu, as in its bar.
-export { closeTab, goHere, hashOf, newTab, openTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
-export { newId as newTabId } from "../../core/layout.ts"
+export { activePane, activeTab, closePane, closeTab, goHere, hashOf, newTab, openTab, paneById, paneTab, selectPane, selectTab, useTabList, useWorkspace as useTabLayout } from "@/core/workspace"
+export { newPaneId, newTabId } from "../../core/layout.ts"
 // Back and Forward in the focused tab (a view's own history first: ViewDef.history), and whether a tab can go there.
 export { canNavigate, navigate } from "@/core/workspace"
 // What the + buttons open: a blank tab, or the quick switcher picking it (newtab.json's `opens`).
 export { openNewTab } from "@/core/launcher"
-export { leaves as panesOf, withoutTabsIn, type Group as TabGroup, type Tab } from "../../core/layout.ts"
-export { dragTab, TABS, tabLabel, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
-// Tab groups (a pane's named, coloured runs of tabs): their menu, names and folding, and drops among a pane's tabs drawn
-// as a list (the Tabs panel), which join or leave them as the tab bar's do.
-export { setMenu, setName, SetLabel } from "@/components/Tabs"
-export { foldSet, openInSet } from "@/core/tabsets"
-export { foldSetMoving, useGrowIn, useReflow, useSetIn, useShrinkOut } from "@/core/tabfold"
+export { allPanes, clean as cleanTabLayout, focusedPane, panesOf, shownTab, tabOfPane, withoutPanes, withoutTabs, type Group as TabGroup, type Pane, type Tab, type TabList } from "../../core/layout.ts"
+// What changes in the window's tabs, as events (a pane focused, a tab opened, a pane moved): what the companion follows.
+export { onTabsEvent, type TabsEvent } from "@/core/tabevents"
+export { dragTab, springTabAt, TABS, tabLabel, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
+// Tab groups (named, coloured runs of tabs): their menu, names and folding, and drops on the tabs drawn as a list (the
+// Tabs panel), which join or leave them as the tab bar's do; a dragged pane or tab held on a row opens it (springOver).
+export { groupMenu, groupName, GroupLabel } from "@/components/Tabs"
+export { foldGroup, openInGroup } from "@/core/tabgroups"
+export { foldGroupMoving, useGrowIn, useReflow, useGroupIn, useShrinkOut } from "@/core/tabfold"
 export { useGroupLines } from "@/core/tabline"
-export { type TabSet } from "../../core/layout.ts"
-export { canDropAt as canDropTab, dropOn as dropTab, previewIn as tabPreview, previewOrder as tabPreviewOrder, setsAsDrawn, slotIn as tabSlot, type Drop as TabDrop } from "@/core/drop"
+export { canDropAt as canDropTab, dropOn as dropTab, groupsAsDrawn, previewIn as tabPreview, previewOrder as tabPreviewOrder, slotIn as tabSlot, springOver, springing, type Drop as TabDrop } from "@/core/drop"
 export { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.
 export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selectionFor, selectItem, startSelecting, useSelectable, useSelected, useSelectedKeys, useSelecting, type Selectable } from "@/core/select"
@@ -243,7 +244,7 @@ export { onPaneMotion, type PaneMotion } from "@/core/panemotion"
 export { focusPane, holdFocus, keyboardBusy, useDismiss, useHeldFocus } from "@/core/focus"
 // Make a pane the focused one (the address, the status bar and commands follow it) without moving the keyboard: a view
 // whose keyboard lives outside the page (the Browser's page) was clicked.
-export { focusGroup, isPopout } from "@/core/workspace"
+export { setFocusedPane, isPopout } from "@/core/workspace"
 export { offeredCommand, onCommandsChanged, runCommandById, runCommandNamed } from "@/core/commands"
 export { isDesktop, useDesktop } from "@/core/platform"
 // Every command and its keys in effect (Vim's list of its keys).

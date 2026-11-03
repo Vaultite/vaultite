@@ -2,7 +2,7 @@
 // each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done. A tab is `3` or `3@m1`.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Bot, ChevronLeft, Globe, Keyboard, Pause, Play } from "lucide-react"
-import { Button, closeTab, cn, dateText, errorText, get, LoadingSidebarRows, onMachine, openInSplit, post, selectTab, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, webPages } from "@vaultite"
+import { Button, closePane, cn, dateText, errorText, get, LoadingSidebarRows, onMachine, openInSplit, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, webPages } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
@@ -15,7 +15,7 @@ const find = (r: LiveTabs, tab: number, machine: string) => r.tabs.find((x) => x
 /** Show a desktop page's tab: its own, or one made anew beside the user's work when its tab is gone (the page went on
  *  through a restart of the window), which the page comes back to. */
 export function showAppTab(t: Pick<LiveTab, "appTab" | "url" | "container">) {
-  if (!selectTab(t.appTab)) openInSplit(`view:web/${argOf(t.url, t.container)}`, "right", true, t.appTab)
+  if (!selectPane(t.appTab)) openInSplit(`view:web/${argOf(t.url, t.container)}`, "right", true, t.appTab)
 }
 
 const TIME = { hour: "numeric", minute: "2-digit" } as const
@@ -136,7 +136,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     if (!webPages?.engine || !own) return
     void get<LiveTabs>("web-viewer/tabs").then((r) => {
       const t = find(r, tab, machine)
-      if (t?.appTab) { showAppTab(t); closeTab(own, true) }
+      if (t?.appTab) { showAppTab(t); closePane(own, true) }
     }, () => {})
   }, [tab, machine, own])
 

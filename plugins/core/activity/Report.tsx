@@ -1,7 +1,7 @@
 // The app's side of Activity in every window's background: what the user opens, runs and drops (batched every 3 s)
 // and how fast this window is (every minute). Nothing here may throw into the app: every callback is guarded.
 import { useEffect } from "react"
-import { appDevice as DEVICE, getTabLayout, onActivity, onTabLayoutChange, onTrace, takeSpans, type TabLayout } from "@vaultite"
+import { appDevice as DEVICE, focusedPane, getTabLayout, shownTab, onActivity, onTabLayoutChange, onTrace, takeSpans, type TabLayout } from "@vaultite"
 
 type Note = { action: string; text: string; paths?: string[]; t: number }
 
@@ -23,15 +23,8 @@ function send(path: string, body: unknown, keepalive = false) {
 
 /** The focused pane's active tab's target ("file:Notes/Idea.md", "view:graph", "settings"). */
 function focusedTab(ws: TabLayout): string {
-  let found = ""
-  const walk = (n: unknown) => {
-    const g = n as { id?: string; tabs?: { id: string; to: string }[]; active?: string; kids?: unknown[] }
-    if (found || !g) return
-    if (Array.isArray(g.tabs)) { if (g.id === ws.focus) found = g.tabs.find((t) => t.id === g.active)?.to ?? "" }
-    else g.kids?.forEach(walk)
-  }
-  walk(ws.root)
-  return found
+  const t = shownTab(ws)
+  return t ? focusedPane(t).to : ""
 }
 
 const words = (s: string) => s.replace(/[-_]+/g, " ")

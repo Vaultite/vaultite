@@ -14,7 +14,7 @@ import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
 import { joinFm } from "@/core/files"
 import { kindOf } from "@/core/filekinds"
 import { usePluginsVersion, vaultPluginsIn } from "@/core/plugins"
-import { focusGroup, useFileTab } from "@/core/workspace"
+import { setFocusedPane, useFileTab } from "@/core/workspace"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { barShown, barShows, type BarItem, type BarPlace, moveBarItem, showAllBarItems, showBarItem } from "@/core/statusbar"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
@@ -219,7 +219,7 @@ export const StatusBar = memo(function StatusBar() {
   // its text, so a file just opened is never measured (useSteady) with the last one's counts.
   const settled = useSettled()
   // (only the focused pane's file: focused elsewhere, it says its word under its pane; none above a terminal)
-  const late = settled && (!settled.group || settled.group === focused) && !cols.find((c) => c.group === focusCol)?.full ? settled : null
+  const late = settled && (!settled.pane || settled.pane === focused) && !cols.find((c) => c.pane === focusCol)?.full ? settled : null
   const body = late?.body ?? "", fm = late?.fm ?? ""
   const head = late?.head, path = late?.path ?? ""
   // What plugins' items get: the file as typed (theirs are drawn after the keystroke too).
@@ -241,7 +241,7 @@ export const StatusBar = memo(function StatusBar() {
   // The focused pane's part, when it isn't the one at the right (whose part is the right corner's): its file's items
   // and the more button, right under it.
   const paneRef = useRef<HTMLDivElement>(null), paneRowRef = useRef<HTMLDivElement>(null), paneItemsRef = useRef<HTMLDivElement>(null)
-  const first = room[0] ?? cols[0], last = room.at(-1) ?? cols.at(-1)!, fc = room.find((c) => c.group === focusCol) ?? null
+  const first = room[0] ?? cols[0], last = room.at(-1) ?? cols.at(-1)!, fc = room.find((c) => c.pane === focusCol) ?? null
   const apart = !!fc && fc !== last
   // (a file's items are held only on a file's tab: on a view or a new tab no file comes, and their room stayed empty)
   const loading = useLoadHolds([barRef, leftRef, paneRef], [rowRef, leftRowRef, paneRowRef], path, setup), fileTab = useFileTab()
@@ -266,7 +266,7 @@ export const StatusBar = memo(function StatusBar() {
   const inTray = drawable.filter((x) => statusBarMore.includes(x.key) || overLeft.includes(x.key) || overRight.includes(x.key) || overPane.includes(x.key))
   const { barHit, leftHit, paneHit, trayHit } = useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, paneRef, paneItemsRef, trayRef }, bar.keys, inTray.map((x) => x.key), statusBarMore)
   useLeftWidth(leftRef, barRef, paneRef)
-  useJumps(paneRef, fc?.group ?? "")
+  useJumps(paneRef, fc?.pane ?? "")
   const trayOpen = tray && inTray.length > 0
   useEffect(() => {
     if (!trayOpen) return
@@ -390,7 +390,7 @@ export const StatusBar = memo(function StatusBar() {
         </div>
         {!moreApart && trayBox}
       </div>
-      {others.filter((c) => c !== last).map((c) => <PaneWord key={c.group} col={c} maxWidth={width(c, PAD)} />)}
+      {others.filter((c) => c !== last).map((c) => <PaneWord key={c.pane} col={c} maxWidth={width(c, PAD)} />)}
       <div ref={paneRef} role={apart ? "status" : undefined} aria-live="off" aria-label="Status bar, focused pane" data-status-bar data-status-pane data-dragging={dragged ? "" : undefined} data-drop={paneHit ? "" : undefined}
         style={fc && apart ? { right: columnRight(fc), maxWidth: width(fc, PAD) } : { display: "none" }} onContextMenu={menuFor(barMenu)}
         className={FOOT}>
@@ -408,7 +408,7 @@ export const StatusBar = memo(function StatusBar() {
 })
 
 /** No panes at the foot (each floating): the bar as for one pane. */
-const WHOLE: Column[] = [{ group: "", x: 0, w: 1, full: false }]
+const WHOLE: Column[] = [{ pane: "", x: 0, w: 1, full: false }]
 /** A part's padding and edge (its width is its content's: box-content), and a little room, kept inside its pane. */
 const PAD = "18px"
 /** A right-hand part of the bar: the right corner, or a pane's. */
@@ -417,7 +417,7 @@ const FOOT = "vau-room sight-foot fixed bottom-0 z-20 transition-[right] duratio
 /** A pane's file that isn't focused, in a word under it (its count, or what its viewer says), fainter than the focused
  *  one's items: a click focuses the pane. With `maxWidth`, its own part of the bar, else in the right corner's. */
 const PaneWord = memo(function PaneWord({ col, maxWidth }: { col: Column; maxWidth?: string }) {
-  const s = paneStatusSubs.use(() => paneStatus.get(col.group) ?? null)
+  const s = paneStatusSubs.use(() => paneStatus.get(col.pane) ?? null)
   const path = s?.path ?? "", body = s?.body ?? "", text = !!s && !s.info && !s.says
   const nb = /\.ipynb$/i.test(path), code = !!s && /^(code|other|notebook)$/.test(kindOf(path))
   const counts = useCounts(path, body, text, code, nb)
@@ -426,7 +426,7 @@ const PaneWord = memo(function PaneWord({ col, maxWidth }: { col: Column; maxWid
     : !counts ? null : nb && s.mode === "read" ? n(counts.cells, "cell") : code ? n(counts.lines, "line") : n(counts.words, "word")
   if (!word) return null
   const chip = (
-    <button type="button" data-status-word={col.group} onClick={() => focusGroup(col.group)} aria-label={`${word}, ${path.split("/").pop()}. Focus its pane`}
+    <button type="button" data-status-word={col.pane} onClick={() => setFocusedPane(col.pane)} aria-label={`${word}, ${path.split("/").pop()}. Focus its pane`}
       className="flex h-6 shrink-0 cursor-pointer items-center truncate rounded-[5px] px-1 text-tertiary hover:text-muted-foreground">
       {word}
     </button>

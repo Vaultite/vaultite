@@ -22,7 +22,7 @@ const a = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 const b = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 for (const p of [a, b]) watch(p)
 const hash = (p) => p.evaluate(() => decodeURIComponent(location.hash))
-const panes = (p) => p.$$eval("section[data-group]", (els) => els.length)
+const panes = (p) => p.$$eval("[data-pane-area] > section[data-pane-frame]:not([data-away])", (els) => els.length)
 const tabs = (p) => p.$$eval("[role=tab]", (els) => els.length)
 /** The user clicks in a window: it's the one in use now. */
 const focusOn = async (p) => {
@@ -32,7 +32,7 @@ const focusOn = async (p) => {
 }
 try {
   await fetch(new URL("/api/file", B), { method: "PUT", body: JSON.stringify({ path: "Notes/Vau open test.md", text: "Opened by vau.\n" }) })
-  for (const p of [a, b]) { await p.goto(B); await p.waitForSelector("section[data-group]") }
+  for (const p of [a, b]) { await p.goto(B); await p.waitForSelector("section[data-pane-frame]") }
   await wait(800)
   let [code, out] = vau("context")
   check("context sees two windows", code === 0 && out.includes("2 app windows open"), out)

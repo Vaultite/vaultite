@@ -1,15 +1,15 @@
 // The window's panes for the companion (live.ts' `where`): each pane's tab, title and tab group, and the focused one;
 // and the parts of the app's UI it follows, watched here (their text, as it settles).
-import { getStore, getTabLayout, onTabLayoutChange, panesOf, tabLabel } from "@vaultite"
+import { focusedPane, getStore, getTabLayout, onTabLayoutChange, panesOf, shownTab, tabLabel } from "@vaultite"
 import { getState, sayWhereSoon, setPanes, subscribe, uiChanged } from "./live"
 
 /** The most a window tells: a vault's tabs, rarely this many. */
 const MOST = 300
 
 setPanes(() => {
-  const w = getTabLayout(), store = getStore(), groups = panesOf(w.root)
-  const panes = groups.flatMap((g) => g.tabs).slice(0, MOST).map((t) => ({ id: t.id, to: t.to, title: tabLabel(t, store).label, ...(t.set ? { group: t.set } : {}) }))
-  return { panes, pane: groups.find((g) => g.id === w.focus)?.active }
+  const w = getTabLayout(), store = getStore(), shown = shownTab(w)
+  const panes = w.tabs.flatMap((t) => panesOf(t).map((p) => ({ id: p.id, to: p.to, title: tabLabel(p, store).label, tab: t.id, ...(t.group ? { group: t.group } : {}) }))).slice(0, MOST)
+  return { panes, pane: shown && focusedPane(shown).id }
 })
 
 /** The element on screen with data-ui `id` (the first shown), or null. */

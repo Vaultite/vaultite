@@ -167,8 +167,8 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
 
   // Files open beside this tab: in the pane of the file focused last when that's another pane (like the links tab).
   const focused = useFocusedFile()
-  const own = usePane().group
-  const pane = focused.group && focused.group !== own ? focused.group : undefined
+  const own = usePane().pane
+  const pane = focused.pane && focused.pane !== own ? focused.pane : undefined
   const open = (path: string, newTab = false) => openFile(path, { newTab, pane })
   const pick = (h: Hit, newTab: boolean) => {
     if (h.run) return h.run(newTab)

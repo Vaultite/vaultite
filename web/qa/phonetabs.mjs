@@ -15,7 +15,7 @@ const data = () => workspaces(B)
 const mtime = () => wsChanged(B)
 /** The workspaces as saved, without what the app keeps in them (`state`: files opened lately, open folders). */
 const shared = () => JSON.stringify(workspaces(B).map((w) => w && { ...w, state: undefined }))
-const tosOf = (l) => { const out = []; const walk = (n) => (n?.kids ? n.kids.forEach(walk) : n?.tabs?.forEach((t) => out.push(t.to))); walk(l?.root); return out }
+const tosOf = (l) => { const out = []; const walk = (n) => (n?.kids ? n.kids.forEach(walk) : n?.to && out.push(n.to)); for (const t of l?.tabs ?? []) walk(t.root); return out }
 const F = (name) => `file:Qa tabs/${name}.md`
 const hash = (name) => `#file/${encodeURIComponent(`Qa tabs/${name}.md`)}`
 
@@ -74,6 +74,9 @@ try {
 
   // ---------- desktop makes workspace 1 with One and Two ----------
   await D.goto(`${B}${hash("One")}`)
+  // (a plugin turned on above asks before writing on its own, GrantAsker.tsx: not now, it's not what this tests)
+  const ask = D.locator("dialog[open][data-confirm]")
+  if (await until(() => ask.count(), 2500)) { await ask.getByRole("button", { name: "Not now" }).click(); await wait(300) }
   // The sidebar's switcher: open its list, then pick 1 (first use seeds it from the setup as it is).
   await D.click("aside [data-workspace-switcher]")
   await D.click("[data-workspace-list] [data-workspace='1']")
@@ -303,10 +306,13 @@ try {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await wait(700)
   check("phone: swiped back to 1", (await P.locator("[data-tabs-title]").innerText()) === "Workspace 1", await P.locator("[data-tabs-title]").innerText())
   check("phone: back on 1: its tabs again, list still open", (await P.locator("[data-tab-row]").count()) === left, await P.locator("[data-tab-row]").count())
-  // Split on the desktop: a phone has no splits, so both panes' tabs show in one list (no group: groups are tab groups).
+  // Split on the desktop: on a phone the split tab is one card, named by both panes (no group: groups are tab groups).
   await D.evaluate(() => document.querySelector("[data-tab-bar] [data-tab-id]")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 300, clientY: 20 })))
   await D.locator("[role=menuitem]", { hasText: /^Split right$/ }).click()
-  check("tab list: a desktop split's panes are one list of cards, no group", !!(await until(async () => !(await P.locator("[data-group-card]").count()) && (await P.locator("[data-tab-row]").count()) === left + 1, 6000)), await P.$$eval("[data-group-card], [data-tab-row]", (s) => s.map((x) => x.innerText.split("\n")[0])))
+  const splitCard = P.locator("[data-tab-row]", { has: P.locator("[data-card-panes]") })
+  check("tab list: a desktop split is one card, no group", !!(await until(async () => !(await P.locator("[data-group-card]").count()) && (await P.locator("[data-tab-row]").count()) === left && (await splitCard.count()) === 1, 6000)), await P.$$eval("[data-group-card], [data-tab-row]", (s) => s.map((x) => x.innerText.split("\n")[0])))
+  check("tab list: ...named by both its panes, marked as holding 2", / · /.test(await splitCard.locator("[data-tab-card] > button").first().getAttribute("aria-label").catch(() => "")) && (await splitCard.locator("[data-card-panes]").innerText().catch(() => "")).trim() === "2",
+    [await splitCard.locator("[data-tab-card] > button").first().getAttribute("aria-label").catch(() => null), await splitCard.locator("[data-card-panes]").innerText().catch(() => null)])
   await P.screenshot({ path: `${OUT}phone-list-split.png` })
   await P.keyboard.press("Escape"); await P.goBack().catch(() => {}); await wait(300)
   await P.goto(`${B}${hash("Three")}`); await P.waitForSelector("[data-phone-bar]"); await wait(500)

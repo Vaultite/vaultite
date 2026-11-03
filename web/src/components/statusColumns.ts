@@ -3,12 +3,11 @@ import { useMemo, useSyncExternalStore } from "react"
 import { paneBoxes } from "@/core/panemotion"
 import { viewFor } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
-import { getWorkspace, groups, onWorkspaceChange } from "@/core/workspace"
-import { shownTab } from "../../../core/layout.ts"
+import { activeTab, onWorkspaceChange, paneById } from "@/core/workspace"
 
 /** A pane at the foot: its share of the workspace's width from `x`, and whether it's drawn edge to edge (a terminal),
  *  where nothing is drawn over its foot. */
-export type Column = { group: string; x: number; w: number; full: boolean }
+export type Column = { pane: string; x: number; w: number; full: boolean }
 /** `focus`: the focused pane's column (its own, or the one it's over); `focused`: the focused pane. */
 export type Columns = { cols: Column[]; focus: string | null; focused: string }
 
@@ -17,19 +16,19 @@ const EDGE = 1e-4
 
 /** As a string, so the bar is drawn again only when the columns change, not at every tab opened or divider step. */
 function columnsKey() {
-  const ws = getWorkspace(), all = groups(), disabled = getPrefs().disabled
-  const boxes = paneBoxes(ws)
+  const t = activeTab(), disabled = getPrefs().disabled
+  const boxes = paneBoxes(t)
   // (zoomed, one pane fills the workspace; floating ones are over it, not along its foot)
-  const tiled = ws.zoom ? boxes.filter((b) => b.id === ws.zoom) : boxes.filter((b) => !b.round)
+  const tiled = t.zoom ? boxes.filter((b) => b.id === t.zoom) : boxes.filter((b) => !b.round)
   const foot = tiled.filter((b) => b.rect.y + b.rect.h > 1 - EDGE).sort((a, b) => a.rect.x - b.rect.x)
   const full = (id: string) => {
-    const to = (() => { const g = all.find((x) => x.id === id); return g && (shownTab(g) ?? g.tabs[0])?.to })() ?? ""
+    const to = paneById(id)?.to ?? ""
     return to.startsWith("view:") && !!viewFor(to, disabled)?.def.full
   }
   // The focused pane's column: its own, or the one under its middle (a pane above another, a floating one).
-  const f = boxes.find((b) => b.id === ws.focus), mid = f ? f.rect.x + f.rect.w / 2 : -1
-  const focus = foot.find((b) => b.id === ws.focus) ?? foot.find((b) => b.rect.x - EDGE <= mid && mid <= b.rect.x + b.rect.w + EDGE)
-  return JSON.stringify({ cols: foot.map((b) => [b.id, r4(b.rect.x), r4(b.rect.w), full(b.id) ? 1 : 0]), focus: focus?.id ?? null, focused: ws.focus })
+  const f = boxes.find((b) => b.id === t.focus), mid = f ? f.rect.x + f.rect.w / 2 : -1
+  const focus = foot.find((b) => b.id === t.focus) ?? foot.find((b) => b.rect.x - EDGE <= mid && mid <= b.rect.x + b.rect.w + EDGE)
+  return JSON.stringify({ cols: foot.map((b) => [b.id, r4(b.rect.x), r4(b.rect.w), full(b.id) ? 1 : 0]), focus: focus?.id ?? null, focused: t.focus })
 }
 
 /** The panes along the window's foot, left to right, and the focused pane's column. */
@@ -38,7 +37,7 @@ export function useColumns(): Columns {
   const key = useSyncExternalStore(onWorkspaceChange, columnsKey)
   return useMemo(() => {
     const { cols, focus, focused } = JSON.parse(key) as { cols: [string, number, number, number][]; focus: string | null; focused: string }
-    return { cols: cols.map(([group, x, w, full]) => ({ group, x, w, full: !!full })), focus, focused }
+    return { cols: cols.map(([pane, x, w, full]) => ({ pane, x, w, full: !!full })), focus, focused }
   }, [key])
 }
 

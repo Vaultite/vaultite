@@ -1,7 +1,7 @@
 // The Browser in the quick switcher: tabs, bookmarks, history and rows opening what's typed or searching for it (⌘T's: a
 // site completed inline and first, as in the address bar). The web app has no web tabs: only bookmarks, in the system browser.
 import { Search } from "lucide-react"
-import { getStore, getTabLayout, onTabLayoutChange, openWebLink, panesOf, selectTab, webPages, type PluginDef, type SearchDoc, type Store } from "@vaultite"
+import { getStore, getTabLayout, onTabLayoutChange, openWebLink, allPanes, focusedPane, shownTab, selectPane, webPages, type PluginDef, type SearchDoc, type Store } from "@vaultite"
 import { addressOf, guessedHttps, hostOf, searchUrl } from "./address"
 import { matchBookmarks } from "./bookmarks"
 import { colorOf, containerById, containers, destination, keepOutside, splitArg, type Where } from "./containers"
@@ -20,12 +20,12 @@ const completedTo = new Map<string, string>()
 /** The web tabs of every pane here (not the one in front), each with its tab's id. */
 function webTabs() {
   if (!webPages) return []
-  const { root, focus } = getTabLayout()
-  return panesOf(root).flatMap((g) => g.tabs.flatMap((t) => {
-    if (!t.to.startsWith("view:web/") || (g.id === focus && g.active === t.id)) return []
-    const { url, container } = splitArg(t.to.slice("view:web/".length))
-    return http(url) ? [{ id: t.id, url, container }] : []
-  }))
+  const l = getTabLayout(), front = shownTab(l)
+  return allPanes(l).flatMap((p) => {
+    if (!p.to.startsWith("view:web/") || (front && focusedPane(front).id === p.id)) return []
+    const { url, container } = splitArg(p.to.slice("view:web/".length))
+    return http(url) ? [{ id: p.id, url, container }] : []
+  })
 }
 
 /** The history's answer for what's typed, asked once for the completion and the rows both. */
@@ -53,7 +53,7 @@ export function switcherSearch(openPage: (url: string, container?: string | null
         const c = containerById(t.container)
         return {
           id: `web-tab-${t.id}`, title: titleOf(t.url) || extensionPageName(t.url) || hostOf(t.url), meta: ["Switch to tab", c?.name, bare(t.url)].filter(Boolean).join(" · "),
-          kind: "Tab", icon: siteIcon(t.url, c ? colorOf(c) : undefined), tint: TINT, run: () => void selectTab(t.id), text: t.url, recent: 0, weight: 9,
+          kind: "Tab", icon: siteIcon(t.url, c ? colorOf(c) : undefined), tint: TINT, run: () => void selectPane(t.id), text: t.url, recent: 0, weight: 9,
         }
       }),
     },

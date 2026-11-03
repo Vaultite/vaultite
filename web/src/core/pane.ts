@@ -1,36 +1,36 @@
-// Which pane a view is in (outside panes a view counts as focused). `hidden`: a tab kept drawn behind another, never
-// focused; `back`: a stacked tab shown beside the pane's active one; `tab`: the tab's id.
+// Which pane a view is in (its id, "" outside the desktop's panes, where a view counts as focused), and its tab's.
+// `hidden`: a pane kept drawn while another tab is on screen, never focused.
 import { createContext, useContext, useLayoutEffect, useSyncExternalStore, type RefObject } from "react"
 
-export const PaneContext = createContext<{ group: string; focused: boolean; hidden?: boolean; back?: boolean; tab?: string }>({ group: "", focused: true })
+export const PaneContext = createContext<{ pane: string; tab: string; focused: boolean; hidden?: boolean }>({ pane: "", tab: "", focused: true })
 export const usePane = () => useContext(PaneContext)
 
-/** The panes whose shown tab draws a top bar, each with how many. */
+/** The panes whose view draws a top bar, each with how many. */
 const barred = new Map<string, number>()
 const subs = new Set<() => void>()
 const changed = () => { for (const f of subs) f() }
-/** Whether the pane's shown tab draws a top bar (usePaneTopBar): without a tab bar, it's the pane's title row. */
-export const usePaneHasTopBar = (group: string) =>
-  useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => barred.has(group))
+/** Whether the pane's view draws a top bar (usePaneTopBar): without pane titles, it's the pane's title row. */
+export const usePaneHasTopBar = (pane: string) =>
+  useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => barred.has(pane))
 
 /** How far a top bar keeps from what's fixed over the window's corners. */
 const CLEAR = 8
 
-/** A view's top bar (ViewBar, the Browser's): without a tab bar its pane's title row (Tabs.tsx; not with `title` false,
+/** A view's top bar (ViewBar, the Browser's): without pane titles its pane's title row (Tabs.tsx; not with `title` false,
  *  one sliding over the view), clear of what's fixed over the window's corners (sidebar toggles, a Mac's lights). */
 export function usePaneTopBar(ref: RefObject<HTMLElement | null>, title = true) {
-  const { group, hidden } = usePane()
-  // (before the paint, so the tab bar takes its place in the same frame)
+  const { pane, hidden } = usePane()
+  // (before the paint, so the pane's bar takes its place in the same frame)
   useLayoutEffect(() => {
-    if (!group || hidden || !ref.current || !title) return
-    barred.set(group, (barred.get(group) ?? 0) + 1)
+    if (!pane || hidden || !ref.current || !title) return
+    barred.set(pane, (barred.get(pane) ?? 0) + 1)
     changed()
     return () => {
-      const n = (barred.get(group) ?? 1) - 1
-      if (n) barred.set(group, n); else barred.delete(group)
+      const n = (barred.get(pane) ?? 1) - 1
+      if (n) barred.set(pane, n); else barred.delete(pane)
       changed()
     }
-  }, [ref, group, hidden, title])
+  }, [ref, pane, hidden, title])
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || hidden) return

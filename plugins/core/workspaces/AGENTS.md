@@ -14,8 +14,8 @@ changes either. `1.json`:
 {"name": "Writing", "sidebars": {"left": ["search:search", "files:files"], "right": [], "collapsed": []},
  "pinned": ["Dashboards/People.md", "Notes/Draft.md"]}
 ```
-and what's kept with it, `{"layout": {"root": {"id": "g0", "tabs": [{"id": "t1", "to": "file:Notes/Idea.md"}],
-"active": "t1"}, "focus": "g0"}, "state": {"files:open": ["Notes"]}}`. A `layout` or `state` written into the file (by
+and what's kept with it, `{"layout": {"tabs": [{"id": "t1", "root": {"id": "p1", "to": "file:Notes/Idea.md"}, "focus":
+"p1"}], "active": "t1"}, "state": {"files:open": ["Notes"]}}`. A `layout` or `state` written into the file (by
 hand, or by an older app) is taken in and leaves the file.
 - `name`: optional (the number's tooltip).
 - `icon`, `tint`, `container`: optional: an icon (a Lucide name or an emoji) shown for its number, in
@@ -28,12 +28,13 @@ hand, or by an older app) is taken in and leaves the file.
   window's; `--workspace <n>`, `--vault`); `POST /api/workspaces/<n>/pins/default` makes its list pages.json's.
 - `state`: what the app and plugins keep per workspace (`files:open`, `core:recent`), merged key by key on PUT. Leave
   it to the app.
-- `layout`: `root` is a group `{id, tabs: [{id, to}], active}` or a split `{id, dir: row | col, kids, sizes}`; a group's
-  tab groups are its `sets` and each tab's `set` (`vau docs tabs`); a tab's `name` is the user's (`vau docs tabs`). A tab's
+- `layout`: `tabs` in order, each `{id, root, focus}`: `root` is a pane `{id, to}` or a split `{id, dir: row | col, kids,
+  sizes}` of panes (a split tab), `focus` its focused pane; tab groups are `groups` and each tab's `group`, a tab's
+  `name` is the user's (`vau docs tabs`); `windows`: pop-out windows, each `{id, tabs, groups, active}`. A pane's
   `to` is `file:<vault path>`, `view:folder/<vault path>` (a folder's page), `view:terminal/<session id>`, a panel as a
   tab (`view:files`, `view:terminals`, `view:pages`, `view:search/<query>`, `view:links`, `view:local-graph`) or `new`
   (blank); left out, one blank tab.
-  `active` and `focus` are only where a device starts. With the Machines plugin on, a terminal tab is saved as
+  `active`, each tab's `focus` and `zoom` are only where a device starts. With the Machines plugin on, a terminal pane is saved as
   `view:terminal/<id>@<machine>` so every machine opens that shell; write a new one as `view:terminal/<id>` (this
   machine's) or with `@<machine>`.
 - A slot with no `name`, look, `pinned` or own `sidebars` and only one blank tab is unused (`state` alone doesn't count): its
@@ -41,8 +42,8 @@ hand, or by an older app) is taken in and leaves the file.
   slot to null (`DELETE /api/workspaces/<n>`).
 - Pins and tabs follow a file moved through the API. A terminal any workspace shows keeps running.
 
-**Moving tabs** between workspaces: `POST /api/workspaces/move` with `{"from": 1, "to": 2, "tab": "<tab id>"}` or
-`{"to": 2, "path": "Notes/Idea.md"}` (one tab), `{"from": 1, "to": 2, "group": "<group id>"}` (a whole pane), or
+**Moving tabs** between workspaces: `POST /api/workspaces/move` with `{"from": 1, "to": 2, "tab": "<tab id>"}` (a tab,
+all its panes), `{"to": 2, "pane": "<pane id>"}` or `{"to": 2, "path": "Notes/Idea.md"}` (a pane, out of its split), or
 `{"to": 2, "open": ["Notes/Idea.md"]}` (opens files there). From a terminal: `vau workspace tabs`, `vau workspace move
-<file|tab id> <n> [--from <m>] [--pane]`, `vau workspace open <file> <n>`, `vau workspace close`. What moves leaves as
-closing would and lands at the end of the target's last focused pane; nothing ends, a terminal keeps its shell.
+<file|tab or pane id> <n> [--from <m>] [--whole]`, `vau workspace open <file> <n>`, `vau workspace close`. What moves
+leaves as closing would and lands at the end of the target's tabs; nothing ends, a terminal keeps its shell.

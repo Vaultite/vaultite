@@ -2,9 +2,9 @@
 // into it and following the file (see index.tsx). No components here: they're in Numbers.tsx and Mark.tsx.
 import { Box, CircleSlash, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Settings2, Smile, Trash2 } from "lucide-react"
 import {
-  cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, panesOf, placePin, post, put, readSidebars,
+  cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
-  withoutTabsIn, type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
+  allPanes, cleanTabLayout as clean, focusedPane, shownTab, withMyTabs, withoutPanes, withoutTabs, type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
 import { blankLayout, isBlank } from "./blank"
 import { markIcon } from "./Mark"
@@ -150,19 +150,10 @@ export function pinsForNew(n: number) {
   return writing
 }
 
+/** Every place a layout's panes show, its pop-outs' too (one saved by hand is read as the app reads it). */
+const placesIn = (l: unknown): string[] => { const w = clean(l); return w ? [w, ...(w.windows ?? [])].flatMap(allPanes).map((p) => p.to) : [] }
 /** The places each workspace's tabs show (the current one's: what's on screen). */
-function placesOf(n: number): string[] {
-  const l = n === current() ? getTabLayout() : slots()?.[n - 1]?.layout
-  const out: string[] = []
-  const walk = (x: unknown) => {
-    if (!x || typeof x !== "object") return
-    const g = x as { kids?: unknown[]; tabs?: { to?: unknown }[] }
-    if (Array.isArray(g.kids)) g.kids.forEach(walk)
-    if (Array.isArray(g.tabs)) for (const t of g.tabs) if (typeof t?.to === "string" && t.to !== "new") out.push(t.to)
-  }
-  walk(l?.root)
-  return out
-}
+const placesOf = (n: number): string[] => placesIn(n === current() ? getTabLayout() : slots()?.[n - 1]?.layout).filter((to) => to !== "new")
 
 /** What the app asks Workspaces (WorkspaceHost in the plugin API; core/scope.ts). */
 export const host: WorkspaceHost = {
@@ -196,8 +187,8 @@ function clear(n: number) {
 const VISIT = new Set(["back", "fwd", "from"])
 /** The tabs as saved: without what's kept for this visit. */
 const strip = (l: TabLayout): TabLayout => JSON.parse(JSON.stringify(l, (k, v) => (VISIT.has(k) ? undefined : v)))
-/** What devices share of a layout: the tabs, their places and the splits; not which tab each group shows, which group
- *  has the focus or is zoomed (each device's own), nor when a tab was seen (that rides along: tabsSeenSince). "" for none. */
+/** What devices share of a layout: tabs, panes, places, splits, groups; not what's shown, focused or zoomed (each device's
+ *  own), nor when a pane was seen (that rides along: tabsSeenSince). "" for none. */
 const shape = (l: TabLayout | null | undefined) =>
   !l || blankLayout(l) ? "" : JSON.stringify(l, (k, v) => (VISIT.has(k) || k === "active" || k === "focus" || k === "zoom" || k === "seen" ? undefined : v))
 /** Each workspace's tabs as they were left in this visit, history and all. */
@@ -213,7 +204,9 @@ export function saveTabs() {
   if (moving) { timer = window.setTimeout(saveTabs, 300); return }
   const n = current()
   if (!n) return
-  const l = strip(getTabLayout()), saved = slots()?.[n - 1]?.layout
+  const saved = slots()?.[n - 1]?.layout, there = saved && clean(saved)
+  // (this window's tabs into what's saved: a pop-out writes only its own)
+  const l = strip(there ? withMyTabs(there) : getTabLayout())
   if (shape(l) === shape(saved) && !tabsSeenSince(saved)) return
   mine.add(shape(l))
   if (mine.size > 20) mine.delete(mine.values().next().value!)
@@ -245,7 +238,7 @@ function arrive() {
   arrived = true
   const at = wentTo ?? arrival
   const m = /^#(file|view)\/([^/]+)/.exec(at)
-  if (m) { try { const to = decodeURIComponent(m[2]); if (m[1] === "file") openFile(to, { newTab: !JSON.stringify(getTabLayout().root).includes(JSON.stringify(`file:${to}`)) }); else openView(to, { newTab: !isViewOpen(to) }) } catch { /* a bad address */ } }
+  if (m) { try { const to = decodeURIComponent(m[2]); if (m[1] === "file") openFile(to, { newTab: !placesIn(getTabLayout()).includes(`file:${to}`) }); else openView(to, { newTab: !isViewOpen(to) }) } catch { /* a bad address */ } }
   // Any other place (a sheet, like #new/plugin/graph): the address again, for the app to follow as it would have.
   else if (at.length > 1 && location.hash !== at) replaceHash(at)
 }
@@ -297,15 +290,13 @@ export function sync() {
 }
 
 // ---------- sending tabs, panes and files to another workspace ----------
-/** What goes: a tab (by id), a whole pane (by its group's id: all its tabs) or files to open there (vault paths). */
-export type Sent = { tab: string } | { group: string } | { open: string[] }
+/** What goes: a tab (by id, all its panes), a pane (by id: out of its split) or files to open there (vault paths). */
+export type Sent = { tab: string } | { pane: string } | { open: string[] }
 let moving = false
 
-/** The layout without a tab, or a pane's tabs (its pane goes): what shows while their move is on its way; null when
- *  nothing would be left. */
-function without(l: TabLayout, what: { tab: string } | { group: string }): TabLayout | null {
-  const ids = "tab" in what ? [what.tab] : panesOf(l.root).find((g) => g.id === what.group)?.tabs.map((t) => t.id) ?? []
-  return withoutTabsIn(l, new Set(ids))
+/** The layout without a tab or a pane: what shows while its move is on its way; null when nothing would be left. */
+function without(l: TabLayout, what: { tab: string } | { pane: string }): TabLayout | null {
+  return "tab" in what ? withoutTabs(l, new Set([what.tab])) : withoutPanes(l, new Set([what.pane]))
 }
 
 /** Send a tab, pane or files to workspace n (dropped on its number), through the server so every device on either
@@ -321,7 +312,7 @@ export async function sendTo(n: number, what: Sent) {
   if (gone) apply(gone, true)
   await writing
   try {
-    const r = await post<{ tabs: { id: string }[]; group?: string; workspaces: unknown[] }>("workspaces/move", { ...("open" in what ? {} : { from }), to: n, ...what })
+    const r = await post<{ tabs: { id: string }[]; workspaces: unknown[] }>("workspaces/move", { ...("open" in what ? {} : { from }), to: n, ...what })
     local = unusedIfBlank(r.workspaces)
     const l = local[from - 1]?.layout ?? null
     mine.add(shape(l))
@@ -329,7 +320,7 @@ export async function sendTo(n: number, what: Sent) {
     emit()
     // A move can be undone (it comes back, to this workspace's pane focused last, or as a pane of its own), like
     // every other move in the app; files opened there left nothing here to bring back.
-    const back: Sent | null = "open" in what || !r.tabs.length ? null : "group" in what ? { group: r.group ?? what.group } : { tab: r.tabs[0].id }
+    const back: Sent | null = "open" in what || !r.tabs.length ? null : { tab: r.tabs[0].id }
     notify(r.tabs.length ? ("open" in what ? `Opened in ${named(n)}` : `Moved to ${named(n)}`) : `Already open in ${named(n)}`,
       back ? { action: { label: "Undo", run: () => void bringBack(n, from, back) } } : undefined)
   } catch (e) {
@@ -360,17 +351,10 @@ async function bringBack(n: number, to: number, what: Sent) {
 /** Move tab `id` from the current workspace to workspace n. */
 export const moveTab = (id: string, n: number) => sendTo(n, { tab: id })
 
-/** The focused pane's tab showing something (not a blank one): what "Move current tab to workspace n" moves. */
+/** The tab on screen, showing something (not a blank one): what "Move current tab to workspace n" moves. */
 export function currentTab(): string | null {
-  const { root, focus } = getTabLayout()
-  const find = (x: unknown): { tabs: { id: string; to: string }[]; active: string } | null => {
-    const g = x as { id?: string; kids?: unknown[]; tabs?: { id: string; to: string }[]; active?: string }
-    if (Array.isArray(g.kids)) { for (const k of g.kids) { const f = find(k); if (f) return f } return null }
-    return g.id === focus && Array.isArray(g.tabs) ? { tabs: g.tabs, active: g.active ?? "" } : null
-  }
-  const g = find(root)
-  const t = g?.tabs.find((x) => x.id === g.active)
-  return t && t.to !== "new" ? t.id : null
+  const t = shownTab(getTabLayout())
+  return t && focusedPane(t).to !== "new" ? t.id : null
 }
 
 // ---------- switching ----------
@@ -390,18 +374,10 @@ export function switchTo(n: number) {
 
 export const used = () => SLOTS.filter((n) => slots()?.[n - 1])
 
-/** Every place open in the other workspaces' tabs (what closing a tab here mustn't end: a terminal they show too). */
+/** Every place open in the other workspaces' tabs (what closing a pane here mustn't end: a terminal they show too). */
 export function openElsewhere(): string[] {
-  const out: string[] = []
-  const walk = (n: unknown) => {
-    if (!n || typeof n !== "object") return
-    const x = n as { kids?: unknown[]; tabs?: { to?: unknown }[] }
-    if (Array.isArray(x.kids)) x.kids.forEach(walk)
-    if (Array.isArray(x.tabs)) for (const t of x.tabs) if (typeof t?.to === "string") out.push(t.to)
-  }
   const n = current()
-  slots()?.forEach((d, i) => { if (d && i + 1 !== n) walk(d.layout?.root) })
-  return out
+  return (slots() ?? []).flatMap((d, i) => (d && i + 1 !== n ? placesIn(d.layout) : []))
 }
 export function cycle(dir: 1 | -1) {
   const u = used()

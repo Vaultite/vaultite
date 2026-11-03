@@ -97,7 +97,7 @@ try {
   await page.mouse.wheel(100, 4)
   check("a swipe sideways over the sidebar goes to the next workspace", await until(async () => (await lit()) === "2", 3000), await lit())
   // (a whole workspace put in place just shows: only tabs the user opens grow in)
-  const tabW = () => page.$$eval("section[data-group] [role=tab]", (els) => els.map((e) => Math.round(e.getBoundingClientRect().width)))
+  const tabW = () => page.$$eval("[data-tab-strip] [role=tab]", (els) => els.map((e) => Math.round(e.getBoundingClientRect().width)))
   const first = await tabW(); await wait(400)
   check("… its tabs show at once, none growing in", JSON.stringify(first) === JSON.stringify(await tabW()), [first, await tabW()])
   check("… where the sidebars lose the colour (it has none)", far(await bg(), plain) <= 1, [await bg(), plain])

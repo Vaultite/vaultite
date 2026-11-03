@@ -41,8 +41,8 @@ export function openAppPage(p: AppPage, newTab = false) {
  *  open switches to `tab`. */
 export function openSetup(tab?: SetupTab) {
   const open = findOpen(...SETUP_TABS)
-  const to = tab ?? (open?.t.to as SetupTab | undefined) ?? "plugins"
-  if (open && open.t.to !== to) replaceTabTarget(open.t.id, to)
+  const to = tab ?? (open?.p.to as SetupTab | undefined) ?? "plugins"
+  if (open && open.p.to !== to) replaceTabTarget(open.p.id, to)
   goTo(to)
 }
 

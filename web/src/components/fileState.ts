@@ -106,7 +106,7 @@ type Status_ = { path: string; mode: Mode; setMode: (m: Mode) => void; body: str
   /** What a drawn file says instead of counts (a table's rows: FileFormat.status). */
   says?: (text: string) => string | null
   /** The pane it's in. */
-  group?: string } | null
+  pane?: string } | null
 export let status_: Status_ = null
 export const statusSubs = signal()
 function publish(s: Status_) { status_ = s; statusSubs.notify() }
@@ -114,9 +114,9 @@ function publish(s: Status_) { status_ = s; statusSubs.notify() }
  *  that isn't focused. The focused pane's is status_ too. */
 export const paneStatus = new Map<string, NonNullable<Status_>>()
 export const paneStatusSubs = signal()
-function setPane(group: string, s: Status_) {
-  if (s) paneStatus.set(group, s)
-  else paneStatus.delete(group)
+function setPane(pane: string, s: Status_) {
+  if (s) paneStatus.set(pane, s)
+  else paneStatus.delete(pane)
   paneStatusSubs.notify()
 }
 /** The status bar for the file in a pane's tab (`pane`: not a sheet): status_ while focused, its pane's while shown;
@@ -125,11 +125,11 @@ export function usePublish(pane: boolean, make: () => NonNullable<Status_>, deps
   const mine = useRef<Status_>(null)
   const latest = useRef(make)
   latest.current = make
-  const { group, focused, hidden, back } = usePane()
-  const live = pane && focused, shown = pane && !hidden && !back && !!group
+  const { pane: group, focused, hidden } = usePane()
+  const live = pane && focused, shown = pane && !hidden && !!group
   useEffect(() => {
     if (!live && !shown) return
-    mine.current = { ...make(), group }
+    mine.current = { ...make(), pane: group }
     if (live) publish(mine.current)
     if (shown) setPane(group, mine.current)
   }, [live, shown, group, ...deps]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -144,7 +144,7 @@ export function usePublish(pane: boolean, make: () => NonNullable<Status_>, deps
   return useCallback(() => {
     const was = mine.current
     if (!was || (status_ !== was && paneStatus.get(group) !== was)) return
-    mine.current = { ...latest.current(), group }
+    mine.current = { ...latest.current(), pane: group }
     if (status_ === was) publish(mine.current)
     if (paneStatus.get(group) === was) setPane(group, mine.current)
   }, [group])

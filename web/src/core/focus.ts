@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react"
 import { keyboardTakes, pageTakenSince, webPages } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
-import { activeTab, getWorkspace, onWorkspaceChange } from "@/core/workspace"
+import { activePane, activeTab, onWorkspaceChange } from "@/core/workspace"
 
 // When Tab was last pressed: the keyboard moving on by itself, not a click or code.
 let tabbedAt = -1e9
@@ -19,9 +19,9 @@ const TYPABLE = ".cm-content[contenteditable=true], .xterm-helper-textarea"
 const idle = (el: Element | null) => !el || el === document.body || el === document.documentElement || !el.isConnected ||
   !!el.closest("dialog:not([open])")
 
-/** Put the keyboard in pane `gid` (the focused one by default): its editor or terminal, if it shows one. Answers
+/** Put the keyboard in pane `gid` (its id) (the focused one by default): its editor or terminal, if it shows one. Answers
  *  whether it did. */
-export function focusPane(gid = getWorkspace().focus) {
+export function focusPane(gid = activePane().id) {
   // (Phones: focusing an editor would bring up the keyboard.)
   if (!isDesktop()) return false
   const el = document.querySelector<HTMLElement>(`[data-pane="${CSS.escape(gid)}"]`)?.querySelector<HTMLElement>(TYPABLE)
@@ -46,7 +46,7 @@ function focusPaneSoon(tries = 30) {
 }
 
 /** The focused pane and what it shows. */
-const where = () => { const t = activeTab(); return `${getWorkspace().focus} ${t?.id} ${t?.to}` }
+const where = () => { const p = activePane(); return `${activeTab()?.id} ${p?.id} ${p?.to}` }
 
 /** What an overlay that just closed is giving the keyboard back to (for a moment). */
 let handing: Element | null = null
@@ -83,7 +83,7 @@ export function holdFocus(): () => void {
       const page = pageTakenSince(takes)
       if (page !== null) return void webPages?.go(page, "focus").catch(() => {})
       const pane = was?.closest<HTMLElement>("[data-pane]")?.dataset.pane
-      if (!idle(was) && (!pane || pane === getWorkspace().focus)) was!.focus({ preventScroll: true })
+      if (!idle(was) && (!pane || pane === activePane().id)) was!.focus({ preventScroll: true })
       else if (!idle(was) || pane) focusPaneSoon()
     }))
   }

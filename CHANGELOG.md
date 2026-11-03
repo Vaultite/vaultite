@@ -22,6 +22,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   acts in your own web pages, and at the app's tabs and buttons. Watches (`vau watches add`, files in Watches/) keep an
   eye on a terminal, a page or a note live or every few minutes, telling it or your inbox only when something changed.
   Private now covers sites, containers and apps, starting with password managers and banks.
+- **Tabs hold panes**: a split is one tab (one joined row in the sidebar, one chip in the tab bar) and clicking another
+  tab switches it away whole; a file or link opens in the focused pane. ⌥-click a tab or drop it on a pane to take its
+  place, on an edge to split; drag a pane out to make it a tab, or hold it over a row to open that tab and drop it in.
+  Phones show a split tab as one card and swipe between its panes. Pop-outs keep their tabs in the workspace. `vau tabs`
+  lists tabs and their panes and splits, moves, swaps and focuses them; plugins follow `onTabsEvent` (plugin API 6:
+  `TabLayout` is `{tabs, groups, active, windows}`). Stack tabs is gone. Saved tabs move over on their own.
 - **The companion's cursor always shows what it's doing**: reading and thinking show their dots for as long as they last,
   listening while you dictate a wave, with no hover (on a phone too). What it says while you speak shows as dots and pops
   in at your pause, staying a moment before your next words take it away; a bubble never shows empty.

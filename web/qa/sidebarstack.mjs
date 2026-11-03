@@ -383,7 +383,7 @@ try {
   await page.click(head("files:files"), { button: "right" })
   await page.getByRole("menuitem", { name: "Open File explorer in a tab" }).click()
   check("Open File explorer in a tab: a Files tab", !!(await until(() => page.evaluate(() => location.hash === "#view/files"))), await page.evaluate(() => location.hash))
-  const paneTab = (await page.$$("section[data-group] [data-tab-id]")).at(-1)
+  const paneTab = (await page.$$("[data-tab-strip] [data-tab-id]")).at(-1)
   const tabSel = `[data-tab-id='${await paneTab.getAttribute("data-tab-id")}']`
   // Into the left sidebar, the gap above Terminals.
   const tt = await edges("terminal:sessions")
@@ -398,7 +398,7 @@ try {
   await page.click(head("files:files", "right"), { button: "right" })
   await page.getByRole("menuitem", { name: "Open File explorer in a tab" }).click()
   await until(() => page.evaluate(() => location.hash === "#view/files"))
-  const tab2 = `[data-tab-id='${await (await page.$$("section[data-group] [data-tab-id]")).at(-1).getAttribute("data-tab-id")}']`
+  const tab2 = `[data-tab-id='${await (await page.$$("[data-tab-strip] [data-tab-id]")).at(-1).getAttribute("data-tab-id")}']`
   const lb = await box(body)
   const coming = await dragTo(tab2, 120, lb.y + lb.height - 40, async () => ({ gap: await gapY(), end: (await edges("terminal:sessions")).bottom }))
   check("...over the left's empty space: a gap opens under its last panel", near(coming.gap, coming.end), coming)

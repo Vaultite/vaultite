@@ -300,7 +300,7 @@ await win.waitForSelector("[role=dialog] input:focus")
 await win.keyboard.type("Split right")
 await win.waitForSelector("[role=option][aria-selected=true]:has-text('Split right')")
 await win.keyboard.press("Enter")
-check("split right: the page follows its pane", await until(async () => (await win.locator("section[data-group]").count()) === 2, 10000) && await until(isAligned, 10000), await aligned())
+check("split right: the page follows its pane", await until(async () => (await win.locator("[data-pane-area] > section[data-pane-frame]:not([data-away])").count()) === 2, 10000) && await until(isAligned, 10000), await aligned())
 await menuClick("Hide left sidebar")
 await wait(500)
 check("the sidebar folded: still over its pane", await until(isAligned, 10000), await aligned())
@@ -329,7 +329,7 @@ check("the window resized: still over its pane", await until(isAligned, 10000), 
 const wcBefore = (await pages()).find((p) => p.visible)?.wc
 // (its pane focused, as a real click in the page does through the page's focus; a synthetic one in a window that isn't
 // focused doesn't, and the divider dragged above may have focused the other pane)
-await win.locator("section[data-group]:has([data-web-box]) [role=tab][aria-selected=true]").first().click()
+await win.locator(`[data-pane-half="${await win.evaluate(() => document.querySelector("[data-pane-area] > section[data-pane-frame]:not([data-away]):has([data-web-box])")?.dataset.paneFrame)}"]`).first().click()
 await until(async () => (await win.evaluate(() => decodeURIComponent(location.hash))).includes(`${SITE}/article`), 5000)
 await clickInPage("#next")
 check("a link in the page: the address and the tab follow", await until(async () => (await win.locator("[data-web-address]").inputValue()) === `${SITE}/two`
@@ -351,8 +351,8 @@ await win.locator("[data-web-page] button[aria-label=Reload]").click({ modifiers
 check("a ⌘-click on Reload: a copy in a new tab behind", await until(async () => (await pages()).filter((p) => p.url === `${SITE}/two`).length === 2, 10000) && await tabLabels() === tb0 + 2, await pages())
 // (the two behind it, closed from their tab menu: Close other tabs would take the note's too)
 for (const url of [`${SITE}/two`, `${SITE}/article`]) {
-  const id = await win.evaluate((u) => { const w = JSON.parse(localStorage.getItem("vaultite.tabs")); const all = (n) => n.tabs ? n.tabs : n.kids.flatMap(all); const t = all(w.root).filter((x) => x.to === `view:web/${u}`); return t.at(-1)?.id }, url)
-  await win.locator(`[data-tab-id="${id}"]`).first().click({ button: "middle" }).catch(() => {})
+  const id = await win.evaluate((u) => { const w = JSON.parse(localStorage.getItem("vaultite.tabs")); const leaf = (n) => (n.kids ? n.kids.flatMap(leaf) : [n]); const t = w.tabs.filter((x) => leaf(x.root).some((p) => p.to === `view:web/${u}`)); return t.at(-1)?.id }, url)
+  await win.locator(`[data-tab-strip] [data-tab-id="${id}"] [role=tab]`).first().click({ button: "middle" }).catch(() => {})
 }
 await until(async () => await tabLabels() === tb0, 5000)
 await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/two`), 10000)
@@ -424,7 +424,7 @@ check("… from the page as shown: its text, its source and author", note.includ
 check("… and a toast with Open", await until(async () => (await win.locator("[data-sonner-toast]", { hasText: "Saved" }).count()) > 0, 10000), null)
 await shot("6-saved")
 await win.locator("[data-sonner-toast] button", { hasText: "Open" }).first().click()
-check("Open: the note beside the page", await until(async () => (await win.evaluate(() => document.body.innerText)).includes("one hundred and twelve steps") && (await win.locator("section[data-group]").count()) >= 2, 10000), null)
+check("Open: the note beside the page", await until(async () => (await win.evaluate(() => document.body.innerText)).includes("one hundred and twelve steps") && (await win.locator("[data-pane-area] > section[data-pane-frame]:not([data-away])").count()) >= 2, 10000), null)
 
 // ---------- a download ----------
 await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()

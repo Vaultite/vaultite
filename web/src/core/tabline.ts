@@ -42,7 +42,7 @@ function lines(root: HTMLElement, axis: "x" | "y") {
     // Where each starts: a line stops short of the next group's chip, so a tab sliding in from past it (the blank tab
     // moved into a group) doesn't draw it across that group.
     const startOf = (head: HTMLElement) => {
-      const r = (axis === "x" ? head.querySelector("[data-set-label]") ?? head : head).getBoundingClientRect()
+      const r = (axis === "x" ? head.querySelector("[data-group-name]") ?? head : head).getBoundingClientRect()
       return axis === "x" ? r.left : r.top
     }
     const starts = [...heads.values()].filter((h) => h.getClientRects().length).map(startOf)
@@ -56,7 +56,7 @@ function lines(root: HTMLElement, axis: "x" | "y") {
       if (!line) {
         line = document.createElement("span")
         line.setAttribute("aria-hidden", "true")
-        line.dataset.setLine = id
+        line.dataset.groupLine = id
         line.dataset.axis = axis
         root.append(line)
         drawn.set(id, line)
@@ -68,11 +68,11 @@ function lines(root: HTMLElement, axis: "x" | "y") {
       }
       const state = head.matches("[aria-expanded]") ? head : head.querySelector<HTMLElement>("[aria-expanded]")
       line.toggleAttribute("data-folded", state?.getAttribute("aria-expanded") === "false")
-      line.toggleAttribute("data-moving", state?.dataset.setMoving !== undefined)
+      line.toggleAttribute("data-moving", state?.dataset.groupMoving !== undefined)
       line.style.background = head.style.getPropertyValue("--line")
       // Where it goes: along the bar from the chip's label to the last tab's end; down the panel from the chip's middle
       // to the last tab's bottom. A tab joining or leaving it (not moving) eases the ends there rather than jumping.
-      const h = head.getBoundingClientRect(), from = axis === "x" ? (head.querySelector("[data-set-label]") ?? head).getBoundingClientRect().left : h.top + h.height / 2
+      const h = head.getBoundingClientRect(), from = axis === "x" ? (head.querySelector("[data-group-name]") ?? head).getBoundingClientRect().left : h.top + h.height / 2
       const next = Math.min(...starts.filter((x) => x > from + 0.5)) - gap
       const to = Math.min(next, Math.max(...tabs.map((r) => (axis === "x" ? r.right : r.bottom))))
       const goal: Span = [(from - (axis === "x" ? box.left : box.top)) * k + (axis === "x" ? root.scrollLeft : root.scrollTop), Math.max(0, (to - from) * k)]

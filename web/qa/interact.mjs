@@ -24,10 +24,15 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
 const shot = (name) => page.screenshot({ path: `${OUT}interact-${name}.png` })
-const panes = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => ({
-  id: s.dataset.group, x: s.getBoundingClientRect().x, tabs: [...s.querySelectorAll("[role=tab]")].map((t) => t.innerText.trim()),
+/** The panes on screen, left to right, each with what it shows (its section's name). */
+const panes = () => page.evaluate(() => [...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => ({
+  id: s.dataset.paneFrame, x: s.getBoundingClientRect().x, tabs: [s.getAttribute("aria-label")],
 })).sort((a, b) => a.x - b.x))
-const tabs = async () => (await panes()).flatMap((p) => p.tabs)
+/** What every tab in the bar shows: a split tab's panes each. */
+const tabs = () => page.evaluate(() => [...document.querySelectorAll("[data-tab-strip] [data-tab-id]")].flatMap((c) => {
+  const halves = [...c.querySelectorAll("[data-pane-half]")]
+  return halves.length ? halves.map((h) => h.innerText.trim()) : [c.querySelector("[role=tab]").innerText.trim()]
+}))
 const count = async (label) => (await tabs()).filter((t) => t === label).length
 const cmd = async (name) => {
   await page.keyboard.press("ControlOrMeta+p"); await wait(250)
@@ -61,8 +66,8 @@ const fresh = async () => {
   // (Off the app once its tabs are saved as they are, order and splits too, about 1 s after a change: one still on its
   // way is saved over these by the next page, workspaces/state.ts' leaving, which compares them so.)
   const shape = (l) => JSON.stringify(l ?? null, (k, v) => (["back", "fwd", "from", "active", "focus"].includes(k) ? undefined : v))
-  const mine = () => page.evaluate(() => JSON.parse(localStorage.getItem("vaultite.tabs") ?? "null")?.root)
-  await until(async () => shape((await api("GET", "workspaces")).workspaces?.[0]?.layout?.root) === shape(await mine()), 10000)
+  const mine = () => page.evaluate(() => JSON.parse(localStorage.getItem("vaultite.tabs") ?? "null")?.tabs)
+  await until(async () => shape((await api("GET", "workspaces")).workspaces?.[0]?.layout?.tabs) === shape(await mine()), 10000)
   await page.goto(`${B}api/state`)
   await api("PUT", "workspaces/1", { layout: { root: { id: "g0", tabs: [{ id: "t1", to: `file:${DIR}/One.md` }], active: "t1" }, focus: "g0" }, state: { "files:open": [DIR] } })
   await page.goto(`${B}#file/${encodeURIComponent(`${DIR}/One.md`)}`); await wait(1800)
@@ -82,7 +87,7 @@ async function dragTo(from, x, y) {
   return ghost
 }
 await page.locator(`aside [data-tree-path="${DIR}/Two.md"] > button`).first().click({ button: "middle" }); await wait(500)
-const two = await page.locator("[data-tab-id]", { hasText: "Two" }).first().boundingBox()
+const two = await page.locator("[data-tab-strip] [data-tab-id]", { hasText: "Two" }).first().boundingBox()
 const g = await dragTo(page.locator(`aside [data-tree-path="${DIR}/One.md"]`).first(), two.x + two.width - 4, two.y + two.height / 2)
 check("a tree file dropped on a bar that has its tab: offered (the tabs make way)", g.line, g)
 check("...its tab moves there, no second one", (await tabs()).join("|") === "Two|One", await tabs())
@@ -91,7 +96,7 @@ await fresh()
 // ---------- a terminal dragged from the Terminals panel opens where it's dropped, like a file ----------
 await cmd("Open terminal"); await wait(1500)
 const term = await page.evaluate(() => document.querySelector("aside [data-session]")?.getAttribute("data-session"))
-await page.locator("[data-tab-id]", { hasText: "One" }).first().click(); await wait(300)
+await page.locator("[data-tab-strip] [data-tab-id]", { hasText: "One" }).first().click(); await wait(300)
 const body = await page.locator("[data-pane-body]").first().boundingBox()
 const tg = await dragTo(page.locator(`aside [data-session="${term}"]`).first(), body.x + body.width - 20, body.y + body.height / 2)
 const ps = await panes()
@@ -126,7 +131,7 @@ await page.keyboard.press("Escape"); await wait(300)
 check("⌘O, Escape: back in the editor", (await focus()) === ed, await focus())
 await page.keyboard.press("ControlOrMeta+o"); await wait(300)
 await page.keyboard.type("Two"); await wait(300); await page.keyboard.press("Enter"); await wait(900)
-const showing = () => page.evaluate(() => document.activeElement?.closest("section")?.querySelector("[role=tab][aria-selected=true]")?.textContent.trim())
+const showing = () => page.evaluate(() => document.activeElement?.closest("section[data-pane-frame]")?.getAttribute("aria-label"))
 check("⌘O, a file picked: its editor has the keyboard", (await focus()).startsWith("editor:") && (await showing()) === "Two", [await focus(), await showing()])
 await page.goto(`${B}#file/${encodeURIComponent(`${DIR}/One.md`)}`); await wait(1200)
 await page.click(".cm-content"); await wait(150)
@@ -136,7 +141,7 @@ check("Split right from the palette: the new pane's editor has the keyboard", (a
 await cmd("Focus pane to the left"); await wait(300)
 const left = await focusedPane()
 check("Focus pane to the left: its editor has the keyboard", left !== right && (await focus()) === `editor:${left}`, [await focus(), left])
-await page.locator("[data-tab-id]").first().click({ button: "right" }); await wait(250)
+await page.locator("[data-tab-strip] [data-tab-id] [role=tab]").first().click({ button: "right" }); await wait(250)
 check("a tab's menu has the keyboard", await page.evaluate(() => !!document.activeElement?.closest("[role=menu]")))
 await page.keyboard.press("Escape"); await wait(300)
 check("...Escape: the keyboard back on that tab", (await focus()) === "tab", await focus())
@@ -152,7 +157,7 @@ const menuItems = async (loc) => {
   await page.keyboard.press("Escape"); await wait(200)
   return items
 }
-const tabLoc = page.locator("[data-tab-id]").first()
+const tabLoc = page.locator("[data-tab-strip] [data-tab-id] [role=tab]").first()
 const tabItems = await menuItems(tabLoc)
 const fileItems = tabItems.slice(Math.max(0, tabItems.indexOf("Rename")))
 check("a file's tab menu: Rename, its path, Reveal, then More file actions", ["Rename", "Copy path", "Reveal in file tree"].every((x) => fileItems.includes(x)) && fileItems.at(-1) === "More file actions", tabItems)
@@ -181,7 +186,7 @@ await page.keyboard.press("Escape")
 // ---------- tabs and workspaces from the keyboard ----------
 await fresh()
 await page.locator(`aside [data-tree-path="${DIR}/Two.md"] > button`).first().click({ button: "middle" }); await wait(500)
-const active = async () => page.evaluate(() => document.querySelector("#main-scroll")?.closest("section")?.querySelector("[role=tab][aria-selected=true]")?.textContent.trim())
+const active = async () => page.evaluate(() => document.querySelector("#main-scroll")?.closest("section[data-pane-frame]")?.getAttribute("aria-label"))
 await cmd("Go to previous tab")
 check("Go to previous tab", (await active()) === "One", await active())
 await cmd("Go to previous tab")

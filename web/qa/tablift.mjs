@@ -11,8 +11,8 @@ const P = await ctx.newPage()
 await P.addInitScript(() => {
   if (sessionStorage.getItem("seeded")) return
   sessionStorage.setItem("seeded", "1")
-  const tabs = ["a", "b", "c", "d", "e", "f"].map((id) => ({ id, to: `file:Qa groups/${id.toUpperCase()}.md` }))
-  localStorage.setItem("vaultite.tabs", JSON.stringify({ root: { id: "g0", tabs, active: "a" }, focus: "g0" }))
+  const tabs = ["a", "b", "c", "d", "e", "f"].map((id) => ({ id, root: { id: `p${id}`, to: `file:Qa groups/${id.toUpperCase()}.md` }, focus: `p${id}` }))
+  localStorage.setItem("vaultite.tabs", JSON.stringify({ tabs, active: "a" }))
 })
 await P.goto(B); await wait(2500)
 await P.click("[data-tabs-button]"); await wait(1200)

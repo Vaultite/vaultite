@@ -2,7 +2,7 @@
 // by step with the page as it was after each, kept on this Mac a fortnight (electron/browser/agent.ts).
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Bot, ChevronLeft, ChevronRight, Globe, Pause, Play } from "lucide-react"
-import { Bar, Button, cn, dateText, FilterField, get, LoadingSidebarRows, notifyError, plural, selectTab, SidebarHeading, SidebarRow, useChosen, useKeptCount, usePane, webPages } from "@vaultite"
+import { Bar, Button, cn, dateText, FilterField, get, LoadingSidebarRows, notifyError, plural, selectPane, SidebarHeading, SidebarRow, useChosen, useKeptCount, usePane, webPages } from "@vaultite"
 import { hostOf } from "./address"
 import type { LiveTab } from "./livetabs"
 import { showAppTab } from "./LiveView"
@@ -97,7 +97,7 @@ function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => vo
   // (an agent's page in the background opens as a tab)
   const show = () => {
     if (!l.appTab) { const p = agentPage(l.tab); if (p) void openAsTab(p); return }
-    if (!selectTab(l.appTab)) void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => { const t = r.tabs.find((x) => x.tab === l.tab); if (t) showAppTab(t) }, (e) => notifyError(e, "Couldn't show the tab"))
+    if (!selectPane(l.appTab)) void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => { const t = r.tabs.find((x) => x.tab === l.tab); if (t) showAppTab(t) }, (e) => notifyError(e, "Couldn't show the tab"))
   }
   const [paused, choose] = useChosen(!!l.paused)
   const pause = () => choose(!paused, () => Promise.resolve(webPages?.engine?.("agents:pause", l.tab, !paused)), paused ? "Couldn't resume it" : "Couldn't pause it")

@@ -1,9 +1,16 @@
 ## Tabs
-The Tabs panel lists the open tabs pane by pane, so the tab bar can be off: vertical tabs. One switch moves the tabs
+A window has one list of tabs; a tab holds one pane or several side by side (a split tab: a free tree of splits, plus
+floating panes), each pane one view with its own history. Clicking another tab switches the whole split away; opening
+a file or link goes to the focused pane. ⌥-click a tab, or drop it on a pane's middle: it takes that pane's place, and
+what was there becomes a tab of its own; drop it on a pane's edge: a split. A pane dragged onto the list (or a half
+dragged out of a split's row) is a tab of its own; held a second over a row, that tab opens to drop into. Ids are
+stable: a tab's (`t…`) and a pane's (`p…`, or a `t…` one from before tabs held panes).
+
+The Tabs panel lists the open tabs (a split tab one joined row, both titles), so the tab bar can be off: vertical tabs. One switch moves the tabs
 between the two (the palette's Show tabs in the sidebar / Show tabs on top, or right-click the tab bar or the panel): in
 the sidebar, appearance `tabBar` is false and `tabs:tabs` is at the top of the left sidebar (sidebars.json, or the
 workspace's `sidebars`); on top, `tabBar` is true and the panel is hidden. The tabs end in a New tab row: a new tab at
-the end of the focused pane, in its place (double-clicking under the list too, and a tab bar's +; ⌘T opens one beside
+the end of the list, in its place (double-clicking under the list too, and a tab bar's +; ⌘T opens one beside
 the active tab). Under them, what the user's other devices have open (`other_devices`: those open now or used this
 week), one per app or browser (`label`: the user's name for it), kept by the server, not in the vault (`vau kept
 tabs/`): every machine serving the vault has every device's, live. A browser driven by automation isn't a device.
@@ -23,15 +30,17 @@ something (a terminal, unsaved edits, a page playing sound or holding typed inpu
 an Archived tabs row, how many, while there are any. Kept with the tabs (the workspace's
 `state["core:archived-tabs"]`, or this device's); a tab's `seen` is when it was last on screen (ms).
 
-**Tab groups**, as in a browser: a named, coloured run of a pane's tabs, side by side, that folds to its name. In the
+**Tab groups**, as in a browser: a named, coloured run of tabs, side by side, that folds to its name. In the
 tab bar a group is a solid chip of its colour before its tabs, which are underlined in it; in the panel, the same chip
 on a row, its tabs set in beside a line in its colour hanging from it. A click folds it (its tabs shrink into the chip);
 its … in the panel or a right-click opens its editor, as a browser's: its name and a row of colours, each change shown
-at once, then New tab in group, Ungroup and Close group. A new group opens it. They're kept with the tabs (this device's, or the workspace's with Workspaces: a pane's `sets`, each tab's
-`set`):
+at once, then New tab in group, Ungroup and Close group. A new group opens it. They're kept with the tabs (this device's, or the workspace's with Workspaces: the list's `groups`, each tab's
+`group`):
 ```
-{"id": "g0", "active": "t2", "sets": [{"id": "s1", "name": "Lighthouse", "color": "teal", "collapsed": false}],
- "tabs": [{"id": "t1", "to": "file:Notes/a.md", "set": "s1"}, {"id": "t2", "to": "file:Notes/b.md", "set": "s1"}, {"id": "t3", "to": "new"}]}
+{"active": "t2", "groups": [{"id": "g1", "name": "Lighthouse", "color": "teal", "collapsed": false}],
+ "tabs": [{"id": "t1", "group": "g1", "root": {"id": "p1", "to": "file:Notes/a.md"}, "focus": "p1"},
+  {"id": "t2", "group": "g1", "focus": "p3", "root": {"id": "s1", "dir": "row", "sizes": [0.5, 0.5],
+   "kids": [{"id": "p2", "to": "file:Notes/b.md"}, {"id": "p3", "to": "view:terminal/k3j2h1g0"}]}}]}
 ```
 `color` is one of blue, orange, green, red, purple, pink, yellow, teal, indigo, gray (the containers' palette); an
 empty `name` is allowed (the chip is just its colour). A group's tabs are always together; one with no tabs left is
@@ -43,7 +52,9 @@ a terminal's session is named (terminal.rename), and anything else (a web page, 
 gives back the automatic one. Rename tab group… and Add current tab to group… (a group there is, or a new one named as
 typed) do the same for groups.
 
-Change them in the user's window with `vau tabs` (tabs.list: its tabs and groups), `vau tabs group <tabs...> --name
---color` (tabs.group: a new group, or `--group <id>` to add to one or rename, recolour or fold it with `--collapsed`)
-and `vau tabs ungroup` (tabs.ungroup: `--group <id>`, or tabs to take out of theirs). Tabs are named by id, by what they
-show, or by a file's path or name. `vau workspace tabs` lists every workspace's, groups included.
+Change them in the user's window with `vau tabs` (tabs.list: its tabs, their panes, groups and pop-outs), `vau tabs
+split <pane> [--side] [--to]`, `vau tabs move <tab|pane> --into <pane> [--side left|right|top|bottom|center]` or `--at
+<n>`, `vau tabs swap <pane> <pane>`, `vau tabs focus <tab|pane>`, `vau tabs group <tabs...> --name --color` (or
+`--group <id>` to add to one or rename, recolour or fold it with `--collapsed`) and `vau tabs ungroup`. Tabs and panes
+are named by id, by what a pane shows, or by a file's path or name. `vau workspace tabs` lists every workspace's.
+A plugin follows changes with `onTabsEvent` (tab and pane focused, opened, closed, moved; a pane showing another place).

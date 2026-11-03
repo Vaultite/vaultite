@@ -560,7 +560,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
   closeTab.current = close
   // Touch screens; phones (no pane) also fill the visible part of the screen while the terminal has the keyboard.
   const [touchUi] = useState(touchScreen)
-  const inPane = usePane().group !== ""
+  const inPane = usePane().pane !== ""
   const phone = touchUi && !inPane
   const [typing, setTyping] = useState(false)
   const [up, setUp] = useState(false)

@@ -130,8 +130,8 @@ const scrollTo = (page, frac) => page.evaluate((f) => {
 }, frac)
 const anchorNow = (page) => page.evaluate(() => window.__anchor())
 
-const tabLoc = (page, name) => page.locator("section[data-group] [data-tab-id]", { has: page.locator("[role=tab]", { hasText: name }) }).first()
-const activeTab = (page) => page.evaluate(() => document.querySelector("section[data-group] [role=tab][aria-selected=true]")?.innerText.trim())
+const tabLoc = (page, name) => page.locator("[data-tab-strip] [data-tab-id]", { has: page.locator("[role=tab]", { hasText: name }) }).first()
+const activeTab = (page) => page.evaluate(() => document.querySelector("[data-tab-strip] [role=tab][aria-selected=true]")?.innerText.trim())
 const nameOf = (p) => p.split("/").pop().replace(/\.md$/, "")
 
 async function suite(file, label) {
@@ -153,7 +153,7 @@ async function suite(file, label) {
   for (const frac of STEPS.includes("tab") && !PHONE ? [0.33, 0.66, 1] : []) {
     await scrollTo(page, frac); await wait(400)
     const a = await anchorNow(page)
-    await page.locator("section[data-group] button[aria-label='New tab']").first().click(); await wait(300)
+    await page.locator("[data-tab-strip] button[aria-label='New tab']").first().click(); await wait(300)
     await page.evaluate((h) => { location.hash = h }, hash(OTHER)); await wait(800)
     await measure(page, `${label}: tab back at ${Math.round(frac * 100)}%`, a, async () => {
         await tabLoc(page, nameOf(file)).locator("[role=tab]").click()

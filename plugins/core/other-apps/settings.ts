@@ -132,7 +132,7 @@ export const OBSIDIAN_COMMANDS: Record<string, string> = {
   "file-explorer:duplicate-file": "file:duplicate", "workspace:edit-file-title": "file:rename", "workspace:copy-path": "file:copy-path",
   "workspace:new-tab": "tab:new", "workspace:close": "tab:close", "workspace:close-others": "tab:close-others",
   "workspace:next-tab": "tab:next", "workspace:previous-tab": "tab:previous", "workspace:goto-last-tab": "tab:goto-last",
-  "workspace:undo-close-pane": "tab:reopen", "workspace:toggle-pin": "tab:toggle-pin", "workspace:toggle-stacked-tabs": "tab:toggle-stacked",
+  "workspace:undo-close-pane": "tab:reopen", "workspace:toggle-pin": "tab:toggle-pin",
   "workspace:move-to-new-window": "tab:move-to-window", "workspace:open-in-new-window": "tab:open-in-window",
   "workspace:split-vertical": "split:right", "workspace:split-horizontal": "split:down", "workspace:export-pdf": "export-pdf:pdf",
   "editor:focus-top": "split:focus-top", "editor:focus-bottom": "split:focus-bottom", "editor:focus-left": "split:focus-left",

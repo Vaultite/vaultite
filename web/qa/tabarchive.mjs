@@ -20,10 +20,12 @@ mkdirSync(path.dirname(TABS), { recursive: true })
 writeFileSync(TABS, JSON.stringify({ archive_after: "12h" }) + "\n")
 
 const old = Date.now() - 13 * 3600_000
-const layout = { root: { id: "g0", active: "ta", tabs: [
-  { id: "ta", to: `file:${a}` }, { id: "tb", to: `file:${b}`, seen: old }, { id: "tp", to: `file:${c}`, pinned: true, seen: old },
-  { id: "tt", to: "view:terminal/qaarchiv", seen: old }, { id: "tw", to: "view:web/https://example.com/", seen: old },
-] }, focus: "g0" }
+// (each a tab of one pane: tab "ta", its pane "pa")
+const tab = (id, to, more = {}) => { const { pinned, ...pane } = more; return { id: `t${id}`, root: { id: `p${id}`, to, ...pane }, focus: `p${id}`, ...(pinned ? { pinned } : {}) } }
+const layout = { tabs: [
+  tab("a", `file:${a}`), tab("b", `file:${b}`, { seen: old }), tab("p", `file:${c}`, { pinned: true, seen: old }),
+  tab("t", "view:terminal/qaarchiv", { seen: old }), tab("w", "view:web/https://example.com/", { seen: old }),
+], active: "ta" }
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
@@ -33,7 +35,7 @@ try {
   await page.evaluate((l) => localStorage.setItem("vaultite.tabs", JSON.stringify(l)), layout)
   await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(a)}`)
   await page.waitForSelector("[data-tab-id='ta']", { timeout: 30000 })
-  const ids = () => page.$$eval("section[data-group] [data-tab-id]", (els) => els.map((e) => e.getAttribute("data-tab-id")))
+  const ids = () => page.$$eval("[data-tab-strip] [data-tab-id]", (els) => els.map((e) => e.getAttribute("data-tab-id")))
   check("the tabs as saved", (await ids()).join() === "ta,tb,tp,tt,tw", await ids())
 
   // The first sweep waits a minute after the window opens (its workspace's tabs in place first).
@@ -101,7 +103,7 @@ try {
   check("with Workspaces, the tabs' stamps go with the layout", /"seen":\d+/.test(stamped), stamped.slice(0, 300))
   // (files opened lately are kept in the workspace too, as they stay in view: only the tabs are looked at)
   const before = JSON.stringify(workspaces(B)[0]?.layout)
-  const tabIds = await p2.$$eval("section[data-group] [data-tab-id]", (els) => els.map((e) => e.getAttribute("data-tab-id")))
+  const tabIds = await p2.$$eval("[data-tab-strip] [data-tab-id]", (els) => els.map((e) => e.getAttribute("data-tab-id")))
   for (const id of [...tabIds, ...tabIds]) { await p2.click(`[data-tab-id='${id}'] [role=tab]`); await wait(400) }
   await wait(2000)
   check("switching tabs writes nothing of the tabs (their stamps wait for a write that happens anyway)", JSON.stringify(workspaces(B)[0]?.layout) === before,

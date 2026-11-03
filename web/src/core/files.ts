@@ -11,10 +11,10 @@ import { movePlaces } from "@/core/viewstate"
 import { homeFolder, inArchive, isHiddenPath } from "../../../core/fileprops.ts"
 import { dump } from "../../../core/yaml.ts"
 import { notify as notice } from "@/core/notify"
-import { leaves, shownTab, tabPath, type Group } from "../../../core/layout.ts"
+import { allPanes, tabPath, type Pane } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
 import { guestEdits, share } from "@/core/share"
-import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, keepsTab, openTab, retarget, targetOf } from "@/core/workspace"
+import { closePane, dropTabs, findOpen, go, guarded, here, keepsTab, openTab, panes, activePane, retarget, setFocusedPane, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
@@ -129,7 +129,7 @@ const enc = encodeURIComponent
  *  isn't under them. `pane`: in that pane, not the focused one. */
 export function openFile(path: string, opts: { newTab?: boolean; pane?: string } = {}) {
   if (!isDesktop() && route().detail) return afterSheets(() => go(`file:${path}`, opts.newTab))
-  if (opts.pane && isDesktop()) focusGroup(opts.pane)
+  if (opts.pane && isDesktop()) setFocusedPane(opts.pane)
   go(`file:${path}`, opts.newTab)
 }
 setFileOpener((path) => openFile(path))
@@ -140,7 +140,7 @@ export const folderTarget = (path: string) => (path ? `view:folder/${path}` : "v
 export function openFolder(path: string, opts: { newTab?: boolean; pane?: string } = {}) {
   const to = folderTarget(path)
   if (!isDesktop() && route().detail) return afterSheets(() => go(to, opts.newTab))
-  if (opts.pane && isDesktop()) focusGroup(opts.pane)
+  if (opts.pane && isDesktop()) setFocusedPane(opts.pane)
   go(to, opts.newTab)
 }
 
@@ -160,14 +160,12 @@ function openAsked(path: string, split?: "right" | "down" | null, newTab = false
   if (!view) besideKept()
   go(to, newTab)
 }
-/** A file an agent opens from its terminal goes beside it, not over it: the focus moves to the first other pane that
- *  isn't showing a tab that keeps its own (ViewDef.keepsTab: a terminal), when there's one. */
+/** A file an agent opens from its terminal goes beside it, not over it: the focus moves to the first other pane of
+ *  the tab on screen that isn't showing a view that keeps its own (ViewDef.keepsTab: a terminal), when there's one. */
 function besideKept() {
-  const ws = getWorkspace(), gs = leaves(ws.root)
-  const kept = (g: Group) => { const t = shownTab(g); return !!t && keepsTab(t.to) }
-  const cur = gs.find((g) => g.id === ws.focus)
-  const other = cur && kept(cur) ? gs.find((g) => g.id !== cur.id && !kept(g)) : undefined
-  if (other) focusGroup(other.id)
+  const kept = (p: Pane) => keepsTab(p.to), cur = activePane()
+  const other = cur && kept(cur) ? panes().find((p) => p.id !== cur.id && !kept(p)) : undefined
+  if (other) setFocusedPane(other.id)
 }
 onUiAction((m) => {
   if (m.action === "command" && m.id) return runCommandId(m.id)
@@ -178,8 +176,8 @@ onUiAction((m) => {
   if (m.action === "open" && m.path) openAsked(m.path, m.split, !!m.newTab, !!m.background)
 })
 
-/** Open a plugin's view, shown once: a tab that has it shows it (no two terminal tabs fighting over its size), else a new
- *  tab or the group to the right. `another`: a tab of its own anyway, in the focused pane (a blank web page). */
+/** Open a plugin's view, shown once: a pane that has it shows it (no two terminal panes fighting over its size), else a
+ *  new tab or the pane to the right. `another`: a tab of its own anyway (a blank web page). */
 export function openView(to: string, opts: { newTab?: boolean; split?: boolean; focus?: boolean; another?: boolean } = {}) {
   const target = resolveView(to.startsWith("view:") ? to : `view:${to}`)
   if (opts.another) return void openTab(target)
@@ -188,14 +186,14 @@ export function openView(to: string, opts: { newTab?: boolean; split?: boolean; 
   go(target, opts.newTab)
 }
 
-/** Whether a view (`terminal/abc`) is open in a tab somewhere. */
+/** Whether a view (`terminal/abc`) is open in a pane somewhere. */
 export const isViewOpen = (to: string) => !!findOpen(to.startsWith("view:") ? to : `view:${to}`)
 
-/** Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it). */
+/** Close every pane showing a view (`terminal/abc`), as if the user did (its plugin hears it). */
 export function closeView(to: string) {
   const target = to.startsWith("view:") ? to : `view:${to}`
   const open = findOpen(target)
-  if (open) guarded([open.t], () => { for (let o = findOpen(target); o; o = findOpen(target)) closeTab(o.t.id, true) })
+  if (open) guarded([open.p], () => { for (let o = findOpen(target); o; o = findOpen(target)) closePane(o.p.id, true) })
 }
 
 /** A file just made with New note: it opens ready to type its name. */
@@ -282,7 +280,7 @@ export function watchOpeningSoon() {
 export function prefetchShown() {
   const { tab, detail } = route()
   const shown = [targetOf(tab), detail.startsWith("file/") ? targetOf(detail) : ""]
-  if (isDesktop()) for (const g of leaves(getWorkspace().root)) shown.push(shownTab(g)?.to ?? "")
+  if (isDesktop()) for (const p of panes()) shown.push(p.to)
   for (const to of new Set(shown)) { const p = tabPath(to); if (p) prefetchFile(p) }
 }
 
@@ -383,7 +381,7 @@ export const deletedHere = (path: string) => [...deleting].some((d) => path === 
 /** Move a file or folder to the trash (in the trash: delete it for good; .trash itself: empty it), with Undo unless
  *  `quiet`. Returns where it went in .trash (null when deleted for good). */
 export async function deleteFile(path: string, opts: { quiet?: boolean } = {}): Promise<string | null> {
-  const wasOpen = leaves(getWorkspace().root).some((g) => g.tabs.some((t) => t.to === `file:${path}`))
+  const wasOpen = allPanes(here()).some((p) => p.to === `file:${path}`)
   deleting.add(path)
   setTimeout(() => deleting.delete(path), 10_000)
   const { trashed } = await del<{ trashed?: string }>(`file?path=${enc(path)}`)

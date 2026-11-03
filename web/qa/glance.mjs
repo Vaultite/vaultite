@@ -27,7 +27,8 @@ const page = watch(await ctx.newPage(), { console: true })
 const shot = (name) => page.screenshot({ path: `${OUT}glance-${name}.png` })
 const sheet = page.locator("dialog[open]")
 const glanceOpen = () => page.evaluate(() => !!document.querySelector("dialog[open]") && location.hash.includes("/glance/"))
-const activeTabs = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => s.querySelector("[role=tab][aria-selected=true]")?.innerText.trim()))
+/** What each pane on screen shows (its name). */
+const activeTabs = () => page.evaluate(() => [...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => s.getAttribute("aria-label")?.trim()))
 const link = () => page.locator("main .cm-wikilink:not(.is-missing), main a[data-wiki]", { hasText: target }).filter({ visible: true }).first()
 
 async function openFrom() {
@@ -69,7 +70,7 @@ await glance()
 await sheet.getByRole("button", { name: "Open in tab" }).click()
 const promoted = await until(async () => !(await glanceOpen()) && (await page.evaluate(() => decodeURIComponent(location.hash))).includes(targetPath), 4000)
 check("Open in tab closes the glance and shows the note in the focused pane", promoted, await page.evaluate(() => location.hash))
-const tabNames = () => page.evaluate(() => [...document.querySelectorAll("section[data-group] [role=tab]")].map((t) => t.innerText.trim()))
+const tabNames = () => page.evaluate(() => [...document.querySelectorAll("[data-tab-strip] [role=tab]")].map((t) => t.innerText.trim()))
 // (a new tab grows in, its name shown once it's wide enough)
 const beside = (tabs) => tabs.some((t) => t.includes(target)) && tabs.some((t) => t.includes(from.path.slice(6, -3)))
 check("as a new tab beside the one it was glanced from", !!(await until(async () => beside(await tabNames()), 2000)), await tabNames())

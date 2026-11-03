@@ -106,7 +106,7 @@ check("… and it goes again", await away(), await look())
 
 // ---------- the tab bar off: the strip above the pane brings it ----------
 await appearance({ tabBar: false, paneTitles: false })
-const strip = win.locator("[data-tab-bar][data-tabs-hidden][data-bare]:visible").first()
+const strip = win.locator("[data-pane-bar][data-bare]:visible").first()
 check("the tab bar off: a strip above the pane", await until(() => strip.isVisible(), 5000))
 let sb = await strip.boundingBox()
 await win.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2)

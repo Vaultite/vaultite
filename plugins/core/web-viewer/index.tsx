@@ -3,7 +3,7 @@
 import { lazy, memo, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Printer, Puzzle, RotateCw, Scan, Scissors, Search, Volume2, VolumeX, ZoomIn,
   ZoomOut } from "lucide-react"
-import { choose, closeTab, closeView, definePlugin, detailPath, focusGroup, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, panesOf, post, runCommandById, runShortcut, typingIn, saveAttachments, selectTab, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
 import { iconCame, siteIcon, spinnerIcon } from "./icons"
@@ -75,7 +75,7 @@ function bookmarkPage() {
 /** The focused pane shows a web tab (with a page or not): the browser's keys are the page's, never the app's menu's
  *  (⌘R reloading the app). */
 function onWebTab() {
-  const w = getTabLayout(), g = panesOf(w.root).find((x) => x.id === w.focus), t = g?.tabs.find((x) => x.id === g.active)
+  const w = getTabLayout(), s = shownTab(w), t = s && focusedPane(s)
   return !!t && (t.to === "view:web" || t.to.startsWith("view:web/"))
 }
 /** What the focused page does now (none: nothing). */
@@ -178,16 +178,16 @@ function Background() {
   useEffect(() => webPages?.on((m) => {
     if (m.type === "state") stateCame(m.id, m.state)
     else if (m.type === "open") opened(m)
-    else if (m.type === "close") closeTab(m.tab, true)
+    else if (m.type === "close") closePane(m.tab, true)
     else if (m.type === "blocked") notify(`Blocked a pop-up from ${hostOf(m.url) || "a page"}`, { action: { label: "Open", run: () => opened({ ...m, type: "open", how: "foreground" }) } })
     else if (m.type === "engine:agent:pages" && Array.isArray(m.pages)) setAgentPages(m.pages as AgentPage[])
-    else if (m.type === "engine:agent:close" && typeof m.tab === "string" && m.tab) closeTab(m.tab, true)
+    else if (m.type === "engine:agent:close" && typeof m.tab === "string" && m.tab) closePane(m.tab, true)
     // (each page's load, for a bug report's timeline: electron/browser/navlog.ts)
     else if (m.type === "engine:navlog:load") { const { type: _, ...load } = m; trace("browser", { ev: "load", ...load }) }
     // An agent asks: its page shown as a tab (opened as one from the background, in its agent's tab group), so the user
     // does it where it's asked.
     else if (m.type === "engine:agent:help" && typeof m.id === "number" && m.on) {
-      if (typeof m.tab === "string" && m.tab) selectTab(m.tab)
+      if (typeof m.tab === "string" && m.tab) selectPane(m.tab)
       else if (typeof m.url === "string" && typeof m.profile === "string") {
         void openAsTab({ id: m.id, tab: "", url: m.url, profile: m.profile, group: String(m.group ?? "") }, false)
       }
@@ -202,9 +202,9 @@ function Background() {
         else next.set(id, { ask, state, qr: String(m.qr ?? ""), site: String(m.site ?? ""), create: !!m.create })
         return next
       })
-      if (state === "scan" && typeof m.tab === "string" && m.tab) selectTab(m.tab)
+      if (state === "scan" && typeof m.tab === "string" && m.tab) selectPane(m.tab)
     }
-    else if (m.type === "focus") { pageTookKeyboard(m.id); const s = shown.get(m.id); if (s) focusGroup(s.group) }
+    else if (m.type === "focus") { pageTookKeyboard(m.id); const s = shown.get(m.id); if (s) setFocusedPane(s.group) }
     else if (m.type === "address") shown.get(m.id)?.focusAddress()
     else if (m.type === "source") { const s = shown.get(m.id); viewSource(m.url.replace(/^view-source:/, ""), s?.container ?? null, s?.tab) }
     else if (m.type === "clip") shown.get(m.id)?.clip()
@@ -214,7 +214,7 @@ function Background() {
     else if (m.type === "notify" || m.type === "session") pageNotified(m)
     else if (m.type === "found") shown.get(m.id)?.found(m.active, m.matches)
     // (the mouse's back and forward buttons over a page: its pane's Back and Forward)
-    else if (m.type === "nav") { const s = shown.get(m.id); if (s) focusGroup(s.group); runCommandById(m.dir < 0 ? "nav:back" : "nav:forward") }
+    else if (m.type === "nav") { const s = shown.get(m.id); if (s) setFocusedPane(s.group); runCommandById(m.dir < 0 ? "nav:back" : "nav:forward") }
     else if (m.type === "key") runShortcut(new KeyboardEvent("keydown", { key: m.key, code: m.code, metaKey: m.meta, ctrlKey: m.ctrl, altKey: m.alt, shiftKey: m.shift, cancelable: true }))
     else if (m.type === "engine:ext:changed") extensionsChanged()
     // (an extension's tab, in its session's container)
@@ -294,7 +294,7 @@ export default definePlugin({
       archives: (arg, tab) => !soundOf(arg, tab)?.playing && !typedIn(tab),
       // (a tab's page is its own, whatever else shows the address; moved to another window, it goes along)
       // (once the window paints behind it again, as WebPage lets go of one; not if it's back by then: ⌘⇧T)
-      onTabClose: (_arg, tab, moved) => void painted().then(() => { if (!panesOf(getTabLayout().root).some((g) => g.tabs.some((t) => t.id === tab))) void webPages?.close(tab, moved) }),
+      onTabClose: (_arg, tab, moved) => void painted().then(() => { if (!allPanes(getTabLayout()).some((p) => p.id === tab)) void webPages?.close(tab, moved) }),
       // (its pane's top: the strip or title over a hidden page bar, the tab bar's empty space)
       paneMenu: () => (webPages ? [pageBarItem()] : []),
       tabMenu: (arg, tab) => {

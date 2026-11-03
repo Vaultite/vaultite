@@ -17,7 +17,7 @@ const STUBS: Record<string, string> = {
   "@/core/prefs": "export const getPrefs = () => ({ disabled: [] })",
   "@/core/appearance": "export const onLook = () => () => {}",
   "@/core/desktop": "export const webPages = null; export const keyboardTakes = () => 0; export const pageTakenSince = () => null",
-  "@/core/live": "export const answerUi = () => {}",
+  "@/core/live": "export const answerUi = (kind, fn) => { (globalThis.__answerUi ??= {})[kind] = fn }",
 }
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
 const shim = path.join(tempDir("vau-shim-"), "vaultite.ts")
@@ -918,24 +918,28 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("drag: dragged out to all it draws: the height it needs", full.get(1) === 400 && !full.has(2), [...full])
 }
 
-// ---------- tabs: a blank tab is never left behind (web/src/core/workspace.ts, splits.ts) ----------
+// ---------- tabs: tabs hold panes (core/layout.ts; web/src/core/workspace.ts, splits.ts, tabgroups.ts, drop.ts) ----------
 
 {
-  // Just enough of a browser for the tabs: the address, its history, a phone's or a computer's width.
+  // Just enough of a browser for the tabs: the address, its history, a phone's or a computer's width, what's saved.
   let desktop = true
   const g = globalThis as Any
-  g.location = { hash: "" }
+  const mem = new Map<string, string>()
+  g.location = { hash: "", search: "", pathname: "/" }
   g.history = { state: null, pushState(st: unknown, _: string, h: string) { this.state = st; g.location.hash = h }, replaceState(st: unknown, _: string, h?: string) { this.state = st; if (h) g.location.hash = h } }
   g.matchMedia = () => ({ matches: desktop })
-  g.localStorage = { getItem: () => null, setItem() {} }
+  g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem() {} }
   g.addEventListener = () => {}
   g.requestAnimationFrame = () => 0
-  g.document = { addEventListener() {}, activeElement: null, querySelector: () => null }
+  g.document = { addEventListener() {}, activeElement: null, querySelector: () => null, documentElement: { dataset: {} } }
   g.CSS = { escape: (s: string) => s, supports: () => false }
   g.dispatchEvent = () => true
   g.HashChangeEvent = class { type: string; constructor(type: string) { this.type = type } }
   const ws: Any = await web("core/workspace.ts")
   const sp: Any = await web("core/splits.ts")
+  const gr: Any = await web("core/tabgroups.ts")
+  const dr: Any = await web("core/drop.ts")
+  const tev: Any = await web("core/tabevents.ts")
   const lay: Any = await web("../../core/layout.ts")
   const tid = await import("../core/terminalids.ts")
   check("terminal ids: an agent, its account, a resumed session and a machine read back; a shell is none",
@@ -944,429 +948,614 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && /^claude_work-[a-z0-9]{8}$/.test(tid.newTerminalId(tid.agentIn("claude", "work"))) && tid.agentIn("claude", "No way") === "claude")
   check("tabs: a target's file, and only a vault one's vault path", lay.tabPath("file:a.md") === "a.md" && lay.tabPath("file:/x/b.pdf") === "/x/b.pdf"
     && lay.tabPath("view:terminal/1") === null && lay.vaultPath("file:a.md") === "a.md" && lay.vaultPath("file:/x/b.pdf") === null && lay.vaultPath("new") === null)
-  const P = (id: string, ids: string[], active: string) => ({ id, tabs: ids.map((t) => ({ id: t, to: `file:${t}.md` })), active })
+
+  // A pane showing its file (or `to`); a tab of one pane (its id "t" and the pane's); a split tab; splits.
+  type Tb = { id: string; root: Any; focus: string; [k: string]: unknown }
+  const pane = (id: string, to = `file:${id}.md`): Any => ({ id, to })
+  const TP = (p: Any, extra: Props = {}): Tb => ({ id: `t${p.id}`, root: p, focus: p.id, ...extra })
+  const T = (id: string, to?: string, extra: Props = {}) => TP(pane(id, to), extra)
+  const S = (id: string, root: Any, focus: string, extra: Props = {}): Tb => ({ id, root, focus, ...extra })
+  const row = (id: string, kids: Any[], sizes?: number[]) => ({ id, dir: "row", kids, sizes: sizes ?? kids.map(() => 1 / kids.length) })
+  const col = (id: string, kids: Any[], sizes?: number[]) => ({ id, dir: "col", kids, sizes: sizes ?? kids.map(() => 1 / kids.length) })
+  const put = (tabs: Tb[], active: string, extra: Props = {}) => ws.replaceWorkspace({ tabs, active, ...extra })
+  // The list as "a,[b|c]*,d": each tab's panes (files without ".md"), splits in brackets, the tab on screen starred.
+  const short = (to: string) => (to.startsWith("file:") ? to.slice(5).replace(/\.md$/, "") : to)
+  const desc = (n: Any): string => (n.kids ? `[${n.kids.map(desc).join(n.dir === "row" ? "|" : "/")}]` : short(n.to))
+  const tabs = () => ws.here().tabs.map((t: Tb) => desc(t.root) + (t.id === ws.here().active ? "*" : "")).join(",")
+  const focus = () => ws.activePane().id
+  const shares = (t: Tb = ws.activeTab()) => t.root.sizes?.map((x: number) => x.toFixed(2)).join(",")
+  const tree = (n: Any = ws.activeTab().root): string => (n.kids ? `${n.dir}(${n.kids.map((k: Any, i: number) => `${tree(k)}:${n.sizes[i].toFixed(2)}`).join(" ")})` : n.id)
+  const a = pane("a"), b = pane("b"), c = pane("c"), d = pane("d")
+
+  // ---- the model: what's saved read back, and from before tabs held panes ----
+  const oldLayout = { root: { id: "s0", dir: "row", sizes: [0.6, 0.4], kids: [
+    { id: "gL", active: "a", sets: [{ id: "S", name: "Work", color: "blue" }], tabs: [{ id: "a", to: "file:a.md" }, { id: "b", to: "file:b.md", set: "S", pinned: true, name: "Reading" }] },
+    { id: "gR", active: "d", tabs: [{ id: "c", to: "file:c.md" }, { id: "d", to: "file:d.md", back: ["file:x.md"], name: "Desk" }] }] }, focus: "gR", zoom: "gR" }
+  const mig = lay.clean(oldLayout), split = mig?.tabs.find((t: Tb) => t.id === "ta")
+  check("migration: old tab ids are pane ids, each tab's id \"t\" and its first pane's, the split tab where the focused group's shown tab was",
+    mig?.tabs.map((t: Tb) => `${t.id}:${desc(t.root)}`).join() === "tb:b,tc:c,ta:[a|d]" && mig.active === "ta", mig)
+  check("migration: the split keeps its sizes, the focus and zoom on the focused group's shown tab, history kept",
+    split?.root.id === "s0" && split.root.sizes.join() === "0.6,0.4" && split.focus === "d" && split.zoom === "d" && split.root.kids[1].back?.join() === "file:x.md", split)
+  const tb = mig?.tabs[0]
+  check("migration: pinned, name and tab group (set) carried; the old groups' sets are the list's groups",
+    tb?.pinned === true && tb.name === "Reading" && tb.group === "S" && split?.name === "Desk" && same(mig.groups, [{ id: "S", name: "Work", color: "blue" }]), [tb, mig?.groups])
+  check("migration: the same on every device, and read again unchanged", same(lay.clean(oldLayout), mig) && same(lay.clean(JSON.parse(JSON.stringify(mig))), mig))
+  const oldFloat = lay.clean({ root: { id: "s1", dir: "row", sizes: [0.5, 0.25, 0.25], kids: [{ id: "gA", tabs: [{ id: "a", to: "file:a.md" }], active: "a" },
+    { id: "gM", tabs: [{ id: "m", to: "view:terminal/q" }], active: "m", float: { x: 0.5, y: 0.1, w: 0.4, h: 0.5 } }, { id: "gC", tabs: [{ id: "c", to: "file:c.md" }], active: "c" }] }, focus: "gA", zoom: "gM" })
+  check("migration: a floating group's shown tab floats in the split tab; a zoom of a group not focused is dropped",
+    oldFloat?.tabs.length === 1 && oldFloat.tabs[0].id === "ta" && same(oldFloat.tabs[0].root.kids[1].float, { x: 0.5, y: 0.1, w: 0.4, h: 0.5 }) && oldFloat.tabs[0].focus === "a"
+    && !("zoom" in oldFloat.tabs[0]), oldFloat)
+  check("migration: an old layout with no tab is none; with an unknown focus, the first group's", lay.clean({ root: { id: "g0", tabs: [], active: "" } }) === null
+    && lay.clean({ root: { id: "s0", dir: "row", kids: [{ id: "g1", tabs: [{ id: "a", to: "file:a.md" }], active: "a" }, { id: "g2", tabs: [{ id: "b", to: "file:b.md" }], active: "b" }] }, focus: "gone" })?.tabs[0].focus === "a")
+  const dup = lay.clean({ tabs: [T("a"), { ...T("a"), id: "tz" }, { id: "te", root: { kids: [] }, focus: "" }], active: "tz" })
+  check("reading: a pane in two tabs stays in the first, a tab with no pane goes, the active one falls back to the first",
+    dup?.tabs.map((t: Tb) => t.id).join() === "ta" && dup.active === "ta", dup)
+
+  // What older versions kept on this device (workspace.ts' older()), and its closed tabs, read by a fresh copy of the module.
+  let freshN = 0
+  const fresh = async (saved: unknown, closed?: unknown, popout = "") => {
+    mem.clear(); mem.set("vaultite.tabs", JSON.stringify(saved))
+    if (closed) mem.set(`vaultite.tabs.closed${popout ? `.${popout}` : ""}`, JSON.stringify(closed))
+    g.location.search = popout ? `?popout=${popout}` : ""
+    const m: Any = await import(`${pathToFileURL(path.join(WEB, "core", "workspace.ts")).href}?fresh=${++freshN}`)
+    mem.clear(); g.location.search = ""
+    return m
+  }
+  const listOf = (m: Any) => m.here().tabs.map((t: Tb) => desc(t.root) + (t.id === m.here().active ? "*" : "")).join(",")
+  const one = await fresh({ tabs: [{ id: "a", to: "file:a.md" }, { id: "b", to: "file:b.md" }], active: "b" })
+  check("older saves: one pane's tabs ({tabs, active}) are tabs of one pane each", listOf(one) === "a,b*" && one.here().tabs.map((t: Tb) => t.id).join() === "ta,tb", listOf(one))
+  const twoSaved = await fresh({ groups: [{ id: "gL", tabs: [{ id: "a", to: "file:a.md" }], active: "a" }, { id: "gR", tabs: [{ id: "b", to: "file:b.md" }, { id: "c", to: "file:c.md" }], active: "c" }], split: 0.3 })
+  check("older saves: a main pane and a right split ({groups, split}) are one split tab at those sizes, the rest tabs of their own",
+    listOf(twoSaved) === "[a|c]*,b" && shares(twoSaved.activeTab()) === "0.70,0.30", [listOf(twoSaved), shares(twoSaved.activeTab())])
+  const grouped = { tabs: [T("a", undefined, { group: "g" }), T("b", undefined, { group: "g" }), S("tx", row("s0", [c, d]), "d"), T("e")],
+    groups: [{ id: "g", name: "Work", color: "blue", collapsed: true }], active: "te" }
+  const groupedSaved = await fresh(grouped)
+  check("saves: a list with tab groups (its `groups`, not the old {groups, split}) loads back as itself", same(groupedSaved.here(), grouped), groupedSaved.here())
+  const rooted = await fresh(oldLayout, [{ tab: { id: "x", to: "file:x.md" }, at: 1, closed: 5 }, { pane: { tabs: [{ id: "y", to: "file:y.md" }, { id: "z", to: "file:z.md" }] }, closed: 6 }])
+  check("older saves: a layout of groups in splits migrates; closed tabs and panes of tabs saved then reopen as tabs",
+    listOf(rooted) === "b,c,[a|d]*" && rooted.closedTabs().map((r: Any) => `${r.tab.id}:${r.closed}`).join() === "tz:6,ty:6,tx:5", [listOf(rooted), rooted.closedTabs()])
+  // A pop-out keeps its own list in the workspace; the main window keeps its own and which pop-outs there are.
+  const pop = await fresh({ tabs: [T("a")], active: "ta", windows: [{ id: "w1", tabs: [T("p")], active: "tp" }] }, undefined, "w1")
+  const theirs = { tabs: [T("a"), T("b")], active: "tb", windows: [{ id: "w1", tabs: [T("q")], active: "tq" }, { id: "w2", tabs: [T("r")], active: "tr" }] }
+  const popMine = pop.mineInto(theirs)
+  check("pop-out: its own list is what it shows; saved, it puts that into the workspace, the other windows' as they are",
+    listOf(pop) === "p*" && popMine.tabs.map((t: Tb) => t.id).join() === "ta,tb" && popMine.windows.map((w: Any) => `${w.id}:${w.tabs.map((t: Tb) => t.id).join()}`).join() === "w1:tp,w2:tr", popMine)
+  put([T("a"), T("c")], "ta", { windows: [{ id: "w1", tabs: [T("p")], active: "tp" }] })
+  const mainMine = ws.mineInto(theirs)
+  check("pop-out: the main window saving puts its own tabs in, the pop-outs it has with their own lists",
+    mainMine.tabs.map((t: Tb) => t.id).join() === "ta,tc" && mainMine.windows.map((w: Any) => `${w.id}:${w.tabs.map((t: Tb) => t.id).join()}`).join() === "w1:tq", mainMine)
+
+  // ---- tabs and panes leaving: what shows next ----
+  const L = (ids: string[], active: string, extra: Props = {}) => ({ tabs: ids.map((x) => T(x)), active: `t${active}`, ...extra })
   check("closing: the tab shown, gone, hands over to the nearest after it, else before it; others going leave it shown",
-    lay.withoutTabs(P("g", ["a", "b", "c"], "b"), new Set(["b"])).active === "c" && lay.withoutTabs(P("g", ["a", "b", "c"], "c"), new Set(["c"])).active === "b"
-    && lay.withoutTabs(P("g", ["a", "b", "c", "d"], "b"), new Set(["b", "c"])).active === "d" && lay.withoutTabs(P("g", ["a", "b", "c"], "a"), new Set(["c"])).active === "a")
+    lay.withoutTabs(L(["a", "b", "c"], "b"), new Set(["tb"])).active === "tc" && lay.withoutTabs(L(["a", "b", "c"], "c"), new Set(["tc"])).active === "tb"
+    && lay.withoutTabs(L(["a", "b", "c", "d"], "b"), new Set(["tb", "tc"])).active === "td" && lay.withoutTabs(L(["a", "b", "c"], "a"), new Set(["tc"])).active === "ta"
+    && lay.withoutTabs(L(["a"], "a"), new Set(["ta"])) === null)
   // [x] (A: a1 a2) (B folded: b1 b2) c, as Chrome's tab strip picks the next.
-  const G = (active: string) => ({ id: "g", active, sets: [{ id: "A", name: "", color: "blue" }, { id: "B", name: "", color: "red", collapsed: true }],
-    tabs: [{ id: "x", to: "new" }, { id: "a1", to: "file:a1.md", set: "A" }, { id: "a2", to: "file:a2.md", set: "A" }, { id: "b1", to: "file:b1.md", set: "B" }, { id: "b2", to: "file:b2.md", set: "B" }, { id: "c", to: "file:c.md" }] })
-  const after = (active: string, ...ids: string[]) => lay.withoutTabs(G(active), new Set(ids)).active
+  const G = (active: string) => ({ active: `t${active}`, groups: [{ id: "A", name: "", color: "blue" }, { id: "B", name: "", color: "red", collapsed: true }],
+    tabs: [T("x", "new"), T("a1", undefined, { group: "A" }), T("a2", undefined, { group: "A" }), T("b1", undefined, { group: "B" }), T("b2", undefined, { group: "B" }), T("c")] })
+  const after = (active: string, ...ids: string[]) => lay.withoutTabs(G(active), new Set(ids.map((x) => `t${x}`))).active.slice(1)
   check("closing in a tab group: another of its tabs (after, else before); its last, the nearest outside it, never into a folded group",
     after("a1", "a1") === "a2" && after("a2", "a2") === "a1" && after("a2", "a1", "a2") === "c" && after("c", "c") === "a2", [after("a1", "a1"), after("a2", "a2"), after("a2", "a1", "a2"), after("c", "c")])
-  check("closing: with only folded groups left, the nearest, whose group opens", after("c", "x", "a1", "a2", "c") === "b2", after("c", "x", "a1", "a2", "c"))
-  const three = { root: { id: "s", dir: "row", sizes: [0.25, 0.5, 0.25], kids: [P("gA", ["a"], "a"), P("gB", ["b"], "b"), P("gC", ["c"], "c")] }, focus: "gB" }
-  const left = lay.withoutTabsIn(three, new Set(["b"]))
-  check("closing: a pane left with no tabs closes, the focus going to the pane after it, else before it",
-    left?.focus === "gC" && left.root.kids.map((k: Any) => k.id).join() === "gA,gC" && lay.withoutTabsIn({ ...three, focus: "gC" }, new Set(["c"]))?.focus === "gB"
-    && lay.withoutTabsIn(three, new Set(["a", "b", "c"])) === null, left)
-  // Panes from the keyboard: [A | [B / C]] with A a quarter wide.
-  const grid: Any = { id: "s", dir: "row", sizes: [0.25, 0.75], kids: [P("gA", ["a"], "a"), { id: "c", dir: "col", sizes: [0.5, 0.5], kids: [P("gB", ["b"], "b"), P("gC", ["c"], "c")] }] }
-  const ids = (n: Any): string => (n.kids ? `[${n.kids.map(ids).join(n.dir === "row" ? " | " : " / ")}]` : n.id)
-  const sw = lay.swapped(grid, "gA", "gC")
+  const lastGroup = lay.withoutTabs(G("c"), new Set(["tx", "ta1", "ta2", "tc"]))
+  check("closing: with only folded groups left, the nearest, whose group opens", lastGroup.active === "tb2" && !lastGroup.groups[0].collapsed, lastGroup)
+  const three = S("tx", row("s", [a, b, c], [0.25, 0.5, 0.25]), "b")
+  const left = lay.tabWithout(three, new Set(["b"]))
+  check("closing: a pane closed in a split, the focus goes to the pane after it, else before it; the last one gone, the tab is none",
+    left?.focus === "c" && desc(left.root) === "[a|c]" && lay.tabWithout({ ...three, focus: "c" }, new Set(["c"]))?.focus === "b"
+    && lay.tabWithout(three, new Set(["a", "b", "c"])) === null, left)
+  const sub = lay.withoutPanesIn(row("s", [a, col("c2", [b, c]), d], [0.25, 0.5, 0.25]), new Set(["b", "c"]))
+  const flGone = lay.withoutPanesIn(row("s", [a, { ...b, float: { x: 0, y: 0, w: 0.5, h: 0.5 } }, c], [0.25, 0.5, 0.25]), new Set(["b"]))
+  check("closing: a whole split's panes at once, its room goes to the part before it; a floating one's, nowhere (the tiled ones keep theirs)",
+    desc(sub) === "[a|d]" && sub.sizes.join() === "0.75,0.25" && desc(flGone) === "[a|c]" && flGone.sizes.join() === "0.5,0.5", [sub, flGone])
+  const lp = lay.withoutPanes({ tabs: [three, T("d")], active: "tx" }, new Set(["a", "b", "c"]))
+  check("closing: a tab left with no panes goes, the next shown", lp?.tabs.map((t: Tb) => t.id).join() === "td" && lp.active === "td", lp)
+
+  // ---- a tab's splits, pure (layout.ts) ----
+  // [a | [b / c]] with a a quarter wide.
+  const grid: Any = row("s", [a, col("c2", [b, c])], [0.25, 0.75])
+  const sw = lay.swapped(grid, "a", "c")
   check("panes: swapping two puts each in the other's place, the same objects, the sizes staying with the places",
-    ids(sw) === "[gC | [gB / gA]]" && sw.kids[0] === grid.kids[1].kids[1] && sw.sizes.join() === "0.25,0.75" && lay.swapped(grid, "gA", "gX") === grid, ids(sw))
-  const near = (a: number, b: number) => Math.abs(a - b) < 1e-9
-  const r1 = lay.nudged(grid, "gA", "right", 0.05, 0.1), r2 = lay.nudged(grid, "gA", "left", 0.05, 0.1)
+    desc(sw) === "[c|[b/a]]" && sw.kids[0] === c && sw.sizes.join() === "0.25,0.75" && lay.swapped(grid, "a", "x") === grid, desc(sw))
+  const near = (x: number, y: number) => Math.abs(x - y) < 1e-9
+  const r1 = lay.nudged(grid, "a", "right", 0.05, 0.1), r2 = lay.nudged(grid, "a", "left", 0.05, 0.1)
   check("panes: resizing moves the divider on that side that way (by a share of the whole), else the one on the other side",
-    near(r1.sizes[0], 0.3) && near(r2.sizes[0], 0.2) && near(lay.nudged(grid, "gB", "left", 0.05, 0.1).sizes[0], 0.2), [r1.sizes, r2.sizes])
-  const r3 = lay.nudged(grid, "gB", "bottom", 0.075, 0.1), r4 = lay.nudged(grid, "gC", "bottom", 0.075, 0.1)
+    near(r1.sizes[0], 0.3) && near(r2.sizes[0], 0.2) && near(lay.nudged(grid, "b", "left", 0.05, 0.1).sizes[0], 0.2), [r1.sizes, r2.sizes])
+  const r3 = lay.nudged(grid, "b", "bottom", 0.075, 0.1), r4 = lay.nudged(grid, "c", "bottom", 0.075, 0.1)
   check("panes: … in the split it's in, the step a share of the whole (its split is the whole height here); its neighbour's edge too",
-    near(r3.kids[1].sizes[0], 0.575) && near(r4.kids[1].sizes[0], 0.575) && near(lay.nudged(grid, "gB", "top", 0.075, 0.1).kids[1].sizes[0], 0.425), [r3.kids[1].sizes, r4.kids[1].sizes])
+    near(r3.kids[1].sizes[0], 0.575) && near(r4.kids[1].sizes[0], 0.575) && near(lay.nudged(grid, "b", "top", 0.075, 0.1).kids[1].sizes[0], 0.425), [r3.kids[1].sizes, r4.kids[1].sizes])
   check("panes: … never past a part's least size, and nothing without a divider that way",
-    near(lay.nudged(grid, "gA", "left", 0.5, 0.1).sizes[0], 0.1) && lay.nudged(P("g", ["a"], "a"), "g", "left", 0.05, 0.1).id === "g"
-    && lay.nudged(grid, "gA", "top", 0.05, 0.1) === grid)
+    near(lay.nudged(grid, "a", "left", 0.5, 0.1).sizes[0], 0.1) && lay.nudged(a, "a", "left", 0.05, 0.1) === a && lay.nudged(grid, "a", "top", 0.05, 0.1) === grid)
   const evAll = lay.evenedAll({ ...grid, kids: [grid.kids[0], { ...grid.kids[1], sizes: [0.8, 0.2] }] })
   check("panes: evening them out makes every split's parts equal", evAll.sizes.join() === "0.5,0.5" && evAll.kids[1].sizes.join() === "0.5,0.5", evAll)
-  type T = { id: string; to: string }
-  const one = (tabs: T[], active: string) => ws.replaceWorkspace({ root: { id: "g0", tabs, active }, focus: "g0" })
-  const two = (left: T[], right: T[], focus: "gL" | "gR") => ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.5, 0.5],
-    kids: [{ id: "gL", tabs: left, active: left.at(-1)!.id }, { id: "gR", tabs: right, active: right.at(-1)!.id }] }, focus })
-  const tabs = () => ws.groups().map((x: Any) => x.tabs.map((t: T) => t.to).join(",") + (x.id === ws.getWorkspace().focus ? " *" : "")).join(" | ")
-  const A = { id: "a", to: "file:a.md" }, B = { id: "b", to: "file:b.md" }, N = { id: "n", to: "new" }
+  // Zoom (Tab.zoom) and floating panes (Pane.float): out of the tiling, their spot kept for docking back.
+  const fl = { x: 0.05, y: 0.1, w: 0.3, h: 0.5 }
+  const row3 = (fB?: Any) => row("s0", [pane("a"), { ...pane("b"), ...(fB ? { float: fB } : {}) }, pane("c")], [0.25, 0.5, 0.25])
+  const lo = lay.layout(row3(fl)), w2 = (r: Any) => r.w.toFixed(2)
+  check("float: out of the tiling, the tiled ones share its room as they shared theirs; one divider between them",
+    lo.panes.map((p: Any) => `${p.pane.id}:${w2(p.rect)}`).join() === "a:0.50,c:0.50" && lo.floats[0]?.pane.id === "b" && same(lo.floats[0].rect, fl)
+    && lo.dividers.length === 1 && lo.dividers[0].i === 0 && lo.dividers[0].at.toFixed(2) === "0.50", lo)
+  const rs = lay.resized(row3(fl), "s0", 0, 0.3, 0.05), ev = lay.evened(rs, "s0")
+  check("float: a divider dragged or evened out moves the tiled ones only; it keeps its share for docking",
+    lay.layout(rs).panes.map((p: Any) => w2(p.rect)).join() === "0.30,0.70" && rs.sizes[1] === 0.5 && lay.layout(ev).panes.map((p: Any) => w2(p.rect)).join() === "0.50,0.50" && ev.sizes[1] === 0.5,
+    [rs.sizes, ev.sizes])
+  check("float: docked, back in its spot at its share", same(lay.floated(row3(fl), "b", null), row3()))
+  const savedFloat = (f: unknown) => lay.clean({ tabs: [S("tx", row("s0", [pane("a"), { ...pane("b"), float: f }]), "a")], active: "tx" }).tabs[0].root.kids[1].float
+  check("float: a saved one is kept inside the workspace; one that isn't a place is dropped",
+    same(savedFloat({ x: 0.9, y: -1, w: 0.5, h: 2 }), { x: 0.5, y: 0, w: 0.5, h: 1 }) && savedFloat({ x: "1" }) === undefined)
+  check("float: directional focus from it goes to the tiled pane past its edge", lay.neighbourOf(row3({ ...fl, x: 0.1 }), "b", "right")?.id === "c"
+    && lay.neighbourOf(row3(fl), "b", "left") === null)
+  const st = (root: Any, f: string, zoom?: string) => lay.settledTab({ id: "tx", root, focus: f, ...(zoom ? { zoom } : {}) })
+  check("settled: with every pane floating they dock; the focus on one of its panes; a zoom only on the focused pane, tiled, beside others",
+    !lay.leaves(st({ ...pane("a"), float: fl }, "a").root).some((p: Any) => p.float) && st(row3(), "gone").focus === "a"
+    && st(row3(), "a", "c").zoom === undefined && st(row3(), "a", "a").zoom === "a"
+    && st(row3(fl), "b", "b").zoom === undefined && st(pane("a"), "a", "a").zoom === undefined)
 
-  one([A, N], "n"); ws.go("file:a.md")
-  check("tabs: opening what another tab has from a blank tab closes the blank one", tabs() === "file:a.md *", tabs())
-  one([A, N], "n"); ws.go("view:terminals", true)
-  check("tabs: asked for a new tab from a blank tab, it opens in the blank one", tabs() === "file:a.md,view:terminals *", tabs())
-  one([A, N], "n"); ws.go("file:a.md", true)
-  check("tabs: asked for a new tab of what another tab has, from a blank tab: that tab, no copy", tabs() === "file:a.md *", tabs())
-  one([A, B], "b"); ws.go("file:a.md", true)
-  check("tabs: asked for a new tab from a tab with something, it still gets one", tabs() === "file:a.md,file:b.md,file:a.md *", tabs())
-  one([A, B], "a"); ws.openTab("view:terminal/x", { background: true })
-  check("tabs: a tab opened behind goes beside the active one, which stays shown",
-    tabs() === "file:a.md,view:terminal/x,file:b.md *" && ws.activeTab().to === "file:a.md", tabs())
+  // ---- blank tabs are never left behind ----
+  const N = T("n", "new")
+  put([T("a"), N], "tn"); ws.go("file:a.md")
+  check("tabs: opening what another tab has from a blank tab closes the blank one", tabs() === "a*", tabs())
+  put([T("a"), N], "tn"); ws.go("view:terminals", true)
+  check("tabs: asked for a new tab from a blank tab, it opens in the blank one", tabs() === "a,view:terminals*", tabs())
+  put([T("a"), N], "tn"); ws.go("file:a.md", true)
+  check("tabs: asked for a new tab of what another tab has, from a blank tab: that tab, no copy", tabs() === "a*", tabs())
+  put([T("a"), T("b")], "tb"); ws.go("file:a.md", true)
+  check("tabs: asked for a new tab from a tab with something, it still gets one", tabs() === "a,b,a*", tabs())
+  put([T("a"), N], "tn"); g.location.hash = "#file/a.md"; ws.followHash("file/a.md")
+  check("tabs: a link from a blank tab to what another tab has closes the blank one", tabs() === "a*", tabs())
+  put([T("a"), N], "tn"); ws.selectTab("ta")
+  check("tabs: switching away from a blank tab by hand keeps it", tabs() === "a*,new", tabs())
+  put([T("a")], "ta"); ws.newTab(); ws.selectTab("ta"); ws.newTab(); ws.newTab()
+  check("tabs: New tab never makes a second blank tab", tabs() === "a,new*", tabs())
+  put([S("tx", row("s0", [a, pane("n", "new")]), "n")], "tx"); ws.go("file:a.md")
+  check("tabs: a split's blank pane stays when what's opened is in the split (the split is the user's)", tabs() === "[a|new]*" && focus() === "a", tabs())
+  put([S("tx", row("s0", [a, pane("n", "new")]), "n")], "tx"); ws.go("file:z.md")
+  check("tabs: … and takes what's opened from it", tabs() === "[a|z]*" && focus() === "n", tabs())
+  put([S("tx", row("s0", [a, pane("n", "new")]), "n")], "tx"); sp.openAt("file:b.md", "n", "center")
+  check("tabs: a file dropped into a blank pane's middle takes its place, the blank one not in its history", tabs() === "[a|b]*" && !ws.paneById("n").back?.length, tabs())
+  put([S("tx", row("s0", [a, pane("n", "new")]), "n"), T("b")], "tx"); sp.tabIntoPane("tb", "n", "center")
+  check("tabs: a tab dropped into a blank pane's middle takes its place, no blank tab back in the list", tabs() === "[a|b]*", tabs())
+  put([S("tx", row("s0", [a, pane("n", "new")]), "n"), T("b")], "tx"); sp.paneIntoPane("b", "n", "center")
+  check("tabs: a pane dropped into a blank pane's middle takes its place, no blank tab left where it was", tabs() === "[a|b]*", tabs())
+  put([T("a"), N], "tn"); ws.openTab("view:web/")
+  check("new web page: from a blank tab, in it", tabs() === "a,view:web/*", tabs())
+  put([S("tx", row("s0", [a, pane("w", "view:web/")]), "a")], "tx"); ws.openTab("view:web/")
+  check("new web page: a tab of its own, though the split has a blank page", tabs() === "[a|view:web/],view:web/*", tabs())
+
+  // ---- what's opened goes to the focused pane; a split stays, and switches away whole ----
+  put([S("tx", row("s0", [a, b]), "b"), T("c")], "tx"); ws.go("file:d.md")
+  check("split: what's opened goes in the focused pane, the split staying", tabs() === "[a|d]*,c" && focus() === "b" && ws.paneById("b").back?.join() === "file:b.md", tabs())
+  ws.setTabKeeper((to: string) => to.startsWith("view:terminal/"))
+  put([S("tx", row("s0", [a, pane("q", "view:terminal/q")]), "q"), T("c")], "tx"); ws.go("file:d.md")
+  check("split: from a pane that keeps its view (a terminal), in another pane of the split that fits, focused", tabs() === "[d|view:terminal/q]*,c" && focus() === "a", tabs())
+  put([S("tx", row("s0", [pane("q", "view:terminal/q"), pane("r", "view:terminal/r")]), "q")], "tx"); ws.go("file:d.md")
+  check("split: … none fits, a new tab", tabs() === "[view:terminal/q|view:terminal/r],d*", tabs())
+  ws.setTabKeeper(() => false)
+  put([S("tx", row("s0", [a, b]), "b"), T("c")], "tx"); ws.selectTab("tc")
+  check("split: another tab selected, the split switches away whole, as it was", tabs() === "[a|b],c*" && ws.tabById("tx").focus === "b", tabs())
+  ws.go("file:a.md")
+  check("split: … opening what one of its panes shows comes back to it, that pane focused", tabs() === "[a|b]*,c" && focus() === "a", tabs())
+  put([T("a", undefined, { pinned: true }), T("b")], "ta"); ws.go("file:z.md")
+  check("pinned: what's opened from a pinned tab opens in a tab beside it", tabs() === "a,z*,b", tabs())
+  put([S("tx", row("s0", [a, b]), "b"), T("c")], "tx"); ws.replaceWorkspace({ tabs: [S("tx", row("s0", [a, b]), "a"), T("c"), T("d")], active: "tc" }, { merge: true })
+  check("tabs: the same workspace changed on another device keeps the tab this one shows and its focus", tabs() === "[a|b]*,c,d" && focus() === "b", tabs())
+
+  // ---- Chrome's openers: where a tab opens, and what closing it shows ----
+  const tabOfPane = (id: string) => ws.paneTab(id).id
+  put([T("a"), T("b")], "ta"); ws.openTab("view:terminal/x", { background: true })
+  check("tabs: a tab opened behind goes beside the active one, which stays shown", tabs() === "a*,view:terminal/x,b", tabs())
   // Links opened from a page: behind it in click order after its earlier ones, as Chrome does, till the user moves on.
-  one([A, B], "a"); ws.openTab("file:1.md", { background: true, from: "a" }); ws.openTab("file:2.md", { background: true, from: "a" }); ws.openTab("file:a.md", { background: true, from: "a" })
-  check("tabs: links opened behind one tab go after it in the order they were opened, a copy of an open one too",
-    tabs() === "file:a.md,file:1.md,file:2.md,file:a.md,file:b.md *" && ws.activeTab().id === "a", tabs())
-  ws.selectTab("b"); ws.selectTab("a"); ws.openTab("file:3.md", { background: true, from: "a" })
-  check("tabs: … once the user showed another tab, the next goes right after it again", tabs() === "file:a.md,file:3.md,file:1.md,file:2.md,file:a.md,file:b.md *", tabs())
-  one([A, B], "a"); const kid = ws.openTab("file:k.md", { from: "a" })
-  check("tabs: one opened in front from a tab is shown, after it", tabs() === "file:a.md,file:k.md,file:b.md *" && ws.activeTab().id === kid, tabs())
+  put([T("a"), T("b")], "ta"); ws.openTab("file:1.md", { background: true, from: "a" }); ws.openTab("file:2.md", { background: true, from: "a" }); ws.openTab("file:a.md", { background: true, from: "a" })
+  check("tabs: links opened behind one tab go after it in the order they were opened, a copy of an open one too", tabs() === "a*,1,2,a,b", tabs())
+  ws.selectTab("tb"); ws.selectTab("ta"); ws.openTab("file:3.md", { background: true, from: "a" })
+  check("tabs: … once the user showed another tab, the next goes right after it again", tabs() === "a*,3,1,2,a,b", tabs())
+  put([T("a"), T("b")], "ta"); const kid = tabOfPane(ws.openTab("file:k.md", { from: "a" }))
+  check("tabs: one opened in front from a tab is shown, after it", tabs() === "a,k*,b" && ws.here().active === kid, tabs())
   ws.closeTab(kid)
-  check("tabs: … closing it straight away goes back to the tab it came from", ws.activeTab().id === "a", ws.activeTab())
-  const kid2 = ws.openTab("file:k.md", { from: "a" }); ws.selectTab("b"); ws.selectTab(kid2); ws.closeTab(kid2)
-  check("tabs: … but not once another was shown in between: its neighbour, as ever", ws.activeTab().id === "b", ws.activeTab())
+  check("tabs: … closing it straight away goes back to the tab it came from", ws.here().active === "ta", ws.here().active)
+  const kid2 = tabOfPane(ws.openTab("file:k.md", { from: "a" })); ws.selectTab("tb"); ws.selectTab(kid2); ws.closeTab(kid2)
+  check("tabs: … but not once another was shown in between: its neighbour, as ever", ws.here().active === "tb", ws.here().active)
   // Chrome's order after closing one of several opened from a tab: the next of them, to the right then the left, then the tab.
-  one([A, B], "a"); const k1 = ws.openTab("file:1.md", { background: true, from: "a" }), k2 = ws.openTab("file:2.md", { background: true, from: "a" })
-  const k3 = ws.openTab("file:3.md", { background: true, from: "a" }); ws.selectTab(k2); ws.closeTab(k2)
-  check("tabs: closing one of the tabs a tab opened, come to from it: the next it opened", ws.activeTab().id === k3, ws.activeTab())
+  put([T("a"), T("b")], "ta"); const k1 = tabOfPane(ws.openTab("file:1.md", { background: true, from: "a" })), k2 = tabOfPane(ws.openTab("file:2.md", { background: true, from: "a" }))
+  const k3 = tabOfPane(ws.openTab("file:3.md", { background: true, from: "a" })); ws.selectTab(k2); ws.closeTab(k2)
+  check("tabs: closing one of the tabs a tab opened, come to from it: the next it opened", ws.here().active === k3, ws.here().active)
   ws.closeTab(k3)
-  check("tabs: … with none after it, the one before it", ws.activeTab().id === k1, ws.activeTab())
+  check("tabs: … with none after it, the one before it", ws.here().active === k1, ws.here().active)
   ws.closeTab(k1)
-  check("tabs: … and with none left, the tab that opened them", ws.activeTab().id === "a", ws.activeTab())
-  one([A, B], "a"); const k4 = ws.openTab("file:4.md", { background: true, from: "a" }); ws.openTab("file:5.md", { background: true, from: "a" })
-  ws.selectTab("b"); ws.selectTab(k4); ws.closeTab(k4)
-  check("tabs: … come to from another tab, its neighbour to the right, as ever", ws.activeTab().to === "file:5.md", ws.activeTab())
-  ws.selectTab("b"); ws.closeTab(ws.groups()[0].tabs.find((t: T) => t.to === "file:5.md").id)
-  check("tabs: closing one not shown leaves the shown one be", ws.activeTab().id === "b", ws.activeTab())
-  one([A, B], "a"); ws.openTab("file:6.md", { background: true, from: "a" }); const front = ws.openTab("file:7.md", { from: "a" })
-  check("tabs: one opened in front goes right after its tab, before those opened behind", tabs() === "file:a.md,file:7.md,file:6.md,file:b.md *", tabs())
+  check("tabs: … and with none left, the tab that opened them", ws.here().active === "ta", ws.here().active)
+  put([T("a"), T("b")], "ta"); const k4 = tabOfPane(ws.openTab("file:4.md", { background: true, from: "a" })); ws.openTab("file:5.md", { background: true, from: "a" })
+  ws.selectTab("tb"); ws.selectTab(k4); ws.closeTab(k4)
+  check("tabs: … come to from another tab, its neighbour to the right, as ever", ws.activePane().to === "file:5.md", ws.activePane())
+  ws.selectTab("tb"); ws.closeTab(ws.findOpen("file:5.md").t.id)
+  check("tabs: closing one not shown leaves the shown one be", ws.here().active === "tb", ws.here().active)
+  put([T("a"), T("b")], "ta"); ws.openTab("file:6.md", { background: true, from: "a" }); const front = tabOfPane(ws.openTab("file:7.md", { from: "a" }))
+  check("tabs: one opened in front goes right after its tab, before those opened behind", tabs() === "a,7*,6,b", tabs())
   ws.closeTab(front)
-  check("tabs: … and closing it goes back to its tab, not one opened behind (Chrome forgets those)", ws.activeTab().id === "a", ws.activeTab())
-  one([A, B], "a"); const mid = ws.openTab("file:8.md", { from: "a" }); const leaf = ws.openTab("file:9.md", { background: true, from: mid }); ws.closeTab(mid)
-  check("tabs: closing a tab goes first to the one it opened", ws.activeTab().id === leaf, ws.activeTab())
+  check("tabs: … and closing it goes back to its tab, not one opened behind (Chrome forgets those)", ws.here().active === "ta", ws.here().active)
+  put([T("a"), T("b")], "ta"); const midP = ws.openTab("file:8.md", { from: "a" }), mid = tabOfPane(midP); const leaf = tabOfPane(ws.openTab("file:9.md", { background: true, from: midP })); ws.closeTab(mid)
+  check("tabs: closing a tab goes first to the one it opened", ws.here().active === leaf, ws.here().active)
   ws.closeTab(leaf)
-  check("tabs: … which is then its opener's: closing it goes back there", ws.activeTab().id === "a", ws.activeTab())
-  one([A, N], "n"); g.location.hash = "#file/a.md"; ws.followHash("file/a.md")
-  check("tabs: a link from a blank tab to what another tab has closes the blank one", tabs() === "file:a.md *", tabs())
-  one([A, N], "n"); ws.selectTab("a")
-  check("tabs: switching away from a blank tab by hand keeps it", tabs() === "file:a.md,new *", tabs())
-  one([A], "a"); ws.newTab(); ws.selectTab("a"); ws.newTab(); ws.newTab()
-  check("tabs: New tab never makes a second blank tab in a pane", tabs() === "file:a.md,new *" && ws.activeTab().to === "new", tabs())
-  two([A], [N], "gR"); ws.go("file:a.md")
-  check("tabs: on a computer, a pane's only blank tab stays (the split is the user's)", tabs() === "file:a.md * | new", tabs())
-  desktop = false
-  two([A], [N], "gR"); ws.go("file:a.md")
-  check("tabs: on a phone, a blank tab in another pane closes too", tabs() === "file:a.md *", tabs())
-  desktop = true
-  one([A, N], "n"); sp.openAt("file:b.md", "g0", 0)
-  check("tabs: a file dropped into a bar whose blank tab shows takes its place", tabs() === "file:b.md,file:a.md *", tabs())
-  two([A, B], [N], "gL"); sp.moveTabTo("b", "gR", "center")
-  check("tabs: a tab moved into a pane whose blank tab shows takes its place", tabs() === "file:a.md | file:b.md *", tabs())
-  two([A], [B, N], "gL"); sp.moveGroupTo("gL", "gR", "center")
-  check("tabs: a pane moved into one whose blank tab shows takes its place", tabs() === "file:b.md,file:a.md *", tabs())
-  const C0 = { id: "c0", to: "file:c.md" }
-  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.3, 0.3, 0.4], kids: [{ id: "gL", tabs: [A], active: "a" }, { id: "gM", tabs: [B], active: "b" }, { id: "gR", tabs: [C0], active: "c0" }] }, focus: "gL" })
-  sp.movePane("right")
-  check("panes: moving one swaps it with its neighbour that way, keeping the focus", tabs() === "file:b.md | file:a.md * | file:c.md" && ws.getWorkspace().root.sizes.join() === "0.3,0.3,0.4", tabs())
-  sp.focusByOrder(1); const f1 = ws.getWorkspace().focus; sp.focusByOrder(1); const f2 = ws.getWorkspace().focus; sp.focusByOrder(-1)
-  check("panes: the next and previous pane go in order, round from the last to the first", f1 === "gR" && f2 === "gM" && ws.getWorkspace().focus === "gR", [f1, f2])
-  sp.focusLastPane(); const was = ws.getWorkspace().focus; sp.focusLastPane()
-  check("panes: Focus last pane goes back to the one before, and again to where it was", was === "gM" && ws.getWorkspace().focus === "gR" && sp.hasLastPane(), was)
+  check("tabs: … which is then its opener's: closing it goes back there", ws.here().active === "ta", ws.here().active)
 
-  const F = { id: "f", to: "file:Inbox/x.md" }
-  one([A, F, B], "f"); ws.closeFileTabs("Inbox/x.md")
-  check("tabs: a file trashed closes its tabs", tabs() === "file:a.md,file:b.md *" && ws.canReopenTab(), tabs())
-  one([A, F, B], "f"); ws.retarget("Inbox/x.md", "Inbox/.archive/x.md")
-  check("tabs: a file archived or moved stays open where it went", tabs() === "file:a.md,file:Inbox/.archive/x.md,file:b.md *" && ws.activeTab().to === "file:Inbox/.archive/x.md", tabs())
-  one([A, F], "f"); ws.closeFileTabs("Inbox")
-  check("tabs: a folder's going closes its files' tabs", tabs() === "file:a.md *", tabs())
+  // ---- a tab dropped on a pane, a pane on a pane, a pane out to a tab of its own ----
+  put([T("a"), T("b"), T("c"), T("d")], "ta"); sp.tabIntoPane("tc", "a", "center")
+  check("tab into pane: in its middle it takes the pane's place; what was there goes back to the list where the dropped tab was",
+    tabs() === "c*,b,a,d" && focus() === "c" && ws.here().tabs[0].id === "ta", tabs())
+  put([T("a"), T("b"), T("c")], "ta"); sp.tabIntoPane("tc", "a", "right")
+  check("tab into pane: on an edge, a split beside it, the dropped tab's pane focused", tabs() === "[a|c]*,b" && focus() === "c" && shares() === "0.50,0.50", tabs())
+  put([S("tx", row("s0", [a, b]), "b"), T("c")], "tc"); sp.tabIntoPane("tx", "c", "bottom")
+  check("tab into pane: a split tab dropped brings all its panes, its focus kept", tabs() === "[c/[a|b]]*" && focus() === "b", tabs())
+  put([S("tx", row("s0", [a, b]), "b"), T("c", undefined, { group: "G" }), T("d")], "tx", { groups: [{ id: "G", name: "G", color: "blue" }] }); sp.replaceWithTab("tc")
+  check("replace with tab (⌥-click): the tab takes the focused pane's place, that pane back in the list as a tab, in no group",
+    tabs() === "[a|c]*,b,d" && focus() === "c" && !ws.here().tabs[1].group && shares() === "0.50,0.50", tabs())
+  put([S("tx", row("s0", [a, b]), "b"), T("n", "new")], "tx")
+  check("tab into pane: not onto its own panes, nor a blank tab", !sp.canTabIntoPane("tx", "a", "center") && !sp.canTabIntoPane("tn", "a", "left") && sp.canJoin("tn") === false)
+  put([S("tx", row("s0", [a, b]), "a")], "tx"); sp.paneIntoPane("a", "b", "center")
+  check("pane into pane: in its middle the two swap places, the moved one focused", tabs() === "[b|a]*" && focus() === "a", tabs())
+  put([S("tx", row("s0", [a, b]), "a"), T("c")], "tx"); sp.paneIntoPane("c", "a", "center")
+  check("pane into pane: … across tabs too, each where the other was", tabs() === "[c|b]*,a" && focus() === "c" && ws.here().tabs[1].id === "tc", tabs())
+  put([S("tx", row("s0", [a, b]), "a"), T("c")], "tx"); sp.paneIntoPane("c", "b", "bottom")
+  check("pane into pane: on an edge it moves beside it; its tab, left with no panes, closes", tabs() === "[a|[b/c]]*" && focus() === "c", tabs())
+  put([S("tx", row("s0", [a, b, c]), "b")], "tx"); sp.paneIntoPane("a", "c", "bottom")
+  check("pane into pane: … within its own tab", tabs() === "[b|[c/a]]*" && focus() === "a", tabs())
+  put([T("a")], "ta")
+  check("pane into pane: not onto itself", !sp.canPaneIntoPane("a", "a", "center") && !sp.canPaneIntoPane("a", "a", "left"))
+  put([S("tx", row("s0", [a, b]), "a"), T("c")], "tx"); sp.paneToTab("b")
+  check("pane to tab: out of its split into a tab of its own, right after its tab, shown", tabs() === "a,b*,c" && !sp.canPaneToTab("a"), tabs())
+  put([S("tx", row("s0", [a, b]), "a"), T("c")], "tx"); sp.paneToTab("b", 0)
+  check("pane to tab: … or where it's dropped in the list", tabs() === "b*,a,c", tabs())
+  put([S("tx", row("s0", [a, c]), "a"), T("b")], "tx"); sp.moveToSplit("right", "tb"); const mid3 = shares(); sp.paneToTab("b")
+  check("panes: one made beside another and gone again leaves it its room", mid3 === "0.25,0.25,0.50" && shares(ws.tabById("tx")) === "0.50,0.50", [mid3, shares(ws.tabById("tx"))])
+  put([S("tx", row("s0", [a, c], [1 - 2 ** -20, 2 ** -20]), "a")], "tx")
+  check("panes: one squeezed too thin to draw (a layout saved so) comes back at an even share", shares() === "0.50,0.50", shares())
+  put([S("tx", row("s0", [a, b, c], [0.6, 0.3, 0.1]), "a")], "tx")
+  check("panes: a thin one the user dragged to stays", shares() === "0.60,0.30,0.10", shares())
+  put([T("q", "view:terminal/q")], "tq"); sp.splitPane("right")
+  check("split pane: a file opens again beside it; a terminal isn't doubled, the new pane blank", tabs() === "[view:terminal/q|new]*" && focus() !== "q"
+    && (put([T("a")], "ta"), sp.splitPane("bottom"), tabs() === "[a/a]*" && focus() !== "a"), tabs())
 
-  const C = { id: "c", to: "file:c.md" }, D = { id: "d", to: "file:d.md" }
+  // ---- panes from the keyboard: focus by side, order and last; swap; resize; even out ----
+  put([S("tx", row("s0", [a, b, c], [0.3, 0.3, 0.4]), "a")], "tx"); sp.movePane("right")
+  check("panes: moving one swaps it with its neighbour that way, keeping the focus", tabs() === "[b|a|c]*" && shares() === "0.30,0.30,0.40" && focus() === "a", tabs())
+  sp.focusByOrder(1); const f1 = focus(); sp.focusByOrder(1); const f2 = focus(); sp.focusByOrder(-1)
+  check("panes: the next and previous pane go in order, round from the last to the first", f1 === "c" && f2 === "b" && focus() === "c", [f1, f2])
+  sp.focusLastPane(); const was = focus(); sp.focusLastPane()
+  check("panes: Focus last pane goes back to the one before, and again to where it was", was === "b" && focus() === "c" && sp.hasLastPane(), was)
+  sp.focusSide("left"); const fl1 = focus(); sp.focusSide("left")
+  check("panes: focus by side goes to the pane that way, none past the edge", fl1 === "a" && focus() === "b" && !sp.hasNeighbour("left") && sp.hasNeighbour("right"), [fl1, focus()])
+  put([S("tx", row3(), "a")], "tx"); sp.resize("s0", 0, 0.4, 0.05); const dragged = shares(); sp.evenOut("s0")
+  check("panes: a divider dragged moves the two parts beside it; double-clicked, the split's parts are even", dragged === "0.40,0.35,0.25" && shares() === "0.33,0.33,0.33", [dragged, shares()])
+  put([S("tx", row("s", [a, col("c2", [b, c], [0.8, 0.2])], [0.25, 0.75]), "a")], "tx"); sp.evenOutAll()
+  check("panes: Even out panes evens every split in the tab", shares() === "0.50,0.50" && ws.activeTab().root.kids[1].sizes.join() === "0.5,0.5" && sp.canNudge("right") && (put([T("a")], "ta"), !sp.canNudge("right")), shares())
 
-  // A view hears each tab of its that goes (a web page is its tab's), and `last` once its place shows nowhere (a terminal).
+  // ---- float, dock and zoom in a tab ----
+  const floats = () => ws.panes().filter((p: Any) => p.float).map((p: Any) => p.id).join()
+  put([S("tx", row3(), "b")], "tx")
+  const flat = tree()
+  sp.floatPane()
+  check("float pane: the focused one floats over where it was, focused, still the tab's", floats() === "b" && focus() === "b"
+    && ws.panes().length === 3 && lay.layout(ws.activeTab().root).panes.length === 2 && !sp.canFloat("b") && sp.isFloating(), floats())
+  sp.placeFloat("b", { x: 0.6, y: 0.2, w: 0.3, h: 0.4 })
+  check("float pane: moved by hand, it stays put; dock pane puts it back as it was", ws.paneById("b").float.x === 0.6 && (sp.dockPane(), floats() === "" && tree() === flat), tree())
+  sp.floatPane("b")
+  const fb = ws.paneById("b").float
+  check("float pane: centred on the right", fb.x + fb.w > 0.9 && Math.abs(fb.y + fb.h / 2 - 0.5) < 1e-9, fb)
+  sp.placeFloat("b", { x: 0.02, y: 0.02, w: 0.2, h: 0.2 }); sp.toggleFloat()
+  check("dock pane: away from its spot, it docks into the nearest half of the pane under it (near the top: the top half)",
+    tree() === "row(col(b:0.50 a:0.50):0.50 c:0.50)" && focus() === "b", tree())
+  put([S("tx", row3(), "b")], "tx")
+  sp.toggleFloat()
+  check("float pane: the same command docks it", sp.isFloating() && (sp.toggleFloat(), !sp.isFloating() && tree() === flat), tree())
+  sp.floatPane("b"); ws.setFocusedPane("a"); sp.floatPane("a")
+  check("float pane: several at once, but not the last tiled one", floats() === "a,b" && !sp.canFloat("c"), floats())
+  ws.closePane("c"); ws.closePane("a")
+  check("float pane: the last tiled one closed, a floating one docks", floats() === "" && tree() === "b", tree())
+  put([S("tx", row3(fl), "b")], "tx"); sp.paneIntoPane("b", "c", "left")
+  check("float pane: dragged onto a pane's edge, it docks there, the other panes as they were", floats() === "" && tree() === "row(a:0.50 b:0.25 c:0.25)", tree())
+  put([S("tx", row("s0", [a, { ...b, float: fl }, c, d], [0.2, 0.4, 0.2, 0.2]), "c")], "tx"); ws.closePane("c")
+  check("float pane: a tiled one closed beside it leaves its room to the tiled one before", lay.layout(ws.activeTab().root).panes.map((p: Any) => w2(p.rect)).join() === "0.67,0.33",
+    lay.layout(ws.activeTab().root).panes)
+  put([S("tx", row3(fl), "b")], "tx"); sp.splitPane("right")
+  check("float pane: split, it docks first", floats() === "" && lay.layout(ws.activeTab().root).panes.length === 4, tree())
+  put([S("tx", row3(), "b")], "tx"); sp.zoomPane()
+  check("zoom: the focused pane fills the tab, the others still there", ws.activeTab().zoom === "b" && sp.isZoomed() && ws.panes().length === 3)
+  sp.zoomPane()
+  check("zoom: again, it's back", !sp.isZoomed())
+  sp.zoomPane(); ws.setFocusedPane("a")
+  check("zoom: another pane focused, it's back", !sp.isZoomed())
+  sp.zoomPane(); sp.splitPane("right")
+  check("zoom: a split, it's back", !sp.isZoomed())
+  put([S("tx", row3(), "b")], "tx"); sp.zoomPane(); ws.openTab("file:z.md")
+  check("zoom: another tab shown, the zoomed one keeps its zoom", !sp.isZoomed() && ws.tabById("tx").zoom === "b" && (ws.selectTab("tx"), sp.isZoomed()))
+  sp.openInSplit("file:y.md", "right", false)
+  check("zoom: something opened in another pane behind leaves it be", sp.isZoomed() && desc(ws.activeTab().root) === "[a|b|y]", desc(ws.activeTab().root))
+  ws.closePane("b")
+  check("zoom: closed, it's gone", !sp.isZoomed() && !("zoom" in ws.activeTab()))
+  put([S("tx", row3(), "b", { zoom: "b" })], "tx")
+  check("zoom: a saved one comes back; one of a pane that isn't focused doesn't", sp.isZoomed() && (put([S("tx", row3(), "a", { zoom: "b" })], "tx"), !sp.isZoomed()))
+
+  // ---- files moving and going: panes follow ----
+  while (ws.canReopenTab()) ws.reopenTab()
+  const F = (id = "f") => pane(id, "file:Inbox/x.md")
+  put([T("a"), TP(F()), T("b")], "tf"); ws.closeFileTabs("Inbox/x.md")
+  check("files: a file trashed closes its panes, reopenable", tabs() === "a,b*" && ws.canReopenTab(), tabs())
+  put([T("a"), TP(F()), T("b")], "tf"); ws.retarget("Inbox/x.md", "Inbox/.archive/x.md")
+  check("files: a file archived or moved stays open where it went, the address too", tabs() === "a,Inbox/.archive/x*,b" && g.location.hash === "#file/Inbox%2F.archive%2Fx.md", [tabs(), g.location.hash])
+  put([S("tx", row("s0", [{ ...a, back: ["file:Inbox/x.md"] }, F()]), "a")], "tx"); ws.retarget("Inbox", "Done")
+  check("files: a folder moved, the panes of its files follow, and their history", tabs() === "[a|Done/x]*" && ws.paneById("a").back.join() === "file:Done/x.md", tabs())
+  put([T("a"), TP(F())], "tf"); ws.closeFileTabs("Inbox")
+  check("files: a folder's going closes its files' panes", tabs() === "a*", tabs())
+  put([S("tx", row("s0", [{ ...a, back: ["file:q.md", "file:Inbox/x.md", "file:q.md"] }, F()]), "f")], "tx"); ws.dropTabs("Inbox/x.md")
+  check("files: deleted, its panes close (the split's others stay), it leaves every history and what ⌘⇧T reopens",
+    tabs() === "a*" && ws.paneById("a").back.join() === "file:q.md" && !ws.closedTabs().some((r: Any) => lay.panesOf(r.tab).some((p: Any) => p.to === "file:Inbox/x.md")), [tabs(), ws.closedTabs()])
+
+  // ---- views hear their panes leave (a web page is its pane's), `last` once its place shows nowhere (a terminal) ----
   const heard: string[] = []
-  ws.setTabCloser((to: string, tab: string, last: boolean) => heard.push(`${to} ${tab}${last ? " last" : ""}`))
-  const W1 = { id: "w1", to: "view:web/https://example.com/" }, W2 = { id: "w2", to: "view:web/https://example.com/" }
-  one([A, W1, W2], "w2"); ws.closeTab("w1", true)
-  check("closing: a tab of a place another tab shows is heard, not as the last", heard.join("|") === "view:web/https://example.com/ w1", heard)
-  heard.length = 0; ws.closeTab("w2", true)
-  check("closing: the last tab of a place is heard as the last", heard.join("|") === "view:web/https://example.com/ w2 last", heard)
-  heard.length = 0; one([A, W1, W2], "a"); ws.closeTabs("others", "a", true)
-  check("closing several of a place: each heard, the last once", heard.join("|") === "view:web/https://example.com/ w1|view:web/https://example.com/ w2 last", heard)
-  heard.length = 0; one([A, W1], "w1"); ws.takeOut(["w1"])
-  check("a tab taken out to another window is heard, never as the last", heard.join("|") === "view:web/https://example.com/ w1", heard)
-  heard.length = 0; one([A, W1], "w1"); ws.closeTab("a", true)
+  ws.setTabCloser((to: string, p: string, last: boolean, moved: boolean) => { heard.push(`${to} ${p}${last ? " last" : ""}${moved ? " moved" : ""}`); return false })
+  const W = "view:web/https://example.com/"
+  put([T("a"), T("w1", W), T("w2", W)], "tw2"); ws.closeTab("tw1", true)
+  check("closing: a pane of a place another pane shows is heard, not as the last", heard.join("|") === `${W} w1`, heard)
+  heard.length = 0; ws.closeTab("tw2", true)
+  check("closing: the last pane of a place is heard as the last", heard.join("|") === `${W} w2 last`, heard)
+  heard.length = 0; put([T("a"), T("w1", W), T("w2", W)], "ta"); ws.closeTabs("others", "ta", true)
+  check("closing several of a place: each heard, the last once", heard.join("|") === `${W} w1|${W} w2 last`, heard)
+  heard.length = 0; put([S("tx", row("s0", [a, pane("w1", W)]), "w1")], "tx"); ws.closePane("w1", true)
+  check("closing: a pane of a split heard, the tab staying", heard.join("|") === `${W} w1 last` && tabs() === "a*", heard)
+  heard.length = 0; put([T("a"), T("w1", W)], "tw1"); ws.takeOut(["tw1"])
+  check("a tab taken out to another window is heard as moved, never as the last", heard.join("|") === `${W} w1 moved`, heard)
+  heard.length = 0; put([T("a"), T("w1", W)], "tw1"); ws.closeTab("ta", true)
   check("closing a file's tab tells no view", !heard.length, heard)
-  ws.setTabCloser(() => {})
+  ws.setTabCloser(() => false)
 
-  // Tab groups (core/tabsets.ts: a pane's runs of tabs, TabSet in layout.ts).
-  const ts: Any = await web("core/tabsets.ts")
-  const E = { id: "e", to: "file:e.md" }
-  const pane = () => ws.groups()[0]
-  const runs = () => ws.groups().map((x: Any) => x.tabs.map((t: Any) => {
-    const st = x.sets?.find((y: Any) => y.id === t.set)
-    return t.id + (st ? `(${st.name || st.color}${st.collapsed ? "-" : ""})` : "")
-  }).join(",")).join(" | ")
-  // A phone's tab list (TabSwitcher.tsx): every pane's tabs in one list, a drop keeping the tab on screen.
-  one([A, B, C], "c"); ts.groupWith("a", "c")
-  check("phone groups: a tab dropped on another: the two make a tab group where it was", runs() === "b,c(blue),a(blue)" && ws.activeTab().id === "c", runs())
-  one([A, B, C], "a"); ts.makeSet(["a", "b"]); ts.groupWith("c", "b")
+  // ---- ⌘⇧T: closed tabs and panes come back where they were ----
+  while (ws.canReopenTab()) ws.reopenTab()
+  put([S("tx", row("s0", [a, b, d], [0.6, 0.3, 0.1]), "b")], "tx"); ws.closePane()
+  check("close pane: its room goes to the pane before it, the focus to the one after", tree() === "row(a:0.90 d:0.10)" && focus() === "d", tree())
+  ws.reopenTab()
+  check("close pane: ⌘⇧T brings it back where it sat, at its share, focused", tree() === "row(a:0.60 b:0.30 d:0.10)" && focus() === "b", tree())
+  put([S("tx", row("s0", [a, col("s1", [b, c], [0.25, 0.75])], [0.7, 0.3]), "a")], "tx")
+  ws.closePane("b"); ws.closePane("a")
+  check("close pane: two closed, the splits closing up", tree() === "c", tree())
+  ws.reopenTab(); ws.reopenTab()
+  check("close pane: reopened in turn, each where it sat", tree() === "row(a:0.70 col(b:0.25 c:0.75):0.30)", tree())
+  put([T("a"), T("b")], "ta")
+  check("close pane: a tab's only pane is Close tab", !ws.canClosePane() && (ws.closePane(), tabs() === "b*"), tabs())
+  put([T("a"), S("tx", row("s0", [b, c]), "c"), T("d")], "tx"); ws.closeTab("tx"); ws.reopenTab()
+  check("reopen: a split tab closed comes back whole where it was, its focus kept", tabs() === "a,[b|c]*,d" && focus() === "c", tabs())
+  // Search tabs: the tab focused last first; the ones closed lately listed, the latest first, and reopened where they were.
+  while (ws.canReopenTab()) ws.reopenTab()
+  const now = Date.now
+  let clock = now()
+  Date.now = () => (clock += 1000)
+  put([T("a"), T("b"), T("c")], "ta"); ws.selectTab("tc"); ws.selectTab("tb")
+  const recent = () => ws.tabsByRecent().map((t: Tb) => t.id).join()
+  check("search tabs: the one on screen first, then each by when it was left", recent() === "tb,tc,ta", recent())
+  Date.now = () => clock
+  ws.selectTab("ta"); ws.selectTab("tb")
+  check("search tabs: … but for one only passed through", recent() === "tb,tc,ta", recent())
+  Date.now = now
+  ws.closeTab("tc"); ws.closeTab("ta")
+  const shut = () => ws.closedTabs().map((r: Any) => r.tab.id).join()
+  check("search tabs: closed ones, the latest first", shut() === "ta,tc", shut())
+  ws.reopenClosed("tc")
+  check("search tabs: one reopened where it was, shown, and off the list", tabs() === "b,c*" && shut() === "ta", [tabs(), shut()])
+  put([S("tx", row("s0", [d, pane("e")]), "d")], "tx"); ws.closePane("e")
+  check("search tabs: a pane closed from a split is listed as a tab", shut() === "te,ta", shut())
+  ws.reopenClosed("te")
+  check("search tabs: … and comes back as a tab of its own", tabs() === "d,e*" && shut() === "ta", [tabs(), shut()])
+
+  // ---- tab groups (tabgroups.ts) ----
+  const runs = () => { const l = ws.here(); return l.tabs.map((t: Tb) => { const s = l.groups?.find((x: Any) => x.id === t.group); return desc(t.root) + (s ? `(${s.name || s.color}${s.collapsed ? "-" : ""})` : "") }).join(",") }
+  const five = () => put(["a", "b", "c", "d", "e"].map((x) => T(x)), "ta")
+  // A phone's tab list (TabSwitcher.tsx): a drop keeping the tab on screen.
+  put([T("a"), T("b"), T("c")], "tc"); gr.groupWith("ta", "tc")
+  check("phone groups: a tab dropped on another: the two make a tab group where it was", runs() === "b,c(blue),a(blue)" && ws.here().active === "tc", runs())
+  put([T("a"), T("b"), T("c")], "ta"); gr.makeGroup(["ta", "tb"]); gr.groupWith("tc", "tb")
   check("phone groups: dropped on a grouped tab, it joins that group", runs() === "a(blue),b(blue),c(blue)", runs())
-  two([A, B], [C], "gR"); ts.groupWith("c", "a"); sp.keepShown("c")
-  check("phone groups: the tab on screen grouped into another pane: that pane is focused and shows it", tabs() === "file:a.md,file:c.md,file:b.md *" && ws.activeTab().id === "c", tabs())
-  two([A, B], [C], "gR"); sp.placeTab("c", "before", "a", null)
-  check("phone groups: a tab placed before another pane's goes there, still on screen", tabs() === "file:c.md,file:a.md,file:b.md *" && ws.activeTab().id === "c", tabs())
-  one([A, B, C, D], "d"); const s0 = ts.makeSet(["a", "b", "c"]); sp.placeTab("a", "after", "c", s0)
+  put([T("a"), T("b"), T("c"), T("d")], "td"); const g0 = gr.makeGroup(["ta", "tb", "tc"]); sp.placeTabBy("ta", "after", "tc", g0)
   check("phone groups: a tab moved within its open group stays in it", runs() === "b(blue),c(blue),a(blue),d", runs())
-  sp.placeTab("d", "before", "b", null)
-  check("phone groups: a lone tab placed before a group stays out of it, the tab on screen kept", runs() === "d,b(blue),c(blue),a(blue)" && ws.activeTab().id === "d", runs())
-
+  sp.placeTabBy("td", "before", "tb", null)
+  check("phone groups: a lone tab placed before a group stays out of it, the tab on screen kept", runs() === "d,b(blue),c(blue),a(blue)" && ws.here().active === "td", runs())
+  ws.selectTab("ta"); sp.placeTab("ta", 0, null); ws.selectTab("tb"); sp.keepShown("ta")
+  check("phone groups: after a move, the tab on screen kept", ws.here().active === "ta", ws.here().active)
   // Folding the group on screen, and closing in groups, never shows a tab of another folded group while one isn't.
-  one([A, B, C, D, E], "b")
-  const w1 = ts.makeSet(["b", "c"], { name: "W" }), wx = ts.makeSet(["d"], { name: "X", collapsed: true })
-  ts.foldSet(w1)
-  check("tab groups: folding the group on screen shows the nearest tab not folded away, past another folded group", runs() === "a,b(W-),c(W-),d(X-),e" && ws.activeTab().id === "e", runs())
-  ws.selectTab("c"); ws.closeTab("c", true)
-  check("tab groups: closing a group's tab shows another of its own", ws.activeTab().id === "b", runs())
-  ws.closeTab("b", true)
-  check("tab groups: closing a group's last tab shows the nearest tab not folded away", runs() === "a,d(X-),e" && ws.activeTab().id === "e" && !!wx, runs())
-  one([A, B, C, D, E], "a")
-  let s1 = ts.makeSet(["b", "d"], { name: "Work" })
-  check("tab groups: tabs made a group sit together where the first was, with the first unused colour", runs() === "a,b(Work),d(Work),c,e" && pane().sets[0].color === "blue", runs())
-  ts.makeSet(["e"])
-  check("tab groups: the next group takes the next colour; no name when the tabs share no folder or site", pane().sets[1].color === "orange" && pane().sets[1].name === "", pane().sets)
+  put(["a", "b", "c", "d", "e"].map((x) => T(x)), "tb")
+  const gw = gr.makeGroup(["tb", "tc"], { name: "W" }), gx = gr.makeGroup(["td"], { name: "X", collapsed: true })
+  gr.foldGroup(gw)
+  check("tab groups: folding the group on screen shows the nearest tab not folded away, past another folded group", runs() === "a,b(W-),c(W-),d(X-),e" && ws.here().active === "te", runs())
+  ws.selectTab("tc"); ws.closeTab("tc", true)
+  check("tab groups: closing a group's tab shows another of its own", ws.here().active === "tb", runs())
+  ws.closeTab("tb", true)
+  check("tab groups: closing a group's last tab shows the nearest tab not folded away", runs() === "a,d(X-),e" && ws.here().active === "te" && !!gx, runs())
+  five()
+  let g1 = gr.makeGroup(["tb", "td"], { name: "Work" })
+  check("tab groups: tabs made a group sit together where the first was, with the first unused colour", runs() === "a,b(Work),d(Work),c,e" && gr.allGroups()[0].color === "blue", runs())
+  gr.makeGroup(["te"])
+  check("tab groups: the next group takes the next colour; no name when the tabs share no folder or site", gr.allGroups()[1].color === "orange" && gr.allGroups()[1].name === "", gr.allGroups())
   const { siteName } = await import("../plugins/core/web-viewer/address.ts")
-  ts.setGroupNamer((to: string) => (to.startsWith("view:web/") ? siteName(to.slice(9).replace(/^@[a-z0-9]+\//, "")) : null))
-  check("tab groups: a new group's name is the folder its files share, or what their views name it (a site)", ts.suggestName([{ id: "x", to: "file:Projects/Lighthouse/a.md" }, { id: "y", to: "file:Projects/Lighthouse/b.md" }]) === "Lighthouse"
-    && ts.suggestName([{ id: "x", to: "view:web/https://www.github.com/a" }, { id: "y", to: "view:web/@work/https://github.com/b" }]) === "Github"
-    && ts.suggestName([{ id: "x", to: "file:a.md" }, { id: "y", to: "view:terminal/q" }]) === "")
-  ts.addToSet(["a"], s1)
+  gr.setGroupNamer((to: string) => (to.startsWith("view:web/") ? siteName(to.slice(9).replace(/^@[a-z0-9]+\//, "")) : null))
+  const of = (...tos: string[]) => tos.map((to) => lay.tabOf(to))
+  check("tab groups: a new group's name is the folder its panes' files share, or what their views name it (a site)",
+    gr.suggestName([lay.tabOf("file:Projects/Lighthouse/a.md"), S("tx", row("s", [pane("x", "file:Projects/Lighthouse/b.md"), pane("y", "file:Projects/Lighthouse/c.md")]), "x")]) === "Lighthouse"
+    && gr.suggestName(of("view:web/https://www.github.com/a", "view:web/@work/https://github.com/b")) === "Github" && gr.suggestName(of("file:a.md", "view:terminal/q")) === "")
+  gr.addToGroup(["ta"], g1)
   check("tab groups: a tab added to a group goes to its end", runs() === "b(Work),d(Work),a(Work),c,e(orange)", runs())
-  ts.leaveSet(["d"])
+  gr.leaveGroup(["td"])
   check("tab groups: a tab taken out of its group goes right after it", runs() === "b(Work),a(Work),d,c,e(orange)", runs())
-  sp.moveTabTo("c", "g0", 1)
+  sp.placeTab("tc", 1)
   check("tab groups: a tab dragged between two of a group's tabs joins it", runs() === "b(Work),c(Work),a(Work),d,e(orange)", runs())
-  sp.moveTabTo("c", "g0", 5)
+  sp.placeTab("tc", 5)
   check("tab groups: dragged out past the group's end, it leaves", runs() === "b(Work),a(Work),d,e(orange),c", runs())
-  sp.moveTabTo("a", "g0", 2, null)
+  sp.placeTab("ta", 2, null)
   check("tab groups: at the group's end, its own last tab stays in unless the drop says none", runs() === "b(Work),a,d,e(orange),c", runs())
-  sp.moveTabTo("d", "g0", 1, s1)
+  sp.placeTab("td", 1, g1)
   check("tab groups: a drop just after a group's chip joins it", runs() === "b(Work),d(Work),a,e(orange),c", runs())
-  ts.foldSet(s1)
-  check("tab groups: folding the group whose tab isn't on screen leaves the tab shown", runs() === "b(Work-),d(Work-),a,e(orange),c" && ws.activeTab().id === "a", runs())
-  ws.selectTab("b")
-  check("tab groups: showing a tab of a folded group opens it", runs() === "b(Work),d(Work),a,e(orange),c" && ws.activeTab().id === "b", runs())
-  ts.foldSet(s1)
-  check("tab groups: folding the group on screen shows the tab after it", runs() === "b(Work-),d(Work-),a,e(orange),c" && ws.activeTab().id === "a", runs())
-
-  ts.foldSet(s1, false)
-  ts.moveSetTo(s1, "g0", 5)
+  gr.foldGroup(g1)
+  check("tab groups: folding the group whose tab isn't on screen leaves the tab shown", runs() === "b(Work-),d(Work-),a,e(orange),c" && ws.here().active === "ta", runs())
+  ws.selectTab("tb")
+  check("tab groups: showing a tab of a folded group opens it", runs() === "b(Work),d(Work),a,e(orange),c" && ws.here().active === "tb", runs())
+  gr.foldGroup(g1)
+  check("tab groups: folding the group on screen shows the tab after it", runs() === "b(Work-),d(Work-),a,e(orange),c" && ws.here().active === "ta", runs())
+  gr.foldGroup(g1, false)
+  gr.moveGroupTo(g1, 5)
   check("tab groups: a whole group dragged moves with its tabs in order", runs() === "a,e(orange),c,b(Work),d(Work)", runs())
-  ts.moveSetTo(s1, "g0", 1)
+  gr.moveGroupTo(g1, 1)
   check("tab groups: a group dropped inside another goes before it, never into it", runs() === "a,b(Work),d(Work),e(orange),c", runs())
-  // Where a drop lands among a pane's tabs as drawn (drop.ts), each slot 96px wide and 100px from the last.
-  const dr: Any = await web("core/drop.ts")
-  const s2 = pane().sets[1].id
+  // Where a drop lands among the tabs as drawn (drop.ts), each slot 96px wide and 100px from the last.
+  const g2 = gr.allGroups()[1].id
   const laid = (keys: string[]) => keys.map((k, i) => ({ el: { closest: () => null, getBoundingClientRect: () => ({ left: i * 100, right: i * 100 + 96, top: 0, bottom: 28 }) },
-    ...(k.startsWith("set:") ? { set: k.slice(4) } : { tab: k }) }))
-  const bar = laid(["a", `set:${s1}`, "b", "d", `set:${s2}`, "e", "c"])
-  const at = (pos: number, slots = bar) => { const r = dr.slotIn(pane(), slots, pos, "x"); return `${r.index}:${r.set === s1 ? "Work" : r.set === s2 ? "orange" : r.set}` }
+    ...(k.startsWith("group:") ? { group: k.slice(6) } : { tab: k }) }))
+  const bar = laid(["ta", `group:${g1}`, "tb", "td", `group:${g2}`, "te", "tc"])
+  const at = (pos: number, slots = bar) => { const r = dr.slotIn(ws.here(), slots, pos, "x"); return `${r.index}:${r.group === g1 ? "Work" : r.group === g2 ? "orange" : r.group}` }
   check("drops: right after a group's name, or between its tabs, joins it", at(150) === "1:Work" && at(250) === "2:Work", [at(150), at(250)])
   check("drops: over a group's last tab joins its end; just past it, outside it at the same place", at(390) === "3:Work" && at(399) === "3:null", [at(390), at(399)])
   check("drops: before a group's name joins none", at(120) === "1:null", at(120))
-  ts.foldSet(s2)
-  const folded = laid(["a", `set:${s1}`, "b", "d", `set:${s2}`, "c"])
+  gr.foldGroup(g2)
+  const folded = laid(["ta", `group:${g1}`, "tb", "td", `group:${g2}`, "tc"])
   check("drops: on the middle of a folded group's name, into its end; at its sides, beside it", at(448, folded) === "4:orange" && at(405, folded) === "3:null" && at(490, folded) === "4:null",
     [at(448, folded), at(405, folded), at(490, folded)])
-  ws.selectTab("a")
-  sp.moveTabTo("c", "g0", 4, s2)
-  check("drops: a tab dropped into a folded group is put away there, the tab on screen staying", runs() === "a,b(Work),d(Work),e(orange-),c(orange-)" && ws.activeTab().id === "a", runs())
-  sp.moveTabTo("c", "g0", 5, null); ts.foldSet(s2, false)
-  // What the bar draws while dragging: the tabs as the drop would leave them.
+  sp.placeTab("tc", 4, g2)
+  check("drops: a tab dropped into a folded group is put away there, the tab on screen staying", runs() === "a,b(Work),d(Work),e(orange-),c(orange-)" && ws.here().active === "ta", runs())
+  sp.placeTab("tc", 5, null); gr.foldGroup(g2, false)
+  // What a list draws while dragging: the tabs as the drop would leave them.
   const sl: Any = await web("core/slide.ts")
-  const order = (item: Any, d: Any) => { const p = dr.previewIn(pane(), item, d); return p && dr.previewOrder(pane(), p).map((k: string) => k === `set:${s1}` ? "[Work]" : k === `set:${s2}` ? "[orange]" : k).join(",") }
+  const order = (item: Any, dp: Any) => { const p = dr.previewIn(ws.here(), item, dp); return p && dr.previewOrder(ws.here(), p).map((k: string) => k === `group:${g1}` ? "[Work]" : k === `group:${g2}` ? "[orange]" : k.startsWith("t") ? k.slice(1) : k).join(",") }
   check("drop preview: a tab dragged into a group's end shows there, its name before them",
-    order({ from: "tab", tab: "c" }, { kind: "bar", group: "g0", index: 3, set: s1 }) === "a,[Work],b,d,c,[orange],e", order({ from: "tab", tab: "c" }, { kind: "bar", group: "g0", index: 3, set: s1 }))
-  check("drop preview: a file from elsewhere makes room where it'd open; a drop elsewhere changes nothing here",
-    order({ from: "tree", to: "file:z.md" }, { kind: "bar", group: "g0", index: 1, set: null }) === `a,${sl.INCOMING},[Work],b,d,[orange],e,c`
-    && order({ from: "tab", tab: "c" }, { kind: "pane", group: "g0", zone: "left" }) === null)
-  check("drop preview: a whole group dragged moves with its name", order({ from: "tabset", tabset: s1 }, { kind: "bar", group: "g0", index: 5, set: null }) === "a,[orange],e,c,[Work],b,d",
-    order({ from: "tabset", tabset: s1 }, { kind: "bar", group: "g0", index: 5, set: null }))
+    order({ from: "tab", tab: "tc" }, { kind: "list", index: 3, group: g1 }) === "a,[Work],b,d,c,[orange],e", order({ from: "tab", tab: "tc" }, { kind: "list", index: 3, group: g1 }))
+  check("drop preview: a file from elsewhere makes room where it'd open; a drop on a pane changes nothing in the list",
+    order({ from: "tree", to: "file:z.md" }, { kind: "list", index: 1, group: null }) === `a,${sl.INCOMING},[Work],b,d,[orange],e,c`
+    && order({ from: "tab", tab: "tc" }, { kind: "pane", pane: "a", zone: "left" }) === null)
+  check("drop preview: a whole group dragged moves with its name", order({ from: "group", group: g1 }, { kind: "list", index: 5, group: null }) === "a,[orange],e,c,[Work],b,d",
+    order({ from: "group", group: g1 }, { kind: "list", index: 5, group: null }))
+  check("drop preview: a pane alone in its tab moves its tab", order({ from: "pane", pane: "c" }, { kind: "list", index: 0, group: null }) === "c,a,[Work],b,d,[orange],e",
+    order({ from: "pane", pane: "c" }, { kind: "list", index: 0, group: null }))
   // Every other list reordered by dragging (slide.ts): the order a drop at a slot leaves, which it makes way for.
   const ro = (keys: string[], moving: string[], i: number) => { const r = sl.reorder(keys, moving, i); return `${r.order.join(",")}|${r.before}|${r.same}` }
   check("make way: one dragged down past two lands after them, before the next", ro(["a", "b", "c", "d"], ["a"], 3) === "b,c,a,d|d|false", ro(["a", "b", "c", "d"], ["a"], 3))
   check("make way: over its own place (either side of its middle), nothing changes", ro(["a", "b", "c"], ["b"], 1) === "a,b,c|c|true" && ro(["a", "b", "c"], ["b"], 2) === "a,b,c|c|true")
   check("make way: past the last, the end", ro(["a", "b", "c"], ["a"], 3) === "b,c,a|null|false", ro(["a", "b", "c"], ["a"], 3))
   check("make way: what comes from elsewhere opens one gap there", ro(["a", "b"], ["y", "z"], 1) === `a,${sl.INCOMING},b|b|false`, ro(["a", "b"], ["y", "z"], 1))
-  ts.renameSet(s1, "  Lighthouse "); ts.colorSet(s1, "teal")
-  check("tab groups: renamed (trimmed) and recoloured", pane().sets[0].name === "Lighthouse" && pane().sets[0].color === "teal", pane().sets)
-  ws.closeTab("e")
-  check("tab groups: closing a group's last tab removes the group", runs() === "a,b(Lighthouse),d(Lighthouse),c" && pane().sets.length === 1, runs())
-  ws.closeTab("d"); ws.reopenTab()
+  gr.renameGroup(g1, "  Lighthouse "); gr.colorGroup(g1, "teal")
+  check("tab groups: renamed (trimmed) and recoloured", gr.allGroups()[0].name === "Lighthouse" && gr.allGroups()[0].color === "teal", gr.allGroups())
+  while (ws.canReopenTab()) ws.reopenTab()
+  ws.closeTab("te")
+  check("tab groups: closing a group's last tab removes the group", runs() === "a,b(Lighthouse),d(Lighthouse),c" && gr.allGroups().length === 1, runs())
+  ws.closeTab("td"); ws.reopenTab()
   check("tab groups: a closed tab reopens back in its group", runs() === "a,b(Lighthouse),d(Lighthouse),c", runs())
   ws.reopenTab()
-  check("tab groups: one whose group went reopens where it was, in none", runs() === "a,b(Lighthouse),d(Lighthouse),e,c" && pane().sets.length === 1, runs())
-  ws.selectTab("b"); ws.go("file:z.md", true)
-  check("tab groups: a tab opened from a grouped tab joins its group", runs().startsWith("a,b(Lighthouse),") && ws.activeTab().set === s1, runs())
+  check("tab groups: one whose group went reopens where it was, in none", runs() === "a,b(Lighthouse),d(Lighthouse),e,c" && gr.allGroups().length === 1, runs())
+  ws.selectTab("tb"); ws.go("file:z.md", true)
+  check("tab groups: a tab opened from a grouped tab joins its group", runs().startsWith("a,b(Lighthouse),z(Lighthouse),") && ws.activeTab().group === g1, runs())
   ws.newTab()
-  check("tab groups: a new blank tab from a grouped tab goes after the group, in none", ws.activeTab().to === "new" && !ws.activeTab().set
-    && pane().tabs.findIndex((t: Any) => t.to === "new") === pane().tabs.map((t: Any) => t.set).lastIndexOf(s1) + 1, runs())
-  ts.ungroupSet(s1)
-  check("tab groups: ungrouped, the tabs stay where they were", !pane().sets && !pane().tabs.some((t: Any) => t.set), runs())
-  // Saved and read back: a tab in a group the pane hasn't is in none; a group's tabs apart are gathered; a bad colour drops it.
-  const read = lay.clean({ id: "g0", active: "a", tabs: [{ id: "a", to: "file:a.md", set: "s" }, { id: "b", to: "file:b.md" }, { id: "c", to: "file:c.md", set: "s" }, { id: "d", to: "file:d.md", set: "gone" }],
-    sets: [{ id: "s", name: "Read", color: "green", collapsed: true }, { id: "x", name: "Bad", color: "chartreuse" }] })
+  check("tab groups: a new blank tab from a grouped tab goes after the group, in none", ws.activePane().to === "new" && !ws.activeTab().group
+    && ws.here().tabs.findIndex((t: Tb) => lay.isBlankTab(t)) === ws.here().tabs.map((t: Tb) => t.group).lastIndexOf(g1) + 1, runs())
+  const savedGroups = JSON.parse(JSON.stringify(ws.getWorkspace())); ws.replaceWorkspace(savedGroups)
+  check("tab groups: a layout put back (another device, a reload) keeps them", runs() === "a,b(Lighthouse),z(Lighthouse),d(Lighthouse),new,e,c", runs())
+  gr.ungroup(g1)
+  check("tab groups: ungrouped, the tabs stay where they were", !ws.here().groups && !ws.here().tabs.some((t: Tb) => t.group), runs())
+  // Saved and read back: a tab in a group the list hasn't is in none; a group's tabs apart are gathered; a bad colour drops it.
+  const read = lay.clean({ active: "ta", tabs: [T("a", undefined, { group: "s" }), T("b"), T("c", undefined, { group: "s" }), T("d", undefined, { group: "gone" })],
+    groups: [{ id: "s", name: "Read", color: "green", collapsed: true }, { id: "x", name: "Bad", color: "chartreuse" }] })
   check("tab groups: read back as they must be (together, known groups only, the one on screen open)",
-    read.tabs.map((t: Any) => t.id + (t.set ?? "")).join(",") === "as,cs,b,d" && read.sets.length === 1 && !read.sets[0].collapsed, read)
-  two([A, B], [C, D], "gL"); s1 = ts.makeSet(["a", "c"], { name: "Both" })
-  check("tab groups: tabs from two panes grouped go to the first's pane", runs() === "a(Both),c(Both),b | d", runs())
-  ts.moveSetTo(s1, "gR", "right")
-  check("tab groups: a group dragged to a pane's edge is a pane of its own", runs() === "b | d | a(Both),c(Both)", runs())
-  sp.moveTabTo("d", ws.groups()[2].id, "center")
-  check("tab groups: a tab moved into another pane's middle joins no group", runs() === "b | a(Both),c(Both),d", runs())
-  const saved = JSON.parse(JSON.stringify(ws.getWorkspace())); ws.replaceWorkspace(saved)
-  check("tab groups: a layout put back (another device, a reload) keeps them", runs() === "b | a(Both),c(Both),d", runs())
+    read.tabs.map((t: Tb) => t.id + (t.group ?? "")).join(",") === "tas,tcs,tb,td" && read.groups.length === 1 && !read.groups[0].collapsed, read)
+  // An agent's pages, each in its task's tab group (openInGroup).
+  put([T("a"), T("c")], "ta"); const o1 = gr.openInGroup("view:web/https://z.test/", "Agent/other")
+  check("agent tabs: the first of a task goes in a new group of its name after the tab on screen, shown",
+    runs() === "a,view:web/https://z.test/(Agent/other),c" && ws.here().active === ws.paneTab(o1).id, runs())
+  gr.openInGroup("view:web/https://y.test/", "Agent/other")
+  check("agent tabs: the next of the task goes to its group's end", runs() === "a,view:web/https://z.test/(Agent/other),view:web/https://y.test/(Agent/other),c", runs())
+  put([T("a"), T("c")], "ta"); const o3 = gr.openInGroup("view:web/https://h.test/", "Agent/here", true)
+  check("agent tabs: beside, a pane beside the focused one, the focus staying, the tab in a group of its name",
+    runs() === "[a|view:web/https://h.test/](Agent/here),c" && focus() === "a" && ws.paneById(o3)?.to === "view:web/https://h.test/", runs())
   // A tab's own name (Rename tab): set, trimmed, kept through a reload, and taken off by an empty one.
-  ws.nameTab("b", "  Reading   list ")
-  const named = lay.clean(JSON.parse(JSON.stringify(ws.groups()[0])))
-  ws.nameTab("b", " ")
-  const bad = lay.clean({ id: "g9", active: "n", tabs: [{ id: "n", to: "new", name: 42 }] })
-  check("tab names: kept as one line, read back, cleared by an empty name, a bad one dropped", named.tabs[0].name === "Reading list"
-    && !("name" in ws.groups()[0].tabs[0]) && !("name" in bad.tabs[0]), [named.tabs[0], ws.groups()[0].tabs[0], bad.tabs[0]])
-  // An agent's web tabs, each in its task's tab group, with the focus in that group's pane (an ask shown there): the pane
-  // keeps its size (a pane made for each and emptied again halved it, till it drew nothing).
-  const shares = () => ws.getWorkspace().root.sizes?.map((x: number) => x.toFixed(2)).join(",")
-  two([A], [C], "gR"); ts.makeSet(["c"], { name: "Agent/task" })
-  const task = ts.allSets()[0].id
-  for (let i = 0; i < 20; i++) { const id = sp.openInSplit(`view:web/https://x.test/${i}`, "right", false); ts.addToSet([id], task, id) }
-  for (let i = 0; i < 20; i++) ts.openInSet(`view:web/https://y.test/${i}`, "Agent/task")
-  check("agent tabs: twenty opened into their group's pane leave the split as it was", shares() === "0.50,0.50" && ws.groups()[1].tabs.length === 41
-    && ws.groups()[1].tabs.every((t: Any) => t.set) && ws.getWorkspace().focus === "gR" && ws.groups()[1].active === ws.groups()[1].tabs.at(-1).id, shares())
-  two([A], [C], "gL"); ts.openInSet("view:web/https://z.test/", "Agent/other")
-  check("agent tabs: the first of a task goes beside the user's pane, in a new group of its name, the focus staying",
-    runs() === `a | c,${ws.groups()[1].tabs[1].id}(Agent/other)` && ws.getWorkspace().focus === "gL", runs())
-  two([A], [C], "gL"); const here = ts.openInSet("view:web/https://h.test/", "Agent/here", true)
-  check("agent pages opened as a tab by the user: in their pane, after its tab, in a new group, shown",
-    runs() === `a,${here}(Agent/here) | c` && ws.groups()[0].active === here && shares() === "0.50,0.50", runs())
-  const WB = { id: "wb", to: "view:web/" }
-  two([A], [WB], "gL"); ws.openTab("view:web/")
-  check("new web page: a tab of its own in the focused pane, though another pane has a blank page", tabs() === "file:a.md,view:web/ * | view:web/", tabs())
-  one([A, N], "n"); ws.openTab("view:web/")
-  check("new web page: from a blank tab, in it", tabs() === "file:a.md,view:web/ *", tabs())
-  two([A, B], [C], "gL"); sp.moveToSplit("right", "b"); sp.moveTabTo("b", "gL", "center")
-  check("panes: one made beside another and gone again leaves it its room", shares() === "0.50,0.50", shares())
-  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [1 - 2 ** -20, 2 ** -20], kids: [{ id: "gL", tabs: [A], active: "a" }, { id: "gR", tabs: [C], active: "c" }] }, focus: "gL" })
-  check("panes: one squeezed too thin to draw (a layout saved so) comes back at an even share", shares() === "0.50,0.50", shares())
-  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.6, 0.3, 0.1], kids: [{ id: "gL", tabs: [A], active: "a" }, { id: "gM", tabs: [B], active: "b" }, { id: "gR", tabs: [C], active: "c" }] }, focus: "gL" })
-  check("panes: a thin one the user dragged to stays", shares() === "0.60,0.30,0.10", shares())
-  // Close pane (pinned tabs too), and ⌘⇧T bringing it back whole, where it sat.
-  const tree = (n: Any = ws.getWorkspace().root): string => n.kids ? `${n.dir}(${n.kids.map((k: Any, i: number) => `${tree(k)}:${n.sizes[i].toFixed(2)}`).join(" ")})` : n.tabs.map((t: T) => t.to.slice(5, 6)).join("")
-  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.6, 0.3, 0.1], kids: [{ id: "gL", tabs: [A], active: "a" },
-    { id: "gM", tabs: [B, { ...C, pinned: true }], active: "c" }, { id: "gR", tabs: [D], active: "d" }] }, focus: "gM" })
-  ws.closePane()
-  check("close pane: every tab, pinned ones too; its room goes to the pane before it", tree() === "row(a:0.90 d:0.10)" && ws.getWorkspace().focus === "gR", tree())
-  ws.reopenTab()
-  const back = ws.groups()[1]
-  check("close pane: ⌘⇧T brings it back where it sat, its share, pins and shown tab, focused", tree() === "row(a:0.60 bc:0.30 d:0.10)"
-    && back.id === "gM" && back.active === "c" && back.tabs[1].pinned && ws.getWorkspace().focus === "gM", tree())
-  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.7, 0.3], kids: [{ id: "gL", tabs: [A], active: "a" },
-    { id: "s1", dir: "col", sizes: [0.25, 0.75], kids: [{ id: "gT", tabs: [B], active: "b" }, { id: "gB", tabs: [C], active: "c" }] }] }, focus: "gL" })
-  ws.closePane("gT"); ws.closePane("gL")
-  check("close pane: two closed, the splits closing up", tree() === "c", tree())
-  ws.reopenTab(); ws.reopenTab()
-  check("close pane: reopened in turn, each where it sat", tree() === "row(a:0.70 col(b:0.25 c:0.75):0.30)", tree())
-  one([A], "a"); ws.closePane()
-  check("close pane: not the only one", tree() === "a" && !ws.canClosePane(), tree())
+  put([T("a"), T("b")], "ta"); ws.nameTab("tb", "  Reading   list ")
+  const named = lay.clean(JSON.parse(JSON.stringify(ws.getWorkspace())))
+  ws.nameTab("tb", " ")
+  const bad = lay.clean({ active: "tn", tabs: [{ ...T("n", "new"), name: 42 }] })
+  check("tab names: kept as one line, read back, cleared by an empty name, a bad one dropped", named.tabs[1].name === "Reading list"
+    && !("name" in ws.tabById("tb")) && !("name" in bad.tabs[0]), [named.tabs[1], ws.tabById("tb"), bad.tabs[0]])
 
-  // Zoom (Workspace.zoom) and floating panes (Group.float): out of the tiling, their spot kept for docking back.
-  const fl = { x: 0.05, y: 0.1, w: 0.3, h: 0.5 }
-  const row3 = (fB?: Any) => ({ id: "s0", dir: "row", sizes: [0.25, 0.5, 0.25], kids: [P("gA", ["a"], "a"), { ...P("gB", ["b"], "b"), ...(fB ? { float: fB } : {}) }, P("gC", ["c"], "c")] })
-  const lo = lay.layout(row3(fl)), w2 = (r: Any) => r.w.toFixed(2)
-  check("float: out of the tiling, the tiled ones share its room as they shared theirs; one divider between them",
-    lo.panes.map((p: Any) => `${p.group.id}:${w2(p.rect)}`).join() === "gA:0.50,gC:0.50" && lo.floats[0]?.group.id === "gB" && JSON.stringify(lo.floats[0].rect) === JSON.stringify(fl)
-    && lo.dividers.length === 1 && lo.dividers[0].i === 0 && lo.dividers[0].at.toFixed(2) === "0.50", lo)
-  const rs = lay.resized(row3(fl), "s0", 0, 0.3, 0.05), ev = lay.evened(rs, "s0")
-  check("float: a divider dragged or evened out moves the tiled ones only; it keeps its share for docking",
-    lay.layout(rs).panes.map((p: Any) => w2(p.rect)).join() === "0.30,0.70" && rs.sizes[1] === 0.5 && lay.layout(ev).panes.map((p: Any) => w2(p.rect)).join() === "0.50,0.50" && ev.sizes[1] === 0.5,
-    [rs.sizes, ev.sizes])
-  check("float: docked, back in its spot at its share", JSON.stringify(lay.floated(row3(fl), "gB", null)) === JSON.stringify(row3()))
-  check("float: a saved one is kept inside the workspace; one that isn't a place is dropped",
-    JSON.stringify(lay.clean({ ...P("g", ["a"], "a"), float: { x: 0.9, y: -1, w: 0.5, h: 2 } }).float) === JSON.stringify({ x: 0.5, y: 0, w: 0.5, h: 1 })
-    && lay.clean({ ...P("g", ["a"], "a"), float: { x: "1" } }).float === undefined)
-  check("float: directional focus from it goes to the tiled pane past its edge", lay.neighbourOf(row3({ ...fl, x: 0.1 }), "gB", "right")?.id === "gC"
-    && lay.neighbourOf(row3(fl), "gB", "left") === null)
-  const settle = (w: Any) => lay.settled(w)
-  check("settled: with every pane floating they dock; a zoom only on the focused pane, tiled, beside others",
-    !lay.leaves(settle({ root: { ...P("g", ["a"], "a"), float: fl }, focus: "g" }).root).some((g: Any) => g.float)
-    && settle({ root: row3(), focus: "gA", zoom: "gC" }).zoom === undefined && settle({ root: row3(), focus: "gA", zoom: "gA" }).zoom === "gA"
-    && settle({ root: row3(fl), focus: "gB", zoom: "gB" }).zoom === undefined && settle({ root: P("g", ["a"], "a"), focus: "g", zoom: "g" }).zoom === undefined)
-  const floats = () => ws.groups().filter((g: Any) => g.float).map((g: Any) => g.id).join()
-  ws.replaceWorkspace({ root: row3(), focus: "gB" })
-  const flat = tree()
-  sp.floatPane()
-  check("float pane: the focused one floats over where it was, focused, its tabs still the workspace's", floats() === "gB" && ws.getWorkspace().focus === "gB"
-    && ws.groups().length === 3 && lay.layout(ws.getWorkspace().root).panes.length === 2 && !sp.canFloat("gB") && sp.isFloating(), floats())
-  sp.placeFloat("gB", { x: 0.6, y: 0.2, w: 0.3, h: 0.4 })
-  check("float pane: moved by hand, it stays put; dock pane puts it back as it was", ws.groups()[1].float.x === 0.6 && (sp.dockPane(), floats() === "" && tree() === flat), tree())
-  sp.floatPane("gB")
-  check("float pane: centred on the right", ws.groups()[1].float.x + ws.groups()[1].float.w > 0.9 && Math.abs(ws.groups()[1].float.y + ws.groups()[1].float.h / 2 - 0.5) < 1e-9, ws.groups()[1].float)
-  sp.placeFloat("gB", { x: 0.02, y: 0.02, w: 0.2, h: 0.2 }); sp.toggleFloat()
-  check("dock pane: away from its spot, it docks into the nearest half of the pane under it (near the top: the top half)",
-    tree() === "row(col(b:0.50 a:0.50):0.50 c:0.50)" && ws.getWorkspace().focus === "gB", tree())
-  ws.replaceWorkspace({ root: row3(), focus: "gB" })
-  sp.toggleFloat()
-  check("float pane: the same command docks it", sp.isFloating() && (sp.toggleFloat(), !sp.isFloating() && tree() === flat), tree())
-  sp.floatPane("gB"); ws.focusGroup("gA"); sp.floatPane("gA")
-  check("float pane: several at once, but not the last tiled one", floats() === "gA,gB" && !sp.canFloat("gC"), floats())
-  ws.closePane("gC"); ws.closePane("gA")
-  check("float pane: the last tiled one closed, a floating one docks", floats() === "" && tree() === "b", tree())
-  ws.replaceWorkspace({ root: row3(fl), focus: "gB" }); sp.moveGroupTo("gB", "gC", "left")
-  check("float pane: dragged onto a pane's edge, it docks there, the other panes as they were", floats() === "" && tree() === "row(a:0.50 b:0.25 c:0.25)", tree())
-  ws.replaceWorkspace({ root: { ...row3(fl), sizes: [0.2, 0.4, 0.2, 0.2], kids: [...row3(fl).kids, P("gD", ["d"], "d")] }, focus: "gC" }); ws.closePane("gC")
-  check("float pane: a tiled one closed beside it leaves its room to the tiled one before", lay.layout(ws.getWorkspace().root).panes.map((p: Any) => w2(p.rect)).join() === "0.67,0.33",
-    lay.layout(ws.getWorkspace().root).panes)
-  ws.replaceWorkspace({ root: row3(fl), focus: "gB" }); sp.splitTab("right")
-  check("float pane: split, it docks first", !lay.leaves(ws.getWorkspace().root).some((g: Any) => g.float) && lay.layout(ws.getWorkspace().root).panes.length === 4, tree())
-  ws.replaceWorkspace({ root: row3(), focus: "gB" }); sp.zoomPane()
-  check("zoom: the focused pane fills the workspace, the others still there", ws.getWorkspace().zoom === "gB" && sp.isZoomed() && ws.groups().length === 3)
-  sp.zoomPane()
-  check("zoom: again, it's back", !sp.isZoomed())
-  sp.zoomPane(); ws.focusGroup("gA")
-  check("zoom: another pane focused, it's back", !sp.isZoomed())
-  sp.zoomPane(); sp.splitTab("right")
-  check("zoom: a split, it's back", !sp.isZoomed())
-  ws.replaceWorkspace({ root: row3(), focus: "gB" }); sp.zoomPane(); ws.openTab("file:z.md")
-  check("zoom: a tab opened in it stays zoomed; one opened in another pane behind leaves it be", sp.isZoomed() && (sp.openInSplit("file:y.md", "right", false), sp.isZoomed()))
-  ws.closePane("gB")
-  check("zoom: closed, it's gone", !sp.isZoomed() && !("zoom" in ws.getWorkspace()))
-  ws.replaceWorkspace({ root: row3(), focus: "gB", zoom: "gB" })
-  check("zoom: a saved one comes back; one of a pane that isn't focused doesn't", sp.isZoomed() && (ws.replaceWorkspace({ root: row3(), focus: "gA", zoom: "gB" }), !sp.isZoomed()))
-  // Search tabs: the tab focused last first; the ones closed lately listed, the latest first, and reopened where they were.
-  while (ws.canReopenTab()) ws.reopenTab()
-  const now = Date.now
-  let clock = now()
-  Date.now = () => (clock += 1000)
-  one([A, B, C], "a"); ws.selectTab("c"); ws.selectTab("b")
-  const recent = () => ws.tabsByRecent().map((t: T) => t.id).join()
-  check("search tabs: the one on screen first, then each by when it was left", recent() === "b,c,a", recent())
-  Date.now = () => clock
-  ws.selectTab("a"); ws.selectTab("b")
-  check("search tabs: … but for one only passed through", recent() === "b,c,a", recent())
-  Date.now = now
-  ws.closeTab("c"); ws.closeTab("a")
-  const shut = () => ws.closedTabs().map((c: Any) => c.tab.id).join()
-  check("search tabs: closed ones, the latest first", shut() === "a,c", shut())
-  ws.reopenClosed("c")
-  check("search tabs: one reopened where it was, shown, and off the list", tabs() === "file:b.md,file:c.md *" && ws.activeTab().id === "c" && shut() === "a", [tabs(), shut()])
-  two([A], [B, C], "gL"); ws.closePane("gR")
-  ws.reopenClosed("b")
-  check("search tabs: one of a closed pane's comes back alone, in the focused pane", tabs() === "file:a.md,file:b.md *" && shut() === "c", [tabs(), shut()])
+  // ---- what changed, as events (tabevents.ts): what the companion follows ----
+  const evs: string[] = []
+  const off = tev.onTabsEvent((e: Any) => { const { type, ...rest } = e; evs.push([type, ...Object.values(rest).map(String)].join(" ")) })
+  const said = () => { const s = evs.join("|"); evs.length = 0; return s }
+  put([T("a"), T("b")], "ta"); said()
+  ws.selectTab("tb")
+  check("events: a tab selected: tab-focused and pane-focused, with what was", said() === "tab-focused tb ta|pane-focused b tb a")
+  const zp = ws.openTab("file:z.md", { background: true }), zt = ws.paneTab(zp).id
+  check("events: a tab opened: tab-opened and pane-opened", said() === `tab-opened ${zt}|pane-opened ${zp} ${zt}`)
+  sp.placeTab(zt, 0)
+  check("events: a tab dragged: tab-moved with its index, not the ones it shifted", said() === `tab-moved ${zt} 0`)
+  ws.goHere("file:y.md")
+  check("events: a pane shows another place: pane-changed", said() === "pane-changed b tb file:y.md")
+  sp.paneIntoPane(zp, "a", "right")
+  const moved = said()
+  check("events: a pane moved into another tab: pane-moved from its tab, which closed; that tab and pane focused",
+    moved === `tab-closed ${zt}|pane-moved ${zp} ta ${zt}|tab-focused ta tb|pane-focused ${zp} ta b`, moved)
+  ws.setFocusedPane("a")
+  check("events: a pane clicked: only pane-focused", said() === `pane-focused a ta ${zp}`)
+  ws.closePane(zp)
+  check("events: a pane closed: pane-closed", said() === `pane-closed ${zp} ta`)
+  ws.closeTab("tb")
+  check("events: a tab closed: tab-closed and its panes' pane-closed", said() === "tab-closed tb|pane-closed b tb")
+  off()
+  ws.selectTab("ta")
+  check("events: unsubscribed, nothing heard", said() === "")
 
-  // Tabs that archive themselves: stamped while on screen (only with archiving on); never one on screen, pinned or that
-  // closing would lose; closed with no ⌘⇧T entry, put back where they were; stamps from another device's copy are taken.
+  // ---- what agents ask (vau tabs) ----
+  const ask = (m: Props) => { try { return g.__answerUi.tabs(m) } catch (e) { return { error: (e as Error).message } } }
+  put([S("tx", row("s0", [a, b]), "b"), T("c")], "tx")
+  check("vau tabs list: each tab with its panes (path, focused), the one on screen; the groups",
+    same(ask({ do: "list" }), { tabs: [{ id: "tx", active: true, panes: [{ id: "a", to: "file:a.md", path: "a.md" }, { id: "b", to: "file:b.md", path: "b.md", focused: true }] },
+      { id: "tc", panes: [{ id: "c", to: "file:c.md", path: "c.md", focused: true }] }], groups: [] }), ask({ do: "list" }))
+  const fc = ask({ do: "focus", what: "c.md" })
+  check("vau tabs focus: a pane named by its file shown, focused", same(fc, { tab: "tc", pane: "c" }) && tabs() === "[a|b],c*", fc)
+  const spl = ask({ do: "split", pane: "c", side: "bottom", to: "file:z.md" })
+  check("vau tabs split: something opened beside a pane, in its tab", spl.tab === "tc" && ws.paneById(spl.pane)?.to === "file:z.md" && tabs() === "[a|b],[c/z]*", [spl, tabs()])
+  ask({ do: "swap", pane: "a", with: "c" })
+  check("vau tabs swap: two panes in each other's places, across tabs", tabs() === "[c|b],[a/z]*", tabs())
+  ask({ do: "move", what: "z.md", at: 0 })
+  check("vau tabs move: a pane of a split to a place in the list, a tab of its own", tabs() === "z*,[c|b],a", tabs())
+  ask({ do: "move", what: "tc", into: "b", side: "right" })
+  check("vau tabs move: a tab into a pane's side", tabs() === "z,[c|b|a]*" && focus() === "a", tabs())
+  const grp = ask({ do: "group", tabs: ["z.md"], name: "Later", color: "green" })
+  check("vau tabs group: tabs named made a group, its name and colour", grp.group?.name === "Later" && grp.group.color === "green" && grp.group.tabs.length === 1, grp)
+  check("vau tabs: errors say what's wrong", ask({ do: "focus", what: "nope.md" }).error === "no open tab or pane is nope.md (vau tabs lists them)"
+    && ask({ do: "split", pane: "b", side: "center" }).error === "a split's side is left, right, top or bottom"
+    && ask({ do: "split", pane: "b", side: "up" }).error === "a side is left, right, top, bottom or center"
+    && ask({ do: "swap", pane: "b", with: "b" }).error === "those are the same pane"
+    && ask({ do: "group", tabs: ["b"], color: "chartreuse" }).error?.startsWith("a colour is one of")
+    && ask({ do: "group", group: "nope" }).error === "no tab group nope (vau tabs lists them)"
+    && ask({ do: "move", what: "z.md" }).error === "say where: `into` a pane (with `side`), or `at` a place in the list"
+    && ask({ do: "what" }).error?.startsWith("do is list"), tabs())
+  const cl = ask({ do: "close", tabs: ["file:z.md", "file:a.md"] })
+  check("vau tabs close: the panes showing those close, a tab with none left too", cl.closed === 2 && tabs() === "[c|b]*", [cl, tabs()])
+
+  // ---- tabs that archive themselves: stamped while on screen (only with archiving on); never one on screen, pinned or
+  // that closing would lose; closed with no ⌘⇧T entry, put back where they were; stamps from another device's copy taken ----
   const H = 3600_000, old = Date.now() - 48 * H
   while (ws.canReopenTab()) ws.reopenTab()
-  ws.setArchivable((t: T) => t.to !== "file:keep.md")
-  one([A, B], "a")
-  check("archive: off, no tab is stamped", ws.groups()[0].tabs.every((t: Any) => t.seen === undefined), ws.groups()[0].tabs)
-  ws.replaceWorkspace({ root: { id: "g0", active: "a", tabs: [{ ...A, seen: old }, { ...B, seen: old }, { id: "p", to: "file:p.md", pinned: true, seen: old },
-    { id: "k", to: "file:keep.md", seen: old }, { ...C }] }, focus: "g0" })
+  ws.setArchivable((p: Any) => p.to !== "file:keep.md")
+  put([T("a"), T("b")], "ta")
+  check("archive: off, no pane is stamped", ws.here().tabs.every((t: Tb) => lay.panesOf(t).every((p: Any) => p.seen === undefined)), ws.here().tabs)
+  const seen = (p: Any) => ({ ...p, seen: old })
+  put([TP(seen(a)), TP(seen(b)), TP(seen(pane("p")), { pinned: true }), TP(seen(pane("k", "file:keep.md"))), T("c")], "ta")
   ws.setArchiveAfter(24 * H)
-  const seenOf = (id: string) => ws.groups()[0].tabs.find((t: Any) => t.id === id)?.seen
-  check("archive: on, the tab on screen and those never stamped are seen now; the rest keep theirs", seenOf("a") > old && seenOf("c") > old && seenOf("b") === old,
-    ws.groups()[0].tabs)
-  check("archive: due are the unseen, unpinned, not on screen and archivable", ws.unseenTabs(Date.now() - 24 * H).map((t: T) => t.id).join() === "b")
-  const gone = ws.closeToArchive(["b"])
-  check("archive: closed, its place kept, nothing for ⌘⇧T", tabs() === "file:a.md,file:p.md,file:keep.md,file:c.md *" && gone[0]?.at === 1 && !ws.canReopenTab(), [tabs(), gone])
-  ws.selectTab("c"); ws.restoreTab(gone[0], false)
-  check("archive: put back behind the tab on screen", tabs() === "file:a.md,file:b.md,file:p.md,file:keep.md,file:c.md *" && ws.activeTab().id === "c", tabs())
+  const seenOf = (id: string) => ws.paneById(id)?.seen
+  check("archive: on, the panes on screen and those never stamped are seen now; the rest keep theirs", seenOf("a") > old && seenOf("c") > old && seenOf("b") === old, ws.here().tabs)
+  check("archive: due are the unseen, unpinned, not on screen and archivable", ws.unseenTabs(Date.now() - 24 * H).map((t: Tb) => t.id).join() === "tb")
+  put([S("tx", row("s0", [seen(pane("x1")), pane("x2")]), "x1"), T("y")], "ty"); const halfDue = ws.unseenTabs(Date.now() - 24 * H).length
+  put([S("tx", row("s0", [seen(pane("x1")), seen(pane("x2"))]), "x1"), T("y")], "ty")
+  check("archive: a split tab is due only once each of its panes is", halfDue === 0 && ws.unseenTabs(Date.now() - 24 * H).map((t: Tb) => t.id).join() === "tx")
+  put([TP(seen(a)), TP(seen(b)), TP(seen(pane("p")), { pinned: true }), TP(seen(pane("k", "file:keep.md"))), T("c")], "ta")
+  const gone = ws.closeToArchive(["tb"])
+  check("archive: closed, its place kept, nothing for ⌘⇧T", tabs() === "a*,p,keep,c" && gone[0]?.at === 1 && !ws.canReopenTab(), [tabs(), gone])
+  ws.selectTab("tc"); ws.restoreTab(gone[0], false)
+  check("archive: put back behind the tab on screen", tabs() === "a,b,p,keep,c*", tabs())
   const soon = Math.floor(Date.now() / 60_000) * 60_000 + 5 * 60_000
-  ws.mergeSeen({ root: { id: "g0", active: "a", tabs: [{ ...A, seen: soon }, { ...B, seen: old }] }, focus: "g0" })
+  ws.mergeSeen({ tabs: [TP({ ...a, seen: soon }), TP(seen(b))], active: "ta" })
   check("archive: a later stamp from another device's copy is taken, an earlier one isn't", seenOf("a") === soon && seenOf("b") > old)
-  const copy = (b: number) => ({ ...ws.getWorkspace(), root: { ...ws.groups()[0], tabs: ws.groups()[0].tabs.map((t: Any) => (t.id === "b" ? { ...t, seen: b } : t)) } })
+  const copy = (s: number) => ({ ...ws.getWorkspace(), tabs: ws.here().tabs.map((t: Tb) => (t.id === "tb" ? TP({ ...t.root, seen: s }) : t)) })
   check("archive: a stamp behind the file by over a quarter of the archive time is worth a write, else it rides along",
     ws.seenSince(copy(old)) && !ws.seenSince(copy(Date.now() - H)) && !ws.seenSince(ws.getWorkspace()))
   ws.setArchiveAfter(0)

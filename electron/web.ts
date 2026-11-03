@@ -992,7 +992,7 @@ function fromPlayer(p: Page, user = false) {
 }
 
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
-/** A tab's id as the app's tabs make them (core/layout.ts newId); anything else is no tab. */
+/** A pane's id as the app's tabs make them (core/layout.ts newPaneId); anything else is no pane. */
 const tabOf = (x: unknown) => (typeof x === "string" && /^[\w-]{1,64}$/.test(x) ? x : "")
 const rectOf = (r: unknown): WebRect | null => {
   if (!r || typeof r !== "object") return null

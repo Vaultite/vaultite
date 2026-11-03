@@ -36,8 +36,8 @@ export function usePageBar(web: WebPages, id: number, group: string | undefined,
     const stay = () => { clearTimeout(t); t = 0 }
     const off = id ? web.on((m) => { if (m.type === "top" && m.id === id) { if (m.at) come(!!m.now); else stay() } }) : () => {}
     const top = (e: Event) => {
-      const el = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-tab-bar][data-tabs-hidden]") : null
-      return !!el && !!group && el.dataset.tabBar === group
+      const el = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-pane-bar]") : null
+      return !!el && !!group && el.dataset.paneBar === group
     }
     const over = (e: PointerEvent) => { if (top(e)) come(false); else stay() }
     // (its own buttons, the pane's handle and X, do what they do)
@@ -55,8 +55,8 @@ export function usePageBar(web: WebPages, id: number, group: string | undefined,
     const onIt = (e: Event) => {
       const el = e.target instanceof Element ? e.target : null
       if (!el) return false
-      const top = el.closest<HTMLElement>("[data-tab-bar][data-tabs-hidden]")
-      return !!bar.current?.contains(el) || !!el.closest("[role=menu]") || (!!top && top.dataset.tabBar === group)
+      const top = el.closest<HTMLElement>("[data-pane-bar]")
+      return !!bar.current?.contains(el) || !!el.closest("[role=menu]") || (!!top && top.dataset.paneBar === group)
     }
     const move = (e: PointerEvent) => {
       if (onIt(e)) { clearTimeout(t); t = 0; return }

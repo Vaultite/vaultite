@@ -15,15 +15,15 @@ await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorag
 const page = watch(await ctx.newPage(), { console: true })
 const shot = (name) => page.screenshot({ path: `${OUT}panekeys-${name}.png` })
 
-const panes = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => {
+const panes = () => page.evaluate(() => [...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => {
   const r = s.getBoundingClientRect()
-  return { id: s.dataset.group, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), focused: s.hasAttribute("data-focused") }
+  return { id: s.dataset.paneFrame, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), focused: s.hasAttribute("data-focused") }
 }).sort((a, b) => a.x - b.x || a.y - b.y))
 const focused = async () => (await panes()).find((p) => p.focused)
-/** Which pane's editor has the keyboard (its group), or what else does. */
+/** Which pane's editor has the keyboard (its id), or what else does. */
 const keyboard = () => page.evaluate(() => {
   const a = document.activeElement
-  return a?.closest(".cm-content") ? `editor:${a.closest("section[data-group]")?.dataset.group}` : a?.closest("[data-sidebar-body]") ? "sidebar" : a?.tagName ?? ""
+  return a?.closest(".cm-content") ? `editor:${a.closest("section[data-pane-frame]")?.dataset.paneFrame}` : a?.closest("[data-sidebar-body]") ? "sidebar" : a?.tagName ?? ""
 })
 const press = async (k) => { await page.keyboard.press(k); await wait(350) }
 
@@ -86,7 +86,7 @@ ps = await panes()
 check(`${K}= evens every split out`, Math.abs(ps[0].w - ps[1].w) <= 2 && Math.abs(ps[1].h - ps[2].h) <= 2, [before, ps])
 
 // ---------- Dim inactive panes ----------
-const dims = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => ({
+const dims = () => page.evaluate(() => [...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => ({
   focused: s.hasAttribute("data-focused"), o: Number(getComputedStyle(s.querySelector("[data-pane-body]"), "::after").opacity),
 })))
 let d = await dims()
@@ -95,7 +95,7 @@ await shot("dim-light")
 await command(page, "Theme…"); await page.keyboard.type("Dark"); await page.keyboard.press("Enter"); await wait(600)
 await shot("dim-dark")
 // The fade follows the focus, cross-fading (mid-way, both are part-faded).
-await page.evaluate(() => document.querySelector("section[data-group]:not([data-focused]) [data-pane-body]")?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })))
+await page.evaluate(() => document.querySelector("[data-pane-area] > section[data-pane-frame]:not([data-away]):not([data-focused]) [data-pane-body]")?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })))
 await wait(40)
 const mid = await dims()
 await wait(400)

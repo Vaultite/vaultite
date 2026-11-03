@@ -150,8 +150,8 @@ export default async ($: VaultTest) => {
   // or the other's; a vault without machines unchanged.
   {
     const { service } = await import("../../../core/plugins.ts")
-    const tabsOf = (l: Any) => (l.root.tabs as Any[]).map((t) => t.to).join()
-    const layout = (...tos: string[]) => ({ root: { id: "g0", tabs: tos.map((to, i) => ({ id: `t${i}`, to })), active: "t0" }, focus: "g0" })
+    const tabsOf = (l: Any) => (l.tabs as Any[]).map((t) => t.root.to).join()
+    const layout = (...tos: string[]) => ({ tabs: tos.map((to, i) => ({ id: `t${i}`, root: { id: `p${i}`, to }, focus: `p${i}` })), active: "t0" })
     write("Notes/Qa host.md", "Host.\n")
     // No machines: nothing changes.
     let [st, body] = await api("PUT", "workspaces/1", { layout: layout("view:terminal/qaone1", "file:Notes/Qa host.md") })
@@ -183,11 +183,11 @@ export default async ($: VaultTest) => {
     // Moving by the place, as the app or vau names it (this machine's without its id).
     ;[st, body] = await api("POST", "workspaces/move", { to: 3, path: "view:terminal/qanew1" })
     raw = readWs().workspaces
-    check("terminal machines: a move finds a tab by the place as shown, and keeps its machine", st === 200 && body.tab.to === "view:terminal/qanew1" &&
+    check("terminal machines: a move finds a tab by the place as shown, and keeps its machine", st === 200 && body.tab.root.to === "view:terminal/qanew1" &&
       tabsOf(raw[2].layout) === "view:terminal/qanew1@here" && !tabsOf(raw[0].layout).includes("qanew1"), [body, raw])
     ;[st, body] = await api("POST", "workspaces/move", { to: 2, open: ["view:terminal/qaopen1"] })
     check("terminal machines: a terminal opened in a workspace is this machine's", st === 200 && tabsOf(readWs().workspaces[1].layout) === "view:terminal/qaelse@box,view:terminal/qaopen1@here" &&
-      body.tab.to === "view:terminal/qaopen1", [body, readWs()])
+      body.tab.root.to === "view:terminal/qaopen1", [body, readWs()])
     ;[st] = await api("PUT", "workspaces/4", { layout: layout("view:terminal/qaold1@box", "view:terminal/qaold2", "view:terminal/qanew4") })
     const term = app.plugins.find((p) => p.id === "terminal")!
     const locate = term.services["terminal:locate"]

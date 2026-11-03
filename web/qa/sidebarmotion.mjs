@@ -53,7 +53,7 @@ try {
   // (the shell's first moves are still: main.tsx' data-arriving)
   await until(() => win.evaluate(() => !("arriving" in document.body.dataset)), 10000)
   if (process.env.HEAVY) await win.evaluate((n) => {
-    const at = [...document.querySelectorAll("section[data-group] [data-pane-body]")].at(-1), box = document.createElement("div")
+    const at = [...document.querySelectorAll("section[data-pane-frame]:not([data-away]) [data-pane-body]")].at(-1), box = document.createElement("div")
     box.style.cssText = "position: absolute; inset: 0; overflow: hidden; pointer-events: none; opacity: 0.02"
     box.innerHTML = Array.from({ length: n }, (_, i) => `<span>Lettuce ${i} along the fence </span>`).join("")
     at.append(box)

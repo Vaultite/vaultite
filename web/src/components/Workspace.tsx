@@ -1,18 +1,18 @@
-// Desktop: the main area, groups of tabs in a tree of splits. Every group is drawn at its place in one
-// flat list, so splitting or closing a pane never remounts the others (an editor keeps its cursor, a terminal its screen).
+// Desktop: the window's tab bar over the shown tab's panes. Every pane is drawn in one flat list, the last few tabs' kept
+// hidden, so switching tabs, splitting or moving a pane between tabs never remounts the others (an editor keeps its cursor).
 import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { Minimize2, PictureInPicture2, X } from "lucide-react"
+import { Minimize2, PictureInPicture2 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
-import { closeTab, focusGroup, groups, quietly, replaceTabTarget, selectTab, setArchivable, setCloseGuard, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
-import { dropAt, dropOn, PANES, type Drop } from "@/core/drop"
+import { closePane, paneById, quietly, replaceTabTarget, setArchivable, setCloseGuard, setFocusedPane, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, useTabList } from "@/core/workspace"
+import { dropAt, dropOn, PANES, springOver, type Drop } from "@/core/drop"
 import { dockPane, evenOut, placeFloat, resize, zoomPane } from "@/core/splits"
 import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
 import { useCommandKeys } from "@/core/commands"
-import { setGroupNamer } from "@/core/tabsets"
-import { layout, leaves, shownTab, tabPath, type Divider as DividerAt, type Group, type Rect } from "../../../core/layout.ts"
+import { setGroupNamer } from "@/core/tabgroups"
+import { layout, panesOf, shownTab, tabOfPane, tabPath, type Divider as DividerAt, type Pane, type Rect, type Tab, type TabList } from "../../../core/layout.ts"
 import { PaneContext } from "@/core/pane"
 import { VaultLoading } from "@/components/VaultLoading"
 import { isPage } from "@/core/pages"
@@ -20,21 +20,19 @@ import { fillsPane, offText, openElsewhere, switchedOn, usePluginsVersion, viewF
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { FileView } from "@/components/FileView"
 import { Drawn, Guard } from "@/components/Guard"
-import { DragGhost, shownLabel, TabBar, tabMenuOf, useTabInfo, type TabInfo } from "@/components/Tabs"
-import { menuFor } from "@/components/ContextMenu"
+import { DragGhost, PaneBar, springTabAt, tabBarOn, TabStrip, tabLabel, useTabInfo, type TabInfo } from "@/components/Tabs"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
-import { useDrag, useDropTarget } from "@/core/drag"
+import { useDrag, useDropTarget, type DragItem } from "@/core/drag"
 import { Resizer } from "@/components/Resizer"
 import { ViewBar } from "@/components/ViewBar"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
 import { unsavedIn } from "@/core/unsaved"
-import { glide } from "@/core/animation"
 
-setTabCloser((to, tab, last, moved) => {
+setTabCloser((to, pane, last, moved) => {
   const v = viewFor(to, getPrefs().disabled)
   if (!v?.on) return false
-  v.def.onTabClose?.(v.arg, tab, moved)
+  v.def.onTabClose?.(v.arg, pane, moved)
   if (last) v.def.onClose?.(v.arg)
   return !!v.def.onTabClose
 })
@@ -43,16 +41,16 @@ setTabKeeper((to) => !!viewFor(to, getPrefs().disabled)?.def.keepsTab)
 setPathView((to) => !!viewFor(to, getPrefs().disabled)?.def.pathArg)
 setGroupNamer((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.groupName?.(v.arg)) || null })
 setOpener((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.opensBeside?.(v.arg)) || null })
-setOwnHistory((t, dir) => { const v = viewFor(t.to, getPrefs().disabled); return (v?.on && v.def.history?.(v.arg, t.id, dir)) || null })
+setOwnHistory((p, dir) => { const v = viewFor(p.to, getPrefs().disabled); return (v?.on && v.def.history?.(v.arg, p.id, dir)) || null })
 setPageTest((path) => isPage(path))
-setArchivable((t) => {
-  if (t.to.startsWith("file:")) return !unsavedIn(t.to.slice(5))
-  if (!t.to.startsWith("view:")) return true
-  const v = viewFor(t.to, getPrefs().disabled), a = v?.def.archives
+setArchivable((p) => {
+  if (p.to.startsWith("file:")) return !unsavedIn(p.to.slice(5))
+  if (!p.to.startsWith("view:")) return true
+  const v = viewFor(p.to, getPrefs().disabled), a = v?.def.archives
   if (!v?.on) return false
-  try { return typeof a === "function" ? a(v.arg, t.id) : a ?? !(v.def.keepsTab || v.def.onClose || v.def.confirmClose) } catch { return false }
+  try { return typeof a === "function" ? a(v.arg, p.id) : a ?? !(v.def.keepsTab || v.def.onClose || v.def.confirmClose) } catch { return false }
 })
-// Views that ask before their tabs close (a terminal running something): one question per view, in turn.
+// Views that ask before their panes close (a terminal running something): one question per view, in turn.
 setCloseGuard(async (tos) => {
   const byView = new Map<ViewDef, string[]>()
   for (const to of tos) {
@@ -66,9 +64,9 @@ setCloseGuard(async (tos) => {
   return true
 })
 
-/** A core page a tab can show (Setup, Settings), drawn for its address `to` in `tab`. `full`: it lays out and scrolls
- *  itself under the tab's bar (RailLayout), and is kept drawn while hidden, as other pages are. */
-type PageTab = { label: string; full?: boolean; render?: (store: Store, to: string, tab: Tab | null) => ReactNode }
+/** A core page a pane can show (Setup, Settings), drawn for its address `to` in `pane`. `full`: it lays out and scrolls
+ *  itself under the pane's bar (RailLayout), and is kept drawn while hidden, as other pages are. */
+type PageTab = { label: string; full?: boolean; render?: (store: Store, to: string, pane: Pane | null) => ReactNode }
 type Props = {
   store: Store | null; error: string | null
   /** Where it starts: the sidebar's width (a CSS length: px open, spacing units as the rail). */
@@ -88,52 +86,111 @@ const along = (at: number) => `calc(${at} * (100% - ${G}) + ${G})`
 const span = (n: number) => `calc(${n} * (100% - ${G}) - ${G})`
 const tile = (r: Rect) => ({ left: along(r.x), top: along(r.y), width: span(r.w), height: span(r.h) })
 
+/** How many tabs stay drawn (their panes hidden), so going back to one is instant and exactly as left. A view that
+ *  fills its pane (a terminal, a canvas) is drawn only while shown. */
+const KEEP = 5
+
+/** The panes drawn (`slots`, in draw order) and the tabs shown, latest first. A pane coming or going never reorders the
+ *  others: an element that moves reloads what's in it (an iframe). */
+type Kept = { slots: string[]; recent: string[] }
+function keepPanes(k: Kept, l: TabList, shown: string): Kept {
+  const has = new Map(l.tabs.map((t) => [t.id, t]))
+  const recent = [shown, ...k.recent.filter((id) => id !== shown && has.has(id))].slice(0, KEEP)
+  const want = new Set(recent.flatMap((id) => panesOf(has.get(id)!).map((p) => p.id)))
+  const slots = [...k.slots.filter((id) => want.has(id)), ...[...want].filter((id) => !k.slots.includes(id))]
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i])
+  return same(slots, k.slots) && same(recent, k.recent) ? k : { slots, recent }
+}
+
+/** A dragged pane or tab held on a tab's chip or row opens that tab after a moment (drop.ts), making no place in the list
+ *  there: told here, the one target that hears every move, so the bar and the Tabs panel never undo each other's. */
+function springAt(item: DragItem, x: number, y: number) {
+  const t = springTabAt(item, x, y)
+  springOver(t, item)
+  return !!t
+}
+
 export function Workspace(props: Props) {
-  const ws = useWorkspace(), { root, focus, zoom } = ws
+  const l = useTabList()
+  const tab = shownTab(l) ?? l.tabs[0]
+  const prefs = usePrefs(), bar = tabBarOn(prefs)
   const info = useTabInfo(props.store, props.pageInfo)
-  const box = useRef<HTMLElement>(null)
-  const { dividers } = layout(root)
-  const all = leaves(root)
-  const alone = all.length === 1
-  const drawn = paneBoxes(ws)
-  usePaneMotion(box, drawn, focus, [props.left, props.right ?? "0px"])
-  // (a pane dragged by its handle recedes where it was, its card in hand: Tabs' DragGhost)
-  const lifted = useDrag((d) => d?.item.group ?? null)
-  // Tabs, and files or pages from the sidebar, dropped on a tab bar or a pane.
-  useDropTarget<Drop>(PANES, dropAt, dropOn)
+  const box = useRef<HTMLDivElement>(null)
+  const { dividers } = layout(tab.root)
+  const shown = panesOf(tab)
+  const drawn = paneBoxes(tab)
+  usePaneMotion(box, tab.id, drawn, tab.focus, [props.left, props.right ?? "0px"])
+  // (a pane dragged by its bar recedes where it was, its card in hand: Tabs' DragGhost)
+  const lifted = useDrag((d) => d?.item.pane ?? null)
+  // Tabs, panes, and files or pages from the sidebar, dropped on the tab bar or a pane.
+  useDropTarget<Drop>(PANES, (item, x, y, el) => (springAt(item, x, y) ? null : dropAt(item, x, y, el)), dropOn, { end: () => springOver(null, null) })
+  // (worked out while drawing, from what was kept the last time: React's state from earlier renders)
+  const [was, setKept] = useState<Kept>({ slots: [], recent: [] })
+  const kept = keepPanes(was, l, tab.id)
+  if (kept !== was) setKept(kept)
+  // (the window's only pane: nothing to close it into)
+  const only = l.tabs.length === 1 && shown.length === 1
+  // (each pane's bar: with the tab bar, a tab of one pane needs none, its chip is its handle)
+  const bars = !bar || shown.length > 1
+  const z0 = new Map(drawn.map((b) => [b.id, b]))
+  // (what sits in the window's corners keeps to the tab bar, not a pane: index.css)
+  useLayoutEffect(() => { document.documentElement.toggleAttribute("data-top-tabs", bar) }, [bar])
   return (
-    <main ref={box} data-pane-area data-split={alone ? undefined : ""} className="fixed inset-y-0 z-10" style={{ left: props.left, right: props.right ?? 0 }}>
-      {drawn.map(({ id, rect, layer }) => {
-        const g = all.find((x) => x.id === id)!, float = !!g.float, zoomed = id === zoom
-        // (under a zoomed pane: out of the keyboard's reach, and no part of the window's drag strip)
-        const under = !!zoom && !zoomed && !float
-        const top = !under && !float && rect.y < 1e-6
-        // (named by the tab it shows, so a screen reader moving between panes hears which is which)
-        const named = shownTab(g) ?? g.tabs[0]
-        const z = float ? 20 + 3 * (layer - 2) : zoomed ? 11 : undefined
-        const at = float ? place(rect) : tile(rect)
-        return (
-          <Fragment key={id}>
-            {/* Under the pane: its colour while it moves (core/panemotion.ts), a zoomed or floating pane's card. */}
-            <div aria-hidden data-plate={id} style={{ ...at, zIndex: z }}
-              className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-[10px] shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")} />
-            {/* A pane not at the workspace's left or top edge draws the line to its neighbour;
-                data-top/corner/right-corner place the desktop title bar and the right sidebar's toggle (index.css). */}
-            <section aria-label={named ? info(named).label : "Empty pane"} data-group={id} data-top={top || undefined} data-corner={(top && rect.x < 1e-6) || undefined}
-              data-right-corner={(top && rect.x + rect.w > 1 - 1e-6) || undefined} data-floating={float || undefined} data-zoomed={zoomed || undefined} data-focused={id === focus || undefined}
-              data-overlay={float || undefined} inert={under || undefined} data-lifted={lifted === id || undefined}
-              onPointerDownCapture={() => focusGroup(id)} onPointerDown={float ? (e) => moveCard(e, id, box) : undefined} style={{ ...at, zIndex: z && z + 2 }}
-              className={cn("absolute flex min-h-0 min-w-0 flex-col border-border", float ? "overflow-hidden rounded-[10px]" : !zoomed && cn(rect.x > 1e-6 && "border-l", rect.y > 1e-6 && "border-t"))}>
-              <TabBar group={g} focused={id === focus} info={info} alone={alone} extra={<PaneState id={id} float={float} zoomed={zoomed} />} />
-              {g.stacked ? <Stacked group={g} focused={id === focus} info={info} {...props} /> : <Pane group={g} focused={id === focus} {...props} />}
-            </section>
-            {float && <CardEdges id={id} rect={rect} box={box} z={z! + 1} />}
-          </Fragment>
-        )
-      })}
-      {!zoom && dividers.map((d) => <Divider key={`${d.split.id}:${d.i}`} at={d} box={box} />)}
+    // With the tab bar, it's the window's title row: at the top, in both corners (index.css).
+    <main data-top={bar || undefined} data-corner={bar || undefined} data-right-corner={bar || undefined} className="fixed inset-y-0 z-10 flex flex-col" style={{ left: props.left, right: props.right ?? 0 }}>
+      {bar && <TabStrip info={info} />}
+      <div ref={box} data-pane-area data-split={shown.length > 1 ? "" : undefined} className="relative min-h-0 flex-1">
+        {kept.slots.map((id) => {
+          const t = tabOfPane(l, id), p = t && panesOf(t).find((x) => x.id === id)
+          if (!t || !p) return null
+          const b = t.id === tab.id ? z0.get(id) : undefined
+          if (!b) return <Fragment key={id}>{null}<Frame pane={p} tab={t} {...props} info={info} />{null}</Fragment>
+          const { rect, layer } = b, float = !!p.float, zoomed = id === tab.zoom, focused = id === tab.focus
+          // (under a zoomed pane: out of the keyboard's reach, and no part of the window's drag strip)
+          const under = !!tab.zoom && !zoomed && !float
+          const top = !bar && !under && !float && rect.y < 1e-6
+          const z = float ? 20 + 3 * (layer - 2) : zoomed ? 11 : undefined
+          const at = float ? place(rect) : tile(rect)
+          return (
+            <Fragment key={id}>
+              {/* Under the pane: its colour while it moves (core/panemotion.ts), a zoomed or floating pane's card. */}
+              <div aria-hidden data-plate={id} style={{ ...at, zIndex: z }}
+                className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-[10px] shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")} />
+              <Frame pane={p} tab={t} {...props} info={info} on={{ at, z, rect, float, zoomed, focused, under, top, lifted: lifted === id, bar: bars, only, box }} />
+              {float ? <CardEdges id={id} rect={rect} box={box} z={z! + 1} /> : null}
+            </Fragment>
+          )
+        })}
+        {!tab.zoom && dividers.map((d) => <Divider key={`${d.split.id}:${d.i}`} at={d} box={box} />)}
+      </div>
       <DragGhost info={info} />
     </main>
+  )
+}
+
+/** Where a pane on screen is drawn and how. */
+type On = { at: Record<string, string>; z?: number; rect: Rect; float: boolean; zoomed: boolean; focused: boolean; under: boolean; top: boolean; lifted: boolean
+  /** It has a bar of its own (else its tab's chip is its handle). */
+  bar: boolean
+  /** The window's only pane, blank. */
+  only: boolean; box: React.RefObject<HTMLElement | null> }
+
+/** A pane: its bar and what it shows, on screen (`on`) at its place, else kept hidden (`data-away`) till its tab shows.
+ *  data-top/corner/right-corner place the title bar and the right sidebar's toggle (index.css) without a tab bar. */
+function Frame({ pane, tab, on, info, ...p }: Props & { pane: Pane; tab: Tab; on?: On; info: (t: Tab | Pane) => TabInfo }) {
+  const id = pane.id, r = on?.rect
+  return (
+    // (named by what it shows, so a screen reader moving between panes hears which is which)
+    <section aria-label={info(pane).label} data-pane-frame={id} data-ui={`pane:${id}`} data-away={on ? undefined : ""}
+      data-top={on?.top || undefined} data-corner={(on?.top && r!.x < 1e-6) || undefined} data-right-corner={(on?.top && r!.x + r!.w > 1 - 1e-6) || undefined}
+      data-floating={on?.float || undefined} data-zoomed={on?.zoomed || undefined} data-focused={on?.focused || undefined}
+      data-overlay={on?.float || undefined} inert={!on || on.under || undefined} data-lifted={on?.lifted || undefined}
+      onPointerDownCapture={on ? () => setFocusedPane(id) : undefined} onPointerDown={on?.float ? (e) => moveCard(e, id, on.box) : undefined}
+      style={on ? { ...on.at, zIndex: on.z && on.z + 2 } : { display: "none" }}
+      className={cn("absolute flex min-h-0 min-w-0 flex-col border-border", on?.float ? "overflow-hidden rounded-[10px]" : on && !on.zoomed && cn(r!.x > 1e-6 && "border-l", r!.y > 1e-6 && "border-t"))}>
+      {on?.bar ? <PaneBar pane={pane} tab={tab} focused={on.focused} info={info} only={on.only} extra={<PaneState id={id} float={on.float} zoomed={on.zoomed} />} /> : null}
+      <PaneBody pane={pane} tab={tab} shown={!!on} focused={!!on?.focused} {...p} />
+    </section>
   )
 }
 
@@ -184,10 +241,10 @@ function track(e: React.PointerEvent<HTMLElement>, cursor: string, move: (dx: nu
   addEventListener("keydown", esc, true)
 }
 
-/** A floating pane dragged by its bar's empty part (its tabs and buttons do their own). */
+/** A floating pane dragged by its bar's empty part (its buttons do their own). */
 function moveCard(e: React.PointerEvent<HTMLElement>, id: string, box: React.RefObject<HTMLElement | null>) {
-  const t = e.target as Element, b = box.current?.getBoundingClientRect(), was = groups().find((g) => g.id === id)?.float
-  if (e.button !== 0 || !b || !was || !t.closest("[data-tab-bar]") || t.closest("button, a, input, [data-tab-id], [data-set-chip], [role=separator]")) return
+  const t = e.target as Element, b = box.current?.getBoundingClientRect(), was = paneById(id)?.float
+  if (e.button !== 0 || !b || !was || !t.closest("[data-pane-bar]") || t.closest("button, a, input, [role=separator]")) return
   const r = { x: was.x * b.width, y: was.y * b.height, w: was.w * b.width, h: was.h * b.height }
   // (lifted while it's dragged: a bigger shadow, index.css)
   const plate = box.current?.querySelector<HTMLElement>(`:scope > [data-plate="${CSS.escape(id)}"]`)
@@ -222,52 +279,25 @@ function CardEdges({ id, rect, box, z }: { id: string; rect: Rect; box: React.Re
   )
 }
 
-/** How many of a pane's tabs stay drawn (hidden), so going back to one is instant and exactly as left. A view that
- *  fills the pane (a terminal, a canvas) is drawn only while shown. */
-const KEEP = 5
-
-/** The tabs a pane keeps drawn (`slots`, in draw order) and the tabs shown, latest first. A tab coming or going never
- *  reorders the others: an element that moves reloads what's in it (an iframe). */
-type Kept = { slots: string[]; recent: string[] }
-function keepTabs(k: Kept, ids: string[], shown: string | null): Kept {
-  const has = new Set(ids)
-  const recent = [...(shown ? [shown] : []), ...k.recent.filter((id) => id !== shown && has.has(id))]
-  const keep = new Set(recent.slice(0, KEEP))
-  const slots = [...k.slots.filter((id) => keep.has(id)), ...[...keep].filter((id) => !k.slots.includes(id))]
-  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i])
-  return same(slots, k.slots) && same(recent, k.recent) ? k : { slots, recent }
-}
-
-/** Where a dragged tab or file would land in this pane (an edge: that half, a new split; the middle: the pane), or null:
- *  drawn again only when that changes. */
-const useZone = (group: string) => useDrag((d) => {
+/** Where a dragged tab, pane or file would land in this pane (an edge: that half, a new split; the middle: the pane),
+ *  or null: drawn again only when that changes. */
+const useZone = (pane: string) => useDrag((d) => {
   const h = d?.hit?.target === PANES ? (d.hit.data as Drop) : null
-  return h?.kind === "pane" && h.group === group ? h.zone : null
+  return h?.kind === "pane" && h.pane === pane ? h.zone : null
 })
 
-function Pane({ group, focused, ...p }: Props & { group: Group; focused: boolean }) {
-  const zone = useZone(group.id)
-  const tab = shownTab(group) ?? group.tabs[0]
-  // (worked out while drawing, from what was kept the last time: React's state from earlier renders)
-  const [was, setKept] = useState<Kept>({ slots: [], recent: [] })
-  const kept = keepTabs(was, group.tabs.map((t) => t.id), tab?.id ?? null)
-  if (kept !== was) setKept(kept)
+function PaneBody({ pane, tab, shown, focused, ...p }: Props & { pane: Pane; tab: Tab; shown: boolean; focused: boolean }) {
+  const zone = useZone(pane.id)
   return (
-    <div data-pane-body={group.id} className="relative min-h-0 flex-1">
-      {kept.slots.map((id) => {
-        const t = group.tabs.find((x) => x.id === id)!
-        return <TabBody key={id} group={group.id} tab={t} shown={t.id === tab?.id} focused={focused} {...p} />
-      })}
-      {!tab && <TabBody group={group.id} tab={null} shown focused={focused} {...p} />}
+    <div data-pane-body={pane.id} className="relative min-h-0 flex-1">
+      <PlaceBody pane={pane} tab={tab} shown={shown} focused={focused} {...p} />
       {zone && <DropZone zone={zone} />}
     </div>
   )
 }
 
-type Tab = Group["tabs"][number]
-
-/** Where a dragged tab would land in a pane, as the pane would be after the drop: its middle (it joins the pane), or a
- *  half for a new split, the pane's outline moved to the other half. Springs from one to the next (index.css). */
+/** Where something dragged would land in a pane, as it would be after the drop: its middle (a tab or file takes its
+ *  place, a pane swaps with it), or a half for a new split. Springs from one to the next (index.css). */
 function DropZone({ zone }: { zone: string }) {
   const whole = { top: 4, right: 4, bottom: 4, left: 4 }, half = (side: string) => ({ ...whole, [side]: "calc(50% + 2px)" })
   const other = { left: "right", right: "left", top: "bottom", bottom: "top" } as Record<string, string>
@@ -281,68 +311,14 @@ function DropZone({ zone }: { zone: string }) {
   )
 }
 
-/** A spine's width (a stacked tab's title, on its left edge), in px. */
-const SPINE = 36
-
-/** A pane's tabs stacked: side by side, each sticking by its spine as the next slides over. The active
- *  one is the pane's (#main-scroll) and scrolls into view when it changes; a click on a tab or spine activates it. */
-function Stacked({ group, focused, info, ...p }: Props & { group: Group; focused: boolean; info: (t: Tab) => TabInfo }) {
-  const row = useRef<HTMLDivElement>(null)
-  const zone = useZone(group.id)
-  const n = group.tabs.length
-  const at = group.tabs.findIndex((t) => t.id === group.active)
-  useLayoutEffect(() => {
-    const r = row.current
-    const col = r?.children[at] as HTMLElement | undefined
-    if (!r || !col) return
-    // In full view between the spines stuck at the left and those waiting at the right.
-    const w = col.offsetWidth
-    const lo = (at + 1) * w - r.clientWidth + (n - 1 - at) * SPINE, hi = at * (w - SPINE)
-    const to = Math.min(Math.max(r.scrollLeft, lo), hi)
-    if (Math.abs(to - r.scrollLeft) > 1) r.scrollTo({ left: to, behavior: glide() })
-  }, [at, n])
-  return (
-    <div data-pane-body={group.id} className="relative min-h-0 flex-1">
-      <div ref={row} data-stack={group.id} className="flex h-full overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:thin]">
-        {group.tabs.map((t, i) => {
-          const active = t.id === group.active
-          const ti = info(t)
-          return (
-            <div key={t.id} data-stacked-tab={t.id} onPointerDownCapture={() => { if (!active) selectTab(t.id) }}
-              style={{ left: i * SPINE, right: `calc(${(n - i) * SPINE}px - min(700px, 100%))` }}
-              className="sticky flex h-full w-[min(700px,100%)] shrink-0 border-l-[0.5px] border-border bg-background shadow-[-6px_0_12px_-8px_rgb(0_0_0/0.25)] first:border-l-0">
-              <div className="group/spine relative flex w-9 shrink-0 cursor-pointer flex-col items-center gap-2 border-r-[0.5px] border-border py-2 hover:bg-foreground/[0.04]"
-                onClick={() => selectTab(t.id)} onContextMenu={menuFor(() => tabMenuOf(t.id))} role="button" tabIndex={0} aria-label={ti.label} data-stack-spine={t.id}>
-                <ti.icon className={cn("size-3.5 shrink-0", !ti.tint && "text-muted-foreground", ti.iconClassName)} strokeWidth={2.25} style={ti.tint ? { color: ti.tint } : undefined} />
-                <span className={cn("min-h-0 truncate text-[13px] [writing-mode:vertical-rl]", active ? "font-medium text-foreground" : "text-muted-foreground")}>{ti.label}</span>
-                {!t.pinned && (
-                  <button type="button" data-no-drag aria-label={`Close ${ti.label}`} onClick={(e) => { e.stopPropagation(); closeTab(t.id) }}
-                    className="mt-auto grid size-5 shrink-0 cursor-pointer place-items-center rounded-[4px] text-muted-foreground opacity-0 group-hover/spine:opacity-100 focus-visible:opacity-100 hover:bg-foreground/[0.08] hover:text-foreground">
-                    <X className="size-3.5" strokeWidth={2} />
-                  </button>
-                )}
-              </div>
-              <div className="relative h-full min-w-0 flex-1">
-                <TabBody group={group.id} tab={t} shown active={active} focused={focused} {...p} />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      {zone && <DropZone zone={zone} />}
-    </div>
-  )
-}
-
-/** One tab of a pane, in its own scroller: shown, or kept drawn but hidden (display: none, out of the keyboard's and
- *  the commands' reach: its PaneContext isn't focused). Stacked, every tab is shown and one is `active` (the pane's). */
-function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p }: Props & { group: string; tab: Tab | null; shown: boolean; active?: boolean; focused: boolean }) {
+/** What a pane shows, in its own scroller: on screen, or kept drawn but hidden (display: none, out of the keyboard's
+ *  and the commands' reach: its PaneContext is hidden, never focused). */
+function PlaceBody({ pane, tab, shown, focused, ...p }: Props & { pane: Pane; tab: Tab; shown: boolean; focused: boolean }) {
   const { disabled } = usePrefs()
   usePluginsVersion() // (a plugin taking a file: it may fill the pane now)
-  const focused = paneFocused && active
-  const to = tab?.to ?? "new"
+  const to = pane.to, id = pane.id
   const view = to.startsWith("view:") ? viewFor(to, disabled) : null
-  // The whole pane, no padding or scrolling of the tab's own: a view that says so (`full`), or a file whose format does
+  // The whole pane, no padding or scrolling of its own: a view that says so (`full`), or a file whose format does
   // (`layout: "pane"`: a canvas), which then lays out its bar and drawing itself (FileView's PaneFile).
   const file = tabPath(to)
   const fullPage = !view && !file && !!p.page(to)?.full
@@ -367,25 +343,23 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
     if (!shown && wasShown.current) for (const m of box.current?.querySelectorAll("audio:not([data-keeps-playing]), video:not([data-keeps-playing])") ?? []) (m as HTMLMediaElement).pause()
     wasShown.current = shown
   }, [shown, full])
-  // (a stacked tab that isn't the active one: data-stacked, so what looks for the pane's scroller finds the active one)
-  const back = shown && !active
-  const pane = useMemo(() => ({ group, focused, hidden: !shown, back, tab: tab?.id }), [group, focused, shown, back, tab?.id])
+  const ctx = useMemo(() => ({ pane: id, tab: tab.id, focused, hidden: !shown }), [id, tab.id, focused, shown])
   // A view that fills the pane isn't kept: drawn only while it's shown (a page is).
   if (!shown && full && !fullPage) return null
-  // The focused pane's shown scroller is #main-scroll (scrollPage scrolls it).
+  // The focused pane's scroller is #main-scroll (scrollPage scrolls it).
   const scroller = cn("h-full min-h-0", full ? "relative overflow-hidden" : "overflow-y-auto overscroll-contain [scrollbar-gutter:stable]")
   return (
-    <PaneContext.Provider value={pane}>
-      {/* (a kept tab is data-kept, not data-pane: what looks for the pane's scroller finds the one shown; data-tab-body:
+    <PaneContext.Provider value={ctx}>
+      {/* (a kept pane is data-kept, not data-pane: what looks for a pane's scroller finds the ones shown; data-tab-body:
           whose it is, for a dragged tab's picture of itself) */}
-      <div ref={box} id={focused ? "main-scroll" : undefined} data-pane={active ? group : undefined} data-kept={shown ? undefined : group} data-stacked={back ? group : undefined} data-tab-body={tab?.id} data-ui={tab && shown ? `pane:${tab.id}` : undefined}
+      <div ref={box} id={focused ? "main-scroll" : undefined} data-pane={shown ? id : undefined} data-kept={shown ? undefined : id} data-tab-body={id}
         className={scroller} style={shown ? undefined : { display: "none" }}
         onScroll={(e) => { if (!restoring.current && shown) keepScroll(place.current, e.currentTarget.scrollTop, e.currentTarget) }}>
-        <TabContent {...p} tab={tab} to={to} view={view} file={file} full={full} focused={focused} shown={shown} />
-        {tab && !file && <PageHeading label={shownLabel(tab, p.store)} />}
+        <PlaceContent {...p} pane={pane} to={to} view={view} file={file} full={full} focused={focused} shown={shown} />
+        {!file && <PageHeading label={tabLabel(pane, p.store).label} />}
       </div>
-      {/* What floats over the tab's page, staying put while it scrolls and hidden with it (a note's find bar) */}
-      {tab && !full && <div data-tab-overlay={tab.id} className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0" style={shown ? undefined : { display: "none" }} />}
+      {/* What floats over the pane's page, staying put while it scrolls and hidden with it (a note's find bar) */}
+      {!full && <div data-tab-overlay={id} className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0" style={shown ? undefined : { display: "none" }} />}
     </PaneContext.Provider>
   )
 }
@@ -411,29 +385,29 @@ const PageHeading = memo(function PageHeading({ label }: { label: string }) {
   return <h1 ref={ref} data-tab-heading className="sr-only">{label}</h1>
 })
 
-/** A plugin's view in tab `tab` (`to`: view:<name>/<arg>): its title and what it draws, or the note saying why it can't
- *  (no plugin draws it, or its plugin is off). The desktop's panes and the phone's tabs. */
-export function viewBody(store: Store, tab: Tab, to: string, view: ReturnType<typeof viewFor>, focused: boolean):
+/** A plugin's view in pane `pane` (`to`: view:<name>/<arg>): its title and what it draws, or the note saying why it
+ *  can't (no plugin draws it, or its plugin is off). The desktop's panes and the phone's tabs. */
+export function viewBody(store: Store, pane: Pane, to: string, view: ReturnType<typeof viewFor>, focused: boolean):
   { title: string; drawn: ReactNode; note: string | null; bar?: { title?: ReactNode; right?: ReactNode } } {
   if (!view) return { title: to.slice(5), drawn: null, note: "No plugin draws this tab." }
   const title = view.def.title(view.arg)
   if (!view.on) return { title, drawn: null, note: `${offText(view.plugin)}.${switchedOn(view.plugin) ? "" : " Turn it on in Plugins to open this tab."}` }
   const name = to.slice(5).split("/")[0]
-  const ctx = { store, arg: view.arg, focused, close: () => closeTab(tab.id, true), setArg: (arg: string) => replaceTabTarget(tab.id, `view:${name}${arg ? `/${arg}` : ""}`) }
+  const ctx = { store, arg: view.arg, focused, close: () => closePane(pane.id, true), setArg: (arg: string) => replaceTabTarget(pane.id, `view:${name}${arg ? `/${arg}` : ""}`) }
   return { title, drawn: <Drawn draw={() => view.def.render(ctx)} />, note: null, bar: view.def.bar?.(ctx) }
 }
 
-/** A view tab's page, held at the height it had last time until nothing in it is loading: what can't draw its room
+/** A view's page, held at the height it had last time until nothing in it is loading: what can't draw its room
  *  while its data comes (a part whose size isn't known) doesn't push the page when it does. */
 export function HeldView({ to, view, children }: { to: string; view: ReturnType<typeof viewFor>; children: ReactNode }) {
   const ref = useHeldHeight<HTMLDivElement>(`view:${view?.def.argState ? to.split("/")[0] : to}`, true)
   return <div ref={ref}>{children}</div>
 }
 
-/** What a tab shows. Hidden, it's drawn once as hidden and then left as it is until it's shown again: kept tabs cost
+/** What a pane shows. Hidden, it's drawn once as hidden and then left as it is until it's shown again: kept panes cost
  *  nothing while the vault changes (what subscribes for itself, an open file's text, still follows). */
-const TabContent = memo(function TabContent({ tab, to, view, file, full, focused, ...p }: Props & {
-  tab: Tab | null; to: string; view: ReturnType<typeof viewFor>; file: string | null; full: boolean; focused: boolean; shown: boolean
+const PlaceContent = memo(function PlaceContent({ pane, to, view, file, full, focused, ...p }: Props & {
+  pane: Pane; to: string; view: ReturnType<typeof viewFor>; file: string | null; full: boolean; focused: boolean; shown: boolean
 }) {
   const padded = (wide: boolean, bar: ReactNode, body: ReactNode) => (
     <div data-page className={cn("mx-auto px-8 pb-6", wide ? "max-w-none" : "max-w-[912px]")}>{bar}{body}</div>
@@ -442,8 +416,8 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
   let body: ReactNode = null
   if (!p.store) body = padded(false, null, p.error ? <p className="mt-10 text-muted-foreground">{p.error}</p> : <VaultLoading />)
   else if (file) body = full ? <div className="absolute inset-0"><FileView store={p.store} path={file} pane /></div> : padded(true, null, <FileView store={p.store} path={file} pane />)
-  else if (tab && to.startsWith("view:")) {
-    const v = viewBody(p.store, tab, to, view, focused)
+  else if (to.startsWith("view:")) {
+    const v = viewBody(p.store, pane, to, view, focused)
     body = v.drawn && full ? <div className="absolute inset-0">{v.drawn}</div>
       : padded(false, <ViewBar right={v.bar?.right}>{v.bar?.title ?? v.title}</ViewBar>, v.drawn ? <HeldView to={to} view={view}>{v.drawn}</HeldView> : <p className="mt-6 text-[15px] text-muted-foreground">{v.note}</p>)
   } else if (to === "new") body = startPage ? padded(true, null, <FileView store={p.store} path={startPage} pane />) : padded(false, <ViewBar>New tab</ViewBar>, <NewTab store={p.store} />)
@@ -453,16 +427,16 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
       <div data-page className="absolute inset-0 flex flex-col">
         <div className="shrink-0 px-8"><ViewBar>{page.label}</ViewBar></div>
         {/* (a grid stretches the page's root to the box, so what it scrolls is the box's height, not its own) */}
-        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"><Drawn draw={() => page.render!(p.store!, to, tab)} /></div>
+        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"><Drawn draw={() => page.render!(p.store!, to, pane)} /></div>
       </div>
     )
-    else if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!, to, tab)} />)
+    else if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!, to, pane)} />)
   }
   // A view whose arg is its own state (a search's query) stays mounted while it changes. One that fails to draw fails
-  // alone, in its tab, which can close (else the app stops, and a reload opens it again).
+  // alone, in its pane, which can close (else the app stops, and a reload opens it again).
   return (
     <Fragment key={view?.def.argState ? to.split("/")[0] : to}>
-      <Guard what="This tab" size="tab" reset={to} close={tab ? () => closeTab(tab.id) : undefined}>{body}</Guard>
+      <Guard what="This tab" size="tab" reset={to} close={() => closePane(pane.id)}>{body}</Guard>
     </Fragment>
   )
 }, (was, now) => !was.shown && !now.shown)

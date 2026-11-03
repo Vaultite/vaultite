@@ -2,6 +2,7 @@
 // those allow. A terminal is its id, its name or the end of its id, @<machine> another machine's (run there: passOn).
 import { MODEL_NAME, PERMISSION_MODES, startAgent, TERMINAL_AGENT, newTerminalId, parseTerminal, resumeTerminalId, type AgentHow } from "../../../core/agents.ts"
 import { byUser, fmtAgo, type Machine, MACHINE_CLIENT, OpError, type OpCtx, type Plugin, quoted, splitMachine } from "../../../core/plugins.ts"
+import { allPanes, clean } from "../../../core/layout.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -19,21 +20,17 @@ async function sessions(ctx: OpCtx, ended = false): Promise<{ sessions: Session[
   return await ctx.api("GET", `terminals/sessions${ended ? "?ended=1" : ""}`)
 }
 
-/** Where each terminal is shown: terminal id -> its tabs (Workspaces' layouts; none without Workspaces). */
+/** Where each terminal is shown: terminal id -> its panes (Workspaces' layouts; none without Workspaces). */
 async function tabsOf(ctx: OpCtx): Promise<Map<string, TabAt[]>> {
   const out = new Map<string, TabAt[]>()
   let ws: unknown[] = []
   try { ws = (await ctx.api("GET", "workspaces")).workspaces ?? [] } catch (e) { if (!(e instanceof OpError)) throw e }
   ws.forEach((w, i) => {
-    const walk = (x: Any) => {
-      if (!x || typeof x !== "object") return
-      if (Array.isArray(x.kids)) return void x.kids.forEach(walk)
-      for (const t of Array.isArray(x.tabs) ? x.tabs : []) {
-        const m = typeof t?.to === "string" ? /^view:terminal\/(.+)$/.exec(t.to) : null
-        if (m) out.set(m[1], [...(out.get(m[1]) ?? []), { workspace: i + 1, tab: String(t.id) }])
-      }
+    const l = clean((w as Any)?.layout)
+    for (const p of l ? [l, ...(l.windows ?? [])].flatMap(allPanes) : []) {
+      const m = /^view:terminal\/(.+)$/.exec(p.to)
+      if (m) out.set(m[1], [...(out.get(m[1]) ?? []), { workspace: i + 1, tab: p.id }])
     }
-    walk((w as Any)?.layout?.root)
   })
   return out
 }

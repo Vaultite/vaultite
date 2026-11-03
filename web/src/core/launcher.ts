@@ -4,8 +4,8 @@ import { runCommandById } from "@/core/commands"
 import { openView } from "@/core/files"
 import { active, viewFor } from "@/core/plugins"
 import { getPrefs, setPrefs } from "@/core/prefs"
-import { focusGroup, newTab, newTabsAt } from "@/core/workspace"
-import { newTabInSet, setById } from "@/core/tabsets"
+import { newTab, newTabsAt } from "@/core/workspace"
+import { groupById, newTabInGroup } from "@/core/tabgroups"
 
 /** Whether a new tab opens the quick switcher instead of a tab. */
 export const opensSwitcher = () => getPrefs().newTab.opens === "switcher"
@@ -34,14 +34,13 @@ let launchAt: "end" | undefined
 export const launcherAt = () => launchAt
 export const launcherClosed = () => { launchAt = undefined }
 
-/** A new tab in the focused pane (or `pane`'s; or at the end of tab group `set`, a phone's open one): a blank one, or
- *  newtab.json's `opens`. Beside the active tab (⌘T), or `at` the pane's end (a tab bar's +, the Tabs panel's row). */
-export function openNewTab({ pane, set, at }: { pane?: string; set?: string; at?: "end" } = {}) {
+/** A new tab (or at the end of tab group `group`, a phone's open one): a blank one, or newtab.json's `opens`. Beside the
+ *  tab on screen (⌘T), or `at` the list's end (a tab bar's +, the Tabs panel's row). */
+export function openNewTab({ group, at }: { group?: string; at?: "end" } = {}) {
   const { opens } = getPrefs().newTab, view = viewHere(opens)
-  if (set) pane = setById(set)?.g.id
-  if (opens !== "switcher" && !view) return set && pane ? newTabInSet(set) : newTabsAt(at, () => newTab(pane))
-  if (pane) focusGroup(pane)
+  if (group && !groupById(group)) group = undefined
+  if (opens !== "switcher" && !view) return group ? newTabInGroup(group) : newTabsAt(at, () => newTab())
   if (view) return newTabsAt(at, () => openView(view, { another: true }))
   launchAt = at
-  if (!runCommandById("switcher:new-tab")) { launchAt = undefined; newTabsAt(at, () => newTab(pane)) }
+  if (!runCommandById("switcher:new-tab")) { launchAt = undefined; newTabsAt(at, () => newTab()) }
 }

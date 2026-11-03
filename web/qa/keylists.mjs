@@ -94,8 +94,8 @@ check("the palette: Tab stays in its field", await page.evaluate(() => document.
 await page.keyboard.press("Escape"); await wait(300)
 check("the palette: Escape closes it", !await page.evaluate(() => !!document.querySelector("[role=dialog][aria-modal=true]:not(dialog)")))
 
-// ---- a tab bar: one Tab stop (in at its shown tab, out past every tab), the arrows, Home, End, Delete
-const ws = page.locator("section[data-group][data-focused]")
+// ---- the tab bar: one Tab stop (in at its shown tab, out past every tab), the arrows, Home, End, Delete
+const ws = page.locator("[data-tab-strip]")
 for (const h of ["settings", "view/files", "view/search"]) {
   await ws.locator("button[aria-label='New tab']").click(); await wait(400)
   await page.evaluate((h) => { location.hash = h }, h); await wait(900)
@@ -103,8 +103,8 @@ for (const h of ["settings", "view/files", "view/search"]) {
 const tabsNow = () => ws.locator("[role=tab]").evaluateAll((ts) => ts.map((t) => t.textContent.trim()))
 const onTab = () => page.evaluate(() => document.activeElement?.matches("[role=tab]") ? document.activeElement.textContent.trim() : document.activeElement?.getAttribute("aria-label"))
 const names = await tabsNow(), shown = await ws.locator("[role=tab][aria-selected=true]").textContent()
-await ws.locator("button[aria-label='Move this pane']").focus()
-await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Shift+Tab"); await wait(150)
+await ws.locator("button[aria-label='New tab']").focus()
+await page.keyboard.press("Shift+Tab"); await wait(150)
 check("tab bar: Shift+Tab into it lands on the shown tab, not an X", (await onTab()) === shown.trim(), await onTab())
 await page.keyboard.press("Home"); await wait(100)
 check("tab bar: Home, the first tab", (await onTab()) === names[0], await onTab())

@@ -47,7 +47,7 @@ const Note = ({ className, heading = true }: { className?: string; heading?: boo
 
 const Pane = ({ className, children }: { className?: string; children: ReactNode }) => <div className={cn("relative flex min-w-0 flex-1 flex-col", className)}>{children}</div>
 
-/** Tabs over a pane: the active one a card. `icons`: files' icons. */
+/** The window's tabs over its panes: the active one a card. `icons`: files' icons. */
 function TabBar({ icons = true, n = 3 }: { icons?: boolean; n?: number }) {
   return (
     <div className="flex h-[15px] shrink-0 items-center gap-[2px] border-b-[0.5px] border-border px-[3px]">
@@ -124,12 +124,15 @@ function DimPanes({ on }: { on: boolean }) {
 const paneCards = (on: boolean) => (
   <Frame>
     <Side w="20%" />
-    <div className={cn("flex min-w-0 flex-1", on ? "gap-[4px] bg-sidebar p-[4px]" : "")}>
-      {[0, 1].map((i) => (
-        <Pane key={i} className={cn(on ? "overflow-hidden rounded-[5px] bg-background shadow-[0_0_0_0.5px_var(--border),0_1px_3px_rgb(0_0_0/0.12)]" : i && "border-l-[0.5px] border-border")}>
-          <TabBar n={2} /><Note className="px-[6px]" />
-        </Pane>
-      ))}
+    <div className="flex min-w-0 flex-1 flex-col">
+      <TabBar n={2} />
+      <div className={cn("flex min-h-0 min-w-0 flex-1", on ? "gap-[4px] bg-sidebar p-[4px]" : "")}>
+        {[0, 1].map((i) => (
+          <Pane key={i} className={cn(on ? "overflow-hidden rounded-[5px] bg-background shadow-[0_0_0_0.5px_var(--border),0_1px_3px_rgb(0_0_0/0.12)]" : i && "border-l-[0.5px] border-border")}>
+            <Note className="px-[6px]" />
+          </Pane>
+        ))}
+      </div>
     </div>
   </Frame>
 )
@@ -356,8 +359,8 @@ function propertiesPicture(how: string) {
 
 type Pictures = { text: string; draw: (on: boolean) => ReactNode }
 const PICTURES: Record<string, Pictures> = {
-  "tab-bar": { text: "On, a pane's tabs show in a bar above it; off, only what's open, without tabs.", draw: tabBar },
-  "pane-titles": { text: "With the tab bar off, each pane shows the name of what's open above it.", draw: paneTitles },
+  "tab-bar": { text: "On, the window's tabs show in one bar across its top; off, only what's open, without tabs.", draw: tabBar },
+  "pane-titles": { text: "Each pane of a split shows the name of what's open above it; with the tab bar off, every pane does.", draw: paneTitles },
   "pane-cards": { text: "Each pane an inset, rounded card, with the window's colour around and between them.", draw: paneCards },
   "dim-panes": { text: "With the window split, the panes you're not in fade a little, following the focus.", draw: (on) => <DimPanes on={on} /> },
   "file-icons": { text: "Files show their icons in the sidebar and in tabs.", draw: fileIcons },

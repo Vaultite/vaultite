@@ -34,7 +34,7 @@ function Preview() {
  *  computer, also preload xterm.js's chunk once idle. */
 function SessionNames() {
   const layout = useSyncExternalStore(onTabLayoutChange, getTabLayout)
-  const any = JSON.stringify(layout.root).includes('"view:terminal/')
+  const any = JSON.stringify(layout).includes('"view:terminal/')
   useEffect(() => (any ? subscribeSessions(viewsChanged) : undefined), [any])
   useEffect(() => {
     if (matchMedia("(pointer: coarse)").matches) return

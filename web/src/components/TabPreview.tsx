@@ -1,11 +1,11 @@
-// A tab's small picture on its card: the iPhone app's real snapshot while still current, else a cheap static stand-in
-// (only the tab on screen is mounted, so there's nothing else to picture).
+// A tab's small picture on its card, of its focused pane: the iPhone app's real snapshot while still current, else a
+// cheap static stand-in (only the pane on screen is mounted, so there's nothing else to picture).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import type { Store } from "@/core/data"
 import { get } from "@/core/http"
 import { kindOf } from "@/core/filekinds"
 import { fileOf, splitFm, stem, type FileText } from "@/core/files"
-import { vaultPath, type Tab } from "../../../core/layout.ts"
+import { vaultPath, type Pane } from "../../../core/layout.ts"
 import { tabMeta } from "@/core/phoneTabs"
 import { useTabShot } from "@/core/tabShots"
 import { fileAt, pageView } from "@/core/pages"
@@ -175,10 +175,10 @@ function NewTabPreview({ store }: { store: Store }) {
   return page ? <DocPreview store={store} path={page} /> : <AtPageSize><NewTab store={store} phone /></AtPageSize>
 }
 
-/** The preview inside a tab's card (it fills a positioned box). */
-export function TabPreview({ store, tab, info }: { store: Store; tab: Tab; info: TabInfo }) {
-  const to = tab.to
-  const shot = useTabShot(tab.id, to)
+/** The preview inside a tab's card (it fills a positioned box): what `pane` (its focused one) shows. */
+export function TabPreview({ store, pane: p, info }: { store: Store; pane: Pane; info: TabInfo }) {
+  const to = p.to
+  const shot = useTabShot(p.id, to)
   if (shot) return <img data-tab-picture src={shot} alt="" decoding="async" draggable={false} className="absolute inset-0 size-full object-cover object-top" />
   if (to === "new") return <NewTabPreview store={store} />
   const path = vaultPath(to)

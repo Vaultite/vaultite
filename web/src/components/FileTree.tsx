@@ -11,7 +11,7 @@ import { desktop, dropInto, hasFiles } from "@/core/desktop"
 import { isMac, isDesktop } from "@/core/platform"
 import { cleanName, createFile, createFolder, folderList, folderOf, folderTarget, freeName, inArchive, inTrash, isDoc, isFolder, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
 import { currentFile, getWorkspace, onWorkspaceChange } from "@/core/workspace"
-import { leaves, type Workspace } from "../../../core/layout.ts"
+import { allPanes, type Workspace } from "../../../core/layout.ts"
 import { useVirtual } from "@/core/virtual"
 import { openInSplit } from "@/core/splits"
 import { fileAt, iconOf, namedIcon, tintOf } from "@/core/pages"
@@ -466,7 +466,7 @@ type FileTreeFiles = Store["files"]
 
 // ---------- the tree ----------
 /** Hidden files open in tabs, one per line: they show in the tree while open. Archived ones only while active. */
-const openHiddenIn = (ws: Workspace, hidden: boolean) => hidden ? "" : [...new Set(leaves(ws.root).flatMap((g) => g.tabs.map((t) => t.to))
+const openHiddenIn = (ws: Workspace, hidden: boolean) => hidden ? "" : [...new Set(allPanes(ws).map((p) => p.to)
   .filter((to) => to.startsWith("file:") && isHidden(to.slice(5)) && !archives(to.slice(5))).map((to) => to.slice(5)))].sort().join("\n")
 
 export const FileTree = memo(function FileTree({ store, active, compact = true, header = true, title = "Files", pane, scroll = false, revealScroll = true, className, folder }: {

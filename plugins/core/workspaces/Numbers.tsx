@@ -190,10 +190,10 @@ function useSwipes() {
   }, [])
 }
 
-/** What a dragged item (core/drag.ts) sends to another workspace: a tab moves, a pane (by its handle) moves with all
- *  its tabs, a file from the tree or a pinned page opens there. Folders, panels and blank tabs: nothing. */
+/** What a dragged item (core/drag.ts) sends to another workspace: a tab moves with its panes, a pane (by its bar)
+ *  moves out of its split, a file from the tree or a pinned page opens there. Folders, panels, blank tabs: nothing. */
 function sent(item: DragItem): Sent | null {
-  if (item.group) return { group: item.group }
+  if (item.pane) return { pane: item.pane }
   if (item.tab) return item.to && item.to !== "new" ? { tab: item.tab } : null
   // Several selected together: the files among them (a folder doesn't open).
   if (item.paths && (item.from === "tree" || item.from === "pin")) {
@@ -215,7 +215,7 @@ function useSendDrop() {
     if (!what || !n || n === litNow()) return null
     return { n, what }
   }, (_item, h) => void sendTo(h.n, h.what), {
-    hint: ({ n, what }) => ("open" in what ? `Open in ${named(n)}` : "group" in what ? `Move pane to ${named(n)}` : `Move to ${named(n)}`),
+    hint: ({ n, what }) => ("open" in what ? `Open in ${named(n)}` : "pane" in what ? `Move pane to ${named(n)}` : `Move to ${named(n)}`),
   })
   return useDropHit<{ n: number }>(id)?.n ?? null
 }

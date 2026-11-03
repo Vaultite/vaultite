@@ -1,9 +1,9 @@
 // Tabs move as a browser's: a group folds by its tabs shrinking into its chip and opens by them growing out; new tabs
 // grow in (springing), closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
 import { useLayoutEffect, useRef, type RefObject } from "react"
-import { closeTab, groupOfTab, groups, layoutQuiet, mayClose, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
-import type { Group } from "../../../core/layout.ts"
-import { foldSet, handOverFrom, setById } from "@/core/tabsets"
+import { closeTab, here, layoutQuiet, mayClose, onWorkspaceChange, replacingWorkspace, tabById } from "@/core/workspace"
+import { panesOf, type TabList } from "../../../core/layout.ts"
+import { foldGroup, groupById, handOverFrom } from "@/core/tabgroups"
 import { moves, timing, type Pace } from "@/core/animation"
 import { stir } from "@/core/tabline"
 
@@ -66,34 +66,34 @@ let tokens = 0
 const opened = new Map<string, number>()
 
 /** A tab group's chip and rows show its fold at once, as the click asks (its count, its line, its chevron): their CSS
- *  moves them (index.css, `data-set-moving`) while its tabs do. */
+ *  moves them (index.css, `data-group-moving`) while its tabs do. */
 function showFold(id: string, open: boolean) {
-  for (const h of document.querySelectorAll<HTMLElement>(`[data-set-chip="${id}"], [data-set-row="${id}"]`)) {
+  for (const h of document.querySelectorAll<HTMLElement>(`[data-group-chip="${id}"], [data-group-row="${id}"]`)) {
     h.setAttribute("aria-expanded", String(open))
-    clearTimeout(Number(h.dataset.setMoving))
-    h.dataset.setMoving = String(window.setTimeout(() => { delete h.dataset.setMoving }, timing("base").duration + 80))
+    clearTimeout(Number(h.dataset.groupMoving))
+    h.dataset.groupMoving = String(window.setTimeout(() => { delete h.dataset.groupMoving }, timing("base").duration + 80))
     stir(h)
   }
 }
 
 /** Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or
  *  they grow out of it. A click while it moves turns it round from where it's got to. */
-export function foldSetMoving(id: string) {
-  const where = setById(id)
-  if (!where) return
+export function foldGroupMoving(id: string) {
+  const g = groupById(id)
+  if (!g) return
   const going = folding.get(id)
-  const open = going ? true : !!where.s.collapsed
-  if (still()) { folding.delete(id); foldSet(id, !open); return }
+  const open = going ? true : !!g.collapsed
+  if (still()) { folding.delete(id); foldGroup(id, !open); return }
   if (open) {
     showFold(id, true)
     // (turned round before it had folded: back from where they are)
     if (going) { folding.delete(id); turn(going.els.filter((e) => e.isConnected), false); going.handBack?.(); return }
     opened.set(id, performance.now())
-    foldSet(id, false)
+    foldGroup(id, false)
     return
   }
-  const els = [...document.querySelectorAll<HTMLElement>(`[data-in-set="${id}"]`)].filter((e) => e.offsetParent !== null)
-  if (!els.length) { foldSet(id, true); return }
+  const els = [...document.querySelectorAll<HTMLElement>(`[data-in-group="${id}"]`)].filter((e) => e.offsetParent !== null)
+  if (!els.length) { foldGroup(id, true); return }
   showFold(id, false)
   const handBack = handOverFrom(id)
   const token = ++tokens
@@ -101,9 +101,9 @@ export function foldSetMoving(id: string) {
   Promise.all(turn(els, true).map((a) => a.finished)).then(() => {
     if (folding.get(id)?.token !== token) return
     folding.delete(id)
-    foldSet(id, true)
+    foldGroup(id, true)
     // (folded, React takes them away, whenever it draws: left shrunk till then. Not folded after all: put back)
-    if (!setById(id)?.s.collapsed) for (const e of els) running.get(e)?.cancel()
+    if (!groupById(id)?.collapsed) for (const e of els) running.get(e)?.cancel()
   }, () => {})
 }
 
@@ -113,8 +113,8 @@ export function foldSetMoving(id: string) {
  *  (another workspace, another device's change). */
 const born = new Map<string, number>()
 let known = new Set<string>()
-/** Every tab, and every tab group as `set:<id>` (a new one's chip comes in too: useSetIn). */
-const ids = () => new Set(groups().flatMap((g) => [...g.tabs.map((t) => t.id), ...(g.sets ?? []).map((s) => `set:${s.id}`)]))
+/** Every tab, and every tab group as `group:<id>` (a new one's chip comes in too: useGroupIn). */
+const ids = () => new Set([...here().tabs.map((t) => t.id), ...(here().groups ?? []).map((g) => `group:${g.id}`)])
 if (typeof window !== "undefined") {
   known = ids()
   onWorkspaceChange(() => {
@@ -127,21 +127,21 @@ if (typeof window !== "undefined") {
 const recent = (t: number | undefined) => t !== undefined && performance.now() - t < 400
 
 /** A tab's element grows in as it's drawn: a new tab (springing), or one of a group just opened (as the others fold). */
-export function useGrowIn(ref: RefObject<HTMLElement | null>, tab: { id: string; set?: string }) {
+export function useGrowIn(ref: RefObject<HTMLElement | null>, tab: { id: string; group?: string }) {
   useLayoutEffect(() => {
     const el = ref.current
-    const group = !!tab.set && recent(opened.get(tab.set))
+    const group = !!tab.group && recent(opened.get(tab.group))
     if (!el || still() || !(recent(born.get(tab.id)) || group)) return
     born.delete(tab.id)
     grow(el, group ? "base" : "spring")
   }, [])  // (on its first drawing only)
 }
 /** A tab group's chip or row, made just now: it comes in where it stays (its editor opens under it at once). */
-export function useSetIn(ref: RefObject<HTMLElement | null>, id: string) {
+export function useGroupIn(ref: RefObject<HTMLElement | null>, id: string) {
   useLayoutEffect(() => {
     const el = ref.current
-    if (!el || still() || !recent(born.get(`set:${id}`))) return
-    born.delete(`set:${id}`)
+    if (!el || still() || !recent(born.get(`group:${id}`))) return
+    born.delete(`group:${id}`)
     const a = el.animate([{ opacity: 0, scale: "0.8 1", transformOrigin: "left" }, { opacity: 1, scale: "1", transformOrigin: "left" }], timing("spring"))
     return () => a.cancel()
   }, [])  // (on its first drawing only)
@@ -157,14 +157,15 @@ function grow(el: HTMLElement, pace: Pace) {
   growing.push({ el, pace })
 }
 
-/** A tab, or a tab group's chip or row, gone from a tab bar or the Tabs panel however it went shrinks away: a copy, as
- *  React takes it out. Not one still there (a tab still in its pane: regrouped, folded; a group moved to another pane). */
-export function useShrinkOut(ref: RefObject<HTMLElement | null>, what: { tab: string; pane: string } | { set: string }) {
+/** A tab, or a tab group's chip or row, gone from the tab bar or the Tabs panel however it went shrinks away: a copy, as
+ *  React takes it out. Not one still there (a tab regrouped, folded away). */
+export function useShrinkOut(ref: RefObject<HTMLElement | null>, what: { tab: string } | { group: string }) {
   useLayoutEffect(() => {
     const el = ref.current
-    const stays = () => ("set" in what ? !!setById(what.set) : groupOfTab(what.tab)?.id === what.pane)
+    const stays = () => ("group" in what ? !!groupById(what.group) : !!tabById(what.tab))
     return () => {
-      if (!el?.isConnected || still() || replacingWorkspace() || stays()) return
+      // (a whole layout put in place, another workspace's: what went, went with it, drawn at once)
+      if (!el?.isConnected || still() || replacingWorkspace() || layoutQuiet() || stays()) return
       const r = el.getBoundingClientRect(), size = axisOf(el) === "x" ? r.width : r.height
       if (size < 1) return
       const copy = el.cloneNode(true) as HTMLElement
@@ -177,19 +178,19 @@ export function useShrinkOut(ref: RefObject<HTMLElement | null>, what: { tab: st
       squeeze(copy, true).finished.then(() => copy.remove(), () => copy.remove())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref])  // (what it draws stays the same: a tab's id and pane are its key)
+  }, [ref])  // (what it draws stays the same: a tab's id is its key)
 }
 /** What makes an element the tab or group it draws, which its copy isn't. */
-const OWN = ["data-tab-id", "data-open-tab", "data-slide", "data-select-key", "data-in-set", "data-selected", "data-set-chip", "data-set-row"]
+const OWN = ["data-tab-id", "data-open-tab", "data-slide", "data-select-key", "data-in-group", "data-selected", "data-group-chip", "data-group-row", "data-ui", "data-spring-tab"]
 
 /** Close a tab from a list that doesn't take its rows away moving (the palette's tab search): its row shrinks away as
  *  it closes. One whose view asks first and says no grows back from where it had got to. */
 export function closeTabMoving(id: string, el: HTMLElement | null) {
-  const g = groupOfTab(id)
-  if (!g) return
+  const t = tabById(id)
+  if (!t) return
   if (!el || still()) { closeTab(id); return }
   el.style.pointerEvents = "none"
-  const a = squeeze(el, true), ok = mayClose(g.tabs.filter((t) => t.id === id))
+  const a = squeeze(el, true), ok = mayClose(panesOf(t))
   a.addEventListener("cancel", () => { el.style.pointerEvents = "" })
   // (closed once it has shrunk, so the list doesn't take it away mid-way; React takes it away whenever it draws)
   void Promise.resolve(ok).then((yes) => {
@@ -200,24 +201,24 @@ export function closeTabMoving(id: string, el: HTMLElement | null) {
 
 // ---------- tabs moving among themselves ----------
 
-/** A pane's tabs' order and groups (not folds: those move by foldSetMoving). */
-const drawnAs = (g: Group | undefined) => g ? `${g.tabs.map((t) => `${t.id}:${t.set ?? ""}`).join(",")}|${(g.sets ?? []).map((s) => s.id).join(",")}` : ""
-const sameTabs = (a: Group, b: string) => a.tabs.map((t) => t.id).sort().join() === b.split("|")[0].split(",").map((x) => x.split(":")[0]).sort().join()
+/** The tabs' order and groups (not folds: those move by foldGroupMoving). */
+const drawnAs = (l: TabList) => `${l.tabs.map((t) => `${t.id}:${t.group ?? ""}`).join(",")}|${(l.groups ?? []).map((g) => g.id).join(",")}`
+const sameTabs = (a: TabList, b: string) => a.tabs.map((t) => t.id).sort().join() === b.split("|")[0].split(",").map((x) => x.split(":")[0]).sort().join()
 
-/** A pane's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not opened
- *  or closed (grouped, ungrouped, moved by a menu or a drop) slide from where they were drawn to their new places. */
-export function useReflow(box: RefObject<HTMLElement | null>, g: Group) {
-  const shown = useRef(drawnAs(g)), was = useRef<Map<string, DOMRect> | null>(null)
+/** The window's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not
+ *  opened or closed (grouped, ungrouped, moved by a menu or a drop) slide from where they were drawn to their new places. */
+export function useReflow(box: RefObject<HTMLElement | null>, l: TabList) {
+  const shown = useRef(drawnAs(l)), was = useRef<Map<string, DOMRect> | null>(null)
   useLayoutEffect(() => onWorkspaceChange(() => {
     // (measured as the change is told, before React draws it: where each is on screen, a drag's preview included)
-    const now = groups().find((x) => x.id === g.id), root = box.current
+    const now = here(), root = box.current
     was.current = null
-    if (!now || !root || still() || replacingWorkspace() || layoutQuiet()) return
+    if (!root || still() || replacingWorkspace() || layoutQuiet()) return
     if (drawnAs(now) === shown.current || !sameTabs(now, shown.current)) return
     was.current = new Map([...root.querySelectorAll<HTMLElement>("[data-slide]")].map((e) => [e.dataset.slide!, e.getBoundingClientRect()]))
-  }), [box, g.id])
+  }), [box])
   useLayoutEffect(() => {
-    shown.current = drawnAs(g)
+    shown.current = drawnAs(l)
     const from = was.current, root = box.current
     was.current = null
     if (!from || !root) return

@@ -2,11 +2,10 @@
 // aria-expanded, Enter clicks. All commands, so hotkeys.json rebinds them and Vim's j/k/h/l call the same functions.
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, CornerDownLeft, FolderClosed, FolderOpen, LogOut, Menu, PanelLeft, PanelRight, SquareArrowOutUpRight, SquareMousePointer, StepBack, StepForward } from "lucide-react"
 import { registerCommands, typingIn } from "@/core/commands"
-import { leaves } from "../../../core/layout.ts"
 import { byTab, focusPane } from "@/core/focus"
 import { isMac, isDesktop } from "@/core/platform"
 import { getPrefs, setPrefs } from "@/core/prefs"
-import { focusGroup, getWorkspace } from "@/core/workspace"
+import { activePane, panes, setFocusedPane } from "@/core/workspace"
 import { focusSide, hasNeighbour } from "@/core/splits"
 import { sidebars } from "@/core/plugins"
 import { asKeys, getSelection } from "@/core/select"
@@ -137,7 +136,7 @@ function activeFileRow(body: HTMLElement) {
 
 /** Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work). */
 export function leaveList() {
-  if (focusPane(getWorkspace().focus)) return
+  if (focusPane(activePane().id)) return
   const a = document.activeElement
   if (a instanceof HTMLElement) a.blur()
 }
@@ -239,11 +238,11 @@ if (typeof window !== "undefined") {
 
 // ---------- tab bars: one Tab stop, the arrows between tabs (a tab list's way) ----------
 // (a tab group's chip among them, as in a browser: Enter or Space folds it, the menu key or ⇧F10 has its menu)
-const TAB = "[role=tablist] :is([role=tab], [data-set-chip])"
+const TAB = "[role=tablist] :is([role=tab], [data-group-chip])"
 const currentTab = () => { const a = document.activeElement; return a instanceof HTMLElement && a.matches(TAB) ? a : null }
 const barOf = (t: HTMLElement) => t.closest<HTMLElement>("[role=tablist]")!
-const tabsIn = (bar: HTMLElement) => [...bar.querySelectorAll<HTMLElement>("[role=tab], [data-set-chip]")].filter((t) => barOf(t) === bar && t.getClientRects().length > 0 && !t.closest("[inert]"))
-const ofTabs = (bar: HTMLElement) => (el: HTMLElement) => el.matches("[role=tab], [data-set-chip]") && barOf(el) === bar
+const tabsIn = (bar: HTMLElement) => [...bar.querySelectorAll<HTMLElement>("[role=tab], [data-group-chip]")].filter((t) => barOf(t) === bar && t.getClientRects().length > 0 && !t.closest("[inert]"))
+const ofTabs = (bar: HTMLElement) => (el: HTMLElement) => el.matches("[role=tab], [data-group-chip]") && barOf(el) === bar
 
 /** Move the keyboard to another tab of its bar: `by` along (round from the end), or to the first or last. */
 function moveInTabs(by: 1 | -1 | "first" | "last") {
@@ -294,11 +293,11 @@ const madeButton = () => { const el = focused(); return el && !el.matches("butto
 // ---------- the areas: sidebars and panes (F6) ----------
 type Area = Side | string
 function areas(): Area[] {
-  const panes = leaves(getWorkspace().root).map((g) => g.id).filter((id) => document.querySelector(`[data-pane="${CSS.escape(id)}"]`))
-  return [...(isOpen("left") && hasSidebar("left") ? ["left" as const] : []), ...panes, ...(isOpen("right") && hasSidebar("right") ? ["right" as const] : [])]
+  const shown = panes().map((p) => p.id).filter((id) => document.querySelector(`[data-pane="${CSS.escape(id)}"]`))
+  return [...(isOpen("left") && hasSidebar("left") ? ["left" as const] : []), ...shown, ...(isOpen("right") && hasSidebar("right") ? ["right" as const] : [])]
 }
 function areaOfFocus(): Area {
-  return sidebarOfFocus() ?? document.activeElement?.closest<HTMLElement>("[data-pane]")?.dataset.pane ?? getWorkspace().focus
+  return sidebarOfFocus() ?? document.activeElement?.closest<HTMLElement>("[data-pane]")?.dataset.pane ?? activePane().id
 }
 /** Move the keyboard to the next area (`by` -1: the one before): the left sidebar, each pane, the right sidebar. */
 function nextArea(by: 1 | -1) {
@@ -310,10 +309,10 @@ function nextArea(by: 1 | -1) {
   focusArea(to)
 }
 /** Give the keyboard to a pane: its text, else the first thing in it to press. */
-export function focusArea(gid = getWorkspace().focus) {
-  focusGroup(gid)
-  if (focusPane(gid)) return
-  const pane = document.querySelector<HTMLElement>(`[data-pane="${CSS.escape(gid)}"]`)
+export function focusArea(id = activePane().id) {
+  setFocusedPane(id)
+  if (focusPane(id)) return
+  const pane = document.querySelector<HTMLElement>(`[data-pane="${CSS.escape(id)}"]`)
   ;(pane && tabbable(pane)[0])?.focus()
 }
 

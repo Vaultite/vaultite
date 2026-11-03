@@ -69,7 +69,7 @@ try {
   check("shared: a device's file from before is taken in and removed", (await devicesOn(pa)).some((d) => d.id === "oldphone0001") &&
     !fs.existsSync(path.join(VA, ".vaultite/plugins/tabs/device-oldphone0001.json")))
   const ws = (await api(pa, "GET", "workspaces"))[1]?.workspaces ?? []
-  check("shared: a workspace's file keeps its name, its tabs are taken in", ws[1]?.name === "Writing" && ws[1]?.layout?.root.tabs[0].to === "file:Notes/Idea.md" &&
+  check("shared: a workspace's file keeps its name, its tabs are taken in", ws[1]?.name === "Writing" && ws[1]?.layout?.tabs?.[0]?.root?.to === "file:Notes/Idea.md" && ws[1]?.layout?.tabs?.[0]?.root?.id === "t1" &&
     JSON.stringify(JSON.parse(fs.readFileSync(path.join(VA, ".vaultite/plugins/workspaces/2.json"), "utf8"))) === JSON.stringify({ name: "Writing" }), ws)
   check("shared: caches in the vault are taken in, the folder gone", !fs.existsSync(path.join(VA, ".vaultite/cache")))
   const legacy = await waitFor(async () => (await devicesOn(pb)).some((d) => d.id === "oldphone0001") || null, 45_000, 250)
@@ -86,8 +86,8 @@ try {
   check(`shared: a device's tabs reach the other machine live (${ms} ms)`, !!seen && ms < 3000, seen)
   check("shared: its terminal tab names the machine it runs on", seen?.tabs.some((t: Any) => t.to === `${term("k1")}@alpha`), seen?.tabs)
   check("shared: as its own machine lists it, without its machine", (await devicesOn(pa)).find((d) => d.id === "alphamac0001")?.tabs.some((t: Any) => t.to === term("k1")))
-  await api(pb, "PUT", "workspaces/1", { layout: { root: { id: "g0", tabs: [{ id: "t9", to: "file:Notes/Idea.md" }], active: "t9" }, focus: "g0" } })
-  const there = await waitFor(async () => ((await api(pa, "GET", "workspaces"))[1]?.workspaces?.[0]?.layout?.root.tabs[0].id === "t9") || null, 10_000, 50)
+  await api(pb, "PUT", "workspaces/1", { layout: { tabs: [{ id: "t9", root: { id: "p9", to: "file:Notes/Idea.md" }, focus: "p9" }], active: "t9" } })
+  const there = await waitFor(async () => ((await api(pa, "GET", "workspaces"))[1]?.workspaces?.[0]?.layout?.tabs?.[0]?.id === "t9") || null, 10_000, 50)
   check("shared: a workspace's tabs too", !!there)
   await new Promise((r) => setTimeout(r, 1500)) // (past the store's write to its own disk)
   const after = stamps(VA)
@@ -102,7 +102,7 @@ try {
   await start(pb, VB, "local-b")
   const caught = await waitFor(async () => (await devicesOn(pb)).find((d) => d.id === "alphamac0001" && d.label === "Desk" && d.tabs.length === 1) ?? null, 45_000, 250)
   check("shared: a machine that was down catches up on what changed meanwhile", !!caught)
-  check("shared: and what it kept itself survived its restart", ((await api(pb, "GET", "workspaces"))[1]?.workspaces?.[0]?.layout?.root.tabs[0].id === "t9"))
+  check("shared: and what it kept itself survived its restart", ((await api(pb, "GET", "workspaces"))[1]?.workspaces?.[0]?.layout?.tabs?.[0]?.id === "t9"))
   await stop(pa)
   check("shared: with the other machine off, its devices still show (as last heard)", (await devicesOn(pb)).some((d) => d.id === "alphamac0001" && !d.live))
   // A device forgotten on one machine is forgotten on the other.

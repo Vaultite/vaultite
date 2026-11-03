@@ -159,8 +159,8 @@ check("the menu bar has File, Edit, View, Go, Window and Help", ["File", "Edit",
 check("File > New note on ⌘N, with its icon (a Mac's: GTK menus get none)", menu["File > New note"]?.key === `${CMD}+N` && (menu["File > New note"].icon || !MAC), menu["File > New note"])
 check("most items have icons (a Mac's)", !MAC || Object.values(menu).filter((i) => i.icon).length > 40, Object.values(menu).filter((i) => i.icon).length)
 check("Go has Back and Forward, on the app's keys", menu["Go > Back"]?.key === (MAC ? "Cmd+Alt+Left" : "Alt+Left") && menu["Go > Forward"]?.key === (MAC ? "Cmd+Alt+Right" : "Alt+Right"), [menu["Go > Back"], menu["Go > Forward"]])
-check("File > Reopen closed tab on ⇧⌘T; Window has Pin and Stack tabs", menu["File > Reopen closed tab"]?.key === `${CMD}+Shift+T` &&
-  !!menu["Window > Pin tab"] && !!menu["Window > Stack tabs"], [menu["File > Reopen closed tab"], menu["Window > Pin tab"]])
+check("File > Reopen closed tab on ⇧⌘T; Window has Pin tab", menu["File > Reopen closed tab"]?.key === `${CMD}+Shift+T` &&
+  !!menu["Window > Pin tab"], [menu["File > Reopen closed tab"], menu["Window > Pin tab"]])
 check("View > Graph view on ⌘G", !menu["View > Graph view"] || menu["View > Graph view"].key === `${CMD}+G`, menu["View > Graph view"])
 check("Edit > Search the vault on ⇧⌘F", menu["Edit > Search the vault"]?.key === `${CMD}+Shift+F`, menu["Edit > Search the vault"])
 check("Help has the docs, release notes and logs", ["Help > Vaultite help", "Help > Release notes", "Help > Show logs"].every((k) => menu[k]), Object.keys(menu).filter((k) => k.startsWith("Help")))

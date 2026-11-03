@@ -14,7 +14,7 @@ export const PLACE_KEYS = ["path", "line", "find", "x", "y", "pane", "ui", "row"
 export type PaneKind = "note" | "terminal" | "site" | "view"
 /** A pane the window has: its id (today's tab id), what it shows (`to`, as a tab's: file:<path>, view:terminal/<id>,
  *  view:web/<url>), its title, and its tab group (a tab set's id). */
-export type Pane = { id: string; to: string; title: string; group?: string }
+export type Pane = { id: string; to: string; title: string; tab?: string; group?: string }
 
 /** A pane's kind and what it names: the file, the terminal, the address. */
 export function paneSource(to: string): { kind: PaneKind; path?: string; terminal?: string; url?: string } {
