@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { Check, MessagesSquare, RotateCcw, X } from "lucide-react"
 import { cn, fmtAgo, ink, keyHint, Markdown, op, plural, snippet, useFocusedFile, type SidebarCtx } from "@vaultite"
 import { accept, answer, getState, type Note, pick, reopen, review, subscribe, tintOf } from "./live"
-import { cut, follow } from "./Overlay"
+import { cut, follow, unsent } from "./Overlay"
 import { Faces } from "./Presence"
 import { threadsOf } from "./threads"
 
@@ -87,7 +87,7 @@ function Thread({ n, picked, resolved }: { n: Note; picked: boolean; resolved: b
   const tint = tintOf(n.agent)
   useEffect(() => { if (picked) ref.current?.scrollIntoView({ block: "nearest" }) }, [picked])
   const go = () => { pick(n.id); follow({ name: n.agent, path: n.path, line: n.line, find: n.find }) }
-  const send = () => { const t = draft.trim(); if (t) answer(n.id, "reply", t); setDraft("") }
+  const send = () => { const t = draft.trim(); if (t && !answer(n.id, "reply", t)) return unsent(); setDraft("") }
   const suggestion = n.kind === "suggestion", proposal = n.kind === "proposal"
   const ready = (n.changes ?? []).filter((c) => !c.intent && !c.stale).length
   const btn = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-9"

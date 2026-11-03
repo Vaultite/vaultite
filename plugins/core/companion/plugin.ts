@@ -179,8 +179,9 @@ const did = (as: string, op: string, seqs?: number[]) => {
 /** An agent's state once it acted: still thinking while busy on an ask (until its next `next`), else watching. */
 const acting = (name: string): Agent["state"] => (asking.has(key(name)) ? "thinking" : "watching")
 
-/** The app's windows: which files each has open, where its user is, when they last did anything. */
-type Win = { open: string[]; focus: Target | null; at: number; was?: string }
+/** The app's windows: which files each has open (`shown`: on screen, where an edit can be typed in), where its user is,
+ *  when they last did anything. */
+type Win = { open: string[]; shown: string[]; focus: Target | null; at: number; was?: string }
 const windows = new Map<WebSocket, Win>()
 /** A guest's view of the threads: `see` gives their name for a vault path in their folder (else null), `at` the vault
  *  path for theirs (throws outside it); `said`: true once they have said too much this minute. */
@@ -194,7 +195,8 @@ export type Guest = { id: string; name: string; who: Who; role: "read" | "commen
 const guests = new Map<WebSocket, Guest>()
 /** The most a person's comment or reply keeps; a guest's threads in a note, and words in a thread. */
 const MAX_TEXT = 4000, MAX_THREADS = 100, MAX_REPLIES = 100
-const asked = new Map<string, { done: (ok: boolean, error?: string, reply?: Record<string, unknown>) => void }>()
+/** What windows were asked to do and haven't answered, by request id (`ws`: the window asked). */
+const asked = new Map<string, { ws: WebSocket; done: (ok: boolean, error?: string, reply?: Record<string, unknown>) => void }>()
 
 const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 const broadcast = (m: object) => {
@@ -730,7 +732,7 @@ plugin.socket("companion/live", (ws, req, { query }) => {
     })
     return
   }
-  windows.set(ws, { open: [], focus: null, at: 0 })
+  windows.set(ws, { open: [], shown: [], focus: null, at: 0 })
   there.add(ws)
   send(ws, snapshot())
   ws.on("message", (data: RawData) => {
@@ -745,6 +747,7 @@ plugin.socket("companion/live", (ws, req, { query }) => {
     if (!w) return
     if (m.t === "where") {
       w.open = Array.isArray(m.open) ? m.open.filter((p): p is string => typeof p === "string") : w.open
+      w.shown = Array.isArray(m.shown) ? m.shown.filter((p): p is string => typeof p === "string") : w.shown
       const f = m.focus as Target | null
       // (an editor left for the terminal or a menu: still their note while it's open)
       w.focus = f && typeof f.path === "string" ? { path: f.path, ...(drawing(f.path) ? point(f as Record<string, unknown>) : { line: Number(f.line) || 1 }) } : w.focus && w.open.includes(w.focus.path!) ? w.focus : null
@@ -779,15 +782,19 @@ plugin.socket("companion/live", (ws, req, { query }) => {
       asked.get(m.rid)?.done(m.ok === true, str(m.error) || undefined, m)
     }
   })
-  ws.on("close", () => windows.delete(ws))
+  ws.on("close", () => {
+    windows.delete(ws)
+    // (gone mid-edit: what it was asked fails now, not when its wait runs out, and the note's turn is free)
+    for (const x of [...asked.values()]) if (x.ws === ws) x.done(false, "the window showing it closed as it was typed: read it again before another change")
+  })
 })
 
 // ---------- edits: typed in by the window that has the file open, else written on disk
 
 type Edit = { path: string; find?: string; after?: string; text: string; line?: number; append?: boolean }
 
-/** The window to type an edit in: the most recent one with the file open. */
-const editorFor = (path: string) => [...windows.entries()].filter(([, w]) => w.open.includes(path)).sort((a, b) => b[1].at - a[1].at)[0]?.[0] ?? null
+/** The window to type an edit in: the most recent one with the file on screen. */
+const editorFor = (path: string) => [...windows.entries()].filter(([, w]) => w.shown.includes(path)).sort((a, b) => b[1].at - a[1].at)[0]?.[0] ?? null
 
 const turns = new Map<string, Promise<unknown>>()
 /** One edit of a note at a time, typed or written: the next waits for it (two at once interleave their letters). */
@@ -804,7 +811,7 @@ function inTurn<T>(path: string, fn: () => Promise<T>): Promise<T> {
 async function askWindow(ws: WebSocket, m: object, wait: number, reply: Record<string, unknown> = {}, rid = `e${++nid}`) {
   const ok = await new Promise<boolean | string | null>((resolve) => {
     const timer = setTimeout(() => { asked.delete(rid); resolve(null) }, wait)
-    asked.set(rid, { done: (ok, error, r) => { clearTimeout(timer); asked.delete(rid); Object.assign(reply, r); resolve(ok || error || false) } })
+    asked.set(rid, { ws, done: (ok, error, r) => { clearTimeout(timer); asked.delete(rid); Object.assign(reply, r); resolve(ok || error || false) } })
     send(ws, { ...m, rid })
   })
   if (typeof ok === "string") throw new OpError(ok, 409)
@@ -889,7 +896,7 @@ export function endOf(cur: string, e: Omit<Edit, "path">): { line: number; find?
 /** A streaming call: what shows as it comes (a bubble, a comment or reply, an edit typed in by a window); `whole`: nothing
  *  does, its call does it all (an edit that becomes a proposal, one no window shows, one whose place comes last). */
 type Streamed = { use: string; agent: string; tool: Streaming; ended?: "done" | "stop"; whole?: boolean; note?: string; reply?: { id: string; at: number }
-  edit?: { ws: WebSocket; rid: string; e: Edit; text: string; sent: number; open: boolean; final: boolean; was: string | null; job: Promise<"typed" | "stopped"> } }
+  edit?: { ws: WebSocket; rid: string; e: Edit; text: string; sent: number; open: boolean; final: boolean; was: string | null; job: Promise<"typed" | "stopped" | "unshown"> } }
 const streams = new Map<string, Streamed>()
 /** The tool_use a chat session's call is for, through the op it runs: the stream that showed it. */
 const toolUse = new AsyncLocalStorage<string | undefined>()
@@ -968,15 +975,15 @@ function editStream(s: Streamed, given: Record<string, unknown>, keys: string[],
   const ws = !drawing(t.path!) && !(find && linesIn(find) > BIG_EDIT) ? editorFor(t.path!) : null
   if (!ws) { s.whole = true; return }
   const e: Edit = { path: t.path!, find, after, line: t.line, text: "", append: given.append === true }
-  const x = { ws, rid: `e${++nid}`, e, text, sent: 0, open: false, final: false, was: null as string | null, job: null as unknown as Promise<"typed" | "stopped"> }
+  const x = { ws, rid: `e${++nid}`, e, text, sent: 0, open: false, final: false, was: null as string | null, job: null as unknown as Promise<"typed" | "stopped" | "unshown"> }
   s.edit = x
   x.job = inTurn(e.path, () => typeIn(s, x))
   x.job.catch(() => {})
 }
 
 /** An edit typed in as it streams (in its note's turn): the window opens it, takes its words as they come, and says
- *  it's done once it ended; what it typed is the agent's, in History and Provenance. */
-async function typeIn(s: Streamed, x: NonNullable<Streamed["edit"]>): Promise<"typed" | "stopped"> {
+ *  it's done once it ended; what it typed is the agent's. "unshown": no window shows it now, so its call writes it. */
+async function typeIn(s: Streamed, x: NonNullable<Streamed["edit"]>): Promise<"typed" | "stopped" | "unshown"> {
   const path = x.e.path
   await plugin.ask("history:keep", false, path)
   try { x.was = readText(plugin.vault.abs(path)) } catch { /* gone */ }
@@ -984,13 +991,15 @@ async function typeIn(s: Streamed, x: NonNullable<Streamed["edit"]>): Promise<"t
   setAgent(s.agent, { path, line: x.e.line, find: x.e.after ?? x.e.find, x: undefined, y: undefined, state: "writing" })
   did(s.agent, "word")
   const reply: Record<string, unknown> = {}
+  let ok = false
   try {
     x.sent = x.text.length
     const done = askWindow(x.ws, { t: "stream", agent: s.agent, ...x.e, text: x.text }, STREAM_MS, reply, x.rid)
     x.open = true
     if (x.final) endEdit(s, x)
-    if (!(await done)) throw new OpError("the window showing it couldn't type it", 409)
+    ok = await done
   } finally { await plugin.ask("activity:typing", false, path, s.agent, SAVED_MS) }
+  if (!ok) { x.open = false; return "unshown" }
   const typed = typeof reply.text === "string" ? reply.text : x.text
   if (x.was !== null) try { await plugin.ask("provenance:wrote", null, path, x.was, editText(x.was, { ...x.e, text: typed })) } catch { /* not in the file as saved */ }
   return reply.stopped ? "stopped" : "typed"
@@ -1030,8 +1039,8 @@ function streamDone(use: string) {
 function stopStreams(name: string) {
   for (const s of streams.values()) if (key(s.agent) === key(name)) { s.ended = "stop"; finishStream(s) }
 }
-/** Whether agent `name` is writing into a note now. */
-const writing = (name: string) => [...streams.values()].some((s) => key(s.agent) === key(name) && (s.note || s.reply || s.edit))
+/** Whether agent `name` is writing into a note now (one stopped, kept for a call that may never come, isn't). */
+const writing = (name: string) => [...streams.values()].some((s) => key(s.agent) === key(name) && s.ended !== "stop" && (s.note || s.reply || s.edit))
 
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s)
 /** Line `n` (from 1) of a file, trimmed: "" when it can't be read. */
@@ -1733,6 +1742,12 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
     setAgent(name, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(name) })
     // (shown as it was written: its bubble, with its words and place as the call has them)
     const use = toolUse.getStore(), shown = use ? streams.get(use)?.note : undefined, was = shown ? notes.get(shown) : undefined
+    // (its bubble closed as it was written: it stays closed, its words in its history)
+    if (shown && !was) {
+      const n: Note = { id: shown, kind: "say", agent: name, text: str(p.text), ...t, t: Date.now(), seen: true }
+      keepSaid(n)
+      return n
+    }
     if (was) {
       Object.assign(was, { text: str(p.text), ...t, ...(p.ask ? { question: true } : {}) })
       broadcast({ t: "note", note: was })
@@ -1818,6 +1833,16 @@ it: with id (the comment's), your words join its thread.
     did(name, "comment")
     // (shown as it was written: that card or reply, with its words as the call has them)
     const use = toolUse.getStore(), s = use ? streams.get(use) : undefined
+    // (dismissed as it was written: it stays dismissed, with all its words)
+    const gone = s?.reply && !notes.has(s.reply.id) ? s.reply.id : s?.note && !notes.has(s.note) ? s.note : undefined
+    if (gone) {
+      const n = [...past.values()].flat().find((x) => x.id === gone)
+      if (!n) return { id: gone }
+      const r = s!.reply && n.replies?.[s!.reply.at]
+      if (r) r.text = str(p.text); else if (!s!.reply) n.text = str(p.text)
+      save(n.path!)
+      return n
+    }
     if (s?.reply && notes.get(s.reply.id)?.replies?.[s.reply.at]) {
       const n = notes.get(s.reply.id)!
       n.replies![s.reply.at].text = str(p.text)
@@ -2077,8 +2102,10 @@ typed in as you write them, its place first; your cursor stays at their end.
       x.text = x.e.text = str(p.text)
       finishStream(s)
       try {
-        if (await x.job === "stopped") throw new OpError("the user stopped you (Esc) as you wrote it: what you had typed by then stays", 409)
-        return { path: x.e.path, how: "typed" }
+        const how = await x.job
+        if (how === "stopped") throw new OpError("the user stopped you (Esc) as you wrote it: what you had typed by then stays", 409)
+        // (no window could show it as it came: made like any edit, written to the file)
+        return { path: x.e.path, how: how === "typed" ? how : await applyEdit(ctx, agentOf(name), x.e) }
       } finally { setAgent(name, { state: acting(name) }) }
     }
     const a = setAgent(name, { ...t, ...(after ? { find: after } : {}), state: "writing" })

@@ -35,8 +35,8 @@ export type Draft = { path: string; line: number; find?: string; text?: string; 
 export type Person = { id: number; name: string; color: string }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 /** An edit typed in as it's written: opened (`stream`, its words so far), more words (`more`: `add` at `at`), ended
- *  (`end`: all of it). */
-export type StreamMsg = { t: "stream"; m: EditAsk } | { t: "more"; rid: string; at: number; add: string } | { t: "end"; rid: string; text: string }
+ *  (`end`: all of it); `cut`: the connection went, every stream stops where it is. */
+export type StreamMsg = { t: "stream"; m: EditAsk } | { t: "more"; rid: string; at: number; add: string } | { t: "end"; rid: string; text: string } | { t: "cut" }
 
 /** said: each agent's last says, oldest first; picked: the margin card the user opened; people: who else has each
  *  note open with this window (cotype.ts), by path. */
@@ -108,22 +108,25 @@ export const startComment = (d: Draft | null) => set({ draft: d, picked: d ? "dr
 /** Send the comment being written: a thread of the user's (a guest's, in theirs); an @name in it asks that agent. */
 export function comment(text: string) {
   const d = state.draft
-  if (!d || !text.trim()) return
-  say({ t: "comment", ...d, text: text.trim() })
+  if (!d || !text.trim()) return true
+  if (!say({ t: "comment", ...d, text: text.trim() })) return false
   set({ draft: null, picked: null })
+  return true
 }
 
 // ---------- editors showing files
 
 /** The editors on screen with a file, so edits find theirs and the overlay draws on them. */
 export const views = new Map<EditorView, string>()
+/** Whether an editor is on screen: a kept tab's (hidden) can't show what's typed in it. */
+const onScreen = (v: EditorView) => v.dom.isConnected && (v.hasFocus || v.dom.getClientRects().length > 0)
 /** An editor showing `path`: the focused one, else the first that's on screen. */
 export function viewOf(path: string): EditorView | null {
   let best: EditorView | null = null
   for (const [v, p] of views) {
-    if (p !== path || !v.dom.isConnected) continue
+    if (p !== path || !onScreen(v)) continue
     if (v.hasFocus) return v
-    if (!best && v.dom.getClientRects().length) best = v
+    best ??= v
   }
   return best
 }
@@ -171,11 +174,12 @@ function open() {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
   const s = new WebSocket(url)
   ws = s
-  s.onopen = () => { tries = 0; set({ connected: true }); sayWhere(true) }
+  s.onopen = () => { tries = 0; saidWhere = ""; set({ connected: true }); sayWhere(true) }
   s.onclose = () => {
     if (ws !== s) return
     ws = null
     set({ connected: false })
+    streamer?.(null, { t: "cut" })
     if (users > 0) retry = setTimeout(open, Math.min(30_000, 1000 * 2 ** tries++))
   }
   s.onmessage = (ev) => {
@@ -207,7 +211,8 @@ function open() {
   }
 }
 
-export const say = (m: object) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)) }
+/** Send `m` to the server: false when it can't go now (no connection), so what the user wrote can stay to send again. */
+export const say = (m: object) => { if (ws?.readyState !== WebSocket.OPEN) return false; ws.send(JSON.stringify(m)); return true }
 
 let turn: Promise<unknown> = Promise.resolve()
 /** Edits typed one at a time, each where the last left the note. */
@@ -225,13 +230,14 @@ const edit = (e: EditAsk) => inTurn(async () => {
 })
 
 /** Something the user did, for the agents (an ask: for `agent`, else the companion, who shows it thinking at once).
- *  `waited`: ms since they last typed. */
+ *  `waited`: ms since they last typed. False when it couldn't go. */
 export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number
   x?: number; y?: number; changes?: string[]; scene?: string }) {
-  if (share) return // (no agent works for a guest)
-  say({ t: "moment", ...m })
+  if (share) return true // (no agent works for a guest)
+  if (!say({ t: "moment", ...m })) return false
   const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
   if (a && a.state !== "away" && a.state !== "starting") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) }, 10_000)
+  return true
 }
 /** The user dropped an agent's cursor here: "look at this". It stays there (the server says so too, a moment later). */
 export const pointAt = (agent: string, t: { path: string; line: number; find?: string; selection?: string }) => sendMoment({ kind: "point", agent, ...t })
@@ -257,10 +263,12 @@ export const reopen = (id: string) => say({ t: "reopen", id })
 export const pick = (id: string | null) => { if (state.picked !== id) set({ picked: id }) }
 
 /** The user's answer to a note: accept or reject a suggestion, dismiss a comment or a bubble, reply to one (a bubble
- *  replied to goes). */
+ *  replied to goes). False: a reply that couldn't go, left as it was. */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {
+  if (verdict === "reply" && ws?.readyState !== WebSocket.OPEN) return false
   if (verdict !== "reply" || state.notes.find((x) => x.id === id)?.kind === "say") set({ notes: state.notes.filter((x) => x.id !== id) })
   say({ t: "answer", id, verdict, text })
+  return true
 }
 
 /** The user's answer to a proposal: take or leave one change, or all (taken ones are typed in as its agent's). Left
@@ -273,14 +281,25 @@ export function review(id: string, verdict: "accept" | "reject", change?: string
   say({ t: "review", id, verdict, ...(change ? { change } : {}) })
 }
 
-/** Which files this window shows and where the user is (`active`: they did something here). */
+/** Which files this window shows and where the user is (`active`: they did something here). What the server heard last
+ *  isn't said again, unless the user did something. */
+let saidWhere = ""
+let whereSoon: ReturnType<typeof setTimeout> | null = null
 export function sayWhere(active = false) {
+  if (whereSoon) { clearTimeout(whereSoon); whereSoon = null }
   const drawn = drawings?.where() ?? { open: [], focus: null }
   const open = [...new Set([...[...views].filter(([v]) => v.dom.isConnected).map(([, p]) => p), ...drawn.open])]
+  // (shown: where an edit can be typed in, as viewOf finds; a note only in a kept tab is written to its file)
+  const shown = [...new Set([...[...views].filter(([v]) => onScreen(v)).map(([, p]) => p), ...drawn.open])]
   const f = [...views.keys()].find((v) => v.hasFocus)
   const focus = f ? { path: views.get(f)!, line: f.state.doc.lineAt(f.state.selection.main.head).number } : drawn.focus
-  say({ t: "where", open, focus, active: active && document.hasFocus() })
+  const m = { t: "where", open, shown, focus, active: active && document.hasFocus() }, json = JSON.stringify({ ...m, active: false })
+  if (!m.active && json === saidWhere) return
+  if (say(m)) saidWhere = json
 }
+/** Tabs shown and hidden: said once they settle (switching tabs is one message, not two a switch). A tab that's gone
+ *  hidden meanwhile answers an edit as unshown, and the server writes it to its file. */
+export const sayWhereSoon = () => { if (whereSoon) clearTimeout(whereSoon); whereSoon = setTimeout(() => sayWhere(), 1000) }
 
 /** The agents around now, the companion first. */
 export const liveAgents = () => state.agents.filter((a) => a.state !== "away").sort((a, b) => Number(b.name === state.name) - Number(a.name === state.name))

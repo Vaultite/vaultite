@@ -1,7 +1,6 @@
-// Asks as threads: an "@claude …" line goes at Enter (or once the caret leaves it) as a comment thread by the text above,
-// and leaves the note; the agent hears it with the thread's id and answers in it, and the user's replies there reach it
-// without its @name. Ask (Mod+Shift+K) opens a comment that starts with @claude, on the selection, writing nothing in
-// the note. An @name mid-line stays the user's prose, asked as before.
+// Asks as threads: Ask (Mod+Shift+K) opens a comment that starts with @claude, on the selection, writing nothing in the
+// note; the agent hears it with the thread's id and answers in it, and the user's replies there reach it without its
+// @name. A line with @claude (at its start or mid-line) is no thread: it stays the user's prose, asked from the note.
 // WRITES "QA threads/" and the plugin's data.json: throwaway server only.
 //   node web/qa/threads.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -42,46 +41,16 @@ await editor.waitFor({ timeout: 10000 })
 await wait(1200)
 await op("companion.look", { path: NOTE, find: "Basil" }) // (it's around: asks reach it, nothing starts)
 
-// "@claude …" + Enter: a thread by the line above, out of the note.
+// "@claude …" + Enter: asked from the note, the line staying as written, no thread.
 await editor.click()
 await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("@claude how far apart should they be?\n")
-const ask = await next("ask")
-await until(() => !text(NOTE).includes("@claude"), 4000)
-check("ask line: gone from the note at Enter", !text(NOTE).includes("@claude") && text(NOTE).includes("Basil between them."), text(NOTE))
-check("ask line: the agent hears it with its thread, by the text above", !!ask?.item && ask.text === "@claude how far apart should they be?" && ask.path === NOTE, ask)
-const card = page.locator(`[data-companion-note="${ask?.item}"]`)
-await card.waitFor({ timeout: 4000 }).catch(() => {})
-check("ask line: a card in the margin with the ask, by the user", (await card.count()) === 1 && (await card.innerText()).includes("how far apart"))
-const status = await op("companion.status")
-const thread = (status.notes ?? status.items ?? []).find?.((n) => n.id === ask?.item)
-check("ask line: anchored on the line above", !thread || thread.find === "Basil between them.", thread)
+const line = await next("ask")
+check("ask line: asked at Enter, what follows its name, no thread", line?.text === "how far apart should they be?" && !line.item && line.path === NOTE, line)
+check("ask line: stays in the note", text(NOTE).includes("@claude how far apart should they be?"), text(NOTE))
+check("ask line: no card in the margin", (await page.locator("[data-companion-note]").count()) === 0)
 
-// It answers in the thread; the user's reply there reaches it without an @name.
-await op("companion.comment", { id: ask?.item, text: "About 60 cm: they get big." })
-await until(async () => /1 reply/.test(await card.innerText()), 4000)
-await card.click()
-await until(async () => (await card.innerText()).includes("60 cm"), 4000)
-check("answer: in the thread, under the ask, in Claude's name", /You[\s\S]*how far apart[\s\S]*Claude[\s\S]*60 cm/.test(await card.innerText()), await card.innerText())
-await page.screenshot({ path: `${OUT}thread.png` })
-await card.getByRole("textbox", { name: "Reply" }).click()
-await page.keyboard.type("And the basil?")
-await page.keyboard.press("Enter")
-const reply = await next("reply")
-check("reply: reaches the agent the thread asks, with its id", reply?.item === ask?.item && reply.text === "And the basil?", reply)
-
-// An ask line left without Enter goes as well.
-await editor.click()
-await page.keyboard.press("ControlOrMeta+End")
-await page.keyboard.type("@claude any pests to watch?")
-await wait(300)
-check("ask line: not sent while they're still on it", !(await op("companion.next", { timeout: 2 })).moments?.some((m) => m.kind === "ask"))
-await editor.locator(".cm-line", { hasText: "Tomatoes" }).click()
-const left = await next("ask")
-await until(() => !text(NOTE).includes("pests"), 4000)
-check("ask line: goes once the caret leaves it, and leaves the note", left?.text === "@claude any pests to watch?" && !text(NOTE).includes("pests"), { left, note: text(NOTE) })
-
-// Mid-line: the user's prose stays, asked as before.
+// Mid-line: the user's prose stays, asked at the pause.
 await page.keyboard.press("ControlOrMeta+End")
 const MID = `Alright, how is it going @claude? ${Date.now() % 1000}`
 await page.keyboard.type(`\n${MID}`)
@@ -100,10 +69,26 @@ await input.waitFor({ timeout: 3000 }).catch(() => {})
 check("Ask: a comment box that starts with @claude", (await input.inputValue().catch(() => "")) === "@claude ")
 await page.keyboard.type("is this spelled right?")
 await page.keyboard.press("Enter")
-const sel = await next("ask")
-check("Ask: the agent hears it with the selection, in its thread", !!sel?.item && sel.text === "@claude is this spelled right?" && sel.selection === "Tomatoes", sel)
+const ask = await next("ask")
+check("Ask: the agent hears it with the selection, in its thread", !!ask?.item && ask.text === "@claude is this spelled right?" && ask.selection === "Tomatoes" && ask.path === NOTE, ask)
 check("Ask: the note unchanged", text(NOTE) === before)
+const card = page.locator(`[data-companion-note="${ask?.item}"]`)
+await card.waitFor({ timeout: 4000 }).catch(() => {})
+check("Ask: a card in the margin with the ask, by the user", (await card.count()) === 1 && (await card.innerText()).includes("is this spelled right"))
 await page.screenshot({ path: `${OUT}ask.png` })
+
+// It answers in the thread; the user's reply there reaches it without an @name.
+await op("companion.comment", { id: ask?.item, text: "Yes: Tomatoes, with an e." })
+await until(async () => /1 reply/.test(await card.innerText()), 4000)
+await card.click()
+await until(async () => (await card.innerText()).includes("with an e"), 4000)
+check("answer: in the thread, under the ask, in Claude's name", /You[\s\S]*spelled right[\s\S]*Claude[\s\S]*with an e/.test(await card.innerText()), await card.innerText())
+await page.screenshot({ path: `${OUT}thread.png` })
+await card.getByRole("textbox", { name: "Reply" }).click()
+await page.keyboard.type("And basil?")
+await page.keyboard.press("Enter")
+const reply = await next("reply")
+check("reply: reaches the agent the thread asks, with its id", reply?.item === ask?.item && reply.text === "And basil?", reply)
 
 await ctx.close()
 await op("companion.clear")

@@ -11,6 +11,9 @@ import { agentMenu } from "./session"
 import { changeAt, nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
 
+/** What the user wrote to an agent couldn't go (no connection): it stays where they wrote it, and this says so. */
+export const unsent = () => { notify("Couldn't send it: not connected to the server. Try again in a moment", { kind: "error", id: "companion-unsent" }) }
+
 /** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it;
  *  docked: at its arrow in the status bar (x, y: the arrow's corner), where it rests unseen, the arrow standing for it. */
 type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean; rides?: boolean }
@@ -196,7 +199,7 @@ function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boo
     const text = draft.trim()
     if (!text) return
     const v = a.path ? viewOf(a.path) : null, pos = v ? posIn(v, a) : null
-    sendMoment({ kind: "ask", agent: a.name, path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line, text })
+    if (!sendMoment({ kind: "ask", agent: a.name, path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line, text })) return unsent()
     close()
   }
   return (
@@ -252,7 +255,7 @@ function Bubble({ n, tint, right, low, maxWidth, drawn, hold }: { n: Note; tint:
   const send = () => {
     const text = draft.trim()
     if (!text) return
-    answer(n.id, "reply", text)
+    if (!answer(n.id, "reply", text)) return unsent()
     setDraft("")
     setGone(true)
   }
@@ -545,8 +548,8 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
   }
   const send = () => {
     const t = draft.trim()
-    if (writing) return t ? comment(t) : startComment(null)
-    if (t) answer(n.id, "reply", t)
+    if (writing) return t ? void (comment(t) || unsent()) : startComment(null)
+    if (t && !answer(n.id, "reply", t)) return unsent()
     setDraft("")
   }
   const words = n.text ?? n.replace ?? ""

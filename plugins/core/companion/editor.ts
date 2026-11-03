@@ -8,7 +8,7 @@ import { capitalize, keyHint, type MenuItem, notify, notifyError, op, pluginSett
 import { MessageCircle } from "lucide-react"
 import { authorAt } from "@plugins/provenance/gutter"
 import { cotype } from "./cotype"
-import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hideSay, hunksIn, setFolder, shownFor, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, say, sayWhere, sendMoment, setStreamer, setTyper, setTyping, setUndoer, type StreamMsg, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
+import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hideSay, hunksIn, setFolder, shownFor, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, say, sayWhere, sendMoment, setStreamer, setTyper, setTyping, setUndoer, type StreamMsg, sayWhereSoon, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { privateNote } from "./private"
 import { decide, proposals } from "./proposed"
 import { nearest } from "./text"
@@ -72,6 +72,12 @@ function placeIn(doc: Text, e: Omit<EditAsk, "rid" | "agent" | "text">): { from:
 }
 /** Its words as new lines take them: without the line break they end with (lead or tail gives the one they need). */
 const wordsFor = (text: string, p: { lead: string; tail: string }) => (p.lead || p.tail ? text.replace(/\n$/, "") : text)
+/** The user's caret where an agent's words go in at `at` (they end at `to`): after them, so what the user types next
+ *  follows its words instead of going in front of them on its line. */
+const caretAfter = (v: EditorView, at: number, to: number) => {
+  const s = v.state.selection
+  return s.ranges.length === 1 && s.main.empty && s.main.head === at ? { selection: { anchor: to } } : {}
+}
 
 /** Its edits are their own undo steps: never joined with what the user types next to them, nor theirs with its. */
 const ownEdit = [own.of(true), Transaction.userEvent.of("input.companion"), isolateHistory.of("full")]
@@ -89,7 +95,9 @@ async function type(view: EditorView, e: EditAsk) {
   const text = p.lead + wordsFor(e.text, p) + p.tail, removed = view.state.sliceDoc(from, to)
   const animate = e.animate !== false && document.visibilityState === "visible" && !matchMedia("(prefers-reduced-motion: reduce)").matches
   halted.delete(view)
-  view.dispatch({ changes: { from, to, insert: text }, effects: spanIs.of({ from, at: animate ? from : from + text.length, to: from + text.length }), annotations: ownEdit })
+  // (a caret before a line break it adds stays on its own line)
+  view.dispatch({ changes: { from, to, insert: text }, effects: spanIs.of({ from, at: animate ? from : from + text.length, to: from + text.length }), annotations: ownEdit,
+    ...(!p.lead && from === to ? caretAfter(view, from, from + text.length) : {}) })
   if (animate) {
     const size = Math.ceil(text.length / Math.max(1, Math.round(Math.min(1600, text.length * 14) / 16)))
     for (let s = view.state.field(span); s && s.at < s.to && view.dom.isConnected && !halted.has(view); s = view.state.field(span)) {
@@ -120,11 +128,15 @@ const streamAt = StateField.define<{ rid: string; from: number; to: number } | n
     return v && tr.docChanged ? { ...v, from: tr.changes.mapPos(v.from, 1), to: Math.max(tr.changes.mapPos(v.from, 1), tr.changes.mapPos(v.to, -1)) } : v
   },
 })
-type Live = { rid: string; view: EditorView; agent: string; lead: string; tail: string; removed: string; text: string; queued: string; timer: ReturnType<typeof setTimeout> | null }
+type Live = { rid: string; view: EditorView; agent: string; lead: string; tail: string; removed: string; text: string; queued: string; timer: ReturnType<typeof setTimeout> | null
+  /** Its edit, until its place is made (held while the user types); its last words, held likewise. */
+  ask?: EditAsk; end?: string }
 const live = new Map<string, Live>()
 
 function streamMsg(view: EditorView | null, m: StreamMsg) {
   if (m.t === "stream") return openStream(view!, m.m)
+  // (no server to say more: what's in stays, one undo step, and its cursor goes)
+  if (m.t === "cut") { for (const L of [...live.values()]) endStream(L, null); return }
   const L = live.get(m.rid)
   if (!L) return
   if (m.t === "more") { if (m.at === L.text.length + L.queued.length) { L.queued += m.add; flushSoon(L) } }
@@ -133,16 +145,29 @@ function streamMsg(view: EditorView | null, m: StreamMsg) {
 setStreamer(streamMsg)
 
 function openStream(view: EditorView, e: EditAsk) {
-  let p: ReturnType<typeof placeIn>
-  try { p = placeIn(view.state.doc, e) } catch (err) { return say({ t: "done", rid: e.rid, ok: false, error: (err as Error).message }) }
-  const removed = view.state.sliceDoc(p.from, p.to)
-  const L: Live = { rid: e.rid, view, agent: e.agent, lead: p.lead, tail: p.tail, removed, text: "", queued: e.text, timer: null }
+  const L: Live = { rid: e.rid, view, agent: e.agent, lead: "", tail: "", removed: "", text: "", queued: e.text, timer: null, ask: e }
   live.set(e.rid, L)
   halted.delete(view)
+  place(L)
+}
+/** Wait for the user to stop typing, then `fn`. */
+function whenStill(L: Live, fn: () => void) {
+  if (L.timer) clearTimeout(L.timer)
+  L.timer = setTimeout(() => { L.timer = null; fn() }, Math.max(16, YIELD_MS - (Date.now() - (userTyped.get(L.view) ?? 0))))
+}
+/** Its place made in the note (`find` taken out), once the user isn't typing. */
+function place(L: Live) {
+  const view = L.view, e = L.ask!
+  if (!view.dom.isConnected) { live.delete(L.rid); return say({ t: "done", rid: L.rid, ok: false }) }
+  if (typingNow(view)) return whenStill(L, () => place(L))
+  let p: ReturnType<typeof placeIn>
+  try { p = placeIn(view.state.doc, e) } catch (err) { live.delete(L.rid); return say({ t: "done", rid: e.rid, ok: false, error: (err as Error).message }) }
+  Object.assign(L, { lead: p.lead, tail: p.tail, removed: view.state.sliceDoc(p.from, p.to), ask: undefined })
   // (out of the history while it comes: all of it is one undo step once it ends)
   view.dispatch({ changes: { from: p.from, to: p.to, insert: p.lead + p.tail }, effects: streamIs.of({ rid: e.rid, from: p.from, to: p.from + p.lead.length }),
-    annotations: [own.of(true), Transaction.userEvent.of("input.companion"), Transaction.addToHistory.of(false)] })
-  flush(L)
+    annotations: [own.of(true), Transaction.userEvent.of("input.companion"), Transaction.addToHistory.of(false)],
+    ...(!p.lead && p.from === p.to ? caretAfter(view, p.from, p.from + p.tail.length) : {}) })
+  if (L.end !== undefined) endStream(L, L.end); else flush(L)
 }
 
 /** Its next words, once the user isn't typing. */
@@ -159,27 +184,32 @@ function flush(L: Live) {
   L.queued = ""
   L.text += add
   L.view.dispatch({ changes: { from: f.to, insert: add }, effects: streamIs.of({ ...f, to: f.to + add.length }),
-    annotations: [own.of(true), Transaction.userEvent.of("input.companion"), Transaction.addToHistory.of(false)] })
+    annotations: [own.of(true), Transaction.userEvent.of("input.companion"), Transaction.addToHistory.of(false)], ...caretAfter(L.view, f.to, f.to + add.length) })
   setTyping({ view: L.view, pos: f.to + add.length, agent: L.agent })
 }
 
 /** The stream ends with `text` (all its words; null: stopped, with what it has): one undo step for all of it, unless the
  *  user wrote inside it meanwhile (then only the rest goes in, after what it typed). */
 function endStream(L: Live, text: string | null) {
+  // (its last words wait for the user to stop typing too; Esc or a lost connection end it at once)
+  if (text !== null && (L.ask || typingNow(L.view))) { L.end = text; if (!L.ask) whenStill(L, () => endStream(L, text)); return }
   live.delete(L.rid)
   if (L.timer) clearTimeout(L.timer)
+  if (L.ask) return say({ t: "done", rid: L.rid, ok: true, text: "", stopped: true })
   const v = L.view, f = v.state.field(streamAt, false), stopped = text === null
   const words = text ?? L.text + L.queued
   if (!f || f.rid !== L.rid || !v.dom.isConnected) return say({ t: "done", rid: L.rid, ok: false, error: "the note closed as it was typed" })
   const start = f.from, end = f.to + L.tail.length
   const want = L.lead + wordsFor(words, L) + L.tail
   if (v.state.sliceDoc(start, end) === L.lead + L.text + L.tail) {
+    // (a caret right after its words stays after them, all of them)
+    const after = caretAfter(v, end, start + want.length)
     v.dispatch({ changes: { from: start, to: end, insert: L.removed }, annotations: [own.of(true), Transaction.addToHistory.of(false)] })
-    v.dispatch({ changes: { from: start, to: start + L.removed.length, insert: want }, annotations: ownEdit,
+    v.dispatch({ changes: { from: start, to: start + L.removed.length, insert: want }, annotations: ownEdit, ...after,
       effects: [streamIs.of(null), lit.of({ from: start, to: start + want.length, tint: tintOf(L.agent) }), lastIs.of({ from: start, to: start + want.length, removed: L.removed, text: want, agent: L.agent })] })
   } else {
     const rest = words.startsWith(L.text) ? words.slice(L.text.length) : ""
-    v.dispatch({ ...(rest ? { changes: { from: f.to, insert: rest } } : {}), annotations: ownEdit, effects: [streamIs.of(null), lit.of({ from: f.from, to: f.to + rest.length, tint: tintOf(L.agent) })] })
+    v.dispatch({ ...(rest ? { changes: { from: f.to, insert: rest }, ...caretAfter(v, f.to, f.to + rest.length) } : {}), annotations: ownEdit, effects: [streamIs.of(null), lit.of({ from: f.from, to: f.to + rest.length, tint: tintOf(L.agent) })] })
   }
   setTyping(null)
   setTimeout(() => { if (v.dom.isConnected) v.dispatch({ effects: lit.of(null) }) }, 4500)
@@ -392,6 +422,7 @@ function watcher(path: string) {
     dirty = false
     timer: ReturnType<typeof setTimeout> | null = null
     whereTimer: ReturnType<typeof setTimeout> | null = null
+    sight: ResizeObserver
     stop: () => void
     readonly view: EditorView
     constructor(view: EditorView) {
@@ -403,7 +434,11 @@ function watcher(path: string) {
       for (const t of view.state.doc.iterLines()) if (t.includes("@") && /(?<![\w@./])@[\w-]/.test(t)) this.asked.push(t)
       this.pending = ChangeSet.empty(view.state.doc.length)
       views.set(view, path)
-      queueMicrotask(() => sayWhere())
+      sayWhereSoon()
+      // (its tab kept hidden, or shown again: whether an edit can be typed in here changes)
+      let shown = false
+      this.sight = new ResizeObserver(() => { const now = view.dom.getClientRects().length > 0; if (now !== shown) { shown = now; sayWhereSoon() } })
+      this.sight.observe(view.dom)
       this.stop = subscribe(() => requestAnimationFrame(() => { if (view.dom.isConnected) view.dispatch({ effects: refresh.of(null) }) }))
     }
     update(u: ViewUpdate) {
@@ -491,9 +526,10 @@ function watcher(path: string) {
     destroy() {
       if (this.dirty) this.report(this.view.state.doc)
       if (this.whereTimer) clearTimeout(this.whereTimer)
+      this.sight.disconnect()
       this.stop()
       views.delete(this.view)
-      queueMicrotask(() => sayWhere())
+      sayWhereSoon()
       bump()
     }
   }, { decorations: (v) => v.decorations })

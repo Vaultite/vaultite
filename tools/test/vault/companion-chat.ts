@@ -39,22 +39,24 @@ function wire(sock: string) {
   return { heard, ask, close: () => new Promise((r) => { c.once("close", r); c.destroy() }) }
 }
 
-/** A window of the app with `path` open, as its socket's messages: it types edits in (at once) and streamed ones as
- *  their words come, answering as editor.ts does. */
-async function window(path: string) {
+/** A window with `path` open, as its socket's messages: it types edits in as editor.ts does. `hidden`: it no longer
+ *  shows the note (a tab kept hidden since it said so), so it types nothing; `closes`: it goes as a stream opens. */
+async function window(path: string, how: { hidden?: boolean; closes?: boolean } = {}) {
   const { matchSocket } = await import("../../../core/plugins.ts")
   const got: Any[] = [], typed = new Map<string, string>()
   const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send(d: string) { const m = JSON.parse(d); got.push(m); answer(m) }, close() {}, ping() {}, terminate() {} })
   const reply = (m: object) => setTimeout(() => ws.emit("message", Buffer.from(JSON.stringify(m))), 5)
   const answer = (m: Any) => {
-    if (m.t === "edit") reply({ t: "done", rid: m.rid, ok: true })
+    if (how.hidden && (m.t === "edit" || m.t === "stream")) reply({ t: "done", rid: m.rid, ok: false })
+    else if (how.closes && m.t === "stream") setTimeout(() => ws.emit("close"), 5)
+    else if (m.t === "edit") reply({ t: "done", rid: m.rid, ok: true })
     else if (m.t === "stream") typed.set(m.rid, m.text)
     else if (m.t === "stream-more") typed.set(m.rid, (typed.get(m.rid) ?? "") + m.add)
     else if (m.t === "stream-end") reply({ t: "done", rid: m.rid, ok: true, text: m.text })
   }
   return { ws, got, typed, open: (plugins: Any[]) => {
     matchSocket(plugins, ["companion", "live"])![1].fn(ws as Any, {} as IncomingMessage, { wild: [], query: {} })
-    ws.emit("message", Buffer.from(JSON.stringify({ t: "where", open: [path], focus: { path, line: 3 }, active: true })))
+    ws.emit("message", Buffer.from(JSON.stringify({ t: "where", open: [path], shown: [path], focus: { path, line: 3 }, active: true })))
   }, close: () => ws.emit("close") }
 }
 
@@ -200,6 +202,40 @@ export default async ($: VaultTest) => {
     const cutEnd = await waitFor(() => w.got.find((m) => m.t === "stream-end"), 5000, 20)
     check("companion chat: an edit cut off as it's written ends with what it had", !!cutEnd && cutEnd.text.length > 0 && cutEnd.text.length < 100 && /^Half/.test(cutEnd.text), cutEnd)
     await idle(id)
+    // (its window no longer shows the note, a tab kept hidden: its call writes the file instead)
+    const hid = await window("Notes/Chat.md", { hidden: true })
+    hid.open($.app.plugins)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"path":"Notes/Chat.md","after":"Call Alice friday","text":"Hidden tab line"}' })
+    const wrote = await waitFor(async () => (await said(id)).find((e) => e.k === "text" && /Wrote Notes\/Chat\.md|couldn't type/.test(e.text))?.text, 5000, 20)
+    check("companion chat: a streamed edit its window can't show is written to the file by its call", /Wrote Notes\/Chat\.md/.test(wrote ?? "") &&
+      $.read("Notes/Chat.md").includes("Call Alice friday\nHidden tab line\n"), [wrote, $.read("Notes/Chat.md")])
+    await idle(id)
+    hid.close()
+    // (its window closes as it's typed: the call fails then, not minutes later, and the note's turn is free)
+    const gone = await window("Notes/Chat.md", { closes: true })
+    gone.open($.app.plugins)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"path":"Notes/Chat.md","after":"Hidden tab line","text":"The window goes as this is typed"}' })
+    const failed = await waitFor(async () => (await said(id)).find((e) => e.k === "text" && /closed as it was typed/.test(e.text))?.text, 5000, 20)
+    check("companion chat: a window that closes as a streamed edit is typed fails its call at once", !!failed, await said(id).then((x) => x.slice(-2)))
+    await idle(id)
+
+    // Closed as it was written: a bubble or a comment the user dismissed mid-stream stays gone once its call comes.
+    const long = (what: string) => `${what} with a long answer that keeps going for a while, word after word, so it can be closed before it ends, and a little more to be sure`
+    const dismissed = async (kind: string, ask: string, words: string) => {
+      w.got.length = 0
+      c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: ask })
+      const shown = await waitFor(() => w.got.find((m) => m.t === "note" && m.note.kind === kind && m.note.text?.length > 8 && words.startsWith(m.note.text))?.note, 5000, 5)
+      w.ws.emit("message", Buffer.from(JSON.stringify({ t: "answer", id: shown?.id, verdict: "dismiss" })))
+      await waitFor(() => w.got.some((m) => m.t === "drop" && m.id === shown?.id), 3000, 5)
+      await idle(id)
+      return { shown, back: w.got.some((m) => m.t === "note" && m.note.kind === kind && m.note.text === words), open: (await status()).notes.some((n: Any) => n.id === shown?.id || n.text === words) }
+    }
+    const bub = await dismissed("say", `stream say {"text":"${long("A bubble")}"}`, long("A bubble"))
+    check("companion chat: a bubble closed as it's written stays closed when its call comes", !!bub.shown && !bub.back && !bub.open, bub)
+    const card = await dismissed("comment", `stream comment {"path":"Notes/Chat.md","find":"Alice","text":"${long("A comment")}"}`, long("A comment"))
+    const past = (await api("POST", "ops/companion.history", { path: "Notes/Chat.md" }))[1].past as Any[]
+    check("companion chat: a comment dismissed as it's written stays dismissed, with all its words", !!card.shown && !card.back && !card.open &&
+      past.some((n) => n.id === card.shown.id && n.text === long("A comment")), [card, past])
 
     // They go on writing what it's thinking over, before it acted: its turn stops, and the ask goes again, whole.
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "slow: how long is the train ride to the coast" })
@@ -220,6 +256,19 @@ export default async ($: VaultTest) => {
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "next" })
     const told = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /"next"/.test(e.text))?.text, 5000, 20)
     check("companion chat: after Esc, its next message says it was stopped", /They stopped your last answer/.test(told ?? ""), told)
+    await idle(id)
+    // (stopped as it streamed a bubble: it isn't writing any more, so going on with an ask still sends it again)
+    w.got.length = 0
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: `stream say {"text":"${long("Stopped")}"}` })
+    await waitFor(() => w.got.some((m) => m.t === "note" && m.note.kind === "say" && /^Stopped with/.test(m.note.text ?? "")), 5000, 5)
+    await api("POST", "ops/companion.interrupt", {})
+    await idle(id)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "slow: which bus goes to the coast" })
+    await waitFor(async () => (await said(id)).some((e) => e.k === "user" && /slow: which bus goes to the coast"/.test(e.text)), 3000, 20)
+    await $.sleep(100)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "slow: which bus goes to the coast, and when is the last one" })
+    const resent = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /when is the last one/.test(e.text))?.text, 5000, 20)
+    check("companion chat: after Esc on a streamed answer, going on with an ask still stops its turn and sends it again", /they went on writing it/.test(resent ?? ""), resent)
     await idle(id)
     w.close()
 

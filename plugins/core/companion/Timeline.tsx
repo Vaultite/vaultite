@@ -8,7 +8,7 @@ import type { ChatLive } from "@plugins/claude-code/driven"
 import { getState, sendMoment, subscribe, type Agent } from "./live"
 import type { Lines, Message, Read } from "./moments"
 import { readMoments } from "./moments"
-import { Arrow, follow } from "./Overlay"
+import { Arrow, follow, unsent } from "./Overlay"
 import { agentMenu, MODES } from "./session"
 import { type Act, contextOf, noteOf, type Outcome, type Place, type Turn, turnsOf } from "./turns"
 
@@ -399,7 +399,7 @@ function AskLine({ name }: { name: string }) {
   const send = () => {
     const said = text.trim()
     if (!said) return
-    sendMoment({ kind: "ask", agent: name, text: said })
+    if (!sendMoment({ kind: "ask", agent: name, text: said })) return unsent()
     setText("")
   }
   const onKey = (e: KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }
