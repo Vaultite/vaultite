@@ -115,6 +115,9 @@ export function revealInTree(path: string, opts: { scroll?: boolean; flash?: boo
   const go = (tries: number) => {
     const row = find()
     if (!row) { if (tries) setTimeout(() => go(tries - 1), 60); return }
+    settled(row, () => place(row))
+  }
+  const place = (row: HTMLElement) => {
     const r = row.getBoundingClientRect(), seen = seenArea(row)
     const flash = () => { if (!opts.flash) return; row.classList.remove("reveal-flash"); void row.offsetWidth; row.classList.add("reveal-flash") }
     // In sight already (a folder: with room for some of its files under it): only the pulse.
@@ -131,6 +134,21 @@ export function revealInTree(path: string, opts: { scroll?: boolean; flash?: boo
   requestAnimationFrame(() => go(5))
 }
 
+/** `then` once `row` has stopped moving in what scrolls it (a panel unfolding or a drawer's folders opening above it
+ *  move it after it's drawn): two frames alike, or half a second at most. */
+function settled(row: HTMLElement, then: () => void) {
+  const at = () => { const box = scrollingBox(row); return row.getBoundingClientRect().top + (box?.scrollTop ?? 0) - (box?.getBoundingClientRect().top ?? 0) }
+  let last = at(), still = 0, frames = 30
+  const look = () => {
+    const now = at()
+    still = Math.abs(now - last) < 0.5 ? still + 1 : 0
+    last = now
+    if (still >= 2 || !--frames || !row.isConnected) return row.isConnected && then()
+    requestAnimationFrame(look)
+  }
+  requestAnimationFrame(look)
+}
+
 /** Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of
  *  its panel (rows pass under it). The tree itself is as tall as its rows, so it says nothing about that. */
 export function seenArea(el: HTMLElement) {
@@ -138,6 +156,8 @@ export function seenArea(el: HTMLElement) {
   for (let p = el.parentElement; p; p = p.parentElement) {
     const st = getComputedStyle(p)
     if (st.overflowY === "visible" && st.overflowX === "visible") continue
+    // (one that clips nothing, as a phone's swipe row round its row, says nothing either)
+    if (!/auto|scroll/.test(st.overflowY) && p.scrollHeight <= p.clientHeight + 1 && p.scrollWidth <= p.clientWidth + 1) continue
     const b = p.getBoundingClientRect()
     top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom); left = Math.max(left, b.left); right = Math.min(right, b.right)
   }
