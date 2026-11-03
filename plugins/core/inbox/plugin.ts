@@ -66,6 +66,23 @@ plugin.kind(new Kind({
   stamps: ["created", "updated", "snoozed"],
 }))
 
+// The app's results: an archived one without its body (a kept inbox's reports were most of a big vault's first load;
+// no list reads an archived body, and its file keeps it), the same objects while their files are (core/statepatch.ts).
+const slim = new WeakMap<Item, Item>()
+let stated: { rs: readonly Item[]; out: Item } | null = null
+plugin.state(() => {
+  const rs = plugin.vault.shared("inbox")
+  if (stated?.rs === rs) return stated.out
+  const out = rs.map((r) => {
+    if (!isArchived(r) || !r.body) return r
+    let s = slim.get(r)
+    if (!s) slim.set(r, s = Object.freeze({ ...r, body: "" }))
+    return s
+  })
+  stated = { rs, out: { inbox: Object.freeze(out) } }
+  return stated.out
+})
+
 /** When a result last had news: its thread's latest report (`updated`), else when it came, or its snooze's end once
  *  that's past (it came back then). */
 export const latest = (r: Item) => {

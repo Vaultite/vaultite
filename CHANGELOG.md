@@ -7,6 +7,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 - **The companion answers as it writes**: its words stream into the note, its bubble and its comment cards as the model writes them (first words in about 2 s, from 4 to 5), Enter and a `?` send at once and a sentence's end after a breath, going on with your thought restarts its answer with all of it, its turn ends with its last action (no summary after), its cursor stays where it wrote, it waits while you type, its edit is one undo step of its own (also Undo the companion's last edit), and Esc stops it mid-answer (Codex and OpenCode in their terminals too). What you write reaches it as your own changes alone, a hunk each place, never with its words between them. `vau companion timings` has its think time for Claude Code sessions, and its first word.
+- **A big vault loads with half the data**: archived inbox results come without their text (their files keep it),
+  which was half of a long-used inbox's first load (1 MB to 0.5 MB compressed here).
 - **A first Claude Code chat tab opens at once**: its code loads while the app is idle and draws without waiting,
   in ~80 ms (was ~390).
 - **A sidebar shows from its rail at once**: its panels stay drawn while it's folded to the rail, so showing it again

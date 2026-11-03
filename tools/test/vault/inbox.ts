@@ -60,6 +60,12 @@ export default async ($: VaultTest) => {
       read("Inbox/Plant care apps, again.md").includes("status: new") && !read("Inbox/Plant care apps, again.md").includes("archived"), b)
     ;[st, b] = await api("PUT", "inbox/Plant care apps, again", { archived: true })
     check("inbox: archived is done", st === 200 && b.status === "done" && read("Inbox/.archive/Plant care apps, again.md").includes("status: done"), b)
+    {
+      const [, sb] = await api("GET", "state?since=0")
+      const inState = (id: string) => JSON.parse(String(sb)).state.inbox.find((r: Any) => r.id === id)
+      check("inbox: the state leaves an archived result's body out (its file keeps it)", inState("Inbox/.archive/Plant care apps, again")?.body === "" &&
+        read("Inbox/.archive/Plant care apps, again.md").includes("Updated"), inState("Inbox/.archive/Plant care apps, again"))
+    }
     ;[st, b] = await api("PUT", "inbox/Inbox/.archive/Plant care apps, again", { archived: false })
     check("inbox: unarchived is new", st === 200 && b.status === "new" && exists("Inbox/Plant care apps, again.md"), b)
     write("Inbox/Written by hand.md", "---\ntype: inbox\nstatus: maybe\n---\n\nA file.\n")

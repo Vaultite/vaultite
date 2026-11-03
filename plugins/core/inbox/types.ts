@@ -8,7 +8,9 @@ export type InboxItem = {
   from: string
   /** Where it came from (a page's address), or "". */
   source: string
-  created: string | null; body: string
+  created: string | null
+  /** "" once archived: the state leaves it out (its file has it). */
+  body: string
   /** Its thread's latest report (an agent's reply in the same file), a local stamp like created. */
   updated?: string | null
   archived?: boolean
