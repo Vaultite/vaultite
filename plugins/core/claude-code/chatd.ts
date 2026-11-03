@@ -1,5 +1,5 @@
 // The chat sessions' keeper: a detached Node process hosting Claude Code sessions through the Agent SDK (chathost.ts),
-// so a turn running survives the server restarting or a deploy, as the terminal keeper's shells do (terminal/ptyd.ts).
+// so a turn running survives the server restarting or a deploy, as the terminal server's shells do (terminal/termd/).
 import fs from "node:fs"
 import { fileURLToPath } from "node:url"
 import { Host, listen, relayed } from "./chathost.ts"

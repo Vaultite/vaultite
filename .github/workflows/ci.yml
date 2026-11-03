@@ -104,7 +104,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
       - run: npx playwright-core install --with-deps chromium
-      - run: sudo apt-get install -y tmux xvfb ffmpeg
+      - run: sudo apt-get install -y xvfb ffmpeg
       - run: npm run build
       - run: node tools/qa.ts --lint
       # The desktop scripts run Electron, which needs a display

@@ -20,6 +20,18 @@ export default async ($: VaultTest) => {
   check("windows: the shells offered are PowerShell's, Command Prompt and WSL's distros, PowerShell the default",
     /pwsh|powershell/i.test(defaultShell()) && shells.some((x) => x.label === "Command Prompt") && shells.some((x) => x.label === "Windows PowerShell"), shells)
 
+  // A command alone in PowerShell exits with its program's code, and 1 when a cmdlet failed (no code: $? only).
+  {
+    const { launch } = await import("../../../plugins/core/terminal/backend.ts")
+    const { spawnSync } = await import("node:child_process")
+    const codeOf = (command: string) => {
+      const l = launch({ shell: defaultShell(), run: { command }, only: true, cwd: tmp, env: process.env as Record<string, string>, ctx: {}, cols: 80, rows: 24, scrollback: 100 })
+      return spawnSync(l.file, l.args as string[], { cwd: l.cwd, env: l.env, timeout: 60_000 }).status
+    }
+    const codes = [codeOf("Write-Output hi"), codeOf("Get-Item C:\\no-such-file-here"), codeOf("cmd /c exit 3")]
+    check("windows: a PowerShell command alone exits 0, 1 when a cmdlet failed, else its program's code", JSON.stringify(codes) === "[0,1,3]", codes)
+  }
+
   // The terminal server on a named pipe: a server (another process) starts a shell and goes away; this one finds it and reattaches.
   {
     const name = `testwin-${process.pid}`, keeper = termdBackend(name, { daemon: path.join(ROOT, "plugins/core/terminal/termd/termd.ts") })

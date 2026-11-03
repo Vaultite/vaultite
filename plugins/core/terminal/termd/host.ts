@@ -213,7 +213,7 @@ export class Session {
     this.term.write(last, () => {
       this.exit = { ...exit, at: Date.now() }
       clearTimeout(this.told)
-      for (const c of this.attached) { if (last && c.ready) c.send({ t: "data", d: last }); c.send({ t: "exit", code: exit.code, signal: exit.signal }); c.session = null }
+      for (const c of this.attached) { if (last && c.ready) c.send({ t: "data", d: last }); c.send({ t: "exit", code: exit.code, signal: exit.signal, ...(exit.lost ? { lost: true } : {}) }); c.session = null }
       this.attached.clear()
       if (this.h.sessions.get(this.id) === this) this.h.sessions.delete(this.id)
       this.h.log("exited", this.id, JSON.stringify(exit))

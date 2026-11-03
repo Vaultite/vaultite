@@ -44,7 +44,7 @@ export type Session = { id: string; agent: string | null; process: string; busy?
   /** Its agent isn't installed on that machine. */
   missing?: boolean
   machine?: string; machineLabel?: string
-  /** Where it runs (backend.ts: vaultite, tmux, herdr...), and whether it's another program's own (a herdr pane the
+  /** Where it runs (backend.ts: vaultite, pty, herdr...), and whether it's another program's own (a herdr pane the
    *  user opened there: listed only while a tab shows it, never ended by closing one). */
   backend?: string; external?: boolean
   /** Its agent's own session id (what it resumes; Claude Code's names its transcript), when the agent says. */
@@ -236,7 +236,7 @@ function connect() {
   }
   sock.onclose = (e) => {
     if (ws !== sock || e.code === 4003) return
-    // The server restarting ends every shell (without tmux): reconnect, and the list comes back.
+    // The server restarting: reconnect, and the list comes back.
     timer = window.setTimeout(connect, Math.min(10000, 500 * 2 ** Math.min(tries++, 5)))
   }
 }
@@ -248,7 +248,7 @@ function disconnect() {
   clearTimeout(timer)
   sock?.close()
 }
-// Hidden, the socket closes: while one is open the server reads every shell's state (ps, tmux) every 2 s, all day. Shown
+// Hidden, the socket closes: while one is open the server reads every shell's state (ps) every 2 s, all day. Shown
 // again it opens, and its first message is the list as it is now.
 if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => {
   if (document.hidden) disconnect()

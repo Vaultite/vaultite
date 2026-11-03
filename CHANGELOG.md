@@ -33,6 +33,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   op's switch. A tab of a herdr pane waits for herdr rather than starting a shell of its own. The tmux backend
   is gone (attach does what it was for), `vau terminal screen` is `capture`, and a plugin's terminal backend
   (`terminal:backend`) implements the new `Backend` (capture, keys, events, meta): one made for the old one isn't used.
+- **The tmux option for terminals is gone**: new terminals all run in Vaultite's terminal server, and shells started in tmux before this update keep running there unlisted (the app says so once): `tmux -L vaultite attach` reaches them.
 - **The companion is a person in the room**: two modes, quiet and pair (notice is pair now). In pair it answers what's
   meant for it, @claude or not, and when it stays silent its seen tick says why. A line with @claude stays in the note.
   Its bubbles take a reply, go once you write on, look different when they ask, leave an unread dot on its cursor and

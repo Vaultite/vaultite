@@ -3,11 +3,11 @@
 import { CliError, done, type PluginCli } from "../../../core/cli.ts"
 
 type Waited = { met?: string | null; timedOut?: boolean; exit?: { code: number; signal: number; lost?: boolean } }
-/** The terminal's own exit code when the wait was for its end (128 + a signal's number, as a shell says it), 124 when
- *  the time ran out (as timeout(1)), 1 when it ended before what was waited for, else 0. */
+/** The terminal's own exit code when the wait was for its end (128 + a signal's number; 1 lost: how is unknown), 124
+ *  when the time ran out (as timeout(1)), 1 when it ended before what was waited for, else 0. */
 const waitCode = (r: Waited | null) => {
   if (!r || r.met === undefined) return 0
-  if (r.met === "exit" && r.exit) return r.exit.signal ? 128 + r.exit.signal : r.exit.code & 255
+  if (r.met === "exit" && r.exit) return r.exit.lost ? 1 : r.exit.signal ? 128 + r.exit.signal : r.exit.code & 255
   if (r.timedOut) return 124
   return r.met ? 0 : 1
 }
@@ -51,6 +51,8 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
       const ws = new WebSocket(`${c.url.replace(/^http/, "ws")}/api/terminal/${encodeURIComponent(id)}?${q}`, { headers: { "X-Vaultite-Client": "cli" } })
       const code = await new Promise<number>((resolve, reject) => {
         let said = "", raw = false
+        // (the terminal's size as the server last said: another device may have made it its own)
+        let shell = size()
         const restore = () => {
           if (raw) { try { input.setRawMode(false) } catch { /* gone */ } raw = false }
           input.pause()
@@ -61,9 +63,12 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
         }
         const typed = (d: Buffer) => {
           if (d.length === 1 && d[0] === DETACH) { said = `Detached from ${id}: it's still running (vau terminal attach ${id} again).`; ws.close(1000); return }
+          // Typing here claims its size back from another device that resized it, as a tab does (Terminal.tsx: claim).
+          const mine = size()
+          if (mine.cols !== shell.cols || mine.rows !== shell.rows) resized()
           if (ws.readyState === ws.OPEN) ws.send(d, { binary: true })
         }
-        const resized = () => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "resize", ...size() })) }
+        const resized = () => { if (ws.readyState === ws.OPEN) { shell = size(); ws.send(JSON.stringify({ t: "resize", ...shell })) } }
         let exit = 0
         ws.on("open", () => {
           input.setRawMode(true); raw = true
@@ -73,16 +78,26 @@ id, its name or the end of its id, <id>@<machine> for another machine's (through
         })
         ws.on("message", (data: Buffer, binary: boolean) => {
           if (binary) { out.write(data); return }
-          let m: { t?: string; code?: number; signal?: number; reason?: string; label?: string; ended?: boolean }
+          let m: { t?: string; code?: number; signal?: number; reason?: string; label?: string; ended?: boolean; lost?: boolean; cols?: number; rows?: number }
           try { m = JSON.parse(String(data)) } catch { return }
+          if (m.t === "size") shell = { cols: Number(m.cols) || 0, rows: Number(m.rows) || 0 }
           // (its picture comes next: drawn on a clean screen, its history above it)
           if (m.t === "attached") out.write("\x1b[H\x1b[2J\x1b[3J")
+          else if (m.t === "exit" && m.lost) { exit = 1; said = `${id} was lost: its terminal server went away.` }
           else if (m.t === "exit") { exit = m.signal ? 128 + m.signal : (m.code ?? 0) & 255; said = `${id} ended${m.ended ? "" : ` (${m.signal ? `signal ${m.signal}` : `exit code ${m.code ?? 0}`})`}.` }
           else if (m.t === "gone") said = `${id}'s session is gone.`
           else if (m.t === "refused" || m.t === "unreachable") { said = `${m.label ? `${m.label} ` : ""}${m.reason ?? "refused"}`; exit = 1 }
         })
-        ws.on("close", () => { restore(); if (said) out.write(`${said}\r\n`); resolve(exit) })
-        ws.on("error", (e) => { restore(); reject(new CliError(`can't reach ${c.url}: ${e.message}`)) })
+        let failed = false
+        ws.on("close", () => {
+          if (failed) return
+          restore()
+          // (closed with nothing said: the connection dropped, the server restarting or the network gone)
+          if (!said) { said = `Connection lost: ${id} may still be running (vau terminal attach ${id} again).`; exit = 1 }
+          out.write(`${said}\r\n`)
+          resolve(exit)
+        })
+        ws.on("error", (e) => { failed = true; restore(); reject(new CliError(`can't reach ${c.url}: ${e.message}`)) })
       })
       return { ...done({ id, code }, ""), code }
     },

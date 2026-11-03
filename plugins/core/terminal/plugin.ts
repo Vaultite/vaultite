@@ -1,5 +1,6 @@
-// Terminal: login shells on this machine in a backend that outlives the server (the keeper, tmux or another plugin's), a
+// Terminal: login shells on this machine in a backend that outlives the server (the terminal server or another plugin's), a
 // WebSocket per tab at /api/terminal/<id>. A shell is everything, so only this machine's owner gets one (plugin.refusal).
+import { execFile } from "node:child_process"
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import os from "node:os"
@@ -25,8 +26,8 @@ export const plugin = new Plugin(import.meta.url)
 const BEHIND = 16 << 20
 /** Output a page may have to draw before its shell is held (its program waits on a full pty), and when it goes on. */
 const HOLD = 1 << 20, GO = 256 << 10, STALL = 3000
-/** Lines of history every terminal keeps, whatever its backend (the setting `scrollback`): the page's, the keeper's and
- *  tmux's, all given back to a page that comes back. */
+/** Lines of history every terminal keeps, whatever its backend (the setting `scrollback`): the page's and the terminal
+ *  server's, all given back to a page that comes back. */
 const scrollback = () => clamp(plugin.settings().scrollback, 100, 1_000_000, 10_000)
 limits.scrollback = scrollback
 // A shell ends only when its tab closes (idle, its last one), or it's ended on purpose: never for having been left alone.
@@ -140,8 +141,10 @@ const UPLOADS_KEPT = 30 * 86_400_000
 const SPARE = "vauspare-" // a shell kept ready (below)
 
 // The terminal server (termd/), which takes over the keeper's terminals from before it (ptyd, protocol 1) once it runs.
-const keeper = termdBackend(NAME, { daemon: path.join(plugin.dir, "termd", "termd.ts"), log: console.error, oldServers: [serverFiles(NAME, 1).socket] })
-const fallback = localBackend({ log: (...a) => console.error("terminal (in this server):", ...a) })
+const keeper = termdBackend(NAME, { daemon: path.join(plugin.dir, "termd", "termd.ts"), log: console.error, oldServers: [serverFiles(NAME, 1)] })
+// (the keeper's terminals from before are taken over here when the terminal server can't start to take them)
+const fallback = localBackend({ log: (...a) => console.error("terminal (in this server):", ...a), oldServers: [serverFiles(NAME, 1)],
+  adoptOld: async () => !(await keeper.ready().catch(() => false)) })
 /** Another plugin's backend, while it's on (the service "terminal:backend": herdr's, Rex's), or null. One made for the
  *  Backend before this one (no capture) isn't used: its plugin needs an update. */
 let oldBackend = ""
@@ -207,7 +210,7 @@ async function backendOf(id: string): Promise<Backend | null> {
 const runsHere = async (id: string) => !!(await backendOf(id))
 
 /** Whether a new terminal can read `dir` (app.permissions: the vault): the running keeper's own read (an older build
- *  may have started it), else this server's, which a keeper started now reads as; tmux and a plugin's backend can't tell. */
+ *  may have started it), else this server's, which a keeper started now reads as; a plugin's backend can't tell. */
 async function access(dir: string): Promise<Access> {
   const other = pluginBackend()
   if (other?.preferred && (await other.ready().catch(() => false))) return { ok: null, why: `terminals run in ${other.label}, which can't tell` }
@@ -252,6 +255,20 @@ setTimeout(() => void sweep(), 5000).unref?.()
 const sweeper = setInterval(sweep, 3600 * 1000)
 sweeper.unref?.()
 plugin.onUnload(() => clearInterval(sweeper))
+
+/** tmux was a backend before the terminal server: its sessions still running aren't listed or taken over here, so the
+ *  user is told once (on this machine) where they are. */
+function tmuxLeft() {
+  const tmux = WIN ? "" : ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].find((p) => fs.existsSync(p))
+  const told = path.join(plugin.localDir(), "tmux-told")
+  if (!tmux || fs.existsSync(told)) return
+  execFile(tmux, ["-L", NAME, "has-session"], { timeout: 5000 }, (e) => {
+    if (e) return
+    void plugin.runOp("ui.notify", { text: `Your terminals from before still run in tmux, which Vaultite no longer lists: tmux -L ${NAME} attach reaches them` })
+      .then(() => fs.writeFileSync(told, `${new Date().toISOString()}\n`), () => {})
+  })
+}
+setTimeout(tmuxLeft, 10_000).unref?.()
 
 /** The server's environment, less what's about the server itself (npm's variables when run with npm start, PORT) and
  *  the agent's session that started it, if one did. */
@@ -785,12 +802,12 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
       return
     }
     // Ended by us: a SIGHUP, as when a shell is killed directly.
-    const { code, signal } = s.ended ? { code: 0, signal: 1 } : exit ?? { code: 0, signal: 0 }
+    const { code, signal, lost } = s.ended ? { code: 0, signal: 1, lost: false } : exit ?? { code: 0, signal: 0, lost: false }
     // (a backend that tells its terminals' ends tells this one: onEvent)
-    if (!backend.events) exited(id, { code, signal })
+    if (!backend.events) exited(id, { code, signal, lost })
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
-      ws.send(JSON.stringify({ t: "exit", code, signal, ...(s.ended && !s.kept ? { ended: true } : {}) }))
+      ws.send(JSON.stringify({ t: "exit", code, signal, ...(lost ? { lost: true } : {}), ...(s.ended && !s.kept ? { ended: true } : {}) }))
       ws.close(EXITED, "exited")
     }
   })
@@ -823,7 +840,7 @@ const purposeful = new Map<string, { keep: boolean }>()
 const toldEnded = new Set<string>()
 
 /** Terminal `id` ended (its backend tells, else its link here): the Inbox and the rest hear "terminal.ended", once. */
-function exited(id: string, exit: { code: number; signal: number }) {
+function exited(id: string, exit: { code: number; signal: number; lost?: boolean }) {
   if (toldEnded.has(id)) return
   toldEnded.add(id)
   if (toldEnded.size > 500) toldEnded.delete(toldEnded.values().next().value!)
@@ -831,12 +848,13 @@ function exited(id: string, exit: { code: number; signal: number }) {
   purposeful.delete(id)
   // Ended by us: a SIGHUP, as when a shell is killed directly.
   const { code, signal } = p ? { code: 0, signal: 1 } : exit
+  const lost = !p && !!exit.lost
   // A clean exit (an agent's too: the shell after it) closes its tabs, the ones away now once they're put back; an
-  // agent's session that died keeps its tabs, saying so, with Restart.
-  if (!code && !signal) markEnded(id)
+  // agent's session that died, or one lost with its terminal server, keeps its tabs, saying so, with Restart.
+  if (!code && !signal && !lost) markEnded(id)
   forgetState(id)
   // (onPurpose: the user ended it, End session or vau terminal end: the Inbox takes its row as dealt with)
-  tell("terminal.ended", { id, code, signal, ...(p && !p.keep ? { onPurpose: true } : {}) })
+  tell("terminal.ended", { id, code, signal, ...(lost ? { lost: true } : {}), ...(p && !p.keep ? { onPurpose: true } : {}) })
   exits.set(id, { ...exit, at: Date.now() })
   if (exits.size > 200) exits.delete(exits.keys().next().value!)
   for (const fn of exitHeard) fn(id)
@@ -1038,7 +1056,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
     resize(s, cols, rows)
     return attach(s, ws, false)
   }
-  // A tab put back asks only to attach: an agent's new session that ended (or died with tmux) isn't started again, nor
+  // A tab put back asks only to attach: an agent's new session that ended (or was lost) isn't started again, nor
   // a session ended for good (its tab closes).
   const agent = agentOf(id), ended = endedOnPurpose.has(id)
   if (query.attach && (ended || (agent && !agent.resume)) && !starting.has(id) && !(await runsHere(id))) {
@@ -1122,7 +1140,7 @@ const LIST_FRESH = 1900 // (under the poll's 2 s, so each poll reads it again)
 
 async function readList(): Promise<Listed[]> {
   const out = new Map<string, Listed>(), timing = span("terminal.list")
-  // (all at once: tmux's and a plugin's lists each start a process, and so does the process table inFront reads)
+  // (all at once: a plugin's list may start a process, and so does the process table inFront reads)
   if (readsTable) void processTable()
   readsTable = false
   const all = backends(), lists = await Promise.all(all.map((b) => b.list().catch(() => [] as Shell[])))
@@ -1316,7 +1334,7 @@ const WAITS = new Set(["exit", "idle", "working", "blocked", "done", "error", "q
 const MAX_WAIT = 3600
 
 /** How the terminals that ended lately ended, as told here (exited), for a wait that comes after. */
-const exits = new Map<string, { code: number; signal: number; at: number }>()
+const exits = new Map<string, { code: number; signal: number; lost?: boolean; at: number }>()
 
 /** The terminals that ended lately, as their backends keep them (the terminal server: an hour), newest last. */
 async function endedList() {
@@ -1342,7 +1360,7 @@ async function waitFor(id: string, wants: string[], o: { ms: number; quiet: numb
   // An agent at rest for a moment between steps of one turn isn't done: idle and done count once they've held.
   const hold = o.hold ?? 1500
   const since = Date.now()
-  const result = (met: string | null, exit?: { code: number; signal: number } | null, matched?: string) => {
+  const result = (met: string | null, exit?: { code: number; signal: number; lost?: boolean } | null, matched?: string) => {
     const now = stateNow(id)
     return { met, ...(matched !== undefined ? { matched } : {}), timedOut: met === null && !o.abort.aborted, waited: Math.round((Date.now() - since) / 100) / 10, for: [...want],
       ...(now ? { state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}), ...(exit ? { exit } : {}) }
@@ -1350,10 +1368,9 @@ async function waitFor(id: string, wants: string[], o: { ms: number; quiet: numb
   const gone = async () => {
     // (told here first: its session here may still be letting go of it)
     const told = exits.get(id)
-    if (told) return { code: told.code, signal: told.signal }
-    if (await backendOf(id)) return null
-    const e = await endedOf(id)
-    return e ? { code: e.exit.code, signal: e.exit.signal } : { code: -1, signal: 0 }
+    if (!told && (await backendOf(id))) return null
+    const e = told ?? (await endedOf(id))?.exit
+    return e ? { code: e.code, signal: e.signal, ...(e.lost ? { lost: true } : {}) } : { code: -1, signal: 0 }
   }
   const stateMet = () => {
     const now = stateNow(id), at = told.get(id)?.at ?? 0
@@ -1477,7 +1494,12 @@ plugin.route("POST", "terminals/*", async (req) => {
   if (!starting.has(id)) starting.set(id, start(id, cols, rows, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort), mode, cwd },
     { command, ...(name ? { name } : {}) })
     .finally(() => starting.delete(id)))
-  await starting.get(id)!
+  try { await starting.get(id)! } catch (e) {
+    // (a command that ended within ms has nothing left to attach to: how it ended is the answer)
+    const ended = command ? await endedOf(id) : null
+    if (!ended) throw e
+    return { id, started: true, agent: null, exit: ended.exit }
+  }
   return { id, started: true, agent: agentOf(id)?.name ?? null }
 }, { lock: false })
 

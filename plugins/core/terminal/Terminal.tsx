@@ -384,7 +384,7 @@ function create(id: string): Live {
         replayNext = false; replaying = true
         return t.write(bytes, () => { replaying = false; firstOutput(); done() })
       }
-      let msg: { t?: string; fresh?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; backend?: string; cols?: number; rows?: number; ended?: boolean
+      let msg: { t?: string; fresh?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; backend?: string; cols?: number; rows?: number; ended?: boolean; lost?: boolean
         scrollback?: number }
       try { msg = JSON.parse(e.data) } catch { return }
       if (msg.t === "size") {
@@ -420,10 +420,10 @@ function create(id: string): Live {
         over()
       } else if (msg.t === "exit") {
         exited = true
-        // Ended for good (End session, vau terminal end) or a clean exit (exit, ⌃D; an agent's too) closes the tab; an
-        // agent's session that died stays, saying so, and a shell's failure with its output, both with Restart.
-        if (msg.ended || (!msg.code && !msg.signal)) return closeIt()
-        setStatus(agentOfTerminal(id) ? { kind: "ended" } : { kind: "exited", code: msg.code ?? 0, signal: msg.signal ?? 0 })
+        // Ended for good or a clean exit (exit, ⌃D; an agent's too) closes the tab; an agent's session that died or one
+        // lost with its terminal server stays, saying so, and a shell's failure with its output, all with Restart.
+        if (msg.ended || (!msg.code && !msg.signal && !msg.lost)) return closeIt()
+        setStatus(agentOfTerminal(id) || msg.lost ? { kind: "ended" } : { kind: "exited", code: msg.code ?? 0, signal: msg.signal ?? 0 })
         over()
       }
     }

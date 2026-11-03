@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { performance } from "node:perf_hooks"
 import { WebSocket } from "ws"
+import { backendName, serverFiles } from "../../plugins/core/terminal/backend.ts"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
 const arg = (name: string, dflt: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt }
@@ -17,7 +18,8 @@ const PORT = await freePort()
 const BASE = `http://127.0.0.1:${PORT}`, WSBASE = `ws://127.0.0.1:${PORT}`
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-termperf-"))
 const VAULT = path.join(tmp, "vault"), LOCAL = path.join(tmp, "local"), ZDOT = path.join(tmp, "zdot")
-const KEEPER = path.join(os.platform() === "darwin" ? os.tmpdir() : `/tmp/vaultite-${process.getuid?.()}`, `vaultite-ptyd1-vaultite-${PORT}.sock`)
+/** The server's terminal server (termd): its socket, and its files (.pid) beside it. */
+const KEEPER = serverFiles(backendName(PORT))
 
 const step = (what: string) => console.error(`${new Date().toISOString().slice(11, 19)} ${what}`)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -29,7 +31,7 @@ function cpu(pid: number | undefined) {
     return t.split(":").reduce((acc, x) => acc * 60 + Number(x), 0) * 1000
   } catch { return 0 }
 }
-const keeperPid = () => { try { return Number(fs.readFileSync(`${KEEPER}.pid`, "utf8")) || undefined } catch { return undefined } }
+const keeperPid = () => { try { return Number(fs.readFileSync(`${KEEPER.files}.pid`, "utf8")) || undefined } catch { return undefined } }
 let server: ChildProcess
 /** CPU the server and the keeper spend in `fn`. */
 async function cpuOf<T>(fn: () => Promise<T>): Promise<{ r: T; server: number; keeper: number }> {
@@ -62,12 +64,11 @@ async function boot() {
   }
 }
 
-/** Stops the server, its keeper and its tmux (CLAUDE.md: by port and pid, never by pattern). */
+/** Stops the server and its keeper (CLAUDE.md: by port and pid, never by pattern). */
 async function cleanup() {
   const k = keeperPid()
   if (server && server.exitCode === null) { const gone = new Promise((r) => server.once("exit", r)); server.kill(); await Promise.race([gone, sleep(5000)]) }
   if (k) try { process.kill(k, "SIGTERM") } catch { /* gone */ }
-  try { execFileSync("tmux", ["-L", `vaultite-${PORT}`, "kill-server"], { stdio: "ignore" }) } catch { /* none */ }
   fs.rmSync(tmp, { recursive: true, force: true })
 }
 
@@ -161,7 +162,7 @@ async function echo(t: Term, n: number) {
 
 /** The same straight to the keeper's socket (attached to the same shell): the path without the server. */
 async function echoKeeper(id: string, n: number) {
-  const sock = net.connect(KEEPER)
+  const sock = net.connect(KEEPER.socket)
   await new Promise((r) => sock.once("connect", r))
   sock.setEncoding("utf8")
   let buf = "", waiter: (() => void) | null = null

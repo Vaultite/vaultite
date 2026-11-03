@@ -52,34 +52,44 @@ type Kit = {
 
 type Listed = { id: string; pid?: number; process?: string; created?: number; title?: string; cols?: number; rows?: number; spare?: boolean; said?: Said }
 
+/** How many times terminals it couldn't take over are tried again (a minute later, then two...): they still run there. */
+const RETRIES = 5
+
 /** adopt(socket): the older server there's terminals, taken over (the ids now held through it). Asked again while it
  *  runs, the same answer. */
 export function adopter(k: Kit) {
   const going = new Map<string, Promise<string[]>>()
-  return (socket: string, scrollback: number) => {
+  const adopt = (socket: string, scrollback: number, tries = 0): Promise<string[]> => {
     if (!socket) return Promise.reject(new Error("which server? give its socket"))
     let p = going.get(socket)
     if (!p) {
-      p = adoptFrom(k, socket, scrollback)
+      p = adoptFrom(k, socket, scrollback, tries, () => {
+        // (one it couldn't take over, a snapshot too slow on a loaded machine, still runs there)
+        if (tries < RETRIES) setTimeout(() => void adopt(socket, scrollback, tries + 1).catch(() => {}), 60_000 * (tries + 1)).unref()
+      })
       going.set(socket, p)
       p.catch(() => {}).finally(() => { if (going.get(socket) === p) going.delete(socket) })
     }
     return p
   }
+  return adopt
 }
 
-async function adoptFrom(k: Kit, socket: string, scrollback: number): Promise<string[]> {
+async function adoptFrom(k: Kit, socket: string, scrollback: number, tries: number, failed: () => void): Promise<string[]> {
   let ctl: Wire
   try { ctl = await connect(socket) } catch { return [] } // (none runs there)
-  const hello = await ctl.ask({ op: "hello" })
-  if (Number(hello.v) >= PROTOCOL) { ctl.sock.destroy(); throw new Error(`the server at ${socket} speaks protocol ${hello.v}, not an older one`) }
-  const via = Number(hello.pid) || 0
   const mine = new Map<string, Session>()
   const procs = new Map<string, string>()
-  // Its terminals' OSC 7501 as they change (it answers their probes itself), and what runs in each, asked every 2 s.
-  ctl.on((m) => { if (m.t === "status" && typeof m.id === "string") mine.get(m.id)?.status({ seen: !!m.seen, status: (m.status ?? null) as Said["status"] }) })
-  ctl.send({ op: "status" })
-  const listed = ((await ctl.ask({ op: "list" })).sessions ?? []) as Listed[]
+  let via: number, listed: Listed[]
+  try {
+    const hello = await ctl.ask({ op: "hello" })
+    if (Number(hello.v) >= PROTOCOL) throw new Error(`the server at ${socket} speaks protocol ${hello.v}, not an older one`)
+    via = Number(hello.pid) || 0
+    // Its terminals' OSC 7501 as they change (it answers their probes itself), and what runs in each, asked every 2 s.
+    ctl.on((m) => { if (m.t === "status" && typeof m.id === "string") mine.get(m.id)?.status({ seen: !!m.seen, status: (m.status ?? null) as Said["status"] }) })
+    ctl.send({ op: "status" })
+    listed = ((await ctl.ask({ op: "list" })).sessions ?? []) as Listed[]
+  } catch (e) { ctl.sock.destroy(); throw e }
   const poll = setInterval(() => {
     ctl.ask({ op: "list" }).then((r) => { for (const x of (r.sessions ?? []) as Listed[]) { procs.set(x.id, x.process ?? ""); const s = mine.get(x.id); if (s && x.title && !s.title) s.title = x.title } }, () => {})
   }, 2000)
@@ -91,26 +101,29 @@ async function adoptFrom(k: Kit, socket: string, scrollback: number): Promise<st
     k.around.changed?.()
   }
   ctl.sock.on("close", () => clearInterval(poll))
+  let missed = 0
   for (const x of listed) {
     // (its ready shells were the app's spares: a new one is made here)
     if (x.spare || x.id.startsWith("vauspare-")) { await ctl.ask({ op: "kill", id: x.id }).catch(() => {}); continue }
     if (k.sessions.has(x.id)) continue
     try {
-      const s = await adoptOne(k, socket, ctl, x, via, scrollback, procs)
+      const s = await adoptOne(k, socket, ctl, x, via, scrollback, procs, 15_000 * (tries + 1))
       mine.set(x.id, s)
       s.meta = { ...s.meta }
       const end = s.ended.bind(s)
       s.ended = (exit) => { end(exit); if (mine.delete(x.id)) done() }
-    } catch (e) { k.around.log("adopt", x.id, "failed:", e) }
+    } catch (e) { missed++; k.around.log("adopt", x.id, "failed:", e) }
   }
-  k.around.log(`adopted ${mine.size} from ${socket} (pid ${via})`)
+  k.around.log(`adopted ${mine.size} from ${socket} (pid ${via})${missed ? `, ${missed} not yet` : ""}`)
   done()
+  if (missed) failed()
   return [...mine.keys()]
 }
 
-async function adoptOne(k: Kit, socket: string, ctl: Wire, x: Listed, via: number, scrollback: number, procs: Map<string, string>) {
+async function adoptOne(k: Kit, socket: string, ctl: Wire, x: Listed, via: number, scrollback: number, procs: Map<string, string>, snapshotMs: number) {
   const w = await connect(socket)
-  let s: Session | null = null, pictured = false
+  // (`abandoned`: not taken over after all: it still runs there, so its connection closing isn't its end)
+  let s: Session | null = null, pictured = false, abandoned = false
   const early: Msg[] = []
   const take = (m: Msg) => {
     if (m.t === "data" && typeof m.d === "string") { if (pictured) s!.output(m.d) }
@@ -118,8 +131,9 @@ async function adoptOne(k: Kit, socket: string, ctl: Wire, x: Listed, via: numbe
     else if (m.t === "exit") { s!.ended({ code: Number(m.code) || 0, signal: Number(m.signal) || 0 }); w.sock.destroy() }
   }
   w.on((m) => { if (!s) early.push(m); else take(m) })
-  w.sock.on("close", () => s?.ended({ code: 0, signal: 0, lost: true }))
-  const a = await w.ask({ op: "attach", id: x.id })
+  w.sock.on("close", () => { if (!abandoned) s?.ended({ code: 0, signal: 0, lost: true }) })
+  let a: Msg
+  try { a = await w.ask({ op: "attach", id: x.id }) } catch (e) { w.sock.destroy(); throw e }
   procs.set(x.id, x.process ?? "")
   const driver: Driver = {
     pid: x.pid ?? 0,
@@ -140,7 +154,7 @@ async function adoptOne(k: Kit, socket: string, ctl: Wire, x: Listed, via: numbe
   // Its picture has everything it showed until now (what came before it is in it), then what it prints from there on.
   const sess = s
   await new Promise<void>((ok, fail) => {
-    const timer = setTimeout(() => fail(new Error("it didn't answer snapshot")), 15000)
+    const timer = setTimeout(() => fail(new Error("it didn't answer snapshot")), snapshotMs)
     w.call({ op: "snapshot" }, (pic) => {
       clearTimeout(timer)
       if (typeof pic.error === "string") return fail(new Error(pic.error))
@@ -148,6 +162,12 @@ async function adoptOne(k: Kit, socket: string, ctl: Wire, x: Listed, via: numbe
       pictured = true
       ok()
     })
-  }).catch((e) => { k.sessions.delete(x.id); w.sock.destroy(); throw e })
+  }).catch((e) => {
+    abandoned = true
+    if (k.sessions.get(x.id) === sess) k.sessions.delete(x.id)
+    w.sock.destroy()
+    sess.term.dispose()
+    throw e
+  })
   return s
 }

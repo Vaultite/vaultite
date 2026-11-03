@@ -17,8 +17,9 @@ Every event is one JSON object: `{"type", "seq", "t" (ms since 1970), "cursor", 
 - `terminal.state` `{id, agent, state, kind?, msg?, from}`: its program's state changed: idle, working, blocked (waiting
   on the user: `kind` permission, question or auth, `msg` its words), done or error; `from` says who told (osc7501,
   hooks, screen, agent). To wait for one terminal, `vau terminal wait <id> --for idle,blocked` is simpler.
-- `terminal.ended` `{id, code, signal, onPurpose?}`: a terminal's program ended on this machine (closed, ended, or it
-  died; `onPurpose`: the user or an agent ended it).
+- `terminal.ended` `{id, code, signal, lost?, onPurpose?}`: a terminal's program ended on this machine (closed, ended, or it
+  died; `lost`: the terminal server holding it went away, so how it ended is unknown; `onPurpose`: the user or an agent
+  ended it).
 - `terminal.agent-missing` `{id, agent}`: an agent's terminal found no such program (it isn't installed here).
 - `<plugin>.<name>`: a plugin's own (`plugin.emit`), named after the plugin.
 

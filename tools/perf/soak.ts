@@ -5,6 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
+import { backendName, serverFiles } from "../../plugins/core/terminal/backend.ts"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
 const args = process.argv.slice(2)
@@ -102,18 +103,17 @@ function ps(): Proc[] {
   })
 }
 const tree = (all: Proc[], root: number) => { const out = new Set([root]); for (let grew = true; grew; ) { grew = false; for (const p of all) if (out.has(p.ppid) && !out.has(p.pid)) { out.add(p.pid); grew = true } } return out }
-const keeperFile = () => path.join(MAC ? os.tmpdir() : `/tmp/vaultite-${process.getuid?.()}`, `vaultite-ptyd1-vaultite-${port}.sock.pid`)
-const keeperPid = () => { try { return Number(fs.readFileSync(keeperFile(), "utf8")) || 0 } catch { return 0 } }
-const tmuxPid = () => { try { return Number(execFileSync("tmux", ["-L", `vaultite-${port}`, "display", "-p", "#{pid}"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })) || 0 } catch { return 0 } }
+/** The server's terminal server (termd), by its pid file. */
+const keeperPid = () => { try { return Number(fs.readFileSync(`${serverFiles(backendName(port)).files}.pid`, "utf8")) || 0 } catch { return 0 } }
 
 /** Every process the app runs, by role (from ps: nothing asked of Electron): memory and CPU ms. The app's page is the
  *  biggest renderer; the others (web pages, pop-outs) are "other renderers". */
 function processes() {
   const all = ps(), byPid = new Map(all.map((p) => [p.pid, p]))
-  const mine = tree(all, mainPid), k = keeperPid(), t = tmuxPid()
+  const mine = tree(all, mainPid), k = keeperPid()
   // RSS says little on macOS (compressed and swapped pages leave it): memory is each process's footprint, as Activity Monitor's.
   if (MAC) {
-    const wanted = [...mine, k, ...(t ? tree(all, t) : [])].filter(Boolean)
+    const wanted = [...mine, ...(k ? tree(all, k) : [])].filter(Boolean)
     const out = execFileSync("/usr/bin/footprint", wanted.flatMap((p) => ["-p", String(p)]), { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })
     for (const m of out.matchAll(/\[(\d+)\]: .*?Footprint: ([\d.]+) (B|KB|MB|GB)/g)) { const p = byPid.get(Number(m[1])); if (p) p.rss = Number(m[2]) * { B: 1, KB: 1024, MB: 1048576, GB: 1073741824 }[m[3]]! }
   }
@@ -130,8 +130,7 @@ function processes() {
     const type = /--type=([\w-]+)/.exec(byPid.get(pid)?.cmd ?? "")?.[1]
     add(pid === mainPid ? "main" : type === "renderer" ? (pid === renderers[0] ? "renderer" : "other renderers") : type === "gpu-process" ? "gpu" : type ?? "other", pid)
   }
-  if (k) add("keeper", k)
-  if (t) for (const pid of tree(all, t)) add(pid === t ? "tmux" : "shells", pid)
+  if (k) for (const pid of tree(all, k)) add(pid === k ? "keeper" : "shells", pid)
   return roles
 }
 
@@ -430,7 +429,6 @@ try {
   const k = port ? keeperPid() : 0
   if (child?.pid) try { process.kill(-child.pid, "SIGTERM") } catch { /* gone */ }
   if (k) try { process.kill(k, "SIGTERM") } catch { /* gone */ }
-  if (port) try { execFileSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" }) } catch { /* none */ }
   await wait(2000)
   if (OUT.startsWith(tmp + path.sep)) for (const f of fs.readdirSync(tmp)) { if (f !== "out") fs.rmSync(path.join(tmp, f), { recursive: true, force: true }) }
   else fs.rmSync(tmp, { recursive: true, force: true })

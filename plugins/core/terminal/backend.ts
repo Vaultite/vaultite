@@ -35,9 +35,9 @@ export type Made = { spare?: boolean; command?: string; meta?: Record<string, st
 /** The terminal's settings as backends need them (plugin.ts sets them): lines of history every terminal keeps. */
 export const limits = { scrollback: () => 10_000 }
 
-/** How a terminal ended, as its link tells it: its exit status, or null when only this server's hold on it ended (it
- *  still runs: reattach). */
-export type Exit = { code: number; signal: number } | null
+/** How a terminal ended, as its link tells it: its exit status (`lost`: unknown, the server holding it went away), or
+ *  null when only this server's hold on it ended (it still runs: reattach). */
+export type Exit = { code: number; signal: number; lost?: boolean } | null
 
 /** One server's hold on a running terminal: what it prints, and typing and resizing it. */
 export interface Link {
@@ -118,7 +118,6 @@ export interface Backend {
 export const asPaste = (text: string) => Buffer.byteLength(text) > 256 || text.includes("\n")
 /** Text sent into a terminal, without paste markers: one would end its paste early, or show as `201~` where none was asked. */
 export const unmarked = (text: string) => text.replace(/\x1b\[20[01]~/g, "")
-export const bracketed = (text: string) => `\x1b[200~${text}\x1b[201~`
 
 // ---------- Vaultite's vau first on PATH: a login shell's files (macOS' path_helper, Homebrew's shellenv) put theirs
 // before what the shell was given, so the shell puts VAULTITE_BIN (and QA's VAULTITE_AGENT_BIN) first again after them.
@@ -237,6 +236,8 @@ export function runScript(file: string, id: string, run: AgentRun, kind: ShellKi
 // PowerShell's console in UTF-8, as Node, git and vau write: else it reads a program's output (`$x = vau read ...`, an
 // agent's commands) in the old OEM code page, "naïve" as "na├»ve". What runs there shares the console, so it too.
 const UTF8 = "[Console]::InputEncoding = [Console]::OutputEncoding = $OutputEncoding = [Text.UTF8Encoding]::new($false)"
+/** How a command alone ends PowerShell: its program's exit code, else 1 when it failed ($? read first, before it changes). */
+const PS_EXIT = "$vauOk = $?; if ($LASTEXITCODE) { exit $LASTEXITCODE } elseif (-not $vauOk) { exit 1 } else { exit 0 }"
 
 /** What starts a shell: its program, arguments (a string: Windows' whole command line, for cmd's own quoting), folder
  *  and environment. PowerShell takes an agent's line encoded (no quoting to get wrong); WSL starts through wsl.sh. */
@@ -245,9 +246,10 @@ export function launch(spec: Spec): Launch {
   const run = spec.run, cwd = run?.cwd || spec.cwd, env = { ...spec.env, ...spec.ctx }
   switch (kindOf(spec.shell)) {
     case "pwsh":
-      // (a command alone exits with its program's code, which PowerShell otherwise makes 0 or 1)
+      // (a command alone exits with its program's code, which PowerShell otherwise makes 0 or 1; a cmdlet that failed
+      // sets no code, only $?: 1)
       return { file: spec.shell, args: ["-NoLogo", ...(run && spec.only ? [] : ["-NoExit"]), "-EncodedCommand",
-        Buffer.from(run ? `${UTF8}\n${run.command}${spec.only ? "\nexit $LASTEXITCODE" : ""}` : UTF8, "utf16le").toString("base64")], cwd, env }
+        Buffer.from(run ? `${UTF8}\n${run.command}${spec.only ? `\n${PS_EXIT}` : ""}` : UTF8, "utf16le").toString("base64")], cwd, env }
     case "cmd":
       // (/s: cmd takes what's between the outer quotes as it is)
       return { file: spec.shell, args: run ? `/s /${spec.only ? "c" : "k"} "${run.command}"` : [], cwd, env }
@@ -423,9 +425,22 @@ export const backendName = (port: number, pid = process.pid) => (port === 8793 ?
 const WIN_PIPE = (name: string, v: number) => `\\\\.\\pipe\\vaultite-${v === 1 ? "ptyd" : "termd"}${v}-${name}-${userTag()}`
 /** Where the terminal server for `name` (backendName) answers, and where its .log and .pid go: protocol `v`'s (1, the
  *  keeper before it: ptyd). */
-export function serverFiles(name: string, v = PROTOCOL) {
+export function serverFiles(name: string, v = PROTOCOL): ServerFiles {
   const files = path.join(runtimeDir(), `vaultite-${v === 1 ? "ptyd" : "termd"}${v}-${name}.sock`)
   return { files, socket: WIN ? WIN_PIPE(name, v) : files }
+}
+export type ServerFiles = { files: string; socket: string }
+/** What says a terminal server runs there, without opening it: a pipe opened to look would take one of its instances. */
+const markOf = (f: ServerFiles) => (WIN ? `${f.files}.pid` : f.socket)
+const there = (f: string) => new Promise<boolean>((ok) => fs.stat(f, (e) => ok(!e)))
+/** Older servers' terminals, taken over by the server at `w` (termd/adopt.ts) before anything is listed: they're the
+ *  user's live shells. */
+async function takeOver(w: Wire, olds: ServerFiles[], log?: (...a: unknown[]) => void) {
+  for (const { socket: old } of olds) {
+    const r = await w.request("adopt", { socket: old, scrollback: limits.scrollback() }, 60_000).catch((e: Error) => ({ error: e.message }) as Msg)
+    if (Array.isArray(r.adopted) && r.adopted.length) log?.(`took over ${r.adopted.length} terminals from the older server at ${old}`)
+    else if (r.error) log?.(`couldn't take over the terminals at ${old}: ${r.error}`)
+  }
 }
 
 /** A backend's view of the terminal server's answers: its Info as listed. */
@@ -464,7 +479,7 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
       w.listeners.add((m) => {
         if (m.t === "data" && typeof m.d === "string") for (const fn of data) fn(m.d)
         else if (m.t === "size") size = { cols: Number(m.cols), rows: Number(m.rows) }
-        else if (m.t === "exit") { exit = { code: Number(m.code) || 0, signal: Number(m.signal) || 0 }; w.close() }
+        else if (m.t === "exit") { exit = { code: Number(m.code) || 0, signal: Number(m.signal) || 0, ...(m.lost ? { lost: true } : {}) }; w.close() }
       })
       // Ended, or the server went away (its terminals with it: there's nothing to reattach to then either).
       w.onClose = () => { for (const fn of exits) fn(exit ?? null) }
@@ -518,10 +533,9 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
 
 /** The terminal server at `name` (backendName). Older ones' terminals (the keeper before it, ptyd) are taken over by it
  *  (termd/adopt.ts) once it runs, so none is left unseen after an upgrade. */
-export function termdBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void; oldServers?: string[] }) {
+export function termdBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void; oldServers?: ServerFiles[] }) {
   const { files, socket } = serverFiles(name)
-  // (what says one runs, without opening it: a pipe opened to look would take one of its instances)
-  const mark = WIN ? `${files}.pid` : socket
+  const mark = markOf({ files, socket })
   let ctl: Promise<Wire> | null = null
 
   /** Starts it: detached (its own session and process group) and, under systemd, in a scope of its own, so nothing that
@@ -554,12 +568,7 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
       const p: Promise<Wire> = open().then(async (w) => {
         w.onClose = () => { if (ctl === p) ctl = null }
         client.follow(w)
-        // An older server's terminals, taken over before anything is listed (they're the user's live shells).
-        for (const old of o.oldServers ?? []) {
-          const r = await w.request("adopt", { socket: old, scrollback: limits.scrollback() }, 60_000).catch((e: Error) => ({ error: e.message }) as Msg)
-          if (Array.isArray(r.adopted) && r.adopted.length) o.log?.(`terminal: took over ${r.adopted.length} terminals from the older server at ${old}`)
-          else if (r.error) o.log?.(`terminal: couldn't take over the terminals at ${old}: ${r.error}`)
-        }
+        await takeOver(w, o.oldServers ?? [], o.log && ((...a) => o.log!("terminal:", ...a)))
         return w
       })
       ctl = p
@@ -570,8 +579,7 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
   /** Only when it's already running (or an older one with terminals to take over is): listing shouldn't start it. */
   async function running(): Promise<Wire | null> {
     if (ctl) return ctl.catch(() => null)
-    const there = (f: string) => new Promise<boolean>((ok) => fs.stat(f, (e) => ok(!e)))
-    if (!(await there(mark)) && !(await Promise.all((o.oldServers ?? []).map(there))).some(Boolean)) return null
+    if (!(await there(mark)) && !(await Promise.all((o.oldServers ?? []).map((f) => there(markOf(f))))).some(Boolean)) return null
     return control().catch(() => null)
   }
   const client = termdClient({ name: "vaultite", label: "Vaultite", control, running, open })
@@ -605,7 +613,7 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
 
 /** Terminals held in this process (when the terminal server can't start): the same server's core (termd/host.ts),
  *  so they're listed, captured and waited for alike, but end with this server. */
-export function localBackend(o: { log?: (...a: unknown[]) => void } = {}): Backend {
+export function localBackend(o: { log?: (...a: unknown[]) => void; oldServers?: ServerFiles[]; adoptOld?: () => Promise<boolean> } = {}): Backend {
   let made: Promise<import("./termd/host.ts").Host> | null = null
   const hostNow = () => (made ??= import("./termd/host.ts").then(({ host }) => host({ log: o.log ?? (() => {}), pid: process.pid, file: "this server" })))
   /** An in-process pipe: each message goes on in order, a turn later (as a socket's would), held while paused. */
@@ -639,8 +647,15 @@ export function localBackend(o: { log?: (...a: unknown[]) => void } = {}): Backe
     })
     return w
   }
+  // (older servers' terminals are taken over here when `adoptOld` says so: the terminal server can't run to take them)
+  const olds = o.oldServers ?? []
+  const adoptNow = async () => !!olds.length && (await Promise.all(olds.map((f) => there(markOf(f))))).some(Boolean) && !!(await o.adoptOld?.().catch(() => false))
   let ctl: Promise<Wire> | null = null
-  const control = () => (ctl ??= open().then((w) => { client.follow(w); return w }))
-  const client = termdClient({ name: "pty", label: "This server", control, running: async () => (made ? control() : null), open })
+  const control = () => (ctl ??= open().then(async (w) => {
+    client.follow(w)
+    if (await adoptNow()) await takeOver(w, olds, o.log)
+    return w
+  }))
+  const client = termdClient({ name: "pty", label: "This server", control, running: async () => (made || (await adoptNow()) ? control() : null), open })
   return { ...client.backend, spares: false }
 }

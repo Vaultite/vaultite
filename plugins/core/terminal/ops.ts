@@ -154,7 +154,7 @@ const waited = (r: Any) => r.met === "exit" ? `${r.id} ended (${how(r.exit)}) af
 const ago = (t: number) => { const a = fmtAgo(t, { short: true }); return a === "now" ? "just now" : `${a} ago` }
 /** A terminal's line in a list: its id, what runs, its state, its name and title, and where it's shown. */
 const row = (s: Session & { tabs?: TabAt[] }) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.needs ? ", needs you" : ""})` : ""}${s.name ? `  named "${s.name}"` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${ago(s.started)}, ${s.machine ? `on ${s.machineLabel ?? s.machine}` : where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`
-const how = (e: { code: number; signal: number; lost?: boolean }) => (e.lost ? "its terminal server went away" : e.signal ? `signal ${e.signal}` : `exit code ${e.code}`)
+const how = (e: { code: number; signal: number; lost?: boolean }) => (e.lost ? "lost: its terminal server went away, so how is unknown" : e.signal ? `signal ${e.signal}` : `exit code ${e.code}`)
 
 export function terminalOps(plugin: Plugin) {
   plugin.op({
@@ -446,7 +446,7 @@ held for \`hold\` seconds (1.5), and a state once it's told after the last thing
 waiting for idle right after sending an agent a prompt waits for the end of that turn, not the idle before it. Left
 out: an agent's turn over (idle, blocked, done or error) in an agent's terminal, exit in the rest. It answers what it
 met (met: null when the time ran out), the state now, and how it ended if it did; vau exits with the terminal's exit
-code when it waited for that, 124 when the time ran out. (vau terminal send --wait types and waits in one.)
+code when it waited for that (1 when it was lost: its terminal server went away), 124 when the time ran out. (vau terminal send --wait types and waits in one.)
 
   vau terminal send claude-k3j2h1g0 "Run the tests and fix what fails" && vau terminal wait claude-k3j2h1g0
   vau terminal wait tests --for exit --timeout 1200

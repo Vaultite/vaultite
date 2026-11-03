@@ -1,4 +1,4 @@
-// Newline JSON between the server and the keeper (ptyd.ts, backend.ts' Wire).
+// Newline JSON between the server and the terminal server (termd/, backend.ts' Wire).
 
 /** Each whole line of a stream as its chunks arrive. A line still coming is kept as its pieces and joined once it ends:
  *  a snapshot (megabytes on one line) isn't rescanned and copied for every 64 KB that comes. */

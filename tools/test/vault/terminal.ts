@@ -155,12 +155,13 @@ export default async ($: VaultTest) => {
     check("vau terminal end: without an id, the terminal it runs in (VAULTITE_TERMINAL)", tr.code === 1 && tr.err.includes("no terminal 'nosuch2'"), tr)
     tr = await vau("terminal", "capture", "claude-far@m1")
     check("vau terminal capture: another machine's id, from the command line", tr.code === 1 && /machine 'm1'/.test(tr.err), tr)
-    // vau terminal wait's exit code: the terminal's when it waited for its end, 124 when the time ran out.
+    // vau terminal wait's exit code: the terminal's when it waited for its end (1 when it was lost with its terminal
+    // server: how it ended is unknown), 124 when the time ran out.
     const { cli: termCli } = await import("../../../plugins/core/terminal/cli.ts")
     const code = termCli.ops!["terminal.wait"].code!
-    check("vau terminal wait: exits with the terminal's code, 128 + a signal, 124 on a timeout, 1 when it ended first",
+    check("vau terminal wait: exits with the terminal's code, 128 + a signal, 1 when it was lost, 124 on a timeout, 1 when it ended first",
       code({ met: "exit", exit: { code: 3, signal: 0 } }) === 3 && code({ met: "exit", exit: { code: 0, signal: 15 } }) === 143 && code({ met: null, timedOut: true }) === 124 &&
-      code({ met: null, timedOut: false, exit: { code: 0, signal: 0 } }) === 1 && code({ met: "idle" }) === 0)
+      code({ met: "exit", exit: { code: 0, signal: 0, lost: true } }) === 1 && code({ met: null, timedOut: false, exit: { code: 0, signal: 0 } }) === 1 && code({ met: "idle" }) === 0)
     // vau's --no-<switch> turns a switch off (vau terminal send --no-enter).
     const { entryOf } = await import("../../../core/ops.ts")
     let sentAs: Any = null
@@ -417,6 +418,88 @@ export default async ($: VaultTest) => {
       got.includes("kill vauspare-x") && info.via === 4242 && info.title === "Old one" && JSON.stringify(info.said) === JSON.stringify({ seen: true, status: { state: "working" } }), [adopted, got, info])
     check("terminal server: an adopted terminal's screen is its picture then what came after, its input goes through, its end is told",
       cap?.text === "old screen\n$ after" && got.includes("ls\r") && exited?.exit?.code === 2, [cap, got, exited])
+  }
+
+  // One it couldn't take over (its snapshot failed: too slow on a loaded machine) still runs there: it isn't told as
+  // ended, and it's taken over when asked again. That server going away then ends it as lost, not as a clean exit.
+  if (process.platform !== "win32") {
+    const net = await import("node:net")
+    const { host } = await import("../../../plugins/core/terminal/termd/host.ts")
+    const { waitFor } = await import("../lib.ts")
+    const old = path.join(tmp, "old-keeper2.sock"), socks = new Set<import("node:net").Socket>()
+    let snapFails = true
+    const oldServer = net.createServer((sock) => {
+      socks.add(sock)
+      sock.setEncoding("utf8")
+      let buf = ""
+      sock.on("data", (d: string) => {
+        buf += d
+        for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
+          const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1)
+          const re = (x: object) => sock.write(JSON.stringify({ re: m.re, ...x }) + "\n")
+          if (m.op === "hello") re({ v: 1, pid: 4343 })
+          else if (m.op === "list") re({ sessions: [{ id: "old2", pid: 98, process: "zsh", created: 1000, cols: 30, rows: 5 }] })
+          else if (m.op === "attach") re({ cols: 30, rows: 5 })
+          else if (m.op === "snapshot") re(snapFails ? { error: "too slow" } : { data: "old2 screen" })
+          else if (m.re !== undefined) re({})
+        }
+      })
+    })
+    await new Promise<void>((r) => oldServer.listen(old, r))
+    const h = host({ log: () => {}, pid: process.pid, file: "test" })
+    const msgs: Record<string, unknown>[] = [], viewer: Record<string, unknown>[] = []
+    const c = h.connect({ session: null, ready: false, send: (m) => msgs.push(m as never), backlog: () => 0 })
+    c.take({ op: "subscribe" })
+    c.take({ op: "adopt", socket: old, scrollback: 100, re: 1 })
+    const first = await waitFor(() => msgs.find((m) => m.re === 1), 5_000, 20) as { adopted?: string[] } | undefined
+    await new Promise((r) => setTimeout(r, 100))
+    const endedThen = msgs.filter((m) => m.type === "exited"), heldThen = h.sessions.has("old2")
+    snapFails = false
+    c.take({ op: "adopt", socket: old, scrollback: 100, re: 2 })
+    const again = await waitFor(() => msgs.find((m) => m.re === 2), 5_000, 20) as { adopted?: string[] } | undefined
+    const v = h.connect({ session: null, ready: false, send: (m) => viewer.push(m as never), backlog: () => 0 })
+    v.take({ op: "attach", id: "old2", re: 1 })
+    await waitFor(() => viewer.find((m) => m.re === 1), 2_000, 20)
+    oldServer.close()
+    for (const sock of socks) sock.destroy()
+    const lost = await waitFor(() => msgs.find((m) => m.type === "exited"), 2_000, 20) as { exit?: { code: number; lost?: boolean } } | undefined
+    check("terminal server: one it couldn't take over isn't told as ended, and is taken over when asked again",
+      JSON.stringify(first?.adopted) === "[]" && !endedThen.length && !heldThen && JSON.stringify(again?.adopted) === '["old2"]', [first, endedThen, heldThen, again])
+    check("terminal server: one whose older server went away ends lost, its viewers told so", lost?.exit?.lost === true &&
+      viewer.some((m) => m.t === "exit" && m.lost === true), [lost, viewer.filter((m) => m.t === "exit")])
+  }
+
+  // When the terminal server can't start, the server's own (localBackend) takes over the older one's terminals: listed.
+  if (process.platform !== "win32") {
+    const net = await import("node:net")
+    const { localBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const old = path.join(tmp, "old-keeper3.sock"), socks = new Set<import("node:net").Socket>()
+    const oldServer = net.createServer((sock) => {
+      socks.add(sock)
+      sock.setEncoding("utf8")
+      let buf = ""
+      sock.on("data", (d: string) => {
+        buf += d
+        for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
+          const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1)
+          const re = (x: object) => sock.write(JSON.stringify({ re: m.re, ...x }) + "\n")
+          if (m.op === "hello") re({ v: 1, pid: 4444 })
+          else if (m.op === "list") re({ sessions: [{ id: "old3", pid: 97, process: "zsh", created: 1000, cols: 30, rows: 5 }] })
+          else if (m.op === "attach") re({ cols: 30, rows: 5 })
+          else if (m.op === "snapshot") re({ data: "old3 screen" })
+          else if (m.re !== undefined) re({})
+        }
+      })
+    })
+    await new Promise<void>((r) => oldServer.listen(old, r))
+    const asked: string[] = []
+    const lb = localBackend({ oldServers: [{ socket: old, files: old }], adoptOld: async () => { asked.push("adopt?"); return true } })
+    const none = await localBackend({ oldServers: [{ socket: old, files: old }], adoptOld: async () => false }).list()
+    const listed = (await lb.list()).map((x) => x.id)
+    oldServer.close()
+    for (const sock of socks) sock.destroy()
+    check("terminal: when the terminal server can't start, this server takes over the older one's terminals (only then)",
+      JSON.stringify(listed) === '["old3"]' && asked.length > 0 && none.length === 0, [listed, asked, none])
   }
 
   // OSC 7501 (osc7501.ts): reports by the spec's rules, taken out of the output however it's cut, records' state; the
