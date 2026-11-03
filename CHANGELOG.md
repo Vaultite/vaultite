@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Phones: a tab drags out of its group**: in a group's tabs, hold a lifted card on All tabs at the top (it lights up)
+  and all tabs come back with the card still held, to be put anywhere, onto a tab to make a group, or onto another group;
+  let go there at once and it just leaves the group.
 - **Phones: pulling a page down feels like Chrome's**: the first stretch moves only the page, the icons come in and spread,
   then a ring fills; full, a disc lands on the picked one with its name (only then), slides to another as the finger goes
   sideways, and bursts as it runs. A pull right after scrolling up to the top is still the reading, not a pull.

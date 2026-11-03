@@ -40,10 +40,13 @@ const CLOSE_UP = spring(0.3, 1)
  *  place (moving on an edge, not towards the middle, takes it at once). */
 const GROUP_MS = 300
 const MOVE_MS = 40
+/** How long a lifted card rests on top of an opened group (All tabs, the header) before it's carried out to all tabs
+ *  (spring-loaded, as an app is out of an iOS folder): long enough that passing over doesn't. */
+const SPRING_MS = 400
 const isOpen = (id: string) => leaves(getWorkspace().root).some((g) => g.tabs.some((t) => t.id === id))
 /** What a card dropped in the list does: placed before or after a tab, grouped with one, into a tab group (`group`: its
- *  id), out of its own. */
-type ListHit = { kind: "before" | "after" | "into"; tab: string } | { kind: "join"; group: string } | { kind: "out" }
+ *  id), out of its own (`via` where: on +, on top of the group opened, or anywhere once carried out of it). */
+type ListHit = { kind: "before" | "after" | "into"; tab: string } | { kind: "join"; group: string } | { kind: "out"; via: "bar" | "head" | "here" }
 /** Where a lifted card would go among its pane's tabs. */
 type Placed = { kind: "before" | "after"; tab: string }
 const CARD = "relative isolate flex aspect-[3/4] scroll-mt-[calc(env(safe-area-inset-top)+3.5rem)] scroll-mb-4 flex-col rounded-[14px]"
@@ -69,6 +72,16 @@ function arranged(tabs: Tab[], id: string | undefined, at: Placed | null): Tab[]
   return rest
 }
 
+/** The tabs with `id` out of its tab group, after the group's last tab (where leaveSet puts it): all tabs as shown while a
+ *  card carried out of its group is held. */
+function carriedOut(tabs: Tab[], id: string): Tab[] {
+  const me = tabs.find((t) => t.id === id)
+  if (!me?.set) return tabs
+  const rest = tabs.filter((t) => t !== me), last = rest.map((t) => t.set).lastIndexOf(me.set)
+  rest.splice(last >= 0 ? last + 1 : tabs.indexOf(me), 0, { ...me, set: undefined })
+  return rest
+}
+
 /** A card's face: the tab's icon and name over its picture. */
 function CardFace({ store, tab, info, current }: { store: Store; tab: Tab; info: TabInfo; current: boolean }) {
   const Icon = info.icon
@@ -86,24 +99,38 @@ function CardFace({ store, tab, info, current }: { store: Store; tab: Tab; info:
   )
 }
 
-/** The card being moved, whole, under the finger where it took it: raised a little, over the sheet. Its place in the grid
- *  stays empty meanwhile. Under it, what a drop does when it isn't a move (Group, Remove from group, a workspace). */
+/** The card being moved, whole, under the finger where it took it, over the sheet (its place in the grid stays empty).
+ *  Under it, what a drop does when it isn't a move; on top of an opened group, it shrinks so the lit row shows. */
 function Lifted({ store, info, current }: { store: Store; info: (t: Tab) => TabInfo; current: string }) {
   const d = useDrag()
+  const pill = useRef<HTMLSpanElement>(null)
   const g = grab
-  if (!d?.item.drawn || !d.item.tab || g?.id !== d.item.tab) return null
-  const tab: Tab = { id: d.item.tab, to: d.item.to ?? "new" }
   const sheet = [...document.querySelectorAll<HTMLElement>("dialog[open]")].pop()
   const o = sheet?.getBoundingClientRect() ?? { left: 0, top: 0 }
+  const left = d ? d.x - (g?.dx ?? 0) - o.left : 0
+  const hit = d?.hit?.target === "tab-list" ? d.hit.data as ListHit : null
+  const s = hit?.kind === "out" && hit.via === "head" ? 0.45 : 1
+  // The hint under the card as it shows (lifted, 6% larger), kept on screen when the card hangs off an edge.
+  useLayoutEffect(() => {
+    const p = pill.current
+    if (!p || !g) return
+    const half = p.offsetWidth / 2, mid = o.left + left + g.dx + (g.w / 2 - g.dx) * s
+    p.style.left = `${Math.min(innerWidth - 8 - half, Math.max(8 + half, mid)) - o.left - left}px`
+  })
+  if (!d?.item.drawn || !d.item.tab || g?.id !== d.item.tab) return null
+  const tab: Tab = { id: d.item.tab, to: d.item.to ?? "new" }
   const hint = d.hit?.hint
   return createPortal(
     <div aria-hidden data-drag-ghost className="pointer-events-none fixed z-[70]"
-      style={{ left: d.x - g.dx - o.left, top: d.y - g.dy - o.top, width: g.w, height: g.h }}>
-      <div className={cn(CARD, "size-full animate-[tab-lift_180ms_cubic-bezier(.2,.8,.2,1)_forwards] shadow-2xl")}>
-        <Ground className="ring-2 ring-[var(--primary)]" />
-        <CardFace store={store} tab={tab} info={info(tab)} current={tab.id === current} />
-        {hint && <span className="absolute inset-x-0 -bottom-10 mx-auto w-max rounded-full bg-card px-3 py-1.5 text-[15px] font-medium shadow-lg ring-[0.5px] ring-border">{hint}</span>}
+      style={{ left, top: d.y - g.dy - o.top, width: g.w, height: g.h }}>
+      <div className="size-full transition-[scale] duration-200 ease-out" style={{ scale: s, transformOrigin: `${g.dx}px ${g.dy}px` }}>
+        <div className={cn(CARD, "size-full animate-[tab-lift_180ms_cubic-bezier(.2,.8,.2,1)_forwards] shadow-2xl")}>
+          <Ground className="ring-2 ring-[var(--primary)]" />
+          <CardFace store={store} tab={tab} info={info(tab)} current={tab.id === current} />
+        </div>
       </div>
+      {hint && <span ref={pill} data-drag-hint className="absolute w-max -translate-x-1/2 rounded-full bg-card px-3 py-1.5 text-[15px] font-medium shadow-lg ring-[0.5px] ring-border transition-[top] duration-200 ease-out"
+        style={{ top: g.dy + (g.h * 1.03 - g.dy) * s + 8 }}>{hint}</span>}
     </div>,
     sheet ?? document.body,
   )
@@ -494,13 +521,18 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const box = useRef<HTMLDivElement>(null)
   const [opened, setOpened] = useState<string | null>(null)
   const [query, setQuery] = useState<string | null>(null)
-  const all = panes.flatMap((g) => g.tabs)
+  /** The tab group the lifted card was carried out of (held on top of it), and where the finger was then: until it
+   *  moves on, the cards don't make room under it. */
+  const [carried, setCarried] = useState<string | null>(null)
+  const carry = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+  const lifted = useDrag((d) => d?.item)
+  const liftedId = lifted?.drawn && lifted.from === "tab" ? lifted.tab : undefined
+  const tabsNow = panes.flatMap((g) => g.tabs)
+  const all = carried && liftedId ? carriedOut(tabsNow, liftedId) : tabsNow
   const sets = new Map(panes.flatMap((g) => g.sets ?? []).map((s) => [s.id, s]))
   const openSet = opened ? sets.get(opened) : undefined
   const open = openSet && all.some((t) => t.set === openSet.id) ? { s: openSet, tabs: all.filter((t) => t.set === openSet.id) } : null
   useWorkspaceVersion()
-  const lifted = useDrag((d) => d?.item)
-  const liftedId = lifted?.drawn && lifted.from === "tab" ? lifted.tab : undefined
   useFlip(box, !!liftedId)
 
   const scroller = useRef(edgeScroller())
@@ -518,7 +550,12 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
     return false
   }
   const unrest = () => { if (resting.current) { clearTimeout(resting.current.timer); resting.current = null } }
-  useDropTarget<ListHit>("tab-list", (item: DragItem, x, y, el) => {
+  /** What a drop at (x, y) over `el` would do: carried out of its group, anywhere on the sheet it's out of it at least. */
+  const aim = (item: DragItem, x: number, y: number, el: Element | null): ListHit | null => {
+    const h = hitIn(item, x, y, el)
+    return h ?? (carry.current && el && box.current?.closest("dialog")?.contains(el) ? { kind: "out", via: "here" } : null)
+  }
+  const hitIn = (item: DragItem, x: number, y: number, el: Element | null): ListHit | null => {
     if (item.from !== "tab" || !item.tab || !el || !box.current) { scroller.current.stop(); return null }
     // Which way the finger is going (since the last move): towards a card's middle, it may mean to group with it.
     const prev = lastAt.current, vx = prev ? x - prev.x : 0, vy = prev ? y - prev.y : 0
@@ -529,8 +566,24 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
     if (!sheet?.contains(el)) { scroller.current.stop(); return keep(null) }
     const sc = box.current.closest<HTMLElement>(".overflow-y-auto")
     if (sc) scroller.current.near(sc, y)
+    // Carried out of its group: wherever it's let go it's out of it, after the group until the finger moves on (or this
+    // still answers from the group's view, drawn a moment ago).
+    const c = carry.current
+    if (c && !c.moved && Math.hypot(x - c.x, y - c.y) > 12) c.moved = true
+    if (c && (!c.moved || open)) return keep(null)
+    // Held on top of the group opened (All tabs, the header), it's carried out to all tabs; let go before, it leaves it.
+    if (open && !found && !c && el.closest("[data-tabs-header], [data-group-head]")) {
+      if (!stayed("back", SPRING_MS)) return keep({ kind: "out", via: "head" })
+      carry.current = { x, y, moved: false }
+      unrest()
+      haptic("light")
+      setCarried(open.s.id)
+      setOpened(null)
+      return keep({ kind: "out", via: "here" })
+    }
+    if (resting.current?.key === "back") unrest()
     const own = all.find((t) => t.id === item.tab)?.set
-    if (el.closest("[data-tabs-new]")) return keep(open && own === open.s.id ? { kind: "out" } : null)
+    if (el.closest("[data-tabs-new]")) return keep(open && own === open.s.id ? { kind: "out", via: "bar" } : null)
     const gc = el.closest<HTMLElement>("[data-group-card]")
     if (gc) return keep(own !== gc.dataset.groupCard ? { kind: "join", group: gc.dataset.groupCard! } : null)
     // The card whose place in the grid is under the finger, not the one drawn there: a card gliding out of the lifted
@@ -573,7 +626,8 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
     unrest()
     // Where it is already: no drop.
     return keep(same ? null : h)
-  }, (item, h) => {
+  }
+  useDropTarget<ListHit>("tab-list", aim, (item, h) => {
     const id = item.tab!, shown = activeTab().id
     if (h.kind === "into") groupWith(id, h.tab)
     else if (h.kind === "join") addToSet([id], h.group)
@@ -581,9 +635,11 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
     else placeTab(id, h.kind, h.tab, open?.s.id ?? null)
     keepShown(shown)
   }, {
-    hint: (h) => (h.kind === "into" ? "Group" : h.kind === "join" ? "Add to group" : h.kind === "out" ? "Remove from group" : undefined),
+    hint: (h) => (h.kind === "into" ? "Group" : h.kind === "join" ? "Add to group" : h.kind === "out" && h.via !== "here" ? "Remove from group" : undefined),
     end: () => {
       scroller.current.stop()
+      carry.current = null
+      setCarried(null)
       const at = lastAt.current, g = grab
       if (at && g) landing = { id: g.id, x: at.x - g.dx, y: at.y - g.dy }
       lastAt.current = null
@@ -592,11 +648,11 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
     },
   })
   const hit = useDropHit<ListHit>("tab-list")
-  const hitKey = !hit ? "" : hit.kind === "join" ? `join:${hit.group}` : hit.kind === "out" ? "out" : `${hit.kind}:${hit.tab}`
+  const hitKey = !hit ? "" : hit.kind === "join" ? `join:${hit.group}` : hit.kind === "out" ? `out:${hit.via}` : `${hit.kind}:${hit.tab}`
   // A tick each time the cards make room somewhere else, or what a drop would do turns into something other than a move
-  // (Group, onto a group, onto +): not for a card's middle passed over.
+  // (Group, onto a group, onto +, on top of the group): not for a card's middle passed over.
   const shownPlace = placed.current ? `${placed.current.kind}:${placed.current.tab}` : ""
-  const tickKey = !hit ? "" : hit.kind === "before" || hit.kind === "after" ? shownPlace : hitKey
+  const tickKey = !hit || (hit.kind === "out" && hit.via === "here") ? "" : hit.kind === "before" || hit.kind === "after" ? shownPlace : hitKey
   useEffect(() => { if (tickKey) haptic("selection") }, [tickKey])
 
   const menuOf = (t: Tab) => () => tabCardMenu(t, groupOfTab(t.id)?.tabs.length ?? 1, setItems([t.id]))
@@ -648,8 +704,9 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
           <TabsHeader title={host ? pages[at]?.label ?? "Workspace" : "Tabs"} count={found ? found.length : count} pages={pages} at={at}
             menu={host ? host.menu : null} more={more} query={query} setQuery={setQuery} items={draw(header.filter((h) => !h.item.phoneBar))} />
           {open && !found && (
-            <div data-group-head className="mb-3 flex items-center">
-              <button type="button" onClick={() => setOpened(null)}
+            <div data-group-head className={cn("-mx-2 mb-3 flex items-center rounded-[12px] px-2 transition-colors duration-150",
+              hit?.kind === "out" && hit.via === "head" && "bg-primary/15 ring-2 ring-[var(--primary)]")}>
+              <button type="button" data-group-back onClick={() => setOpened(null)}
                 className="-ml-2 flex h-11 cursor-pointer items-center pr-2 text-[17px] text-primary active:opacity-50">
                 <ChevronLeft className="size-[24px]" strokeWidth={2} />All tabs
               </button>
@@ -664,7 +721,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
           {found && !found.length && <p className="py-10 text-center text-[17px] text-muted-foreground">No tabs match “{query?.trim()}”</p>}
         </div>
       </Pager>
-      <SheetBar left={draw(header.filter((h) => h.item.phoneBar))} group={open?.s.id} lit={hit?.kind === "out"} />
+      <SheetBar left={draw(header.filter((h) => h.item.phoneBar))} group={open?.s.id} lit={hit?.kind === "out" && hit.via === "bar"} />
       <Lifted store={store} info={info} current={cur.id} />
     </>
   )

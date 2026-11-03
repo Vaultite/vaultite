@@ -81,7 +81,7 @@ async function hold(from, to, rest = 500) {
   for (let t = 0; t < rest; t += 50) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: to.x + ((t / 50) % 2), y: to.y }] }); await wait(50) }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await wait(700)
 }
-const groupCards = () => P.$$eval("dialog[open] [data-group-card] button[aria-label$=' tabs']", (els) => els.map((e) => e.getAttribute("aria-label")))
+const groupCards = () => P.$$eval("dialog[open] [data-group-card] > div > button:not([aria-label^='Close'])", (els) => els.map((e) => e.getAttribute("aria-label")))
 const centre = async (sel) => { const r = await P.locator(sel).first().boundingBox(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } }
 await P.evaluate(() => { document.querySelector("dialog[open] [data-tab-row]").closest(".overflow-y-auto").scrollTop = 0 }); await wait(200)
 await hold(await box(await o(1)), await box(await o(0)))
@@ -101,5 +101,54 @@ check("in the group, its name tapped: renamed there", focused === "Group name" &
 await P.screenshot({ path: `${OUT}group-renamed.png` })
 await P.locator("dialog[open] [data-group-head] button").first().click(); await wait(600)
 check("back to all tabs: the one that left is a card again", (await ids()).length === 5 && /^Trip, 2 tabs$/.test((await groupCards())[0] ?? ""), [await ids(), await groupCards()])
+// Held on All tabs, a group's card is carried out to all tabs (spring-loaded), still under the finger: let go on a card's
+// edge it goes there, on its group's card it stays in, on All tabs before it springs it leaves (the last: the group goes).
+const touch = (type, p) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: p ? [p] : [] })
+async function glide(from, to, rest) {
+  for (let i = 1; i <= 20; i++) { await touch("touchMove", { x: from.x + ((to.x - from.x) * i) / 20, y: from.y + ((to.y - from.y) * i) / 20 }); await wait(16) }
+  for (let t = 0; t < rest; t += 50) { await touch("touchMove", { x: to.x + ((t / 50) % 2), y: to.y }); await wait(50) }
+}
+const lit = () => P.$eval("dialog[open] [data-group-head]", (e) => e.className.includes("ring-2")).catch(() => false)
+const hint = () => P.$eval("[data-drag-hint]", (e) => e.innerText).catch(() => null)
+const openGroup = async () => { await P.locator("dialog[open] [data-group-card] > div > button:not([aria-label^='Close'])").first().click(); await wait(600) }
+const carryOut = async (shot) => {
+  const from = await box(await o(0)), back = await centre("dialog[open] [data-group-back]")
+  await touch("touchStart", from); await wait(600)
+  await glide(from, back, 100)
+  const before = { lit: await lit(), hint: await hint() }
+  if (shot) await P.screenshot({ path: `${OUT}carry-hover.png` })
+  await glide(back, back, 500)
+  return { before, back }
+}
+await openGroup()
+{
+  const { before, back } = await carryOut(true)
+  check("in the group, held on All tabs: it lights, the card says Remove from group", before.lit && before.hint === "Remove from group", before)
+  const sprung = { head: await P.locator("dialog[open] [data-group-head]").count(), ghost: await P.locator("[data-drag-ghost]").count(), group: await groupCards() }
+  await P.screenshot({ path: `${OUT}carry-sprung.png` })
+  check("...after a moment, all tabs, the card still held, its group a tab less", !sprung.head && sprung.ghost === 1 && /^Trip, 1 tab$/.test(sprung.group[0] ?? ""), sprung)
+  await glide(back, await centre("dialog[open] [data-group-card]"), 200)
+  await touch("touchEnd"); await wait(700)
+  check("...let go on its group's card: it stays in the group", /^Trip, 2 tabs$/.test((await groupCards())[0] ?? "") && (await ids()).length === 5, [await ids(), await groupCards()])
+}
+await openGroup()
+{
+  const moving = await o(0)
+  const { back } = await carryOut(false)
+  // (all tabs now: the group's card, then the one carried out, then the rest)
+  const third = (await ids())[2]
+  await glide(back, await box(third, 0.9), 300)
+  await P.screenshot({ path: `${OUT}carry-placed.png` })
+  await touch("touchEnd"); await wait(700)
+  check("...carried out and let go on a card's edge: it's there, out of the group", (await ids())[2] === moving && (await ids())[1] === third && (await ids()).length === 6 && /^Trip, 1 tab$/.test((await groupCards())[0] ?? ""), [moving, third, await ids(), await groupCards()])
+}
+await openGroup()
+{
+  const from = await box(await o(0)), back = await centre("dialog[open] [data-group-back]")
+  await touch("touchStart", from); await wait(600)
+  await glide(from, back, 150)
+  await touch("touchEnd"); await wait(700)
+  check("the last tab let go on All tabs at once: out, and the group's gone", (await ids()).length === 7 && !(await groupCards()).length && !(await P.locator("dialog[open] [data-group-head]").count()), [await ids(), await groupCards()])
+}
 // (exits 0 even when a check fails: kept as it was)
 console.log(fails.length ? `${fails.length} failed` : "all passed"); await browser.close()
