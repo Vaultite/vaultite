@@ -2,7 +2,7 @@
 // typed goes back into the agent's session (inbox.reply), so an answer is replied to where it's read.
 import { useEffect, useState, type KeyboardEvent } from "react"
 import { MessageSquareReply, PencilLine, SquareTerminal } from "lucide-react"
-import { Button, cn, keyHint, notify, notifyError, op, openFile, Panel, parseTerminal, usePane, type BlockCtx } from "@vaultite"
+import { appDevice, Button, cn, keyHint, notify, notifyError, op, openFile, Panel, parseTerminal, usePane, type BlockCtx } from "@vaultite"
 import { draftOf, hasDraft, keepDraft, sendDraft, sendingOf, useHasDraft, useSending } from "./drafts"
 import { openSession, useEvents } from "./events"
 
@@ -102,7 +102,9 @@ export function ReplyBox({ to, draft: key = to, name, kept = 0, open, sent: done
     }
   }
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send() }
+    // (Enter sends, Shift+Enter is a new line, as in a chat; a phone's keyboard has no Shift, so there Enter is a line)
+    if (e.key !== "Enter" || e.nativeEvent.isComposing || e.shiftKey) return
+    if (e.metaKey || e.ctrlKey || appDevice !== "phone") { e.preventDefault(); void send() }
   }
   const showing = sent?.text ?? flying
   return (
@@ -120,7 +122,7 @@ export function ReplyBox({ to, draft: key = to, name, kept = 0, open, sent: done
         <Button look="quiet" className={reply} onClick={() => void open().catch((e) => notifyError(e, "Couldn't open it"))}>
           <SquareTerminal className="size-4" /> Open session
         </Button>
-        <Button look="primary" className={reply} disabled={!text.trim() || !!sent || flying !== null} onClick={() => void send()} data-tip={`Send (${keyHint("Mod+Enter")})`}>
+        <Button look="primary" className={reply} disabled={!text.trim() || !!sent || flying !== null} onClick={() => void send()} data-tip={appDevice === "phone" ? undefined : `Send (${keyHint("Enter")})`}>
           Send
         </Button>
       </div>

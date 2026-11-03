@@ -39,8 +39,11 @@ await until(async () => (await box.count()) === 0)
 await row.hover()
 await row.locator("[data-row-reply-button]").click()
 check("the draft is still there", (await box.locator("[data-reply]").inputValue()) === "Bump to 0.6.1")
-await page.keyboard.press("Control+Enter")
-check("Ctrl+Enter sends it to the session", !!(await until(() => sent)) && sent.to === thread.id && sent.text === "Bump to 0.6.1", sent)
+await page.keyboard.press("Shift+Enter")
+check("Shift+Enter is a new line", (await box.locator("[data-reply]").inputValue()).includes("\n") && !sent, await box.locator("[data-reply]").inputValue())
+await box.locator("[data-reply]").fill("Bump to 0.6.1")
+await page.keyboard.press("Enter")
+check("Enter sends it to the session", !!(await until(() => sent)) && sent.to === thread.id && sent.text === "Bump to 0.6.1", sent)
 check("and the box folds away", !!(await until(async () => (await box.count()) === 0)))
 
 // A phone: Reply on the row, the box in the phone's width.
