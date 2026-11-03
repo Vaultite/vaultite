@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useSyncExternalStore } from "react"
+import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal } from "lucide-react"
 import { cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
+import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
 import { bump, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, viewOf } from "./live"
@@ -25,6 +26,11 @@ function ask(agent?: string) {
 }
 
 setGuest(share)
+
+// Its Claude Code session's tab is its timeline (Timeline.tsx, loaded with it), the chat a click away.
+const timeline = () => import("./Timeline")
+drawDriven("companion", { name: "Timeline", title: "Companion", View: lazy(() => timeline().then((m) => ({ default: m.CompanionView }))),
+  Message: lazy(() => timeline().then((m) => ({ default: m.MomentMessage }))) })
 
 /** Comment on the selection, or on the caret's line: a card in the margin to write it in. A guest who may only read can't. */
 const comments = () => !share || share.role !== "read"

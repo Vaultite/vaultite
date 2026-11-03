@@ -1,12 +1,13 @@
 // A Claude Code session as a chat (view:claude-session/<id>, `new` till it starts): live over its socket, what it asks
 // answered in place, a composer saying straight into it; `<id>@<machine>` is another machine's, through its server.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { ArrowUp, Brain, Check, ChevronDown, ChevronRight, CircleAlert, FileText, Folder, Globe, History, ListTodo, Pencil, Search, Square, SquareTerminal,
-  Bot, Wrench, X, Ellipsis } from "lucide-react"
+  Bot, Wrench, X, Ellipsis, ListTree } from "lucide-react"
 import { announceAgent, Button, cn, confirmDialog, copyText, DiffRows, get, haptic, isViewOpen, Markdown, menuBelow, notify, notifyError, onMachine, op,
   openAgent, openMenu, openView, plural, splitMachine, textDiff, ink, useScopedState, type AgentPhase, type DiffLine, type MenuItem } from "@vaultite"
 import type { Entry } from "./chatlog"
 import { ClaudeIcon } from "./ClaudeIcon"
+import { type Driven, drivenOf } from "./driven"
 import { QuestionPicker } from "@plugins/inbox/Questions"
 import { nameTab, NEW } from "./titles"
 
@@ -109,8 +110,17 @@ export function ChatView({ id, setArg }: { id: string; setArg: (arg: string) => 
 }
 
 function Chat({ id, setArg }: { id: string; setArg: (arg: string) => void }) {
-  const fresh = !id || id === NEW
   const c = useChat(id)
+  // (a plugin's session, drawn its way: the chat a click away)
+  const d = drivenOf(c.driven)
+  const [chat, setChat] = useState(false)
+  useEffect(() => { if (d?.title && !c.title) nameTab(id, d.title) }, [d?.title, c.title, c.ready]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (d?.View && !chat) return <Suspense fallback={null}><d.View id={id} c={c} chat={() => setChat(true)} /></Suspense>
+  return <ChatOf id={id} setArg={setArg} c={c} d={d} back={d?.View ? () => setChat(false) : undefined} />
+}
+
+function ChatOf({ id, setArg, c, d, back }: { id: string; setArg: (arg: string) => void; c: ReturnType<typeof useChat>; d: Driven | null; back?: () => void }) {
+  const fresh = !id || id === NEW
   const o = useOptions()
   const scroller = useRef<HTMLDivElement>(null)
   const stuck = useRef(true)
@@ -132,13 +142,13 @@ function Chat({ id, setArg }: { id: string; setArg: (arg: string) => void }) {
   const streaming = !!last && "live" in last && last.live
   // (till Claude Code names it, what was asked first)
   const first = c.entries.find((e) => e.k === "user")
-  const title = fresh ? "New chat" : c.title || (first?.k === "user" ? clipLine(first.text) : c.ready ? "Untitled chat" : "")
-  useEffect(() => { if (!c.title && first?.k === "user" && !fresh) nameTab(id, clipLine(first.text)) }, [first?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const title = fresh ? "New chat" : c.title || d?.title || (first?.k === "user" ? clipLine(first.text) : c.ready ? "Untitled chat" : "")
+  useEffect(() => { if (!c.title && !d?.title && first?.k === "user" && !fresh) nameTab(id, clipLine(first.text)) }, [first?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="flex h-full min-h-0 flex-col bg-background" data-chat={fresh ? "new" : id} data-state={c.s?.state ?? (c.tui !== null ? "terminal" : "closed")}>
       <div ref={scroller} onScroll={onScroll} className="isolate min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto w-full max-w-[46rem] px-5 pt-5 pb-8 max-md:px-4">
-          <Head id={id} fresh={fresh} title={title} c={c} o={o} />
+          <Head id={id} fresh={fresh} title={title} c={c} o={o} back={back && { name: d?.name ?? "Timeline", go: back }} />
           {fresh ? <Welcome /> : !c.ready ? <Skeleton /> : !c.found ? <p className="py-10 text-center text-[15px] text-muted-foreground">This session isn't on this machine, or it's in a private account.</p> : (
             <>
               {c.start > 0 && (
@@ -150,7 +160,7 @@ function Chat({ id, setArg }: { id: string; setArg: (arg: string) => void }) {
               <div className="space-y-4" data-entries>
                 {rows.map((r) => r.kind === "tools"
                   ? <div key={r.key} className="-mx-1.5">{r.tools.map((t) => <ToolRow key={t.id} t={t} kids={r.kids.get(t.id) ?? []} open={opened.has(t.id)} toggle={() => toggle(t.id)} />)}</div>
-                  : <EntryView key={r.e.id} e={r.e} id={id} open={opened.has(r.e.id)} toggle={() => toggle(r.e.id)} pending={pending.some((p) => p.id === r.e.id)} />)}
+                  : <EntryView key={r.e.id} e={r.e} id={id} open={opened.has(r.e.id)} toggle={() => toggle(r.e.id)} pending={pending.some((p) => p.id === r.e.id)} Message={d?.Message} />)}
               </div>
               {working && !streaming && !pending.length && <Working since={c.s!.at} />}
               {c.s?.state === "error" && c.s.error && <Note tone="error" text={c.s.error} />}
@@ -222,7 +232,7 @@ function Kinfolk({ f }: { f: Family }) {
   )
 }
 
-function Head({ id, fresh, title, c, o }: { id: string; fresh: boolean; title: string; c: ReturnType<typeof useChat>; o: Options | null }) {
+function Head({ id, fresh, title, c, o, back }: { id: string; fresh: boolean; title: string; c: ReturnType<typeof useChat>; o: Options | null; back?: { name: string; go: () => void } }) {
   const family = useFamily(fresh ? "" : id, c.s?.state ?? "")
   if (fresh) return null
   const model = c.s?.model || c.model
@@ -252,6 +262,11 @@ function Head({ id, fresh, title, c, o }: { id: string; fresh: boolean; title: s
         {family && <Kinfolk f={family} />}
       </div>
       <div className="flex shrink-0 items-center gap-1 pt-0.5">
+        {back && (
+          <Button look="quiet" size="small" className="max-md:size-11 max-md:px-0" onClick={back.go} aria-label={`Show ${back.name.toLowerCase()}`} data-driven-back>
+            <ListTree className="size-4 max-md:size-5" strokeWidth={2} /><span className="max-md:hidden">{back.name}</span>
+          </Button>
+        )}
         {/* (a plugin's session that runs here has tools no terminal serves: taking it there would end it for its plugin) */}
         {!(c.driven && c.s) && (
           <Button look="quiet" size="small" className="max-md:size-11 max-md:px-0" disabled={!c.ready} onClick={() => void toTerminal()} aria-label={c.tui ? "Show its terminal" : "Open in terminal"}
@@ -303,12 +318,12 @@ function askOf(t: Tool): Ask {
   return { k: "ask", id: `ask:${t.id}`, kind: t.name === "ExitPlanMode" ? "plan" : "question", tool: t.name, title: question, answer, at: t.at }
 }
 
-function EntryView({ e, id, open, toggle, pending }: { e: Entry; id: string; open: boolean; toggle: () => void; pending: boolean }) {
+function EntryView({ e, id, open, toggle, pending, Message }: { e: Entry; id: string; open: boolean; toggle: () => void; pending: boolean; Message?: Driven["Message"] }) {
   switch (e.k) {
     case "user": return (
       <div className="flex justify-end" data-entry="user">
         <div className="max-w-[85%] min-w-0 rounded-[18px] bg-muted px-3.5 py-2 text-[15px] leading-[22px] max-md:text-[17px] max-md:leading-[24px]">
-          <Markdown text={e.text} className="min-w-0 break-words" />
+          {Message ? <Suspense fallback={<Markdown text={e.text} className="min-w-0 break-words" />}><Message text={e.text} /></Suspense> : <Markdown text={e.text} className="min-w-0 break-words" />}
         </div>
       </div>
     )

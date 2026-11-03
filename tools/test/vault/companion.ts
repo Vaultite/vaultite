@@ -151,6 +151,45 @@ export default async ($: VaultTest) => {
   }
   check("companion: moments read as lines for an agent", c.momentsText(edited, "notice", { path: "Notes/A.md", line: 2 }).includes("+ Call Alice friday"))
   {
+    // Its timeline and chat read moments back from its messages (moments.ts): what momentsText writes, read again.
+    const { readMoments } = await import("../../../plugins/core/companion/moments.ts")
+    const { turnsOf, noteOf } = await import("../../../plugins/core/companion/turns.ts")
+    const ms = [
+      { seq: 1, t: 0, kind: "ask", path: "Notes/My plans.md", line: 7, text: "is this \"right\"?\nsure", selection: "the basil" },
+      { seq: 2, t: 0, kind: "edit", path: "Notes/My plans.md", hunks: [{ line: 3, removed: ["- old: a"], added: ["+ new", ""] }, { line: 9, removed: [], added: ["x"] }] },
+      { seq: 3, t: 0, kind: "reply", item: "n12", path: "Notes/My plans.md", line: 4, text: "ok" },
+      { seq: 4, t: 0, kind: "accept", item: "n7", path: "Notes/A.md", line: 5, to: "Call Ben" },
+      { seq: 5, t: 0, kind: "point", path: "Notes/A.md", line: 2 }, { seq: 6, t: 0, kind: "ask", text: "no note" }, { seq: 7, t: 0, kind: "open", path: "Notes/B.md" },
+    ] as Any[]
+    const text = `Read ME.md first.\n\n${c.momentsText(ms, "pair", { path: "Notes/My plans.md", line: 7 }, [{ path: "Notes/My plans.md", from: 1, to: 2, of: 9, lines: ["a", "  b"] }])}`
+    const m = readMoments(text)
+    check("companion: its moments read back from what it was sent, whatever's in their text and paths", !!m && m.before === "Read ME.md first." && m.mode === "pair" &&
+      m.focus?.path === "Notes/My plans.md" && m.focus.line === 7 && m.moments.length === 7 &&
+      m.moments[0].text === ms[0].text && m.moments[0].path === "Notes/My plans.md" && m.moments[0].line === 7 && m.moments[0].selection === "the basil" &&
+      JSON.stringify(m.moments[1].hunks) === JSON.stringify(ms[1].hunks) && m.moments[2].item === "n12" && m.moments[2].text === "ok" &&
+      m.moments[3].kind === "accept" && m.moments[3].item === "n7" && m.moments[3].to === "Call Ben" && m.moments[4].kind === "point" && m.moments[4].line === 2 &&
+      m.moments[5].text === "no note" && !m.moments[5].path && m.moments[6].kind === "open" && JSON.stringify(m.notes) === JSON.stringify([{ path: "Notes/My plans.md", from: 1, to: 2, of: 9, lines: ["a", "  b"] }]), m)
+    check("companion: a message that isn't moments isn't read as them", readMoments("Time for a fresh session: this one has grown long.") === null)
+    const at = "2026-11-02T10:00:00.000Z", tool = (id: string, name: string, input: Any, result?: string, error?: boolean) => ({ k: "tool", id, name, summary: "", input, result, error, at }) as Any
+    const ts = turnsOf([
+      { k: "user", id: "u1", text: c.momentsText([ms[0]], "pair", null), at },
+      tool("t1", "mcp__vaultite-app__say", { text: "On it" }, "Said."),
+      tool("t2", "Bash", { command: "vau read Notes/A.md" }, "…"), tool("t3", "Bash", { command: "vau search basil" }, "…"),
+      tool("t4", "mcp__vaultite-app__suggest", { find: "basil", replace: "thyme", path: "Notes/A.md" }, "Suggested (n7uaz)."),
+      tool("t5", "mcp__vaultite-app__edit", { text: "a\nb\nc", after: "## Plan" }, "Typed into Notes/My plans.md."),
+      tool("t6", "Bash", { command: "vau terminal open claude_default --prompt \"Fix the test\"" }, "Opened claude_default-ab12cd34 (claude_default)."),
+      tool("t7", "mcp__vaultite-app__comment", { text: "x" }, "there's no note", true),
+      { k: "user", id: "u2", text: c.momentsText([{ seq: 8, t: 0, kind: "reject", item: "n7uaz", path: "Notes/A.md", line: 1 }], "pair", null), at },
+      { k: "user", id: "u3", text: c.momentsText([{ seq: 9, t: 0, kind: "edit", path: "Notes/B.md", hunks: [{ line: 1, removed: [], added: ["hi"] }] }], "pair", null), at },
+    ] as Any[])
+    const acts = ts[0]?.acts ?? []
+    check("companion: its session reads as turns: what the user did, then what it did, reads folded, sessions it started, an item's answer on it",
+      ts.length === 3 && acts.map((a) => a.k).join() === "say,read,suggest,edit,session,comment" && (acts[1] as Any).what.length === 2 &&
+      acts[2].item === "n7uaz" && acts[2].outcomes?.[0]?.kind === "reject" && acts[3].path === "Notes/My plans.md" && acts[3].find === "## Plan" &&
+      (acts[4] as Any).terminal === "claude_default-ab12cd34" && (acts[4] as Any).title === "Fix the test" && !!acts[5].error &&
+      noteOf(ts[0]) === "Notes/My plans.md" && noteOf(ts[2]) === "Notes/B.md" && !ts[2].acts.length, ts)
+  }
+  {
     // A drawing's moments: what changed, the scene as its window saw it (the last one), the user's pointer.
     const ms = [{ seq: 1, t: 0, kind: "edit", path: "D.excalidraw", x: 5, y: 9, changes: ["+ r1 rectangle at 0,0"], scene: "old" },
       { seq: 2, t: 1, kind: "ask", path: "D.excalidraw", find: "t1", text: "why?", scene: "1 items:\n- t1 text \"@claude why?\"" }] as Any[]

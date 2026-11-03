@@ -180,8 +180,13 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     /** Its inbox thread's event id. */
     thread?: string }
   const keptFile = () => path.join(plugin.localDir(), "chats.json")
-  let kept: Record<string, Kept> = {}
-  try { kept = JSON.parse(fs.readFileSync(keptFile(), "utf8")) } catch { /* none yet */ }
+  let kept: Record<string, Kept> = {}, read = false
+  // (read once the vault is loaded, its local dir known: not as the module loads; what's kept since wins)
+  plugin.onSync(() => {
+    if (read) return
+    read = true
+    try { kept = { ...JSON.parse(fs.readFileSync(keptFile(), "utf8")), ...kept } } catch { /* none yet */ }
+  })
   let saving: ReturnType<typeof setTimeout> | null = null
   const save = () => { saving ??= setTimeout(() => { saving = null; try { fs.writeFileSync(keptFile(), JSON.stringify(kept)) } catch (e) { console.error("chat: keeping sessions:", e) } }, 500) }
   const midTurn = (k: Kept) => k.state === "working" || k.state === "waiting" || k.state === "starting"

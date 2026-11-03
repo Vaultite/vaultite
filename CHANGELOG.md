@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's tab is a timeline, not a chat**: what it did (said, commented, suggested with its accepted or rejected state, wrote, pointed at, terminals and tasks it started) under your asks and edits, grouped by note, newest first; a row goes to its place in the note, its state shows live at the top, a line asks it something, and its chat is a click away. Changed lines show as a diff with their `-` and `+`, in the chat too.
 - **Snooze is a button on a session's row and sheet**: beside Settle on hover, in the Inbox panel, and by Pin in its
   sheet, as results have it.
 - **An agent's question has every choice its picker has**, in the inbox and the chat tab: its options numbered, Type
