@@ -37,7 +37,7 @@ const openPage = (url: string, container: string | null = null) => openView(`web
 /** What a page opened (a link to a new tab, window.open, its link menu): in a new tab after it, behind or in front, to
  *  the side or in a glance, in its container (or the one picked); the page made for it (`page`) handed to that tab. */
 function opened(m: Extract<WebEvent, { type: "open" }>) {
-  const c = m.container !== undefined ? m.container : destination(m.url, { from: containerOfProfile(m.profile), fresh: false }).container
+  const c = m.container !== undefined ? m.container : destination(m.url, { from: containerOfProfile(m.profile), fresh: false, opened: true }).container
   if (c === null) keepOutside(m.url)
   const to = `view:web/${argOf(m.url, c)}`
   if (m.how === "glance") return openDetail(detailPath("glance", to))

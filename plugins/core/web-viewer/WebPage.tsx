@@ -410,7 +410,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   }
 
   // (behind it, as a link's new tab: a tab of its own even when another shows that address, a copy is what Reload's asked for)
-  const inNewTab = (to: unknown) => { if (typeof to === "string" && to) openBehind(to, destination(to, { from: container, fresh: false }).container, tab || undefined) }
+  const inNewTab = (to: unknown) => { if (typeof to === "string" && to) openBehind(to, destination(to, { from: container, fresh: false, opened: true }).container, tab || undefined) }
 
   const onWeb = http(state.url)
   const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []

@@ -56,10 +56,11 @@ export function ruleFor(url: string): string | null {
 }
 /** Where an address opens and why (the chip says it while it's typed): `container` null is the workspace's own logins. */
 export type Where = { container: string | null; why: string }
-/** Where `url` opens from a tab in `from` (`fresh`: a tab with no page yet, or a new one): the container picked for it
- *  (`chosen`, null: none), else its site's, else the tab's, else (fresh) the workspace's. Enter, ⌥Enter and ⌘T ask it. */
-export function destination(url: string, { from, fresh, chosen }: { from: string | null; fresh: boolean; chosen?: string | null }): Where {
+/** Where `url` opens from a tab in `from` (`fresh`: new or blank): the container `chosen` (null: none), else the page's
+ *  when a page `opened` it (its link is that account's), else its site's, else the tab's, else (fresh) the workspace's. */
+export function destination(url: string, { from, fresh, chosen, opened }: { from: string | null; fresh: boolean; chosen?: string | null; opened?: boolean }): Where {
   if (chosen !== undefined) return { container: containerById(chosen)?.id ?? null, why: "" }
+  if (opened && containerById(from)) return { container: from, why: "" }
   const rule = containerById(url ? ruleFor(url) : null)
   if (rule) return { container: rule.id, why: `${siteOf(url)} always opens in ${rule.name}` }
   if (containerById(from)) return { container: from, why: "" }

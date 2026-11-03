@@ -22,7 +22,7 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   purple, pink, yellow, teal, indigo, gray; `sites`: a page of one opened in no container opens there; else, with
   Workspaces, the workspace's `container`, else the workspace's own logins). While an address is typed, the chip
   shows where it will open and why, and choosing there (or ⌥↑/⌥↓) applies on Enter; a tab moved to another container
-  keeps its back history. What's opened from a page in a container opens in it too. `"lock": true` makes a container need Touch ID: its pages don't open or
+  keeps its back history. What's opened from a page in a container (a link, a new window) opens in it too, even a site that always opens in another: the link is that account's (a Drive file from Work's Drive opens in Work), as in a browser profile; the rule takes what's typed, links from notes and pages in no container. `"lock": true` makes a container need Touch ID: its pages don't open or
   show until unlocked in its tab, and lock again when the Mac locks, sleeps or is idle 15 minutes ("Lock containers").
 - Tabs: each is its own page, as in any browser (two tabs of one address are two pages): one in the background keeps
   its page, closing it ends it, and ⌘⇧T opens it again with its Back and Forward (kept on the Mac, so a relaunch keeps
