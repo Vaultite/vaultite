@@ -39,7 +39,7 @@ export function shareKept(plugin: Plugin, machines: () => Promise<Peer[]>, vault
     const send = async (m: Peer) => {
       try {
         const r = await fetch(`${m.url}/api/machines/kept`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, body, signal: AbortSignal.timeout(5000) })
-        if (r.ok) return true
+        if (r.ok || r.status === 404) return true // (404: an older app, which has none of this: nothing to retry)
         console.warn(`machines: ${m.label} didn't take what's kept here (${r.status} ${(await r.text()).slice(0, 200)})`)
       } catch { /* offline, or busy */ }
       return false
