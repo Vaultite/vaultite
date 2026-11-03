@@ -16,6 +16,8 @@
 - Electron drags the window wherever any of its views has a drag region (`-webkit-app-region`), whatever is drawn over
   it, and Chromium neither clips regions nor stacks them: only document order counts. So a site's own are off
   (web-preload.cjs) and the window's are cut where a page shows (WebPage's `data-web-cut`); `web/qa/pageclicks.mjs`.
+- While its pane moves (core/panemotion.ts: a split, a sidebar opening) a picture of the page (`shot`) slides in its
+  place and the page waits off the window at its new size: a native view moved each frame trails the pane.
 - A tab owns its page by the tab's id (`usePane().tab`; electron/webpages.ts decides): hidden in the background, the same
   one when shown again, ended when the tab closes or leaves the window (`onTabClose`; moved to another of the vault's
   windows, it goes along: `moved`, web.ts `adopt`) or shows something else. None

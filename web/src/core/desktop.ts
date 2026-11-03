@@ -155,6 +155,8 @@ export type WebPages = {
   player?: (id: number, on: boolean, fullScreen?: boolean) => Promise<unknown>
   /** Its HTML as rendered now, and where it is. */
   html: (id: number) => Promise<{ url: string; title: string; html: string }>
+  /** A picture of it as it's shown now (JPEG; null when it isn't shown). Older builds don't have it. */
+  shot?: (id: number) => Promise<Uint8Array | null>
   /** An address (http, https, mailto) in the system browser. */
   external: (url: string) => Promise<unknown>
   /** The app's shortcuts with ⌘, ⌃ or ⌥ (`modifiedSteps`): pressed in a page, they come back as `key` events. */

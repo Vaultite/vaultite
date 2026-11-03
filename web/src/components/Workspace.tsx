@@ -28,7 +28,6 @@ import { Resizer } from "@/components/Resizer"
 import { ViewBar } from "@/components/ViewBar"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
-import { watchSliding } from "@/core/sliding"
 import { unsavedIn } from "@/core/unsaved"
 import { glide } from "@/core/animation"
 
@@ -96,15 +95,13 @@ export function Workspace(props: Props) {
   const all = leaves(root)
   const alone = all.length === 1
   const drawn = paneBoxes(ws)
-  usePaneMotion(box, drawn, focus)
+  usePaneMotion(box, drawn, focus, [props.left, props.right ?? "0px"])
   // (a pane dragged by its handle recedes where it was, its card in hand: Tabs' DragGhost)
   const lifted = useDrag((d) => d?.item.group ?? null)
   // Tabs, and files or pages from the sidebar, dropped on a tab bar or a pane.
   useDropTarget<Drop>(PANES, dropAt, dropOn)
-  // (its edges follow the sidebars', with their spring: a terminal waits for them to stop, core/sliding.ts)
-  useLayoutEffect(() => (box.current ? watchSliding(box.current) : undefined), [])
   return (
-    <main ref={box} data-pane-area data-split={alone ? undefined : ""} className="fixed inset-y-0 z-10 transition-[left,right] duration-(--motion-spring) ease-(--spring)" style={{ left: props.left, right: props.right ?? 0 }}>
+    <main ref={box} data-pane-area data-split={alone ? undefined : ""} className="fixed inset-y-0 z-10" style={{ left: props.left, right: props.right ?? 0 }}>
       {drawn.map(({ id, rect, layer }) => {
         const g = all.find((x) => x.id === id)!, float = !!g.float, zoomed = id === zoom
         // (under a zoomed pane: out of the keyboard's reach, and no part of the window's drag strip)

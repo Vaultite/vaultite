@@ -1,5 +1,5 @@
-// Panes springing to new places, laid out there at once (a page reflows once, not per frame): each slides from where it
-// was, clipped to its size on the way, over its plate (the page's colour). New ones pop in; closing ones shrink away.
+// Panes springing to new places (a split, a sidebar opened), laid out there at once: each slides from where it was,
+// clipped to its size on the way, over its plate (the page's colour). New ones pop in; closing ones shrink away.
 import { useLayoutEffect, useRef, type RefObject } from "react"
 import { moves, timing } from "@/core/animation"
 import { stillCopy } from "@/core/snapshot"
@@ -24,7 +24,8 @@ export const paneGap = (el: Element) => parseFloat(getComputedStyle(el).getPrope
 const keyOf = (panes: PaneBox[]) => panes.map((p) => `${p.id}:${r4(p.rect.x)},${r4(p.rect.y)},${r4(p.rect.w)},${r4(p.rect.h)},${p.layer}`).join("|")
 
 type Box = { x: number; y: number; w: number; h: number }
-type Snap = { rects: Map<string, Box>; up: string | null; gone: { el: HTMLElement; at: Box; scrolls: [Element, number, number][] }[] }
+/** Where each pane was (in `box` as it was then: its corner `at`), the one drawn over the others, copies of those going. */
+type Snap = { at: { x: number; y: number }; rects: Map<string, Box>; up: string | null; gone: { el: HTMLElement; at: Box; scrolls: [Element, number, number][] }[] }
 
 const ID = "pane-motion"
 const near = (a: Box, b: Box) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.w - b.w) < 0.5 && Math.abs(a.h - b.h) < 0.5
@@ -38,13 +39,35 @@ const landing = new Map<string, DOMRect>()
  *  if that's a new one (a tab dropped on an edge). Call it just before the drop. */
 export function landFrom(id: string, rect: DOMRect) { landing.set(id, rect) }
 
-/** Moves `box`'s panes (`[data-group]`, each with a `[data-plate]`) when their places change; `raise`: the pane drawn
- *  over the others while moving (the one the user moved). */
-export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox[], raise: string) {
-  const key = keyOf(panes)
+/** A move of panes as it starts: the sections moving, and when they're all still. */
+export type PaneMotion = { moving: HTMLElement[]; finished: Promise<unknown> }
+const watchers = new Set<(m: PaneMotion) => Promise<unknown> | void>()
+/** Hear each move of panes as it starts; a promise back holds it at its start till it settles (at most HOLD_MS): what
+ *  a pane shows outside the page (a web page's native view) stands in a picture of itself first. */
+export function onPaneMotion(fn: (m: PaneMotion) => Promise<unknown> | void) {
+  watchers.add(fn)
+  return () => { watchers.delete(fn) }
+}
+const HOLD_MS = 200
+
+/** Where `box` would be with its `left` and `right` as they were (a probe laid out so, then taken away). */
+function boxAt(box: HTMLElement, [left, right]: string[]) {
+  const probe = document.createElement("div")
+  probe.style.cssText = `position: fixed; visibility: hidden; pointer-events: none; top: 0; bottom: 0; left: ${left}; right: ${right}`
+  box.after(probe)
+  const r = probe.getBoundingClientRect()
+  probe.remove()
+  return r
+}
+
+/** Moves `box`'s panes (`[data-group]`, each with a `[data-plate]`) when their places change, or `area` (the box's
+ *  left and right) does; `raise`: the pane drawn over the others while moving (the one the user moved). */
+export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox[], raise: string, area: string[]) {
+  const key = keyOf(panes), edges = area.join("|")
   const snap = useRef<Snap | "quiet" | null>(null)
   const run = useRef(0)
   const drawn = useRef(key)
+  const drawnArea = useRef(area)
   // A change that moves panes, before React draws it: where each is on screen now (mid-move too), copies of those going.
   useLayoutEffect(() => onWorkspaceChange(() => {
     const el = box.current
@@ -60,27 +83,48 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox
     }
     const gone = [...el.querySelectorAll<HTMLElement>(":scope > [data-group]")].filter((s) => !ids.has(s.dataset.group!) && rects.has(s.dataset.group!))
       .map((s) => ({ ...copyOf(s), at: rects.get(s.dataset.group!)! }))
-    snap.current = { rects, up: up ?? el.querySelector<HTMLElement>(":scope > [data-zoomed]")?.dataset.group ?? null, gone }
+    snap.current = { at: { x: b.left, y: b.top }, rects, up: up ?? el.querySelector<HTMLElement>(":scope > [data-zoomed]")?.dataset.group ?? null, gone }
   }), [box])
   useLayoutEffect(() => {
-    const el = box.current, s = snap.current
+    const el = box.current, was = drawnArea.current
+    let s = snap.current
     snap.current = null
     landing.clear()
-    if (!el || drawn.current === key) return
+    drawnArea.current = area
+    const moved = was.join("|") !== edges
+    if (!el || (drawn.current === key && !moved)) return
     drawn.current = key
+    // (a pane still on its way: how far its plate is from its place, to start the next move from there)
+    const midway = new Map<string, DOMMatrixReadOnly>()
+    if (moved && !s) for (const p of el.querySelectorAll<HTMLElement>(":scope > [data-plate][data-moving]")) midway.set(p.dataset.plate!, new DOMMatrixReadOnly(getComputedStyle(p).transform))
     for (const a of el.getAnimations({ subtree: true })) if (a.id === ID) a.cancel()
     for (const m of el.querySelectorAll<HTMLElement>(":scope > [data-moving]")) delete m.dataset.moving
     const t = timing("spring")
-    if (!s || s === "quiet" || !t.duration) return
-    const b = el.getBoundingClientRect(), mine = ++run.current, moving: HTMLElement[] = [], anims: Animation[] = []
+    // (the shell taking its places as the vault's state comes in: main.tsx' data-arriving)
+    if (!t.duration || "arriving" in document.body.dataset) return
+    const b = el.getBoundingClientRect(), g = paneGap(el)
+    // Only the area moved: each pane was where it is in the area as it was.
+    if (!s && moved) {
+      const o = boxAt(el, was), rects = new Map<string, Box>()
+      for (const p of panes) {
+        const gap = p.round ? 0 : g, W = o.width - gap, H = o.height - gap, m = midway.get(p.id) ?? new DOMMatrixReadOnly()
+        const w = p.rect.w * W - gap, h = p.rect.h * H - gap
+        rects.set(p.id, { x: o.left - b.left + p.rect.x * W + gap + m.m41, y: o.top - b.top + p.rect.y * H + gap + m.m42, w: w * m.a, h: h * m.d })
+      }
+      s = { at: { x: b.left, y: b.top }, rects, up: null, gone: [] }
+    }
+    if (!s || s === "quiet") return
+    const mine = ++run.current, moving: HTMLElement[] = [], anims: Animation[] = []
+    // (from where the box was then: a sidebar may have moved it meanwhile)
+    const ox = s.at.x - b.left, oy = s.at.y - b.top, shift = (r: Box) => ({ x: r.x + ox, y: r.y + oy, w: r.w, h: r.h })
     // (tiled panes as cards: inset by the gap, rounded as floating ones are; Workspace's tile())
-    const g = paneGap(el), cards = g > 0
+    const cards = g > 0
     for (const p of panes) {
       const sec = sectionOf(el, p.id), plate = plateOf(el, p.id)
       if (!sec || !plate) continue
       const gap = p.round ? 0 : g, W = b.width - gap, H = b.height - gap
       const to = { x: p.rect.x * W + gap, y: p.rect.y * H + gap, w: p.rect.w * W - gap, h: p.rect.h * H - gap }
-      const from = s.rects.get(p.id)
+      const then = s.rects.get(p.id), from = then && shift(then)
       // A new pane pops in at its place (Rex's split): from a little smaller and clear, over the one making room.
       if (!from) {
         anims.push(sec.animate([{ transform: "scale(0.92)", opacity: 0 }, { transform: "scale(1)", opacity: 1 }], { ...timing("fast"), id: ID }))
@@ -103,7 +147,8 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox
       moving.push(plate, sec)
     }
     for (const g of s.gone) {
-      Object.assign(g.el.style, { position: "absolute", left: `${g.at.x}px`, top: `${g.at.y}px`, width: `${g.at.w}px`, height: `${g.at.h}px`, zIndex: "0", pointerEvents: "none" })
+      const at = shift(g.at)
+      Object.assign(g.el.style, { position: "absolute", left: `${at.x}px`, top: `${at.y}px`, width: `${at.w}px`, height: `${at.h}px`, zIndex: "0", pointerEvents: "none" })
       el.prepend(g.el)
       for (const [x, top, left] of g.scrolls) { x.scrollTop = top; x.scrollLeft = left }
       // (Rex's close: it shrinks toward its middle as it fades, quicker than the survivor springs over it)
@@ -111,9 +156,16 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox
       void a.finished.catch(() => {}).finally(() => g.el.remove())
       anims.push(a)
     }
-    void Promise.allSettled(anims.map((a) => a.finished)).then(() => {
+    const finished = Promise.allSettled(anims.map((a) => a.finished))
+    void finished.then(() => {
       if (run.current !== mine) return
       for (const m of moving) delete m.dataset.moving
+    })
+    const holds = [...watchers].map((f) => f({ moving: moving.filter((m) => m.matches("section")), finished })).filter((h) => !!h)
+    if (!holds.length) return
+    for (const a of anims) a.pause()
+    void Promise.race([Promise.allSettled(holds), new Promise((ok) => setTimeout(ok, HOLD_MS))]).then(() => {
+      if (run.current === mine) for (const a of anims) if (a.playState === "paused") a.play()
     })
   })
 }

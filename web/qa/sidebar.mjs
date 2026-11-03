@@ -68,13 +68,12 @@ try {
   check("row lit", await until(async () => (await row.getAttribute("class")).includes("font-medium")), await row.getAttribute("class"))
   await wait(800)
   await page.screenshot({ path: `${OUT}2-terminal.png` })
-  // The sidebar folded and opened: the panes slide to its edge, and the terminal takes its new size once they stop
-  // (core/sliding.ts), not every frame (its shell would redraw for each).
+  // The sidebar folded and opened: the panes are laid out at their new size at once and slide there (core/panemotion.ts),
+  // so the terminal takes its new size once, not every frame (its shell would redraw for each).
   resizes = 0
   await page.keyboard.press("ControlOrMeta+Backslash"); await wait(900)
-  const slid = await page.evaluate(() => !document.documentElement.hasAttribute("data-panes-sliding"))
   await page.keyboard.press("ControlOrMeta+Backslash"); await wait(900)
-  check("the sidebar folded and opened: the terminal resized once each way, after the panes stopped", slid && resizes >= 1 && resizes <= 2, { resizes, slid })
+  check("the sidebar folded and opened: the terminal resized once each way", resizes >= 1 && resizes <= 2, { resizes })
 
   // Opt-in plugins' panels, put in the sidebar: on, they show; off, one by one, they go without a reload.
   const OPT_IN = ["activity:feed", "web-viewer:web-pages"]

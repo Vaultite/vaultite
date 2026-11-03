@@ -374,6 +374,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onlyMode(scheme)`: The one mode a scheme has, if it has only one (Dracula: dark).
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
 - `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, a note's callouts and tables, with their lines): plugins that change rendered Markdown (another app's…
+- `onPaneMotion(fn)`: Hear each move of panes as it starts; a promise back holds it at its start till it settles (at most HOLD_MS): what a pane shows outside the page (a web page's native view) stands in a picture of…
 - `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`
@@ -416,6 +417,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PanelFold`
 - `panelMenu(key?, side?)`: Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`).
 - `panelSide(key, s?)`: Which sidebar a panel is in (null: hidden).
+- `PaneMotion`: A move of panes as it starts: the sections moving, and when they're all still.
 - `panesOf(n)`: Every group, left to right and top to bottom.
 - `paragraphAt(doc, pos)`: The lines of the soft-wrapped paragraph around `pos`: up to a blank line or a line that starts another block (list item, quote, heading, fence, table, math, HTML, footnote definition, callout…
 - `parse(s)`

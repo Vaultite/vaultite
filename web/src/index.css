@@ -1173,7 +1173,7 @@ html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [d
 [data-lights-ghost] > i:nth-child(3) { --light: color(display-p3 0.396 0.769 0.4); --light-rim: color(display-p3 0.169 0.663 0.18); }
 html[data-window-inactive] [data-lights-ghost] > i { --light: rgb(35 35 35); --light-rim: rgb(45 45 45); mix-blend-mode: plus-lighter; }
 @media (prefers-color-scheme: light) { html[data-window-inactive] [data-lights-ghost] > i { mix-blend-mode: difference; } }
-/* In step with the panes sliding (Workspace: transition-[left,right] on the spring), so the first tab never passes
+/* In step with the panes sliding (core/panemotion.ts, on the spring), so the first tab never passes
    under the lights while the sidebar opens or folds. */
 html[data-electron] [data-corner] > [data-tab-bar] { transition: padding-left var(--motion-spring) var(--spring); }
 /* Folded to its rail, the lights are wider than it: the rail's top row looks like the tab bar beside it (one title bar),

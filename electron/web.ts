@@ -1184,6 +1184,13 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     if (!t) { wc.stopFindInPage("keepSelection"); return null }
     return wc.findInPage(t, { forward: x.forward !== false, findNext: x.next !== true, matchCase: x.matchCase === true })
   },
+  // A picture of it as shown (JPEG bytes), for its tab to show in its place while its pane moves (WebPage.tsx).
+  "web:shot": async (win, id) => {
+    const p = mine(win, id)
+    if (!shownNow(p)) return null
+    const img = await p.view.webContents.capturePage()
+    return img.isEmpty() ? null : img.toJPEG(90)
+  },
   "web:html": async (win, id) => {
     const p = mine(win, id)
     // In a world of its own: the page's scripts can't stand in for what's read.

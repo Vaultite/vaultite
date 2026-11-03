@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
   Search, ShieldAlert, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
-  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, openInSplit, openMenu, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
-  type MenuItem, type WebPageAction, type WebPageState, type WebPages,
+  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
+  type MenuItem, type PaneMotion, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
 import { floatCover, hitCover, matters, moved, overlap, painted, passPointer, popupOpen, sameRect, setCover, setHole, SLIDES, type Change, type Cover } from "./layers"
@@ -224,6 +224,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       return placed
     }
     const step = async () => {
+      if (still) return
       const r = pageArea(el.getBoundingClientRect())
       const show = !live.current.error && !live.current.passkey && r.width >= 2 && r.height >= 2
       // (where it was, and nothing changed since: nor did what covers it)
@@ -264,6 +265,57 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       schedule()
     }
     kick.current = touch
+    // While its pane moves (core/panemotion.ts), a picture of the page slides with it: a native view moved each frame
+    // lags behind. The page waits off the window at its new size and comes back where the pane stops.
+    let still: { until: Promise<unknown> } | null = null, picture: HTMLImageElement | null = null
+    const unpicture = () => { if (!picture) return; picture.remove(); URL.revokeObjectURL(picture.src); picture = null }
+    const thaw = async () => {
+      still = null
+      const r = pageArea(el.getBoundingClientRect())
+      if (picture && !live.current.error && !live.current.passkey && r.width >= 2 && r.height >= 2) {
+        await web.place(id, { x: r.left, y: r.top, width: r.width, height: r.height }).catch(() => undefined)
+        if (gone) return
+        at = r
+        setHole(id, el, at)
+        await painted()
+      }
+      unpicture()
+      touch()
+    }
+    const freeze = ({ moving, finished }: PaneMotion) => {
+      const sec = moving.find((m) => m.contains(el))
+      if (!sec || !web.shot || (!at && !picture)) return
+      const mine = still = { until: finished }
+      void finished.then(() => { if (still === mine) void thaw() })
+      // (moving again before it stopped: its picture is up already)
+      if (picture) return
+      const was = at!
+      return (async () => {
+        const shot = await web.shot!(id).catch(() => null)
+        const img = new Image()
+        if (shot) img.src = URL.createObjectURL(new Blob([shot as BlobPart], { type: "image/jpeg" }))
+        if (shot) await img.decode().catch(() => {})
+        if (gone || still !== mine || !shot) { URL.revokeObjectURL(img.src); if (still === mine) { still = null; touch() } return }
+        img.alt = ""
+        img.className = "pointer-events-none absolute top-0 left-0 max-w-none select-none"
+        Object.assign(img.style, { width: `${was.width}px`, height: `${was.height}px` })
+        el.append(img)
+        picture = img
+        // (drawn under the page, and the window solid there again, before the page goes: nothing shows the change)
+        setCover(id, null)
+        covered = false
+        setHole(id, el, null)
+        // (a frame later it's drawn: the pane may start moving as the page is told to go, it's gone within a frame)
+        await new Promise(requestAnimationFrame)
+        if (gone || still !== mine) return
+        // Off the window at its new size (the box's, without its pane's move), so it's laid out once it's back.
+        const m = new DOMMatrixReadOnly(getComputedStyle(sec).transform), r = el.getBoundingClientRect()
+        const to = pageArea(new DOMRect(r.left - m.m41, r.top - m.m42, el.offsetWidth, el.offsetHeight))
+        void web.place(id, { x: -40000, y: 0, width: Math.max(2, to.width), height: Math.max(2, to.height) }).catch(() => undefined)
+        at = null
+      })()
+    }
+    const unmotion = onPaneMotion(freeze)
     const ro = new ResizeObserver(() => touch())
     ro.observe(el)
     const mo = new MutationObserver((rs) => { for (const m of rs) { if (dirty === "hits") return; touch(matters(m, el)) } })
@@ -290,6 +342,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       document.removeEventListener("visibilitychange", all)
       clearInterval(tick)
       unpass()
+      unmotion()
+      unpicture()
       setCover(id, null)
       setHole(id, el, null)
       setOnScreen(id, false)

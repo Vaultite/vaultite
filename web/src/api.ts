@@ -235,6 +235,7 @@ export type { SettingDecl, SettingDecls } from "../../core/blocks.ts"
 export { SearchPage } from "@/pages/Search"
 // Which pane a view is drawn in (its group's id; "" outside the desktop's panes).
 export { usePane, usePaneTopBar } from "@/core/pane"
+export { onPaneMotion, type PaneMotion } from "@/core/panemotion"
 export { focusPane, holdFocus, keyboardBusy, useDismiss, useHeldFocus } from "@/core/focus"
 // Make a pane the focused one (the address, the status bar and commands follow it) without moving the keyboard: a view
 // whose keyboard lives outside the page (the Browser's page) was clicked.
