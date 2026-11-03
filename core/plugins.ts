@@ -727,11 +727,6 @@ export class Plugin {
     return keptOf(this._vault ? this._vault.path : VAULT_PATH).set(`${this.id}/${name}`, data, { shared, at })
   }
 
-  /** When what it keeps as `name` last changed (ms; 0: never). */
-  keptAt(name: string): number {
-    return keptOf(this._vault ? this._vault.path : VAULT_PATH).at(`${this.id}/${name}`)
-  }
-
   /** The names it keeps something under, starting with `prefix`. */
   keptNames(prefix = ""): string[] {
     return keptOf(this._vault ? this._vault.path : VAULT_PATH).names(`${this.id}/${prefix}`).map((n) => n.slice(this.id.length + 1))

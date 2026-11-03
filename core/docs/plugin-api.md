@@ -45,7 +45,6 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.localDir(make)`: Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make` is false, with vault.txt naming the vault.
 - `plugin.kept(name, fallback?)`: What it keeps that isn't the user's (runtime state: what's open, a place in a video; core/kept.ts): in this server's memory and on its own disk, never in the vault. A new copy each time, or `fallback` while there's none.
 - `plugin.keep(name, data, { shared)`: Keep `data` as `name` (null forgets it); `shared`: the other machines serving this vault have it too (Machines passes it on, the latest write winning); `at`: when it changed (ms), for data from before. Returns whether it changed.
-- `plugin.keptAt(name)`: When what it keeps as `name` last changed (ms; 0: never).
 - `plugin.keptNames(prefix)`: The names it keeps something under, starting with `prefix`.
 - `plugin.readCache(fallback)`: Its cache of live data (kept as `cache`, shared: what one machine fetched or counted, every machine shows).
 - `plugin.writeCache(data, { here)`: Replace its cache; `here`: only this machine's (what each machine works out itself, like what files' bytes say).

@@ -49,8 +49,8 @@ function save(list: (Item | null)[]) {
   }
 }
 
-// A slot's file with its tabs in it (from before, written by hand or by a machine still on the old app): its tabs are
-// taken in, the newer winning, and the file keeps the rest. Looked for whenever the settings change.
+// A slot's file with its tabs in it (from before, written by hand or by a machine still on the old app): the latest
+// edit, so its tabs are taken in and the file keeps the rest. Looked for whenever the settings change.
 let lookedAt = ""
 plugin.onSync((vault) => {
   const key = `${vault.path}:${vault.settingsVersion}`
@@ -60,10 +60,8 @@ plugin.onSync((vault) => {
     let d: Item | null
     try { d = plugin.readSettings(String(i + 1)) } catch { continue } // (mid-sync: the next change)
     if (!d || !RUNTIME.some((k) => k in d!)) continue
-    let at = 0
-    try { at = Math.round(fs.statSync(path.join(vault.path, ".vaultite", "plugins", plugin.id, `${i + 1}.json`)).mtimeMs) } catch { continue }
-    const run = keptPart(d)
-    if (plugin.keptAt(String(i + 1)) <= at) plugin.keep(String(i + 1), { ...keptOfSlot(i), ...run }, { shared: true, at })
+    // (not by the file's time: a coarse clock (Linux) can date it before what was kept a moment earlier)
+    plugin.keep(String(i + 1), { ...keptOfSlot(i), ...keptPart(d) }, { shared: true })
     const own = filePart(d)
     plugin.saveSettings(Object.keys(own).length ? own : null, String(i + 1))
   }

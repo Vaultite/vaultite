@@ -798,9 +798,7 @@ plugin.onSync((vault) => {
   let old: Item | null
   try { old = plugin.readSettings("hold") } catch { return } // (mid-sync: the next change)
   if (!old) return
-  let at = 0
-  try { at = Math.round(fs.statSync(path.join(vault.path, ".vaultite", "plugins", plugin.id, "hold.json")).mtimeMs) } catch { return }
-  if (plugin.keptAt("hold") <= at) plugin.keep("hold", old, { shared: true, at })
+  plugin.keep("hold", old, { shared: true }) // (the file is the latest word: an old app wrote it since)
   plugin.saveSettings(null, "hold")
 })
 
