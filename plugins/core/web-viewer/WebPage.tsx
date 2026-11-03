@@ -137,16 +137,18 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // (made blank, Back to safety with nowhere to go back to: what its page said goes with it)
   useEffect(() => { if (blank) setState({ url: "", title: "", back: false, forward: false, loading: false }) }, [blank])
 
-  // The tab's address follows the page; one given to the tab (not from the page) is loaded.
+  // The tab's address follows the page; one given to the tab (not from the page) is loaded. The page's own coming back
+  // can find it moved on (Forward just after Back): it was loaded over that move, a new entry, so Forward went nowhere.
+  const told = useRef("")
   useEffect(() => {
     if (!id) return
     const back = arg === taken.current
     taken.current = ""
-    if (back || arg === live.current.state.url || !ownPage(arg)) return
+    if (back || arg === told.current || arg === live.current.state.url || !ownPage(arg)) return
     void web.go(id, "load", arg)
   }, [id, arg, web])
   useEffect(() => {
-    if (ownPage(state.url) && state.url !== live.current.arg) live.current.setArg(state.url)
+    if (ownPage(state.url) && state.url !== live.current.arg) { told.current = state.url; live.current.setArg(state.url) }
     if (ownPage(state.url)) setTitle(state.url, state.title)
   }, [state.url, state.title])
   // (another page: what was found was found there)

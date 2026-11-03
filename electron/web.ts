@@ -814,8 +814,9 @@ function fit(p: Page) {
 function go(p: Page, action: string, url?: string): unknown {
   const wc = p.view.webContents
   const h = wc.navigationHistory
-  if (action === "back" && canBack(p)) h.goBack()
-  else if (action === "forward" && h.canGoForward()) h.goForward()
+  // (answering whether it went: the window's idea of where it is may be a move behind)
+  if (action === "back") { if (!canBack(p)) return false; h.goBack(); return true }
+  else if (action === "forward") { if (!h.canGoForward()) return false; h.goForward(); return true }
   // (a page that crashed for good starts a renderer again)
   else if (action === "reload") wc.reload()
   // The user chose to go on past its certificate warning: that host with that certificate, in these logins, this session.

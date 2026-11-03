@@ -262,8 +262,11 @@ export default definePlugin({
       full: true,
       // (Back and Forward walk the page's history before the tab's)
       history: (_arg, tab, dir) => {
-        const p = pageOfTab(tab), st = p?.state()
-        return p && (dir < 0 ? st?.back : st?.forward) ? () => void webPages?.go(p.id, dir < 0 ? "back" : "forward") : null
+        const p = pageOfTab(tab), web = webPages
+        if (!p || !web) return null
+        const can = !!(dir < 0 ? p.state().back : p.state().forward)
+        // (the page says whether it went: what it last told lags a move it just made. An older app answers nothing)
+        return { can, go: async () => { const went = await web.go(p.id, dir < 0 ? "back" : "forward").catch(() => can); return typeof went === "boolean" ? went : can } }
       },
       // (what a new tab can be, its address to type: in the desktop app, where pages show)
       asNewTab: { label: "Web page", here: () => !!webPages },

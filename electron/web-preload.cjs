@@ -19,8 +19,13 @@ addEventListener("keydown", (e) => {
     if (!e.defaultPrevented) ipcRenderer.send("vaultite:web:key", { key: e.key, code: e.code, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey })
   })
 }, true)
-// (a page never keeps them, as in Chrome)
-addEventListener("mouseup", (e) => { if (e.isTrusted && (e.button === 3 || e.button === 4)) ipcRenderer.send("vaultite:web:nav", e.button === 3 ? -1 : 1) }, true)
+// (a page never keeps them, as in Chrome. Chromium's own step through the page's history is stopped: with the app's,
+// one press went two places)
+addEventListener("mouseup", (e) => {
+  if (!e.isTrusted || (e.button !== 3 && e.button !== 4)) return
+  e.preventDefault()
+  ipcRenderer.send("vaultite:web:nav", e.button === 3 ? -1 : 1)
+}, true)
 
 // Typed input still in its fields, unsent: told as it starts and ends (web.ts), so the tab isn't archived meanwhile. Only
 // what the user typed (trusted input), and only while it's still there (a chat box cleared after Enter isn't).

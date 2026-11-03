@@ -113,7 +113,15 @@ await appKeys("Meta+BracketRight")
 check("⌘] in the app: the page's Forward", await until(() => at("/two"), 5000), await pages())
 await appKeys(BACK_KEY)
 check("⌥⌘← in the app: the page's Back", await until(() => at("/article"), 5000), await pages())
-await inPage(`dispatchEvent(new MouseEvent("mouseup", { button: 4 })); 1`)
+// (a real press, through the DevTools protocol: the page heeds only trusted ones, and sendInputEvent has no button 4)
+await app.evaluate(async ({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
+  const d = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).webContents.debugger
+  const mine = !d.isAttached()
+  if (mine) d.attach("1.3")
+  for (const type of ["mousePressed", "mouseReleased"]) await d.sendCommand("Input.dispatchMouseEvent", { type, x: 200, y: 200, button: "forward", buttons: type === "mousePressed" ? 16 : 0, clickCount: 1 })
+  if (mine) d.detach()
+})
 check("the mouse's forward button over the page", await until(() => at("/two"), 5000), await pages())
 await win.evaluate(() => dispatchEvent(new MouseEvent("mouseup", { button: 3 })))
 check("the mouse's back button over the app", await until(() => at("/article"), 5000), await pages())

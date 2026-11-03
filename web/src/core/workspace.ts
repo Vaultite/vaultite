@@ -169,8 +169,13 @@ const isFile = (to: string) => to.startsWith("file:")
 export function navigate(dir: -1 | 1) {
   if (dir < 0 && route().detail) return backDetail()
   const cur = activeTab()
+  // (its own history is asked, not what it last told: a key just after a page moved went nowhere)
   const own = ownHistory(cur, dir)
-  if (own) return own()
+  if (own) return void own.go().then((went) => { if (!went && activeTab().id === cur.id) walkTab(dir) })
+  walkTab(dir)
+}
+function walkTab(dir: -1 | 1) {
+  const cur = activeTab()
   const back = [...(cur.back ?? [])], fwd = [...(cur.fwd ?? [])]
   const to = dir < 0 ? back.pop() : fwd.shift()
   if (!to && dir < 0 && opener(cur)) { const from = cur.from!; return guarded([cur], () => { closeTab(cur.id, true); selectTab(from) }) }
@@ -179,10 +184,12 @@ export function navigate(dir: -1 | 1) {
   set(withGroup(state.focus, (g) => mapTabs(g, cur.id, (t) => ({ ...t, to, back, fwd }))))
   show(to, false)
 }
-export const canNavigate = (t: Tab | undefined, dir: -1 | 1) => !!(dir < 0 ? t?.back : t?.fwd)?.length || (dir < 0 && !!opener(t)) || (!!t && !!ownHistory(t, dir))
-/** A view's own history (a web page's), walked before its tab's: how to go `dir` in tab `t` now, or null. Set by the app. */
-let ownHistory: (t: Tab, dir: -1 | 1) => (() => void) | null = () => null
+export const canNavigate = (t: Tab | undefined, dir: -1 | 1) => !!(dir < 0 ? t?.back : t?.fwd)?.length || (dir < 0 && !!opener(t)) || (!!t && !!ownHistory(t, dir)?.can)
+/** A view's own history (a web page's), walked before its tab's, in tab `t` (null: it has none now). Set by the app. */
+let ownHistory: (t: Tab, dir: -1 | 1) => OwnHistory | null = () => null
 export const setOwnHistory = (fn: typeof ownHistory) => { ownHistory = fn }
+/** `can`: it can go that way, as it last told; `go`: go if it can now, answering whether it went. */
+export type OwnHistory = { can: boolean; go: () => Promise<boolean> }
 /** The tab `t` was opened beside, if it's still open. */
 const opener = (t: Tab | undefined) => (t?.from && t.from !== t.id && groupOfTab(t.from) ? t.from : null)
 

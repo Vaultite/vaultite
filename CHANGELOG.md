@@ -568,7 +568,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   dropped connection, keeps the lock screen, the sleep timer and where you stopped with the page asleep, and waits for a
   voice note. Elsewhere a stream that drops or sticks starts again where it was, and a reload plays on from there.
 - **The Browser's keys act on the page, as Chrome's**: Back and Forward (every key, the mouse's buttons) walk
-  the page's history before the tab's, and right-clicking or holding the bar's Back lists its places; ⌘F finds in the
+  the page's history before the tab's, one step a press even right after the page moved, and right-clicking or holding the bar's Back lists its places; ⌘F finds in the
   page, ⌘+ ⌘- ⌘0 zoom its site (kept per site), ⌘R, ⇧⌘R and ⌥⌘I reload it or open its DevTools (never the app's), Esc
   stops a load, ⇧⌘[ ⇧⌘] switch tabs, the … menu prints, and ⌘W on a pinned tab unloads it back to where it was pinned.
 - **The Browser's address bar works like a browser's**: what you type stays when you click away, the container chip

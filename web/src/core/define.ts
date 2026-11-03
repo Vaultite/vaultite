@@ -16,6 +16,7 @@ import type { TextSizeKind } from "@/core/textsize"
 import type { GridCard, GridEdit } from "@/editor/livePreview"
 import type { EditorSettings } from "@/core/editorPrefs"
 import type { Disclosures } from "../../../core/pluginmeta.ts"
+import type { OwnHistory } from "@/core/workspace"
 
 export type Manifest = {
   id: string; name: string; description: string
@@ -258,9 +259,9 @@ export type ViewDef = {
   /** The tab a new tab of it opens beside, in that tab's pane and tab group, when one shows it (`file:Notes/Idea.md`: a
    *  session started on that note), as a browser opens a tab beside the one it came from; null: beside the current one. */
   opensBeside?: (arg: string) => string | null
-  /** A history of its own (a web page's), which Back and Forward walk before the tab's: how to go `dir` in tab `tab`
-   *  now, or null when it can't (then the tab's history, or its opener). */
-  history?: (arg: string, tab: string, dir: -1 | 1) => (() => void) | null
+  /** A history of its own (a web page's), walked before the tab's, in tab `tab` (null: none now): whether it can go
+   *  `dir`, and going, false when it couldn't (then the tab's history, or its opener). */
+  history?: (arg: string, tab: string, dir: -1 | 1) => OwnHistory | null
   /** Its tab is its own (a terminal): opening anything else from it (a link, the sidebar, Graph view) opens beside it,
    *  never in its place, so it's never navigated away from by accident. */
   keepsTab?: boolean
