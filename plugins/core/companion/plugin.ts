@@ -10,10 +10,12 @@ import { byUser, liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath
 import { readText, requestWriter, type Vault, type Writer, writeAtomic } from "../../../core/vault.ts"
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { bridges } from "./bridge.ts"
+import { type Follow, follows } from "./follows.ts"
 import { rooms } from "./rooms.ts"
 import { partialArgs } from "./partial.ts"
 import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
-import { type Change, changeAt, type Hunk, isPrivate, nearest } from "./text.ts"
+import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from "./text.ts"
+import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
@@ -21,7 +23,7 @@ export const plugin = new Plugin(import.meta.url)
 export type Mode = "off" | "quiet" | "pair"
 /** What the user did, as an agent sees it. ask: they addressed it; point: they dropped its cursor on a line ("look at
  *  this"); edit and open only in pair; reply, accept, reject, dismiss: their answer to one of its items. */
-export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss" | "move"
+export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss" | "move" | "change" | "watch"
   path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string
   /** A point's word or selection, where its cursor stays. */
   find?: string
@@ -41,19 +43,23 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   into?: "note" | "bubble"
   /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
    *  says (its Accessibility text) and its picture (a PNG on this machine). */
-  app?: string; window?: number; title?: string; screen?: string; shot?: string }
-/** Where something points: a file and a line (1-based), or text found in it (the occurrence nearest `line`); on a
- *  drawing, an element (`find`: its id or text) or a point of it (x, y). */
-export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number
-  /** Another app's window (bundle id, CGWindowID), or a point of the screen (points, with its display). */
-  app?: string; window?: number; sx?: number; sy?: number; display?: number }
+  app?: string; window?: number; title?: string; screen?: string; shot?: string
+  /** In a pane (a terminal, a web page: today's tab id) or the app's UI (a data-ui id), by its title; a terminal's row, a
+   *  page's element (a snapshot ref) or the text under the pointer (`text`). */
+  pane?: string; ui?: string; row?: number; el?: string
+  /** change: what a pane it follows did (`what`: a command ended, the page changed; `changes` its lines); watch: a
+   *  watch's hit (`item` the watch, `text` what to do). A page's address. */
+  what?: string; url?: string }
+export type { Target } from "./places.ts"
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass (why: its words on it);
  *  starting: its session boots (asks wait for its first `next`); runs (claude, codex), model, effort; asks: a permission. */
-export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean; why?: string
+export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean; why?: string
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
+/** Where a page's element is in its page (CSS px, at its zoom), for the window to draw at: the engine's answer for `el`. */
+export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
 /** What an agent leaves in the app: words by its cursor and highlights (gone after a while), a margin comment, a
  *  suggestion, a proposal (a large change, taken in part). `anchor`: a comment's line as it read, to find it again. */
-export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight"; agent: string; t: number
+export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight"; agent: string; t: number
   text?: string; replace?: string; anchor?: string; replies?: Reply[]
   /** A proposal's changes not decided yet (its placeholders while it's written); how many were taken and left. */
   changes?: Change[]; took?: number; left?: number
@@ -80,7 +86,9 @@ export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: strin
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
 /** A note's lines from..to (1-based, of `of`), sent with the moments in it; a drawing's scene as text. */
-export type Excerpt = { path: string; from: number; to: number; of: number; lines: string[]; scene?: string }
+export type Excerpt = { path: string; from: number; to: number; of: number; lines: string[]; scene?: string
+  /** A pane pointed at: what it shows now (a terminal's screen, a page's tree), by its title. */
+  pane?: string; title?: string; text?: string }
 
 const TINTS = ["orange", "blue", "purple", "green", "red", "yellow"]
 const EMOJI: Record<string, string> = { red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣" }
@@ -100,13 +108,17 @@ export const mode = (): Mode => {
 const agentSetting = () => setting("agent") || "claude"
 /** A note no agent sees: in a private folder (the setting), or marked so in its properties (`companion: private`). */
 export function hidden(p: string) {
-  const folders = plugin.settings().private
-  if (Array.isArray(folders) && isPrivate(p, "", folders.map(String))) return true
+  if (isPrivate(p, "", privates().folders)) return true
   if (!/\.md$/i.test(p)) return false
   let head = ""
   try { const fd = fs.openSync(plugin.vault.abs(p), "r"), b = Buffer.alloc(4096); head = b.subarray(0, fs.readSync(fd, b, 0, 4096, 0)).toString("utf8"); fs.closeSync(fd) } catch { return false }
   return isPrivate(p, head, [])
 }
+/** What it never sees: folders, sites, the Browser's containers and apps (the helper keeps those), the setting's lines
+ *  (else its starting list). */
+export const privates = () => { const v = plugin.settings().private; return privateOf(Array.isArray(v) ? v : plugin.manifest.settings?.private?.default) }
+/** A web page it never sees: on a private site, or in a private container. */
+export const privatePage = (url: string, container?: string | null) => { const p = privates(); return siteIn(hostOf(url), p.sites) || (!!container && p.containers.includes(container)) }
 /** What a session of `agent` runs: the model and effort given, else the settings; their defaults (Sonnet, medium) only
  *  for Claude Code, whose models they name. */
 export function howOf(agent: string, model = "", effort = "") {
@@ -186,7 +198,9 @@ const acting = (name: string): Agent["state"] => (asking.has(key(name)) ? "think
 
 /** The app's windows: which files each has open (`shown`: on screen, where an edit can be typed in), where its user is,
  *  when they last did anything. */
-type Win = { open: string[]; shown: string[]; focus: Target | null; at: number; was?: string }
+type Win = { open: string[]; shown: string[]; focus: Target | null; at: number; was?: string
+  /** The panes it shows (each pane's tab: today's tabs), the focused one, and the one last said to the agents. */
+  panes: Pane[]; pane?: string; told?: string }
 const windows = new Map<WebSocket, Win>()
 /** A guest's view of the threads: `see` gives their name for a vault path in their folder (else null), `at` the vault
  *  path for theirs (throws outside it); `said`: true once they have said too much this minute. */
@@ -211,7 +225,7 @@ const broadcast = (m: object) => {
   for (const [ws, g] of guests) if (ws.readyState === ws.OPEN) toGuest(ws, g, m as { t: string; note?: Note; id?: string })
 }
 // (fresh: what a new agent started from the app runs, profiles what the names that pick one start, harnesses what can run)
-const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said, ...offers() })
+const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said, follows: followed.list(), ...offers() })
 function offers() {
   const named = Object.entries(offered()).map(([name, p]) => [name, { agent: p.agent, ...howOf(p.agent, p.model, p.effort) }])
   return { fresh: { agent: agentSetting(), ...howOf(agentSetting()) }, profiles: Object.fromEntries(named), harnesses: harnesses() }
@@ -239,6 +253,10 @@ const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) 
 
 /** Where the user is: the window they used last that has a note (`next`, and the ops' default place, both say this). */
 export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).find((w) => w.focus)?.focus ?? null
+
+/** Where a moment's agent looks: an app's window, its note's line, its pane's row, or the app's UI (a watch's, nowhere new). */
+const placeOf = (m: Partial<Moment>): Partial<Agent> => (m.app ? { app: m.app, ...(m.window ? { window: m.window } : {}) } : m.path ? { path: m.path, line: m.line, find: m.find }
+  : m.pane ? { pane: m.pane, ...(m.row ? { row: m.row } : {}) } : m.ui ? { ui: m.ui } : {})
 
 /** Take in a moment from the app: kept (and logged), and given to the agents waiting. `from`: the window's request, which
  *  starts the companion's session when an ask finds it not running. */
@@ -285,8 +303,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   }
   // (one starting shows that until its first `next` takes it)
   if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(full.for))?.state !== "starting") {
-    setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find, x: undefined, y: undefined } : {}),
-      ...(m.app ? { app: m.app, window: m.window, path: undefined, line: undefined, find: undefined, sx: undefined, sy: undefined } : {}) })
+    setAgent(full.for, { state: "thinking", ...placeOf(m) })
     if (from) void wake(full, from)
   }
   return full
@@ -388,8 +405,11 @@ plugin.provide("companion:who", (terminal: string) => {
   return { name: a.name, tint: a.tint, ...(kept?.model ? { model: kept.model } : {}), ...(kept?.effort ? { effort: kept.effort } : {}) }
 })
 
+/** What anchors a place: given one, the rest of the agent's old place goes (a pane's row isn't a note's line). */
+const ROOTS = ["path", "pane", "ui", "app", "sx"] as const
 function setAgent(name: string, change: Partial<Agent>) {
   if (change.state === "watching" || change.state === "writing" || change.state === "away") handed.delete(key(name))
+  if (ROOTS.some((k) => change[k] !== undefined)) change = { ...Object.fromEntries([...PLACE_KEYS, "box"].map((k) => [k, undefined])), ...change }
   const a = Object.assign(agentOf(name), { seen: undefined, why: undefined }, change, { t: Date.now() })
   broadcast({ t: "agent", agent: a })
   return a
@@ -770,7 +790,7 @@ plugin.socket("companion/live", (ws, req, { query }) => {
     })
     return
   }
-  windows.set(ws, { open: [], shown: [], focus: null, at: 0 })
+  windows.set(ws, { open: [], shown: [], focus: null, at: 0, panes: [] })
   there.add(ws)
   send(ws, snapshot())
   ws.on("message", (data: RawData) => {
@@ -794,6 +814,16 @@ plugin.socket("companion/live", (ws, req, { query }) => {
       if (m.active) w.at = Date.now()
       // (another note, not the same one focused again)
       if (w.focus && m.active && w.focus.path !== w.was) { w.was = w.focus.path; addMoment({ kind: "open", ...w.focus }) }
+      if (Array.isArray(m.panes)) w.panes = panesFrom(m.panes)
+      w.pane = str(m.pane) || undefined
+      // (awareness, in pair: the pane they went to that isn't a note, by its title; a private page's never)
+      const pn = w.panes.find((x) => x.id === w.pane), kind = pn && paneSource(pn.to).kind
+      if (pn && m.active && pn.id !== w.told && kind !== "note" && !privatePane(pn)) { w.told = pn.id; addMoment({ kind: "open", pane: pn.id, title: pn.title, ...(kind === "site" ? { url: paneSource(pn.to).url } : {}) }) }
+      else if (kind === "note") w.told = pn!.id
+    } else if (m.t === "moment" && (m.kind === "point" || m.kind === "change") && (str(m.pane) || str(m.ui)) && !str(m.path)) {
+      // (a point on a pane or the app's UI, or a change in UI it follows: the window says what's there)
+      w.at = Date.now()
+      void paneMoment(w, m, req)
     } else if (m.t === "moment" && typeof m.kind === "string" && ["ask", "point", "edit"].includes(m.kind)) {
       w.at = Date.now()
       addMoment({ kind: m.kind as Moment["kind"], for: str(m.agent) || undefined, path: str(m.path) || undefined, line: Number(m.line) || undefined, text: str(m.text) || undefined,
@@ -825,6 +855,117 @@ plugin.socket("companion/live", (ws, req, { query }) => {
     // (gone mid-edit: what it was asked fails now, not when its wait runs out, and the note's turn is free)
     for (const x of [...asked.values()]) if (x.ws === ws) x.done(false, "the window showing it closed as it was typed: read it again before another change")
   })
+})
+
+// ---------- panes: what the windows show besides notes (terminals, web pages), pointed at and followed
+
+/** Panes as a window says them, checked. */
+function panesFrom(v: unknown[]): Pane[] {
+  return v.slice(0, 300).flatMap((x) => {
+    const p = (x ?? {}) as Record<string, unknown>
+    return typeof p.id === "string" && typeof p.to === "string" ? [{ id: p.id, to: p.to, title: str(p.title).slice(0, 200), ...(str(p.group) ? { group: str(p.group) } : {}) }] : []
+  })
+}
+/** Every pane the windows show, the latest window's first (an id once). */
+export function allPanes(): Pane[] {
+  const out = new Map<string, Pane>()
+  for (const w of [...windows.values()].sort((a, b) => b.at - a.at)) for (const p of w.panes) if (!out.has(p.id)) out.set(p.id, p)
+  return [...out.values()]
+}
+const paneById = (id?: string) => (id ? allPanes().find((p) => p.id === id) : undefined)
+/** A pane it never sees: a private note's, or a private site's. */
+function privatePane(p: Pane) {
+  const x = paneSource(p.to)
+  return x.kind === "note" ? hidden(x.path!) : x.kind === "site" ? privatePage(x.url!) : false
+}
+/** Where the user is when it isn't a note: the focused pane of the window they used last (never a private one). */
+export const paneFocus = () => { const w = [...windows.values()].sort((a, b) => b.at - a.at)[0], p = w && paneById(w.pane); return p && !privatePane(p) ? p : null }
+/** What the user looks at beyond the note, as a moment's head says it: their pane (a terminal, a page) and, from the
+ *  helper, the app in front. Metadata only. */
+function awareness() {
+  const p = paneFocus(), x = p && paneSource(p.to), front = (plugin.service("screen:front") as (() => { name?: string; title?: string } | null) | null)?.()
+  return [x && x.kind !== "note" ? `They're looking at "${p.title}" (pane ${p.id}, ${x.kind === "site" ? `a web page, ${x.url}` : x.kind === "terminal" ? "a terminal" : "a view"}).` : "",
+    front?.name ? `The app in front: ${front.name}${front.title ? `, "${front.title}"` : ""}.` : ""].filter(Boolean).join(" ")
+}
+
+/** The browser tab showing pane `id` (the engine lists the window's tab with each page), or null. */
+type BrowserTab = { tab: number; url: string; title: string; container: string | null; access: string; pane?: string }
+async function pageOf(id: string, name = ownName()): Promise<BrowserTab | null> {
+  const tabs = await plugin.desktop("agent:tabs", { name, session: "", task: "", summary: "", remote: false }).catch(() => []) as BrowserTab[]
+  return tabs.find((t) => t.pane === id) ?? null
+}
+/** A pane's page as the companion may use it: there, not private, its container letting agents `need` (read, act). */
+async function pageFor(id: string, need: "read" | "act", name?: string) {
+  const t = await pageOf(id, name)
+  if (!t) throw new OpError(`pane ${id} shows no web page in the desktop app (vau tabs lists the panes)`, 404)
+  if (privatePage(t.url, t.container)) throw new OpError("that page is private: the companion never sees it (the setting private)", 403)
+  if (t.access === "none" || (need === "act" && t.access !== "act")) throw new OpError(`its container lets agents ${t.access === "none" ? "do nothing" : "only read"} there (Agents, in the container menu of the page's bar)`, 403)
+  return t
+}
+
+/** A place resolved for the window: a pane that shows a note is that note; a page's element to its box (a terminal's
+ *  text the window finds on its screen). Private panes refuse. */
+async function resolve(t: Target, name: string): Promise<Target & Boxed> {
+  const p = t.pane ? paneById(t.pane) : undefined
+  if (t.pane && !p) throw new OpError(`no pane ${t.pane} in the user's window (vau tabs lists them)`, 404)
+  // (a note's text, found: its line too, so what's by its cursor is found there)
+  if (!p && t.path && t.find && t.line === undefined && !drawing(t.path)) { try { const line = anchorLine(readText(plugin.vault.abs(t.path)), t); if (line) return { ...t, line } } catch { /* not there */ } }
+  if (!p) return t
+  if (privatePane(p)) throw new OpError("that pane is private: the companion never sees it", 403)
+  const x = paneSource(p.to)
+  if (x.kind === "note") return { path: x.path, ...(t.line ? { line: t.line } : {}), ...(t.find ? { find: t.find } : {}) }
+  if (x.kind === "site" && t.el) {
+    const page = await pageFor(p.id, "read", name)
+    const b = await plugin.desktop("agent:locate", page.tab, t.el).catch((e) => { throw new OpError((e as Error).message, 409) }) as { x: number; y: number; width: number; height: number; zoom: number }
+    return { ...t, box: { x: b.x, y: b.y, w: b.width, h: b.height, zoom: b.zoom } }
+  }
+  return t
+}
+
+/** A point on a pane or the app's UI (the window says what's there), or a change in UI it follows: a moment, and a
+ *  point starts following what it was dropped on. */
+async function paneMoment(_w: Win, m: Record<string, unknown>, req: IncomingMessage) {
+  const ui = str(m.ui).slice(0, 120) || undefined, tab = /^(?:tab|pane):(.+)$/.exec(ui ?? "")?.[1], pane = str(m.pane) || tab || undefined, p = paneById(pane)
+  const group = /^group:(.+)$/.exec(ui ?? "")?.[1]
+  if (p && privatePane(p)) return
+  const agent = str(m.agent) || undefined, title = (p?.title || str(m.title)).slice(0, 200) || undefined, text = str(m.text).slice(0, 4000) || undefined
+  const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}) }
+  if (m.kind === "change") {
+    if (!followed.list().some((f) => f.ui === ui)) return
+    return void addMoment({ kind: "change", for: agent, ...where, what: "it changed", changes: Array.isArray(m.changes) ? m.changes.map(String).slice(0, 30) : [] })
+  }
+  const x = p && paneSource(p.to)
+  if (x?.kind === "note") return void addMoment({ kind: "point", for: agent, path: x.path, line: 1 }, req)
+  let under = text
+  if (x?.kind === "site" && m.x !== undefined) {
+    const t = await pageOf(p!.id).catch(() => null)
+    if (t && !privatePage(t.url, t.container) && t.access !== "none") under = String((await plugin.desktop("agent:at", t.tab, Number(m.x), Number(m.y)).catch(() => ({})) as { text?: string }).text ?? "") || under
+  }
+  const full = addMoment({ kind: "point", for: agent, ...where, ...(Number(m.row) > 0 ? { row: Number(m.row) } : {}), ...(under ? { text: under.slice(0, 1200) } : {}), ...(x?.kind === "site" ? { url: x.url } : {}) }, req)
+  // (dropped on it: it follows it too; a panel by the window's word, a group with all its tabs)
+  if (full?.for && (x?.kind === "terminal" || x?.kind === "site" || group || (ui && !pane))) followed.add({ agent: full.for, ...(pane ? { pane } : group ? { group } : { ui }), title: title ?? ui ?? "" })
+}
+
+/** What the companion follows now (follows.ts): a change in one is a moment for it. */
+const followed = follows(plugin, {
+  panes: allPanes,
+  change: (c) => addMoment({ kind: "change", for: c.follow.agent, pane: c.pane, title: c.title, what: c.what, changes: c.changes, ...(c.url ? { url: c.url } : {}) }),
+  told: () => broadcast({ t: "follows", follows: followed.list() }),
+})
+plugin.onUnload(() => followed.stop())
+/** A source the watches read, for a pane: its note, terminal or address. */
+const sourceOf = (p: Pane) => { const x = paneSource(p.to); return x.kind === "note" ? `note:${x.path}` : x.kind === "terminal" ? `terminal:${x.terminal}` : x.kind === "site" ? `site:${x.url}` : null }
+/** The panes the windows show (but private ones): each one's id, title, tab group and what it shows (note:, terminal:, site:). */
+plugin.provide("companion:panes", () => allPanes().filter((p) => !privatePane(p)).map((p) => ({ id: p.id, title: p.title, ...(p.group ? { group: p.group } : {}), source: sourceOf(p) })))
+/** Whether a web page (its address, its container) is private: the companion never sees it, nor do watches. */
+plugin.provide("companion:private", (url: string, container: string | null) => privatePage(url, container))
+/** Whether a note is private (the setting's folders, or companion: private in it). */
+plugin.provide("companion:hidden", (path: string) => hidden(path))
+/** A watch's hit: a moment for the companion while it runs (true), else the watches' inbox (false). */
+plugin.provide("companion:watch", (h: { id: string; title: string; why: string; done: boolean; changes: string[]; url?: string }) => {
+  const name = ownName()
+  if (mode() === "off" || !(live(name) || isChat(sessionId(name)))) return false
+  return !!addMoment({ kind: "watch", for: name, item: h.id, title: h.title, ...(h.why ? { text: h.why } : {}), what: h.done ? "what it waited for happened (the watch ended)" : "it changed", changes: h.changes.slice(0, 30), ...(h.url ? { url: h.url } : {}) })
 })
 
 // ---------- edits: typed in by the window that has the file open, else written on disk
@@ -1087,7 +1228,7 @@ const lineText = (p: string, n: number) => { try { return readText(plugin.vault.
 // ---------- the always-on session
 
 /** What its session runs unasked: its own commands, reading the vault, and keeping what it learns of the user. */
-const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview", "vau remember"]
+const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview", "vau remember", "vau watches", "vau tabs", "vau browser"]
 // The companion's session is session.json; another agent started by name (start --as Ada) is session-ada.json.
 const sessionFile = (name?: string | null) => `${plugin.localDir()}/${name && !isMain(name) ? `session-${key(name)}` : "session"}.json`
 /** A session as kept: its terminal, its model, and how many moments it was handed (a fresh one takes over past
@@ -1232,6 +1373,7 @@ function ended(name: string, id?: string) {
   const wait = waiters.get(k)
   if (wait) { waiters.delete(k); wait([]) }
   setAgent(name, { state: "away", asks: undefined })
+  followed.remove(null, name)
 }
 plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
   const s = sessions().find((x) => x.id === ev.id)
@@ -1268,11 +1410,11 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "clear", "history", "status", "handover"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover"]
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "clear", "handover"])
+const STREAMS = new Set(["say", "comment", "edit"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1335,7 +1477,7 @@ async function startChat(name: string, how: { agent: string; model: string; effo
   const k = key(name)
   starting(name, { ...at, runs: how.agent, model: how.model || undefined, effort: how.effort || undefined }, after)
   const waiting = pendingFor(name), given = waiting.some(wakes) ? hand(name, waiting) : []
-  const first = given.length ? `${READY}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given))}`
+  const first = given.length ? `${READY}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given), mode() === "pair" ? awareness() : "")}`
     : `${READY} Then end your turn: what the user does comes as your next messages.`
   turning.add(k)
   let s: ChatState
@@ -1364,7 +1506,7 @@ async function pump(name: string) {
     turning.add(k)
     resend.delete(k)
     const given = hand(name, got)
-    text = momentsText(given, mode(), focus(), await excerpts(apiCtx, given))
+    text = momentsText(given, mode(), focus(), await excerpts(apiCtx, given), mode() === "pair" ? awareness() : "")
     const was = stopped.get(k)
     if (was && stopped.delete(k)) text = `${STOPPED(was)}\n${text}`
   } else if (fresh.has(k) || (Date.now() - (handing.get(k) ?? 0) > ASK_AGAIN && await due(s))) {
@@ -1522,11 +1664,29 @@ const FIND = { type: "string", description: "text in that line or near it, exact
 const X = { type: "number", description: "on a drawing: a point of it, with y (its units, as its elements')" } as const
 const Y = { type: "number", description: "on a drawing: a point of it, with x" } as const
 
-/** A target from params: the user's file when none is given. */
-function target(p: Record<string, unknown>): Target {
-  const path = str(p.path) || focus()?.path
-  if (!path) throw new OpError("the user has no file open: give `path`")
-  return { path, ...(p.line !== undefined ? { line: Number(p.line) } : {}), ...(str(p.find) ? { find: str(p.find) } : {}), ...point(p) }
+const PANE = { type: "string", description: "instead of a note: a pane of the user's window, a terminal or a web page (its id: vau tabs; a pane showing a note is that note)" } as const
+const UI = { type: "string", description: "instead of a note: the app's own UI, by its id (tab:<id>, pane:<id>, group:<id>, panel:<plugin>:<name>, button:<command id>)" } as const
+const ROW = { type: "integer", minimum: 1, description: "in a terminal pane: a row of its screen, from 1 (or find: its text)" } as const
+const EL = { type: "string", description: "in a web page's pane: an element, by its ref (e12: companion see)" } as const
+/** Where an op points, in a note, a pane, the app's UI, or (the helper's) an app's window and the screen. */
+const PLACE = { path: PATH, line: LINE, find: FIND, x: X, y: Y, pane: PANE, ui: UI, row: ROW, el: EL,
+  app: { type: "string", description: "outside the app (the helper): an app, by its bundle id" } as const,
+  window: { type: "integer", description: "outside the app: a window of it (its CGWindowID)" } as const,
+  sx: { type: "number", description: "outside the app: a point on the screen, with sy (points)" } as const,
+  sy: { type: "number", description: "outside the app: a point on the screen, with sx" } as const,
+  display: { type: "integer", description: "outside the app: the display sx and sy are on" } as const }
+
+/** A target from params: the user's file when none is given; a pane, the app's UI or the screen (`elsewhere`: the ops
+ *  that point) without one. */
+function target(p: Record<string, unknown>, elsewhere = false): Target {
+  const out: Target = {}
+  for (const k of ["pane", "ui", "el", "app"] as const) if (str(p[k])) out[k] = str(p[k])
+  for (const k of ["row", "window", "sx", "sy", "display"] as const) if (p[k] !== undefined && p[k] !== null && Number.isFinite(Number(p[k]))) out[k] = Number(p[k])
+  const away = !!(out.pane || out.ui || out.app || out.sx !== undefined)
+  if (away && !elsewhere) throw new OpError("this is for notes: give `path` (in a pane or the app's UI: companion look, say or highlight)")
+  const path = str(p.path) || (away ? "" : focus()?.path)
+  if (!path && !away) throw new OpError("the user has no file open: give `path` (or `pane`, `ui`)")
+  return { ...(path ? { path } : {}), ...(p.line !== undefined ? { line: Number(p.line) } : {}), ...(str(p.find) ? { find: str(p.find) } : {}), ...point(p), ...out }
 }
 /** What a drawing doesn't have (a margin, lines to write in): the op that does it there instead. */
 function notOnDrawing(t: Target, what: string) {
@@ -1602,9 +1762,9 @@ asks to its @name and answers to its items; edit and open go to the companion, o
       if (!got.length && fresh.has(k) && session(name)) return handover()
     }
     if (got.length) got = hand(name, got)
-    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got) }
+    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got), ...(got.length && mode() === "pair" ? { aware: awareness() } : {}) }
   },
-  text: (r) => (r.ended ? "Your session has ended: stop here, without running next again." : r.handover ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes)),
+  text: (r) => (r.ended ? "Your session has ended: stop here, without running next again." : r.handover ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes, r.aware)),
 })
 
 /** The moments for agent `name` after moment `after` (of the last half hour). */
@@ -1622,10 +1782,9 @@ function hand(name: string, got: Moment[]) {
   if (s) { try { writeSession({ ...s, handed: (s.handed ?? 0) + got.length }) } catch { /* as it was */ } }
   did(name, "handed", got.map((m) => m.seq))
   batches.set(k, got.map((m) => m.seq))
-  const at = [...got].reverse().find((m) => m.path), asked = got.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply")
+  const at = [...got].reverse().find((m) => m.path || m.pane || m.ui), asked = got.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply")
   if (asked) asking.add(k)
-  setAgent(name, { state: asked ? "thinking" : "reading",
-    ...(at ? { path: at.path, line: at.line, find: at.find, x: undefined, y: undefined } : {}) })
+  setAgent(name, { state: asked ? "thinking" : "reading", ...(at ? placeOf(at) : {}) })
   handed.add(k)
   return got
 }
@@ -1649,6 +1808,17 @@ plugin.op({
 export async function excerpts(ctx: OpCtx, ms: Moment[]) {
   const by = new Map<string, Moment[]>()
   const out: Excerpt[] = []
+  // (a pane pointed at: what it shows now, the look; never for a change, which has its lines)
+  for (const m of ms) if (m.kind === "point" && m.pane && !out.some((e) => e.pane === m.pane)) {
+    const pn = paneById(m.pane), x = pn && paneSource(pn.to)
+    try {
+      if (x?.kind === "terminal") out.push({ path: "", from: 0, to: 0, of: 0, lines: [], pane: m.pane, title: m.title ?? pn!.title, text: await plugin.ask<string>("terminal:screen", "", x.terminal, 60) })
+      else if (x?.kind === "site") {
+        const t = await pageFor(m.pane, "read"), r = await plugin.desktop("agent:snapshot", t.tab) as { snapshot: string }
+        out.push({ path: "", from: 0, to: 0, of: 0, lines: [], pane: m.pane, title: m.title ?? pn!.title, text: cut(r.snapshot, SNAPSHOT) })
+      }
+    } catch { /* not readable now: the moment says where */ }
+  }
   // (a drawing: its scene as the window that sent the moment saw it, the last one)
   for (const m of [...ms].reverse()) if (m.path && m.scene && !out.some((e) => e.path === m.path)) out.push({ path: m.path, from: 0, to: 0, of: 0, lines: [], scene: m.scene })
   for (const m of ms) if (m.path && !m.scene && (m.kind === "ask" || m.kind === "point" || m.kind === "reply" || m.kind === "edit")) by.set(m.path, [...(by.get(m.path) ?? []), m])
@@ -1707,12 +1877,27 @@ function uncut(lines: string[], ms: Moment[]) {
 const saidText = (id?: string) => { const n = said.find((x) => x.id === id); return n?.text ? `\n  you said: ${JSON.stringify(cut(n.text, 160))}` : "" }
 
 /** Moments as an agent reads them. */
-export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = []) {
+export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = [], aware = "") {
   const head = `Mode: ${md}.${f?.path ? ` The user is in ${f.path}${f.x !== undefined ? ` at ${f.x},${f.y}` : ` at line ${f.line ?? 1}`}.` : ""}`
-  if (!ms.length) return `${head}\nNothing yet: run vau companion next again.`
-  const out = [head]
+  if (!ms.length) return `${head}${aware ? `\n${aware}` : ""}\nNothing yet: run vau companion next again.`
+  const out = [head, ...(aware ? [aware] : [])]
   for (const m of ms) {
-    const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : m.app ? ` on screen, ${m.title ? `${JSON.stringify(m.title)} in ` : ""}${m.app}${m.window ? ` (window ${m.window})` : ""}` : ""
+    const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : m.pane || m.ui ? ` ${m.title ? `"${m.title}" ` : ""}(${m.pane ? `pane ${m.pane}` : m.ui})${m.row ? `, row ${m.row}` : ""}`
+      : m.app ? ` on screen, ${m.title ? `${JSON.stringify(m.title)} in ` : ""}${m.app}${m.window ? ` (window ${m.window})` : ""}` : ""
+    if (m.kind === "change") {
+      out.push(`- change in${at}: ${m.what ?? "it changed"}${m.url ? ` (${m.url})` : ""}`)
+      for (const c of m.changes ?? []) out.push(`  ${c}`)
+      continue
+    }
+    if (m.kind === "watch") {
+      out.push(`- watch ${m.item} "${m.title ?? ""}": ${m.what ?? "it changed"}${m.url ? ` (${m.url})` : ""}${m.text ? `\n  they asked: ${JSON.stringify(m.text)}` : ""}`)
+      for (const c of m.changes ?? []) out.push(`  ${c}`)
+      continue
+    }
+    if (m.kind === "point" && !m.path && (m.pane || m.ui)) {
+      out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.text ? `\n  under the pointer: ${JSON.stringify(cut(m.text, 600))}` : ""}${m.pane || /^(group|tab):/.test(m.ui ?? "") ? "\n  you follow it now: what it does comes to you as change moments (companion unfollow to stop; companion keep to keep it as a watch)" : ""}`)
+      continue
+    }
     const thread = m.item && (m.kind === "ask" || m.kind === "reply") && personThread(m.item) ? ` (in their comment thread ${m.item}, by the line: answer in it, companion comment --id ${m.item})` : ""
     if (m.kind === "ask") out.push(`- ask${at}${thread}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more || m.again ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "point") out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
@@ -1735,6 +1920,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
   }
   for (const e of notes) {
+    if (e.pane) { out.push(`"${e.title ?? e.pane}" (pane ${e.pane}), what it shows now${e.text?.includes("[ref=") || /\be\d+\b/.test(e.text ?? "") ? " (refs for look --el, act)" : ""}:`, e.text ?? ""); continue }
     if (e.scene) { out.push(`${e.path}, the drawing (ids for companion draw, say --find):`, e.scene); continue }
     out.push(`${e.path}, lines ${e.from}-${e.to} of ${e.of}:`)
     e.lines.forEach((l, i) => out.push(`${String(e.from + i).padStart(4)}  ${l}`))
@@ -1745,19 +1931,22 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
 plugin.op({
   id: "companion.look",
   cli: "companion look",
-  summary: "Move your cursor to a place in a note, without a word: where your attention is.",
+  summary: "Move your cursor to a place, without a word: in a note, a pane (a terminal's row, a page's element) or the app's own UI.",
   help: `  vau companion look --path Notes/Idea.md --line 12
   vau companion look --find "the second paragraph"
-  vau companion look --path Drawings/Plan.excalidraw --find login`,
+  vau companion look --path Drawings/Plan.excalidraw --find login
+  vau companion look --ui tab:t3k2
+  vau companion look --pane t3k2 --find "error:"
+  vau companion look --pane t5x1 --el e12`,
   kind: "read",
-  params: { path: PATH, line: LINE, find: FIND, x: X, y: Y, as: AS },
+  params: { ...PLACE, as: AS },
   run: async (p) => {
-    const t = target(p)
-    did(who(p), "look")
-    setAgent(who(p), { ...t, state: acting(who(p)), find: t.find, x: t.x, y: t.y })
+    const name = who(p), t = await resolve(target(p, true), name)
+    did(name, "look")
+    setAgent(name, { ...t, state: acting(name) })
     return t
   },
-  text: (r) => `Looking at ${r.path}${r.line ? `:${r.line}` : ""}.`,
+  text: (r) => `Looking at ${placeText(r, paneById(r.pane)?.title)}.`,
 })
 
 plugin.op({
@@ -1771,17 +1960,20 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
   vau companion say "Done: three tasks added below."
   vau companion say "That date is a Sunday." --find "May 3"
   vau companion say "For you, or a note to yourself?" --ask
-  vau companion say "This step needs a way back." --path Drawings/Plan.excalidraw --find login`,
+  vau companion say "This step needs a way back." --path Drawings/Plan.excalidraw --find login
+  vau companion say "That's the failing test." --pane t3k2 --find "FAIL"
+  vau companion say "Your sidebar's search is here." --ui button:switcher:open`,
   kind: "read",
   // (its place before its words: its bubble shows them as they come, where they belong)
-  params: { path: PATH, line: LINE, find: FIND, x: X, y: Y, ask: { type: "boolean", description: "it asks them something: a question bubble they can answer in" },
+  params: { ...PLACE, ask: { type: "boolean", description: "it asks them something: a question bubble they can answer in" },
     text: { type: "string", required: true, description: "what to say (Markdown)" }, as: AS },
   args: ["text"],
   run: async (p, ctx) => {
     const name = who(p)
     did(name, "say")
-    const t = p.path || p.line !== undefined || p.find || p.x !== undefined ? target(p) : {}
-    setAgent(name, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(name) })
+    const given = ROOTS.some((k) => p[k] !== undefined) || p.line !== undefined || p.find || p.x !== undefined
+    const t = given ? await resolve(target(p, true), name) : {}
+    setAgent(name, { ...t, state: acting(name) })
     // (shown as it was written: its bubble, with its words and place as the call has them)
     const use = toolUse.getStore(), shown = use ? streams.get(use)?.note : undefined, was = shown ? notes.get(shown) : undefined
     // (its bubble closed as it was written: it stays closed, its words in its history)
@@ -2170,16 +2362,17 @@ function edited(p: Record<string, unknown>) {
 plugin.op({
   id: "companion.highlight",
   cli: "companion highlight",
-  summary: "Highlight text in a note in your colour: for a while, or kept in the file (==🟠text==) with keep; on a drawing, an element.",
+  summary: "Highlight text in your colour: in a note (for a while, or kept as ==🟠text== with keep), on a drawing an element, in a pane a terminal's text or a page's element, or the app's UI.",
   help: `  vau companion highlight --find "the budget is due Friday"
   vau companion highlight --path Notes/Idea.md --find "key insight" --keep`,
   kind: "write",
   lock: false,
-  params: { find: { ...FIND, description: "the text to highlight, exactly as in the file" }, keep: { type: "boolean", description: "keep it in the file, as a highlight of your colour" },
-    path: PATH, line: LINE, as: AS },
+  params: { find: { ...FIND, description: "the text to highlight, exactly as in the file (in a terminal, on its screen)" }, keep: { type: "boolean", description: "keep it in the file, as a highlight of your colour" },
+    path: PATH, line: LINE, pane: PANE, ui: UI, row: ROW, el: EL, as: AS },
   run: async (p, ctx) => {
-    if (!str(p.find)) throw new OpError("give `find`: the text to highlight")
-    const name = who(p), t = target(p)
+    const name = who(p), t = await resolve(target(p, true), name)
+    if (!t.find && !t.el && !t.ui && !t.row) throw new OpError("give `find`: the text to highlight (in a page, `el`; in the app, `ui`)")
+    if (!t.path && p.keep) throw new OpError("keep is for notes")
     did(name, "highlight")
     if (p.keep) notOnDrawing(t, "keep is for notes; its highlight is your selection there for a while")
     const a = setAgent(name, { ...t, state: acting(name) })
@@ -2189,6 +2382,130 @@ plugin.op({
   },
   text: (r) => (r.kept ? `Highlighted in ${r.path}.` : `Highlighted (${r.id}).`),
   did: (p) => (p.keep ? edited(p) : { action: "ui", text: `Highlighted text in ${str(p.path) || focus()?.path || "a note"}`, paths: [] }),
+})
+
+// ---------- in panes: what one shows now, acting in the user's own page, following, and keeping a follow as a watch
+
+/** A page's tree as the companion is given it, at most this long. */
+const SNAPSHOT = 12_000
+plugin.op({
+  id: "companion.see",
+  cli: "companion see",
+  summary: "What a pane of the user's window shows now: a terminal's screen, a web page as its accessibility tree (refs to point at and act on), a note's text.",
+  help: `For an ask or a point about a pane (the look: a snapshot only then, not to keep an eye on it: that's follow). A
+private page or note is never shown.
+
+  vau companion see --pane t5x1`,
+  kind: "read",
+  lock: false,
+  params: { pane: { ...PANE, description: "the pane (its id: vau tabs; default: the one the user is in)" }, as: AS },
+  run: async (p) => {
+    const id = str(p.pane) || paneFocus()?.id, pn = paneById(id)
+    if (!pn) throw new OpError(id ? `no pane ${id} in the user's window (vau tabs lists them)` : "give `pane`: the user isn't in one", 404)
+    if (privatePane(pn)) throw new OpError("that pane is private: the companion never sees it", 403)
+    const x = paneSource(pn.to)
+    if (x.kind === "terminal") return { pane: pn.id, title: pn.title, kind: "terminal", text: await plugin.ask<string>("terminal:screen", "", x.terminal, 80) }
+    if (x.kind === "note") { let text = ""; try { text = readText(plugin.vault.abs(x.path!)) } catch { /* gone */ } return { pane: pn.id, title: pn.title, kind: "note", path: x.path, text: cut(text, SNAPSHOT) } }
+    if (x.kind !== "site") return { pane: pn.id, title: pn.title, kind: "view", text: "" }
+    const t = await pageFor(pn.id, "read", who(p))
+    const r = await plugin.desktop("agent:snapshot", t.tab).catch((e) => { throw new OpError((e as Error).message, 409) }) as { url: string; title: string; snapshot: string }
+    return { pane: pn.id, title: r.title || pn.title, kind: "site", url: r.url, access: t.access, text: cut(r.snapshot, SNAPSHOT) }
+  },
+  text: (r) => `"${r.title}" (pane ${r.pane}${r.url ? `, ${r.url}` : ""}${r.access === "read" ? "; you may only read here" : ""}):\n${r.text || "(nothing to read)"}`,
+})
+
+const ACTS = ["click", "dblclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll"]
+plugin.op({
+  id: "companion.act",
+  cli: "companion act",
+  summary: "Act in the user's own web page, with your cursor there: click, fill, type, press a key, pick an option, scroll (refs from companion see).",
+  help: `Their tab, before their eyes: as in their notes, act when that's what they want (they asked, or it's plainly the
+next step); a long errand goes to a page of your own instead (vau browser open --task, its tab group yours), told with a
+say. Only where its container lets agents act, never on a private page. Answers what changed on the page.
+
+  vau companion act --pane t5x1 click --el e12
+  vau companion act --pane t5x1 fill --el e5 --value "alice@example.com"`,
+  kind: "write",
+  lock: false,
+  params: { pane: PANE, action: { type: "string", required: true, enum: ACTS, description: "what to do" }, el: EL,
+    value: { type: "string", description: "the text to fill or type, or the option to select" }, key: { type: "string", description: "the key to press (Enter, Tab, Escape)" },
+    direction: { type: "string", enum: ["up", "down"], description: "which way to scroll" }, as: AS },
+  args: ["action"],
+  run: async (p) => {
+    const name = who(p), id = str(p.pane) || paneFocus()?.id
+    if (!id) throw new OpError("give `pane`: the user isn't in a web page")
+    const t = await pageFor(id, "act", name)
+    did(name, "act")
+    if (str(p.el)) setAgent(name, { ...await resolve({ pane: id, el: str(p.el) }, name).catch(() => ({ pane: id })), state: "writing" })
+    try {
+      const r = await plugin.desktop("agent:act", t.tab, { action: p.action, ref: str(p.el) || undefined, value: p.value, key: p.key, direction: p.direction, diff: "summary" },
+        { name, session: "", task: "", summary: "", remote: false }).catch((e) => { throw new OpError((e as Error).message, 409) }) as { url: string; title: string; navigated: boolean; diff?: { page: boolean; lines: string[]; more: number } }
+      return { pane: id, ...r }
+    } finally { setAgent(name, { state: acting(name) }) }
+  },
+  text: (r) => `${r.navigated ? "Went to another page: " : ""}${r.title || r.url}${r.diff?.lines?.length ? `\n${r.diff.page ? "The page now" : "What changed (- gone, + new)"}:\n${r.diff.lines.join("\n")}${r.diff.more ? `\n… ${r.diff.more} more lines` : ""}` : "\nNothing changed on the page."}`,
+  did: (p) => ({ action: "ui", text: `${String(p.action)} in the user's page${p.el ? ` (${String(p.el)})` : ""}`, paths: [], by: who(p) }),
+})
+
+const followText = (f: Follow) => `${f.id}: ${f.pane ? `pane ${f.pane}` : f.group ? `tab group ${f.group}` : f.ui}${f.title ? ` "${f.title}"` : ""}`
+plugin.op({
+  id: "companion.follow",
+  cli: "companion follow",
+  summary: "Follow a pane, a tab group or a part of the app for this session: what it does comes to you as change moments (a terminal at a command's end or its agent's state, a page at a navigation, a selection or a settled change).",
+  help: `The user starts one by dropping your cursor on it; you may when they ask you to keep an eye on something now. For
+longer than this session, offer to keep it as a watch (companion keep). Without a pane, the list.
+
+  vau companion follow --pane t3k2
+  vau companion follow --group s1k2`,
+  kind: "write",
+  lock: false,
+  params: { pane: PANE, group: { type: "string", description: "a tab group (its id: vau tabs): all its tabs" }, ui: UI, as: AS },
+  run: async (p) => {
+    const name = who(p), pane = str(p.pane), group = str(p.group), ui = str(p.ui)
+    if (!pane && !group && !ui) return { follows: followed.list().filter((f) => key(f.agent) === key(name)) }
+    const pn = pane ? paneById(pane) : undefined
+    if (pane && !pn) throw new OpError(`no pane ${pane} in the user's window (vau tabs lists them)`, 404)
+    if (pn && privatePane(pn)) throw new OpError("that pane is private: the companion never sees it", 403)
+    return { follows: [followed.add({ agent: name, ...(pane ? { pane } : group ? { group } : { ui }), title: pn?.title ?? "" })] }
+  },
+  text: (r) => (r.follows.length ? r.follows.map(followText).join("\n") : "Following nothing."),
+})
+plugin.op({
+  id: "companion.unfollow",
+  cli: "companion unfollow",
+  summary: "Stop following a pane, a tab group or a part of the app (by its follow's id, pane, group or ui; none: all yours).",
+  kind: "write",
+  lock: false,
+  params: { id: { type: "string", description: "the follow (f2), or the pane, group or ui id it follows" }, as: AS },
+  args: ["id"],
+  run: async (p) => ({ stopped: followed.remove(str(p.id) || null, who(p)).length }),
+  text: (r) => `Stopped ${r.stopped} follow${r.stopped === 1 ? "" : "s"}.`,
+})
+plugin.op({
+  id: "companion.keep",
+  cli: "companion keep",
+  summary: "Keep a follow as a watch (a file, checked by the server after this session too): when the user says yes to keeping an eye on it.",
+  help: `A watch of the pane's terminal, page or note (or the whole tab group), live or every few minutes, until what it
+waits for happens (vau docs watches). The follow ends: the watch tells you instead.
+
+  vau companion keep --pane t3k2 --until "idle" --why "Tell me when the migration finishes"
+  vau companion keep --pane t5x1 --every 30m --until Shipped --why "Tell me when it ships"`,
+  kind: "write",
+  lock: false,
+  params: { pane: PANE, group: { type: "string", description: "a tab group (its id)" }, every: { type: "string", default: "live", description: "live, or how often: 5m, 2h, 1d" },
+    until: { type: "string", description: "what it waits for (words, or a /regular expression/)" }, why: { type: "string", description: "what to do then, in the user's words" },
+    title: { type: "string", description: "its name" }, as: AS },
+  run: async (p, ctx) => {
+    const pn = str(p.pane) ? paneById(str(p.pane)) : undefined
+    const source = str(p.group) ? `group:${str(p.group)}` : pn ? sourceOf(pn) : null
+    if (!source) throw new OpError(str(p.pane) ? `pane ${str(p.pane)} shows nothing to watch (a terminal, a page or a note)` : "give `pane` or `group`")
+    if (pn && privatePane(pn)) throw new OpError("that pane is private: the companion never sees it", 403)
+    const r = await ctx.op("watches.add", { source, every: str(p.every) || "live", ...(str(p.until) ? { until: str(p.until) } : {}), ...(str(p.why) ? { why: str(p.why) } : {}),
+      ...(str(p.title) ? { title: str(p.title) } : pn ? { title: `Watch ${pn.title}`.slice(0, 80) } : {}), by: who(p) })
+    followed.remove(str(p.group) || str(p.pane))
+    return r
+  },
+  text: (r) => `Kept as a watch: ${r.id}.md (${r.source}).`,
 })
 
 plugin.op({
@@ -2271,14 +2588,15 @@ plugin.op({
     return { mode: mode(), name: ownName(), session: (await running(id)) ? id : null, windows: windows.size, focus: focus(),
       sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })),
       agents: [...agents.values()].map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
-      notes: [...notes.values()], moments: moments.slice(-10) }
+      notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list() }
   },
   text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}. Windows: ${r.windows}.`,
     ...r.agents.map((a: Agent & { live: boolean }) => {
       const s = r.sessions.find((x: { name: string }) => key(x.name) === key(a.name))
       return `- ${a.name} (${a.tint})${isMain(a.name) ? ", the companion" : ""}: ${a.live || isMain(a.name) ? a.state : "away"}${a.path ? ` at ${a.path}${a.line ? `:${a.line}` : ""}` : ""}${s ? `, session ${s.id}` : ""}`
     }),
-    ...r.notes.map((n: Note) => `- ${n.id} ${n.kind} by ${byText(n)}${n.path ? ` in ${n.path}` : ""}: ${cut(n.text ?? n.replace ?? n.find ?? "", 80)}`)].join("\n"),
+    ...r.notes.map((n: Note) => `- ${n.id} ${n.kind} by ${byText(n)}${n.path ? ` in ${n.path}` : ""}: ${cut(n.text ?? n.replace ?? n.find ?? "", 80)}`),
+    ...r.follows.map((f: Follow) => `- ${f.agent} follows ${followText(f)}`)].join("\n"),
 })
 
 plugin.op({

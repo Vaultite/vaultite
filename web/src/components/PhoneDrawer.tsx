@@ -227,7 +227,7 @@ function Dock({ store, file, tab }: { store: Store; file: string; tab: string })
     // Its icons in line with the vault's name.
     <div aria-label="Dock" role="toolbar" data-phone-dock className="flex flex-col px-0.5">
       {docked.map(({ key, panel }) => (
-        <div key={key} data-panel={key} onContextMenu={menuFor(() => panelMenu(key))}>
+        <div key={key} data-panel={key} data-ui={`panel:${key}`} onContextMenu={menuFor(() => panelMenu(key))}>
           <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ store, open: false, phone: true, dock: true, file, tab, panel: key })} /></Guard>
         </div>
       ))}

@@ -8,7 +8,8 @@ import { type Agent, bump, canUndoEdit, connect, getState, liveAgents, type Note
 import { presence } from "./look"
 import { Arrow, follow, Overlay, showSaid } from "./Overlay"
 import { Presence } from "./Presence"
-import { modeItem, MODES, setMode, showSession } from "./session"
+import { followItems, modeItem, MODES, setMode, showSession } from "./session"
+import { watchPanes } from "./panes"
 import { privateNote } from "./private"
 import { offerThreads } from "./threads"
 
@@ -64,7 +65,8 @@ function Status() {
   const items = (): MenuItem[] => [
     modeItem(true),
     ...(s.mode !== "off" && a && s.said.some((n) => n.agent === a.name) ? [{ label: "What it said", icon: MessageCircle, hint: unread(a.name).length ? `${unread(a.name).length} new` : undefined, run: () => showSaid(a.name), sep: true }] : []),
-    ...(s.mode === "off" ? [] : liveAgents()).filter((x) => x.path).map((x, i) => ({ label: `Go to ${x.name}`, icon: Crosshair, run: () => follow(x), sep: i === 0 })),
+    ...(s.mode === "off" ? [] : liveAgents()).filter((x) => x.path || x.pane || x.ui).map((x, i) => ({ label: `Go to ${x.name}`, icon: Crosshair, run: () => follow(x), sep: i === 0 })),
+    ...(a ? followItems(a.name) : []),
     { label: `Ask ${s.name}`, icon: MessageCirclePlus, run: () => ask(), sep: true },
     { label: "Show its session", icon: SquareTerminal, run: () => void showSession() },
     { label: "Restart its session", icon: Power, run: () => void op("companion.stop").then(() => setMode(s.mode === "off" ? "quiet" : s.mode)) },
@@ -105,6 +107,7 @@ function useOffer() {
 function Background() {
   useEffect(() => connect(), [])
   useEffect(() => watchCanvases(), [])
+  useEffect(() => (share ? undefined : watchPanes()), [])
   useOffer()
   return <Overlay />
 }

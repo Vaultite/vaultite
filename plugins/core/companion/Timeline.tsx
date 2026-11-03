@@ -234,6 +234,10 @@ function UserRow({ m, note, at, pane }: { m: Read; note: string; at?: string; pa
     }
     case "accept": case "reject": case "dismiss":
       return <Row data={m.kind} icon={m.kind === "accept" ? Check : X} muted at={at} title={m.bubble ? "You closed its bubble" : `You ${m.kind === "accept" ? "accepted" : m.kind === "reject" ? "rejected" : "dismissed"} one of its items`} place={place} onClick={go} />
+    case "change": case "watch":
+      return <Row data={m.kind} icon={Eye} muted at={at} title={`${m.kind === "watch" ? "A watch" : "What it follows"}: ${m.what ?? "it changed"}`} place={m.where ? clip(m.where, 40) : undefined}>
+        {m.changes?.length ? <p className="text-[13px] break-words whitespace-pre-line text-muted-foreground max-md:text-[15px]">{clip(m.changes.slice(0, 6).join("\n"), 400)}</p> : null}
+      </Row>
     default: return null
   }
 }
@@ -427,7 +431,7 @@ export function MomentMessage({ text }: { text: string }) {
   return <MomentsOf m={m} />
 }
 
-const SAID: Record<Read["kind"], string> = { ask: "Asked", point: "Pointed at", edit: "Changed", open: "Opened", reply: "Replied to", accept: "Accepted", reject: "Rejected", dismiss: "Dismissed", move: "Moved" }
+const SAID: Record<Read["kind"], string> = { ask: "Asked", point: "Pointed at", edit: "Changed", open: "Opened", reply: "Replied to", accept: "Accepted", reject: "Rejected", dismiss: "Dismissed", move: "Moved", change: "Saw a change in", watch: "A watch saw" }
 
 function MomentsOf({ m }: { m: Message }) {
   return (

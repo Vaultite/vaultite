@@ -35,9 +35,21 @@ export type Change = { id: string; find: string; text: string; line: number; int
 /** Where a change is in `text`: its start, -1 when its lines aren't there any more. */
 export const changeAt = (text: string, c: Pick<Change, "find" | "line">) => (c.find ? nearest(text, c.find, c.line) : text ? -1 : 0)
 
-/** Whether a note is kept from the agents: under one of `folders` (vault paths), or its frontmatter (at the start of
- *  `text`) says `companion: private`. */
-export function isPrivate(path: string, text: string, folders: string[]) {
+/** The setting `private` read: its plain lines are folders, `site:`, `container:` and `app:` lines the rest. */
+export function privateOf(list: unknown) {
+  const out = { folders: [] as string[], sites: [] as string[], containers: [] as string[], apps: [] as string[] }
+  for (const l of Array.isArray(list) ? list.map(String) : []) {
+    const m = /^\s*(site|container|app):\s*(.+?)\s*$/i.exec(l)
+    if (!m) { if (l.trim()) out.folders.push(l.trim()); continue }
+    out[`${m[1].toLowerCase()}s` as "sites"].push(m[2])
+  }
+  return out
+}
+
+/** Whether a note is kept from the agents: under one of `folders` (vault paths; the setting's other lines are skipped),
+ *  or its frontmatter (at the start of `text`) says `companion: private`. */
+export function isPrivate(path: string, text: string, list: string[]) {
+  const folders = privateOf(list).folders
   if (folders.some((f) => { const d = f.trim().replace(/^\/+|\/+$/g, ""); return !!d && (path === d || path.startsWith(`${d}/`)) })) return true
   const fm = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)\s*(?:\r?\n|$)/.exec(text)?.[1]
   return !!fm && /^companion:\s*["']?private["']?\s*$/m.test(fm)

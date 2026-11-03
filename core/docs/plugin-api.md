@@ -180,6 +180,10 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.
 - `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.
 - `companion:who` (companion): The agent whose session runs in app terminal `terminal`, as Provenance names who wrote a line: its name, colour, and the model and effort it was started with; null when it's no companion's.
+- `companion:panes` (companion): The panes the windows show (but private ones): each one's id, title, tab group and what it shows (note:, terminal:, site:).
+- `companion:private` (companion): Whether a web page (its address, its container) is private: the companion never sees it, nor do watches.
+- `companion:hidden` (companion): Whether a note is private (the setting's folders, or companion: private in it).
+- `companion:watch` (companion): A watch's hit: a moment for the companion while it runs (true), else the watches' inbox (false).
 - `companion:guest` (companion): A guest's app's socket (the share's gateway checked who and what): their threads, and what they say in them.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
 - `delegate:lineage` (delegate)
@@ -239,4 +243,6 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
 - `terminal:<…>` (meters, access, waits, state, agent-waits, screen, locate, runs, agent-env, wait, of, of-pids, info): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
+- `watches:read` (watches): A source read now (note:, terminal:, site: in the user's tab), as the companion's follows read panes; null: none such.
+- `watches:changes` (watches): What changed between two reads, in a few lines (a terminal's new output, a page's lines gone and new).
 - `widgets:refresh` (inbox): Another plugin's data the widgets show changed (a routine ticked).

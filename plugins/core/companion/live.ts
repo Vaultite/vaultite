@@ -5,11 +5,14 @@ import { profileOf } from "./profiles.ts"
 import type { Change, Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "pair"
-export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number
-  /** Another app's window (bundle id, CGWindowID), or a point of the screen (points, with its display). */
-  app?: string; window?: number; sx?: number; sy?: number; display?: number }
+import type { Target } from "./places.ts"
+export type { Target } from "./places.ts"
 /** listening: this window's own, the user dictating where it is (`hear`) while it's free; the server never says it. */
-export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away" | "listening"; t: number; seen?: boolean
+/** Where a page's element is in its page (CSS px, at its zoom): the server's word for a place's `el`. */
+export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
+/** What an agent follows this session (follows.ts): a pane, a tab group, or a part of the app's UI. */
+export type Follow = { id: string; agent: string; pane?: string; group?: string; ui?: string; title: string; since: number }
+export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away" | "listening"; t: number; seen?: boolean
   /** Why it let what it saw pass, in its few words (by the seen tick). */
   why?: string
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
@@ -17,7 +20,7 @@ export type Agent = Target & { name: string; tint: string; state: "watching" | "
 export type How = { agent: string; model: string; effort: string }
 /** A coding agent a plugin runs: whether it's installed here, its models (none: it runs its own) and efforts. */
 export type Harness = { id: string; name: string; installed: boolean; models: { id: string; label: string }[]; efforts: string[] }
-export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight"; agent: string; t: number
+export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: Reply[]; pinned?: string
   /** A proposal's changes not decided yet (placeholders while it's written), and how many were taken and left. */
   changes?: Change[]; took?: number; left?: number
@@ -43,11 +46,11 @@ export type StreamMsg = { t: "stream"; m: EditAsk } | { t: "more"; rid: string; 
 
 /** said: each agent's last says, oldest first; picked: the margin card the user opened; people: who else has each
  *  note open with this window (cotype.ts), by path. */
-type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; draft: Draft | null
+type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; draft: Draft | null; follows: Follow[]
   people: Record<string, Person[]>
   /** What a new agent runs: one whose name picks none, those whose name does (by profile name), what's installed. */
   fresh: How; profiles: Record<string, How>; harnesses: Harness[] }
-let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, draft: null, people: {},
+let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, draft: null, people: {}, follows: [],
   fresh: { agent: "", model: "", effort: "" }, profiles: {}, harnesses: [] }
 const subs = new Set<() => void>()
 const changed = () => { for (const fn of [...subs]) fn() }
@@ -151,6 +154,9 @@ export function viewOf(path: string): EditorView | null {
  *  agent's drawing there. */
 let drawings: { where: () => { open: string[]; focus: Target | null }; draw: (m: Record<string, unknown>) => void } | null = null
 export const setDrawings = (d: typeof drawings) => { drawings = d }
+/** The window's panes (panes.ts registers them): each pane's tab and title, and the focused one. */
+let panes: (() => { panes: { id: string; to: string; title: string; group?: string }[]; pane?: string }) | null = null
+export const setPanes = (fn: typeof panes) => { panes = fn }
 /** What folds an agent's lines by its cursor back into a bubble (editor.ts, once loaded): its run, or null. */
 let folder: ((path: string, agent: string, line?: number) => (() => void) | null) | null = null
 export const setFolder = (fn: typeof folder) => { folder = fn }
@@ -205,7 +211,8 @@ function open() {
     if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[], said: (m.said as Note[] | undefined) ?? [],
       // (what an agent started from here runs; no model: its agent takes none)
       fresh: (m.fresh as How | undefined) ?? { agent: "", model: "", effort: "" }, profiles: (m.profiles as State["profiles"] | undefined) ?? {},
-      harnesses: (m.harnesses as Harness[] | undefined) ?? [] }); heard(m.agents as Agent[]) }
+      harnesses: (m.harnesses as Harness[] | undefined) ?? [], follows: (m.follows as Follow[] | undefined) ?? [] }); heard(m.agents as Agent[]) }
+    else if (m.t === "follows") set({ follows: (m.follows as Follow[] | undefined) ?? [] })
     else if (m.t === "said") set({ said: m.said as Note[] })
     else if (m.t === "agent") {
       const a = m.agent as Agent
@@ -248,16 +255,21 @@ const edit = (e: EditAsk) => inTurn(async () => {
 
 /** Something the user did, for the agents (an ask: for `agent`, else the companion, who shows it thinking at once).
  *  `waited`: ms since they last typed. False when it couldn't go. */
-export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number
-  x?: number; y?: number; changes?: string[]; scene?: string }) {
+export function sendMoment(m: { kind: "ask" | "point" | "edit" | "change"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number
+  x?: number; y?: number; changes?: string[]; scene?: string; pane?: string; ui?: string; row?: number; title?: string }) {
   if (share) return true // (no agent works for a guest)
   if (!say({ t: "moment", ...m })) return false
   const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
-  if (a && a.state !== "away" && a.state !== "starting") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) }, 10_000)
+  if (a && a.state !== "away" && a.state !== "starting") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : m.pane || m.ui ? { path: undefined, line: undefined, find: undefined, pane: m.pane, ui: m.ui, row: m.row } : {}) }, 10_000)
   return true
 }
 /** The user dropped an agent's cursor here: "look at this". It stays there (the server says so too, a moment later). */
 export const pointAt = (agent: string, t: { path: string; line: number; find?: string; selection?: string }) => sendMoment({ kind: "point", agent, ...t })
+/** The user dropped an agent's cursor on a pane (a terminal's row, a point of a page) or the app's UI: "look at this",
+ *  and it follows it from then on. */
+export const pointAtPane = (agent: string, t: { pane?: string; ui?: string; row?: number; x?: number; y?: number; text?: string; title?: string }) => sendMoment({ kind: "point", agent, ...t })
+/** A part of the app's UI an agent follows changed: its new lines (and those gone). */
+export const uiChanged = (agent: string, ui: string, changes: string[], title?: string) => sendMoment({ kind: "change", agent, ui, changes, ...(title ? { title } : {}) })
 /** A say turned into a margin comment, same words, same place. */
 export const pin = (id: string) => say({ t: "pin", id })
 /** Bubbles the user saw: no unread dot for them (on every device). */
@@ -315,7 +327,7 @@ export function sayWhere(active = false) {
   const shown = [...new Set([...[...views].filter(([v]) => onScreen(v)).map(([, p]) => p), ...drawn.open])]
   const f = [...views.keys()].find((v) => v.hasFocus)
   const focus = f ? { path: views.get(f)!, line: f.state.doc.lineAt(f.state.selection.main.head).number } : drawn.focus
-  const m = { t: "where", open, shown, focus, active: active && document.hasFocus() }, json = JSON.stringify({ ...m, active: false })
+  const m = { t: "where", open, shown, focus, ...panes?.(), active: active && document.hasFocus() }, json = JSON.stringify({ ...m, active: false })
   if (!m.active && json === saidWhere) return
   if (say(m)) saidWhere = json
 }

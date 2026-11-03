@@ -378,7 +378,7 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
     <PaneContext.Provider value={pane}>
       {/* (a kept tab is data-kept, not data-pane: what looks for the pane's scroller finds the one shown; data-tab-body:
           whose it is, for a dragged tab's picture of itself) */}
-      <div ref={box} id={focused ? "main-scroll" : undefined} data-pane={active ? group : undefined} data-kept={shown ? undefined : group} data-stacked={back ? group : undefined} data-tab-body={tab?.id}
+      <div ref={box} id={focused ? "main-scroll" : undefined} data-pane={active ? group : undefined} data-kept={shown ? undefined : group} data-stacked={back ? group : undefined} data-tab-body={tab?.id} data-ui={tab && shown ? `pane:${tab.id}` : undefined}
         className={scroller} style={shown ? undefined : { display: "none" }}
         onScroll={(e) => { if (!restoring.current && shown) keepScroll(place.current, e.currentTarget.scrollTop, e.currentTarget) }}>
         <TabContent {...p} tab={tab} to={to} view={view} file={file} full={full} focused={focused} shown={shown} />

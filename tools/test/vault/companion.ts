@@ -687,6 +687,40 @@ export default async ($: VaultTest) => {
     check("companion: the fresh one is told the summary, its own open threads and the last asks", h.includes("Working on the Lisbon trip.") &&
       h.includes("- n1 comment in A.md:3") && h.includes("the user: \"Then Tuesday\"") && !h.includes("n2") && !h.includes("n3") && h.includes("budget?") && /don't greet/.test(h), h)
   }
+  {
+    // Places beyond notes (panes, the app's UI), what it follows and its watches, as moments.
+    const pl = await import("../../../plugins/core/companion/places.ts"), tx = await import("../../../plugins/core/companion/text.ts")
+    check("companion: a pane says what it shows", pl.paneSource("view:terminal/claude-k3").terminal === "claude-k3" && pl.paneSource("view:web/https://a.com/x").url === "https://a.com/x" &&
+      pl.paneSource("file:N.md").path === "N.md" && pl.paneSource("settings").kind === "view")
+    check("companion: private sites cover their subdomains; the setting's lines are folders, sites, containers and apps",
+      pl.siteIn("www.secure.chase.com", ["chase.com"]) && !pl.siteIn("notchase.com", ["chase.com"]) && !tx.isPrivate("bank.com/a.md", "", ["site: bank.com"]) &&
+      JSON.stringify(tx.privateOf(["Journal", "site: bank.com", "container: work", "app: com.x"])) === JSON.stringify({ folders: ["Journal"], sites: ["bank.com"], containers: ["work"], apps: ["com.x"] }))
+    check("companion: the starting list keeps password managers and banks from it, not Mail or Messages", c.privatePage("https://my.1password.com/vault") && c.privatePage("https://www.itau.com.br/") &&
+      !c.privatePage("https://mail.google.com/") && !c.privates().apps.some((a: string) => /mail|messages|mobilesms/i.test(a)))
+    const t = c.momentsText([{ seq: 1, t: 0, kind: "change", pane: "t3", title: "zsh", what: "a command ended", changes: ["  ok"] },
+      { seq: 2, t: 0, kind: "watch", item: "Watches/Order", title: "Order", what: "it changed", text: "tell me when it ships", changes: ["+ Shipped"] },
+      { seq: 3, t: 0, kind: "point", ui: "panel:files:files", text: "Notes" }], "pair", null, [], `They're looking at "zsh" (pane t3, a terminal).`)
+    check("companion: a follow's change, a watch's hit and a point on the app read as moments", t.includes(`- change in "zsh" (pane t3): a command ended\n    ok`) &&
+      t.includes(`- watch Watches/Order "Order": it changed`) && t.includes(`they asked: "tell me when it ships"`) && t.includes("- point (panel:files:files): they pointed you here") &&
+      t.split("\n")[1].startsWith("They're looking at"), t)
+    const back = (await import("../../../plugins/core/companion/moments.ts")).readMoments(t)
+    check("companion: and read back for its timeline", back?.moments.map((m) => m.kind).join() === "change,watch,point" && back.moments[0].changes?.[0] === "  ok", back)
+    const me = () => api("POST", "ops/companion.status", {}).then(([, r]) => r.agents.find((a: Any) => a.name === "Claude"))
+    let [st2, r2] = await api("POST", "ops/companion.look", { ui: "tab:t3" })
+    const at = await me()
+    check("companion: look points at the app's UI by its id, its note's place gone", st2 === 200 && at?.ui === "tab:t3" && !at.path && !at.line, [st2, r2, at])
+    ;[st2] = await api("POST", "ops/companion.look", { path: "Notes/A.md", line: 2 })
+    check("companion: and back in a note, the UI's place gone", st2 === 200 && !(await me())?.ui)
+    ;[st2] = await api("POST", "ops/companion.look", { pane: "nope" })
+    check("companion: a pane no window has is a 404", st2 === 404)
+    ;[st2] = await api("POST", "ops/companion.comment", { text: "x", ui: "tab:t3" })
+    check("companion: comments are for notes", st2 === 400)
+    ;[st2, r2] = await api("POST", "ops/companion.follow", { group: "s1", as: "Claude" })
+    const f = r2?.follows?.[0]
+    ;[, r2] = await api("POST", "ops/companion.status", {})
+    check("companion: it follows a tab group, listed in its status, until it stops", st2 === 200 && f?.group === "s1" && r2.follows.some((x: Any) => x.id === f.id) &&
+      (await api("POST", "ops/companion.unfollow", { id: f.id }))[1]?.stopped === 1, [st2, r2])
+  }
   await api("PATCH", "config/plugin/companion", { mode: "off" })
   check("companion: off hears nothing", c.addMoment({ kind: "ask", text: "hello?" }) === null)
 }

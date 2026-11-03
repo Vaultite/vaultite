@@ -1,5 +1,5 @@
 // Its sessions from the app: the mode, showing one, stopping one, a fresh one. The status bar's menu and each cursor's.
-import { MessageCircle, MessageSquare, Power, RotateCcw, SquareTerminal, Undo2 } from "lucide-react"
+import { EyeOff, MessageCircle, MessageSquare, Power, RotateCcw, SquareTerminal, Undo2 } from "lucide-react"
 import { notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
 import { type Agent, canUndoEdit, foldable, getState, howText, type Mode, undoEdit } from "./live"
 
@@ -62,6 +62,11 @@ async function fresh(name: string) {
 }
 
 /** An agent's menu: its cursor's (right-click, a held finger on its name, … in its box) and its face's. */
+/** What an agent follows, each to stop following (its cursor's menu, the status bar's). */
+export const followItems = (name: string): MenuItem[] => getState().follows.filter((f) => f.agent === name).map((f, i) => ({
+  label: `Stop following ${f.title || f.ui || f.pane || f.group}`, icon: EyeOff, sep: i === 0,
+  run: () => void op("companion.unfollow", { id: f.id }).catch((e) => notifyError(e, "Couldn't stop following it")) }))
+
 export function agentMenu(a: Agent): MenuItem[] {
   const how = howText(a), fold = foldable(a)
   return [
@@ -70,6 +75,7 @@ export function agentMenu(a: Agent): MenuItem[] {
     ...(how ? [{ label: how, caption: true, run: () => {}, sep: main(a.name) }] : []),
     { label: "Show its session", icon: (a.runs ?? "").split("_")[0] === "claude" ? MessageSquare : SquareTerminal, run: () => void showSession(a.name), sep: main(a.name) && !how },
     ...(canUndoEdit(a.name) ? [{ label: "Undo its last edit", icon: Undo2, run: () => void undoEdit(a.name) }] : []),
+    ...followItems(a.name),
     { label: "Start fresh", icon: RotateCcw, run: () => void fresh(a.name), disabled: a.state === "starting", sep: true },
     { label: "Stop", icon: Power, danger: true, run: () => void stop(a.name) },
   ]

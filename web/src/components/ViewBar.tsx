@@ -19,10 +19,10 @@ function NavButtons() {
     // (a pane too narrow for the bar's buttons: forward, then back wrap out of sight, so the view's buttons stay put)
     <div className="flex h-7 min-w-0 flex-wrap items-center overflow-clip [overflow-clip-margin:4px]">
 
-      <button type="button" onClick={() => navigate(-1)} disabled={!canNavigate(tab, -1)} aria-label="Navigate back" data-tip={`Navigate back${back}`} className={barButton}>
+      <button type="button" onClick={() => navigate(-1)} disabled={!canNavigate(tab, -1)} aria-label="Navigate back" data-ui="button:nav:back" data-tip={`Navigate back${back}`} className={barButton}>
         <ArrowLeft className="size-4" strokeWidth={2} />
       </button>
-      <button type="button" onClick={() => navigate(1)} disabled={!canNavigate(tab, 1)} aria-label="Navigate forward" data-tip={`Navigate forward${forward}`} className={barButton}>
+      <button type="button" onClick={() => navigate(1)} disabled={!canNavigate(tab, 1)} aria-label="Navigate forward" data-ui="button:nav:forward" data-tip={`Navigate forward${forward}`} className={barButton}>
         <ArrowRight className="size-4" strokeWidth={2} />
       </button>
     </div>

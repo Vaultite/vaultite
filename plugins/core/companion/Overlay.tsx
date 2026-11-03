@@ -3,10 +3,11 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, screenDrop, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, screenDrop, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { uiElement } from "./panes"
+import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, pointAtPane, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
 import { presence, STATUS } from "./look"
 import { agentMenu } from "./session"
 import { changeAt, nearest } from "./text"
@@ -17,11 +18,13 @@ export const unsent = () => { notify("Couldn't send it: not connected to the ser
 
 /** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it;
  *  docked: at its arrow in the status bar (x, y: the arrow's corner), where it rests unseen, the arrow standing for it. */
-type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean; rides?: boolean }
+type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean; rides?: boolean
+  /** Over a web page: drawn over it (the window rises over the page for it, layers.ts' floats). */
+  over?: boolean }
 /** A cursor's place as drawn: what it looked at, its place among them (home's), its step in a stack; held, it stays
  *  there (offset by dx, dy: where it was dropped). */
-type Place = { at: Target; i: number; shift: number; dx: number; dy: number }
-const placeOf = (a: Agent): Target => ({ path: a.path, line: a.line, find: a.find, x: a.x, y: a.y })
+type Place = { at: Target & Pick<Agent, "box">; i: number; shift: number; dx: number; dy: number }
+const placeOf = (a: Agent): Place["at"] => ({ path: a.path, line: a.line, find: a.find, x: a.x, y: a.y, pane: a.pane, ui: a.ui, row: a.row, el: a.el, box: a.box })
 const FLAG = 44 // the arrow and its flag below it
 const MARGIN = 228 // a card's width and its gaps: less room than this beside the text and it folds to a dot
 export const cut = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
@@ -118,12 +121,65 @@ function spotOf(a: Agent, i: number, held = false): Spot | null {
     const c = coords(typing.view, Math.min(typing.pos, typing.view.state.doc.length))
     return { x: c.x, y: c.y, low: c.y + FLAG > c.box.bottom }
   }
+  if (!a.path && (a.ui || a.pane)) { const at = a.ui ? uiSpot(a.ui) : paneSpot(a); if (at) return at }
   const v = a.path ? viewOf(a.path) : null
   const pos = v ? posIn(v, a) : null
   if (!v || pos === null) return (a.path && rowOf(a.path)) || home(a, i)
   const line = v.state.doc.lineAt(pos)
   const c = coords(v, a.find ? rowEnd(v, Math.min(line.to, pos + a.find.length), line.to) : line.to, -1)
   return { x: Math.min(c.box.right - 40, c.x + 28), y: c.y, low: c.y + FLAG > c.box.bottom }
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+/** Pointing at the app's own UI: the arrow's tip on the element, a little in from its left. */
+function atElement(el: HTMLElement): Spot {
+  const r = el.getBoundingClientRect(), x = r.left + Math.min(r.width * 0.6, Math.max(4, r.width - 6)), y = r.top + r.height * 0.6
+  return { x, y, low: y + FLAG > innerHeight - 40, rides: !!el.closest("aside[data-peek]") || undefined }
+}
+const uiSpot = (id: string) => { const el = uiElement(id); return el ? atElement(el) : null }
+
+type Screen = { r: DOMRect; lines: string[]; rowH: number; cw: number }
+/** A terminal pane's screen as drawn: its box, its lines (terminalText: with WebGL it's a canvas), a row's height, a cell's width. */
+function screenOf(pane: HTMLElement): Screen | null {
+  const host = pane.querySelector<HTMLElement & { terminalText?: () => string }>("[data-terminal]"), scr = host?.querySelector<HTMLElement>(".xterm-screen")
+  if (!host?.terminalText || !scr) return null
+  const lines = host.terminalText().split("\n"), r = scr.getBoundingClientRect(), m = host.querySelector(".xterm-char-measure-element")
+  const cw = m?.textContent ? m.getBoundingClientRect().width / m.textContent.length : 0
+  return { r, lines, rowH: r.height / Math.max(1, lines.length), cw: cw || 8 }
+}
+/** The row (from 1) a place names on a screen: its row, else the last showing its text, else the last written. */
+function rowIn(s: Screen, t: { row?: number; find?: string }) {
+  if (t.row) return clamp(t.row, 1, s.lines.length)
+  const found = t.find ? s.lines.findLastIndex((l) => l.includes(t.find!)) : -1
+  if (found >= 0) return found + 1
+  return Math.max(1, s.lines.findLastIndex((l) => l.trim()) + 1)
+}
+/** The box a pane's place takes on screen: a terminal's row (`find`: its text), a page's element, else the pane. */
+function paneBox(t: Target & Pick<Agent, "box">): (DOMRect | { left: number; top: number; right: number; bottom: number; width: number; height: number }) & { over?: boolean; row?: Screen } | null {
+  const el = t.pane ? uiElement(`pane:${t.pane}`) : null
+  if (!el) return null
+  const scr = screenOf(el)
+  if (scr) { const row = rowIn(scr, t), top = scr.r.top + (row - 1) * scr.rowH, w = Math.max(scr.cw * 2, (scr.lines[row - 1]?.trimEnd().length ?? 0) * scr.cw)
+    return { left: scr.r.left, top, right: scr.r.left + w, bottom: top + scr.rowH, width: w, height: scr.rowH, row: scr } }
+  const page = el.querySelector<HTMLElement>("[data-web-box]")
+  if (page) {
+    const b = page.getBoundingClientRect(), z = t.box?.zoom ?? 1
+    if (!t.box) return Object.assign(b, { over: true })
+    const left = b.left + t.box.x * z, top = b.top + t.box.y * z, width = t.box.w * z, height = t.box.h * z
+    return { left, top, right: left + width, bottom: top + height, width, height, over: true }
+  }
+  return el.getBoundingClientRect()
+}
+/** Where its cursor is in a pane: past a terminal row's text, by a page's element (over the page), else the pane's corner;
+ *  a pane not shown, at its tab. */
+function paneSpot(a: Agent): Spot | null {
+  const el = uiElement(`pane:${a.pane}`)
+  if (!el) return uiSpot(`tab:${a.pane}`)
+  const r = el.getBoundingClientRect(), b = paneBox(a)
+  if (!b) return null
+  const whole = b.width === r.width && b.height === r.height && !b.row
+  const x = whole || (b.over && !a.box) ? r.left + 40 : b.right + (b.row ? 10 : 6), y = whole || (b.over && !a.box) ? r.top + 48 : b.top
+  return { x: clamp(x, r.left + 4, r.right - 40), y: clamp(y, r.top + 2, r.bottom - 30), low: y + FLAG > r.bottom, over: b.over }
 }
 
 /** An agent's arrow: its cursor (20px), and smaller its place in the status bar. */
@@ -139,6 +195,8 @@ export function Arrow({ tint, size = 20, className, ...rest }: { tint?: string; 
 const scroller = (v: EditorView, pos: number) => v.dispatch({ effects: (v.constructor as typeof EditorView).scrollIntoView(pos, { y: "center" }) })
 /** Go where an agent is (its flag, its face in the status bar): its note opened, scrolled to its line. */
 export function follow(a: Target & { name: string }) {
+  if (!a.path && a.pane) return void selectTab(a.pane)
+  if (!a.path && a.ui) return void uiElement(a.ui)?.scrollIntoView({ block: "nearest" })
   if (!a.path) return notify(`${a.name} isn't in a note now`)
   const path = a.path, go = () => {
     const v = viewOf(path)
@@ -161,12 +219,27 @@ function dropAt(agent: string, x: number, y: number) {
   const el = document.elementsFromPoint(x, y).find((e) => !e.closest(".companion-overlay") && e.closest(".cm-editor"))
   const v = el ? [...views.keys()].find((x) => x.dom === el.closest(".cm-editor")) : undefined
   const pos = v?.posAtCoords({ x, y })
-  if (!v || pos === null || pos === undefined) return false
+  if (!v || pos === null || pos === undefined) return dropOnPane(agent, x, y)
   const st = v.state, sel = st.selection.main, on = !sel.empty && pos >= sel.from && pos <= sel.to
   const word = on ? null : st.wordAt(pos), selection = on ? st.sliceDoc(sel.from, sel.to) : undefined
   const find = on ? selection!.split("\n")[0].slice(0, 200) : word ? st.sliceDoc(word.from, word.to) : undefined
   pointAt(agent, { path: views.get(v)!, line: st.doc.lineAt(on ? sel.from : pos).number, find: find || undefined, selection })
   return true
+}
+
+/** A cursor dropped off a note's text: on a pane (a terminal's row, a point of a page, a view) or the app's UI (a tab,
+ *  a tab group, a panel, a button): "look at this", and it follows it. False on nothing it knows. */
+function dropOnPane(agent: string, x: number, y: number) {
+  const el = document.elementsFromPoint(x, y).filter((e) => !e.closest(".companion-overlay")).map((e) => e.closest<HTMLElement>("[data-ui]")).find(Boolean)
+  const id = el?.dataset.ui
+  if (!el || !id) return false
+  const words = (e: HTMLElement) => (e.innerText || "").trim().slice(0, 1200) || undefined
+  if (!id.startsWith("pane:")) return pointAtPane(agent, { ui: id, text: words(el), title: el.getAttribute("aria-label") ?? el.dataset.heading ?? undefined })
+  const pane = id.slice(5), scr = screenOf(el)
+  if (scr) { const row = clamp(Math.floor((y - scr.r.top) / scr.rowH) + 1, 1, scr.lines.length); return pointAtPane(agent, { pane, row, text: scr.lines[row - 1]?.trim() || undefined }) }
+  const page = el.querySelector<HTMLElement>("[data-web-box]")?.getBoundingClientRect()
+  if (page) return pointAtPane(agent, { pane, x: Math.round(x - page.left), y: Math.round(y - page.top) })
+  return pointAtPane(agent, { pane, text: words(el) })
 }
 
 /** Put a bubble in the note, as its agent's words; it goes from the screen once it's there. */
@@ -234,8 +307,10 @@ const readMs = (text: string) => 1500 + text.split(/\s+/).length * 220
 
 /** Its words by its cursor: a click (a tap) opens a box to reply in, Enter sends it; a question shows its box from the
  *  start. Put in note, Pin and Close by it; held still (past its time) while the pointer or the focus is in it. */
-function Bubble({ n, tint, right, low, maxWidth, drawn, hold }: { n: Note; tint: string; right: boolean; low: boolean; maxWidth: number; drawn: boolean
-  hold: (on: boolean) => void }) {
+function Bubble({ n, tint, right, low, maxWidth, drawn, hold, floats }: { n: Note; tint: string; right: boolean; low: boolean; maxWidth: number; drawn: boolean
+  hold: (on: boolean) => void
+  /** Over a web page: the window rises over it for the bubble. */
+  floats?: boolean }) {
   const [replying, setReplying] = useState(!!n.question)
   const [draft, setDraft] = useState("")
   const [inside, setInside] = useState(false)
@@ -264,7 +339,7 @@ function Bubble({ n, tint, right, low, maxWidth, drawn, hold }: { n: Note; tint:
   const open = () => { setReplying(true); requestAnimationFrame(() => field.current?.focus()) }
   if (gone) return null
   return (
-    <div ref={box} key={n.id} data-companion-bubble={n.id} data-question={n.question || undefined} role={n.question ? "group" : undefined} aria-label={n.question ? "A question" : undefined}
+    <div ref={box} key={n.id} data-companion-bubble={n.id} data-floats={floats ? "" : undefined} data-question={n.question || undefined} role={n.question ? "group" : undefined} aria-label={n.question ? "A question" : undefined}
       onPointerEnter={(e) => { if (e.pointerType !== "touch") setInside(true) }} onPointerLeave={(e) => { if (e.pointerType !== "touch") setInside(false) }}
       onFocus={() => setInside(true)} onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node | null)) setInside(false) }}
       onClick={(e) => { if (!drawn && !replying && !(e.target as Element).closest("button, a")) open() }}
@@ -410,7 +485,10 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
     // (a finger hides what's under it: the arrow's tip goes above it)
     const tip = (x: number, y: number) => ({ x, y: touch ? y - 40 : y })
     let dragging = false, dead = false
-    const timer = touch ? setTimeout(() => { dragging = true; haptic(); setOpen(false); setDrag(tip(x0, y0)) }, 350) : null
+    // (dragged, the window rises over web pages, so it can be dropped on one: as any drag, core/drag.ts)
+    const root = document.documentElement, mine = !("dragging" in root.dataset)
+    const lift = () => { if (mine) root.dataset.dragging = "" }
+    const timer = touch ? setTimeout(() => { dragging = true; lift(); haptic(); setOpen(false); setDrag(tip(x0, y0)) }, 350) : null
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       if (!dragging) {
@@ -418,12 +496,14 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
         if (touch) { if (d > 10) { dead = true; end() } return }
         if (d < 4) return
         dragging = true
+        lift()
         setOpen(false)
       }
       setDrag(tip(ev.clientX, ev.clientY))
     }
     const end = () => {
       if (timer) clearTimeout(timer)
+      if (mine) delete root.dataset.dragging
       el.removeEventListener("pointermove", move)
       el.removeEventListener("pointerup", up)
       el.removeEventListener("pointercancel", cancel)
@@ -445,7 +525,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
     el.addEventListener("pointercancel", cancel)
   }
   return (
-    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
+    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-floats={spot.over && !docked ? "" : undefined} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
       data-docked={docked || undefined}
       style={{ transform: docked ? `translate(${at.x}px, ${at.y}px) scale(${DOCK_SCALE})` : `translate(${at.x - 3}px, ${at.y - 2}px)`, transformOrigin: "0 0",
@@ -456,11 +536,11 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
         <Arrow tint={tint} />
         {dot && !open && <span data-companion-unread aria-label="Unread" className="absolute top-[-1px] left-[12px] size-[7px] rounded-full ring-2 ring-background" style={{ background: tint }} />}
       </div>
-      <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip data-under-pages data-own-hold onPointerDown={down} onContextMenu={menu}
+      <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip data-under-pages={spot.over ? undefined : ""} data-own-hold onPointerDown={down} onContextMenu={menu}
         className={cn("pointer-events-auto absolute top-0 left-0 z-[1] size-5 touch-none select-none [-webkit-touch-callout:none] [@media(pointer:coarse)]:-top-3 [@media(pointer:coarse)]:-left-3 [@media(pointer:coarse)]:size-11",
           drag ? "cursor-grabbing" : "cursor-pointer")} />
       <button ref={flagRef} type="button" tabIndex={tag || many ? 0 : -1} aria-label={many ? `${[a, ...others].map((x) => x.name).join(", ")} here` : `Go to ${a.name}`} aria-haspopup={many ? "menu" : undefined} aria-expanded={many ? fan : undefined}
-        data-companion-flag data-under-pages data-tip={many || !a.path ? undefined : "Go to where it is"}
+        data-companion-flag data-under-pages={spot.over ? undefined : ""} data-tip={many || !(a.path || a.pane) ? undefined : "Go to where it is"}
         onPointerEnter={(e) => { if (e.pointerType !== "touch") keepFan() }} onPointerLeave={(e) => { if (e.pointerType !== "touch") closeFan() }}
         onFocus={keepFan} onBlur={(e) => { if (!box.current?.querySelector("[data-companion-fan]")?.contains(e.relatedTarget as Node | null)) closeFan() }}
         onKeyDown={(e) => { if (many && e.key === "ArrowDown") { e.preventDefault(); setFan(true); requestAnimationFrame(() => box.current?.querySelector<HTMLElement>("[data-companion-fan] button")?.focus()) } else if (e.key === "Escape" && fan) { e.preventDefault(); setFan(false) } }}
@@ -495,7 +575,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
           </span>
         </div>
       ) : bubble && !open && !drag && (
-        <Bubble n={bubble} tint={tint} right={right} low={low} drawn={!!spot.drawn} hold={setKeep}
+        <Bubble n={bubble} tint={tint} right={right} low={low} drawn={!!spot.drawn} hold={setKeep} floats={!!spot.over}
           maxWidth={Math.max(200, Math.min(320, right ? at.x - 30 : innerWidth - at.x - 34))} />
       )}
     </div>
@@ -924,12 +1004,24 @@ export function Overlay() {
           {p.dots.map((d) => <Gutter key={d.n.id} n={d.n} x={d.x} y={d.y - p.top} picked={s.picked === d.n.id} />)}
         </div>
       ))}
+      {!off && notes.filter((n) => n.kind === "highlight" && !n.path && (n.pane || n.ui)).map((n) => <PaneMark key={n.id} n={n} />)}
       {cursors.map(({ a, spot, said, waiting, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} waiting={waiting} others={others} under={under} shift={shift}
         dot={unread(a.name).some((n) => n.id !== said?.id)}
         age={Date.now() - a.t < 3000 ? 0 : Date.now() - a.t <= 4000 ? 1 : Date.now() - a.t <= 8000 ? 2 : 3} typed={typing?.agent === a.name}
         open={popped === a.name} setOpen={(o) => setPopped((was) => (o ? a.name : was === a.name ? null : was))} pop={setPopped} hold={(on, at) => hold(a.name, on, at)} />)}
     </div>,
     document.body,
+  )
+}
+
+/** An agent's highlight in a pane (a terminal's text, a page's element) or on the app's UI: a ring in its colour. */
+function PaneMark({ n }: { n: Note }) {
+  const el = n.ui ? uiElement(n.ui) : null, b = el ? el.getBoundingClientRect() : paneBox(n)
+  if (!b || !b.width) return null
+  const over = !el && !!(b as { over?: boolean }).over, tint = tintOf(n.agent)
+  return (
+    <div data-companion-highlight={n.id} data-floats={over ? "" : undefined} data-under-pages={over ? undefined : ""} className="companion-fade pointer-events-none fixed rounded-[5px] z-(--z-page-float)"
+      style={{ left: b.left - 3, top: b.top - 2, width: b.width + 6, height: b.height + 4, boxShadow: `0 0 0 2px ${tint}`, background: `color-mix(in srgb, ${tint} 14%, transparent)` }} />
   )
 }
 

@@ -682,7 +682,7 @@ async function navigateIn(p: EnginePage, to: unknown, who: By) {
 const listOf = (asking: By) => allPages().filter((p) => !p.wc.isDestroyed() && /^https?:/i.test(p.wc.getURL() || p.url)).map((p) => {
   const owner = owners.get(p.id)
   return {
-    tab: p.id, url: p.wc.getURL() || p.url, title: p.wc.getTitle(), container: p.profile.startsWith("c-") ? p.profile.slice(2) : null,
+    tab: p.id, url: p.wc.getURL() || p.url, title: p.wc.getTitle(), container: p.profile.startsWith("c-") ? p.profile.slice(2) : null, ...(p.tab() ? { pane: p.tab() } : {}),
     access: accessOf(p), shown: p.visible(), by: owner ? groupOf(owner) : null, mine: !!owner && sameAgent(owner, asking),
     ...(owner?.summary ? { summary: owner.summary } : {}),
     ...(paused.has(p.id) ? { paused: true } : {}), ...(taken.has(p.id) ? { taken: true } : {}), ...(asks.has(p.id) ? { asking: asks.get(p.id)!.reason } : {}),
@@ -935,6 +935,23 @@ serve("agent:open", async (win, url, container, by) => {
 })
 serve("agent:snapshot", (_win, tab) => snapshot(pageFor(tab, "read")))
 serve("agent:read", (_win, tab) => readIn(pageFor(tab, "read")))
+// (the companion in the user's own tab: where an element is, to point at it; what they selected; what's under a point)
+serve("agent:locate", async (_win, tab, ref) => {
+  const p = pageFor(tab, "read"), n = await nodeOf(p, ref)
+  const { model } = await cdp<{ model: { border: number[]; width: number; height: number } }>(p.wc, "DOM.getBoxModel", { backendNodeId: n.id })
+  return { tab: p.id, x: model.border[0], y: model.border[1], width: model.width, height: model.height, zoom: p.wc.getZoomFactor() }
+})
+serve("agent:selection", async (_win, tab) => {
+  const p = pageFor(tab, "read")
+  const text = String(await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: "String(getSelection() || '')" }]).catch(() => "") ?? "")
+  return { tab: p.id, url: p.wc.getURL(), selection: text.slice(0, 4000) }
+})
+serve("agent:at", async (_win, tab, x, y) => {
+  const p = pageFor(tab, "read"), at = [Number(x) || 0, Number(y) || 0].map(Math.round)
+  const code = `(() => { let e = document.elementFromPoint(${at[0]}, ${at[1]}); while (e && e.parentElement && (e.innerText || "").trim().length < 12) e = e.parentElement; return e ? (e.innerText || "").trim().slice(0, 600) : "" })()`
+  const text = String(await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code }]).catch(() => "") ?? "")
+  return { tab: p.id, url: p.wc.getURL(), text }
+})
 serve("agent:close", async (_win, tab) => {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)

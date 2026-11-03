@@ -111,7 +111,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
         <div data-rail className="edge-fade-y relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-width:none]">
           {head && <div data-rail-section className="flex shrink-0 flex-col">{head}</div>}
           {panels.map(({ key, panel }) => (
-            <div key={key} data-panel={key} data-rail-section className="flex shrink-0 flex-col" onContextMenu={menuFor(() => panelMenu(key, side))}>
+            <div key={key} data-panel={key} data-ui={`panel:${key}`} data-rail-section className="flex shrink-0 flex-col" onContextMenu={menuFor(() => panelMenu(key, side))}>
               {panel.flyout
                 ? <RailFlyout panel={panel} ctx={{ ...ctx, panel: key }} open={flying === key} setOpen={(v) => setFlying(v ? key : null)} />
                 : <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ ...ctx, panel: key })} /></Guard>}
@@ -137,7 +137,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
         const divider = own && !folded && panels.slice(i + 1).some((q) => !setup.collapsed.includes(q.key))
         return (
           <Fragment key={key}>
-          <div data-panel={key} data-slide={key} data-collapsed={folded || undefined} onContextMenu={menuFor(() => panelMenu(key, side))}
+          <div data-panel={key} data-ui={`panel:${key}`} data-slide={key} data-collapsed={folded || undefined} onContextMenu={menuFor(() => panelMenu(key, side))}
             onPointerDown={(e) => {
               const t = e.target as HTMLElement
               // With a `view`, dropped on a pane it opens as a tab. A button that is itself the
@@ -246,7 +246,7 @@ export function SidebarToggle({ side, open, empty, onClick, className, style }: 
   const carried = item && draggedPanel(item)
   const dragging = !!carried && sideOf(carried) !== side
   return (
-    <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} onClick={onClick} style={style}
+    <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} data-ui={side === "right" ? "button:sidebar:toggle-right" : "button:sidebar:toggle"} onClick={onClick} style={style}
       aria-label={`${open ? "Hide" : "Show"} ${name}`} aria-expanded={open} data-tip={dragging ? undefined : `${open ? "Hide" : "Show"} ${name}${keys}`} data-tip-side={side === "right" ? "left" : undefined}
       className={cn("fixed top-[calc(env(safe-area-inset-top)+--spacing(1.5))] z-30 hidden size-7 cursor-pointer place-items-center rounded-[5px] transition-[color,background-color,box-shadow,scale] duration-(--motion-fast) ease-(--ease-out) hover:bg-foreground/[0.06] hover:text-foreground md:grid",
         side === "left" ? "left-[calc(env(safe-area-inset-left)+--spacing(2))]" : "right-[calc(env(safe-area-inset-right)+--spacing(2))]",
@@ -474,7 +474,7 @@ export function SidebarSearch({ open }: SidebarCtx) {
   const keys = useCommandKeys("switcher:open", true)
   return (
     // The panel is this one control, so it's its own handle: drag it to move the panel, click it to search.
-    <button type="button" data-sidebar-search data-panel-handle={open ? "" : undefined} data-heading="Search" onClick={() => runCommandById("switcher:open")} data-tip={open ? undefined : `Search${keys}`} data-tip-side={side === "right" ? "left" : "right"} aria-label="Search"
+    <button type="button" data-sidebar-search data-ui="button:switcher:open" data-panel-handle={open ? "" : undefined} data-heading="Search" onClick={() => runCommandById("switcher:open")} data-tip={open ? undefined : `Search${keys}`} data-tip-side={side === "right" ? "left" : "right"} aria-label="Search"
       className={cn(
         "group flex h-7 w-full shrink-0 cursor-pointer items-center gap-2 rounded-[5px] border-[0.5px] pr-1 pl-[calc(--spacing(1.5)-0.5px)] text-[13px] whitespace-nowrap text-muted-foreground transition-colors hover:bg-foreground/[0.04]",
         open ? "border-border bg-background/60" : "border-transparent",

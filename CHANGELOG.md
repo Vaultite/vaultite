@@ -11,6 +11,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   text field, what you say asks the companion about the window in front. Its cursor shows over the whole screen
   (waiting at the edge, or by the pointer), and dropped on another app's window it looks at it and follows it.
   Password managers and money apps are private by default (Screen's settings). Quit is in the menu bar.
+- **The companion follows any pane and points at the app**: drop its cursor on a terminal, a web page, a tab or a panel
+  to have it look and keep following (a terminal at a command's end, a page as it changes); it points at, highlights and
+  acts in your own web pages, and at the app's tabs and buttons. Watches (`vau watches add`, files in Watches/) keep an
+  eye on a terminal, a page or a note live or every few minutes, telling it or your inbox only when something changed.
+  Private now covers sites, containers and apps, starting with password managers and banks.
 - **The companion's cursor always shows what it's doing**: reading and thinking show their dots for as long as they last,
   listening while you dictate a wave, with no hover (on a phone too). What it says while you speak shows as dots and pops
   in at your pause, staying a moment before your next words take it away; a bubble never shows empty.

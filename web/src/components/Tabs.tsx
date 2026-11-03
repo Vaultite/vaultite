@@ -172,7 +172,7 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
   useSetIn(el, s.id)
   useShrinkOut(el, { set: s.id })
   return (
-    <button type="button" ref={el} tabIndex={-1} data-set-chip={s.id} data-slide={`set:${s.id}`} data-line-head={s.id} style={{ ["--line" as string]: c }} aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
+    <button type="button" ref={el} tabIndex={-1} data-set-chip={s.id} data-ui={`group:${s.id}`} data-slide={`set:${s.id}`} data-line-head={s.id} style={{ ["--line" as string]: c }} aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
       onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })}
       onClick={() => foldSetMoving(s.id)}
       data-tip={item ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
@@ -485,7 +485,7 @@ function TabItem({ tab, group, info, active, focused, only, icons, menu, width, 
   // (away from its bar, the tab held shows where it goes back to)
   const away = dragging && !hole && (item?.tab === tab.id || picked)
   return (
-    <div ref={el} data-tab-id={tab.id} data-in-set={tab.set} data-line-of={line} data-slide={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
+    <div ref={el} data-tab-id={tab.id} data-ui={`tab:${tab.id}`} data-in-set={tab.set} data-line-of={line} data-slide={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
       onPointerDown={(e) => dragTab(e, tab)}
       onClick={(e) => { if (!selectClick(e, TABS, tab.id, active ? null : groupOfTab(tab.id)?.active)) selectTab(tab.id) }}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
@@ -737,7 +737,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
         })}
         </div>
         {/* Right after the last tab (not pinned to the bar's end); its tab opens there, as in a browser. */}
-        <button type="button" onClick={() => openNewTab({ pane: group.id, at: "end" })} aria-label="New tab" data-tip="New tab" data-slide="new" data-slide-fixed
+        <button type="button" onClick={() => openNewTab({ pane: group.id, at: "end" })} aria-label="New tab" data-ui="button:tab:new" data-tip="New tab" data-slide="new" data-slide-fixed
           className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
           <Plus className="size-4" strokeWidth={2} />
         </button>
