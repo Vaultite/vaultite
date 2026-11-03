@@ -1,10 +1,23 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useEffect } from "react"
 import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, notifyError, op, openFile, openView, pageOf, sessionTitle, type AgentSource } from "@vaultite"
 import { ClaudeIcon } from "./ClaudeIcon"
 import { chatTitle, NEW } from "./titles"
 
-// The chat is its own chunk, loaded when a chat tab first draws.
-const ChatView = lazy(() => import("./ChatTab").then((m) => ({ default: m.ChatView })))
+// The chat is its own chunk, loaded once the app is idle on a computer, else when a chat tab first draws; once loaded
+// it's drawn as is (through lazy, React holds what suspended back ~300 ms).
+let Loaded: typeof import("./ChatTab").ChatView | null = null
+const loadChat = () => import("./ChatTab").then((m) => { Loaded = m.ChatView; return m })
+const ChatView = lazy(() => loadChat().then((m) => ({ default: m.ChatView })))
+function PreloadChat() {
+  useEffect(() => {
+    if (matchMedia("(pointer: coarse)").matches) return
+    const load = () => void loadChat().catch(() => {})
+    if (typeof requestIdleCallback !== "function") { const t = setTimeout(load, 2000); return () => clearTimeout(t) }
+    const t = requestIdleCallback(load, { timeout: 5000 })
+    return () => cancelIdleCallback(t)
+  }, [])
+  return null
+}
 
 // Claude Code draws the agent blocks (`agent: claude-code`) with the app's agent components (AgentUsage.tsx) on GET
 // /api/claude-code, and its sessions' tabs as chats (ChatTab.tsx); its page is the Claude dashboard (pages/Claude.md).
@@ -16,6 +29,7 @@ const SRC: AgentSource = {
 export default definePlugin(agentPlugin(SRC, {
   // `icon: claude` in a file (the Claude dashboard), and Terminal's Claude Code sessions.
   icons: { claude: ClaudeIcon },
+  background: () => <PreloadChat />,
   ambient: { limits: { title: "Claude limits", sort: 40, render: () => <AgentLimitsChip src={SRC} open={() => { const p = pageOf(getStore(), "claude-code", "Claude"); if (p) openFile(p.path) }} /> } },
   blocks: { "agent-limits": "limits", "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project" },
   // Its accounts (config folders: plugin.ts) are offered when choosing where to open it.
@@ -23,7 +37,7 @@ export default definePlugin(agentPlugin(SRC, {
   opens: { open: { id: "terminal:claude", name: "Open Claude Code" }, split: { id: "terminal:claude-split", desktop: true, name: "Open Claude Code in right split" } },
   // A session's tab is its chat (`new` until it starts), drawn edge to edge with its own composer.
   sessionView: { full: true, argState: true, title: (id) => chatTitle(id, sessionTitle(SRC, id)),
-    render: ({ arg, setArg }) => <Suspense fallback={null}><ChatView id={arg} setArg={setArg} /></Suspense> },
+    render: ({ arg, setArg }) => (Loaded ? <Loaded id={arg} setArg={setArg} /> : <Suspense fallback={null}><ChatView id={arg} setArg={setArg} /></Suspense>) },
   // A question about a file (a live answer's follow-up): a new chat with it.
   ask: (question, file) => void askChat(question, file),
   commands: [
