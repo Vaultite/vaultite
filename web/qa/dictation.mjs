@@ -10,7 +10,7 @@ import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 const { args: [VAULT, ENGINE = "apple"], check, watch, done, skip } = await qa(import.meta.url, { chrome: false })
 if (process.platform !== "darwin") await skip("dictation is a Mac's")
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-dictation-"))
-const SAID = "Remember to buy milk and bread before the store closes tonight."
+const SAID = "At Claude, remember to buy milk and bread before the store closes tonight."
 const AUDIO = path.join(TMP, "said.aiff")
 execFileSync("say", ["-o", AUDIO, SAID])
 fs.mkdirSync(path.join(VAULT, ".vaultite", "plugins", "dictation"), { recursive: true })
@@ -50,10 +50,14 @@ const sawPending = await until(async () => (await pending()).length > 0, 15000, 
 const firstPending = Date.now() - t0
 check("words not settled show dimmed at the cursor, outside the text", sawPending && !(await text()).includes((await pending()).trim() || "\u0000") || sawPending, await pending())
 const mid = await pending()
+const seen = []
+for (let i = 0; i < 40 && (await listening()); i++) { seen.push(await pending()); await wait(50) }
+check("dimmed words show replacements too", seen.some((t) => t.includes("@claude")) && !seen.some((t) => /at claude/i.test(t)), seen.filter(Boolean).slice(-3))
 check("pending words aren't in the note's text", sawPending && !(await win.evaluate(() => document.querySelector("[data-pane] .cm-content").textContent)).replace(mid, "").includes(mid.slice(0, 12)) || !mid)
 await until(async () => !(await listening()), 30000, 100)
 const after = await text()
-check("the said words settle after what was there, a space between", after.includes("Shopping: Remember to buy milk"), after)
+check("the said words settle after what was there, a space between", /Shopping: @claude,? remember to buy milk/i.test(after), after)
+check("a replacement: \"at Claude\" is written @claude", after.includes("@claude") && !/at claude/i.test(after), after)
 check("nothing pending is left", (await pending()) === "")
 check("the indicator goes when it ends", !(await listening()))
 console.log(`  (${ENGINE}: microphone open ${micOpen} ms and first pending words ${firstPending} ms after ⌘J, the app's whole path)`)
@@ -84,7 +88,7 @@ await win.keyboard.press("Meta+J")
 await until(listening, 3000)
 await until(async () => !(await listening()), 30000, 100)
 const vim = await text()
-check("in Vim's normal mode (the block cursor on the line's end) the words go after it", vim.includes("List: Remember to buy milk"), vim)
+check("in Vim's normal mode (the block cursor on the line's end) the words go after it", /List: @claude,? remember to buy milk/i.test(vim), vim)
 
 // ---------- nothing focused: the Ask box opens and the words go into its field
 await win.evaluate(() => document.activeElement?.blur())
@@ -96,7 +100,7 @@ if (asked) {
   check("the field's pending words show in the indicator", await until(() => win.evaluate(() => !!document.querySelector(".dictation-pending:not([hidden])")?.textContent), 15000, 30))
   await until(async () => !(await listening()), 30000, 100)
   const v = await win.evaluate(() => document.querySelector("[data-ask-box] textarea")?.value ?? "")
-  check("the words land in the Ask box", normal(v).includes("milk and bread"), v)
+  check("the words land in the Ask box, replaced as in a note", normal(v).includes("milk and bread") && v.includes("@claude"), v)
 } else console.log("  (no Ask box here: its agent isn't installed)")
 
 await app.close()

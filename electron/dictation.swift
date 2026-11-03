@@ -140,7 +140,7 @@ final class Apple: Engine {
         return await DictationTranscriber.supportedLocale(equivalentTo: wanted)
     }
 
-    init(language: String) async throws {
+    init(language: String, words: [String]) async throws {
         guard let loc = await Apple.locale(language) else {
             throw Failure(code: "language", message: "Apple's dictation has no \(language.isEmpty ? Locale.current.identifier : language)")
         }
@@ -156,6 +156,8 @@ final class Apple: Engine {
         input = cont
         analyzer = SpeechAnalyzer(modules: [transcriber])
         try await analyzer.prepareToAnalyze(in: format)
+        // (words it should expect: names, "at Claude")
+        if !words.isEmpty { let ctx = AnalysisContext(); ctx.contextualStrings[.general] = words; try? await analyzer.setContext(ctx) }
         try await analyzer.start(inputSequence: stream)
         let t = transcriber
         results = Task {
@@ -199,15 +201,20 @@ final class Apple: Engine {
 }
 
 #if PARAKEET
-/// Parakeet (parakeet-unified-en-0.6b's GGUF) through transcribe.cpp's buffered streaming, an utterance a stream: its
-/// greedy decoder commits each chunk's words for good (no tentative text), so they come as final ~320 ms behind.
+/// Parakeet (parakeet-unified-en-0.6b's GGUF) through transcribe.cpp in two passes, as Hex and Handy get their accuracy:
+/// a streaming pass shows the words as they come (pending), then the whole utterance again, offline, is the final text.
 final class Parakeet: Engine {
     static var model: OpaquePointer?
     static var session: OpaquePointer?
     static var loaded = ""
+    /// One pass is this long at most: a longer run of speech without a pause is settled in parts.
+    static let LONGEST = Int(RATE * 25)
     var active = false
-    var emitted = 0 // committed bytes already sent as final
-    var pending = ""
+    var shown = ""
+    /// The utterance's audio, from just before it began, for the second pass.
+    var heard: [Float] = []
+    /// The last moment heard between utterances, for one starting again before the session stops feeding.
+    var ring: [Float] = []
 
     init(model path: String) throws {
         if Parakeet.loaded != path {
@@ -225,15 +232,13 @@ final class Parakeet: Engine {
             Parakeet.model = model
             Parakeet.session = session
             Parakeet.loaded = path
-            // (silence through it once: Metal's kernels built and the weights read in now, not on the first words)
+            // (silence through both passes once: Metal's kernels built and the weights read in now, not on the first words)
+            let quiet = [Float](repeating: 0, count: Int(RATE * 0.6))
             begin()
-            if active {
-                let quiet = [Float](repeating: 0, count: Int(RATE * 0.6))
-                _ = quiet.withUnsafeBufferPointer { transcribe_stream_feed(session, $0.baseAddress, Int32(quiet.count), nil) }
-                _ = transcribe_stream_finalize(session, nil)
-            }
+            if active { _ = quiet.withUnsafeBufferPointer { transcribe_stream_feed(session, $0.baseAddress, Int32(quiet.count), nil) } }
             transcribe_stream_reset(session)
             active = false
+            _ = quiet.withUnsafeBufferPointer { transcribe_run(session, $0.baseAddress, Int32(quiet.count), nil) }
         }
     }
 
@@ -241,7 +246,7 @@ final class Parakeet: Engine {
         guard let s = Parakeet.session, let m = Parakeet.model else { return }
         var params = transcribe_stream_params()
         transcribe_stream_params_init(&params)
-        // (L, C, R) = 5.6 s / 160 ms / 160 ms: words 320 ms behind the voice, at 1.64% WER (the model card's menu)
+        // (L, C, R) = 5.6 s / 160 ms / 160 ms: words 320 ms behind the voice (the model card's menu)
         var ext = transcribe_parakeet_buffered_stream_ext()
         transcribe_parakeet_buffered_stream_ext_init(&ext)
         ext.left_ms = 5600; ext.chunk_ms = 160; ext.right_ms = 160
@@ -254,26 +259,20 @@ final class Parakeet: Engine {
         }
         guard st == TRANSCRIBE_OK else { emit("error", ["code": "engine", "message": String(cString: transcribe_status_string(Int32(st.rawValue)))]); return }
         active = true
-        emitted = 0
+        heard = []
     }
 
+    /// The streaming pass's words so far, as pending.
     func publish() {
         guard let s = Parakeet.session else { return }
         var t = transcribe_stream_text()
         transcribe_stream_text_init(&t)
         guard transcribe_stream_get_text(s, &t) == TRANSCRIBE_OK else { return }
-        let bytes = { (p: UnsafePointer<CChar>?, n: UInt64) -> Data in p.map { Data(bytes: $0, count: Int(n)) } ?? Data() }
-        let committed = bytes(t.committed_text, t.committed_text_bytes)
-        if committed.count > emitted, let text = String(data: committed.suffix(from: emitted), encoding: .utf8) {
-            emitted = committed.count
-            emit("final", ["text": text])
-        }
-        let tentative = String(data: bytes(t.tentative_text, t.tentative_text_bytes), encoding: .utf8) ?? ""
-        if tentative != pending { pending = tentative; emit("pending", ["text": tentative]) }
+        let text = { (p: UnsafePointer<CChar>?, n: UInt64) -> String in p.flatMap { String(data: Data(bytes: $0, count: Int(n)), encoding: .utf8) } ?? "" }
+        let now = (text(t.committed_text, t.committed_text_bytes) + text(t.tentative_text, t.tentative_text_bytes)).trimmingCharacters(in: .whitespaces)
+        if now != shown { shown = now; emit("pending", ["text": now]) }
     }
 
-    /// The last moment heard between utterances, for one starting again before the session stops feeding.
-    var ring: [Float] = []
     func feed(_ pcm: [Float]) {
         guard !pcm.isEmpty else { return }
         if !active {
@@ -282,9 +281,11 @@ final class Parakeet: Engine {
             return
         }
         guard let s = Parakeet.session else { return }
+        heard.append(contentsOf: pcm)
         let st = pcm.withUnsafeBufferPointer { transcribe_stream_feed(s, $0.baseAddress, Int32(pcm.count), nil) }
         if st != TRANSCRIBE_OK { emit("error", ["code": "engine", "message": String(cString: transcribe_status_string(Int32(st.rawValue)))]); active = false; return }
         publish()
+        if heard.count >= Parakeet.LONGEST { commit(); begin() }
     }
     func speech() {
         guard !active else { return }
@@ -293,17 +294,23 @@ final class Parakeet: Engine {
         ring = []
         if active { feed(r) }
     }
-    func pause() {
+    /// The second pass: the utterance's audio whole, offline, as the final words (the pending ones go).
+    func commit() {
         guard active, let s = Parakeet.session else { return }
-        _ = transcribe_stream_finalize(s, nil)
-        publish()
+        transcribe_stream_reset(s)
         active = false
         ring = []
-        if !pending.isEmpty { pending = ""; emit("pending", ["text": ""]) }
+        let audio = heard
+        heard = []
+        let st = audio.withUnsafeBufferPointer { transcribe_run(s, $0.baseAddress, Int32(audio.count), nil) }
+        let text = st == TRANSCRIBE_OK ? (transcribe_full_text(s).map { String(cString: $0) } ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        if st != TRANSCRIBE_OK { emit("error", ["code": "engine", "message": String(cString: transcribe_status_string(Int32(st.rawValue)))]) }
+        if !text.isEmpty { emit("final", ["text": text]) }
+        if !shown.isEmpty { shown = ""; emit("pending", ["text": ""]) }
     }
+    func pause() { commit() }
     func finish(_ done: @escaping () -> Void) {
-        pause()
-        if let s = Parakeet.session { transcribe_stream_reset(s) }
+        commit()
         done()
     }
 }
@@ -327,6 +334,8 @@ final class Session: @unchecked Sendable {
     var open = false, preroll: [Float] = [], feeding: [Float] = []
     var level: Float = 0, levelMs = 0.0
     var onEnd: (() -> Void)?
+    /// What the microphone heard, kept for replaying it (the setting Keep the last dictation's audio).
+    var recording: AVAudioFile?
 
     init(source: Source, silence: Double) {
         self.source = source
@@ -374,6 +383,11 @@ final class Session: @unchecked Sendable {
     /// Audio arrives: its level now (for the indicator), the rest once the engine is ready.
     func audio(_ pcm: [Float]) {
         guard !ended, !pcm.isEmpty else { return }
+        if let f = recording, let b = AVAudioPCMBuffer(pcmFormat: mono16k, frameCapacity: AVAudioFrameCount(pcm.count)) {
+            b.frameLength = AVAudioFrameCount(pcm.count)
+            pcm.withUnsafeBufferPointer { b.floatChannelData![0].update(from: $0.baseAddress!, count: pcm.count) }
+            try? f.write(from: b)
+        }
         var sum: Float = 0
         for x in pcm { sum += x * x }
         level = max(level, (sum / Float(pcm.count)).squareRoot())
@@ -449,12 +463,17 @@ final class Session: @unchecked Sendable {
         ended = true
         source.stop()
         let finish = { [self] in
+            recording = nil
             emit("end", ["reason": reason])
             onEnd?()
         }
         if flush, let e = engine { e.finish { self.work.async(execute: finish) } } else { finish() }
     }
-    func stop(_ reason: String) { work.async { self.end(reason, flush: reason != "cancel") } }
+    /// The microphone off at once (the engine may still be catching up), then the end in turn: the last words, `end`.
+    func stop(_ reason: String) {
+        source.stop()
+        work.async { self.end(reason, flush: reason != "cancel") }
+    }
 }
 
 // MARK: - Commands
@@ -463,6 +482,7 @@ func makeEngine(_ cmd: [String: Any]) -> () async throws -> Engine {
     let engine = cmd["engine"] as? String ?? "apple"
     let language = cmd["language"] as? String ?? ""
     let model = cmd["model"] as? String ?? ""
+    let words = cmd["words"] as? [String] ?? []
     return {
         if engine == "parakeet" {
             #if PARAKEET
@@ -472,7 +492,7 @@ func makeEngine(_ cmd: [String: Any]) -> () async throws -> Engine {
             #endif
         }
         guard #available(macOS 26.0, *) else { throw Failure(code: "unsupported", message: "Apple's dictation needs macOS 26") }
-        return try await Apple(language: language)
+        return try await Apple(language: language, words: words)
     }
 }
 
@@ -504,7 +524,11 @@ func handle(_ cmd: [String: Any]) {
             // (a file instead of the microphone: a test of the app, heard as if said, then stopped as if by the user)
             var s: Session!
             let source: Source = (cmd["file"] as? String).map { f in FileSource(URL(fileURLWithPath: f), fast: false) { s.stop("stop") } } ?? Microphone()
-            s = Session(source: source, silence: cmd["silence"] as? Double ?? 10)
+            s = Session(source: source, silence: cmd["silence"] as? Double ?? 0)
+            if let path = cmd["record"] as? String, !path.isEmpty {
+                try? FileManager.default.removeItem(atPath: path)
+                s.recording = try? AVAudioFile(forWriting: URL(fileURLWithPath: path), settings: mono16k.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            }
             current = s
             s.onEnd = { DispatchQueue.main.async { if current === s { current = nil } } }
             s.start(make: makeEngine(cmd))
@@ -528,7 +552,8 @@ func arg(_ name: String) -> String? { args.firstIndex(of: name).flatMap { $0 + 1
 
 if let file = arg("--file") {
     // A test: the file through the same session, then out.
-    var cmd: [String: Any] = ["engine": arg("--engine") ?? "apple", "language": arg("--language") ?? "", "model": arg("--model") ?? ""]
+    var cmd: [String: Any] = ["engine": arg("--engine") ?? "apple", "language": arg("--language") ?? "", "model": arg("--model") ?? "",
+                              "words": (arg("--words") ?? "").split(separator: ",").map(String.init)]
     cmd["cmd"] = "start"
     var session: Session!
     let src = FileSource(URL(fileURLWithPath: file), fast: args.contains("--fast")) { session.stop("stop") }

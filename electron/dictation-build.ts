@@ -89,3 +89,18 @@ export async function buildDictation(dir: string, archs: string[] = []): Promise
   for (const f of fs.readdirSync(dir)) if (f.startsWith("dictation-") && f !== path.basename(out)) fs.rmSync(path.join(dir, f), { force: true })
   return out
 }
+
+// ---------- Parakeet's model: Handy's or Hex's download, used where it is
+
+const MODEL = "parakeet-unified-en-0.6b"
+/** The GGUF of parakeet-unified-en-0.6b on this Mac (Q8_0 first): Hex's, Hugging Face's cache (Handy's), Handy's. */
+export function parakeetModel(home = os.homedir()): string | null {
+  const support = path.join(home, "Library", "Application Support")
+  const hub = process.env.HF_HUB_CACHE || path.join(process.env.HF_HOME || path.join(home, ".cache", "huggingface"), "hub")
+  const snapshots = path.join(hub, `models--handy-computer--${MODEL}-gguf`, "snapshots")
+  const dirs = [path.join(support, "hex", "models"), path.join(support, "com.pais.handy", "models")]
+  try { dirs.splice(1, 0, ...fs.readdirSync(snapshots).map((s) => path.join(snapshots, s))) } catch { /* none */ }
+  const found = dirs.flatMap((d) => { try { return fs.readdirSync(d).filter((f) => f.startsWith(MODEL) && f.endsWith(".gguf")).map((f) => path.join(d, f)) } catch { return [] } })
+    .filter((f) => { try { return fs.statSync(f).size > 100_000_000 } catch { return false } })
+  return found.find((f) => f.includes("Q8_0")) ?? found[0] ?? null
+}

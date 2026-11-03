@@ -159,7 +159,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `DEVICE`
 - `devicePref(key, fallback)`: A value a plugin keeps for this device only (the current workspace), in this device's prefs (localStorage), never in the vault.
 - `dictation()`: The session under way, or null.
-- `Dictation`: `spokeAt`: when the utterance under way began (0: none, the user paused).
+- `Dictation`: `spokeAt`: when the utterance under way began (0: none, the user paused); `stopping`: told to stop, the microphone is off and its last words are on their way.
 - `DictationEngine`
 - `DictationEngines`: What dictates here: Apple's on-device recognizer (macOS 26, `locale`), Parakeet (its model found on this Mac).
 - `DictationEvent`
@@ -326,6 +326,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths.
 - `linkTo(path, from?)`: A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it.
 - `List({ children })`
+- `listening()`: Listening now: a session not told to stop.
 - `Loading({ error, className })`: A block's data on its way: "Loading…", shimmering, or what went wrong getting it (`error`: "Couldn't ask Tailscale.").
 - `LoadingRows({ count, meta, lead, right, className })`: A list on its way: `count` skeleton rows built from the real `Row` (`meta`: with a meta line, or how many have one), taking the list's room at once; `useKeptCount` gives as many rows as last time.
 - `LoadingSidebarRows({ count, right, className, … })`: Rows on their way: SidebarRow's shape, its icon a muted square and its label a bar (`right`: a bar at its end, as a time or a count); in a `data-size-up` list where the real rows are.

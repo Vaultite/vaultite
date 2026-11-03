@@ -7,8 +7,50 @@
   "name": "Dictation",
   "description": "Speak where the cursor is (a note, the Ask box, a chat): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. With nothing to type into, ⌘J opens the Ask box.",
   "settings": {
-    "engine": { "type": "enum", "values": ["auto", "apple", "parakeet"], "labels": { "auto": "Automatic", "apple": "Apple's", "parakeet": "Parakeet" }, "default": "auto", "label": "Recognizer", "description": "automatic: Parakeet when its model is on this Mac and the language is English, else Apple's (macOS 26). Parakeet is English only and uses the model Handy or Hex downloaded" },
-    "language": { "type": "string", "label": "Language", "description": "a language's code, like en or pt-BR, for Apple's recognizer; left out, the Mac's" },
-    "silence": { "type": "number", "default": 10, "min": 0, "max": 120, "label": "Stop after silence", "description": "seconds without speech before it stops listening; 0 never" }
+    "engine": {
+      "type": "enum",
+      "values": [
+        "auto",
+        "apple",
+        "parakeet"
+      ],
+      "labels": {
+        "auto": "Automatic",
+        "apple": "Apple's",
+        "parakeet": "Parakeet"
+      },
+      "default": "auto",
+      "label": "Recognizer",
+      "description": "automatic: Parakeet when its model is on this Mac and the language is English, else Apple's (macOS 26). Parakeet is English only and uses the model Handy or Hex downloaded"
+    },
+    "language": {
+      "type": "string",
+      "label": "Language",
+      "description": "a language's code, like en or pt-BR, for Apple's recognizer; left out, the Mac's"
+    },
+    "silence": {
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "max": 600,
+      "label": "Stop after silence",
+      "description": "seconds without speech before a tapped dictation stops on its own; 0 never: it listens until you stop it"
+    },
+    "replacements": {
+      "type": "list",
+      "lines": true,
+      "default": [
+        "at Claude: @claude"
+      ],
+      "label": "Replacements",
+      "description": "what you say, then what's written, one a line (\"at Claude: @claude\"); the said words are also what the recognizer listens for"
+    },
+    "keep_audio": {
+      "local": true,
+      "type": "boolean",
+      "default": false,
+      "label": "Keep the last dictation's audio",
+      "description": "what the microphone heard last, kept on this Mac (the app's logs folder, dictation-last.wav) to replay it when a recognizer gets words wrong; each dictation replaces it"
+    }
   }
 }

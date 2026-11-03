@@ -3,10 +3,9 @@
 import { app, systemPreferences } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import type { AppWindow } from "./appwindow.ts"
-import { buildDictation, helperName } from "./dictation-build.ts"
+import { buildDictation, helperName, parakeetModel } from "./dictation-build.ts"
 
 /** Shipped built in the app (tools/build_helpers.ts), else built the first time into userData. */
 const SHIPPED = path.join(import.meta.dirname, "bin")
@@ -75,21 +74,6 @@ function heard(m: Record<string, unknown>) {
   }
 }
 
-// ---------- Parakeet's model: Handy's or Hex's download, used where it is
-
-const MODEL = "parakeet-unified-en-0.6b"
-/** The GGUF of parakeet-unified-en-0.6b on this Mac (Q8_0 first): Hex's, Hugging Face's cache (Handy's), Handy's. */
-export function parakeetModel(home = os.homedir()): string | null {
-  const support = path.join(home, "Library", "Application Support")
-  const hub = process.env.HF_HUB_CACHE || path.join(process.env.HF_HOME || path.join(home, ".cache", "huggingface"), "hub")
-  const snapshots = path.join(hub, `models--handy-computer--${MODEL}-gguf`, "snapshots")
-  const dirs = [path.join(support, "hex", "models"), path.join(support, "com.pais.handy", "models")]
-  try { dirs.splice(1, 0, ...fs.readdirSync(snapshots).map((s) => path.join(snapshots, s))) } catch { /* none */ }
-  const found = dirs.flatMap((d) => { try { return fs.readdirSync(d).filter((f) => f.startsWith(MODEL) && f.endsWith(".gguf")).map((f) => path.join(d, f)) } catch { return [] } })
-    .filter((f) => { try { return fs.statSync(f).size > 100_000_000 } catch { return false } })
-  return found.find((f) => f.includes("Q8_0")) ?? found[0] ?? null
-}
-
 /** What dictates here: Apple's engine (macOS 26, in `language`), and Parakeet (with its model found). */
 async function engines(language: string) {
   try { await start() } catch (e) { return { apple: false, parakeet: false, why: (e as Error).message } }
@@ -116,7 +100,10 @@ export const dictationHandlers: Record<string, (win: AppWindow, ...args: unknown
     owner = win
     if (!watched.has(win)) { watched.add(win); win.on("closed", () => { watched.delete(win); if (owner === win) { send({ cmd: "cancel" }); owner = null } }) }
     const silence = Number(opts.silence)
-    send({ cmd: "start", id: ++sid, engine, language: typeof opts.language === "string" ? opts.language : "", model: model ?? "", silence: Number.isFinite(silence) ? silence : 10,
+    send({ cmd: "start", id: ++sid, engine, language: typeof opts.language === "string" ? opts.language : "", model: model ?? "", silence: Number.isFinite(silence) ? silence : 0,
+      words: Array.isArray(opts.words) ? opts.words.filter((w) => typeof w === "string").slice(0, 100).map((w) => w.slice(0, 100)) : [],
+      // (Keep the last dictation's audio: in the app's logs, to replay through tools/dictation_bench.ts)
+      ...(opts.keep === true ? { record: path.join(app.getPath("logs"), "dictation-last.wav") } : {}),
       // (a script driving the app hears a file instead: web/qa/dictation.mjs)
       ...(process.env.VAULTITE_QUIET && process.env.VAULTITE_DICTATION_FILE ? { file: process.env.VAULTITE_DICTATION_FILE } : {}) })
     return { ok: true }

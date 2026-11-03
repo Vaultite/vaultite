@@ -26,7 +26,8 @@ export type DictationEngine = "apple" | "parakeet"
 export type DictationEngines = { apple: boolean; parakeet: boolean; locale?: string; why?: string }
 export type DictationSource = {
   engines: (language: string) => Promise<DictationEngines>
-  start: (o: { engine: DictationEngine; language: string; silence: number }) => Promise<{ ok: boolean; code?: string; message?: string }>
+  /** `words`: what to listen for (Apple's); `keep`: keep the audio for replaying it (electron/dictation.ts says where). */
+  start: (o: { engine: DictationEngine; language: string; silence: number; words?: string[]; keep?: boolean }) => Promise<{ ok: boolean; code?: string; message?: string }>
   stop: () => Promise<unknown>
   cancel: () => Promise<unknown>
   on: (fn: (e: DictationEvent) => void) => () => void
@@ -50,11 +51,20 @@ const source = (): DictationSource | null => (globalThis as { vaultite?: { dicta
 /** The source of dictation here, or null: a browser, a phone, an app build from before it. */
 export const dictationSource = source()
 
-/** `spokeAt`: when the utterance under way began (0: none, the user paused). */
-export type Dictation = { target: DictationTarget; hold: boolean; speaking: boolean; spokeAt: number; pending: string; level: number; ready: boolean }
+/** `spokeAt`: when the utterance under way began (0: none, the user paused); `stopping`: told to stop, the microphone
+ *  is off and its last words are on their way. */
+export type Dictation = { target: DictationTarget; hold: boolean; speaking: boolean; spokeAt: number; pending: string; level: number; ready: boolean
+  stopping?: boolean }
 const now = cell<Dictation | null>(null)
 /** The session under way, or null. */
 export const dictation = () => now.get()
+/** Listening now: a session not told to stop. */
+export const listening = () => { const d = now.get(); return !!d && !d.stopping }
+/** The session told to stop, settled (its last words in, or a few seconds gone by). */
+async function settled() {
+  for (let i = 0; i < 60 && now.get()?.stopping; i++) await new Promise((r) => setTimeout(r, 50))
+  if (now.get()?.stopping) finish()
+}
 /** The session in React (`pick`: the part drawn from, so the voice's level doesn't redraw what doesn't show it). */
 export const useDictation = <R = Dictation | null>(pick?: (d: Dictation | null) => R) => now.use(pick)
 
@@ -97,23 +107,42 @@ export function joinText(before: string, text: string) {
   return last && !/[\s([{"'“‘/-]/u.test(last) && !/^[.,!?;:…)\]}"'”’]/u.test(t) ? ` ${t}` : t
 }
 
+/** A replacements line, "said: written" (the last ": " splits it), or null. */
+export function parseReplacement(line: string): [string, string] | null {
+  const i = line.lastIndexOf(": ")
+  const from = i > 0 ? line.slice(0, i).trim() : "", to = i > 0 ? line.slice(i + 2).trim() : ""
+  return from && to ? [from, to] : null
+}
+/** The replacements as patterns: the said words whole, in any case, however they're spaced. */
+export function replacer(lines: string[]): [RegExp, string][] {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return lines.map(parseReplacement).filter((x) => !!x).map(([from, to]) =>
+    [new RegExp(`(?<![\\p{L}\\p{N}@])${from.split(/\s+/).map(esc).join("\\s+")}(?![\\p{L}\\p{N}])`, "giu"), to.replace(/\$/g, "$$$$")])
+}
+
 let unsub: (() => void) | null = null
 let session = 0
 
 /** Listen, typing into `target` (`hold`: push to talk, the key still down). Says why when it can't. */
-export async function startDictation(target: DictationTarget, o: { engine: DictationEngine; language: string; silence: number; hold?: boolean },
+export async function startDictation(target: DictationTarget, o: { engine: DictationEngine; language: string; silence: number; hold?: boolean
+  /** "said: written" lines (`replacements`), which are also the words listened for; `keep`: keep the audio. */
+  replacements?: string[]; keep?: boolean },
   failed: (code: string, message?: string) => void) {
   const src = dictationSource
   if (!src) return failed("unsupported")
+  if (now.get()?.stopping) await settled()
   if (now.get()) await stopDictation(true)
   const mine = ++session
+  const swap = replacer(o.replacements ?? [])
+  const said = (t: string) => swap.reduce((x, [re, to]) => x.replace(re, to), t)
   now.set({ target, hold: !!o.hold, speaking: false, spokeAt: 0, pending: "", level: 0, ready: false })
-  unsub = src.on((e) => heard(e, mine, failed))
+  unsub = src.on((e) => heard(e.type === "pending" || e.type === "final" ? { ...e, text: said(e.text) } : e, mine, failed))
   // (the window left for another app: what's said there isn't for this note)
   addEventListener("blur", away)
   indicator.show()
   tell({ type: "start" })
-  const r = await src.start({ engine: o.engine, language: o.language, silence: o.silence }).catch((e) => ({ ok: false, code: "helper", message: String(e) }))
+  const words = (o.replacements ?? []).map(parseReplacement).filter((x) => !!x).map((x) => x[0])
+  const r = await src.start({ engine: o.engine, language: o.language, silence: o.silence, words, keep: !!o.keep }).catch((e) => ({ ok: false, code: "helper", message: String(e) }))
   if (!r.ok && session === mine) { finish(); failed(r.code ?? "helper", r.message) }
 }
 
@@ -142,6 +171,15 @@ export async function stopDictation(cancel = false) {
   const d = now.get()
   if (!d) return
   if (cancel) { tell({ type: "end", reason: "cancel" }); finish() }
+  else {
+    if (d.stopping) return
+    // (it shows stopped at once; the words still coming go in as they arrive, and a helper that never ends is let go)
+    now.set({ ...d, stopping: true, speaking: false })
+    indicator.hide()
+    removeEventListener("blur", away)
+    const mine = session
+    setTimeout(() => { if (session === mine && now.get()?.stopping) finish() }, 30_000)
+  }
   // (the end comes back as an event, after the last words)
   await (cancel ? dictationSource?.cancel() : dictationSource?.stop())?.catch(() => {})
 }
@@ -167,7 +205,7 @@ const indicator = (() => {
   const place = () => {
     raf = requestAnimationFrame(place)
     const d = now.get()
-    if (!d || !el) return
+    if (!d || !el || d.stopping) return
     const r = d.target.rect()
     if (!r) { void stopDictation(true); return }
     // (its tab hidden: the words still go there, the indicator waits)
@@ -215,12 +253,12 @@ export async function pressDictation(begin: (hold: boolean) => Promise<boolean>)
   const byKey = performance.now() - lastKey.at < 250
   // (the key's own repeats while it's held)
   if (byKey && lastKey.repeat) return
-  if (now.get()) return void stopDictation()
+  if (listening()) return void stopDictation()
   const down = performance.now()
   let released = byKey ? 0 : down, mine = -1
   // (the key may come up before the session has started: the Ask box opening)
   const decide = () => {
-    if (!released || mine < 0 || session !== mine || !now.get()) return
+    if (!released || mine < 0 || session !== mine || !listening()) return
     if (released - down >= HOLD_MS) void stopDictation()
     else now.set({ ...now.get()!, hold: false })
   }

@@ -2,7 +2,7 @@
 // session, electron/dictation.ts the helper). A tap starts and the next stops; held, it listens until it's let go.
 import { EditorView } from "@codemirror/view"
 import { Mic } from "lucide-react"
-import { definePlugin, dictation, dictationSource, notify, notifyError, offeredCommand, openPermissions, pluginSettings, pressDictation, runCommandById,
+import { definePlugin, dictation, dictationSource, listening, notify, notifyError, offeredCommand, openPermissions, pluginSettings, pressDictation, runCommandById,
   startDictation, typingIn, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
 import { dictationEditor, editorTarget } from "./editor"
 import { fieldTarget } from "./field"
@@ -54,14 +54,16 @@ async function begin(hold: boolean) {
   if (!target) { notify("Click where the words should go, then dictate"); return false }
   const s = pluginSettings("dictation").get()
   const language = typeof s.language === "string" ? s.language.trim() : ""
-  const silence = typeof s.silence === "number" ? s.silence : 10
-  await startDictation(target, { engine: await engineFor(s.engine, language), language, silence, hold }, failed)
+  const silence = typeof s.silence === "number" ? s.silence : 0
+  // (left out of its settings: the manifest's default)
+  const replacements = Array.isArray(s.replacements) ? s.replacements.filter((x): x is string => typeof x === "string") : ["at Claude: @claude"]
+  await startDictation(target, { engine: await engineFor(s.engine, language), language, silence, hold, replacements, keep: s.keep_audio === true }, failed)
   return !!dictation()
 }
 
 export default definePlugin({
   commands: [
-    { id: "dictation:start", name: "Dictate", nameWhenOn: "Stop dictating", keys: ["Mod+J"], on: () => !!dictation(), when: () => !!dictationSource,
+    { id: "dictation:start", name: "Dictate", nameWhenOn: "Stop dictating", keys: ["Mod+J"], on: listening, when: () => !!dictationSource,
       run: () => void pressDictation(begin), icon: Mic, label: "Dictate", words: "voice speech microphone talk" },
   ],
   editor: (ctx) => dictationEditor(ctx.path),
