@@ -50,14 +50,22 @@ export function onPaneMotion(fn: (m: PaneMotion) => Promise<unknown> | void) {
 }
 const HOLD_MS = 200
 
-/** Where `box` would be with its `left` and `right` as they were (a probe laid out so, then taken away). */
+/** Where `box` would be with its `left` and `right` as they were: a probe beside it, laid out so. It stays (put in and
+ *  taken out each time, it restyled the box's siblings on every move of a sidebar's edge). */
+const probes = new WeakMap<HTMLElement, HTMLElement>()
 function boxAt(box: HTMLElement, [left, right]: string[]) {
-  const probe = document.createElement("div")
-  probe.style.cssText = `position: fixed; visibility: hidden; pointer-events: none; top: 0; bottom: 0; left: ${left}; right: ${right}`
-  box.after(probe)
-  const r = probe.getBoundingClientRect()
-  probe.remove()
-  return r
+  let probe = probes.get(box)
+  if (!probe?.isConnected || probe.previousElementSibling !== box) {
+    probe?.remove()
+    probe = document.createElement("div")
+    probe.setAttribute("aria-hidden", "")
+    probe.style.cssText = "position: fixed; visibility: hidden; pointer-events: none; top: 0; bottom: 0"
+    box.after(probe)
+    probes.set(box, probe)
+  }
+  probe.style.left = left
+  probe.style.right = right
+  return probe.getBoundingClientRect()
 }
 
 /** Moves `box`'s panes (`[data-group]`, each with a `[data-plate]`) when their places change, or `area` (the box's

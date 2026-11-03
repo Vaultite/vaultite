@@ -34,20 +34,22 @@ export function usePaneTopBar(ref: RefObject<HTMLElement | null>, title = true) 
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || hidden) return
-    let frame = 0
+    let frame = 0, added = [0, 0]
+    // (its own padding less what it added, not reset to measure: that restyled it twice per frame of a sidebar's resize)
     const fit = () => {
-      el.style.paddingLeft = el.style.paddingRight = ""
       const b = el.getBoundingClientRect()
       if (!b.width) return
-      const cs = getComputedStyle(el), padL = parseFloat(cs.paddingLeft), padR = parseFloat(cs.paddingRight)
+      const cs = getComputedStyle(el), padL = parseFloat(cs.paddingLeft) - added[0], padR = parseFloat(cs.paddingRight) - added[1]
       let left = 0, right = 0
       for (const o of overCorners()) {
         if (o.bottom <= b.top || o.top >= b.bottom || o.right <= b.left || o.left >= b.right) continue
         if (o.left + o.right < b.left + b.right) left = Math.max(left, o.right + CLEAR - b.left - padL)
         else right = Math.max(right, b.right - padR - o.left + CLEAR)
       }
-      if (left > 0) el.style.paddingLeft = `${padL + left}px`
-      if (right > 0) el.style.paddingRight = `${padR + right}px`
+      const next = [Math.round(Math.max(0, left) * 10) / 10, Math.round(Math.max(0, right) * 10) / 10]
+      if (next[0] !== added[0]) el.style.paddingLeft = next[0] ? `${padL + next[0]}px` : ""
+      if (next[1] !== added[1]) el.style.paddingRight = next[1] ? `${padR + next[1]}px` : ""
+      added = next
     }
     const soon = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; fit() }) }
     fit()
