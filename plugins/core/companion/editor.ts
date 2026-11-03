@@ -8,7 +8,7 @@ import { capitalize, keyHint, type MenuItem, notify, notifyError, op, pluginSett
 import { MessageCircle } from "lucide-react"
 import { authorAt } from "@plugins/provenance/gutter"
 import { cotype } from "./cotype"
-import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hideSay, hunksOf, setFolder, shownFor, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, say, sayWhere, sendMoment, setStreamer, setTyper, setTyping, setUndoer, type StreamMsg, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
+import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hideSay, hunksIn, setFolder, shownFor, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, say, sayWhere, sendMoment, setStreamer, setTyper, setTyping, setUndoer, type StreamMsg, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { privateNote } from "./private"
 import { decide, proposals } from "./proposed"
 import { nearest } from "./text"
@@ -479,7 +479,10 @@ function watcher(path: string) {
       const md = getState().mode
       if (md === "pair" && !privateNote(path, doc.sliceString(0, 4096))) {
         // (lines that only write asks reach the agents as those asks, not twice)
-        const hunks = hunksOf(this.baseline.toString().split("\n"), doc.toString().split("\n")).filter((h) => [...h.removed, ...h.added].some((l) => l.trim() && !mentionIn(l)))
+        // (theirs alone: what agents and other windows wrote is in the baseline already)
+        const spans: [number, number, number, number][] = []
+        this.pending.iterChangedRanges((fa, ta, fb, tb) => spans.push([this.baseline.lineAt(fa).number, this.baseline.lineAt(ta).number, doc.lineAt(fb).number, doc.lineAt(tb).number]))
+        const hunks = hunksIn(this.baseline.toString().split("\n"), doc.toString().split("\n"), spans).filter((h) => [...h.removed, ...h.added].some((l) => l.trim() && !mentionIn(l)))
         if (hunks.length) sendMoment({ kind: "edit", path, line: hunks[0].line, hunks, waited: Date.now() - this.typedAt })
       }
       this.baseline = doc

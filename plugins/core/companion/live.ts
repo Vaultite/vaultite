@@ -328,14 +328,20 @@ export async function accept(n: Note) {
 
 // ---------- text
 
-/** The lines changed from `a` to `b`, as one stretch (what a pause in typing changes is mostly one place). */
-export function hunksOf(a: string[], b: string[]): Hunk[] {
-  let s = 0
-  while (s < a.length && s < b.length && a[s] === b[s]) s++
-  let e = 0
-  while (e < a.length - s && e < b.length - s && a[a.length - 1 - e] === b[b.length - 1 - e]) e++
-  const removed = a.slice(s, a.length - e), added = b.slice(s, b.length - e)
-  return removed.length || added.length ? [{ line: s + 1, removed: removed.slice(0, 40), added: added.slice(0, 40) }] : []
+/** The lines the user changed from `a` to `b` (`spans`: each change's lines in `a` and `b`, from 1), a hunk per place
+ *  (`line`: in `b`): what others wrote meanwhile (an agent, another window) is in both, never in one. */
+export function hunksIn(a: string[], b: string[], spans: [number, number, number, number][]): Hunk[] {
+  const merged: [number, number, number, number][] = []
+  for (const s of spans) {
+    const p = merged.at(-1)
+    if (p && s[0] <= p[1] + 1 && s[2] <= p[3] + 1) { p[1] = Math.max(p[1], s[1]); p[3] = Math.max(p[3], s[3]) } else merged.push([...s])
+  }
+  return merged.flatMap(([a1, a2, b1, b2]) => {
+    let removed = a.slice(a1 - 1, a2), added = b.slice(b1 - 1, b2), line = b1
+    while (removed.length && added.length && removed[0] === added[0]) { removed = removed.slice(1); added = added.slice(1); line++ }
+    while (removed.length && added.length && removed.at(-1) === added.at(-1)) { removed = removed.slice(0, -1); added = added.slice(0, -1) }
+    return removed.length || added.length ? [{ line, removed: removed.slice(0, 40), added: added.slice(0, 40) }] : []
+  }).slice(0, 20)
 }
 
 /** A line's list marker or task box, if any. */

@@ -1335,6 +1335,8 @@ async function pump(name: string) {
   }
 }
 
+/** The keys that stop a terminal's agent mid-turn, by agent: Codex's Esc; OpenCode's Esc twice (once only arms it). */
+const INTERRUPT: Record<string, string[]> = { codex: ["Escape"], opencode: ["Escape", "Escape"] }
 /** What a session stopped by the user (Esc) is told with its next moments: what it was answering. */
 const STOPPED = (asks: string[]) => `They stopped your last answer (Esc)${asks.length ? `, to ${asks.map((a) => JSON.stringify(cut(a, 120))).join(", ")}` : ""}: leave it as it is, and don't answer it again unless they ask anew.`
 /** Agents the user stopped, with the asks they were answering, to tell them with their next moments. */
@@ -2254,16 +2256,25 @@ plugin.op({
 plugin.op({
   id: "companion.interrupt",
   cli: "companion interrupt",
-  summary: "Stop the companion mid-answer (Esc in a note): its turn ends where it is, and what it typed stays (Claude Code's sessions).",
+  summary: "Stop the companion mid-answer (Esc in a note): its turn ends where it is, and what it typed stays.",
   kind: "write",
   lock: false,
   params: { as: { type: "string", description: "the agent started with start --as (default: the companion)" } },
   run: async (p) => {
-    const name = str(p.as) ? who(p) : ownName(), s = session(name)
+    const name = str(p.as) ? who(p) : ownName(), s = session(name), k = key(name)
     stopStreams(name)
-    const ok = !!s && isChat(s.id) && !!(await chat()?.interrupt(s.id).catch(() => false))
-    const k = key(name), asks = (batches.get(k) ?? []).flatMap((n) => moments.find((m) => m.seq === n && m.kind === "ask")?.text ?? [])
-    if (ok) { stopped.set(k, asks); resend.delete(k); did(name, "stopped") }
+    const asks = (batches.get(k) ?? []).flatMap((n) => moments.find((m) => m.seq === n && m.kind === "ask")?.text ?? [])
+    const keys = s && !isChat(s.id) ? INTERRUPT[runsOf(s).split("_")[0]] : undefined
+    let ok = false
+    if (s && isChat(s.id)) {
+      ok = !!(await chat()?.interrupt(s.id).catch(() => false))
+      if (ok) { stopped.set(k, asks); resend.delete(k) }
+    } else if (s && keys && !waiters.has(k) && await running(s.id)) {
+      // (a terminal's agent busy on a moment, not waiting in next: its own interrupt key, then told so and back to next)
+      ok = !!(await plugin.runOp("terminal.key", { id: s.id, keys }).catch(() => null))
+      if (ok) setTimeout(() => void plugin.runOp("terminal.send", { id: s.id, text: `${STOPPED(asks)} Then run \`${nextCmd(name)}\` again, and never end your turn.` }).catch(() => {}), 1000).unref?.()
+    }
+    if (ok) did(name, "stopped")
     return { name, stopped: ok }
   },
   text: (r) => (r.stopped ? `Stopped ${r.name}.` : `${r.name} wasn't answering.`),

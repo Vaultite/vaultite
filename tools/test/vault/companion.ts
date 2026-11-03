@@ -75,6 +75,12 @@ export default async ($: VaultTest) => {
     check("companion: an edit's end, its last line and words", JSON.stringify(c.endOf(doc, { after: "Call Alice", text: "- one\n- two\n" })) === '{"line":5,"find":"- two"}' &&
       JSON.stringify(c.endOf(doc, { find: "Alice", text: "Ben\nand Cy" })) === '{"line":4,"find":"and Cy"}' && c.endOf(doc, { append: true, text: "End" })?.line === 4 &&
       c.endOf(doc, { find: "Nobody", text: "x" }) === null, [c.endOf(doc, { after: "Call Alice", text: "- one\n- two\n" }), c.endOf(doc, { find: "Alice", text: "Ben\nand Cy" }), c.endOf(doc, { append: true, text: "End" })])
+    // What the user changed, as hunks: theirs alone, never what an agent wrote between them.
+    const { hunksIn } = await import("../../../plugins/core/companion/live.ts")
+    const was = ["# Trip", "", "Ask?", "", "End"], now = ["# Trip!", "", "Ask?", "Its line", "Its other", "", "Mine", "End"]
+    check("companion: an edit moment has the user's hunks alone, an agent's lines between them in neither",
+      JSON.stringify(hunksIn(was, now, [[1, 1, 1, 1], [4, 4, 6, 7]])) === JSON.stringify([{ line: 1, removed: ["# Trip"], added: ["# Trip!"] }, { line: 7, removed: [], added: ["Mine"] }]) &&
+      JSON.stringify(hunksIn(was, ["# Trip", "", "Ask? yes", "", "End"], [[3, 3, 3, 3], [3, 3, 3, 3]])) === JSON.stringify([{ line: 3, removed: ["Ask?"], added: ["Ask? yes"] }]), hunksIn(was, now, [[1, 1, 1, 1], [4, 4, 6, 7]]))
     // A tool's input as it's written: whole keys, and the string being written (never half an escape).
     const { partialArgs } = await import("../../../plugins/core/companion/partial.ts")
     const json = JSON.stringify({ path: "N.md", line: 3, text: 'say "hi"\nthen 😀' }), texts: string[] = []
