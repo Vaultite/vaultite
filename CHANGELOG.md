@@ -12,6 +12,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Phones: a tab group is renamed from inside it**: tap its name, top right, to type a new one there; hold it for its menu.
 - **Phones: a pinned folder's tile shows it**: on a new tab or in the drawer, tapping it opens Files (the drawer's, or a
   Files tab) at the folder, open and flashed, rather than nothing.
+- **Bundles show skeleton cards while they load**: Get bundles and Your bundles draw shimmering cards, as many as
+  last time, instead of a blank page until the list comes.
 - **Terminals held by the older terminal server say so**: `vau terminal` marks them with its pid (they end it once
   they all have), `vau terminal get` gives a terminal's pid, and one it couldn't take over yet is tried again until it is.
 - **Delegation hears a terminal subagent without polling**: a Codex child's end is read once its terminal goes quiet,

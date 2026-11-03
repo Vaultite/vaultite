@@ -23,6 +23,7 @@ import { namedIcon, tintOf } from "@/core/pages"
 import { PLUGINS, pluginById, switchedOn, tintOfPlugin, usePlugins } from "@/core/plugins"
 import { currentWorkspace } from "@/core/scope"
 import { usePrefs } from "@/core/prefs"
+import { useKeptCount } from "@/core/heights"
 import { menuBelow } from "@/components/ContextMenu"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { useSheetGuard } from "@/components/DetailSheet"
@@ -486,7 +487,7 @@ export function Bundles({ store, view, onView }: { store: Store; view?: Tab; onV
         </div>
       )}
       <div className="@container" data-keylist>
-        {tab === "get" && !welcome ? <Browse query={query} /> : <>
+        {tab === "get" && !welcome ? <Browse query={query} /> : !l ? <CardSkeletons count={3} /> : <>
           {view && !q && l && (prev || l.bundles.some((b) => b.inUse || b.modified)) && <CurrentSetup b={l.bundles.find((b) => b.inUse || b.modified) ?? null} prev={prev} />}
           {app.length > 0 && <>
             {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
@@ -578,13 +579,35 @@ function Browse({ query: q }: { query: string }) {
     return () => { live = false; clearTimeout(t) }
   }, [q, mine])
   const list = dir?.bundles ?? []
+  const cards = useKeptCount(q.trim() ? null : "bundles:browse", dir?.available ? list.length : undefined, 3, 9)
   return (
     <section className="mb-6" data-bundles-browse>
-      {failed || (dir && !dir.available)
+      {!dir && !failed ? <CardSkeletons count={cards} />
+        : failed || (dir && !dir.available)
         ? <p className="text-[14px] text-muted-foreground" data-bundles-browse-off>The directory of shared bundles can't be reached right now.</p>
         : dir && !list.length ? <p className="text-[14px] text-muted-foreground" data-bundles-browse-none>{q.trim() ? "No shared bundles match." : "No bundles are shared yet."}</p>
         : <div className={GRID} data-bundles-listed>{list.map((e) => <ListedCard key={e.address} e={e} />)}</div>}
     </section>
+  )
+}
+
+/** The directory on its way: ListedCard's shape, its picture a muted block and its lines bars. */
+function CardSkeletons({ count }: { count: number }) {
+  return (
+    <div className={cn(GRID, "loading-in")} aria-busy data-bundles-loading>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className={cn(CARD, "cursor-default hover:ring-0")}>
+          <div className="skeleton aspect-[16/10] w-full rounded-none rounded-t-[11px]" />
+          <div className="flex min-w-0 flex-1 flex-col p-3.5 pt-3">
+            <div className="flex items-center gap-2">
+              <span className="size-7 shrink-0 rounded-[7px] bg-muted" />
+              <span className="min-w-0 flex-1 text-[15px] leading-[20px]"><Line w={i % 2 ? "45%" : "58%"} /></span>
+            </div>
+            <div className="mt-1 pl-9 text-[13px] leading-[18px]"><Line w={i % 2 ? "32%" : "40%"} /></div>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

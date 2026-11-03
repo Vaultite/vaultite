@@ -263,6 +263,20 @@ const { ctx, page } = await open(1280, 820)
   await until(() => browse.locator("[data-bundles-browse-off]").count(), 6000)
   check("unreachable: a quiet line, no error", await browse.locator("[data-bundles-browse-off]").count() === 1 && !(await page.locator('[data-sonner-toast][data-type="error"]').count()))
   await page.unroute("**/api/bundles/browse*")
+  // Slow: skeleton cards, as many as last time, until the directory comes.
+  let release
+  const held = new Promise((r) => { release = r })
+  await page.route("**/api/bundles/browse*", async (r) => { await held; await r.continue() })
+  await go(page)
+  await page.locator("[data-bundles-get]").click()
+  await until(() => browse.locator("[data-bundles-loading]").count(), 6000)
+  const skel = await browse.locator("[data-bundles-loading] > *").count()
+  check("slow: skeleton cards, as many as last time", skel === 2, skel)
+  await shot(page, "browse-loading")
+  release()
+  await until(() => browse.locator("[data-listed]").count() >= 2, 8000)
+  check("then the cards, the skeletons gone", !(await browse.locator("[data-bundles-loading]").count()))
+  await page.unroute("**/api/bundles/browse*")
 }
 await ctx.close()
 
