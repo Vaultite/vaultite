@@ -495,11 +495,11 @@ export default async ($: VaultTest) => {
     const asked: string[] = []
     const lb = localBackend({ oldServers: [{ socket: old, files: old }], adoptOld: async () => { asked.push("adopt?"); return true } })
     const none = await localBackend({ oldServers: [{ socket: old, files: old }], adoptOld: async () => false }).list()
-    const listed = (await lb.list()).map((x) => x.id)
+    const all = await lb.list(), listed = all.map((x) => x.id)
     oldServer.close()
     for (const sock of socks) sock.destroy()
-    check("terminal: when the terminal server can't start, this server takes over the older one's terminals (only then)",
-      JSON.stringify(listed) === '["old3"]' && asked.length > 0 && none.length === 0, [listed, asked, none])
+    check("terminal: when the terminal server can't start, this server takes over the older one's terminals (only then), listed as held through it",
+      JSON.stringify(listed) === '["old3"]' && all[0]?.via === 4444 && all[0]?.pid === 97 && asked.length > 0 && none.length === 0, [all, asked, none])
   }
 
   // OSC 7501 (osc7501.ts): reports by the spec's rules, taken out of the output however it's cut, records' state; the

@@ -67,6 +67,8 @@ export type Listed = { id: string; pid?: number; process: string; created: numbe
   state?: string
   /** Its program's OSC 7501, from a backend that reads it. */
   said?: Said
+  /** Held through an older terminal server (termd/adopt.ts): its pid. */
+  via?: number
   /** It ended, and how (only with list's `ended`). */
   exit?: Ended
   /** Not started by Vaultite (a herdr pane of the user's). */
@@ -446,7 +448,8 @@ async function takeOver(w: Wire, olds: ServerFiles[], log?: (...a: unknown[]) =>
 /** A backend's view of the terminal server's answers: its Info as listed. */
 function listed(x: Info): Listed {
   return { id: x.id, pid: x.pid || undefined, process: x.process, created: x.created, activity: x.activity, attached: x.clients, title: x.title, cwd: x.cwd || undefined,
-    command: x.command || undefined, cols: x.cols, rows: x.rows, meta: x.meta, said: x.said, ...(x.exit ? { exit: x.exit } : {}), ...(x.spare ? { spare: true } : {}) }
+    command: x.command || undefined, cols: x.cols, rows: x.rows, meta: x.meta, said: x.said, ...(x.exit ? { exit: x.exit } : {}), ...(x.spare ? { spare: true } : {}),
+    ...(x.via ? { via: x.via } : {}) }
 }
 
 /** What either kind of terminal server answers with, given how to reach it. `control`: the connection for requests and

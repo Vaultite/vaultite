@@ -1110,6 +1110,8 @@ type Listed = { id: string; agent: string | null; process: string; busy: boolean
   /** Its agent isn't installed here (the shell found no such program). */
   missing?: true
   machine?: string; machineLabel?: string; backend?: string; external?: boolean
+  /** Its program's pid, and the older terminal server's it's held through (termd/adopt.ts), which ends after its last. */
+  pid?: number; via?: number
   /** The folder it started in, what it was started to run ("claude", "npm test", "zsh"), its size and last activity. */
   cwd?: string; command?: string; cols?: number; rows?: number; activity?: number
   /** Its agent's own session id (what it resumes), when the agent says (its service "agent-meters:<name>"). */
@@ -1179,7 +1181,7 @@ async function readList(): Promise<Listed[]> {
         ...(noteOf(x.id) ? { note: noteOf(x.id) } : {}),
         ...(nameOf(x.id) ? { name: nameOf(x.id) } : {}),
         ...(stateOf(x.id) === MISSING ? { missing: true as const } : {}),
-        ...(x.external ? { external: true } : {}) })
+        ...(x.external ? { external: true } : {}), ...(x.pid ? { pid: x.pid } : {}), ...(x.via ? { via: x.via } : {}) })
     }
   }
   timing.mark("in front")

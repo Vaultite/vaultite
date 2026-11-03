@@ -52,8 +52,9 @@ type Kit = {
 
 type Listed = { id: string; pid?: number; process?: string; created?: number; title?: string; cols?: number; rows?: number; spare?: boolean; said?: Said }
 
-/** How many times terminals it couldn't take over are tried again (a minute later, then two...): they still run there. */
-const RETRIES = 5
+/** How long before terminals it couldn't take over are tried again (a minute, then two... at most ten), for as long as
+ *  they run there: given up on, they'd keep the older server running, unseen. */
+const retryIn = (tries: number) => Math.min(60_000 * (tries + 1), 600_000)
 
 /** adopt(socket): the older server there's terminals, taken over (the ids now held through it). Asked again while it
  *  runs, the same answer. */
@@ -65,7 +66,7 @@ export function adopter(k: Kit) {
     if (!p) {
       p = adoptFrom(k, socket, scrollback, tries, () => {
         // (one it couldn't take over, a snapshot too slow on a loaded machine, still runs there)
-        if (tries < RETRIES) setTimeout(() => void adopt(socket, scrollback, tries + 1).catch(() => {}), 60_000 * (tries + 1)).unref()
+        setTimeout(() => void adopt(socket, scrollback, tries + 1).catch(() => {}), retryIn(tries)).unref()
       })
       going.set(socket, p)
       p.catch(() => {}).finally(() => { if (going.get(socket) === p) going.delete(socket) })
@@ -93,11 +94,11 @@ async function adoptFrom(k: Kit, socket: string, scrollback: number, tries: numb
   const poll = setInterval(() => {
     ctl.ask({ op: "list" }).then((r) => { for (const x of (r.sessions ?? []) as Listed[]) { procs.set(x.id, x.process ?? ""); const s = mine.get(x.id); if (s && x.title && !s.title) s.title = x.title } }, () => {})
   }, 2000)
-  const done = () => {
+  const done = (said = "") => {
     if (mine.size) return
     clearInterval(poll)
     ctl.sock.destroy()
-    k.around.log("adopted: none left at", socket)
+    if (said) k.around.log(said, socket)
     k.around.changed?.()
   }
   ctl.sock.on("close", () => clearInterval(poll))
@@ -111,7 +112,7 @@ async function adoptFrom(k: Kit, socket: string, scrollback: number, tries: numb
       mine.set(x.id, s)
       s.meta = { ...s.meta }
       const end = s.ended.bind(s)
-      s.ended = (exit) => { end(exit); if (mine.delete(x.id)) done() }
+      s.ended = (exit) => { end(exit); if (mine.delete(x.id)) done("adopted: none left at") }
     } catch (e) { missed++; k.around.log("adopt", x.id, "failed:", e) }
   }
   k.around.log(`adopted ${mine.size} from ${socket} (pid ${via})${missed ? `, ${missed} not yet` : ""}`)

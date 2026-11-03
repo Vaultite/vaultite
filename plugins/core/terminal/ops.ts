@@ -7,7 +7,7 @@ import { byUser, fmtAgo, type Machine, MACHINE_CLIENT, OpError, type OpCtx, type
 type Any = any
 type Session = { id: string; agent: string | null; process: string; busy?: boolean; clients: number; started: number; title?: string; state?: string; kind?: string; msg?: string
   needs?: boolean; note?: string; backend?: string; session?: string; name?: string; cwd?: string; command?: string; cols?: number; rows?: number; activity?: number
-  machine?: string; machineLabel?: string }
+  machine?: string; machineLabel?: string; pid?: number; via?: number }
 type Ended = { id: string; backend: string; command: string; name?: string; note?: string; started: number; exit: { code: number; signal: number; at: number; lost?: boolean } }
 type TabAt = { workspace: number; tab: string }
 
@@ -153,7 +153,7 @@ const waited = (r: Any) => r.met === "exit" ? `${r.id} ended (${how(r.exit)}) af
 /** How long ago, short: "2m ago", "just now". */
 const ago = (t: number) => { const a = fmtAgo(t, { short: true }); return a === "now" ? "just now" : `${a} ago` }
 /** A terminal's line in a list: its id, what runs, its state, its name and title, and where it's shown. */
-const row = (s: Session & { tabs?: TabAt[] }) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.needs ? ", needs you" : ""})` : ""}${s.name ? `  named "${s.name}"` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${ago(s.started)}, ${s.machine ? `on ${s.machineLabel ?? s.machine}` : where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`
+const row = (s: Session & { tabs?: TabAt[] }) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.needs ? ", needs you" : ""})` : ""}${s.name ? `  named "${s.name}"` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${ago(s.started)}, ${s.machine ? `on ${s.machineLabel ?? s.machine}` : where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}${s.via ? ` (held by the older terminal server, pid ${s.via}, which ends after its last)` : ""}`
 const how = (e: { code: number; signal: number; lost?: boolean }) => (e.lost ? "lost: its terminal server went away, so how is unknown" : e.signal ? `signal ${e.signal}` : `exit code ${e.code}`)
 
 export function terminalOps(plugin: Plugin) {
@@ -247,7 +247,7 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
       const s = r as Session & { tabs: TabAt[] }
       const sent = ((r.inputs ?? []) as { at: number; by: string; text?: string; keys?: string[] }[]).slice(-3)
         .map((x) => `  ${ago(x.at)} by ${x.by}: ${x.text ? quoted(x.text, 60) : ""}${x.keys ? ` ${x.keys.join(" ")}` : ""}`)
-      return [row(s), ...[s.command && `runs: ${s.command}`, s.cwd && `in: ${s.cwd}`, s.cols && `size: ${s.cols}x${s.rows}`, s.msg && `says: ${s.msg}`,
+      return [row(s), ...[s.pid && `pid: ${s.pid}`, s.command && `runs: ${s.command}`, s.cwd && `in: ${s.cwd}`, s.cols && `size: ${s.cols}x${s.rows}`, s.msg && `says: ${s.msg}`,
         `clients: ${s.clients}`, s.activity && `last activity: ${ago(s.activity)}`, sent.length && `sent lately:\n${sent.join("\n")}`].filter(Boolean)].join("\n")
     },
   })

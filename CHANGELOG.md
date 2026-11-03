@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals held by the older terminal server say so**: `vau terminal` marks them with its pid (they end it once
+  they all have), `vau terminal get` gives a terminal's pid, and one it couldn't take over yet is tried again until it is.
 - **Delegation hears a terminal subagent without polling**: a Codex child's end is read once its terminal goes quiet,
   and its answer is typed into its parent only when that isn't asking the user something (Enter again if it didn't take).
 - **`vau version` tells the desktop app's updates**: in the desktop app it says their mode (automatic, notify, off)
