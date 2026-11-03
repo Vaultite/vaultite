@@ -4,9 +4,9 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
 import { cn, type FileHead, menuBelow, menuFor, type MenuItem } from "@vaultite"
 import { type Agent, getState, goToPerson, liveAgents, subscribe } from "./live"
 import { follow } from "./Overlay"
+import { STATUS } from "./look"
 import { agentMenu } from "./session"
 
-const STATUS: Record<string, string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting", listening: "listening" }
 const FACES = 4
 const fileOf = (p: string) => p.split("/").pop()!.replace(/\.md$/, "")
 

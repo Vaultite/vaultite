@@ -4,7 +4,8 @@ import { cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocus
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { bump, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, undoEdit, unread, viewOf } from "./live"
+import { type Agent, bump, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, undoEdit, unread, viewOf } from "./live"
+import { presence } from "./look"
 import { Arrow, follow, Overlay, showSaid } from "./Overlay"
 import { Presence } from "./Presence"
 import { modeItem, MODES, setMode, showSession } from "./session"
@@ -54,7 +55,9 @@ function Status() {
   const tint = s.mode === "off" ? undefined : `var(--${a?.tint ?? "orange"})`
   const word = s.mode === "off" ? "off" : !a || a.state === "away" ? "asleep" : a.state === "watching" ? null : a.state
   const others = s.mode === "off" ? [] : liveAgents().filter((x) => x.name !== a?.name).slice(0, HOMES - 1)
-  const arrows = [{ name: a?.name ?? s.name, tint, busy: a?.state === "thinking" }, ...others.map((x) => ({ name: x.name, tint: `var(--${x.tint})`, busy: x.state === "thinking" }))]
+  // (at home, its arrow pulses while it works or listens, as its cursor's dots or wave would)
+  const busy = (x?: Agent) => { const m = x && presence(x, { age: 3 }).mark; return m === "dots" || m === "wave" }
+  const arrows = [{ name: a?.name ?? s.name, tint, busy: busy(a) }, ...others.map((x) => ({ name: x.name, tint: `var(--${x.tint})`, busy: busy(x) }))]
   // (the cursors find their homes as these come and go)
   const homes = arrows.map((x) => x.name).join()
   useLayoutEffect(() => bump(), [homes])

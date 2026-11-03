@@ -89,6 +89,24 @@ export default async ($: VaultTest) => {
       JSON.stringify(partialArgs('{"path":"N.md","line":3').whole) === '{"path":"N.md"}' && partialArgs('{"path":"N.md","line":3,"te').keys.join() === "path,line", texts.slice(-6))
   }
 
+  {
+    // Its cursor: every state shows by itself, unhovered, long after it began (its name, and dots, a wave or a tick).
+    const { presence } = await import("../../../plugins/core/companion/look.ts")
+    const at = (state: Any, o: Any = {}, a: Any = {}) => presence({ state, ...a }, { age: 3, ...o })
+    const sign = (x: ReturnType<typeof presence>) => `${x.flag ? "flag" : "-"} ${x.mark ?? "-"}${x.bob ? " bob" : ""}${x.dim ? " dim" : ""}${x.words ? ` ${x.words}` : ""}`
+    const got = {
+      reading: sign(at("reading")), thinking: sign(at("thinking")), starting: sign(at("starting")), listening: sign(at("listening")), writing: sign(at("writing")),
+      watching: sign(at("watching")), asks: sign(at("thinking", {}, { asks: { event: "e", text: "Run it?" } })), saying: sign(at("watching", { bubble: true })),
+      held: sign(at("watching", { held: true })), heldListening: sign(at("listening", { held: true })), passed: sign(at("watching", { age: 2 }, { seen: true, why: "not for me" })),
+      looked: sign(at("reading", { looked: true })),
+    }
+    const want = {
+      reading: "flag dots", thinking: "flag dots bob", starting: "flag dots starting", listening: "flag wave", writing: "flag -", watching: "- - dim",
+      asks: "flag - bob needs you", saying: "flag -", held: "flag dots", heldListening: "flag dots", passed: "flag tick dim", looked: "flag dots reading",
+    }
+    check("companion: each state of its cursor shows unhovered (dots working, a wave listening, its words waiting as dots)", JSON.stringify(got) === JSON.stringify(want), got)
+  }
+
   await api("PATCH", "config/plugin/companion", { mode: "quiet" })
   check("companion: quiet hears asks, not what the user writes", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
     c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "what's this?" })?.kind === "ask")

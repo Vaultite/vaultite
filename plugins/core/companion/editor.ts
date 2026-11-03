@@ -546,6 +546,8 @@ function watcher(path: string) {
       this.sight.disconnect()
       this.stop()
       this.unhear()
+      // (dictating into it as it goes: its end won't reach this one)
+      if (dictation()?.target.view === this.view) hear(null)
       views.delete(this.view)
       sayWhereSoon()
       bump()

@@ -6,7 +6,8 @@ import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, 
 import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, review, sawSays, sendMoment, shownFor, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { presence, STATUS } from "./look"
 import { agentMenu } from "./session"
 import { changeAt, nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
@@ -155,8 +156,6 @@ export function follow(a: Target & { name: string }) {
 const answerAsk = (event: string, v: "approve" | "deny") => (event.startsWith("chat:")
   ? op("claude-code.chat-answer", { id: event.slice(5), allow: v === "approve" }) : op("inbox.answer", { id: event, answer: v }))
 
-const STATUS: Record<Agent["state"], string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting", away: "away", listening: "listening" }
-
 /** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), or null off the text. */
 function dropAt(agent: string, x: number, y: number) {
   const el = document.elementsFromPoint(x, y).find((e) => !e.closest(".companion-overlay") && e.closest(".cm-editor"))
@@ -246,6 +245,8 @@ function Bubble({ n, tint, right, low, maxWidth, drawn, hold }: { n: Note; tint:
   useEffect(() => { setReplying(!!n.question); setDraft(""); setGone(false) }, [n.id])
   const held = !gone && (inside || !!draft || (replying && !n.question))
   useEffect(() => { hold(held); return () => hold(false) }, [held])
+  // (on screen from now: writing on takes it away only once it showed a moment)
+  useEffect(() => { sawShown(n.id) }, [n.id])
   // (seen once it showed long enough to read with the window in front)
   useEffect(() => {
     if (n.seen) return
@@ -312,8 +313,8 @@ function Fan({ agents, up, right, pop, close, keep }: { agents: Agent[]; up: boo
         <button key={x.name} type="button" role="menuitem" data-agent={x.name} onClick={() => pop(x.name)}
           className="flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm outline-offset-2 hover:brightness-110 max-sm:h-9 max-sm:px-3 max-sm:text-[14px]"
           style={{ background: `var(--${x.tint})` }}>
-          {x.name}<span className="font-medium opacity-85">{STATUS[x.state]}</span>
-          {(x.state === "thinking" || x.state === "reading" || x.state === "starting") && <span className="companion-dots" aria-hidden><i /><i /><i /></span>}
+          {x.name}<span className="font-medium opacity-85">{x.asks ? "needs you" : STATUS[x.state]}</span>
+          <Mark mark={presence(x, { age: 3 }).mark} />
         </button>
       ))}
     </div>
@@ -326,7 +327,17 @@ const shallow = (x: unknown, y: unknown) => !!x && !!y && typeof x === "object" 
   && Object.keys(x).length === Object.keys(y).length && Object.entries(x).every(([k, v]) => Object.is(v, (y as Record<string, unknown>)[k]))
 const sameProps = <P extends object>(a: P, b: P) => Object.entries(b).every(([k, v]) => typeof v === "function" || Object.is((a as Record<string, unknown>)[k], v) || shallow((a as Record<string, unknown>)[k], v))
 
-const Cursor = memo(function Cursor({ a, spot, said, dot, others, under, shift, age, typed, open, setOpen, pop, hold }: { a: Agent; spot: Spot; said: Note | null; others: Agent[]; under: boolean
+/** A flag's mark (look.ts): dots working, a wave listening, a tick for a moment let pass (`at`: when, to play it anew). */
+function Mark({ mark, label, at }: { mark: ReturnType<typeof presence>["mark"]; label?: string; at?: number }) {
+  if (mark === "dots") return <span className="companion-dots" data-companion-sign="dots" aria-label={label} aria-hidden={!label || undefined}><i /><i /><i /></span>
+  if (mark === "wave") return <span className="companion-wave" data-companion-sign="wave" aria-label={label} aria-hidden={!label || undefined}><i /><i /><i /></span>
+  if (mark === "tick") return <Check key={at} data-companion-sign="tick" className="companion-seen size-3" strokeWidth={3} aria-label="seen" />
+  return null
+}
+
+const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under, shift, age, typed, open, setOpen, pop, hold }: { a: Agent; spot: Spot; said: Note | null; others: Agent[]; under: boolean
+  /** It has words waiting for the user's pause (they're speaking). */
+  waiting: boolean
   /** Its history holds a bubble the user hasn't seen: the unread dot. */
   dot: boolean
   /** Its place in a stack on one spot: drawn this many steps to the right, so each colour shows. */
@@ -376,14 +387,10 @@ const Cursor = memo(function Cursor({ a, spot, said, dot, others, under, shift, 
   }, [asked])
   // (what opens beside it opens toward the room: its flag needs a little, its words more)
   const right = at.x > innerWidth - 320 && at.x > innerWidth / 2, flagRight = at.x > innerWidth - 140
-  // (quiet when it's only watching: the arrow, its name once it does something; a tick when it let a moment pass)
-  const idle = a.state === "watching" && !bubble && !typed && age >= 2
-  const seen = a.state === "watching" && !!a.seen
-  // (why it let it pass, in its words, a while longer than its name)
-  const why = seen && a.why && (age < 3 || hover) ? a.why : ""
-  // (its name shows as it moves or acts, then fades to the bare arrow, as in a shared doc; hovered, again)
-  const flag = age === 0 || !!why || a.state === "thinking" || a.state === "writing" || a.state === "starting" || !!bubble || !!a.asks || typed || hover || open || !!drag || fan
-  const low = !drag && !!spot.low, tag = flag && (!under || hover || open)
+  // (its name and its mark show while it does anything, then it fades to the bare arrow, as in a shared doc; hovered, again)
+  const shown = presence(a, { bubble: !!bubble, held: waiting, typed, age, looked: hover || open || !!drag || fan })
+  const seen = shown.mark === "tick", why = shown.why
+  const low = !drag && !!spot.low, tag = shown.flag && (!under || hover || open)
   useEffect(() => {
     if (!open && !fan) return
     const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) { setOpen(false); setFan(false) } }
@@ -437,9 +444,9 @@ const Cursor = memo(function Cursor({ a, spot, said, dot, others, under, shift, 
       data-docked={docked || undefined}
       style={{ transform: docked ? `translate(${at.x}px, ${at.y}px) scale(${DOCK_SCALE})` : `translate(${at.x - 3}px, ${at.y - 2}px)`, transformOrigin: "0 0",
         transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typed ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), ${docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
-        opacity: docked ? 0 : idle && !hover && !open && !fan ? 0.55 : 1, visibility: docked ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || drag || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
+        opacity: docked ? 0 : shown.dim ? 0.55 : 1, visibility: docked ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || drag || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
       {!spot.drawn && <>
-      <div className={cn("relative", a.state === "thinking" && !drag && "companion-bob")}>
+      <div className={cn("relative", shown.bob && !drag && "companion-bob")}>
         <Arrow tint={tint} />
         {dot && !open && <span data-companion-unread aria-label="Unread" className="absolute top-[-1px] left-[12px] size-[7px] rounded-full ring-2 ring-background" style={{ background: tint }} />}
       </div>
@@ -457,9 +464,8 @@ const Cursor = memo(function Cursor({ a, spot, said, dot, others, under, shift, 
           flagRight ? "right-[-6px]" : "left-[13px]", low ? "top-[-20px]" : "top-[18px]", tag || fan ? "pointer-events-auto cursor-pointer" : "opacity-0 focus-visible:opacity-100")} style={{ background: tint }}>
         {a.name}
         {many && <span className="font-medium opacity-85">+{others.length}</span>}
-        {(hover || open || a.state === "starting" || a.asks) && !many && <span className="font-medium opacity-85">{a.asks ? "needs you" : STATUS[a.state]}</span>}
-        {!a.asks && (a.state === "thinking" || a.state === "reading" || a.state === "starting") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
-        {seen && <Check key={a.t} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />}
+        {shown.words && !many && <span className="font-medium opacity-85">{shown.words}</span>}
+        <Mark mark={shown.mark} label={a.state} at={a.t} />
         {why && <span data-companion-why className="max-w-[220px] truncate font-medium opacity-90">{why}</span>}
       </button>
       {fan && many && !open && <Fan agents={[a, ...others]} up={low} right={flagRight} keep={keepFan} close={closeFan} pop={(name) => { setFan(false); pop(name) }} />}
@@ -667,6 +673,10 @@ const STYLE = `
 .companion-dots i { width: 3px; height: 3px; border-radius: 9px; background: currentColor; animation: companion-dot 1s infinite ease-in-out; }
 .companion-dots i:nth-child(2) { animation-delay: .15s } .companion-dots i:nth-child(3) { animation-delay: .3s }
 @keyframes companion-dot { 0%, 80%, 100% { opacity: .35 } 40% { opacity: 1 } }
+.companion-wave { display: inline-flex; align-items: center; gap: 1.5px; height: 9px; }
+.companion-wave i { width: 2px; height: 100%; border-radius: 9px; background: currentColor; transform-origin: center; animation: companion-wave 1s infinite ease-in-out; }
+.companion-wave i:nth-child(2) { animation-delay: .2s } .companion-wave i:nth-child(3) { animation-delay: .4s }
+@keyframes companion-wave { 0%, 100% { transform: scaleY(.35) } 50% { transform: scaleY(1) } }
 .companion-seen { animation: companion-seen .5s ease-out; }
 @keyframes companion-seen { from { opacity: 0; scale: .4; } }
 .companion-pop { animation: companion-pop .28s cubic-bezier(.2,.9,.3,1.25); transform-origin: top left; }
@@ -681,7 +691,7 @@ const STYLE = `
 .note-prose.companion-md li + li { margin-top: 1px; }
 .note-prose.companion-md :where(.h1, .h2, .h3, h1, h2, h3) { font-size: inherit; line-height: inherit; font-weight: 650; margin: 0 0 2px; }
 html[data-drawer] .companion-overlay { visibility: hidden; }
-@media (prefers-reduced-motion: reduce) { .companion-cursor, .companion-bob, .companion-pop, .companion-fade, .companion-dots i, .companion-seen { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .companion-cursor, .companion-bob, .companion-pop, .companion-fade, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; transition: none !important; } }
 `
 
 /** nudge: how far right of where it opens it rests (the open one steps toward the text, as in a shared doc). */
@@ -737,7 +747,9 @@ export function Overlay() {
   const s = useSyncExternalStore(subscribe, getState)
   // (the user dictating: what an agent says meanwhile waits for their pause)
   const spokeAt = useDictation((d) => d?.spokeAt ?? 0)
-  const heldBack = (n: Note) => spokeAt > 0 && Date.now() - shownFor(n.id) >= spokeAt
+  // (a bubble with no words yet is none: its cursor's dots show it working)
+  const heldBack = (n: Note) => spokeAt > 0 && arrivedAt(n.id) >= spokeAt
+  const says = (a: Agent) => s.notes.filter((n) => n.kind === "say" && n.agent === a.name && !!n.text?.trim())
   const margin = useInMargin()
   const [, redraw] = useReducer((x: number) => x + 1, 0)
   const [popped, setPopped] = useState<string | null>(null)
@@ -805,9 +817,9 @@ export function Overlay() {
   if (off && !notes.length && !sv) return null
 
   const cursors = (off ? [] : s.agents).map((a, i) => {
-    const said = [...s.notes].reverse().find((n) => n.kind === "say" && n.agent === a.name && !heldBack(n)) ?? null
+    const mine = says(a), said = mine.findLast((n) => !heldBack(n)) ?? null, waiting = mine.some(heldBack)
     const h = holds.current.get(a.name), at = h ? spotOf({ ...a, ...h.at }, h.i, true) : spotOf(a, i)
-    return { a, i, spot: at && h ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, with: [] as Agent[], under: false, shift: 0, held: h }
+    return { a, i, spot: at && h ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, waiting, with: [] as Agent[], under: false, shift: 0, held: h }
   })
   // (cursors on the same spot, as in a shared doc: side by side, one flag, "Perf +1", fanning out into each of them)
   for (const c of cursors) {
@@ -906,7 +918,7 @@ export function Overlay() {
           {p.dots.map((d) => <Gutter key={d.n.id} n={d.n} x={d.x} y={d.y - p.top} picked={s.picked === d.n.id} />)}
         </div>
       ))}
-      {cursors.map(({ a, spot, said, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} others={others} under={under} shift={shift}
+      {cursors.map(({ a, spot, said, waiting, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} waiting={waiting} others={others} under={under} shift={shift}
         dot={unread(a.name).some((n) => n.id !== said?.id)}
         age={Date.now() - a.t < 3000 ? 0 : Date.now() - a.t <= 4000 ? 1 : Date.now() - a.t <= 8000 ? 2 : 3} typed={typing?.agent === a.name}
         open={popped === a.name} setOpen={(o) => setPopped((was) => (o ? a.name : was === a.name ? null : was))} pop={setPopped} hold={(on, at) => hold(a.name, on, at)} />)}

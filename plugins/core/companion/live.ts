@@ -6,7 +6,7 @@ import type { Change, Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "pair"
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
-/** listening: this window's own, the user dictating where it is (`hear`); the server never says it. */
+/** listening: this window's own, the user dictating where it is (`hear`) while it's free; the server never says it. */
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away" | "listening"; t: number; seen?: boolean
   /** Why it let what it saw pass, in its few words (by the seen tick). */
   why?: string
@@ -57,7 +57,12 @@ const set = (next: Partial<State>) => { state = { ...state, ...next }; changed()
  *  one): the server's next word on an agent replaces its own. */
 let told: Agent[] = []
 const ahead = new Map<string, { a: Partial<Agent>; timer: ReturnType<typeof setTimeout> }>()
-const showAgents = () => set({ agents: told.map((a) => { const x = ahead.get(a.name); return x ? { ...a, ...x.a } : a }) })
+/** The user dictating in a note (`hear`): the companion, when free, listens there. */
+let hearing: { path: string; line: number } | null = null
+const showAgents = () => set({ agents: told.map((a) => {
+  const x = ahead.get(a.name), b = x ? { ...a, ...x.a } : a
+  return hearing && b.name === state.name && b.state === "watching" && state.mode !== "off" ? { ...b, state: "listening", path: hearing.path, line: hearing.line, find: undefined, x: undefined, y: undefined } : b
+}) })
 function heard(agents: Agent[], name?: string) {
   told = agents
   for (const [k, x] of ahead) if (name === undefined || k === name) { clearTimeout(x.timer); ahead.delete(k) }
@@ -82,15 +87,13 @@ export function listen(name: string, path: string, line: number) {
   expect(was.name, { state: "reading", path, line, find: undefined }, 8000)
 }
 
-/** The user dictating on `line` of `path`: the companion's cursor comes over to listen, when it's free (not in a
- *  private note); null: they stopped. */
+/** The user dictating on `line` of `path` (not a private note's: `hidden`): the companion's cursor listens there while
+ *  it's free, as long as they dictate, whatever the server says meanwhile; null: they stopped. */
 export function hear(path: string | null, line = 0, hidden = false) {
-  const a = told.find((x) => x.name === state.name)
-  if (!a) return
-  const x = ahead.get(a.name)
-  if (!path || hidden) { if (x?.a.state === "listening") { clearTimeout(x.timer); ahead.delete(a.name); showAgents() } return }
-  if (state.mode === "off" || a.state !== "watching") return
-  expect(a.name, { state: "listening", path, line, find: undefined }, 10 * 60_000)
+  const next = path && !hidden ? { path, line } : null
+  if (next?.path === hearing?.path && next?.line === hearing?.line) return
+  hearing = next
+  showAgents()
 }
 
 /** An agent's colour, as a CSS value. */
@@ -210,7 +213,7 @@ function open() {
       const has = state.notes.some((x) => x.id === n.id)
       if (!has && n.kind === "say") arrived.set(n.id, Date.now())
       set({ notes: has ? state.notes.map((x) => (x.id === n.id ? n : x)) : [...state.notes, n] })
-    } else if (m.t === "drop") set({ notes: state.notes.filter((x) => x.id !== m.id) })
+    } else if (m.t === "drop") { arrived.delete(String(m.id)); drawnAt.delete(String(m.id)); set({ notes: state.notes.filter((x) => x.id !== m.id) }) }
     else if (m.t === "edit") void edit(m as unknown as EditAsk)
     else if (m.t === "stream") {
       const e = m as unknown as EditAsk, v = e.path ? viewOf(e.path) : null
@@ -262,10 +265,15 @@ export const sawSays = (ids: string[]) => {
   set({ said: state.said.map((n) => (fresh.includes(n.id) ? { ...n, seen: true } : n)) })
   say({ t: "seen", ids: fresh })
 }
-/** When this window got each bubble (its clock, not the server's). */
-const arrived = new Map<string, number>()
-/** How long a bubble has shown here, in ms (one from before this window opened: long). */
-export const shownFor = (id: string) => Date.now() - (arrived.get(id) ?? 0)
+/** When this window got each bubble, and when it first drew it (its clock, not the server's): one held while the user
+ *  spoke shows at their pause, and its time on screen counts from then. */
+const arrived = new Map<string, number>(), drawnAt = new Map<string, number>()
+/** When a bubble came (one from before this window opened: long ago). */
+export const arrivedAt = (id: string) => arrived.get(id) ?? 0
+/** A bubble is on screen (its first draw counts). */
+export const sawShown = (id: string) => { if (!drawnAt.has(id)) drawnAt.set(id, Date.now()) }
+/** How long a bubble has been on screen here, in ms (0: not drawn yet, as one held while the user speaks). */
+export const shownFor = (id: string) => { const t = drawnAt.get(id); return t === undefined ? 0 : Date.now() - t }
 /** A bubble gone as the user went on writing: off the screen at once, no word to its agent. */
 export const hideSay = (id: string) => { set({ notes: state.notes.filter((x) => x.id !== id) }); say({ t: "hide", id }) }
 /** The agent's says not seen yet (its cursor's unread dot). */

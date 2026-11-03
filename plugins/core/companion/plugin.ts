@@ -1263,6 +1263,8 @@ function toolsFor(name: string): ChatTool[] {
         const { done, ...given } = (args && typeof args === "object" ? args : {}) as Record<string, unknown>
         try {
           const r = await toolUse.run(use, () => plugin.host.call(op.id, { ...given, ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: `companion ${short}` }))
+          // (not its last call: its turn goes on, and its cursor shows it busy, a bubble or not, until it ends)
+          if (ends && done !== true && turning.has(key(name)) && agents.get(key(name))?.state === "watching") setAgent(name, { state: "thinking" })
           return { content: [{ type: "text", text: r.text }], ...((ends && done === true) || LAST.has(short) ? { endsTurn: true } : {}) }
         } catch (e) { return { isError: true, content: [{ type: "text", text: (e as Error).message }] } }
         finally { if (use) streamDone(use) }
