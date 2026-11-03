@@ -1,5 +1,6 @@
 // Companion: one always-on agent session that watches the user write and answers in the app (its cursor, bubbles,
 // margin comments, suggestions, edits typed in). Comments and suggestions are kept in a sidecar per note; the rest is live.
+import { AsyncLocalStorage } from "node:async_hooks"
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
@@ -10,6 +11,7 @@ import { readText, requestWriter, type Vault, type Writer, writeAtomic } from ".
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { bridges } from "./bridge.ts"
 import { rooms } from "./rooms.ts"
+import { partialArgs } from "./partial.ts"
 import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
 import { type Change, changeAt, type Hunk, isPrivate, nearest } from "./text.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -29,6 +31,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   waited?: number
   /** An ask whose line they went on writing after it went: the seq of the one it continues. */
   more?: number
+  /** Handed again, as they went on with it before its agent acted: that turn was stopped. */
+  again?: boolean
   /** On a drawing (`find`: the element asked in): the user's pointer, what changed after a pause, the scene as text. */
   x?: number; y?: number; changes?: string[]; scene?: string
   /** A reply to or a dismissal of one of its bubbles (`item`: the say), not a comment. */
@@ -165,10 +169,12 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>()
 let nid = 0
 const log = plugin.dayLog<Moment>("moments")
 const acts = plugin.dayLog<Act>("actions")
+/** What's logged that isn't acting: its turn's bookkeeping. */
+const BOOKKEEPING = new Set(["next", "handed", "done", "again"])
 const did = (as: string, op: string, seqs?: number[]) => {
   const t = Date.now()
   acts.append(t, [{ t, as, op, ...(seqs ? { seqs } : {}) }])
-  if (op !== "next" && op !== "handed" && op !== "done") handed.delete(key(as))
+  if (!BOOKKEEPING.has(op)) handed.delete(key(as))
 }
 /** An agent's state once it acted: still thinking while busy on an ask (until its next `next`), else watching. */
 const acting = (name: string): Agent["state"] => (asking.has(key(name)) ? "thinking" : "watching")
@@ -245,6 +251,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   // (an ask already asked, as it reads, a while ago: a line asked again by Enter on it, after a restart too)
   if (m.kind === "ask" && !m.item && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
   log.append(full.t, [full])
+  const back = rethink(full)
+  if (back) return back
   // (more of the same lines before any agent saw the last: one moment)
   const last = moments[moments.length - 1]
   const merged = m.kind === "edit" && last?.kind === "edit" && last.path === m.path && ![...delivered.values()].some((d) => d >= last.seq) ? mergeHunks(last.hunks ?? [], m.hunks ?? []) : null
@@ -294,10 +302,44 @@ async function wake(m: Moment, from: IncomingMessage) {
  *  text begins like (dictation lands a sentence at a time, and a pause between sends the half written). */
 function continues(m: Moment): Moment | undefined {
   const was = moments.findLast((x) => x.kind === "ask" && x.path === m.path && x.for === m.for && x.seq !== m.seq)
-  if (!was || !was.text || !m.text || was.line !== m.line || m.t - was.t > 5 * 60_000) return undefined
+  return was && goesOn(was, m) ? was : undefined
+}
+const goesOn = (was: Moment, m: Moment) => {
+  if (!was.text || !m.text || was.line !== m.line || m.t - was.t > 5 * 60_000) return false
   let n = 0
   while (n < was.text.length && was.text[n] === m.text[n]) n++
-  return n >= Math.min(40, was.text.length * 0.6) ? was : undefined
+  return n >= Math.min(40, was.text.length * 0.6)
+}
+
+/** The moments each chat session's turn was handed (its seqs), while that turn runs. */
+const batches = new Map<string, number[]>()
+/** Sessions whose turn was stopped to take its moments again (no seen tick for it). */
+const resend = new Set<string>()
+/** The user went on with what a chat session's turn is thinking over, before it acted (the next sentence of a thought,
+ *  the rest of an ask): that turn stops, and the moment, as it reads now, goes again with the rest of its batch. */
+function rethink(m: Moment): Moment | undefined {
+  if (m.item || (m.kind !== "edit" && m.kind !== "ask")) return undefined
+  for (const s of sessions()) {
+    const k = key(s.name), batch = batches.get(k)
+    if (!isChat(s.id) || !batch?.length || !turning.has(k) || !handed.has(k) || resend.has(k) || writing(s.name) || !meantFor(m, s.name)) continue
+    const x = moments.findLast((y) => batch.includes(y.seq) && y.kind === m.kind && y.path === m.path && !y.item && (m.kind === "ask" ? y.for === m.for : true))
+    if (!x) continue
+    if (m.kind === "edit") {
+      const hunks = mergeHunks(x.hunks ?? [], m.hunks ?? [])
+      if (!hunks) continue
+      x.hunks = hunks
+    } else {
+      if (!goesOn(x, m)) continue
+      Object.assign(x, { text: m.text, line: m.line })
+    }
+    Object.assign(x, { t: m.t, again: true, ...(m.waited !== undefined ? { waited: m.waited } : {}) })
+    delivered.set(k, Math.min(...batch) - 1)
+    resend.add(k)
+    did(s.name, "again", [x.seq])
+    void chat()?.interrupt(s.id).then((ok) => { if (!ok) resend.delete(k); void pump(s.name) }, () => resend.delete(k))
+    return x
+  }
+  return undefined
 }
 
 /** Two edits in a row as one, when the second changes only lines the first wrote (or right after them); else null. */
@@ -759,8 +801,7 @@ function inTurn<T>(path: string, fn: () => Promise<T>): Promise<T> {
 
 /** Ask a window to make a change (`m`): true once it's made (`reply`: its answer), its error, false when it can't (it
  *  doesn't show the file now). No answer by `wait` ms: it may still be at it, so writing the file too would mix the two. */
-async function askWindow(ws: WebSocket, m: object, wait: number, reply: Record<string, unknown> = {}) {
-  const rid = `e${++nid}`
+async function askWindow(ws: WebSocket, m: object, wait: number, reply: Record<string, unknown> = {}, rid = `e${++nid}`) {
   const ok = await new Promise<boolean | string | null>((resolve) => {
     const timer = setTimeout(() => { asked.delete(rid); resolve(null) }, wait)
     asked.set(rid, { done: (ok, error, r) => { clearTimeout(timer); asked.delete(rid); Object.assign(reply, r); resolve(ok || error || false) } })
@@ -779,6 +820,9 @@ const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => inTurn(
   if (ws) {
     let was: string | null = null
     try { was = readText(plugin.vault.abs(e.path)) } catch { /* a drawing's, or gone */ }
+    // (its cursor waits at the end of what it types, once it's typed)
+    const end = was !== null ? endOf(was, e) : null
+    if (end) setAgent(agent.name, { path: e.path, line: end.line, find: end.find, state: "writing" })
     const wait = EDIT_WAIT + e.text.length * 20
     await plugin.ask("activity:typing", false, e.path, agent.name, wait + SAVED_MS)
     let typed = false, late = false
@@ -795,6 +839,8 @@ const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => inTurn(
   const f = await ctx.api("GET", `file?path=${encodeURIComponent(e.path)}`)
   const cur = String(f.text ?? "")
   await ctx.api("PUT", "file", { path: f.path, text: editText(cur, e), base: cur })
+  const end = endOf(cur, e)
+  if (end) setAgent(agent.name, { path: e.path, line: end.line, find: end.find })
   return "written"
 })
 
@@ -818,6 +864,174 @@ export function editText(cur: string, e: Omit<Edit, "path">) {
   lines.splice(n, 0, ...e.text.replace(/\n$/, "").split("\n"))
   return lines.join("\n")
 }
+
+/** Where edit `e` of `cur` ends: its last line written (from 1) and that line's words, where its cursor stays. */
+export function endOf(cur: string, e: Omit<Edit, "path">): { line: number; find?: string } | null {
+  let next: string
+  try { next = editText(cur, e) } catch { return null }
+  let line: number
+  if (e.find) line = cur.slice(0, nearest(cur, e.find, e.line)).split("\n").length + e.text.split("\n").length - 1
+  else {
+    let n = e.line
+    if (e.after) n = cur.slice(0, nearest(cur, e.after, e.line) + e.after.length).split("\n").length
+    const lines = cur.split("\n")
+    n = e.append || n === undefined ? (cur.endsWith("\n") ? lines.length - 1 : lines.length) : Math.max(0, Math.min(lines.length, n))
+    line = n + e.text.replace(/\n$/, "").split("\n").length
+  }
+  const all = next.split("\n")
+  while (line > 1 && !all[line - 1]?.trim()) line--
+  const words = all[line - 1]?.trim().slice(0, 200)
+  return { line, ...(words ? { find: words } : {}) }
+}
+
+// ---------- answers streamed: a say's bubble and an edit's words shown as the model writes them (a chat session's tools)
+
+/** A streaming call: what shows as it comes (a bubble, a comment or reply, an edit typed in by a window); `whole`: nothing
+ *  does, its call does it all (an edit that becomes a proposal, one no window shows, one whose place comes last). */
+type Streamed = { use: string; agent: string; tool: Streaming; ended?: "done" | "stop"; whole?: boolean; note?: string; reply?: { id: string; at: number }
+  edit?: { ws: WebSocket; rid: string; e: Edit; text: string; sent: number; open: boolean; final: boolean; was: string | null; job: Promise<"typed" | "stopped"> } }
+const streams = new Map<string, Streamed>()
+/** The tool_use a chat session's call is for, through the op it runs: the stream that showed it. */
+const toolUse = new AsyncLocalStorage<string | undefined>()
+const STREAM_MS = 5 * 60_000
+const ANCHORS = ["find", "after", "line", "append"]
+
+type Streaming = "say" | "comment" | "edit"
+/** A streaming tool's input so far (`end`: written whole, its call to come; or its turn ended first). */
+function streamed(name: string, tool: Streaming, use: string, json: string, end?: "done" | "stop") {
+  let s = streams.get(use)
+  if (!s) {
+    if (!json) return
+    const t = { use, agent: name, tool }
+    s = t
+    streams.set(use, t)
+    // (its call never came: let go)
+    setTimeout(() => { if (streams.get(use) === t) { finishStream(t); streams.delete(use) } }, STREAM_MS).unref?.()
+  }
+  if (s.ended) return
+  const { whole, keys, open } = partialArgs(json)
+  const text = typeof whole.text === "string" ? whole.text : open?.key === "text" ? open.text : null
+  if (text !== null && !s.whole) {
+    try { if (tool === "edit") editStream(s, whole, keys, text); else noteStream(s, whole, keys, text) } catch { s.whole = true }
+  }
+  if (end) s.ended = end
+  if (end === "stop") finishStream(s)
+}
+
+/** A say's bubble or a comment's card, its words growing as they come (a comment kept once its call ends it). */
+function noteStream(s: Streamed, given: Record<string, unknown>, keys: string[], text: string) {
+  if (!text.trim()) return
+  const n = s.note ? notes.get(s.note) : s.reply ? notes.get(s.reply.id) : undefined
+  if (n) {
+    const r = s.reply ? n.replies?.[s.reply.at] : null
+    if (r && r.text !== text) r.text = text
+    else if (!s.reply && n.text !== text) n.text = text
+    else return
+    return void broadcast({ t: "note", note: n })
+  }
+  if (s.note || s.reply) return // (gone meanwhile)
+  const placed = keys.slice(0, keys.indexOf("text")).some((k) => ["path", "line", "find", "x", "y", "id"].includes(k))
+  if (s.tool === "comment") {
+    // (its place after its words: by the line it's on now, the moment's, until its call says where)
+    const a = agents.get(key(s.agent))
+    if (!placed && !a?.path) { s.whole = true; return }
+    if (!placed) given = { path: a!.path, line: a!.line, ...(a!.find ? { find: a!.find } : {}) }
+    const to = given.id ? notes.get(str(given.id)) : undefined
+    if (given.id) {
+      if (to?.kind !== "comment") { s.whole = true; return }
+      to.replies = [...(to.replies ?? []), { by: "agent", text, t: Date.now(), ...(to.by ? { name: s.agent } : {}) }]
+      s.reply = { id: to.id, at: to.replies.length - 1 }
+      setAgent(s.agent, { path: to.path, line: to.line, find: to.find, state: acting(s.agent) })
+      broadcast({ t: "note", note: to })
+    } else {
+      const t = target(given)
+      if (drawing(t.path!)) { s.whole = true; return }
+      setAgent(s.agent, { ...t, state: acting(s.agent) })
+      const note: Note = { kind: "comment", agent: s.agent, text, ...t, id: newId(), t: Date.now() }
+      notes.set(note.id, note)
+      broadcast({ t: "note", note })
+      s.note = note.id
+    }
+  } else {
+    const t = placed ? target(given) : {}
+    setAgent(s.agent, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(s.agent) })
+    s.note = putNote({ kind: "say", agent: s.agent, text, ...t, ...(given.ask === true ? { question: true } : {}), writer: { client: AS_TOOL.client, agent: AS_TOOL.agent } }).id
+  }
+  did(s.agent, "word")
+}
+
+function editStream(s: Streamed, given: Record<string, unknown>, keys: string[], text: string) {
+  if (s.edit) { s.edit.text = text; flushEdit(s); return }
+  // (its place before its words, as its parameters are ordered: else its call does it all)
+  if (!keys.slice(0, keys.indexOf("text")).some((k) => ANCHORS.includes(k))) { s.whole = true; return }
+  const t = target(given), find = str(given.find) || undefined, after = str(given.after) || undefined
+  const ws = !drawing(t.path!) && !(find && linesIn(find) > BIG_EDIT) ? editorFor(t.path!) : null
+  if (!ws) { s.whole = true; return }
+  const e: Edit = { path: t.path!, find, after, line: t.line, text: "", append: given.append === true }
+  const x = { ws, rid: `e${++nid}`, e, text, sent: 0, open: false, final: false, was: null as string | null, job: null as unknown as Promise<"typed" | "stopped"> }
+  s.edit = x
+  x.job = inTurn(e.path, () => typeIn(s, x))
+  x.job.catch(() => {})
+}
+
+/** An edit typed in as it streams (in its note's turn): the window opens it, takes its words as they come, and says
+ *  it's done once it ended; what it typed is the agent's, in History and Provenance. */
+async function typeIn(s: Streamed, x: NonNullable<Streamed["edit"]>): Promise<"typed" | "stopped"> {
+  const path = x.e.path
+  await plugin.ask("history:keep", false, path)
+  try { x.was = readText(plugin.vault.abs(path)) } catch { /* gone */ }
+  await plugin.ask("activity:typing", false, path, s.agent, STREAM_MS)
+  setAgent(s.agent, { path, line: x.e.line, find: x.e.after ?? x.e.find, x: undefined, y: undefined, state: "writing" })
+  did(s.agent, "word")
+  const reply: Record<string, unknown> = {}
+  try {
+    x.sent = x.text.length
+    const done = askWindow(x.ws, { t: "stream", agent: s.agent, ...x.e, text: x.text }, STREAM_MS, reply, x.rid)
+    x.open = true
+    if (x.final) endEdit(s, x)
+    if (!(await done)) throw new OpError("the window showing it couldn't type it", 409)
+  } finally { await plugin.ask("activity:typing", false, path, s.agent, SAVED_MS) }
+  const typed = typeof reply.text === "string" ? reply.text : x.text
+  if (x.was !== null) try { await plugin.ask("provenance:wrote", null, path, x.was, editText(x.was, { ...x.e, text: typed })) } catch { /* not in the file as saved */ }
+  return reply.stopped ? "stopped" : "typed"
+}
+
+function flushEdit(s: Streamed) {
+  const x = s.edit
+  if (!x?.open || x.text.length <= x.sent) return
+  send(x.ws, { t: "stream-more", rid: x.rid, at: x.sent, add: x.text.slice(x.sent) })
+  x.sent = x.text.length
+}
+/** The edit's last words (all of it, as its call gives it): its cursor goes to where it ends, then the window ends it. */
+function endEdit(s: Streamed, x: NonNullable<Streamed["edit"]>) {
+  flushEdit(s)
+  const end = x.was !== null ? endOf(x.was, { ...x.e, text: x.text }) : null
+  if (end) setAgent(s.agent, { path: x.e.path, line: end.line, find: end.find, state: "writing" })
+  send(x.ws, { t: "stream-end", rid: x.rid, text: x.text })
+}
+/** A stream ends: a say's bubble goes after a while like any, a comment is kept as far as it got, an edit ends with
+ *  what it has. */
+function finishStream(s: Streamed) {
+  const n = s.note ? notes.get(s.note) : s.reply ? notes.get(s.reply.id) : undefined
+  // (cut off before its call: kept in its history as far as it got)
+  if (n?.kind === "say" && !timers.has(n.id)) { timers.set(n.id, setTimeout(() => dropNote(n.id), sayMs(n.text ?? ""))); if (s.ended === "stop") keepSaid(n) }
+  else if (n?.kind === "comment" && n.path) save(n.path)
+  const x = s.edit
+  if (x && !x.final) { x.final = true; if (x.open) endEdit(s, x) }
+}
+/** Its call answered: the stream is over, whatever its op did. */
+function streamDone(use: string) {
+  const s = streams.get(use)
+  if (!s) return
+  streams.delete(use)
+  finishStream(s)
+}
+/** Agent `name`'s streams stop where they are (the user's Esc). */
+function stopStreams(name: string) {
+  for (const s of streams.values()) if (key(s.agent) === key(name)) { s.ended = "stop"; finishStream(s) }
+}
+/** Whether agent `name` is writing into a note now. */
+const writing = (name: string) => [...streams.values()].some((s) => key(s.agent) === key(name) && (s.note || s.reply || s.edit))
 
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s)
 /** Line `n` (from 1) of a file, trimmed: "" when it can't be read. */
@@ -893,7 +1107,7 @@ export function starting(name: string, a: Partial<Agent> = {}, after = seq) {
 const promptFor = (name: string, chat = false) => [setting("prompt"), chat ? CHAT_WORDS : LOOP_WORDS(name),
   isMain(name) ? "" : chat ? `Your name here is ${name}: asks to @${key(name)} are yours.` : `Your name here is ${name}: add \`--as ${name}\` to every vau companion command (\`${nextCmd(name)}\`); asks to @${key(name)} are yours.`].filter(Boolean).join(" ")
 const LOOP_WORDS = (name: string) => `Then loop and never stop: run \`${nextCmd(name)}\` (give that command a timeout of 250 seconds or more), which waits for what they do and shows the note's lines around it (no need to read the note again), then act on it with \`vau companion look|say|pass|comment|suggest|propose|edit|highlight\`, then run next again. Never end your turn.`
-const CHAT_WORDS = "What the user does comes to you as messages (moments, with the note's lines around them: no need to read the note again). Act on them with your vaultite-app tools (say, pass, comment, suggest, propose, edit, look, highlight, draw...), not vau companion commands, then end your turn: what they do next comes as your next message. Never wait or poll for moments."
+const CHAT_WORDS = "What the user does comes to you as messages (moments, with the note's lines around them: no need to read the note again). Act on them with your vaultite-app tools (say, pass, comment, suggest, propose, edit, look, highlight, draw...), not vau companion commands. Your last call for a moment says done: true, which ends your turn with it: words outside your tools never reach the user, so write none (pass ends it too). Your say, comment and edit words show as you write them, so give their place (find, after, line) before their text. What they do next comes as your next message: never wait or poll for moments."
 
 // ---------- a fresh session: one that has handled many moments (or read much context) hands over to a new one
 
@@ -988,14 +1202,16 @@ plugin.onEvent({ types: ["terminal.agent-missing"] }, (ev) => {
 // messages, sent as they happen (or as a turn ends), and the actions their tools; a turn ended is a terminal's next `next`
 
 /** A tool served to a chat session, run here: claude-code's chat relays its calls. */
-type ChatTool = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; run: (args: unknown) => Promise<unknown> }
+type ChatTool = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; run: (args: unknown, use?: string) => Promise<unknown>
+  streams?: boolean; ends?: boolean; stream?: (use: string, json: string, end?: "done" | "stop") => void }
 type ChatHow = { cwd?: string; account?: string; model?: string; effort?: string; append?: string; title?: string; by?: string; inbox?: boolean; allowed?: string[]; denied?: string[]; tools?: ChatTool[] }
-type ChatState = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; error?: string }
+type ChatState = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; error?: string; seq?: number }
 /** What claude-code exports as `chat`. */
 type Chat = {
   start: (o: ChatHow & { prompt?: string }) => Promise<ChatState>
   send: (id: string, text: string, o?: ChatHow) => Promise<unknown>
   stop: (id: string) => Promise<unknown>
+  interrupt: (id: string) => Promise<boolean>
   list: () => ChatState[]
   serve: (id: string, o: ChatHow) => void
   on: (fn: (id: string, s: ChatState | null) => void) => () => void
@@ -1006,6 +1222,12 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
 const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "clear", "history", "status", "handover"]
+/** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
+const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
+/** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
+const STREAMS = new Set(["say", "comment", "edit"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "clear", "handover"])
+/** Those after which its turn always ends. */
+const LAST = new Set(["pass", "handover"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
 const ALLOWED = ["mcp__vaultite-app", ...ALLOW.filter((c) => c !== "vau companion").map((c) => `Bash(${c}:*)`)]
 const AS_TOOL = whoOf("cli", "claude-code")
@@ -1023,12 +1245,18 @@ function toolsFor(name: string): ChatTool[] {
       return [k, s]
     }))
     const description = [op.summary, ...(op.help ?? "").split("\n").filter((l) => !/^\s*vau /.test(l) && !/^\s+[{[]/.test(l))].join("\n").replace(/\n{3,}/g, "\n\n").trim()
+    const ends = ENDS.has(short) && !LAST.has(short)
+    if (ends) properties.done = DONE
     return [{ name: short, description, schema: { properties, required: params.filter(([, p]) => p.required).map(([k]) => k) },
-      run: async (args: unknown) => {
+      ...(STREAMS.has(short) ? { streams: true, stream: (use: string, json: string, end?: "done" | "stop") => streamed(name, short as Streaming, use, json, end) } : {}),
+      ...(ENDS.has(short) ? { ends: true } : {}),
+      run: async (args: unknown, use?: string) => {
+        const { done, ...given } = (args && typeof args === "object" ? args : {}) as Record<string, unknown>
         try {
-          const r = await plugin.host.call(op.id, { ...(args && typeof args === "object" ? args : {}), ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: `companion ${short}` })
-          return { content: [{ type: "text", text: r.text }] }
+          const r = await toolUse.run(use, () => plugin.host.call(op.id, { ...given, ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: `companion ${short}` }))
+          return { content: [{ type: "text", text: r.text }], ...((ends && done === true) || LAST.has(short) ? { endsTurn: true } : {}) }
         } catch (e) { return { isError: true, content: [{ type: "text", text: (e as Error).message }] } }
+        finally { if (use) streamDone(use) }
       } }]
   })
 }
@@ -1085,8 +1313,11 @@ async function pump(name: string) {
   let text: string
   if (got.some(wakes)) {
     turning.add(k)
+    resend.delete(k)
     const given = hand(name, got)
     text = momentsText(given, mode(), focus(), await excerpts(apiCtx, given))
+    const was = stopped.get(k)
+    if (was && stopped.delete(k)) text = `${STOPPED(was)}\n${text}`
   } else if (fresh.has(k) || (Date.now() - (handing.get(k) ?? 0) > ASK_AGAIN && await due(s))) {
     if (turning.has(k)) return
     turning.add(k)
@@ -1104,6 +1335,13 @@ async function pump(name: string) {
   }
 }
 
+/** What a session stopped by the user (Esc) is told with its next moments: what it was answering. */
+const STOPPED = (asks: string[]) => `They stopped your last answer (Esc)${asks.length ? `, to ${asks.map((a) => JSON.stringify(cut(a, 120))).join(", ")}` : ""}: leave it as it is, and don't answer it again unless they ask anew.`
+/** Agents the user stopped, with the asks they were answering, to tell them with their next moments. */
+const stopped = new Map<string, string[]>()
+/** Each chat session's news count as last heard: a state told again without news (its model set) isn't its turn's end. */
+const newsOf = new Map<string, number>()
+
 /** A chat session's state, from claude-code's chat: a turn running shows its cursor busy, and what it asks by it; a turn
  *  ended is a terminal's next `next` (a seen tick when it let what it was handed pass), and what came meanwhile goes. */
 function heard(id: string, s: ChatState | null) {
@@ -1119,14 +1357,22 @@ function heard(id: string, s: ChatState | null) {
   if (s.state === "waiting") setAgent(name, { asks: { event: `chat:${id}`, text: chat()?.asking(id).at(-1) || "It asks your permission: its session shows what" } })
   else if (a?.asks) setAgent(name, { asks: undefined })
   if (s.state === "working" || s.state === "waiting" || s.state === "starting") {
+    newsOf.delete(id)
     turning.add(k)
     if (!a || a.state === "watching" || a.state === "away") setAgent(name, { state: "thinking" })
     return
   }
+  // (the same turn's end told again, as a send applies its model first: not the end of the turn just sent)
+  if (s.seq !== undefined) {
+    if (newsOf.get(id) === s.seq) return
+    newsOf.set(id, s.seq)
+  }
   const was = turning.delete(k)
   asking.delete(k)
+  batches.delete(k)
   seen.set(k, Date.now())
-  if (handed.has(k)) setAgent(name, { state: "watching", seen: true })
+  if (resend.has(k)) setAgent(name, { state: "thinking" })
+  else if (handed.has(k)) setAgent(name, { state: "watching", seen: true })
   else if (!a || a.state !== "watching") setAgent(name, { state: "watching" })
   if (was) did(name, "done")
   if (s.state === "error" && s.error) putNote({ kind: "say", agent: name, text: `I stopped: ${cut(s.error, 300)}`, ...(a?.path ? { path: a.path, line: a.line } : {}) }, SAY_MS)
@@ -1324,6 +1570,7 @@ function hand(name: string, got: Moment[]) {
   const s = session(name)
   if (s) { try { writeSession({ ...s, handed: (s.handed ?? 0) + got.length }) } catch { /* as it was */ } }
   did(name, "handed", got.map((m) => m.seq))
+  batches.set(k, got.map((m) => m.seq))
   const at = [...got].reverse().find((m) => m.path), asked = got.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply")
   if (asked) asking.add(k)
   setAgent(name, { state: asked ? "thinking" : "reading",
@@ -1416,10 +1663,10 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
   for (const m of ms) {
     const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : ""
     const thread = m.item && (m.kind === "ask" || m.kind === "reply") && personThread(m.item) ? ` (in their comment thread ${m.item}, by the line: answer in it, companion comment --id ${m.item})` : ""
-    if (m.kind === "ask") out.push(`- ask${at}${thread}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
+    if (m.kind === "ask") out.push(`- ask${at}${thread}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more || m.again ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "point") out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "edit") {
-      out.push(`- edit${at}`)
+      out.push(`- edit${at}${m.again ? " (they went on writing: all of it now)" : ""}`)
       for (const c of m.changes ?? []) out.push(`  ${c}`)
       for (const h of m.hunks ?? []) {
         out.push(`  at line ${h.line}:`)
@@ -1473,15 +1720,24 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
   vau companion say "For you, or a note to yourself?" --ask
   vau companion say "This step needs a way back." --path Drawings/Plan.excalidraw --find login`,
   kind: "read",
-  params: { text: { type: "string", required: true, description: "what to say (Markdown)" }, ask: { type: "boolean", description: "it asks them something: a question bubble they can answer in" },
-    path: PATH, line: LINE, find: FIND, x: X, y: Y, as: AS },
+  // (its place before its words: its bubble shows them as they come, where they belong)
+  params: { path: PATH, line: LINE, find: FIND, x: X, y: Y, ask: { type: "boolean", description: "it asks them something: a question bubble they can answer in" },
+    text: { type: "string", required: true, description: "what to say (Markdown)" }, as: AS },
   args: ["text"],
   run: async (p, ctx) => {
     const name = who(p)
     did(name, "say")
     const t = p.path || p.line !== undefined || p.find || p.x !== undefined ? target(p) : {}
     setAgent(name, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(name) })
-    const n = putNote({ kind: "say", agent: name, text: str(p.text), ...t, ...(p.ask ? { question: true } : {}), writer: requestWriter.getStore() ?? { client: ctx.who.client, agent: ctx.who.agent } }, sayMs(str(p.text)))
+    // (shown as it was written: its bubble, with its words and place as the call has them)
+    const use = toolUse.getStore(), shown = use ? streams.get(use)?.note : undefined, was = shown ? notes.get(shown) : undefined
+    if (was) {
+      Object.assign(was, { text: str(p.text), ...t, ...(p.ask ? { question: true } : {}) })
+      broadcast({ t: "note", note: was })
+      clearTimeout(timers.get(was.id))
+      timers.set(was.id, setTimeout(() => dropNote(was.id), sayMs(str(p.text))))
+    }
+    const n = was ?? putNote({ kind: "say", agent: name, text: str(p.text), ...t, ...(p.ask ? { question: true } : {}), writer: requestWriter.getStore() ?? { client: ctx.who.client, agent: ctx.who.agent } }, sayMs(str(p.text)))
     keepSaid(n)
     return n
   },
@@ -1551,12 +1807,32 @@ it: with id (the comment's), your words join its thread.
   vau companion comment "Yes, both work." --id n12`,
   kind: "write",
   lock: false,
-  params: { text: { type: "string", required: true, description: "the comment (Markdown, short)" }, id: { type: "string", description: "a comment to reply in" },
-    path: PATH, line: LINE, find: FIND, as: AS },
+  // (its place before its words: the model writes them in this order, so its card shows them as they come)
+  params: { id: { type: "string", description: "a comment to reply in" }, path: PATH, line: LINE, find: FIND,
+    text: { type: "string", required: true, description: "the comment (Markdown, short)" }, as: AS },
   args: ["text"],
   run: async (p) => {
     const name = who(p)
     did(name, "comment")
+    // (shown as it was written: that card or reply, with its words as the call has them)
+    const use = toolUse.getStore(), s = use ? streams.get(use) : undefined
+    if (s?.reply && notes.get(s.reply.id)?.replies?.[s.reply.at]) {
+      const n = notes.get(s.reply.id)!
+      n.replies![s.reply.at].text = str(p.text)
+      broadcast({ t: "note", note: n })
+      save(n.path!)
+      return n
+    }
+    const shown = s?.note ? notes.get(s.note) : undefined
+    // (a reply after all, its id after its words: the card its words showed in goes)
+    if (shown && p.id) { s!.note = undefined; dropNote(shown.id) }
+    else if (shown) {
+      const t = target(p), anchor = !t.find && t.line ? lineText(t.path!, t.line) : ""
+      Object.assign(shown, { text: str(p.text), ...t, ...(anchor ? { anchor } : {}) })
+      broadcast({ t: "note", note: shown })
+      save(shown.path!)
+      return shown
+    }
     if (p.id) {
       // (a word in a dismissed thread brings it back to the margin)
       const n = notes.get(p.id) ?? reopen(p.id)
@@ -1770,15 +2046,17 @@ plugin.op({
   summary: "Write in a note: typed in before the user's eyes when it's open (they can undo it), else saved to the file.",
   help: `Only in pair mode or when they asked you to. find and text: find replaced by text. after and text: new lines after
 the line with that text. Else new lines after line (0: at the top), or at the end. Prefer find or after: a line number
-goes stale as they type. Edits of a note go one at a time; each returns once it's in.
+goes stale as they type. Edits of a note go one at a time; each returns once it's in. In the app's chat your words are
+typed in as you write them, its place first; your cursor stays at their end.
 
   vau companion edit --path Notes/Idea.md --find "- [ ] Call Alice" --text "- [x] Call Alice"
   vau companion edit --after "## Budget" --text "- Ask Ben about the budget"`,
   kind: "write",
   lock: false,
-  params: { text: { type: "string", required: true, description: "what to write" }, find: { type: "string", description: "the text it replaces, exactly as in the file" },
+  // (its place before its words: the model writes them in this order, so its words are typed in as they come)
+  params: { path: PATH, find: { type: "string", description: "the text it replaces, exactly as in the file" },
     after: { type: "string", description: "new lines go after the line with this text (exactly as in the file)" },
-    path: PATH, line: LINE, append: { type: "boolean", description: "at the end of the file" }, as: AS },
+    line: LINE, append: { type: "boolean", description: "at the end of the file" }, text: { type: "string", required: true, description: "what to write" }, as: AS },
   args: ["text"],
   run: async (p, ctx) => {
     const name = who(p), t = target(p), after = str(p.after) || undefined
@@ -1790,6 +2068,17 @@ goes stale as they type. Edits of a note go one at a time; each returns once it'
       return { path: t.path, how: "proposed", id: n.id }
     }
     did(name, "edit")
+    const use = toolUse.getStore(), s = use ? streams.get(use) : undefined
+    if (s?.edit) {
+      // (typed in as it was written: its last words, then it's done)
+      const x = s.edit
+      x.text = x.e.text = str(p.text)
+      finishStream(s)
+      try {
+        if (await x.job === "stopped") throw new OpError("the user stopped you (Esc) as you wrote it: what you had typed by then stays", 409)
+        return { path: x.e.path, how: "typed" }
+      } finally { setAgent(name, { state: acting(name) }) }
+    }
     const a = setAgent(name, { ...t, ...(after ? { find: after } : {}), state: "writing" })
     try {
       const how = await applyEdit(ctx, a, { path: t.path!, find: t.find, after, line: t.line, text: str(p.text), append: !!p.append })
@@ -1963,6 +2252,24 @@ plugin.op({
 })
 
 plugin.op({
+  id: "companion.interrupt",
+  cli: "companion interrupt",
+  summary: "Stop the companion mid-answer (Esc in a note): its turn ends where it is, and what it typed stays (Claude Code's sessions).",
+  kind: "write",
+  lock: false,
+  params: { as: { type: "string", description: "the agent started with start --as (default: the companion)" } },
+  run: async (p) => {
+    const name = str(p.as) ? who(p) : ownName(), s = session(name)
+    stopStreams(name)
+    const ok = !!s && isChat(s.id) && !!(await chat()?.interrupt(s.id).catch(() => false))
+    const k = key(name), asks = (batches.get(k) ?? []).flatMap((n) => moments.find((m) => m.seq === n && m.kind === "ask")?.text ?? [])
+    if (ok) { stopped.set(k, asks); resend.delete(k); did(name, "stopped") }
+    return { name, stopped: ok }
+  },
+  text: (r) => (r.stopped ? `Stopped ${r.name}.` : `${r.name} wasn't answering.`),
+})
+
+plugin.op({
   id: "companion.fresh",
   cli: "companion fresh",
   owner: "the terminal",
@@ -2015,23 +2322,29 @@ came (faster with speed), so you can watch what the session makes of them.
   text: (r) => `Replaying ${r.replaying} moments.`,
 })
 
-/** A moment's latency (ms): the user's pause, until it was handed (handoff: a next, a chat message), to the agent's
- *  first action (think), and from the moment to its next `next` or turn's end (total); undefined: it didn't happen. */
-export type Timing = { t: number; seq: number; kind: string; at: string; as?: string; op?: string; pause?: number; handoff?: number; think?: number; total?: number }
+/** A moment's latency (ms): the user's pause, until it was handed (handoff), to its first action (think) and first word
+ *  shown (word), from the moment to its next `next` or turn's end (total); undefined: it didn't happen. */
+export type Timing = { t: number; seq: number; kind: string; at: string; as?: string; op?: string; pause?: number; handoff?: number; think?: number; word?: number; total?: number }
+
+/** What's logged that isn't an action of its own. */
+const NOT_ACTS = new Set([...BOOKKEEPING, "word", "stopped"])
+/** The actions that show words. */
+const WORDS = new Set(["word", "say", "comment", "suggest", "propose", "edit"])
 
 /** Each moment's timing per agent handed it, from the moments and actions logged on a day (seqs restart with the
- *  server: matched in time). */
+ *  server: matched in time). A moment handed again (they went on with it) counts from its last handing. */
 export function timings(ms: Moment[], log: Act[]): Timing[] {
   return ms.flatMap((m, i) => {
     const until = ms.slice(i + 1).find((x) => x.seq === m.seq)?.t ?? Infinity
     const r: Timing = { t: m.t, seq: m.seq, kind: m.kind, at: m.path ? `${m.path}${m.line ? `:${m.line}` : ""}` : "", ...(m.waited !== undefined ? { pause: m.waited } : {}) }
     const hands = log.flatMap((a, hi) => (a.op === "handed" && a.t >= m.t && a.t < until && a.seqs?.includes(m.seq) ? [hi] : []))
-      .filter((hi, k, all) => all.findIndex((x) => log[x].as === log[hi].as) === k)
+      .filter((hi, k, all) => all.findLastIndex((x) => log[x].as === log[hi].as) === k)
     if (!hands.length) return [r]
     return hands.map((hi) => {
       const h = log[hi], after = log.slice(hi + 1).filter((a) => a.as === h.as)
-      const done = after.find((a) => a.op === "next" || a.op === "done"), first = after.find((a) => a.op !== "next" && a.op !== "done" && a.op !== "handed" && (!done || a.t <= done.t))
-      return { ...r, as: h.as, handoff: h.t - m.t, ...(first ? { op: first.op, think: first.t - h.t } : {}), ...(done ? { total: done.t - m.t } : {}) }
+      const done = after.find((a) => a.op === "next" || a.op === "done"), within = (a: Act) => !done || a.t <= done.t
+      const first = after.find((a) => !NOT_ACTS.has(a.op) && within(a)), word = after.find((a) => WORDS.has(a.op) && within(a))
+      return { ...r, as: h.as, handoff: h.t - m.t, ...(first ? { op: first.op, think: first.t - h.t } : {}), ...(word ? { word: word.t - h.t } : {}), ...(done ? { total: done.t - m.t } : {}) }
     })
   })
 }
@@ -2040,14 +2353,14 @@ export function timingsText(day: string, rows: Timing[]) {
   const s = (ms?: number) => (ms === undefined ? "-" : (ms / 1000).toFixed(1)).padStart(7)
   const time = (t: number) => new Date(t).toTimeString().slice(0, 8)
   const pct = (xs: number[], q: number) => xs.sort((a, b) => a - b)[Math.max(0, Math.ceil(q * xs.length) - 1)]
-  const sum = (label: string, rs: Timing[]) => `${label} (${rs.length}): ${(["pause", "handoff", "think", "total"] as const).map((k) => {
+  const sum = (label: string, rs: Timing[]) => `${label} (${rs.length}): ${(["pause", "handoff", "think", "word", "total"] as const).map((k) => {
     const xs = rs.flatMap((r) => r[k] ?? [])
     return `${k} ${xs.length ? `${s(pct(xs, 0.5)).trim()}/${s(pct(xs, 0.9)).trim()}` : "-"}`
   }).join(", ")} (median/p90, s)`
   if (!rows.length) return `No moments on ${day}.`
-  return [`${day}, in seconds: pause (the user's, before the app sent it), handoff (until it was handed: a next, or its chat session's message), think (to the first action), total (to the next \`next\`, or its turn's end).`,
-    `${"time".padEnd(8)} ${"pause".padStart(7)} ${"handoff".padStart(7)}${"think".padStart(7)}  ${"total".padStart(7)}  moment`,
-    ...rows.map((r) => `${time(r.t)} ${s(r.pause)} ${s(r.handoff)}${s(r.think)}  ${s(r.total)}  ${r.as ? `${r.as}: ` : ""}${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
+  return [`${day}, in seconds: pause (the user's, before the app sent it), handoff (until it was handed: a next, or its chat session's message), think (to the first action), word (to the first word shown), total (to the next \`next\`, or its turn's end).`,
+    `${"time".padEnd(8)} ${"pause".padStart(7)} ${"handoff".padStart(7)}${"think".padStart(7)}${"word".padStart(7)}  ${"total".padStart(7)}  moment`,
+    ...rows.map((r) => `${time(r.t)} ${s(r.pause)} ${s(r.handoff)}${s(r.think)}${s(r.word)}  ${s(r.total)}  ${r.as ? `${r.as}: ` : ""}${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
     sum("asks and replies", rows.filter((r) => r.kind === "ask" || r.kind === "reply")), sum("all", rows),
     // (each agent's own, to compare models)
     ...(new Set(rows.flatMap((r) => r.as ?? [])).size > 1 ? [...new Set(rows.flatMap((r) => r.as ?? []))].map((a) => sum(a, rows.filter((r) => r.as === a))) : [])].join("\n")
@@ -2056,7 +2369,7 @@ export function timingsText(day: string, rows: Timing[]) {
 plugin.op({
   id: "companion.timings",
   cli: "companion timings",
-  summary: "How fast the companion answered on a day: per moment, its wait to be handed, the think to its first action, total.",
+  summary: "How fast the companion answered on a day: per moment, its wait to be handed, the think to its first action, to its first word shown, total.",
   help: `  vau companion timings
   vau companion timings --day 2026-10-16`,
   kind: "read",

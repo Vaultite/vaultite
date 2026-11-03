@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion answers as it writes**: its words stream into the note, its bubble and its comment cards as the model writes them (first words in about 2 s, from 4 to 5), Enter and a `?` send at once and a sentence's end after a breath, going on with your thought restarts its answer with all of it, its turn ends with its last action (no summary after), its cursor stays where it wrote, it waits while you type, its edit is one undo step of its own (also Undo the companion's last edit), and Esc stops it mid-answer. `vau companion timings` has its think time for Claude Code sessions, and its first word.
 - **The companion's tab is a timeline, not a chat**: what it did (said, commented, suggested with its accepted or rejected state, wrote, pointed at, terminals and tasks it started) under your asks and edits, grouped by note, newest first; a row goes to its place in the note, its state shows live at the top, a line asks it something, and its chat is a click away. Changed lines show as a diff with their `-` and `+`, in the chat too.
 - **The status bar splits along your panes**: split, the focused note's items sit right under its pane, and each other
   note's word count under its own (fainter; click it to focus that pane). A chat's or terminal's foot is left alone, so

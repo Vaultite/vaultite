@@ -1,7 +1,7 @@
 // Its sessions from the app: the mode, showing one, stopping one, a fresh one. The status bar's menu and each cursor's.
-import { MessageCircle, MessageSquare, Power, RotateCcw, SquareTerminal } from "lucide-react"
+import { MessageCircle, MessageSquare, Power, RotateCcw, SquareTerminal, Undo2 } from "lucide-react"
 import { notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
-import { type Agent, foldable, getState, howText, type Mode } from "./live"
+import { type Agent, canUndoEdit, foldable, getState, howText, type Mode, undoEdit } from "./live"
 
 const settings = pluginSettings<{ mode?: Mode; agent?: string }>("companion")
 
@@ -69,6 +69,7 @@ export function agentMenu(a: Agent): MenuItem[] {
     ...(main(a.name) ? [{ ...modeItem(), sep: !!fold }] : []),
     ...(how ? [{ label: how, caption: true, run: () => {}, sep: main(a.name) }] : []),
     { label: "Show its session", icon: (a.runs ?? "").split("_")[0] === "claude" ? MessageSquare : SquareTerminal, run: () => void showSession(a.name), sep: main(a.name) && !how },
+    ...(canUndoEdit(a.name) ? [{ label: "Undo its last edit", icon: Undo2, run: () => void undoEdit(a.name) }] : []),
     { label: "Start fresh", icon: RotateCcw, run: () => void fresh(a.name), disabled: a.state === "starting", sep: true },
     { label: "Stop", icon: Power, danger: true, run: () => void stop(a.name) },
   ]

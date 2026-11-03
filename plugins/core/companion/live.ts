@@ -34,6 +34,9 @@ export type Draft = { path: string; line: number; find?: string; text?: string; 
 /** Someone else in a note: their awareness id, name and colour (a CSS value). */
 export type Person = { id: number; name: string; color: string }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
+/** An edit typed in as it's written: opened (`stream`, its words so far), more words (`more`: `add` at `at`), ended
+ *  (`end`: all of it). */
+export type StreamMsg = { t: "stream"; m: EditAsk } | { t: "more"; rid: string; at: number; add: string } | { t: "end"; rid: string; text: string }
 
 /** said: each agent's last says, oldest first; picked: the margin card the user opened; people: who else has each
  *  note open with this window (cotype.ts), by path. */
@@ -136,6 +139,14 @@ export const foldable = (a: Agent) => (a.path && folder ? folder(a.path, a.name,
 /** Who types an edit into an editor (editor.ts registers it once loaded). */
 let typer: ((v: EditorView, e: EditAsk) => Promise<void>) | null = null
 export const setTyper = (fn: typeof typer) => { typer = fn }
+/** Who types a streamed edit in (editor.ts, likewise). */
+let streamer: ((v: EditorView | null, s: StreamMsg) => void) | null = null
+export const setStreamer = (fn: typeof streamer) => { streamer = fn }
+/** Taking back an agent's last edit (editor.ts, likewise): whether there's one on screen, and undoing it. */
+let undoer: { undo: (agent?: string) => boolean; can: (agent?: string) => boolean } | null = null
+export const setUndoer = (u: typeof undoer) => { undoer = u }
+export const canUndoEdit = (agent?: string) => !!undoer?.can(agent)
+export const undoEdit = (agent?: string) => !!undoer?.undo(agent)
 
 // ---------- the connection
 
@@ -185,6 +196,12 @@ function open() {
       set({ notes: has ? state.notes.map((x) => (x.id === n.id ? n : x)) : [...state.notes, n] })
     } else if (m.t === "drop") set({ notes: state.notes.filter((x) => x.id !== m.id) })
     else if (m.t === "edit") void edit(m as unknown as EditAsk)
+    else if (m.t === "stream") {
+      const e = m as unknown as EditAsk, v = e.path ? viewOf(e.path) : null
+      if (!v || !streamer) say({ t: "done", rid: e.rid, ok: false })
+      else streamer(v, { t: "stream", m: e })
+    } else if (m.t === "stream-more") streamer?.(null, { t: "more", rid: String(m.rid), at: Number(m.at), add: String(m.add ?? "") })
+    else if (m.t === "stream-end") streamer?.(null, { t: "end", rid: String(m.rid), text: String(m.text ?? "") })
     else if (m.t === "y-state" || m.t === "y" || m.t === "aw" || m.t === "y-reject" || m.t === "y-peers" || m.t === "y-clash" || m.t === "y-gone") rooms?.heard(m)
     else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
   }

@@ -1,10 +1,10 @@
 import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
-import { Crosshair, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal } from "lucide-react"
+import { Crosshair, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal, Undo2 } from "lucide-react"
 import { cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { bump, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, unread, viewOf } from "./live"
+import { bump, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, undoEdit, unread, viewOf } from "./live"
 import { Arrow, follow, Overlay, showSaid } from "./Overlay"
 import { Presence } from "./Presence"
 import { modeItem, MODES, setMode, showSession } from "./session"
@@ -121,6 +121,7 @@ export default definePlugin({
     COMMENT,
     ...MODES.map((m) => ({ id: `companion:${m.mode}`, name: `Companion: ${m.label}`, when: () => getState().mode !== m.mode, run: () => void setMode(m.mode) })),
     { id: "companion:session", name: "Show the companion's session", run: () => void showSession(), icon: SquareTerminal },
+    { id: "companion:undo-edit", name: "Undo the companion's last edit", when: () => canUndoEdit(), run: () => void undoEdit(), icon: Undo2 },
   ],
   editorMenu: ({ view, path }) => [
     ...(path && !share && getState().mode !== "off" && loaded ? loaded.foldItems(view, path) : []),

@@ -65,6 +65,22 @@ export default async ($: VaultTest) => {
     check("companion timings: a moment handed to two agents, a row each, and a summary each", two.length === 2 && two[0].as === "C" && two[0].think === 1900 &&
       two[1].as === "Q" && two[1].think === 600 && /\nQ \(1\): pause -, handoff 0\.3/.test(c.timingsText("2026-10-16", two)), [two, c.timingsText("2026-10-16", two)])
     check("companion timings: read as a table and a summary", /asks and replies \(2\): pause -, handoff 0\.0\/0\.1, think 2\.0\/2\.0/.test(c.timingsText("2026-10-16", [a, e, b])), c.timingsText("2026-10-16", [a, e, b]))
+    // (its first word streamed before its call; handed again, as they went on: from then)
+    const [w] = c.timings([{ seq: 7, t: 0, kind: "ask" }] as Any[], [{ t: 100, as: "C", op: "handed", seqs: [7] }, { t: 400, as: "C", op: "again", seqs: [7] }, { t: 500, as: "C", op: "done" },
+      { t: 600, as: "C", op: "handed", seqs: [7] }, { t: 1500, as: "C", op: "word" }, { t: 3000, as: "C", op: "edit" }, { t: 3500, as: "C", op: "done" }])
+    check("companion timings: the first word shown, from its last handing", w.handoff === 600 && w.word === 900 && w.think === 2400 && w.op === "edit" && w.total === 3500 &&
+      /think 2\.4\/2\.4, word 0\.9\/0\.9/.test(c.timingsText("2026-11-02", [w])), [w, c.timingsText("2026-11-02", [w])])
+    // Where an edit ends: its cursor stays there.
+    const doc = "# A\n\nCall Alice\n"
+    check("companion: an edit's end, its last line and words", JSON.stringify(c.endOf(doc, { after: "Call Alice", text: "- one\n- two\n" })) === '{"line":5,"find":"- two"}' &&
+      JSON.stringify(c.endOf(doc, { find: "Alice", text: "Ben\nand Cy" })) === '{"line":4,"find":"and Cy"}' && c.endOf(doc, { append: true, text: "End" })?.line === 4 &&
+      c.endOf(doc, { find: "Nobody", text: "x" }) === null, [c.endOf(doc, { after: "Call Alice", text: "- one\n- two\n" }), c.endOf(doc, { find: "Alice", text: "Ben\nand Cy" }), c.endOf(doc, { append: true, text: "End" })])
+    // A tool's input as it's written: whole keys, and the string being written (never half an escape).
+    const { partialArgs } = await import("../../../plugins/core/companion/partial.ts")
+    const json = JSON.stringify({ path: "N.md", line: 3, text: 'say "hi"\nthen 😀' }), texts: string[] = []
+    for (let n = 0; n <= json.length; n++) { const r = partialArgs(json.slice(0, n)); texts.push(typeof r.whole.text === "string" ? r.whole.text : r.open?.key === "text" ? r.open.text : "") }
+    check("companion: a tool's input read as it's written, each text a start of the next", texts.every((t, i) => i === 0 || t.startsWith(texts[i - 1])) && texts.at(-1) === 'say "hi"\nthen 😀' &&
+      JSON.stringify(partialArgs('{"path":"N.md","line":3').whole) === '{"path":"N.md"}' && partialArgs('{"path":"N.md","line":3,"te').keys.join() === "path,line", texts.slice(-6))
   }
 
   await api("PATCH", "config/plugin/companion", { mode: "quiet" })

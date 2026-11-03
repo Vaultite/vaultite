@@ -12,8 +12,9 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max"
 export const MODES: Mode[] = ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"]
 export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"]
 
-/** A tool the server serves to a session (the companion's): the host relays each call to it ("tool" event, toolResult). */
-export type ToolDef = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] } }
+/** A tool the server serves to a session (the companion's), each call relayed to it. `streams`: its input told as it's
+ *  written ("partial"); `ends`: a turn may end after it with no words (Claude Code asks for some); `endsTurn`: it ends. */
+export type ToolDef = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; streams?: boolean; ends?: boolean }
 
 /** How a session runs: its id (a new one's, or the one it resumes), folder, environment (CLAUDE_CONFIG_DIR picks the
  *  account), the claude to run, and what it starts with. */
@@ -52,14 +53,17 @@ export type Event =
   | { t: "put"; id: string; e: Entry }
   | { t: "state"; s: Summary }
   | { t: "gone"; id: string }
-  | { t: "tool"; id: string; call: string; name: string; args: unknown }
+  | { t: "tool"; id: string; call: string; name: string; args: unknown; use?: string }
   /** A file it edited or a command it ran, for Activity (as a terminal's hooks report). */
   | { t: "did"; id: string; tool: string; input: unknown }
+  /** A streaming tool's input as written so far (`use`: its tool_use id, which its call names too); `end`: its block is
+   *  written ("done"; the call comes), or the turn ended before ("stop"). */
+  | { t: "partial"; id: string; use: string; name: string; json: string; end?: "done" | "stop" }
 
 /** What the host runs sessions with: the SDK's query, and an in-process MCP server of relayed tools. */
 export type Sdk = {
   query: (p: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query
-  mcp?: (name: string, tools: { name: string; description: string; schema: ToolDef["schema"]; run: (args: unknown) => Promise<unknown> }[]) => McpServerConfig
+  mcp?: (name: string, tools: { name: string; description: string; schema: ToolDef["schema"]; run: (args: unknown, use?: string) => Promise<unknown> }[]) => McpServerConfig
 }
 
 /** The in-process MCP server of a session's relayed tools, as the SDK makes one (`createSdkMcpServer`), each tool's
@@ -71,8 +75,16 @@ export function relayed(create: typeof import("@anthropic-ai/claude-agent-sdk")[
   }))
   // (always in its prompt: behind tool search, beside the user's own MCP servers, it reached for the shell instead)
   return (name, tools) => create({ name, alwaysLoad: true, tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: shapeOf(t.schema),
-    handler: async (args: unknown) => (await t.run(args)) as never })) })
+    // (Claude Code names the tool_use a call is for in its _meta: the streamed input it goes with)
+    handler: async (args: unknown, extra: unknown) => (await t.run(args, useOf(extra))) as never })) })
 }
+
+const useOf = (extra: unknown) => {
+  const u = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta?.["claudecode/toolUseId"]
+  return typeof u === "string" ? u : undefined
+}
+/** The relayed tools' names as Claude Code calls them. */
+const APP = "mcp__vaultite-app__"
 
 /** Minutes a session sits idle (no turn, nothing asked) before its claude process ends; the next message resumes it. */
 const IDLE = 20 * 60_000
@@ -96,6 +108,10 @@ class Session {
   /** The user stopped its turn: the result that ends it says so, not why the SDK stopped. */
   stopping = false
   stderr: string[] = []
+  /** Streaming tools' inputs being written, by their block's index in the message. */
+  streams = new Map<number, { use: string; name: string; json: string }>()
+  /** Relayed calls (tool_use ids) whose result ended the turn. */
+  ending = new Set<string>()
   constructor(spec: Spec) {
     this.spec = spec
     this.s = { id: spec.id, state: "starting", cwd: spec.cwd, account: spec.account ?? "", by: spec.by ?? "app", model: spec.model ?? "", effort: spec.effort ?? "",
@@ -144,8 +160,9 @@ export class Host {
     if (!spec.resume && !/^[0-9a-f-]{36}$/i.test(spec.id)) throw new Error("a new session's id is a UUID")
     const x = new Session(spec)
     this.sessions.set(spec.id, x)
+    const ends = (spec.tools ?? []).filter((t) => t.ends).map((t) => APP + t.name).join(",")
     const opts: Options = {
-      cwd: spec.cwd, env: { ...spec.env, CLAUDE_AGENT_SDK_CLIENT_APP: "vaultite" },
+      cwd: spec.cwd, env: { ...spec.env, CLAUDE_AGENT_SDK_CLIENT_APP: "vaultite", ...(ends ? { CLAUDE_CODE_TERMINAL_MCP_TOOLS: ends } : {}) },
       ...(spec.claude ? { pathToClaudeCodeExecutable: spec.claude } : {}),
       ...(spec.resume ? { resume: spec.id } : { sessionId: spec.id }),
       ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}),
@@ -163,12 +180,20 @@ export class Host {
           if (h.hook_event_name === "PostToolUse") this.emit({ t: "did", id: spec.id, tool: h.tool_name, input: h.tool_input })
           this.effortOf(x, h)
           return {}
-        }] }],
+        }] },
+        // (a relayed call that ends its turn: none of the model's after it)
+        { matcher: `^${APP}`, hooks: [async (h) => (h.hook_event_name === "PostToolUse" && x.ending.delete(h.tool_use_id) ? { continue: false, suppressOutput: true } : {})] }],
         Stop: [{ hooks: [async (h) => { this.effortOf(x, h); return {} }] }],
       },
       stderr: (d: string) => { x.stderr.push(d); if (x.stderr.length > 40) x.stderr.shift() },
     }
-    const tools = spec.tools?.length && this.sdk.mcp ? this.sdk.mcp("vaultite-app", spec.tools.map((t) => ({ ...t, run: (args: unknown) => this.relay(spec.id, t.name, args) }))) : null
+    const tools = spec.tools?.length && this.sdk.mcp ? this.sdk.mcp("vaultite-app", spec.tools.map((t) => ({ ...t, run: async (args: unknown, use?: string) => {
+      const r = await this.relay(spec.id, t.name, args, use) as { endsTurn?: unknown } | null
+      if (!r || typeof r !== "object" || !("endsTurn" in r)) return r
+      const { endsTurn, ...rest } = r
+      if (endsTurn === true && use) x.ending.add(use)
+      return rest
+    } }))) : null
     if (tools) opts.mcpServers = { "vaultite-app": tools }
     try {
       x.q = this.sdk.query({ prompt: x.input(), options: opts })
@@ -279,8 +304,8 @@ export class Host {
   /** The tool calls the server hasn't answered: told again to a server that follows (one restarting missed them). */
   pendingCalls() { return [...this.calls.values()].map((c) => c.e) }
 
-  private relay(id: string, name: string, args: unknown) {
-    const call = crypto.randomUUID(), e = { t: "tool" as const, id, call, name, args }
+  private relay(id: string, name: string, args: unknown, use?: string) {
+    const call = crypto.randomUUID(), e = { t: "tool" as const, id, call, name, args, ...(use ? { use } : {}) }
     return new Promise<unknown>((resolve) => {
       const timer = setTimeout(() => { this.calls.delete(call); resolve({ isError: true, content: [{ type: "text", text: "Vaultite didn't answer" }] }) }, TOOL_MS)
       timer.unref?.()
@@ -342,6 +367,7 @@ export class Host {
       x.s.mode = m.permissionMode as Mode
       this.emit({ t: "state", s: x.s })
     }
+    this.streamed(x, m)
     const stopped = m.type === "result" && x.stopping
     for (const e of x.reader.feed(m)) this.put(x, stopped && e.k === "result" ? { k: "note", id: e.id, text: "Stopped", at: e.at } : e)
     if (m.type === "result") {
@@ -352,6 +378,33 @@ export class Host {
       x.s.turn = { prompt: x.reader.prompt, text: x.reader.text, ...(error ? { error } : {}) }
       // (another message sent while it worked starts the next turn at once)
       if (!x.asks.size) this.state(x, x.queue.length ? "working" : "idle", true)
+    }
+  }
+
+  /** A streaming tool's input, told as it's written: each piece, its block's end, or the turn's end before that. */
+  private streamed(x: Session, m: SDKMessage) {
+    const stop = () => {
+      for (const s of x.streams.values()) this.emit({ t: "partial", id: x.s.id, ...s, end: "stop" })
+      x.streams.clear()
+    }
+    if (m.type === "result") return stop()
+    if (m.type !== "stream_event" || m.parent_tool_use_id) return
+    const ev = m.event as { type: string; index?: number; content_block?: { type?: string; id?: string; name?: string }; delta?: { type?: string; partial_json?: string } }
+    if (ev.type === "message_start") return stop()
+    if (typeof ev.index !== "number") return
+    if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
+      const name = String(ev.content_block.name ?? ""), short = name.startsWith(APP) ? name.slice(APP.length) : ""
+      if (short && x.spec.tools?.some((t) => t.name === short && t.streams)) x.streams.set(ev.index, { use: String(ev.content_block.id ?? ""), name: short, json: "" })
+    } else if (ev.type === "content_block_delta" && ev.delta?.type === "input_json_delta") {
+      const s = x.streams.get(ev.index)
+      if (!s || !ev.delta.partial_json) return
+      s.json += ev.delta.partial_json
+      this.emit({ t: "partial", id: x.s.id, ...s })
+    } else if (ev.type === "content_block_stop") {
+      const s = x.streams.get(ev.index)
+      if (!s) return
+      x.streams.delete(ev.index)
+      this.emit({ t: "partial", id: x.s.id, ...s, end: "done" })
     }
   }
 

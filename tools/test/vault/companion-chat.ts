@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process"
 import crypto from "node:crypto"
+import { EventEmitter } from "node:events"
+import type { IncomingMessage } from "node:http"
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
@@ -35,6 +37,25 @@ function wire(sock: string) {
   })
   const ask = (op: string, p: Any = {}) => new Promise<Any>((r) => { waiting.set(++re, r); c.write(JSON.stringify({ op, re, ...p }) + "\n") })
   return { heard, ask, close: () => new Promise((r) => { c.once("close", r); c.destroy() }) }
+}
+
+/** A window of the app with `path` open, as its socket's messages: it types edits in (at once) and streamed ones as
+ *  their words come, answering as editor.ts does. */
+async function window(path: string) {
+  const { matchSocket } = await import("../../../core/plugins.ts")
+  const got: Any[] = [], typed = new Map<string, string>()
+  const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send(d: string) { const m = JSON.parse(d); got.push(m); answer(m) }, close() {}, ping() {}, terminate() {} })
+  const reply = (m: object) => setTimeout(() => ws.emit("message", Buffer.from(JSON.stringify(m))), 5)
+  const answer = (m: Any) => {
+    if (m.t === "edit") reply({ t: "done", rid: m.rid, ok: true })
+    else if (m.t === "stream") typed.set(m.rid, m.text)
+    else if (m.t === "stream-more") typed.set(m.rid, (typed.get(m.rid) ?? "") + m.add)
+    else if (m.t === "stream-end") reply({ t: "done", rid: m.rid, ok: true, text: m.text })
+  }
+  return { ws, got, typed, open: (plugins: Any[]) => {
+    matchSocket(plugins, ["companion", "live"])![1].fn(ws as Any, {} as IncomingMessage, { wild: [], query: {} })
+    ws.emit("message", Buffer.from(JSON.stringify({ t: "where", open: [path], focus: { path, line: 3 }, active: true })))
+  }, close: () => ws.emit("close") }
 }
 
 export default async ($: VaultTest) => {
@@ -127,6 +148,8 @@ export default async ($: VaultTest) => {
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "list" })
     await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /^Tools:/.test(e.text)), 5000, 50)
     const tools = (await said(id)).findLast((e) => e.k === "text" && /^Tools:/.test(e.text))?.text ?? ""
+    check("companion chat: a turn may end right after its actions, without words (Claude Code's terminal tools), not after reading",
+      /Ends: [^.]*mcp__vaultite-app__say\b/.test(tools) && /mcp__vaultite-app__edit\b/.test(tools) && !/Ends: [^.]*__status\b/.test(tools), tools)
     check("companion chat: its actions are its tools, always in its prompt (not vau companion, denied), allowed unasked with reading the vault, and it's told so",
       /Tools: [^.]*\bsay\b/.test(tools) && /\bcomment\b/.test(tools) && /\bhandover\b/.test(tools) && !/\bnext\b/.test(tools.split(".")[0]) && /\(always loaded\)/.test(tools) &&
       /Allowed: mcp__vaultite-app,Bash\(vau docs:\*\)/.test(tools) && !/Allowed: [^.]*vau companion/.test(tools) && /Denied: Bash\(vau companion:\*\)/.test(tools) && /Told: tools/.test(tools), tools)
@@ -135,6 +158,70 @@ export default async ($: VaultTest) => {
     const comment = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "comment" && n.text === "Alice is away"), 5000, 50)
     check("companion chat: a comment it calls stays by its words", comment?.agent === "Claude" && comment.find === "Alice" && comment.path === "Notes/Chat.md", comment)
     await idle(id)
+
+    // Its last call for a moment (done) ends its turn: no words of its own after it.
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'call say {"text":"That is all","done":true}' })
+    await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === "That is all"), 5000, 50)
+    await idle(id)
+    entries = await said(id)
+    const lastTurn = entries.slice(entries.findLastIndex((e) => e.k === "user") + 1)
+    check("companion chat: a call that says done ends its turn there, no words after it", !lastTurn.some((e) => e.k === "text") && (await claude())?.state === "watching", lastTurn)
+
+    // Its answers stream: a say's bubble and an edit's words show as it writes its call, before the call comes.
+    const w = await window("Notes/Chat.md")
+    w.open($.app.plugins)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream say {"text":"Streaming words to you now, a few at a time"}' })
+    await waitFor(() => w.got.some((m) => m.t === "note" && m.note.kind === "say" && m.note.text === "Streaming words to you now, a few at a time"), 5000, 20)
+    const bubbles = w.got.filter((m) => m.t === "note" && m.note.kind === "say" && /^Streaming/.test(m.note.text)).map((m) => m.note)
+    check("companion chat: a say's bubble grows as it's written, one bubble, its call ending it", bubbles.length > 2 && new Set(bubbles.map((n) => n.id)).size === 1 &&
+      bubbles[0].text.length < bubbles.at(-1).text.length, bubbles.map((n) => n.text))
+    await idle(id)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"path":"Notes/Chat.md","after":"Call Alice friday","text":"- Book the train\\n- Pack light"}' })
+    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /Typed into Notes\/Chat\.md/.test(e.text)), 5000, 20)
+    const opened = w.got.find((m) => m.t === "stream"), more = w.got.filter((m) => m.t === "stream-more" && m.rid === opened?.rid), ended = w.got.find((m) => m.t === "stream-end" && m.rid === opened?.rid)
+    check("companion chat: an edit's words go to the window as they're written: its place first, then more, then all of it",
+      opened?.after === "Call Alice friday" && opened.text.length < 20 && more.length > 1 && ended?.text === "- Book the train\n- Pack light" &&
+      w.typed.get(opened.rid) === ended.text, [opened, more.length, ended])
+    const at = w.got.findLast((m) => m.t === "agent" && m.agent.name === "Claude")?.agent
+    check("companion chat: its cursor stays at the end of what it wrote", at?.find === "- Pack light" && at.line === 5, at)
+    await idle(id)
+    const acts = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((r: Any) => r.kind === "ask" && r.as === "Claude" && r.word !== undefined)
+    check("companion chat: timings has its think and first word for a chat session", acts.length >= 2 && acts.every((r: Any) => r.think !== undefined), acts)
+    // (its place after its words: typed in whole once its call comes)
+    w.got.length = 0
+    const typedSoFar = async () => (await said(id)).filter((e) => e.k === "text" && /Typed into/.test(e.text)).length, before = await typedSoFar()
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"text":"Late place","path":"Notes/Chat.md","after":"Pack light"}' })
+    await waitFor(async () => (await typedSoFar()) > before, 5000, 20)
+    await idle(id)
+    check("companion chat: an edit whose place comes after its words is typed in whole by its call", !w.got.some((m) => m.t === "stream") && w.got.some((m) => m.t === "edit" && m.text === "Late place"), w.got.map((m) => m.t))
+    // (cut off as it wrote: what it had stays, the window told it's over)
+    w.got.length = 0
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'cut edit {"path":"Notes/Chat.md","after":"Late place","text":"Half of a longer thought that goes on and on, about the trip, the train, the coast and the bus back home"}' })
+    const cutEnd = await waitFor(() => w.got.find((m) => m.t === "stream-end"), 5000, 20)
+    check("companion chat: an edit cut off as it's written ends with what it had", !!cutEnd && cutEnd.text.length > 0 && cutEnd.text.length < 100 && /^Half/.test(cutEnd.text), cutEnd)
+    await idle(id)
+
+    // They go on writing what it's thinking over, before it acted: its turn stops, and the ask goes again, whole.
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "slow: how long is the train ride to the coast" })
+    await waitFor(async () => (await said(id)).some((e) => e.k === "user" && /slow: how long is the train ride to the coast"/.test(e.text)), 3000, 20)
+    await $.sleep(100)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "slow: how long is the train ride to the coast, and is it cheaper by bus" })
+    const again = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /cheaper by bus/.test(e.text))?.text, 5000, 20)
+    check("companion chat: going on with an ask it hasn't answered stops its turn and sends it again, whole", /they went on writing it/.test(again ?? ""), again)
+    await idle(id)
+
+    // Esc: its turn stops where it is, and its next message says so.
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "slow again" })
+    await waitFor(async () => (await claude())?.state === "thinking", 3000, 20)
+    await $.sleep(100)
+    ;[st, r] = await api("POST", "ops/companion.interrupt", {})
+    check("companion chat: interrupt stops its turn", st === 200 && r.stopped === true, r)
+    await idle(id)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "next" })
+    const told = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /"next"/.test(e.text))?.text, 5000, 20)
+    check("companion chat: after Esc, its next message says it was stopped", /They stopped your last answer/.test(told ?? ""), told)
+    await idle(id)
+    w.close()
 
     // The keeper ends (a crash): the session's next message resumes it, its tools and words as it was started.
     const proj = path.join(CLAUDE_DIR, "projects", "-tmp-companion-chat")

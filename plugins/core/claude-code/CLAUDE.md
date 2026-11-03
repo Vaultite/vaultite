@@ -9,6 +9,9 @@
   in-process MCP server and relays each call, holding it until a server answers (one that restarts is told it again
   when it follows). The plugin serves them again as it loads (`serve`); a call waits a moment for that. Its start
   options are kept, so a resume (its next message, a keeper gone mid-turn) runs it with them again.
+- Such a tool may `stream` (its input told as the model writes it, matched to its call by the tool_use id Claude Code
+  puts in the call's `_meta`) and end the turn: `endsTurn` in its result (a PostToolUse hook's `continue: false`), and
+  `ends` names it in CLAUDE_CODE_TERMINAL_MCP_TOOLS, else a turn ending on it with no words is nudged for some.
 - It runs the user's own `claude` (`pathToClaudeCodeExecutable`): the version their terminals run, its login and
   updates, and no 300 MB bundled binary in the packaged app (package.json leaves the SDK's platform packages out).
 - Entries (`chatlog.ts`) are keyed by the ids SDK messages and transcript lines share (a user message's uuid,

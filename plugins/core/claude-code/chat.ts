@@ -28,8 +28,9 @@ export type ChatDeps = {
   modelName: (model: string) => string
 }
 
-/** A tool a plugin serves to the session it starts (the companion's): run on the server, called through the keeper. */
-export type ChatTool = ToolDef & { run: (args: unknown) => Promise<unknown> }
+/** A tool a plugin serves to the session it starts (the companion's): run on the server, called through the keeper
+ *  (`use`: the tool_use id, which its streamed input named). One that `streams` hears its input as it's written. */
+export type ChatTool = ToolDef & { run: (args: unknown, use?: string) => Promise<unknown>; stream?: (use: string, json: string, end?: "done" | "stop") => void }
 export type ChatStart = { prompt?: string; cwd?: string; account?: string; model?: string; effort?: Effort; mode?: Mode; append?: string
   title?: string; by?: string; tools?: ChatTool[]; inbox?: boolean
   /** Permission rules it runs without asking ("mcp__vaultite-app": its tools; "Bash(vau read:*)"), and never. */
@@ -269,7 +270,10 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       asking.delete(e.id)
       toTabs(e.id, { t: "state", s: null })
       inform(e.id, null)
-    } else if (e.t === "tool") void runTool(e.id, e.call, e.name, e.args)
+    } else if (e.t === "tool") void runTool(e.id, e.call, e.name, e.args, e.use)
+    else if (e.t === "partial") {
+      try { toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end) } catch (err) { console.error("chat: stream:", err) }
+    }
     else if (e.t === "did") {
       // (Activity's intake for agents' hooks, the session named by its title)
       const q = new URLSearchParams({ agent: "claude-code", session: titleOf(e.id) || e.id.slice(0, 8) })
@@ -278,13 +282,13 @@ export function chats(plugin: Plugin, d: ChatDeps) {
   }
 
   const toolOf = (id: string, name: string) => owned.get(id)?.tools?.find((t) => t.name === name)
-  async function runTool(id: string, call: string, name: string, args: unknown) {
+  async function runTool(id: string, call: string, name: string, args: unknown, use?: string) {
     // (a server just started: its plugin serves the session's tools again in a moment, serve)
     for (let i = 0; i < 100 && !toolOf(id, name); i++) await new Promise((r) => setTimeout(r, 200))
     const t = toolOf(id, name)
     let result: unknown
     try {
-      result = t ? await t.run(args) : { isError: true, content: [{ type: "text", text: `Vaultite serves no tool ${name} to this session now: the plugin that started it is off` }] }
+      result = t ? await t.run(args, use) : { isError: true, content: [{ type: "text", text: `Vaultite serves no tool ${name} to this session now: the plugin that started it is off` }] }
     } catch (err) {
       result = { isError: true, content: [{ type: "text", text: String((err as Error)?.message ?? err) }] }
     }
@@ -387,7 +391,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     return { id, resume: o.resume, cwd: o.cwd || plugin.vault.path, env, claude: claudeBin(), account: a.id, by: o.by ?? "app",
       ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode || modeDefault(a.id),
       append: [chatContext(), o.append].filter(Boolean).join("\n\n"), ...(o.title ? { title: o.title } : {}),
-      ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema }) => ({ name, description, schema })) } : {}),
+      ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema, streams, ends }) => ({ name, description, schema, ...(streams ? { streams } : {}), ...(ends ? { ends } : {}) })) } : {}),
       ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.inbox === false ? { quiet: true } : {}) }
   }
 
@@ -419,8 +423,10 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     if (!said) throw new OpError("text: what to say")
     if (hosted.has(id) && hosted.get(id)!.state !== "error") {
       // (chosen in a tab that didn't know it ran yet: applied before what it's told)
-      const s = hosted.get(id)!
-      const change = { ...(given.model && given.model !== s.model ? { model: given.model } : {}), ...(given.effort && given.effort !== s.effort ? { effort: given.effort } : {}),
+      const s = hosted.get(id)!, was = owned.get(id)
+      // (as it was started is as it runs: "sonnet" runs as its full name)
+      const change = { ...(given.model && given.model !== s.model && given.model !== was?.model ? { model: given.model } : {}),
+        ...(given.effort && given.effort !== s.effort && given.effort !== was?.effort ? { effort: given.effort } : {}),
         ...(given.mode && given.mode !== s.mode ? { mode: given.mode } : {}) }
       if (Object.keys(change).length) await ask("set", { id, ...change })
       return await ask("send", { id, text: said }) as { uuid: string; answered?: string }
@@ -796,6 +802,13 @@ after an approved plan (acceptEdits, default...).`,
       start: (o: ChatStart) => start(o, true),
       send: (id: string, text: string, o: ChatStart = {}) => send(id, text, o),
       stop: async (id: string) => { owned.delete(id); return hosted.has(id) ? await ask("stop", { id }) : { stopped: false } },
+      /** Stop its turn where it is (the user's Esc): false when none runs. */
+      interrupt: async (id: string) => {
+        const s = hosted.get(id)
+        if (!s || (s.state !== "working" && s.state !== "waiting")) return false
+        await ask("interrupt", { id })
+        return true
+      },
       list: () => [...hosted.values()],
       serve(id: string, o: ChatStart) {
         owned.set(id, { ...o, prompt: undefined })
