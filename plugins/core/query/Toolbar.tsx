@@ -69,7 +69,7 @@ export function Popover({ anchor, label: name, close, children, wide }: {
   // (the palette a property is picked in, and menus opened from inside, are part of it; Escape in a field closes it too,
   // but a search with text in it is cleared first)
   useDismiss(true, close, { inside: "[data-base-pop], [role=menu], [data-overlay]", anchor,
-    escape: (e) => !document.querySelector("[data-overlay] [role=dialog]") && !(e.target instanceof HTMLInputElement && e.target.type === "search" && e.target.value) })
+    escape: (e) => !(e.target instanceof HTMLInputElement && e.target.type === "search" && e.target.value) })
   return createPortal(
     <div ref={box} role="dialog" aria-label={name} data-base-pop={name}
       className="glass-strong fixed z-40 flex flex-col overflow-y-auto overscroll-contain rounded-[10px] p-2 shadow-xl"

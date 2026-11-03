@@ -7,6 +7,7 @@ import { confirmDialog } from "@/components/ConfirmDialog"
 import { onAway } from "@/core/away"
 import { whereNow } from "@/core/files"
 import { holdFocus } from "@/core/focus"
+import { closePalette } from "@/components/Palette"
 import { lockPage } from "@/core/pagelock"
 import { isDesktop } from "@/core/platform"
 import { cn } from "@/lib/utils"
@@ -78,6 +79,8 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
   useEffect(() => {
     const d = ref.current
     if (!d || !open) return
+    // A palette open as a sheet opens (a hotkey's Settings over ⌘P) gives way to it: one thing on top, typed into.
+    closePalette()
     // Desktop: closed, the keyboard goes back where it was (the editor: core/focus.ts). Phones: blur first: closing a
     // dialog refocuses what had focus, and refocusing the Notes search field would pop the keyboard.
     const release = isDesktop() ? holdFocus() : null

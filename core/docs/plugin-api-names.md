@@ -208,7 +208,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `filesSettingsSearch`: What the sheet has, for the Settings page's search (the plugin's `settingsSearch`).
 - `FileTree`
 - `FileView`: How a plugin shows its files: the icon in the tree and tabs.
-- `FilterField({ value, onChange, placeholder, className })`: A field that filters a list (plugins, hotkeys, a table's rows): one look everywhere.
+- `FilterField({ value, onChange, placeholder, className, autoFocus })`: A field that filters a list (plugins, hotkeys, a table's rows): one look everywhere.
 - `fmtAgo`
 - `fmtDay(s)`
 - `fmtLongDay(d)`
@@ -655,7 +655,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useCornerDrag(corner, setCorner)`: Dragging a corner card anywhere (a click still clicks), and where it lands: the corner it was thrown towards, as iOS's and browsers' picture in picture do.
 - `useDefaultPlace()`
 - `useDesktop()`: isDesktop that follows the window: a phone's width and a computer's swap as it's resized.
-- `useDismiss(open, close, { inside, anchor, hash, escape })`: An open popover (a flyout, a switcher) closes on Escape (not while a menu is open, nor when `escape(e)` says no), a press outside `inside` (a selector) and `anchor`, and (`hash`) the address…
+- `useDismiss(open, close, { inside, anchor, hash, escape })`: An open popover (a flyout, a switcher) closes on Escape (not under a menu or palette, nor if `escape(e)` says no), a press outside `inside` (a selector) and `anchor`, and (`hash`) the address…
 - `useDrag`: The drag, drawn again on every move; with `pick`, only when what it picks changes (`(d) => d?.item`: once a drag).
 - `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it: the same object while the answer is (targets answer anew on every move), so it's drawn again only when that changes.
 - `useDropTarget(id, at, drop, opts?)`: Take drops while mounted.

@@ -245,14 +245,28 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
 }
 
 let frameClosed = -Infinity
+/** The palette-like box open now. One at a time: a newer one (⌘P over a picker, an agent's question) takes its place,
+ *  so the box on top is always the one typed into. */
+let current: { close: () => void } | null = null
+/** Close the palette-like box that's open, if one is (a sheet opening in its place). */
+export const closePalette = () => current?.close()
 
 /** The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held
  *  still under it; Escape or a click outside closes it, and the keyboard goes back. Its children focus their field. */
 export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: string; onClose: () => void; onKeyDown?: (e: KeyboardEvent) => void; children: ReactNode }) {
   useHeldFocus()
-  // One opened as another closed (a command's picker) swaps in place: no fade or zoom, the overlay stays as it was.
-  const [swapped] = useState(() => performance.now() - frameClosed < 50)
-  useLayoutEffect(() => () => { frameClosed = performance.now() }, [])
+  // One opened as another closed (a command's picker), or in another's place, swaps in place: no fade or zoom, the
+  // overlay stays as it was.
+  const [swapped] = useState(() => !!current || performance.now() - frameClosed < 50)
+  const closes = useRef(onClose)
+  useLayoutEffect(() => { closes.current = onClose })
+  const [self] = useState(() => ({ close: () => closes.current() }))
+  useLayoutEffect(() => {
+    const was = current
+    current = self
+    was?.close()
+    return () => { frameClosed = performance.now(); if (current === self) current = null }
+  }, [self])
   // Over an open sheet (a modal <dialog>: the rest of the page is inert), it's a modal dialog of its own above it, as
   // ContextMenu's menus are; opened before the field is focused.
   const [over] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
@@ -266,7 +280,7 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
   const overlay = (
     // On the part of the screen the keyboard leaves (core/pagelock.ts' --vvh, --vvtop), so the list ends above it and
     // a finger on it scrolls it.
-    <div data-overlay className="fixed inset-x-0 z-50 flex items-start justify-center px-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-[12vh]"
+    <div data-overlay data-palette className="fixed inset-x-0 z-50 flex items-start justify-center px-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-[12vh]"
       style={{ top: "var(--vvtop, 0px)", height: "var(--vvh, 100dvh)" }}>
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} onClick={onClose}
         className={cn("absolute inset-0 cursor-default bg-black/30", !swapped && "animate-in fade-in duration-150")} />

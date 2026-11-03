@@ -67,7 +67,7 @@ export function HotkeysSheet() {
     <>
       <SheetHead icon={Keyboard} tint="var(--gray)" title="Hotkeys"
         sub="Every command's keys, saved in the vault (.vaultite/hotkeys.json). Press + and then the new keys; Esc cancels." />
-      <FilterField value={query} onChange={setQuery} placeholder="Filter commands" className="mb-1" />
+      <FilterField value={query} onChange={setQuery} placeholder="Filter commands" className="mb-1" autoFocus />
       <div className="hairline" data-hotkeys>
         {rows.map((c) => {
           const keys = keysOf(c)

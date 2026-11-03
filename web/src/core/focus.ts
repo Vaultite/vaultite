@@ -51,14 +51,25 @@ const where = () => { const t = activeTab(); return `${getWorkspace().focus} ${t
 /** What an overlay that just closed is giving the keyboard back to (for a moment). */
 let handing: Element | null = null
 
+/** A hold, and the newest one not let go when it was made (`under`). */
+type Hold = { was: HTMLElement | null; under: Hold | null; gone: boolean }
+let top: Hold | null = null
+
 /** Call as something opens over the page, before it takes the focus; call what it returns as it closes. */
 export function holdFocus(): () => void {
   // Opened by what another one ran as it closed (the palette's command opening a sheet, a menu's Rename): what that
   // one held (the closing one may still be on the page, with the keyboard).
   const cur = document.activeElement
-  const was = ((idle(cur) || cur?.closest("[role=menu], [role=dialog][aria-modal]")) && handing ? handing : cur) as HTMLElement | null
+  const held = ((idle(cur) || cur?.closest("[role=menu], [role=dialog][aria-modal]")) && handing ? handing : cur) as HTMLElement | null
+  const hold: Hold = { was: held, under: top, gone: false }
+  top = hold
   const before = where(), takes = keyboardTakes()
   return () => {
+    hold.gone = true
+    while (top?.gone) top = top.under
+    // Opened in the place of one now gone (⌘P over a picker): what that one would have given it back to.
+    let was = hold.was, under = hold.under
+    while (idle(was) && under?.gone) { was = under.was; under = under.under }
     handing = was
     setTimeout(() => { if (handing === was) handing = null }, 100)
     // After the overlay is gone and whatever it ran has drawn (a field that focuses itself, a file's editor; the
@@ -97,8 +108,8 @@ onWorkspaceChange(() => {
   requestAnimationFrame(() => { if (idle(document.activeElement) && last?.closest("[data-pane]")) focusPaneSoon() })
 })
 
-/** An open popover (a flyout, a switcher) closes on Escape (not while a menu is open, nor when `escape(e)` says no), a
- *  press outside `inside` (a selector) and `anchor`, and (`hash`) the address changing; closed, the keyboard goes back. */
+/** An open popover (a flyout, a switcher) closes on Escape (not under a menu or palette, nor if `escape(e)` says no),
+ *  a press outside `inside` (a selector) and `anchor`, and (`hash`) the address changing; closed, the keyboard goes back. */
 export function useDismiss(open: boolean, close: () => void, { inside, anchor, hash, escape }: {
   inside: string; anchor?: RefObject<Element | null>; hash?: boolean; escape?: (e: KeyboardEvent) => boolean
 }) {
@@ -109,7 +120,7 @@ export function useDismiss(open: boolean, close: () => void, { inside, anchor, h
     const release = holdFocus()
     const shut = () => latest.current.close()
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector("[role=menu]") && (latest.current.escape?.(e) ?? true)) { e.stopPropagation(); shut() }
+      if (e.key === "Escape" && !document.querySelector("[role=menu], [data-palette]") && (latest.current.escape?.(e) ?? true)) { e.stopPropagation(); shut() }
     }
     const down = (e: PointerEvent) => {
       const t = e.target as Element | null

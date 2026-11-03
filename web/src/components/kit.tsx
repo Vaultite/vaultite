@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { ink } from "@/lib/ink"
 import { plain } from "@/core/data"
 import { haptic } from "@/core/haptics"
+import { isDesktop } from "@/core/platform"
 import { copyText } from "@/core/richmd"
 import { Described, usePreview, type Preview } from "@/components/SettingPreview"
 
@@ -489,11 +490,23 @@ export function Editable({ value, set, placeholder, className, children }: {
 
 /** A field that filters a list (plugins, hotkeys, a table's rows): one look everywhere. Escape clears it (and goes no
  *  further while it has text), the x too. */
-export function FilterField({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string }) {
+export function FilterField({ value, onChange, placeholder, className, autoFocus = false }: {
+  value: string; onChange: (v: string) => void; placeholder: string; className?: string
+  /** In a sheet, on a computer, take the keyboard as it shows: a sheet that's a list to find in (Hotkeys) is typed into
+   *  at once. (Not in a page: Settings' Hotkeys is reached through its own search.) */
+  autoFocus?: boolean
+}) {
+  const field = useRef<HTMLInputElement>(null)
+  // (a frame on: after the sheet it's in has opened and focused itself)
+  useEffect(() => {
+    if (!autoFocus || !isDesktop()) return
+    const f = requestAnimationFrame(() => { if (field.current?.closest("dialog[open]")) field.current.focus({ preventScroll: true }) })
+    return () => cancelAnimationFrame(f)
+  }, [autoFocus])
   return (
     <label className={cn("relative block min-w-0 flex-1", className)}>
       <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" strokeWidth={2.25} />
-      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+      <input ref={field} type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
         spellCheck={false} autoComplete="off"
         onKeyDown={(e) => { if (e.key === "Escape" && value) { e.stopPropagation(); onChange("") } }}
         className="h-11 w-full rounded-[10px] border-[0.5px] border-border bg-card pr-8 pl-8 text-[17px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-7.5 md:rounded-[8px] md:text-[13px] [&::-webkit-search-cancel-button]:hidden" />

@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **One palette at a time, and it has the keyboard**: ⌘P, ⌘O, a setting's picker (Animations…) or the Ask box opened
+  over another takes its place instead of opening under it, Esc then gives the keyboard back to where it was, a sheet
+  opening closes the palette, and the Hotkeys and Sidebars sheets take typing in their filter at once.
+
 ## 0.9.0 (2026-11-03)
 
 Terminals in a terminal server that keeps them through restarts and lets agents drive them, a companion that writes its

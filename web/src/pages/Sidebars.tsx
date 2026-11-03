@@ -64,7 +64,7 @@ export function SidebarsSheet() {
       <div className="hairline mb-4">
         {["rails", ...(rails ? [] : ["peek-shade"]), "sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
       </div>
-      <FilterField value={query} onChange={setQuery} placeholder="Filter panels" className="mb-3" />
+      <FilterField value={query} onChange={setQuery} placeholder="Filter panels" className="mb-3" autoFocus />
       <div className="grid grid-cols-2 gap-3">
         {(["left", "right"] as const).map((side) => (
           <PanelList key={side} where={side} title={named(side)} panels={lists[side]} shows={shows} filtered={!!query} />
