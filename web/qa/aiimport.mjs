@@ -6,7 +6,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { SHOTS, apiAt, openPalette, palette, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, apiAt, openPalette, palette, qa, until, wait } from "./lib/qa.mjs"
 import { fileURLToPath, pathToFileURL } from "node:url"
 const { args: [B, OUT = `${SHOTS}aiimport/`], browser, check, watch, done } = await qa(import.meta.url)
 fs.mkdirSync(OUT, { recursive: true })
@@ -66,11 +66,15 @@ await done1.locator("[data-button]").click()
 await page.locator(".cm-content", { hasText: "Biscuit" }).first().waitFor({ timeout: 15_000 }).catch(() => {})
 // (a note opens with the cursor at its start, which shows a block there as its source: read it instead)
 await palette(page, "Switch to reading view", 0)
-const card = page.locator("[data-memory-add]").first()
-await page.locator("[data-memory-add]", { hasText: "Tick the ones to add" }).first().waitFor({ timeout: 15_000 }).catch(() => {})
+const rel = "Chats/ChatGPT/Memories to review.md"
+const review = page.locator(`article.file-view[data-path="${rel}"]`).first()
+const card = review.locator("[data-memory-add]").first()
+// (the command runs once the palette has closed, and the note is hidden until it's back at its place: its card is read
+// once it's in reading and shown, not the editing view's card from before)
+await until(() => review.evaluate((el) => el.querySelector(".cm-content")?.getAttribute("contenteditable") === "false" &&
+  getComputedStyle(el.querySelector("[data-memory-add]") ?? el).visibility === "visible" && !!el.querySelector("[data-memory-add]")), 15_000)
 check("Review memories opens the list, its card says nothing is ticked", (await card.innerText()) === "Tick the ones to add", await card.innerText().catch(() => null))
 await page.screenshot({ path: `${OUT}review.png` })
-const rel = "Chats/ChatGPT/Memories to review.md"
 const list = await file(rel)
 await api("PUT", "file", { path: rel, base: list, text: list.replace("- [ ] **Me** · I have a dog named Biscuit.", "- [x] **Me** · I have a dog named Biscuit.")
   .replace("- [ ] **How to work with me** · Prefer concise answers with bullet points.", "- [x] **How to work with me** · Prefer concise answers with bullet points.") })

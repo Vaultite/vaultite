@@ -127,7 +127,12 @@ try {
   // ---------- a link, then Back to where the note was scrolled ----------
   const link = page.locator(`#main-scroll article.file-view[data-path="${LONG}"]:not([data-kept] *) [data-wiki="Harbour notes"]`).first()
   await until(async () => { await page.evaluate(() => { const b = document.scrollingElement; b.scrollTop += innerHeight * 0.6 }); return link.isVisible() }, 5000)
-  await link.scrollIntoViewIfNeeded()
+  // (mid-screen, clear of the bar: a link under it is scrolled to by the tap itself, a place the test never measured)
+  await link.evaluate((el) => el.scrollIntoView({ block: "center" }))
+  check("...the link is clear to tap", !!(await until(() => link.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2))
+  }), 3000)))
   const y = await scrollTop()
   check("the note scrolled down to its link", y > 300, y)
   // (where the link is on the screen: Back finds the place by its line, whose offset the editor may estimate otherwise)
