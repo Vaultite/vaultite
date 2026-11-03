@@ -21,6 +21,9 @@
 - Set up Vaultite writes nothing outside `.vaultite/` in a folder of the user's (`npm run smoke` checks) but what they
   turn on there (an agent's plugin and its page), nor outside the vault but what they tick (an agent's config: Claude
   Code's computer use, Codex's, OpenClaw's and Hermes' MCP servers); its tests write only under `VAULTITE_SETUP_HOME`.
+- Location, Input monitoring and the drag panel (Settings > Permissions' Allow) are a Node addon in the main process
+  (`macpermissions.m`), not a helper: CoreLocation and IOHIDCheckAccess answer for the process that asks, and macOS
+  gives a helper binary no Location of the app's. Electron itself never asks macOS for Location.
 - macOS credits what programs in the app's terminals do (screen capture, Accessibility) to the app: the terminal keeper
   is the app's child, and stays its even after the app quits. One grant covers every agent there.
 - Windows: a release build only (no update.sh; Vaultite Main is Mac and Linux). Its title bar is the page's, with

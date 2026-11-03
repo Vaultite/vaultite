@@ -4,7 +4,7 @@ import fs from "node:fs"
 import type { App } from "../app.ts"
 import { inDesktop, desktopCall } from "../desktopapp.ts"
 import type { Op } from "../ops.ts"
-import { accessOf, keepsPermissions, signingText, STATE_TEXT, type Access, type PermissionReport } from "../permissions.ts"
+import { accessOf, keepsPermissions, signingText, stateText, type Access, type PermissionReport } from "../permissions.ts"
 import { serviceOn } from "./common.ts"
 
 const line = (a: Access) => (a.ok ? "can read it" : a.ok === false ? `can't read it: ${a.why}` : `unknown: ${a.why}`)
@@ -39,7 +39,7 @@ without asking) and how the app is signed: ad hoc, macOS asks for every permissi
       ...(r.mac ? [
         `${signingText(r.mac.signing)}${keepsPermissions(r.mac.signing) ? "" : " (build it with a Developer ID or Apple Development identity)"}.`,
         "",
-        ...r.mac.permissions.map((p) => `- ${p.name}: ${STATE_TEXT[p.state]} (${p.use})`),
+        ...r.mac.permissions.map((p) => `- ${p.name}: ${stateText(p)} (${p.use})${p.fix ? `: ${p.fix}` : ""}`),
         "",
         "The user changes these in Vaultite's Settings > Permissions, or System Settings > Privacy & Security.",
       ] : ["macOS's privacy permissions are read by the desktop app on a Mac: run this in its terminals."]),

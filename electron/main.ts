@@ -1119,7 +1119,7 @@ handle("print:pdf", async (w, name: string) => {
 })
 // The audio recorder: macOS asks once whether Vaultite may use the microphone (the page's getUserMedia then works).
 handle("media:microphone", async () => !MAC || systemPreferences.askForMediaAccess("microphone"))
-// Settings > Permissions' buttons (electron/permissions.ts): macOS's prompt, a folder read, or its System Settings pane.
+// Settings > Permissions' buttons (electron/permissions.ts): macOS's prompt, the drag helper, a folder read, or a pane.
 handle("app:permission", (_w, id: string) => { if (MAC) return permissionAct(str(id)) })
 handle("print:reveal", (_w, p: string) => { if (str(p).endsWith(".pdf")) shell.showItemInFolder(p) })
 // The Mac's notification (the Inbox, window not in front): true once clicked, false when closed. Kept in `shown`

@@ -3,13 +3,19 @@
 
 /** Allowed, not allowed, never asked (macOS asks on first use), or unknown: macOS has no way to tell without asking. */
 export type PermissionState = "allowed" | "denied" | "not-asked" | "unknown"
-/** What the row's button does: ask macOS (its own prompt), read a folder (asks the first time), open System Settings. */
-export type PermissionAction = "ask" | "check" | "settings"
+/** How macOS gives it: its own prompt (asked once; after, only System Settings changes it), a list in System Settings the
+ *  app is added to (by dragging it in: the drag helper), or asked by macOS itself the first time something uses it. */
+export type PermissionKind = "prompt" | "list" | "on-use"
+/** What the row's button does now: ask macOS (its prompt), open System Settings with the drag helper beside it, read a
+ *  folder (macOS asks the first time), open System Settings (after a no), or nothing (macOS asks when it's used). */
+export type PermissionAction = "ask" | "drag" | "check" | "settings" | "none"
 
-export type PermissionDef = { id: string; name: string; use: string
-  /** System Settings' pane, after `com.apple.preference.security?`. */
+export type PermissionDef = { id: string; name: string; use: string; kind: PermissionKind
+  /** System Settings' anchor in Privacy & Security (paneUrl). */
   pane: string }
-export type Permission = PermissionDef & { state: PermissionState; action: PermissionAction }
+/** `fix`: what to switch in System Settings, once macOS was told no; `note`: the state in words where the usual ones
+ *  don't fit. */
+export type Permission = PermissionDef & { state: PermissionState; action: PermissionAction; fix?: string; note?: string }
 
 /** How the running app is signed: with Developer ID or Apple Development macOS keeps its permissions across updates;
  *  ad hoc, each build is a new app to it. `source`: run from a checkout, on Electron's own signature. */
@@ -30,21 +36,34 @@ export type PermissionReport = {
 
 // Programs in the app's terminals ask as Vaultite (macOS gives them what it gives the app), so their needs are here too.
 export const PERMISSIONS: PermissionDef[] = [
-  { id: "microphone", name: "Microphone", use: "The audio recorder, and web pages you let use it", pane: "Privacy_Microphone" },
-  { id: "camera", name: "Camera", use: "Web pages you let use it", pane: "Privacy_Camera" },
-  { id: "location", name: "Location", use: "Web pages you let know where you are", pane: "Privacy_LocationServices" },
-  { id: "accessibility", name: "Accessibility", use: "App windows in tabs, and agents in terminals that use the Mac", pane: "Privacy_Accessibility" },
-  { id: "screen", name: "Screen recording", use: "Agents in terminals that look at the screen", pane: "Privacy_ScreenCapture" },
-  { id: "input", name: "Input monitoring", use: "Agents in terminals that watch keys typed in other apps", pane: "Privacy_ListenEvent" },
-  { id: "automation", name: "Automation", use: "Scripts in terminals that control other apps", pane: "Privacy_Automation" },
-  { id: "desktop", name: "Desktop folder", use: "Terminals working there", pane: "Privacy_FilesAndFolders" },
-  { id: "documents", name: "Documents folder", use: "Terminals working there, and vaults kept there", pane: "Privacy_FilesAndFolders" },
-  { id: "downloads", name: "Downloads folder", use: "The Browser's downloads, and terminals working there", pane: "Privacy_FilesAndFolders" },
-  { id: "full-disk", name: "Full disk access", use: "Optional: plugins and terminals reading other apps' data, like Screen Time", pane: "Privacy_AllFiles" },
+  { id: "accessibility", name: "Accessibility", use: "App windows in tabs, dictation with fn, and agents that use your apps", kind: "list", pane: "Privacy_Accessibility" },
+  { id: "screen", name: "Screen recording", use: "Agents that look at the screen", kind: "list", pane: "Privacy_ScreenCapture" },
+  { id: "full-disk", name: "Full disk access", use: "Optional: plugins and agents reading other apps' data, like Screen Time", kind: "list", pane: "Privacy_AllFiles" },
+  { id: "input", name: "Input monitoring", use: "Agents that watch keys typed in other apps", kind: "list", pane: "Privacy_ListenEvent" },
+  { id: "microphone", name: "Microphone", use: "The audio recorder, dictation, and web pages you let use it", kind: "prompt", pane: "Privacy_Microphone" },
+  { id: "camera", name: "Camera", use: "Web pages you let use it", kind: "prompt", pane: "Privacy_Camera" },
+  { id: "location", name: "Location", use: "Web pages you let know where you are", kind: "prompt", pane: "Privacy_LocationServices" },
+  { id: "automation", name: "Automation", use: "Scripts that control other apps: macOS asks for each app the first time", kind: "on-use", pane: "Privacy_Automation" },
+  { id: "desktop", name: "Desktop folder", use: "Terminals working there", kind: "on-use", pane: "Privacy_FilesAndFolders" },
+  { id: "documents", name: "Documents folder", use: "Terminals working there, and vaults kept there", kind: "on-use", pane: "Privacy_FilesAndFolders" },
+  { id: "downloads", name: "Downloads folder", use: "The Browser's downloads, and terminals working there", kind: "on-use", pane: "Privacy_FilesAndFolders" },
 ]
 export const VAULT_PANE = "Privacy_FilesAndFolders"
 
-export const paneUrl = (pane: string) => `x-apple.systempreferences:com.apple.preference.security?${pane}`
+/** System Settings at a Privacy & Security pane (macOS 13's form; older ones open Privacy & Security). */
+export const paneUrl = (pane: string) => `x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?${pane}`
+
+/** What the row's button does in a state: only what does something. */
+export function actionOf(def: PermissionDef, state: PermissionState): PermissionAction {
+  if (state === "allowed") return "none"
+  if (def.kind === "list") return "drag"
+  if (def.kind === "prompt") return state === "denied" ? "settings" : "ask"
+  if (def.pane === VAULT_PANE) return state === "denied" ? "settings" : "check"
+  return "none"
+}
+
+/** The button's words. */
+export const ACTION_TEXT: Record<PermissionAction, string> = { ask: "Allow…", drag: "Allow…", check: "Check", settings: "Open Settings", none: "" }
 
 /** The signing `codesign -dv --verbose=2` prints (to stderr) for the running app. */
 export function signingOf(out: string): Signing {
@@ -75,3 +94,4 @@ export function signingText(s: Signing) {
 }
 
 export const STATE_TEXT: Record<PermissionState, string> = { allowed: "Allowed", denied: "Not allowed", "not-asked": "Not asked yet", unknown: "Unknown" }
+export const stateText = (p: Permission) => p.note ?? STATE_TEXT[p.state]

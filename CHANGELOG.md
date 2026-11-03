@@ -34,6 +34,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Settings > AI lists your coding agents plainly**: the ones on this computer, each with its switch (its path on
   hover), which is your companion, one line naming the others it works with, and Connect the Claude or ChatGPT app.
 
+- **Mac: allowing a permission is one drag**: Allow opens the right pane of System Settings with a small panel by it,
+  Vaultite's icon to drag into the list (Accessibility, Screen recording, Full disk access, Input monitoring); it goes
+  once the permission is on. Location asks macOS for real now and shows its state, as does Input monitoring; camera,
+  microphone and location open System Settings only after a no, and what macOS asks on first use has no button.
 - **Phones: a tab drags out of its group**: in a group's tabs, hold a lifted card on All tabs at the top (it lights up)
   and all tabs come back with the card still held, to be put anywhere, onto a tab to make a group, or onto another group;
   let go there at once and it just leaves the group.

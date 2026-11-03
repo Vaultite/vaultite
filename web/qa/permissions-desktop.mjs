@@ -40,10 +40,12 @@ const all = await section.locator('[data-settings-row^="permission-"]').evaluate
 check("Set up agents comes first, a row to press, not a permission", all[0]?.row === "permission-setup" && !all[0].state, all[0])
 const rows = all.filter((r) => r.row !== "permission-setup")
 const ids = rows.map((r) => r.row.replace("permission-", ""))
-check("every permission has its row and a state", ["microphone", "camera", "accessibility", "screen", "input", "automation", "desktop", "documents", "downloads", "full-disk"]
+check("every permission has its row and a state", ["microphone", "camera", "location", "accessibility", "screen", "input", "automation", "desktop", "documents", "downloads", "full-disk"]
   .every((id) => ids.includes(id)) && rows.every((r) => r.state), rows)
-check("one not allowed (or unknown) offers its way, one allowed none", rows
-  .every((r) => (r.state === "allowed") === (r.button === null)), rows)
+check("one not allowed offers its way, one allowed none, and Automation (macOS asks per app) none", rows
+  .every((r) => r.row === "permission-automation" ? r.button === null : (r.state === "allowed") === (r.button === null)), rows)
+check("Location and Input monitoring read, not unknown (the addon, built here)", rows
+  .filter((r) => /location|input/.test(r.row)).every((r) => r.state !== "unknown"), rows)
 check("the folders aren't read on their own: Unknown, with Check", rows.filter((r) => /desktop|documents|downloads/.test(r.row))
   .every((r) => r.state === "unknown" && r.button === "Check"), rows)
 await win.screenshot({ path: path.join(TMP, "permissions.png") })

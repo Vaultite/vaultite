@@ -1,15 +1,16 @@
 // Settings > Permissions (the desktop app on a Mac): what macOS lets Vaultite do, as app.permissions reads it (core/
-// coreops/permissions.ts), each with its way to allow it. Read again when the window comes back from System Settings.
-import { useCallback, useEffect, useState } from "react"
+// coreops/permissions.ts), with a button only where it does something (core/permissions.ts' actionOf).
+import { useCallback } from "react"
 import { desktop } from "@/core/desktop"
 import { op } from "@/core/http"
 import { errorText, notifyError } from "@/core/notify"
+import { usePermissions } from "@/core/permissions"
 import { Button } from "@/components/Button"
 import { Loading, LoadingRows, Panel, SettingRow } from "@/components/kit"
-import { signingText, STATE_TEXT, type Access, type Permission, type PermissionReport, type PermissionState } from "../../../core/permissions.ts"
+import { ACTION_TEXT, signingText, stateText, STATE_TEXT, type Access, type Permission, type PermissionKind, type PermissionReport, type PermissionState } from "../../../core/permissions.ts"
 
 const DOT: Record<PermissionState, string> = { allowed: "var(--green)", denied: "var(--orange)", "not-asked": "var(--gray)", unknown: "var(--gray)" }
-const ACTION: Record<Permission["action"], string> = { ask: "Allow…", check: "Check", settings: "Open Settings" }
+const GROUPS: [PermissionKind, string][] = [["list", "Agents and apps"], ["prompt", "Media and location"], ["on-use", "Asked when used"]]
 
 // A row's end: its way to allow it, then the state in a column of its own width, so every row's dot lines up.
 function State({ state, children }: { state: PermissionState; children?: string }) {
@@ -30,20 +31,14 @@ function vaultLine({ app, terminals }: PermissionReport["vault"]) {
   return "The app and its terminals can read it"
 }
 
+const read = () => op<PermissionReport>("app.permissions")
+const act = (id: string) => desktop!.permission!(id)
+const listOf = (r: PermissionReport) => r.mac?.permissions
+
 export function PermissionsPanel() {
-  const [report, setReport] = useState<PermissionReport | null>(null)
-  const [error, setError] = useState("")
-  const read = useCallback(() => op<PermissionReport>("app.permissions").then((r) => { setReport(r); setError("") }, (e) => setError(errorText(e, "Couldn't read the permissions"))), [])
-  useEffect(() => {
-    void read()
-    // (back from System Settings: what changed there shows)
-    const back = () => { if (document.visibilityState === "visible") void read() }
-    window.addEventListener("focus", back)
-    document.addEventListener("visibilitychange", back)
-    return () => { window.removeEventListener("focus", back); document.removeEventListener("visibilitychange", back) }
-  }, [read])
-  const act = (id: string) => desktop!.permission!(id).then(read, (e) => notifyError(e, "Couldn't ask macOS"))
-  if (!report) return error ? <Loading error={error} /> : <Panel><LoadingRows count={3} /></Panel>
+  const { report, error, grant, pending } = usePermissions(read, act, listOf)
+  const press = useCallback((id: string) => grant(id).catch((e) => notifyError(e, "Couldn't ask macOS")), [grant])
+  if (!report) return error ? <Loading error={errorText(error, "Couldn't read the permissions")} /> : <Panel><LoadingRows count={3} /></Panel>
   const { vault, mac } = report
   const vaultState = vault.app.ok === false || vault.terminals.ok === false ? "denied" : stateOf(vault.terminals)
   return (
@@ -54,7 +49,7 @@ export function PermissionsPanel() {
           {desktop?.setup && <SettingRow label="Set up agents" sub="Your coding agents, their computer use, and what they need here, step by step" data-settings-row="permission-setup"
             onClick={() => void desktop!.setup!("agents")} />}
           <SettingRow label="Vault folder" sub={vaultLine(vault)} data-settings-row="permission-vault">
-            {vaultState === "denied" && <Button size="small" onClick={() => void act("vault")}>Open Settings</Button>}
+            {vaultState === "denied" && <Button size="small" onClick={() => void press("vault")}>Open Settings</Button>}
             <State state={vaultState} />
           </SettingRow>
           {/* (only when it costs them: a signed build keeps them, one from source has Electron's) */}
@@ -65,21 +60,27 @@ export function PermissionsPanel() {
           )}
         </div>
       </Panel>
-      {mac && (
-        <Panel>
+      {mac && GROUPS.map(([kind, title]) => (
+        <Panel key={kind} title={title}>
           <div className="hairline">
-            {mac.permissions.map((p) => (
-              <SettingRow key={p.id} label={p.name} sub={p.use} data-settings-row={`permission-${p.id}`}>
-                {p.state !== "allowed" && <Button size="small" onClick={() => void act(p.id)}>{ACTION[p.action]}</Button>}
-                <State state={p.state} />
+            {mac.permissions.filter((p) => p.kind === kind).map((p) => (
+              <SettingRow key={p.id} label={p.name} sub={<Sub p={p} />} data-settings-row={`permission-${p.id}`}>
+                {p.action !== "none" && <Button size="small" busy={pending.has(p.id)} onClick={() => void press(p.id)} data-act={p.action}>{ACTION_TEXT[p.action]}</Button>}
+                <State state={p.state}>{stateText(p)}</State>
               </SettingRow>
             ))}
           </div>
         </Panel>
-      )}
+      ))}
       <p className="px-1 text-[13px] leading-[18px] text-muted-foreground">
-        Programs in Vaultite's terminals ask macOS as Vaultite, so they get what it allows. Unknown: macOS doesn't say without asking.
+        Programs in Vaultite's terminals ask macOS as Vaultite, so they get what it allows.
+        {mac?.permissions.some((p) => p.state === "unknown" && !p.note) && " Unknown: macOS doesn't say until it's been asked."}
       </p>
     </div>
   )
+}
+
+/** What it's for, and once macOS was told no, what to switch in System Settings. */
+function Sub({ p }: { p: Permission }) {
+  return <>{p.use}{p.fix && <span className="block text-foreground">{p.fix}</span>}</>
 }

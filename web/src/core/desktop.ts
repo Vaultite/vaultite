@@ -58,8 +58,8 @@ export type DesktopApi = {
   revealPdf?: (path: string) => Promise<unknown>
   /** Ask macOS for the microphone (once; later answers come from System Settings): whether it's allowed. */
   microphone?: () => Promise<boolean>
-  /** Settings > Permissions' button for a macOS permission (core/permissions.ts' ids, or "vault"): macOS's own prompt
-   *  where it has one, a folder read, else its System Settings pane. A Mac's only; builds from before it don't have it. */
+  /** A macOS permission's button (core/permissions.ts' ids, or "vault"; pages use usePermissions): its prompt, the drag
+   *  helper, a folder read, or the pane after a no. A Mac's only; builds from before it don't have it. */
   permission?: (id: string) => Promise<unknown>
   /** The Mac's notification: true once it's clicked (the window comes to the front), false when it's dismissed or can't
    *  be shown. Builds of the app from before the Inbox don't have it. */
