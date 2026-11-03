@@ -610,11 +610,17 @@ function reopenPane(p: Group, spot: Spot | null, back: (t: Tab) => boolean) {
  *  Set by the app; tabs that aren't views never ask, and they close at once. */
 let closeGuard: ((tos: string[]) => Promise<boolean>) | null = null
 export const setCloseGuard = (fn: (tos: string[]) => Promise<boolean>) => { closeGuard = fn }
-/** Run `close` now, or once the views among `tabs` said yes (only those whose last tab it is: see `closed`). */
-export function guarded(tabs: Tab[], close: () => void) {
+/** Whether `tabs` may close: at once, or once the views among them have said (only those whose last tab it is: see
+ *  `closed`); a view asking first takes a moment even when it says yes. */
+export function mayClose(tabs: Tab[]): true | Promise<boolean> {
   const views = lastOf(tabs)
-  if (!views.length || !closeGuard) return close()
-  void closeGuard(views).then((ok) => { if (ok) close() })
+  return !views.length || !closeGuard ? true : closeGuard(views)
+}
+/** Run `close` now, or once the views among `tabs` said yes. */
+export function guarded(tabs: Tab[], close: () => void) {
+  const ok = mayClose(tabs)
+  if (ok === true) return close()
+  void ok.then((yes) => { if (yes) close() })
 }
 
 /** Close a tab (`force`: without its view asking first, e.g. its shell already ended). */

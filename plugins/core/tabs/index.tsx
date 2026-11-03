@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
-  edgeScroller, canDropTab, closeTab, closeTabMoving, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
+  edgeScroller, canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
   isViewOpen, notifyError, openView, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
-  SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, usePieceOut, useReflow, useSetIn, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
+  SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGroupLines, useGrowIn, useReflow, useSetIn, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
@@ -21,32 +21,23 @@ const othersItem = (shown: boolean) => ({
 })
 
 
-/** A tab group's line down the panel's left: out from under its chip (joined whatever its shape), past its tabs (set in
- *  from it), ending rounded by its last. Each row draws its piece (a drag's preview redraws them). */
-type Rail = { color: string; last?: boolean }
-function RailPiece({ rail, head, tab }: { rail: Rail; head?: boolean
-  /** A tab's row's: it fades where it was when the tab leaves the group. */
-  tab?: string }) {
-  const el = useRef<HTMLSpanElement>(null)
-  usePieceOut(el, tab ?? "")
-  return <span ref={el} aria-hidden data-set-rail={head ? "head" : ""} className={cn("pointer-events-none absolute left-[9px] w-[2px]",
-    head ? "top-1/2 -bottom-px" : rail.last ? "-top-px bottom-2 rounded-b-full" : "-inset-y-px")} style={{ background: rail.color }} />
-}
-
-function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean; rail?: Rail }) {
+function Row({ t, g, i, only, line }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean
+  /** The tab group whose line runs down by it (core/tabline.ts): its own, or the one a drag's preview puts it in. */
+  line?: string }) {
   const item = useDrag((d) => d?.item)
   const picked = useSelected(TABS, t.id)
   const box = useRef<HTMLDivElement>(null)
   useGrowIn(box, t)
   useShrinkOut(box, { tab: t.id, pane: g.id })
-  const close = () => closeTabMoving(t.id, box.current)
+  // (its row shrinks away once it's closed, after its view says yes if it asks: useShrinkOut)
+  const close = () => closeTab(t.id)
   return (
     // Dragged like a tab in its bar: along the list (in or out of a group), onto a pane (its edge splits), another bar,
     // or Pinned; selected with others, they all go.
-    <div ref={box} data-slide={t.id} data-in-set={t.set} onPointerDown={(e) => dragTab(e, t)} className={cn("relative", (item?.tab === t.id || (picked && item?.tabs) || (!!t.set && item?.tabset === t.set)) && "opacity-50")}
+    <div ref={box} data-slide={t.id} data-in-set={t.set} data-line-of={line} onPointerDown={(e) => dragTab(e, t)} className={cn("relative", (item?.tab === t.id || (picked && item?.tabs) || (!!t.set && item?.tabset === t.set)) && "opacity-50")}
       onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
       <SidebarRow data-open-tab={t.id} data-select-key={t.id} {...selectedAttr(picked)} icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} badge={i.badge} mark={i.mark} label={i.label} open active={t.id === g.active} more
-        className={rail ? "ml-3.5" : undefined}
+        className={line ? "ml-3.5" : undefined}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
         onClick={(e) => { if (e.button === 1) { if (!t.pinned && !only) close() } else if (!selectClick(e, TABS, t.id, g.active)) selectTab(t.id) }}>
         {t.pinned ? (
@@ -56,27 +47,25 @@ function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: b
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); close() }} />
         )}
       </SidebarRow>
-      {rail && <RailPiece rail={rail} tab={t.id} />}
     </div>
   )
 }
 
-/** A tab group's row: its chip, its line hanging from it. A click folds it, its … or a right-click opens its editor,
+/** A tab group's row: its chip, its line hanging from it (core/tabline.ts). A click folds it, its … or a right-click opens its editor,
  *  dragging moves the whole group; `target`: a tab dragged onto it (folded) would join it. */
-function SetRow({ s, n, rail, target }: { s: TabSet; n: number; rail: Rail; target: boolean }) {
+function SetRow({ s, n, target }: { s: TabSet; n: number; target: boolean }) {
   const item = useDrag((d) => d?.item)
   const box = useRef<HTMLDivElement>(null)
   useSetIn(box, s.id)
   useShrinkOut(box, { set: s.id })
   return (
-    <div ref={box} data-slide={`set:${s.id}`} onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })} className={cn("relative", item?.tabset === s.id && "opacity-50")}
+    <div ref={box} data-slide={`set:${s.id}`} data-line-head={s.id} style={{ ["--line" as string]: colorVar(s.color) }} onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })} className={cn("relative", item?.tabset === s.id && "opacity-50")}
       onContextMenu={menuFor(() => setMenu(s.id, "panel"))}>
       <SidebarRow data-set-row={s.id} aria-expanded={!s.collapsed} open tip={null} more onClick={() => foldSetMoving(s.id)}
         label={<span className="flex"><SetLabel s={s} n={n} target={target} /></span>}>
         {/* (its chevron shows on hover, as a panel heading's does, turning as it folds) */}
         <ChevronDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[rotate,opacity] duration-200 group-hover/row:opacity-100 group-aria-[expanded=false]/row:-rotate-90" strokeWidth={2.25} />
       </SidebarRow>
-      <RailPiece rail={rail} head />
     </div>
   )
 }
@@ -128,11 +117,12 @@ function PaneRows({ g, n, panes, focused, info, hit }: { g: TabGroup; n: number;
   useSlide(box, preview && tabPreviewOrder(g, preview), "y")
   // (after useSlide: a drop's preview is taken off first, so they slide from where it drew them)
   useReflow(box, g)
+  useGroupLines(box, "y")
   const shown = preview?.tabs ?? g.tabs
   const drawn = setsAsDrawn(shown)
-  const railOf = (id: string): Rail | undefined => {
-    const at = drawn.get(id), s = at?.set ? g.sets?.find((x) => x.id === at.set) : undefined
-    return s && !s.collapsed ? { color: colorVar(s.color), last: at!.last } : undefined
+  const lineOf = (id: string) => {
+    const set = drawn.get(id)
+    return set && !g.sets?.find((x) => x.id === set)?.collapsed ? set : undefined
   }
   const only = (t: Tab) => panes === 1 && g.tabs.length === 1 && t.to === "new"
   const incoming = shown.some((t) => t.id === INCOMING)
@@ -145,17 +135,14 @@ function PaneRows({ g, n, panes, focused, info, hit }: { g: TabGroup; n: number;
       {g.tabs.flatMap((t, i) => {
         const s = t.set ? g.sets?.find((x) => x.id === t.set) : undefined
         const head = s && g.tabs[i - 1]?.set !== s.id
-          ? <SetRow key={`set:${s.id}`} s={s} n={shown.filter((x) => x.set === s.id).length} target={preview?.into === s.id}
-            rail={{ color: colorVar(s.color) }} />
+          ? <SetRow key={`set:${s.id}`} s={s} n={shown.filter((x) => x.set === s.id).length} target={preview?.into === s.id} />
           : null
-        const row = s?.collapsed ? null : <Row key={t.id} t={t} g={g} i={info(t)} only={only(t)} rail={railOf(t.id)} />
+        const row = s?.collapsed ? null : <Row key={t.id} t={t} g={g} i={info(t)} only={only(t)} line={lineOf(t.id)} />
         return [head, row].filter(Boolean)
       })}
       {/* Where something from elsewhere would open. */}
       {incoming && (
-        <div aria-hidden data-slide={INCOMING} className={cn("pointer-events-none absolute right-0 top-0 h-7 rounded-[5px] bg-foreground/[0.06]", railOf(INCOMING) ? "left-3.5" : "left-0")}>
-          {railOf(INCOMING) && <span className="absolute inset-y-0 -left-3.5 w-3.5"><RailPiece rail={railOf(INCOMING)!} /></span>}
-        </div>
+        <div aria-hidden data-slide={INCOMING} data-line-of={lineOf(INCOMING)} className={cn("pointer-events-none absolute right-0 top-0 h-7 rounded-[5px] bg-foreground/[0.06]", lineOf(INCOMING) ? "left-3.5" : "left-0")} />
       )}
     </div>
   )

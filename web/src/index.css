@@ -495,16 +495,15 @@ html[data-dragging] [data-tab-bar] [data-slide] { transition-duration: var(--mot
    they'd sit on a fraction, and their group's line, under them, would blur over three). */
 [data-tab-row] { padding-top: calc(var(--spacing) * 1.5); padding-top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
 [data-tab-row] > [data-slide=incoming] { top: calc(var(--spacing) * 1.5); top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
-/* A group's line: a piece under its chip and each of its tabs (a drag's preview moves each with its tab), a whole pixel
-   under them, from the chip's left to the last tab's right, each over the next's first pixel so no seam shows. */
-[data-set-piece] {
-  position: absolute; height: 2px; pointer-events: none; left: -1px; right: calc(var(--spacing) * -1);
-  top: calc(var(--spacing) * 7 + 1px); top: round(up, calc(var(--spacing) * 7 + 1px), 1px);
-  transition: background-color var(--motion) var(--ease-out);
+/* A group's line (core/tabline.ts): one element, from its chip past its last tab as they're drawn. In the bar, 2px on a
+   whole pixel under the tabs; in the Tabs panel, down their left from under the chip, ending rounded. */
+[data-set-line] { position: absolute; pointer-events: none; transition: background-color var(--motion) var(--ease-out); }
+[data-set-line][data-axis=x] {
+  height: 2px; border-radius: 1px;
+  top: calc(var(--spacing) * 8.5 + 1px);
+  top: calc(round(nearest, calc(var(--spacing) * 1.5), 1px) + round(up, calc(var(--spacing) * 7 + 1px), 1px));
 }
-[data-set-piece~=first] { left: 0; border-radius: 1px 0 0 1px; }
-[data-set-piece~=last] { right: 0; border-radius: 0 1px 1px 0; }
-[data-set-rail] { transition: background-color var(--motion) var(--ease-out); }
+[data-set-line][data-axis=y] { left: 9px; width: 2px; border-radius: 0 0 9999px 9999px; }
 /* Its chip answers the pointer and the keyboard as a browser's does: a halo of its colour on hover, the ring on focus. */
 html:not([data-dragging]) [data-set-chip]:hover > [data-set-label] { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tint) 35%, transparent); }
 [data-set-chip]:focus-visible { outline: none; }
@@ -516,14 +515,12 @@ html:not([data-dragging]) [data-set-chip]:hover > [data-set-label] { box-shadow:
 [data-set-count] > span { min-width: 0; overflow: hidden; }
 :is([data-set-chip], [data-set-row])[aria-expanded=false] :is([data-set-label][data-bare]) { height: calc(var(--spacing) * 5); padding-inline: calc(var(--spacing) * 1.5); border-radius: 6px; }
 :is([data-set-chip], [data-set-row])[aria-expanded=false] [data-set-count] { grid-template-columns: 1fr; opacity: 1; }
-[data-set-chip][aria-expanded=false] > [data-set-piece], [data-set-row][aria-expanded=false] ~ [data-set-rail] { opacity: 0; }
+[data-set-line][data-folded] { opacity: 0; }
 [data-set-moving] :is([data-set-label][data-bare], [data-set-count]) {
   transition: height var(--motion) var(--ease-out), padding var(--motion) var(--ease-out), border-radius var(--motion) var(--ease-out),
     grid-template-columns var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out), background-color var(--motion) var(--ease-out);
 }
-[data-set-chip][data-set-moving] > [data-set-piece], [data-set-row][data-set-moving] ~ [data-set-rail] {
-  transition: background-color var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out);
-}
+[data-set-line][data-moving] { transition: background-color var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out); }
 /* The left sidebar switching to a panel alone (its mode) or back: the new body fades in, as Rex's activity mode does. */
 [data-mode-fade] { animation: mode-fade var(--motion) var(--ease-out) both; }
 @keyframes mode-fade { from { opacity: 0; } }

@@ -1,11 +1,11 @@
 // Tabs move as a browser's: a group folds by its tabs shrinking into its chip and opens by them growing out; new tabs
 // grow in (springing), closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
 import { useLayoutEffect, useRef, type RefObject } from "react"
-import { closeTab, groupOfTab, groups, layoutQuiet, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
-import { getDrag } from "@/core/drag"
+import { closeTab, groupOfTab, groups, layoutQuiet, mayClose, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
 import type { Group } from "../../../core/layout.ts"
 import { foldSet, handOverFrom, setById } from "@/core/tabsets"
 import { moves, timing, type Pace } from "@/core/animation"
+import { stir } from "@/core/tabline"
 
 const still = () => !moves()
 
@@ -39,6 +39,7 @@ function squeeze(el: HTMLElement, out: boolean, from?: Box, full: Box = drawnBox
   el.style.clipPath = x ? "inset(-4px 0)" : "inset(0 -8px)"
   const a = el.animate([frame(from ?? (out ? full : none)), frame(out ? none : { ...full, margin: 0, opacity: 1 })], { ...timing(pace), fill: out ? "forwards" : "none" })
   running.set(el, a)
+  stir(el)
   const done = () => { el.style.clipPath = ""; if (running.get(el) === a) running.delete(el) }
   a.addEventListener("cancel", done)
   if (!out) a.addEventListener("finish", done)
@@ -68,6 +69,7 @@ function showFold(id: string, open: boolean) {
     h.setAttribute("aria-expanded", String(open))
     clearTimeout(Number(h.dataset.setMoving))
     h.dataset.setMoving = String(window.setTimeout(() => { delete h.dataset.setMoving }, timing("base").duration + 80))
+    stir(h)
   }
 }
 
@@ -175,16 +177,22 @@ export function useShrinkOut(ref: RefObject<HTMLElement | null>, what: { tab: st
   }, [ref])  // (what it draws stays the same: a tab's id and pane are its key)
 }
 /** What makes an element the tab or group it draws, which its copy isn't. */
-const OWN = ["data-tab-id", "data-open-tab", "data-slide", "data-select-key", "data-in-set", "data-selected", "data-set-chip", "data-set-row", "data-set-line"]
+const OWN = ["data-tab-id", "data-open-tab", "data-slide", "data-select-key", "data-in-set", "data-selected", "data-set-chip", "data-set-row"]
 
-/** Close a tab from a list of them (the Tabs panel): its row shrinks away, then it closes. */
+/** Close a tab from a list that doesn't take its rows away moving (the palette's tab search): its row shrinks away as
+ *  it closes. One whose view asks first and says no grows back from where it had got to. */
 export function closeTabMoving(id: string, el: HTMLElement | null) {
+  const g = groupOfTab(id)
+  if (!g) return
   if (!el || still()) { closeTab(id); return }
-  const a = squeeze(el, true)
   el.style.pointerEvents = "none"
+  const a = squeeze(el, true), ok = mayClose(g.tabs.filter((t) => t.id === id))
   a.addEventListener("cancel", () => { el.style.pointerEvents = "" })
-  // (closed, React takes it away whenever it draws: left shrunk till then; still open, its view asking first: put back)
-  a.finished.then(() => { closeTab(id); if (groupOfTab(id)) a.cancel() }, () => {})
+  // (closed once it has shrunk, so the list doesn't take it away mid-way; React takes it away whenever it draws)
+  void Promise.resolve(ok).then((yes) => {
+    if (!yes) { if (el.isConnected) turn([el], false); else a.cancel(); return }
+    a.finished.then(() => closeTab(id, true), () => {})
+  })
 }
 
 // ---------- tabs moving among themselves ----------
@@ -220,20 +228,4 @@ export function useReflow(box: RefObject<HTMLElement | null>, g: Group) {
       anim.id = "reflow"
     }
   })
-}
-
-/** A tab's piece of its group's line, gone while the tab stays (ungrouped, taken out of the group): it fades where it
- *  was rather than going at once. Not while a drag's preview draws them. */
-export function usePieceOut(ref: RefObject<HTMLElement | null>, tab: string) {
-  useLayoutEffect(() => {
-    const el = ref.current
-    return () => {
-      const parent = el?.parentElement
-      if (!el || !parent?.isConnected || still() || getDrag() || replacingWorkspace() || !groupOfTab(tab)) return
-      const copy = el.cloneNode(true) as HTMLElement
-      parent.append(copy)
-      copy.animate([{ opacity: 1 }, { opacity: 0 }], { ...timing("base"), fill: "forwards" }).finished.then(() => copy.remove(), () => copy.remove())
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref])
 }

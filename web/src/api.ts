@@ -74,7 +74,8 @@ export { dragTab, TABS, tabLabel, tabMenuOf, tabsMenu, useTabLabels, viewInfo, t
 // as a list (the Tabs panel), which join or leave them as the tab bar's do.
 export { setMenu, setName, SetLabel } from "@/components/Tabs"
 export { foldSet, openInSet } from "@/core/tabsets"
-export { closeTabMoving, foldSetMoving, useGrowIn, usePieceOut, useReflow, useSetIn, useShrinkOut } from "@/core/tabfold"
+export { foldSetMoving, useGrowIn, useReflow, useSetIn, useShrinkOut } from "@/core/tabfold"
+export { useGroupLines } from "@/core/tabline"
 export { type TabSet } from "../../core/layout.ts"
 export { canDropAt as canDropTab, dropOn as dropTab, previewIn as tabPreview, previewOrder as tabPreviewOrder, setsAsDrawn, slotIn as tabSlot, type Drop as TabDrop } from "@/core/drop"
 export { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"

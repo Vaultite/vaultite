@@ -26,9 +26,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   sidebar button) no longer drags Vaultite's instead of clicking, and nothing of the window drags over a page.
 - **Tab groups fold and close as in Chrome**: a group's count, line and tabs fold and open together, smoothly, and a
   second click turns it round mid-way; closing a grouped tab shows another of its group, then the nearest tab not folded
-  away, never opening a folded group. The group's line runs crisp from its chip to its last tab, in the bar and the panel.
-  Its chip lights up under the pointer and takes the keyboard (the arrows, Enter, the menu key); tabs grouped or moved
-  slide into place, and an ungrouped group's chip and line fade away.
+  away, never opening a folded group. The group's line runs crisp from its chip to its last tab, in the bar and the panel,
+  and stays whole while tabs move (dragged, closed, coming in), its end easing as a tab joins or leaves. Its chip lights
+  up under the pointer and takes the keyboard (the arrows, Enter, the menu key); tabs grouped or moved slide into place,
+  and an ungrouped group's chip and line fade away. A tab closed in the Tabs panel or tab search shrinks away once,
+  rather than coming back for a moment when its view (a terminal, a site) is asked first.
 - **Sidebars open and close at full frame rate**: the panes are laid out once at their new size and slide there, rather
   than laid out again every frame, and a web page in a moving pane slides as a picture of itself, its page back in place
   when it stops, instead of trailing a few steps behind.

@@ -119,7 +119,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `choosePlace(opts?)`: Choose where to open a terminal or an agent (`agent`: only that one's places), then open it.
 - `clearSelection()`
 - `closeTab(id, force?)`: Close a tab (`force`: without its view asking first, e.g.
-- `closeTabMoving(id, el)`: Close a tab from a list of them (the Tabs panel): its row shrinks away, then it closes.
 - `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudAccount`: A claude.ai organization whose sessions are read: its name (a personal one's: its login's email), and the logins (profiles) it's in.
 - `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with, `account` its organization's id (older builds don't say).
@@ -541,7 +540,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `setMenu(id, at)`: A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then what it does.
 - `setName(s)`: What a tab group is called: its name, or its colour's ("Blue group").
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
-- `setsAsDrawn(tabs)`: Each tab's group as drawn (a preview's while dragging), and whether it's that group's last: its line ends there.
+- `setsAsDrawn(tabs)`: Each tab's group as drawn (a preview's while dragging): its line runs by it.
 - `setSidebarMode(key)`: Show panel `key` alone in the left sidebar, the sidebar open (null: its panels again).
 - `setTabLayout(next, opts?)`: Put a whole other layout in place (Workspaces switching).
 - `setTextSize(kind, percent)`: Set a kind's size, in percent (kept within STEPS' range).
@@ -663,6 +662,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useEnabled()`
 - `useFileIcon(store)`: A file's icon as the file tree draws it (its own, a dashboard's or a person's, in its colour), by path.
 - `useFocusedFile()`
+- `useGroupLines(root, axis)`: `root`'s tab groups' lines: a group's chip is its `data-line-head` (its colour `--line`), each tab drawn in it (a drag's preview's, a closed one's copy) `data-line-of`; along the bar (x) or down…
 - `useGrowIn(ref, tab)`: A tab's element grows in as it's drawn: a new tab (springing), or one of a group just opened (as the others fold).
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
 - `useHeldHeight(key, shrinks?, anyWidth?)`: holdHeight for a React element: put the ref on it.
@@ -678,7 +678,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePaneTopBar(ref, title?)`: A view's top bar (ViewBar, the Browser's): without a tab bar its pane's title row (Tabs.tsx; not with `title` false, one sliding over the view), clear of what's fixed over the window's corners…
 - `usePatched(path, version?)`: useLive for an answer the server keeps frozen (the graph), asked again on `version` and its plugin's changes as a patch of the one it has (?patch=<v>, core/app.ts patched): only what changed…
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
-- `usePieceOut(ref, tab)`: A tab's piece of its group's line, gone while the tab stays (ungrouped, taken out of the group): it fades where it was rather than going at once.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
 - `useReflow(box, g)`: A pane's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not opened or closed (grouped, ungrouped, moved by a menu or a drop) slide from where…

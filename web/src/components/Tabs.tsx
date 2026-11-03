@@ -16,7 +16,8 @@ import { leaves, vaultPath, type Group, type Tab, type TabSet } from "../../../c
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
 import { addToSet, allSets, closeSet, colorSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet } from "@/core/tabsets"
-import { foldSetMoving, useGrowIn, usePieceOut, useReflow, useSetIn, useShrinkOut } from "@/core/tabfold"
+import { foldSetMoving, useGrowIn, useReflow, useSetIn, useShrinkOut } from "@/core/tabfold"
+import { useGroupLines } from "@/core/tabline"
 import { canRenameTab, renameTab } from "@/core/tabnames"
 import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
@@ -171,16 +172,15 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
   useSetIn(el, s.id)
   useShrinkOut(el, { set: s.id })
   return (
-    <button type="button" ref={el} tabIndex={-1} data-set-chip={s.id} data-slide={`set:${s.id}`} aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
+    <button type="button" ref={el} tabIndex={-1} data-set-chip={s.id} data-slide={`set:${s.id}`} data-line-head={s.id} style={{ ["--line" as string]: c }} aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
       onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })}
       onClick={() => foldSetMoving(s.id)}
       data-tip={item ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
       className={cn("relative flex h-7 shrink-0 cursor-pointer items-center", item?.tabset === s.id && "opacity-50")}>
       {/* (as tall as a tab, the chip inside: the line under it then lines up with the tabs') */}
       {/* (a long name cut off, as a browser's chip: the tabs keep their room; the tip says it whole) */}
+      {/* (the line under the group's tabs starts under it: core/tabline.ts) */}
       <SetLabel s={s} n={n} target={target} className="max-w-40" />
-      {/* The line under the group's tabs starts here (each tab carries it on); folded, it's gone (index.css). */}
-      <span aria-hidden data-set-line={s.id} data-set-piece="first" style={{ background: c }} />
     </button>
   )
 }
@@ -470,8 +470,8 @@ export function dragTab(e: React.PointerEvent<HTMLElement>, tab: Tab, opts?: { t
 
 function TabItem({ tab, group, info, active, focused, only, icons, menu, width, settling, close, line, hole }: { tab: Tab; group: string; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean
   menu: () => MenuItem[]
-  /** In a tab group: the line under its tabs, in its colour, on to the next one unless it's the `last`. */
-  line?: { color: string; last: boolean }
+  /** The tab group whose line runs under it (core/tabline.ts): its own, or the one a drag's preview puts it in. */
+  line?: string
   /** Held at this width after a close (TabBar). */
   width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void
   /** Dragged over its own bar: lifted out, it leaves its slot empty where it would land. */
@@ -485,7 +485,7 @@ function TabItem({ tab, group, info, active, focused, only, icons, menu, width, 
   // (away from its bar, the tab held shows where it goes back to)
   const away = dragging && !hole && (item?.tab === tab.id || picked)
   return (
-    <div ref={el} data-tab-id={tab.id} data-in-set={tab.set} data-slide={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
+    <div ref={el} data-tab-id={tab.id} data-in-set={tab.set} data-line-of={line} data-slide={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
       onPointerDown={(e) => dragTab(e, tab)}
       onClick={(e) => { if (!selectClick(e, TABS, tab.id, active ? null : groupOfTab(tab.id)?.active)) selectTab(tab.id) }}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
@@ -518,16 +518,8 @@ function TabItem({ tab, group, info, active, focused, only, icons, menu, width, 
       {away && <Undo2 aria-hidden data-tab-return className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground" strokeWidth={2} />}
       {/* (along the top: a tab group's line runs under) */}
       {info.color && !(dragging && hole) && <span aria-hidden data-tab-color className="pointer-events-none absolute inset-x-2 top-0 h-[2px] rounded-b-full transition-colors duration-(--motion)" style={{ background: info.color }} />}
-      {line && <SetPiece tab={tab.id} line={line} />}
     </div>
   )
-}
-
-/** A tab's piece of its group's line (index.css), fading where it was when the tab leaves the group. */
-function SetPiece({ tab, line }: { tab: string; line: { color: string; last: boolean } }) {
-  const el = useRef<HTMLSpanElement>(null)
-  usePieceOut(el, tab)
-  return <span ref={el} aria-hidden data-set-piece={line.last ? "last" : ""} style={{ background: line.color }} />
 }
 
 /** What a tab shows: its label and icon. A view's can follow live data (a terminal's session name): drawn again when
@@ -611,10 +603,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
   // Dragged over it, the tabs make way for what's dragged, in the tab group it would join (its line under it).
   const preview = item ? previewIn(group, item, hit) : null
   const drawn = setsAsDrawn(preview?.tabs ?? tabs)
-  const lineOf = (id: string) => {
-    const at = drawn.get(id), s = at?.set ? group.sets?.find((x) => x.id === at.set) : undefined
-    return s ? { color: colorVar(s.color), last: at!.last } : undefined
-  }
+  const lineOf = (id: string) => drawn.get(id)
   const shown = tabs.find((t) => t.id === active) ?? tabs[0]
   // What the pane is called while it's dragged: its tab, and how many more go with it.
   const label = tabs.length > 1 ? `${info(shown).label} and ${tabs.length - 1} more` : info(shown).label
@@ -622,6 +611,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
   useSlide(row, preview && [...previewOrder(group, preview), "new"], "x")
   // (after useSlide: a drop's preview is taken off first, so they slide from where it drew them)
   useReflow(row, group)
+  useGroupLines(row, "x")
   useEffect(() => {
     const r = row.current
     if (!r) return
@@ -753,9 +743,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
         </button>
         {/* Where something from elsewhere would open. */}
         {preview?.tabs.some((t) => t.id === INCOMING) && (
-          <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute left-0 h-7 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border">
-            {lineOf(INCOMING) && <span data-set-piece={lineOf(INCOMING)!.last ? "last" : ""} style={{ background: lineOf(INCOMING)!.color }} />}
-          </div>
+          <div aria-hidden data-slide={INCOMING} data-line-of={lineOf(INCOMING)} className="pointer-events-none absolute left-0 h-7 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border" />
         )}
       </div>
       {extra}

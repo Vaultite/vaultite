@@ -81,9 +81,13 @@ try {
   // The chip is solid, its text readable on it.
   const ink = await page.$eval("[data-set-chip] [data-set-label]", (e) => [getComputedStyle(e).color, getComputedStyle(e).backgroundColor])
   check("a named chip is solid, its text white or dark by its colour", ink[0] !== ink[1] && !/rgba?\([^)]*,\s*0(\.\d+)?\)$/.test(ink[1]), ink)
-  // The group's line is one line: under its chip at the same height as under its tabs.
-  const lines = await page.$$eval("[data-set-chip] > span[aria-hidden], [data-tab-id] > span[aria-hidden]", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)))
-  check("the group's line under its chip is level with the one under its tabs", lines.length > 1 && new Set(lines).size === 1, lines)
+  // The group's line is one line, from under its chip to under its last tab.
+  const lines = await page.$$eval("[data-set-chip][aria-expanded=true]", (chips) => chips.map((c) => {
+    const id = c.dataset.setChip, line = document.querySelectorAll(`[data-tab-row] > [data-set-line="${id}"]`), tabs = [...document.querySelectorAll(`[data-tab-bar] [data-in-set="${id}"]`)]
+    const l = line[0]?.getBoundingClientRect()
+    return { n: line.length, from: l && Math.round(l.left - c.querySelector("[data-set-label]").getBoundingClientRect().left), to: l && Math.round(l.right - tabs.at(-1).getBoundingClientRect().right) }
+  }))
+  check("the group's line is one line, from under its chip to under its last tab", lines.length === 2 && lines.every((x) => x.n === 1 && x.from === 0 && x.to === 0), lines)
   await page.mouse.move(640, 500); await page.screenshot({ path: `${OUT}bar-light.png`, clip: { x: 0, y: 0, width: 1280, height: 120 } })
 
   // Dragging a tab between two of the group's tabs: it joins; dragged past its end: it leaves.
@@ -96,7 +100,7 @@ try {
   }
   const inGroup = (label) => page.$$eval("[data-tab-bar] [data-tab-id]", (els, l) => {
     const e = els.find((x) => x.textContent.trim() === l)
-    return !!e?.querySelector("[data-set-piece]")
+    return !!e?.dataset.lineOf
   }, label)
   await drag(tab("Start here"), tab("ME"), 2)
   check("a tab dragged between two of a group's tabs joins it", (await bar()).includes("<Lighthouse work> Lighthouse Start here ME") && await inGroup("Start here"), await bar())
@@ -192,14 +196,14 @@ try {
   check("the panel shows each group as a row over its tabs", rows.join(" ").includes("[Reading] Garden planner Start here") && rows.join(" ").includes("[Lighthouse work] Lighthouse ME"), rows)
   // A group's name is a pill in its colour, as its chip on top, and its line hangs from it, unbroken down its tabs.
   const joins = await page.$eval("[data-tabs-panel] [data-slide^='set:']", (head) => {
-    const pill = head.querySelector("[data-set-row] span[style]").getBoundingClientRect(), rail = head.querySelector(":scope > span[aria-hidden]").getBoundingClientRect()
-    const next = head.nextElementSibling.querySelector(":scope > span[aria-hidden]").getBoundingClientRect()
-    return { pill: [Math.round(pill.top), Math.round(pill.bottom)], rail: Math.round(rail.top), railEnd: Math.round(rail.bottom), next: Math.round(next.top), x: [Math.round(rail.left), Math.round(pill.left), Math.round(pill.right)] }
+    const id = head.dataset.slide.slice(4), pill = head.querySelector("[data-set-row] span[style]").getBoundingClientRect()
+    const rail = head.parentElement.querySelector(`:scope > [data-set-line="${id}"]`).getBoundingClientRect(), last = [...head.parentElement.querySelectorAll(`[data-in-set="${id}"]`)].at(-1).getBoundingClientRect()
+    return { pill: [Math.round(pill.top), Math.round(pill.bottom)], rail: Math.round(rail.top), railEnd: Math.round(rail.bottom), last: [Math.round(last.top), Math.round(last.bottom)], x: [Math.round(rail.left), Math.round(pill.left), Math.round(pill.right)] }
   })
-  check("the group's line comes out of its chip (from under it) and runs on into its tabs", joins.rail > joins.pill[0] && joins.rail < joins.pill[1] && joins.railEnd > joins.pill[1] && joins.next <= joins.railEnd && joins.x[0] >= joins.x[1] + 2 && joins.x[0] < joins.x[2], joins)
+  check("the group's line comes out of its chip (from under it) and runs down its tabs, ending by the last", joins.rail > joins.pill[0] && joins.rail < joins.pill[1] && joins.railEnd > joins.last[0] && joins.railEnd < joins.last[1] && joins.x[0] >= joins.x[1] + 2 && joins.x[0] < joins.x[2], joins)
   // Its tabs are set in from the line: their rows' highlight starts past it.
   const inset = await page.$eval("[data-tabs-panel] [data-slide^='set:']", (head) => {
-    const rail = head.querySelector(":scope > span[aria-hidden]").getBoundingClientRect(), row = head.nextElementSibling.querySelector("[data-open-tab]").getBoundingClientRect()
+    const rail = head.parentElement.querySelector(`:scope > [data-set-line="${head.dataset.slide.slice(4)}"]`).getBoundingClientRect(), row = head.nextElementSibling.querySelector("[data-open-tab]").getBoundingClientRect()
     return [Math.round(rail.right), Math.round(row.left)]
   })
   check("  its tabs' rows start past the line", inset[1] > inset[0], inset)
@@ -212,7 +216,11 @@ try {
   const row = (label) => page.locator("[data-tabs-panel] [data-open-tab]", { hasText: label }).first()
   const sh = await row("Start here").boundingBox()
   release = await hold(row("Lighthouse"), sh.x + sh.width / 2, sh.y + sh.height * 0.8)
-  const moving = await page.locator("[data-tabs-panel] [data-slide] [data-open-tab]", { hasText: "Lighthouse" }).first().evaluate((e) => ({ moved: !!e.parentElement.style.transform, rail: !!e.parentElement.querySelector(":scope > span[aria-hidden]") }), null, { timeout: 2000 }).catch(() => null)
+  const moving = await page.locator("[data-tabs-panel] [data-slide] [data-open-tab]", { hasText: "Lighthouse" }).first().evaluate(async (e) => {
+    await new Promise((r) => setTimeout(r, 400))
+    const box = e.parentElement, set = box.dataset.lineOf, line = set && box.parentElement.querySelector(`:scope > [data-set-line="${set}"]`), r = box.getBoundingClientRect()
+    return { moved: !!box.style.transform, rail: !!line && line.getBoundingClientRect().bottom > r.top + r.height / 2 }
+  }, null, { timeout: 2000 }).catch(() => null)
   check("in the panel too: dragged over a group's last row, the rows make way, the group's line beside it", moving?.moved && moving.rail, moving)
   await page.screenshot({ path: `${OUT}vertical-dragging.png`, clip: { x: 0, y: 0, width: 360, height: 400 } })
   await release()

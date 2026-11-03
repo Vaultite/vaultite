@@ -79,9 +79,9 @@ export function previewOrder(g: Group, p: Preview) {
   const folded = new Set(g.sets?.filter((s) => s.collapsed).map((s) => s.id))
   return p.tabs.flatMap((t, i) => [...(t.set && t.set !== p.tabs[i - 1]?.set ? [`set:${t.set}`] : []), ...(t.set && folded.has(t.set) ? [] : [t.id])])
 }
-/** Each tab's group as drawn (a preview's while dragging), and whether it's that group's last: its line ends there. */
+/** Each tab's group as drawn (a preview's while dragging): its line runs by it. */
 export function setsAsDrawn(tabs: { id: string; set?: string }[]) {
-  return new Map(tabs.map((t, i) => [t.id, { set: t.set, last: tabs[i + 1]?.set !== t.set }]))
+  return new Map(tabs.map((t) => [t.id, t.set]))
 }
 
 /** Where a point lands in the workspace: a place in a tab bar, or a pane's edge or middle. `files`: a file would be left
