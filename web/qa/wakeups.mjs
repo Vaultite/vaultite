@@ -9,7 +9,7 @@ const { args: [B0], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 const PRINT = process.argv.includes("--print")
 const SECS = 20
-// Callbacks a minute (one note, read; measured ~6-9 shown, ~6 hidden): a new poll or loop shows here.
+// Callbacks a minute (one note; measured ~15 shown, mostly Dispatch's 5 s poll, ~3 hidden): a new poll shows here.
 // The server's main-thread wakeups a minute, the window open (measured ~200; an always-on timer showed ~3000).
 const LIMITS = { shown: 30, hidden: 30, server: 600 }
 

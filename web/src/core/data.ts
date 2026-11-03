@@ -178,6 +178,31 @@ function remember(path: string, data: unknown, json: string) {
   }, 1000)
 }
 
+// One timer per address and period, whatever polls it, stopped while the page is hidden (each tick woke it) and run
+// at once when it's shown again.
+const pollers = new Map<string, { every: number; subs: Set<() => void>; id: ReturnType<typeof setInterval> | null }>()
+const tick = (p: { subs: Set<() => void> }) => { for (const fn of [...p.subs]) fn() }
+const startPoller = (p: { every: number; subs: Set<() => void>; id: ReturnType<typeof setInterval> | null }) => { p.id ??= setInterval(() => tick(p), p.every) }
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => {
+  for (const p of pollers.values()) {
+    if (document.hidden) { if (p.id !== null) { clearInterval(p.id); p.id = null } }
+    else { tick(p); startPoller(p) }
+  }
+})
+function pollEvery(path: string, every: number, fn: () => void) {
+  const key = `${every}\0${path}`
+  let p = pollers.get(key)
+  if (!p) pollers.set(key, p = { every, subs: new Set(), id: null })
+  p.subs.add(fn)
+  if (!document.hidden) startPoller(p)
+  return () => {
+    p.subs.delete(fn)
+    if (p.subs.size) return
+    if (p.id !== null) clearInterval(p.id)
+    pollers.delete(key)
+  }
+}
+
 /** Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a
  *  reconnect, `version`, vault files (`files`: any, or by path) and every `every` ms while shown. */
 export function useLive<T>(path: string | null, version?: string | number, files?: boolean | ((path: string) => boolean), every?: number) {
@@ -213,12 +238,11 @@ export function useLive<T>(path: string | null, version?: string | number, files
     const offKept = onKeptChange((names) => { if (keptData(names, path)) load() })
     const off = () => { offFiles(); offKept() }
     if (!every) return () => { on = false; off() }
-    // (cards polling the same address share a request made in the last half period)
-    const poll = () => { if (!document.hidden && !kept.current) void load(every / 2) }
+    // (cards polling the same address share a request made in the last half period, and a timer)
+    const poll = () => { if (!kept.current) void load(every / 2) }
     again.current = (fresh) => void load(fresh)
-    const id = setInterval(poll, every)
-    document.addEventListener("visibilitychange", poll)
-    return () => { on = false; again.current = null; off(); clearInterval(id); document.removeEventListener("visibilitychange", poll) }
+    const stop = pollEvery(path, every, poll)
+    return () => { on = false; again.current = null; off(); stop() }
   }, [path, ask, mock, every])
   const shown = !kept.current
   useEffect(() => { if (shown && every) again.current?.(every / 2) }, [shown, every])
