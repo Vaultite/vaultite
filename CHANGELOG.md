@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Phones: a tab group opens steadily**: it starts at its top, and All tabs comes back where it was left, with no bounce
+  as the list swaps (opened again, its tabs no longer sit out of sight).
 - **Phones: a tab drags out of its group**: in a group's tabs, hold a lifted card on All tabs at the top (it lights up)
   and all tabs come back with the card still held, to be put anywhere, onto a tab to make a group, or onto another group;
   let go there at once and it just leaves the group.

@@ -310,12 +310,21 @@ const places = (el: HTMLElement) => new Map([...el.querySelectorAll<HTMLElement>
 
 /** Cards glide to new places (FLIP) when one goes or room's made for a lifted one, from where they show, mid-glide
  *  too. When one goes the list keeps its height until scrolled up, or a scroller at its end would jump. */
-function useFlip(box: RefObject<HTMLDivElement | null>, live: boolean) {
+function useFlip(box: RefObject<HTMLDivElement | null>, live: boolean, page: string) {
   const last = useRef(new Map<string, { x: number; y: number }>())
   const height = useRef(0)
+  const was = useRef(page)
   useLayoutEffect(() => {
     const el = box.current
     if (!el) return
+    // Another page (into a tab group, or back): other cards, not these moved, so nothing glides or keeps its height.
+    if (was.current !== page) {
+      was.current = page
+      el.style.minHeight = ""
+      last.current = places(el)
+      height.current = el.offsetHeight
+      return
+    }
     // Not laid out yet (the sheet opens after its content's first draw): where the cards are is read once it is, or
     // the first card closed has the rest glide in from the corner.
     if (!el.offsetWidth) {
@@ -533,7 +542,22 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const openSet = opened ? sets.get(opened) : undefined
   const open = openSet && all.some((t) => t.set === openSet.id) ? { s: openSet, tabs: all.filter((t) => t.set === openSet.id) } : null
   useWorkspaceVersion()
-  useFlip(box, !!liftedId)
+  const page = open ? `set:${open.s.id}` : "all"
+  useFlip(box, !!liftedId, page)
+  // A group opens at its top, as a page pushed does, and All tabs comes back where it was left (its group's card in
+  // sight), set before the list is drawn: left to the browser, iOS settles the old offset in the new list with a bounce.
+  const allTop = useRef<number | null>(null)
+  const first = useRef(true)
+  useLayoutEffect(() => {
+    const sc = box.current?.closest<HTMLElement>(".overflow-y-auto")
+    if (!sc) return
+    if (first.current) first.current = false
+    else sc.scrollTop = page === "all" ? allTop.current ?? 0 : 0
+    if (page !== "all") return
+    const kept = () => { allTop.current = sc.scrollTop }
+    sc.addEventListener("scroll", kept, { passive: true })
+    return () => sc.removeEventListener("scroll", kept)
+  }, [page])
 
   const scroller = useRef(edgeScroller())
   /** Where the lifted card would go (the list is shown so), and where the finger last was (where its picture is). */

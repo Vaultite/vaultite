@@ -101,6 +101,21 @@ check("in the group, its name tapped: renamed there", focused === "Group name" &
 await P.screenshot({ path: `${OUT}group-renamed.png` })
 await P.locator("dialog[open] [data-group-head] button").first().click(); await wait(600)
 check("back to all tabs: the one that left is a card again", (await ids()).length === 5 && /^Trip, 2 tabs$/.test((await groupCards())[0] ?? ""), [await ids(), await groupCards()])
+// Into a group and back is going to another page: the group at its top, All tabs where it was left, every time (the
+// list kept its old height and offset, so a second visit showed the group's cards scrolled out of sight).
+{
+  const list = () => P.evaluate(() => { const sc = document.querySelector("dialog[open] [data-tabs-grid]").closest(".overflow-y-auto"); const c = document.querySelector("dialog[open] [data-tab-row] [data-tab-card]")?.getBoundingClientRect(); return { top: Math.round(sc.scrollTop), card: c ? Math.round(c.top) : null, h: sc.clientHeight } })
+  await P.evaluate(() => { const sc = document.querySelector("dialog[open] [data-tabs-grid]").closest(".overflow-y-auto"); sc.scrollTop = sc.scrollHeight }); await wait(300)
+  const left = await list(), seen = []
+  for (let i = 0; i < 2; i++) {
+    await P.locator("dialog[open] [data-group-card] button[aria-label$=' tabs']").first().dispatchEvent("click"); await wait(500)
+    const inGroup = await list()
+    await P.locator("dialog[open] [data-group-back]").dispatchEvent("click"); await wait(500)
+    seen.push({ inGroup, back: await list() })
+  }
+  check("a group opened (twice): at its top, its first card in sight; back, All tabs where it was", left.top > 0 && seen.every((v) => v.inGroup.top === 0 && v.inGroup.card > 0 && v.inGroup.card < v.inGroup.h && Math.abs(v.back.top - left.top) <= 1), { left, seen })
+  await P.evaluate(() => { document.querySelector("dialog[open] [data-tabs-grid]").closest(".overflow-y-auto").scrollTop = 0 }); await wait(300)
+}
 // Held on All tabs, a group's card is carried out to all tabs (spring-loaded), still under the finger: let go on a card's
 // edge it goes there, on its group's card it stays in, on All tabs before it springs it leaves (the last: the group goes).
 const touch = (type, p) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: p ? [p] : [] })
