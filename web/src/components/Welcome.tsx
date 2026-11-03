@@ -47,7 +47,7 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
   const [pressed, setPressed] = useState(false)
   const card = useRef<HTMLDivElement>(null)
   const page = trail[trail.length - 1]
-  const found = agents?.filter((a) => a.path) ?? []
+  const found = usable(agents ?? [])
   usePageLock()
 
   // Asked as it opens, so the AI page has its answer by the time it's reached.
@@ -165,7 +165,7 @@ function LookPage() {
   const { theme } = usePrefs()
   return (
     <>
-      <Head title="Choose a look">It changes behind this card as you pick. Settings has it too, with the rest of your look.</Head>
+      <Head title="Choose a layout">It changes behind this card as you pick. {"Settings > Appearance"} has it too.</Head>
       <LayoutPicker builtInOnly menus={false} open="none" silent className="justify-center" />
       <Segmented<Theme> label="Theme" value={theme} onChange={(t) => setPrefs({ theme: t })} options={THEMES.map((t) => ({ ...t, attrs: { "data-welcome-theme": t.value } }))}
         className="mx-auto mt-6 w-full max-w-[300px]" />
@@ -174,6 +174,9 @@ function LookPage() {
 }
 
 // ---------- AI ----------
+/** The agents found whose plugin is here, so a yes can turn them on. */
+const usable = (agents: CodingAgent[]) => agents.filter((a) => a.path && a.plugin)
+
 function AiPage({ agents }: { agents: CodingAgent[] | null }) {
   if (!agents) return (
     <div className="loading-in flex flex-col items-center gap-2 pb-6" aria-busy data-welcome-loading>
@@ -182,11 +185,14 @@ function AiPage({ agents }: { agents: CodingAgent[] | null }) {
       <span className="w-full text-center"><Bar w="78%" /></span>
     </div>
   )
-  const found = agents.filter((a) => a.path)
+  const found = usable(agents)
+  // (on this computer, its plugin not here yet: getting one runs code, so that's Settings > AI's Get, not a yes here)
+  const more = agents.filter((a) => a.path && !a.plugin).map((a) => a.name)
+  const also = more.length ? `${listed(more)} ${more.length === 1 ? "is" : "are"} here too: Settings > AI can add ${more.length === 1 ? "it" : "them"}.` : ""
   if (!found.length) return (
     <div data-welcome-ai="none">
       <Head title="Vaultite works fully without AI" art={<Art><Feather className="size-5.5" strokeWidth={1.75} /></Art>}>
-        You can connect the Claude or ChatGPT app, or a coding agent, any time in Settings.
+        {more.length ? `${listed(more)} ${more.length === 1 ? "is" : "are"} on this ${computer}: Settings > AI can add ${more.length === 1 ? "it" : "them"}, and connect the Claude or ChatGPT app.` : "You can connect the Claude or ChatGPT app, or a coding agent, any time in Settings."}
       </Head>
     </div>
   )
@@ -195,7 +201,7 @@ function AiPage({ agents }: { agents: CodingAgent[] | null }) {
     <div data-welcome-ai="found">
       <Head title={`${listed(found.map((a) => a.name))} ${one ? "is" : "are"} on this ${computer}`}
         art={<span className="mb-4 flex gap-2">{found.slice(0, 4).map((a) => <AgentMark key={a.id} a={a} />)}</span>}>
-        Use {one ? "it" : "them"} in Vaultite? {one ? "It works" : "They work"} in its terminals and on your notes, when you ask. You can change this in Settings.
+        Use {one ? "it" : "them"} in Vaultite? {one ? "It works" : "They work"} in its terminals and on your notes, when you ask. {also || "You can change this in Settings."}
       </Head>
     </div>
   )
