@@ -9,7 +9,7 @@ const { args: [B0], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 const PRINT = process.argv.includes("--print")
 const SECS = 20
-// Callbacks a minute (one note, read; measured ~4 shown, ~4 hidden): a new poll or loop shows here.
+// Callbacks a minute (one note, read; measured ~6-9 shown, ~6 hidden): a new poll or loop shows here.
 // The server's main-thread wakeups a minute, the window open (measured ~200; an always-on timer showed ~3000).
 const LIMITS = { shown: 30, hidden: 30, server: 600 }
 
@@ -41,7 +41,9 @@ await page.goto(B)
 await page.locator("aside[data-side=left]").getByText("How this vault works").first().click()
 check("the note opens", await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("How this vault works")), 8000))
 await page.mouse.move(700, 450)
-await wait(5000) // (what opening it started settles)
+// (what opening it started settles: the playground's welcome toast and its announcement gone, or they're measured)
+await until(() => page.evaluate(() => !document.querySelector("[data-sonner-toast], [data-announce] > p")), 20000)
+await wait(5000)
 
 async function measure(name) {
   await page.evaluate(() => { for (const k in window.__wakes) delete window.__wakes[k] })
