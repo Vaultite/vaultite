@@ -8,17 +8,16 @@ import { usePrefs } from "@/core/prefs"
 import { replaceTabTarget } from "@/core/workspace"
 import { DenseRows, PageHeader, Segmented, SheetHead } from "@/components/kit"
 import { RailLayout, RailMenu, useRail, type RailItem } from "@/components/RailLayout"
-import { StoreBundles, Welcome } from "@/pages/Bundles"
+import { StoreBundles } from "@/pages/Bundles"
 import { Plugins } from "@/pages/Plugins"
 import { glide } from "@/core/animation"
 
-type Tab = Exclude<SetupTab, "welcome">
+type Tab = SetupTab
 
 /** `at`: the workspace tab it's drawn in. */
 export function Setup({ store, tab, at }: { store: Store; tab: SetupTab; at?: string }) {
   const rail = useRail(), wide = rail[1]
   const pick = (to: SetupTab) => { if (at) replaceTabTarget(at, to); else openSetup(to) }
-  if (tab === "welcome") return <div data-setup="welcome"><RailLayout rail={rail} page={tab} side={null}><Welcome store={store} at={at} /></RailLayout></div>
   const page = (t: Tab) => <Plugins store={store} view={t === "get" ? "get" : "installed"} onView={(v) => pick(v === "get" ? "get" : "plugins")}
     above={t === "get" ? (query, filters) => !filters.source && <StoreBundles query={query} /> : undefined} />
   if (wide) return (

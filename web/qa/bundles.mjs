@@ -1,4 +1,4 @@
-// Layouts (core/bundles.ts, components/LayoutPicker.tsx, pages/Bundles.tsx): a new vault's start and its welcome, the
+// Layouts (core/bundles.ts, components/LayoutPicker.tsx, pages/Bundles.tsx): a new vault's start and its welcome card, the
 // picker in Settings > Appearance (one click, Undo), Save as new, Share, Import from Get. The fresh server serves a
 // folder the app never opened. WRITES settings and bundles: throwaway servers only.
 //   node web/qa/bundles.mjs <base url> <vault path> <fresh base url> <fresh vault path> [out dir]
@@ -86,33 +86,29 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
     json(FVAULT, ".vaultite/newtab.json")?.opens === "switcher" && json(FVAULT, ".vaultite/plugins/tabs/data.json")?.archive_after === "12h", [s, json(FVAULT, ".vaultite/newtab.json")])
   await wait(1200)
   await shot(page, "after-browser-new-vault")
-  // A vault still offered a layout (just created): it opens on the welcome, its tiles the built-ins with no menus.
-  writeFileSync(`${FVAULT}/.vaultite/bundles/onboarding.json`, "{}\n")
+  // A vault still offered a layout (just created): the welcome card over it, its tiles the built-ins with no menus.
+  const OFFER = `${FVAULT}/.vaultite/bundles/onboarding.json`
+  writeFileSync(OFFER, "{}\n")
   await go(page, FB)
-  await until(() => page.evaluate(() => location.hash === "#welcome"), 6000)
-  // (a tab kept drawn behind this one has its own h1, hidden: the shown page's is the visible one)
-  check("offered: it opens on the welcome, without Setup's tabs", (await page.locator("main h1:visible").first().innerText()).includes("Welcome") &&
-    !(await page.locator("[data-setup-tab]").count()), await page.locator("main h1:visible").first().innerText())
-  await until(() => page.locator("[data-bundles-welcome] [data-layout-pick]").count() === 3, 6000)
-  check("offered: the three layouts, no menus, a quiet line imports one", !(await page.locator("[data-bundles-welcome] [data-layout-more]").count())
-    && await page.locator("[data-bundles-welcome-import]").count() === 1 && await page.locator("[data-bundles-continue]").count() === 1)
+  await until(() => page.locator("[data-welcome] [data-layout-pick]").count() === 3, 8000)
+  check("offered: the welcome card, the three layouts, no menus", await page.locator("[data-welcome=new-vault]").count() === 1 && !(await page.locator("[data-welcome] [data-layout-more]").count()))
   await shot(page, "welcome")
-  await page.locator('[data-bundles-welcome] [data-layout-pick="zen"]').click()
+  await page.locator('[data-welcome] [data-layout-pick="zen"]').click()
   await until(() => settings(FVAULT).appearance?.rails === false, 8000)
   await wait(500)
-  check("picked there: applied, nothing opened, the offer ended", (await page.evaluate(() => location.hash)) === "#welcome" && !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`),
-    await page.evaluate(() => location.hash))
-  await page.locator("[data-bundles-continue]").click()
-  await until(() => page.evaluate(() => location.hash !== "#welcome"), 6000)
-  check("Continue: the welcome goes, Zen stays", (await page.evaluate(() => location.hash)) !== "#welcome" && settings(FVAULT).appearance?.rails === false)
-  // Continue without a pick starts from the default, as a new vault does.
-  writeFileSync(`${FVAULT}/.vaultite/bundles/onboarding.json`, "{}\n")
-  await go(page, FB, "welcome")
-  await until(() => page.locator("[data-bundles-continue]").count(), 6000)
-  await page.locator("[data-bundles-continue]").click()
-  await until(() => !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`), 6000)
+  check("picked there: applied behind the card, no toast, the offer ended", !existsSync(OFFER) && await page.locator("[data-welcome]").count() === 1
+    && !(await page.locator("[data-sonner-toast]", { hasText: "Zen" }).count()))
+  await page.locator("[data-welcome-skip]").click()
+  await until(async () => !(await page.locator("[data-welcome]").count()), 4000)
+  check("Skip: the card goes, Zen stays", !(await page.locator("[data-welcome]").count()) && settings(FVAULT).appearance?.rails === false)
+  // Closed without a pick (Esc), it starts from the default, as a new vault does.
+  writeFileSync(OFFER, "{}\n")
+  await go(page, FB)
+  await until(() => page.locator("[data-welcome]").count(), 8000)
+  await page.keyboard.press("Escape")
+  await until(() => !existsSync(OFFER), 6000)
   const m = settings(FVAULT)
-  check("Continue with no pick: Standard's plugins (Claude Code on)", !(m.plugins?.enabled ?? []).includes("workspaces") && !m.plugins?.disabled?.includes("claude-code"), m.plugins)
+  check("Esc with no pick: Standard's plugins (Claude Code on)", !(m.plugins?.enabled ?? []).includes("workspaces") && !m.plugins?.disabled?.includes("claude-code"), m.plugins)
   await ctx.close()
 }
 

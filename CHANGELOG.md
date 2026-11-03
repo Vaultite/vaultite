@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A first run that asks, not assumes**: the desktop app's first window is one page, the vault (create one, or open a
+  folder: Obsidian vaults by name), with page dots instead of numbered steps. The vault then opens with a welcome card
+  over it: pick a layout and light or dark and see it behind the card; use the coding agents found on this Mac or not
+  (none found, Vaultite says it works fully without AI); only if you use them, Accessibility and Screen recording, each
+  one drag; then learn ⌘O by pressing it. Skip or Esc ends it at any page; Show welcome in the palette brings it back. A
+  new vault on the web gets the same card; on a phone it starts on Standard. Setup's welcome page is gone.
 - **Mac: Vaultite stays in the menu bar with no window open**: the companion goes on, and fn dictates in any app (a tap
   starts and the next stops, or hold it), with a pill of bars that follow your voice there and in the window. With no
   text field, what you say asks the companion about the window in front. Its cursor shows over the whole screen

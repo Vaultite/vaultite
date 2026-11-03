@@ -11,7 +11,7 @@
 
 ## UI conventions
 - One sheet system: every detail view is `components/DetailSheet.tsx` via `openDetail(path)`; no other modals, sheets
-  or bottom sheets. An unsaved form asks before closing (`useSheetGuard`).
+  or bottom sheets (the first run's welcome card, components/Welcome.tsx, is the one card over the app). An unsaved form asks before closing (`useSheetGuard`).
 - The app draws its own dialogs, tooltips and menus, never the browser's (`alert`, `confirm`, `prompt`, `title=`,
   context menu). Feedback: `notify()` / `notifyError()`, one line, one action at most, nothing on autosave.
 - A tap shows its effect at once; the write catches up (`core/leaving.ts`). What it takes away folds off its list

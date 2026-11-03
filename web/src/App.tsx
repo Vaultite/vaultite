@@ -53,7 +53,8 @@ import { editorSettings, showPropertiesAs } from "@/core/editorPrefs"
 import { PluginPreview } from "@/components/PluginPreview"
 import { PluginSettings } from "@/components/PluginSettings"
 import { settingsCommands, settingsTitle } from "@/core/pluginSettings"
-import { currentLayout, offerBundles, openImport, previousSetup, restoreSetup } from "@/core/bundles"
+import { currentLayout, openImport, previousSetup, restoreSetup } from "@/core/bundles"
+import { startWelcome } from "@/core/welcome"
 import { saveAsNew } from "@/components/LayoutPicker"
 import { APP_PAGES, appPageOf, hrefOf, isSetupTab, openAppPage, openSettings, openSetup, type AppPage } from "@/core/apppages"
 import { CommandPalette } from "@/components/CommandPalette"
@@ -81,6 +82,7 @@ import { SelectionBar } from "@/components/SelectionBar"
 import { VaultManager, webVaults } from "@/components/VaultManager"
 import { ContextMenus } from "@/components/ContextMenu"
 import { ConfirmDialogs } from "@/components/ConfirmDialog"
+import { WelcomeCards } from "@/components/Welcome"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
 import { cn, space, whenIdle } from "@/lib/utils"
 import { canGoSide, focusArea, goSide } from "@/core/keylist"
@@ -280,10 +282,10 @@ export default function App() {
     return subscribeScoped(() => { const n = currentWorkspace()?.n ?? null; if (n !== was) { was = n; sayWindowState() } })
   }, [])
   // A device's first visit (nothing saved): its blank tab shows where plugins say it starts (the first pinned page). A
-  // vault the app has never opened before shows its welcome first (a layout to start from).
+  // vault new here, or one the desktop's first run just opened, shows the welcome card over it (core/welcome.ts).
   useEffect(() => {
     if (store?.vault.sandbox) sandboxNotice()
-    if (store && offerBundles()) { openSetup("welcome"); return }
+    if (store) void startWelcome()
     if (home) fillFirstTab(home)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])
@@ -703,6 +705,7 @@ export default function App() {
       {desktop && <Tooltips />}
       {!desktop && <SelectionBar />}
       <ContextMenus />
+      <WelcomeCards />
       <ConfirmDialogs />
       <BundleTrial store={store} />
       <Toaster desktop={desktop} />

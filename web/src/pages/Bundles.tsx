@@ -1,14 +1,13 @@
-// Bundles beside the layout picker: Get's layouts and packs, a new vault's welcome, and the sheets: a bundle's preview
+// Bundles beside the layout picker: Get's layouts and packs, and the sheets: a bundle's preview
 // (what applying it changes, asking first when it runs code), an import's, sharing one. Format: core/bundles.ts.
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react"
 import {
   ArrowRight, BookOpen, Bot, Check, Copy, Download, FilePlus, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
   Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Star, Trash2, type LucideIcon,
 } from "lucide-react"
-import type { Store } from "@/core/data"
 import {
   addIncoming, agentPrompt, applyBundle, browseBundles, bundleText, exportBundle, forkBundle, givenImport, incomingOf, isBundleText, isLayout,
-  lockedBy, openImport, previewOf, removeBundle, runsCode, shareOf, skipOf, skipOnboarding, useBundles, useListedPicture, usePicture, without,
+  lockedBy, openImport, previewOf, removeBundle, runsCode, shareOf, skipOf, useBundles, useListedPicture, usePicture, without,
   type BundleInfo, type Directory, type Incoming, type Listed, type Plan, type ShareItem,
 } from "@/core/bundles"
 import { AND, APPEARANCE, EDITOR_LABELS, EDITOR_NAMES, EDITOR_VALUES, NEWTAB, OPENS, stem } from "@/core/bundlenames"
@@ -18,12 +17,11 @@ import { errorText, notify, notifyError } from "@/core/notify"
 import { namedIcon, tintOf } from "@/core/pages"
 import { pluginById, tintOfPlugin } from "@/core/plugins"
 import { useKeptCount } from "@/core/heights"
-import { closeTab } from "@/core/workspace"
 import { menuBelow } from "@/components/ContextMenu"
 import { useSheetGuard } from "@/components/DetailSheet"
-import { Bar as Line, Panel, PageHeader, SheetHead, Switch } from "@/components/kit"
+import { Bar as Line, Panel, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
-import { askToRun, LayoutPicker } from "@/components/LayoutPicker"
+import { askToRun } from "@/components/LayoutPicker"
 import { LayoutDrawing } from "@/components/LayoutDrawings"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
@@ -183,30 +181,6 @@ function CardSkeletons({ count }: { count: number }) {
           </div>
         </div>
       ))}
-    </div>
-  )
-}
-
-// ---------- a new vault's welcome ----------
-
-/** A vault opened for the first time: its layout to start from, applied as it's picked (Standard until then), then
- *  Continue. `at`: the tab it's in, closed after. */
-export function Welcome({ store, at }: { store: Store; at?: string }) {
-  const finish = async () => {
-    try { if (store.bundles?.onboarding) await skipOnboarding() } catch (e) { notifyError(e, "Couldn't start"); return }
-    if (at) closeTab(at)
-  }
-  return (
-    <div className="mx-auto max-w-[560px] pt-[6vh]" data-bundles-welcome>
-      <PageHeader title="Welcome to Vaultite" subtitle="Pick a layout to start from. It changes as you click, and Settings has it again, with the rest of your look." />
-      <LayoutPicker builtInOnly menus={false} open="none" className="mb-6" />
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Button look="primary" onClick={() => void finish()} data-bundles-continue>Continue<ArrowRight className="size-4" strokeWidth={2.25} /></Button>
-        {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
-        <p className="text-[14px] text-muted-foreground" data-bundles-welcome-import>
-          Have a bundle? <button type="button" onClick={() => openDetail("bundle-import")} className="cursor-pointer font-medium text-primary hover:underline">Import it</button>
-        </p>
-      </div>
     </div>
   )
 }

@@ -78,9 +78,11 @@ for (const dark of [false, true]) {
       const scrolls = [m, ...m.querySelectorAll("[data-page] .overflow-y-auto")].some((e) => e.scrollHeight > e.clientHeight)
       return { at: [Math.round(r.left), Math.round(r.right)], scrolls }
     })
-    await page.goto("about:blank"); await page.goto(`${B}#welcome`); await page.locator("#main-scroll [data-bundles-welcome]").waitFor()
-    const short = await edge()
+    // (the same page short, searched for what no plugin is, then long)
     await page.goto("about:blank"); await page.goto(`${B}#plugins`); await page.locator("#main-scroll [data-plugin-row]").first().waitFor()
+    await page.locator("[data-plugins-search] input").fill("qqzzxx"); await wait(400)
+    const short = await edge()
+    await page.locator("[data-plugins-search] input").fill(""); await wait(400)
     const long = await until(async () => { const e = await edge(); return e.scrolls && e }, 8000) || await edge()
     check("a scrollbar appearing doesn't shift the page", !short.scrolls && long.scrolls && JSON.stringify(short.at) === JSON.stringify(long.at), { short, long })
     check("the window itself never scrolls (desktop)", await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight))

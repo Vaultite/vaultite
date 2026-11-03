@@ -1,5 +1,5 @@
 // The app's own pages, at the left sidebar's foot (a phone's: its drawer's, and its bar's menu): Setup and Settings.
-// Every other page is a file. Setup's tabs (pages/Setup.tsx) are each an address: #plugins, #get, #welcome.
+// Every other page is a file. Setup's tabs (pages/Setup.tsx) are each an address: #plugins, #get.
 import { Blocks, Settings, type LucideIcon } from "lucide-react"
 import { isDesktop } from "@/core/platform"
 import { share } from "@/core/share"
@@ -7,7 +7,7 @@ import { findOpen, go, replaceTabTarget } from "@/core/workspace"
 import { openDetail } from "@/core/nav"
 import { cell } from "@/core/signal"
 
-const SETUP_TABS = ["plugins", "get", "welcome"] as const
+const SETUP_TABS = ["plugins", "get"] as const
 export type SetupTab = (typeof SETUP_TABS)[number]
 
 export type AppPage = { id: "setup" | "settings"; label: string; icon: LucideIcon; tint: string

@@ -22,7 +22,7 @@ Its cursor shows up in this note and answers here. With Codex, set the agent in 
 
 - ⌘O finds any file, ⌘P runs any command (Ctrl+O and Ctrl+P on Windows and Linux).
 - Open terminal (⌘P) runs a coding agent in this folder: \`claude\`, \`codex\` or another. It reads the vault's rules.
-- Settings > Bundles turns on a whole setup at once.
+- Settings > Appearance picks a layout: Standard, Zen or Browser.
 - Setup > Plugins turns on one feature at a time.
 - Settings > Connections puts Claude, ChatGPT, Muse and Grok Bot in this vault, on the web and on your phone.
 - [[How this vault works]]: what a file is, and what a note can hold.

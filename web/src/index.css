@@ -1386,3 +1386,10 @@ html[data-translucent][data-translucent-pages] {
 .dictation-pill:not([data-ready]) .dictation-bars { opacity: 0.5; }
 .dictation-pending { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: 0.75; }
 @media (prefers-reduced-motion: reduce) { .dictation-bars i { transition: none; } }
+
+/* The welcome card's backdrop (components/Welcome.tsx): a light dim, none on the look page, where the app behind is the
+   point. */
+.welcome-scrim { background: rgb(0 0 0 / 0.16); transition: background-color 300ms ease; animation: welcome-scrim-in 200ms ease; }
+.dark .welcome-scrim { background: rgb(0 0 0 / 0.32); }
+.welcome-scrim[data-welcome-page="look"] { background: transparent; }
+@keyframes welcome-scrim-in { from { background: transparent; } }

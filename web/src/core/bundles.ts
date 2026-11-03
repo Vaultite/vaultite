@@ -105,15 +105,17 @@ export type ApplyOptions = {
   /** What it shows after: its guide or first page (`front`), only a guide it just added, in a tab behind (`behind`: a
    *  layout picked in Settings, where the window is the preview), or nothing. */
   open?: "front" | "behind" | "none"
+  /** No toasts (applying, applied, Undo): the welcome card, where the tiles show what's picked. */
+  silent?: boolean
 }
 
 /** Apply a bundle, then show its guide or first page, with Undo in a toast that said it was on its way meanwhile
  *  (installing takes seconds); a trial ends without one, its bar says it. */
-export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false, offAdded = false, skip = [], trial = false, fresh = false, open = "front" }: ApplyOptions = {}) {
+export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false, offAdded = false, skip = [], trial = false, fresh = false, open = "front", silent = false }: ApplyOptions = {}) {
   const id = `bundle-apply-${b.id}`
   const installs = allowCode ? without(plan, new Set(skip)).code.filter((c) => c.source && !c.kept).map((c) => c.name) : []
   // (a layout picked in Settings is there at once: only an install is worth saying meanwhile)
-  if (installs.length || open !== "behind") notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `${trial ? "Trying" : "Applying"} ${b.name}…`, { id, duration: Infinity })
+  if (!silent && (installs.length || open !== "behind")) notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `${trial ? "Trying" : "Applying"} ${b.name}…`, { id, duration: Infinity })
   let guide = false
   try {
     // (`open`: the guide it just added, else its first pin; none when quiet)
@@ -126,7 +128,7 @@ export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false
     dismissNotice(id)
     throw e
   }
-  if (trial) dismissNotice(id)
+  if (trial || silent) dismissNotice(id)
   else notify(guide ? `Applied ${b.name}: its guide is in a new tab` : `Applied ${b.name}`, { id, duration: 8000, action: { label: "Undo", run: () => restoreSetup() } })
 }
 
@@ -328,9 +330,9 @@ export function useListedPicture(e: Pick<Listed, "preview" | "previewDark">): st
   return (dark ? e.previewDark ?? e.preview : e.preview ?? e.previewDark) ?? null
 }
 
-/** Whether App should open the bundles page by itself: a new vault being offered them (once per load). */
+/** Whether a new vault, still offered a layout, should show its welcome card now (once per load). */
 let offered = false
-export function offerBundles() {
+export function offerWelcome() {
   if (offered || !onboarding()) return false
   offered = true
   return true

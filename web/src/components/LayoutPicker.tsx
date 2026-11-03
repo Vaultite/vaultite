@@ -1,4 +1,4 @@
-// The layout picker (Settings > Appearance, a new vault's welcome): a click applies one at once, with Undo (the window
+// The layout picker (Settings > Appearance, the welcome card): a click applies one at once, with Undo (the window
 // is the preview); a tile's menu has the rest. A layout is a bundle (core/bundles.ts); packs and looks are in Setup's Get.
 import { useEffect, useRef, type KeyboardEvent } from "react"
 import { Check, Copy, Info, MoreHorizontal, RefreshCw, RotateCcw, Share, Trash2 } from "lucide-react"
@@ -30,7 +30,7 @@ export const askToRun = (b: BundleInfo, plan: Plan, trial = false) => plan.code.
 
 /** Apply a layout as it is now (asking first when it runs code); false when the user said no. `fresh`: without the
  *  changes kept from its last use (Reset). */
-export async function pickLayout(b: BundleInfo, o: Pick<ApplyOptions, "open" | "fresh"> = {}) {
+export async function pickLayout(b: BundleInfo, o: Pick<ApplyOptions, "open" | "fresh" | "silent"> = {}) {
   const { plan } = await previewOf(b.id)
   const code = runsCode(plan)
   if (code && !(await askToRun(b, plan))) return false
@@ -134,13 +134,15 @@ export type LayoutPickerProps = {
   open?: ApplyOptions["open"]
   /** Only the app's own (Standard, Zen, Browser). */
   builtInOnly?: boolean
+  /** No toasts as one applies (the welcome card). */
+  silent?: boolean
   /** After a pick is applied. */
   onPicked?: (b: BundleInfo) => void
   className?: string
 }
 
 /** The layouts as tiles, the app's then the user's: a click applies one, with Undo in its toast. */
-export function LayoutPicker({ menus = true, open = "behind", builtInOnly, onPicked, className }: LayoutPickerProps) {
+export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silent, onPicked, className }: LayoutPickerProps) {
   const { loaded, list, current } = useLayouts()
   const [shown, choose] = useChosen(current)
   const shownList = builtInOnly ? list.filter((b) => b.source === "app") : list
@@ -163,7 +165,7 @@ export function LayoutPicker({ menus = true, open = "behind", builtInOnly, onPic
         const on = b.id === shown
         return (
           <Tile key={b.id} b={b} on={on} changed={menus ? changedOf(b, b.id === current) : null} menu={menus ? () => menuOf(b, b.id === current, open) : null}
-            onPick={() => choose(b.id, async () => { if (await pickLayout(b, { open })) onPicked?.(b) }, `Couldn't switch to ${b.name}`)} />
+            onPick={() => choose(b.id, async () => { if (await pickLayout(b, { open, silent })) onPicked?.(b) }, `Couldn't switch to ${b.name}`)} />
         )
       })}
     </div>

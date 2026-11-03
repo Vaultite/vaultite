@@ -18,9 +18,10 @@
 - The menu bar (`menu.ts`) is the focused window's commands as its page tells them: an item is a command id, never a
   copy of what it does. Only single ⌘/⌃/⌥ steps become accelerators (the page gets every key first).
 - The Dock icon a page draws changes only the Dock, never the bundle.
-- Set up Vaultite writes nothing outside `.vaultite/` in a folder of the user's (`npm run smoke` checks) but what they
-  turn on there (an agent's plugin and its page), nor outside the vault but what they tick (an agent's config: Claude
-  Code's computer use, Codex's, OpenClaw's and Hermes' MCP servers); its tests write only under `VAULTITE_SETUP_HOME`.
+- The first run is Set up Vaultite's window (the vault) and then the welcome card in the vault's window (web
+  Welcome.tsx: the look, AI, permissions). It writes nothing outside `.vaultite/` in a folder of the user's (`npm run
+  smoke` checks) but what they turn on there (agents' plugins and their pages), nor outside the vault but what they
+  press (Allow on the card: Claude Code's and Codex's computer use); its tests write only under `VAULTITE_SETUP_HOME`.
 - Location, Input monitoring and the drag panel (Settings > Permissions' Allow) are a Node addon in the main process
   (`macpermissions.m`), not a helper: CoreLocation and IOHIDCheckAccess answer for the process that asks, and macOS
   gives a helper binary no Location of the app's. Electron itself never asks macOS for Location.

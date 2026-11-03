@@ -2,7 +2,7 @@
 A bundle is a whole setup of the app at once: which plugins are on, their settings, the sidebars' panels, the pinned
 pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks a layout in
 Settings, Appearance (its first section: a drawn tile each, a click applies it with Undo; a new vault starts from
-Standard). A tile's menu: Details… (its preview), Reset (changed or tweaked), Save as new… (the one in use, named),
+Standard, its welcome card offering the three on a computer, `.vaultite/bundles/onboarding.json` until it closes). A tile's menu: Details… (its preview), Reset (changed or tweaked), Save as new… (the one in use, named),
 Share…, Delete (the user's). Setup's Get (beside Your plugins) lists the directory's bundles over its plugins and
 imports others' (Import…, or pasting or dropping one on the page: its preview first).
 The app's own, layouts: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
@@ -77,7 +77,7 @@ packs: Life OS (days, people, health, books, and pages over them) and Agents (co
   Reset; `?fresh=1` for its preview) applies it clean and forgets them. Restore puts tweaks back as they were.
 - `vau bundle standard` (bundle.standard; the palette's Back to Standard layout) applies Standard with its tweaks, clean
   when it's in use already: the way back when a layout hides everything. Apply's `quiet` opens nothing after (the
-  answer's `open`: the guide it added, else its first pin): onboarding.
+  answer's `open`: the guide it added, else its first pin): the welcome card.
 - Saving names it "My <the layout in use>" when not named (`saveName` in `GET /api/bundles`).
 - Trying one (`apply --trial`, `.vaultite/bundles/trial.json`; Try on its preview): `vau bundle keep` ends it as an
   apply; restore puts back the setup from before. Another applied while trying ends the trial, and restore still goes
