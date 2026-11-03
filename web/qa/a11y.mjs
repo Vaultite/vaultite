@@ -36,7 +36,7 @@ for (const scheme of ["light", "dark"]) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: scheme })
   const page = watch(await ctx.newPage())
   const surfaces = [["start", ""], ["files", "#view/files"], ["search", "#view/search"], ["settings", "#settings"], ["plugins", "#plugins"],
-    ["bundles", "#bundles"], ["agents", "#agents"], ["errors", "#errors"], ["today", await page$("Today")], ["people", await page$("People")]]
+    ["get", "#get"], ["agents", "#agents"], ["errors", "#errors"], ["today", await page$("Today")], ["people", await page$("People")]]
   for (const [name, hash] of surfaces) if (hash !== null) { await go(page, hash); await audit(page, `${scheme} ${name}`) }
   if (scheme === "light") {
     // Over the page: the palette, a file's menu, a person's sheet.

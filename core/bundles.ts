@@ -201,6 +201,9 @@ export type Info = {
   on: string[] | null; pinned: string[] | null
   /** Its sidebars' panels (null: it leaves them as they are, or the default), for its card. */
   panels: { left: string[]; right: string[]; collapsed: string[] } | null
+  /** How its window is drawn, for its tile: the tab bar, rails (off: sidebars slide in from the edge) and panes floating
+   *  as cards (paneCards, or a snippet named so); null where it leaves one as it is. */
+  shape: { tabBar: boolean | null; rails: boolean | null; floating: boolean | null }
   /** What the first page it pins draws, for its card: its blocks in order (null: it pins nothing; [] not known). */
   home: HomeBlock[] | null
   /** Vault plugins it brings or installs: they run code; `official`: only Vaultite's own, installed from its directory. */
@@ -264,11 +267,14 @@ function info(b: Bundle, host: Host): Info {
   let panels: Info["panels"] = null
   const s = readSidebars(jsonOr(b, "sidebars.json"))
   if (s) panels = { left: s.left, right: s.right, collapsed: s.collapsed }
+  const bool = (v: unknown) => (typeof v === "boolean" ? v : null)
+  const snippets = Array.isArray(look.snippets) ? strs(look.snippets) : null
+  const floating = look.paneCards === true || !!snippets?.some((x) => /float/i.test(x)) ? true : look.paneCards === false || snippets ? false : null
   return {
     id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"), kind: kindOf(b, m),
     sort: typeof m.sort === "number" ? m.sort : 1000,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
-    on, pinned, panels, home: homeOf(b, host, pinned), code: [...brings, ...installs.map((x) => x.id)],
+    on, pinned, panels, shape: { tabBar: bool(look.tabBar), rails: bool(look.rails), floating }, home: homeOf(b, host, pinned), code: [...brings, ...installs.map((x) => x.id)],
     official: !brings.length && installs.every((x) => official(x.source)), from: str(m.from) || null,
     guide: typeof b.files[str(m.guide)] === "string" ? str(m.guide) : null, hotkeys: b.files["hotkeys.json"] !== undefined,
     preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null, previewDark: Buffer.isBuffer(b.files[PREVIEW_DARK]) ? hash(b.files[PREVIEW_DARK]) : null,

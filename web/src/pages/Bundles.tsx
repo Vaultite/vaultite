@@ -1,331 +1,39 @@
-// Setup's Bundles tab: setups to start from, save and share (format: core/bundles.ts); a card, or a bundle pasted or
-// dropped on the page, opens a preview of what applying it changes, asking first when it runs code.
-import { EDITOR } from "../../../core/editor.ts"
-import { official } from "../../../core/updates.ts"
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react"
-import { createPortal } from "react-dom"
+// Bundles beside the layout picker: Get's layouts and packs, a new vault's welcome, and the sheets: a bundle's preview
+// (what applying it changes, asking first when it runs code), an import's, sharing one. Format: core/bundles.ts.
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react"
 import {
-  ArrowRight, BookOpen, Bot, Check, CircleAlert, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
+  ArrowRight, BookOpen, Bot, Check, Copy, Download, FilePlus, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
   Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Star, Trash2, type LucideIcon,
 } from "lucide-react"
 import type { Store } from "@/core/data"
-import { fmtAgo } from "@/core/data"
 import {
-  addIncoming, agentPrompt, applyBundle, browseBundles, bundleText, deleteBundle, exportBundle, forkBundle, givenImport, importText, incomingOf, isBundleText,
-  lockedBy, openImport, previewOf, refreshBundles, restoreSetup, runsCode, saveBundle, saveChanges, shareOf, skipOf, skipOnboarding, startSave, takenShot,
-  useBundles, useListedPicture, usePicture, without, type BundleInfo, type Directory, type Incoming, type Listed, type Plan, type ShareItem,
+  addIncoming, agentPrompt, applyBundle, browseBundles, bundleText, exportBundle, forkBundle, givenImport, incomingOf, isBundleText, isLayout,
+  lockedBy, openImport, previewOf, removeBundle, runsCode, shareOf, skipOf, skipOnboarding, useBundles, useListedPicture, usePicture, without,
+  type BundleInfo, type Directory, type Incoming, type Listed, type Plan, type ShareItem,
 } from "@/core/bundles"
+import { AND, APPEARANCE, EDITOR_LABELS, EDITOR_NAMES, EDITOR_VALUES, NEWTAB, OPENS, stem } from "@/core/bundlenames"
 import { copyText } from "@/core/richmd"
 import { closeDetail, openDetail, replaceDetail } from "@/core/nav"
-import { EDITING_MODES, NOTE_VIEWS, PROPERTIES_SHOWN } from "@/core/editorPrefs"
 import { errorText, notify, notifyError } from "@/core/notify"
 import { namedIcon, tintOf } from "@/core/pages"
-import { PLUGINS, pluginById, switchedOn, tintOfPlugin, usePlugins } from "@/core/plugins"
-import { currentWorkspace } from "@/core/scope"
-import { usePrefs } from "@/core/prefs"
+import { pluginById, tintOfPlugin } from "@/core/plugins"
 import { useKeptCount } from "@/core/heights"
+import { closeTab } from "@/core/workspace"
 import { menuBelow } from "@/components/ContextMenu"
-import { confirmDialog } from "@/components/ConfirmDialog"
 import { useSheetGuard } from "@/components/DetailSheet"
-import { Bar as Line, FilterField, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
+import { Bar as Line, Panel, PageHeader, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
+import { askToRun, LayoutPicker } from "@/components/LayoutPicker"
+import { LayoutDrawing } from "@/components/LayoutDrawings"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
 import { BundleLink } from "./BundleLink"
 
-const stem = (p: string) => p.split("/").pop()!.replace(/\.(md|base|canvas|html|csv)$/, "")
 const iconOfBundle = (b: Pick<BundleInfo, "icon">) => namedIcon(b.icon) ?? Package
 const tintOfBundle = (b: Pick<BundleInfo, "tint">) => tintOf(b.tint) ?? "var(--primary)"
 
-// ---------- a bundle's card picture ----------
-// Drawn from what the bundle sets (its panels, its first pinned page's blocks), a sketch rather than every detail.
-
-const PALETTE = ["var(--primary)", "var(--green)", "var(--orange)", "var(--blue)", "var(--purple)", "var(--teal)"]
-const faint = "bg-foreground/[0.1]"
-const Bar = ({ w, className, style }: { w: string; className?: string; style?: CSSProperties }) =>
-  <span className={cn("block h-[4px] shrink-0 rounded-full", className ?? faint)} style={{ width: w, ...style }} />
-const Square = ({ c }: { c: string }) => <span className="size-[7px] shrink-0 rounded-[2px]" style={{ background: c }} />
-const dim = "color-mix(in oklab, var(--foreground) 22%, transparent)"
-
-/** One sidebar panel, small: what it looks like at a glance. */
-function MiniPanel({ k, b, folded, narrow }: { k: string; b: BundleInfo; folded: boolean; narrow?: boolean }) {
-  const kind = k.split(":")[0]
-  const head = <div className="flex h-[7px] items-center gap-1"><span className="size-0 border-y-[2.5px] border-l-[3.5px] border-y-transparent border-l-foreground/30" /><Bar w="40%" className="bg-foreground/[0.16]" /></div>
-  if (kind === "search") return <div className="h-[9px] w-full shrink-0 rounded-[3px] bg-foreground/[0.07]" />
-  if (kind === "pages") {
-    const pins = (b.pinned ?? ["", "", ""]).slice(0, 3)
-    if (!pins.length) return null
-    return (
-      <div className="flex flex-col gap-[4px]">
-        {pins.map((p, i) => (
-          <div key={i} className="flex h-[10px] items-center gap-1.5">
-            <Square c={i === 0 ? tintOfBundle(b) : dim} />
-            {p ? <span className="truncate text-[8.5px] leading-none font-medium text-foreground/75">{stem(p)}</span> : <Bar w="70%" />}
-          </div>
-        ))}
-      </div>
-    )
-  }
-  if (folded) return head
-  if (kind === "files") return (
-    <div className="flex flex-col gap-[5px]">
-      {[[0, "55%", 1], [1, "60%"], [1, "48%", 2], [1, "66%"], [0, "45%", 1], [0, "52%", 1]].map(([depth, w, folder], i) => (
-        <div key={i} className={cn("flex h-[6px] items-center gap-1", i === 2 && "-mx-1 rounded-[2px] px-1 py-[5px]")}
-          style={{ paddingLeft: depth ? 9 : undefined, background: i === 2 ? "color-mix(in oklab, var(--foreground) 8%, transparent)" : undefined }}>
-          {folder === 1 && <span className="size-0 border-y-[2.5px] border-l-[3.5px] border-y-transparent border-l-foreground/30" />}
-          <Bar w={w as string} className={folder === 1 ? "bg-foreground/[0.16]" : faint} />
-        </div>
-      ))}
-    </div>
-  )
-  if (kind === "terminal") return (
-    <div className="flex flex-col gap-[5px]">
-      {["62%", "48%"].map((w, i) => <div key={i} className="flex h-[6px] items-center gap-1.5"><span className="size-[5px] shrink-0 rounded-full" style={{ background: i ? dim : "var(--green)" }} /><Bar w={w} /></div>)}
-    </div>
-  )
-  if (kind === "outline") return (
-    <div className="flex flex-col gap-[5px]">{head}{[[0, "80%"], [6, "60%"], [6, "70%"], [0, "55%"]].map(([pad, w], i) => <div key={i} style={{ paddingLeft: pad as number }}><Bar w={w as string} /></div>)}</div>
-  )
-  return (
-    <div className="flex flex-col gap-[5px]">
-      {head}
-      {(narrow ? ["85%", "65%"] : ["70%", "55%"]).map((w, i) => <div key={i} className="flex h-[6px] items-center gap-1.5"><span className="size-[5px] shrink-0 rounded-full" style={{ background: kind === "inbox" && !i ? "var(--blue)" : dim }} /><Bar w={w} /></div>)}
-    </div>
-  )
-}
-
-type Shape = "board" | "table" | "cards" | "calendar" | "meter" | "list" | "check" | "tiles" | "card"
-const shapeOf = ({ block, view }: { block: string; view: string | null }): Shape =>
-  block === "base" ? (view === "board" || view === "cards" || view === "calendar" ? view : "table")
-  : /limits|usage|stats|perf|sleep|nutrition|goals|summary/.test(block) ? "meter"
-  : /routines/.test(block) ? "check"
-  : /machines|people-map/.test(block) ? "tiles"
-  : /sessions|inbox|activity|agenda|due|wants|log|projects|books|people/.test(block) ? "list"
-  : "card"
-
-/** A block, small, by its shape. */
-function MiniBlock({ shape, c }: { shape: Shape; c: string }) {
-  const body = (() => {
-    switch (shape) {
-      case "board": return (
-        <div className="grid flex-1 grid-cols-3 gap-1">
-          {[2, 1, 2].map((n, i) => <div key={i} className="flex flex-col gap-[3px] rounded-[3px] bg-foreground/[0.04] p-[3px]">{Array.from({ length: n }, (_, j) => <span key={j} className="h-[5px] rounded-[2px] bg-card shadow-[0_0_0_0.5px_var(--border)]" style={i + j === 0 ? { background: c } : undefined} />)}</div>)}
-        </div>
-      )
-      case "table": return (
-        <div className="flex flex-col">
-          {["", "", ""].map((_, i) => <div key={i} className={cn("flex h-[7px] items-center gap-1.5", i && "border-t-[0.5px] border-border")}><Bar w="34%" style={i ? undefined : { background: c }} /><Bar w="22%" /><Bar w="18%" /></div>)}
-        </div>
-      )
-      case "cards": return <div className="grid flex-1 grid-cols-3 gap-1">{[0, 1, 2].map((i) => <span key={i} className="rounded-[3px] bg-foreground/[0.06]" style={i ? undefined : { background: `color-mix(in oklab, ${c} 45%, transparent)` }} />)}</div>
-      case "calendar": return <div className="grid grid-cols-7 gap-[2px]">{Array.from({ length: 14 }, (_, i) => <span key={i} className="h-[5px] rounded-[1.5px]" style={{ background: i === 9 ? c : "color-mix(in oklab, var(--foreground) 7%, transparent)" }} />)}</div>
-      case "meter": return (
-        <div className="flex flex-col gap-[5px]">
-          {[62, 34].map((w, i) => <span key={i} className="block h-[4px] overflow-hidden rounded-full bg-foreground/[0.08]"><span className="block h-full rounded-full" style={{ width: `${w}%`, background: c }} /></span>)}
-        </div>
-      )
-      case "check": return (
-        <div className="flex flex-col gap-[4px]">
-          {["55%", "42%", "60%"].map((w, i) => <div key={i} className="flex items-center gap-1"><span className="size-[5px] shrink-0 rounded-[1.5px] border-[0.5px] border-foreground/30" style={i ? undefined : { background: c, borderColor: c }} /><Bar w={w} /></div>)}
-        </div>
-      )
-      case "tiles": return <div className="grid flex-1 grid-cols-4 gap-1">{[0, 1, 2, 3].map((i) => <span key={i} className="flex items-end rounded-[3px] bg-foreground/[0.06] p-[2px]"><span className="size-[4px] rounded-full" style={{ background: i < 3 ? "var(--green)" : dim }} /></span>)}</div>
-      case "list": return (
-        <div className="flex flex-col gap-[4px]">
-          {["60%", "45%", "52%"].map((w, i) => <div key={i} className="flex items-center gap-1"><span className="size-[4px] shrink-0 rounded-full" style={{ background: i ? dim : c }} /><Bar w={w} /></div>)}
-        </div>
-      )
-      default: return <><Bar w="50%" style={{ background: c }} /><Bar w="75%" /></>
-    }
-  })()
-  return <div className="flex h-[32px] flex-col gap-1 overflow-hidden rounded-[5px] bg-card p-1.5 shadow-[0_0_0_0.5px_var(--border)]">{body}</div>
-}
-
-/** The tint of the plugin a block is from (else one of a few colours, by its place). */
-function tintOfBlock(block: string, i: number) {
-  const p = PLUGINS.find((x) => x.blockDecls?.[block])
-  const t = p && p.id !== "query" ? tintOfPlugin(p.id) : null
-  return t && t !== "var(--primary)" ? t : PALETTE[i % PALETTE.length]
-}
-
-/** The page the bundle opens on: a dashboard of a few of its blocks, or a note when it pins nothing. */
-function MiniPage({ b }: { b: BundleInfo }) {
-  const roomy = b.density === "comfortable"
-  if (b.home === null) return (
-    <div className={cn("flex min-w-0 flex-1 flex-col gap-[5px] overflow-hidden", roomy ? "px-4 pt-3.5" : "px-3 pt-3")}>
-      <Bar w="58%" className="mb-1 h-[8px] rounded-[3px] bg-foreground/[0.16]" />
-      {["100%", "94%", "97%", "48%"].map((w, i) => <Bar key={i} w={w} />)}
-      <div className="mt-1 flex gap-1"><Bar w="26%" /><Bar w="22%" style={{ background: `color-mix(in oklab, ${tintOfBundle(b)} 70%, transparent)` }} /><Bar w="40%" /></div>
-      {["90%", "72%"].map((w, i) => <Bar key={i} w={w} />)}
-      <Bar w="34%" className="mt-1.5 h-[6px] bg-foreground/[0.13]" />
-      {["96%", "88%"].map((w, i) => <Bar key={i} w={w} />)}
-    </div>
-  )
-  // Four blocks, in the page's order: each shape's first, then the next ones, so a page of many boards still shows its table.
-  const all = b.home.map((x, i) => ({ ...x, i, shape: shapeOf(x) }))
-  const seen = new Set<Shape>()
-  const firsts = all.filter((x) => !seen.has(x.shape) && !!seen.add(x.shape))
-  const keep = new Set([...firsts, ...all.filter((x) => !firsts.includes(x))].slice(0, 4))
-  const blocks = all.filter((x) => keep.has(x))
-  return (
-    <div className={cn("grid min-w-0 flex-1 grid-cols-2 content-start gap-1.5 overflow-hidden", roomy ? "px-3.5 pt-3" : "p-2.5")}>
-      <div className="col-span-2 mb-0.5 flex items-center gap-1.5"><Square c={tintOfBundle(b)} /><Bar w="40%" className="h-[7px] rounded-[3px] bg-foreground/[0.14]" /></div>
-      {blocks.length
-        ? blocks.map((x, j) => <div key={j} className={x.wide || (j === blocks.length - 1 && j % 2 === 0) ? "col-span-2" : undefined}><MiniBlock shape={x.shape} c={tintOfBlock(x.block, x.i)} /></div>)
-        : PALETTE.slice(0, 4).map((c, i) => <MiniBlock key={i} shape="card" c={c} />)}
-    </div>
-  )
-}
-
-/** A small picture of the app a bundle makes: its preview.png, else a sketch in its own colours (its sidebars and the
- *  page it opens on). */
-function Thumb({ b }: { b: BundleInfo }) {
-  const url = usePicture(b)
-  return url ? <Picture src={url} /> : <Sketch b={b} />
-}
-
-const Picture = ({ src, onError }: { src: string; onError?: () => void }) =>
-  <img src={src} alt="" draggable={false} onError={onError} className="aspect-[16/10] w-full rounded-t-[11px] border-b-[0.5px] border-border bg-background object-cover object-top-left" />
-
-function Sketch({ b }: { b: BundleInfo }) {
-  const { scheme: mine, theme } = usePrefs()
-  const scheme = b.scheme ?? mine
-  const dark = (b.theme ?? theme) === "dark" || ((b.theme ?? theme) === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
-  const left = b.panels?.left ?? ["search:search", "pages:pages"], right = b.panels?.right ?? []
-  const folded = b.panels?.collapsed ?? []
-  return (
-    <div aria-hidden data-scheme={scheme === "default" ? undefined : scheme}
-      className={cn("scheme-preview flex aspect-[16/10] overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border bg-background text-foreground", dark && "dark")}>
-      {left.length > 0 && (
-        <div className={cn("flex shrink-0 flex-col gap-[7px] overflow-hidden border-r-[0.5px] border-border bg-sidebar px-2.5 pt-2.5", right.length ? "w-[32%]" : "w-[36%]")}>
-          {left.map((k) => <MiniPanel key={k} k={k} b={b} folded={folded.includes(k)} />)}
-        </div>
-      )}
-      <MiniPage b={b} />
-      {right.length > 0 && (
-        <div className="flex w-[19%] shrink-0 flex-col gap-[7px] overflow-hidden border-l-[0.5px] border-border bg-sidebar px-2 pt-2.5">
-          {right.map((k) => <MiniPanel key={k} k={k} b={b} folded={folded.includes(k)} narrow />)}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** Plugins by id, named ("Tasks and Kanban"): those not installed yet by their id. */
-const AND = new Intl.ListFormat("en", { type: "conjunction" })
-const pluginName = (id: string) => pluginById(id)?.name ?? id.charAt(0).toUpperCase() + id.slice(1)
-const listOf = (ids: string[]) => AND.format(ids.map(pluginName))
-
-/** A change by its id (core/bundles.ts PlanChange), named for a tooltip's list: "Colour scheme", "Books". */
-function changeName(id: string) {
-  const [part, ...rest] = id.split(":"), what = rest.join(":")
-  if (part === "install") return `Install ${pluginName(what)}`
-  if (part === "plugin") return pluginName(what)
-  if (part === "setting") { const [pid, ...k] = what.split("."), key = k.join("."); return `${pluginName(pid)}: ${pluginById(pid)?.settingsDecls?.[key]?.label ?? key}` }
-  if (part === "panels") return "Sidebar panels"
-  if (part === "file") return stem(what)
-  if (part === "pin") return `Pin ${stem(what)}`
-  if (part === "pins") return "Order of pinned pages"
-  if (part === "appearance") return APPEARANCE[what] ?? what
-  if (part === "editor") return EDITOR_NAMES[what] ?? what
-  if (part === "newtab") return NEWTAB[what] ?? `New tab: ${what}`
-  return part === "hotkey" ? `Hotkey ${what}` : id
-}
-const fewOf = (names: string[]) => (names.length > 5 ? `${names.slice(0, 5).join(", ")} and ${names.length - 5} more` : AND.format(names))
-
-const CARD = "glass flex min-w-0 flex-1 cursor-pointer flex-col rounded-[12px] text-left ring-primary/60 transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:outline-none"
-const Badge = ({ quiet, children, ...rest }: { quiet?: boolean; children: ReactNode; [data: `data-${string}`]: string | boolean | undefined }) =>
-  <span className={cn("shrink-0 rounded-[5px] px-1.5 text-[11px] leading-[18px] font-medium whitespace-nowrap", quiet ? "bg-foreground/[0.06] text-muted-foreground" : "bg-primary/12 text-primary")} {...rest}>{children}</span>
-
-/** A bundle: its picture and name, nothing to read (what it changes is in its preview); only a mark when it installs
- *  plugins, runs code or can't be read. `trying`: it's being tried (the app-wide bar keeps or reverts it). */
-function BundleCard({ b, picked, trying }: { b: BundleInfo; picked?: boolean; trying?: boolean }) {
-  const Icon = iconOfBundle(b)
-  const hover = useHoverPicture()
-  return (
-    <div className="group/card relative flex min-w-0 flex-col" {...hover.on}>
-      {hover.at && <BigPicture b={b} at={hover.at} />}
-      <button type="button" onClick={() => openDetail(`bundle/${b.id}`)} data-bundle={b.id} data-keyrow aria-label={`${b.name}: preview`}
-        className={cn(CARD, picked && "ring-2 ring-primary")}>
-        <Thumb b={b} />
-        <div className="flex min-w-0 flex-1 flex-col p-3.5 pt-3">
-          <div className="flex items-center gap-2">
-            <span className="grid size-7 shrink-0 place-items-center rounded-[7px] bg-muted" style={{ color: tintOfBundle(b) }}>
-              <Icon className="size-4" strokeWidth={2.25} />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{b.name}</span>
-            {picked ? <Badge data-bundle-picked>Picked</Badge>
-              : trying ? <Badge data-bundle-trying>Trying</Badge>
-              : b.modified ? <Badge data-bundle-modified data-tip={`Changed since you applied it: ${fewOf(b.differs?.map(changeName) ?? [])}`}>In use · modified</Badge>
-              : b.inUse && <Badge data-bundle-in-use data-tip="Your setup is this one: applying it changes nothing">In use</Badge>}
-            {/* What it brings beyond settings, as marks on the title's row: every card stays one height. */}
-            {!!b.code.length && (b.official
-              ? <span className="shrink-0 text-muted-foreground" data-bundle-installs={b.code.join(" ")} data-tip={`Installs ${listOf(b.code)}`}><PackagePlus className="size-4" strokeWidth={2} /></span>
-              : <span className="shrink-0 text-[var(--red)]" data-bundle-runs-code data-tip={`Runs code: ${listOf(b.code)}`}><ShieldAlert className="size-4" strokeWidth={2} /></span>)}
-            {!!b.problems.length && <span className="shrink-0 text-[var(--red)]" data-bundle-unreadable data-tip={`Can't be read: ${b.problems.join("\n")}`}><CircleAlert className="size-4" strokeWidth={2} /></span>}
-          </div>
-        </div>
-      </button>
-      {b.source === "vault" && (
-        <button type="button" aria-label={`${b.name}: more`} data-tip="More" onClick={(e) => menuBelow(e, [
-          { label: "Share…", icon: Share, run: () => openDetail(`bundle-share/${b.id}`) },
-          ...(b.from ? [{ label: "Check for updates…", icon: RefreshCw, run: () => openImport(place(b.from!)) }] : []),
-          { label: "Delete", icon: Trash2, danger: true, run: () => { void removeBundle(b) } },
-        ])}
-          className="absolute top-2 right-2 grid size-7 cursor-pointer place-items-center rounded-[7px] bg-background/80 text-muted-foreground opacity-0 backdrop-blur group-hover/card:opacity-100 hover:text-foreground focus-visible:opacity-100 max-md:opacity-100">
-          <MoreHorizontal className="size-4" strokeWidth={2.25} />
-        </button>
-      )}
-    </div>
-  )
-}
-
-/** A card held under the mouse a moment shows its picture bigger beside it; leaving, a click or a scroll hides it. */
-function useHoverPicture() {
-  const [at, setAt] = useState<DOMRect | null>(null)
-  const timer = useRef(0)
-  useEffect(() => () => clearTimeout(timer.current), [])
-  useEffect(() => {
-    if (!at) return
-    const hide = () => setAt(null)
-    addEventListener("scroll", hide, true)
-    return () => removeEventListener("scroll", hide, true)
-  }, [at])
-  const on = {
-    onPointerEnter: (e: PointerEvent<HTMLElement>) => {
-      if (e.pointerType !== "mouse") return
-      const el = e.currentTarget
-      timer.current = window.setTimeout(() => setAt(el.getBoundingClientRect()), 600)
-    },
-    onPointerLeave: () => { clearTimeout(timer.current); setAt(null) },
-    onPointerDown: () => { clearTimeout(timer.current); setAt(null) },
-  }
-  return { at, on }
-}
-
-/** The bigger picture: beside the card where there's room (right, else left), else over it. */
-function BigPicture({ b, at }: { b: BundleInfo; at: DOMRect }) {
-  const w = Math.min(560, innerWidth - 32), h = w * 10 / 16, gap = 12
-  const left = at.right + gap + w <= innerWidth - 16 ? at.right + gap : at.left - gap - w >= 16 ? at.left - gap - w : Math.max(16, at.left)
-  const top = Math.max(16, Math.min(at.top, innerHeight - h - 16))
-  return createPortal(
-    <div aria-hidden data-bundle-big={b.id} className="pointer-events-none fixed z-50 overflow-hidden rounded-[12px] border-[0.5px] border-border bg-background shadow-[0_12px_40px_rgb(0_0_0/0.28)] [&>*]:rounded-none [&>*]:border-0"
-      style={{ left, top, width: w }}>
-      <Thumb b={b} />
-    </div>, document.body)
-}
-
 /** Where a bundle came from, without the commit an import from the directory pinned. */
 const place = (from: string) => from.replace(/@[0-9a-f]{40}$/, "")
-
-/** Delete one of the user's bundles (to the trash), with Undo: its export, imported again. */
-async function removeBundle(b: BundleInfo) {
-  try {
-    const copy = await bundleText(b, { all: true }).catch(() => null)
-    await deleteBundle(b)
-    if (copy) notify(`Deleted ${b.name}`, { action: { label: "Undo", run: () => importText(copy) } })
-  } catch (e) { notifyError(e, "Couldn't delete it") }
-}
 
 /** Pasting a bundle (its JSON, a repository's name) or dropping its file anywhere on the page opens its import, when
  *  nothing else takes it (a field, a sheet). Whether a file is being dragged over it. */
@@ -368,181 +76,33 @@ function useImportGestures(root: RefObject<HTMLDivElement | null>) {
   return over
 }
 
-// Three across as soon as three fit (the built-ins are three: never two and one alone).
-const GRID = "grid grid-cols-1 gap-3 @lg:grid-cols-3"
+// ---------- Get's layouts and packs: the directory's bundles ----------
 
-/** Where more of the user's own bundles start: saving the setup as one, after theirs. */
-function SaveCard() {
-  return (
-    <button type="button" onClick={() => void startSave()} data-bundles-save
-      className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[12px] border-[1.5px] border-dashed border-foreground/15 px-4 py-5 text-center transition-colors hover:border-primary/60 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none">
-      <span className="grid size-9 place-items-center rounded-full bg-primary/12 text-primary"><Plus className="size-[18px]" strokeWidth={2.25} /></span>
-      <span className="text-[15px] font-semibold">Save current setup</span>
-      <span className="text-[13px] leading-[18px] text-muted-foreground">Its plugins, sidebars, pinned pages and look</span>
-    </button>
-  )
-}
+const CARD = "glass flex min-w-0 flex-1 cursor-pointer flex-col rounded-[12px] text-left ring-primary/60 transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:outline-none"
+// Two across on a phone, three or four as they fit.
+const GRID = "grid grid-cols-2 gap-3 @2xl:grid-cols-3 @4xl:grid-cols-4"
 
-/** None of the user's own yet: the two ways to have one, across the whole row. */
-function NoneYours() {
-  return (
-    <div className="mb-6 flex flex-col items-center gap-3.5 rounded-[12px] border-[1.5px] border-dashed border-foreground/15 px-5 py-7 text-center" data-bundles-none>
-      <div>
-        <div className="text-[15px] font-semibold">No bundles of yours yet</div>
-        <p className="mx-auto mt-1 max-w-[440px] text-[13px] leading-[18px] text-muted-foreground">Save how Vaultite is set up now, or import one someone shared: paste it, drop its file or name a GitHub repository.</p>
-      </div>
-      <div className="flex flex-wrap justify-center gap-2">
-        <Button look="primary" onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</Button>
-        <Button onClick={() => openDetail("bundle-import")} data-bundles-import><Import className="size-4" strokeWidth={2.25} />Import…</Button>
-      </div>
-    </div>
-  )
-}
+const Picture = ({ src, onError }: { src: string; onError?: () => void }) =>
+  <img src={src} alt="" draggable={false} onError={onError} className="aspect-[16/10] w-full rounded-t-[11px] border-b-[0.5px] border-border bg-background object-cover object-top-left" />
 
-/** What the Bundles tab offers beside Setup's tabs (pages/Setup.tsx): while a new vault is being offered the bundles,
- *  starting from the default. Otherwise nothing, as on Plugins: saving and importing are in the page. */
-export function BundlesActions({ store }: { store: Store }) {
-  const l = useBundles()
-  const start = l?.bundles.find((b) => b.source === "app" && b.id === l.default)
-  if (!store.bundles?.onboarding) return null
-  return <Button look="primary" onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with {start?.name ?? "the default"}</Button>
-}
+/** What a shared bundle is, as its card says it. */
+const KIND: Record<NonNullable<Listed["kind"]>, string> = { layout: "Layout", pack: "Pack", look: "Look" }
 
-type Tab = "yours" | "get"
-export type BundlesView = Tab
-
-/** The setup in use, heading Your bundles: the bundle it came from (changed since or not), what saving it does, and the
- *  way back to the setup before the last bundle applied. */
-function CurrentSetup({ b, prev }: { b: BundleInfo | null; prev: { name: string; at: string } | null }) {
-  const Icon = b ? iconOfBundle(b) : Package
-  return (
-    <div className="glass mb-7 flex flex-col overflow-hidden rounded-[12px] @lg:flex-row" data-bundles-current={b?.id ?? ""}>
-      {b && <div className="shrink-0 @lg:w-[46%] [&>*]:rounded-none [&>*]:border-0 @lg:border-r-[0.5px] @lg:border-border"><Thumb b={b} /></div>}
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-4">
-        <div className="text-[12px] font-semibold text-muted-foreground">Your setup</div>
-        <div className="flex items-center gap-2">
-          <span className="grid size-7 shrink-0 place-items-center rounded-[7px] bg-muted" style={{ color: b ? tintOfBundle(b) : undefined }}><Icon className="size-4" strokeWidth={2.25} /></span>
-          <span className="min-w-0 truncate text-[17px] font-semibold">{b ? b.name : "Your own"}</span>
-          {b?.modified ? <Badge data-tip={`Changed since you applied it: ${fewOf(b.differs?.map(changeName) ?? [])}`}>Modified</Badge> : b && <Badge>In use</Badge>}
-        </div>
-        <p className="text-[13px] leading-[18px] text-muted-foreground">
-          {b ? (b.modified ? `Based on ${b.name}, changed since: ${fewOf(b.differs?.map(changeName) ?? [])}.` : b.description || `As ${b.name} sets it up.`)
-            : "Not from a bundle."}
-        </p>
-        {prev && (
-          <div className="flex flex-wrap items-center gap-x-2 text-[13px] leading-[18px] text-muted-foreground" data-bundles-previous>
-            <History className="size-3.5 shrink-0" strokeWidth={2} />Applied {prev.name} {fmtAgo(prev.at)}
-            <button type="button" onClick={() => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it"))}
-              className="cursor-pointer font-medium text-primary hover:underline">Restore previous setup</button>
-          </div>
-        )}
-        {b && <div className="mt-auto flex flex-wrap gap-2 pt-3"><Button onClick={() => openDetail(`bundle/${b.id}`)}>What it sets</Button></div>}
-      </div>
-    </div>
-  )
-}
-
-/** Setup's Bundles tab, as Plugins is: Your bundles (built in, then the user's) or Get bundles (the directory's).
- *  `view`: which, chosen in Setup's menu (no tabs of its own). */
-export function Bundles({ store, view, onView }: { store: Store; view?: Tab; onView?: (v: Tab) => void }) {
-  const l = useBundles()
-  const prev = store.bundles?.previous ?? null
-  const welcome = !!store.bundles?.onboarding
-  const [own, setOwn] = useState<Tab>("yours")
-  const tab = view ?? own, setTab = onView ?? setOwn
-  const [query, setQuery] = useState("")
-  const q = query.trim().toLowerCase()
-  // The list follows the vault (a bundle saved or imported by an AI, from another device).
-  const files = store.files
-  useEffect(() => { void refreshBundles() }, [files])
-  const match = (b: BundleInfo) => !q || `${b.name}\n${b.description}`.toLowerCase().includes(q)
-  const app = l?.bundles.filter((b) => b.source === "app" && match(b)) ?? []
-  const mine = l?.bundles.filter((b) => b.source === "vault" && match(b)) ?? []
-  const start = app.find((b) => b.id === l?.default)
-  const trying = store.bundles?.trial?.id
-  const root = useRef<HTMLDivElement>(null)
-  const over = useImportGestures(root)
-  return (
-    <div ref={root} className="relative min-h-full" data-file-drop data-bundles-page>
-      {prev && !view && (
-        <div className="glass mb-5 flex items-center gap-3 rounded-[12px] px-4 py-3" data-bundles-previous>
-          <History className="size-5 shrink-0 text-muted-foreground" strokeWidth={2} />
-          <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-medium">Applied {prev.name} {fmtAgo(prev.at)}</div>
-          </div>
-          <Button onClick={() => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it"))}>Restore previous setup</Button>
-        </div>
-      )}
-      {/* (the search is above the list it looks in, as on Plugins) */}
-      {!welcome && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {!view && <Segmented<Tab> label="Bundles" value={tab} onChange={setTab} className="shrink-0"
-            options={[{ value: "yours", label: "Your bundles", attrs: { "data-bundles-yours": "" } }, { value: "get", label: "Get bundles", attrs: { "data-bundles-get": "" } }]} />}
-          <div className="flex min-w-[200px] flex-1 items-center gap-2">
-            <form role="search" className="flex min-w-0 flex-1" onSubmit={(e) => e.preventDefault()} data-bundles-search>
-              <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? "Search shared bundles" : "Search your bundles"} />
-            </form>
-            {tab === "get" && <Button onClick={() => openDetail("bundle-import")} className="px-3 md:h-7.5 md:px-2.5" data-bundles-import><Import className="size-4" strokeWidth={2.25} />Import…</Button>}
-          </div>
-        </div>
-      )}
-      <div className="@container" data-keylist>
-        {tab === "get" && !welcome ? <Browse query={query} /> : !l ? <CardSkeletons count={3} /> : <>
-          {view && !q && l && (prev || l.bundles.some((b) => b.inUse || b.modified)) && <CurrentSetup b={l.bundles.find((b) => b.inUse || b.modified) ?? null} prev={prev} />}
-          {app.length > 0 && <>
-            {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
-            <div className={cn(GRID, "mb-7")} data-bundles-app>
-              {app.map((b) => <BundleCard key={b.id} b={b} picked={welcome && b.id === start?.id} trying={trying === b.id} />)}
-            </div>
-          </>}
-          {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
-          {welcome && (
-            <p className="mb-6 text-[14px] text-muted-foreground" data-bundles-welcome-import>
-              Have a bundle? <button type="button" onClick={() => openDetail("bundle-import")} className="cursor-pointer font-medium text-primary hover:underline">Import it</button>
-            </p>
-          )}
-          {mine.length > 0 ? <>
-            <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
-            <div className={cn(GRID, "mb-6")} data-bundles-mine>
-              {mine.map((b) => <BundleCard key={b.id} b={b} trying={trying === b.id} />)}
-              {!welcome && !q && <SaveCard />}
-            </div>
-          </> : !welcome && l && !q && <>
-            <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
-            <NoneYours />
-          </>}
-          {l && q && !app.length && !mine.length && (
-            <p className="text-[14px] text-muted-foreground" data-bundles-none-match>
-              None of yours match. <button type="button" onClick={() => setTab("get")} className="cursor-pointer font-medium text-primary hover:underline">Search shared bundles</button>
-            </p>
-          )}
-        </>}
-      </div>
-      {over && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-[12px] border-2 border-dashed border-primary/60 bg-background/85 text-[15px] font-medium" data-bundles-drop>
-          Drop to import the bundle
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ---------- the directory's bundles ----------
-
-/** What a listed bundle's card draws without its picture: the sketch of a bundle that says nothing but its look. */
-const sketchOf = (e: Listed): BundleInfo => ({ id: e.address, source: "vault", name: e.name, description: e.description, icon: e.icon ?? "package", tint: e.tint ?? "",
-  author: e.author, sort: 0, theme: null, scheme: null, density: null, on: null, pinned: null, panels: null, home: null, code: [], official: true, from: e.address, guide: null,
-  hotkeys: false, preview: null, previewDark: null, problems: [], kind: e.kind ?? "layout", tweaked: false })
+/** What a listed bundle's card draws without its picture: a layout that says nothing but its name, drawn plain. */
+const plainOf = (e: Listed): BundleInfo => ({ id: e.address, source: "vault", name: e.name, description: e.description, icon: e.icon ?? "package", tint: e.tint ?? "",
+  author: e.author, sort: 0, theme: null, scheme: null, density: null, on: null, pinned: null, panels: null, shape: { tabBar: null, rails: null, floating: null }, home: null,
+  code: [], official: true, from: e.address, guide: null, hotkeys: false, preview: null, previewDark: null, problems: [], kind: e.kind ?? "layout", tweaked: false })
 
 /** A bundle the directory lists, as a card: who made it and its stars under its name, and whether the user has it.
  *  Opening it is its import preview, pinned at the commit listed (an update says what changed). */
 function ListedCard({ e }: { e: Listed }) {
   const src = useListedPicture(e)
   const [broken, setBroken] = useState(false)
-  const b = sketchOf(e), Icon = iconOfBundle(b)
+  const b = plainOf(e), Icon = iconOfBundle(b)
   return (
-    <button type="button" onClick={() => openImport(e.address)} data-listed={e.source} data-keyrow aria-label={`${e.name}: preview`} className={cn(CARD, "relative")}>
-      {src && !broken ? <Picture src={src} onError={() => setBroken(true)} /> : <Sketch b={b} />}
+    <button type="button" onClick={() => openImport(e.address)} data-listed={e.source} data-keyrow className={cn(CARD, "relative")}>
+      {src && !broken ? <Picture src={src} onError={() => setBroken(true)} />
+        : <span className="block aspect-[16/10] w-full overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border"><LayoutDrawing b={b} className="block size-full" /></span>}
       {/* (over its picture, where a narrow card's name and author keep their room) */}
       {e.imported && (
         <span className={cn("absolute top-2 right-2 rounded-[6px] bg-background/85 px-1.5 text-[11px] leading-[20px] font-medium shadow-[0_0_0_0.5px_var(--border)] backdrop-blur",
@@ -559,6 +119,7 @@ function ListedCard({ e }: { e: Listed }) {
           {e.runsCode && <span className="shrink-0 text-[var(--red)]" data-bundle-runs-code data-tip={`Runs code${e.installs.length ? `: installs ${AND.format(e.installs.map((x) => x.name))}` : ""}`}><ShieldAlert className="size-4" strokeWidth={2} /></span>}
         </div>
         <div className="mt-1 flex min-w-0 items-center gap-1.5 pl-9 text-[13px] text-muted-foreground">
+          {e.kind && <><span className="shrink-0" data-listed-kind={e.kind}>{KIND[e.kind]}</span><span aria-hidden>·</span></>}
           <span className="min-w-0 truncate">{e.author}</span>
           {e.stars > 0 && <><span aria-hidden>·</span><Star className="size-3 shrink-0" strokeWidth={2.25} /><span className="tabular-nums" aria-label={`${e.stars} stars`}>{e.stars}</span></>}
         </div>
@@ -567,8 +128,9 @@ function ListedCard({ e }: { e: Listed }) {
   )
 }
 
-/** Get bundles: the directory's (shared on GitHub), searched. Unreachable, one quiet line says so. */
-function Browse({ query: q }: { query: string }) {
+/** Get's layouts and packs: the directory's bundles (shared on GitHub), by Get's search, and Import for one someone
+ *  sent (also by pasting it, or dropping its file, anywhere on the page). Unreachable, one quiet line says so. */
+export function StoreBundles({ query: q }: { query: string }) {
   const [dir, setDir] = useState<Directory | null>(null)
   const [failed, setFailed] = useState(false)
   // (fetched again when the user's imports change: which are theirs, and current)
@@ -578,15 +140,29 @@ function Browse({ query: q }: { query: string }) {
     const t = setTimeout(() => browseBundles(q).then((d) => { if (live) { setDir(d); setFailed(false) } }, () => { if (live) setFailed(true) }), q ? 250 : 0)
     return () => { live = false; clearTimeout(t) }
   }, [q, mine])
+  const root = useRef<HTMLDivElement>(null)
+  const over = useImportGestures(root)
   const list = dir?.bundles ?? []
   const cards = useKeptCount(q.trim() ? null : "bundles:browse", dir?.available ? list.length : undefined, 3, 9)
   return (
-    <section className="mb-6" data-bundles-browse>
+    <section ref={root} className="relative mb-6 @container" data-file-drop data-bundles-browse>
+      <div className="mb-1.5 flex min-h-7 items-center gap-2 px-1">
+        <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-muted-foreground md:text-[12px]">Layouts and packs</h2>
+        <button type="button" onClick={() => openDetail("bundle-import")} data-bundles-import data-tip="A bundle someone sent: paste it or drop its file here too"
+          className="-my-1 -mr-1 flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-1.5 text-[13px] text-primary hover:bg-foreground/[0.05] max-md:h-11 max-md:text-[15px]">
+          <Import className="size-3.5 max-md:size-4" strokeWidth={2.25} />Import…
+        </button>
+      </div>
       {!dir && !failed ? <CardSkeletons count={cards} />
         : failed || (dir && !dir.available)
-        ? <p className="text-[14px] text-muted-foreground" data-bundles-browse-off>The directory of shared bundles can't be reached right now.</p>
-        : dir && !list.length ? <p className="text-[14px] text-muted-foreground" data-bundles-browse-none>{q.trim() ? "No shared bundles match." : "No bundles are shared yet."}</p>
-        : <div className={GRID} data-bundles-listed>{list.map((e) => <ListedCard key={e.address} e={e} />)}</div>}
+        ? <p className="px-1 text-[14px] text-muted-foreground" data-bundles-browse-off>The directory of shared layouts and packs can't be reached right now.</p>
+        : dir && !list.length ? <p className="px-1 text-[14px] text-muted-foreground" data-bundles-browse-none>{q.trim() ? "No shared layouts or packs match." : "No layouts or packs are shared yet."}</p>
+        : <div className={GRID} data-keylist data-bundles-listed>{list.map((e) => <ListedCard key={e.address} e={e} />)}</div>}
+      {over && (
+        <div className="pointer-events-none absolute -inset-2 grid place-items-center rounded-[14px] border-2 border-dashed border-primary/60 bg-background/85 text-[15px] font-medium" data-bundles-drop>
+          Drop to import the bundle
+        </div>
+      )}
     </section>
   )
 }
@@ -607,6 +183,30 @@ function CardSkeletons({ count }: { count: number }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ---------- a new vault's welcome ----------
+
+/** A vault opened for the first time: its layout to start from, applied as it's picked (Standard until then), then
+ *  Continue. `at`: the tab it's in, closed after. */
+export function Welcome({ store, at }: { store: Store; at?: string }) {
+  const finish = async () => {
+    try { if (store.bundles?.onboarding) await skipOnboarding() } catch (e) { notifyError(e, "Couldn't start"); return }
+    if (at) closeTab(at)
+  }
+  return (
+    <div className="mx-auto max-w-[560px] pt-[6vh]" data-bundles-welcome>
+      <PageHeader title="Welcome to Vaultite" subtitle="Pick a layout to start from. It changes as you click, and Settings has it again, with the rest of your look." />
+      <LayoutPicker builtInOnly menus={false} open="none" className="mb-6" />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Button look="primary" onClick={() => void finish()} data-bundles-continue>Continue<ArrowRight className="size-4" strokeWidth={2.25} /></Button>
+        {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
+        <p className="text-[14px] text-muted-foreground" data-bundles-welcome-import>
+          Have a bundle? <button type="button" onClick={() => openDetail("bundle-import")} className="cursor-pointer font-medium text-primary hover:underline">Import it</button>
+        </p>
+      </div>
     </div>
   )
 }
@@ -716,21 +316,10 @@ function PageText({ path, look, state }: { path: string; look?: { icon: string |
   </>
 }
 
-/** Applying runs code from it: ask first (Vaultite's own plugins, said so: they come from Vaultite's plugins). */
-const askToRun = (b: BundleInfo, plan: Plan, trial = false) => plan.code.every((c) => c.source && official(c.source)) ? confirmDialog({
-  title: `Install ${AND.format(plan.code.map((c) => c.name))}?`,
-  body: `${b.name} installs Vaultite's own plugins from its plugin directory. Like any plugin, they run on the machine that serves this app, with your files.`,
-  confirm: trial ? "Install and try" : "Install and apply",
-}) : confirmDialog({
-  title: `Run code from ${b.name}?`,
-  body: `It brings vault plugins (${plan.code.map((c) => c.source && !c.kept ? `${c.name}, from ${c.source}` : c.name).join("; ")}). They run on the machine that serves this app, with your files and permissions. Apply bundles that run code only from people you trust.`,
-  confirm: trial ? "Try and run them" : "Apply and run them", danger: true,
-})
-
 const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((x) => b.has(x))
 
 /** What applying a bundle changes here, each change ticked: Apply or Try it, without those unticked (then Save as
- *  "My <Name>" keeps it so). The bundle in use whose setup changed since says so: Save changes, or Revert (fresh). */
+ *  "My <Name>" keeps it so). A layout tile's Details; the one in use, changed, previewed clean (what Reset puts back). */
 export function BundlePreview({ id }: { id: string }) {
   const [p, setP] = useState<Preview | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -751,7 +340,6 @@ export function BundlePreview({ id }: { id: string }) {
   const pick: Picks = { off, locked: lockedBy(plan, off), toggle: (x) => setEdits(new Set(off.has(x) ? [...off].filter((y) => y !== x) : [...off, x])) }
   const skip = skipOf(plan, off), chosen = without(plan, new Set(skip))
   const edited = !sameSet(off, base), left = plan.changes.length - skip.length
-  const modified = !!listed?.modified && !edited
   const code = runsCode(chosen)
   const nothing = !left && !offAdded
   const act = async (what: () => Promise<unknown>, failed: string) => {
@@ -763,28 +351,16 @@ export function BundlePreview({ id }: { id: string }) {
     await act(async () => { closeDetail(); await applyBundle(b, plan, { allowCode: code, offAdded, skip, trial, fresh: drift }) }, `Couldn't ${trial ? "try" : "apply"} ${b.name}`)
   }
   const fork = () => act(async () => { const n = await forkBundle(b, skip); replaceDetail(`bundle/${n.id}`); notify(`Saved ${n.name}`) }, "Couldn't save it")
-  const save = () => act(async () => { const n = await saveChanges(b); notify(n.id === b.id ? `Saved the changes to ${b.name}` : `Saved as ${n.name}`) }, "Couldn't save the changes")
   const mine = `My ${b.name}`
   return (
     <div data-bundle-preview={b.id}>
-      <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : b.from ? `From ${place(b.from)}` : "Your bundle"} title={b.name} sub={b.description || undefined} />
-      {modified && (
-        <div className="mb-4 rounded-[12px] bg-foreground/[0.04] px-3.5 py-3 text-[14px] leading-[20px]" data-bundle-drift>
-          <div className="font-semibold">In use · modified</div>
-          <div className="text-muted-foreground">Your setup has changed since you applied it: Revert puts back what's below.</div>
-        </div>
-      )}
+      <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.from ? `From ${place(b.from)}` : b.kind === "pack" ? "Pack" : b.kind === "look" ? "Look" : b.source === "app" ? "Built-in layout" : "Your layout"} title={b.name} sub={b.description || undefined} />
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        {modified ? <>
-          <Button look="primary" disabled={busy} onClick={() => void save()} data-bundle-save-changes>{b.source === "vault" ? "Save changes" : `Save as ${mine}`}</Button>
-          <Button disabled={busy || !!b.problems.length} onClick={() => void apply(false)} data-bundle-revert><History className="size-4" strokeWidth={2} />Revert</Button>
-        </> : <>
-          <Button look="primary" disabled={busy || nothing || !!b.problems.length} onClick={() => void apply(false)} data-bundle-apply>
-            {nothing && !edited ? "This is your setup already" : edited ? "Apply" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
-          </Button>
-          {!(nothing && !edited) && <Button disabled={busy || nothing || !!b.problems.length} onClick={() => void apply(true)} data-bundle-try>Try</Button>}
-          {edited && <Button disabled={busy || !!b.problems.length} onClick={() => void fork()} data-bundle-fork>Save as {mine}</Button>}
-        </>}
+        <Button look="primary" disabled={busy || nothing || !!b.problems.length} onClick={() => void apply(false)} data-bundle-apply>
+          {nothing && !edited ? "This is your setup already" : edited ? "Apply" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
+        </Button>
+        {!(nothing && !edited) && <Button disabled={busy || nothing || !!b.problems.length} onClick={() => void apply(true)} data-bundle-try>Try</Button>}
+        {edited && <Button disabled={busy || !!b.problems.length} onClick={() => void fork()} data-bundle-fork>Save as {mine}</Button>}
         {b.source === "vault" && !edited && (
           <Button aria-label="More" data-tip="More" className="px-2.5" data-bundle-more onClick={(e) => menuBelow(e, [
             { label: "Share…", icon: Share, run: () => openDetail(`bundle-share/${b.id}`) },
@@ -822,6 +398,7 @@ export function IncomingBundle({ id }: { id: string }) {
   )
   if (!inc) return <div aria-busy><SheetHead icon={Import} tint="var(--muted-foreground)" kicker={repo ? `Getting it from ${repo}` : "Import"} title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const { bundle: b, plan } = inc
+  const pack = !isLayout(b)
   const code = runsCode(plan)
   const replaces = l?.bundles.find((x) => x.id === inc.replaces) ?? null
   const add = async (then: (added: BundleInfo) => Promise<void>) => {
@@ -838,17 +415,17 @@ export function IncomingBundle({ id }: { id: string }) {
   }
   const keep = () => add(async (added) => {
     if (replaces) notify(`Updated ${added.name}`)
-    else notify(`Added ${added.name} to your bundles`, { action: { label: "Preview", run: () => openDetail(`bundle/${added.id}`) } })
+    else notify(pack ? `Kept ${added.name} for later` : `Added ${added.name} to your layouts`, { action: { label: "Details", run: () => openDetail(`bundle/${added.id}`) } })
   })
   return (
     <div data-bundle-incoming={b.id}>
       <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.from ? `From ${place(b.from)}` : "Import"} title={b.name} sub={b.description || undefined} />
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <Button look="primary" disabled={busy || !!b.problems.length} onClick={() => void apply()} data-bundle-incoming-apply>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></Button>
-        <Button disabled={busy || !!b.problems.length} onClick={() => void keep()} data-bundle-incoming-add>{replaces ? <><RefreshCw className="size-4" strokeWidth={2.25} />Update {replaces.name}</> : <><Plus className="size-4" strokeWidth={2.25} />Add to your bundles</>}</Button>
+        <Button disabled={busy || !!b.problems.length} onClick={() => void keep()} data-bundle-incoming-add>{replaces ? <><RefreshCw className="size-4" strokeWidth={2.25} />Update {replaces.name}</> : <><Plus className="size-4" strokeWidth={2.25} />{pack ? "Keep for later" : "Add to your layouts"}</>}</Button>
       </div>
       <p className="-mt-2 mb-5 text-[13px] leading-[18px] text-muted-foreground">
-        {replaces ? `It replaces your ${replaces.name}, from the same repository. ` : ""}Either way it's kept in your bundles, to apply again or share.
+        {replaces ? `It replaces your ${replaces.name}, from the same repository. ` : ""}{pack ? "Either way it's kept in this vault, to apply again or share." : "Either way it's kept with your layouts in Settings, Appearance, to pick again or share."}
       </p>
       {inc.changes && <Updated changes={inc.changes} name={replaces?.name ?? b.name} />}
       {plan.empty && <p className="mb-4 text-[14px] text-muted-foreground">Applying it changes nothing here: it's your setup already.</p>}
@@ -932,7 +509,7 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
               <Group title={offAdded ? "Plugins you added: turned off too" : "Plugins you added stay as they are"} count={added.length}>
                 <Lines data-bundle-added>{added.map((x) => <PluginLine key={x} id={x} name={nameOf(x)} off={offAdded} />)}</Lines>
                 <div className="mt-2 flex min-h-10 items-center gap-3">
-                  <span className="min-w-0 flex-1 text-[14px]">Turn those off too<span className="block text-[13px] text-muted-foreground">Restore previous setup turns them back on</span></span>
+                  <span className="min-w-0 flex-1 text-[14px]">Turn those off too<span className="block text-[13px] text-muted-foreground">Undo turns them back on</span></span>
                   <Switch on={offAdded} onChange={setOffAdded} label="Turn the plugins you added off too" />
                 </div>
               </Group>
@@ -1021,23 +598,6 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
   )
 }
 
-/** The editor's settings as Settings names them. */
-const EDITOR_NAMES: Record<string, string> = {
-  propertiesInDocument: "Properties in document", showInlineTitle: "Show inline title", readableLineLength: "Readable line length", spellcheck: "Spellcheck",
-  autoPairBrackets: "Auto-pair brackets", autoPairMarkdown: "Auto-pair Markdown", useTab: "Indent with tabs", tabSize: "Tab size",
-  defaultView: "Default view for new tabs", editingMode: "Default editing mode",
-}
-const EDITOR_VALUES: Record<string, unknown> = EDITOR
-/** What a new tab opens, as Settings names it (opensChoices). */
-const OPENS: Record<string, string> = { switcher: "Quick switcher", "view:web": "Web page" }
-const labelsOf = (xs: { value: string; label: string }[]) => Object.fromEntries(xs.map((x) => [x.value, x.label]))
-const EDITOR_LABELS: Record<string, Record<string, string>> = { propertiesInDocument: labelsOf(PROPERTIES_SHOWN), defaultView: labelsOf(NOTE_VIEWS), editingMode: labelsOf(EDITING_MODES) }
-const NEWTAB: Record<string, string> = { page: "New tab's page", sections: "New tab's sections", actions: "New tab's buttons", icons: "New tab's button icons", opens: "New tabs open" }
-const APPEARANCE: Record<string, string> = {
-  theme: "Theme", scheme: "Colour scheme", density: "Density", animation: "Animations", fileIcons: "File icons", tabBar: "Tab bar", paneTitles: "Pane titles", dimPanes: "Dim inactive panes", paneCards: "Panes as cards", rails: "Sidebar rails", peekShade: "Dim the page behind a sidebar", sidebarButtons: "Sidebar buttons on phones", fileBarFade: "Fade the file bar", translucent: "Translucent window", translucentPages: "Translucent pages", translucency: "Window transparency", pageTranslucency: "Page transparency", lineNumbers: "Line numbers", statusBar: "Status bar", statusBarMore: "Status bar tray", statusBarLeft: "Status bar left corner", fileBar: "File top bar", sidebarHeader: "Sidebar header", pullActions: "Pull-down actions", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels", quickTextSize: "Quick text size",
-  interfaceFont: "Interface font", textFont: "Text font", monoFont: "Monospace font", snippets: "CSS snippets",
-}
-
 function Setting({ pick, id, label, from, to, labels }: { pick?: Picks; id: string; label: string; from: unknown; to: unknown; labels?: Record<string, string> }) {
   const name = (v: unknown) => (labels && v !== null && v !== undefined && labels[String(v)]) || showValue(v)
   return (
@@ -1048,78 +608,6 @@ function Setting({ pick, id, label, from, to, labels }: { pick?: Picks; id: stri
       <ArrowRight className="size-3.5 shrink-0 text-tertiary" strokeWidth={2.25} />
       <span className="max-w-[40%] shrink-0 truncate font-medium" data-tip={name(to).length > 24 ? name(to) : undefined}>{name(to)}</span>
     </ChangeLine>
-  )
-}
-
-// ---------- saving the current setup ----------
-
-export function SaveBundle() {
-  const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
-  const [shot] = useState(takenShot)
-  const [picture, setPicture] = useState(!!shot)
-  const [hotkeys, setHotkeys] = useState(false)
-  const [code, setCode] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const l = useBundles()
-  const prefs = usePrefs()
-  const on = usePlugins().filter((x) => x.tier === "vault" && switchedOn(x, prefs))
-  // (installed ones go as where they come from, always; the vault's own as their code, when asked)
-  const vaultOn = on.filter((x) => !x.meta?.source).length, installed = on.length - vaultOn
-  const clash = l?.bundles.find((b) => b.source === "vault" && b.name.toLowerCase() === name.trim().toLowerCase())
-  useSheetGuard(() => [name.trim() && `Name: ${name.trim()}`, description.trim() && `Description: ${description.trim()}`].filter((x) => !!x))
-  const save = async () => {
-    if (!name.trim()) return
-    setBusy(true)
-    try {
-      const b = await saveBundle({ name, description, hotkeys, vaultPlugins: code, ...(picture && shot ? { preview: shot } : {}), replace: !!clash })
-      closeDetail()
-      notify(`Saved ${b.name}`, { action: { label: "Share", run: () => openDetail(`bundle-share/${b.id}`) } })
-    } catch (e) { notifyError(e, "Couldn't save it") } finally { setBusy(false) }
-  }
-  const input = "h-10 w-full rounded-[8px] border-[0.5px] border-border bg-card px-3 text-[16px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-9 md:text-[14px]"
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); void save() }} data-bundle-save-form>
-      <SheetHead icon={Package} tint="var(--primary)" kicker="Bundles" title="Save current setup"
-        sub="As a bundle in this vault's .vaultite/bundles: apply it again later, or export it to share." />
-      <div className="grid grid-cols-1 gap-3">
-        <label className="block">
-          <span className="mb-1 block text-[13px] font-medium">Name</span>
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="My setup" className={input} data-bundle-name />
-          {clash && <span className="mt-1 block text-[13px] text-muted-foreground">Replaces your bundle {clash.name}.</span>}
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-[13px] font-medium">Description</span>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What it's for" className={input} />
-        </label>
-        <Panel className="py-1">
-          <div className="hairline flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
-            {shot && (
-              <div className="flex min-h-12 items-center gap-3 py-2">
-                <img src={`data:image/png;base64,${shot}`} alt="" className="h-10 w-16 shrink-0 rounded-[5px] border-[0.5px] border-border object-cover object-top-left" />
-                <div className="min-w-0 flex-1"><div className="text-[15px]">Picture</div><div className="text-[13px] text-muted-foreground">The window as it is, for its card</div></div>
-                <Switch on={picture} onChange={setPicture} label="Include the picture" />
-              </div>
-            )}
-            <div className="flex min-h-12 items-center gap-3 py-2">
-              <div className="min-w-0 flex-1"><div className="text-[15px]">Hotkeys</div><div className="text-[13px] text-muted-foreground">Your keyboard shortcuts, from hotkeys.json</div></div>
-              <Switch on={hotkeys} onChange={setHotkeys} label="Include hotkeys" />
-            </div>
-            {vaultOn > 0 && (
-              <div className="flex min-h-12 items-center gap-3 py-2">
-                <div className="min-w-0 flex-1"><div className="text-[15px]">Plugins made in this vault</div><div className="text-[13px] text-muted-foreground">{vaultOn} on, as their code. Whoever applies the bundle is asked first</div></div>
-                <Switch on={code} onChange={setCode} label="Include vault plugins" />
-              </div>
-            )}
-          </div>
-        </Panel>
-        <p className="text-[13px] leading-[18px] text-muted-foreground">
-          It keeps which plugins are on, their settings that differ from the defaults (not who may reach this machine), the sidebars and pinned
-          pages{currentWorkspace() ? " (this workspace's)" : ""}, the dashboards they need, the look and what a new tab shows{installed ? `, and the ${installed === 1 ? "plugin" : `${installed} plugins`} you installed, by where they come from` : ""}. Not your notes.
-        </p>
-        <div><Button look="primary" type="submit" disabled={busy || !name.trim()} data-bundle-save>{clash ? "Replace" : "Save"}</Button></div>
-      </div>
-    </form>
   )
 }
 
@@ -1196,7 +684,7 @@ export function ImportBundle() {
   useSheetGuard(() => (text.trim() ? ["What you pasted"] : []))
   return (
     <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) openImport(text) }} data-bundle-import-form>
-      <SheetHead icon={Import} tint="var(--primary)" kicker="Bundles" title="Import a bundle" sub="Its preview says what it would change, then you apply it or keep it in your bundles." />
+      <SheetHead icon={Import} tint="var(--primary)" kicker="Bundles" title="Import a bundle" sub="A layout or pack someone shared. Its preview says what it would change, then you apply it or keep it." />
       <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={7} spellCheck={false} data-bundle-import-text
         placeholder="Paste a bundle, or a GitHub repository (owner/name)"
         className="mb-3 block w-full resize-y rounded-[8px] border-[0.5px] border-border bg-card px-3 py-2 font-mono text-[16px] outline-none placeholder:font-sans placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:text-[13px]" />

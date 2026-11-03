@@ -1,5 +1,5 @@
-// Settings > Appearance, in groups: colours (theme and style, the schemes in a strip, all under Show all), the window,
-// tabs, text (this device's sizes), a phone's pull-down actions, snippets. Saved in appearance.json.
+// Settings > Appearance, in groups: the layout (LayoutPicker.tsx), colours (theme, style, the schemes in a strip), the
+// window, tabs, text (this device's sizes), a phone's pull-down actions, snippets. Saved in appearance.json.
 import { useState, type ReactNode } from "react"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
 import { canTranslucent, getTranslucency, onlyMode, previewLook, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
@@ -20,6 +20,7 @@ import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
 import { FONTS, fontPicker, type FontKey } from "@/components/FontChooser"
 import { Group, ResetButton, Section, Segmented, SettingRow, SheetHead, Slider, Switch } from "@/components/kit"
+import { LayoutPicker } from "@/components/LayoutPicker"
 import { PictureChoice, SystemPicture, WindowPicture, type Scene } from "@/components/ChoicePictures"
 import { animationPreview, barFadePreview } from "@/components/SettingPictures"
 import { errorText } from "@/core/notify"
@@ -199,6 +200,9 @@ export function AppearancePanel() {
   const row = (k: string) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />
   return (
     <div className="flex flex-col gap-6">
+      <Section title="Layout">
+        <Group><LayoutPicker className="py-3" /></Group>
+      </Section>
       <Section title="Colours">
         <Group>
           {/* Theme and style side by side, the style wrapping under the theme where they don't fit. A scheme with one mode

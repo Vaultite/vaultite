@@ -1,12 +1,13 @@
 ## Bundles
 A bundle is a whole setup of the app at once: which plugins are on, their settings, the sidebars' panels, the pinned
-pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks one on Setup's
-Bundles tab (Setup is beside Settings at the sidebar's foot, its other tab Plugins; a new vault starts from Standard),
-saves their own setup as one, shares it as a file or a repository, and imports others' (Import, or pasting or dropping
-one on the page: its preview first).
+pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks a layout in
+Settings, Appearance (its first section: a drawn tile each, a click applies it with Undo; a new vault starts from
+Standard). A tile's menu: Details… (its preview), Reset (changed or tweaked), Save as new… (the one in use, named),
+Share…, Delete (the user's). Setup's Get (beside Your plugins) lists the directory's bundles over its plugins and
+imports others' (Import…, or pasting or dropping one on the page: its preview first).
 The app's own, layouts: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
 sidebars hide until the pointer reaches the window's edge, no tab bar, Glance), Browser (`browser`: favourites and vertical
-tabs, ⌘T as an address bar, spaces, tabs archived on their own, a page's notes beside it). In the directory (Get bundles),
+tabs, ⌘T as an address bar, spaces, tabs archived on their own, a page's notes beside it). In the directory (Setup's Get),
 packs: Life OS (days, people, health, books, and pages over them) and Agents (coding agents in terminals, their machines).
 - **Kinds** (bundle.json's `kind`): a `layout` (the user calls it that: the layout picker's), a `pack` (mostly plugins
   and pages: the store's) or a `look` (a restyle, Glass). Unsaid: a look when it holds only appearance.json, themes and
@@ -31,7 +32,7 @@ packs: Life OS (days, people, health, books, and pages over them) and Agents (co
   hotkeys.json       optional
   newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page;
                      `opens`: what ⌘T opens): saved ones say those the app's set
-  preview.png        its card's picture: a screenshot of the app it makes (the desktop app takes one when saving)
+  preview.png        its card's picture in Get: a screenshot of the app it makes (a layout's tile is drawn from its files)
   preview-dark.png   the same in dark, shown while the app is dark (each picture stands in for the other)
   plugins/<id>/data.json   a plugin's settings: those that differ from its defaults (saved: also the ones the app's bundles set)
   plugins/<id>/      with a manifest.json: a vault plugin made in the vault that it brings (it runs code: applying asks the user, and their yes
@@ -56,15 +57,15 @@ packs: Life OS (days, people, health, books, and pages over them) and Agents (co
   ones') that it doesn't pin are unpinned, the files kept, and their snippets go off. Panels and pins become the vault's defaults
   (sidebars.json, pages.json) and the workspace the user is on follows them (its own panels go; its own pins get the
   same edits); other workspaces keep theirs, and tabs aren't touched.
-- What it changed is kept in `.vaultite/bundles/previous.json` until the next apply: "Restore previous setup" (the
-  toast's Undo, the Bundles tab, `vau bundle restore`) puts each key, pin and panel back and trashes the files it added if
+- What it changed is kept in `.vaultite/bundles/previous.json` until the next apply: "Restore previous layout" (the
+  toast's Undo, the palette, `vau bundle restore`) puts each key, pin and panel back and trashes the files it added if
   they're unchanged.
 - Each change of a plan has an id (`changes` in `bundle.show`: `install:<plugin>`, `plugin:<plugin>`,
   `setting:<plugin>.<key>`, `panels`, `file:<path>`, `pin:<path>`, `pins:order`, `appearance:<key>`, `editor:<key>`,
   `hotkey:<command>`, `newtab:<key>`), the same for the same bundle and setup. Applying with `skip` leaves those out (nor kept to restore);
   `vau bundle fork <id> --skip ...` saves the bundle without them as "My <Name>" (a value skipped is the current
   one, still said; a pin, file or plugin skipped is left out). In the app each is a ticked line of the bundle's
-  preview: unticked, Apply and Try leave it out, and Save as "My <Name>" forks it (an install unticked takes its
+  preview (a tile's Details…): unticked, Apply and Try leave it out, and Save as "My <Name>" forks it (an install unticked takes its
   plugin with it; a plugin's files and the page a pin needs go with theirs).
 - The layout applied last (`.vaultite/bundles/applied.json`, with what it skipped) is in use (`inUse`); once the setup
   changes, `GET /api/bundles` gives it `modified` and `differs` (the ids that would apply). `vau bundle save --over <id>`
@@ -87,7 +88,7 @@ packs: Life OS (days, people, health, books, and pages over them) and Agents (co
   asked (`--include`). A git repository is a bundle too: its folder at the top, or one `.bundle.json`;
   `vau bundle import owner/name` adds it (bundle.json's `from` keeps where). Getting it again is an update: its preview
   (`changes`: files added, changed, removed; installs re-pinned) says what's different, and it replaces the user's copy
-  only with `replace` (`--replace`), never applied (a card's Check for updates… opens that preview).
+  only with `replace` (`--replace`), never applied (a tile's Check for updates…, or its card in Get, opens that preview).
 - **A bundle's link**: once its file is in a public GitHub repository (one `.bundle.json` at its top, or the bundle's
   folder there), `https://vaultite.com/b/<owner>/<name>` (`/<folder>` after it for one in a folder of the repository)
   is a page that shows it and runs it live in the web demo, on its made-up vault: the visitor's browser fetches it from
@@ -99,8 +100,8 @@ packs: Life OS (days, people, health, books, and pages over them) and Agents (co
   .bundle.json) and those Vaultite/plugins' `directory/listed.json` names (`bundles`: owner/name or owner/name/folder),
   each pinned at the commit that last changed it. Its `address`, `owner/name[/folder]@<commit>`, imports exactly that
   commit (`vau bundle import <address>`), kept in bundle.json's `from`; `imported` names the user's bundle from the same
-  place, `current` whether it's at that commit. The blocklist leaves one out. Setup's Bundles tab lists them under Get bundles (with
-  a search), each Imported or Update available; opening one is its import preview at that commit.
+  place, `current` whether it's at that commit. The blocklist leaves one out. Setup's Get lists them as Layouts and packs (Get's
+  search finds them too), each Imported or Update available; opening one is its import preview at that commit.
 - `vau bundle --help` (each is an op, `POST /api/ops/bundle.<name>`). An export is one JSON file:
   `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`.
 - To make one for the user, write the folder (pick blocks for its dashboards from `vau docs design`) and its guide, check it

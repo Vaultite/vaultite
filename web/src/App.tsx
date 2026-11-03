@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyPlus, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, LayoutTemplate, Link, ListChecks, ListTree, Moon, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, Store as StoreIcon, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
 import { cell } from "@/core/signal"
 import { getStore, onState, reload, useStore, vaultName as vaultNameOf, type Store } from "@/core/data"
 import { share } from "@/core/share"
@@ -53,8 +53,9 @@ import { editorSettings, showPropertiesAs } from "@/core/editorPrefs"
 import { PluginPreview } from "@/components/PluginPreview"
 import { PluginSettings } from "@/components/PluginSettings"
 import { settingsCommands, settingsTitle } from "@/core/pluginSettings"
-import { offerBundles, openImport, previousSetup, restoreSetup, startSave } from "@/core/bundles"
-import { APP_PAGES, appPageOf, hrefOf, isSetupTab, openAppPage, openSetup, type AppPage } from "@/core/apppages"
+import { currentLayout, offerBundles, openImport, previousSetup, restoreSetup } from "@/core/bundles"
+import { saveAsNew } from "@/components/LayoutPicker"
+import { APP_PAGES, appPageOf, hrefOf, isSetupTab, openAppPage, openSettings, openSetup, type AppPage } from "@/core/apppages"
 import { CommandPalette } from "@/components/CommandPalette"
 import { FolderPicker } from "@/components/FolderPicker"
 import { Chooser } from "@/components/Chooser"
@@ -98,14 +99,13 @@ const SidebarsSheet = lazy(() => import("@/pages/Sidebars").then((m) => ({ defau
 const FontsSheet = lazy(() => import("@/components/Appearance").then((m) => ({ default: m.FontsSheet })))
 const SettingsSection = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.SettingsSection })))
 const BundlePreview = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.BundlePreview })))
-const SaveBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.SaveBundle })))
 const ShareBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ShareBundle })))
 const ImportBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ImportBundle })))
 const IncomingBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.IncomingBundle })))
 
 // The app's own pages (core/apppages.ts), each drawn from its lazy chunk: Setup on the tab its address names.
 const DRAW: Record<AppPage["id"], (store: Store, to: string, tab: Tab | null) => React.ReactNode> = {
-  setup: (store, to, tab) => <Suspense><Setup store={store} tab={isSetupTab(to) ? to : "bundles"} at={tab?.id} /></Suspense>,
+  setup: (store, to, tab) => <Suspense><Setup store={store} tab={isSetupTab(to) ? to : "plugins"} at={tab?.id} /></Suspense>,
   settings: (store) => <Suspense><Settings store={store} /></Suspense>,
 }
 const pageTabOf = (to: string) => { const p = appPageOf(to); return p && { ...p, render: DRAW[p.id] } }
@@ -156,7 +156,6 @@ const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.R
   "bundle/": ["Bundle", (_, id) => <BundlePreview id={id} />], // a bundle's preview (pages/Bundles.tsx)
   "plugin-group/": ["Plugins", (store, id) => <PluginGroupSheet store={store} id={id} />], // a group's row on Plugins (the coding agents)
   "plugin-get/": ["Get plugins", (_, id) => <GetPluginSheet id={id} />], // a row of Get plugins: one not installed yet
-  "bundle-save": ["Save current setup", () => <SaveBundle />],
   "bundle-share/": ["Share", (_, id) => <ShareBundle id={id} />],
   "bundle-import": ["Import a bundle", () => <ImportBundle />],
   "bundle-incoming/": ["Import a bundle", (_, id) => <IncomingBundle id={id} />], // a bundle given to the app (core/bundles.ts openImport)
@@ -281,10 +280,10 @@ export default function App() {
     return subscribeScoped(() => { const n = currentWorkspace()?.n ?? null; if (n !== was) { was = n; sayWindowState() } })
   }, [])
   // A device's first visit (nothing saved): its blank tab shows where plugins say it starts (the first pinned page). A
-  // vault the app has never opened before shows the bundles first (core/bundles.ts: a setup to start from).
+  // vault the app has never opened before shows its welcome first (a layout to start from).
   useEffect(() => {
     if (store?.vault.sandbox) sandboxNotice()
-    if (store && offerBundles()) { openSetup("bundles"); return }
+    if (store && offerBundles()) { openSetup("welcome"); return }
     if (home) fillFirstTab(home)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])
@@ -458,12 +457,13 @@ export default function App() {
     { id: "file:reveal-finder", name: "Reveal current file in Finder", when: () => !!tabFile() && canReveal(), run: () => revealInFinder(tabFile()), icon: FolderOpen,
       ...(isMac ? {} : { name: isWindows ? "Show current file in Explorer" : "Show current file in folder" }) },
     ...APP_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys, words: p.words, run: () => openAppPage(p), icon: p.icon })),
-    // Setup's tabs: Plugins, and Bundles (core/bundles.ts), setups of the app to start from, save and share.
+    // Setup's tabs, Plugins and Get; and layouts (core/bundles.ts), picked in Settings > Appearance.
     { id: "page:plugins", name: "Open Plugins", words: "setup extensions install", run: () => openSetup("plugins"), icon: Puzzle },
-    { id: "bundles:choose", name: "Choose a bundle…", words: "setup", run: () => openSetup("bundles"), icon: Package },
-    { id: "bundles:save", name: "Save current setup as a bundle…", run: () => void startSave(), icon: PackagePlus },
-    { id: "bundles:import", name: "Import a bundle…", run: () => openDetail("bundle-import"), icon: Import },
-    { id: "bundles:restore", name: "Restore previous setup", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },
+    { id: "page:get", name: "Get plugins and layouts", words: "setup store directory install bundles packs", run: () => openSetup("get"), icon: StoreIcon },
+    { id: "layouts:choose", name: "Choose a layout…", words: "bundle setup zen browser standard", run: () => openSettings("appearance"), icon: LayoutTemplate },
+    { id: "layouts:save", name: "Save layout as new…", words: "bundle setup", run: () => saveAsNew(currentLayout()), icon: CopyPlus },
+    { id: "bundles:import", name: "Import a bundle…", words: "layout pack", run: () => openDetail("bundle-import"), icon: Import },
+    { id: "bundles:restore", name: "Restore previous layout", words: "bundle setup undo", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },
     // One value of a choice each, for the menu bar's radio items, hotkeys and `vau command`; the palette offers its
     // picker instead ("Theme…", core/choices.ts).
     { id: "theme:light", name: "Use light theme", unlisted: true, when: () => getPrefs().theme !== "light", run: () => setPrefs({ theme: "light" }), icon: Sun },

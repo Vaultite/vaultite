@@ -32,8 +32,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   path bar, one dragged onto a pane or a tab bar, or `vau open <folder>` shows what it holds in a tab of its own, as
   the sidebar's rows or as cards (a note's first lines, an image's picture): Show as, one setting for every folder. A
   folder in it opens in the same tab and Back comes out, as in the Files app; its crumbs go up.
-- **Bundles show skeleton cards while they load**: Get bundles and Your bundles draw shimmering cards, as many as
-  last time, instead of a blank page until the list comes.
+- **Layouts are picked from drawn tiles in Settings, Appearance**: Standard, Zen, Browser and yours, each a small
+  drawing of its window in your colours. A click switches at once, with Undo; a changed one says so, and its menu has
+  Details, Reset, Save as new (named, "My Zen"), Share and Delete. Your setup, "In use · modified" and Modify are gone.
+- **Setup is Your plugins and Get**: Get shows the directory's plugins, layouts and packs together under one search,
+  with Import for a bundle someone sent; layouts aren't listed in Setup any more.
+- **Get shows skeleton cards while its layouts and packs load**, as many as last time, instead of a blank space.
   Files tab) at the folder, open and flashed, rather than nothing.
 - **Lists and pages show skeletons while they load**: bundles, browser tabs, history, sites, agents' runs and their
   steps, extensions, passkeys, terminals, vaults and folders, setup's agents and permissions draw shimmering rows or

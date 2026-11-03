@@ -13,4 +13,4 @@ Zen keeps only what you're working on on screen. Nothing is gone: it's all one m
 - Web pages open in a tab beside your notes (Web viewer).
 
 ## Making it yours
-Each part is a setting: bring the tab bar back or turn off the fading in Settings, Appearance, the icon rails or the dimming in its Sidebars, or pin pages from a file's menu. Settings, Restore previous setup puts your old setup back, and this guide is yours to edit or delete.
+Each part is a setting: bring the tab bar back or turn off the fading in Settings, Appearance, the icon rails or the dimming in its Sidebars, or pin pages from a file's menu. Your old layout is a click away in Settings, Appearance (or Back to Standard layout in the command palette), and this guide is yours to edit or delete.

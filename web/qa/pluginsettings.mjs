@@ -75,7 +75,7 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     const text = await page.locator("main").innerText()
     const nav = await page.locator("[data-settings-nav]").evaluateAll((els) => els.map((e) => e.dataset.settingsNav))
-    check("Settings: Your setup, then its sections (Appearance first, no General), and no Bundles or Plugins of its own", (await page.locator("[data-settings-setup]").count()) === 1 &&
+    check("Settings: Setup, then its sections (Appearance first, no General), and no Bundles or Plugins of its own", (await page.locator("[data-settings-setup]").count()) === 1 &&
       ["appearance", "editor", "hotkeys"].every((id, i) => nav[i] === id) && nav.includes("updates") && !nav.includes("general") && !nav.includes("plugins") && !nav.includes("bundles"), nav)
     check("Settings: opens on Appearance", await page.locator('[data-settings-section="appearance"]').count() === 1)
     check("Settings: nothing a plugin adds", !["This workspace", "Pinned pages", "Show hidden files", "Connect an AI", "Vim's keys"].some((t) => text.includes(t)) &&
@@ -91,10 +91,10 @@ try {
     check("...not one with nothing to set", await page.locator('[data-settings-nav="plugin:outline"]').count() === 0)
     check("...nor one that can be switched (a gear away on Plugins)", !(await page.locator('[data-settings-nav="plugin:web-viewer"], [data-settings-nav="plugin:logs"], [data-settings-nav="plugin:workspaces"]').count()))
 
-    // Your setup: Setup's page, in Settings' tab (one path to Bundles and Plugins).
+    // Setup: Setup's page, in Settings' tab (one path to Plugins and Get).
     await page.locator("[data-settings-setup]").click()
-    check("Your setup: Setup's page on Bundles", !!(await until(() => page.locator("main [data-setup=bundles] [data-bundles-page]").count(), 4000)) &&
-      (await page.evaluate(() => location.hash)) === "#bundles" && !(await page.locator("main [data-settings]").count()))
+    check("Setup: Setup's page on Your plugins", !!(await until(() => page.locator("main [data-setup=plugins] [data-plugin-row]").count(), 4000)) &&
+      (await page.evaluate(() => location.hash)) === "#plugins" && !(await page.locator("main [data-settings]").count()))
     await shot(page, "1a-your-setup")
     await go(page, "settings")
     await until(() => page.locator("[data-settings-list]").count(), 4000)
@@ -311,11 +311,13 @@ try {
     const navRow = await page.$eval("[data-settings-nav=appearance]", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), text: Math.round(parseFloat(getComputedStyle(e).fontSize) * (parseFloat(getComputedStyle(e.closest("[data-size-up]") ?? e).zoom) || 1)) } })
     check("phone: Settings' rows a finger tall, 17px, as the phone's other lists", navRow.h >= 44 && navRow.text === 17, navRow)
     await page.locator("[data-settings-setup]").click()
-    check("phone: Your setup goes to Setup's page, on Bundles", !!(await until(() => page.evaluate(() => location.hash.startsWith("#bundles")), 4000)), await page.evaluate(() => location.hash))
+    check("phone: Setup goes to Setup's page, on Plugins", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
     await until(() => page.locator("[data-setup-tab=plugins]").count(), 4000)
     const tabH = await page.locator("[data-setup-tab=plugins]").evaluate((e) => e.getBoundingClientRect().height)
     check("phone: Setup's tabs are a finger tall", tabH >= 40, tabH)
     await page.screenshot({ path: `${OUT}8a-setup-phone.png`, fullPage: true })
+    await page.locator("[data-setup-tab=get]").click()
+    check("phone: its Get tab", !!(await until(() => page.evaluate(() => location.hash.startsWith("#get")), 4000)), await page.evaluate(() => location.hash))
     await page.locator("[data-setup-tab=plugins]").click()
     check("phone: its Plugins tab", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
     check("phone: Plugins has its search and Filter, no menu", !!(await until(() => page.locator("[data-plugins] [data-plugins-search] input").count(), 4000)) &&

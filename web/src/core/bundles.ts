@@ -1,12 +1,10 @@
-// Bundles in the app: its side of the API (list, preview, apply with Undo, restore, save, export, import). Format and
-// applying are the server's (core/bundles.ts); the page is Setup's Bundles tab (pages/Bundles.tsx).
+// Bundles in the app: its side of the API (list, apply with Undo, restore, save, export, import). Format and applying
+// are the server's (core/bundles.ts); layouts are picked in LayoutPicker.tsx, the rest got in Get (pages/Bundles.tsx).
 import { useEffect, useSyncExternalStore } from "react"
 import { getStore, reload } from "@/core/data"
 import { del, get, op, post, request } from "@/core/http"
-import { activeTab } from "@/core/workspace"
-import { appPageOf } from "@/core/apppages"
-import { captureWindow } from "@/core/desktop"
-import { afterSheets, openDetail, replaceDetail, route } from "@/core/nav"
+import { openTab } from "@/core/workspace"
+import { openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
 import { dismissNotice, notify, notifyError } from "@/core/notify"
 import { currentWorkspace, landingWorkspace } from "@/core/scope"
@@ -18,6 +16,9 @@ import { onLook } from "@/core/appearance"
 import { isDark } from "@/lib/utils"
 
 export type { BundleInfo, Plan, PlanChange, ShareItem }
+
+/** A layout, the picker's (not a pack, like Life OS, nor a look, like Glass: those are Get's). */
+export const isLayout = (b: BundleInfo) => b.kind === "layout"
 
 export type Previous = { bundle: string; name: string; at: string }
 /** `default`: the one a new vault starts from (Standard), and skipping the offer gives; `trial`: one being tried;
@@ -42,6 +43,17 @@ const emit = () => subs.notify()
 export function refreshBundles() {
   loading = get<Listing>(`bundles${whereQuery()}`).then((l) => { listing = l; emit() }, (e) => { notifyError(e, "Couldn't list the bundles") }).finally(() => { loading = null })
   return loading
+}
+
+/** The bundles as last listed (none yet: empty). */
+export const bundlesNow = () => listing?.bundles ?? []
+/** The name saving the setup suggests, from the layout in use. */
+export const saveNameNow = () => listing?.saveName ?? null
+
+/** The layout in use: the one applied last, else the one the setup is already (a new vault's Standard). */
+export function currentLayout(): BundleInfo | null {
+  const all = bundlesNow().filter(isLayout)
+  return (listing?.applied && all.find((b) => b.id === listing!.applied!.id)) || all.find((b) => b.inUse) || null
 }
 
 /** The bundles there are (null while they load). */
@@ -88,30 +100,34 @@ export type ApplyOptions = {
   skip?: string[]
   /** Only tried: the app-wide bar keeps it or reverts (BundleTrial). */
   trial?: boolean
-  /** Clean, its remembered tweaks forgotten (Reset). */
+  /** As it comes, without the changes kept from the last time it was used (a layout's Reset). */
   fresh?: boolean
-  /** Opens nothing after (its guide, its first page): onboarding. */
-  quiet?: boolean
+  /** What it shows after: its guide or first page (`front`), only a guide it just added, in a tab behind (`behind`: a
+   *  layout picked in Settings, where the window is the preview), or nothing. */
+  open?: "front" | "behind" | "none"
 }
 
 /** Apply a bundle, then show its guide or first page, with Undo in a toast that said it was on its way meanwhile
  *  (installing takes seconds); a trial ends without one, its bar says it. */
-export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false, offAdded = false, skip = [], trial = false, fresh = false, quiet = false }: ApplyOptions = {}) {
+export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false, offAdded = false, skip = [], trial = false, fresh = false, open = "front" }: ApplyOptions = {}) {
   const id = `bundle-apply-${b.id}`
   const installs = allowCode ? without(plan, new Set(skip)).code.filter((c) => c.source && !c.kept).map((c) => c.name) : []
-  notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `${trial ? "Trying" : "Applying"} ${b.name}…`, { id, duration: Infinity })
+  // (a layout picked in Settings is there at once: only an install is worth saying meanwhile)
+  if (installs.length || open !== "behind") notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `${trial ? "Trying" : "Applying"} ${b.name}…`, { id, duration: Infinity })
+  let guide = false
   try {
     // (`open`: the guide it just added, else its first pin; none when quiet)
-    const r = await post<{ applied: string; open: string | null }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: null, ...where(), allowCode, offAdded, skip, trial, fresh, quiet })
+    const r = await post<{ applied: string; open?: string | null }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: null, ...where(), allowCode, offAdded, skip, trial, fresh, quiet: open === "none" })
     await reload()
     void refreshBundles()
-    if (r.open) openFile(r.open)
+    if (open === "front" && r.open) openFile(r.open)
+    else if (open === "behind" && r.open && r.open === b.guide) { openTab(`file:${r.open}`, { background: true }); guide = true }
   } catch (e) {
     dismissNotice(id)
     throw e
   }
   if (trial) dismissNotice(id)
-  else notify(`Applied ${b.name}`, { id, duration: 8000, action: { label: "Undo", run: () => restoreSetup() } })
+  else notify(guide ? `Applied ${b.name}: its guide is in a new tab` : `Applied ${b.name}`, { id, duration: 8000, action: { label: "Undo", run: () => restoreSetup() } })
 }
 
 /** Standard, with its tweaks: the way back when a layout hides everything (Zen). The op bundle.standard. */
@@ -135,16 +151,6 @@ export async function keepTrial() {
 /** Save a bundle without the changes `skip` names as the user's "My <Name>". */
 export async function forkBundle(b: BundleInfo, skip: string[]) {
   const r = await post<{ bundle: BundleInfo }>(`bundles/${encodeURIComponent(b.id)}/fork`, { skip, workspace: currentWorkspace()?.n ?? null })
-  await refreshBundles()
-  return r.bundle
-}
-
-/** Keep the setup's changes since bundle b was applied: saved over it when it's the user's (with a new picture when
- *  the desktop app takes one), else as a new "My <Name>". Closes the sheet first, so the picture is of the app. */
-export async function saveChanges(b: BundleInfo) {
-  await new Promise<void>((done) => afterSheets(() => requestAnimationFrame(() => done())))
-  const png = b.source === "vault" ? await windowShot() : null
-  const r = await post<{ bundle: BundleInfo }>("bundles", { over: b.id, workspace: currentWorkspace()?.n ?? null, ...(png ? { preview: png } : {}) })
   await refreshBundles()
   return r.bundle
 }
@@ -177,18 +183,6 @@ export function usePicture(b: Pick<BundleInfo, "id" | "preview" | "previewDark">
   return inline ? `data:image/png;base64,${inline}` : `api/bundles/${encodeURIComponent(b.id)}/${name}?v=${v}`
 }
 
-/** The desktop app's picture of the window, for a bundle's card: none of Setup itself (or Settings), nor in a browser. */
-const windowShot = async () => (appPageOf(activeTab()?.to ?? "") ? null : (await captureWindow().catch(() => null))?.png ?? null)
-
-// The window as it was when saving began, before the sheet covered it: the new bundle's picture.
-let shot: string | null = null
-export const takenShot = () => shot
-/** Start saving the setup. A picture of the window comes first. */
-export async function startSave() {
-  shot = await windowShot()
-  openDetail("bundle-save")
-}
-
 /** Save the current setup as one of the user's bundles (the current workspace's panels and pins when it has its own). */
 export async function saveBundle(o: SaveOptions) {
   const r = await post<{ bundle: BundleInfo }>("bundles", { ...o, workspace: currentWorkspace()?.n ?? null })
@@ -199,7 +193,15 @@ export async function saveBundle(o: SaveOptions) {
 export async function deleteBundle(b: BundleInfo) {
   await del(`bundles/${encodeURIComponent(b.id)}`)
   await refreshBundles()
-  notify(`Deleted ${b.name} (it's in the trash)`)
+}
+
+/** Delete one of the user's bundles (to the trash), with Undo: its export, imported again. */
+export async function removeBundle(b: BundleInfo) {
+  try {
+    const copy = await bundleText(b, { all: true }).catch(() => null)
+    await deleteBundle(b)
+    notify(`Deleted ${b.name}`, copy ? { action: { label: "Undo", run: () => void importText(copy).catch((e) => notifyError(e, "Couldn't bring it back")) } } : {})
+  } catch (e) { notifyError(e, "Couldn't delete it") }
 }
 
 /** A bundle as one JSON text (core/bundles.ts shared): its parts chosen to share (`include`, `leave`), or `all` of it

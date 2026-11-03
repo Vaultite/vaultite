@@ -91,16 +91,17 @@ for (const colorScheme of ["light", "dark"]) {
     check("its sheet names its category", (await page.locator("dialog[open]").getByText("System", { exact: true }).count()) > 0)
     check("an opt-in plugin's preview draws its blocks while it's off", await until(async () => (await page.locator('dialog[open] [data-block="activity"]').count()) >= 1, 4000))
     await page.keyboard.press("Escape"); await wait(500)
-    // Plugins is a tab of Setup, beside Bundles: switching swaps the tab's address in place, adding no history.
+    // Plugins is a tab of Setup, beside Get: switching swaps the tab's address in place, adding no history.
     const depth = await page.evaluate(() => history.length)
-    await page.locator("[data-setup-tab=bundles]").click()
-    check("Setup: its Bundles tab, in the same tab", await until(() => page.locator("[data-setup=bundles] [data-bundles-save]").count(), 6000) &&
-      (await page.evaluate(() => location.hash)) === "#bundles" && (await page.evaluate(() => history.length)) === depth && !(await page.locator("[data-settings]").count()))
-    await page.screenshot({ path: `${OUT}setup-bundles.png` })
+    await page.locator("[data-setup-tab=get]").click()
+    check("Setup: its Get tab, in the same tab, layouts and packs over plugins", await until(() => page.locator("[data-setup=get] [data-bundles-browse]").count(), 6000) &&
+      await page.locator("[data-setup=get] [data-plugin-browse]").count() === 1 &&
+      (await page.evaluate(() => location.hash)) === "#get" && (await page.evaluate(() => history.length)) === depth && !(await page.locator("[data-settings]").count()))
+    await page.screenshot({ path: `${OUT}setup-get.png` })
     await page.locator("[data-setup-tab=plugins]").click()
     check("...and back to Plugins", await until(() => page.locator("[data-plugin-row]").count(), 4000) && (await page.evaluate(() => location.hash)) === "#plugins")
     await page.locator("[data-plugins-get]").click()
-    check("Get plugins shows beside the menu", await until(() => page.locator("[data-plugin-browse]").count(), 6000))
+    check("Get shows beside the menu", await until(() => page.locator("[data-plugin-browse]").count(), 6000))
     await page.screenshot({ path: `${OUT}plugins-get.png` })
     await page.locator("[data-plugins-installed]").click()
     check("back to the list", await until(() => page.locator("[data-plugin-row]").count(), 4000))

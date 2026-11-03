@@ -1,5 +1,5 @@
-// Setup's Plugins tab: Your plugins (by category, never the `alwaysOn` parts) or Get plugins (PluginBrowse.tsx), each
-// narrowed by Filter, the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
+// Setup's Plugins and Get: Your plugins (by category, never the `alwaysOn` parts) or Get's plugins (PluginBrowse.tsx),
+// each narrowed by Filter, the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { ChevronRight, ListFilter, Search, Settings2, X } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tileTint, usePlugins, type Plugin } from "@/core/plugins"
@@ -223,8 +223,9 @@ function categoriesIn(l: Listed | null) {
   return [...CATEGORIES, OTHER].filter((c) => ids.has(c.id))
 }
 
-/** Setup's Plugins tab (pages/Setup.tsx). `view`: yours or to get, chosen in Setup's menu (no tabs of its own). */
-export function Plugins({ store, view, onView }: { store: Store; view?: Tab; onView?: (v: Tab) => void }) {
+/** Setup's Plugins tab (pages/Setup.tsx). `view`: yours or to get, chosen in Setup's menu (no tabs of its own).
+ *  `above`: what Get shows over its plugins, by the same search and filters (the store's layouts and packs). */
+export function Plugins({ store, view, onView, above }: { store: Store; view?: Tab; onView?: (v: Tab) => void; above?: (query: string, filters: GetFilters) => ReactNode }) {
   const files = store.pluginSettings ?? []
   const all = usePlugins()
   const prefs = usePrefs()
@@ -350,6 +351,7 @@ export function Plugins({ store, view, onView }: { store: Store; view?: Tab; onV
     <ActiveFilters chips={getChips} count={listed ? listed.filter((e) => passesGet(e, got)).length : null}
       remove={(id) => { if (id === "source") setListed(null); setGot(id === "source" ? { ...got, source: "", sort: "", cat: "" } : { ...got, [id]: GET_NONE[id] }) }}
       clear={() => { if (got.source) setListed(null); setGot(GET_NONE) }} />
+    {above?.(query, got)}
     <PluginBrowse query={query} filters={got} showInstalled={reveal} onListed={setListed} />
   </>
   else {
@@ -379,7 +381,7 @@ export function Plugins({ store, view, onView }: { store: Store; view?: Tab; onV
           <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted text-muted-foreground md:size-8 md:rounded-[8px]"><Search className="size-[18px]" strokeWidth={2} /></span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[15px] font-medium md:text-[14px]">Search everywhere for "{query.trim()}"</span>
-            <span className="block text-[13px] text-muted-foreground md:text-[12px]">Get plugins, with every source</span>
+            <span className="block text-[13px] text-muted-foreground md:text-[12px]">Get, with every source</span>
           </span>
           <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
         </button>
@@ -399,7 +401,7 @@ export function Plugins({ store, view, onView }: { store: Store; view?: Tab; onV
           options={[{ value: "installed", label: "Your plugins", attrs: { "data-plugins-installed": "" } }, { value: "get", label: "Get plugins", attrs: { "data-plugins-get": "" } }]} />}
         <div className="flex min-w-[200px] flex-1 items-center gap-2">
           <form role="search" className="flex min-w-0 flex-1" onSubmit={(e) => e.preventDefault()} data-plugins-search>
-            <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? "Search all plugins" : "Search your plugins"} />
+            <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? (above ? "Search plugins and layouts" : "Search all plugins") : "Search your plugins"} />
           </form>
           <Button onClick={openFilter} aria-haspopup="menu" data-plugins-filter={filtered}
             className={cn("px-3 md:h-7.5 md:px-2.5", filtered && "bg-primary/10 text-primary hover:bg-primary/15")}>

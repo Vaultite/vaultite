@@ -93,6 +93,10 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
 - `showInlineTitle`: true (default: the file's name as a title at the top of every file, editable while editing) |
   false (only in the tab and the path bar; a sheet keeps it). Not read from Obsidian's.
 
+**Layout**: Settings, Appearance opens on the layouts (Standard, Zen, Browser, then the user's own: bundles, `vau docs
+bundles`), each a drawing of its window; a click applies one, with Undo. Plugins, and packs and layouts to get, are in
+Setup (Your plugins, Get).
+
 **Appearance**, `.vaultite/appearance.json` (or `vau appearance <key> <value>`), one for every device. A key it doesn't
 set is `.obsidian/appearance.json`'s when the vault has one (its base theme, theme, snippets on and fonts):
 - `theme`: `system` | `light` | `dark` (Claude Code in the app's terminals starts in its ANSI theme of that mode, so it

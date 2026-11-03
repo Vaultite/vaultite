@@ -1,11 +1,11 @@
-// Settings: sections beside the one shown (a sheet each where narrow), headed by Your setup. Plugins' pages: the app's
+// Settings: sections beside the one shown (a sheet each where narrow), headed by Setup. Plugins' pages: the app's
 // own beside its sections, the rest under Features (folded) with the app's plugins' options; others' a gear away in Setup.
 import { useMemo, useState, useEffect, type ReactNode } from "react"
 import { ChevronRight, CircleArrowDown, Keyboard, Palette, PenLine, ShieldCheck, SlidersHorizontal, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
-import { APP_PAGES, openSetup } from "@/core/apppages"
+import { APP_PAGES, openSetup, settingsSection } from "@/core/apppages"
 import { openDetail } from "@/core/nav"
 import { isEnabled, PLUGINS, pluginById, tileTint, type Plugin } from "@/core/plugins"
 import { hasSettings, openPluginSettings, revealRow, withSettings, settingsTitle } from "@/core/pluginSettings"
@@ -27,8 +27,6 @@ import { notifyError } from "@/core/notify"
 import { APP_VERSION } from "../../../core/version.ts"
 import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
 
-/** Which section is shown: kept while the app runs, so Settings reopens where it was. */
-const settingsSection = cell("appearance")
 /** Features in the menu: folded until opened (or a find in it is shown), while the app runs. */
 const featuresOpen = cell(false)
 
@@ -173,8 +171,9 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
   const app: Found[] = [
     ...pluginPages(disabled).map((s) => ({ id: `page-${s.id}`, label: s.label, where: "Settings", words: "", run: () => show(s.id) })),
     // (Setup's tabs, a page of their own)
-    { id: "bundles", label: "Bundles", sub: "Try another setup, save and share yours", where: "Setup", words: "your setup save share import restore", run: () => openSetup("bundles") },
-    { id: "plugins", label: "Plugins", sub: "Turn plugins on and off, get more", where: "Setup", words: "extensions install", run: () => openSetup("plugins") },
+    { ...row("layout", "Layout", "Appearance", "[data-layout-picker]", "Standard, Zen, Browser or yours"), words: "bundle setup zen browser standard save share restore" },
+    { id: "plugins", label: "Plugins", sub: "Turn plugins on and off", where: "Setup", words: "extensions install", run: () => openSetup("plugins") },
+    { id: "get", label: "Get plugins and layouts", sub: "From Vaultite's directory, or import a bundle", where: "Setup", words: "store install bundles packs import", run: () => openSetup("get") },
     { ...row("theme", "Theme", "Appearance", '[data-settings-row="theme"]', "System, light or dark"), words: "dark mode light mode" },
     { ...row("scheme", "Colour scheme", "Appearance", '[data-settings-row="scheme"]'), words: "color colors colours obsidian themes" },
     { ...row("density", "Density", "Appearance", '[data-settings-row="density"]', "Compact or comfortable"), words: "spacing" },
@@ -285,21 +284,17 @@ function FoundList({ found, query }: { found: Found[]; query: string }) {
 
 const SETUP = APP_PAGES.find((p) => p.id === "setup")!
 
-/** Your setup, heading the menu: the bundle it came from (when one was applied here). It isn't a section: it goes to
- *  Setup's page, on Bundles. */
-function SetupCard({ store }: { store: Store }) {
-  const from = store.bundles?.previous?.name
+/** Setup, heading the menu: it isn't a section, it goes to Setup's page (plugins, and Get). */
+function SetupCard() {
   return (
-    <button type="button" onClick={() => openSetup("bundles")} data-settings-setup
+    <button type="button" onClick={() => openSetup("plugins")} data-settings-setup
       className="mb-3 flex w-full cursor-pointer items-center gap-2.5 rounded-[10px] bg-foreground/[0.03] p-2 text-left transition-colors hover:bg-foreground/[0.06]">
       <span className="grid size-10 shrink-0 place-items-center rounded-[9px] bg-primary text-primary-foreground md:size-8 md:rounded-[8px]">
         <SETUP.icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[17px] leading-[22px] font-semibold md:text-[13px] md:leading-[18px]">Your setup</span>
-        <span className="block truncate text-[15px] leading-[20px] text-muted-foreground md:text-[12px] md:leading-[16px]">
-          {from ? `Based on ${from}` : "Bundles and plugins"}
-        </span>
+        <span className="block truncate text-[17px] leading-[22px] font-semibold md:text-[13px] md:leading-[18px]">Setup</span>
+        <span className="block truncate text-[15px] leading-[20px] text-muted-foreground md:text-[12px] md:leading-[16px]">Your plugins, and more to get</span>
       </span>
       <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
     </button>
@@ -344,7 +339,7 @@ export function Settings({ store }: { store: Store }) {
   const typed = (v: string) => { setQuery(v); setPicked(null) }
   const open = featuresOpen.use()
   const items = menu(store, disabled, { open, toggle: () => featuresOpen.set(!open) })
-  const setup = <SetupCard store={store} />
+  const setup = <SetupCard />
   const menuOf = (active: string | null) => <RailMenu label="Settings" tiles items={items} active={active} pick={(id) => show(id)} data-settings-list="" />
   const list = (active: string | null) => <>{setup}{menuOf(active)}</>
   return (

@@ -1,11 +1,13 @@
 // The app's own pages, at the left sidebar's foot (a phone's: its drawer's, and its bar's menu): Setup and Settings.
-// Every other page is a file. Setup's tabs (pages/Setup.tsx) are each an address of their own: #bundles, #plugins.
+// Every other page is a file. Setup's tabs (pages/Setup.tsx) are each an address: #plugins, #get, #welcome.
 import { Blocks, Settings, type LucideIcon } from "lucide-react"
 import { isDesktop } from "@/core/platform"
 import { share } from "@/core/share"
 import { findOpen, go, replaceTabTarget } from "@/core/workspace"
+import { openDetail } from "@/core/nav"
+import { cell } from "@/core/signal"
 
-const SETUP_TABS = ["bundles", "plugins"] as const
+const SETUP_TABS = ["plugins", "get", "welcome"] as const
 export type SetupTab = (typeof SETUP_TABS)[number]
 
 export type AppPage = { id: "setup" | "settings"; label: string; icon: LucideIcon; tint: string
@@ -18,7 +20,7 @@ export type AppPage = { id: "setup" | "settings"; label: string; icon: LucideIco
   full?: boolean }
 
 export const APP_PAGES: AppPage[] = share ? [] : [
-  { id: "setup", label: "Setup", icon: Blocks, tint: "var(--primary)", words: "bundles plugins extensions", tabs: SETUP_TABS, full: true },
+  { id: "setup", label: "Setup", icon: Blocks, tint: "var(--primary)", words: "plugins extensions store get bundles packs", tabs: SETUP_TABS, full: true },
   { id: "settings", label: "Settings", icon: Settings, tint: "var(--muted-foreground)", keys: ["Mod+,"], full: true },
 ]
 
@@ -35,11 +37,21 @@ export function openAppPage(p: AppPage, newTab = false) {
   else goTo(hrefOf(p).slice(1), newTab)
 }
 
-/** Open Setup on `tab`, else as a tab already showing it is (Bundles if none does). Setup stays one tab: the one open
- *  switches to `tab`. */
+/** Open Setup on `tab`, else as a tab already showing it is (Your plugins if none does). Setup stays one tab: the one
+ *  open switches to `tab`. */
 export function openSetup(tab?: SetupTab) {
   const open = findOpen(...SETUP_TABS)
-  const to = tab ?? (open?.t.to as SetupTab | undefined) ?? "bundles"
+  const to = tab ?? (open?.t.to as SetupTab | undefined) ?? "plugins"
   if (open && open.t.to !== to) replaceTabTarget(open.t.id, to)
   goTo(to)
+}
+
+/** Which section Settings shows: kept while the app runs, so Settings reopens where it was. */
+export const settingsSection = cell("appearance")
+
+/** Open Settings on a section (a phone's: its sheet). */
+export function openSettings(section: string) {
+  settingsSection.set(section)
+  if (isDesktop()) goTo("settings")
+  else openDetail(`settings-section/${encodeURIComponent(section)}`)
 }

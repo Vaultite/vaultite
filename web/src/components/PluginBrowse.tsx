@@ -373,7 +373,7 @@ function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact
 
   return (
     <div data-plugin-directory>
-      <ListHead title="Vaultite directory">
+      <ListHead title="Plugins">
         <button type="button" onClick={() => setFresh(true)} disabled={fresh} aria-label="Fetch the directory again" data-tip="Fetch again" data-browse-refresh
           className="-my-1 -mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50 max-md:size-11">
           <RefreshCw className={cn("size-3.5", fresh && "animate-spin")} strokeWidth={2} />
