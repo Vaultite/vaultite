@@ -6,8 +6,11 @@ export function AmbientButton({ icon: Icon, text, tip, tint, onClick, className 
   icon: ComponentType<{ className?: string; strokeWidth?: number; style?: CSSProperties }>
   text?: ReactNode; tip: string; tint?: string; onClick: (e: MouseEvent<HTMLButtonElement>) => void; className?: string
 }) {
+  // (a name must hold the words shown: when the tip doesn't, they're the name and the tip describes them)
+  const shown = typeof text === "string" || typeof text === "number" ? String(text) : null
+  const named = shown === null || tip.includes(shown)
   return (
-    <button type="button" onClick={onClick} aria-label={tip} data-tip={tip} data-tip-side="top"
+    <button type="button" onClick={onClick} aria-label={named ? tip : undefined} aria-description={named ? undefined : tip} data-tip={tip} data-tip-side="top"
       className={cn("flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1.5 hover:bg-foreground/[0.06] hover:text-foreground", className)}>
       <Icon className="size-3.5" strokeWidth={2.25} style={tint ? { color: tint } : undefined} />
       {text !== undefined && <span className="max-w-56 min-w-0 truncate">{text}</span>}

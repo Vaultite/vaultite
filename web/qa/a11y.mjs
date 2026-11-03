@@ -22,6 +22,9 @@ const page$ = async (name) => { try { return `#${await pageHash(B, name)}` } cat
 const now = {}, where = {}
 async function audit(page, surface) {
   if (!(await page.evaluate(() => "axe" in window))) await page.addScriptTag({ content: AXE })
+  // (what's still fading in reads as low contrast: measured once its animations end, endless ones aside)
+  await page.evaluate(() => Promise.race([new Promise((r) => setTimeout(r, 1500)), Promise.all(document.getAnimations()
+    .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {})))]))
   const found = await page.evaluate(async (tags) => (await window.axe.run(document, { runOnly: { type: "tag", values: tags }, resultTypes: ["violations"] }))
     .violations.map((r) => ({ id: r.id, n: r.nodes.length, at: r.nodes[0]?.target.join(" ") })), TAGS)
   for (const r of found) { now[r.id] = (now[r.id] ?? 0) + r.n; where[r.id] ??= `${surface}: ${r.at}` }

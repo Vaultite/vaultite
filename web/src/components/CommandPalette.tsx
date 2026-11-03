@@ -146,7 +146,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 /** A choice's value at the end of its row, drawn again as switches and choices change. */
 function ChoiceValue({ value }: { value: () => string }) {
   useSwitches()
-  return <span className="shrink-0 rounded-[5px] bg-muted px-1.5 text-[12px] leading-[18px] text-muted-foreground" data-choice-value>{value()}</span>
+  return <span className="shrink-0 rounded-[5px] bg-muted px-1.5 text-[12px] leading-[18px] text-foreground/75" data-choice-value>{value()}</span>
 }
 
 /** A setting's state at the end of its row: the switch Settings draws, small, to look at (Enter flips it); drawn again
