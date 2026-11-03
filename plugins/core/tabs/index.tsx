@@ -4,7 +4,7 @@ import {
   activePane, Badged, edgeScroller, canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
   groupsAsDrawn, HeadingButton, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
   selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit,
-  useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList,
+  useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
   INCOMING,
   type DragItem, type Pane, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabList,
 } from "@vaultite"
@@ -20,6 +20,15 @@ import { closeOn, deviceItems, deviceName, DeviceNameField, DevicesPanel, inPane
 const othersItem = (shown: boolean) => ({
   label: "Other devices' tabs", checked: shown, run: () => { settings.set({ other_devices: !shown }).catch((e) => notifyError(e, "Couldn't change it")) },
 })
+
+/** What other plugins mark a row with (the companion's eye on what it follows): a button each, a click away. */
+function Marks({ id }: { id: string }) {
+  const marks = useUiMarks(id)
+  return <>{marks.map((m, k) => (
+    <HeadingButton key={k} icon={m.icon} label={m.label} data-no-drag className="text-primary" style={m.tint ? { color: m.tint } : undefined}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); m.run() }} />
+  ))}</>
+}
 
 const isBlankTab = (t: Tab) => { const ps = panesOf(t); return ps.length === 1 && ps[0].to === "new" }
 
@@ -77,6 +86,7 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
         className={cn(line && "ml-3.5", lit && !active && "bg-foreground/[0.08]")}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
         onClick={click}>
+        <Marks id={`tab:${t.id}`} />
         {t.pinned ? (
           <span className="grid size-5 shrink-0 place-items-center text-muted-foreground" aria-label="Pinned"><Pin className="size-3.5" strokeWidth={2} /></span>
         ) : !only && (
@@ -101,6 +111,7 @@ function GroupRow({ g, n, target }: { g: TabGroup; n: number; target: boolean })
       onContextMenu={menuFor(() => groupMenu(g.id, "panel"))}>
       <SidebarRow data-group-row={g.id} aria-expanded={!g.collapsed} open tip={null} more onClick={() => foldGroupMoving(g.id)}
         label={<span className="flex"><GroupLabel g={g} n={n} target={target} /></span>}>
+        <Marks id={`group:${g.id}`} />
         {/* (its chevron shows on hover, as a panel heading's does, turning as it folds) */}
         <ChevronDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[rotate,opacity] duration-200 group-hover/row:opacity-100 group-aria-[expanded=false]/row:-rotate-90" strokeWidth={2.25} />
       </SidebarRow>

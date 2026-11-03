@@ -586,6 +586,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
 - `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).
+- `setUiMarks(owner, marks)`: `owner`'s marks now, by data-ui id (an empty map takes them all down).
 - `severalMachines()`: Whether this vault runs on another machine too (a command about machines is offered only then): false until known, asked once in the background.
 - `share`
 - `Share`
@@ -686,6 +687,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `treeShownItems({ reveal }?)`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse);…
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…
+- `UiMark`
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
 - `useAgents()`
@@ -747,6 +749,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useTextSize(kind)`: A kind's size, redrawn when it changes (any pref change redraws; it's cheap).
 - `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` (Pinch to resize text) is on (off as in Obsidian: pinches set it off by accident).
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.
+- `useUiMarks(id)`: The marks on the element of data-ui `id`, live.
 - `useVaultChange(fn, paths?)`: Run fn when these paths change, or a folder they're in (or anything, when paths is omitted); a folder's files need a predicate, `(p) => p.startsWith("dir/")`.
 - `useViewsVersion()`: Re-render when a view's title or icon changes (returns a counter).
 - `useVirtual(list, keys, { estimate, keep, overscan })`: Which of `keys` (a row each) `list` draws: each drawn row gets `data-vi={index}` (measured), `keep` are drawn wherever they are, `estimate` is a row's height until one is measured, `overscan` how…

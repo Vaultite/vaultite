@@ -11,7 +11,7 @@ export type { Target } from "./places.ts"
 /** Where a page's element is in its page (CSS px, at its zoom): the server's word for a place's `el`. */
 export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
 /** What an agent follows this session (follows.ts): a pane, a tab group, or a part of the app's UI. */
-export type Follow = { id: string; agent: string; pane?: string; group?: string; ui?: string; title: string; since: number }
+export type Follow = { id: string; agent: string; pane?: string; tab?: string; group?: string; ui?: string; title: string; since: number }
 export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away" | "listening"; t: number; seen?: boolean
   /** Why it let what it saw pass, in its few words (by the seen tick). */
   why?: string

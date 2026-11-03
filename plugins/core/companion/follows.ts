@@ -3,8 +3,8 @@
 import type { Plugin } from "../../../core/plugins.ts"
 import { type Pane, paneSource } from "./places.ts"
 
-/** A follow: of a pane (today's tab), a tab group, or the app's UI (`ui`, the window watches it); who follows. */
-export type Follow = { id: string; agent: string; pane?: string; group?: string; ui?: string; title: string; since: number }
+/** A follow: of a pane, a tab (its panes), a tab group, or the app's UI (`ui`, the window watches it); who follows. */
+export type Follow = { id: string; agent: string; pane?: string; tab?: string; group?: string; ui?: string; title: string; since: number }
 /** A source read (watches:read's). */
 type Read = { text: string; title: string; state?: string; url?: string; selection?: string; kind: string; missing?: boolean }
 /** A followed pane's change, as its moment says it. */
@@ -24,8 +24,8 @@ export function follows(plugin: Plugin, o: { change: (c: Change) => void; panes:
   const readOf = (source: string, pane: string) => plugin.ask<Read | null>("watches:read", null, source, pane)
   const diff = (a: Read | null, b: Read, most = 24) => plugin.ask<string[]>("watches:changes", [], a, b, most)
 
-  /** The panes a follow covers now: its pane, or its group's, as the windows last said. */
-  const panesOf = (f: Follow) => (f.pane ? o.panes().filter((p) => p.id === f.pane) : f.group ? o.panes().filter((p) => p.group === f.group) : [])
+  /** The panes a follow covers now: its pane, its tab's or its group's, as the windows last said. */
+  const panesOf = (f: Follow) => o.panes().filter((p) => (f.pane ? p.id === f.pane : f.tab ? p.tab === f.tab : f.group ? p.group === f.group : false))
 
   async function look(f: Follow, p: Pane) {
     const src = paneSource(p.to), key = `${f.id}/${p.id}`
@@ -76,9 +76,9 @@ export function follows(plugin: Plugin, o: { change: (c: Change) => void; panes:
 
   return {
     list: () => list as readonly Follow[],
-    /** Follow a pane, a group or a UI element (again: the same one, no second). */
+    /** Follow a pane, a tab, a group or a UI element (again: the same one, no second). */
     add(f: Omit<Follow, "id" | "since">) {
-      const was = list.find((x) => x.agent === f.agent && x.pane === f.pane && x.group === f.group && x.ui === f.ui)
+      const was = list.find((x) => x.agent === f.agent && x.pane === f.pane && x.tab === f.tab && x.group === f.group && x.ui === f.ui)
       if (was) return was
       const n: Follow = { ...f, id: `f${++nid}`, since: Date.now() }
       list.push(n)
@@ -86,9 +86,9 @@ export function follows(plugin: Plugin, o: { change: (c: Change) => void; panes:
       run(); o.told(); void round()
       return n
     },
-    /** Stop following: one by id, pane, group or ui, or all of `agent`'s. */
+    /** Stop following: one by id, pane, tab, group or ui, or all of `agent`'s. */
     remove(ref: string | null, agent?: string) {
-      const gone = list.filter((f) => (ref ? [f.id, f.pane, f.group, f.ui].includes(ref) : f.agent === agent))
+      const gone = list.filter((f) => (ref ? [f.id, f.pane, f.tab, f.group, f.ui].includes(ref) : f.agent === agent))
       for (const f of gone) { list.splice(list.indexOf(f), 1); for (const k of [...seen.keys()]) if (k.startsWith(`${f.id}/`)) seen.delete(k) }
       halt(); if (gone.length) o.told()
       return gone

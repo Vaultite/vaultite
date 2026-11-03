@@ -720,6 +720,8 @@ export default async ($: VaultTest) => {
     ;[, r2] = await api("POST", "ops/companion.status", {})
     check("companion: it follows a tab group, listed in its status, until it stops", st2 === 200 && f?.group === "s1" && r2.follows.some((x: Any) => x.id === f.id) &&
       (await api("POST", "ops/companion.unfollow", { id: f.id }))[1]?.stopped === 1, [st2, r2])
+    ;[st2] = await api("POST", "ops/companion.follow", { tab: "tnope", as: "Claude" })
+    check("companion: a tab no window has can't be followed", st2 === 404)
   }
   await api("PATCH", "config/plugin/companion", { mode: "off" })
   check("companion: off hears nothing", c.addMoment({ kind: "ask", text: "hello?" }) === null)

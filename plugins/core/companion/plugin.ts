@@ -863,7 +863,7 @@ plugin.socket("companion/live", (ws, req, { query }) => {
 function panesFrom(v: unknown[]): Pane[] {
   return v.slice(0, 300).flatMap((x) => {
     const p = (x ?? {}) as Record<string, unknown>
-    return typeof p.id === "string" && typeof p.to === "string" ? [{ id: p.id, to: p.to, title: str(p.title).slice(0, 200), ...(str(p.group) ? { group: str(p.group) } : {}) }] : []
+    return typeof p.id === "string" && typeof p.to === "string" ? [{ id: p.id, to: p.to, title: str(p.title).slice(0, 200), ...(str(p.tab) ? { tab: str(p.tab) } : {}), ...(str(p.group) ? { group: str(p.group) } : {}) }] : []
   })
 }
 /** Every pane the windows show, the latest window's first (an id once). */
@@ -925,25 +925,34 @@ async function resolve(t: Target, name: string): Promise<Target & Boxed> {
 /** A point on a pane or the app's UI (the window says what's there), or a change in UI it follows: a moment, and a
  *  point starts following what it was dropped on. */
 async function paneMoment(_w: Win, m: Record<string, unknown>, req: IncomingMessage) {
-  const ui = str(m.ui).slice(0, 120) || undefined, tab = /^(?:tab|pane):(.+)$/.exec(ui ?? "")?.[1], pane = str(m.pane) || tab || undefined, p = paneById(pane)
-  const group = /^group:(.+)$/.exec(ui ?? "")?.[1]
+  const ui = str(m.ui).slice(0, 120) || undefined, group = /^group:(.+)$/.exec(ui ?? "")?.[1]
+  // (a tab of one pane is that pane; a split tab is its panes, followed as one)
+  const tabId = /^tab:(.+)$/.exec(ui ?? "")?.[1], inTab = tabId ? allPanes().filter((x) => x.tab === tabId) : []
+  const pane = str(m.pane) || /^pane:(.+)$/.exec(ui ?? "")?.[1] || (inTab.length === 1 ? inTab[0].id : undefined), p = paneById(pane)
+  const tab = !pane && inTab.length > 1 ? tabId : undefined
   if (p && privatePane(p)) return
-  const agent = str(m.agent) || undefined, title = (p?.title || str(m.title)).slice(0, 200) || undefined, text = str(m.text).slice(0, 4000) || undefined
+  if (tab && inTab.every(privatePane)) return
+  const agent = str(m.agent) || undefined, title = (p?.title || (tab ? inTab.filter((x) => !privatePane(x)).map((x) => x.title).join(" · ") : "") || str(m.title)).slice(0, 200) || undefined
+  const text = str(m.text).slice(0, 4000) || undefined
   const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}) }
   if (m.kind === "change") {
     if (!followed.list().some((f) => f.ui === ui)) return
     return void addMoment({ kind: "change", for: agent, ...where, what: "it changed", changes: Array.isArray(m.changes) ? m.changes.map(String).slice(0, 30) : [] })
   }
   const x = p && paneSource(p.to)
-  if (x?.kind === "note") return void addMoment({ kind: "point", for: agent, path: x.path, line: 1 }, req)
+  if (x?.kind === "note") {
+    const pt = addMoment({ kind: "point", for: agent, path: x.path, line: 1 }, req)
+    if (pt?.for && tabId) followed.add({ agent: pt.for, pane: pane!, title: title ?? "" })
+    return
+  }
   let under = text
   if (x?.kind === "site" && m.x !== undefined) {
     const t = await pageOf(p!.id).catch(() => null)
     if (t && !privatePage(t.url, t.container) && t.access !== "none") under = String((await plugin.desktop("agent:at", t.tab, Number(m.x), Number(m.y)).catch(() => ({})) as { text?: string }).text ?? "") || under
   }
   const full = addMoment({ kind: "point", for: agent, ...where, ...(Number(m.row) > 0 ? { row: Number(m.row) } : {}), ...(under ? { text: under.slice(0, 1200) } : {}), ...(x?.kind === "site" ? { url: x.url } : {}) }, req)
-  // (dropped on it: it follows it too; a panel by the window's word, a group with all its tabs)
-  if (full?.for && (x?.kind === "terminal" || x?.kind === "site" || group || (ui && !pane))) followed.add({ agent: full.for, ...(pane ? { pane } : group ? { group } : { ui }), title: title ?? ui ?? "" })
+  // (dropped on it: it follows it too; a panel by the window's word, a tab or a group with all its panes, a tab's row)
+  if (full?.for && (x?.kind === "terminal" || x?.kind === "site" || tabId || group || (ui && !pane))) followed.add({ agent: full.for, ...(pane ? { pane } : tab ? { tab } : group ? { group } : { ui }), title: title ?? ui ?? "" })
 }
 
 /** What the companion follows now (follows.ts): a change in one is a moment for it. */
@@ -2447,22 +2456,28 @@ say. Only where its container lets agents act, never on a private page. Answers 
   did: (p) => ({ action: "ui", text: `${String(p.action)} in the user's page${p.el ? ` (${String(p.el)})` : ""}`, paths: [], by: who(p) }),
 })
 
-const followText = (f: Follow) => `${f.id}: ${f.pane ? `pane ${f.pane}` : f.group ? `tab group ${f.group}` : f.ui}${f.title ? ` "${f.title}"` : ""}`
+const followText = (f: Follow) => `${f.id}: ${f.pane ? `pane ${f.pane}` : f.tab ? `tab ${f.tab}` : f.group ? `tab group ${f.group}` : f.ui}${f.title ? ` "${f.title}"` : ""}`
 plugin.op({
   id: "companion.follow",
   cli: "companion follow",
-  summary: "Follow a pane, a tab group or a part of the app for this session: what it does comes to you as change moments (a terminal at a command's end or its agent's state, a page at a navigation, a selection or a settled change).",
+  summary: "Follow a pane, a tab, a tab group or a part of the app for this session: what it does comes to you as change moments (a terminal at a command's end or its agent's state, a page at a navigation, a selection or a settled change).",
   help: `The user starts one by dropping your cursor on it; you may when they ask you to keep an eye on something now. For
 longer than this session, offer to keep it as a watch (companion keep). Without a pane, the list.
 
   vau companion follow --pane t3k2
+  vau companion follow --tab tk3j2
   vau companion follow --group s1k2`,
   kind: "write",
   lock: false,
-  params: { pane: PANE, group: { type: "string", description: "a tab group (its id: vau tabs): all its tabs" }, ui: UI, as: AS },
+  params: { pane: PANE, tab: { type: "string", description: "a tab (its id: vau tabs): all its panes" }, group: { type: "string", description: "a tab group (its id: vau tabs): all its tabs" }, ui: UI, as: AS },
   run: async (p) => {
-    const name = who(p), pane = str(p.pane), group = str(p.group), ui = str(p.ui)
-    if (!pane && !group && !ui) return { follows: followed.list().filter((f) => key(f.agent) === key(name)) }
+    const name = who(p), pane = str(p.pane), tab = str(p.tab), group = str(p.group), ui = str(p.ui)
+    if (!pane && !tab && !group && !ui) return { follows: followed.list().filter((f) => key(f.agent) === key(name)) }
+    if (tab) {
+      const ps = allPanes().filter((x) => x.tab === tab && !privatePane(x))
+      if (!ps.length) throw new OpError(`no tab ${tab} in the user's window (vau tabs lists them)`, 404)
+      return { follows: [followed.add({ agent: name, tab, title: ps.map((x) => x.title).join(" · ") })] }
+    }
     const pn = pane ? paneById(pane) : undefined
     if (pane && !pn) throw new OpError(`no pane ${pane} in the user's window (vau tabs lists them)`, 404)
     if (pn && privatePane(pn)) throw new OpError("that pane is private: the companion never sees it", 403)
@@ -2473,10 +2488,10 @@ longer than this session, offer to keep it as a watch (companion keep). Without 
 plugin.op({
   id: "companion.unfollow",
   cli: "companion unfollow",
-  summary: "Stop following a pane, a tab group or a part of the app (by its follow's id, pane, group or ui; none: all yours).",
+  summary: "Stop following a pane, a tab, a tab group or a part of the app (by its follow's id, pane, tab, group or ui; none: all yours).",
   kind: "write",
   lock: false,
-  params: { id: { type: "string", description: "the follow (f2), or the pane, group or ui id it follows" }, as: AS },
+  params: { id: { type: "string", description: "the follow (f2), or the pane, tab, group or ui id it follows" }, as: AS },
   args: ["id"],
   run: async (p) => ({ stopped: followed.remove(str(p.id) || null, who(p)).length }),
   text: (r) => `Stopped ${r.stopped} follow${r.stopped === 1 ? "" : "s"}.`,

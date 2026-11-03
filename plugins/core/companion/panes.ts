@@ -1,7 +1,8 @@
 // The window's panes for the companion (live.ts' `where`): each pane's tab, title and tab group, and the focused one;
 // and the parts of the app's UI it follows, watched here (their text, as it settles).
-import { focusedPane, getStore, getTabLayout, onTabLayoutChange, panesOf, shownTab, tabLabel } from "@vaultite"
-import { getState, sayWhereSoon, setPanes, subscribe, uiChanged } from "./live"
+import { Eye } from "lucide-react"
+import { focusedPane, getStore, getTabLayout, notifyError, onTabLayoutChange, op, panesOf, setUiMarks, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
+import { getState, sayWhereSoon, setPanes, subscribe, tintOf, uiChanged, type Follow } from "./live"
 
 /** The most a window tells: a vault's tabs, rarely this many. */
 const MOST = 300
@@ -40,8 +41,28 @@ function check() {
   }
 }
 
+/** What the rows were last marked with (the state changes with every cursor move: marked again only when this does). */
+let marked = ""
+/** The rows of what it follows (a tab, its pane, a group) show an eye: a click stops following it. */
+function markFollows() {
+  const marks = new Map<string, UiMark[]>(), l = getTabLayout(), was = marked
+  const row = (f: Follow) => (f.tab ? `tab:${f.tab}` : f.group ? `group:${f.group}` : f.pane ? (tabOfPane(l, f.pane) ? `tab:${tabOfPane(l, f.pane)!.id}` : null) : /^(tab|group):/.test(f.ui ?? "") ? f.ui! : null)
+  const ids: string[] = []
+  for (const f of getState().follows) {
+    const at = row(f)
+    if (!at) continue
+    ids.push(`${at} ${f.id}`)
+    const stop = () => { op("companion.unfollow", { id: f.id, as: f.agent }).catch((e) => notifyError(e, "Couldn't stop following it")) }
+    marks.set(at, [...(marks.get(at) ?? []), { icon: Eye, label: `Stop ${f.agent} following this`, tint: tintOf(f.agent), run: stop }])
+  }
+  marked = ids.join("\n")
+  if (marked !== was) setUiMarks("companion", marks)
+}
+
 /** Start telling the server: the panes as the tabs change, and the UI it follows. */
 export function watchPanes() {
-  const offs = [onTabLayoutChange(() => sayWhereSoon()), subscribe(() => { if (!timer && getState().follows.some((f) => f.ui)) timer = window.setInterval(check, TEXT_GAP) })]
-  return () => { for (const off of offs) off(); clearInterval(timer); timer = 0 }
+  const offs = [onTabLayoutChange(() => { sayWhereSoon(); markFollows() }),
+    subscribe(() => { markFollows(); if (!timer && getState().follows.some((f) => f.ui)) timer = window.setInterval(check, TEXT_GAP) })]
+  markFollows()
+  return () => { for (const off of offs) off(); clearInterval(timer); timer = 0; marked = ""; setUiMarks("companion", new Map()) }
 }

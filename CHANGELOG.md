@@ -18,7 +18,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   (waiting at the edge, or by the pointer), and dropped on another app's window it looks at it and follows it.
   Password managers and money apps are private by default (Screen's settings). Quit is in the menu bar.
 - **The companion follows any pane and points at the app**: drop its cursor on a terminal, a web page, a tab or a panel
-  to have it look and keep following (a terminal at a command's end, a page as it changes); it points at, highlights and
+  to have it look and keep following (a terminal at a command's end, a page as it changes; a tab's or a group's row in the
+  sidebar: all its panes, the row showing an eye that stops it); it points at, highlights and
   acts in your own web pages, and at the app's tabs and buttons. Watches (`vau watches add`, files in Watches/) keep an
   eye on a terminal, a page or a note live or every few minutes, telling it or your inbox only when something changed.
   Private now covers sites, containers and apps, starting with password managers and banks.

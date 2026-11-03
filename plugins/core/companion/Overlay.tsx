@@ -230,7 +230,9 @@ function dropAt(agent: string, x: number, y: number) {
 /** A cursor dropped off a note's text: on a pane (a terminal's row, a point of a page, a view) or the app's UI (a tab,
  *  a tab group, a panel, a button): "look at this", and it follows it. False on nothing it knows. */
 function dropOnPane(agent: string, x: number, y: number) {
-  const el = document.elementsFromPoint(x, y).filter((e) => !e.closest(".companion-overlay")).map((e) => e.closest<HTMLElement>("[data-ui]")).find(Boolean)
+  const hit = document.elementsFromPoint(x, y).filter((e) => !e.closest(".companion-overlay")).map((e) => e.closest<HTMLElement>("[data-ui]")).find(Boolean)
+  // (a half of a split tab's row or chip: the whole tab)
+  const el = hit?.dataset.ui?.startsWith("pane:") ? hit.parentElement?.closest<HTMLElement>('[data-ui^="tab:"]') ?? hit : hit
   const id = el?.dataset.ui
   if (!el || !id) return false
   const words = (e: HTMLElement) => (e.innerText || "").trim().slice(0, 1200) || undefined
