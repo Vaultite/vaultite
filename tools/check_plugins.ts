@@ -268,9 +268,9 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
 }
 
 // The app's bundles each say every part of the setup any of them says (Standard the defaults), so applying one leaves
-// nothing of another: the config files, every key of the look (core/look.ts), and each editor or plugin setting one sets.
+// nothing of another: the config files, every key of the look but the user's own (core/look.ts), and each editor or plugin setting one sets.
 {
-  const { LOOK_KEYS } = await import("../core/look.ts")
+  const { LOOK_KEYS, PERSONAL_LOOK } = await import("../core/look.ts")
   const { EDITOR_KEYS } = await import("../core/editor.ts")
   const { CONFIGS } = await import("../core/bundles.ts")
   const keysOf = (files: Record<string, string | Buffer>, f: string) => { try { return Object.keys(JSON.parse(String(files[f] ?? "{}"))) } catch { return [] } }
@@ -286,7 +286,10 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
       else if (k && !keysOf(files, f).includes(k)) problems.push(`bundles/${id}/${f}: it doesn't say ${k}, which bundles/${by} sets: say it (its default in Standard)`)
     }
     const look = keysOf(files, "appearance.json")
-    for (const k of LOOK_KEYS) if (!look.includes(k)) problems.push(`bundles/${id}/appearance.json: it doesn't say ${k}: the look says every key (core/look.ts), the default too`)
+    for (const k of LOOK_KEYS) {
+      if (PERSONAL_LOOK.includes(k)) { if (look.includes(k)) problems.push(`bundles/${id}/appearance.json: it says ${k}, the user's own (core/look.ts PERSONAL_LOOK): a layout leaves it as it is`) }
+      else if (!look.includes(k)) problems.push(`bundles/${id}/appearance.json: it doesn't say ${k}: the look says every key but the user's own (core/look.ts), the default too`)
+    }
     for (const k of look) if (!(LOOK_KEYS as string[]).includes(k)) problems.push(`bundles/${id}/appearance.json: '${k}' isn't a key of the look (core/look.ts)`)
     for (const k of keysOf(files, "editor.json")) if (!(EDITOR_KEYS as string[]).includes(k)) problems.push(`bundles/${id}/editor.json: '${k}' isn't an editor setting (core/editor.ts)`)
   }

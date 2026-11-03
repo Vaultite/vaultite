@@ -2,7 +2,7 @@
 // applying are the server's (core/bundles.ts); the page is Setup's Bundles tab (pages/Bundles.tsx).
 import { useEffect, useSyncExternalStore } from "react"
 import { getStore, reload } from "@/core/data"
-import { del, get, post, request } from "@/core/http"
+import { del, get, op, post, request } from "@/core/http"
 import { activeTab } from "@/core/workspace"
 import { appPageOf } from "@/core/apppages"
 import { captureWindow } from "@/core/desktop"
@@ -13,6 +13,7 @@ import { currentWorkspace, landingWorkspace } from "@/core/scope"
 import type { Info as BundleInfo, Plan, PlanChange, ShareItem } from "../../../core/bundles.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
+import { registerCommands } from "@/core/commands"
 import { onLook } from "@/core/appearance"
 import { isDark } from "@/lib/utils"
 
@@ -20,8 +21,8 @@ export type { BundleInfo, Plan, PlanChange, ShareItem }
 
 export type Previous = { bundle: string; name: string; at: string }
 /** `default`: the one a new vault starts from (Standard), and skipping the offer gives; `trial`: one being tried;
- *  `applied`: the one applied last. */
-type Listing = { bundles: BundleInfo[]; default: string; previous: Previous | null; onboarding: boolean
+ *  `applied`: the one applied last; `saveName`: the name saving suggests ("My Zen", from the layout in use). */
+type Listing = { bundles: BundleInfo[]; default: string; saveName: string; previous: Previous | null; onboarding: boolean
   trial: { id: string; name: string; at: string } | null; applied: { id: string; name: string; at: string; skip: string[] } | null }
 
 /** The workspace a plan or an apply is for: the current one, else the one the window goes to if the bundle turns
@@ -72,8 +73,10 @@ export function lockedBy(p: Plan, off: ReadonlySet<string>): Set<string> {
 export const skipOf = (p: Plan, off: ReadonlySet<string>) => [...new Set([...off, ...lockedBy(p, off)])].filter((id) => p.changes.some((c) => c.id === id))
 
 
-export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files: string[]; plan: Plan }> {
-  return get(`bundles/${encodeURIComponent(id)}${whereQuery()}`)
+/** What applying it changes here: with its tweaks, or `fresh` (Reset: as the bundle says). */
+export async function previewOf(id: string, fresh = false): Promise<{ bundle: BundleInfo; files: string[]; plan: Plan }> {
+  const q = whereQuery()
+  return get(`bundles/${encodeURIComponent(id)}${q}${fresh ? `${q ? "&" : "?"}fresh=1` : ""}`)
 }
 
 export type ApplyOptions = {
@@ -85,21 +88,24 @@ export type ApplyOptions = {
   skip?: string[]
   /** Only tried: the app-wide bar keeps it or reverts (BundleTrial). */
   trial?: boolean
+  /** Clean, its remembered tweaks forgotten (Reset). */
+  fresh?: boolean
+  /** Opens nothing after (its guide, its first page): onboarding. */
+  quiet?: boolean
 }
 
 /** Apply a bundle, then show its guide or first page, with Undo in a toast that said it was on its way meanwhile
  *  (installing takes seconds); a trial ends without one, its bar says it. */
-export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false, offAdded = false, skip = [], trial = false }: ApplyOptions = {}) {
+export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false, offAdded = false, skip = [], trial = false, fresh = false, quiet = false }: ApplyOptions = {}) {
   const id = `bundle-apply-${b.id}`
   const installs = allowCode ? without(plan, new Set(skip)).code.filter((c) => c.source && !c.kept).map((c) => c.name) : []
   notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `${trial ? "Trying" : "Applying"} ${b.name}…`, { id, duration: Infinity })
   try {
-    const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: null, ...where(), allowCode, offAdded, skip, trial })
+    // (`open`: the guide it just added, else its first pin; none when quiet)
+    const r = await post<{ applied: string; open: string | null }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: null, ...where(), allowCode, offAdded, skip, trial, fresh, quiet })
     await reload()
     void refreshBundles()
-    // A guide it just added comes first: the pages it pins are linked from there.
-    const first = (b.guide && r.plan.files.add.includes(b.guide) ? b.guide : null) ?? r.plan.pins?.list[0] ?? plan.pins?.list[0]
-    if (first) openFile(first)
+    if (r.open) openFile(r.open)
   } catch (e) {
     dismissNotice(id)
     throw e
@@ -108,6 +114,17 @@ export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false
   else notify(`Applied ${b.name}`, { id, duration: 8000, action: { label: "Undo", run: () => restoreSetup() } })
 }
 
+/** Standard, with its tweaks: the way back when a layout hides everything (Zen). The op bundle.standard. */
+export async function backToStandard() {
+  const r = await op<{ applied: string }>("bundle.standard", { workspace: currentWorkspace()?.n ?? undefined })
+  await reload()
+  void refreshBundles()
+  notify(`Back to ${r.applied}`, { duration: 8000, action: { label: "Undo", run: () => restoreSetup() } })
+}
+
+registerCommands([{ id: "back-to-standard", name: "Back to Standard layout", run: () => backToStandard().catch((e) => notifyError(e, "Couldn't go back to Standard")),
+  icon: "undo-2", words: "reset layout sidebars lost zen" }])
+
 /** End a trial keeping the bundle tried (Restore still goes back to before it). */
 export async function keepTrial() {
   await post("bundles/keep", {})
@@ -115,7 +132,7 @@ export async function keepTrial() {
   void refreshBundles()
 }
 
-/** Save a bundle without the changes `skip` names as the user's "<Name> (mine)". */
+/** Save a bundle without the changes `skip` names as the user's "My <Name>". */
 export async function forkBundle(b: BundleInfo, skip: string[]) {
   const r = await post<{ bundle: BundleInfo }>(`bundles/${encodeURIComponent(b.id)}/fork`, { skip, workspace: currentWorkspace()?.n ?? null })
   await refreshBundles()
@@ -123,7 +140,7 @@ export async function forkBundle(b: BundleInfo, skip: string[]) {
 }
 
 /** Keep the setup's changes since bundle b was applied: saved over it when it's the user's (with a new picture when
- *  the desktop app takes one), else as a new "<Name> (mine)". Closes the sheet first, so the picture is of the app. */
+ *  the desktop app takes one), else as a new "My <Name>". Closes the sheet first, so the picture is of the app. */
 export async function saveChanges(b: BundleInfo) {
   await new Promise<void>((done) => afterSheets(() => requestAnimationFrame(() => done())))
   const png = b.source === "vault" ? await windowShot() : null
@@ -294,7 +311,9 @@ export function openImport(source: ImportSource) {
  *  `imported`: the user's bundle from the same place, `current`: it's at that commit. */
 export type Listed = { name: string; description: string; author: string; repo: string; dir: string | null; commit: string; address: string; source: string
   stars: number; updated: string | null; topics: string[]; runsCode: boolean; installs: { id: string; name: string; source: string }[]
-  icon?: string; tint?: string; preview?: string; previewDark?: string; imported: string | null; current: boolean }
+  icon?: string; tint?: string; preview?: string; previewDark?: string; imported: string | null; current: boolean
+  /** A layout, a pack (plugins and pages) or a look (core/bundlekind.ts). */
+  kind?: "layout" | "pack" | "look" }
 /** `available`: the index could be read (else `error` says why; offline, say). */
 export type Directory = { url: string; available: boolean; fetched: string | null; error?: string; bundles: Listed[] }
 

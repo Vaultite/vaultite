@@ -42,7 +42,7 @@ const c1 = commit("dracula")
 index(c1)
 await api("GET", "bundles/browse?refresh=1")
 // (from Standard, whatever ran before: Zen's every change is one to make)
-for (const id of ["desk", "zen-mine", "days-mine"]) await api("DELETE", `bundles/${id}`)
+for (const id of ["desk", "my-zen", "my-days"]) await api("DELETE", `bundles/${id}`)
 // (Days: a bundle installing Vaultite's own plugins, as the directory's Life OS)
 cpSync(`${ROOT}/tools/fixtures/bundles/days`, `${VAULT}/.vaultite/bundles/days`, { recursive: true })
 await api("POST", "bundles/standard/apply", {})
@@ -78,25 +78,25 @@ const { ctx, page } = await open(1280, 820)
   await go(page)
   await preview(page, "zen")
   const ids = await sheet(page).locator("[data-change]").evaluateAll((els) => els.map((e) => e.dataset.change))
-  check("Zen's preview: a tick per change, all on", ids.length > 10 && ids.includes("plugin:glance") && ids.includes("appearance:scheme") && ids.includes("panels") &&
+  check("Zen's preview: a tick per change, all on", ids.length > 10 && ids.includes("plugin:glance") && ids.includes("appearance:fileBarFade") && ids.includes("panels") &&
     (await sheet(page).locator('[data-change][aria-checked="false"]').count()) === 0, ids)
   check("its guide is a line of its own, ticked", await sheet(page).locator('[data-bundle-guide][data-change^="file:"]').count() === 1)
   check("all on: Apply Zen, Try, no Save as", (await sheet(page).locator("[data-bundle-apply]").innerText()).includes("Apply Zen") && await sheet(page).locator("[data-bundle-try]").count() === 1 &&
     !(await sheet(page).locator("[data-bundle-fork]").count()))
   await line(page, "plugin:glance").click()
-  await line(page, "appearance:scheme").click()
-  check("unticked, they're off", !(await checked(page, "plugin:glance")) && !(await checked(page, "appearance:scheme")))
-  check("then: Apply, Try, Save as Zen (mine), and how many are left out", (await sheet(page).locator("[data-bundle-apply]").innerText()).trim() === "Apply" &&
-    (await sheet(page).locator("[data-bundle-fork]").innerText()).includes("Save as Zen (mine)") && (await sheet(page).locator("[data-bundle-leaving]").innerText()).includes("Leaving out 2"))
+  await line(page, "appearance:fileBarFade").click()
+  check("unticked, they're off", !(await checked(page, "plugin:glance")) && !(await checked(page, "appearance:fileBarFade")))
+  check("then: Apply, Try, Save as My Zen, and how many are left out", (await sheet(page).locator("[data-bundle-apply]").innerText()).trim() === "Apply" &&
+    (await sheet(page).locator("[data-bundle-fork]").innerText()).includes("Save as My Zen") && (await sheet(page).locator("[data-bundle-leaving]").innerText()).includes("Leaving out 2"))
   await shot(page, "sheet-ticks")
   await line(page, "plugin:glance").scrollIntoViewIfNeeded()
   await shot(page, "sheet-ticks-plugins")
-  const scheme = look().scheme ?? null
+  const fade = look().fileBarFade ?? null
   await sheet(page).locator("[data-bundle-apply]").click()
   await until(() => toastWith(page, "Applied Zen").count(), 8000)
   await until(() => look().rails === false, 6000)
-  check("applied without them: Zen's rails, but not its scheme nor Glance", look().rails === false && (look().scheme ?? null) === scheme && !enabled().includes("glance"), [look(), enabled()])
-  check("and it's remembered with what it left out", JSON.stringify(json(".vaultite/bundles/applied.json")?.skip?.sort()) === JSON.stringify(["appearance:scheme", "plugin:glance"]), json(".vaultite/bundles/applied.json"))
+  check("applied without them: Zen's rails, but not its file bar nor Glance", look().rails === false && (look().fileBarFade ?? null) === fade && !enabled().includes("glance"), [look(), enabled()])
+  check("and it's remembered with what it left out", JSON.stringify(json(".vaultite/bundles/applied.json")?.skip?.sort()) === JSON.stringify(["appearance:fileBarFade", "plugin:glance"]), json(".vaultite/bundles/applied.json"))
   await dismissAll(page)
   await go(page)
   check("its card says In use (what it left out doesn't count)", await page.locator('[data-bundle="zen"] [data-bundle-in-use]').count() === 1)
@@ -112,8 +112,8 @@ const { ctx, page } = await open(1280, 820)
     /Density/.test(tip) && /Tab bar/.test(tip), tip)
   await page.locator("[data-bundles-app]").screenshot({ path: `${OUT}card-modified.png` })
   await preview(page, "zen")
-  check("its sheet says so: Save as Zen (mine) (a built-in), Revert", await sheet(page).locator("[data-bundle-drift]").count() === 1 &&
-    (await sheet(page).locator("[data-bundle-save-changes]").innerText()).includes("Save as Zen (mine)") && await sheet(page).locator("[data-bundle-revert]").count() === 1)
+  check("its sheet says so: Save as My Zen (a built-in), Revert", await sheet(page).locator("[data-bundle-drift]").count() === 1 &&
+    (await sheet(page).locator("[data-bundle-save-changes]").innerText()).includes("Save as My Zen") && await sheet(page).locator("[data-bundle-revert]").count() === 1)
   check("what it left out stays unticked, what differs ticked", !(await checked(page, "plugin:glance")) && await checked(page, "appearance:density") && await checked(page, "appearance:tabBar"))
   await shot(page, "sheet-modified")
   await sheet(page).locator("[data-bundle-revert]").click()
@@ -123,33 +123,33 @@ const { ctx, page } = await open(1280, 820)
   await go(page)
   await until(() => page.locator('[data-bundle="zen"] [data-bundle-in-use]').count(), 6000)
   check("and it's In use again", await page.locator('[data-bundle="zen"] [data-bundle-in-use]').count() === 1)
-  // Save changes on a built-in: a new "Zen (mine)", the one in use.
+  // Save changes on a built-in: a new "My Zen", the one in use.
   await api("PATCH", "config/appearance", { tabBar: true })
   await go(page)
   await until(() => page.locator('[data-bundle="zen"] [data-bundle-modified]').count(), 6000)
   await preview(page, "zen")
   await sheet(page).locator("[data-bundle-save-changes]").click()
-  await until(() => json(".vaultite/bundles/zen-mine/bundle.json"), 6000)
-  check("Save as Zen (mine): a new bundle with the changes, in use", json(".vaultite/bundles/zen-mine/bundle.json")?.name === "Zen (mine)" &&
-    json(".vaultite/bundles/zen-mine/appearance.json")?.tabBar === true && json(".vaultite/bundles/applied.json")?.bundle === "zen-mine", json(".vaultite/bundles/zen-mine/appearance.json"))
-  await until(() => page.locator('[data-bundle="zen-mine"] [data-bundle-in-use]').count(), 6000)
-  check("its card says In use", await page.locator('[data-bundle="zen-mine"] [data-bundle-in-use]').count() === 1)
+  await until(() => json(".vaultite/bundles/my-zen/bundle.json"), 6000)
+  check("Save as My Zen: a new bundle with the changes, in use", json(".vaultite/bundles/my-zen/bundle.json")?.name === "My Zen" &&
+    json(".vaultite/bundles/my-zen/appearance.json")?.tabBar === true && json(".vaultite/bundles/applied.json")?.bundle === "my-zen", json(".vaultite/bundles/my-zen/appearance.json"))
+  await until(() => page.locator('[data-bundle="my-zen"] [data-bundle-in-use]').count(), 6000)
+  check("its card says In use", await page.locator('[data-bundle="my-zen"] [data-bundle-in-use]').count() === 1)
   await dismissAll(page)
   // Save changes on the user's own: saved over it.
   await api("PATCH", "config/appearance", { statusBar: true })
   await go(page)
-  await until(() => page.locator('[data-bundle="zen-mine"] [data-bundle-modified]').count(), 6000)
-  await preview(page, "zen-mine")
+  await until(() => page.locator('[data-bundle="my-zen"] [data-bundle-modified]').count(), 6000)
+  await preview(page, "my-zen")
   check("the user's own: Save changes", (await sheet(page).locator("[data-bundle-save-changes]").innerText()).trim() === "Save changes")
   await sheet(page).locator("[data-bundle-save-changes]").click()
-  await until(() => json(".vaultite/bundles/zen-mine/appearance.json")?.statusBar === true, 6000)
-  check("Save changes: saved over it", json(".vaultite/bundles/zen-mine/appearance.json")?.statusBar === true && json(".vaultite/bundles/zen-mine/bundle.json")?.name === "Zen (mine)")
-  await until(() => page.locator('[data-bundle="zen-mine"] [data-bundle-in-use]').count(), 6000)
-  check("in use again", await page.locator('[data-bundle="zen-mine"] [data-bundle-in-use]').count() === 1)
+  await until(() => json(".vaultite/bundles/my-zen/appearance.json")?.statusBar === true, 6000)
+  check("Save changes: saved over it", json(".vaultite/bundles/my-zen/appearance.json")?.statusBar === true && json(".vaultite/bundles/my-zen/bundle.json")?.name === "My Zen")
+  await until(() => page.locator('[data-bundle="my-zen"] [data-bundle-in-use]').count(), 6000)
+  check("in use again", await page.locator('[data-bundle="my-zen"] [data-bundle-in-use]').count() === 1)
   await dismissAll(page)
 }
 
-// ---------- 3. Save as "<Name> (mine)"; an install's plugin goes with it ----------
+// ---------- 3. Save as "My <Name>"; an install's plugin goes with it ----------
 {
   await go(page)
   await preview(page, "days")
@@ -161,10 +161,10 @@ const { ctx, page } = await open(1280, 820)
   await line(page, "install:books").scrollIntoViewIfNeeded()
   await shot(page, "sheet-install-off")
   await sheet(page).locator("[data-bundle-fork]").click()
-  await until(() => sheet(page).locator('[data-bundle-preview="days-mine"]').count(), 8000)
-  const pj = json(".vaultite/bundles/days-mine/plugins.json")
-  check("Save as Days (mine): saved without Books, and its sheet is open", json(".vaultite/bundles/days-mine/bundle.json")?.name === "Days (mine)" && !pj?.install?.books &&
-    !!pj?.install?.today && await toastWith(page, "Saved Days (mine)").count() === 1, pj)
+  await until(() => sheet(page).locator('[data-bundle-preview="my-days"]').count(), 8000)
+  const pj = json(".vaultite/bundles/my-days/plugins.json")
+  check("Save as My Days: saved without Books, and its sheet is open", json(".vaultite/bundles/my-days/bundle.json")?.name === "My Days" && !pj?.install?.books &&
+    !!pj?.install?.today && await toastWith(page, "Saved My Days").count() === 1, pj)
   await page.keyboard.press("Escape")
   await dismissAll(page)
 }
@@ -320,5 +320,5 @@ await ctx.close()
     await pc.close()
   }
 }
-for (const id of ["desk", "zen-mine", "days-mine", "days"]) await api("DELETE", `bundles/${id}`)
+for (const id of ["desk", "my-zen", "my-days", "days"]) await api("DELETE", `bundles/${id}`)
 await done()

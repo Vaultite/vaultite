@@ -4,23 +4,29 @@ pages and the dashboards they need, the look, and optionally hotkeys and vault p
 Bundles tab (Setup is beside Settings at the sidebar's foot, its other tab Plugins; a new vault starts from Standard),
 saves their own setup as one, shares it as a file or a repository, and imports others' (Import, or pasting or dropping
 one on the page: its preview first).
-The app's own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
+The app's own, layouts: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
 sidebars hide until the pointer reaches the window's edge, no tab bar, Glance), Browser (`browser`: favourites and vertical
-tabs, ⌘T as an address bar, spaces, tabs archived on their own, a page's notes beside it). In the directory (Get bundles):
-Life OS (days, people, health, books, and pages over them) and Agents (coding agents in terminals, their machines).
+tabs, ⌘T as an address bar, spaces, tabs archived on their own, a page's notes beside it). In the directory (Get bundles),
+packs: Life OS (days, people, health, books, and pages over them) and Agents (coding agents in terminals, their machines).
+- **Kinds** (bundle.json's `kind`): a `layout` (the user calls it that: the layout picker's), a `pack` (mostly plugins
+  and pages: the store's) or a `look` (a restyle, Glass). Unsaid: a look when it holds only appearance.json, themes and
+  snippets, else a layout. A pack or a look is applied over the layout in use, which stays the one in use.
+- **The user's look is theirs**: theme, colour scheme, fonts, animation, quick text size and translucency
+  (`PERSONAL_LOOK`, core/look.ts). The app's layouts say none of them, saving leaves them out unless asked (`look`), and
+  a bundle that doesn't say a key leaves it as it is: only a bundle about looks sets them.
 - A bundle is a folder shaped like `.vaultite/`, plus the vault files it needs. The user's are in
   `.vaultite/bundles/<id>/` (the id is the folder's name):
   ```
   bundle.json        {"name": "Writing desk", "description": "One line on what it's for", "icon": "pen", "tint": "purple",
-                      "guide": "Guides/How Writing desk works.md"}: guide is a note it brings saying in plain words how the setup
-                      works (its pages, where things go, how to start); opened after applying, and skippable like any file
+                      "kind": "layout", "guide": "Guides/How Writing desk works.md"}: guide is a note it brings saying in plain words how the setup
+                      works (its pages, where things go, how to start); opened after applying (not with `quiet`), and skippable like any file
   plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, built-ins off by default like people],
                       "install": {"tasks": {"name": "Tasks", "source": "Vaultite/plugins/tasks", "tag": "tasks/v1.0.1", "commit": "<sha>", "hash": "<its files'>"}}:
                       installed from there when applied, at that commit (tags move), refused unless its files hash to that (the lock's);
                       one of the app's own plugins that moved to Vaultite's plugins, named in `enabled`, is installed from there too}
   sidebars.json      the panels, as .vaultite/sidebars.json ({} is the default panels)
   pages.json         {"pinned": ["Dashboards/Desk.md", "Dashboards/Projects.md"]}
-  appearance.json    {"theme": "system", "scheme": "everforest", "density": "comfortable", ...}: the app's and saved ones say every key
+  appearance.json    {"density": "comfortable", "tabBar": false, ...}: the app's and saved ones say every key but the user's own
   editor.json        the editor's settings, as .vaultite/editor.json ({"propertiesInDocument": "hidden"}): saved ones say those the app's set
   hotkeys.json       optional
   newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page;
@@ -56,21 +62,26 @@ Life OS (days, people, health, books, and pages over them) and Agents (coding ag
 - Each change of a plan has an id (`changes` in `bundle.show`: `install:<plugin>`, `plugin:<plugin>`,
   `setting:<plugin>.<key>`, `panels`, `file:<path>`, `pin:<path>`, `pins:order`, `appearance:<key>`, `editor:<key>`,
   `hotkey:<command>`, `newtab:<key>`), the same for the same bundle and setup. Applying with `skip` leaves those out (nor kept to restore);
-  `vau bundle fork <id> --skip ...` saves the bundle without them as "<Name> (mine)" (a value skipped is the current
+  `vau bundle fork <id> --skip ...` saves the bundle without them as "My <Name>" (a value skipped is the current
   one, still said; a pin, file or plugin skipped is left out). In the app each is a ticked line of the bundle's
-  preview: unticked, Apply and Try leave it out, and Save as "<Name> (mine)" forks it (an install unticked takes its
+  preview: unticked, Apply and Try leave it out, and Save as "My <Name>" forks it (an install unticked takes its
   plugin with it; a plugin's files and the page a pin needs go with theirs).
-- The bundle applied last (`.vaultite/bundles/applied.json`, with what it skipped) is in use; once the setup changes,
-  `GET /api/bundles` gives it `modified` and `differs` (the ids that would apply). Applying it again puts it back;
-  `vau bundle save --over <id>` keeps the changes: over one of the user's (its name, card and `from` kept), or as
-  "<Name> (mine)" for one of the app's. Saving makes the bundle saved the one in use. In the app its card says In use ·
-  modified (its tip names what differs), and its preview offers Save changes (Save as "<Name> (mine)" for the app's)
-  and Revert.
+- The layout applied last (`.vaultite/bundles/applied.json`, with what it skipped) is in use (`inUse`); once the setup
+  changes, `GET /api/bundles` gives it `modified` and `differs` (the ids that would apply). `vau bundle save --over <id>`
+  keeps the changes: over one of the user's (its name, card and `from` kept), or as "My <Name>" (or `name`) for one of
+  the app's. Saving makes the bundle saved the one in use, and the layout it came from untweaked.
+- **Each layout's tweaks**: applying another while one is in use keeps what differs from it, as values, in
+  `.vaultite/bundles/tweaks/<id>.json` (`{"set": {"appearance.json": {"tabBar": true}}, "drop": [files left out]}`);
+  applying it again brings them back (`tweaked` in `GET /api/bundles`; its preview is with them). `fresh` (`--fresh`,
+  Reset; `?fresh=1` for its preview) applies it clean and forgets them. Restore puts tweaks back as they were.
+- `vau bundle standard` (bundle.standard; the palette's Back to Standard layout) applies Standard with its tweaks, clean
+  when it's in use already: the way back when a layout hides everything. Apply's `quiet` opens nothing after (the
+  answer's `open`: the guide it added, else its first pin): onboarding.
+- Saving names it "My <the layout in use>" when not named (`saveName` in `GET /api/bundles`).
 - Trying one (`apply --trial`, `.vaultite/bundles/trial.json`; Try on its preview): `vau bundle keep` ends it as an
   apply; restore puts back the setup from before. Another applied while trying ends the trial, and restore still goes
   back to before it. Meanwhile every window shows a bar at its foot, "Trying <Name>", with Revert and Keep.
-- A bundle is in use (`inUse` in `GET /api/bundles`, "In use" on its card) while applying it would change nothing: a
-  new vault's Standard, until a setting it sets changes.
+- Another is in use too while applying it would change nothing (with its tweaks).
 - Saving names the installed plugins that are on by their source (`install`); the vault's own go as files only when
   asked. A plugin's page as it wrote it goes by its name (`Dashboards/Today.md`), other pinned dashboards as files. Sharing (export, Copy) leaves out its picture, pages with the user's own text and pins to their notes, unless
   asked (`--include`). A git repository is a bundle too: its folder at the top, or one `.bundle.json`;

@@ -8,7 +8,8 @@ import { fenceLayout, settingsOf, type SettingDecls } from "./blocks.ts"
 import { EDITOR, EDITOR_KEYS } from "./editor.ts"
 import { pageAt, templates } from "./pages.ts"
 import { asLocked, checkout, COMMIT, parseSource, readLock, tagsOf } from "./installs.ts"
-import { LOOK } from "./look.ts"
+import { type Kind, kindFrom, KINDS } from "./bundlekind.ts"
+import { LOOK, PERSONAL_LOOK } from "./look.ts"
 import { MOVED } from "./migrations.ts"
 import { switched } from "./pluginmeta.ts"
 import { official } from "./updates.ts"
@@ -31,12 +32,14 @@ const APPLIED = `${VAULT_BUNDLES}/applied.json`
 /** A bundle being tried: kept or put back (restore) by the user. */
 const TRIAL = `${VAULT_BUNDLES}/trial.json`
 const ONBOARDING = `${VAULT_BUNDLES}/onboarding.json`
+/** Each layout's tweaks (tweaks/<id>.json): what differed from it when the user left it, brought back with it. */
+const TWEAKS = `${VAULT_BUNDLES}/tweaks`
 /** The setup a vault opened for the first time starts from (core/start.ts), and one that skips the offer gets. */
 export const DEFAULT_BUNDLE = "standard"
 /** The app's bundles that were folded into others: a vault that applied one has the one it's in now (tidy). */
 const FOLDED: Record<string, string> = { minimal: "standard" }
 /** Ids a bundle can't take: they're routes. */
-const RESERVED = new Set(["restore", "import", "onboarding", "previous", "keep", "applied", "trial", "browse"])
+const RESERVED = new Set(["restore", "import", "onboarding", "previous", "keep", "applied", "trial", "browse", "tweaks"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
 export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "editor", "hotkeys", "newtab"] as const
 /** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes; its dark one is shown
@@ -189,6 +192,9 @@ function parts(files: Files) {
 
 export type Info = {
   id: string; source: "app" | "vault"; name: string; description: string; icon: string; tint: string; author: string; sort: number
+  /** What it is (bundle.json's `kind`): a layout (the picker's), a pack (plugins and pages, the store's), or a look (a
+   *  restyle: unsaid, one with only appearance, themes and snippets). */
+  kind: Kind
   /** The look it sets (appearance.json's), for its card. */
   theme: string | null; scheme: string | null; density: string | null
   /** The app plugins that are on with it (null: it leaves them as they are), and the pages it pins (null: same). */
@@ -207,13 +213,17 @@ export type Info = {
   /** Its preview.png's and preview-dark.png's versions (GET /api/bundles/<id>/<file>), or null when it has none. */
   preview: string | null; previewDark: string | null
   problems: string[]
-  /** The setup is this bundle's (the list's, for the workspace it's asked for): applying it would change nothing. */
+  /** It has tweaks remembered (tweaks/<id>.json): applying it brings them back, unless fresh. */
+  tweaked: boolean
+  /** The setup is this bundle's (the list's, for the workspace it's asked for): it's the one applied last, or applying it
+   *  would change nothing. */
   inUse?: boolean
   /** The bundle applied last only: when, the changes it was applied without, and whether the setup has changed since
    *  (`differs`: its plan's change ids that would apply now, those skipped then left out). */
   applied?: { at: string; skip: string[] }; modified?: boolean; differs?: string[]
 }
 type HomeBlock = { block: string; view: string | null; wide: boolean }
+const kindOf = (b: Bundle, m: Item) => kindFrom(m, Object.keys(b.files))
 
 /** The blocks of the first page a bundle pins (the vault's copy, wherever it moved, else the bundle's, else the
  *  template a plugin ships), at most 6. */
@@ -255,14 +265,14 @@ function info(b: Bundle, host: Host): Info {
   const s = readSidebars(jsonOr(b, "sidebars.json"))
   if (s) panels = { left: s.left, right: s.right, collapsed: s.collapsed }
   return {
-    id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"),
+    id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"), kind: kindOf(b, m),
     sort: typeof m.sort === "number" ? m.sort : 1000,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
     on, pinned, panels, home: homeOf(b, host, pinned), code: [...brings, ...installs.map((x) => x.id)],
     official: !brings.length && installs.every((x) => official(x.source)), from: str(m.from) || null,
     guide: typeof b.files[str(m.guide)] === "string" ? str(m.guide) : null, hotkeys: b.files["hotkeys.json"] !== undefined,
     preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null, previewDark: Buffer.isBuffer(b.files[PREVIEW_DARK]) ? hash(b.files[PREVIEW_DARK]) : null,
-    problems: b.error ? [b.error] : problems(b.files),
+    problems: b.error ? [b.error] : problems(b.files), tweaked: fs.existsSync(host.vault.abs(`${TWEAKS}/${b.id}.json`)),
   }
 }
 
@@ -277,6 +287,7 @@ export function problems(files: Files): string[] {
   const ok = (rel: string) => jsonOr(files, rel)
   const m = ok("bundle.json")
   if (m && (typeof m.name !== "string" || !m.name.trim())) out.push("bundle.json needs a name")
+  if (m?.kind !== undefined && !KINDS.includes(m.kind as string)) out.push(`bundle.json: kind is ${KINDS.join(", ")} or left out`)
   if (m?.guide !== undefined && (typeof m.guide !== "string" || !m.guide.endsWith(".md") || typeof files[m.guide] !== "string")) out.push("bundle.json: guide must name a note it holds")
   const pj = ok("plugins.json")
   if (pj) for (const k of ["disabled", "enabled"]) if (pj[k] !== undefined && !Array.isArray(pj[k])) out.push(`plugins.json: ${k} must be a list of plugin ids`)
@@ -598,6 +609,8 @@ export type Previous = {
   installed?: string[]
   /** The bundle applied before it (applied.json), applied again by a restore. */
   was?: Applied | null
+  /** The layouts' tweaks before it (tweaks/<id>.json, null: none), put back by a restore. */
+  tweaks?: Record<string, Tweaks | null>
 }
 /** The bundle applied last (applied.json), and the changes it was applied without. */
 type Applied = { bundle: string; name: string; at: string; skip: string[] }
@@ -648,6 +661,7 @@ export function tidy(v: Vault) {
     if (!fs.existsSync(path.join(appBundles(), id)) || !fs.existsSync(path.join(dir, id, "bundle.json"))) continue
     const to = freeId(v, id, false)
     fs.renameSync(path.join(dir, id), path.join(dir, to))
+    try { fs.renameSync(v.abs(`${TWEAKS}/${id}.json`), v.abs(`${TWEAKS}/${to}.json`)) } catch { /* none */ }
     for (const r of records) if (r.bundle === id) r.bundle = to
   }
   // (one of the user's by a folded id, saved since, is theirs)
@@ -708,14 +722,35 @@ function merged(old: Previous, now: Previous): Previous {
     absent: [...new Set([...old.absent, ...now.absent.filter((x) => !(x in old.config) && !(x === "pages" && oldPins))])],
     pins: oldPins ? old.pins : now.pins, pinned: [...new Set([...old.pinned, ...now.pinned])], workspace: w,
     added: [...old.added, ...now.added.filter((a) => !old.added.some((x) => x.path === a.path))],
-    installed: [...new Set([...old.installed ?? [], ...now.installed ?? []])], was: old.was ?? null }
+    installed: [...new Set([...old.installed ?? [], ...now.installed ?? []])], was: old.was ?? null, tweaks: { ...now.tweaks, ...old.tweaks } }
 }
 
-/** `remember: false`: nothing to restore (a new vault's first). `offAdded`: plugins the user added go off too. `skip`:
- *  change ids left out. `trial`: it's tried (Keep or Restore end it; applied during one, restore goes to before that). */
-export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true, offAdded = false, skip = [] as string[], trial = false, landing = null as number | null } = {}) {
+type ApplyOptions = {
+  /** False: nothing to restore (a new vault's first). */
+  remember?: boolean
+  /** The plugins the user added go off too. */
+  offAdded?: boolean
+  /** Change ids left out. */
+  skip?: string[]
+  /** It's tried (Keep or Restore end it; applied during one, restore goes to before that). */
+  trial?: boolean
+  landing?: number | null
+  /** Applied clean, its tweaks forgotten (Reset); else with them. The layout in use leaves its own behind either way. */
+  fresh?: boolean
+  /** Nothing to open after (`open`: the guide it added, else its first pin). */
+  quiet?: boolean
+}
+
+export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true, offAdded = false, skip = [], trial = false, landing = null,
+  fresh = false, quiet = false }: ApplyOptions = {}) {
   const v = host.vault
   if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
+  // Only a layout is the one in use: a pack or a look is applied over it. (The tweaks of the one in use, as the setup is
+  // before this apply.)
+  const layout = kindOf(b, jsonOr(b, "bundle.json") ?? {}) === "layout"
+  const inUse = remember && layout ? readApplied(v) : null, from = inUse && list(v).find((x) => x.id === inUse.bundle && !x.error)
+  const leaving = from ? await tweaksOf(host, from, n).catch(() => readTweaks(v, from.id)) : null
+  if (remember && !fresh) b = withTweaks(b, from && from.id === b.id ? leaving : readTweaks(v, b.id))
   const left = new Set(skip)
   const p = await plan(b, host, n, { skip: left, offAdded, landing })
   n = p.workspace
@@ -818,13 +853,20 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   }
   doneOnboarding(v)
   // What a restore goes back to: the setup from before this, or, while another is tried, from before that.
+  if (remember) {
+    prev.tweaks = {}
+    const tweak = (id: string, t: Tweaks | null) => { prev.tweaks![id] ??= readTweaks(v, id); writeTweaks(v, id, t) }
+    if (from) tweak(from.id, leaving)
+    if (fresh) tweak(b.id, null)
+  }
   const tried = readTrial(v), before = tried && readPrevious(v)
   const kept = before ? merged(before, prev) : prev
   if (remember) writeRecord(v, PREVIOUS, kept)
   writeRecord(v, TRIAL, trial && remember ? { bundle: b.id, name, at: prev.at } : null)
-  writeRecord(v, APPLIED, { bundle: b.id, name, at: prev.at, skip: [...left].sort() })
+  if (layout) writeRecord(v, APPLIED, { bundle: b.id, name, at: prev.at, skip: [...left].sort() })
+  const guide = info(b, host).guide
   return { applied: name, plan: { ...p, pins }, previous: remember ? { bundle: kept.bundle, name: kept.name, at: kept.at } : null,
-    trial: trial && remember ? { id: b.id, name, at: prev.at } : null }
+    trial: trial && remember ? { id: b.id, name, at: prev.at } : null, open: quiet ? null : (guide && p.files.add.includes(guide) ? guide : pins?.list[0] ?? null) }
 }
 
 /** Put back the setup from before the last apply (from before a trial, while one lasts), and forget it. Changes made
@@ -884,6 +926,7 @@ async function restore(host: Host) {
     await host.uninstall(id)
     trashed.push(`.vaultite/plugins/${id}`)
   }
+  for (const [id, t] of Object.entries(prev.tweaks ?? {})) writeTweaks(v, id, t)
   writeRecord(v, PREVIOUS, null)
   writeRecord(v, TRIAL, null)
   writeRecord(v, APPLIED, prev.was ?? null)
@@ -915,10 +958,12 @@ function pruneDirs(v: Vault, rel: string) {
 // ---------- saving the current setup, export, import ----------
 
 type SaveOptions = { name: string; description?: string; icon?: string; tint?: string; hotkeys?: boolean; vaultPlugins?: boolean; workspace?: number | null; replace?: boolean
+  /** The user's own of the look too (theme, colours, fonts: PERSONAL_LOOK, and the theme's folder): a bundle about looks. */
+  look?: boolean
   /** A screenshot of the app it makes, a PNG as base64: its card's picture. */
   preview?: string
   /** Save changes to a bundle (its id): one of the user's is saved over, keeping its name, card and where it came from;
-   *  one of the app's is saved as a new "<Name> (mine)". */
+   *  one of the app's is saved as a new "My <Name>" (or `name`). */
   over?: string }
 
 /** The current setup as a bundle's files, which applied after anything is this setup again (settings below, the whole
@@ -936,9 +981,9 @@ async function current(host: Host, o: SaveOptions, meta: Item | null = null): Pr
   const conf = v.config("plugins")
   await setupOf(host, o, files, put, conf, kinds)
   const pinned = pinnedOf(await slotOf(host, o.workspace ?? null), v)
-  // (every key, the defaults said: applied after another bundle, nothing of that one's look stays)
+  // (every key, the defaults said: applied after another bundle, nothing of that one's look stays; the user's own only if asked)
   const look = v.config("appearance")
-  put("appearance.json", { ...LOOK, ...look })
+  put("appearance.json", Object.fromEntries(Object.entries({ ...LOOK, ...look }).filter(([k]) => o.look || !PERSONAL_LOOK.includes(k as keyof typeof LOOK))))
   // The editor's and the new tab's keys the app's bundles set, defaults said (as plugin settings), and any other the user set.
   const fixed = (rel: string) => new Set(list(v).filter((b) => b.source === "app").flatMap((b) => Object.keys(jsonOr(b, rel) ?? {})))
   const ed = v.config("editor"), edKeys = fixed("editor.json")
@@ -955,7 +1000,7 @@ async function current(host: Host, o: SaveOptions, meta: Item | null = null): Pr
   }
   for (const p of pinned) add(p)
   if (typeof tab.page === "string") add(tab.page)
-  const scheme = typeof look.scheme === "string" && look.scheme.startsWith("theme:") ? look.scheme.slice(6) : null
+  const scheme = o.look && typeof look.scheme === "string" && look.scheme.startsWith("theme:") ? look.scheme.slice(6) : null
   if (scheme && safePath(scheme)) {
     try { for (const [rel, data] of Object.entries(readFolder(v.abs(`.vaultite/themes/${scheme}`)))) files[`themes/${scheme}/${rel}`] = data } catch (e) { if (e instanceof HTTPError) throw e }
   }
@@ -1065,11 +1110,12 @@ function builtInSettings(v: Vault) {
   return out
 }
 
-/** "<Name> (mine)", or "(mine 2)"... when a bundle has that name. */
+/** "My <Name>" (one named "My ..." as it is), or "My <Name> 2"... when a bundle has that name. */
 function mineName(v: Vault, name: string) {
-  const names = new Set(list(v).map((b) => String(jsonOr(b, "bundle.json")?.name ?? "")))
-  let out = `${name} (mine)`, i = 2
-  while (names.has(out)) out = `${name} (mine ${i++})`
+  const base = /^my\s/i.test(name) ? name.replace(/\s+\d+$/, "") : `My ${name}`
+  const names = new Set(list(v).map((b) => String(jsonOr(b, "bundle.json")?.name ?? "").toLowerCase()))
+  let out = base, i = 2
+  while (names.has(out.toLowerCase())) out = `${base} ${i++}`
   return out
 }
 
@@ -1078,37 +1124,62 @@ async function save(host: Host, o: SaveOptions) {
   let id: string, replace = !!o.replace, meta: Item | null = null
   if (typeof o.over === "string" && o.over) {
     const b = find(v, o.over), m = json(b, "bundle.json") ?? {}
-    const had = { hotkeys: o.hotkeys ?? b.files["hotkeys.json"] !== undefined, vaultPlugins: o.vaultPlugins ?? parts(b.files).code.length > 0 }
+    const had = { hotkeys: o.hotkeys ?? b.files["hotkeys.json"] !== undefined, vaultPlugins: o.vaultPlugins ?? parts(b.files).code.length > 0,
+      look: o.look ?? PERSONAL_LOOK.some((k) => Object.hasOwn(jsonOr(b, "appearance.json") ?? {}, k)) }
     if (b.source === "vault") {
       // (its picture stays until a new one is taken)
       const png = b.files[PREVIEW]
       ;({ id, meta, replace } = { id: b.id, meta: m, replace: true })
       o = { ...o, ...had, name: String(m.name ?? b.id), preview: o.preview ?? (Buffer.isBuffer(png) ? png.toString("base64") : undefined) }
     } else {
-      const name = mineName(v, String(m.name ?? b.id)), str = (x: unknown) => (typeof x === "string" ? x : undefined)
+      const name = typeof o.name === "string" && o.name.trim() ? o.name.trim() : mineName(v, String(m.name ?? b.id)), str = (x: unknown) => (typeof x === "string" ? x : undefined)
       o = { ...o, ...had, name, description: o.description ?? str(m.description), icon: o.icon ?? str(m.icon), tint: o.tint ?? str(m.tint) }
       ;({ id, replace } = { id: freeId(v, name, false), replace: false })
     }
   } else {
-    if (typeof o.name !== "string" || !o.name.trim()) throw new HTTPError(400, "a bundle needs a name")
+    // (no name: "My <the layout in use>")
+    if (o.name !== undefined && (typeof o.name !== "string" || !o.name.trim())) throw new HTTPError(400, "a bundle needs a name")
+    o = { ...o, name: o.name ?? saveName(v, host) }
     id = freeId(v, o.name, replace)
   }
   const files = await current(host, o, meta)
+  const base = readApplied(v)?.bundle
   writeBundle(v, id, files, replace)
-  // (the setup is this bundle's now: its card is the one in use)
+  // (the setup is this bundle's now: its card is the one in use, untweaked; the layout it came from, its tweaks saved
+  // in it, is itself again)
   const bundle = info(find(v, id), host)
   writeRecord(v, APPLIED, { bundle: id, name: bundle.name, at: new Date().toISOString(), skip: [] })
-  return { bundle }
+  for (const x of new Set([id, base ?? id])) writeTweaks(v, x, null)
+  return { bundle: { ...bundle, tweaked: false } }
 }
 
-/** Bundle `id` as the user's "<Name> (mine)" without the changes `skip` names: applied anywhere, it does what applying
+/** The name saving suggests: mineName of the layout in use ("My Zen"). */
+function saveName(v: Vault, host: Host) {
+  const a = readApplied(v), b = a && list(v).find((x) => x.id === a.bundle)
+  return mineName(v, b ? info(b, host).name : a?.name ?? "setup")
+}
+
+/** Bundle `id` as the user's "My <Name>" without the changes `skip` names: applied anywhere, it does what applying
  *  it without them does here. A value skipped is this setup's (still said); a pin, file or plugin skipped is left out. */
 async function fork(host: Host, id: string, skip: string[], n: number | null) {
   const v = host.vault, b = find(v, id)
   if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
-  const p = await plan(b, host, n), kinds = known(host)
+  const p = await plan(b, host, n)
   const unknown = skip.filter((x) => !p.changes.some((c) => c.id === x))
   if (unknown.length) throw new HTTPError(400, `${unknown.join(", ")}: not a change applying ${b.id} makes here (bundle.show lists them)`)
+  const files = await forkedFiles(host, b, skip, n, p)
+  const put = (rel: string, o: unknown) => { files[rel] = JSON.stringify(o, null, 2) + "\n" }
+  const m = json(b, "bundle.json") ?? {}, name = mineName(v, String(m.name ?? b.id))
+  put("bundle.json", { name, ...Object.fromEntries(["description", "icon", "tint", "kind"].filter((k) => typeof m[k] === "string").map((k) => [k, m[k]])) })
+  const to = freeId(v, name, false)
+  writeBundle(v, to, files, false)
+  return { bundle: info(find(v, to), host) }
+}
+
+/** Bundle b's files without the changes `skip` names (of its plan p here): what fork saves, and what a layout's tweaks
+ *  are measured from. */
+async function forkedFiles(host: Host, b: Bundle, skip: string[], n: number | null, p: Plan): Promise<Files> {
+  const v = host.vault, kinds = known(host)
   const files: Files = { ...b.files }
   // (its pictures are of the bundle with every change: not this one's)
   for (const f of PICTURES) delete files[f]
@@ -1163,12 +1234,56 @@ async function fork(host: Host, id: string, skip: string[], n: number | null) {
       unpin(what)
     }
   }
-  const m = json(b, "bundle.json") ?? {}, name = mineName(v, String(m.name ?? b.id))
-  put("bundle.json", { name, ...Object.fromEntries(["description", "icon", "tint"].filter((k) => typeof m[k] === "string").map((k) => [k, m[k]])) })
-  const to = freeId(v, name, false)
-  writeBundle(v, to, files, false)
-  return { bundle: info(find(v, to), host) }
+  return files
 }
+
+// ---------- each layout's tweaks (herdr's model) ----------
+
+/** What differed from a bundle when the user left it (tweaks/<id>.json): `set`, its JSON files' keys as they were (a
+ *  file whole when it hadn't one; sidebars.json always whole); `drop`, its files they had left out (a page, a guide). */
+export type Tweaks = { bundle: string; at: string; set: Record<string, Item>; drop: string[] }
+
+const readTweaks = (v: Vault, id: string) => readRecord<Tweaks>(v, `${TWEAKS}/${id}.json`, (o) => isObj(o.set))
+function writeTweaks(v: Vault, id: string, t: Tweaks | null) {
+  writeRecord(v, `${TWEAKS}/${id}.json`, t)
+  if (!t) pruneDirs(v, TWEAKS)
+}
+
+/** The tweaks of bundle b in this setup: every change applying it would make here, as this setup has it (null: none). */
+async function tweaksOf(host: Host, b: Bundle, n: number | null): Promise<Tweaks | null> {
+  const p = await plan(b, host, n)
+  if (p.empty) return null
+  const files = await forkedFiles(host, b, p.changes.map((c) => c.id), n, p)
+  const set: Tweaks["set"] = {}
+  const drop = Object.keys(b.files).filter((f) => files[f] === undefined && !PICTURES.includes(f))
+  for (const f of Object.keys(files)) {
+    if (f === "bundle.json" || !f.endsWith(".json") || files[f] === b.files[f]) continue
+    const now = jsonOr(files, f) ?? {}, was = b.files[f] === undefined || f === "sidebars.json" ? null : jsonOr(b, f)
+    if (!was) { set[f] = now; continue }
+    const d: Item = {}
+    for (const [k, x] of Object.entries(now)) if (!same(x, was[k]) || !(k in was)) d[k] = x
+    for (const k of Object.keys(was)) if (!(k in now)) d[k] = null
+    if (Object.keys(d).length) set[f] = d
+  }
+  return Object.keys(set).length || drop.length ? { bundle: b.id, at: new Date().toISOString(), set, drop } : null
+}
+
+/** Bundle b with tweaks t: its files with theirs (a key null in plugins.json or pages.json goes). */
+function withTweaks(b: Bundle, t: Tweaks | null): Bundle {
+  if (!t) return b
+  const files: Files = { ...b.files }
+  for (const f of strs(t.drop)) delete files[f]
+  for (const [f, o] of Object.entries(t.set)) {
+    if (!safePath(f) || !f.endsWith(".json") || !isObj(o) || f === "bundle.json") continue
+    const was = f === "sidebars.json" ? null : jsonOr(files, f), next: Item = was ? { ...was, ...o } : { ...o }
+    if (f === "plugins.json" || f === "pages.json") for (const k of Object.keys(next)) if (next[k] === null) delete next[k]
+    files[f] = JSON.stringify(next, null, 2) + "\n"
+  }
+  return { ...b, files }
+}
+
+/** Bundle id as applying it would make it: with its tweaks, unless fresh. */
+const tweakedOf = (v: Vault, b: Bundle, fresh = false) => (fresh || b.error ? b : withTweaks(b, readTweaks(v, b.id)))
 
 /** One part of a bundle to share or leave out: `on` what's sent unless the user says; `own` a page with text of the
  *  user's own (outside its blocks and headings). */
@@ -1391,15 +1506,18 @@ export async function handle(host: Host, method: string, parts: string[], query:
   const [id, action] = parts
   if (parts.length === 0 && method === "GET") {
     const n = workspaceOf(query.workspace), landing = workspaceOf(query.landing), applied = readApplied(v)
+    // (the one applied last is in use, `modified` once the setup differs from it clean; another, while applying it, with
+    // its tweaks, would change nothing)
     const all = await Promise.all(list(v).map(async (b): Promise<Info> => {
-      const p = b.error ? null : await plan(b, host, n, { landing }).catch(() => null)
+      const last = applied?.bundle === b.id, at = last || b.error ? b : tweakedOf(v, b)
+      const p = b.error ? null : await plan(at, host, n, { landing }).catch(() => null)
       const out = { ...info(b, host), inUse: !!p?.empty }
-      if (!p || applied?.bundle !== b.id) return out
+      if (!p || !last) return out
       const differs = p.changes.map((c) => c.id).filter((x) => !applied.skip.includes(x))
-      return { ...out, inUse: !differs.length, applied: { at: applied.at, skip: applied.skip }, modified: differs.length > 0, differs }
+      return { ...out, inUse: true, applied: { at: applied.at, skip: applied.skip }, modified: differs.length > 0, tweaked: differs.length > 0, differs }
     }))
     all.sort((a, b) => (a.source === b.source ? 0 : a.source === "app" ? -1 : 1) || a.sort - b.sort || a.name.localeCompare(b.name))
-    return { bundles: all, default: DEFAULT_BUNDLE, ...status(v) }
+    return { bundles: all, default: DEFAULT_BUNDLE, saveName: saveName(v, host), ...status(v) }
   }
   if (parts.length === 0 && method === "POST") return save(host, { ...body, workspace: workspaceOf(body.workspace) } as SaveOptions)
   if (parts.length === 1 && id === "restore" && method === "POST") return restore(host)
@@ -1413,16 +1531,21 @@ export async function handle(host: Host, method: string, parts: string[], query:
   }
   if (parts.length === 1 && method === "GET") {
     const b = find(v, id)
-    const p = await plan(b, host, workspaceOf(query.workspace), { landing: workspaceOf(query.landing) })
+    const n = workspaceOf(query.workspace), fresh = query.fresh === "1"
+    // (the one in use comes with its tweaks as they are now: applied again, nothing changes)
+    const at = readApplied(v)?.bundle === b.id && !fresh && !b.error ? withTweaks(b, await tweaksOf(host, b, n)) : tweakedOf(v, b, fresh)
+    const p = await plan(at, host, n, { landing: workspaceOf(query.landing) })
     return { bundle: info(b, host), files: Object.keys(b.files), plan: p, pages: pageLooks(b, host, [...p.pins?.list ?? [], ...p.pins?.unpin ?? []]) }
   }
   if (parts.length === 1 && method === "DELETE") {
     const b = find(v, id)
     if (b.source !== "vault") throw new HTTPError(400, `${info(b, host).name} comes with the app: it can't be deleted`)
+    writeTweaks(v, id, null)
     return { deleted: id, trashed: v.toTrash(`${VAULT_BUNDLES}/${id}`) }
   }
   if (parts.length === 2 && action === "apply" && method === "POST") {
-    return apply(find(v, id), host, workspaceOf(body.workspace), body.allowCode === true, { offAdded: body.offAdded === true, skip: strs(body.skip), trial: body.trial === true, landing: workspaceOf(body.landing) })
+    return apply(find(v, id), host, workspaceOf(body.workspace), body.allowCode === true, { offAdded: body.offAdded === true, skip: strs(body.skip), trial: body.trial === true,
+      landing: workspaceOf(body.landing), fresh: body.fresh === true, quiet: body.quiet === true })
   }
   if (parts.length === 2 && action === "fork" && method === "POST") return fork(host, id, strs(body.skip), workspaceOf(body.workspace))
   if (parts.length === 2 && PICTURES.includes(action) && method === "GET") {

@@ -336,12 +336,13 @@ export default async ($: VaultTest) => {
       check("bundles: an installed plugin is saved as its source, not its files", bc === 200 && pj.install?.beacon?.source === "repos/beacon" && pj.install.beacon.tag === "v1.0.0" &&
         pj.enabled.includes("beacon") && !exists(".vaultite/bundles/lights/plugins/beacon/manifest.json") && bo.bundle.code.includes("beacon"), [bo, pj])
       await api("POST", "ops/plugin.uninstall", { id: "beacon" })
-      ;[bc, bo] = await api("GET", "bundles/lights")
+      // (fresh: it's the layout in use, and uninstalling is a tweak of it)
+      ;[bc, bo] = await api("GET", "bundles/lights?fresh=1")
       check("bundles: its plan installs it from there", bc === 200 && bo.plan.code.some((c: Any) => c.id === "beacon" && c.source === "repos/beacon" && !c.kept) &&
         bo.plan.plugins.on.includes("beacon") && !bo.plan.plugins.missing.includes("beacon"), bo.plan)
-      ;[bc] = await api("POST", "bundles/lights/apply", {})
+      ;[bc] = await api("POST", "bundles/lights/apply", { fresh: true })
       check("bundles: installing runs code, so it needs allowCode", bc === 409 && !exists(".vaultite/plugins/beacon/manifest.json"), bc)
-      ;[bc, bo] = await api("POST", "bundles/lights/apply", { allowCode: true })
+      ;[bc, bo] = await api("POST", "bundles/lights/apply", { allowCode: true, fresh: true })
       const beacon = ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === "beacon")
       check("bundles: applied, it's installed at its tag, on and running", bc === 200 && lock().beacon?.tag === "v1.0.0" && (conf("plugins").enabled ?? []).includes("beacon") && beacon?.loaded, [bo, beacon])
       ;[bc, bo] = await api("POST", "bundles/restore")

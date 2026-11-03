@@ -95,7 +95,7 @@ export default async ($: VaultTest) => {
     cr = await vau("bundle", "import", desk)
     check("vau bundle import: from a file on this computer", cr.code === 0 && exists(".vaultite/bundles/vau-desk/bundle.json"), cr)
     cr = await vau("bundle", "list")
-    check("vau bundle list: the user's too", cr.code === 0 && /vau-desk +yours +Vau desk/.test(cr.out), cr)
+    check("vau bundle list: the user's too", cr.code === 0 && /vau-desk +yours +layout +Vau desk/.test(cr.out), cr)
     cr = await vau("bundle", "delete", "vau-desk")
     check("vau bundle delete: each delete kept in the trash", cr.code === 0 && !exists(".vaultite/bundles/vau-desk") &&
       fs.readdirSync(path.join(VAULT, ".trash/.vaultite/bundles")).filter((f) => f.startsWith("vau-desk ")).length === 2, cr)

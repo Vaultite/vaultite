@@ -1,6 +1,7 @@
 // Bundles' ops (core/bundles.ts) through their routes, in-process. Apply, show and save act on the workspace the
 // user's window is on unless told another.
 import type { App } from "../app.ts"
+import { DEFAULT_BUNDLE, status } from "../bundles.ts"
 import { starter } from "../start.ts"
 import { type Op, OpError, type Param } from "../ops.ts"
 import { type Any, enc, lines, windowWorkspace } from "./common.ts"
@@ -9,13 +10,15 @@ const ID: Param = { type: "string", required: true, description: "the bundle's i
 const WORKSPACE: Param = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels and pins follow; the user's window's when left out" }
 const SKIP: Param = { type: "array", items: { type: "string" }, commas: false,
   description: "changes to leave out, by the ids bundle.show lists (setting:pages.show, pin:Dashboards/Today.md, panels)" }
+const FRESH: Param = { type: "boolean", description: "clean: without the tweaks remembered for it (Reset), which applying forgets" }
 const where = (b: Any) => (b.source === "app" ? "built-in" : "yours")
 
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
 sidebars.json, pages.json, appearance.json, editor.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
 pins, and preview.png and preview-dark.png, its card's picture in light and dark); a part it leaves out stays as it is when it's applied. The app's own are
-Standard (standard, the app's defaults), Zen (zen) and Browser (browser); Life OS and Agents are in the directory
-(browse); the user's are in .vaultite/bundles/<id>/. \`vau docs bundles\` has the format, so you can write one too.
+Standard (standard, the app's defaults), Zen (zen) and Browser (browser), layouts; Life OS and Agents, packs (plugins
+and pages, applied over the layout), are in the directory (browse); the user's are in .vaultite/bundles/<id>/. A layout
+leaves the user's theme, colours and fonts alone. \`vau docs bundles\` has the format, so you can write one too.
 
   list      the bundles there are, and the setup that can be restored
   show      what applying one would change here, each change with its id: plugins on and off (plugin:<id>), plugins
@@ -27,14 +30,17 @@ Standard (standard, the app's defaults), Zen (zen) and Browser (browser); Life O
             before is kept: \`vau bundle restore\` puts it back. A bundle with vault plugins runs code on this machine:
             ask the user, then pass --code. --skip <id>... leaves those changes out. --trial tries it: until
             \`vau bundle keep\`, or \`vau bundle restore\` (the setup from before it); applying another meanwhile still
-            restores to before the trial. The bundle applied last is in use; once the setup changes, list says what
-            differs (applying it again puts it back).
+            restores to before the trial. The layout applied last is in use; once the setup changes, list says what
+            differs. Leaving a layout keeps its tweaks (what differs), and applying it again brings them back; --fresh
+            applies it clean and forgets them (Reset). --quiet opens nothing after (its guide, its first page).
+  standard  back to Standard, with its tweaks (clean from Standard itself): the way back when a layout hides everything
   restore   put back the setup from before the last bundle applied (or tried), ending a trial
   keep      end a trial keeping its setup (restore still puts back the one before)
-  fork      a copy of a bundle as the user's "<Name> (mine)", --skip <id>... leaving those changes out: values it
+  fork      a copy of a bundle as the user's "My <Name>", --skip <id>... leaving those changes out: values it
             skips are this setup's, pins, files and plugins it skips aren't in it
-  save      the current setup as the user's bundle <name> (--hotkeys, --vault-plugins to include those); --over <id>
-            saves changes to one: the user's is saved over (its name, card and source kept), the app's as "<Name> (mine)"
+  save      the current setup as the user's bundle <name> ("My <the layout in use>" when left out; --hotkeys,
+            --vault-plugins, --look: theme, colours and fonts, to include those); --over <id> saves changes to one: the
+            user's is saved over (its name, card and source kept), the app's as "My <Name>" (or <name>)
   export    one bundle as a single JSON file to share (<id>.bundle.json, or the file given; - prints it): not its
             picture, pages with the user's own text, nor pins to their notes, unless --include names them
   browse    the bundles in the directory (GitHub repos with the topic vaultite-bundle, and listed ones), by stars
@@ -48,11 +54,14 @@ Standard (standard, the app's defaults), Zen (zen) and Browser (browser); Life O
   vau bundle list
   vau bundle show browser
   vau bundle apply browser
-  vau bundle apply zen --skip appearance:scheme pin:Dashboards/Today.md --trial
+  vau bundle apply zen --skip appearance:tabBar pin:Dashboards/Today.md --trial
+  vau bundle apply zen --fresh
+  vau bundle standard
   vau bundle keep
   vau bundle restore
   vau bundle fork zen --skip panels
   vau bundle save "My desk" --description "Writing and agents"
+  vau bundle save --name "My Zen"
   vau bundle save --over my-desk
   vau bundle export my-desk
   vau bundle browse agents
@@ -83,11 +92,12 @@ CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
     kind: "read",
     run: (_p, ctx) => ctx.api("GET", "bundles"),
     text: (r) => {
-      const rows = (r.bundles as Any[]).map((b) => `${b.id.padEnd(18)} ${where(b).padEnd(9)} ${b.name}` +
+      const rows = (r.bundles as Any[]).map((b) => `${b.id.padEnd(18)} ${where(b).padEnd(9)} ${b.kind.padEnd(7)} ${b.name}` +
         `${b.code?.length ? "  (runs code)" : ""}${b.problems?.length ? `  (can't be read: ${b.problems.join("; ")})` : ""}`)
-      const last = (r.bundles as Any[]).find((b) => b.applied)
+      const last = (r.bundles as Any[]).find((b) => b.applied), tweaked = (r.bundles as Any[]).filter((b) => b.tweaked && !b.applied)
       return lines(rows, "No bundles.") +
-        (last ? `\nIn use: ${last.name}${last.modified ? `, modified since (differs: ${last.differs.join(", ")}): \`vau bundle apply ${last.id}\` puts it back, \`vau bundle save --over ${last.id}\` keeps the changes` : ""}.` : "") +
+        (last ? `\nIn use: ${last.name}${last.modified ? `, changed (differs: ${last.differs.join(", ")}): \`vau bundle apply ${last.id} --fresh\` resets it, \`vau bundle save --over ${last.id}\` keeps the changes` : ""}.` : "") +
+        (tweaked.length ? `\nWith tweaks remembered (applied, they come back; --fresh forgets them): ${tweaked.map((b) => b.id).join(", ")}.` : "") +
         (r.trial ? `\nTrying ${r.trial.name}: \`vau bundle keep\` keeps it, \`vau bundle restore\` puts back the setup from before.` :
           r.previous ? `\nApplied ${r.previous.name} at ${r.previous.at}: \`vau bundle restore\` puts back the setup from before.` : "")
     },
@@ -115,11 +125,12 @@ CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
     summary: "What applying a bundle would change here: plugins on and off, panels, pins, the look, settings, files added.",
     help: HELP,
     kind: "read",
-    params: { id: ID, workspace: WORKSPACE },
+    params: { id: ID, workspace: WORKSPACE, fresh: FRESH },
     args: ["id"],
-    run: async ({ id, workspace }, ctx) => {
+    run: async ({ id, workspace, fresh }, ctx) => {
       const n = workspace ?? await windowWorkspace(ctx)
-      return ctx.api("GET", `bundles/${enc(id)}${n ? `?workspace=${n}` : ""}`)
+      const q = new URLSearchParams({ ...n ? { workspace: String(n) } : {}, ...fresh ? { fresh: "1" } : {} }).toString()
+      return ctx.api("GET", `bundles/${enc(id)}${q ? `?${q}` : ""}`)
     },
     text: (r) => {
       const p = r.plan as Any, b = r.bundle as Any
@@ -142,12 +153,25 @@ CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
     kind: "write",
     params: { id: ID, workspace: WORKSPACE, code: { type: "boolean", description: "allow the vault plugins it brings (they run code on this machine: ask the user first)" },
       offAdded: { type: "boolean", description: "also turn off the plugins the user added that it doesn't name (restore turns them back on)" },
-      skip: SKIP, trial: { type: "boolean", description: "try it: the user keeps it (bundle.keep) or puts back the setup from before (bundle.restore)" } },
+      skip: SKIP, trial: { type: "boolean", description: "try it: the user keeps it (bundle.keep) or puts back the setup from before (bundle.restore)" },
+      fresh: FRESH, quiet: { type: "boolean", description: "the app opens nothing after (its guide, its first page)" } },
     args: ["id"],
-    run: async ({ id, workspace, code, offAdded, skip, trial }, ctx) =>
-      ctx.api("POST", `bundles/${enc(id)}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), allowCode: !!code, offAdded: !!offAdded, skip: skip ?? [], trial: !!trial }),
+    run: async ({ id, workspace, code, offAdded, skip, trial, fresh, quiet }, ctx) =>
+      ctx.api("POST", `bundles/${enc(id)}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), allowCode: !!code, offAdded: !!offAdded, skip: skip ?? [], trial: !!trial,
+        fresh: !!fresh, quiet: !!quiet }),
     text: (r) => r.trial ? `Trying ${r.applied}: \`vau bundle keep\` keeps it, \`vau bundle restore\` puts back the setup from before.`
       : `Applied ${r.applied}${r.plan.omitted.length ? ` without ${r.plan.omitted.join(", ")}` : ""}. \`vau bundle restore\` puts back the setup from before.`,
+  }, {
+    id: "bundle.standard",
+    cli: "bundle standard",
+    summary: "Back to the Standard layout, with its tweaks (clean when it's in use already): the way back when a layout hides the sidebars (Zen).",
+    help: HELP,
+    kind: "write",
+    params: { workspace: WORKSPACE },
+    // (from Standard itself, tweaked out of reach too: clean)
+    run: async ({ workspace }, ctx) => ctx.api("POST", `bundles/${DEFAULT_BUNDLE}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), quiet: true,
+      fresh: status(app.vault).applied?.id === DEFAULT_BUNDLE }),
+    text: (r) => `Back to ${r.applied}. \`vau bundle restore\` puts back the setup from before.`,
   }, {
     id: "bundle.restore",
     cli: "bundle restore",
@@ -167,7 +191,7 @@ CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
   }, {
     id: "bundle.fork",
     cli: "bundle fork",
-    summary: "Copy a bundle as the user's \"<Name> (mine)\", leaving out the changes skipped (their values this setup's).",
+    summary: "Copy a bundle as the user's \"My <Name>\", leaving out the changes skipped (their values this setup's).",
     help: HELP,
     kind: "write",
     params: { id: ID, skip: SKIP, workspace: WORKSPACE },
@@ -181,19 +205,18 @@ CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
     help: HELP,
     kind: "write",
     params: {
-      name: { type: "string", description: "its name (My desk); not with over" },
+      name: { type: "string", description: "its name (My desk); left out, \"My <the layout in use>\" (My Zen); with over, the name of the copy of one of the app's" },
       description: { type: "string", description: "one line about it" },
       hotkeys: { type: "boolean", description: "include the changed hotkeys" },
       vaultPlugins: { type: "boolean", description: "include the vault's own plugins" },
+      look: { type: "boolean", description: "include the user's theme, colour scheme and fonts (a bundle about looks); left out, applying it leaves them alone" },
       workspace: WORKSPACE,
-      over: { type: "string", description: "save changes to this bundle (its id): the user's is saved over, keeping its name, card and source; the app's is saved as \"<Name> (mine)\"" },
+      over: { type: "string", description: "save changes to this bundle (its id): the user's is saved over, keeping its name, card and source; the app's is saved as \"My <Name>\" (or name)" },
     },
     args: ["name"],
-    run: async ({ name, description, hotkeys, vaultPlugins, workspace, over }, ctx) => {
-      if (!over && !name) throw new OpError("a bundle needs a `name` (or `over` <id> to save changes to one)")
-      return ctx.api("POST", "bundles", { ...over ? { over } : { name, replace: true }, description, ...hotkeys !== undefined ? { hotkeys } : {},
-        ...vaultPlugins !== undefined ? { vaultPlugins } : {}, workspace: workspace ?? await windowWorkspace(ctx) })
-    },
+    run: async ({ name, description, hotkeys, vaultPlugins, look, workspace, over }, ctx) =>
+      ctx.api("POST", "bundles", { ...over ? { over, ...name ? { name } : {} } : name ? { name, replace: true } : {}, description, ...hotkeys !== undefined ? { hotkeys } : {},
+        ...vaultPlugins !== undefined ? { vaultPlugins } : {}, ...look !== undefined ? { look } : {}, workspace: workspace ?? await windowWorkspace(ctx) }),
     text: (r) => `Saved ${r.bundle.name} as .vaultite/bundles/${r.bundle.id}/.`,
   }, {
     id: "bundle.export",

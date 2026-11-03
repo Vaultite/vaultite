@@ -8,6 +8,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Phones: a tab group opens steadily**: it starts at its top, and All tabs comes back where it was left, with no bounce
   as the list swaps (opened again, its tabs no longer sit out of sight).
+- **Layouts leave your look alone and remember your tweaks**: Standard, Zen and Browser no longer change your theme,
+  colours, fonts, animations or translucency (only a bundle about looks, like Glass, does). Switching away from a layout
+  you changed keeps your changes, and switching back brings them back; Reset applies it clean. Saving asks for a name
+  and suggests "My Zen" from the layout in use. "Back to Standard layout" in the palette (`vau bundle standard`) is the
+  way back from a layout that hides everything. Packs (Life OS, Agents) and looks apply over your layout, which stays the one in use.
+
 - **Phones: a tab drags out of its group**: in a group's tabs, hold a lifted card on All tabs at the top (it lights up)
   and all tabs come back with the card still held, to be put anywhere, onto a tab to make a group, or onto another group;
   let go there at once and it just leaves the group.

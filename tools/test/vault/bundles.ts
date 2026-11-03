@@ -19,7 +19,7 @@ export default async ($: VaultTest) => {
     // Its plugins (Activity off) and pins are put back at the end: the areas after it need them.
     const pluginsBefore = conf("plugins"), pagesBefore = conf("pages"), editorBefore = conf("editor")
     setConf("plugins", { disabled: ["clipper"], enabled: ON, updatesOff: ["lighthouse"], custom: 1 })
-    setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
+    setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord", tabBar: false })
     setConf("editor", { tabSize: 2, propertiesInDocument: "source" })
     setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/People.md"] })
     setConf("plugins/page-preview/data", { delay: 300 })
@@ -55,8 +55,8 @@ export default async ($: VaultTest) => {
     if (github === undefined) delete process.env.VAULTITE_GITHUB; else process.env.VAULTITE_GITHUB = github
     const pj = conf("plugins"), look = conf("appearance")
     check("bundles: plugins.json keeps its other keys", pj.updatesOff?.[0] === "lighthouse" && pj.custom === 1 && pj.enabled.includes("today") && !pj.enabled.includes("machines") && pj.enabled.includes("books"), pj)
-    check("bundles: appearance is the bundle's whole look (the app's say every key); one it sets to the default is removed", !("textFont" in look) && !("theme" in look) && look.scheme === "flexoki" &&
-      look.density === "comfortable", look)
+    check("bundles: appearance is the bundle's whole look but the user's own (theme, colours, fonts: left alone); one it sets to the default is removed", !("tabBar" in look) &&
+      look.theme === "light" && look.textFont === "Georgia" && look.scheme === "nord" && look.density === "comfortable", look)
     check("bundles: the editor's settings: one it sets to the default is removed, the others kept", JSON.stringify(conf("editor")) === JSON.stringify({ tabSize: 2 }), conf("editor"))
     check("bundles: a plugin's settings: the key set, the others kept", JSON.stringify(conf("plugins/page-preview/data")) === JSON.stringify({ delay: 300, trigger: "hover" }), conf("plugins/page-preview/data"))
     check("bundles: pins are the bundle's, then the user's own", conf("pages").pinned.join() === LIFE, conf("pages"))
@@ -162,7 +162,8 @@ export default async ($: VaultTest) => {
     check("bundles: save writes the user's bundle", code === 200 && r.bundle.id === "my-desk" && saved("bundle.json")?.name === "My desk", r)
     check("bundles: saved: plugins, the workspace's pins, settings that differ from their defaults, never local ones", saved("plugins.json")?.disabled?.includes("clipper") &&
       saved("pages.json")?.pinned?.join() === deskBefore.pinned.join() && saved("plugins/page-preview/data.json")?.delay === 300 && saved("plugins/terminal/data.json") === null &&
-      saved("appearance.json")?.scheme === "nord" && saved("hotkeys.json") === null, fs.readdirSync(path.join(VAULT, ".vaultite/bundles/my-desk"), { recursive: true }))
+      "tabBar" in (saved("appearance.json") ?? {}) && !("scheme" in saved("appearance.json")) && !("textFont" in saved("appearance.json")) && saved("hotkeys.json") === null,
+      fs.readdirSync(path.join(VAULT, ".vaultite/bundles/my-desk"), { recursive: true }))
     check("bundles: saved, the editor's settings the app's bundles set and the user's own", JSON.stringify(saved("editor.json")) === JSON.stringify({ tabSize: 2, propertiesInDocument: "source" }), saved("editor.json"))
     ;[, r] = await api("GET", "bundles/my-desk/share")
     check("bundles: sharing lists the editor's settings, to leave out", r.items.some((x: Any) => x.path === "editor.json" && x.kind === "settings" && x.on && x.keys.includes("tabSize")), r.items)
@@ -232,6 +233,12 @@ export default async ($: VaultTest) => {
     check("bundles: the plan names its guide", r.plan.changes.some((c: Any) => c.id === "file:Guides/How Guided works.md" && /guide/.test(c.label)), r.plan.changes)
     ;[code] = await api("POST", "bundles/guided/apply", { skip: ["file:Guides/How Guided works.md"] })
     check("bundles: its guide can be left out", code === 200 && !exists("Guides/How Guided works.md"), code)
+    await api("POST", "bundles/restore")
+    ;[code, r] = await api("POST", "bundles/guided/apply", {})
+    check("bundles: applied, the guide it added is what the app opens", code === 200 && r.open === "Guides/How Guided works.md", r.open)
+    await api("POST", "bundles/restore")
+    ;[code, r] = await api("POST", "bundles/guided/apply", { quiet: true })
+    check("bundles: applied quiet (onboarding), it opens nothing", code === 200 && r.open === null && exists("Guides/How Guided works.md"), r.open)
     await api("POST", "bundles/restore")
     await api("DELETE", "bundles/pics")
     if (modesEnforced) {
@@ -324,7 +331,7 @@ export default async ($: VaultTest) => {
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
     const NAMES = ["plugins", "pages", "appearance", "editor", "sidebars", "newtab", "plugins/pages/data", "plugins/errors/data", "plugins/page-preview/data", "plugins/tabs/data", "plugins/web-viewer/data"]
     const kept = NAMES.map((n) => [n, exists(`.vaultite/${n}.json`) ? read(`.vaultite/${n}.json`) : null] as const)
-    const { LOOK } = await import("../../../core/look.ts")
+    const { LOOK, PERSONAL_LOOK } = await import("../../../core/look.ts")
     const { EDITOR } = await import("../../../core/editor.ts")
     const SETTINGS = [["errors", "notify"], ["pages", "show"], ["page-preview", "trigger"], ["tabs", "archive_after"], ["web-viewer", "openLinks"]]
     const defaultOf = (id: string, key: string) => (app.plugins.find((p) => p.id === id)?.manifest.settings as Any)?.[key]?.default
@@ -334,7 +341,8 @@ export default async ($: VaultTest) => {
     const setup = () => JSON.stringify({ look: { ...LOOK, ...conf("appearance") }, editor: { ...EDITOR, ...conf("editor") }, settings: SETTINGS.map(([id, k]) => conf(`plugins/${id}/data`)?.[k] ?? defaultOf(id, k)),
       off: [...app.vault.switchedOff()].filter((id) => appIds.has(id)).sort(), panels: (({ left, right, collapsed }: Any) => ({ left, right, collapsed }))(conf("sidebars") ?? {}),
       pins: conf("pages")?.pinned ?? [], opens: conf("newtab")?.opens ?? null })
-    const apply = (id: string, body: Any = {}) => api("POST", `bundles/${id}/apply`, { allowCode: true, ...body })
+    // (fresh: each applied clean, as the bundle says; tweaks are tested on their own below)
+    const apply = (id: string, body: Any = {}) => api("POST", `bundles/${id}/apply`, { allowCode: true, fresh: true, ...body })
     const entry = async (id: string) => (await api("GET", "bundles"))[1].bundles.find((b: Any) => b.id === id)
     const github = process.env.VAULTITE_GITHUB
     const OFFICIAL = path.join($.tmp, "official")
@@ -346,17 +354,17 @@ export default async ($: VaultTest) => {
     const ids: string[] = r.plan.changes.map((c: Any) => c.id)
     const again: string[] = (await api("GET", "bundles/zen"))[1].plan.changes.map((c: Any) => c.id)
     check("bundles: each change has an id, the same each time, on its line too", ids.join() === again.join() && new Set(ids).size === ids.length &&
-      ["appearance:scheme", "editor:propertiesInDocument", "panels", "setting:pages.show", "plugin:glance"].every((x) => ids.includes(x)) && r.plan.settings.every((c: Any) => ids.includes(c.change)) &&
+      ["appearance:tabBar", "editor:propertiesInDocument", "panels", "setting:pages.show", "plugin:glance"].every((x) => ids.includes(x)) && r.plan.settings.every((c: Any) => ids.includes(c.change)) &&
       r.plan.changes.every((c: Any) => typeof c.label === "string" && c.label), r.plan.changes)
 
     // Applying some of them: the ones skipped aren't made, nor kept to restore; restore still puts the rest back.
     const before = setup(), lookBefore = conf("appearance"), panelsBefore = JSON.stringify(conf("sidebars"))
-    const SKIP = ["appearance:scheme", "panels", "setting:pages.show"]
+    const SKIP = ["appearance:density", "panels", "setting:pages.show"]
     ;[code, r] = await apply("zen", { skip: SKIP })
-    check("bundles: apply leaves out the changes skipped", code === 200 && [...r.plan.omitted].sort().join() === SKIP.join() && conf("appearance")?.scheme === lookBefore?.scheme &&
+    check("bundles: apply leaves out the changes skipped", code === 200 && [...r.plan.omitted].sort().join() === SKIP.join() && conf("appearance")?.density === lookBefore?.density &&
       conf("appearance")?.tabBar === false && conf("plugins/pages/data")?.show !== "tiles" && JSON.stringify(conf("sidebars")) === panelsBefore, [code, r?.plan?.omitted, conf("appearance")])
     const prev = JSON.parse(read(".vaultite/bundles/previous.json"))
-    check("bundles: a change skipped isn't kept to restore", !("scheme" in (prev.config.appearance ?? {})) && !prev.config.sidebars && !prev.config["plugins/pages/data"], prev.config)
+    check("bundles: a change skipped isn't kept to restore", !("density" in (prev.config.appearance ?? {})) && !prev.config.sidebars && !prev.config["plugins/pages/data"], prev.config)
     let zen = await entry("zen")
     check("bundles: the bundle applied last, without what it was applied without, is in use", zen.applied?.skip?.join() === SKIP.join() && zen.modified === false && zen.inUse === true, zen)
     ;[code] = await api("POST", "bundles/restore")
@@ -367,26 +375,28 @@ export default async ($: VaultTest) => {
     await apply("zen")
     await api("PATCH", "config/appearance", { density: "compact" })
     zen = await entry("zen")
-    check("bundles: changed since, it's modified, saying what differs", zen.modified === true && zen.differs.join() === "appearance:density" && !zen.inUse, zen)
+    check("bundles: changed since, it's still in use, modified, saying what differs", zen.modified === true && zen.differs.join() === "appearance:density" && zen.inUse && zen.tweaked, zen)
     await apply("zen")
-    check("bundles: applied again, it's as it was (Revert)", (await entry("zen")).modified === false)
+    check("bundles: applied fresh, it's as it was (Reset)", (await entry("zen")).modified === false)
     await api("PATCH", "config/editor", { propertiesInDocument: "source" })
     zen = await entry("zen")
     check("bundles: an editor setting changed since differs too", zen.modified === true && zen.differs.join() === "editor:propertiesInDocument", zen)
     await apply("zen")
     check("bundles: applied again, the editor's setting is the bundle's", conf("editor")?.propertiesInDocument === "hidden" && (await entry("zen")).modified === false, conf("editor"))
-    // Save changes: one of the app's is saved as "<Name> (mine)", the user's own over itself (its name, card and source kept).
+    // Save changes: one of the app's is saved as "My <Name>", the user's own over itself (its name, card and source kept).
     await api("PATCH", "config/appearance", { density: "compact" })
+    check("bundles: saving suggests a name from the layout in use", (await api("GET", "bundles"))[1].saveName === "My Zen")
     ;[code, r] = await api("POST", "bundles", { over: "zen" })
     const mineId = r.bundle?.id
-    check("bundles: Save changes to one of the app's makes \"Zen (mine)\", now in use", code === 200 && r.bundle.name === "Zen (mine)" && r.bundle.icon === "wind" && r.bundle.tint === "teal" &&
+    check("bundles: Save changes to one of the app's makes \"My Zen\", now in use", code === 200 && r.bundle.name === "My Zen" && r.bundle.icon === "wind" && r.bundle.tint === "teal" &&
       (await entry(mineId))?.applied && (await entry(mineId)).modified === false && !(await entry("zen")).applied, r)
-    write(`.vaultite/bundles/${mineId}/bundle.json`, JSON.stringify({ name: "Zen (mine)", icon: "wind", tint: "teal", from: "alice/zen" }))
-    await api("PATCH", "config/appearance", { scheme: "nord" })
+    write(`.vaultite/bundles/${mineId}/bundle.json`, JSON.stringify({ name: "My Zen", icon: "wind", tint: "teal", from: "alice/zen" }))
+    await api("PATCH", "config/appearance", { paneTitles: true, scheme: "dracula" })
     ;[code, r] = await api("POST", "bundles", { over: mineId })
-    const savedOver = JSON.parse(read(`.vaultite/bundles/${mineId}/bundle.json`))
-    check("bundles: Save changes to the user's own saves over it, its name and source kept", code === 200 && r.bundle.id === mineId && savedOver.from === "alice/zen" &&
-      JSON.parse(read(`.vaultite/bundles/${mineId}/appearance.json`)).scheme === "nord" && (await entry(mineId)).modified === false, [r, savedOver])
+    const savedOver = JSON.parse(read(`.vaultite/bundles/${mineId}/bundle.json`)), overLook = JSON.parse(read(`.vaultite/bundles/${mineId}/appearance.json`))
+    check("bundles: Save changes to the user's own saves over it, its name and source kept (not the user's colours)", code === 200 && r.bundle.id === mineId && savedOver.from === "alice/zen" &&
+      overLook.paneTitles === true && !("scheme" in overLook) && (await entry(mineId)).modified === false, [r, savedOver])
+    await api("PATCH", "config/appearance", { scheme: "nord" })
 
     // A saved bundle, applied after any other, is the setup it was saved from: the whole look, the settings the app's
     // bundles set (defaults said), plugins, panels, pins.
@@ -395,7 +405,7 @@ export default async ($: VaultTest) => {
     await api("PATCH", "config/appearance", { lineNumbers: true, statusBar: ["today:routines"] })
     ;[code, r] = await api("POST", "bundles", { name: "Whole desk" })
     const whole = r.bundle.id, saved = setup(), savedLook = JSON.parse(read(`.vaultite/bundles/${whole}/appearance.json`))
-    check("bundles: saved, it states the whole look and the app's bundles' settings, defaults too", LOOK && Object.keys(LOOK).every((k) => k in savedLook) &&
+    check("bundles: saved, it states the whole look but the user's own, and the app's bundles' settings, defaults too", Object.keys(LOOK).every((k) => (k in savedLook) !== PERSONAL_LOOK.includes(k as Any)) &&
       JSON.parse(read(`.vaultite/bundles/${whole}/editor.json`)).propertiesInDocument === "hidden" &&
       JSON.parse(read(`.vaultite/bundles/${whole}/plugins/errors/data.json`)).notify === true && (await api("GET", `bundles/${whole}`))[1].plan.empty, savedLook)
     for (const other of ["days", "standard", "zen", "browser"]) {
@@ -416,10 +426,10 @@ export default async ($: VaultTest) => {
 
     // A copy without some changes (fork): applied anywhere, it does what the bundle without them does here.
     await apply("standard")
-    const FORK = ["appearance:scheme", "editor:propertiesInDocument", "panels", "setting:pages.show", "plugin:glance"]
+    const FORK = ["appearance:density", "editor:propertiesInDocument", "panels", "setting:pages.show", "plugin:glance"]
     ;[code, r] = await api("POST", "bundles/zen/fork", { skip: FORK })
     const forked = r.bundle
-    check("bundles: fork makes the user's copy, its name free, its card copied, not its picture", code === 200 && forked.name === "Zen (mine 2)" && forked.source === "vault" &&
+    check("bundles: fork makes the user's copy, its name free, its card copied, not its picture", code === 200 && forked.name === "My Zen 2" && forked.source === "vault" &&
       forked.icon === "wind" && forked.tint === "teal" && !forked.preview && !forked.previewDark && !forked.from, r)
     ;[code] = await api("POST", "bundles/zen/fork", { skip: ["setting:nope.x"] })
     check("bundles: fork with an id that isn't a change is refused", code === 400, code)
@@ -431,6 +441,87 @@ export default async ($: VaultTest) => {
     await apply("days")
     await apply(forked.id)
     check("bundles: and so it is after another (a value it skipped is this setup's, said)", setup() === partial, [partial, setup()])
+
+    // Layouts leave the user's look alone: the app's say none of it, and applying one keeps theirs.
+    for (const id of ["standard", "zen", "browser"]) {
+      const said = Object.keys(JSON.parse(fs.readFileSync(path.join(process.env.VAULTITE_BUNDLES ?? path.join(import.meta.dirname, "../../../bundles"), id, "appearance.json"), "utf8")))
+      check(`bundles: ${id} says none of the user's own look`, !said.some((k) => PERSONAL_LOOK.includes(k as Any)), said)
+    }
+    await api("PATCH", "config/appearance", { theme: "dark", scheme: "dracula", textFont: "Georgia", animation: "off" })
+    const mine = () => { const a = conf("appearance"); return JSON.stringify([a.theme, a.scheme, a.textFont, a.animation]) }
+    const myLook = mine()
+    for (const id of ["zen", "browser", "standard"]) { await apply(id); check(`bundles: ${id} applied, the user's theme, colours and fonts stay`, mine() === myLook, conf("appearance")) }
+    ;[code, r] = await api("POST", "bundles", { name: "Dracula desk", look: true })
+    const looked = JSON.parse(read(`.vaultite/bundles/${r.bundle.id}/appearance.json`))
+    check("bundles: saved with look, it says them (a bundle about looks)", code === 200 && looked.scheme === "dracula" && looked.textFont === "Georgia", looked)
+    await api("PATCH", "config/appearance", { scheme: "nord" })
+    await apply(r.bundle.id)
+    check("bundles: and applied, it sets them", conf("appearance").scheme === "dracula", conf("appearance"))
+    await api("DELETE", `bundles/${r.bundle.id}`)
+
+    // Each layout's tweaks (herdr's model): left, they're kept; applied again, back; fresh (Reset) forgets them.
+    const tweaksOf = (id: string) => { try { return JSON.parse(read(`.vaultite/bundles/tweaks/${id}.json`)) } catch { return null } }
+    await apply("zen")
+    await api("PATCH", "config/appearance", { tabBar: true })
+    await api("PATCH", "config/plugin/pages", { show: "list" })
+    zen = await entry("zen")
+    check("bundles: tweaked, the layout in use is still in use, changed", zen.inUse && zen.modified && zen.tweaked && [...zen.differs].sort().join() === "appearance:tabBar,setting:pages.show" && !tweaksOf("zen"), [zen.differs, zen.inUse, zen.modified, zen.tweaked, tweaksOf("zen")])
+    const tweakedSetup = setup()
+    ;[code, r] = await apply("browser", { fresh: false })
+    const t = tweaksOf("zen")
+    check("bundles: leaving it keeps its tweaks, as values", code === 200 && t?.set?.["appearance.json"]?.tabBar === true && t.set["plugins/pages/data.json"]?.show === "list" &&
+      Object.keys(t.set).length === 2 && !t.drop.length, t)
+    zen = await entry("zen")
+    check("bundles: listed, it has tweaks (not in use)", zen.tweaked === true && !zen.inUse && !zen.applied, zen)
+    ;[, r] = await api("GET", "bundles/zen")
+    check("bundles: its preview is with them; fresh, without", r.plan.settings.some((c: Any) => c.change === "setting:pages.show" && c.to === null) &&
+      !(await api("GET", "bundles/zen?fresh=1"))[1].plan.settings.some((c: Any) => c.change === "setting:pages.show"), r.plan.settings)
+    ;[code, r] = await apply("zen", { fresh: false })
+    zen = await entry("zen")
+    check("bundles: applied again, they're back", code === 200 && setup() === tweakedSetup && zen.modified && zen.inUse, [tweakedSetup, setup()])
+    ;[code, r] = await apply("zen", { fresh: false })
+    check("bundles: applied again while in use, nothing changes", code === 200 && r.plan.empty && setup() === tweakedSetup, r.plan.changes)
+    await apply("browser", { fresh: false })
+    await api("POST", "bundles/restore")
+    check("bundles: restored after leaving it, it's the tweaked setup, its tweaks kept", setup() === tweakedSetup && (await entry("zen")).applied && !!tweaksOf("zen"), setup())
+    ;[code] = await apply("zen")
+    zen = await entry("zen")
+    check("bundles: fresh (Reset), it's the bundle's and its tweaks are forgotten", code === 200 && !tweaksOf("zen") && !zen.modified && !zen.tweaked && conf("appearance").tabBar === false, zen)
+    await api("POST", "bundles/restore")
+    check("bundles: restored after a Reset, its tweaks are back", setup() === tweakedSetup && !!tweaksOf("zen"))
+    ;[code, r] = await api("POST", "bundles", { name: undefined })
+    check("bundles: saved without a name, it's \"My <the layout in use>\", and that layout is itself again", code === 200 && /^My Zen( \d)?$/.test(r.bundle.name) && !tweaksOf("zen") &&
+      (await entry(r.bundle.id))?.applied, r)
+    await api("DELETE", `bundles/${r.bundle.id}`)
+    check("bundles: deleted, its tweaks go too", !tweaksOf(r.bundle.id))
+
+    // Back to Standard: the way back from a layout that hides everything, with its tweaks; from Standard itself, clean.
+    await apply("standard")
+    await api("PATCH", "config/appearance", { rails: false })
+    await apply("zen", { fresh: false })
+    ;[code, r] = await api("POST", "ops/bundle.standard", {})
+    check("bundles: Back to Standard brings Standard with its tweaks, opening nothing", code === 200 && r.applied === "Standard" && r.open === null &&
+      (await entry("standard")).applied && conf("appearance").rails === false, [code, r?.open, conf("appearance")])
+    ;[code, r] = await api("POST", "ops/bundle.standard", {})
+    check("bundles: from Standard, it's Standard clean", code === 200 && !("rails" in conf("appearance")) && !tweaksOf("standard"), conf("appearance"))
+
+    // Packs and looks: listed by kind; applied over the layout, which stays the one in use.
+    write(".vaultite/bundles/kit/bundle.json", JSON.stringify({ name: "Kit", kind: "pack" }))
+    write(".vaultite/bundles/kit/plugins.json", JSON.stringify({ enabled: ["vim"] }))
+    write(".vaultite/bundles/tint/bundle.json", JSON.stringify({ name: "Tint" }))
+    write(".vaultite/bundles/tint/appearance.json", JSON.stringify({ scheme: "nord" }))
+    write(".vaultite/bundles/odd/bundle.json", JSON.stringify({ name: "Odd", kind: "theme" }))
+    const kinds = Object.fromEntries((await api("GET", "bundles"))[1].bundles.map((b: Any) => [b.id, b.kind]))
+    check("bundles: each has its kind: the app's layouts, a pack said, a restyle a look", kinds.standard === "layout" && kinds.zen === "layout" && kinds.browser === "layout" &&
+      kinds.kit === "pack" && kinds.tint === "look" && kinds.days === "layout", kinds)
+    check("bundles: a kind that isn't one is a problem", /kind/.test((await entry("odd")).problems.join()), (await entry("odd")).problems)
+    ;[code] = await apply("kit")
+    check("bundles: a pack applied, the layout stays the one in use", code === 200 && (conf("plugins").enabled ?? []).includes("vim") && (await entry("standard")).applied && !(await entry("kit")).applied)
+    ;[code] = await apply("tint")
+    check("bundles: a look applied, too", code === 200 && conf("appearance").scheme === "nord" && (await entry("standard")).applied)
+    await api("POST", "bundles/restore")
+    await api("POST", "bundles/restore")
+    for (const id of ["kit", "tint", "odd"]) await api("DELETE", `bundles/${id}`)
 
     // Trying one: Keep, or Restore to before it; applying another meanwhile restores to before the trial too.
     const uninstallAll = async () => { for (const id of Object.keys(conf("plugins-lock") ?? {})) await api("POST", "ops/plugin.uninstall", { id }) }

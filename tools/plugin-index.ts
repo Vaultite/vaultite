@@ -3,6 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { kindFrom } from "../core/bundlekind.ts"
 import { bundleBlocked, disclosuresOf, ICON_FILE, ICON_MAX, iconOf, PLACE, REPO, svgIcon } from "../core/pluginmeta.ts"
 import { compareVersions, tagVersion } from "../core/version.ts"
 
@@ -199,6 +200,7 @@ async function bundlesOf(get: Get, listed: string[], blocked: Record<string, str
       repo: full, ...(unit.dir ? { dir: unit.dir } : {}), commit, address: `${place}@${commit}`, stars: repo.stargazers_count ?? 0,
       updated: ((head!.commit as Any)?.committer as Any)?.date ?? null, topics: repo.topics ?? [], runsCode: brings || installs.length > 0, installs,
       ...(iconOf(m.icon) ? { icon: iconOf(m.icon) } : {}), ...(typeof m.tint === "string" && /^[a-z][a-z-]*$/.test(m.tint) ? { tint: m.tint } : {}),
+      kind: kindFrom(m, files.list),
       ...(files.pictures && paths.includes("preview.png") ? { preview: raw("preview.png") } : {}),
       ...(files.pictures && paths.includes("preview-dark.png") ? { previewDark: raw("preview-dark.png") } : {}),
     })

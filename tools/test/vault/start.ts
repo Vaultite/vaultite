@@ -56,12 +56,14 @@ export default async ($: VaultTest) => {
     await freshApp.state()
     check("new vault, Standard applied: what it had, no plugin's page added (Errors, People)", JSON.stringify(fs.readdirSync(path.join(fresh, "Dashboards"))) === '["Claude.md"]',
       fs.readdirSync(path.join(fresh, "Dashboards")))
-    const inUse = async () => ((await freshApp.host().call("GET", "bundles")) as { bundles: { id: string; inUse?: boolean }[] }).bundles.filter((b) => b.inUse).map((b) => b.id)
+    const inUse = async () => ((await freshApp.host().call("GET", "bundles")) as { bundles: { id: string; inUse?: boolean; modified?: boolean }[] }).bundles
+      .filter((b) => b.inUse).map((b) => `${b.id}${b.modified ? " modified" : ""}`)
     const was = await inUse()
-    await freshApp.host().call("PATCH", "config/appearance", { scheme: "nord" })
+    await freshApp.host().call("PATCH", "config/appearance", { tabBar: false })
     const changed = await inUse()
-    await freshApp.host().call("PATCH", "config/appearance", { scheme: null })
-    check("new vault: Standard is in use, until the setup changes", JSON.stringify(was) === '["standard"]' && !changed.length && JSON.stringify(await inUse()) === '["standard"]', [was, changed])
+    await freshApp.host().call("PATCH", "config/appearance", { tabBar: null })
+    check("new vault: Standard is in use, and changed, still, modified", JSON.stringify(was) === '["standard"]' && JSON.stringify(changed) === '["standard modified"]' &&
+      JSON.stringify(await inUse()) === '["standard"]', [was, changed])
     // Each of the app's bundles says every part any of them says (Standard the defaults): Zen, then Standard, is a new
     // vault's Standard again, every settings file as it was (key order aside).
     const sorted = (x: unknown): unknown => Array.isArray(x) ? x.map(sorted) : x && typeof x === "object"

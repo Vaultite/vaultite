@@ -116,7 +116,7 @@ check("Days: a mark saying which of Vaultite's plugins it installs, not that it 
 const PAGES = "Dashboards/" // (a bundle's pages, and its plugins', go in the vault's pages folder)
 const want = {
   "standard": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links"),
-  "days": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.pages.pinned[1] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.scheme === "flexoki",
+  "days": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.pages.pinned[1] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.density === "comfortable",
   // (a value that's the app's default is written as no key: paneTitles is off by default)
   "zen": (s) => s.appearance.rails === false && s.appearance.tabBar === false && !s.appearance.paneTitles && s.sidebars.left.includes("tabs:tabs") && s.appearance.snippets?.includes("Floating panes"),
   // (Zen's floating panes go with it; Days' Home, an imported bundle's page, is unpinned)

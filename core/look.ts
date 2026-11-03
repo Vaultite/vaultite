@@ -8,3 +8,7 @@ export const LOOK = {
   statusBar: null as string[] | null, statusBarMore: [] as string[], statusBarLeft: null as string[] | null, fileBar: null as string[] | null, sidebarHeader: null as string[] | null, pullActions: null as string[] | null,
 }
 export const LOOK_KEYS = Object.keys(LOOK) as (keyof typeof LOOK)[]
+/** The user's own of the look: a layout leaves them as they are (the app's say none; saving one leaves them out unless
+ *  asked), and only a bundle about looks (a theme, Glass) sets them. The rest is the layout's (structure, density). */
+export const PERSONAL_LOOK: readonly (keyof typeof LOOK)[] = ["theme", "scheme", "interfaceFont", "textFont", "monoFont", "animation", "quickTextSize",
+  "translucent", "translucentPages", "translucency", "pageTranslucency"]

@@ -38,6 +38,8 @@ export type BundleEntry = {
   runsCode: boolean
   installs: { id: string; name: string; source: string }[]
   icon?: string; tint?: string
+  /** A layout, a pack or a look (core/bundles.ts kindFrom; an index from before says none: a layout). */
+  kind: "layout" | "pack" | "look"
   /** Its card's pictures at that commit (light and dark), when it has them. */
   preview?: string; previewDark?: string
 }
@@ -81,6 +83,7 @@ export function readIndex(o: unknown): Index {
       installs: (Array.isArray(e.installs) ? e.installs : []).filter(isObj).map((x) => ({ id: str(x.id, 100), name: str(x.name, 100) || str(x.id, 100), source: str(x.source, 300) }))
         .filter((x) => /^[a-z][a-z0-9-]*$/.test(x.id)).slice(0, 50),
       ...(iconOf(e.icon) ? { icon: iconOf(e.icon)! } : {}), ...(/^[a-z][a-z-]*$/.test(str(e.tint, 30)) ? { tint: str(e.tint) } : {}),
+      kind: e.kind === "pack" || e.kind === "look" ? e.kind : "layout",
       ...(pic(e.preview) ? { preview: pic(e.preview)! } : {}), ...(pic(e.previewDark) ? { previewDark: pic(e.previewDark)! } : {}) })
   }
   const blocked: Record<string, string[]> = {}

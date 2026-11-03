@@ -9,8 +9,10 @@
   an `alwaysOn` one is never named. `npm run check` checks bundles name only what the app has.
 - Life OS and Agents are Vaultite/plugins' (`bundles/`, in the directory): a key these start to say, they say too (its
   `test_bundles.ts` fails otherwise).
-- Each says every part any of them says, Standard the defaults: every key of the look (`core/look.ts`) and each editor
-  (`editor.json`) or plugin setting one of them sets, so applying one leaves nothing of another (`npm run check` fails naming both otherwise).
+- They're layouts: each says every part any of them says, Standard the defaults: every key of the look but the user's
+  own (`core/look.ts` PERSONAL_LOOK: theme, colours, fonts... which none says) and each editor (`editor.json`) or plugin
+  setting one of them sets, so applying one leaves nothing of another (`npm run check` fails naming both otherwise).
+- Life OS and Agents are packs (`"kind": "pack"`), applied over the layout; Glass, a look.
 - The plugins one installs are pinned (commit and hash): `node tools/pin_bundles.ts` when Vaultite/plugins releases
   one (`--check` says which are behind). Tests read them from a copy pinned to stand-ins (`VAULTITE_BUNDLES`,
   tools/test/official.ts).

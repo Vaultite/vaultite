@@ -532,7 +532,7 @@ export function Bundles({ store, view, onView }: { store: Store; view?: Tab; onV
 /** What a listed bundle's card draws without its picture: the sketch of a bundle that says nothing but its look. */
 const sketchOf = (e: Listed): BundleInfo => ({ id: e.address, source: "vault", name: e.name, description: e.description, icon: e.icon ?? "package", tint: e.tint ?? "",
   author: e.author, sort: 0, theme: null, scheme: null, density: null, on: null, pinned: null, panels: null, home: null, code: [], official: true, from: e.address, guide: null,
-  hotkeys: false, preview: null, previewDark: null, problems: [] })
+  hotkeys: false, preview: null, previewDark: null, problems: [], kind: e.kind ?? "layout", tweaked: false })
 
 /** A bundle the directory lists, as a card: who made it and its stars under its name, and whether the user has it.
  *  Opening it is its import preview, pinned at the commit listed (an update says what changed). */
@@ -730,7 +730,7 @@ const askToRun = (b: BundleInfo, plan: Plan, trial = false) => plan.code.every((
 const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((x) => b.has(x))
 
 /** What applying a bundle changes here, each change ticked: Apply or Try it, without those unticked (then Save as
- *  "<Name> (mine)" keeps it so). The bundle in use whose setup changed since says so: Save changes, or Revert. */
+ *  "My <Name>" keeps it so). The bundle in use whose setup changed since says so: Save changes, or Revert (fresh). */
 export function BundlePreview({ id }: { id: string }) {
   const [p, setP] = useState<Preview | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -738,7 +738,9 @@ export function BundlePreview({ id }: { id: string }) {
   const [offAdded, setOffAdded] = useState(false)
   const [edits, setEdits] = useState<ReadonlySet<string> | null>(null)
   const l = useBundles()
-  useEffect(() => { previewOf(id).then((x) => setP(x as Preview), (e) => setError(errorText(e))) }, [id])
+  // (the one in use, changed: what Revert, applying it clean, puts back)
+  const drift = !!l?.bundles.find((x) => x.id === id)?.modified
+  useEffect(() => { previewOf(id, drift).then((x) => setP(x as Preview), (e) => setError(errorText(e))) }, [id, drift])
   if (error) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Can't open this bundle" sub={error} />
   if (!p) return <div aria-busy><SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const { bundle: b, plan } = p
@@ -758,11 +760,11 @@ export function BundlePreview({ id }: { id: string }) {
   }
   const apply = async (trial: boolean) => {
     if (code && !(await askToRun(b, chosen, trial))) return
-    await act(async () => { closeDetail(); await applyBundle(b, plan, { allowCode: code, offAdded, skip, trial }) }, `Couldn't ${trial ? "try" : "apply"} ${b.name}`)
+    await act(async () => { closeDetail(); await applyBundle(b, plan, { allowCode: code, offAdded, skip, trial, fresh: drift }) }, `Couldn't ${trial ? "try" : "apply"} ${b.name}`)
   }
   const fork = () => act(async () => { const n = await forkBundle(b, skip); replaceDetail(`bundle/${n.id}`); notify(`Saved ${n.name}`) }, "Couldn't save it")
   const save = () => act(async () => { const n = await saveChanges(b); notify(n.id === b.id ? `Saved the changes to ${b.name}` : `Saved as ${n.name}`) }, "Couldn't save the changes")
-  const mine = `${b.name} (mine)`
+  const mine = `My ${b.name}`
   return (
     <div data-bundle-preview={b.id}>
       <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : b.from ? `From ${place(b.from)}` : "Your bundle"} title={b.name} sub={b.description || undefined} />
