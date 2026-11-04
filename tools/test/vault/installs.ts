@@ -382,7 +382,7 @@ export default async ($: VaultTest) => {
       const bentry = (o: Any) => ({ description: "Made up.", author: "Bob Lee", stars: 1, updated: "2026-09-01T00:00:00Z", topics: ["vaultite-bundle"], runsCode: false, installs: [], ...o })
       fs.writeFileSync(BINDEX, JSON.stringify({ format: 1, generated: "2026-10-01T00:00:00Z", plugins: [], blocked: { "boblee/bad": ["*"] }, bundles: [
         bentry({ name: "Writing desk", description: "Pages for writing.", author: "repos", repo: "repos/desk", commit: at("v1.1.0"), stars: 9, icon: "pen", tint: "purple",
-          sketch: { scheme: "nord", panels: { left: ["files:files", "<b>"], right: "x" }, shape: { tabBar: false, glass: "frosted" }, home: [{ block: "inbox", wide: true }, {}] } }),
+          sketch: { scheme: "nord", panels: { left: ["files:files", "<b>"], right: "x" }, shape: { tabBar: false, glass: "frosted" }, home: [{ block: "inbox", view: "board" }, {}] } }),
         bentry({ name: "Lamps", repo: "boblee/fleet", dir: "bundles/lamps", commit: "c".repeat(40), runsCode: true, installs: [{ id: "tasks", name: "Tasks", source: "Vaultite/plugins/tasks" }] }),
         bentry({ name: "Bad", repo: "boblee/bad", commit: "b".repeat(40) }), { name: "No commit", repo: "x/y", commit: "abc" } ] }))
       process.env.VAULTITE_PLUGIN_INDEX = BINDEX
@@ -391,7 +391,7 @@ export default async ($: VaultTest) => {
       check("browse: the directory's bundles by stars, blocked and unreadable ones left out", bc === 200 && bo.available && bo.bundles.map((b: Any) => b.name).join() === "Writing desk,Lamps", bo)
       check("browse: each pinned at its commit, its sketch (checked), what it installs", wd.address === `repos/desk@${at("v1.1.0")}` && wd.source === "repos/desk" &&
         wd.sketch.scheme === "nord" && wd.sketch.theme === null && wd.sketch.panels.left.join() === "files:files" && !wd.sketch.panels.right.length && wd.sketch.shape.tabBar === false &&
-        wd.sketch.shape.glass === null && wd.sketch.home.length === 1 && wd.sketch.home[0].wide && !lamps.sketch && !("preview" in wd) && lamps.address === `boblee/fleet/bundles/lamps@${"c".repeat(40)}` && lamps.runsCode && lamps.installs[0].source === "Vaultite/plugins/tasks", bo.bundles)
+        wd.sketch.shape.glass === null && wd.sketch.home.length === 1 && wd.sketch.home[0].view === "board" && !lamps.sketch && !("preview" in wd) && lamps.address === `boblee/fleet/bundles/lamps@${"c".repeat(40)}` && lamps.runsCode && lamps.installs[0].source === "Vaultite/plugins/tasks", bo.bundles)
       check("browse: the user's import of one, and whether it's at the listed commit", wd.imported === "desk" && wd.current === false && lamps.imported === null, wd)
       ;[bc, bo] = await api("GET", "bundles/browse?q=lamps")
       check("browse: searched by its words", bo.bundles.length === 1 && bo.bundles[0].name === "Lamps", bo.bundles)

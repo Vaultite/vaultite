@@ -1,10 +1,9 @@
-// What a bundle's picture is drawn from (web/src/components/LayoutDrawings.tsx), read from its files: the server's
-// bundles (core/bundles.ts) and the directory's (tools/plugin-index.ts) alike. No Node.
-import { fenceLayout } from "./blocks.ts"
+// What a bundle's picture is drawn from (components/LayoutDrawings.tsx), for the server's bundles and the directory's.
+// No Node, no packages: the directory's index is built from a checkout of core/ and tools/ alone.
 import { blockName, scan } from "./sections.ts"
 import { readSidebars } from "./sidebars.ts"
 
-export type HomeBlock = { block: string; view: string | null; wide: boolean }
+export type HomeBlock = { block: string; view: string | null }
 export type Sketch = {
   /** The look it sets (appearance.json's). */
   theme: string | null; scheme: string | null
@@ -27,7 +26,7 @@ export function homeBlocks(text: string): HomeBlock[] {
     if (!name) continue
     const body = s.lines.slice(f.open + 1, f.close!).join("\n")
     const view = (name === "base" ? /^\s*-?\s*type:\s*['"]?(\w+)/m : /^view:\s*['"]?(\w+)/m).exec(body)?.[1] ?? null
-    out.push({ block: name, view: view === "kanban" ? "board" : view, wide: fenceLayout(f.info, body).wide })
+    out.push({ block: name, view: view === "kanban" ? "board" : view })
     if (out.length >= 6) break
   }
   return out

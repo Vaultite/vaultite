@@ -61,7 +61,7 @@ function readSketch(o: Record<string, unknown>): Sketch {
   return {
     theme: name(o.theme), scheme: name(o.scheme), panels: p && { left: keys(p.left), right: keys(p.right), collapsed: keys(p.collapsed) },
     shape: { tabBar: bool(s.tabBar), rails: bool(s.rails), floating: bool(s.floating), glass: s.glass === "sidebars" || s.glass === "pages" ? s.glass : null },
-    home: Array.isArray(o.home) ? o.home.filter(isObj).slice(0, 6).map((h) => ({ block: str(h.block, 60), view: name(h.view), wide: h.wide === true })).filter((h) => h.block) : null,
+    home: Array.isArray(o.home) ? o.home.filter(isObj).slice(0, 6).map((h) => ({ block: str(h.block, 60), view: name(h.view) })).filter((h) => h.block) : null,
   }
 }
 

@@ -35,7 +35,7 @@ function index(desk) {
     entry({ name: "Writing desk", description: "Pages for writing.", author: "Alice Park", repo: "qa/desk", commit: desk, stars: 9, icon: "pen", tint: "purple", kind: "look",
       sketch: { scheme: "dracula" } }),
     entry({ name: "Lamps", repo: "boblee/fleet", dir: "bundles/lamps", commit: "c".repeat(40), runsCode: true, installs: [{ id: "tasks", name: "Tasks", source: "Vaultite/plugins/tasks" }], kind: "pack",
-      sketch: { panels: { left: ["search:search", "terminal:sessions"], right: ["inbox:inbox"], collapsed: [] }, shape: { glass: "sidebars" }, home: [{ block: "inbox", view: null, wide: false }] } }),
+      sketch: { panels: { left: ["search:search", "terminal:sessions"], right: ["inbox:inbox"], collapsed: [] }, shape: { glass: "sidebars" }, home: [{ block: "inbox", view: null }] } }),
   ] }))
 }
 rmSync(`${REPOS}/qa`, { recursive: true, force: true })
