@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Browser asks what Chrome asks, rather than doing nothing**: a page with unsaved changes asks "Leave site?"
+  (before, the click went nowhere: claude.ai's artifact invitations), a site's own sign-in asks for a username and
+  password, prompt() asks, and Present in a call shares a screen or window through macOS's picker. A sign-in button
+  inside another site's frame ("Sign in with Google") opens its popup, as do popups a page opens blank and then sends
+  on, and blob: pages. A misspelled word's menu has its guesses and Look up; a no to opening another app isn't kept.
 - **Settings without Features**: the app's own plugins' settings are parts of the section they belong to (File
   explorer, Search and Pinned in a new Files section; Templates and the phone's keys over the keyboard in Editor;
   Review and Inbox in AI; File history, Errors and Terminal with updates in General), and Plugins, the last item,

@@ -41,8 +41,8 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
 - Managed extensions (extpolicy.ts) are named only in a policy file on this Mac: nothing in the app, a vault or the
   server turns one off or removes it (extstore.ts refuses too).
 - With a session `webRequest` listener Electron gives extensions' `chrome.webRequest` no events, so the preload
-  replaces it and extwebrequest.ts relays the engine's hooks. onAuthRequired is Electron's `login`, matched by the 401
-  before it; the app has no sign-in prompt, so no credentials shows the site's 401. Extensions never see the app's own
+  replaces it and extwebrequest.ts relays the engine's hooks. onAuthRequired is Electron's `login` (engine.ts `onLogin`), matched by the 401
+  before it; extensions answer first, then the user is asked (httpauth.ts). Extensions never see the app's own
   requests, nor extensions'.
 - Another browser's settings for an extension (extsettings.ts) are copied by a stand-in extension with its key, never
   the extension itself (its worker would act mid-copy): each chrome.storage area is a LevelDB folder a session of its
@@ -64,3 +64,6 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
 - A login its entry's tag doesn't free waits for the user's passkey, verified here (presence.ts), never for a yes an
   agent could give. A passkey is added only by a code the app shows, then Touch ID: agents have computer use, so a
   click proves nothing. The list is encrypted with the Keychain's key.
+- Electron leaves several of Chrome's questions to the app, doing nothing without one: a page asking to stay (web.ts
+  `mayLeave`, else the navigation's silently dropped), prompt() and a site's sign-in (sheet.ts), sharing the screen
+  (screenshare.ts). Input events never come from a frame of another site: web-preload.cjs tells its presses.

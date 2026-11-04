@@ -22,3 +22,5 @@ later(async () => {
   await import("./extensions.ts")
   await import("./extwebrequest.ts")
 })
+// (what Electron leaves to a browser to ask: rare, so never loaded at launch)
+later(() => Promise.all([import("./httpauth.ts"), import("./prompt.ts"), import("./screenshare.ts")]))

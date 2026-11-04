@@ -54,7 +54,7 @@ function pageArea(r: DOMRect) {
 
 const http = (u: string) => /^https?:\/\//i.test(u)
 /** What a tab may follow and name: the web, an extension's own pages (its options) and a page's source. */
-const ownPage = (u: string) => http(u) || /^(chrome-extension:\/\/|view-source:https?:\/\/)/i.test(u)
+const ownPage = (u: string) => http(u) || /^(chrome-extension:\/\/|(view-source|blob):https?:\/\/)/i.test(u)
 
 /** Whether tab `id` still shows a web page (else it went elsewhere: its page ends; gone, it closed or is in another
  *  workspace's tabs). */

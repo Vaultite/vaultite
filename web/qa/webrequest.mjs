@@ -3,8 +3,8 @@
 // (tools/fixtures/web-request-mv2, -mv3): Request bender's blocking listeners (Manifest V2) cancel one script, redirect
 // another and change a request's and a response's headers, while Shields still blocks the ad and counts it; Request
 // watcher's service worker (Manifest V3) sees every event of the page's requests with its tab, never the app's own,
-// has a blocking listener refused, and answers an HTTP sign-in (a wrong password asked once more shows the site's 401,
-// no loop). Turned off, an extension's listeners go with it; one turned on leaves the other's APIs in place.
+// has a blocking listener refused, and answers an HTTP sign-in (a wrong password asked once more, it gives up: the user's
+// asked, as in Chrome, and Cancel shows the site's 401, no loop). Turned off, an extension's listeners go with it; one turned on leaves the other's APIs in place.
 // WRITES: the throwaway vault only.
 //   node web/qa/webrequest.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -140,7 +140,13 @@ check("… a blocking listener refused in Manifest V3", w?.refused === true, w)
 // ---------- HTTP sign-in (onAuthRequired) ----------
 // (Chromium keeps a sign-in that worked for the site: the wrong one goes first)
 await openUrl(`${SITE}/auth-wrong`)
-check("onAuthRequired: a wrong password shows the site's 401, asked once more, no loop", await until(async () => (await inView(`${SITE}/auth-wrong`, "document.getElementById('out')?.textContent")) === "denied", 15000),
+const sheet = (code) => app.evaluate(({ BrowserWindow }, code) => {
+  const s = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().startsWith("data:text/html"))
+  return s ? s.webContents.executeJavaScript(code) : null
+}, code)
+check("onAuthRequired: a wrong password, asked once more, it gives up: the user's asked", /asks for a username and password/.test(await until(() => sheet("document.body.innerText"), 15000) ?? ""))
+await sheet(`document.getElementById("cancel").click()`)
+check("… whose Cancel shows the site's 401, no loop", await until(async () => (await inView(`${SITE}/auth-wrong`, "document.getElementById('out')?.textContent")) === "denied", 15000),
   await inView(`${SITE}/auth-wrong`, "document.body.innerText"))
 await openUrl(`${SITE}/auth`)
 check("… the right one signs in", await until(async () => (await inView(`${SITE}/auth`, "document.getElementById('out')?.textContent")) === "welcome alice", 15000),

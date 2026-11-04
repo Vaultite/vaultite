@@ -63,7 +63,9 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   fresh: boolean
   /** An agent's: out of sight it's parked (see `park`) rather than hidden, so it draws on. `parked`: it is now;
    *  `resting`: hidden there a while (`rest`), `woke` when it last woke. */
-  drawn?: boolean; parked?: boolean; resting?: boolean; woke?: number }
+  drawn?: boolean; parked?: boolean; resting?: boolean; woke?: number
+  /** When the user last pressed a key or the pointer in it, any frame (Chromium's user activation, for its opens). */
+  input: number }
 /** A site a profile keeps cookies for: whether it's signed in and who as, when we know how to ask, sites the same login covers (`with`),
  *  its last visit, and `other` when no page of it was opened (its cookies came with other sites' pages: trackers). */
 export type WebSite = { site: string; signed?: boolean; account?: string; more?: string[]; avatar?: string; with?: string[]; last?: number; other?: boolean }
@@ -97,8 +99,11 @@ function nextId() {
 const sessions = new Map<string, Session>()
 
 const web = (u: string) => /^https?:\/\//i.test(u)
-/** What a page may show: the web, and what a feature of the engine adds (an extension's own pages). */
-const shows = (u: string) => web(u) || engineOpens(u) || /^view-source:https?:\/\//i.test(u)
+/** What a page may show: the web (a blob: a page of it made too), and what a feature of the engine adds (an extension's
+ *  own pages). */
+const shows = (u: string) => web(u) || engineOpens(u) || /^(view-source|blob):https?:\/\//i.test(u)
+/** What window.open('') opens: a blank window its opener sends somewhere next (a sign-in's popup) or writes into. */
+const blankWindow = (u: string) => !u || /^about:blank([?#].*)?$/i.test(u)
 /** Images asked for with Save image to vault (their addresses), whose downloads go to the window instead. */
 const toVault = new Set<string>()
 const pageOf = (wc: WebContents) => [...pages.values()].find((p) => p.view.webContents === wc)
@@ -193,6 +198,8 @@ async function askPermission(profile: string, wc: WebContents, perm: string, det
   // app comes only here, never past otherApp)
   const scheme = perm === "openExternal" ? otherAppScheme(details.externalURL ?? "") : ""
   if (perm === "openExternal" && !scheme) return false
+  // (media with no camera or microphone is sharing the screen: its picker asks, browser/screenshare.ts)
+  if (perm === "media" && !details.mediaTypes?.length) return true
   const kinds = perm === "media" ? [...new Set((details.mediaTypes ?? []).map((t) => (t === "video" ? "camera" : "microphone")))] : [scheme ? `openExternal:${scheme}` : perm]
   if (!kinds.length || kinds.some((k) => !ASKED[k.split(":")[0]])) return false
   const site = siteOf(hostOfUrl(details.requestingUrl || wc.getURL()))
@@ -210,7 +217,8 @@ async function askPermission(profile: string, wc: WebContents, perm: string, det
         checkboxLabel: "Remember for this site", checkboxChecked: true }
       q = (win ? dialog.showMessageBox(win, box) : dialog.showMessageBox(box)).then((r) => {
         const allow = r.response === 0
-        if (r.checkboxChecked) for (const k of kinds) answer(profile, site, k, allow)
+        // (a no to opening another app isn't kept, as in Chrome: kept, the site's button would do nothing ever after)
+        if (r.checkboxChecked && (allow || !scheme)) for (const k of kinds) answer(profile, site, k, allow)
         return allow
       }).finally(() => asking.delete(key))
       asking.set(key, q)
@@ -234,6 +242,8 @@ function freeName(dir: string, name: string) {
 
 /** How long a click or key lets a page open a tab or window (Chromium's user activation). */
 const ACTIVATION_MS = 5000
+/** How long a blank window a page opened waits for its opener to send it somewhere before it ends. */
+const BLANK_MS = 30_000
 /** How near the window's left or right edge (CSS px) a page's pointer is told to the window. */
 const EDGE = 12
 /** How near its own top (CSS px) a page's pointer is told to the window (a hidden page bar): wide enough that a quick
@@ -345,6 +355,8 @@ ipcMain.on("vaultite:web:typed", (e, on) => {
   p.typed.set(key, on === true)
   sendState(p)
 })
+// A press in one of its frames from another site, whose input events never reach the page's (web-preload.cjs).
+ipcMain.on("vaultite:web:input", (e) => { const p = pageOf(e.sender); if (p) p.input = Date.now() })
 ipcMain.on("vaultite:web:nav", (e, dir) => { const p = pageOf(e.sender); if (p && !p.agent && !p.player) tell(p.win, { type: "nav", id: p.id, dir: dir < 0 ? -1 : 1 }) })
 
 // A page's settings, sandboxed ("in sub frames" only lets the engine's preloads reach an extension's page embedded in it);
@@ -403,7 +415,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   addPage(win, view)
   const p: Page = { id: nextId(), win, view, profile, tab, agent, drawn: agent, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(),
-    blankBehind: !!taken, fresh: true, typed: new Map() }
+    blankBehind: !!taken, fresh: true, typed: new Map(), input: 0 }
   pages.set(p.id, p)
   if (agent) park(p)
   const wc = view.webContents
@@ -427,18 +439,22 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   }
   wc.on("will-navigate", (e) => refuse(e, e.url))
   wc.on("will-redirect", (e) => refuse(e, e.url))
-  // Chrome's popup blocker (Electron has none): a page opens something only just after a click or key in it, else the
-  // user's told and may open it. An agent's opens are its own pages.
-  let input = 0, toldBlocked = 0
-  wc.on("input-event", (_e, i) => { if (["mouseDown", "rawKeyDown", "keyDown", "gestureTap", "touchStart"].includes(i.type)) input = Date.now() })
+  // A page asking to stay (unsaved changes): Chrome's question. Unanswered, Electron cancels the navigation without a word
+  // (claude.ai's invitations did nothing); an agent's page, nobody there to ask, leaves.
+  wc.on("will-prevent-unload", (e) => { if (mayLeave(wc, p.player ?? p.win, p.agent || pageHeld(p.id) || p.closing)) e.preventDefault() })
+  // Chrome's popup blocker (Electron has none): a page opens something only just after a click or key in it (or in one
+  // of its frames: web-preload.cjs), else the user's told and may open it. An agent's opens are its own pages.
+  let toldBlocked = 0
+  wc.on("input-event", (_e, i) => { if (["mouseDown", "rawKeyDown", "keyDown", "gestureTap", "touchStart"].includes(i.type)) p.input = Date.now() })
   wc.setWindowOpenHandler(({ url: to, disposition, features }) => {
     const agents = p.agent || openedByAgent(p.id)
-    if (!agents && Date.now() - input > ACTIVATION_MS) {
+    if (!agents && Date.now() - p.input > ACTIVATION_MS) {
       if (Date.now() - toldBlocked > 10_000 && web(to)) { toldBlocked = Date.now(); tell(p.win, { type: "blocked", id: p.id, tab: p.tab, url: to, profile }) }
       return { action: "deny" }
     }
-    input = 0
-    if (!shows(to)) { void otherApp(p, to); return { action: "deny" } }
+    p.input = 0
+    const blank = blankWindow(to)
+    if (!blank && !shows(to)) { void otherApp(p, to); return { action: "deny" } }
     // (a sized popup, signing in with another site, is a small window; else a tab behind, in front or (⇧-click) to the
     // side, handed the contents Chromium made so `window.opener` works)
     const popup = disposition === "new-window" && features.split(",").some((f) => !/^\s*(noopener|noreferrer)?\s*$/i.test(f))
@@ -451,13 +467,22 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     // (outliving its page, as a Chrome tab does: Electron closes what window.open made with its opener, which closed every
     // tab opened from a page with it)
     return { action: "allow", outlivesOpener: true, overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => {
-      const child = make(p.win, to, profile, "", { agent: agents, adopt: (o as { webContents: WebContents }).webContents, opener: p.id })
+      const child = make(p.win, blank ? "" : to, profile, "", { agent: agents, adopt: (o as { webContents: WebContents }).webContents, opener: p.id })
       pagesChanged(p.win)
       // (the window hands it to the tab it opens for it, `web:adopt`, or it ends)
-      if (!agents) {
+      const hand = (url: string) => {
         child.orphan = Date.now()
         setTimeout(() => { if (child.orphan !== undefined && pages.has(child.id)) end(child) }, RECLAIM_MS).unref()
-        tell(p.win, { type: "open", id: p.id, tab: p.tab, url: to, profile, how, page: child.id })
+        tell(p.win, { type: "open", id: p.id, tab: p.tab, url, profile, how, page: child.id })
+      }
+      // (a blank one is a tab once its opener sends it somewhere: a tab's an address. Never sent, it ends)
+      if (!agents && !blank) hand(to)
+      else if (!agents) {
+        const cw = child.view.webContents
+        const sent = (d: { url: string; isMainFrame: boolean }) => { if (d.isMainFrame && shows(d.url)) { cw.off("did-start-navigation", sent); child.target = d.url; hand(d.url) } }
+        cw.on("did-start-navigation", sent)
+        child.orphan = Date.now()
+        setTimeout(() => { if (child.orphan !== undefined && !child.tab && pages.has(child.id) && !shows(cw.isDestroyed() ? "" : cw.getURL())) end(child) }, BLANK_MS).unref()
       }
       return child.view.webContents
     } }
@@ -635,8 +660,17 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
         { type: "separator" },
       )
     }
-    if (c.isEditable) items.push({ role: "cut" }, { role: "copy" }, { role: "paste" }, { type: "separator" })
-    else if (c.selectionText) items.push({ role: "copy" }, { type: "separator" })
+    // (a misspelled word: its guesses first, as Chrome's)
+    if (c.isEditable && c.misspelledWord) {
+      const word = c.misspelledWord
+      items.push(...c.dictionarySuggestions.slice(0, 5).map((g): MenuItemConstructorOptions => ({ label: g, click: () => wc.replaceMisspelling(g) })),
+        ...(c.dictionarySuggestions.length ? [] : [{ label: "No guesses found", enabled: false }]),
+        { label: "Add to dictionary", click: () => { wc.session.addWordToSpellCheckerDictionary(word) } }, { type: "separator" })
+    }
+    const said = c.selectionText.trim().replace(/\s+/g, " "), quoted = said.length > 24 ? `${said.slice(0, 23)}…` : said
+    const lookUp: MenuItemConstructorOptions[] = MAC && said ? [{ label: `Look up “${quoted}”`, click: () => wc.showDefinitionForSelection() }] : []
+    if (c.isEditable) items.push({ role: "cut" }, { role: "copy" }, { role: "paste" }, ...lookUp, { type: "separator" })
+    else if (said) items.push({ role: "copy" }, ...lookUp, { type: "separator" })
     const h = wc.navigationHistory
     if (p.player) items.push({ label: "Back to its tab", click: () => fromPlayer(p, true) }, { type: "separator" })
     items.push(
@@ -676,7 +710,8 @@ function popupOf(p: Page, child: BrowserWindow) {
     if (web(to)) tell(p.win, { type: "open", id: p.id, tab: p.tab, url: to, profile: p.profile, how: "foreground" }); else void otherApp(p, to)
     return { action: "deny" }
   })
-  const close = () => { if (!child.isDestroyed()) child.close() }
+  cw.on("will-prevent-unload", (e) => { if (mayLeave(cw, child, false)) e.preventDefault() })
+  const close = () => { if (!child.isDestroyed()) { unloading.add(cw); child.close() } }
   p.view.webContents.once("destroyed", close)
   child.once("closed", () => { if (!p.view.webContents.isDestroyed()) p.view.webContents.off("destroyed", close) })
 }
@@ -749,10 +784,24 @@ function end(p: Page) {
 function unload(wc: WebContents) {
   if (wc.isDestroyed()) return Promise.resolve()
   const gone = new Promise<void>((done) => wc.once("destroyed", () => done()))
+  unloading.add(wc)
   wc.once("will-prevent-unload", (e) => e.preventDefault())
   wc.close({ waitForBeforeUnload: true })
   const hard = setTimeout(() => { if (!wc.isDestroyed()) wc.close() }, 3000)
   return gone.finally(() => clearTimeout(hard))
+}
+
+/** Contents closing as their tab closes (`unload`): they leave without asking. */
+const unloading = new WeakSet<WebContents>()
+/** Contents the app just reloaded (⌘R): asked "Reload site?" rather than "Leave site?". */
+const reloaded = new WeakMap<WebContents, number>()
+/** Whether a page asking to stay (its beforeunload) leaves: at once with nobody to ask (`quiet`, closing), else as the
+ *  user answers Chrome's question, the page waiting (Electron takes the answer synchronously). */
+function mayLeave(wc: WebContents, win: BaseWindow, quiet: boolean) {
+  if (quiet || unloading.has(wc) || win.isDestroyed()) return true
+  const reload = Date.now() - (reloaded.get(wc) ?? 0) < 2000
+  return dialog.showMessageBoxSync(win, { type: "question", message: reload ? "Reload site?" : "Leave site?", detail: "Changes you made may not be saved.",
+    buttons: [reload ? "Reload" : "Leave", "Cancel"], defaultId: 0, cancelId: 1, noLink: true }) === 0
 }
 
 /** Before the app quits: every page unloaded, as its tab's close would, its tab kept (closing: not a close by its own
@@ -831,7 +880,7 @@ function go(p: Page, action: string, url?: string): unknown {
   if (action === "back") { if (!canBack(p)) return false; h.goBack(); return true }
   else if (action === "forward") { if (!h.canGoForward()) return false; h.goForward(); return true }
   // (a page that crashed for good starts a renderer again)
-  else if (action === "reload") wc.reload()
+  else if (action === "reload") { reloaded.set(wc, Date.now()); wc.reload() }
   // The user chose to go on past its certificate warning: that host with that certificate, in these logins, this session.
   else if (action === "allow-cert" && p.cert && p.error) { unsafeOk.add(`${p.profile} ${p.cert.host} ${p.cert.fp}`); void wc.loadURL(p.cert.url).catch(() => {}) }
   // (its source in a tab of its own: the window opens it, in its container)
@@ -843,7 +892,7 @@ function go(p: Page, action: string, url?: string): unknown {
     const k = pastsOf().get(p.tab)
     if (k) { pastsOf().set(tabOf(url), { ...k, at: Date.now() }); pastTimer ??= setTimeout(savePasts, 2000) }
   }
-  else if (action === "hard-reload") wc.reloadIgnoringCache()
+  else if (action === "hard-reload") { reloaded.set(wc, Date.now()); wc.reloadIgnoringCache() }
   // (a page's DevTools are a window of their own: a view has nowhere to dock them)
   else if (action === "devtools") { if (wc.isDevToolsOpened()) wc.closeDevTools(); else wc.openDevTools({ mode: "detach" }) }
   else if (action === "zoom-in" || action === "zoom-out" || action === "zoom-reset") zoomSite(p, action === "zoom-reset" ? 0 : action === "zoom-in" ? 1 : -1)

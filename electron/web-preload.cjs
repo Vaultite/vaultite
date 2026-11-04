@@ -1,5 +1,6 @@
 // What a web page tells electron/web.ts: first paint (the app's colour till then, not white), window size, ⌥-click on
-// a link; from every frame, keys it left alone, mouse back/forward, typed input it holds. Isolated world, no Node.
+// a link; from every frame, keys it left alone, mouse back/forward, typed input it holds, presses, prompt(). Isolated
+// world, no Node.
 "use strict"
 const { contextBridge, ipcRenderer, webFrame } = require("electron")
 
@@ -19,6 +20,23 @@ addEventListener("keydown", (e) => {
     if (!e.defaultPrevented) ipcRenderer.send("vaultite:web:key", { key: e.key, code: e.code, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey })
   })
 }, true)
+// A press in a frame from another site ("Sign in with Google"): what it opens is the user's doing, as Chrome counts it.
+// The main frame's own presses web.ts hears as input events, which never come from such a frame.
+if (!process.isMainFrame) {
+  let told = -1e9
+  for (const ev of ["pointerdown", "keydown", "touchstart"]) addEventListener(ev, (e) => {
+    if (!e.isTrusted || e.timeStamp - told < 250) return
+    told = e.timeStamp
+    ipcRenderer.send("vaultite:web:input")
+  }, true)
+}
+// prompt(), which Electron answers null at once: the app's question box, the page waiting as in Chrome.
+try {
+  contextBridge.executeInMainWorld({ func: (ask) => {
+    const prompt = { prompt(message = "", value = "") { return ask(String(message), String(value)) } }.prompt
+    Object.defineProperty(window, "prompt", { value: prompt, writable: true, configurable: true, enumerable: true })
+  }, args: [(message, value) => ipcRenderer.sendSync("vaultite:web:prompt", message.slice(0, 2000), value.slice(0, 2000))] })
+} catch { /* Electron's own */ }
 // (a page never keeps them, as in Chrome. Chromium's own step through the page's history is stopped: with the app's,
 // one press went two places)
 addEventListener("mouseup", (e) => {

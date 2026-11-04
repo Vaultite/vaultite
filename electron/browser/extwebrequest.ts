@@ -1,7 +1,7 @@
 // chrome.webRequest for extensions: Electron gives them no events beside a session's own listeners (the engine's), so
 // its request hooks relay them to what extensions.preload.cjs adds; onAuthRequired comes from Electron's `login`.
-import { app, type Session, type WebFrameMain } from "electron"
-import { allPages, onRequest, requestsChanged, type RequestAnswer, type RequestDetails, type RequestEvent } from "./engine.ts"
+import { type Session, type WebFrameMain } from "electron"
+import { allPages, onLogin, onRequest, requestsChanged, type RequestAnswer, type RequestDetails, type RequestEvent } from "./engine.ts"
 import { addCalls, onUnlisten, permsOf, workerOf, type Ctx } from "./extapi.ts"
 import { dirOf, manifestOf } from "./extstore.ts"
 
@@ -242,9 +242,9 @@ function challenged(d: RequestDetails) {
   if (challenges.size > 50) challenges.delete(challenges.keys().next().value!)
 }
 
-app.on("login", (e, wc, det, info, callback) => {
-  const s = wc?.session
-  if (!s || !of(s, "onAuthRequired").length) return
+onLogin((wc, det, info) => {
+  const s = wc.session
+  if (!of(s, "onAuthRequired").length) return undefined
   const k = `${wc.id} ${det.url}`
   const d: RequestDetails = challenges.get(k) ?? {
     id: -++seq, url: det.url, method: "GET", webContentsId: wc.id, resourceType: det.isRequestForNavigation ? "mainFrame" : "other", referrer: "",
@@ -252,8 +252,6 @@ app.on("login", (e, wc, det, info, callback) => {
     responseHeaders: Object.fromEntries(Object.entries(det.responseHeaders ?? {}).map(([n, v]) => [n, ([] as string[]).concat(v)])),
   }
   const r = relay("onAuthRequired", d, s, { scheme: info.scheme, realm: info.realm || undefined, challenger: { host: info.host, port: info.port }, isProxy: info.isProxy })
-  if (!r) return
-  // (the app has no prompt of its own: without credentials the page shows the site's 401, as without extensions)
-  e.preventDefault()
-  void r.then((a) => { if (a?.authCredentials) callback(a.authCredentials.username, a.authCredentials.password); else callback() })
-})
+  // (none given, as Chrome: the user's asked next, httpauth.ts; cancelled: the site's 401)
+  return r?.then((a) => a?.authCredentials ?? (a?.cancel ? "cancel" : null))
+}, 0)

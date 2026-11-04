@@ -1,6 +1,6 @@
 // The browser engine's hooks: each feature (blocking, extensions, history...) adds itself here for every web session
 // and page as they're made, so web.ts makes them once and doesn't know the features. The app hands it its windows.
-import type { BaseWindow, OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
+import type { AuthInfo, AuthenticationResponseDetails, BaseWindow, OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
 
 /** One of the app's windows: its page is `webContents`, the Browser's pages are views in it. */
 export type EngineWindow = BaseWindow & { readonly webContents: WebContents }
@@ -172,6 +172,32 @@ function answer(all: RequestHook[], d: RequestDetails, s: Session, done: (r: Req
   }
   next()
 }
+// ---------- a site's HTTP sign-in (401, 407): Electron's one `login` event (httpauth.ts), answered by features in turn ----------
+
+export type Credentials = { username: string; password: string }
+/** A feature's answer to a sign-in: credentials, "cancel" (the site's 401), or null for the next one to try; undefined,
+ *  it isn't asked. */
+type LoginHook = (wc: WebContents, details: AuthenticationResponseDetails, info: AuthInfo) => Promise<Credentials | "cancel" | null> | undefined
+const loginHooks: { fn: LoginHook; order: number }[] = []
+/** `fn` answers web pages' sign-ins, in `order` (extensions' first, then the user's own answer). */
+export function onLogin(fn: LoginHook, order: number) {
+  loginHooks.push({ fn, order })
+  loginHooks.sort((a, b) => a.order - b.order)
+}
+/** A web page's sign-in, the hooks in turn: credentials, or null (the site's own 401 page, as after Cancel in Chrome). */
+export async function answerLogin(wc: WebContents, details: AuthenticationResponseDetails, info: AuthInfo): Promise<Credentials | null> {
+  for (const h of loginHooks) {
+    try {
+      const c = await h.fn(wc, details, info)
+      if (c === "cancel") return null
+      if (c) return c
+    } catch (err) { console.error("vaultite: a browser feature's sign-in failed:", err) }
+  }
+  return null
+}
+/** Whether `s` is a web pages' session (a profile's, a container's), not the app's own. */
+export const webSessionMade = (s: Session) => [...made.values()].includes(s)
+
 // ---------- what loads only once the browser is used ----------
 
 const loaders: (() => Promise<unknown>)[] = []
