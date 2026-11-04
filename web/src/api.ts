@@ -54,7 +54,7 @@ export { moves } from "@/core/animation"
 export { pickIcon } from "@/components/IconPicker"
 export { BrandIcon, GitHubIcon } from "@/core/icons"
 // The tabs and splits as a whole (Workspaces keeps one per workspace).
-export { getWorkspace as getTabLayout, onWorkspaceChange as onTabLayoutChange, replaceWorkspace as setTabLayout, mineInto as withMyTabs } from "@/core/workspace"
+export { getWorkspace as getTabLayout, onWorkspaceChange as onTabLayoutChange, replaceWorkspace as setTabLayout, mineInto as withMyTabs, tabsInWorkspace } from "@/core/workspace"
 export { type Workspace as TabLayout } from "../../core/layout.ts"
 export { startedFresh } from "@/core/workspace"
 // When each tab was last on screen, which archives unpinned ones unseen a while (Tabs' setting): Workspaces carries it.
@@ -109,7 +109,7 @@ export { blockFor, fileRowsChanged, kindFolder, offText, pluginById } from "@/co
 export { besideActive, newNoteFolder } from "@/core/conventions"
 // How a file looks where it's listed (its `icon:` and `tint:`, or its plugin's), and pages:
 // a file a plugin draws as one (a dashboard).
-export { fileAt, iconOf, isPage, namedIcon, offPlugin, pageOf, tintOf } from "@/core/pages"
+export { fileAt, iconOf, isListedPage, isPage, namedIcon, offPlugin, pageOf, tintOf } from "@/core/pages"
 // Attachments (a pasted image, a recording): the folder they go in for a note, and saving files there as embeds.
 export { attachmentFolder, pasteAttachments } from "@/core/conventions"
 export {

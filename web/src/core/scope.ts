@@ -27,6 +27,9 @@ const subscribe = (f: () => void) => {
 /** Redraws when the current workspace or what's kept in it changes; answers a number that changes then. */
 export const useWorkspaceVersion = () => useSyncExternalStore(subscribe, () => `${version}:${workspaceHost() ? 1 : 0}`)
 
+/** Whether a plugin keeping workspaces is on, live. */
+export const useWorkspacesOn = () => useSyncExternalStore(subscribe, () => !!workspaceHost())
+
 /** The plugin keeping workspaces, as the phone's tab list pages through them (null: none). */
 export function workspaces(): Pick<WorkspaceHost, "current" | "list" | "switchTo" | "menu"> | null {
   return workspaceHost()

@@ -1560,6 +1560,27 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     ws.seenSince(copy(old)) && !ws.seenSince(copy(Date.now() - H)) && !ws.seenSince(ws.getWorkspace()))
   ws.setArchiveAfter(0)
   check("archive: off, nothing is worth a write", !ws.seenSince(copy(old)))
+  // (a layout turning archiving on: nothing goes at once by the stamps of the last time it was on)
+  ws.setArchiveAfter(24 * H)
+  const dueNow = ws.archivingDue()
+  mem.set("vaultite.tabs.archiving", String(Date.now() - 25 * H)); ws.setArchiveAfter(24 * H)
+  check("archive: none due till it's been on as long as the setting", !dueNow && ws.archivingDue())
+  ws.setArchiveAfter(0)
+
+  // ---- Workspaces holding the tabs (a layout turning it on and off): this device's own come back as they were ----
+  const stub = g.localStorage
+  g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) }
+  put([T("a", undefined, { group: "g1" }), S("tb", row("s0", [b, col("s1", [c, d], [0.7, 0.3])], [0.25, 0.75]), "c", { group: "g1" }), T("e", undefined, { group: "g2" })], "tb",
+    { groups: [{ id: "g1", name: "Trip", color: "teal" }, { id: "g2", name: "Later", color: "red", collapsed: true }] })
+  const mine = JSON.stringify(ws.getWorkspace())
+  const took = ws.tabsInWorkspace(true), again = ws.tabsInWorkspace(true)
+  put([T("w")], "tw")
+  check("workspaces: held, what's shown is saved apart; this device's own stay as they were", took && !again && mem.get("vaultite.tabs") === mine
+    && JSON.parse(mem.get("vaultite.tabs.workspace") ?? "{}").active === "tw", [took, again])
+  ws.tabsInWorkspace(false)
+  check("workspaces: let go, this device's tabs, groups, splits, sizes and focus come back exactly", same(ws.getWorkspace(), JSON.parse(mine)) && !mem.has("vaultite.tabs.workspace"),
+    [ws.getWorkspace(), mine])
+  g.localStorage = stub
 }
 
 // ---------- Browser: a tab owns its page (electron/webpages.ts) ----------

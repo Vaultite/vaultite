@@ -1,7 +1,7 @@
 // Pinned's settings sheet: the pinned pages to reorder, then the pages not pinned, then archived ones; unpinning only
 // hides a page. It's the sidebar's menu again, here so the list is findable at all.
 import { FileText, GripVertical } from "lucide-react"
-import { cn, currentWorkspace, fileAt, Group, iconOf, isPage, offPlugin, pluginById, Section, SortableList, stem, Switch, tintOf, useEnabled, useWorkspaceVersion, type Store } from "@vaultite"
+import { cn, currentWorkspace, fileAt, Group, iconOf, isListedPage, isPage, offPlugin, pluginById, Section, SortableList, stem, Switch, tintOf, useEnabled, useWorkspaceVersion, type Store } from "@vaultite"
 import { currentPins, movePinned, pin } from "./types"
 
 export function PinnedSettings({ store }: { store: Store }) {
@@ -13,7 +13,7 @@ export function PinnedSettings({ store }: { store: Store }) {
   const archived = (p: string) => !!fileAt(files, p)?.archived
   const shown = pinned.filter((p) => fileAt(files, p) && !archived(p))
   const at = (p: string) => { const i = pinned.indexOf(p); return i < 0 ? Infinity : i }
-  const all = files.filter((f) => isPage(f.path, store)).map((f) => f.path).sort((a, b) => at(a) - at(b) || a.localeCompare(b))
+  const all = files.filter((f) => isListedPage(f.path, store)).map((f) => f.path).sort((a, b) => at(a) - at(b) || a.localeCompare(b))
   const rest = all.filter((p) => !pinned.includes(p) && !archived(p))
   const gone = [...pinned.filter((p) => fileAt(files, p) && archived(p) && !all.includes(p)), ...all.filter(archived)]
   const row = (p: string, sortable: boolean) => {

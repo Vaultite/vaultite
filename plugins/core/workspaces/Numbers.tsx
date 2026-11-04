@@ -4,10 +4,10 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown } from "lucide-react"
 import { Mark as Look } from "./Mark"
-import { cn, colorVar, commandKeys, getStore, menuFor, onTabLayoutChange, sidebarsChanged, useDismiss, useDrag, useDropHit, useDropTarget, type DragItem, type SidebarCtx, type Store } from "@vaultite"
+import { cn, colorVar, commandKeys, getStore, menuFor, onTabLayoutChange, sidebarsChanged, tabsInWorkspace, useDismiss, useDrag, useDropHit, useDropTarget, type DragItem, type SidebarCtx, type Store } from "@vaultite"
 import {
   cycle, emit, getRenaming, label, leaving, lit as litNow, lookOf, named, patch, saveTabs, saveTabsSoon, savePending, sendTo, setRenaming, slotMenu, slots,
-  SLOTS, switchTo, sync, used, useVersion, type Sent,
+  SLOTS, switchTo, sync, tookTabs, used, useVersion, type Sent,
 } from "./state"
 
 // ---------- the header ----------
@@ -154,6 +154,8 @@ export function Background({ store }: { store: Store }) {
   }, [tint])
   useSwipes()
   useEffect(() => {
+    // (before the first sync: this device's own tabs are set aside, not overwritten, till Workspaces is off again)
+    if (tabsInWorkspace(true)) tookTabs()
     const off = onTabLayoutChange(saveTabsSoon)
     // A reload or a closed window right after a change: saved on the way out (leaving).
     addEventListener("pagehide", leaving)

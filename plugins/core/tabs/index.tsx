@@ -32,6 +32,60 @@ function Marks({ id }: { id: string }) {
 
 const isBlankTab = (t: Tab) => { const ps = panesOf(t); return ps.length === 1 && ps[0].to === "new" }
 
+type Part = Tab["root"]
+type Split = Extract<Part, { kids: Part[] }>
+const isSplit = (n: Part): n is Split => "kids" in n
+/** A split's parts laid out in it (its floating panes aren't: they're drawn after the map). */
+const tiledKids = (n: Split) => n.kids.flatMap((k, i) => (!isSplit(k) && k.float ? [] : [{ k, size: n.sizes[i] ?? 1 }]))
+/** How many lines a part takes stacked as it is. */
+const linesOf = (n: Part): number => !isSplit(n) ? 1 : n.dir === "col" ? tiledKids(n).reduce((a, { k }) => a + linesOf(k), 0) : Math.max(1, ...tiledKids(n).map(({ k }) => linesOf(k)))
+/** At most this many lines: a column taller than what's left is drawn side by side instead. */
+const MAX_LINES = 3
+/** How many lines a split tab's row takes in the panel. */
+const stacks = (n: Part, room = MAX_LINES): number => !isSplit(n) ? 1
+  : n.dir === "col" && linesOf(n) <= room ? linesOf(n) : Math.max(1, ...tiledKids(n).map(({ k }) => stacks(k, room)))
+
+/** A split tab's panes in the shape of its split, a mini-map: a row's side by side, a column's stacked, each its share
+ *  of the room (a narrow one just its icon); floating ones after it, as icons. A click on one focuses it, a press drags it. */
+function SplitMap({ t, active, info }: { t: Tab; active: boolean; info: (x: Tab | Pane) => TabInfo }) {
+  const floats = panesOf(t).filter((p) => p.float)
+  const cell = (p: Pane, size: number, icon = false) => {
+    const pi = info(p), on = active && p.id === t.focus
+    const mark = <Badged on={pi.badge}><pi.icon className={cn("size-4 shrink-0", pi.tint ? undefined : on ? "text-primary" : "text-muted-foreground", pi.iconClassName)} strokeWidth={2} style={pi.tint ? { color: pi.tint } : undefined} /></Badged>
+    if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} className="flex h-5.5 shrink-0 items-center rounded-[5px] px-1 ring-1 ring-foreground/10 ring-inset">{mark}</span>
+    // (too narrow for its name: its icon alone, in the middle)
+    return (
+      <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} style={{ flex: `${size} 1 0` }} className="@container flex h-5.5 min-w-0">
+        <span className="flex w-full min-w-0 items-center gap-2 px-1 @max-[52px]:justify-center">
+          {mark}
+          <span className={cn("min-w-0 flex-1 overflow-hidden fade-end @max-[52px]:hidden", active && !on && "font-normal text-muted-foreground")}>{pi.label}</span>
+        </span>
+      </span>
+    )
+  }
+  const draw = (n: Part, size: number, room: number): React.ReactNode => {
+    if (!isSplit(n)) return cell(n, size)
+    const stacked = n.dir === "col" && linesOf(n) <= room
+    return (
+      <span key={n.id} style={{ flex: `${size} 1 0` }} className={cn("flex min-w-0", stacked ? "flex-col" : "items-stretch")}>
+        {tiledKids(n).map(({ k, size: s }, j) => (
+          <span key={k.id} style={stacked ? undefined : { flex: `${s} 1 0` }}
+            className={cn("flex min-w-0 items-center", j && (stacked ? "border-t border-foreground/10" : "border-l border-foreground/10"))}>
+            {draw(k, 1, stacked ? linesOf(k) : room)}
+          </span>
+        ))}
+      </span>
+    )
+  }
+  return (
+    // (framed as a small window, its icons in line with the other rows')
+    <span data-split-map className="-ml-1 flex w-full min-w-0 items-center gap-1">
+      <span className={cn("flex min-w-0 flex-1 overflow-hidden rounded-[5px] ring-1 ring-inset", active ? "ring-foreground/20" : "ring-foreground/10")}>{draw(t.root, 1, MAX_LINES)}</span>
+      {floats.map((p) => cell(p, 0, true))}
+    </span>
+  )
+}
+
 /** A tab's row. A split tab's shows each pane, side by side: a click on one focuses it, and a pane dragged out of it
  *  becomes a tab of its own where it's let go (or goes into another tab, held on its row a moment: Rex's). */
 function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | Pane) => TabInfo; only: boolean
@@ -61,19 +115,7 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
     const half = split ? halfOf(e) : undefined, p = half ? paneById(half) : undefined
     if (p) startDrag(e, { from: "pane", pane: p.id, to: p.to, label: info(p).label }); else dragTab(e, t)
   }
-  const label = split ? (
-    <span className="flex min-w-0 items-center">
-      {ps.map((p, k) => {
-        const pi = info(p), on = active && p.id === t.focus
-        return (
-          <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} className={cn("flex min-w-0 flex-1 basis-0 items-center gap-2", k && "ml-2 border-l-[0.5px] border-border pl-2")}>
-            <Badged on={pi.badge}><pi.icon className={cn("size-4 shrink-0", pi.tint ? undefined : on ? "text-primary" : "text-muted-foreground", pi.iconClassName)} strokeWidth={2} style={pi.tint ? { color: pi.tint } : undefined} /></Badged>
-            <span className={cn("min-w-0 flex-1 overflow-hidden fade-end", active && !on && "font-normal text-muted-foreground")}>{pi.label}</span>
-          </span>
-        )
-      })}
-    </span>
-  ) : i.label
+  const map = split ? <SplitMap t={t} active={active} info={info} /> : null
   const dragging = item?.tab === t.id || (picked && item?.tabs) || (!!t.group && item?.group === t.group)
   return (
     // Dragged like a tab in the bar: along the list (in or out of a group), onto a pane (its edge splits, its middle
@@ -82,8 +124,8 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
       className={cn("relative", dragging && "opacity-50")}
       onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
       <SidebarRow data-open-tab={t.id} data-select-key={t.id} data-split={split ? "" : undefined} {...selectedAttr(picked)} icon={split ? undefined : i.icon} iconClassName={i.iconClassName} tint={i.tint}
-        badge={split ? undefined : i.badge} mark={split ? undefined : i.mark} label={label} tip={split ? ps.map((p) => info(p).label).join(" | ") : undefined} open active={active} more
-        className={cn(line && "ml-3.5", lit && !active && "bg-foreground/[0.08]")}
+        badge={split ? undefined : i.badge} mark={split ? undefined : i.mark} label={map ?? i.label} labelClassName={map ? "[mask-image:none]" : undefined} tip={split ? ps.map((p) => info(p).label).join(" | ") : undefined} open active={active} more
+        className={cn(line && "ml-3.5", lit && !active && "bg-foreground/[0.08]", map && stacks(t.root) > 1 && "h-auto min-h-7 py-[3px]")}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
         onClick={click}>
         <Marks id={`tab:${t.id}`} />

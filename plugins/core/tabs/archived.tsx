@@ -18,11 +18,12 @@ const afterNow = (v: unknown) => AFTER[String(v)] ?? 0
 /** Archives what's due while the window is in view: a minute after it opens (once its workspace's tabs are in place),
  *  then every few minutes and on coming back to it. Looking at the window stamps the tabs on screen as seen. */
 export function Archiver({ store }: { store: Store }) {
-  const after = afterNow(settings.use().archive_after)
+  // (null till the setting is read: told only then, or the clock since it's been on would restart)
+  const set = settings.use(true), after = set ? afterNow(set.archive_after) : null
   const info = useTabLabels(store)
   const infoRef = useRef(info)
   useEffect(() => { infoRef.current = info })
-  useEffect(() => { setArchiveAfter(after) }, [after])
+  useEffect(() => { if (after !== null) setArchiveAfter(after) }, [after])
   useEffect(() => {
     if (!after) return
     let ready = false

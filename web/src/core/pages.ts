@@ -82,6 +82,11 @@ export function pageView(path: string, store: Store | null = getStore(), disable
 export function isPage(path: string, store: Store | null = getStore()) {
   return !!pageView(path, store)
 }
+/** A page offered to pin where the pages are listed (Pinned's): not one of a dated run (PageView `series`). */
+export function isListedPage(path: string, store: Store | null = getStore()) {
+  const v = pageView(path, store)
+  return !!v && !v.series
+}
 
 /** A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined. */
 export const pageOf = (store: Store | null | undefined, plugin: string, name: string) =>

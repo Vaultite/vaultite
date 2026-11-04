@@ -6,7 +6,7 @@ what was there becomes a tab of its own; drop it on a pane's edge: a split. A pa
 dragged out of a split's row) is a tab of its own; held a second over a row, that tab opens to drop into. Ids are
 stable: a tab's (`t…`) and a pane's (`p…`, or a `t…` one from before tabs held panes).
 
-The Tabs panel lists the open tabs (a split tab one joined row, both titles), so the tab bar can be off: vertical tabs. One switch moves the tabs
+The Tabs panel lists the open tabs (a split tab one row, its panes drawn in the shape of its split), so the tab bar can be off: vertical tabs. One switch moves the tabs
 between the two (the palette's Show tabs in the sidebar / Show tabs on top, or right-click the tab bar or the panel): in
 the sidebar, appearance `tabBar` is false and `tabs:tabs` is at the top of the left sidebar (sidebars.json, or the
 workspace's `sidebars`); on top, `tabBar` is true and the panel is hidden. The tabs end in a New tab row: a new tab at

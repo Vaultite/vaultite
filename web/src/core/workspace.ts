@@ -17,6 +17,11 @@ const POPOUT = new URLSearchParams(location.search).get("popout")
 export const isPopout = () => !!POPOUT
 export const popoutId = () => POPOUT
 const KEY = "vaultite.tabs"
+/** While Workspaces holds the tabs: theirs as last shown here (the app starts on them), apart from this device's own
+ *  (KEY), which come back as they were when it lets go (tabsInWorkspace). */
+const HELD = "vaultite.tabs.workspace"
+let held = (() => { try { return localStorage.getItem(HELD) !== null } catch { return false } })()
+const tabKey = () => (held ? HELD : KEY)
 if (POPOUT) document.documentElement.dataset.popout = "" // (index.css: the lights' room)
 const tabStore = () => localStorage
 
@@ -35,7 +40,7 @@ function older(t: Record<string, unknown>): unknown {
 }
 function load(): Workspace {
   try {
-    const t = JSON.parse(tabStore().getItem(KEY) ?? "null") as Record<string, unknown> | null
+    const t = JSON.parse(tabStore().getItem(tabKey()) ?? "null") as Record<string, unknown> | null
     let w = t ? clean(older(t)) : null
     // (a pop-out opened just now has its tabs handed over: popOut)
     if (POPOUT && !w?.windows?.some((x) => x.id === POPOUT)) {
@@ -99,8 +104,8 @@ export function set(next: TabList) {
 /** Kept on this device, this window's list put into what's kept (another window's are theirs). */
 function save() {
   try {
-    const kept = clean(JSON.parse(tabStore().getItem(KEY) ?? "null"))
-    tabStore().setItem(KEY, JSON.stringify(kept ? mineInto(kept) : state))
+    const kept = clean(JSON.parse(tabStore().getItem(tabKey()) ?? "null"))
+    tabStore().setItem(tabKey(), JSON.stringify(kept ? mineInto(kept) : state))
   } catch { /* private mode */ }
 }
 /** Workspace `w` (saved elsewhere: another window, another device) with this window's own tabs: the main window's list
@@ -113,7 +118,7 @@ export function mineInto(w: Workspace): Workspace {
 }
 // Another window of this device saved: its tabs are taken in (this one's stay as they are).
 addEventListener("storage", (e) => {
-  if (e.key !== KEY || !e.newValue || replacing) return
+  if (e.key !== tabKey() || !e.newValue || replacing) return
   try { const w = clean(JSON.parse(e.newValue)); if (w) adopt(w) } catch { /* not ours */ }
 })
 /** The other windows' tabs from `w`, this one's as they are. */
@@ -176,6 +181,18 @@ export function replaceWorkspace(next: unknown, opts: { merge?: boolean } = {}) 
     changed.notify()
   } finally { replacing = false }
   showActiveUnder()
+}
+
+/** Workspaces takes the tabs (`on`: what's shown and saved from now is a workspace's) or lets go of them: this device's
+ *  own come back as they were left, so turning it on and off (a layout and back) loses nothing. True: it changed. */
+export function tabsInWorkspace(on: boolean): boolean {
+  if (on === held) return false
+  if (on) { held = true; save(); return true }
+  let own: Workspace | null = null
+  try { tabStore().removeItem(HELD); const t = JSON.parse(tabStore().getItem(KEY) ?? "null"); own = t ? clean(older(t)) : null } catch { /* private mode */ }
+  held = false
+  replaceWorkspace(own ?? blankList())
+  return true
 }
 
 /** A device's first visit (nothing saved, no workspace put in place): its blank tab shows `to` (a plugin's `home`: the
@@ -828,8 +845,22 @@ export function closeTabIds(ids: string[], { keep = false, force = false }: { ke
 
 /** How long a tab may go unseen before it archives itself (0: never, and no pane is stamped `seen`). */
 let archiveAfter = 0
-export function setArchiveAfter(ms: number) { archiveAfter = ms; touchSeen() }
+/** Since when this device has archived tabs: none goes before that's longer ago than the setting, so turning it on (a
+ *  layout) archives nothing at once by stamps from the last time it was on. */
+const SINCE = "vaultite.tabs.archiving"
+let archiveSince = 0
+export function setArchiveAfter(ms: number) {
+  archiveAfter = ms
+  try {
+    const was = Number(localStorage.getItem(SINCE)) || 0
+    archiveSince = ms ? was || Date.now() : 0
+    if (!ms) localStorage.removeItem(SINCE); else if (!was) localStorage.setItem(SINCE, String(archiveSince))
+  } catch { archiveSince = Date.now() }
+  touchSeen()
+}
 export const archivesAfter = () => archiveAfter
+/** Whether tabs unseen that long may archive now (it's been on longer than that). */
+export const archivingDue = () => !!archiveAfter && Date.now() - archiveSince >= archiveAfter
 const minute = () => Math.floor(Date.now() / 60_000) * 60_000
 /** `l` with the panes of its tab on screen, or on screen until now in `was`, stamped as seen now (and any never). */
 function stamped(l: TabList, was: TabList): TabList {

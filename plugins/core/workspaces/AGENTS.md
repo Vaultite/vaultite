@@ -41,6 +41,8 @@ hand, or by an older app) is taken in and leaves the file.
   number is faint and it's never kept. To make a workspace, write tabs, panels, pins or a name; to delete one, set its
   slot to null (`DELETE /api/workspaces/<n>`).
 - Pins and tabs follow a file moved through the API. A terminal any workspace shows keeps running.
+- Turned on, a device's own tabs (without Workspaces) are set aside, not changed, and come back when it's turned off;
+  an unused workspace takes the tabs on screen of the window that turned it on.
 
 **Moving tabs** between workspaces: `POST /api/workspaces/move` with `{"from": 1, "to": 2, "tab": "<tab id>"}` (a tab,
 all its panes), `{"to": 2, "pane": "<pane id>"}` or `{"to": 2, "path": "Notes/Idea.md"}` (a pane, out of its split), or

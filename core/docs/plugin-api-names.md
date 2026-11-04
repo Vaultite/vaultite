@@ -236,7 +236,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (its id) (the focused one by default): its editor or terminal, if it shows one.
 - `focusSidebar(side)`: Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree, else its first row.
 - `Foldable({ title, count, big, keep, dflt, children, … })`: Rows under a heading that folds them (a panel's sections).
-- `folderBar(path)`: The desktop bar's crumbs (the vault, then each folder down to this one) and its buttons: Show as, Sort, More.
+- `folderBar(path)`: The desktop bar's crumbs (the vault, then each folder down to this one) and its buttons: Sort, More.
 - `folderMenu(folder, opts?)`: A folder's menu away from the tree (a pinned one, a folder's page): Open (`open` false: not), New, Rename (`rename`, where it's typed in place) and Move, the plugins' groups (but `skip`'s), its…
 - `folderName(path)`: A folder's name as its tab says it; the vault's own for its top.
 - `folderOf(path)`
@@ -304,6 +304,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isFolder(t, path)`
 - `isHidden`: In a dot folder, or a dot file: shown only with hidden files on.
 - `isLinux`: A Linux computer (not Android).
+- `isListedPage(path, store?)`: A page offered to pin where the pages are listed (Pinned's): not one of a dated run (PageView `series`).
 - `isMac`: A Mac, iPhone or iPad: ⌘ is the app's Mod key.
 - `iso(d)`
 - `isPage(path, store?)`: A page: a file a plugin draws as one (a dashboard).
@@ -601,7 +602,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SidebarHeading`
 - `sidebarMode(prefs?)`: The panel the left sidebar shows alone now (its key), or null: its panels.
 - `SidebarPanel`: A panel in the desktop sidebar (search, pinned pages, the file tree).
-- `SidebarRow({ icon, iconClassName, tint, badge, tag, mark, label, open, active, onClick, onContextMenu, href, tip, className, children, more, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
+- `SidebarRow({ icon, iconClassName, tint, badge, tag, mark, label, labelClassName, open, active, onClick, onContextMenu, href, tip, className, children, more, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
 - `sidebars(prefs?)`: The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's.
 - `Sidebars`
 - `sidebarsChanged()`: Tell the sidebars a plugin's setup changed (a workspace switch).
@@ -654,6 +655,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `tabPreviewOrder(l, p)`: What the tabs show in that order (useSlide's keys): each tab group's name (`group:<id>`) before its tabs, which a folded one hides.
 - `TABS`: The tabs' selection (core/select.ts): by tab id, the bar's, the Tabs panel's and the phone's cards alike.
 - `TabsEvent`
+- `tabsInWorkspace(on)`: Workspaces takes the tabs (`on`: what's shown and saved from now is a workspace's) or lets go of them: this device's own come back as they were left, so turning it on and off (a layout and back)…
 - `tabSlot(l, slots, pos, axis)`: Where `pos` along the tabs as drawn lands: before which tab (`index`), in which tab group.
 - `tabsMenu(ids, phone?)`: What tabs selected together can do: close them (or the others), pin them, group them, move them to a window.
 - `tabsSeenSince(saved)`: Whether a pane was seen here later than `saved` (the workspace's file) says, by more than a quarter of the archive time: worth a write of its own.

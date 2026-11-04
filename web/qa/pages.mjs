@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { qa } from "./lib/qa.mjs"
+import { apiAt, qa } from "./lib/qa.mjs"
 import { pagePath } from "./subjects.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 const OUT = "/tmp/vaultite-pages/"
@@ -111,12 +111,17 @@ await m.locator("[data-bar=new]").tap(); await m.waitForTimeout(500)
 const tiles = await m.locator("[data-new-tab-pages] a").evaluateAll((as) => as.map((a) => decodeURIComponent(a.getAttribute("href"))))
 check("a new tab shows the pinned pages as tiles", tiles.length === drawer.length && tiles.join() === drawer.join(), { tiles, drawer })
 await m.screenshot({ path: `${OUT}phone-new-tab.png`, fullPage: true })
+// A day's recap is drawn as a page, but one a day: never offered to pin among the pages.
+const api = apiAt(B), RECAP = "Recaps/2026-01-02.md"
+await api("PUT", "file", { path: RECAP, text: "---\ntype: recap\n---\n\n- 09:00 Edited [[Start here]]\n" })
 await m.goto(`${B}#settings`); await m.waitForTimeout(1500)
 check("Settings doesn't list the pages (Pinned's settings do)", !(await m.locator("[data-page-row]").count()))
 // (a part of Files)
 await m.locator('[data-settings-nav="files"]').tap(); await m.waitForTimeout(800)
 check("Pinned's settings: the pages, saying how many are pinned", (await m.locator("dialog[open] [data-page-row]").count()) >= drawer.length &&
   (await m.locator("dialog[open] [data-pages-count]").innerText()).includes(`${drawer.length} pinned`), await m.locator("dialog[open] [data-pages-count]").innerText().catch(() => ""))
+check("Pinned's settings: a day's recap isn't among the pages not pinned", !(await m.locator(`dialog[open] [data-page-row="${RECAP}"]`).count()))
+await api("DELETE", `file?path=${encodeURIComponent(RECAP)}`)
 await m.screenshot({ path: `${OUT}phone-settings.png`, fullPage: true })
 
 // Tiles: the open sidebar's pages as a grid of icons, named by their tooltips, in the list's order; the drawer keeps rows.

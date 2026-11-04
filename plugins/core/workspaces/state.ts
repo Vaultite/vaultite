@@ -223,6 +223,11 @@ export const saveTabsSoon = () => { if (applying) return; clearTimeout(timer); t
 
 /** The first sync of this page has happened (what it arrived at is opened then). */
 let synced = false
+/** Workspaces took this window's tabs just now (turned on: a layout): an unused workspace takes the tabs on screen. */
+let carry = false
+/** Workspaces took the tabs (core/workspace.ts tabsInWorkspace): the next sync is a first one again; in the window the
+ *  user is in, an unused workspace keeps what's on screen rather than showing a blank tab. */
+export function tookTabs() { synced = false; mine.clear(); carry = document.hasFocus() }
 const UNSAVED = "vaultite.workspaces.unsaved"
 /** The page is going away (a reload, a closed window) with a change of its tabs the vault doesn't have yet (not just
  *  another tab shown): saved now, and noted for this tab's next page in case the request doesn't get out in time. */
@@ -273,7 +278,9 @@ export function sync() {
     // newer than the workspace's, so they're saved rather than replaced.
     let unsaved = false
     try { unsaved = sessionStorage.getItem(UNSAVED) === String(n); sessionStorage.removeItem(UNSAVED) } catch { /* private mode */ }
-    if (unsaved || startedFresh) { saveTabs(); arrive(); return }
+    const took = carry
+    carry = false
+    if (unsaved || startedFresh || (took && !list[n - 1])) { saveTabs(); arrive(); return }
     const want = list[n - 1]?.layout ?? null
     if (shape(want) !== shape(strip(getTabLayout()))) apply(want, true)
     else mergeTabsSeen(want)

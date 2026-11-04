@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
 import {
-  coarse, edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile, openFolder,
+  coarse, edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isListedPage, menuFor, notifyError, offPlugin, openAt, openFile, openFolder,
   openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings,
   INCOMING, openItem, openView, pastEnd, PIN_SEARCH, reorder, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, slotAt, startDrag, stem, useDrag,
   useDropHit, useDropTarget, useEnabled, useSelectable, useSelectedKeys, useSlide, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem,
@@ -57,7 +57,7 @@ export function pinChecklist(file: string | undefined): MenuItem[] {
   const store = getStore()
   if (!store) return []
   const on = shownEntries(store)
-  const pages = store.files.files.filter((f) => isPage(f.path, store) && !f.archived && !offPlugin(f) && !isPinned(f.path))
+  const pages = store.files.files.filter((f) => isListedPage(f.path, store) && !f.archived && !offPlugin(f) && !isPinned(f.path))
     .sort((a, b) => stem(a.path).localeCompare(stem(b.path)))
   const here = file && pinnable(file) && !isPinned(file) && !pages.some((f) => f.path === file) ? [file] : []
   const views = viewSurfaces().filter((v) => !isPinned(v.key)).sort((a, b) => a.label.localeCompare(b.label))

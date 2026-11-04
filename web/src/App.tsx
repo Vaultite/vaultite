@@ -17,14 +17,14 @@ import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
 import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, activePane, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
-import { restTab } from "@/core/workspace"
+import { restTab, tabsInWorkspace } from "@/core/workspace"
 import { canNudge, evenOutAll, focusByOrder, focusLastPane, hasLastPane, hasNeighbour, severalPanes, movePane, moveTabBy, nudgePane, paneToTab, splitPane, splitToFit, canFloat, canZoom, isFloating, isZoomed, toggleFloat, zoomPane } from "@/core/splits"
 import { Maximize2, PictureInPicture2 } from "lucide-react"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { vaultPath, type Pane, type Tab } from "../../core/layout.ts"
 import { backDetail, closeDetail, openDetail, replaceHash, route, setDetailRedirect, takeScroll } from "@/core/nav"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
-import { currentWorkspace, noteOpened, subscribeScoped } from "@/core/scope"
+import { currentWorkspace, noteOpened, subscribeScoped, useWorkspacesOn } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
 import { backgrounds, detailFor, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, shownHeaderItems, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
 import { leaveGroup } from "@/core/tabgroups"
@@ -271,6 +271,9 @@ export default function App() {
   useEffect(() => { if (safeMode) notify("Vault plugins are off for now", { id: "safe-mode", duration: Infinity, action: { label: "Turn back on", run: turnPluginsBackOn } }) }, [])
   // Files' actions (the ops' catalog) ready before a menu asks, and again when plugins come and go.
   useEffect(() => { if (store) whenIdle(loadActions) }, [!!store, disabled, enabled])
+  // Workspaces off (a layout, another device, or while the app was closed): this device's own tabs come back.
+  const workspacesOn = useWorkspacesOn()
+  useEffect(() => { if (store && !workspacesOn) tabsInWorkspace(false) }, [!!store, workspacesOn])
   // The files the focused tab shows go into the current workspace's "opened lately" (core/scope.ts).
   useEffect(() => onWorkspaceChange(() => noteOpened(currentFile())), [])
   // The window tells the server which workspace it's on (an agent's `vau panels` changes that one), again on a switch.
@@ -305,6 +308,9 @@ export default function App() {
   // the phone's drawer), the tab follows. Phones use the same tabs, shown one at a time (components/TabSwitcher.tsx).
   const known = isFileTab || isViewTab || isNewTab || !!appPageOf(tab)
   useEffect(() => {
+    // (the address moved on since this was drawn: a workspace's tabs put in place took it to their pane, which an old
+    // one followed here would overwrite: the next draw sees to it)
+    if (route().tab !== tab) return
     if (known) followHash(tab)
     else if (desktop && !detail && store) replaceHash(hashOf(activePane().to))
     // eslint-disable-next-line react-hooks/exhaustive-deps

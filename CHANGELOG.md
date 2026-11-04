@@ -20,6 +20,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   and pack cards put the kind beside the name, drop the Vaultite byline, and say in orange what a pack installs instead
   of a red shield to hover. The layout picker (the welcome card, Settings > Appearance) says what the picked layout is
   under the tiles, no tooltip.
+- **Pinned doesn't offer every day's recap**: its settings and Pinned pages menu list the pages to pin without the
+  daily recaps, one a day (pinning one from its menu still works).
 - **A plugin that fails can't half-switch a tab**: one plugin's error while tabs change is reported, and the address
   and the panels' highlight still follow the tab on screen (an older Obsidian plugins left the Terminals panel stuck).
 - **A first run that asks, not assumes**: the desktop app's first window is one page, the vault (create one, or open a
@@ -40,7 +42,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   acts in your own web pages, and at the app's tabs and buttons. Watches (`vau watches add`, files in Watches/) keep an
   eye on a terminal, a page or a note live or every few minutes, telling it or your inbox only when something changed.
   Private now covers sites, containers and apps, starting with password managers and banks.
-- **Tabs hold panes**: a split is one tab (one joined row in the sidebar, one chip in the tab bar) and clicking another
+- **Tabs hold panes**: a split is one tab (one row in the sidebar drawn as a small map of its split, panes side by side
+  or stacked as they are; one chip in the tab bar) and clicking another
   tab switches it away whole; a file or link opens in the focused pane. ⌥-click a tab or drop it on a pane to take its
   place, on an edge to split; drag a pane out to make it a tab, or hold it over a row to open that tab and drop it in.
   Phones show a split tab as one card and swipe between its panes. Pop-outs keep their tabs in the workspace. `vau tabs`
@@ -58,6 +61,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   you changed keeps your changes, and switching back brings them back; Reset applies it clean. Saving asks for a name
   and suggests "My Zen" from the layout in use. "Back to Standard layout" in the palette (`vau bundle standard`) is the
   way back from a layout that hides everything. Packs (Life OS, Agents) and looks apply over your layout, which stays the one in use.
+  A layout and back loses nothing: turning Workspaces on (Browser) keeps your tabs on screen, and off again brings back
+  this device's tabs exactly, tab groups, splits, sizes and focus; turning archiving on archives nothing at once.
 - **Use AI, one switch**: Settings > AI's Use AI (or `vau ai off`) takes out everything for AI, the companion, coding
   agents' buttons, commands and keys, AI items in the status bar and AI plugins on the Plugins page, while ops, MCP and
   vau still work; on again, each plugin is as it was. A bundle that needs agents turns it back on, and says so.
@@ -79,7 +84,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Files tab) at the folder, open and flashed, rather than nothing; Reveal in file tree scrolls the drawer to it too.
 - **A folder opens as a page**: Open in its menu, its pinned tile (a new tab's, the drawer's, the sidebar's), a folder in a note's
   path bar, one dragged onto a pane or a tab bar, or `vau open <folder>` shows what it holds in a tab of its own, as
-  the sidebar's rows or as cards (a note's first lines, an image's picture): Show as, one setting for every folder. A
+  the sidebar's rows or as cards (a note's first lines, an image's picture): Show as, on the page itself and in Settings,
+  one setting for every folder. A
   folder in it opens in the same tab and Back comes out, as in the Files app; its crumbs go up.
 - **Layouts are picked from drawn tiles in Settings, Appearance**: Standard, Zen, Browser and yours, each a small
   drawing of its window in your colours. A click switches at once, with Undo; a changed one says so, and its menu has

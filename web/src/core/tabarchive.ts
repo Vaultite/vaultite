@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react"
 import { clean, focusedPane, newPaneId, newTabId, mapPanes, panesOf, tabOf, type Tab } from "../../../core/layout.ts"
 import { scopedState, subscribeScoped } from "@/core/scope"
-import { archivesAfter, canReopenTab, closeToArchive, findOpen, lastClosedAt, paneById, reopenTab, restoreTab, selectPane, tabById, unseenTabs } from "@/core/workspace"
+import { archivesAfter, archivingDue, canReopenTab, closeToArchive, findOpen, lastClosedAt, paneById, reopenTab, restoreTab, selectPane, tabById, unseenTabs } from "@/core/workspace"
 
 /** An archived tab: its panes (`tab`), what its focused pane showed (`to`) and what it was called, its place in the
  *  list, and when it was archived. Its panes' history stays behind, as it does in the workspace's file. */
@@ -35,7 +35,7 @@ const save = (next: ArchivedTab[]) => kept.set(next.filter((e, i) => next.findIn
  *  The same on every device (it goes by the stamps the tabs carry), so two devices archiving at once agree. */
 export function archiveUnseen(title: (t: Tab) => string): ArchivedTab[] {
   const after = archivesAfter()
-  const due = after ? unseenTabs(Date.now() - after) : []
+  const due = archivingDue() ? unseenTabs(Date.now() - after) : []
   if (!due.length) return []
   const names = new Map(due.map((t) => [t.id, title(t)]))
   const now = Date.now()

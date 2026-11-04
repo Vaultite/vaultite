@@ -78,7 +78,7 @@ function useEnter() {
   }
 }
 
-/** The desktop bar's crumbs (the vault, then each folder down to this one) and its buttons: Show as, Sort, More. */
+/** The desktop bar's crumbs (the vault, then each folder down to this one) and its buttons: Sort, More. */
 export const folderBar = (path: string) => ({ title: <Crumbs path={path} />, right: <BarButtons path={path} /> })
 
 function Crumbs({ path }: { path: string }) {
@@ -102,19 +102,35 @@ function Crumbs({ path }: { path: string }) {
   )
 }
 
-function BarButtons({ path }: { path: string }) {
+/** List or grid, on the page itself (where the bar can be faded away): Finder's two buttons; a phone's one, showing the
+ *  other, as Files' does. One for every folder, Settings' Files too. */
+function ShowAs({ desk }: { desk: boolean }) {
   const view = viewOf(usePrefs().folderView)
+  if (!desk) {
+    const next = VIEWS.find((o) => o.value !== view)!
+    return (
+      <button type="button" aria-label={`Show as ${next.label.toLowerCase()}`} data-folder-view={next.value} onClick={() => setView(next.value)}
+        className="relative mb-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-muted text-primary after:absolute after:-inset-1 active:opacity-60">
+        <next.icon className="size-[18px]" strokeWidth={2.25} />
+      </button>
+    )
+  }
+  return (
+    <div role="radiogroup" aria-label="Show as" className="mb-1 flex shrink-0 rounded-[7px] bg-foreground/[0.05] p-px">
+      {VIEWS.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={view === o.value} aria-label={o.label} data-tip={o.label} data-folder-view={o.value} onClick={() => setView(o.value)}
+          className={cn("grid h-6 w-7 cursor-pointer place-items-center rounded-[6px] transition-colors",
+            view === o.value ? "bg-card text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.12)] dark:bg-[var(--segment-on)]" : "text-muted-foreground hover:text-foreground")}>
+          <o.icon className="size-[15px]" strokeWidth={2} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function BarButtons({ path }: { path: string }) {
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <div role="radiogroup" aria-label="Show as" className="flex rounded-[6px] bg-foreground/[0.05] p-px">
-        {VIEWS.map((o) => (
-          <button key={o.value} type="button" role="radio" aria-checked={view === o.value} aria-label={o.label} data-tip={o.label} data-folder-view={o.value} onClick={() => setView(o.value)}
-            className={cn("grid h-6 w-7 cursor-pointer place-items-center rounded-[5px] transition-colors",
-              view === o.value ? "bg-card text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.12)] dark:bg-[var(--segment-on)]" : "text-muted-foreground hover:text-foreground")}>
-            <o.icon className="size-[15px]" strokeWidth={2} />
-          </button>
-        ))}
-      </div>
       <button type="button" aria-label="Sort by" data-tip="Sort by" onClick={(e) => menuBelow(e, sortItems())} className={barButton}><ArrowUpNarrowWide className="size-4" strokeWidth={2} /></button>
       <button type="button" aria-label="More" data-tip="More" onClick={(e) => menuBelow(e, pageMenu(path))} className={barButton}><Ellipsis className="size-4" strokeWidth={2} /></button>
     </div>
@@ -242,7 +258,7 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
     <div ref={root} data-folder-page={path} data-file-drop {...computer}
       onContextMenu={(e) => { if (!(e.target as Element).closest("[data-folder-item]")) menuFor(() => pageMenu(path))(e) }}
       className={cn("min-h-[60vh] rounded-[10px] transition-colors", fromComputer === path && "bg-primary/[0.06]")}>
-      {desk ? <PageHeader title={folderName(path)} subtitle={count} /> : <PhoneHead path={path} count={count} />}
+      {desk ? <PageHeader title={folderName(path)} subtitle={count}><ShowAs desk /></PageHeader> : <PhoneHead path={path} count={count} />}
       {!items.length ? <Empty path={path} desk={desk} />
         : view === "grid" ? <Grid {...kids} folder={path} /> : <Rows {...kids} />}
     </div>
@@ -270,10 +286,13 @@ function PhoneHead({ path, count }: { path: string; count: string }) {
         ))}
         {above.length && count ? <span className="whitespace-nowrap"> · {count}</span> : count}
       </p>
-      <button type="button" onClick={() => void newNote(path)} aria-label="New note"
-        className="mb-1 flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-muted px-3.5 text-[15px] font-medium text-primary active:opacity-60">
-        <FilePlus className="size-[18px]" strokeWidth={2.25} />New note
-      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        <ShowAs desk={false} />
+        <button type="button" onClick={() => void newNote(path)} aria-label="New note"
+          className="mb-1 flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-muted px-3.5 text-[15px] font-medium text-primary active:opacity-60">
+          <FilePlus className="size-[18px]" strokeWidth={2.25} />New note
+        </button>
+      </div>
     </div>
   )
 }

@@ -32,7 +32,7 @@ export default definePlugin({
   // A day's recap (Recaps/<date>.md) read as its timeline; editing it is its Markdown.
   files: {
     types: ["recap"], folders: ["Recaps"], icon: CalendarDays, tint: RECAP_TINT,
-    page: { render: (ctx) => <RecapPage {...ctx} /> },
+    page: { render: (ctx) => <RecapPage {...ctx} />, series: true },
   },
   // The last few things done, one line each: hidden until the user shows it, a flyout in the rail, a tab (view:activity),
   // or the left sidebar's mode (activity:sidebar), filling it.

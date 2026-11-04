@@ -374,10 +374,12 @@ export const RAIL = 11
 export const ROW = "group/row flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap transition-colors"
 
 /** A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows. */
-export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, label, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, swipe, ...rest }: {
+export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, label, labelClassName, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, swipe, ...rest }: {
   /** None: the label alone (file icons turned off). */
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
   label: React.ReactNode; open: boolean; active?: boolean; href?: string
+  /** Classes for the label's box (a drawn label that mustn't fade at its end: a split tab's map). */
+  labelClassName?: string
   /** Classes for the row, after its own. */
   className?: string
   /** Classes for the icon, after its own (a status: a pulse). */
@@ -420,7 +422,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
       </Badged>}
       {/* (on the left, where hovering the row doesn't move it: the … and X come in on the right) */}
       {open && mark && <IconAction action={mark} className="-ml-1"><mark.icon className={cn("size-3.5 shrink-0", !mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={mark.tint ? { color: mark.tint } : undefined} /></IconAction>}
-      <span className={cn("min-w-0 flex-1 fade-end transition-opacity duration-(--motion)", !open && "opacity-0")}>{label}</span>
+      <span className={cn("min-w-0 flex-1 fade-end transition-opacity duration-(--motion)", !open && "opacity-0", labelClassName)}>{label}</span>
       {open && children}
       {open && dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" className="hidden group-hover/row:grid" data-no-drag data-row-more onClick={rightClickBelow} />}
     </a>

@@ -111,6 +111,8 @@ export type PageView = {
   /** Edited as it's read: each run of blocks (with only blank lines between) drawn by this in the editor, its text
    *  edited in place around them. */
   editGrid?: (cards: GridCard[], edit: GridEdit, ctx: PageCtx) => ReactNode
+  /** One of a dated run (a day's recap): a page when opened, but not offered among the pages to pin (one a day). */
+  series?: boolean
 }
 /** What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are
  *  off. */
