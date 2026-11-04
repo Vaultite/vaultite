@@ -109,7 +109,7 @@ check("a plugin's offsets are the file's", await ed((v, at) => v.state.sliceDoc(
 // Find skips the hidden frontmatter.
 await page.keyboard.press("ControlOrMeta+f"); await wait(400)
 await page.keyboard.type("qa_stage"); await wait(400)
-const bar = () => page.evaluate(() => document.querySelector(".vau-find")?.textContent ?? "")
+const bar = () => page.evaluate(() => document.querySelector("[data-find-bar]")?.textContent ?? "")
 check(`find: nothing in the frontmatter (${await bar()})`, /No results/.test(await bar()))
 await page.keyboard.press("ControlOrMeta+a"); await page.keyboard.type("apple"); await wait(400)
 check(`find: the body's matches only (${await bar()})`, /of 2|2 results/.test(await bar()))
