@@ -1,7 +1,7 @@
 // The Browser's page bar hidden (setting `pageBar`), in the desktop app (Electron), against a made-up page this script
 // serves on 127.0.0.1: the page fills its tab; the bar slides over it once the pointer rests at the page's top, and
 // goes once the pointer has left it; a quick move up and a click at the top bring it; with the tab bar off, the strip
-// above the pane brings it (resting, clicked) and its right-click starts with the bar's switch; the address focused
+// above the pane brings it (resting, clicked) and its right-click has the bar's switch; the address focused
 // keeps it out; a new tab has it out; the bar's right-click shows it again.
 // WRITES: the throwaway vault only.
 //   node web/qa/pagebar.mjs <vault copy>
@@ -118,7 +118,8 @@ await win.mouse.click(sb.x + sb.width / 3, sb.y + sb.height / 2)
 check("a click on the strip brings it", await until(async () => (await look()).bar === "out", 1000), await look())
 await win.mouse.click(sb.x + sb.width / 3, sb.y + sb.height / 2, { button: "right" })
 const stripItems = await until(async () => { const t = await win.locator("[role=menu] [role^=menuitem]").allInnerTexts(); return t.length ? t : null }, 3000) ?? []
-check("the strip's right-click starts with Always show page bar", stripItems[0]?.startsWith("Always show page bar"), stripItems)
+// (the tab's menu, then how things show, the page bar's switch with them: 805d5def)
+check("the strip's right-click has Always show page bar, with how things show", stripItems.at(-1)?.startsWith("Always show page bar") && stripItems.some((t) => t.startsWith("Show tab bar")), stripItems)
 await win.keyboard.press("Escape")
 await away()
 await appearance({ tabBar: true })
