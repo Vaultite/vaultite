@@ -1,6 +1,6 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
 import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, mayPicture, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
@@ -42,8 +42,6 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   madeFull?: boolean
   /** The style its player added (its main video's fill), taken out as it's back. */
   fillCss?: string
-  /** Its player's video is full screen in it: leaving that leaves the player. */
-  filled?: boolean
   /** The address it was last sent to: what it shows until a load commits (getURL is "" till then). */
   target: string
   /** The icon addresses it last told (page-favicon-updated), so the same list isn't fetched again. */
@@ -537,9 +535,12 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   })
   wc.on("focus", () => { if (!p.player) tell(p.win, { type: "focus", id: p.id }) })
   // Full screen (a video's button): it fills its window (made full screen, as Chrome does) or its player, over the rest.
+  // In a player the page's full screen and its window's are one: either brings the other, in and out.
   wc.on("enter-html-full-screen", () => {
     p.full = true
-    if (!p.player) {
+    const w = p.player
+    if (w) { if (!w.isDestroyed() && !w.isFullScreen()) w.setFullScreen(true) }
+    else {
       p.win.contentView.addChildView(p.view) // (again: over every other page and the window's own, raised or not)
       if (!p.win.isFullScreen()) { p.win.setFullScreen(true); p.madeFull = true }
     }
@@ -547,10 +548,9 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   })
   wc.on("leave-html-full-screen", () => {
     p.full = false
-    // (its player's video leaving full screen, with Esc or the site's own button, leaves the player: Esc never reaches
-    // the page while it's full screen)
-    if (p.player && p.filled) { p.filled = false; fromPlayer(p, true); return }
     if (p.madeFull) { p.madeFull = false; if (!p.win.isDestroyed() && p.win.isFullScreen()) p.win.setFullScreen(false) }
+    const w = p.player
+    if (w && !w.isDestroyed() && w.isFullScreen()) w.setFullScreen(false)
     fit(p)
   })
   wc.on("page-favicon-updated", (_e, urls) => void iconFrom(p, urls))
@@ -599,7 +599,8 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   let atEdge = false, atTop = false, toldTop = 0
   wc.on("before-mouse-event", (_e, m) => {
     if (m.type === "mouseLeave" && atTop) { atTop = false; tell(p.win, { type: "top", id: p.id, at: false }) }
-    if ((m.type !== "mouseMove" && m.type !== "mouseDown") || p.player || p.full || p.win.isDestroyed() || !shownNow(p)) return
+    if (p.player) { if (m.type === "mouseMove") kit?.pointerAt(p.player, m.y); return }
+    if ((m.type !== "mouseMove" && m.type !== "mouseDown") || p.full || p.win.isDestroyed() || !shownNow(p)) return
     const z = p.win.webContents.getZoomFactor(), b = p.view.getBounds(), [w] = p.win.getContentSize()
     const top = m.y / z <= TOP, down = m.type === "mouseDown", now = Date.now()
     if (top !== atTop || (top && (down || now - toldTop >= TOP_MS))) {
@@ -617,8 +618,8 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     if (i.type !== "keyDown") return
     const step = stepOf(i)
     wc.setIgnoreMenuShortcuts(BROWSER_KEYS.has(step))
-    // In its player the page keeps every key but Esc, which brings it back (⌘W closes the player, as the menu has it).
-    if (p.player) { if (step === "escape") { e.preventDefault(); fromPlayer(p, true) } return }
+    // In its player the page keeps every key; Esc leaves its window's full screen (the page's own Chromium leaves first).
+    if (p.player) { if (step === "escape" && p.player.isFullScreen()) { e.preventDefault(); p.player.setFullScreen(false) } return }
     // (Esc stops a load, and still reaches the page)
     if (step === "escape" && !p.full && wc.isLoadingMainFrame()) wc.stop()
     const own = OWN_KEYS[step]
@@ -919,7 +920,7 @@ function go(p: Page, action: string, url?: string): unknown {
   else if (action === "focus") { if (p.player) return; if (shownNow(p)) wc.focus(); else p.hadFocus = true }
   else if (action === "load" && url && shows(url)) { p.target = url; void wc.loadURL(url).catch(() => {}) }
   // (answers "none" when the page has no video)
-  else if (action === "pip") return wc.executeJavaScriptInIsolatedWorld(1004, [{ code: PIP }], true).catch(() => null)
+  else if (action === "pip") return playerKit().then((k) => wc.executeJavaScriptInIsolatedWorld(1004, [{ code: k.PIP }], true)).catch(() => null)
 }
 
 /** Certificates the user went on past, by "<profile> <host> <fingerprint>": for this run of the app only. */
@@ -949,38 +950,9 @@ function zoomSite(p: Page, step: -1 | 0 | 1) {
 
 // ---------- players: a page in a window of its own, to watch or share (a call's window picker finds it by its title) ----------
 
-const PLAYER_TITLE = "Vaultite player"
-/** The page's main video: the biggest playing (else any), or the biggest frame that may go full screen (an embedded
- *  player), or none (the page itself fills the player). */
-const MAIN_VIDEO = `const size = (el) => { const r = el.getBoundingClientRect(); return r.width >= 160 && r.height >= 90 ? r.width * r.height : 0 }
-  const videos = [...document.querySelectorAll("video")].map((el) => ({ el, video: el, n: size(el) * (el.paused ? 1 : 2) }))
-  const frames = [...document.querySelectorAll("iframe")].filter((f) => f.allowFullscreen || /\bfullscreen\b/.test(f.allow)).map((el) => ({ el, video: null, n: size(el) }))
-  const best = [...videos, ...frames].filter((c) => c.n > 0).sort((a, b) => b.n - a.n)[0]`
-// (what goes full screen with a video is its site's player, the box around it no bigger than it: its controls, captions)
-const FILL = `(() => {
-  ${MAIN_VIDEO}
-  if (!best) return false
-  let el = best.el
-  if (best.video) {
-    const n = size(best.video)
-    while (el.parentElement && el.parentElement !== document.body && size(el.parentElement) <= n * 1.25) el = el.parentElement
-    best.video.setAttribute("data-vaultite-player-video", "")
-  }
-  el.setAttribute("data-vaultite-player", "")
-  return el.requestFullscreen({ navigationUI: "hide" }).then(() => true, () => false)
-})()`
-const FILL_CSS = `[data-vaultite-player]:fullscreen { background: #000 !important }
-[data-vaultite-player]:fullscreen [data-vaultite-player-video], video[data-vaultite-player]:fullscreen { width: 100% !important; height: 100% !important;
-  max-width: none !important; max-height: none !important; object-fit: contain !important }`
-const UNFILL = `(() => { for (const el of document.querySelectorAll("[data-vaultite-player], [data-vaultite-player-video]")) { el.removeAttribute("data-vaultite-player"); el.removeAttribute("data-vaultite-player-video") }
-  if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}) })()`
-const PIP = `(() => {
-  if (document.pictureInPictureElement) return void document.exitPictureInPicture().catch(() => {})
-  ${MAIN_VIDEO}
-  const v = videos.filter((c) => c.n > 0).sort((a, b) => b.n - a.n)[0]?.el
-  if (!v) return "none"
-  return v.requestPictureInPicture().then(() => true, () => false)
-})()`
+// (its code, and its pages' scripts, load as the first player opens: not at every launch)
+let kit: typeof import("./player.ts") | undefined
+const playerKit = async () => (kit ??= await import("./player.ts"))
 /** While a player is open, macOS doesn't nap the app (it's often in the background, shared in a call). */
 let napBlock: number | null = null
 const players = () => [...pages.values()].some((p) => p.player)
@@ -990,24 +962,31 @@ function leaveFull(p: Page) {
   if (!p.view.webContents.isDestroyed()) void p.view.webContents.executeJavaScriptInIsolatedWorld(1004, [{ code: "document.fullscreenElement && void document.exitFullscreen().catch(() => {})" }]).catch(() => {})
 }
 
-/** Into its player: the page moves (playing on, not loaded again) into a window of its own, which it fills, its main
- *  video full screen in it; never throttled while hidden or on another Space, nor let go under memory pressure. */
+/** Into its player: the page moves (playing on, not loaded again) into a window of its own at its video's aspect, which
+ *  its video fills (`fullScreen`: on a Space of its own); never throttled while hidden, nor let go under memory pressure. */
 async function toPlayer(p: Page, fullScreen: boolean) {
   if (p.player) { if (!p.player.isDestroyed()) { p.player.show(); p.player.focus() } return }
   const wc = p.view.webContents
   if (wc.isDestroyed() || p.win.isDestroyed()) return
-  const area = screen.getDisplayMatching(p.win.getBounds()).workArea
-  const width = Math.min(1280, Math.round(area.width * 0.8)), height = Math.round(width * 9 / 16)
-  const w = new BaseWindow({ title: PLAYER_TITLE, width, height, x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2),
-    minWidth: 320, minHeight: 180, backgroundColor: "#000000", show: false })
+  // (its video filled first, still in its tab, so the window opens at its aspect and shows it at once)
+  if (p.full) leaveFull(p)
+  const k = await playerKit()
+  const [css, found] = await Promise.all([wc.insertCSS(k.FILL_CSS, { cssOrigin: "user" }).catch(() => undefined),
+    wc.executeJavaScriptInIsolatedWorld(1004, [{ code: k.FILL }], true).catch(() => null), wc.executeJavaScript(k.FULL_GUARD).catch(() => {})])
+  const aspect = typeof found === "number" && found > 0.2 && found < 5 ? found : null
+  if (p.player || wc.isDestroyed() || p.win.isDestroyed() || !pages.has(p.id)) { if (css && !p.player) void wc.removeInsertedCSS(css).catch(() => {}); return }
+  const w = k.playerWindow(k.placeFor(aspect ?? 16 / 9, p.win.getBounds()))
   p.player = w
+  p.fillCss = css
+  if (aspect) w.setAspectRatio(aspect)
   p.win.contentView.removeChildView(p.view)
   w.contentView.addChildView(p.view)
+  k.overPage(w)
   wc.setBackgroundThrottling(false)
-  // (full screen in its tab already: it stays so, filling the player, and the window it made full screen goes back)
-  if (p.full) { p.filled = true; if (p.madeFull) { p.madeFull = false; p.win.setFullScreen(false) } }
   // (as its content is laid out: on Linux its menu bar comes and goes with no resize)
   w.contentView.on("bounds-changed", () => fit(p))
+  // The window and the page leave full screen together (the page's own: see enter-html-full-screen).
+  w.on("leave-full-screen", () => { if (p.full) leaveFull(p) })
   w.on("close", () => fromPlayer(p, true))
   fit(p)
   w.show()
@@ -1016,10 +995,16 @@ async function toPlayer(p: Page, fullScreen: boolean) {
   napBlock ??= powerSaveBlocker.start("prevent-app-suspension")
   sendState(p)
   pagesChanged(p.win)
-  if (p.filled) return
-  p.fillCss = await wc.insertCSS(FILL_CSS, { cssOrigin: "user" }).catch(() => undefined)
-  const filled = p.player === w && await wc.executeJavaScriptInIsolatedWorld(1004, [{ code: FILL }], true).catch(() => false) === true
-  if (filled && p.player === w) p.filled = true
+  void follow(p, w)
+}
+
+/** Its player keeps its video's aspect as it changes (the next video, an ad), till it's back in its tab. */
+async function follow(p: Page, w: BaseWindow) {
+  while (p.player === w) {
+    const a = await p.view.webContents.executeJavaScriptInIsolatedWorld(1004, [{ code: "window.__vaultitePlayer?.next()" }]).catch(() => undefined)
+    if (p.player !== w || typeof a !== "number" || !(a > 0.2 && a < 5)) return
+    kit?.setAspect(w, a)
+  }
 }
 
 /** Back in its tab, still playing: hidden till the tab places it (shown or not), the player closed. `user`: they asked,
@@ -1028,11 +1013,10 @@ function fromPlayer(p: Page, user = false) {
   const w = p.player
   if (!w) return
   p.player = undefined
-  p.filled = false
   const wc = p.view.webContents
   if (!wc.isDestroyed()) {
     wc.setBackgroundThrottling(!p.drawn)
-    void wc.executeJavaScriptInIsolatedWorld(1004, [{ code: UNFILL }]).catch(() => {})
+    if (kit) void wc.executeJavaScriptInIsolatedWorld(1004, [{ code: kit.UNFILL }]).catch(() => {})
     if (p.fillCss) void wc.removeInsertedCSS(p.fillCss).catch(() => {})
   }
   p.fillCss = undefined
@@ -1242,7 +1226,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     pagesChanged(win)
   },
   // Its player: on (`fullScreen`: on a Space of its own) or back in its tab.
-  "web:player": (win, id, on, fullScreen) => { const p = mine(win, id); if (on) return toPlayer(p, fullScreen !== false); fromPlayer(p, true) },
+  "web:player": (win, id, on, fullScreen) => { const p = mine(win, id); if (on) return toPlayer(p, fullScreen === true); fromPlayer(p, true) },
   // (`moved`: its tab went on in another of this vault's windows, which takes its page as it shows it, `adopt`)
   "web:close": (win, tab, moved) => {
     if (moved !== true) {

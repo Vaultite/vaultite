@@ -4,6 +4,7 @@ import "../core/winspawn.ts" // (first: on Windows no program the main process s
 import "./dockenv.ts" // (before anything reads the environment)
 import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
+import { QUIET, quiet } from "./quiet.ts"
 import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -58,18 +59,10 @@ if (process.env.VAULTITE_USER_DATA) app.setPath("userData", path.resolve(process
 // Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes keep Electron's sandboxed
 // renderer, which runs service-worker preloads; not as root, where Chromium sandboxes nothing and each would die.
 if (app.commandLine.hasSwitch("no-sandbox") && process.getuid?.() !== 0) app.commandLine.appendSwitch("enable-sandbox")
-// VAULTITE_QUIET=1 (web/qa's desktop scripts): windows draw as usual but are never seen or felt (transparent,
-// click-through, never focused, no Dock icon), so a test never pops up over the user's work.
-if (process.env.VAULTITE_QUIET) {
+// VAULTITE_QUIET=1 (web/qa's desktop scripts): quiet.ts.
+if (QUIET) {
   app.commandLine.appendSwitch("disable-backgrounding-occluded-windows")
   app.commandLine.appendSwitch("disable-renderer-backgrounding")
-  const quiet = (w: BaseWindow, page: WebContents) => {
-    w.setOpacity(LINUX ? 0.01 : 0) // (X11 stops painting a window at 0: screenshots of it then never come)
-    w.setIgnoreMouseEvents(true)
-    w.show = () => w.showInactive()
-    w.focus = () => {}
-    page.setBackgroundThrottling(false)
-  }
   app.on("browser-window-created", (_e, w) => quiet(w, w.webContents))
   AppWindow.each((w) => quiet(w, w.webContents))
   app.focus = () => {}

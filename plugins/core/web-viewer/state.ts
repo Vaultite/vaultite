@@ -160,4 +160,4 @@ if (typeof window !== "undefined") addEventListener("focus", () => { keyboard = 
 
 /** Page `id` into its player (full screen as the settings say), or back in its tab. */
 export const setPlayer = (id: number, on: boolean) =>
-  void Promise.resolve(webPages?.player?.(id, on, settings.get().playerFullScreen !== false)).catch((e) => notifyError(e, on ? "Couldn't open the player" : "Couldn't bring the page back"))
+  void Promise.resolve(webPages?.player?.(id, on, settings.get().playerFullScreen === true)).catch((e) => notifyError(e, on ? "Couldn't open the player" : "Couldn't bring the page back"))

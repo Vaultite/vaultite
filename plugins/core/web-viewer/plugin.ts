@@ -234,10 +234,10 @@ plugin.op({
   id: "web-viewer.player",
   cli: "browser player",
   summary: "Open a tab's page as a player, a window of its own with its video filling it (to watch, or share in a call), or bring it back.",
-  help: `The page moves on playing (not loaded again) into a window titled "Vaultite player", its main video filling it, full
-screen on a Space of its own (the Browser's playerFullScreen setting; --window: a window), and plays on while it's hidden
-or in the background. --off brings it back to its tab, as Esc in it does. Any tab: it moves the page, nothing in it is
-read or done.
+  help: `The page moves on playing (not loaded again) into a window titled "Vaultite player" at its main video's aspect, the
+video filling it (--full-screen, or the Browser's playerFullScreen setting: full screen on a Space of its own; --window: a
+window), and plays on while it's hidden or in the background. --off brings it back to its tab, as closing the window does.
+Any tab: it moves the page, nothing in it is read or done.
 
   vau browser player 3
   vau browser player 3 --off`,
@@ -247,9 +247,10 @@ read or done.
     tab,
     off: { type: "boolean", description: "bring it back to its tab" },
     window: { type: "boolean", description: "a window, not full screen" },
+    fullScreen: { type: "boolean", description: "full screen on a Space of its own" },
   },
   args: ["tab"],
-  run: (p) => ask<Page>("agent:player", p.tab, !p.off, p.window ? false : plugin.settings().playerFullScreen !== false),
+  run: (p) => ask<Page>("agent:player", p.tab, !p.off, p.window ? false : p.fullScreen === true || plugin.settings().playerFullScreen === true),
   text: (r: Page) => where(r),
   did: (p) => ({ action: "run", text: p.off ? `Brought browser tab ${String(p.tab)} back from its player` : `Opened browser tab ${String(p.tab)} as a player` }),
 })

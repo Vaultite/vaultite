@@ -1037,7 +1037,7 @@ serve("agent:player", (_win, tab, on, fullScreen) => {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
   if (!/^https?:/i.test(p.wc.getURL() || p.url)) throw new Error("only a web page opens as a player")
-  p.player(on !== false, fullScreen !== false)
+  p.player(on !== false, fullScreen === true)
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
 serve("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act", byOf(by)), (a && typeof a === "object" ? a : {}) as Act, byOf(by)))

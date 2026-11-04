@@ -41,7 +41,7 @@
   (redirects, frames, DNS answers) while such an agent drives it. Its own agents may: QA's made-up sites, a dev server.
 - A page in its player (a window of its own, web.ts's players) is still its tab's, `win` its tab's window: only where
   it's drawn changes (`fit`), so ending, reclaiming and closing work as for any; its tab draws nothing over it meanwhile.
-  Esc never reaches a page that's full screen (Electron takes it), so the player's video leaving full screen leaves it.
+  Its video fills it as a popover (the top layer), leaving the site's own full screen the site's, one with the window's.
 - The page keeps the keyboard; the app's ⌘/⌃/⌥ shortcuts come back as `key` events. The browser's keys a site may take
   (⌘F, ⌘G, zoom: web.ts BROWSER_KEYS) reach the page first and come back only if it left them (web-preload.cjs), never
   to the menu bar, whose ⌘F and ⌘= are the app's.

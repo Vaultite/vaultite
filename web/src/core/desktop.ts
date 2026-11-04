@@ -161,7 +161,7 @@ export type WebPages = {
   /** Find `text` in the page, answered by `found` events: `next` goes on from the match it's at (`forward` false: back),
    *  else it's a new search; "" stops. Older builds don't have it. */
   find?: (id: number, text: string, o?: { next?: boolean; forward?: boolean; matchCase?: boolean }) => Promise<unknown>
-  /** Into its player, a window of its own its main video fills (`fullScreen`: on a Space of its own), or back in its tab
+  /** Into its player, a window of its own its main video fills (`fullScreen`: full screen on a Space of its own), or back in its tab
    *  (`on` false). Older builds don't have it. */
   player?: (id: number, on: boolean, fullScreen?: boolean) => Promise<unknown>
   /** Its HTML as rendered now, and where it is. */
