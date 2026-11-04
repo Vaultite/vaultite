@@ -25,6 +25,7 @@ export function ignored(rel: string) {
 }
 
 /** Folders Linux's watcher leaves out (each folder is an inotify watch there): changes in them are ignored anyway. */
+const isFolder = (abs: string) => { try { return fs.statSync(abs).isDirectory() } catch { return false } }
 const unwatched = (rel: string) => ignored(rel) || rel.split("/").includes("node_modules")
 
 export type Change = { paths: string[] | null; v: string }
@@ -86,7 +87,12 @@ export class Live {
       const root = fs.realpathSync(this.vault.path)
       this.watcher = process.platform === "linux"
         ? watchTree(root, unwatched, (rel) => this.add(rel))
-        : fs.watch(root, { recursive: true }, (_event, name) => this.add(name === null || name === undefined ? null : String(name).split(path.sep).join("/")))
+        : fs.watch(root, { recursive: true }, (event, name) => {
+          const rel = name === null || name === undefined ? null : String(name).split(path.sep).join("/")
+          // (Windows tells of a folder's "change" when a file in it changes, that file told too: a walk for nothing)
+          if (process.platform === "win32" && event === "change" && rel && isFolder(path.join(root, rel))) return
+          this.add(rel)
+        })
       this.watcher.on("error", (e) => this.restart(e))
       // (inotify, folder by folder, hears each change as it's made; FSEvents tells of them a while later)
       // (what it heard of the server's own writes, indexed as written, isn't news)
