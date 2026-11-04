@@ -250,8 +250,13 @@ export default async ($: VaultTest) => {
       // (a stand-in tool would need a shell: Windows' own clip, read back)
       const said = await toClipboard("copied text")
       const { execFileSync } = await import("node:child_process")
-      const back = execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-Clipboard -Raw"], { encoding: "utf8" })
-      check("vau --copy: the text through the system's tool", said === "" && back.trim() === "copied text", { said, back })
+      // (read again a few times: the clipboard is the machine's, and its history service may hold it open as it reads it)
+      let back = "", reads = 0
+      while (reads++ < 5 && back.trim() !== "copied text") {
+        back = execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-Clipboard -Raw"], { encoding: "utf8" })
+        if (back.trim() !== "copied text") await new Promise((r) => setTimeout(r, 500))
+      }
+      check("vau --copy: the text through the system's tool", said === "" && back.trim() === "copied text", { said, back, reads })
     } else {
       fs.writeFileSync(path.join(fake, "pbcopy"), `#!/bin/sh\nexec /bin/cat > "${path.join(fake, "clip.txt")}"\n`, { mode: 0o755 })
       const said = await toClipboard("copied text", "darwin", { PATH: fake })
