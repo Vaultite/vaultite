@@ -2,6 +2,7 @@
   "startup": {
     "api": 11,
     "apiKB": 26,
+    "assets": 28,
     "socket": 10
   },
   "reload": {

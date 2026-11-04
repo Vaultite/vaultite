@@ -52,6 +52,12 @@ function caret(view: EditorView) {
   return line.length && head === line.to - 1 && view.dom.querySelector(".cm-fat-cursor") ? line.to : head
 }
 
+/** The editor drawn in `cm`: where it dictates, and its text's element. */
+export function viewOf(cm: HTMLElement) {
+  const view = EditorView.findFromDOM(cm)
+  return view && { target: editorTarget(view), dom: view.contentDOM }
+}
+
 /** Dictate into `view`, at its cursor. */
 export function editorTarget(view: EditorView): DictationTarget | null {
   if (view.state.field(spot, false) === undefined) return null

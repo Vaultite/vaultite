@@ -50,7 +50,7 @@ async function phase(name, act, settle = 2000) {
   await quiet(settle)
   const api = Object.entries(tally).filter(([k]) => isApi(k))
   results[name] = { requests: count(), api: api.reduce((a, [, x]) => a + x.n, 0), apiKB: +(api.reduce((a, [, x]) => a + x.bytes, 0) / 1024).toFixed(1),
-    socket, routes: tally }
+    assets: tally["GET (assets)"]?.n ?? 0, socket, routes: tally }
 }
 const switcher = async (name, newTab = false) => {
   await page.keyboard.press("ControlOrMeta+o")
@@ -94,7 +94,7 @@ for (const [name, r] of Object.entries(results)) {
   if (PRINT) for (const [k, x] of Object.entries(r.routes).sort((a, b) => b[1].n - a[1].n)) console.log(`    ${k.padEnd(44)} ${String(x.n).padStart(4)} ${(x.bytes / 1024).toFixed(1).padStart(8)} KB`)
 }
 // A limit is what the flow took when set, with room: a timer (a status bar chip's poll) lands in a flow or not.
-// (startup's requests are mostly the build's chunks, cached after: only its API calls are counted)
+// (startup's requests are mostly the build's chunks, cached after: its API calls are counted, and its files)
 const limits = JSON.parse(fs.readFileSync(LIMITS, "utf8")), room = (k, v) => (k === "apiKB" ? Math.ceil(v * 1.25 + 1) : v + 2)
 let lowered = false
 for (const [name, lim] of Object.entries(limits)) {

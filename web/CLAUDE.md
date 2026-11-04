@@ -6,6 +6,8 @@
   (`useScopedState(key, fallback, "workspace")`). The core reaches Workspaces only through scope.ts.
 - App plugins load eagerly with the app (lazy loading doubled the phone's cold start), so a plugin's module uses no
   plugin API while it loads (`npm run check` lists what may run at top level).
+- What the app starts with is a few files (vite.config.ts `bootChunks`; `tools/perf/startup.ts` counts them): a heavy
+  library only a view needs (CodeMirror, dnd-kit) comes through `import()`, never a plugin's top level.
 - The app never shows a blank window: index.html shows the error. A vanished chunk reloads into the new build only when
   nothing would be lost (`core/unsaved.ts`).
 

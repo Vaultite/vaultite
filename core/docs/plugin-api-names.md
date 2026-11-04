@@ -615,7 +615,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SlashItem`: An entry in the editor's slash menu: `text` replaces the "/query" ("$|" marks the cursor), or `run` does something else with the function that types text there.
 - `slotAt(box, items, x, y, axis)`: Where a drag at (x, y) lands among `items` (in order, `box` their offset parent) as laid out, not as slid: before which (its index; `items.length`, the end).
 - `snippet(md)`: Markdown as one line of plain text: a preview in a row, a card or a search result.
-- `SortableList({ ids, onMove, className, lift, children })`
+- `SortableList({ ids, onMove, className, lift, children })`: Rows the user reorders by dragging (5px to start; a held finger on touch); `onMove(from, to)` with their ids.
 - `span(name, tags?, t0?)`: A span from `t0` (a performance.now(), default now): `mark` ends a part, `end` sends it all.
 - `Span`
 - `speakingIn(view)`: Whether the user is in the middle of saying something into this editor (an agent writing there waits).

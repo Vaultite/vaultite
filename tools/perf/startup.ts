@@ -35,6 +35,8 @@ if (fs.existsSync(html)) {
   const size = (ext: string) => kb(eager.filter((f) => f.endsWith(ext)).reduce((n, f) => n + fs.statSync(path.join(ROOT, "web", "dist", f)).size, 0))
   now.webEagerJsKB = size(".js")
   now.webEagerCssKB = size(".css")
+  // (a browser asks 6 at a time over HTTP/1.1: a hundred small files cost a phone seconds; vite.config.ts bootChunks)
+  now.webEagerFiles = eager.length
 } else console.log("startup: no web/dist (npm run build first): the web app's part skipped")
 
 const limits: Record<string, number> = fs.existsSync(LIMITS) ? JSON.parse(fs.readFileSync(LIMITS, "utf8")) : {}

@@ -1,6 +1,6 @@
 // Web app benchmark: load and interaction times and counts (requests, bytes, React commits), desktop and phone, medians
 // over runs. Several base URLs alternate runs; compare counts and CPU time over wall-clock. Writes: throwaway only.
-//   node web/qa/perf.mjs <base url> [<another base url>...] [--runs 3] [--only desktop|phone] [--no-interactions]
+//   node web/qa/perf.mjs <base url> [<another base url>...] [--runs 3] [--only desktop|phone|tailnet] [--no-interactions]
 //                        [--out result.json] [--compare before.json] [--census]
 import fs from "node:fs"
 import { launch, wait, workspaceKey } from "./lib/qa.mjs"
@@ -19,6 +19,11 @@ const PROFILES = {
     // (through a proxy's header, like Tailscale Serve's: the server compresses and gives ETags as it does for a phone)
     ctx: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, extraHTTPHeaders: { "X-Forwarded-For": "100.64.0.2" } },
     cpu: 4, net: { offline: false, latency: 40, downloadThroughput: 20e6 / 8, uploadThroughput: 10e6 / 8 },
+  },
+  // The phone away from home: 4G to the server through the tailnet (a relay's round trip on top).
+  tailnet: {
+    ctx: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, extraHTTPHeaders: { "X-Forwarded-For": "100.64.0.2" } },
+    cpu: 4, net: { offline: false, latency: 150, downloadThroughput: 9e6 / 8, uploadThroughput: 3e6 / 8 },
   },
 }
 
@@ -394,7 +399,7 @@ async function run(browser, B, name, subjects) {
   const net = tracker(cdp)
   const cold = await load(B, page, cdp, net, false)
   const warm = await load(B, page, cdp, net, true)
-  const inter = INTERACT ? await interactions(B, page, cdp, net, name === "phone", subjects) : {}
+  const inter = INTERACT ? await interactions(B, page, cdp, net, !!prof.ctx.isMobile, subjects) : {}
   await ctx.close()
   return { cold, warm, ...inter, errors: errs }
 }
@@ -453,7 +458,14 @@ function table(res, before) {
 /** What a server's vault gives the interactions: its first pinned dashboard and a note. */
 async function subjectsOf(B) {
   const state = await api(B, "GET", "state")
-  const pinned = JSON.parse((await api(B, "GET", `file?path=${encodeURIComponent(".vaultite/pages.json")}`)).text).pinned
+  const pages = JSON.parse((await api(B, "GET", `file?path=${encodeURIComponent(".vaultite/pages.json")}`)).text)
+  let pinned = pages.pinned
+  // A fresh sandbox pins no dashboard: pin three of its own (People's among them), as a vault in use would have.
+  if (!pinned.some((p) => p.startsWith("Dashboards/"))) {
+    const have = state.files.files.map((f) => f.path).filter((p) => /^Dashboards\/[^/]+\.md$/.test(p))
+    pinned = [...pinned, ...[...new Set(["Dashboards/Today.md", "Dashboards/People.md", ...have])].filter((p) => have.includes(p)).slice(0, 3)]
+    await api(B, "PUT", "file", { path: ".vaultite/pages.json", text: `${JSON.stringify({ ...pages, pinned }, null, 2)}\n` })
+  }
   const notes = state.notes.filter((n) => n.id.startsWith("Notes/")).sort((a, b) => a.id.localeCompare(b.id))
   return { first: pinned.find((p) => p.startsWith("Dashboards/")) ?? "Dashboards/Today.md", note: `${notes[0].id}.md`, person: state.people[0]?.name }
 }

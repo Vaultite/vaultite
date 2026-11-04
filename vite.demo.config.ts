@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { defineConfig, type Alias, type Plugin } from 'vite'
-import base, { pluginIcons, pluginModules } from './vite.config.ts'
+import base, { bootGroups, pluginIcons, pluginModules } from './vite.config.ts'
 import { MACHINE } from './web/demo/machine.ts'
 import { ignoreOf, walk } from './core/rules.ts'
 
@@ -148,7 +148,8 @@ const demoEntry = (): Plugin => ({
   transform: (code, id) => (realFile(id) === path.join(ROOT, 'web/src/main.tsx') ? `import ${JSON.stringify(path.join(ROOT, 'web/demo/boot.ts'))}\n${code}` : undefined),
   // ?theme=light (or dark) pins the look for the site's embed, and the page can switch it (vaultite-demo:theme). Before
   // any of the app's code: its chunks read the system's look as they load.
-  transformIndexHtml: (html) => html.replace('<head>', `<head>\n    <script>${PIN_THEME}</script>`),
+  // (and without index.html's early read of the state: here the server answers once boot.ts has started it)
+  transformIndexHtml: (html) => html.replace('<head>', `<head>\n    <script>${PIN_THEME}</script>`).replace(/<script id="vau-early">[\s\S]*?<\/script>/, ''),
 })
 
 const PIN_THEME = `(() => {
@@ -184,7 +185,7 @@ export default defineConfig({
     ...base.build, outDir: 'dist-demo', emptyOutDir: true, chunkSizeWarningLimit: 4000, minify: process.env.DEMO_MINIFY !== '0',
     rollupOptions: {
       input: { main: path.join(ROOT, 'web/index.html'), sw: path.join(ROOT, 'web/demo/sw.ts') },
-      output: { entryFileNames: (c) => (c.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js') },
+      output: { entryFileNames: (c) => (c.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js'), codeSplitting: { groups: bootGroups } },
       onwarn: base.build?.rollupOptions?.onwarn,
     },
   },

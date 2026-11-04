@@ -1,11 +1,9 @@
 // Dictation (⌘J, fn through the menu-bar helper): what's said goes where the cursor is (web/src/core/dictation.ts has the
 // session, electron/dictation.ts the recognizer). A tap starts and the next stops; held, it listens until let go.
-import { EditorView } from "@codemirror/view"
 import { useEffect } from "react"
 import { Mic } from "lucide-react"
 import { definePlugin, dictation, dictationSource, fnDictation, listening, notify, notifyError, offeredCommand, openPermissions, pluginSettings, pressDictation, runCommandById,
   startDictation, typingIn, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
-import { dictationEditor, editorTarget } from "./editor"
 import { fieldTarget } from "./field"
 
 const frame = () => new Promise((r) => requestAnimationFrame(r))
@@ -14,8 +12,9 @@ const frame = () => new Promise((r) => requestAnimationFrame(r))
 async function targetHere(): Promise<DictationTarget | null> {
   const el = document.activeElement
   const cm = el instanceof HTMLElement ? el.closest(".cm-editor") : null
-  const view = cm instanceof HTMLElement ? EditorView.findFromDOM(cm) : null
-  if (view) return editorTarget(view) ?? fieldTarget(view.contentDOM)
+  // (CodeMirror comes with the editor, not with the app)
+  const view = cm instanceof HTMLElement ? (await import("./editor")).viewOf(cm) : null
+  if (view) return view.target ?? fieldTarget(view.dom)
   // (a terminal keeps its keys: what's said there would run)
   if (el instanceof HTMLElement && typingIn(el) && !el.closest("[data-keeps-keys], .xterm")) return fieldTarget(el)
   if (!offeredCommand("terminal:ask") || !runCommandById("terminal:ask")) return null
@@ -74,5 +73,5 @@ export default definePlugin({
     { id: "dictation:start", name: "Dictate", nameWhenOn: "Stop dictating", keys: ["Mod+J"], on: listening, when: () => !!dictationSource,
       run: () => void pressDictation(begin), icon: Mic, label: "Dictate", words: "voice speech microphone talk" },
   ],
-  editor: (ctx) => dictationEditor(ctx.path),
+  editor: (ctx) => import("./editor").then((m) => m.dictationEditor(ctx.path)),
 })

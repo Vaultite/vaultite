@@ -78,6 +78,77 @@ export function pluginModules(dirs: string[]): Plugin {
   }
 }
 
+/** `import { X } from "lucide-react"` as X's own file: the whole set (imported lazily, core/icons.tsx) stays out of
+ *  what a page's code reaches (bootChunks), as tree-shaking keeps it out of the bundle. */
+export function lucideByFile(): Plugin {
+  const at = path.resolve(import.meta.dirname, 'node_modules/lucide-react/dist/esm')
+  const file = new Map<string, string>()
+  for (const [, names, f] of fs.readFileSync(path.join(at, 'lucide-react.mjs'), 'utf8').matchAll(/export \{([^}]*)\} from '\.\/icons\/([\w-]+\.mjs)'/g))
+    for (const n of names.split(',')) file.set(n.trim().replace(/^default as /, ''), f)
+  return {
+    name: 'vaultite-lucide-by-file',
+    apply: 'build',
+    enforce: 'post',
+    transform(code, id) {
+      if (id.includes('node_modules') || !code.includes('lucide-react')) return null
+      return code.replace(/import\s*\{([^}]*)\}\s*from\s*["']lucide-react["'];?/g, (_all, list: string) => {
+        const rest: string[] = [], own: string[] = []
+        for (const spec of list.split(',').map((x) => x.trim()).filter(Boolean)) {
+          const [name, as = name] = spec.split(/\s+as\s+/)
+          if (file.has(name)) own.push(`import ${as} from ${JSON.stringify(`lucide-react/dist/esm/icons/${file.get(name)}`)};`)
+          else rest.push(spec)
+        }
+        return [...own, ...(rest.length ? [`import { ${rest.join(', ')} } from "lucide-react";`] : [])].join('\n')
+      })
+    },
+  }
+}
+
+/** What a window runs as it starts comes in a few files rather than a hundred (a phone fetched them 6 at a time): a
+ *  module goes with the others the same pages (index.html and its siblings) import, big libraries apart from the app. */
+const boot = { pages: new Map<string, string>(), libs: new Set<string>(), editor: new Set<string>() }
+const isLib = (id: string) => /[\\/]node_modules[\\/]/.test(id)
+export function bootChunks(): Plugin {
+  return {
+    name: 'vaultite-boot-chunks',
+    apply: 'build',
+    buildEnd() {
+      boot.pages.clear(); boot.libs.clear(); boot.editor.clear()
+      const pages = [...this.getModuleIds()].filter((id) => id.endsWith('.html') && this.getModuleInfo(id)?.isEntry).sort()
+      const starts = new Set(pages.flatMap((p) => this.getModuleInfo(p)?.importedIds ?? []))
+      for (const page of pages) {
+        const name = path.basename(page, '.html'), todo = [page], seen = new Set(todo)
+        for (let id; (id = todo.pop());) {
+          // (a page's own script stays its entry: run from a shared file, it would start in every window)
+          if (!starts.has(id) && !id.endsWith('.html')) boot.pages.set(id, `${boot.pages.get(id) ?? ''}~${name}`)
+          for (const i of this.getModuleInfo(id)?.importedIds ?? []) if (!seen.has(i)) { seen.add(i); todo.push(i) }
+        }
+      }
+      const libBytes = new Map<string, number>()
+      for (const [id, by] of boot.pages) if (isLib(id)) libBytes.set(by, (libBytes.get(by) ?? 0) + (this.getModuleInfo(id)?.code?.length ?? 0))
+      for (const [by, n] of libBytes) if (n > 50_000) boot.libs.add(by) // (a deploy changes the app, rarely these)
+      // The editor (CodeMirror), which a note shows and which loads once the first page is drawn: one file too.
+      const todo = [...this.getModuleIds()].filter((id) => /[\\/]web[\\/]src[\\/]editor[\\/]Editor\.tsx$/.test(id))
+      for (let id; (id = todo.pop());) {
+        if (boot.editor.has(id) || boot.pages.has(id)) continue
+        boot.editor.add(id)
+        todo.push(...(this.getModuleInfo(id)?.importedIds ?? []))
+      }
+    },
+  }
+}
+// (a group takes its modules' imports along: the most shared go first, so each of those lands in its own file)
+const PAGES = 5
+export const bootGroups = [...Array.from({ length: PAGES * 2 }, (_, i) => {
+  const pages = PAGES - (i >> 1), lib = i % 2 === 0
+  const libOf = (id: string) => isLib(id) && boot.libs.has(boot.pages.get(id)!)
+  return {
+    priority: PAGES * 2 - i,
+    test: (id: string) => !!boot.pages.get(id)?.includes('~index') && boot.pages.get(id)!.split('~').length - 1 === pages && libOf(id) === lib,
+    name: (id: string) => `${lib ? 'vendor' : 'app'}${boot.pages.get(id)!.replace('~index', '')}`,
+  }
+}), { name: 'editor', test: (id: string) => boot.editor.has(id) }]
+
 /** virtual:official-plugins: Vaultite's own plugins the demo builds in as the app's (vite.demo.config.ts); none here. */
 export function noOfficialPlugins(): Plugin {
   const ID = 'virtual:official-plugins'
@@ -91,7 +162,7 @@ export function noOfficialPlugins(): Plugin {
 // The app is in web/ (the core) and plugins/ (every feature, one folder each); both are bundled together.
 export default defineConfig({
   root: 'web',
-  plugins: [pluginModules([path.resolve(import.meta.dirname, 'plugins/core')]), react(), tailwindcss(), keepRecentBuilds(), pluginIcons(), noOfficialPlugins()],
+  plugins: [pluginModules([path.resolve(import.meta.dirname, 'plugins/core')]), react(), tailwindcss(), keepRecentBuilds(), pluginIcons(), noOfficialPlugins(), lucideByFile(), bootChunks()],
   resolve: {
     alias: {
       // What plugins import: the plugin API (web/src/api.ts). Core code uses @/.
@@ -115,6 +186,7 @@ export default defineConfig({
       },
       // Vault plugins may import the app's plugins' modules (web/src/core/vaultPlugins.ts globs them, lazily); most are
       // in the main chunk anyway, which is fine.
+      output: { codeSplitting: { groups: bootGroups } },
       onwarn(warning, warn) {
         if (warning.code === 'INEFFECTIVE_DYNAMIC_IMPORT' && warning.message.includes('vaultPlugins.ts')) return
         warn(warning)

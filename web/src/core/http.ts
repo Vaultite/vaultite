@@ -16,11 +16,15 @@ let unloading = false
 if (typeof addEventListener === "function") addEventListener("pagehide", () => { unloading = true })
 /** How long a read may take: one left hanging (a phone waking on a dead connection) would hold every refresh after it. */
 const READ_WAIT = 60_000
+/** Reads index.html started before the app's code loaded, each taken once by the first get of its path. */
+const early = (window as { __vauEarly?: Record<string, Promise<Response>> }).__vauEarly ?? {}
+const takeEarly = (path: string) => { const p = early[path]; delete early[path]; return p?.then((r) => (r.ok ? r : null), () => null) }
 export async function send<T>(method: string, path: string, body?: unknown, cache?: RequestCache): Promise<T> {
   const text = body ? JSON.stringify(body) : undefined
   let r: Response
   try {
-    r = await fetch(`api/${path}`, {
+    const got = method === "GET" && !cache ? await takeEarly(path) : null
+    r = got ?? await fetch(`api/${path}`, {
       method, cache, keepalive: unloading && method !== "GET" && (text?.length ?? 0) < 60_000,
       headers: headers(body), body: text, signal: method === "GET" ? AbortSignal.timeout?.(READ_WAIT) : undefined,
     })

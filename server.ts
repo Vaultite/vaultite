@@ -487,19 +487,37 @@ function pack(p: string, st: fs.Stats, enc: "br" | "gzip") {
   const out = enc === "br"
     ? compress.br(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.length } })
     : compress.gzip(data, { level: 6 })
-  out.then((b) => { packedBytes += b.length }, () => packed.delete(key))
+  out.then((b) => { packedBytes += b.length; if (data.length > 16 << 10) better.push([key, version, data, enc]); void improve() }, () => packed.delete(key))
   packed.set(key, [version, out])
   return out
 }
+/** The quick compression answers at once; the best one (a tenth smaller, seconds of CPU for the app's code) then
+ *  replaces it, a file at a time in the background. */
+const better: [string, string, Buffer, "br" | "gzip"][] = []
+let improving = false
+async function improve() {
+  if (improving) return
+  improving = true
+  for (let next; (next = better.shift());) {
+    const [key, version, data, enc] = next
+    if (packed.get(key)?.[0] !== version) continue
+    const best = await (enc === "br" ? compress.br(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.length } })
+      : compress.gzip(data, { level: 9 })).catch(() => null)
+    if (best && packed.get(key)?.[0] === version) packed.set(key, [version, Promise.resolve(best)])
+  }
+  improving = false
+}
 
 /** The web app's build in web/dist: its entry script's name (named by content), read again when index.html changes. */
-let built = { at: 0, name: null as string | null }
+let built = { at: 0, name: null as string | null, eager: [] as string[] }
 function webBuild() {
   try {
     const at = fs.statSync(path.join(DIST, "index.html")).mtimeMs
     if (at !== built.at) {
-      const m = /<script type="module"[^>]*\ssrc="[^"]*\/([^"/]+\.js)"/.exec(fs.readFileSync(path.join(DIST, "index.html"), "utf8"))
-      built = { at, name: m?.[1] ?? null }
+      const html = fs.readFileSync(path.join(DIST, "index.html"), "utf8")
+      const m = /<script type="module"[^>]*\ssrc="[^"]*\/([^"/]+\.js)"/.exec(html)
+      const eager = [...html.matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g)].map((e) => path.join(DIST, e[1]))
+      built = { at, name: m?.[1] ?? null, eager }
     }
     return built.name
   } catch {
@@ -534,6 +552,8 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     return res.end()
   }
   const enc = encodingFor(req, type, st.size)
+  // (what index.html loads is compressed while it travels, not once each file is asked for)
+  if (enc && p === path.join(DIST, "index.html")) { webBuild(); for (const f of built.eager) fs.stat(f, (e, s) => { if (!e) void pack(f, s, enc).catch(() => {}) }) }
   try {
     const data = enc ? await pack(p, st, enc) : fs.readFileSync(p)
     res.writeHead(200, { ...headers, "Content-Type": type, "Content-Length": String(data.length), ...(enc ? { "Content-Encoding": enc } : {}) })
