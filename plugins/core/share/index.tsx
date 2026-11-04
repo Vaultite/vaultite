@@ -42,7 +42,7 @@ function ShareSheet({ folder }: { folder: string }) {
       <SheetHead icon={Share2} tint="var(--primary)" title={`Share ${name(folder)}`}
         sub="Each person gets a link of their own: they see this folder and nothing else of your vault, and no agent works for them." />
       {online ? <NewLink folder={folder} made={() => setAgain((n) => n + 1)} />
-        : <Empty>Links need this vault on the internet (MCP's public address: vau docs mcp). Share from the machine that has it.</Empty>}
+        : <Empty>Links need a machine of yours on the internet, one with MCP's public address (vau docs mcp).</Empty>}
       <Section title="People with access">
         {!list ? <Loading error={error} />
           : !list.length ? <Empty>Nobody yet.</Empty>

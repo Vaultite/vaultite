@@ -4,14 +4,16 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
-import type { Duplex } from "node:stream"
-import { WebSocketServer, type WebSocket } from "ws"
-import { contentType, guestRefusal, HTTPError, OpError, parseSearch, type Plugin, ROOT, type Who, wikiTargets } from "../../../core/plugins.ts"
+import { type Duplex, Readable, Writable } from "node:stream"
+import { WebSocket, WebSocketServer } from "ws"
+import { contentType, guestRefusal, HTTPError, type Machine, MACHINE_CLIENT, OpError, parseSearch, pipeSockets, type Plugin, reply, ROOT, Text, type Who, wikiTargets } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export type Role = "read" | "comment" | "edit"
 /** A share as kept in data/config.json: `token` is the link's hash, never the link. */
 export type Share = { folder: string; guest: string; role: Role; created: string; expires: string; token: string; used?: string
+  /** The machine on the internet its link is at, which passes its guests on to this one (machines.ts). */
+  via?: string
   /** The most the folder may hold, its notes and their bytes, past what it had when shared: an edit guest stops there. */
   room?: { notes: number; bytes: number } }
 type Guest = { id: string; share: Share }
@@ -27,7 +29,7 @@ export const ROOM = { notes: 500, bytes: 20 << 20 }
 /** The guest's page runs only its own scripts (`scripts`: its inline ones' hashes) and loads only from this address. */
 const csp = (scripts: string[]) => `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' ${scripts.join(" ")}; style-src 'self' 'unsafe-inline'; ` +
   "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
-const ID = /^[A-Za-z0-9_-]{11}$/, TOKEN = /^[A-Za-z0-9_-]{43}$/
+export const ID = /^[A-Za-z0-9_-]{11}$/, TOKEN = /^[A-Za-z0-9_-]{43}$/
 /** The vault's own plugins whose views only read the folder (their queries scoped to it): drawn for guests too. */
 const VIEWS = ["kanban", "excalidraw", "dataview"]
 /** Of a vault plugin, what the guest's app draws it with. */
@@ -105,11 +107,16 @@ export class Gateway {
   hits = new Map<string, { n: number; until: number }>()
   wss = new WebSocketServer({ noServer: true, maxPayload: 64 << 10 })
   sockets = new Map<WebSocket, { g: Guest; kind: "events" | "threads" | "page" }>()
+  /** The machine that keeps a share this one doesn't (by its id, or its link's token): its guests are passed on there. */
+  keeper: (x: string) => Promise<Machine | null>
+  /** Requests and sockets the machine on the internet passed on (share/relay): as at its address, their guest's IP. */
+  passed = new WeakMap<IncomingMessage, string>()
 
-  constructor(plugin: Plugin, shares: () => Record<string, Share>, used: (id: string) => void) {
+  constructor(plugin: Plugin, shares: () => Record<string, Share>, used: (id: string) => void, keeper: (x: string) => Promise<Machine | null> = async () => null) {
     this.plugin = plugin
     this.shares = shares
     this.used = used
+    this.keeper = keeper
   }
 
   folderOf(g: Guest) {
@@ -121,6 +128,8 @@ export class Gateway {
     const url = new URL(req.url ?? "/", "http://x")
     const m = /^\/s\/([^/]+)(\/.*)?$/.exec(url.pathname)
     if (!m || !this.ours(req)) return false
+    const there = this.passed.has(req) ? null : await this.elsewhere(m[1])
+    if (there) return await this.passOn(req, res, there), true
     res.setHeader("X-Content-Type-Options", "nosniff")
     res.setHeader("Referrer-Policy", "no-referrer")
     res.setHeader("X-Frame-Options", "SAMEORIGIN")
@@ -146,9 +155,24 @@ export class Gateway {
   }
 
   /** A WebSocket for a guest's app (its live changes, its threads): true when it was one, taken or refused. */
-  upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
-    const url = new URL(req.url ?? "/", "http://x"), p = url.pathname
+  async upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<boolean> {
+    const p = new URL(req.url ?? "/", "http://x").pathname
     if (!p.startsWith("/s/") || !this.ours(req)) return false
+    const id = /^\/s\/([A-Za-z0-9_-]{11})\//.exec(p)?.[1], there = id && !this.passed.has(req) ? await this.elsewhere(id) : null
+    if (there) {
+      const up = new WebSocket(`${there.url.replace(/^http/, "ws")}/api/share/relay`, { headers: { ...MACHINE_CLIENT, ...this.guestHeaders(req) }, handshakeTimeout: 8000 })
+      this.wss.handleUpgrade(req, socket, head, (ws) => pipeSockets(ws, up, () => ws.close(1011, "unreachable")))
+      return true
+    }
+    const a = this.admit(req)
+    if (!a) { socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); return true }
+    this.wss.handleUpgrade(req, socket, head, (ws) => this.attach(ws, req, a))
+    return true
+  }
+
+  /** A guest's socket asked for: whose and what (a page's: which), or null when it's refused. */
+  admit(req: IncomingMessage) {
+    const url = new URL(req.url ?? "/", "http://x"), p = url.pathname
     const m = /^\/s\/([A-Za-z0-9_-]{11})\/api\/(events|companion\/live|artifact\/shared)$/.exec(p)
     const g = m && this.sameSite(req) ? this.guestOf(req, m[1]) : null
     // (an HTML page's shared state: one of their folder's pages, there)
@@ -157,25 +181,102 @@ export class Gateway {
     const join = this.plugin.service("html:shared")
     // (a share's sockets are counted: a guest's limits are per socket, so not as many as they like)
     if (!g || [...this.sockets.values()].filter((s) => s.g.id === g.id).length >= SOCKETS
-      || (m![2] === "artifact/shared" && (!/\.html?$/i.test(page) || !fs.existsSync(this.plugin.vault.abs(page)) || typeof join !== "function"))) {
-      socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); return true
+      || (m![2] === "artifact/shared" && (!/\.html?$/i.test(page) || !fs.existsSync(this.plugin.vault.abs(page)) || typeof join !== "function"))) return null
+    return { g, page, kind: m![2] === "events" ? "events" as const : m![2] === "artifact/shared" ? "page" as const : "threads" as const }
+  }
+
+  /** A guest's socket taken (admit's), as its kind has it. */
+  attach(ws: WebSocket, req: IncomingMessage, { g, page, kind }: NonNullable<ReturnType<Gateway["admit"]>>) {
+    const join = this.plugin.service("html:shared")
+    this.sockets.set(ws, { g, kind })
+    ws.on("close", () => this.sockets.delete(ws))
+    ws.on("error", () => ws.close())
+    if (kind === "events") return ws.send(JSON.stringify({ type: "hello", v: this.v(), role: g.share.role }))
+    // (one person a share, whichever device; a guest who may only view sees the page live and changes nothing)
+    if (kind === "page") return (join as (ws: WebSocket, rel: string, v: object) => void)(ws, page, { shown: this.folderOf(g).see(page) ?? "",
+      id: `g_${g.id}`, name: g.share.guest, ua: String(req.headers["user-agent"] ?? ""), watch: g.share.role === "read" ? "you can only view this folder" : undefined })
+    // (Companion's: threads for a guest who may comment, who's in a note and its text as typed, in their folder, by their paths)
+    const threads = this.plugin.service("companion:guest"), f = this.folderOf(g)
+    if (typeof threads === "function") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, who: guestWho(g.share), role: g.share.role, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS), holds: () => this.holds(g),
+      may: (rel: string, before: string, after: string) => this.mayWrite(g, rel, before, after), slow: () => this.limited(`type:${g.id}`, TYPES) })
+    else ws.send(JSON.stringify({ t: "state", mode: "quiet", name: "", agents: [], notes: [], said: [] }))
+  }
+
+  // ---------- shares another machine keeps: this one on the internet passes their guests on (machines.ts)
+
+  /** The machine keeping `x` (a share's id or a link's token) when this one doesn't. */
+  async elsewhere(x: string) {
+    if (TOKEN.test(x) ? Object.values(this.shares()).some((s) => same(sha(x), s.token)) : !ID.test(x) || x in this.shares()) return null
+    return this.keeper(x).catch(() => null)
+  }
+
+  /** What another machine needs of a guest's request to answer it as here: its path, address and the guest's headers. */
+  guestHeaders(req: IncomingMessage): Record<string, string> {
+    const h = req.headers, pick = (k: string) => (typeof h[k] === "string" ? h[k] as string : undefined)
+    return Object.fromEntries(Object.entries({ path: req.url, host: pick("host"), cookie: pick("cookie"), origin: pick("origin"), ua: pick("user-agent"),
+      "fetch-site": pick("sec-fetch-site"), proto: this.https(req) ? "https" : "http", ip: this.ipOf(req) }).filter(([, v]) => v).map(([k, v]) => [`x-share-${k}`, String(v)]))
+  }
+
+  /** A guest's request passed on to the machine keeping its share, its answer back as it is. */
+  async passOn(req: IncomingMessage, res: ServerResponse, m: Machine) {
+    const method = req.method ?? "GET"
+    let body: Buffer | undefined
+    if (method !== "GET" && method !== "HEAD") {
+      const parts: Buffer[] = []
+      let size = 0
+      for await (const c of req) if ((size += (c as Buffer).length) <= BODY_MAX) parts.push(c as Buffer)
+      if (size > BODY_MAX) return this.json(res, 413, { error: "too big" })
+      body = Buffer.concat(parts)
     }
-    this.wss.handleUpgrade(req, socket, head, (ws) => {
-      const kind = m![2] === "events" ? "events" : m![2] === "artifact/shared" ? "page" : "threads"
-      this.sockets.set(ws, { g, kind })
-      ws.on("close", () => this.sockets.delete(ws))
-      ws.on("error", () => ws.close())
-      if (kind === "events") return ws.send(JSON.stringify({ type: "hello", v: this.v(), role: g.share.role }))
-      // (one person a share, whichever device; a guest who may only view sees the page live and changes nothing)
-      if (kind === "page") return (join as (ws: WebSocket, rel: string, v: object) => void)(ws, page, { shown: this.folderOf(g).see(page) ?? "",
-        id: `g_${g.id}`, name: g.share.guest, ua: String(req.headers["user-agent"] ?? ""), watch: g.share.role === "read" ? "you can only view this folder" : undefined })
-      // (Companion's: threads for a guest who may comment, who's in a note and its text as typed, in their folder, by their paths)
-      const threads = this.plugin.service("companion:guest"), f = this.folderOf(g)
-      if (typeof threads === "function") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, who: guestWho(g.share), role: g.share.role, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS), holds: () => this.holds(g),
-        may: (rel: string, before: string, after: string) => this.mayWrite(g, rel, before, after), slow: () => this.limited(`type:${g.id}`, TYPES) })
-      else ws.send(JSON.stringify({ t: "state", mode: "quiet", name: "", agents: [], notes: [], said: [] }))
-    })
-    return true
+    const type = req.headers["content-type"]
+    const r = await fetch(`${m.url}/api/share/relay`, { method, headers: { ...MACHINE_CLIENT, ...this.guestHeaders(req), ...(typeof type === "string" ? { "content-type": type } : {}) },
+      body: body ? new Uint8Array(body) : undefined, redirect: "manual", signal: AbortSignal.timeout(60_000) }).catch(() => null)
+    if (!r) return this.page(res, 502, "This folder can't be reached now", "The computer it's on doesn't answer. Try again in a while.")
+    const head: Record<string, string | string[]> = {}
+    for (const k of PASSED) { const v = r.headers.get(k); if (v !== null) head[k] = v }
+    const cookie = r.headers.getSetCookie()
+    if (cookie.length) head["set-cookie"] = cookie
+    res.writeHead(r.status, head)
+    if (!r.body || method === "HEAD") return res.end()
+    Readable.fromWeb(r.body as import("node:stream/web").ReadableStream).on("error", () => res.destroy()).pipe(res)
+  }
+
+  /** A request share/relay got as the guest's (`passed`), or null when it isn't one. A socket's is a copy: its own
+   *  headers stay for the upgrade. */
+  unwrap(req: IncomingMessage, copy = false): IncomingMessage | null {
+    if (this.passed.has(req)) return req
+    const had = this.copies.get(req)
+    if (had) return had
+    const h = req.headers, x = (k: string) => (typeof h[`x-share-${k}`] === "string" ? h[`x-share-${k}`] as string : undefined)
+    const p = x("path") ?? ""
+    if (!p.startsWith("/s/")) return null
+    const headers = Object.fromEntries(Object.entries({ host: x("host"), cookie: x("cookie"), origin: x("origin"), "user-agent": x("ua"), "sec-fetch-site": x("fetch-site"),
+      "x-forwarded-proto": x("proto"), "content-type": h["content-type"], "content-length": h["content-length"] }).filter(([, v]) => v !== undefined)) as IncomingMessage["headers"]
+    const out = copy ? Object.create(req, { url: { value: p }, headers: { value: headers } }) as IncomingMessage : Object.assign(req, { url: p, headers })
+    if (copy) this.copies.set(req, out)
+    this.passed.set(out, x("ip") ?? "")
+    return out
+  }
+  copies = new WeakMap<IncomingMessage, IncomingMessage>()
+
+  /** share/relay: a guest's request, answered here as at the address it came to. */
+  async relayed(http: IncomingMessage) {
+    const req = this.unwrap(http)
+    if (!req) throw new HTTPError(400, "not a guest's request")
+    const out = new Kept()
+    if (!(await this.handle(req, out as unknown as ServerResponse))) this.json(out as unknown as ServerResponse, 404, { error: "not found" })
+    await out.done
+    const { "content-type": type = "application/octet-stream", ...headers } = out.headers
+    return reply(out.status, new Text(Buffer.concat(out.chunks), type, headers))
+  }
+  admitRelayed(http: IncomingMessage) {
+    const req = this.unwrap(http, true)
+    return !!req && !!this.admit(req)
+  }
+  attachRelayed(ws: WebSocket, http: IncomingMessage) {
+    const req = this.unwrap(http, true), a = req ? this.admit(req) : null
+    if (!req || !a) return ws.close(1008, "refused")
+    this.attach(ws, req, a)
   }
 
   /** A share's guest by its cookie: the share, while it's neither revoked nor expired. */
@@ -188,7 +289,7 @@ export class Gateway {
 
   /** The link: its share's cookie set, then its app. */
   invite(req: IncomingMessage, res: ServerResponse, token: string) {
-    if (this.limited(`invite:${req.headers["cf-connecting-ip"] ?? req.socket.remoteAddress ?? ""}`, 30)) return this.page(res, 429, "Too many tries", "Wait a minute and try again.")
+    if (this.limited(`invite:${this.ipOf(req)}`, 30)) return this.page(res, 429, "Too many tries", "Wait a minute and try again.")
     const h = sha(token)
     const hit = Object.entries(this.shares()).find(([, s]) => same(h, s.token))
     if (!hit) return this.page(res, 404, "This link doesn't work", "It may have been mistyped or turned off. Ask whoever sent it for a new one.")
@@ -442,14 +543,21 @@ export class Gateway {
     try { return new URL(String(o)).host.toLowerCase() === String(req.headers.host ?? "").toLowerCase() } catch { return false }
   }
 
-  /** Asked at the vault's own public address (mcp.public.url), the one links name: shares answer only there. */
+  /** Asked at the vault's own public address (mcp.public.url), the one links name: shares answer only there (or as there,
+   *  passed on from the machine on the internet). */
   ours(req: IncomingMessage) {
+    if (this.passed.has(req)) return true
     const url = (this.plugin.secrets().mcp as { public?: { url?: string } } | undefined)?.public?.url
     try { return !!url && new URL(String(url)).host.toLowerCase() === String(req.headers.host ?? "").toLowerCase() } catch { return false }
   }
 
   https(req: IncomingMessage) {
-    return req.headers["x-forwarded-proto"] === "https" || "cf-connecting-ip" in req.headers
+    return req.headers["x-forwarded-proto"] === "https" || (!this.passed.has(req) && "cf-connecting-ip" in req.headers)
+  }
+
+  /** The guest's address (rate limits): the tunnel's header, the passing machine's word, else the socket's. */
+  ipOf(req: IncomingMessage) {
+    return this.passed.get(req) || String(req.headers["cf-connecting-ip"] ?? req.socket?.remoteAddress ?? "")
   }
 
   /** Over `n` this minute for `key`. */
@@ -478,6 +586,28 @@ export class Gateway {
 <style>:root{color-scheme:light dark}body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:28rem;margin:18vh auto;padding:0 1.5rem}h1{font-size:1.4rem;margin:0 0 .5rem}p{opacity:.7;margin:0}</style>
 <h1>${esc(title)}</h1><p>${esc(text)}</p>`)
   }
+}
+
+/** The headers of a passed on answer kept (not its length or encoding: fetch undid that). */
+const PASSED = ["content-type", "cache-control", "content-security-policy", "content-disposition", "location", "x-content-type-options", "referrer-policy",
+  "x-frame-options", "x-dns-prefetch-control", "etag", "vary"]
+
+/** An answer kept whole (share/relay's), as the gateway writes one to a response. */
+class Kept extends Writable {
+  status = 200
+  headers: Record<string, string> = {}
+  chunks: Buffer[] = []
+  headersSent = false
+  done = new Promise<void>((ok) => { this.on("finish", ok); this.on("close", ok); this.on("error", () => ok()) })
+  setHeader(k: string, v: unknown) { this.headers[k.toLowerCase()] = String(v); return this }
+  removeHeader(k: string) { delete this.headers[k.toLowerCase()] }
+  writeHead(status: number, h: Record<string, unknown> = {}) {
+    this.status = status
+    for (const [k, v] of Object.entries(h)) this.setHeader(k, v)
+    this.headersSent = true
+    return this
+  }
+  override _write(c: Buffer | string, _enc: BufferEncoding, done: () => void) { this.chunks.push(Buffer.from(c)); done() }
 }
 
 /** How many notes a folder holds, and their bytes. */

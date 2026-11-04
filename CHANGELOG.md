@@ -11,7 +11,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   comment, edit; 30 more days; Remove access), the same link kept. A guest lands on the folder's page, sees its images,
   and edits again (their saves were refused since saves sent only the edit). Its HTML pages read the folder's files and
   play live with the owner (`vau.shared()`: a reader watches), from the owner's other Macs too; the owner's view of
-  such a page reads only inside the folder.
+  such a page reads only inside the folder. Any machine shares: one not on the internet makes the link through the
+  vault's machine that is, and a machine with a vault of its own gets links at that machine's address, which passes
+  its guests on.
 - **Players open as a window you can share**: Open as player is a window with no title bar at the video's aspect,
   where the last one was, its video edge to edge (letterboxed when resized to another shape, steady as it's resized);
   its controls (the traffic lights, or Windows' and Linux's buttons) show with the pointer at its top, which drags it.
