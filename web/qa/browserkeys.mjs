@@ -111,8 +111,9 @@ const shotWithPages = async (name) => {
 /** Whether a key pressed in the app's page is taken there (so the menu bar never sees it: its Developer reload). */
 const takenInApp = (o) => win.evaluate((o) => { const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...o }); document.body.dispatchEvent(e); return e.defaultPrevented }, o)
 const tabs = () => win.evaluate(() => {
-  const w = JSON.parse(localStorage.getItem("vaultite.tabs")), g = ((n) => (n.tabs ? n : n.kids[0]))(w.root)
-  return { tabs: g.tabs.map((t) => ({ to: t.to, pinned: !!t.pinned, home: t.home })), active: g.tabs.find((t) => t.id === g.active)?.to }
+  const w = JSON.parse(localStorage.getItem("vaultite.tabs")), leaf = (n) => (n.kids ? n.kids.flatMap(leaf) : [n])
+  const pane = (t) => leaf(t.root).find((p) => p.id === t.focus) ?? leaf(t.root)[0]
+  return { tabs: w.tabs.map((t) => ({ to: pane(t).to, pinned: !!t.pinned, home: pane(t).home })), active: pane(w.tabs.find((t) => t.id === w.active)).to }
 })
 
 // ---------- a page, and Back and Forward ----------

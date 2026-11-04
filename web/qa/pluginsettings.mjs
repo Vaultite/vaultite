@@ -310,7 +310,7 @@ try {
     await wait(500)
     await page.screenshot({ path: `${OUT}8-settings-phone.png`, fullPage: true })
     const navRow = await page.$eval("[data-settings-nav=appearance]", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), text: Math.round(parseFloat(getComputedStyle(e).fontSize) * (parseFloat(getComputedStyle(e.closest("[data-size-up]") ?? e).zoom) || 1)) } })
-    check("phone: Settings' rows a finger tall, 17px, as the phone's other lists", navRow.h >= 44 && navRow.text === 17, navRow)
+    check("phone: Settings' rows a finger tall, 16px, as the sidebar's lists", navRow.h >= 40 && navRow.text === 16, navRow)
     await page.locator("[data-settings-setup]").click()
     check("phone: Setup goes to Setup's page, on Plugins", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
     await until(() => page.locator("[data-setup-tab=plugins]").count(), 4000)

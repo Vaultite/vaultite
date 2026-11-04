@@ -12,8 +12,9 @@ const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 
 await page.goto(B)
 await page.waitForSelector("[aria-label='New tab']", { timeout: 30000 })
 const ws = () => page.evaluate(() => JSON.parse(localStorage.getItem("vaultite.tabs")))
-const groupOf = (w) => (function walk(n) { return n.tabs ? n : walk(n.kids[0]) })(w.root)
-const tabs = async () => { const g = groupOf(await ws()); return { tabs: g.tabs.map((t) => t.to.replace(/^file:/, "") + (t.pinned ? " (pinned)" : "")), active: g.tabs.find((t) => t.id === g.active)?.to.replace(/^file:/, "") } }
+const leaf = (n) => (n.kids ? n.kids.flatMap(leaf) : [n])
+const to = (t) => (leaf(t.root).find((p) => p.id === t.focus) ?? leaf(t.root)[0]).to.replace(/^file:/, "")
+const tabs = async () => { const w = await ws(); return { tabs: w.tabs.map((t) => to(t) + (t.pinned ? " (pinned)" : "")), active: to(w.tabs.find((t) => t.id === w.active)) } }
 const hash = (f) => page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`)
 
 await command(page, "Close all other tabs")
