@@ -6,10 +6,10 @@ import {
   Maximize2, ListChecks, MessageCircleQuestion, MessageSquareReply, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
-  askMove, askMoveMany, backDetail, currentRow, moveInList, Badged, Button, cn, currentFile, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, Markdown, menuBelow, menuFor,
-  notify, notifyError, openDetail, replaceDetail, openFile, openMenu, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead, snippet,
+  activePane, askMove, askMoveMany, backDetail, closePane, currentRow, moveInList, Badged, Button, cn, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, Markdown, menuBelow, menuFor,
+  notify, notifyError, openDetail, replaceDetail, openFile, openMenu, openView, openWebLink, optimistic, Panel, paneTab, panesShowing, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, selectPane, setProperty, SheetHead, snippet,
   SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
-  type SidebarCtx, type Store, type SwipeAction,
+  type FileHead, type SidebarCtx, type Store, type SwipeAction, type TabButton,
 } from "@vaultite"
 import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, openSession, pinEvents, SESSION_DETAIL, unsettle, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
@@ -129,11 +129,21 @@ export const byKey = (row: () => unknown, sheet: (s: HTMLElement, id: string) =>
 }
 /** J and K in a sheet: the next or previous session's, in the inbox's order (the first, from one that's left it). */
 export function stepSheet(id: string, by: 1 | -1) {
-  const l = listsOf(getStore() ?? ({} as Store))
-  const all = [...l.pinned.events, ...l.needs, ...l.working, ...l.messages].filter((e) => e.kind === "session")
+  const all = sessionsInOrder()
   const i = all.findIndex((e) => e.id === id)
   const to = i < 0 ? all[0] : all[i + by]
   if (to && to.id !== id) replaceDetail(detailPath(SESSION_DETAIL, to.id))
+}
+const sessionsInOrder = (working = true) => {
+  const l = listsOf(getStore() ?? ({} as Store))
+  return [...l.pinned.events, ...l.needs, ...(working ? l.working : []), ...l.messages].filter((e) => e.kind === "session")
+}
+/** A session's sheet settled or snoozed: the next one that needs you takes its place (as T3 Code and Mail go on), the
+ *  one before when it was the last; none, the sheet closes. */
+export function leaveSheet(id: string) {
+  const all = sessionsInOrder(false), i = all.findIndex((e) => e.id === id)
+  const to = i < 0 ? undefined : all[i + 1] ?? all[i - 1]
+  if (to) replaceDetail(detailPath(SESSION_DETAIL, to.id)); else backDetail()
 }
 /** What a key presses in a sheet: its own button for it, so the sheet does what a click does. */
 export const press = (s: HTMLElement, sel: string) => s.querySelector<HTMLElement>(sel)?.click()
@@ -162,17 +172,32 @@ function change(r: InboxItem, fields: Record<string, unknown>): Promise<InboxIte
     () => put<InboxItem | null>(`inbox/${encodeURIComponent(r.id)}`, fields).then((out) => out ?? r), "Couldn't change it")
 }
 
-/** Done: out of the way, into Inbox/.archive/ (the server makes done archived). Done on the result being read: the
- *  next one to review takes its place (Undo brings it back), rather than its tab following it into the archive. */
+/** Done: out of the way, into Inbox/.archive/ (the server makes done archived), and out of its tabs (leaveTabs). Undo
+ *  brings it back, into the tab it was read in. */
 export function markDone(r: InboxItem, done = true) {
-  const next = done && currentFile() === pathOf(r) ? nextToReview(r) : undefined
+  const reading = done && leaveTabs([r])
   const now = change(r, { status: done ? "done" : "new" })
-  if (next) openFile(pathOf(next))
   if (done) notify(`Settled “${r.title}”`, { action: { label: "Undo", run: async () => {
     const back = await change(await now, { status: "new", ...(r.pinned ? { pinned: true } : {}) })
-    if (next) openFile(pathOf(back))
+    if (reading) openFile(pathOf(back))
   } } })
   return now
+}
+
+/** Results leaving the inbox leave their tabs (not followed into the archive): the one read shows the next, as Mail
+ *  does (none left: it closes, back to its opener); others close; pinned tabs stay. Whether one was being read. */
+function leaveTabs(going: InboxItem[]) {
+  const targets = going.map((r) => `file:${pathOf(r)}`), cur = activePane()
+  const reading = !paneTab(cur.id)?.pinned && going.find((r) => cur.to === `file:${pathOf(r)}`)
+  const next = reading && nextToReview(reading, going)
+  const there = next && panesShowing(`file:${pathOf(next)}`)[0]
+  for (const p of panesShowing(...targets)) {
+    if (paneTab(p.id)?.pinned || (p.id === cur.id && next && !there)) continue
+    closePane(p.id)
+  }
+  if (there) selectPane(there.id)
+  else if (next) openFile(pathOf(next))
+  return !!reading
 }
 
 /** The result after `r` in what's to review (the one before, when it's the last), not one of `going` too. */
@@ -189,19 +214,51 @@ export function fileTo(r: InboxItem) {
 }
 const unInbox = async (p: string) => { await setProperty(p, "status", undefined); await setProperty(p, "type", undefined) }
 
+// ---------- an item where it's open: its tab's buttons on hover and its file bar, Settle and Snooze (Wake)
+
+/** The result to review at a vault path, if it's one. */
+const resultAtPath = (path: string) => (getStore()?.inbox ?? []).find((r) => pathOf(r) === path && reviewing(r))
+/** What's done with a result where it's open: Settle, then Snooze (or Wake), as its row's buttons. */
+export function itemButtons(r: InboxItem): TabButton[] {
+  const key = resultKey(r)
+  return [
+    { icon: Check, label: "Settle", run: () => { haptic("medium"); void markDone(r) } },
+    snoozed(r.snoozed) ? { icon: AlarmClockOff, label: "Wake", run: () => snoozeKeys([key], null) } : { icon: Clock, label: "Snooze", run: snoozeBelow([key]) },
+  ]
+}
+/** A tab showing a result to review: its buttons (tabButtons). */
+export const tabButtonsOf = (to: string) => { const r = to.startsWith("file:") ? resultAtPath(to.slice(5)) : undefined; return r ? itemButtons(r) : null }
+
+/** In a result's file bar (a phone's line above its title): Settle and Snooze. */
+export function ItemBar({ file }: { file: FileHead & { place: "bar" | "line" } }) {
+  const { store } = useStore()
+  const r = store?.inbox?.find((x) => pathOf(x) === file.path && reviewing(x))
+  if (!r) return null
+  const bar = file.place === "bar"
+  return (
+    <span data-inbox-bar className={cn("flex shrink-0 items-center", bar ? "gap-0.5" : "-my-1.5 md:my-0")}>
+      {itemButtons(r).map((b) => (
+        <button key={b.label} type="button" aria-label={b.label} data-tip={b.label} data-inbox-bar-button={b.label} onClick={b.run}
+          className={cn("grid shrink-0 cursor-pointer place-items-center text-muted-foreground hover:text-foreground",
+            bar ? "size-7 rounded-[5px] hover:bg-foreground/[0.06]" : "size-11 active:opacity-50 md:size-8 md:rounded-[6px] md:hover:bg-foreground/[0.06]")}>
+          <b.icon className={bar ? "size-3.5" : "size-4"} strokeWidth={2.25} />
+        </button>
+      ))}
+    </span>
+  )
+}
+
 // ---------- snooze: out of the way until a time, then back on top (the server wakes it, and tells the phone)
 
 /** Snooze results and events (by selection key) till `at`, or bring them back now (null: their snooze ends now, so
- *  they're on top); the result being read gives its tab to the next one, as Settle does. Undo puts each as it was. */
+ *  they're on top); their tabs go as Settle's do. Undo puts each as it was. */
 export function snoozeKeys(keys: string[], at: Date | null) {
   const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && reviewing(r))
   const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && (at ? snoozable(e) : !!e.snoozed))
-  const reading = at && results.find((r) => currentFile() === pathOf(r))
-  const next = reading ? nextToReview(reading, results) : undefined
   const now = at ?? new Date()
+  if (at) leaveTabs(results)
   for (const r of results) void change(r, { snoozed: stampOf(now) })
   if (evs.length) snoozeEvents(evs.map((e) => e.id), at ? at.getTime() : null)
-  if (next) openFile(pathOf(next))
   const n = results.length + evs.length
   if (!n) return
   const what = n === 1 ? `“${results[0]?.title ?? evs[0].title}”` : plural(n, "item")
@@ -211,10 +268,10 @@ export function snoozeKeys(keys: string[], at: Date | null) {
   } } })
 }
 
-/** The Snooze ▸ choices for these keys, then Pick a time… (a sheet). */
+/** The Snooze ▸ choices for these keys, then Pick a time… (a sheet); `then` runs first, while they're still here. */
 export const snoozeItems = (keys: string[], then?: () => void): MenuItem[] => [
   // (its time, without the day its name says)
-  ...choices().map((c) => ({ label: c.label, hint: whenText(c.at).replace(/^Tomorrow /, ""), run: () => { snoozeKeys(keys, c.at); then?.() } })),
+  ...choices().map((c) => ({ label: c.label, hint: whenText(c.at).replace(/^Tomorrow /, ""), run: () => { then?.(); snoozeKeys(keys, c.at) } })),
   { label: "Pick a time…", icon: CalendarClock, sep: true, run: () => openDetail(detailPath(SNOOZE_DETAIL, ...keys)) },
 ]
 const snoozeMenu = (keys: string[], icon = true): MenuItem => ({ label: "Snooze", ...(icon ? { icon: Clock } : {}), run: () => {}, items: snoozeItems(keys) })
@@ -268,6 +325,7 @@ const resultKey = (r: InboxItem) => `r:${r.id}`, eventKey = (e: InboxEvent) => `
 
 /** Done (or back to review) for several: one toast, its Undo for all of them. */
 async function markManyDone(list: InboxItem[], done = true, pinned: boolean[] = []) {
+  if (done) leaveTabs(list)
   const all = await Promise.allSettled(list.map((r, i) => change(r, { status: done ? "done" : "new", ...(done ? {} : { archived: false, ...(pinned[i] ? { pinned: true } : {}) }) })))
   const ok = list.flatMap((was, i) => { const x = all[i]; return x.status === "fulfilled" ? [{ was, now: x.value }] : [] })
   const now = ok.map((x) => x.now)
@@ -314,26 +372,29 @@ function useInboxSelect(store: Store) {
   useSelectable(SELECT, { menu: (keys) => selectionItems(store, keys), noun: ["item", "items"] })
 }
 
-/** Phones: a row swiped sideways shows what's done with it most (SwipeRow): Done and File to…, back to review, Back. */
+/** Phones: a row swiped sideways shows what's done with it most (SwipeRow), Mail's way: Settle at the edge, then
+ *  Snooze, then More (its menu); back to review, Back. The same order as a row's buttons on hover. */
+const moreAt = (items: () => MenuItem[]) => (row?: DOMRect) => openMenu({ x: row ? row.right - 16 : 16, y: row ? row.bottom + 4 : innerHeight / 3, flip: row ? row.top - 4 : undefined }, items())
 const resultSwipe = (r: InboxItem): SwipeAction[] => waiting(r)
-  ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([resultKey(r)]) }, { label: "File to", icon: FolderInput, run: () => fileTo(r) },
+  ? [{ label: "More", icon: MoreHorizontal, run: moreAt(() => resultItems(r)) }, { label: "Snooze", icon: Clock, run: snoozeAtRow([resultKey(r)]) },
     { label: "Settle", icon: Check, run: () => markDone(r), removes: true }]
   : reviewing(r) ? [{ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys([resultKey(r)], null), removes: true }]
   : [{ label: "To review", icon: RotateCcw, run: () => reopen(r), removes: true }]
-const eventSwipe = (e: InboxEvent): SwipeAction[] => e.state === "done"
+const eventSwipe = (e: InboxEvent, reply?: SwipeAction): SwipeAction[] => e.state === "done"
   ? [{ label: "Back", icon: RotateCcw, run: () => markManyEventsDone([e], false), removes: true }]
   : snoozed(e.snoozed)
   ? [{ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys([eventKey(e)], null), removes: true }]
   : [
-    ...(!e.read ? [{ label: "Read", icon: MailOpen, run: () => markRead([e.id]) }] : []),
+    { label: "More", icon: MoreHorizontal, run: moreAt(eventItems(e, !e.read)) },
     ...(snoozable(e) ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([eventKey(e)]) }] : []),
+    ...(reply ? [reply] : []),
     { label: "Settle", icon: Check, run: () => markManyEventsDone([e]), removes: true },
   ]
 
 // (then what other plugins do with a file, like Dispatch's agents)
 const resultItems = (r: InboxItem): MenuItem[] => [
   { label: "Open", icon: FileText, run: () => openFile(pathOf(r)) },
-  ...(r.source && /^https?:/.test(r.source) ? [{ label: "Open the page", icon: Globe, run: () => void window.open(r.source, "_blank", "noopener") }] : []),
+  ...(r.source && /^https?:/.test(r.source) ? [{ label: "Open the page", icon: Globe, run: () => openWebLink(r.source!) }] : []),
   { label: "File to…", icon: FolderInput, sep: true, run: () => fileTo(r) },
   pinItem([resultKey(r)], !!r.pinned),
   snoozeMenu([resultKey(r)]),
@@ -528,9 +589,9 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
       time={e.state === "working" ? "working" : fmtAgo(e.t, { short: true })} dim={e.state === "working"}
       icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
       <GateButtons e={e} className={small} size="size-3.5" />
+      {!answerable(e) && <HeadingButton icon={Check} label="Settle" onClick={stop(() => { haptic("medium"); markManyEventsDone([e]) })} />}
       {snoozable(e) && e.state !== "working" && <HeadingButton icon={Clock} label="Snooze" onClick={snoozeBelow([eventKey(e)])} />}
       {!answerable(e) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
-      {!answerable(e) && <HeadingButton icon={Check} label="Settle" onClick={stop(() => { haptic("medium"); markManyEventsDone([e]) })} />}
     </PanelRow>
   )
   return (
@@ -631,7 +692,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   const inPlace = repliedInPlace(e)
   const reply = () => { haptic("light"); setReplying(!replying); if (!replying) touched?.(e.id) }
   return (
-    <SwipeRow actions={() => [...(inPlace ? [{ label: "Reply", icon: MessageSquareReply, run: () => setReplying(true) }] : []), ...eventSwipe(e)]} className={pageSwipe}>
+    <SwipeRow actions={() => eventSwipe(e, inPlace ? { label: "Reply", icon: MessageSquareReply, run: () => setReplying(true) } : undefined)} className={pageSwipe}>
     <div>
     <div data-event={e.id} data-kind={e.kind} data-state={e.state} data-unread={!read || undefined} data-select-key={key} {...selectedAttr(picked)}
       onContextMenu={menuFor(rowMenu(SELECT, key, eventItems(e, !read, touched)))}
@@ -655,16 +716,18 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
         <button type="button" className={cn(iconButton, !replying && "md:invisible md:group-hover/ev:visible", replying && "text-foreground")} aria-label="Reply" data-tip="Reply"
           aria-expanded={replying} data-row-reply-button onClick={reply}><MessageSquareReply className="size-4" strokeWidth={2.25} /></button>
       )}
-      {/* (a phone swipes for it) */}
-      {snoozable(e) && e.state !== "working" && (
-        <button type="button" className={cn(iconButton, "max-md:hidden md:invisible md:group-hover/ev:visible")} aria-label="Snooze" data-tip="Snooze" data-snooze
-          onClick={snoozeBelow([eventKey(e)])}><Clock className="size-4" strokeWidth={2.25} /></button>
-      )}
       {!asks && (e.state === "done"
         ? <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Back to inbox" data-tip="Back to inbox" onClick={() => { haptic("medium"); markManyEventsDone([e], false) }}>
           <RotateCcw className="size-4" strokeWidth={2.25} /></button>
         : <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Settle" data-tip="Settle" data-done onClick={() => { haptic("medium"); markManyEventsDone([e]); touched?.(e.id) }}>
           <Check className="size-4" strokeWidth={2.25} /></button>)}
+      {/* (a phone swipes for it) */}
+      {snoozable(e) && e.state !== "working" && (
+        <button type="button" className={cn(iconButton, "max-md:hidden md:invisible md:group-hover/ev:visible")} aria-label="Snooze" data-tip="Snooze" data-snooze
+          onClick={snoozeBelow([eventKey(e)])}><Clock className="size-4" strokeWidth={2.25} /></button>
+      )}
+      {!asks && <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="More" data-tip="More" onClick={rightClickBelow}>
+        <MoreHorizontal className="size-4" strokeWidth={2.25} /></button>}
     </div>
     {replying && inPlace && <RowReply e={e} close={(back) => { setReplying(false); if (back) document.querySelector<HTMLElement>(`[data-event="${CSS.escape(e.id)}"] [data-keyrow]`)?.focus({ preventScroll: true }) }} />}
     </div>

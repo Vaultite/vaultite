@@ -3,7 +3,7 @@ import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "
 import {
   activePane, Badged, beforeStart, edgeScroller, canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
   groupsAsDrawn, HeadingButton, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
-  selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabListDrop, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabSlotBeside, tabsMenu, useDrag, useDropHit,
+  selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabButtons, tabListDrop, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabSlotBeside, tabsMenu, useDrag, useDropHit,
   useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
   INCOMING,
   type DragItem, type Pane, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabList,
@@ -120,6 +120,7 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
     if (p) startDrag(e, { from: "pane", pane: p.id, to: p.to, label: info(p).label }); else dragTab(e, t)
   }
   const map = split ? <SplitMap t={t} active={active} info={info} /> : null
+  const buttons = split || item ? [] : tabButtons(ps[0].to)
   const dragging = item?.tab === t.id || (picked && item?.tabs) || (!!t.group && item?.group === t.group)
   return (
     // Dragged like a tab in the bar: along the list (in or out of a group), onto a pane (its edge splits, its middle
@@ -131,8 +132,9 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
         badge={split ? undefined : i.badge} mark={split ? undefined : i.mark} label={map ?? i.label} labelClassName={map ? MAP_LABEL : undefined} tip={split ? ps.map((p) => info(p).label).join(" | ") : undefined} open active={active} more
         className={cn(line && "ml-3.5", lit && !active && "bg-foreground/[0.08]", map && stacks(t.root) > 1 && "h-auto min-h-7 py-[3px]")}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
-        actions={!t.pinned && !only && <HeadingButton icon={X} label={`Close ${i.label}`} tip="Close tab" data-no-drag
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); close() }} />}
+        actions={[...buttons.map((b) => <HeadingButton key={b.label} icon={b.icon} label={b.label} data-no-drag onClick={(e) => { e.preventDefault(); e.stopPropagation(); b.run(e) }} />),
+          ...(!t.pinned && !only ? [<HeadingButton key="close" icon={X} label={`Close ${i.label}`} tip="Close tab" data-no-drag
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); close() }} />] : [])]}
         onClick={click}>
         <Marks id={`tab:${t.id}`} />
         {t.pinned && <span className="grid size-5 shrink-0 place-items-center text-muted-foreground" aria-label="Pinned"><Pin className="size-3.5" strokeWidth={2} /></span>}

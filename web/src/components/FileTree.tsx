@@ -10,7 +10,7 @@ import { edgeScroller, getDrag, startDrag, useDragItem, useDropHit, useDropTarge
 import { desktop, hasFiles } from "@/core/desktop"
 import { dropInto } from "@/core/desktopapp"
 import { isMac, isDesktop } from "@/core/platform"
-import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isFolder, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, pathTarget, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
+import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isFolder, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openFolder, openingSoon, openNew, openView, pathTarget, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
 import { currentFile, getWorkspace, onWorkspaceChange } from "@/core/workspace"
 import { allPanes, type Workspace } from "../../../core/layout.ts"
 import { useVirtual } from "@/core/virtual"
@@ -920,7 +920,7 @@ const TreeRow = memo(function TreeRow({ n, depth, pos, size, index, rows, isOpen
           {/* The treeitem is the button the keyboard is on, so a screen reader says its state; level, set size and position
               because the tree is flat and drawn in part. */}
           <button type="button" data-keyrow role="treeitem" aria-level={depth + 1} aria-setsize={size} aria-posinset={pos}
-            aria-expanded={n.folder ? isOpen : undefined} aria-selected={selected || picked} aria-current={selected ? "page" : undefined} onClick={click} onAuxClick={(e) => { if (e.button === 1 && !n.folder) { e.preventDefault(); openFile(n.path, { newTab: true, pane }) } }}
+            aria-expanded={n.folder ? isOpen : undefined} aria-selected={selected || picked} aria-current={selected ? "page" : undefined} onClick={click} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (n.folder) openFolder(n.path, { newTab: true, pane }); else openFile(n.path, { newTab: true, pane }) } }}
             data-tip={n.name} data-tip-side="right" data-tip-trunc data-archived={archived || undefined}
             className={cn("flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-8 text-left", compact ? "h-full" : "min-h-11 self-stretch", archived && "opacity-50")} style={{ paddingLeft: space(pad) }}>
             {n.folder

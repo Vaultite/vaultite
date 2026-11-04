@@ -10,7 +10,7 @@ import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { MenuItem } from "@/components/ContextMenu"
 import { editorOf } from "@/core/editors"
-import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, ReadingBlock, ReadingDrawn, SidebarCtx, SidebarPanel, TimelineKind, ViewDef, WebContainer, WebPageAction } from "@/core/define"
+import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, ReadingBlock, ReadingDrawn, SidebarCtx, SidebarPanel, TabButton, TimelineKind, ViewDef, WebContainer, WebPageAction } from "@/core/define"
 import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -323,6 +323,11 @@ export function usePlugins() {
 /** The enabled plugins, in order. */
 export function active(disabled: string[]) {
   return PLUGINS.filter((p) => isEnabled(p.id, disabled))
+}
+
+/** The buttons a tab showing `to` has on hover (`tabButtons`), from the plugins that are on, in their order. */
+export function tabButtons(to: string, disabled = getPrefs().disabled): TabButton[] {
+  return active(disabled).flatMap((p) => { try { return p.tabButtons?.(to) ?? [] } catch { return [] } })
 }
 
 /** The file tree's marks from the plugins that are on (`fileMarks`), by path; the first plugin's wins. */

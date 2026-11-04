@@ -1,6 +1,6 @@
 // What a plugin is made of (types) and definePlugin. No imports from the registry, so plugin modules can use this
 // while the registry (core/plugins.ts) is still loading them.
-import type { ComponentType, ReactNode } from "react"
+import type { ComponentType, MouseEvent as ReactMouseEvent, ReactNode } from "react"
 import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { LucideIcon } from "lucide-react"
@@ -220,6 +220,10 @@ export type AgentDef = { label: string; icon: LucideIcon; tint?: string
 
 /** A view's tab's mark (ViewDef `tabMark`): an icon a click on runs `run`, named by `label`, in `tint` (a CSS colour). */
 export type TabMark = { icon: LucideIcon; label: string; run: () => void; tint?: string }
+
+/** A button on a tab while the pointer is over it (the tab bar's and the Tabs panel's), before its Close: what's done
+ *  with what it shows (an inbox item's Settle). `run` gets the click, for a menu under it. */
+export type TabButton = { icon: LucideIcon; label: string; run: (e: ReactMouseEvent) => void }
 
 /** A kind of tab it opens that isn't a file (a terminal), desktop only. The tab's target is `view:<name>` or
  *  `view:<name>/<arg>` (arg: which one, e.g. a terminal session id); open one with openView (the plugin API). */
@@ -639,6 +643,8 @@ export type PluginDef = {
     launcher?: () => string | null
   }
   links?: (store: Store) => LinkTarget[]
+  /** Buttons on a tab showing `to` ("file:Inbox/A.md", a view) while the pointer is over it; null: none. */
+  tabButtons?: (to: string) => TabButton[] | null
   /** Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser.
    *  The first plugin that's on and takes it wins. `how`: plain, a new tab (behind, or `front`), or `out` (⌥⌘). */
   webLink?: (url: string, how: LinkClick) => boolean

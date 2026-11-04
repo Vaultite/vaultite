@@ -5,6 +5,8 @@ import type { Store } from "@/core/data"
 import { type Choice, choose } from "@/components/Chooser"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { desktop } from "@/core/desktop"
+import { isMac } from "@/core/platform"
+import { go, setClickOpens, clickOpening, targetOf } from "@/core/workspace"
 import { splitAnchor, tagName } from "../../../core/sections.ts"
 import { openAt } from "@/core/anchors"
 import { runCommandId, runCommandLink } from "@/core/commands"
@@ -75,7 +77,9 @@ const OTHER_SCHEME = /^(?!https?:|mailto:|tel:|javascript:|data:|blob:|file:|vau
 
 /** Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the
  *  system browser (a new browser tab on the web). `how`: how it was clicked (linkClick). */
-export function openWebLink(url: string, how: LinkClick = { newTab: false }) {
+export function openWebLink(url: string, how?: LinkClick) {
+  const asked = clickOpening()
+  how ??= asked ? { newTab: true, front: asked.front } : { newTab: false }
   if (!takeWebLink(url, how)) window.open(url, "_blank", "noopener,noreferrer")
 }
 
@@ -92,6 +96,50 @@ if (typeof window !== "undefined") {
   }
   addEventListener("click", clicked)
   addEventListener("auxclick", clicked)
+}
+
+// ⌘-click and middle-click open in a new tab behind, as a browser's links do, on every in-app item (a row, a card, a
+// link): whatever its handler opens goes there (clickOpens); one that doesn't hear a middle click is clicked with it.
+const ITEM = "a[href], [data-keyrow], [role=link], [role=option], [data-opens]"
+/** An address's tab ("#file/Notes%2FIdea.md": "file:Notes/Idea.md"), as nav.ts' route reads the window's. */
+const hashTarget = (hash: string) => {
+  const [tab, ...rest] = hash.slice(1).split("/")
+  return targetOf((tab === "file" || tab === "view") && rest.length ? `${tab}/${rest[0]}` : tab)
+}
+const appHref = (a: Element | null) => {
+  const href = a?.closest("a[href]")?.getAttribute("href")
+  if (href == null) return null
+  try { const u = new URL(href, location.href); return u.origin === location.origin && u.pathname === location.pathname ? u.hash : null } catch { return null }
+}
+if (typeof window !== "undefined") {
+  const asks = (e: MouseEvent) => (e.type === "auxclick" ? e.button === 1 : e.button === 0 ? (isMac ? e.metaKey : e.ctrlKey) : e.type === "mousedown" && e.button === 1)
+  addEventListener("click", start, true)
+  addEventListener("auxclick", start, true)
+  // (the editor follows its links on the press: there, only what asks for a new tab)
+  addEventListener("mousedown", start, true)
+  function start(e: MouseEvent) {
+    if (!asks(e)) return
+    const item = e.type !== "mousedown" && !!(e.target as Element | null)?.closest?.(ITEM)
+    setClickOpens({ front: e.shiftKey && e.button === 0, item })
+    setTimeout(() => setClickOpens(null))
+  }
+  let synth = false
+  const end = (e: MouseEvent) => {
+    if (synth) return e.preventDefault()
+    if (!asks(e)) return
+    const el = (e.target as Element | null)?.closest?.<HTMLElement>(ITEM)
+    const hash = appHref(e.target as Element)
+    // (never the browser's own new tab of the app: it would open the app inside itself)
+    if (!e.defaultPrevented && el && (hash !== null || !el.matches("a[href]"))) {
+      e.preventDefault()
+      const to = hash && hash.length > 1 ? hashTarget(hash) : null
+      if (to) go(to, true)
+      else if (e.type === "auxclick") { synth = true; try { el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, button: 1 })) } finally { synth = false } }
+    }
+    setClickOpens(null)
+  }
+  addEventListener("click", end)
+  addEventListener("auxclick", end)
 }
 
 /** A Markdown link that runs one of the app's commands: `[Open Claude Code](vaultite://command/terminal:claude-split)`.

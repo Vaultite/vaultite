@@ -222,6 +222,8 @@ export const tabs = () => here().tabs
 export const tabById = (id: string) => here().tabs.find((t) => t.id === id)
 /** The tab that has pane `id` (in this window). */
 export const paneTab = (id: string) => tabOfPane(here(), id)
+/** The panes showing any of these targets ("file:Inbox/A.md"), in every tab of this window. */
+export const panesShowing = (...to: string[]) => allPanes(here()).filter((p) => to.includes(p.to))
 export const paneById = (id: string) => allPanes(here()).find((p) => p.id === id)
 /** The vault file in the focused pane ("" when it shows something else, or a file from outside the vault). */
 export const currentFile = () => vaultPath(activePane()?.to ?? "") ?? ""
@@ -364,9 +366,16 @@ function paneFor(to: string, newTab: boolean): Pane | null {
   return fits(cur) ? cur : panesOf(t).find((p) => p.id !== cur.id && fits(p)) ?? null
 }
 
+let asked: { front: boolean; item: boolean } | null = null
+export const setClickOpens = (how: typeof asked) => { asked = how }
+/** How the click under way asks to open (core/links.ts sets it): ⌘ or a middle click, a new tab behind (`front`: ⌘⇧);
+ *  `item`: on an in-app item (a row, a link), whatever its handler opens goes there. null: a plain click. */
+export const clickOpening = () => asked
+
 /** Go somewhere: a pane that has it, else the focused pane (or another of its split) showing the same sort of thing or
  *  nothing, else a new tab beside it (a person from People: Back returns there). Blank tabs are never kept. */
 export function go(to: string, newTab = false, push = true) {
+  if (asked && (newTab || asked.item)) return void openTab(to, { background: !asked.front })
   const cur = activePane()
   const open = findOpen(to)
   // Opened from a page into a tab of its own (not asked for one): Back returns to the page.

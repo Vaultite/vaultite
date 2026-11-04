@@ -1,6 +1,6 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
-import { agentsOn, canRunAgents, cell, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, shownTab, isDesktop, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openView, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
+import { agentsOn, canRunAgents, cell, clickOpening, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, shownTab, isDesktop, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openView, openWebLink, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
 import type { InboxEvent } from "./types"
@@ -212,8 +212,10 @@ export function openEvent(e: InboxEvent) {
   if (!answerable(e)) markRead([e.id])
   const to = targetOf(e)
   if (!to) return
-  if (/^https?:/.test(to)) window.open(to, "_blank", "noopener")
-  else if (to.startsWith("view:")) openView(to, { newTab: !isViewOpen(to) })
+  // (⌘- or middle-clicked, a session opens in a tab, its terminal's or its view, rather than its sheet)
+  const tab = to.startsWith("detail:") && clickOpening() ? viewOf(e) : null
+  if (/^https?:/.test(to)) openWebLink(to)
+  else if (tab || to.startsWith("view:")) openView(tab ?? to, { newTab: !isViewOpen(tab ?? to) })
   else if (to.startsWith("detail:")) openDetail(to.slice(7))
   else openFile(to.slice(5))
 }

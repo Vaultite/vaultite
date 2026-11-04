@@ -119,6 +119,8 @@ await until(() => sheet.count())
 await sheet.locator("[data-session-done]").click()
 check("Done with this, in its sheet: done, out of the list", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "done")) &&
   !!(await until(async () => (await kept.count()) === 0)))
+// (settled, the next session's sheet takes its place: closed for the toast)
+if (await page.locator("[data-session-sheet]").filter({ visible: true }).count()) { await page.keyboard.press("Escape"); await wait(400) }
 await page.locator("[data-sonner-toast]", { hasText: "Settled “" }).first().getByRole("button", { name: "Undo" }).click()
 check("Undo: it needs you again", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "open")))
 // The reply goes into its session: here its terminal, its agent still running (the stand-in, which the terminal echoes).

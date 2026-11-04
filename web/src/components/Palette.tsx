@@ -180,7 +180,8 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   useNearEnd(more, () => setLimit(drawn + ROWS), marks, NEAR)
   const end = useRef<HTMLDivElement>(null)
   useNearEnd(end, () => onEnd?.(), marks, "200px")
-  const pick = (i: number, e: Pointer) => onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey, shift: e.shiftKey })
+  // (a middle click is a ⌘-click: a new tab)
+  const pick = (i: number, e: Pointer) => onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey || ("button" in e && e.button === 1), shift: e.shiftKey })
   // The rows' handlers stay the same (so a row's memo holds), calling the latest.
   const picks = useRef(pick)
   useLayoutEffect(() => { picks.current = pick })

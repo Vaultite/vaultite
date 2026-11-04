@@ -124,6 +124,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `choosePlace(opts?)`: Choose where to open a terminal or an agent (`agent`: only that one's places), then open it.
 - `cleanTabLayout(w)`: A saved workspace, checked; one saved before tabs held panes (`{root, focus, zoom}`) is migrated.
 - `clearSelection()`
+- `clickOpening()`: How the click under way asks to open (core/links.ts sets it): ⌘ or a middle click, a new tab behind (`front`: ⌘⇧); `item`: on an in-app item (a row, a link), whatever its handler opens goes there.
 - `closePane(id?, force?)`: Close a pane (the focused one): its tab keeps the others; its last pane closes the tab.
 - `closeTab(id, force?)`: Close a tab, every pane in it (`force`: without its views asking first, e.g.
 - `closeView(to)`: Close every pane showing a view (`terminal/abc`), as if the user did (its plugin hears it).
@@ -454,6 +455,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `panelSide(key, s?)`: Which sidebar a panel is in (null: hidden).
 - `PaneMotion`: A move of panes as it starts: the sections moving, and when they're all still.
 - `panesOf(t)`: A tab's panes.
+- `panesShowing(...to)`: The panes showing any of these targets ("file:Inbox/A.md"), in every tab of this window.
 - `paneTab(id)`: The tab that has pane `id` (in this window).
 - `paragraphAt(doc, pos)`: The lines of the soft-wrapped paragraph around `pos`: up to a blank line or a line that starts another block (list item, quote, heading, fence, table, math, HTML, footnote definition, callout…
 - `parse(s)`
@@ -645,6 +647,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `switchPreview(text, …, value, set)`: A switch's preview: Off and On.
 - `systemNotify(title, body?)`: In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the window then comes to the front), false when it's dismissed; null in a browser, or…
 - `Tab`: A tab: its panes in a tree of splits (one pane, mostly), the one `focus`ed, and the one filling it for now (`zoom`, tmux's).
+- `TabButton`: A button on a tab while the pointer is over it (the tab bar's and the Tabs panel's), before its Close: what's done with what it shows (an inbox item's Settle).
+- `tabButtons(to, disabled?)`: The buttons a tab showing `to` has on hover (`tabButtons`), from the plugins that are on, in their order.
 - `TabDrop`: Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none; `home`: where what's dragged is already, so a drop there changes nothing), or a…
 - `TabGroup`: A tab group, as browsers have them: a named, coloured run of tabs side by side (those whose `group` is its id), folded to its name while `collapsed`.
 - `TabInfo`: `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting).

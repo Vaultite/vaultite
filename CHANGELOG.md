@@ -49,6 +49,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Web tabs come back as you left them**: after a relaunch the page on screen shows at once, as you last saw it, while
   it loads, scrolled where it was with its Back and Forward; a web tab closed and reopened
   (⌘⇧T) does the same, and tabs not loaded yet keep their titles.
+- **⌘-click and middle-click open behind, as links do**: on anything in the app (an Inbox row, the file tree, a link
+  in a note, a folder's page, backlinks), a new tab behind the one on screen (⌘⇧: in front), never a copy of the app
+  in a web tab or nothing at all; a folder middle-clicked opens its page.
+- **Inbox items settle where they're open**: an item open in a tab has Settle and Snooze on its tab (on hover, in the
+  tab bar and the Tabs panel) and in its file bar. Settled or snoozed, the tab reading it goes on to the next item, as
+  Mail does (none left: it closes, back to where it was opened), and its other tabs close; a session settled or
+  snoozed in its sheet goes on to the next one's. Rows' buttons are Settle,
+  Snooze, More everywhere, and a phone's swipe the same from the edge.
 - **Folders as Finder shows them**: a folder's page shows as a grid, a list, columns (each folder down to it side by
   side, a preview of the file picked) or a gallery (the picked thing large over a strip, ← → through it); a list or
   grid can be grouped by kind or date modified. Every file has a picture: a PDF's first page, a video's frame, a web

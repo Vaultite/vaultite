@@ -26,7 +26,7 @@ import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, groupsAsDrawn, sprangOpen, springing, type Drop } from "@/core/drop"
 import { INCOMING, useSlide } from "@/core/slide"
 import { usePaneHasTopBar } from "@/core/pane"
-import { tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
+import { tabButtons, tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { commandItems, menuFor, openMenu, type MenuItem } from "@/components/ContextMenu"
 import { useCommandKeys } from "@/core/commands"
@@ -614,6 +614,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
   // (away from the bar, the tab held shows where it goes back to)
   const away = dragging && !hole && (item?.tab === tab.id || picked)
   const tip = split ? ps.map((p) => info(p).label).join(" | ") : own.label
+  const buttons = split || dragging ? [] : tabButtons(ps[0].to)
   const click = (e: React.MouseEvent<HTMLElement>) => {
     // ⌥-click: it takes the focused pane's place, what was there going back to the list as a tab.
     if (e.altKey && !active && canTabIntoPane(tab.id, activePane().id, "center")) { e.preventDefault(); return replaceWithTab(tab.id) }
@@ -628,7 +629,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
         split ? "max-w-[320px]" : "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : lit ? "bg-foreground/[0.08] ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]",
         dragging && (hole ? "bg-foreground/[0.06] shadow-none ring-[0.5px] ring-border [&>button]:invisible" : away ? "[&>[data-tab-close]]:invisible [&>[data-tab-pin]]:invisible [&>[role=tab]]:opacity-40" : "opacity-40"))}
-      style={width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : undefined}>
+      style={{ ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : {}), ...(buttons.length ? { "--tab-buttons": `${buttons.length * 22}px` } : {}) } as React.CSSProperties}>
       <button type="button" role="tab" aria-selected={active} aria-label={split ? tip : undefined}
         onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
         data-tip={item ? undefined : tip} data-tip-trunc className={cn("flex h-full min-w-0 flex-1 cursor-pointer items-center rounded-[inherit] pr-6 pl-2 text-left text-[13px]", own.color && !split && "[&_[data-container-line]]:hidden")}>
@@ -639,7 +640,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
         )) : (
           <span className="flex h-full min-w-0 flex-1 items-center gap-1.5">
             {split && icons && ps.map((p) => <PaneIcon key={p.id} i={info(p)} />)}
-            <ChipLabel i={own} icons={icons && !split} strong={active} muted={!active} mark />
+            <ChipLabel i={own} icons={icons && !split} strong={active} muted={!active} mark reserve={buttons.length > 0} />
           </span>
         )}
       </button>
@@ -656,6 +657,17 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
             active || lit ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100")}>
           <X className="size-3.5" strokeWidth={2} />
         </button>
+      )}
+      {/* (what plugins put on it, on hover, before its X: the label fades under them, so nothing moves) */}
+      {buttons.length > 0 && (
+        <span data-tab-buttons className={cn("invisible absolute flex gap-0.5 group-hover/tab:visible @max-[140px]/tab:hidden", tab.pinned || !only ? "right-6.5" : "right-1")}>
+          {buttons.map((b) => (
+            <button key={b.label} type="button" data-no-drag tabIndex={-1} aria-label={b.label} data-tip={b.label} onClick={(e) => { e.stopPropagation(); b.run(e) }}
+              className="grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground">
+              <b.icon className="size-3.5" strokeWidth={2} />
+            </button>
+          ))}
+        </span>
       )}
       {away && <Undo2 aria-hidden data-tab-return className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground" strokeWidth={2} />}
       {/* (along the top: a tab group's line runs under) */}
@@ -674,13 +686,15 @@ function PaneIcon({ i, className }: { i: TabInfo; className?: string }) {
 }
 
 /** A tab's (or a split's half's) icon, name and mark. */
-function ChipLabel({ i, icons, strong, muted, mark = true }: { i: TabInfo; icons: boolean; strong: boolean; muted: boolean; mark?: boolean }) {
+function ChipLabel({ i, icons, strong, muted, mark = true, reserve }: { i: TabInfo; icons: boolean; strong: boolean; muted: boolean; mark?: boolean
+  /** Its tab has buttons on hover (tabButtons): the label fades before them. */
+  reserve?: boolean }) {
   return (
     <>
       {/* (too narrow for both, the mark stands in for the icon: a browser's speaker does) */}
       {icons && <PaneIcon i={i} className={cn(i.mark && mark && "@max-[80px]/tab:hidden")} />}
       {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
-      <span className={cn("min-w-0 flex-1 fade-end", icons && "@max-[80px]/tab:hidden", strong ? "font-medium text-foreground" : muted ? "text-muted-foreground" : "font-medium text-muted-foreground")}>{i.label}</span>
+      <span className={cn("min-w-0 flex-1 fade-end", reserve && "group-hover/tab:[--fade-reserve:var(--tab-buttons)]", icons && "@max-[80px]/tab:hidden", strong ? "font-medium text-foreground" : muted ? "text-muted-foreground" : "font-medium text-muted-foreground")}>{i.label}</span>
       {mark && i.mark && <IconAction action={i.mark} className="ml-auto @max-[80px]/tab:ml-0"><i.mark.icon className={cn("size-3.5 shrink-0", !i.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={i.mark.tint ? { color: i.mark.tint } : undefined} /></IconAction>}
     </>
   )

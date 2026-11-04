@@ -597,6 +597,8 @@ function guard(win: AppWindow, origin: string) {
       return { action: "allow", overrideBrowserWindowOptions: { webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true } },
         createWindow: (o) => popOut(w, (o as { webContents: WebContents }).webContents, o.webPreferences, o) } // (Electron puts the new page in its options)
     }
+    // (the app's own page in a new window, a link's browser default: never the app inside itself; the page opens it)
+    if (appPage(url, origin)) return { action: "deny" }
     if (url.startsWith(origin + "/api/raw?")) { // a vault file that isn't text (an image, a PDF): the Mac's app for it
       const w = [...wins.values()].find((x) => x.win === win)
       const rel = new URL(url).searchParams.get("path"), abs = w && rel ? inVault(w.vault.path, rel) : null

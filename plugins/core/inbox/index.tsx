@@ -6,7 +6,7 @@ import { AmbientButton, backDetail, definePlugin, getStore, onTabLayoutChange, n
 import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, markUnread, onFresh, pinEvents, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
-import { byKey, doneByKey, fileTo, keysOnThreads, press, stepSheet, GateSheet, keysOnInbox, pinByKey, readByKey, replyByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
+import { byKey, doneByKey, fileTo, keysOnThreads, press, stepSheet, GateSheet, keysOnInbox, pinByKey, readByKey, replyByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, ItemBar, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, tabButtonsOf, toReview, useBack, useCount } from "./Inbox"
 import { snoozed, snoozeMs } from "./snooze"
 import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
@@ -150,6 +150,9 @@ export default definePlugin({
   },
   blocks: { inbox: ({ store, options }) => <InboxBlock store={store} options={options} />, reply: (ctx) => <ReplyBlock {...ctx} /> },
   files: { types: ["inbox"], folders: ["Inbox"], icon: InboxIcon, tint: "var(--inbox)" },
+  // (an item to review, where it's open: Settle and Snooze on its tab's hover and in its file bar)
+  tabButtons: tabButtonsOf,
+  fileBar: { item: { title: "Inbox item", sort: 52, render: (file) => <ItemBar file={file} /> } },
   fileMenu: (path) => {
     const r = resultAt(path)
     if (!r) return []

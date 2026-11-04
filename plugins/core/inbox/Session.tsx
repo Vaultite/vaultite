@@ -2,9 +2,9 @@
 // into it (on its machine). Opening it reads it; only Done (or the session moving on) settles it.
 import { useEffect } from "react"
 import { Bot, Check, CheckCheck, Clock, Pin, PinOff, RotateCcw, SquareTerminal, X } from "lucide-react"
-import { backDetail, Button, detailPath, Empty, fmtAgo, haptic, Markdown, notify, notifyError, openDetail, SheetHead, useAgents } from "@vaultite"
+import { Button, detailPath, Empty, fmtAgo, haptic, Markdown, notify, notifyError, openDetail, SheetHead, useAgents } from "@vaultite"
 import { agentOf, answerable, answerAsk, getEvents, markEventsDone, markRead, openSession, pinEvents, snoozable, unsettle, SESSION_DETAIL, useEvents } from "./events"
-import { snoozeBelow } from "./Inbox"
+import { leaveSheet, snoozeBelow } from "./Inbox"
 import { Questions } from "./Questions"
 import { ReplyBox } from "./Reply"
 import type { InboxEvent } from "./types"
@@ -83,9 +83,9 @@ export function SessionSheet({ id }: { id: string }) {
   const blocked = e.state === "open" && BLOCKED.includes(e.ask ?? "")
   const done = (to: boolean) => {
     haptic("medium")
+    // (dealt with: the next one's sheet, as a mail archived goes on to the next)
+    if (to) leaveSheet(e.id)
     void markEventsDone([e.id], to)
-    // (dealt with: the sheet goes, as a mail archived does)
-    if (to) backDetail()
     notify(to ? `Settled “${e.title}”` : `Back in the inbox: “${e.title}”`, { action: { label: "Undo", run: () => void (to ? unsettle([e]) : markEventsDone([e.id], true)) } })
   }
   const open = () => openSession({ terminal: e.terminal, session: e.session, agent: e.source, machine: e.machine, host: e.host })
@@ -103,9 +103,9 @@ export function SessionSheet({ id }: { id: string }) {
                 {e.pinned ? <><PinOff className="size-4" /> Unpin</> : <><Pin className="size-4" /> Pin</>}
               </Button>
             )}
-            {/* (snoozed, it's out of the way: the sheet goes, as Settle's does) */}
+            {/* (snoozed, it's out of the way: the next one's sheet, as Settle's) */}
             {snoozable(e) && e.state !== "working" && (
-              <Button look="quiet" className="ml-2 h-11 px-3 md:h-8" data-session-snooze onClick={snoozeBelow([`e:${e.id}`], backDetail)}><Clock className="size-4" /> Snooze</Button>
+              <Button look="quiet" className="ml-2 h-11 px-3 md:h-8" data-session-snooze onClick={snoozeBelow([`e:${e.id}`], () => leaveSheet(e.id))}><Clock className="size-4" /> Snooze</Button>
             )}
           </div>
         )}

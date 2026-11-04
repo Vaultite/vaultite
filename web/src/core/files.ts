@@ -14,7 +14,7 @@ import { notify as notice } from "@/core/notify"
 import { allPanes, tabPath, type Pane } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
 import { guestEdits, share } from "@/core/share"
-import { closePane, dropTabs, findOpen, go, guarded, here, keepsTab, openTab, panes, activePane, retarget, setFocusedPane, targetOf } from "@/core/workspace"
+import { clickOpening, closePane, setClickOpens, dropTabs, findOpen, go, guarded, here, keepsTab, openTab, panes, activePane, retarget, setFocusedPane, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
@@ -183,7 +183,13 @@ onUiAction((m) => {
 export function openView(to: string, opts: { newTab?: boolean; split?: boolean; focus?: boolean; another?: boolean } = {}) {
   const target = resolveView(to.startsWith("view:") ? to : `view:${to}`)
   if (opts.another) return void openTab(target)
-  if (findOpen(target)) return opts.focus === false ? undefined : go(target)
+  if (findOpen(target)) {
+    // (shown once: ⌘- or middle-clicked, it stays where it is; ⌘⇧, it's shown)
+    const how = clickOpening()
+    if (opts.focus === false || (how && !how.front)) return
+    setClickOpens(null)
+    try { return go(target) } finally { setClickOpens(how) }
+  }
   if (opts.split) return openInSplit(target, "right", opts.focus !== false)
   go(target, opts.newTab)
 }
