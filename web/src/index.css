@@ -1234,6 +1234,16 @@ html[data-page-lift], html[data-page-lift] body { background: color-mix(in srgb,
 html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(--background); }
 /* (cut to the card by its clip-path, the page can't cast a shadow: a box of the card's size behind it does) */
 [data-lift-shadow] { box-shadow: 0 10px 40px rgb(0 0 0 / 0.25), 0 0 0 0.5px rgb(0 0 0 / 0.06); }
+/* A split tab's panes either side of the page (PhoneFiles.tsx), off its edges: laid out once, shown while it's swiped,
+   as tall as the window from its top, each at the scroll it will have (core/phoneTabs.ts sets the vars). */
+[data-beside] {
+  position: absolute; top: var(--beside-top, 0px); width: 100%; height: var(--beside-h, 0px); padding-inline: calc(var(--spacing) * 4);
+  overflow: clip; contain: strict; visibility: hidden; pointer-events: none;
+}
+[data-beside="-1"] { left: calc(-100% - 20px); }
+[data-beside="1"] { left: calc(100% + 20px); }
+[data-beside] > div { transform: translateY(var(--beside-y, 0px)); }
+#main-scroll > main[data-swiping] [data-beside] { visibility: visible; }
 /* The phone's bar stays where it is: its buttons change in place. */
 ::view-transition-group(phone-bar) { animation-duration: 200ms; }
 

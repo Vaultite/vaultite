@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Splits on the phone**: a split tab's panes sit side by side, the next one coming in with the finger from the first
+  pixels; let go past halfway or flick and it settles in on a spring at the finger's speed, past the ends it gives, a
+  finger down mid-settle catches it, and vertical scrolls stay scrolls. In the tab list a split's card shows its
+  panes (tap one to show it), its panes open as a page of cards (drag one onto another to swap, swipe or X to close,
+  + for a new pane), and tab menus have Open in split, Swap panes, Separate panes and Move to new tab. Swiping
+  between workspaces there settles the same way.
 - **Sharing a folder, end to end**: Share sits on a folder's toolbar, in its menus and in the palette (Share folder…);
   the link is copied as it's made, the tree marks shared folders, and each person's access is a menu (Can view,
   comment, edit; 30 more days; Remove access), the same link kept. A guest lands on the folder's page, sees its images,

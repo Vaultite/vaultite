@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { createPortal } from "react-dom"
 import {
   AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, PictureInPicture2, Folder,
-  PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, type LucideIcon, PencilLine,
+  ArrowLeftRight, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, type LucideIcon, PencilLine,
 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { edgeScroller, getDrag, laidOut, onDrag, onDragEnd, startDrag, useDrag, useDragItem, useDropHit, type Drag, type DragItem } from "@/core/drag"
@@ -12,8 +12,8 @@ import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
 import { stem } from "@/core/files"
-import { activePane, askRename, closePane, closeTab, closeTabIds, closeTabs, here, isPopout, paneById, paneTab, popOut, selectPane, selectTab, tabById, togglePinTab, useTabList } from "@/core/workspace"
-import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, moveToSplit, paneToTab, replaceWithTab, splitPane, zoomPane } from "@/core/splits"
+import { activePane, askRename, closePane, closeTab, closeTabIds, closeTabs, here, isPopout, paneById, paneTab, popOut, selectPane, selectTab, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
+import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, keepShown, moveToSplit, paneIntoPane, paneToTab, replaceWithTab, splitPane, zoomPane } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { focusedPane, isBlankTab, layout, panesOf, vaultPath, type Group, type Pane, type Rect, type Tab } from "../../../core/layout.ts"
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
@@ -78,7 +78,7 @@ function tabMenu(tab: Tab): MenuItem[] {
       { label: "Open in split right", icon: Columns2, sep: true, run: () => moveToSplit("right", tab.id), disabled: !canJoin(tab.id) },
       { label: "Open in split down", icon: Rows2, run: () => moveToSplit("bottom", tab.id), disabled: !canJoin(tab.id) },
     ]),
-    ...(split ? [{ label: "Separate panes", icon: UnfoldHorizontal, run: () => separate(tab) }] : []),
+    ...(split ? [{ label: "Separate panes", icon: UnfoldHorizontal, run: () => separatePanes(tab.id) }] : []),
     ...(isPopout() ? [{ label: "Move to main window", icon: AppWindow, run: () => moveToMain([tab.id]), disabled: !hasMainWindow() }] : []),
     withVariant({ label: "Move to new window", icon: AppWindow, run: () => popOut(tab.id, true), disabled: blank },
       { label: "Open in new window", icon: AppWindow, run: () => popOut(tab.id), disabled: blank }),
@@ -86,11 +86,14 @@ function tabMenu(tab: Tab): MenuItem[] {
   ]
 }
 
-/** A split tab's panes each a tab of its own, in their order, the one focused still on screen. */
-function separate(tab: Tab) {
-  const ps = panesOf(tab)
-  for (const p of ps.slice(1).reverse()) paneToTab(p.id)
-  selectPane(tab.focus)
+/** A split tab's panes each a tab of its own, in their order; the tab shown stays shown (this one's focused pane, if
+ *  it was). */
+export function separatePanes(id: string) {
+  const tab = tabById(id), shown = here().active
+  if (!tab) return
+  for (const p of panesOf(tab).slice(1).reverse()) paneToTab(p.id)
+  keepShown(shown === id ? paneTab(tab.focus)?.id ?? shown : shown)
+  showActiveUnder()
 }
 
 /** Right-click on a pane's bar: splitting it, taking it out of its tab, floating, zooming, closing; then what it
@@ -282,18 +285,43 @@ function placeItems(p: Pane, phone = false): MenuItem[] {
 export function phoneTabMenu(tab: Tab): MenuItem[] {
   const items = placeItems(focusedPane(tab), true).map((it, i) => (i === 0 ? { ...it, sep: false } : it))
   const split = panesOf(tab).length > 1
-  return [...items, ...(split ? [{ label: "Close pane", icon: X, sep: items.length > 0, run: () => closePane(tab.focus) }] : []),
-    { label: "Close tab", icon: X, sep: !split && items.length > 0, run: () => closeTab(tab.id) }]
+  return [...items, ...(split ? [
+    { label: "Move to new tab", icon: SquareArrowOutUpRight, sep: items.length > 0, run: () => paneToTab(tab.focus) },
+    { label: "Separate panes", icon: UnfoldHorizontal, run: () => separatePanes(tab.id) },
+    { label: "Close pane", icon: X, sep: true, run: () => closePane(tab.focus) },
+  ] : []),
+  { label: "Close tab", icon: X, sep: !split && items.length > 0, run: () => closeTab(tab.id) }]
 }
 
-/** A tab card's menu in the phone's tab list (held, or right-clicked): closing, then what it shows. */
-export function tabCardMenu(tab: Tab, count: number, groups: MenuItem[] = []): MenuItem[] {
+/** A tab card's menu in the phone's tab list (held, or right-clicked): closing, its panes (`panes` shows them), joining
+ *  the tab on screen, then what it shows. */
+export function tabCardMenu(tab: Tab, count: number, groups: MenuItem[] = [], panes?: () => void): MenuItem[] {
+  const n = panesOf(tab).length, shown = here().active
   return [
     { label: "Close tab", icon: X, run: () => closeTab(tab.id) },
     { label: "Close other tabs", run: () => closeTabs("others", tab.id), disabled: count < 2 },
     { label: "Close all tabs", danger: true, run: () => closeTabs("all", tab.id) },
     ...groups,
+    ...(n > 1 ? [
+      ...(panes ? [{ label: "Show panes", icon: Columns2, sep: true, run: panes }] : []),
+      ...(n === 2 ? [{ label: "Swap panes", icon: ArrowLeftRight, sep: !panes, run: () => { const [a, b] = panesOf(tab); paneIntoPane(a.id, b.id, "center"); keepShown(shown) } }] : []),
+      { label: "Separate panes", icon: UnfoldHorizontal, sep: !panes && n !== 2, run: () => separatePanes(tab.id) },
+    ] : []),
+    // (another tab joins the one on screen, beside its focused pane: the computer's Open in split right)
+    ...(tab.id !== shown ? [{ label: "Open in split", icon: Columns2, sep: n < 2, run: () => moveToSplit("right", tab.id), disabled: !canJoin(tab.id) }] : []),
     ...placeItems(focusedPane(tab), true),
+  ]
+}
+
+/** A pane's card in a split tab's page of the phone's tab list: taking it out, closing it, then what it shows. */
+export function paneCardMenu(p: Pane): MenuItem[] {
+  const t = paneTab(p.id)
+  if (!t) return []
+  const shown = here().active
+  return [
+    { label: "Move to new tab", icon: SquareArrowOutUpRight, run: () => { paneToTab(p.id); keepShown(shown) } },
+    { label: "Close pane", icon: X, run: () => closePane(p.id) },
+    ...placeItems(p, true),
   ]
 }
 

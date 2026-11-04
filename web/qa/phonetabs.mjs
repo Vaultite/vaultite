@@ -311,8 +311,8 @@ try {
   await D.locator("[role=menuitem]", { hasText: /^Split right$/ }).click()
   const splitCard = P.locator("[data-tab-row]", { has: P.locator("[data-card-panes]") })
   check("tab list: a desktop split is one card, no group", !!(await until(async () => !(await P.locator("[data-group-card]").count()) && (await P.locator("[data-tab-row]").count()) === left && (await splitCard.count()) === 1, 6000)), await P.$$eval("[data-group-card], [data-tab-row]", (s) => s.map((x) => x.innerText.split("\n")[0])))
-  check("tab list: ...named by both its panes, marked as holding 2", / · /.test(await splitCard.locator("[data-tab-card] > button").first().getAttribute("aria-label").catch(() => "")) && (await splitCard.locator("[data-card-panes]").innerText().catch(() => "")).trim() === "2",
-    [await splitCard.locator("[data-tab-card] > button").first().getAttribute("aria-label").catch(() => null), await splitCard.locator("[data-card-panes]").innerText().catch(() => null)])
+  check("tab list: ...named by both its panes, marked as holding 2", / · /.test(await splitCard.locator("[data-tab-card] > button").first().getAttribute("aria-label").catch(() => "")) && (await splitCard.locator("[data-card-panes]").getAttribute("data-card-panes").catch(() => "")) === "2",
+    [await splitCard.locator("[data-tab-card] > button").first().getAttribute("aria-label").catch(() => null), await splitCard.locator("[data-card-panes]").getAttribute("data-card-panes").catch(() => null)])
   await P.screenshot({ path: `${OUT}phone-list-split.png` })
   await P.keyboard.press("Escape"); await P.goBack().catch(() => {}); await wait(300)
   await P.goto(`${B}${hash("Three")}`); await P.waitForSelector("[data-phone-bar]"); await wait(500)

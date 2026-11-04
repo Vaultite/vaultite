@@ -5,7 +5,7 @@ import {
   replaced, resized, swapped, tabOf, tabOfPane, tabWith, tabWithout, withoutTabs, type Layout, type Pane, type Rect, type Side, type Tab, type TabList,
 } from "../../../core/layout.ts"
 import { focusPane } from "@/core/focus"
-import { activePane, activeTab, setFocusedPane, here, keepsTab, onWorkspaceChange, paneById, panes, paneTab, quietly, set, show, showActive, tabById, withTab } from "@/core/workspace"
+import { activePane, activeTab, setFocusedPane, here, keepsTab, onWorkspaceChange, paneById, panes, paneTab, quietly, set, show, showActive, showActiveUnder, tabById, withTab } from "@/core/workspace"
 
 /** Where something dropped on a pane lands: an edge splits it, the middle takes its place. */
 export type Zone = Side | "center"
@@ -73,7 +73,7 @@ export function tabIntoPane(id: string, pane: string, zone: Zone) {
   const was = leaves(into.root).find((p) => p.id === pane)!
   if (zone === "center" && !isBlank(was)) next = putAt(next, tabWith(was), at, null)
   set({ ...next, active: into.id })
-  showActive()
+  showActiveUnder()
 }
 /** Tree `n` with pane `id` replaced by tree `by` (one pane keeps the float, as a pane replacing it does). */
 function graft(n: Layout, id: string, by: Layout): Layout {
@@ -119,7 +119,7 @@ export function paneIntoPane(id: string, target: string, zone: Zone) {
     const t = base.tabs.find((x) => x.id === into.id)!
     set({ ...mapTab(base, into.id, () => ({ ...t, root: beside(t.root, target, moved, zone), focus: id })), active: into.id })
   }
-  showActive()
+  showActiveUnder()
 }
 /** Pane `id` out of its split into a tab of its own, at index `at` (default: right after its tab), shown. */
 export function paneToTab(id: string, at?: number, group?: string | null) {
@@ -128,7 +128,7 @@ export function paneToTab(id: string, at?: number, group?: string | null) {
   const l = mapTab(here(), t.id, (x) => tabWithout(x, new Set([id]))!)
   const own = tabWith(p)
   set({ ...putAt(l, own, at ?? l.tabs.findIndex((x) => x.id === t.id) + 1, group === undefined ? t.group ?? null : group), active: own.id })
-  showActive()
+  showActiveUnder()
 }
 export const canPaneToTab = (id: string) => { const t = paneTab(id); return !!t && panesOf(t).length > 1 }
 
@@ -220,6 +220,15 @@ export function placeTabBy(id: string, where: "before" | "after", ref: string, g
   const { tab, rest } = pulled(here(), id)
   const at = rest.tabs.findIndex((t) => t.id === ref) + (where === "after" ? 1 : 0)
   set(putAt(rest, tab, at, group))
+}
+
+/** A blank pane after the last of tab `id`'s, focused (the + of a split's page in a phone's tab list). Its id. */
+export function addPane(id: string): string | null {
+  const t = tabById(id)
+  if (!t) return null
+  const p: Pane = { id: newPaneId(), to: "new" }
+  set(withTab(t.id, (x) => ({ ...x, root: beside(x.root, panesOf(x).at(-1)!.id, p, "right"), focus: p.id, zoom: undefined })))
+  return p.id
 }
 
 // ---------- splitting ----------

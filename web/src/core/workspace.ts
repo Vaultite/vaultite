@@ -638,9 +638,9 @@ export function setFocusedPane(id: string) {
   showActive()
 }
 
-/** After tabs close: the address shows the focused pane, keeping a sheet that's open over it (tabs closed from the
- *  phone's tab switcher, a sheet itself, leave it open). */
-function showActiveUnder() {
+/** The address shows the focused pane, keeping a sheet that's open over it (tabs closed or moved from the phone's tab
+ *  list, a sheet itself, leave it open). */
+export function showActiveUnder() {
   const to = activePane().to, { tab, detail } = route()
   if (!detail) return showActive()
   if (tab !== hashOf(to)) history.replaceState(history.state, "", `#${hashOf(to)}/${detail}`)

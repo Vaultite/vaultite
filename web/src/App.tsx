@@ -164,7 +164,7 @@ const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.R
 }
 
 /** The detail sheet for a path: a plugin's (person/…, log/…), or the core's plugin sheet (plugin/<id>). */
-function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Tab) => TabInfo): { body: React.ReactNode; title: string; wide?: boolean } {
+function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Tab | Pane) => TabInfo): { body: React.ReactNode; title: string; wide?: boolean } {
   const [kind, id] = path.split("/")
   if (kind === "file") {
     const p = decodeURIComponent(id ?? "")
@@ -660,7 +660,7 @@ export default function App() {
         // the active one (the tab list has the others; files open in tabs, as on a computer: core/files.ts, openFile).
         <div id="main-scroll" className="overflow-x-clip">
           {store && <PhoneHeader title={tabInfo(activeTab()).label} tab={activeTab()} />}
-          <main className="pb-safe mx-auto max-w-5xl px-4 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
+          <main className="pb-safe relative mx-auto max-w-5xl px-4 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
             {error && !store && <p className="mt-10 text-muted-foreground">{error}</p>}
             {!error && !store && <VaultLoading />}
             {store && <Guard what="This tab" size="tab" reset={tab} close={() => closeTab(activeTab().id)}>

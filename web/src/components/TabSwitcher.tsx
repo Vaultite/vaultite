@@ -1,23 +1,23 @@
-// Phones: the tabs as cards, as Chrome's tab grid (a split tab one card, a tab group one). Swipe or X closes, hold for
-// its menu, hold and move to reorder or group, while the others make room. Swiped elsewhere, the next workspace's.
+// Phones: the tabs as cards, as Chrome's tab grid (a split one card, its panes side by side; a tab group one, and both
+// open as a page of cards). Swipe or X closes, hold for its menu, hold and move to reorder or group; swiped, workspaces.
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react"
 import { createPortal, flushSync } from "react-dom"
 import { CheckSquare, ChevronDown, ChevronLeft, Columns2, Ellipsis, Plus, Search, X } from "lucide-react"
 import { onAway } from "@/core/away"
 import type { Store } from "@/core/data"
-import { activePane, activeTab, closeTab, closeTabIds, here, tabCount, useTabList } from "@/core/workspace"
-import { keepShown, placeTabBy } from "@/core/splits"
+import { activePane, activeTab, closePane, closeTab, closeTabIds, here, paneById, tabCount, useTabList } from "@/core/workspace"
+import { addPane, keepShown, paneIntoPane, paneToTab, placeTabBy } from "@/core/splits"
 import { addToGroup, closeGroup, groupWith, leaveGroup, renameGroup } from "@/core/tabgroups"
-import { focusedPane, panesOf, tabOf, tabPath, type Group, type Tab } from "../../../core/layout.ts"
+import { focusedPane, layout, panesOf, tabOf, tabPath, tabWith, type Group, type Pane, type Tab } from "../../../core/layout.ts"
 import { edgeScroller, fingerHolding, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { workspaces, useWorkspaceVersion } from "@/core/scope"
 import type { WorkspaceInfo } from "@/core/define"
-import { newPhoneTab, pickTab } from "@/core/phoneTabs"
+import { newPhoneTab, pickPane, pickTab } from "@/core/phoneTabs"
 import { shownHeaderItems, viewFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { haptic } from "@/core/haptics"
 import { Badged, PageHeader, TitledAbove, usePortalHost } from "@/components/kit"
-import { groupItems, groupMenu, groupName, TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
+import { groupItems, groupMenu, groupName, paneCardMenu, TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
 import { colorVar } from "../../../core/colors.ts"
 import { namedIcon } from "@/core/pages"
 import { rowMenu, selectClick, selectedAttr, selecting, startSelecting, useSelectable, useSelected } from "@/core/select"
@@ -26,6 +26,7 @@ import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { FileView } from "@/components/FileView"
 import { TabPreview } from "@/components/TabPreview"
 import { spring, unmark, useLingeringSheet } from "@/core/motion"
+import { fling, glide, shownAt, stopFor, within } from "@/core/pager"
 import { moves } from "@/core/animation"
 import { cn, plural } from "@/lib/utils"
 import { hasWords } from "@/core/fuzzy"
@@ -49,6 +50,10 @@ const isOpen = (id: string) => here().tabs.some((t) => t.id === id)
 type ListHit = { kind: "before" | "after" | "into"; tab: string } | { kind: "join"; group: string } | { kind: "out"; via: "bar" | "head" | "here" }
 /** Where a lifted card would go among its pane's tabs. */
 type Placed = { kind: "before" | "after"; tab: string }
+/** What a pane's card dropped on a split's page does: swaps with the pane it's on, or (on top of the page) leaves. */
+type PaneHit = { kind: "swap"; pane: string } | { kind: "out" }
+/** A tab's (or a pane's) name and icon. */
+type Info = (t: Tab | Pane) => TabInfo
 
 const CARD = "relative isolate flex aspect-[3/4] scroll-mt-[calc(env(safe-area-inset-top)+3.5rem)] scroll-mb-4 flex-col rounded-[14px]"
 /** A card's picture is the page's shape (core/motion.ts sets it), its top shown: the page zooms into it exactly. */
@@ -83,20 +88,28 @@ function carriedOut(tabs: Tab[], id: string): Tab[] {
   return rest
 }
 
-/** A card's face: the tab's icon and name (a split tab's: its panes', and how many) over its focused pane's picture. */
-function CardFace({ store, tab, info, current }: { store: Store; tab: Tab; info: TabInfo; current: boolean }) {
+/** A card's face: the tab's icon and name (a split tab's: its panes') over its focused pane's picture; a split tab's
+ *  panes each a picture where they sit in it (`panes`: their names and icons). */
+function CardFace({ store, tab, info, current, panes }: { store: Store; tab: Tab; info: TabInfo; current: boolean; panes?: Info }) {
   const Icon = info.icon
   const { fileIcons } = usePrefs()
   const n = panesOf(tab).length
+  const l = n > 1 && panes ? layout(tab.root) : null
+  const tiles = !l ? [] : tab.zoom ? l.panes.filter((p) => p.pane.id === tab.zoom).map((p) => ({ ...p, rect: { x: 0, y: 0, w: 1, h: 1 } })) : [...l.panes, ...l.floats]
   return (
     <>
-      <span aria-hidden className="flex h-11 w-full shrink-0 items-center gap-2 pr-10 pl-3">
+      <span aria-hidden className={cn("flex h-11 w-full shrink-0 items-center gap-2 pl-3", n > 1 ? "pr-20" : "pr-10")}>
         {fileIcons && <Badged on={info.badge}><Icon className={cn("size-4 shrink-0", !info.tint && "text-muted-foreground", info.iconClassName)} strokeWidth={2} style={info.tint ? { color: info.tint } : undefined} /></Badged>}
         <span className={cn("min-w-0 flex-1 truncate text-[15px] leading-[20px]", current && "font-semibold")}>{info.label}</span>
-        {n > 1 && <span data-card-panes className="flex shrink-0 items-center gap-0.5 text-[13px] text-muted-foreground tabular-nums"><Columns2 className="size-3.5" strokeWidth={2} />{n}</span>}
       </span>
       <span data-tab-shot className="relative mx-1.5 mb-1.5 block min-h-0 flex-1 overflow-hidden rounded-[10px] bg-background">
-        <span data-tab-pic style={PAGE_SHAPE} className="absolute inset-x-0 top-0 rounded-[10px] bg-background"><TabPreview store={store} pane={focusedPane(tab)} info={info} /></span>
+        {tiles.length ? tiles.map(({ pane, rect }) => (
+          // (each pane's picture drawn at twice the size and halved, as a group's tabs are: it reads as a small page)
+          <span key={pane.id} data-tab-mini={pane.id} data-mini-pane={pane.id} className={cn("absolute overflow-hidden rounded-[7px] bg-background ring-[0.5px] ring-border", pane.float && "shadow-md")}
+            style={{ left: `calc(${rect.x * 100}% + 1px)`, top: `calc(${rect.y * 100}% + 1px)`, width: `calc(${rect.w * 100}% - 2px)`, height: `calc(${rect.h * 100}% - 2px)` }}>
+            <span data-tab-pic style={PAGE_SHAPE} className="absolute top-0 left-0 w-[200%] origin-top-left scale-50 rounded-[14px] bg-background"><TabPreview store={store} pane={pane} info={panes!(pane)} /></span>
+          </span>
+        )) : <span data-tab-pic style={PAGE_SHAPE} className="absolute inset-x-0 top-0 rounded-[10px] bg-background"><TabPreview store={store} pane={focusedPane(tab)} info={info} /></span>}
       </span>
     </>
   )
@@ -104,7 +117,7 @@ function CardFace({ store, tab, info, current }: { store: Store; tab: Tab; info:
 
 /** The card being moved, whole, under the finger where it took it, over the sheet (its place in the grid stays empty).
  *  Under it, what a drop does when it isn't a move; on top of an opened group, it shrinks so the lit row shows. */
-function Lifted({ store, info, current }: { store: Store; info: (t: Tab) => TabInfo; current: string }) {
+function Lifted({ store, info, current }: { store: Store; info: Info; current: string }) {
   const d = useDrag()
   const pill = useRef<HTMLSpanElement>(null)
   const g = grab
@@ -120,8 +133,10 @@ function Lifted({ store, info, current }: { store: Store; info: (t: Tab) => TabI
     const half = p.offsetWidth / 2, mid = o.left + left + g.dx + (g.w / 2 - g.dx) * s
     p.style.left = `${Math.min(innerWidth - 8 - half, Math.max(8 + half, mid)) - o.left - left}px`
   })
-  if (!d?.item.drawn || !d.item.tab || g?.id !== d.item.tab) return null
-  const tab = here().tabs.find((t) => t.id === d.item.tab) ?? tabOf(d.item.to ?? "new", { id: d.item.tab })
+  // (a tab's card, or a pane's on a split's page: drawn as the tab it would be)
+  const id = d?.item.tab ?? d?.item.pane, pane = d?.item.pane ? paneById(d.item.pane) : undefined
+  if (!d?.item.drawn || !id || g?.id !== id) return null
+  const tab = pane ? tabWith(pane, pane.id) : here().tabs.find((t) => t.id === d.item.tab) ?? tabOf(d.item.to ?? "new", { id })
   const hint = d.hit?.hint
   return createPortal(
     <div aria-hidden data-drag-ghost className="pointer-events-none fixed z-[70]"
@@ -129,7 +144,7 @@ function Lifted({ store, info, current }: { store: Store; info: (t: Tab) => TabI
       <div className="size-full transition-[scale] duration-200 ease-out" style={{ scale: s, transformOrigin: `${g.dx}px ${g.dy}px` }}>
         <div className={cn(CARD, "size-full animate-[tab-lift_180ms_cubic-bezier(.2,.8,.2,1)_forwards] shadow-2xl")}>
           <Ground className="ring-2 ring-[var(--primary)]" />
-          <CardFace store={store} tab={tab} info={info(tab)} current={tab.id === current} />
+          <CardFace store={store} tab={tab} info={info(tab)} current={tab.id === current} panes={info} />
         </div>
       </div>
       {hint && <span ref={pill} data-drag-hint className="absolute w-max -translate-x-1/2 rounded-full bg-card px-3 py-1.5 text-[15px] font-medium shadow-lg ring-[0.5px] ring-border transition-[top] duration-200 ease-out"
@@ -139,11 +154,14 @@ function Lifted({ store, info, current }: { store: Store; info: (t: Tab) => TabI
   )
 }
 
-/** A tab's card: its icon, name and X over a preview. Tap to show it. Swipe it sideways and it follows the finger,
- *  fading; let go past a third of its width (or flick) and it flies off and the tab closes, else it springs back. */
-function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { store: Store; tab: Tab; info: TabInfo; current: boolean; into: boolean; lifted: boolean; onPick: () => void; menu: () => MenuItem[] }) {
+/** A tab's card (`pane`: a split's pane's, on its page). Tap to show it; swiped past a third of its width (or flicked)
+ *  it flies off and closes, else springs back. A split's shows its panes (`panes`), and opens them (`onPanes`). */
+function TabCard({ store, tab, info, current, into, lifted, onPick, menu, pane, panes, onPanes }: {
+  store: Store; tab: Tab; info: TabInfo; current: boolean; into: boolean; lifted: boolean; onPick: (e: MouseEvent) => void; menu: () => MenuItem[]
+  pane?: boolean; panes?: Info; onPanes?: () => void
+}) {
   const card = useRef<HTMLDivElement>(null)
-  const picked = useSelected(TABS, tab.id)
+  const picked = useSelected(TABS, tab.id) && !pane
   /** The finger on it: where it went down, which way it's going, how far across (dx) and how fast (v, px/ms). */
   const drag = useRef<{ x: number; y: number; axis: "x" | "y" | null; dx: number; t: number; v: number; quit?: () => void } | null>(null)
   const swiped = useRef(false)
@@ -175,25 +193,26 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
     }
     if (c) { c.style.transition = "none"; c.style.opacity = "0" }
     const shut = () => {
-      closeTab(tab.id)
+      if (pane) closePane(tab.id); else closeTab(tab.id)
       // Still open: its view is asking (or said no). The card comes back; if the tab closes after all, it goes then.
-      if (isOpen(tab.id)) { gone.current = false; g?.remove(); slide(0, true) }
+      if (pane ? !!paneById(tab.id) : isOpen(tab.id)) { gone.current = false; g?.remove(); slide(0, true) }
     }
     if (dir) shut(); else setTimeout(shut, 70)
   }
   return (
-    <div tabIndex={-1} data-tab-row={tab.id} data-ui={`tab:${tab.id}`} data-select-key={tab.id} onContextMenu={menuOnCard(rowMenu(TABS, tab.id, menu))}
+    <div tabIndex={-1} data-tab-row={tab.id} data-ui={pane ? `pane:${tab.id}` : `tab:${tab.id}`} data-select-key={pane ? undefined : tab.id}
+      onContextMenu={menuOnCard(pane ? menu : rowMenu(TABS, tab.id, menu))}
       onPointerDown={(e) => {
         const r = card.current?.getBoundingClientRect()
         if (r) grab = { id: tab.id, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, h: r.height }
-        startDrag(e, { from: "tab", tab: tab.id, to: focusedPane(tab).to, drawn: true }, { touch: true })
+        startDrag(e, pane ? { from: "pane", pane: tab.id, to: focusedPane(tab).to, drawn: true } : { from: "tab", tab: tab.id, to: focusedPane(tab).to, drawn: true }, { touch: true })
       }}
       className={cn("relative outline-none", lifted && "rounded-[14px] bg-foreground/[0.04]")}>
       <div ref={card} data-tab-card style={{ touchAction: "pan-y" }}
         className={cn(CARD, "transition-[scale,opacity] duration-150", into && "scale-[0.94]", lifted && "opacity-0")}
         onPointerDown={(e) => {
           // (Selecting, a tap picks it: it doesn't swipe away.)
-          if (gone.current || e.button || e.pointerType === "mouse" || selecting()) return
+          if (gone.current || e.button || e.pointerType === "mouse" || (selecting() && !pane)) return
           drag.current?.quit?.()
           // Caught while springing back: it goes on from where it shows.
           const c = card.current, at = c ? new DOMMatrix(getComputedStyle(c).transform).m41 : 0
@@ -241,10 +260,11 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
         }}
         onPointerCancel={() => { const d = drag.current; drag.current = null; d?.quit?.(); if (d?.axis === "x") slide(0, true) }}>
         <Ground className={picked || into ? "ring-[3px] ring-[var(--primary)]" : current ? "ring-2 ring-[var(--primary)]" : "ring-[0.5px] ring-border"} />
-        <CardFace store={store} tab={tab} info={info} current={current} />
+        <CardFace store={store} tab={tab} info={info} current={current} panes={panes} />
         {/* The whole card is the tap target, laid over it (the preview holds links and blocks that mustn't be). */}
-        <CardButtons label={info.label} current={current} tap={{ "aria-pressed": picked || undefined, ...selectedAttr(picked) }}
-          onOpen={(e) => { if (!swiped.current && !selectClick(e, TABS, tab.id)) onPick() }} onClose={() => close()} />
+        <CardButtons label={info.label} closeLabel={pane ? `${info.label} pane` : info.label} current={current} tap={pane ? undefined : { "aria-pressed": picked || undefined, ...selectedAttr(picked) }}
+          onOpen={(e) => { if (!swiped.current && (pane || !selectClick(e, TABS, tab.id))) onPick(e) }} onClose={() => close()}
+          panes={onPanes && panesOf(tab).length > 1 ? { n: panesOf(tab).length, open: onPanes } : undefined} />
       </div>
     </div>
   )
@@ -267,12 +287,19 @@ function ghostOf(card: HTMLElement) {
   return g
 }
 
-/** A card's tap target, laid over all of it, and its X. */
-function CardButtons({ label, closeLabel = label, current, tap, onOpen, onClose }: {
-  label: string; closeLabel?: string; current?: boolean; tap?: Record<string, unknown>; onOpen: (e: MouseEvent) => void; onClose: () => void }) {
+/** A card's tap target, laid over all of it, and its X; a split tab's, how many panes it has (tap for them). */
+function CardButtons({ label, closeLabel = label, current, tap, onOpen, onClose, panes }: {
+  label: string; closeLabel?: string; current?: boolean; tap?: Record<string, unknown>; onOpen: (e: MouseEvent) => void; onClose: () => void
+  panes?: { n: number; open: () => void } }) {
   return <>
     <button type="button" aria-current={current || undefined} aria-label={label} {...tap} onClick={onOpen}
       className="absolute inset-0 cursor-pointer rounded-[14px] active:bg-foreground/[0.06]" />
+    {panes && (
+      <button type="button" data-card-panes={panes.n} onClick={panes.open} onPointerDown={(e) => e.stopPropagation()} data-no-drag aria-label={`Show ${panes.n} panes`}
+        className="absolute top-0 right-9 grid size-11 cursor-pointer place-items-center text-muted-foreground active:opacity-50">
+        <Columns2 className="size-4" strokeWidth={2} />
+      </button>
+    )}
     <button type="button" onClick={onClose} onPointerDown={(e) => e.stopPropagation()} data-no-drag aria-label={`Close ${closeLabel}`}
       className="absolute top-0 right-0 grid size-11 cursor-pointer place-items-center text-muted-foreground active:opacity-50">
       <X className="size-[17px]" strokeWidth={2.25} />
@@ -281,7 +308,7 @@ function CardButtons({ label, closeLabel = label, current, tap, onOpen, onClose 
 }
 
 /** A tab group: its colour, name and count over its first tabs' pictures. Tap it for its tabs, hold it for its menu. */
-function GroupCard({ store, group: g, tabs, info, current, lit, onOpen }: { store: Store; group: Group; tabs: Tab[]; info: (t: Tab) => TabInfo; current: boolean; lit: boolean; onOpen: () => void }) {
+function GroupCard({ store, group: g, tabs, info, current, lit, onOpen }: { store: Store; group: Group; tabs: Tab[]; info: Info; current: boolean; lit: boolean; onOpen: () => void }) {
   const n = tabs.length, name = groupName(g)
   const shown = n > 4 ? tabs.slice(0, 3) : tabs
   return (
@@ -378,38 +405,67 @@ function useFlip(box: RefObject<HTMLDivElement | null>, live: boolean, page: str
   }, [box])
 }
 
-/** The workspaces as pages, side by side: dragged sideways anywhere but on a card (which swipes away itself), the
- *  next one's cards come in after the finger; let go past a quarter of the way (or flicked) and it's the current one. */
+/** The workspaces as pages side by side, dragged sideways anywhere but on a card (which swipes away itself): they settle
+ *  as a split's panes do (core/pager.ts), let go past halfway or flicked, and a finger down mid-settle catches them. */
 function Pager({ pages, at, go, peek, children, head }: {
   pages: WorkspaceInfo[]; at: number; go: (n: number) => void; peek: (w: WorkspaceInfo) => ReactNode; children: ReactNode; head: ReactNode
 }) {
   const track = useRef<HTMLDivElement>(null)
   const [side, setSide] = useState(false)
-  const g = useRef<{ id: number; x: number; y: number; axis: "x" | "y" | null; dx: number; t: number; v: number; quit?: () => void } | null>(null)
+  const g = useRef<{ id: number; x: number; y: number; from: number; axis: "x" | "y" | null; moves: [number, number][]; quit?: () => void } | null>(null)
+  /** The track's offset (px; negative: the next workspace coming in), and the settle on its way there. */
+  const pos = useRef(0)
+  const flight = useRef<Animation | null>(null)
   const last = pages.length - 1
   // How far one page is from the next: its width and the sheet's padding between them.
   const step = () => (track.current?.offsetWidth ?? innerWidth) + 20
-  const set = (dx: number, ms = 0) => {
+  const put = (x: number) => { pos.current = x; if (track.current) track.current.style.transform = x ? `translateX(${x}px)` : "" }
+  const halt = () => {
+    const f = flight.current
+    flight.current = null
+    if (!f || !track.current) return
+    put(shownAt(track.current))
+    f.cancel()
+  }
+  /** Settle at `to` (px) starting at `v` px/ms; at a neighbour, it's the current workspace then. */
+  const settle = (to: number, v = 0) => {
+    halt()
     const t = track.current
     if (!t) return
-    t.style.transition = ms ? `transform ${ms}ms cubic-bezier(.2, 0, 0, 1)` : "none"
-    t.style.transform = dx ? `translateX(${dx}px)` : ""
+    const k = to < 0 ? 1 : to > 0 ? -1 : 0
+    const end = () => {
+      if (k && pages[at + k]) flushSync(() => { go(pages[at + k].n); setSide(false) })
+      else setSide(false)
+      put(0)
+    }
+    const a = glide(t, pos.current, to, v)
+    pos.current = to
+    if (!a) return end()
+    flight.current = a
+    a.finished.then(() => { if (flight.current === a) { flight.current = null; end() } }, () => {})
   }
   const on = pages.length > 1 && at >= 0
-  /** A drag whose end never came (the app went away mid-drag, core/away.ts): back to the current page. */
+  /** A drag whose end never came (the app went away mid-drag, core/away.ts): the nearest page. */
   const drop = () => {
     const d = g.current
     if (!d) return
     g.current = null
     d.quit?.()
-    if (d.axis !== "x") return
-    set(0, 240)
-    setTimeout(() => setSide(false), 250)
+    if (d.axis === "x") settle(stopFor([...(at < last ? [-step()] : []), 0, ...(at > 0 ? [step()] : [])], pos.current, 0))
   }
   const down = (e: PointerEvent) => {
     if (g.current && e.pointerId !== g.current.id) drop()
-    if (!on || e.button || g.current || (e.target as Element).closest("[data-tab-row], [data-group-card], input")) return
-    g.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null, dx: 0, t: e.timeStamp, v: 0 }
+    if (!on || e.button || g.current) return
+    // Caught mid-settle: it stops where it shows and goes on under the finger.
+    if (flight.current) {
+      halt()
+      g.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: pos.current, axis: "x", moves: [[e.timeStamp, e.clientX]] }
+      try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not a live pointer */ }
+      g.current.quit = onAway(drop)
+      return
+    }
+    if ((e.target as Element).closest("[data-tab-row], [data-group-card], input")) return
+    g.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: pos.current, axis: null, moves: [[e.timeStamp, e.clientX]] }
   }
   const move = (e: PointerEvent) => {
     const d = g.current
@@ -418,6 +474,7 @@ function Pager({ pages, at, go, peek, children, head }: {
     if (!d.axis) {
       if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my)) {
         d.axis = "x"
+        d.x = e.clientX
         try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not a live pointer */ }
         d.quit = onAway(drop)
         setSide(true)
@@ -425,12 +482,10 @@ function Pager({ pages, at, go, peek, children, head }: {
       return
     }
     if (d.axis !== "x") return
-    // Past the first or last, it gives a little, like a scroller's end.
-    const dx = (at === 0 && mx > 0) || (at === last && mx < 0) ? mx / 3 : mx
-    d.v = (dx - d.dx) / Math.max(1, e.timeStamp - d.t)
-    d.t = e.timeStamp
-    d.dx = dx
-    set(dx)
+    d.moves.push([e.timeStamp, e.clientX])
+    if (d.moves.length > 8) d.moves.shift()
+    const w = step()
+    put(within(d.from + e.clientX - d.x, at < last ? -w : 0, at > 0 ? w : 0, w))
   }
   const up = (e: PointerEvent) => {
     const d = g.current
@@ -442,16 +497,10 @@ function Pager({ pages, at, go, peek, children, head }: {
     const eat = (c: Event) => { c.stopPropagation(); c.preventDefault() }
     addEventListener("click", eat, { capture: true, once: true })
     setTimeout(() => removeEventListener("click", eat, { capture: true }), 400)
-    const dir = d.dx < 0 ? 1 : -1, to = at + dir, w = step()
-    const far = Math.abs(d.dx) > w * 0.25 || (Math.abs(d.v) > 0.5 && Math.sign(d.v) === -dir)
-    if (e.type === "pointerup" && far && to >= 0 && to <= last) {
-      set(-dir * w, 240)
-      haptic("selection")
-      setTimeout(() => { flushSync(() => { go(pages[to].n); setSide(false) }); set(0) }, 240)
-    } else {
-      set(0, 240)
-      setTimeout(() => setSide(false), 250)
-    }
+    const w = step(), v = e.type === "pointerup" ? fling(d.moves, e.timeStamp) : 0
+    const to = stopFor([...(at < last ? [-w] : []), 0, ...(at > 0 ? [w] : [])], pos.current, v)
+    if (to) haptic("selection")
+    settle(to, v)
   }
   return (
     <div data-tabs-pager onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
@@ -520,7 +569,7 @@ function TabsHeader({ title, count, pages, at, menu, more, query, setQuery, item
 
 /** The tab list (the sheet's "tabs" detail): its top line, then the cards: the tabs in order (a split tab one card), a
  *  tab group as one card; the tabs of the group opened; or those a search finds. */
-export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => TabInfo }) {
+export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
   // Left (the page growing out of it), it stays as it was: nothing moves in it as it fades.
   const left = useLingeringSheet() !== null
   const live = useTabList(), liveCur = activeTab()
@@ -531,6 +580,8 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const header = shownHeaderItems(disabled, sidebarHeader)
   const box = useRef<HTMLDivElement>(null)
   const [opened, setOpened] = useState<string | null>(null)
+  /** The split tab whose panes are open as a page of cards (over all tabs, or the group it's in). */
+  const [split, setSplit] = useState<string | null>(null)
   const [query, setQuery] = useState<string | null>(null)
   /** The tab group the lifted card was carried out of (held on top of it), and where the finger was then: until it
    *  moves on, the cards don't make room under it. */
@@ -542,8 +593,11 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const groups = new Map((ws.groups ?? []).map((g) => [g.id, g]))
   const openGroup = opened ? groups.get(opened) : undefined
   const open = openGroup && all.some((t) => t.group === openGroup.id) ? { g: openGroup, tabs: all.filter((t) => t.group === openGroup.id) } : null
+  const openSplit = split ? all.find((t) => t.id === split && panesOf(t).length > 1) : undefined
+  // (no longer a split, or gone: its page is left for good, not shown again should it become one)
+  if (split && !openSplit && !left) setSplit(null)
   useWorkspaceVersion()
-  const page = open ? `group:${open.g.id}` : "all"
+  const page = openSplit ? `split:${openSplit.id}` : open ? `group:${open.g.id}` : "all"
   useFlip(box, !!liftedId, page)
   // A group opens at its top, as a page pushed does, and All tabs comes back where it was left (its group's card in
   // sight), set before the list is drawn: left to the browser, iOS settles the old offset in the new list with a bounce.
@@ -672,6 +726,28 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
       unrest()
     },
   })
+  // A split's page: a pane's card dropped on another swaps the two; on top of the page (its back), it's a tab of its own.
+  const paneAt = useRef<{ x: number; y: number } | null>(null)
+  useDropTarget<PaneHit>("split-panes", (item, x, y, el) => {
+    if (item.from !== "pane" || !item.pane || !openSplit || !el || !box.current?.closest("dialog")?.contains(el)) return null
+    if (item.drawn) paneAt.current = { x, y }
+    if (el.closest("[data-tabs-header], [data-group-head]")) return { kind: "out" }
+    const row = [...box.current.querySelectorAll<HTMLElement>("[data-tab-row]")].find((c) => { const r = c.getBoundingClientRect(); return x >= r.left && x < r.right && y >= r.top && y < r.bottom })
+    const id = row?.dataset.tabRow
+    return id && id !== item.pane ? { kind: "swap", pane: id } : null
+  }, (item, h) => {
+    const shown = activeTab().id
+    if (h.kind === "swap") paneIntoPane(item.pane!, h.pane, "center"); else paneToTab(item.pane!)
+    keepShown(shown)
+  }, {
+    hint: (h) => (h.kind === "swap" ? "Swap" : "Move to new tab"),
+    end: () => {
+      const at = paneAt.current, g = grab
+      if (at && g) landing = { id: g.id, x: at.x - g.dx, y: at.y - g.dy }
+      paneAt.current = null
+    },
+  })
+  const paneHit = useDropHit<PaneHit>("split-panes")
   const hit = useDropHit<ListHit>("tab-list")
   const hitKey = !hit ? "" : hit.kind === "join" ? `join:${hit.group}` : hit.kind === "out" ? `out:${hit.via}` : `${hit.kind}:${hit.tab}`
   // A tick each time the cards make room somewhere else, or what a drop would do turns into something other than a move
@@ -679,11 +755,24 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const shownPlace = placed.current ? `${placed.current.kind}:${placed.current.tab}` : ""
   const tickKey = !hit || (hit.kind === "out" && hit.via === "here") ? "" : hit.kind === "before" || hit.kind === "after" ? shownPlace : hitKey
   useEffect(() => { if (tickKey) haptic("selection") }, [tickKey])
+  const paneKey = !paneHit ? "" : paneHit.kind === "swap" ? paneHit.pane : "out"
+  useEffect(() => { if (paneKey) haptic("selection") }, [paneKey])
 
-  const menuOf = (t: Tab) => () => tabCardMenu(t, ws.tabs.length, groupItems([t.id]))
+  const menuOf = (t: Tab) => () => tabCardMenu(t, ws.tabs.length, groupItems([t.id]), () => setSplit(t.id))
+  /** A card tapped: its tab, or a split's pane whose picture was tapped. */
+  const pick = (t: Tab, e: MouseEvent) => {
+    const at = panesOf(t).length < 2 ? null : [...(box.current?.querySelectorAll<HTMLElement>(`[data-tab-row="${CSS.escape(t.id)}"] [data-mini-pane]`) ?? [])]
+      .find((el) => { const r = el.getBoundingClientRect(); return e.clientX >= r.left && e.clientX < r.right && e.clientY >= r.top && e.clientY < r.bottom })
+    if (at) pickPane(at.dataset.miniPane!); else pickTab(t.id)
+  }
   const card = (t: Tab) => (
     <TabCard key={t.id} store={store} tab={t} info={info(t)} current={t.id === cur.id} into={hit?.kind === "into" && hit.tab === t.id}
-      lifted={t.id === liftedId} onPick={() => pickTab(t.id)} menu={menuOf(t)} />
+      lifted={t.id === liftedId} onPick={(e) => pick(t, e)} menu={menuOf(t)} panes={info} onPanes={() => setSplit(t.id)} />
+  )
+  const liftedPane = lifted?.drawn && lifted.from === "pane" ? lifted.pane : undefined
+  const paneCard = (t: Tab, p: Pane) => (
+    <TabCard key={p.id} store={store} tab={tabWith(p, p.id)} info={info(p)} current={t.id === cur.id && p.id === t.focus} pane
+      into={paneHit?.kind === "swap" && paneHit.pane === p.id} lifted={p.id === liftedPane} onPick={() => pickPane(p.id)} menu={() => paneCardMenu(p)} />
   )
   const grid = "grid grid-cols-2 gap-3 @min-[520px]:grid-cols-3"
   /** The cards of all tabs: each tab group's as one, where its first tab is. */
@@ -703,7 +792,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const draw = (items: typeof header) => items.map(({ key, item }) => (
     <div key={key} data-header-item={key} className="flex min-w-0 items-center"><Guard what="This item"><Drawn draw={() => item.render(ctx)} /></Guard></div>
   ))
-  const count = open ? open.tabs.length : tabCount(ws)
+  const count = openSplit ? panesOf(openSplit).length : open ? open.tabs.length : tabCount(ws)
   const host = workspaces()
   const pages = host?.list() ?? []
   const at = host ? pages.findIndex((w) => w.n === host.current()) : -1
@@ -725,11 +814,23 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   )
   return (
     <>
-      <Pager pages={pages} at={open || found ? -1 : at} go={(n) => host?.switchTo(n)} peek={peek}
+      <Pager pages={pages} at={open || openSplit || found ? -1 : at} go={(n) => host?.switchTo(n)} peek={peek}
         head={<>
           <TabsHeader title={host ? pages[at]?.label ?? "Workspace" : "Tabs"} count={found ? found.length : count} pages={pages} at={at}
             menu={host ? host.menu : null} more={more} query={query} setQuery={setQuery} items={draw(header.filter((h) => !h.item.phoneBar))} />
-          {open && !found && (
+          {openSplit && !found && (
+            <div data-group-head data-split-head={openSplit.id} className={cn("-mx-2 mb-3 flex items-center rounded-[12px] px-2 transition-colors duration-150",
+              paneHit?.kind === "out" && "bg-primary/15 ring-2 ring-[var(--primary)]")}>
+              <button type="button" data-group-back onClick={() => setSplit(null)}
+                className="-ml-2 flex h-11 min-w-0 cursor-pointer items-center pr-2 text-[17px] text-primary active:opacity-50">
+                <ChevronLeft className="size-[24px] shrink-0" strokeWidth={2} /><span className="truncate">{open ? groupName(open.g) : "All tabs"}</span>
+              </button>
+              <span className="ml-auto flex h-11 min-w-0 items-center gap-2 pl-4 text-[15px] font-semibold text-muted-foreground">
+                <Columns2 aria-hidden className="size-4 shrink-0" strokeWidth={2} /><span className="truncate">{info(openSplit).label}</span>
+              </span>
+            </div>
+          )}
+          {open && !openSplit && !found && (
             <div data-group-head data-ui={`group:${open.g.id}`} className={cn("-mx-2 mb-3 flex items-center rounded-[12px] px-2 transition-colors duration-150",
               hit?.kind === "out" && hit.via === "head" && "bg-primary/15 ring-2 ring-[var(--primary)]")}>
               <button type="button" data-group-back onClick={() => setOpened(null)}
@@ -742,12 +843,13 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
         </>}>
         <div ref={box} data-tabs-grid className="relative @container">
           <div className={grid} data-select-list={TABS}>
-            {found ? found.map(card) : open ? inOrder(open.tabs).map(card) : cards(inOrder(all))}
+            {found ? found.map(card) : openSplit ? panesOf(openSplit).map((p) => paneCard(openSplit, p)) : open ? inOrder(open.tabs).map(card) : cards(inOrder(all))}
           </div>
           {found && !found.length && <p className="py-10 text-center text-[17px] text-muted-foreground">No tabs match “{query?.trim()}”</p>}
         </div>
       </Pager>
-      <SheetBar left={draw(header.filter((h) => h.item.phoneBar))} group={open?.g.id} lit={hit?.kind === "out" && hit.via === "bar"} />
+      <SheetBar left={draw(header.filter((h) => h.item.phoneBar))} group={open?.g.id} lit={hit?.kind === "out" && hit.via === "bar"}
+        add={openSplit ? () => { const id = flushSync(() => addPane(openSplit.id)); if (id) pickPane(id) } : undefined} />
       <Lifted store={store} info={info} current={cur.id} />
     </>
   )
@@ -788,14 +890,14 @@ function GroupTitle({ group: g }: { group: Group }) {
 }
 
 /** The sheet's bottom bar (#sheet-bar, DetailSheet's), left of its Done: the plugins' bar items (the Inbox) at the
- *  left, a new tab in the middle (like Chrome's). */
-function SheetBar({ left, group, lit }: { left: ReactNode; group?: string; lit: boolean }) {
+ *  left, a new tab in the middle (like Chrome's); on a split's page (`add`), a new pane in it. */
+function SheetBar({ left, group, lit, add }: { left: ReactNode; group?: string; lit: boolean; add?: () => void }) {
   const host = usePortalHost("sheet-bar")
   if (!host) return null
   return createPortal(
     <>
       {left}
-      <button type="button" aria-label="New tab" data-tabs-new onClick={(e) => newPhoneTab(e.currentTarget, group)}
+      <button type="button" aria-label={add ? "New pane" : "New tab"} data-tabs-new onClick={(e) => (add ? add() : newPhoneTab(e.currentTarget, group))}
         className={cn("absolute left-1/2 grid h-11 w-14 -translate-x-1/2 cursor-pointer place-items-center rounded-[12px] text-primary active:bg-foreground/[0.06]", lit && "bg-primary/15 ring-2 ring-[var(--primary)]")}>
         <Plus className="size-[25px]" strokeWidth={2.25} />
       </button>

@@ -43,22 +43,22 @@ function run(kind: Kind, change: () => void | Promise<void>, before?: () => void
   })
 }
 
-/** A spring like SwiftUI's, from rest: `response` its period (s), `damping` 1 to stop dead at its place (less overshoots).
+/** A spring like SwiftUI's: period `response` (s), `damping` 1 stops dead, `v` its start speed (distances/s: a flick's).
  *  `at(t)`: how far along t s in; `ms`: when it's within 0.2% of its place; `easing`: as a CSS `linear()`. */
 export type Spring = { at: (t: number) => number; ms: number; easing: string }
-export function spring(response = 0.3, damping = 1): Spring {
+export function spring(response = 0.3, damping = 1, v = 0): Spring {
   const w = (2 * Math.PI) / response, z = damping
   // How far it still has to go at t (1 at the start).
   let left: (t: number) => number
   if (z < 1) {
-    const wd = w * Math.sqrt(1 - z * z), b = (z * w) / wd
+    const wd = w * Math.sqrt(1 - z * z), b = (z * w - v) / wd
     left = (t) => Math.exp(-z * w * t) * (Math.cos(wd * t) + b * Math.sin(wd * t))
-  } else left = (t) => Math.exp(-w * t) * (1 + w * t)
+  } else left = (t) => Math.exp(-w * t) * (1 + (w - v) * t)
   let ms = 1
   for (let t = 0; t < 3000; t++) if (Math.abs(left(t / 1000)) > 0.002) ms = t + 1
   const at = (t: number) => (t * 1000 >= ms ? 1 : 1 - left(t))
-  const v = `linear(${Array.from({ length: 49 }, (_, i) => +at((ms * i) / 48000).toFixed(4)).join(", ")})`
-  const easing = typeof CSS !== "undefined" && CSS.supports("transition-timing-function", v) ? v : "cubic-bezier(.2, .9, .1, 1)"
+  const curve = `linear(${Array.from({ length: 49 }, (_, i) => +at((ms * i) / 48000).toFixed(4)).join(", ")})`
+  const easing = typeof CSS !== "undefined" && CSS.supports("transition-timing-function", curve) ? curve : "cubic-bezier(.2, .9, .1, 1)"
   return { at, ms, easing }
 }
 
