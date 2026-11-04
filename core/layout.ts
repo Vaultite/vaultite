@@ -356,15 +356,18 @@ export function spotOf(n: Layout, id: string): Spot | null {
   const j = i > 0 ? i - 1 : i + 1
   return { next: n.kids[j].id, dir: n.dir, after: i > 0, share: n.sizes[i] / (n.sizes[i] + n.sizes[j]) }
 }
-/** `n` with pane `p` back at `spot`, taking its share of the room `next` has now; null if `next` is gone. */
+/** `n` with pane `p` back at `spot`, taking its share of the room `next` has now; null if `next` is gone. A floating
+ *  one takes none (the tiled parts keep theirs): only its spot, for docking. */
 export function putBack(n: Layout, p: Pane, { next, dir, after, share }: Spot): Layout | null {
   const two = (s: number) => (after ? [s * (1 - share), s * share] : [s * share, s * (1 - share)])
   const i = isSplit(n) ? n.kids.findIndex((k) => k.id === next) : -1
   if (isSplit(n) && i >= 0 && n.dir === dir) {
     const kids = [...n.kids], sizes = [...n.sizes]
     kids.splice(after ? i + 1 : i, 0, p)
-    sizes.splice(i, 1, ...two(sizes[i]))
-    return { ...n, kids, sizes }
+    if (!p.float) { sizes.splice(i, 1, ...two(sizes[i])); return { ...n, kids, sizes } }
+    sizes.splice(after ? i + 1 : i, 0, (sizes[i] * share) / Math.max(1 - share, THIN))
+    const sum = sizes.reduce((a, b) => a + b, 0)
+    return { ...n, kids, sizes: sizes.map((x) => x / sum) }
   }
   if (n.id === next) return { id: newSplitId(), dir, kids: after ? [n, p] : [p, n], sizes: two(1) }
   if (!isSplit(n)) return null

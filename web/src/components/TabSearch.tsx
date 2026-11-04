@@ -6,14 +6,14 @@ import { inVault } from "@/core/files"
 import { fuzzy, hasWords } from "@/core/fuzzy"
 import { notify } from "@/core/notify"
 import { shortcutOf, sameKeys } from "@/core/commands"
-import { closedTabs, findOpen, reopenClosed, selectTab, tabsByRecent, useTabList } from "@/core/workspace"
+import { closedTabs, findOpen, reopenClosed, selectTab, tabsByRecent, useTabList, type ClosedEntry } from "@/core/workspace"
 import { reopenArchived, useArchivedTabs } from "@/core/tabarchive"
 import { closeTabMoving } from "@/core/tabfold"
 import { focusedPane, panesOf, tabOf, vaultPath, type Group, type Tab } from "../../../core/layout.ts"
 import { marked, NoMatches, Palette } from "@/components/Palette"
 import { GroupLabel, groupName, useTabLabels, type TabInfo } from "@/components/Tabs"
 import { Badged } from "@/components/kit"
-import { cn } from "@/lib/utils"
+import { cn, plural } from "@/lib/utils"
 
 const OPEN = "Open tabs", CLOSED = "Recently closed", ARCHIVED = "Archived tabs"
 /** Closed and archived tabs listed while nothing is typed: the latest few, as a browser's tab search. */
@@ -70,10 +70,14 @@ export function TabSearch({ store, onClose }: { store: Store; onClose: () => voi
   })
   const seen = new Set<string>()
   const once = (to: string) => !seen.has(to) && !!seen.add(to)
-  const closed = closedTabs().filter((c) => places(c.tab).every(away) && once(places(c.tab).join("\n"))).map((c): Row => {
-    const i = info(c.tab)
-    return { id: `closed:${c.tab.id}`, section: CLOSED, tab: c.tab, info: i, label: i.label, text: places(c.tab).join("\n"), host: hostOf(focusedPane(c.tab).to),
-      meta: c.closed ? fmtAgo(c.closed) : undefined, marks: [], pick: () => reopenClosed(c.tab.id) }
+  // (what closed together is one row, reopened together: a tab group, Close others, a window)
+  const closed = closedTabs().flatMap((c): Row[] => {
+    const tabs = c.tabs.filter((t) => places(t).every(away))
+    if (!tabs.length || !once(tabs.flatMap(places).join("\n"))) return []
+    const e = { ...c, tabs }, i = info(tabs[0]), group = closedGroup(e)
+    return [{ id: `closed:${c.id}`, section: CLOSED, tab: tabs[0], info: i, label: closedName(e, (t) => info(t).label),
+      text: [...tabs.flatMap(places), group && groupName(group)].filter(Boolean).join("\n"), host: tabs.length > 1 ? undefined : hostOf(focusedPane(tabs[0]).to), group,
+      meta: closedMeta(e), marks: [], pick: () => reopenClosed(c.id, (to) => !there(to)) }]
   })
   const kept = archived.filter((e) => away(e.to) && once(e.to)).map((e): Row => {
     const tab = tabOf(e.to, { id: e.id, pane: e.id }), i = info(tab)
@@ -109,6 +113,19 @@ export function TabSearch({ store, onClose }: { store: Store; onClose: () => voi
       row={(r) => <TabRow r={r} />} />
   )
 }
+
+/** The tab group a closed entry's tabs were all in, if they were. */
+export const closedGroup = (e: ClosedEntry): Group | undefined =>
+  e.groups.length === 1 && e.tabs.every((t) => t.group === e.groups[0].id) ? e.groups[0] : undefined
+/** A closed entry's name: its tab's, its group's, or its first tab's and how many more ("Lighthouse and 2 more"). */
+export function closedName(e: ClosedEntry, label: (t: Tab) => string) {
+  const g = closedGroup(e)
+  if (e.tabs.length === 1) return label(e.tabs[0])
+  return g ? groupName(g) : `${label(e.tabs[0])} and ${e.tabs.length - 1} more`
+}
+/** What else a closed entry says: a window, how many tabs, when it closed. */
+export const closedMeta = (e: ClosedEntry) =>
+  [e.window && "Window", e.tabs.length > 1 && plural(e.tabs.length, "tab"), e.closed && fmtAgo(e.closed)].filter(Boolean).join(" · ") || undefined
 
 function TabRow({ r }: { r: Row }) {
   const { info: i } = r

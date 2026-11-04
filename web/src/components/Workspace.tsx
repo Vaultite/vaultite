@@ -6,7 +6,7 @@ import type { Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
-import { closePane, paneById, quietly, replaceTabTarget, setArchivable, setCloseGuard, setFocusedPane, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, useTabList } from "@/core/workspace"
+import { closePane, paneById, quietly, replaceTabTarget, setArchivable, setCloseGuard, setFocusedPane, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, setWorkspaceOf, useTabList } from "@/core/workspace"
 import { dropAt, dropOn, PANES, springOver, type Drop } from "@/core/drop"
 import { dockPane, evenOut, placeFloat, resize, zoomPane } from "@/core/splits"
 import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
@@ -16,6 +16,7 @@ import { layout, panesOf, shownTab, tabOfPane, tabPath, type Divider as DividerA
 import { PaneContext } from "@/core/pane"
 import { VaultLoading } from "@/components/VaultLoading"
 import { isPage } from "@/core/pages"
+import { currentWorkspace } from "@/core/scope"
 import { fillsPane, offText, openElsewhere, switchedOn, usePluginsVersion, viewFor } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { FileView } from "@/components/FileView"
@@ -37,6 +38,8 @@ setTabCloser((to, pane, last, moved) => {
   return !!v.def.onTabClose
 })
 setOpenElsewhere((to) => openElsewhere(to, getPrefs().disabled))
+// (what closes is the workspace's, as its tabs are: ⌘⇧T reopens there)
+setWorkspaceOf(() => currentWorkspace()?.n ?? 0)
 setTabKeeper((to) => !!viewFor(to, getPrefs().disabled)?.def.keepsTab)
 setPathView((to) => !!viewFor(to, getPrefs().disabled)?.def.pathArg)
 setGroupNamer((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.groupName?.(v.arg)) || null })

@@ -2,10 +2,11 @@
 // open as a page of cards). Swipe or X closes, hold for its menu, hold and move to reorder or group; swiped, workspaces.
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react"
 import { createPortal, flushSync } from "react-dom"
-import { CheckSquare, ChevronDown, ChevronLeft, Columns2, Ellipsis, Plus, Search, X } from "lucide-react"
+import { CheckSquare, ChevronDown, ChevronLeft, Columns2, Ellipsis, Plus, RotateCcw, Search, X } from "lucide-react"
 import { onAway } from "@/core/away"
 import type { Store } from "@/core/data"
-import { activePane, activeTab, closePane, closeTab, closeTabIds, here, paneById, tabCount, useTabList } from "@/core/workspace"
+import { activePane, activeTab, closedTabs, closePane, closeTab, closeTabIds, here, paneById, reopenClosed, tabCount, useTabList } from "@/core/workspace"
+import { closedMeta, closedName } from "@/components/TabSearch"
 import { addPane, keepShown, paneIntoPane, paneToTab, placeTabBy } from "@/core/splits"
 import { addToGroup, closeGroup, groupWith, leaveGroup, renameGroup } from "@/core/tabgroups"
 import { focusedPane, layout, panesOf, tabOf, tabPath, tabWith, type Group, type Pane, type Tab } from "../../../core/layout.ts"
@@ -799,8 +800,12 @@ export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
   const at = host ? pages.findIndex((w) => w.n === host.current()) : -1
   const q = query?.trim().toLowerCase() ?? ""
   const found = q ? all.filter((t) => hasWords(q, `${info(t).label}\n${panesOf(t).map((p) => p.to).join("\n")}`)) : null
+  // (Safari's recently closed tabs: what closed together comes back together, where it was)
+  const recentlyClosed = (): MenuItem[] => closedTabs().slice(0, 10).map((e) =>
+    ({ label: closedName(e, (t) => info(t).label), icon: info(e.tabs[0]).icon, hint: closedMeta(e), run: () => reopenClosed(e.id) }))
   const more = (): MenuItem[] => [
     { label: "Select tabs", icon: CheckSquare, run: () => startSelecting(TABS) },
+    ...[recentlyClosed()].filter((x) => x.length).map((items) => ({ label: "Recently closed", icon: RotateCcw, run: () => {}, items })),
     { label: "Close other tabs", icon: X, sep: true, disabled: all.length < 2, run: () => closeTabIds(all.filter((t) => t.id !== cur.id).map((t) => t.id)) },
     { label: all.length === 1 ? "Close tab" : `Close all ${all.length} tabs`, danger: true, run: () => closeTabIds(all.map((t) => t.id)) },
   ]

@@ -438,7 +438,7 @@ export default function App() {
       when: () => isDesktop() && tabsHere() >= n, run: () => selectTabAt(n), icon: Hash })),
     { id: "tab:goto-last", name: "Go to last tab", keys: desktopApp ? ["Mod+9"] : undefined, when: isDesktop, run: () => selectTabAt(-1), icon: ArrowRightToLine },
     // (⌘⇧T is the browser's too.)
-    { id: "tab:reopen", name: "Reopen closed tab", keys: desktopApp ? ["Mod+Shift+T"] : undefined, when: () => isDesktop() && canReopen(), run: () => reopenLatest(fileGone), icon: RotateCcw },
+    { id: "tab:reopen", name: "Reopen closed tab", keys: desktopApp ? ["Mod+Shift+T"] : undefined, when: canReopen, run: () => reopenLatest(fileGone), icon: RotateCcw },
     // (⌘⇧A is Chrome's tab search too: in the web app it searches the app's tabs, which are the ones looked for)
     { id: "tab:search", name: "Search tabs…", keys: ["Mod+Shift+A"], words: "find switch open recently closed archived", when: isDesktop,
       run: () => setPalette((p) => (p === "tabs" ? null : "tabs")), icon: Search },

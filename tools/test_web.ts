@@ -958,7 +958,8 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const S = (id: string, root: Any, focus: string, extra: Props = {}): Tb => ({ id, root, focus, ...extra })
   const row = (id: string, kids: Any[], sizes?: number[]) => ({ id, dir: "row", kids, sizes: sizes ?? kids.map(() => 1 / kids.length) })
   const col = (id: string, kids: Any[], sizes?: number[]) => ({ id, dir: "col", kids, sizes: sizes ?? kids.map(() => 1 / kids.length) })
-  const put = (tabs: Tb[], active: string, extra: Props = {}) => ws.replaceWorkspace({ tabs, active, ...extra })
+  // (the tabs it takes away are kept elsewhere: not remembered as closed)
+  const put = (tabs: Tb[], active: string, extra: Props = {}) => ws.replaceWorkspace({ tabs, active, ...extra }, { kept: true })
   // The list as "a,[b|c]*,d": each tab's panes (files without ".md"), splits in brackets, the tab on screen starred.
   const short = (to: string) => (to.startsWith("file:") ? to.slice(5).replace(/\.md$/, "") : to)
   const desc = (n: Any): string => (n.kids ? `[${n.kids.map(desc).join(n.dir === "row" ? "|" : "/")}]` : short(n.to))
@@ -1014,7 +1015,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("saves: a list with tab groups (its `groups`, not the old {groups, split}) loads back as itself", same(groupedSaved.here(), grouped), groupedSaved.here())
   const rooted = await fresh(oldLayout, [{ tab: { id: "x", to: "file:x.md" }, at: 1, closed: 5 }, { pane: { tabs: [{ id: "y", to: "file:y.md" }, { id: "z", to: "file:z.md" }] }, closed: 6 }])
   check("older saves: a layout of groups in splits migrates; closed tabs and panes of tabs saved then reopen as tabs",
-    listOf(rooted) === "b,c,[a|d]*" && rooted.closedTabs().map((r: Any) => `${r.tab.id}:${r.closed}`).join() === "tz:6,ty:6,tx:5", [listOf(rooted), rooted.closedTabs()])
+    listOf(rooted) === "b,c,[a|d]*" && rooted.closedTabs().map((r: Any) => `${r.id}:${r.closed}`).join() === "tz:6,ty:6,tx:5", [listOf(rooted), rooted.closedTabs()])
   // A pop-out keeps its own list in the workspace; the main window keeps its own and which pop-outs there are.
   const pop = await fresh({ tabs: [T("a")], active: "ta", windows: [{ id: "w1", tabs: [T("p")], active: "tp" }] }, undefined, "w1")
   const theirs = { tabs: [T("a"), T("b")], active: "tb", windows: [{ id: "w1", tabs: [T("q")], active: "tq" }, { id: "w2", tabs: [T("r")], active: "tr" }] }
@@ -1288,7 +1289,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("files: a folder's going closes its files' panes", tabs() === "a*", tabs())
   put([S("tx", row("s0", [{ ...a, back: ["file:q.md", "file:Inbox/x.md", "file:q.md"] }, F()]), "f")], "tx"); ws.dropTabs("Inbox/x.md")
   check("files: deleted, its panes close (the split's others stay), it leaves every history and what ⌘⇧T reopens",
-    tabs() === "a*" && ws.paneById("a").back.join() === "file:q.md" && !ws.closedTabs().some((r: Any) => lay.panesOf(r.tab).some((p: Any) => p.to === "file:Inbox/x.md")), [tabs(), ws.closedTabs()])
+    tabs() === "a*" && ws.paneById("a").back.join() === "file:q.md" && !ws.closedTabs().some((r: Any) => r.tabs.some((t: Tb) => lay.panesOf(t).some((p: Any) => p.to === "file:Inbox/x.md"))), [tabs(), ws.closedTabs()])
 
   // ---- views hear their panes leave (a web page is its pane's), `last` once its place shows nowhere (a terminal) ----
   const heard: string[] = []
@@ -1336,14 +1337,79 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("search tabs: … but for one only passed through", recent() === "tb,tc,ta", recent())
   Date.now = now
   ws.closeTab("tc"); ws.closeTab("ta")
-  const shut = () => ws.closedTabs().map((r: Any) => r.tab.id).join()
+  const shut = () => ws.closedTabs().map((r: Any) => r.id).join()
   check("search tabs: closed ones, the latest first", shut() === "ta,tc", shut())
   ws.reopenClosed("tc")
   check("search tabs: one reopened where it was, shown, and off the list", tabs() === "b,c*" && shut() === "ta", [tabs(), shut()])
   put([S("tx", row("s0", [d, pane("e")]), "d")], "tx"); ws.closePane("e")
   check("search tabs: a pane closed from a split is listed as a tab", shut() === "te,ta", shut())
   ws.reopenClosed("te")
-  check("search tabs: … and comes back as a tab of its own", tabs() === "d,e*" && shut() === "ta", [tabs(), shut()])
+  check("search tabs: … and comes back where it sat in its split", tabs() === "[d|e]*" && shut() === "ta", [tabs(), shut()])
+  while (ws.canReopenTab()) ws.reopenTab()
+
+  const rn = () => { const l = ws.here(); return l.tabs.map((t: Tb) => { const g = l.groups?.find((x: Any) => x.id === t.group); return desc(t.root) + (g ? `(${g.name})` : "") }).join(",") }
+  // What closed together comes back together (Chrome's "N tabs"), each where it was, with its group.
+  const G1 = { id: "g1", name: "Trip", color: "teal" }
+  put([T("a"), T("b", undefined, { group: "g1" }), T("c", undefined, { group: "g1" }), T("d")], "ta", { groups: [G1] })
+  ws.closeTabs("others", "ta", true)
+  check("several closed: one entry", tabs() === "a*" && shut() === "tb", [tabs(), shut()])
+  ws.reopenTab()
+  check("several closed: one ⌘⇧T brings all back where they were, the tab on screen staying, their group back", rn() === "a,b(Trip),c(Trip),d" && ws.here().active === "ta"
+    && !ws.canReopenTab(), [rn(), ws.here().active])
+  ws.selectTab("tc"); gr.closeGroup("g1")
+  check("close group: the group goes with its tabs", rn() === "a,d" && !ws.here().groups, rn())
+  ws.reopenTab()
+  check("close group: ⌘⇧T brings the group back, named and coloured, its tab on screen shown", rn() === "a,b(Trip),c(Trip),d" && ws.here().active === "tc", rn())
+  put([T("a"), T("b", undefined, { group: "g1" }), T("c")], "tb", { groups: [G1] }); ws.closeTab("tb", true)
+  ws.reopenTab()
+  check("a group's last tab closed: reopened, the group comes back", rn() === "a,b(Trip),c", rn())
+  ws.closeTabIds(["ta", "tb", "tc"], { force: true })
+  check("all closed: a blank tab left", tabs() === "new*", tabs())
+  ws.reopenTab()
+  check("all closed: one ⌘⇧T brings them back, the blank tab making way, the one shown then shown", rn() === "a,b(Trip),c" && ws.here().active === "tb", [rn(), ws.here().active])
+
+  // A pane closed comes back as it was: floating at its place (the tiled ones keeping their sizes), zoomed.
+  const flt = { x: 0.5, y: 0.1, w: 0.3, h: 0.4 }
+  put([S("tx", row("s0", [a, b, { ...c, float: flt }], [0.25, 0.75, 0.2]), "c")], "tx")
+  const tiles = () => lay.layout(ws.activeTab().root).panes.map((x: Any) => `${x.pane.id}:${x.rect.w.toFixed(2)}`).join()
+  const tiled0 = tiles()
+  ws.closePane("c", true); ws.reopenTab()
+  const backP = lay.panesOf(ws.activeTab()).find((p: Any) => p.id === "c")
+  check("close pane: a floating one comes back floating where it was, the tiled ones as they were", same(backP?.float, flt) && tiles() === tiled0 && focus() === "c", [backP, tiles(), tiled0])
+  put([S("tx", row("s0", [a, b]), "b", { zoom: "b" })], "tx")
+  ws.closePane("b", true); ws.reopenTab()
+  check("close pane: a zoomed one comes back zoomed", ws.activeTab().zoom === "b" && tree() === "row(a:0.50 b:0.50)", [ws.activeTab(), tree()])
+
+  // Nothing is lost for good: what a list put in place takes away (a layout, another device) is remembered as closed.
+  while (ws.canReopenTab()) ws.reopenTab()
+  put([T("a"), S("tx", row("s0", [b, c], [0.3, 0.7]), "c", { group: "g1" }), T("d")], "tx", { groups: [G1] })
+  ws.replaceWorkspace({ tabs: [T("a")], active: "ta" })
+  check("taken away: remembered as one entry", tabs() === "a*" && shut() === "tx", [tabs(), shut()])
+  ws.reopenTab()
+  check("taken away: ⌘⇧T brings it all back, splits, sizes and group", rn() === "a,[b|c](Trip),d" && shares(ws.here().tabs[1]) === "0.30,0.70", [rn(), shares(ws.here().tabs[1])])
+  ws.replaceWorkspace({ tabs: [T("a"), S("tx", c, "c", { group: "g1" }), T("d")], groups: [G1], active: "tx" }, { merge: true })
+  check("taken away: a pane of a split another device closed is remembered as a pane", shut() === "tb", shut())
+  ws.reopenTab()
+  check("… and comes back in its split", tabs() === "a,[b|c]*,d", tabs())
+  ws.replaceWorkspace({ tabs: [T("q")], active: "tq" }, { kept: true })
+  check("taken away, kept elsewhere (a workspace switched from): nothing remembered", !ws.canReopenTab(), shut())
+  ws.setOpenElsewhere((to: string) => to === "file:q.md")
+  ws.replaceWorkspace({ tabs: [T("a")], active: "ta" })
+  check("taken away, open in another workspace: nothing remembered", !ws.canReopenTab(), shut())
+  ws.setOpenElsewhere(() => false)
+  ws.replaceWorkspace({ tabs: [pane("r"), pane("a", "file:a.md")].map((p) => TP(p)), active: "tr" })
+  check("taken away, open there under another id: nothing remembered", !ws.canReopenTab(), shut())
+
+  // What closes is its workspace's, as its tabs are: ⌘⇧T reopens what closed there.
+  let wsNow = 1
+  ws.setWorkspaceOf(() => wsNow)
+  put([T("a"), T("b")], "tb"); ws.closeTab("tb", true)
+  wsNow = 2
+  check("workspaces: what closed in another isn't reopened here", !ws.canReopenTab() && shut() === "", shut())
+  wsNow = 1
+  check("… and is, back there", ws.canReopenTab() && shut() === "tb", shut())
+  ws.reopenTab()
+  ws.setWorkspaceOf(() => 0)
 
   // ---- tab groups (tabgroups.ts) ----
   const runs = () => { const l = ws.here(); return l.tabs.map((t: Tb) => { const s = l.groups?.find((x: Any) => x.id === t.group); return desc(t.root) + (s ? `(${s.name || s.color}${s.collapsed ? "-" : ""})` : "") }).join(",") }
@@ -1444,16 +1510,16 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   ws.closeTab("td"); ws.reopenTab()
   check("tab groups: a closed tab reopens back in its group", runs() === "a,b(Lighthouse),d(Lighthouse),c", runs())
   ws.reopenTab()
-  check("tab groups: one whose group went reopens where it was, in none", runs() === "a,b(Lighthouse),d(Lighthouse),e,c" && gr.allGroups().length === 1, runs())
+  check("tab groups: one whose group went reopens where it was, its group back (Chrome's)", runs() === "a,b(Lighthouse),d(Lighthouse),e(orange),c" && gr.allGroups().length === 2, runs())
   ws.selectTab("tb"); ws.go("file:z.md", true)
   check("tab groups: a tab opened from a grouped tab joins its group", runs().startsWith("a,b(Lighthouse),z(Lighthouse),") && ws.activeTab().group === g1, runs())
   ws.newTab()
   check("tab groups: a new blank tab from a grouped tab goes after the group, in none", ws.activePane().to === "new" && !ws.activeTab().group
     && ws.here().tabs.findIndex((t: Tb) => lay.isBlankTab(t)) === ws.here().tabs.map((t: Tb) => t.group).lastIndexOf(g1) + 1, runs())
   const savedGroups = JSON.parse(JSON.stringify(ws.getWorkspace())); ws.replaceWorkspace(savedGroups)
-  check("tab groups: a layout put back (another device, a reload) keeps them", runs() === "a,b(Lighthouse),z(Lighthouse),d(Lighthouse),new,e,c", runs())
+  check("tab groups: a layout put back (another device, a reload) keeps them", runs() === "a,b(Lighthouse),z(Lighthouse),d(Lighthouse),new,e(orange),c", runs())
   gr.ungroup(g1)
-  check("tab groups: ungrouped, the tabs stay where they were", !ws.here().groups && !ws.here().tabs.some((t: Tb) => t.group), runs())
+  check("tab groups: ungrouped, the tabs stay where they were", runs() === "a,b,z,d,new,e(orange),c" && !ws.here().tabs.some((t: Tb) => t.group === g1), runs())
   // Saved and read back: a tab in a group the list hasn't is in none; a group's tabs apart are gathered; a bad colour drops it.
   const read = lay.clean({ active: "ta", tabs: [T("a", undefined, { group: "s" }), T("b"), T("c", undefined, { group: "s" }), T("d", undefined, { group: "gone" })],
     groups: [{ id: "s", name: "Read", color: "green", collapsed: true }, { id: "x", name: "Bad", color: "chartreuse" }] })

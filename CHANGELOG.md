@@ -13,6 +13,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   + for a new pane), and tab menus have Open in split, Swap panes, Separate panes and Move to new tab. Swiping
   between workspaces there settles the same way. The bottom bar swiped sideways goes to the tab either side, as
   Safari's, and while either swipe goes the header's name and dots follow the finger.
+- **Reopen closed tab brings back what closed, as it was**: what closed together comes back with one ⌘⇧T (Close
+  others, a tab group with its name and colour, a pop-out window, all the tabs), each tab in its place; a split's pane
+  goes back where it sat at its size, floating or zoomed as it was. Tabs a layout or another device takes away that
+  are open nowhere else are reopenable too. Each workspace reopens its own, Search tabs lists what closed together as
+  one row, and the phone's tab list has Recently closed in its menu.
 - **Sharing a folder, end to end**: Share sits on a folder's toolbar, in its menus and in the palette (Share folder…);
   the link is copied as it's made, the tree marks shared folders, and each person's access is a menu (Can view,
   comment, edit; 30 more days; Remove access), the same link kept. A guest lands on the folder's page, sees its images,

@@ -19,6 +19,11 @@ tabs/`): every machine serving the vault has every device's, live. A browser dri
 last first, found by name, address or tab group; then the tabs closed lately and the archived ones, to reopen. ⌘⌫ closes
 the selected tab.
 
+**Reopen closed tab** (⌘⇧T, `tab:reopen`; on a phone, the tab list's menu, Recently closed) brings back what closed last
+in this workspace, as it was: what closed together comes back together (Close others, a tab group, a pop-out window),
+each tab in its place with its group; a split's pane goes back where it sat, at its size. Tabs a layout or another
+device takes away that are open nowhere else are remembered the same way. Kept on this device (its windows share it).
+
 **Devices** (`vau tabs devices`; the Devices view, also in Machines): each one, open now or when it was last used, with
 its tabs. Which are open isn't kept in a file: each server knows its own windows, and asks the other machines for theirs.
 `vau tabs device-close <device> [tabs...]` closes tabs on one that's open now (all of them without tabs).

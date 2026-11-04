@@ -213,11 +213,12 @@ export function saveTabs() {
   // Back to a lone blank tab: the layout goes (null), so a workspace that's nothing more than that is unused again.
   patch(n, { layout: shape(l) ? l : null })
 }
-/** Putting a layout in place ourselves (a switch, another device's change): not a change to save. */
+/** Putting a layout in place ourselves (a switch, another device's change): not a change to save. `kept`: what it
+ *  takes off screen is kept in a workspace (switched from, moved to), so it isn't remembered as closed. */
 let applying = false
-function apply(l: TabLayout | null, merge = false) {
+function apply(l: TabLayout | null, merge = false, kept = false) {
   applying = true
-  try { setTabLayout(l, { merge }) } finally { applying = false }
+  try { setTabLayout(l, { merge, kept }) } finally { applying = false }
 }
 export const saveTabsSoon = () => { if (applying) return; clearTimeout(timer); timer = window.setTimeout(saveTabs, 1000) }
 
@@ -316,7 +317,7 @@ export async function sendTo(n: number, what: Sent) {
   moving = true
   const before = getTabLayout()
   const gone = "open" in what ? null : without(before, what)
-  if (gone) apply(gone, true)
+  if (gone) apply(gone, true, true)
   await writing
   try {
     const r = await post<{ tabs: { id: string }[]; workspaces: unknown[] }>("workspaces/move", { ...("open" in what ? {} : { from }), to: n, ...what })
@@ -376,7 +377,7 @@ export function switchTo(n: number) {
   current_.set(n)
   emit(); sidebarsChanged()
   const k = kept.get(n)
-  apply(k && shape(k) === shape(d?.layout) ? k : d?.layout ?? null)
+  apply(k && shape(k) === shape(d?.layout) ? k : d?.layout ?? null, false, true)
 }
 
 export const used = () => SLOTS.filter((n) => slots()?.[n - 1])

@@ -100,6 +100,25 @@ await win.keyboard.press("Escape")
   check("pop-out: closing its last tab closes it", await Promise.race([gone, wait(5000).then(() => false)]))
   await win.bringToFront()
   await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
+
+  // A pop-out closed as a window (its tabs in it): ⇧⌘T opens it again, as a browser's closed window.
+  await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(`Notes/${note}`)}`); await wait(600)
+  const made2 = app.waitForEvent("window")
+  await win.keyboard.press("ControlOrMeta+P"); await win.keyboard.type("Move current tab to new window"); await wait(300); await win.keyboard.press("Enter")
+  const pop2 = await made2
+  await pop2.waitForSelector("[data-tab-id]", { timeout: 20000 })
+  const shut = new Promise((r) => pop2.once("close", () => r(true)))
+  await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => x.webContents.getURL().includes("?popout="))?.close())
+  await Promise.race([shut, wait(5000)])
+  await wait(1500) // (the main window notices within a second)
+  await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
+  const made3 = app.waitForEvent("window", { timeout: 10000 }).catch(() => null)
+  await win.keyboard.press("ControlOrMeta+Shift+T")
+  const pop3 = await made3
+  check("pop-out: closed as a window, ⇧⌘T opens it again with its tab", !!pop3 && await pop3.waitForSelector("[data-tab-id]", { timeout: 20000 }).then(() => true, () => false)
+    && decodeURIComponent(pop3.url()).includes(note), pop3?.url())
+  if (pop3) { const end = new Promise((r) => pop3.once("close", r)); await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => x.webContents.getURL().includes("?popout="))?.close()); await Promise.race([end, wait(5000)]) }
+  await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
 }
 
 // The editor's menu (plugins/core/editing/menu.ts): the page leaves the right-click to the system, Electron reports

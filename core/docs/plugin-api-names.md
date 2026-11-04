@@ -580,7 +580,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `setFocusedPane(id)`: Clicking in a pane gives it the focus (the address shows it; commands act on it).
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
 - `setSidebarMode(key)`: Show panel `key` alone in the left sidebar, the sidebar open (null: its panels again).
-- `setTabLayout(next, opts?)`: Put a whole other workspace in place (Workspaces switching).
+- `setTabLayout(next, opts?)`: Put a whole other workspace in place (Workspaces switching): what it takes away is reopenable as closed unless `kept` elsewhere (a switch, a move).
 - `setTextSize(kind, percent)`: Set a kind's size, in percent (kept within STEPS' range).
 - `SettingDecl`: A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip it).
 - `SettingDecls`
