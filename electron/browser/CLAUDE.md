@@ -60,7 +60,7 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
 - Agents never read a secret the app filled (logins.ts, agents.kdbx): every agent answer goes through `serve`, which
   scrubs it (pagesecrets.ts), and page text is scrubbed at its source too, since `run` composes calls without `serve`.
   After an agent's script runs in a site's page the app fills nothing there till it loads again (sound only because
-  Electron has no back/forward cache: web/qa/agentlogins.mjs).
+  Electron has no back/forward cache, not even with Chromium's BackForwardCache feature on: web/qa/agentlogins.mjs).
 - A login its entry's tag doesn't free waits for the user's passkey, verified here (presence.ts), never for a yes an
   agent could give. A passkey is added only by a code the app shows, then Touch ID: agents have computer use, so a
   click proves nothing. The list is encrypted with the Keychain's key.

@@ -1,7 +1,7 @@
 // Containers that need Touch ID (the web-viewer's `lock`): their pages don't open or show until unlocked, and lock again
 // when the Mac locks or sleeps, or after a while away, like Brave's app lock. The app tells which profiles lock.
 import { powerMonitor, systemPreferences } from "electron"
-import { allPages, guardOpen, handle, tellAll } from "./engine.ts"
+import { allPages, guardOpen, guardPictures, handle, tellAll } from "./engine.ts"
 
 /** Locked away for: the Mac idle this long locks them again. */
 const AWAY = 15 * 60
@@ -11,6 +11,7 @@ const asking = new Map<string, Promise<boolean>>()
 const PROFILE = /^c-[a-z0-9]{1,24}$/
 
 guardOpen((profile) => !locking.has(profile) || unlocked.has(profile))
+guardPictures((profile) => !locking.has(profile))
 
 function lockAll() {
   if (!unlocked.size) return

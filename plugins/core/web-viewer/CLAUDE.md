@@ -25,6 +25,11 @@
   `getURL()` is "" till the first load commits (it was how hidden pages kept playing with no tab). A page made before
   its tab (window.open's, kept for `window.opener`; a glance kept as a tab) is handed to it by id (`web:adopt`) first.
   Such a page needs `outlivesOpener`: Electron otherwise ends it with its opener, and closing a tab closed all it opened.
+- A tab comes back as it was (a relaunch, ⌘⇧T, a page discarded): its history and each entry's page state (scroll, form)
+  from web-tab-history.json, and its last picture (web-frames/, kept as its page ends and as the app quits; never a
+  locking container's) drawn under its page, which stays see-through till it paints (`web:frame`, WebPage's
+  `data-web-frame`). Not started before its tab asks (tried: the engine and a renderer starting with the window delayed
+  the window and its picture, for a live page little sooner). `web/qa/webrestore.mjs` times it.
 - An agent's page opens with no tab (web.ts `make(..., agent)`), parked: shown off the window, unthrottled, so it draws
   on (live pictures, screenshots); a hidden view stops drawing at its next cross-site load. Unused a minute it rests
   hidden (agent.ts), and every agent call or watch wakes it (EnginePage `wake`). Open as tab hands it to a tab (`own`).

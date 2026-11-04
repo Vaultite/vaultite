@@ -135,7 +135,9 @@ export type WebPageState = { url: string; title: string; back: boolean; forward:
   zoom?: number
   /** `error` is a certificate it may go on past (`allow-cert`); its renderer kept crashing (a reload starts it again);
    *  it holds typed, unsent input. Older builds don't say. */
-  unsafe?: boolean; crashed?: boolean; typed?: boolean }
+  unsafe?: boolean; crashed?: boolean; typed?: boolean
+  /** Its page has painted since it was made (older builds don't say). */
+  painted?: boolean }
 /** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's). */
 type WebRect = { x: number; y: number; width: number; height: number }
 /** Web pages in the desktop app: native views over this window in sessions of their own (logins apart from the app's),
@@ -166,6 +168,11 @@ export type WebPages = {
   html: (id: number) => Promise<{ url: string; title: string; html: string }>
   /** A picture of it as it's shown now (JPEG; null when it isn't shown). Older builds don't have it. */
   shot?: (id: number) => Promise<Uint8Array | null>
+  /** Tab `tab`'s last picture of `url` in `profile` (JPEG, its size in CSS px), shown in its place while its page comes
+   *  back (a relaunch, a closed tab reopened); null while its page is there. Older builds don't have it. */
+  frame?: (tab: string, url: string, profile: string) => Promise<{ data: Uint8Array; width: number; height: number } | null>
+  /** The titles tabs' pages last had, by address: a tab not loaded yet keeps its name. Older builds don't have it. */
+  titles?: () => Promise<Record<string, string>>
   /** An address (http, https, mailto) in the system browser. */
   external: (url: string) => Promise<unknown>
   /** The app's shortcuts with ⌘, ⌃ or ⌥ (`modifiedSteps`): pressed in a page, they come back as `key` events. */

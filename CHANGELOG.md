@@ -29,6 +29,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   checkout, in the Claude Code account signed in to it). The Inbox's news says what a session asked or did.
 - **Phone pages titled once**: a page with its own header (Sites, Extensions, Cloud sessions) no longer repeats its
   title under the phone's.
+- **Web tabs come back as you left them**: after a relaunch the page on screen shows at once, as you last saw it, while
+  it loads, scrolled where it was with its Back and Forward; a web tab closed and reopened
+  (⌘⇧T) does the same, and tabs not loaded yet keep their titles.
 - **Folders as Finder shows them**: a folder's page shows as a grid, a list, columns (each folder down to it side by
   side, a preview of the file picked) or a gallery (the picked thing large over a strip, ← → through it); a list or
   grid can be grouped by kind or date modified. Every file has a picture: a PDF's first page, a video's frame, a web

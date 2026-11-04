@@ -139,6 +139,23 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked, blank])
 
+  // Its last picture (a relaunch, a closed tab reopened), drawn under its page till that paints: the page shows at once.
+  const [frame, setFrame] = useState<{ src: string; width: number; height: number } | null>(null)
+  useEffect(() => {
+    if (locked !== false || blank || !web.frame) return
+    let gone = false, src = ""
+    void web.frame(tab, arg, profileIn(container)).then(async (f) => {
+      if (!f || gone || live.current.state.painted) return
+      const img = new Image()
+      img.src = src = URL.createObjectURL(new Blob([f.data as BlobPart], { type: "image/jpeg" }))
+      await img.decode().catch(() => {})
+      if (!gone && !live.current.state.painted) setFrame({ src, width: f.width, height: f.height })
+    }, () => {})
+    return () => { gone = true; setFrame(null); if (src) URL.revokeObjectURL(src) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locked, blank])
+  const framed = !!frame && !state.painted && !state.error && !state.crashed
+
   // (made blank, Back to safety with nowhere to go back to: what its page said goes with it)
   useEffect(() => { if (blank) setState({ url: "", title: "", back: false, forward: false, loading: false }) }, [blank])
 
@@ -488,6 +505,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         {/* The window drags wherever its page has a drag region, even under this page (Electron): cut out here, after
             them in the document, as regions go. Empty, so one region (no-drag is inherited). */}
         <div aria-hidden data-web-cut className="pointer-events-none absolute inset-0 [-webkit-app-region:no-drag]" />
+        {framed && <img src={frame.src} alt="" data-web-frame draggable={false} className="pointer-events-none absolute top-0 left-0 max-w-none select-none"
+          style={{ width: frame.width, height: frame.height }} />}
         {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab ? "back" : "here")} />}
         {away && <Away onShow={() => setPlayer(id, true)} onBack={() => setPlayer(id, false)} />}
         {passkey && <Passkey ask={passkey} />}

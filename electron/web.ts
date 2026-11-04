@@ -3,7 +3,7 @@
 import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
-import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
+import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, mayPicture, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
 import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
@@ -22,7 +22,7 @@ setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl })
 
 export type WebRect = { x: number; y: number; width: number; height: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
-  player?: boolean; zoom?: number; unsafe?: boolean; crashed?: boolean; typed?: boolean }
+  player?: boolean; zoom?: number; unsafe?: boolean; crashed?: boolean; typed?: boolean; painted?: boolean }
 type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   /** Its address failed on a certificate it may choose to trust for this session (`allow-cert`). */
   cert?: { url: string; host: string; fp: string }
@@ -260,7 +260,8 @@ function stateOf(p: Page): WebState {
   const zoom = wc.getZoomFactor()
   return { url: (!blank && wc.getURL()) || p.target, title: (!blank && wc.getTitle()) || "", back: canBack(p), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
     ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}), ...(Math.abs(zoom - 1) > 0.001 ? { zoom } : {}),
-    ...(p.cert && p.error ? { unsafe: true } : {}), ...(p.crashed ? { crashed: true } : {}), ...([...p.typed.values()].some(Boolean) ? { typed: true } : {}) }
+    ...(p.cert && p.error ? { unsafe: true } : {}), ...(p.crashed ? { crashed: true } : {}), ...([...p.typed.values()].some(Boolean) ? { typed: true } : {}),
+    ...(p.fresh ? {} : { painted: true }) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
 const NOTIFY = "__vaultite_notify__"
@@ -337,6 +338,7 @@ function painted(p: Page) {
   if (!p.fresh || p.view.webContents.isDestroyed()) return
   p.fresh = false
   p.view.setBackgroundColor("#ffffff")
+  sendState(p)
 }
 ipcMain.on("vaultite:web:painted", (e) => { const p = pageOf(e.sender); if (p && shows(e.sender.getURL())) painted(p) })
 // One of the browser's keys a page left alone (BROWSER_KEYS), or the mouse's back or forward button in it: the app's,
@@ -404,10 +406,11 @@ function takeSpare(profile: string) {
  *  loading `url`. */
 function make(win: AppWindow, url: string, profile: string, tab: string, { agent = false, adopt, opener }: { agent?: boolean; adopt?: WebContents; opener?: number } = {}): Page {
   // (a tab whose page went, or moved to other logins, given its history back: Back and Forward as they were)
-  const kept = tab && !adopt ? pastOf(tab, profile, url) : null
+  const kept = tab && !adopt ? restoreMod?.pastOf(tab, profile, url) ?? null : null
   const taken = adopt || kept ? null : takeSpare(profile), view = taken ?? newView(profile, adopt)
   makeSpare(profile)
-  view.setBackgroundColor(lookOf(win))
+  // (see-through till it paints, over its last picture: `web:frame`)
+  view.setBackgroundColor(kept && !kept.load && restoreMod?.frameFor(tab, url, profile) ? "#00000000" : lookOf(win))
   view.setVisible(false)
   // (a size before it's first shown: a page laid out at none has nothing an agent could click)
   const [w, h] = win.getContentSize()
@@ -773,9 +776,15 @@ function end(p: Page) {
   clearTimeout(p.hush)
   fromPlayer(p)
   pagesChanged(p.win)
-  if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view)
+  // (kept for its tab to come back with: ⌘⇧T, shown again after a discard)
+  keepPast(p, true)
+  const shot = keepFrame(p)
+  p.view.setVisible(false)
+  const off = () => { if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view) }
   // (none once its contents are gone: closed by its own script)
-  if (p.view.webContents) void unload(p.view.webContents)
+  const wc = p.view.webContents
+  if (!shot) { off(); if (wc) void unload(wc); return }
+  void shot.finally(() => { off(); void unload(wc) })
 }
 
 /** Close a page as a browser closes a tab: its beforeunload and unload run first (sites save state there, Discord its
@@ -805,8 +814,11 @@ function mayLeave(wc: WebContents, win: BaseWindow, quiet: boolean) {
 
 /** Before the app quits: every page unloaded, as its tab's close would, its tab kept (closing: not a close by its own
  *  script, which closes its tab too), so the tabs come back at the next launch, as a browser's do. */
-export const unloadPages = () => {
-  if (pastTimer) savePasts()
+export const unloadPages = async () => {
+  // (each tab's history, and what's on screen as a picture, for the next launch to show at once)
+  for (const p of pages.values()) keepPast(p, true)
+  restoreMod?.savePasts()
+  await Promise.race([Promise.all([...pages.values()].filter(shownNow).map(keepFrame)), new Promise((done) => setTimeout(done, 800))])
   return Promise.all([...pages.values()].map((p) => { p.closing = true; return unload(p.view.webContents) })).then(() => {})
 }
 
@@ -888,8 +900,7 @@ function go(p: Page, action: string, url?: string): unknown {
   // Tab `url` is to be its copy: its kept history is that tab's too, which its page starts from (`pastOf`).
   else if (action === "duplicate" && url && tabOf(url) && p.tab) {
     keepPast(p)
-    const k = pastsOf().get(p.tab)
-    if (k) { pastsOf().set(tabOf(url), { ...k, at: Date.now() }); pastTimer ??= setTimeout(savePasts, 2000) }
+    restoreMod?.copyPast(p.tab, tabOf(url))
   }
   else if (action === "hard-reload") { reloaded.set(wc, Date.now()); wc.reloadIgnoringCache() }
   // (a page's DevTools are a window of their own: a view has nowhere to dock them)
@@ -1128,48 +1139,27 @@ handle("web:adopt", (win, id, tab) => {
   if (p.downloaded) tell(p.win, { type: "close", tab: to })
 })
 
-// ---------- each tab's page history, kept on this Mac for it to come back with (⌘⇧T, a relaunch, a page let go) ----------
+// ---------- how a tab's page comes back (webrestore.ts): its history and its last picture ----------
 
-type Past = { profile: string; index: number; entries: { url: string; title: string; pageState?: string }[]; at: number }
-const pastFile = () => path.join(app.getPath("userData"), "web-tab-history.json")
-let pasts: Map<string, Past> | null = null
-const pastsOf = () => {
-  if (pasts) return pasts
-  try { pasts = new Map(Object.entries(JSON.parse(fs.readFileSync(pastFile(), "utf8")) as Record<string, Past>)) } catch { pasts = new Map() }
-  return pasts
-}
-let pastTimer: NodeJS.Timeout | null = null
-function savePasts() {
-  if (pastTimer) { clearTimeout(pastTimer); pastTimer = null }
-  const old = Date.now() - 30 * 86400_000
-  const list = [...pastsOf()].filter(([, v]) => v.at > old).sort((a, b) => b[1].at - a[1].at).slice(0, 500)
-  pasts = new Map(list)
-  try { writeAtomic(pastFile(), JSON.stringify(Object.fromEntries(list))) } catch (e) { console.error("vaultite: tabs' page history wasn't kept:", e) }
-}
-/** Page `p`'s history as it is now, kept for its tab (its own addresses only: no spare's about:blank, 50 around where it is). */
-function keepPast(p: Page) {
+let restoreMod: typeof import("./webrestore.ts") | null = null
+/** Loaded with the first page (`web:open` awaits it), so any page has it. */
+const restore = async () => (restoreMod ??= await import("./webrestore.ts"))
+/** Page `p`'s history as it is now, kept for its tab (`settle`: its pages' state too, as it ends). */
+function keepPast(p: Page, settle = false) {
   const wc = p.view.webContents
-  if (!p.tab || p.agent || wc.isDestroyed() || p.blankBehind || p.restoring) return
-  const h = wc.navigationHistory, all = h.getAllEntries(), at = h.getActiveIndex()
-  if (!shows(all[at]?.url ?? "")) return
-  // (a page's state, its scroll and form, only while small: the file is rewritten as pages move on)
-  const mine = all.map((e, i) => ({ url: e.url, title: e.title, ...(e.pageState && e.pageState.length < 8000 ? { pageState: e.pageState } : {}), i })).filter((e) => shows(e.url))
-  const i = mine.findIndex((e) => e.i === at), from = Math.max(0, i - 40), was = pastsOf().get(p.tab)
-  const next = { profile: p.profile, index: i - from, entries: mine.slice(from, i + 10).map(({ i: _, ...e }) => e), at: Date.now() }
-  pastsOf().set(p.tab, next)
-  // (a title changing alone, as some sites' do every second, waits for the next move to be written)
-  if (!was || was.index !== next.index || was.entries.map((e) => e.url).join() !== next.entries.map((e) => e.url).join()) pastTimer ??= setTimeout(savePasts, 2000)
+  if (!p.tab || p.agent || !wc || wc.isDestroyed() || p.blankBehind || p.restoring || !restoreMod) return
+  const h = wc.navigationHistory
+  restoreMod.keepPast(p.tab, p.profile, h.getAllEntries(), h.getActiveIndex(), shows, settle)
 }
-/** How tab `tab`'s page starts in `profile` at `url`, from its kept history: as it was (its page come back), or, in other
- *  logins or at another address (moved to another container), its places up to there with `url` loaded after (`load`). */
-function pastOf(tab: string, profile: string, url: string) {
-  const k = pastsOf().get(tab)
-  if (!k) return null
-  if (k.profile === profile && k.entries[k.index]?.url === url) return k.entries.length > 1 ? { entries: k.entries, index: k.index, load: false } : null
-  // (without what sites keep in them: another session's)
-  const back = k.entries.slice(0, k.index + 1).map(({ url, title }) => ({ url, title }))
-  if (back.at(-1)?.url === url) back.pop()
-  return back.length ? { entries: back, index: back.length - 1, load: true } : null
+/** Page `p` as drawn now, kept as its tab's picture (null: none, an agent's, unpainted, failed); asked at once, so it may
+ *  be hidden right after. */
+function keepFrame(p: Page): Promise<void> | null {
+  const wc = p.view.webContents
+  if (!p.tab || p.agent || p.fresh || p.error || p.crashed || !wc || wc.isDestroyed() || p.win.isDestroyed() || !shows(wc.getURL()) || !mayPicture(p.profile)) return null
+  const tab = p.tab, b = p.view.getBounds(), z = p.win.webContents.getZoomFactor()
+  const f = { url: wc.getURL(), profile: p.profile, width: Math.round(b.width / z), height: Math.round(b.height / z) }
+  if (b.width < 2 || b.height < 2) return null
+  return wc.capturePage().then(async (img) => (await restore()).keepFrame(tab, img, f)).catch(() => {})
 }
 
 // Claude Code on the web's sessions, read with the profiles' claude.ai logins (cloud.ts, loaded when first asked).
@@ -1189,7 +1179,7 @@ const cloud = {
 export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
   // (a tab's page is the tab's: shown again, it's the same one, wherever it went since)
   "web:open": async (win, url, rect, profile, tab) => {
-    await engineLoaded()
+    await Promise.all([engineLoaded(), restore()])
     const u = str(url), prof = profileOf(profile), owner = tabOf(tab)
     if (!shows(u)) throw new Error("only http and https pages")
     await readySession(prof)
@@ -1209,6 +1199,14 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     if (r && wasHidden && shownNow(p)) { focused = !!p.hadFocus; p.hadFocus = false }
     return { id: p.id, state: stateOf(p), focused }
   },
+  // Tab `tab`'s last picture of `url` (JPEG, its size), drawn while its page comes back; none while it's there.
+  "web:frame": async (win, tab, url, profile) => {
+    const m = await restore(), t = tabOf(tab), f = m.frameFor(t, str(url), profileOf(profile))
+    if (!f || [...pages.values()].some((p) => p.win === win && p.tab === t && !p.closing && !p.fresh)) return null
+    return m.readFrame(t, f)
+  },
+  // The titles tabs' pages had, by address: a tab not loaded yet is named as it was.
+  "web:titles": async () => (await restore()).pastTitles(),
   "web:place": (win, id, rect) => {
     const p = mine(win, id), r = rectOf(rect) && mayOpen(p.profile) ? rectOf(rect) : null, wasHidden = !shownNow(p)
     place(p, r)

@@ -15,7 +15,7 @@ import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
 import { openBookmark, starOf } from "./Star"
-import { focusedPage, focusedPageId, linksInViewer, loadingIn, onScreen, pageOfTab, pageTookKeyboard, passkeyAsks, profile, setPageFlags, stateCame, setPlayer, setSounds, settings, shown, soundOf, titleOf, typedIn } from "./state"
+import { focusedPage, focusedPageId, keptTitles, linksInViewer, loadingIn, onScreen, pageOfTab, pageTookKeyboard, passkeyAsks, profile, setPageFlags, stateCame, setPlayer, setSounds, settings, shown, soundOf, titleOf, typedIn } from "./state"
 import { agentPage, agentPageOfTab, agentPages, openAsTab, pauseAgents, setAgentPages, working, type AgentPage } from "./agentpages"
 import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
@@ -150,6 +150,7 @@ function Background() {
   useLookBackground()
   // (the browsers there are to import from: their commands show)
   useEffect(() => { if (webPages?.engine) void findBrowsers() }, [])
+  useEffect(() => { void webPages?.titles?.().then(keptTitles, () => {}) }, [])
   const commands = useCommandList()
   useEffect(() => { void webPages?.keys(modifiedSteps()) }, [commands])
   // What agents may do in each container, and where their tabs open, told to the desktop app as they change.

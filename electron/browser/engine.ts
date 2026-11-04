@@ -220,6 +220,10 @@ const guards: ((profile: string) => boolean)[] = []
 /** A page in `profile` opens only if every guard lets it (a locked container's don't). */
 export const guardOpen = (fn: (profile: string) => boolean) => { guards.push(fn) }
 export const mayOpen = (profile: string) => guards.every((g) => g(profile))
+const shy: ((profile: string) => boolean)[] = []
+/** A page in `profile` is kept as a picture on disk only if every guard lets it. */
+export const guardPictures = (fn: (profile: string) => boolean) => { shy.push(fn) }
+export const mayPicture = (profile: string) => shy.every((g) => g(profile))
 
 const openers: ((url: string) => boolean)[] = []
 /** Addresses besides the web's that a page may show (an extension's own pages): `fn` says which. */

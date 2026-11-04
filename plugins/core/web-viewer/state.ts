@@ -45,13 +45,19 @@ export function profile(): string {
 /** The logins of workspace `n`'s pages. */
 export const profileFor = (n: number) => (settings.get().logins === "shared" || n === 1 ? "" : String(n))
 
-/** Pages' titles by address, for their tabs (a page not loaded yet shows its site). */
+/** Pages' titles by address, for their tabs (a page not loaded yet shows the title it last had, else its site). */
 const titles = new Map<string, string>()
 export const titleOf = (url: string) => titles.get(url)
 export function setTitle(url: string, title: string) {
   if (!url || titles.get(url) === title) return
   titles.set(url, title)
   viewsChanged()
+}
+/** The titles tabs' pages last had (the desktop app keeps them): those not loaded yet are named as they were. */
+export function keptTitles(kept: Record<string, string>) {
+  let more = false
+  for (const [url, title] of Object.entries(kept)) if (typeof title === "string" && title && !titles.has(url)) { titles.set(url, title); more = true }
+  if (more) viewsChanged()
 }
 
 /** A page playing sound (through its quiet scenes, till its media pauses), or muted: its tab's speaker says so, shown or
