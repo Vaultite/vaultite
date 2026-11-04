@@ -11,10 +11,12 @@ on:
         description: QA scripts to run (all when empty)
         required: false
   schedule:
-    - cron: "0 5 * * *"
+    - cron: "17 5 * * *" # (off the hour: GitHub delays, and may drop, runs on it)
+# A pull request's newer push cancels its older run; main's runs finish, the newest push waiting while one runs (GitHub
+# drops the ones queued between), so main's head is always tested and a run's failure names its commit.
 concurrency:
   group: ci-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:
     strategy:
@@ -50,6 +52,9 @@ jobs:
       # (its system libraries only on Linux: on Windows Server --with-deps adds Media Foundation, minutes the tests never use)
       - if: ${{ !cancelled() }}
         run: npx playwright-core install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
+      # (Linux's thumbnails are what's on PATH: core/thumbs.ts' converters, tested only where they're installed)
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: sudo apt-get install -y --no-install-recommends imagemagick poppler-utils ffmpeg
       - if: ${{ !cancelled() }}
         run: npm run build
       - if: ${{ !cancelled() }}

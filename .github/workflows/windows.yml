@@ -6,9 +6,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+# As ci.yml: only a pull request's older run is cancelled, so main's Windows runs finish rather than each next push
+# cancelling the last (a 13-minute run under a busy main was rarely finished).
 concurrency:
   group: windows-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   arm64:
     runs-on: windows-11-arm

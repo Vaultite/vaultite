@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import zlib from "node:zlib"
@@ -47,19 +47,27 @@ export default async ($: VaultTest) => {
   const at = (name: string, data: string | Buffer) => { const p = path.join(dir, name); fs.writeFileSync(p, data); return p }
   const photo = at("wide.png", png(600, 300)), doc = at("page.pdf", pdf()), odd = at("notes.qqq", "plain text"), zip = at("a.zip", "PK\x03\x04")
   const mac = process.platform === "darwin" && fs.existsSync("/usr/bin/qlmanage")
+  // Images need a converter on PATH that reads a PNG: a broken one (Windows on Arm's runner has an ImageMagick that can't
+  // find its coders) gives none, checked below.
+  const magick = onPath("magick") ?? (process.platform !== "win32" ? onPath("convert") : null), vips = onPath("vips")
+  const probe = magick ? spawnSync(magick, [photo, "info:"], { encoding: "utf8" }) : vips ? spawnSync(vips, ["header", photo], { encoding: "utf8" }) : null
+  const imageTool = probe?.status === 0, brokenTool = probe && !imageTool ? `${magick ?? vips} can't read a PNG: ${(probe.stderr || String(probe.error)).trim().split("\n")[0]}` : null
 
   for (const quicklook of mac ? [true, false] : [false]) {
     const how = quicklook ? "QuickLook" : "tools on PATH"
     let t = Date.now()
     const none = await Promise.all([odd, zip].map((f) => thumbOf(f, fs.statSync(f), 256, quicklook)))
     check(`thumbs (${how}): a kind with no thumbnail is none, at once`, none.every((x) => x === null) && Date.now() - t < 500, [none, Date.now() - t])
-    if (quicklook || onPath("magick") || onPath("convert") || onPath("vips")) {
+    if (quicklook || imageTool) {
       const [a, b] = await Promise.all([thumbOf(photo, fs.statSync(photo), 200, quicklook), thumbOf(photo, fs.statSync(photo), 256, quicklook)])
       check(`thumbs (${how}): an image's is a PNG at most the size asked, made once for two asking`, a && a === b && dims(a).join() === "256,128" && a.endsWith("-256.png"), [a, a && dims(a)])
       t = Date.now()
-      check(`thumbs (${how}): asked again, it's the one made`, (await thumbOf(photo, fs.statSync(photo), 256, quicklook)) === a && Date.now() - t < 50)
+      check(`thumbs (${how}): asked again, it's the one made`, !!a && (await thumbOf(photo, fs.statSync(photo), 256, quicklook)) === a && Date.now() - t < 50)
       const big = await thumbOf(photo, fs.statSync(photo), 700, quicklook)
       check(`thumbs (${how}): a bigger bucket is its own, never past the image`, big !== a && !!big && Math.max(...dims(big)) <= 1024, big && dims(big))
+    } else if (brokenTool) {
+      const other = at("other.png", png(60, 30)), none = await thumbOf(other, fs.statSync(other), 256, quicklook)
+      check(`thumbs (${how}): a converter that fails gives no thumbnail (${brokenTool})`, none === null, none)
     } else skip(`thumbs (${how}): images`, "no magick, convert or vips")
     if (quicklook || onPath("pdftoppm")) {
       const d = await thumbOf(doc, fs.statSync(doc), 512, quicklook)

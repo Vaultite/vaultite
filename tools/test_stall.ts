@@ -45,7 +45,8 @@ const t0 = Date.now()
 
 try {
   let loading: any = null
-  while (Date.now() - t0 < 10_000) {
+  // (a busy runner takes seconds to load the server's plugins before it reads a file: generous, it ends when named)
+  while (Date.now() - t0 < 30_000) {
     const r = await get("loading", 1000)
     if (r.status === 200) { loading = r.body; if (loading.ready || loading.downloading.includes("Notes/Slow.md")) break } // (the Held notes may be named first)
     await sleep(100)

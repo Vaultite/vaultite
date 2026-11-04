@@ -52,6 +52,14 @@ function stop() {
 }
 
 const browser = await launch()
+// A page whose code loops never answers a wait: the run fails naming where, not hours later at the job's timeout.
+let doing = "starting"
+setTimeout(async () => {
+  console.error(`boot: stuck 10 min at ${doing}`)
+  await Promise.race([browser.close(), wait(5000)]).catch(() => {})
+  stop()
+  process.exit(1)
+}, 600_000).unref()
 // Generous waits: a busy machine is slow, not broken (a broken build fails fast: the error screen, a pageerror).
 const SLOW = 60_000
 /** Each route on a desktop and a phone: it draws and throws nothing. */
@@ -69,6 +77,7 @@ async function visit(base, prefix = "") {
     page.on("pageerror", (e) => errors.push(e.stack || e.message))
     const routes = ["", "#plugins", "#settings", ...(note ? [`#view/files/file/${encodeURIComponent(`${note}.md`)}`] : [])]
     for (const r of routes) {
+      doing = `${prefix}${name}: ${r || "first page"}`
       await page.goto(base + r)
       const drawn = await page.waitForFunction(() => document.getElementById("vau-boot-error") || document.querySelector("#root > *"), null, { timeout: SLOW }).catch(() => null)
       await wait(1500) // (what comes just after: the store, lazy chunks, effects)
@@ -94,6 +103,7 @@ function files(dir) {
 
 try {
   await visit(base)
+  doing = "the error screen"
 
   // The screen: the app's own code throwing as it loads, and its code not loading at all.
   const broken = async (label, how, expect) => {
@@ -124,6 +134,7 @@ try {
       "Books/Dune.md": "A book\n", "Dashboards/Today.md": "My own page\n", ".obsidian/app.json": "{\"vimMode\":true}",
     }
     for (const [f, t] of Object.entries(mine)) { fs.mkdirSync(path.dirname(path.join(own, f)), { recursive: true }); fs.writeFileSync(path.join(own, f), t) }
+    doing = "the user's own vault"
     const before = files(own)
     const ownBase = await serve(own, path.join(tmp, "own-local"))
     await visit(ownBase, "own vault, ")
