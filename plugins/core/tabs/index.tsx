@@ -86,6 +86,10 @@ function SplitMap({ t, active, info }: { t: Tab; active: boolean; info: (x: Tab 
   )
 }
 
+/** A split's map: no fade at its end (it would cut its frame), but under the row's buttons on hover it fades as a
+ *  label does (index.css' fade-end, by --fade-reserve). */
+const MAP_LABEL = "[mask-image:none] group-hover/row:[mask-image:linear-gradient(to_right,#000_calc(100%-1.25rem-var(--fade-reserve)),transparent_calc(100%-var(--fade-reserve)))]"
+
 /** A tab's row. A split tab's shows each pane, side by side: a click on one focuses it, and a pane dragged out of it
  *  becomes a tab of its own where it's let go (or goes into another tab, held on its row a moment: Rex's). */
 function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | Pane) => TabInfo; only: boolean
@@ -124,17 +128,14 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
       className={cn("relative", dragging && "opacity-50")}
       onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
       <SidebarRow data-open-tab={t.id} data-select-key={t.id} data-split={split ? "" : undefined} {...selectedAttr(picked)} icon={split ? undefined : i.icon} iconClassName={i.iconClassName} tint={i.tint}
-        badge={split ? undefined : i.badge} mark={split ? undefined : i.mark} label={map ?? i.label} labelClassName={map ? "[mask-image:none]" : undefined} tip={split ? ps.map((p) => info(p).label).join(" | ") : undefined} open active={active} more
+        badge={split ? undefined : i.badge} mark={split ? undefined : i.mark} label={map ?? i.label} labelClassName={map ? MAP_LABEL : undefined} tip={split ? ps.map((p) => info(p).label).join(" | ") : undefined} open active={active} more
         className={cn(line && "ml-3.5", lit && !active && "bg-foreground/[0.08]", map && stacks(t.root) > 1 && "h-auto min-h-7 py-[3px]")}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
+        actions={!t.pinned && !only && <HeadingButton icon={X} label={`Close ${i.label}`} tip="Close tab" data-no-drag
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); close() }} />}
         onClick={click}>
         <Marks id={`tab:${t.id}`} />
-        {t.pinned ? (
-          <span className="grid size-5 shrink-0 place-items-center text-muted-foreground" aria-label="Pinned"><Pin className="size-3.5" strokeWidth={2} /></span>
-        ) : !only && (
-          <HeadingButton icon={X} label={`Close ${i.label}`} tip="Close tab" className={cn("hidden group-hover/row:grid", lit && "grid")} data-no-drag
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); close() }} />
-        )}
+        {t.pinned && <span className="grid size-5 shrink-0 place-items-center text-muted-foreground" aria-label="Pinned"><Pin className="size-3.5" strokeWidth={2} /></span>}
       </SidebarRow>
     </div>
   )
@@ -284,10 +285,9 @@ function OtherDevices({ store }: { store: Store }) {
               <div key={t.to} onContextMenu={menuFor(() => tabItems(d, t))} data-leaving={leaving.tab(d, t)}>
                 <SidebarRow icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} label={label} open
                   swipe={d.live ? () => [{ label: "Close there", icon: X, danger: true, run: () => closeOn(d, [t]), removes: true }] : undefined}
-                  onClick={(e) => { e.preventDefault(); openHere(t) }}>
-                  {d.live && <HeadingButton icon={X} label={`Close on ${deviceName(d)}`} tip={`Close on ${deviceName(d)}`} className="hidden group-hover/row:grid" data-no-drag
+                  actions={d.live && <HeadingButton icon={X} label={`Close on ${deviceName(d)}`} tip={`Close on ${deviceName(d)}`} data-no-drag
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); void closeOn(d, [t]) }} />}
-                </SidebarRow>
+                  onClick={(e) => { e.preventDefault(); openHere(t) }} />
               </div>
             )
           })}

@@ -1,6 +1,6 @@
 // The desktop sidebar's panels, drawn from plugins' `sidebar` definitions (Search, Files and Pinned are plugins too, so
 // turning them off empties it). The components here are exported to plugins.
-import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { Children, createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
 import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
@@ -374,7 +374,7 @@ export const RAIL = 11
 export const ROW = "group/row flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap transition-colors"
 
 /** A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows. */
-export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, label, labelClassName, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, swipe, ...rest }: {
+export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, label, labelClassName, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, actions, swipe, ...rest }: {
   /** None: the label alone (file icons turned off). */
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
   label: React.ReactNode; open: boolean; active?: boolean; href?: string
@@ -398,21 +398,26 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
   onClick?: (e: React.MouseEvent) => void; onContextMenu?: (e: React.MouseEvent) => void
   /** Drawn at the right end (a button, a count). */
   children?: React.ReactNode
-  /** A … on hover, after `children`, opening its right-click menu (its own or its wrapper's): for a row whose menu has
-   *  more than opening it. A finger holds the row instead. */
+  /** A … on hover, opening its right-click menu (its own or its wrapper's): for a row whose menu has more than opening
+   *  it. A finger holds the row instead. */
   more?: boolean
+  /** Buttons only a hovering pointer needs (a tab's Close), before the …. Drawn over the label's end, which fades under
+   *  them, so hovering moves nothing; `children` stay where they are. */
+  actions?: React.ReactNode
   /** What a finger swiping it shows (the buttons a mouse finds on hover: SwipeRow). */
   swipe?: () => SwipeAction[]
 } & Record<`data-${string}`, string | undefined> & { "aria-expanded"?: boolean; "aria-current"?: "page" }) {
   const text = tip === null ? undefined : tip ?? (typeof label === "string" ? label : undefined)
   const more = typeof label === "string" && text !== label
   const side = useContext(SidebarSide)
+  const hovers = open ? Children.toArray(actions).length + (dots && !coarse ? 1 : 0) : 0
   // (named by what it shows, its count too, as a screen reader's user hears it read; a tip that says more describes it)
   const row = (
     <a href={href ?? "#"} data-keyrow {...rest} data-tip={text} data-tip-trunc={open && !more ? "" : undefined} data-tip-side={side === "right" ? "left" : "right"} aria-label={typeof label === "string" ? undefined : text} aria-description={more ? text : undefined}
       onClick={(e) => { if (!onClick) return; e.preventDefault(); onClick(e) }} onContextMenu={onContextMenu}
       // A middle-click is a click that asks for a new tab (e.button 1), as in the file tree: never the browser's new tab.
       onAuxClick={(e) => { if (e.button !== 1) return; e.preventDefault(); onClick?.(e) }}
+      style={hovers ? { "--row-actions": `calc(var(--spacing) * ${5.5 * hovers + 0.5})` } as CSSProperties : undefined}
       className={cn(
         ROW,
         active ? "bg-foreground/[0.08] font-medium" : "hover:bg-foreground/[0.04]", className,
@@ -422,9 +427,17 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
       </Badged>}
       {/* (on the left, where hovering the row doesn't move it: the … and X come in on the right) */}
       {open && mark && <IconAction action={mark} className="-ml-1"><mark.icon className={cn("size-3.5 shrink-0", !mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={mark.tint ? { color: mark.tint } : undefined} /></IconAction>}
-      <span className={cn("min-w-0 flex-1 fade-end transition-opacity duration-(--motion)", !open && "opacity-0", labelClassName)}>{label}</span>
+      <span className={cn("min-w-0 flex-1 fade-end [transition:opacity_var(--motion),--fade-reserve_var(--motion-fast)_var(--ease-out)]", !open && "opacity-0", hovers && "group-hover/row:[--fade-reserve:var(--row-actions)]", labelClassName)}>{label}</span>
+      {/* (pinned to the label's end, taking no room: hidden, not removed, so nothing moves when they show) */}
+      {hovers > 0 && (
+        <span className="relative -ml-2 self-stretch">
+          <span data-row-actions className="invisible absolute inset-y-0 right-0 flex items-center gap-0.5 opacity-0 transition-[opacity,visibility] duration-(--motion-fast) group-hover/row:visible group-hover/row:opacity-100">
+            {actions}
+            {dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" data-no-drag data-row-more onClick={rightClickBelow} />}
+          </span>
+        </span>
+      )}
       {open && children}
-      {open && dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" className="hidden group-hover/row:grid" data-no-drag data-row-more onClick={rightClickBelow} />}
     </a>
   )
   return swipe && coarse && open ? <SwipeRow actions={swipe} className="rounded-[5px]">{row}</SwipeRow> : row

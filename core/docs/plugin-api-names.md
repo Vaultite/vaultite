@@ -556,7 +556,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SearchPage({ store, query, setQuery })`
 - `secretDialog(opts, ended?)`: Ask for a secret (opts.field: hidden text, or a file); null when cancelled or `ended` (the asker stopped waiting).
 - `Section({ title, children, className })`
-- `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it).
+- `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it), clear of a fading edge.
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
 - `Segmented({ value, options, onChange, label, big, className })`: A choice of a few, side by side.
 - `segments(body)`
@@ -602,7 +602,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SidebarHeading`
 - `sidebarMode(prefs?)`: The panel the left sidebar shows alone now (its key), or null: its panels.
 - `SidebarPanel`: A panel in the desktop sidebar (search, pinned pages, the file tree).
-- `SidebarRow({ icon, iconClassName, tint, badge, tag, mark, label, labelClassName, open, active, onClick, onContextMenu, href, tip, className, children, more, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
+- `SidebarRow({ icon, iconClassName, tint, badge, tag, mark, label, labelClassName, open, active, onClick, onContextMenu, href, tip, className, children, more, actions, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
 - `sidebars(prefs?)`: The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's.
 - `Sidebars`
 - `sidebarsChanged()`: Tell the sidebars a plugin's setup changed (a workspace switch).

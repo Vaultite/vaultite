@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Sidebar rows hold still**: hovering a row (a tab, a pinned page, a session) no longer moves anything: its … and
+  Close fade in over the label's end, and a panel scrolling in its own box ends between two rows, not a sliver into
+  the next.
 - **The Browser asks what Chrome asks, rather than doing nothing**: a page with unsaved changes asks "Leave site?"
   (before, the click went nowhere: claude.ai's artifact invitations), a site's own sign-in asks for a username and
   password, prompt() asks, and Present in a call shares a screen or window through macOS's picker. A sign-in button

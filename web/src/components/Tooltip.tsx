@@ -27,7 +27,15 @@ export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window 
      *  counts as cut off. */
     const cut = (el: Element) => {
       const ts = [...el.querySelectorAll<HTMLElement>(".truncate, .fade-end")], t = ts[0] ?? (el as HTMLElement)
-      return !t.getClientRects().length || (ts.length ? ts : [t]).some((x) => x.scrollWidth > x.clientWidth)
+      return !t.getClientRects().length || (ts.length ? ts : [t]).some((x) => x.scrollWidth > x.clientWidth || under(x))
+    }
+    /** Its text runs under what's drawn over its end (`--fade-reserve`: a sidebar row's buttons on hover). */
+    const under = (x: HTMLElement) => {
+      const kept = parseFloat(getComputedStyle(x).getPropertyValue("--fade-reserve")) || 0
+      if (!kept) return false
+      const r = document.createRange()
+      r.selectNodeContents(x)
+      return r.getBoundingClientRect().width > x.clientWidth - kept
     }
     /** Something's being dragged or resized (core/drag.ts, Resizer.tsx). */
     const busy = () => "resizing" in document.body.dataset || "dragging" in document.documentElement.dataset

@@ -242,9 +242,11 @@
 }
 
 /* A label too long for its place fades out at its end, as Rex's and browsers' tabs do, instead of an ellipsis. */
+/* `--fade-reserve`: room kept clear at its end (what's drawn over it on hover: SidebarRow's buttons), it fading before. */
+@property --fade-reserve { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @utility fade-end {
   overflow: hidden; white-space: nowrap;
-  mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem - var(--fade-reserve)), transparent calc(100% - var(--fade-reserve)));
 }
 @utility glass {
   background: var(--card);

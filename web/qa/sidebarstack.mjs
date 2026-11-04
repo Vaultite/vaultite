@@ -101,10 +101,13 @@ try {
   const of = (l, k) => l.panels.find((p) => p.key === k)
   /** No panel taller than what it draws (no empty room inside one). */
   const noRoomInside = (l) => l.panels.every((p) => p.box <= p.content + 1)
+  // Panels end between two rows (panelLayout.ts' snapToRows): the last ends within a row of the bottom, never past it.
+  const ROW = 30
+  const reaches = (l) => l.panels.at(-1).bottom <= l.end + 1 && l.end - l.panels.at(-1).bottom < ROW
   let lay = await layoutOf()
   check("panels mode (the default): the sidebar doesn't scroll, the tree's box does, nothing inside a box", lay.mode === "panels" && !lay.bodyScrolls && of(lay, "files:files").scrolls && !lay.inner, lay)
   check("...no panel taller than what it draws", noRoomInside(lay), lay.panels)
-  check("...the tree takes what's left: the panels reach the bottom", Math.abs(lay.panels.at(-1).bottom - lay.end) <= 2, [lay.panels.at(-1), lay.end])
+  check("...the tree takes what's left: the panels reach the bottom", reaches(lay), [lay.panels.at(-1), lay.end])
   // The tree scrolled by the wheel: its heading stays where it was (its gap is outside the box).
   const fh = of(lay, "files:files")
   await page.mouse.move(120, fh.top + (fh.bottom - fh.top) * 0.6); await page.mouse.wheel(0, 300); await wait(400)
@@ -133,13 +136,13 @@ try {
   await dragDivider(40)
   after = await layoutOf()
   let hs = await sbs()
-  check("its divider dragged down 40px: Pinned 40px taller, the tree 40px shorter", Math.abs(of(after, "pages:pages").box - pin0.box - 40) <= 3 &&
-    Math.abs(of(lay, "files:files").box - of(after, "files:files").box - 40) <= 3, [pin0.box, of(after, "pages:pages").box, of(lay, "files:files").box, of(after, "files:files").box])
+  check("its divider dragged down 40px: Pinned about 40px taller, the tree shorter (both to a row)", Math.abs(of(after, "pages:pages").box - pin0.box - 40) < ROW &&
+    of(lay, "files:files").box - of(after, "files:files").box > 40 - 2 * ROW && reaches(after), [pin0.box, of(after, "pages:pages").box, of(lay, "files:files").box, of(after, "files:files").box])
   check("...saved for Pinned only (the tree still takes what's left)", Math.abs(hs.heights?.["pages:pages"] - (of(after, "pages:pages").bottom - of(after, "pages:pages").top)) <= 2 && !("files:files" in hs.heights), hs.heights)
   await dragDivider(2000)
   after = await layoutOf()
   check("dragged far down: Pinned only as tall as what it draws (no empty room)", Math.abs(of(after, "pages:pages").box - of(after, "pages:pages").content) <= 1 && noRoomInside(after) && !of(after, "pages:pages").scrolls, of(after, "pages:pages"))
-  check("...the panels still reach the bottom", Math.abs(after.panels.at(-1).bottom - after.end) <= 2, [after.panels.at(-1), after.end])
+  check("...the panels still reach the bottom", reaches(after), [after.panels.at(-1), after.end])
   await dragDivider(-2000)
   after = await layoutOf()
   check("dragged far up: Pinned keeps a few rows (four rows' height), the tree grows", of(after, "pages:pages").box >= 100 && of(after, "pages:pages").box < 140 && of(after, "files:files").box > of(lay, "files:files").box, [of(after, "pages:pages").box, of(after, "files:files").box])
@@ -152,7 +155,7 @@ try {
   await put({ ...DEFAULT, heights: { "pages:pages": 3000, "terminal:sessions": 900 } })
   await wait(900)
   after = await layoutOf()
-  check("old heights taller than what panels draw: clamped, no empty room inside", noRoomInside(after) && Math.abs(after.panels.at(-1).bottom - after.end) <= 2, after.panels)
+  check("old heights taller than what panels draw: clamped, no empty room inside", noRoomInside(after) && reaches(after), after.panels)
   // (back to Pinned's fitted height before measuring: a loaded machine draws the put late)
   await put(DEFAULT); await until(async () => Math.abs(of(await layoutOf(), "pages:pages").box - pin0.box) <= 1, 8000); await wait(200)
   // Folding a panel and opening it again moves only the panels below it, and comes back to the same place.
@@ -160,7 +163,7 @@ try {
   await clickHead("pages:pages"); await wait(500)
   after = await layoutOf()
   check("Pinned folded: the panels above it don't move, the tree grows by what it gave", of(after, "search:search").bottom === of(lay, "search:search").bottom &&
-    Math.abs((of(after, "files:files").box - of(lay, "files:files").box) - (of(lay, "pages:pages").bottom - of(lay, "pages:pages").top - (of(after, "pages:pages").bottom - of(after, "pages:pages").top))) <= 1, [lay.panels, after.panels])
+    Math.abs((of(after, "files:files").box - of(lay, "files:files").box) - (of(lay, "pages:pages").bottom - of(lay, "pages:pages").top - (of(after, "pages:pages").bottom - of(after, "pages:pages").top))) < ROW, [lay.panels, after.panels])
   await clickHead("pages:pages")
   const inPlace = (l) => l.panels.every((p, i) => Math.abs(p.top - lay.panels[i].top) <= 1 && Math.abs(p.bottom - lay.panels[i].bottom) <= 1)
   check("...opened again: every panel where it was", !!(await until(async () => inPlace(after = await layoutOf()))), [lay.panels, after.panels])
@@ -171,7 +174,7 @@ try {
   after = await layoutOf()
   check("one pinned page: Pinned as tall as what it draws, not cut", !of(after, "pages:pages").scrolls && Math.abs(of(after, "pages:pages").box - of(after, "pages:pages").content) <= 1, of(after, "pages:pages"))
   check("...Terminals too", !of(after, "terminal:sessions").scrolls, of(after, "terminal:sessions"))
-  check("...the tree takes the rest", of(after, "files:files").scrolls && Math.abs(after.panels.at(-1).bottom - after.end) <= 2, [of(after, "files:files"), after.end])
+  check("...the tree takes the rest", of(after, "files:files").scrolls && reaches(after), [of(after, "files:files"), after.end])
   await page.screenshot({ path: `${OUT}1-small-panels.png`, clip: { x: 0, y: 0, width: 320, height: 900 } })
   await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pinsBefore) })
   // Many panels: each its own box, never a box inside a box.

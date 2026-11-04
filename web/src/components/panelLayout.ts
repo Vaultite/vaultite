@@ -8,6 +8,43 @@ import { setPanelHeights, type PanelOf } from "@/core/plugins"
  *  its box; the room for them all, and the sidebar's height (what saved heights are in proportion to: heightIn). */
 type Laid = { keys: string[]; ps: PanelFit[]; chrome: number[]; boxes: HTMLElement[]; room: number; at: number }
 
+/** Where a panel's rows end, from the top of what it draws: its headings' and rows' bottoms. */
+function rowEnds(box: HTMLElement): number[] {
+  const inner = box.firstElementChild
+  if (!inner) return []
+  const top = inner.getBoundingClientRect().top
+  return [...inner.querySelectorAll<HTMLElement>("[data-panel-handle], [data-keyrow]")].map((r) => r.getBoundingClientRect().bottom - top)
+}
+
+/** A scrolling panel ends between two rows, not a sliver into the next (above, or below to keep its least); the greedy
+ *  one (the tree) takes the difference, then with `tree` ends between two rows too, the rest left empty. */
+function snapToRows(l: Laid, hs: number[], tree = true): number[] {
+  const out = [...hs]
+  const g = l.ps.findIndex((p, i) => p.greedy && !p.fixed && out[i] < p.content)
+  let freed = 0
+  l.ps.forEach((p, i) => {
+    if (p.greedy || p.fixed || out[i] >= p.content) return
+    const room = out[i] - l.chrome[i], ends = rowEnds(l.boxes[i])
+    const down = Math.max(0, ...ends.filter((e) => e <= room + 0.5))
+    const up = Math.min(Infinity, ...ends.filter((e) => e > room + 0.5 && l.chrome[i] + e <= p.content))
+    const lift = Math.ceil(up - room)
+    const end = (!down || l.chrome[i] + down < p.min) && g >= 0 && out[g] - lift >= l.ps[g].min ? up : down
+    if (!end || end === Infinity) return
+    const d = end === up ? -lift : Math.floor(room - end)
+    out[i] -= d
+    freed += d
+  })
+  if (g < 0) return out
+  // (exactly what's left, as fitPanels gives it: what a drag started from may have been snapped short)
+  out[g] = Math.min(tree ? out[g] + freed : l.room - out.reduce((n, h, i) => (i === g ? n : n + h), 0), l.ps[g].content)
+  if (tree && out[g] < l.ps[g].content) {
+    const room = out[g] - l.chrome[g]
+    const end = Math.max(0, ...rowEnds(l.boxes[g]).filter((e) => e <= room + 0.5))
+    if (end) out[g] -= Math.floor(room - end)
+  }
+  return out
+}
+
 /** How many rows a panel that draws more keeps when room runs short, its heading's height counting as one. */
 const LEAST_ROWS = 4
 
@@ -78,7 +115,7 @@ class PanelLayout {
     const h = this.held
     const held = h && h.setup === this.setup && Date.now() < h.until && h.hs.length === l.keys.length ? h.hs : null
     if (!held) this.held = null
-    const hs = held ?? fitPanels(l.ps, l.room)
+    const hs = held ?? snapToRows(l, fitPanels(l.ps, l.room))
     draw(body, l, hs)
     this.last = { keys: l.keys, hs }
   }
@@ -105,10 +142,13 @@ class PanelLayout {
     const d = this.drag
     this.drag = null
     if (!d?.now || !this.setup) return
-    const change = heightsAfterDrag(d.l.ps, d.l.room, d.now)
+    // (it settles between two rows when let go; saved without the tree's own snap, the tree needing no height)
+    const change = heightsAfterDrag(d.l.ps, d.l.room, snapToRows(d.l, d.now, false))
     if (!change.size) return this.layout()
-    this.held = { setup: this.setup, hs: d.now, until: Date.now() + 2000 }
-    this.last = { keys: d.l.keys, hs: d.now }
+    const now = snapToRows(d.l, d.now)
+    if (this.box.current) draw(this.box.current, d.l, now)
+    this.held = { setup: this.setup, hs: now, until: Date.now() + 2000 }
+    this.last = { keys: d.l.keys, hs: now }
     setPanelHeights(Object.fromEntries([...change].map(([j, px]) => [d.l.keys[j], px])), d.l.at)
   }
 }

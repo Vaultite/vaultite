@@ -149,8 +149,10 @@ function settled(row: HTMLElement, then: () => void) {
   requestAnimationFrame(look)
 }
 
+/** How far index.css' edge-fade-y and edge-fade-b fade at an edge. */
+const EDGE_FADE = 24
 /** Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of
- *  its panel (rows pass under it). The tree itself is as tall as its rows, so it says nothing about that. */
+ *  its panel (rows pass under it), clear of a fading edge. The tree itself is as tall as its rows: it says nothing. */
 export function seenArea(el: HTMLElement) {
   let top = 0, bottom = innerHeight, left = 0, right = innerWidth
   for (let p = el.parentElement; p; p = p.parentElement) {
@@ -159,7 +161,11 @@ export function seenArea(el: HTMLElement) {
     // (one that clips nothing, as a phone's swipe row round its row, says nothing either)
     if (!/auto|scroll/.test(st.overflowY) && p.scrollHeight <= p.clientHeight + 1 && p.scrollWidth <= p.clientWidth + 1) continue
     const b = p.getBoundingClientRect()
-    top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom); left = Math.max(left, b.left); right = Math.min(right, b.right)
+    // (an edge that fades while there's more past it, index.css' edge-fade-*: what's under the fade isn't seen)
+    const fades = (c: string) => p.classList.contains(c) ? EDGE_FADE : 0
+    const below = p.scrollTop + p.clientHeight < p.scrollHeight - 1 ? Math.max(fades("edge-fade-b"), fades("edge-fade-y")) : 0
+    const above = p.scrollTop > 0 ? fades("edge-fade-y") : 0
+    top = Math.max(top, b.top + above); bottom = Math.min(bottom, b.bottom - below); left = Math.max(left, b.left); right = Math.min(right, b.right)
   }
   const head = el.closest("[data-panel]")?.querySelector<HTMLElement>("[data-panel-handle]")
   if (head && getComputedStyle(head).position === "sticky") top = Math.max(top, head.getBoundingClientRect().bottom)

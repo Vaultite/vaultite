@@ -447,8 +447,13 @@ function PanelRow({ icon, label, tag, time, active, dim, select, swipe, onClick,
         {icon}
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {tag}
-        {time && <span className="shrink-0 text-[11px] text-tertiary tabular-nums group-hover/row:hidden">{time}</span>}
-        {children && <span className="hidden shrink-0 gap-0.5 group-hover/row:flex">{children}</span>}
+        {/* (its buttons take the time's place on hover, both kept in one cell so the label doesn't move) */}
+        {(time || children) && (
+          <span className="grid shrink-0 items-center justify-items-end [&>*]:[grid-area:1/1]">
+            {time && <span className={cn("text-[11px] text-tertiary tabular-nums", children && "group-hover/row:invisible")}>{time}</span>}
+            {children && <span className="invisible flex gap-0.5 group-hover/row:visible">{children}</span>}
+          </span>
+        )}
       </a>
     </SwipeRow>
   )
