@@ -242,7 +242,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `share:upgrade` (share)
 - `share:gateway` (share)
 - `share:folders` (share): The folders shared now (not expired): the vault's other machines type in their notes here, with the guests.
-- `share:hosts` (share): The vault's other machines that share folders now, and which.
+- `share:hosts` (share): The vault's other machines that share folders now, and which (`fresh`: asked again unless just asked, as a note opens: what was asked as this server started knows nothing of a folder shared since).
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).

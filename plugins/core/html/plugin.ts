@@ -105,7 +105,7 @@ const inside = (rel: string, folder: string) => rel.startsWith(`${folder}/`)
  *  there), unless this one shares it too. */
 async function hostOf(rel: string) {
   if (((plugin.service("share:folders")?.() ?? []) as string[]).some((f) => inside(rel, f))) return null
-  return (await plugin.ask<Host[]>("share:hosts", [])).find((h) => (down.get(h.m.id) ?? 0) < Date.now() && h.folders.some((f) => inside(rel, f)))?.m ?? null
+  return (await plugin.ask<Host[]>("share:hosts", [], true)).find((h) => (down.get(h.m.id) ?? 0) < Date.now() && h.folders.some((f) => inside(rel, f)))?.m ?? null
 }
 const down = new Map<string, number>()
 plugin.socket("artifact/shared", (ws, req, { query }) => {

@@ -29,7 +29,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the link is copied as it's made, the tree marks shared folders, and each person's access is a menu (Can view,
   comment, edit; 30 more days; Remove access), the same link kept. A guest lands on the folder's page, sees its images,
   and edits again (their saves were refused since saves sent only the edit). Its HTML pages read the folder's files and
-  play live with the owner (`vau.shared()`: a reader watches), from the owner's other Macs too; the owner's view of
+  play live with the owner (`vau.shared()`: a reader watches), from the owner's other Macs too, and their notes are
+  typed in with the guests there from the moment the folder is shared; the owner's view of
   such a page reads only inside the folder. Any machine shares: one not on the internet makes the link through the
   vault's machine that is, and a machine with a vault of its own gets links at that machine's address, which passes
   its guests on.

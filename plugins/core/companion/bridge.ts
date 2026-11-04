@@ -80,7 +80,7 @@ export function bridges(plugin: Plugin, local: (ws: WebSocket, m: Record<string,
     }
   }
 
-  const hostsNow = () => plugin.ask<Host[]>("share:hosts", [])
+  const hostsNow = () => plugin.ask<Host[]>("share:hosts", [], true)
 
   // (asked only while notes are open: the first one opened after a while asks, and moves there if it's shared)
   async function refresh() {

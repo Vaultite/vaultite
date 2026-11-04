@@ -62,8 +62,9 @@ plugin.onChange((paths) => gateway.changed(paths))
 const sharedFolders = () => [...new Set(Object.values(shares()).filter((s) => !expired(s)).map((s) => s.folder))]
 /** The folders shared now (not expired): the vault's other machines type in their notes here, with the guests. */
 plugin.provide("share:folders", sharedFolders)
-/** The vault's other machines that share folders now, and which. */
-plugin.provide("share:hosts", async () => (await others.othersNow()).filter((o) => o.same && o.folders.length).map(({ m, folders }) => ({ m, folders })))
+/** The vault's other machines that share folders now, and which (`fresh`: asked again unless just asked, as a note opens:
+ *  what was asked as this server started knows nothing of a folder shared since). */
+plugin.provide("share:hosts", async (fresh?: boolean) => (await others.othersNow(!!fresh)).filter((o) => o.same && o.folders.length).map(({ m, folders }) => ({ m, folders })))
 plugin.route("GET", "share/folders", async (req) => {
   await plugin.ownerOnly(req, "The shared folders")
   // (`relayed`: the shares a machine on the internet passes on, by their links' hashes)
