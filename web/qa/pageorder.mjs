@@ -1,7 +1,8 @@
 // The window's page stays over the browser's pages while it's raised (a tooltip, a toast, a menu over one), however a
-// page comes back: an agent's page opened as a tab is parked while its tab is hidden and put back among the window's
-// views as it's shown again. Put over the window, it took the clicks meant for what the app drew there (a slid-in
-// sidebar). A page in a pane beside it, with a float over it, keeps the window raised meanwhile.
+// page comes back: an agent's page opened as a tab (and taken over: held, its tab shows a picture) is parked while its
+// tab is hidden and put back among the window's views as it's shown again. Put over the window, it took the clicks
+// meant for what the app drew there (a slid-in sidebar). A page split beside it, with a float over it, keeps the window
+// raised meanwhile.
 // WRITES: the throwaway vault only.
 //   node web/qa/pageorder.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -42,34 +43,37 @@ try {
   const raised = () => win.evaluate(() => "overPages" in document.documentElement.dataset)
   const tab = (name) => win.locator("[data-tab-id]", { hasText: name }).first()
 
-  // The agent's page as a tab, and a note's tab beside it in the same pane.
+  // The agent's page as a tab, taken over (so placed in it), and a note's tab beside it.
   const T = (await op("web-viewer.open", { url: `${SITE}b`, task: "order status" }))?.tab
   check("an agent opens a page in the background", typeof T === "number", T)
   await win.locator("[data-agent-open]").click()
   check("Open as tab: a tab shows it", await until(async () => (await win.locator(`[data-web-page="${T}"]`).count()) === 1, 8000), await order())
+  await win.locator(`[data-web-page="${T}"] [data-web-agent-take]`).click()
+  check("taken over, it's placed in its tab", await until(async () => (await order()) === "app page", 8000), await order())
   await op("ui.open", { path: "Alice Park.md", newTab: true })
-  // Another page in a pane to the right, with a float (as a tooltip is, layers.ts) over it: the window stays raised.
+  await tab("Beacon").click()
+  // Another page split beside it (a tab holds both), with a float (as a tooltip is, layers.ts) over it: the window stays
+  // raised. (the toasts saying the agent opened these sit over the new pane, raising the window till they leave: an
+  // action's lasts 8 s, and the pointer kept off them so they don't pause)
   await op("ui.open", { path: SITE, split: "right" })
-  // (the toasts saying the agent opened these sit over the new pane, raising the window till they leave: an action's
-  // lasts 8 s, and the pointer kept off them so they don't pause)
   await win.mouse.move(300, 400)
-  check("a page in a pane beside it", await until(async () => (await order()) === "app page", 15000), await order())
+  check("a page split beside it", await until(async () => (await order()) === "app page page", 15000), await order())
   await win.evaluate(() => {
     const d = Object.assign(document.createElement("div"), { id: "qa-float" })
     d.dataset.floats = ""
     d.style.cssText = "position:fixed;right:60px;top:50%;width:200px;height:40px;background:#333;pointer-events:none"
     document.body.append(d)
   })
-  check("a float over it raises the window", await until(async () => (await raised()) && (await order()) === "page app", 3000), await order())
+  check("a float over it raises the window", await until(async () => (await raised()) && (await order()) === "page page app", 3000), await order())
 
   for (const round of [1, 2]) {
     await tab("Alice Park").click()
-    check(`${round}: the note's tab picked, the agent's page is parked`, await until(async () => (await order()) === "page app", 5000), await order())
+    check(`${round}: the note's tab picked, both pages out of sight`, await until(async () => (await order()) === "app", 5000), await order())
     await tab("Beacon").click()
-    check(`${round}: its tab picked again, it shows under the raised window`,
+    check(`${round}: its tab picked again, they show under the raised window`,
       await until(async () => (await win.locator(`[data-web-page="${T}"]`).isVisible()) && (await order()).split(" ").length === 3, 5000) && (await order()) === "page page app", await order())
     await wait(300)
-    check(`${round}: … and stays there`, (await raised()) && (await order()) === "page page app", await order())
+    check(`${round}: … and stay there`, (await raised()) && (await order()) === "page page app", await order())
   }
   await win.evaluate(() => document.getElementById("qa-float").remove())
   // (once the toasts opening them left too)
