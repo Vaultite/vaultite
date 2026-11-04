@@ -470,6 +470,8 @@ class Block extends WidgetType {
     const el = document.createElement("div")
     el.className = `cm-block cm-block-${this.key.split(":")[0]}`
     el.dataset.key = this.key
+    // (a view is the app's, not text: what it draws selects only where it's content, index.css)
+    if (this.view) el.dataset.chrome = ""
     const body = document.createElement("div")
     body.className = "cm-block-body"
     const bar = blockBar(view, el)

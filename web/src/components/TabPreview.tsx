@@ -121,7 +121,7 @@ function DocPreview({ store, path }: { store: Store; path: string }) {
     else runs.push([p])
   }
   return (
-    <div aria-hidden className="pointer-events-none absolute top-0 left-0 w-[200%] origin-top-left scale-50 px-5 pt-4">
+    <div inert aria-hidden className="pointer-events-none absolute top-0 left-0 w-[200%] origin-top-left scale-50 px-5 pt-4">
       <div className="mb-2 text-[26px] leading-[32px] font-bold">{stem(path)}</div>
       {runs.map((run, i) => "md" in run[0]
         ? <Markdown key={i} text={run[0].md} store={store} from={path} />

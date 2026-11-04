@@ -415,7 +415,7 @@ const PlaceContent = memo(function PlaceContent({ pane, to, view, file, full, fo
   )
   const startPage = useNewTabPage(to === "new" ? p.store : null)
   let body: ReactNode = null
-  if (!p.store) body = padded(false, null, p.error ? <p className="mt-10 text-muted-foreground">{p.error}</p> : <VaultLoading />)
+  if (!p.store) body = padded(false, null, p.error ? <p className="mt-10 text-muted-foreground select-text">{p.error}</p> : <VaultLoading />)
   else if (file) body = full ? <div className="absolute inset-0"><FileView store={p.store} path={file} pane /></div> : padded(true, null, <FileView store={p.store} path={file} pane />)
   else if (to.startsWith("view:")) {
     const v = viewBody(p.store, pane, to, view, focused)

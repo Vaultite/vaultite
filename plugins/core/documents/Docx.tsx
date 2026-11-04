@@ -67,7 +67,7 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
     <div className={embed ? "max-h-[520px] overflow-auto" : undefined}>
       {state === "loading" && <Loading />}
       {state !== "loading" && state !== "ok" && <p className="p-4 text-[15px] text-muted-foreground">This document couldn't be read: {state}.</p>}
-      <div ref={host} onClick={click} data-docx />
+      <div ref={host} onClick={click} data-docx className="select-text" />
     </div>
   )
 }

@@ -188,7 +188,7 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
         if (r) grab = { id: tab.id, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, h: r.height }
         startDrag(e, { from: "tab", tab: tab.id, to: focusedPane(tab).to, drawn: true }, { touch: true })
       }}
-      className={cn("relative outline-none select-none [-webkit-touch-callout:none]", lifted && "rounded-[14px] bg-foreground/[0.04]")}>
+      className={cn("relative outline-none", lifted && "rounded-[14px] bg-foreground/[0.04]")}>
       <div ref={card} data-tab-card style={{ touchAction: "pan-y" }}
         className={cn(CARD, "transition-[scale,opacity] duration-150", into && "scale-[0.94]", lifted && "opacity-0")}
         onPointerDown={(e) => {
@@ -285,7 +285,7 @@ function GroupCard({ store, group: g, tabs, info, current, lit, onOpen }: { stor
   const n = tabs.length, name = groupName(g)
   const shown = n > 4 ? tabs.slice(0, 3) : tabs
   return (
-    <div data-group-card={g.id} data-ui={`group:${g.id}`} onContextMenu={menuOnCard(() => groupMenu(g.id, "phone"))} className="relative select-none [-webkit-touch-callout:none]">
+    <div data-group-card={g.id} data-ui={`group:${g.id}`} onContextMenu={menuOnCard(() => groupMenu(g.id, "phone"))} className="relative">
       <div className={cn(CARD, "transition-[scale] duration-150", lit && "scale-[0.94]")}>
         <Ground className={lit ? "ring-[3px] ring-[var(--primary)]" : current ? "ring-2 ring-[var(--primary)]" : "ring-[0.5px] ring-border"} />
         <span aria-hidden className="flex h-11 w-full shrink-0 items-center gap-2 pr-10 pl-3">

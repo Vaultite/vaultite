@@ -175,7 +175,7 @@ export function ErrorDetails({ text, className }: { text: string; className?: st
 /** A block's data on its way: "Loading…", shimmering, or what went wrong getting it (`error`: "Couldn't ask Tailscale.").
  *  The core draws the same while a block's code loads; a list draws `LoadingRows` (or its own rows with `Bar`s) instead. */
 export function Loading({ error, className }: { error?: ReactNode; className?: string }) {
-  if (error) return <p className={cn("text-[15px] leading-[20px] text-muted-foreground", className)}>{error}</p>
+  if (error) return <p className={cn("text-[15px] leading-[20px] text-muted-foreground select-text", className)}>{error}</p>
   return <p className={cn("loading-in text-[15px] leading-[20px] text-muted-foreground", className)} aria-busy><span className="shimmer">Loading…</span></p>
 }
 
@@ -445,7 +445,7 @@ export function KV({ label, children }: { label: ReactNode; children: ReactNode 
   return (
     <div className="flex min-h-11 items-center justify-between gap-4 py-2 text-[15px]">
       <span className="shrink-0">{label}</span>
-      <span className="min-w-0 text-right break-words text-muted-foreground">{children}</span>
+      <span className="min-w-0 text-right break-words text-muted-foreground select-text">{children}</span>
     </div>
   )
 }

@@ -112,7 +112,7 @@ export function ReplyBox({ to, draft: key = to, name, kept = 0, open, sent: done
       {showing && (
         <div className="mb-2 rounded-[7px] border-[0.5px] border-border bg-foreground/[0.03] px-2.5 py-1.5" data-reply-sending>
           <div className="text-[13px] font-medium text-muted-foreground">Sending…</div>
-          <div className="whitespace-pre-wrap text-[15px] leading-[20px] md:text-[14px]">{showing}</div>
+          <div className="whitespace-pre-wrap select-text text-[15px] leading-[20px] md:text-[14px]">{showing}</div>
         </div>
       )}
       <textarea value={text} rows={3} aria-label="Your reply" placeholder={placeholder} disabled={flying !== null}

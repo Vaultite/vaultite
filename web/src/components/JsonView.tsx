@@ -22,7 +22,7 @@ export function JsonView({ text, editable, onChange }: { text: string; editable:
   const edit: Edit = editable ? (node, next) => onChange(setJson(text, node, next)) : null
   const root = parsed.node
   return (
-    <div className="json-view text-[15px] leading-5">
+    <div className="json-view text-[15px] leading-5 select-text">
       {root.kind === "object" ? (root.entries.length ? <Fields node={root} depth={0} edit={edit} /> : <Faint>No fields</Faint>)
         : root.kind === "array" ? <Items node={root} depth={0} edit={edit} />
         : <Value node={root} edit={edit} />}

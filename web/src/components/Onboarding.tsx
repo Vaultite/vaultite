@@ -44,7 +44,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
   }, [setup])
 
   return (
-    <div className="flex h-dvh select-none flex-col overflow-hidden text-[13px]">
+    <div className="flex h-dvh flex-col overflow-hidden text-[13px]">
       <div className="vault-manager-drag fixed inset-x-0 top-0 h-10" />
       {info ? <VaultPage setup={setup} info={info} /> : <Waiting error={error} />}
     </div>
@@ -154,7 +154,7 @@ function VaultPage({ setup, info }: { setup: SetupApi; info: Info }) {
 }
 
 // ---------- pieces ----------
-const field = "h-7 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none select-text focus:ring-2 focus:ring-primary/40"
+const field = "h-7 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:ring-2 focus:ring-primary/40"
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

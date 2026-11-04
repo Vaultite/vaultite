@@ -104,7 +104,7 @@ function SheetGrid({ ws, embed }: { ws: XLSX.WorkSheet; embed?: boolean }) {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
-        <table className="border-separate border-spacing-0 text-[13px] leading-5" data-sheet-grid>
+        <table className="border-separate border-spacing-0 text-[13px] leading-5 select-text" data-sheet-grid>
           <colgroup>
             <col style={{ width: 44 }} />
             {grid.widths.map((w, c) => <col key={c} style={{ width: w ?? 100, minWidth: w === 0 ? 0 : 40 }} />)}

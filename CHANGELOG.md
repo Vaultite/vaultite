@@ -24,6 +24,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   no longer slide back while it's held, on a tab's middle too (that tab holds still, lights once the pointer rests,
   then opens); the dragged tab stays a tab over its own place and the panel's heading instead of ballooning into a
   card, a group's indent eases in and out, and let go in the panel it slides into its place.
+- **Only content selects, as in a native app**: tab titles, the sidebars and panels, bars, menus, the palette, rows
+  and cards no longer select their text when clicked, double-clicked, held or dragged across; nothing selects while
+  anything is dragged. Notes, rendered Markdown, code, the terminal, fields and error details still do.
 - **Sidebar rows hold still**: hovering a row (a tab, a pinned page, a session) no longer moves anything: its … and
   Close fade in over the label's end, and a panel scrolling in its own box ends between two rows, not a sliver into
   the next.

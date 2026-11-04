@@ -52,7 +52,7 @@ export function DiffRows({ lines }: { lines: DiffLine[] }) {
   // As wide as the longest line, so scrolling sideways doesn't change with the lines in sight.
   const wide = lines.reduce((n, l) => Math.max(n, l.text.length), 0)
   return (
-    <div ref={ref} className="relative" style={{ height: lines.length * ROW, minWidth: `calc(${wide}ch + 2.25rem)` }}>
+    <div ref={ref} className="relative select-text" style={{ height: lines.length * ROW, minWidth: `calc(${wide}ch + 2.25rem)` }}>
       {lines.slice(span[0], span[1]).map((l, k) => (
         <div key={span[0] + k} data-diff={l.kind} style={{ position: "absolute", top: (span[0] + k) * ROW, left: 0, right: 0 }}
           className={cn("flex min-w-max pr-3 whitespace-pre",

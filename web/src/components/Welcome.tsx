@@ -118,7 +118,7 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
   return (
     <div className="welcome-scrim fixed inset-0 z-[80] grid place-items-center p-6" data-welcome-page={page} data-overlay>
       <div ref={card} role="dialog" aria-modal="true" aria-labelledby="welcome-title" tabIndex={-1} onKeyDown={keys} data-welcome={ask.firstRun ? "first-run" : ask.newVault ? "new-vault" : "again"}
-        className="relative flex w-full max-w-[492px] flex-col overflow-hidden rounded-[16px] border-[0.5px] border-border bg-card text-[13px] shadow-[0_32px_80px_-16px_rgb(0_0_0/0.4),0_4px_14px_rgb(0_0_0/0.1)] outline-none animate-in fade-in zoom-in-[0.97] duration-200 select-none">
+        className="relative flex w-full max-w-[492px] flex-col overflow-hidden rounded-[16px] border-[0.5px] border-border bg-card text-[13px] shadow-[0_32px_80px_-16px_rgb(0_0_0/0.4),0_4px_14px_rgb(0_0_0/0.1)] outline-none animate-in fade-in zoom-in-[0.97] duration-200">
         {page !== "done" && (
           <Button size="small" look="quiet" className="absolute top-3 right-3 z-[1] h-6.5 px-2 text-[12.5px]" onClick={() => finish("skip")} data-welcome-skip>Skip</Button>
         )}

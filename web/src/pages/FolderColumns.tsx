@@ -143,7 +143,7 @@ function ColumnRow({ n, index, column, state, last, menuOf, press, renaming, lit
       onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); openIt(n, true) } }} onContextMenu={menuFor(menuOf(n))}
       // (the keyboard moving down a column picks as it goes, as Finder does)
       onFocus={last && !named ? () => { if (state !== "picked") pick(n.path) } : undefined}
-      className={cn("mb-px flex h-7 cursor-default items-center gap-2 rounded-[5px] pr-1 pl-1.5 text-[13px] whitespace-nowrap outline-none select-none",
+      className={cn("mb-px flex h-7 cursor-default items-center gap-2 rounded-[5px] pr-1 pl-1.5 text-[13px] whitespace-nowrap outline-none",
         state === "picked" ? "bg-primary/[0.16]" : state === "way" ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.04]",
         lit && "bg-primary/10", archived && "opacity-50")}>
       {fileIcons && <Icon className={cn("size-4 shrink-0", !tint && (n.folder ? "text-primary" : "text-muted-foreground"))} strokeWidth={2} style={tint ? { color: tint } : undefined} />}

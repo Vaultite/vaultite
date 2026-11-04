@@ -57,7 +57,7 @@ function Thumb({ n, on, lit, pick, open, menuOf, press, current }: Pick<Kids, "m
       onPointerDown={(e) => press(e, n)} onClick={(e) => { e.preventDefault(); if (!selectClick(e, SELECT, n.path, current)) pick(n) }}
       onDoubleClick={() => open(n)} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); open(n, true) } }} onContextMenu={menuFor(menuOf(n))}
       onFocus={() => { if (!on) pick(n) }}
-      className={cn("block w-16 shrink-0 cursor-default rounded-[8px] p-[3px] outline-none select-none",
+      className={cn("block w-16 shrink-0 cursor-default rounded-[8px] p-[3px] outline-none",
         on ? "bg-primary/[0.16] ring-2 ring-primary/70" : "hover:bg-foreground/[0.05]", lit && "bg-primary/10", archived && "opacity-50")}>
       <Tile n={n} desk small />
     </a>

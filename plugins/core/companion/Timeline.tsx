@@ -373,7 +373,7 @@ export function DiffBlock({ removed, added, at }: { removed: string[]; added: st
   if (!rows.length) return null
   const shown = all ? rows : rows.slice(0, MAX)
   return (
-    <div className="overflow-hidden rounded-[8px] border-[0.5px] border-border font-mono text-[12px] leading-[18px] max-md:text-[13px] max-md:leading-[20px]" data-diff-block>
+    <div className="overflow-hidden rounded-[8px] border-[0.5px] border-border font-mono text-[12px] leading-[18px] max-md:text-[13px] max-md:leading-[20px] select-text" data-diff-block>
       {at !== undefined && <div className="border-b-[0.5px] border-border bg-foreground/[0.03] px-2 font-sans text-[11px] leading-[20px] text-tertiary max-md:text-[12px]">Line {at}</div>}
       {shown.map((r, n) => (
         <div key={n} data-diff={r.add ? "add" : "del"} className={cn("flex min-w-0", r.add ? "bg-[color-mix(in_srgb,var(--green)_14%,transparent)]" : "bg-[color-mix(in_srgb,var(--red)_12%,transparent)]")}>

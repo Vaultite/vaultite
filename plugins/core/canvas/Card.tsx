@@ -40,7 +40,7 @@ function NotePreview({ store, path, subpath }: { store?: Store; path: string; su
       body = lines.slice(at, end < 0 ? undefined : end).join("\n")
     }
   }
-  return <div className="canvas-md px-4 py-3 text-[14px] leading-[1.45]"><Markdown text={body.trim() || "_Empty note._"} store={store} from={path} /></div>
+  return <div className="canvas-md px-4 py-3 text-[14px] leading-[1.45]"><Markdown text={body.trim() || "_Empty note._"} store={store} from={path} className="select-none" /></div>
 }
 
 const NameOnly = ({ path }: { path: string }) => (
@@ -89,7 +89,7 @@ export const Card = memo(function Card({ node: n, store, canvas, selected, editi
           onChange={(t) => on.current.typed(n.id, t)} onEscape={finish} onBlur={finish} />
       </div>
       : <div className={cn("canvas-md size-full px-4 py-3 text-[14px] leading-[1.45]", selected ? "overflow-auto" : "overflow-hidden")} data-scrolls={selected ? "" : undefined}>
-        {n.text ? <Markdown text={String(n.text)} store={store} from={canvas} /> : <span className="text-tertiary">{editable ? "Double-click to write" : ""}</span>}
+        {n.text ? <Markdown text={String(n.text)} store={store} from={canvas} className="select-none" /> : <span className="text-tertiary">{editable ? "Double-click to write" : ""}</span>}
       </div>
   } else if (n.type === "file") {
     inner = !known ? <Missing path={file} />

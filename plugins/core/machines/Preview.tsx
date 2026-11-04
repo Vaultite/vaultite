@@ -7,7 +7,7 @@ type Obj = Record<string, unknown>
 
 const IMAGES: Record<string, string> = { png: "png", jpg: "jpeg", jpeg: "jpeg", gif: "gif", webp: "webp", svg: "svg+xml", avif: "avif" }
 const BIG = 8388608
-const pre = "whitespace-pre-wrap break-words font-mono text-[13px] [overflow-wrap:anywhere]"
+const pre = "whitespace-pre-wrap break-words font-mono text-[13px] [overflow-wrap:anywhere] select-text"
 const small = "inline-flex min-h-11 items-center rounded-lg px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground md:min-h-7"
 
 export const extOf = (p: string) => { const n = p.slice(p.lastIndexOf("/") + 1), i = n.lastIndexOf("."); return i > 0 ? n.slice(i + 1).toLowerCase() : "" }
@@ -44,7 +44,7 @@ export function FilePreview({ id, path, tick }: { id: string; path: string; tick
         <p className="text-[15px] font-medium break-all">{name}</p>
         {file ? <p className="text-[13px] text-muted-foreground">{fmtSize(file.size)}{file.mtime ? ` · ${fmtAgo(file.mtime)}` : ""}</p>
           : !error && <p className="loading-in text-[13px]" aria-busy><Bar w="7em" /></p>}
-        <p className="font-mono text-[12px] break-all text-muted-foreground">{path}</p>
+        <p className="font-mono text-[12px] break-all text-muted-foreground select-text">{path}</p>
       </div>
       {rich && <button type="button" className={`${small} border border-border`} aria-pressed={raw} onClick={() => setRaw(!raw)}>{raw ? "Formatted" : "Raw"}</button>}
     </div>

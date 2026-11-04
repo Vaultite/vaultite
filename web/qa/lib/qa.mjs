@@ -31,6 +31,8 @@ export function keepAwake(seconds) {
 // (each waits for this machine's QA slot first: tools/qa_slots.ts)
 // (muted: a test never plays on the machine's speakers)
 export const launch = async (opts) => { await hold(); return (await import("playwright-core")).chromium.launch({ executablePath: CHROME, ...opts, args: [...(opts?.args ?? []), "--mute-audio"] }) }
+/** Playwright's WebKit (`npx playwright install webkit`), for what only iOS's engine draws (-webkit-touch-callout). */
+export const webkitLaunch = async (opts) => { await hold(); return (await import("playwright-core")).webkit.launch(opts) }
 
 /** `fn`'s first truthy value within `ms`, else its last; a throw counts as not yet (the page may be mid-render). */
 export async function until(fn, ms = 5000, every = 100) {

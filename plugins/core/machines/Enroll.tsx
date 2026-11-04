@@ -21,7 +21,7 @@ export function EnrollMachine() {
   }
   return <Panel title="Connect an agent machine" icon={Server}>
     <p className="text-[14px] text-muted-foreground">Run the file agent in the VM, then approve its enrollment code here. It can only list folders and read files.</p>
-    <p className="mt-2 text-[13px] text-muted-foreground">Download <span className="font-mono">/machines/agent.py</span> from your relay server’s public MCP address, then run <span className="font-mono">python3 agent.py enroll &lt;public address&gt; &lt;machine-id&gt;</span>.</p>
+    <p className="mt-2 text-[13px] text-muted-foreground">Download <span className="font-mono select-text">/machines/agent.py</span> from your relay server’s public MCP address, then run <span className="font-mono">python3 agent.py enroll &lt;public address&gt; &lt;machine-id&gt;</span>.</p>
     <form className="mt-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); void send() }}>
       <select aria-label="Relay server" className={field} value={relay} onChange={(e) => setRelay(e.target.value)}>
         <option value="">This server</option>{servers.filter((m) => !m.self).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}

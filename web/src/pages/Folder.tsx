@@ -440,7 +440,7 @@ function Card({ n, meta, text, open, menuOf, press, renaming, lit, desk }: { n: 
       data-folder-drop={n.folder ? n.path : undefined} data-drops={n.folder ? "" : undefined} draggable={false}
       onPointerDown={(e) => press(e, n)} onPointerEnter={n.folder ? undefined : () => openingSoon(n.path)} onPointerLeave={n.folder ? undefined : () => openingSoon(null)}
       onClick={(e) => { e.preventDefault(); open(n, e) }} onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); open(n, e) } }} onContextMenu={menuFor(menuOf(n))}
-      className={cn("group flex min-w-0 cursor-pointer flex-col items-center gap-1.5 rounded-[10px] p-1.5 text-center transition-colors select-none",
+      className={cn("group flex min-w-0 cursor-pointer flex-col items-center gap-1.5 rounded-[10px] p-1.5 text-center transition-colors",
         desk ? "hover:bg-foreground/[0.04]" : "active:bg-foreground/[0.06]", lit && "bg-primary/10", archived && "opacity-50")}>
       <Tile n={n} text={text} desk={desk} />
       {renaming ? <NameField n={n} className={cn("h-6 w-full text-center", desk ? "text-[13px]" : "text-[14px]")} />

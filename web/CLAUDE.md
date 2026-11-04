@@ -37,6 +37,8 @@
 - Colours are tokens, never hex. A scheme only recolours, never moves anything; nothing is named after another app.
 - Density: sizes that follow it are spacing units (`h-6.5`, `space(n)`); px for text, icons, hairlines, radii.
 - Markdown is never shown raw: `snippet(md)` or `<Markdown>`.
+- Chrome isn't text (index.css): only content selects (editors, fields, `<Markdown>`, `pre`/`code`); other text a person
+  may copy opts in with `select-text`, a view inside content is `data-chrome`; chrome needs no `select-none`.
 - Desktop: the window never scrolls, each pane does (`scrollPage`, not `window.scrollTo`); dashboards lay out by pane
   width (`@2xl:`).
 - Phones: 44px targets, 17px text (the sidebar's lists 16px in 40px rows: `data-size-up`), no splits. Move between places through `core/motion.ts`, not `history.back()`. What

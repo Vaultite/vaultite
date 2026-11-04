@@ -225,7 +225,7 @@ function ChangeLine({ pick, id, rides, block, className, children, ...data }: {
   return (
     <div role="checkbox" aria-checked={on} aria-disabled={locked || undefined} tabIndex={0} data-change={id} {...data}
       onClick={toggle} onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle() } }}
-      className={cn("-mx-1.5 flex min-w-0 gap-2.5 rounded-[7px] px-1.5 select-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none max-md:min-h-11",
+      className={cn("-mx-1.5 flex min-w-0 gap-2.5 rounded-[7px] px-1.5 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none max-md:min-h-11",
         block ? "items-start py-1.5" : "items-center", locked ? "cursor-default" : "cursor-pointer hover:bg-foreground/[0.04]", className)}>
       <Tick on={on} className={block ? "mt-0.5" : undefined} />
       {body(!on)}

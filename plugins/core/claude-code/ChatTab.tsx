@@ -322,7 +322,7 @@ function EntryView({ e, id, open, toggle, pending, Message }: { e: Entry; id: st
   switch (e.k) {
     case "user": return (
       <div className="flex justify-end" data-entry="user">
-        <div className="max-w-[85%] min-w-0 rounded-[18px] bg-muted px-3.5 py-2 text-[15px] leading-[22px] max-md:text-[17px] max-md:leading-[24px]">
+        <div className="max-w-[85%] min-w-0 rounded-[18px] bg-muted px-3.5 py-2 select-text text-[15px] leading-[22px] max-md:text-[17px] max-md:leading-[24px]">
           {Message ? <Suspense fallback={<Markdown text={e.text} className="min-w-0 break-words" />}><Message text={e.text} /></Suspense> : <Markdown text={e.text} className="min-w-0 break-words" />}
         </div>
       </div>
@@ -349,7 +349,7 @@ function Note({ text, tone }: { text: string; tone?: "error" }) {
   return (
     <div data-entry="note" className={cn("flex items-start gap-2 text-[13px] leading-[19px] max-md:text-[15px]", tone === "error" ? "text-ink-(--red)" : "justify-center text-muted-foreground")}>
       {tone === "error" && <CircleAlert className="mt-0.5 size-3.5 shrink-0" strokeWidth={2.25} />}
-      <span className="min-w-0 break-words whitespace-pre-wrap">{text}</span>
+      <span className="min-w-0 break-words whitespace-pre-wrap select-text">{text}</span>
     </div>
   )
 }

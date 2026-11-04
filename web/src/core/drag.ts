@@ -83,6 +83,14 @@ export const fingerHolding = () => fingerHolds
 // cancelable listener was there all along (as dnd-kit does).
 if (typeof window !== "undefined") addEventListener("touchmove", (e) => { if (fingerHolds && e.cancelable) e.preventDefault() }, { passive: false })
 
+// A mouse or pen something took (a splitter, a card, a scrubber, a pen) is a drag: nothing selects till it's let go
+// (html[data-captured], index.css). Not a finger: every touch is captured where it lands.
+if (typeof window !== "undefined") {
+  const captured = new Set<number>(), root = document.documentElement
+  addEventListener("gotpointercapture", (e) => { if (e.pointerType !== "touch") { captured.add(e.pointerId); root.toggleAttribute("data-captured", true) } }, true)
+  addEventListener("lostpointercapture", (e) => { if (captured.delete(e.pointerId) && !captured.size) root.removeAttribute("data-captured") }, true)
+}
+
 export type DropTarget = {
   /** What a drop here would do, or null (not over this target, or nothing would change). Called on every move. */
   at: (item: DragItem, x: number, y: number, el: Element | null) => { data: unknown; hint?: string; weak?: boolean; stay?: boolean } | null
@@ -232,9 +240,8 @@ function hitAt(item: DragItem, x: number, y: number): Hit | null {
 /** The drag is on: one cursor, no text selection. Returns how it ends: the highlight goes, and a drop (`hit`) is done;
  *  the click that ends it opens nothing. */
 function lift(item: DragItem, finger = false) {
-  const root = document.documentElement, select = root.style.userSelect
-  root.style.userSelect = "none"
-  // One cursor for the whole drag (index.css), not a text cursor over an editor and a hand over a button.
+  const root = document.documentElement
+  // One cursor for the whole drag and nothing selecting (index.css), not a text cursor over an editor.
   root.dataset.dragging = ""
   getSelection()?.removeAllRanges()
   // Something scrolled under the still pointer (a wheel, a trackpad, an edge scrolling): what a drop there does is
@@ -245,7 +252,6 @@ function lift(item: DragItem, finger = false) {
   return (hit: Hit | null | undefined) => {
     removeEventListener("scroll", scrolled, true)
     cancelAnimationFrame(frame)
-    root.style.userSelect = select
     delete root.dataset.dragging
     // (Before the click below is swallowed: a page's tap is a click too, core/haptics.ts.)
     if (hit && finger) haptic("medium")

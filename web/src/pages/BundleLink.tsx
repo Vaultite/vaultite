@@ -30,7 +30,7 @@ export function BundleLink({ b }: { b: BundleInfo }) {
           data-bundle-link-repo />
         <Button type="submit" disabled={!link} data-bundle-link-copy><Link2 className="size-4" strokeWidth={2} />Copy link</Button>
       </form>
-      {link && <p className="mt-2 truncate font-mono text-[13px] text-muted-foreground" data-bundle-link-url>{link}</p>}
+      {link && <p className="mt-2 truncate font-mono text-[13px] text-muted-foreground select-text" data-bundle-link-url>{link}</p>}
     </Panel></div>
   )
 }
