@@ -21,7 +21,11 @@ const page$ = async (name) => { try { return `#${await pageHash(B, name)}` } cat
 /** rule -> failing elements, summed over every surface; and where each was seen first (a selector, for the report). */
 const now = {}, where = {}
 async function audit(page, surface) {
-  if (!(await page.evaluate(() => "axe" in window))) await page.addScriptTag({ content: AXE })
+  if (!(await page.evaluate(() => "axe" in window))) {
+    await page.addScriptTag({ content: AXE })
+    // A menu open over the page is a popup of its own, as axe's dialogs are, not page content outside a landmark
+    await page.evaluate(() => window.axe.configure({ checks: [{ id: "region", options: { regionMatcher: "dialog, [role=dialog], [role=alertdialog], [role=menu], svg" } }] }))
+  }
   // (what's still fading in reads as low contrast: measured once its animations end, endless ones aside)
   await page.evaluate(() => Promise.race([new Promise((r) => setTimeout(r, 1500)), Promise.all(document.getAnimations()
     .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {})))]))

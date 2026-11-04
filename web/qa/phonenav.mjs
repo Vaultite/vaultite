@@ -55,13 +55,21 @@ const overflow = () => page.evaluate(() => {
   }
   return wide
 })
-/** Tap targets under 44px in `sel` (visible buttons, links, tree rows), as "label h×w". */
-const small = (sel, { width = false } = {}) => page.evaluate(([sel, width]) => [...document.querySelectorAll(sel)].filter((e) => {
-  const r = e.getBoundingClientRect(), s = getComputedStyle(e)
-  if (!r.width || !r.height || s.visibility === "hidden" || e.closest("[aria-hidden=true]") || e.disabled) return false
-  // (a hit area padded out past the box counts: the row it fills)
-  return Math.round(r.height) < 44 || (width && Math.round(r.width) < 44)
-}).map((e) => `${(e.getAttribute("aria-label") ?? e.textContent ?? "").trim().slice(0, 30)} ${Math.round(e.getBoundingClientRect().height)}x${Math.round(e.getBoundingClientRect().width)}`), [sel, width])
+/** Tap targets under 44px in `sel` (visible buttons, links, tree rows), as "label h×w". 44px is for isolated controls:
+ *  full-width rows stacked edge to edge (the drawer's 40px tree) are targets as a list's are, a finger never between. */
+const small = (sel, { width = false } = {}) => page.evaluate(([sel, width]) => {
+  const all = [...document.querySelectorAll(sel)]
+  const stacked = (e, r) => r.width >= 200 && all.some((o) => {
+    const q = o.getBoundingClientRect()
+    return o !== e && Math.min(q.right, r.right) - Math.max(q.left, r.left) > 0.8 * Math.min(q.width, r.width) && (Math.abs(q.bottom - r.top) <= 2 || Math.abs(q.top - r.bottom) <= 2)
+  })
+  return all.filter((e) => {
+    const r = e.getBoundingClientRect(), s = getComputedStyle(e)
+    if (!r.width || !r.height || s.visibility === "hidden" || e.closest("[aria-hidden=true]") || e.disabled) return false
+    // (a hit area padded out past the box counts: the row it fills)
+    return (Math.round(r.height) < 44 && !stacked(e, r)) || (width && Math.round(r.width) < 44)
+  }).map((e) => `${(e.getAttribute("aria-label") ?? e.textContent ?? "").trim().slice(0, 30)} ${Math.round(e.getBoundingClientRect().height)}x${Math.round(e.getBoundingClientRect().width)}`)
+}, [sel, width])
 /** The sizes of what `sel` matches, to tell when a screen's arrival (a new tab zooms in) has ended. */
 const sizes = (sels) => page.evaluate((sels) => sels.flatMap((s) => [...document.querySelectorAll(s)].map((e) => { const r = e.getBoundingClientRect(); return `${r.width}x${r.height}` })).join(), sels)
 const screen = async (name, targets = []) => {
