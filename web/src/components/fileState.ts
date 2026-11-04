@@ -1,5 +1,5 @@
-// What file views share: the view (reading, live preview or source), each tab its own as in Obsidian from Settings'
-// defaults (editor.json), so ⌘E switches only the tab in front (beforeMode); and what the status bar shows (usePublish).
+// What file views share: the view (reading, live preview or source), each pane its own as in Obsidian from Settings'
+// defaults (editor.json), so ⌘E switches only the pane in front (beforeMode); and what the status bar shows (usePublish).
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react"
 import { BookOpen, Code2, Pencil, type LucideIcon } from "lucide-react"
 import type { MenuItem } from "@/components/ContextMenu"
@@ -75,7 +75,9 @@ function subscribeMode(f: () => void) {
 /** The view of the tab this is drawn in, how to change it (that tab's only), its id, and the editing view it goes back
  *  to from reading. */
 export function useMode(): [Mode, (m: Mode) => void, string, EditingMode] {
-  const tab = usePane().tab ?? ""
+  // (by its pane: a tab's split panes are each their own view, ⌘E switching the focused one; else its tab, a phone's)
+  const { pane, tab: inTab } = usePane()
+  const tab = pane || inTab || ""
   useEditorSettings() // (a tab not shown yet opens in the defaults as they are then)
   const set = useCallback((m: Mode) => setMode(tab, m), [tab])
   const v = useSyncExternalStore(subscribeMode, () => viewOf(tab))
