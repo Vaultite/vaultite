@@ -120,6 +120,9 @@ try {
       await page.goto(`${B}/#view/files/file/${encodeURIComponent(NOTE)}`); await wait(1500)
       const sheet = page.locator(`dialog[open] .file-view[data-path="${NOTE}"]`)
       await sheet.waitFor({ timeout: 10000 })
+      // (a phone opens a note for reading, in a sheet too: its pencil makes the properties editable)
+      const pencil = page.locator("dialog[open] [data-view-toggle=read]")
+      if (await until(() => pencil.count(), 3000)) { await pencil.click(); await wait(500) }
       const sp = sheet.locator("[aria-label=Properties]")
       if (!(await sp.locator("[role=table]").count())) await sp.getByRole("button", { name: /Properties/ }).click()
       await sp.locator("[role=row]").filter({ has: page.locator("input[value=status]") }).hover()
