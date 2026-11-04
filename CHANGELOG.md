@@ -6,6 +6,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.10.0 (2026-11-04)
+
+Tabs that hold panes, with splits that swipe on the phone and come back whole with ⌘⇧T, folders shown and driven as
+Finder does, a folder shared with anyone by a link (its HTML pages live with you), a player window you can share, cloud
+sessions as a page of their own, an inbox that settles items where they're open, dictation into the editor, a companion
+that follows any pane, chrome that never selects, and a phone that loads in half the time.
+
 - **Undo of a move to another workspace puts the tab back in its place**: in its spot in the bar and its tab group,
   not at the end.
 - **A plugin setting changed twice quickly keeps the last change**: hiding a graph group and showing it again at once
