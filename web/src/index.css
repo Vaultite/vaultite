@@ -493,6 +493,8 @@ html[data-dragging] [data-slide] { transition: transform var(--motion) var(--eas
 /* A tab bar's tabs spring as they make way (its row's scrollbar is hidden: elsewhere, going a little past their place
    would show a list's scrollbar for a moment). */
 html[data-dragging] [data-tab-bar] [data-slide] { transition-duration: var(--motion-spring), var(--motion-fast); transition-timing-function: var(--spring), var(--ease-out); }
+/* The Tabs panel's rows ease into or out of a tab group's indent as what's dragged joins or leaves it. */
+html[data-dragging] [data-open-tabs] [data-open-tab] { transition: background-color var(--motion-fast) var(--ease-out), margin-left var(--motion-fast) var(--ease-out); }
 /* Tab groups (Tabs.tsx, the Tabs panel). The tab bar's row of tabs puts their top on a whole pixel (centred in the bar
    they'd sit on a fraction, and their group's line, under them, would blur over three). */
 /* (the bar's row: the phone's tab list names its cards' cells data-tab-row too) */

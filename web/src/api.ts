@@ -80,7 +80,7 @@ export { groupMenu, groupName, GroupLabel } from "@/components/Tabs"
 export { foldGroup, openInGroup } from "@/core/tabgroups"
 export { foldGroupMoving, useGrowIn, useReflow, useGroupIn, useShrinkOut } from "@/core/tabfold"
 export { useGroupLines } from "@/core/tabline"
-export { canDropAt as canDropTab, dropOn as dropTab, groupsAsDrawn, previewIn as tabPreview, previewOrder as tabPreviewOrder, slotIn as tabSlot, springOver, springing, type Drop as TabDrop } from "@/core/drop"
+export { canDropAt as canDropTab, dropOn as dropTab, groupsAsDrawn, listDrop as tabListDrop, previewIn as tabPreview, previewOrder as tabPreviewOrder, slotBeside as tabSlotBeside, slotIn as tabSlot, springOver, springing, type Drop as TabDrop } from "@/core/drop"
 export { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.
 export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selectionFor, selectItem, startSelecting, useSelectable, useSelected, useSelectedKeys, useSelecting, type Selectable } from "@/core/select"
@@ -91,7 +91,7 @@ export { diffLines } from "@/core/diff"
 export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"
 // The one drag primitive: plugins' drop targets (Workspaces' switcher rows take a dragged tab) and things they drag (a
 // database view's cards).
-export { edgeScroller, pastEnd, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+export { beforeStart, edgeScroller, pastEnd, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 export { confirmDialog, type ConfirmOptions, secretDialog } from "@/components/ConfirmDialog"
 export { copyText, fileMenu, filesMenu, folderMenu, grouped, linkTo, openItem, pluginFileGroups, rowFileMenu } from "@/components/FileActions"
 export { deleteFile, restoreFile } from "@/core/files"

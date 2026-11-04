@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
-  activePane, Badged, edgeScroller, canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
+  activePane, Badged, beforeStart, edgeScroller, canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
   groupsAsDrawn, HeadingButton, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
-  selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit,
+  selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabListDrop, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabSlotBeside, tabsMenu, useDrag, useDropHit,
   useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
   INCOMING,
   type DragItem, type Pane, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabList,
@@ -163,10 +163,11 @@ function GroupRow({ g, n, target }: { g: TabGroup; n: number; target: boolean })
 }
 
 const LIST = "tabs:list"
-/** Whether (x, y) is just under the last row or on the New tab row, which a drop puts at the list's end. */
-function atEnd(root: HTMLElement, x: number, y: number, el: Element | null) {
-  const row = [...root.querySelectorAll("[data-open-tab], [data-group-row]")].at(-1)
-  return !!row && (!!el?.closest("[data-new-tab-row]") || pastEnd(root, row, x, y, el))
+/** Whether (x, y) is just under the last row or on the New tab row, which a drop puts at the list's end, or just over
+ *  the first (the panel's heading), which puts it first. */
+function atEnds(root: HTMLElement, x: number, y: number, el: Element | null) {
+  const rows = root.querySelectorAll("[data-open-tab], [data-group-row]"), last = rows[rows.length - 1]
+  return !!last && (!!el?.closest("[data-new-tab-row]") || pastEnd(root, last, x, y, el) || beforeStart(root, rows[0], x, y, el))
 }
 
 /** The window's tabs, each tab group a row with its tabs under it. Dragged along the list, a tab moves, joining or
@@ -184,13 +185,13 @@ function TabRows({ store }: { store: Store }) {
     if (!root || !takes) return null
     // (held near the top or bottom of what scrolls the list, it scrolls: more tabs than the panel shows)
     edge.over(root, x, y)
-    // (a pane or tab held on a row's middle opens its tab after a moment: no place made there)
-    if ((!(el && root.contains(el)) && !atEnd(root, x, y, el)) || springTabAt(item, x, y)) return null
+    if (!(el && root.contains(el)) && !atEnds(root, x, y, el)) return null
+    // (a pane or tab held on a row's middle opens its tab after a moment: that row holds still meanwhile)
+    const held = springTabAt(item, x, y)
     const slots = [...root.querySelectorAll<HTMLElement>("[data-open-tab], [data-group-row]")].map((e) => ({ el: e, tab: e.dataset.openTab, group: e.dataset.groupRow }))
-    const at = tabSlot(l, slots, y, "y")
-    const d: TabDrop = { kind: "list", index: at.index, group: item.group ? null : at.group }
-    return canDropTab(item, d) ? d : null
-  }, (item, d) => dropTab(item, d), { end: edge.stop })
+    const at = held ? tabSlotBeside(l, item, held) : tabSlot(l, slots, y, "y")
+    return tabListDrop(item, { kind: "list", index: at.index, group: item.group ? null : at.group })
+  }, (item, d) => dropTab(item, d), { stay: (d) => d.kind === "list" && !!d.home, end: edge.stop })
   const hit = useDropHit<TabDrop>(target)
   const item = useDrag((d) => d?.item)
   // Dragged over, the rows make way for what's dragged, in the tab group it would join (its line by it).

@@ -155,7 +155,8 @@ export function openAllAt(tos: string[], pane: string, zone: Zone) {
   openAllAtIndex(tos.slice(1), here().tabs.findIndex((t) => t.id === here().active) + 1, undefined, false)
 }
 /** The tab of one pane showing `to`, if there is one. */
-const tabShowing = (l: TabList, to: string) => l.tabs.find((t) => !("kids" in t.root) && t.root.to === to)
+/** The tab of one pane that shows `to`, which opening it in the list moves rather than opening another. */
+export const tabShowing = (l: TabList, to: string) => l.tabs.find((t) => !("kids" in t.root) && t.root.to === to)
 /** Would opening `to` at index `at` of the list change anything? A tab that shows it already: only if it moves. */
 export function canOpenAtIndex(to: string, at: number, group?: string | null) {
   const has = tabShowing(here(), to)

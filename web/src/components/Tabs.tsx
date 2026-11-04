@@ -7,7 +7,7 @@ import {
   PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, type LucideIcon, PencilLine,
 } from "lucide-react"
 import type { Store } from "@/core/data"
-import { edgeScroller, getDrag, onDrag, onDragEnd, startDrag, useDrag, useDragItem, useDropHit, type Drag, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, laidOut, onDrag, onDragEnd, startDrag, useDrag, useDragItem, useDropHit, type Drag, type DragItem } from "@/core/drag"
 import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
@@ -20,10 +20,10 @@ import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
 import { addToGroup, allGroups, closeGroup, colorGroup, groupById, leaveGroup, makeGroup, newTabInGroup, renameGroup, ungroup } from "@/core/tabgroups"
 import { foldGroupMoving, useGrowIn, useGroupIn, useReflow, useShrinkOut } from "@/core/tabfold"
-import { useGroupLines } from "@/core/tabline"
+import { stir, useGroupLines } from "@/core/tabline"
 import { canRenameTab, renameTab } from "@/core/tabnames"
 import { dotIcon } from "@/components/ColorDot"
-import { PANES, previewIn, previewOrder, groupsAsDrawn, springing, type Drop } from "@/core/drop"
+import { PANES, previewIn, previewOrder, groupsAsDrawn, sprangOpen, springing, type Drop } from "@/core/drop"
 import { INCOMING, useSlide } from "@/core/slide"
 import { usePaneHasTopBar } from "@/core/pane"
 import { tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
@@ -347,12 +347,22 @@ function lookOf(item: DragItem | null, d: Drag | null): Look {
   return { kind: "pill", grab: { x: -10, y: -10 }, w: 0, h: 0, home: o.rect }
 }
 
-/** A dropped tab slides into its slot from where its picture was let go (`from`), once it's drawn there. */
-function landTab(id: string, from: DOMRect) {
+/** A dropped tab slides into its slot in `list` (the tab bar's, the Tabs panel's) from where its picture was let go
+ *  (`from`), once it's drawn there. */
+function landTab(list: Element, id: string, from: DOMRect) {
   requestAnimationFrame(() => {
-    const t = [...document.querySelectorAll<HTMLElement>(`[data-tab-bar] [data-tab-id="${id}"]`)].find((e) => e.offsetParent)
-    if (t) slideFrom(t, from, "spring")
+    const t = [...list.querySelectorAll<HTMLElement>(`[data-slide="${CSS.escape(id)}"]`)].find((e) => e.offsetParent)
+    if (t && slideFrom(t, from, "spring")) stir(t)
   })
+}
+/** The list of tabs making way for a drop of tab `id` (useSlide marks it): where it lands, let go there. */
+const listShowing = (id: string) => [...document.querySelectorAll("[data-drop-preview]")].find((e) => e.querySelector(`[data-slide="${CSS.escape(id)}"]`)) ?? null
+/** Tab `id` drawn in a list now (the tab bar's chip, the Tabs panel's row): the one nearest `near`, where it was. */
+function tabDrawn(id: string, near?: DOMRect) {
+  const q = CSS.escape(id), at = (e: Element) => e.getBoundingClientRect()
+  const all = [...document.querySelectorAll<HTMLElement>(`[data-tab-bar] [data-tab-id="${q}"], [data-open-tabs] > [data-slide="${q}"]`)].filter((e) => e.offsetParent)
+  const far = (e: Element) => (near ? Math.hypot(at(e).left - near.left, at(e).top - near.top) : 0)
+  return all.sort((a, b) => far(a) - far(b))[0] ?? null
 }
 
 /** A sketch of a page: a few lines, for a pane whose page isn't drawn. */
@@ -432,17 +442,19 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     if (!c || !e.origin || it.drawn || e.away) return
     if (!e.dropped) { setBack({ item: it }); return }
     const from = c.getBoundingClientRect(), { over } = last.current
-    if (!over) return
+    // (into a list of tabs: the bar, or the Tabs panel, which makes way as the bar does)
+    const list = over !== "pane" && it.tab ? listShowing(it.tab) : null
+    if (!over && !list) return
     // (back to itself before it moves: what's drawn of it on the way isn't faded)
     lookRef.current.section?.removeAttribute("data-lifted")
     const t = it.tab ? tabById(it.tab) : undefined
     if (over === "pane") { if (it.pane) landFrom(it.pane, from); else if (t) landFrom(t.focus, from) }
-    else if (it.tab) landTab(it.tab, from)
+    else if (list) landTab(list, it.tab!, from)
   }), [])
   useLayoutEffect(() => {
     if (!back) return
     const { item: it } = back, c = card.current, t = timing("spring")
-    const tab = look.kind === "tab" ? [...document.querySelectorAll<HTMLElement>(`[data-tab-bar] [data-tab-id="${it.tab}"]`)].find((e) => e.offsetParent) : null
+    const tab = look.kind === "tab" && it.tab ? tabDrawn(it.tab, look.home) : null
     const home = tab?.getBoundingClientRect() ?? (look.kind === "pane" ? look.section?.getBoundingClientRect() : look.home)
     if (!c || !home || !t.duration) { setBack(null); return }
     // (back home whole, a label just fading there)
@@ -519,21 +531,15 @@ function MiniSketch({ info: i, icons }: { info: TabInfo; icons: boolean }) {
   )
 }
 
-/** Where an element is laid out, without the slide a drag's preview gives it (core/slide.ts). */
-function laidOut(el: Element) {
-  const r = el.getBoundingClientRect(), slid = el.closest<HTMLElement>("[data-slide]")
-  if (!slid?.style.transform) return r
-  const m = new DOMMatrixReadOnly(getComputedStyle(slid).transform)
-  return new DOMRect(r.x - m.m41, r.y - m.m42, r.width, r.height)
-}
-/** The tab whose chip or row (`data-spring-tab`) a dragged pane or tab is held on the middle of: there it opens that tab
- *  after a moment (drop.ts' springOver) rather than making way; its edges still reorder. Not the tab on screen, nor its own. */
+/** The tab whose chip or row (`data-spring-tab`) a dragged pane or tab is held on the middle of: there it holds still
+ *  (drop.ts' slotBeside) and opens after a moment (springOver); its edges reorder. Not its own, nor the one on screen. */
 export function springTabAt(item: DragItem, x: number, y: number): string | null {
   if (!item.pane && !item.tab) return null
   const own = item.pane ? paneTab(item.pane)?.id : item.tab, shown = here().active
   for (const e of document.querySelectorAll<HTMLElement>("[data-spring-tab]")) {
     const id = e.dataset.springTab!
-    if (id === own || id === shown || !e.offsetParent) continue
+    // (one this drag opened by holding on it goes on holding still: nothing moves when it opens)
+    if (id === own || item.tabs?.includes(id) || (id === shown && !sprangOpen(item, id)) || !e.offsetParent) continue
     const r = laidOut(e), across = !!e.closest("[data-tab-strip]")
     if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue
     const at = across ? (x - r.left) / r.width : (y - r.top) / r.height

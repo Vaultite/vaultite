@@ -79,6 +79,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `baseLayoutOf(type)`
 - `baseLayouts()`: The layouts plugins registered, and the one for a view's type.
 - `BaseRows`: A base's rows as a layout gets them: every match, in the view's groups (one, unnamed, when it has none).
+- `beforeStart(list, first, x, y, el)`: Whether a drag at (x, y) over `el` is just above a list's `first` row (its panel's heading), where a drop puts it first: up to a row's height above it, and not on another list's row or panel.
 - `beginKeys(keys)`: Start a sequence from code, as if its first steps were pressed: an editor that keeps its keys (Vim's Space in normal mode) hands the rest to the app.
 - `besideActive(fallback, skip?)`: The folder of the note being written, for a file made from it (a canvas, a drawing, a base): an archived note's as if it weren't (nothing new goes into an archive); `fallback` when it's a page,…
 - `BlockCtx`: What a block gets: the file as in the editor now, its text and that text as YAML options with declared defaults.
@@ -620,9 +621,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `spelling`: The spell checker sees a right-click only once the page leaves it to the system (not prevented): `at` answers what it said of the word under it (null: nothing came), `learn` adds a word to its…
 - `splitFm(text)`: Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body.
 - `splitMachine(id)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
-- `springing()`: Whether a row is about to spring open (drawn lit, as Rex's).
-- `springOver(tab, item)`: What's dragged is over tab `tab`'s row (null: over none): held there about a second, that tab opens, so what's dragged can go into its panes.
-- `springTabAt(item, x, y)`: The tab whose chip or row (`data-spring-tab`) a dragged pane or tab is held on the middle of: there it opens that tab after a moment (drop.ts' springOver) rather than making way; its edges still…
+- `springing()`: Whether a row is about to spring open (drawn lit, as Rex's), once held on it a moment.
+- `springOver(tab, item, x?, y?)`: What's dragged is at (x, y) on tab `tab`'s row (null: none): held still there a second, that tab opens to drop into its panes; moved on, it waits again.
+- `springTabAt(item, x, y)`: The tab whose chip or row (`data-spring-tab`) a dragged pane or tab is held on the middle of: there it holds still (drop.ts' slotBeside) and opens after a moment (springOver); its edges reorder.
 - `stampMs`
 - `standingIn(app, id)`: The opt-in plugins on that stand in for another app's plugin (`standingIn("obsidian", "dataview")`): its original stays off while one is.
 - `startDictation(target, o, failed)`: Listen, typing into `target` (`hold`: push to talk, the key still down).
@@ -643,12 +644,13 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `switchPreview(text, …, value, set)`: A switch's preview: Off and On.
 - `systemNotify(title, body?)`: In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the window then comes to the front), false when it's dismissed; null in a browser, or…
 - `Tab`: A tab: its panes in a tree of splits (one pane, mostly), the one `focus`ed, and the one filling it for now (`zoom`, tmux's).
-- `TabDrop`: Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none), or a pane's edge or middle.
+- `TabDrop`: Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none; `home`: where what's dragged is already, so a drop there changes nothing), or a…
 - `TabGroup`: A tab group, as browsers have them: a named, coloured run of tabs side by side (those whose `group` is its id), folded to its name while `collapsed`.
 - `TabInfo`: `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting).
 - `tabLabel(t, store)`: The same outside a render (what the quick switcher finds).
 - `TabLayout`: A workspace: the main window's tabs, and its pop-outs'.
 - `TabList`: A window's tabs, in order, their groups (in the order their tabs are) and the one on screen.
+- `tabListDrop(item, d)`: A place in a list of tabs as a drop target answers it: what a drop there does, or, where the tabs or group dragged already are, `home` (taken there and drawn so, as in a browser, not pulled off as…
 - `tabMenuOf(id)`: A tab's right-click menu, the one its chip has.
 - `tabOfPane(l, id)`: The tab that has pane `id`.
 - `tabPreview(l, item, d)`
@@ -657,6 +659,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `TabsEvent`
 - `tabsInWorkspace(on)`: Workspaces takes the tabs (`on`: what's shown and saved from now is a workspace's) or lets go of them: this device's own come back as they were left, so turning it on and off (a layout and back)…
 - `tabSlot(l, slots, pos, axis)`: Where `pos` along the tabs as drawn lands: before which tab (`index`), in which tab group.
+- `tabSlotBeside(l, item, tab)`: Where a tab or pane held on tab `tab`'s middle (springOver) lands: beside it, in its group, on the side it came from (after it, from elsewhere), so that row holds still under the pointer, not…
 - `tabsMenu(ids, phone?)`: What tabs selected together can do: close them (or the others), pin them, group them, move them to a window.
 - `tabsSeenSince(saved)`: Whether a pane was seen here later than `saved` (the workspace's file) says, by more than a quarter of the archive time: worth a write of its own.
 - `tagName(t)`: A tag written the way it's matched: no #, no slashes at its ends.

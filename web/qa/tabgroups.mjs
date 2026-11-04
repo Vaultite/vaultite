@@ -246,15 +246,23 @@ try {
   check("in the panel too: dragged over a group's last row, the rows make way, the group's line beside it", moving?.moved && moving.rail, moving)
   await page.screenshot({ path: `${OUT}vertical-dragging.png`, clip: { x: 0, y: 0, width: 360, height: 400 } })
   await release()
-  // A file from the tree held over the list: room opens where it would.
+  // A file from the tree held over the list: the rows make way where it would open. (The tree's last note, Start here, a
+  // tab shows already: that tab makes its way there, as the drop moves it, rather than room for a new one.)
   const file = page.locator("aside [data-tree-path$='.md']").last()
   await file.scrollIntoViewIfNeeded()
+  const name = (await file.getAttribute("data-tree-path")).split("/").pop().replace(/\.md$/, "")
   const fb = await file.boundingBox(), gp2 = await row("Garden planner").boundingBox()
   await page.mouse.move(fb.x + 40, fb.y + fb.height / 2); await page.mouse.down()
-  await page.mouse.move(fb.x + 48, fb.y + fb.height / 2 + 4, { steps: 2 }); await page.mouse.move(gp2.x + 60, gp2.y + gp2.height * 0.3, { steps: 12 }); await wait(300)
-  const room = await page.$eval("[data-tabs-panel] [data-slide='incoming']", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), y: Math.round(r.top) } }).catch(() => null)
-  const gpNow = await row("Garden planner").boundingBox()
-  check("a file from the tree held over the list: a row's room opens where it would open", !!room && room.h >= 24 && Math.abs(room.y - Math.round(gp2.y)) <= 2 && gpNow.y > gp2.y + 20, [room, gp2.y, gpNow.y])
+  await page.mouse.move(fb.x + 48, fb.y + fb.height / 2 + 4, { steps: 2 }); await page.mouse.move(gp2.x + 60, gp2.y + gp2.height * 0.3, { steps: 12 }); await wait(400)
+  // (measured as they are now: the sidebar may have scrolled a little under the pointer, near its top)
+  const room = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("[data-tabs-panel] [data-slide]")], gp = rows.find((e) => e.textContent.trim() === "Garden planner")
+    const top = gp.getBoundingClientRect().top, m = /translateY\((-?[\d.]+)px\)/.exec(gp.style.transform), made = m ? +m[1] : 0
+    const e = rows.find((e) => Math.abs(e.getBoundingClientRect().top - (top - made)) <= 2)
+    return { made, what: e && (e.dataset.slide === "incoming" ? "incoming" : e.textContent.trim()), h: e && Math.round(e.getBoundingClientRect().height) }
+  })
+  const shown = (await page.$$eval("[data-tabs-panel] [data-open-tab]", (els) => els.map((e) => e.textContent.trim()))).includes(name)
+  check("a file from the tree held over the list: the rows make way where it would open (its tab, if one shows it)", room.made > 20 && room.h >= 24 && room.what === (shown ? name : "incoming"), [name, shown, room])
   await page.screenshot({ path: `${OUT}vertical-file.png`, clip: { x: 0, y: 0, width: 360, height: 400 } })
   await page.keyboard.press("Escape"); await page.mouse.up(); await wait(300)
   const after = await page.$$eval("[data-tabs-panel] :is([data-open-tab], [data-group-row])", (els) => els.map((e) => (e.dataset.groupRow ? `[${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}]` : e.textContent.trim())).join(" "))

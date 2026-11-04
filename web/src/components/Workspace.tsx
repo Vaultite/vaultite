@@ -102,12 +102,12 @@ function keepPanes(k: Kept, l: TabList, shown: string): Kept {
   return same(slots, k.slots) && same(recent, k.recent) ? k : { slots, recent }
 }
 
-/** A dragged pane or tab held on a tab's chip or row opens that tab after a moment (drop.ts), making no place in the list
- *  there: told here, the one target that hears every move, so the bar and the Tabs panel never undo each other's. */
+/** A dragged pane or tab held on a tab's chip or row opens that tab after a moment (drop.ts), the row holding still:
+ *  told here, the one target that hears every move, so the bar and the Tabs panel never undo each other's. */
 function springAt(item: DragItem, x: number, y: number) {
   const t = springTabAt(item, x, y)
-  springOver(t, item)
-  return !!t
+  springOver(t, item, x, y)
+  return t
 }
 
 export function Workspace(props: Props) {
@@ -123,7 +123,8 @@ export function Workspace(props: Props) {
   // (a pane dragged by its bar recedes where it was, its card in hand: Tabs' DragGhost)
   const lifted = useDrag((d) => d?.item.pane ?? null)
   // Tabs, panes, and files or pages from the sidebar, dropped on the tab bar or a pane.
-  useDropTarget<Drop>(PANES, (item, x, y, el) => (springAt(item, x, y) ? null : dropAt(item, x, y, el)), dropOn, { end: () => springOver(null, null) })
+  useDropTarget<Drop>(PANES, (item, x, y, el) => dropAt(item, x, y, el, springAt(item, x, y)), dropOn,
+    { stay: (d) => d.kind === "list" && !!d.home, end: () => springOver(null, null) })
   // (worked out while drawing, from what was kept the last time: React's state from earlier renders)
   const [was, setKept] = useState<Kept>({ slots: [], recent: [] })
   const kept = keepPanes(was, l, tab.id)

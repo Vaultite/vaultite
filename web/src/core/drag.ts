@@ -47,7 +47,8 @@ export type DragItem = {
   /** Its source draws its own picture of it following the pointer (a phone's tab card, lifted whole): no DragGhost. */
   drawn?: boolean
 }
-type Hit = { target: string; data: unknown; hint?: string; weak?: boolean }
+/** `stay`: taken where it is already (a tab over its own place in its list): drawn as taken, let go it goes back. */
+type Hit = { target: string; data: unknown; hint?: string; weak?: boolean; stay?: boolean }
 /** `finger`: a touch drag (its picture goes above the finger, where it can be seen). `origin`: where it was pressed and
  *  the pressed element's box then (what's dragged lifts from there, and goes back there if it isn't dropped). */
 export type Drag = { item: DragItem; x: number; y: number; hit: Hit | null; finger?: boolean; origin?: Origin }
@@ -84,7 +85,7 @@ if (typeof window !== "undefined") addEventListener("touchmove", (e) => { if (fi
 
 export type DropTarget = {
   /** What a drop here would do, or null (not over this target, or nothing would change). Called on every move. */
-  at: (item: DragItem, x: number, y: number, el: Element | null) => { data: unknown; hint?: string; weak?: boolean } | null
+  at: (item: DragItem, x: number, y: number, el: Element | null) => { data: unknown; hint?: string; weak?: boolean; stay?: boolean } | null
   drop: (item: DragItem, data: unknown) => void
   /** The drag ended (dropped or not): stop timers. */
   end?: () => void
@@ -97,17 +98,17 @@ export function addDropTarget(id: string, t: DropTarget) {
   return () => { if (targets.get(id) === t) targets.delete(id) }
 }
 
-/** Take drops while mounted. `at` answers what a drop at (x, y) would do (`hint`: a word on the dragged item, like
- *  "Unpin"; `weak`: a catch-all answer, taken only when no other target answers); `drop` does it. */
+/** Take drops while mounted. `at` answers what a drop at (x, y) would do (`hint`: a word on the item, like "Unpin";
+ *  `weak`: taken only when no other target answers; `stay`: where it is already, a Hit's); `drop` does it. */
 export function useDropTarget<H>(id: string, at: (item: DragItem, x: number, y: number, el: Element | null) => H | null,
-  drop: (item: DragItem, hit: H) => void, opts: { hint?: (hit: H) => string | undefined; weak?: (hit: H) => boolean; end?: () => void } = {}) {
+  drop: (item: DragItem, hit: H) => void, opts: { hint?: (hit: H) => string | undefined; weak?: (hit: H) => boolean; stay?: (hit: H) => boolean; end?: () => void } = {}) {
   const ref = useRef({ at, drop, opts })
   useEffect(() => { ref.current = { at, drop, opts } })
   useEffect(() => {
     targets.set(id, {
       at: (item, x, y, el) => {
         const h = ref.current.at(item, x, y, el)
-        return h === null ? null : { data: h, hint: ref.current.opts.hint?.(h), weak: ref.current.opts.weak?.(h) }
+        return h === null ? null : { data: h, hint: ref.current.opts.hint?.(h), weak: ref.current.opts.weak?.(h), stay: ref.current.opts.stay?.(h) }
       },
       drop: (item, data) => ref.current.drop(item, data as H),
       end: () => ref.current.opts.end?.(),
@@ -116,14 +117,32 @@ export function useDropTarget<H>(id: string, at: (item: DragItem, x: number, y: 
   }, [id])
 }
 
+/** Where an element is laid out, without the slide a drag's preview gives it (core/slide.ts): hits are worked out on
+ *  that, so what makes way doesn't move what's under the pointer. */
+export function laidOut(el: Element) {
+  const r = el.getBoundingClientRect(), slid = el.closest<HTMLElement>("[data-slide]")
+  if (!slid?.style.transform) return r
+  const m = new DOMMatrixReadOnly(getComputedStyle(slid).transform)
+  return new DOMRect(r.x - m.m41, r.y - m.m42, r.width, r.height)
+}
+
 /** Whether a drag at (x, y) over `el` is just past a list's `last` row, where a drop puts it at the end: under it, down
  *  to its panel's bottom or a row's height (a panel often ends right under it), and not on another list's row or panel. */
 export function pastEnd(list: Element, last: Element, x: number, y: number, el: Element | null) {
-  const box = list.getBoundingClientRect(), row = last.getBoundingClientRect()
+  const box = list.getBoundingClientRect(), row = laidOut(last)
   const panel = list.closest("[data-panel]"), below = el?.closest("[data-panel]")
   const bottom = Math.max(row.bottom + row.height, panel?.getBoundingClientRect().bottom ?? 0)
   return x >= box.left && x <= box.right && y >= row.bottom && y < bottom
     && (!el || list.contains(el) || (!el.closest("[data-keyrow]") && (!below || below === panel)))
+}
+
+/** Whether a drag at (x, y) over `el` is just above a list's `first` row (its panel's heading), where a drop puts it
+ *  first: up to a row's height above it, and not on another list's row or panel. */
+export function beforeStart(list: Element, first: Element, x: number, y: number, el: Element | null) {
+  const box = list.getBoundingClientRect(), row = laidOut(first)
+  const panel = list.closest("[data-panel]"), over = el?.closest("[data-panel]")
+  return x >= box.left && x <= box.right && y < row.top && y >= row.top - row.height
+    && (!el || list.contains(el) || (!el.closest("[data-keyrow]") && (!over || over === panel)))
 }
 
 /** The frame each box last scrolled in: two lists in one box (Pinned and the Tabs panel, in a sidebar scrolling as
@@ -268,7 +287,7 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
     removeEventListener("pointermove", move, true); removeEventListener("pointerup", up, true); removeEventListener("pointercancel", cancel, true)
     removeEventListener("keydown", key, true); removeEventListener("dragstart", native, true)
     quit()
-    const hit = drag?.hit
+    const hit = drag?.hit?.stay ? null : drag?.hit
     setDrag(null)
     for (const t of targets.values()) t.end?.()
     const out = !!last && (last.clientX < 0 || last.clientY < 0 || last.clientX >= innerWidth || last.clientY >= innerHeight)
@@ -322,7 +341,7 @@ function pickUp(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragIte
     removeEventListener("touchend", up, true); removeEventListener("touchcancel", cancel, true)
     quit()
     fingerHolds = false
-    const hit = drag?.hit
+    const hit = drag?.hit?.stay ? null : drag?.hit
     if (drag) setDrag(null)
     for (const t of targets.values()) t.end?.()
     end?.(drop ? hit : null)

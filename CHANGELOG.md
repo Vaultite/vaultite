@@ -20,6 +20,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   reads on instead of a month of them again (about 25 s of CPU on a busy Mac, now under 2); comment threads in notes
   that aren't open no longer wake every window every 1.5 s; typing in the quick switcher searches a big vault three
   times faster.
+- **Dragging a tab holds steady**: in the Tabs panel and the tab bar, tabs make way once as a dragged tab passes and
+  no longer slide back while it's held, on a tab's middle too (that tab holds still, lights once the pointer rests,
+  then opens); the dragged tab stays a tab over its own place and the panel's heading instead of ballooning into a
+  card, a group's indent eases in and out, and let go in the panel it slides into its place.
 - **Sidebar rows hold still**: hovering a row (a tab, a pinned page, a session) no longer moves anything: its … and
   Close fade in over the label's end, and a panel scrolling in its own box ends between two rows, not a sliver into
   the next.

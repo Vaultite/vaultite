@@ -1,27 +1,35 @@
 // Dropping tabs, panes, tab groups and files (core/drag.ts): on the list of tabs (the tab bar, the Tabs panel) or on a
 // pane of the tab on screen. What's under the pointer and what a drop there does.
-import type { DragItem } from "@/core/drag"
+import { laidOut, rehit, type DragItem } from "@/core/drag"
 import { outsideGroups, panesOf, runOf, type TabList } from "../../../core/layout.ts"
 import {
   canOpenAt, canOpenAtIndex, canPaneIntoPane, canPlaceTab, canTabIntoPane, openAllAt, openAllAtIndex, openAt, openAtIndex, paneIntoPane, paneToTab, placeTab, placeTabs,
-  tabIntoPane, type Zone,
+  tabIntoPane, tabShowing, type Zone,
 } from "@/core/splits"
 import { canMoveGroup, moveGroupTo } from "@/core/tabgroups"
 import { here, paneById, paneTab, selectTab } from "@/core/workspace"
 import { getStore } from "@/core/data"
 import { INCOMING } from "@/core/slide"
 
-/** Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none),
- *  or a pane's edge or middle. */
-export type Drop = { kind: "list"; index: number; group: string | null } | { kind: "pane"; pane: string; zone: Zone }
+/** Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none;
+ *  `home`: where what's dragged is already, so a drop there changes nothing), or a pane's edge or middle. */
+export type Drop = { kind: "list"; index: number; group: string | null; home?: boolean } | { kind: "pane"; pane: string; zone: Zone }
 /** The workspace's drop target (useDropTarget): its tab bar and panes. */
 export const PANES = "panes"
 
 /** A pane dragged onto the list: the tab it's alone in moves, a split's pane becomes a tab of its own. */
 const lonePane = (id: string) => { const t = paneTab(id); return t && panesOf(t).length === 1 ? t : null }
+/** A place in a list of tabs as a drop target answers it: what a drop there does, or, where the tabs or group dragged
+ *  already are, `home` (taken there and drawn so, as in a browser, not pulled off as over nothing); else null. */
+export function listDrop(item: DragItem, d: Drop & { kind: "list" }): Drop | null {
+  if (canDropAt(item, d)) return d
+  return item.tab || item.group ? { ...d, home: true } : null
+}
+
 /** Would that drop change anything? */
 export function canDropAt(item: DragItem, d: Drop): boolean {
   if (d.kind === "list") {
+    if (d.home) return false
     if (item.pane) { const t = lonePane(item.pane); return t ? canPlaceTab(t.id, d.index, d.group) : !!paneById(item.pane) }
     if (item.group) return canMoveGroup(item.group, d.index)
     if (item.tabs?.length) return true
@@ -37,6 +45,7 @@ export function canDropAt(item: DragItem, d: Drop): boolean {
 /** Drop `item` there: a tab, a pane or a group moves, a file opens (a tab of its own in the list, or in a pane). */
 export function dropOn(item: DragItem, d: Drop) {
   if (d.kind === "list") {
+    if (d.home) return
     if (item.pane) { const t = lonePane(item.pane); if (t) placeTab(t.id, d.index, d.group); else paneToTab(item.pane, d.index, d.group) }
     else if (item.group) moveGroupTo(item.group, d.index)
     else if (item.tabs?.length) placeTabs(item.tabs, item.tab!, d.index, d.group)
@@ -55,14 +64,6 @@ export function dropOn(item: DragItem, d: Drop) {
 
 /** A tab, or a tab group's name (its chip, its row), in a list of tabs as drawn (tabs of a folded group aren't). */
 export type Slot = { el: Element; tab?: string; group?: string }
-
-/** Where an element is laid out, without the slide a drag's preview gives it (useSlide): hits are worked out on that. */
-function laidOut(el: Element) {
-  const r = el.getBoundingClientRect(), slid = el.closest<HTMLElement>("[data-slide]")
-  if (!slid?.style.transform) return r
-  const m = new DOMMatrixReadOnly(getComputedStyle(slid).transform)
-  return new DOMRect(r.x - m.m41, r.y - m.m42, r.width, r.height)
-}
 
 /** Where `pos` along the tabs as drawn lands: before which tab (`index`), in which tab group. Between a group's tabs or
  *  after its name: in it; over its last tab, in; just past it, out; on the middle of a folded one's name, into it. */
@@ -85,6 +86,16 @@ export function slotIn(l: TabList, slots: Slot[], pos: number, axis: "x" | "y") 
   return { index, group }
 }
 
+/** Where a tab or pane held on tab `tab`'s middle (springOver) lands: beside it, in its group, on the side it came from
+ *  (after it, from elsewhere), so that row holds still under the pointer, not sliding away and back across its middle. */
+export function slotBeside(l: TabList, item: DragItem, tab: string) {
+  const i = l.tabs.findIndex((t) => t.id === tab)
+  const own = item.pane ? lonePane(item.pane)?.id : undefined
+  const moving = new Set([...(item.tabs ?? []), ...(item.tab ? [item.tab] : []), ...(own ? [own] : [])])
+  const above = l.tabs.slice(0, i).some((t) => moving.has(t.id))
+  return { index: above ? i : i + 1, group: l.tabs[i]?.group ?? null }
+}
+
 /** The tabs as a drop under the pointer would leave them, for a list to draw while dragging (`INCOMING`: where what
  *  comes from elsewhere opens; `into`: a folded group taking it, which stays folded). Null: nothing changes there. */
 export type Preview = { tabs: { id: string; group?: string }[]; into?: string }
@@ -92,8 +103,10 @@ export function previewIn(l: TabList, item: DragItem, d: Drop | null): Preview |
   if (!d || d.kind !== "list") return null
   const groups = new Map(l.tabs.map((t) => [t.id, t.group]))
   const alone = item.pane ? lonePane(item.pane) : null
+  // (a file dragged in that a tab shows already: that tab moves there, as dropOn does, rather than a new one coming in)
+  const shows = !item.tab && !item.pane && !item.group && item.to && (item.paths?.length ?? 1) === 1 ? tabShowing(l, item.to) : undefined
   const moving = new Set(item.group ? l.tabs.filter((t) => t.group === item.group).map((t) => t.id)
-    : alone ? [alone.id] : (item.tabs ?? (item.tab ? [item.tab] : [])).filter((id) => groups.has(id)))
+    : alone ? [alone.id] : shows ? [shows.id] : (item.tabs ?? (item.tab ? [item.tab] : [])).filter((id) => groups.has(id)))
   const into = d.group && l.groups?.find((s) => s.id === d.group)?.collapsed ? d.group : undefined
   if (into) return { tabs: l.tabs.map((t) => ({ id: t.id, group: t.group })), into }
   const rest = l.tabs.filter((t) => !moving.has(t.id))
@@ -138,13 +151,14 @@ export function placeAt(x: number, y: number, el: Element | null, files = false)
   return { kind: "pane", pane, zone: d < 0.25 ? side : "center" }
 }
 
-/** What's under the pointer, if dropping there changes something. */
-export function dropAt(item: DragItem, x: number, y: number, el: Element | null): Drop | null {
+/** What's under the pointer, if dropping there changes something (or, in the tab bar, it's where the tab is: `home`).
+ *  `held`: the tab whose chip it's held on (springTabAt), which holds still. */
+export function dropAt(item: DragItem, x: number, y: number, el: Element | null, held?: string | null): Drop | null {
   if (!item.to && !item.pane && !item.group && !item.tab) return null  // a folder, a sidebar panel
-  const d = placeAt(x, y, el, !item.tab && !item.pane && !item.group)
-  // (a tab group goes where it's dropped, joining none)
-  const fixed = d?.kind === "list" && item.group ? { ...d, group: null } : d
-  return fixed && canDropAt(item, fixed) ? fixed : null
+  const d: Drop | null = held ? (el?.closest("[data-tab-strip]") ? { kind: "list", ...slotBeside(here(), item, held) } : null)
+    : placeAt(x, y, el, !item.tab && !item.pane && !item.group)
+  if (d?.kind === "list") return listDrop(item, item.group ? { ...d, group: null } : d)  // (a tab group joins none)
+  return d && canDropAt(item, d) ? d : null
 }
 
 /** The files among paths selected in the tree (its folders don't open in a tab). */
@@ -157,15 +171,27 @@ function filesAmong(paths: string[]) {
 // ---------- spring-loaded tabs: a dragged pane or tab held over another tab's row opens it (Rex) ----------
 
 const SPRING_MS = 1000
-let spring: { tab: string; timer: number } | null = null
-/** What's dragged is over tab `tab`'s row (null: over none): held there about a second, that tab opens, so what's
- *  dragged can go into its panes. Only a pane or a tab springs a row open; a file opens in the list where it's let go. */
-export function springOver(tab: string | null, item: DragItem | null) {
-  if (spring?.tab === tab) return
-  if (spring) clearTimeout(spring.timer)
+/** Lit only once held there this long: passed over on the way elsewhere, a row doesn't flash. */
+const LIT_MS = 250
+/** Moved further than this (px), the pointer isn't holding still: the wait starts again. */
+const STILL_PX = 6
+type Spring = { tab: string; x: number; y: number; timer: number; lit: boolean; light: number }
+let spring: Spring | null = null
+/** What's dragged is at (x, y) on tab `tab`'s row (null: none): held still there a second, that tab opens to drop into
+ *  its panes; moved on, it waits again. Only a pane or a tab springs one; a file opens in the list where it's let go. */
+export function springOver(tab: string | null, item: DragItem | null, x = 0, y = 0) {
+  if (spring?.tab === tab && Math.hypot(x - spring.x, y - spring.y) <= STILL_PX) return
+  if (spring) { clearTimeout(spring.timer); clearTimeout(spring.light) }
+  // (a row lit goes dark with the move that left it, drawn again as every move is)
   spring = null
   if (!tab || !item || !(item.pane || item.tab) || item.tab === tab || here().active === tab) return
-  spring = { tab, timer: window.setTimeout(() => { spring = null; selectTab(tab) }, SPRING_MS) }
+  const s: Spring = { tab, x, y, lit: false, light: 0, timer: window.setTimeout(() => { spring = null; sprung = { tab, item }; selectTab(tab) }, SPRING_MS) }
+  s.light = window.setTimeout(() => { if (spring !== s) return; s.lit = true; rehit() }, LIT_MS)
+  spring = s
 }
-/** Whether a row is about to spring open (drawn lit, as Rex's). */
-export const springing = () => spring?.tab ?? null
+/** Whether a row is about to spring open (drawn lit, as Rex's), once held on it a moment. */
+export const springing = () => (spring?.lit ? spring.tab : null)
+/** The tab a spring opened, and for which drag (its item, the same object all along). */
+let sprung: { tab: string; item: DragItem } | null = null
+/** Whether `item`'s drag opened tab `tab` by holding on it: its row goes on holding still, though it's the tab shown now. */
+export const sprangOpen = (item: DragItem, tab: string) => sprung?.item === item && sprung.tab === tab
