@@ -32,7 +32,7 @@ export async function checkoutOf(repo: string, roots: string[]) {
   const found: { root: string; main: boolean }[] = []
   for (const r of roots.slice(0, 80)) {
     try {
-      const top = (await git(r, "rev-parse", "--show-toplevel")).trim()
+      const top = path.resolve((await git(r, "rev-parse", "--show-toplevel")).trim()) // (Windows: git says C:/a/b)
       if (found.some((f) => f.root === top) || !names(await git(top, "remote", "-v"), repo)) continue
       found.push({ root: top, main: fs.statSync(path.join(top, ".git")).isDirectory() })
       if (found.at(-1)!.main) break
@@ -45,15 +45,15 @@ export async function checkoutOf(repo: string, roots: string[]) {
  *  the checkout, named for the branch (megaset-vibrant-pasteur-7o0vgx) or the session. */
 export async function worktreeFor(root: string, session: string, branch: string | undefined) {
   const list = await git(root, "worktree", "list", "--porcelain")
+  const where = (block: string) => { const l = block.split("\n").find((x) => x.startsWith("worktree ")); return l ? path.resolve(l.slice(9)) : null }
   if (branch) {
-    const at = list.split("\n\n").find((b) => b.split("\n").includes(`branch refs/heads/${branch}`))
-    const p = at?.split("\n").find((l) => l.startsWith("worktree "))?.slice(9)
+    const p = where(list.split("\n\n").find((b) => b.split("\n").includes(`branch refs/heads/${branch}`)) ?? "")
     if (p && fs.existsSync(p)) return p
   }
   const tail = (branch?.split("/").pop() || session.slice(-8)).toLowerCase().replace(/[^a-z0-9-]+/g, "-").slice(0, 60)
   const dir = path.join(path.dirname(root), `${path.basename(root)}-${tail}`)
   if (fs.existsSync(dir)) {
-    if (list.split("\n").includes(`worktree ${dir}`)) return dir
+    if (list.split("\n\n").some((b) => where(b) === dir)) return dir
     throw new OpError(`${dir} is there already and isn't a worktree of ${path.basename(root)}: give cwd`, 409)
   }
   await git(root, "worktree", "add", "--detach", dir)
