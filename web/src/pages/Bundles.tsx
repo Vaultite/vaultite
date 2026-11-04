@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import {
   addIncoming, agentPrompt, applyBundle, browseBundles, bundleText, exportBundle, forkBundle, givenImport, incomingOf, isBundleText, isLayout,
-  lockedBy, openImport, previewOf, removeBundle, runsCode, shareOf, skipOf, useBundles, useListedPicture, usePicture, without,
+  lockedBy, openImport, previewOf, removeBundle, runsCode, shareOf, skipOf, useBundles, without,
   type BundleInfo, type Directory, type Incoming, type Listed, type Plan, type ShareItem,
 } from "@/core/bundles"
 import { AND, APPEARANCE, EDITOR_LABELS, EDITOR_NAMES, EDITOR_VALUES, NEWTAB, OPENS, stem } from "@/core/bundlenames"
@@ -22,7 +22,7 @@ import { useSheetGuard } from "@/components/DetailSheet"
 import { Bar as Line, Panel, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
 import { askToRun } from "@/components/LayoutPicker"
-import { LayoutDrawing } from "@/components/LayoutDrawings"
+import { LayoutDrawing, type Drawable } from "@/components/LayoutDrawings"
 import { cn, plural } from "@/lib/utils"
 import { official } from "../../../core/updates.ts"
 import { Button } from "@/components/Button"
@@ -81,28 +81,19 @@ const CARD = "glass flex min-w-0 flex-1 cursor-pointer flex-col rounded-[12px] t
 // Two across on a phone, three or four as they fit.
 const GRID = "grid grid-cols-2 gap-3 @2xl:grid-cols-3 @4xl:grid-cols-4"
 
-const Picture = ({ src, onError }: { src: string; onError?: () => void }) =>
-  <img src={src} alt="" draggable={false} onError={onError} className="aspect-[16/10] w-full rounded-t-[11px] border-b-[0.5px] border-border bg-background object-cover object-top-left" />
-
 /** What a shared bundle is, as its card says it. */
 const KIND: Record<NonNullable<Listed["kind"]>, string> = { layout: "Layout", pack: "Pack", look: "Look" }
 
-/** What a listed bundle's card draws without its picture: a layout that says nothing but its name, drawn plain. */
-const plainOf = (e: Listed): BundleInfo => ({ id: e.address, source: "vault", name: e.name, description: e.description, icon: e.icon ?? "package", tint: e.tint ?? "",
-  author: e.author, sort: 0, theme: null, scheme: null, density: null, on: null, pinned: null, panels: null, shape: { tabBar: null, rails: null, floating: null }, home: null,
-  code: [], official: true, from: e.address, guide: null, hotkeys: false, preview: null, previewDark: null, problems: [], kind: e.kind ?? "layout", tweaked: false })
+/** What a listed bundle's picture is drawn from: its sketch (an index from before has none: drawn plain). */
+const drawableOf = (e: Listed): Drawable => ({ id: e.address, source: "vault", theme: null, scheme: null, panels: null, home: null, shape: null, ...e.sketch })
 
-/** A listed bundle's card: its picture (else its shape, drawn as Settings' are), its name and kind, and only then that it
+/** A listed bundle's card: its drawing (as Settings' layouts are), its name and kind, and only then that it
  *  runs code, who made it (not Vaultite) and its stars. Opening it is its import preview, pinned at the commit listed. */
 function ListedCard({ e }: { e: Listed }) {
-  const src = useListedPicture(e)
-  const [broken, setBroken] = useState(false)
-  const b = plainOf(e)
   const theirs = !official(e.repo)
   return (
     <button type="button" onClick={() => openImport(e.address)} data-listed={e.source} data-keyrow className={cn(CARD, "relative")}>
-      {src && !broken ? <Picture src={src} onError={() => setBroken(true)} />
-        : <span className="block aspect-[16/10] w-full overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border"><LayoutDrawing b={b} className="block size-full" /></span>}
+      <span className="block aspect-[16/10] w-full overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border"><LayoutDrawing b={drawableOf(e)} className="block size-full" /></span>
       {/* (over its picture, where a narrow card's name keeps its room) */}
       {e.imported && (
         <span className={cn("absolute top-2 right-2 rounded-[6px] bg-background/85 px-1.5 text-[11px] leading-[20px] font-medium shadow-[0_0_0_0.5px_var(--border)] backdrop-blur",
@@ -193,8 +184,7 @@ function CardSkeletons({ count }: { count: number }) {
 
 // ---------- a bundle's preview: what applying it changes here ----------
 
-/** `file`: an import's export (its pictures are in it). */
-type Preview = { bundle: BundleInfo; plan: Plan; pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }>; file?: unknown }
+type Preview = { bundle: BundleInfo; plan: Plan; pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }> }
 
 const showValue = (v: unknown) => (v === null || v === undefined ? "default" : typeof v === "boolean" ? (v ? "on" : "off") : Array.isArray(v) ? v.join(", ") || "none" : String(v))
 
@@ -448,7 +438,6 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
   const code = runsCode(chosen)
   const pins = plan.pins
   const added = plan.plugins.added ?? []
-  const picture = usePicture(b, p.file)
   const has = (id: string) => plan.changes.some((c) => c.id === id)
   const installs = plan.code.filter((c) => c.change)
   const nameOf = (id: string) => pluginById(id)?.name ?? plan.code.find((c) => c.id === id)?.name ?? id
@@ -467,7 +456,7 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
         </div>
       )}
       {!!b.problems.length && <p className="mb-4 text-[14px] text-ink-(--red)">{b.problems.join(". ")}</p>}
-      {picture && <img src={picture} alt={`${b.name}, as it looks`} className="mb-4 w-full rounded-[12px] border-[0.5px] border-border" data-bundle-picture />}
+      <span className="mb-4 block aspect-[16/10] w-full overflow-hidden rounded-[12px] border-[0.5px] border-border" data-bundle-picture><LayoutDrawing b={b} className="block size-full" /></span>
       <div className="grid grid-cols-1 gap-3">
         {(installs.length > 0 || plan.plugins.on.length > 0 || plan.plugins.off.length > 0 || plan.plugins.missing.length > 0 || added.length > 0) && (
           <Panel title="Plugins" icon={Puzzle}>
@@ -594,7 +583,6 @@ function Setting({ pick, id, label, from, to, labels }: { pick?: Picks; id: stri
 // ---------- sharing and importing ----------
 
 const PART: Record<ShareItem["kind"], (x: ShareItem) => string> = {
-  picture: () => "A picture of your window: it may show your notes",
   page: (x) => (x.own ? "A page with text of your own" : "A page it pins"),
   file: () => "A file it brings",
   settings: (x) => `Settings: ${x.keys?.join(", ") || "none"}`,

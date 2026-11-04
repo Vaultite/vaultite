@@ -191,6 +191,12 @@ function eachSettings(v: Vault, change: (get: (name: string) => Item | null, set
   }
 }
 
+function bundlePicturesOut(v: Vault) {
+  let saved: string[] = []
+  try { saved = fs.readdirSync(v.abs(".vaultite/bundles"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) } catch { /* none */ }
+  for (const b of saved) for (const f of ["preview.png", "preview-dark.png"]) fs.rmSync(v.abs(`.vaultite/bundles/${b}/${f}`), { force: true })
+}
+
 /** A step: what it changes in the vault. One that changes files (`only` those, when some were left) returns the files it
  *  couldn't read yet, to change at a later start. */
 const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<string[]> }[] = [
@@ -282,6 +288,8 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       if (hk) set("hotkeys", hk)
     }),
   },
+  // Saved bundles' screenshots (preview.png, preview-dark.png): their pictures are drawn now.
+  { id: "bundle-pictures-out-2026-11", run: bundlePicturesOut },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

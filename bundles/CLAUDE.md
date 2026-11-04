@@ -16,5 +16,5 @@
 - The plugins one installs are pinned (commit and hash): `node tools/pin_bundles.ts` when Vaultite/plugins releases
   one (`--check` says which are behind). Tests read them from a copy pinned to stand-ins (`VAULTITE_BUNDLES`,
   tools/test/official.ts).
-- Their card pictures (`preview.png`, `preview-dark.png`) are shots of the app with each applied: after a change to
-  how one looks (or to the app's look), `PORT=<free> node web/qa/bundle-shots.mjs [<id>...]` and look at them.
+- Their pictures are drawn (`web/src/components/LayoutDrawings.tsx`: the built-ins by hand, others from
+  `core/bundlesketch.ts`), never screenshots: a change to how a built-in looks changes its drawing.

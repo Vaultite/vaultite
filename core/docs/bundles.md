@@ -32,8 +32,6 @@ packs: Life OS (days, people, health, books, and pages over them) and Agents (co
   hotkeys.json       optional
   newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page;
                      `opens`: what ⌘T opens): saved ones say those the app's set
-  preview.png        its card's picture in Get: a screenshot of the app it makes (a layout's tile is drawn from its files)
-  preview-dark.png   the same in dark, shown while the app is dark (each picture stands in for the other)
   plugins/<id>/data.json   a plugin's settings: those that differ from its defaults (saved: also the ones the app's bundles set)
   plugins/<id>/      with a manifest.json: a vault plugin made in the vault that it brings (it runs code: applying asks the user, and their yes
                      allows it on that machine; one already in the vault keeps waiting until allowed on its own)
@@ -84,7 +82,7 @@ packs: Life OS (days, people, health, books, and pages over them) and Agents (co
   back to before it. Meanwhile every window shows a bar at its foot, "Trying <Name>", with Revert and Keep.
 - Another is in use too while applying it would change nothing (with its tweaks).
 - Saving names the installed plugins that are on by their source (`install`); the vault's own go as files only when
-  asked. A plugin's page as it wrote it goes by its name (`Dashboards/Today.md`), other pinned dashboards as files. Sharing (export, Copy) leaves out its picture, pages with the user's own text and pins to their notes, unless
+  asked. A plugin's page as it wrote it goes by its name (`Dashboards/Today.md`), other pinned dashboards as files. Sharing (export, Copy) leaves out pages with the user's own text and pins to their notes, unless
   asked (`--include`). A git repository is a bundle too: its folder at the top, or one `.bundle.json`;
   `vau bundle import owner/name` adds it (bundle.json's `from` keeps where). Getting it again is an update: its preview
   (`changes`: files added, changed, removed; installs re-pinned) says what's different, and it replaces the user's copy

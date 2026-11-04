@@ -32,8 +32,10 @@ function commit(scheme) {
 function index(desk) {
   const entry = (o) => ({ description: "Made up.", author: "Bob Lee", stars: 3, updated: "2026-10-01T00:00:00Z", topics: ["vaultite-bundle"], runsCode: false, installs: [], ...o })
   writeFileSync(INDEX, JSON.stringify({ format: 1, generated: "2026-10-01T00:00:00Z", plugins: [], blocked: {}, bundles: [
-    entry({ name: "Writing desk", description: "Pages for writing.", author: "Alice Park", repo: "qa/desk", commit: desk, stars: 9, icon: "pen", tint: "purple", kind: "look" }),
-    entry({ name: "Lamps", repo: "boblee/fleet", dir: "bundles/lamps", commit: "c".repeat(40), runsCode: true, installs: [{ id: "tasks", name: "Tasks", source: "Vaultite/plugins/tasks" }] }),
+    entry({ name: "Writing desk", description: "Pages for writing.", author: "Alice Park", repo: "qa/desk", commit: desk, stars: 9, icon: "pen", tint: "purple", kind: "look",
+      sketch: { scheme: "dracula" } }),
+    entry({ name: "Lamps", repo: "boblee/fleet", dir: "bundles/lamps", commit: "c".repeat(40), runsCode: true, installs: [{ id: "tasks", name: "Tasks", source: "Vaultite/plugins/tasks" }], kind: "pack",
+      sketch: { panels: { left: ["search:search", "terminal:sessions"], right: ["inbox:inbox"], collapsed: [] }, shape: { glass: "sidebars" }, home: [{ block: "inbox", view: null, wide: false }] } }),
   ] }))
 }
 rmSync(`${REPOS}/qa`, { recursive: true, force: true })
@@ -98,6 +100,8 @@ const { ctx, page } = await open(1600, 900)
 {
   await go(page)
   await preview(page, "zen")
+  const pic = await sheet(page).locator('[data-bundle-picture] [data-layout-drawing="zen"]').boundingBox()
+  check("Zen's Details: its picture is Settings' drawing, at the sheet's width (no screenshot)", !!pic && pic.width > 300 && !(await sheet(page).locator("img").count()), pic)
   const ids = await sheet(page).locator("[data-change]").evaluateAll((els) => els.map((e) => e.dataset.change))
   check("Zen's Details: a tick per change, all on", ids.length > 10 && ids.includes("plugin:glance") && ids.includes("appearance:tabBar") && ids.includes("panels") &&
     (await sheet(page).locator('[data-change][aria-checked="false"]').count()) === 0, ids)
@@ -226,6 +230,11 @@ const { ctx, page } = await open(1600, 900)
     await page.locator("[data-setup=get] [data-bundles-import]").count() === 1)
   check("each with its kind by its name, its author (not Vaultite's) under it, one that runs code saying so", /Look\s+by Alice Park/.test(await browse.locator('[data-listed="qa/desk"]').innerText()) &&
     /Installs|Runs code/.test(await browse.locator('[data-listed="boblee/fleet/bundles/lamps"] [data-bundle-runs-code]').innerText()), await browse.locator('[data-listed="qa/desk"]').innerText())
+  const art = await browse.locator("[data-listed]").evaluateAll((els) => els.map((e) => ({ img: e.querySelectorAll("img").length, svg: e.querySelector("[data-layout-drawing]"),
+    scheme: e.querySelector("[data-layout-drawing]")?.getAttribute("data-scheme"), glass: !!e.querySelector("[data-layout-drawing] rect[fill^='url(']"),
+    w: e.querySelector("[data-layout-drawing]")?.getBoundingClientRect().width ?? 0 })).map(({ svg, ...x }) => ({ ...x, drawn: !!svg })))
+  check("Get's cards are drawn, never screenshots: the look in its scheme, the pack's glass", art.length === 2 && art.every((x) => x.drawn && !x.img && x.w > 60) &&
+    art[0].scheme === "dracula" && !art[0].glass && art[1].glass && !art[1].scheme, art)
   await shot(page, "get")
   const search = page.locator("[data-setup=get] [data-plugins-search] input")
   await search.fill("lamps")
@@ -239,6 +248,7 @@ const { ctx, page } = await open(1600, 900)
   await browse.locator('[data-listed="qa/desk"]').click()
   await until(() => sheet(page).locator("[data-bundle-incoming-add]").count(), 10_000)
   check("opening one is its import preview, pinned at the listed commit", (await sheet(page).innerText()).includes("From qa/desk") && !(await sheet(page).locator("[data-bundle-update]").count()))
+  check("its picture drawn in the scheme it sets", await sheet(page).locator('[data-bundle-picture] [data-layout-drawing][data-scheme="dracula"]').count() === 1 && !(await sheet(page).locator("img").count()))
   await sheet(page).locator("[data-bundle-incoming-add]").click()
   await until(() => json(".vaultite/bundles/desk/bundle.json"), 6000)
   check("added, from that commit", json(".vaultite/bundles/desk/bundle.json")?.from === `qa/desk@${c1}`, json(".vaultite/bundles/desk/bundle.json"))

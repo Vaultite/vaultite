@@ -11,6 +11,7 @@ import { removeTree, type Vault } from "./vault.ts"
 import { keptOf } from "./kept.ts"
 import { fetchPublic } from "./web.ts"
 import { isObj } from "./values.ts"
+import type { Sketch } from "./bundlesketch.ts"
 
 export const DEFAULT_INDEX = "https://raw.githubusercontent.com/Vaultite/plugins/main/directory/index.json"
 /** An index in a GitHub repository, read with git (so a private one works where git is signed in): owner/name/path.json */
@@ -40,18 +41,29 @@ export type BundleEntry = {
   icon?: string; tint?: string
   /** A layout, a pack or a look (core/bundles.ts kindFrom; an index from before says none: a layout). */
   kind: "layout" | "pack" | "look"
-  /** Its card's pictures at that commit (light and dark), when it has them. */
-  preview?: string; previewDark?: string
+  /** What its card's picture is drawn from (an index from before has none: drawn plain). */
+  sketch?: Sketch
 }
 export type Index = { generated: string | null; plugins: Entry[]; bundles: BundleEntry[]; blocked: Record<string, string[]> }
 export type Got = { url: string; available: boolean; fetched: string | null; error?: string; index: Index }
 
 const EMPTY: Index = { generated: null, plugins: [], bundles: [], blocked: {} }
 const COMMIT = /^[0-9a-f]{40}$/
-const PICTURE = /^https:\/\/raw\.githubusercontent\.com\/[\w.%/-]+\.png$/
 const str = (v: unknown, max = 500) => (typeof v === "string" ? v.slice(0, max) : "")
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0)
 const date = (v: unknown) => (typeof v === "string" && !Number.isNaN(Date.parse(v)) ? v : null)
+
+/** A listed bundle's sketch as it reads: each part checked, one that isn't left unsaid. */
+function readSketch(o: Record<string, unknown>): Sketch {
+  const s = isObj(o.shape) ? o.shape : {}, p = isObj(o.panels) ? o.panels : null
+  const bool = (v: unknown) => (typeof v === "boolean" ? v : null), name = (v: unknown) => (/^[\w-]{1,60}$/.test(str(v)) ? str(v) : null)
+  const keys = (v: unknown) => (Array.isArray(v) ? v.filter((k): k is string => typeof k === "string" && /^[\w-]+:[\w-]+$/.test(k)).slice(0, 30) : [])
+  return {
+    theme: name(o.theme), scheme: name(o.scheme), panels: p && { left: keys(p.left), right: keys(p.right), collapsed: keys(p.collapsed) },
+    shape: { tabBar: bool(s.tabBar), rails: bool(s.rails), floating: bool(s.floating), glass: s.glass === "sidebars" || s.glass === "pages" ? s.glass : null },
+    home: Array.isArray(o.home) ? o.home.filter(isObj).slice(0, 6).map((h) => ({ block: str(h.block, 60), view: name(h.view), wide: h.wide === true })).filter((h) => h.block) : null,
+  }
+}
 
 /** An index as it reads (leniently: entries without an id, a repo or a version are left out). */
 export function readIndex(o: unknown): Index {
@@ -76,7 +88,6 @@ export function readIndex(o: unknown): Index {
     if (!isObj(e) || !REPO.test(str(e.repo)) || !COMMIT.test(str(e.commit)) || !str(e.name)) continue
     const dir = str(e.dir, 200), place = dir ? `${str(e.repo)}/${dir}` : str(e.repo)
     if (dir && !PLACE.test(place)) continue
-    const pic = (v: unknown) => (PICTURE.test(str(v, 1000)) ? str(v, 1000) : null)
     bundles.push({ name: str(e.name, 100), description: str(e.description), author: str(e.author, 100), repo: str(e.repo), dir: dir || null, commit: str(e.commit),
       address: `${place}@${str(e.commit)}`, stars: num(e.stars), updated: date(e.updated),
       topics: Array.isArray(e.topics) ? e.topics.filter((t): t is string => typeof t === "string").slice(0, 20) : [], runsCode: e.runsCode === true,
@@ -84,7 +95,7 @@ export function readIndex(o: unknown): Index {
         .filter((x) => /^[a-z][a-z0-9-]*$/.test(x.id)).slice(0, 50),
       ...(iconOf(e.icon) ? { icon: iconOf(e.icon)! } : {}), ...(/^[a-z][a-z-]*$/.test(str(e.tint, 30)) ? { tint: str(e.tint) } : {}),
       kind: e.kind === "pack" || e.kind === "look" ? e.kind : "layout",
-      ...(pic(e.preview) ? { preview: pic(e.preview)! } : {}), ...(pic(e.previewDark) ? { previewDark: pic(e.previewDark)! } : {}) })
+      ...(isObj(e.sketch) ? { sketch: readSketch(e.sketch) } : {}) })
   }
   const blocked: Record<string, string[]> = {}
   if (isObj(o.blocked)) for (const [k, v] of Object.entries(o.blocked)) if (Array.isArray(v)) blocked[k.toLowerCase()] = v.filter((x): x is string => typeof x === "string")

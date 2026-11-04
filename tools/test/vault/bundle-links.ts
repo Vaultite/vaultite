@@ -30,7 +30,7 @@ export default async ($: VaultTest) => {
       "bundle.json": JSON.stringify({ name: "Writing desk", description: "For writing", author: "Alice Park" }),
       "plugins.json": JSON.stringify({ disabled: ["terminal"], enabled: ["claude-code", "kanban"], install: { kanban: { name: "Kanban", source: "alice/kanban" } } }),
       "pages.json": JSON.stringify({ pinned: ["Desk.md"] }), "Desk.md": "---\ntype: dashboard\n---\n# Desk\n", "Notes.md": "not the bundle's\n",
-      "preview.png": PNG, "plugins/word-count/manifest.json": JSON.stringify({ id: "word-count", name: "Word count" }), "plugins/word-count/web.js": "export {}",
+      "preview.png": PNG, "Lighthouse/lamp.png": PNG, "plugins/word-count/manifest.json": JSON.stringify({ id: "word-count", name: "Word count" }), "plugins/word-count/web.js": "export {}",
     }
     const asked: string[] = []
     const gh = (files: Record<string, string | Buffer>, tags: string[] | null) => async (url: string) => {
@@ -45,10 +45,10 @@ export default async ($: VaultTest) => {
     }
     const got = await fromGitHub("alice/desk", gh(repo, ["v0.9.0", "v1.10.0", "v1.2.0", "nightly"]))
     const files = Object.keys(got.files).sort().join()
-    check("demo import: a bundle's folder at the top, without the repository's own files", files === "Desk.md,bundle.json,pages.json,plugins.json,plugins/word-count/manifest.json,plugins/word-count/web.js,preview.png", files)
-    check("demo import: at its newest version tag, its pictures as bytes, where it's from in bundle.json",
+    check("demo import: a bundle's folder at the top, without the repository's own files", files === "Desk.md,Lighthouse/lamp.png,bundle.json,pages.json,plugins.json,plugins/word-count/manifest.json,plugins/word-count/web.js", files)
+    check("demo import: at its newest version tag, its images as bytes, where it's from in bundle.json",
       asked.some((u) => u.includes("/git/trees/v1.10.0")) && asked.some((u) => u.startsWith("https://raw.githubusercontent.com/alice/desk/v1.10.0/")) &&
-      (got.files["preview.png"] as Any).base64 === PNG.toString("base64") && JSON.parse(got.files["bundle.json"] as string).from === "alice/desk" && got.id === "desk", got)
+      (got.files["Lighthouse/lamp.png"] as Any).base64 === PNG.toString("base64") && JSON.parse(got.files["bundle.json"] as string).from === "alice/desk" && got.id === "desk", got)
     asked.length = 0
     await fromGitHub("alice/desk", gh(repo, []))
     check("demo import: no version tag, the default branch", asked.some((u) => u.includes("/git/trees/HEAD")), asked)
@@ -74,7 +74,7 @@ export default async ($: VaultTest) => {
       !!fit.plugins.enabled?.includes("claude-code"), fit)
     const [code, r] = await api("POST", "bundles/import", { ...got, files: fit.files })
     check("demo import: what it made imports as a bundle from that repository, not applied", code === 200 && r.bundle.name === "Writing desk" && r.bundle.from === "alice/desk" &&
-      r.bundle.author === "Alice Park" && !r.bundle.problems.length && r.bundle.preview, r)
+      r.bundle.author === "Alice Park" && !r.bundle.problems.length, r)
     if (r.bundle?.id) await api("DELETE", `bundles/${r.bundle.id}`)
   }
 }

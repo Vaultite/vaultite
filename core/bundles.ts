@@ -4,11 +4,12 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { fenceLayout, settingsOf, type SettingDecls } from "./blocks.ts"
+import { settingsOf, type SettingDecls } from "./blocks.ts"
 import { EDITOR, EDITOR_KEYS } from "./editor.ts"
 import { pageAt, templates } from "./pages.ts"
 import { asLocked, checkout, COMMIT, parseSource, readLock, tagsOf } from "./installs.ts"
 import { type Kind, kindFrom, KINDS } from "./bundlekind.ts"
+import { homeBlocks, type HomeBlock, type Sketch, sketchOf } from "./bundlesketch.ts"
 import { LOOK, PERSONAL_LOOK } from "./look.ts"
 import { MOVED } from "./migrations.ts"
 import { switched } from "./pluginmeta.ts"
@@ -16,7 +17,6 @@ import { official } from "./updates.ts"
 import { digestOf } from "./vaultplugins.ts"
 import { OpError } from "./ops.ts"
 import { HTTPError, type Plugin, ROOT, Text } from "./plugins.ts"
-import { blockName, scan } from "./sections.ts"
 import { readSidebars, type Sidebars } from "./sidebars.ts"
 import { type Item, readText, removeTree, type Vault, writeAtomic } from "./vault.ts"
 import { isObj } from "./values.ts"
@@ -42,10 +42,6 @@ const FOLDED: Record<string, string> = { minimal: "standard" }
 const RESERVED = new Set(["restore", "import", "onboarding", "previous", "keep", "applied", "trial", "browse", "tweaks"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
 export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "editor", "hotkeys", "newtab"] as const
-/** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes; its dark one is shown
- *  when the app is dark (each falls back to the other). */
-const PREVIEW = "preview.png", PREVIEW_DARK = "preview-dark.png"
-export const PICTURES: string[] = [PREVIEW, PREVIEW_DARK]
 /** The app's own appearance and editor settings when a key isn't set: a bundle setting one of these removes the key
  *  instead, so a vault never holds a default. */
 const LOOK_DEFAULTS: Item = LOOK, EDITOR_DEFAULTS: Item = EDITOR
@@ -78,7 +74,6 @@ export type Host = {
   uninstall: (id: string) => Promise<void>
 }
 
-const isPng = (f: string | Buffer | undefined) => Buffer.isBuffer(f) && f.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
 const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : [])
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 const hash = (data: string | Buffer) => crypto.createHash("sha256").update(data).digest("hex").slice(0, 16)
@@ -177,7 +172,7 @@ function parts(files: Files) {
   const settings = new Map<string, string>() // plugin id -> its data.json path
   const vaultFiles: string[] = [], hidden: string[] = [] // vault paths, and .vaultite/ ones (themes, snippets, plugin folders)
   for (const f of Object.keys(files)) {
-    if (f === "bundle.json" || PICTURES.includes(f) || CONFIGS.some((c) => f === `${c}.json`)) continue
+    if (f === "bundle.json" || CONFIGS.some((c) => f === `${c}.json`)) continue
     const m = /^plugins\/([^/]+)\/(.+)$/.exec(f)
     if (m) {
       if (code.has(m[1])) hidden.push(`.vaultite/${f}`)
@@ -201,10 +196,9 @@ export type Info = {
   on: string[] | null; pinned: string[] | null
   /** Its sidebars' panels (null: it leaves them as they are, or the default), for its card. */
   panels: { left: string[]; right: string[]; collapsed: string[] } | null
-  /** How its window is drawn, for its tile: the tab bar, rails (off: sidebars slide in from the edge) and panes floating
-   *  as cards (paneCards, or a snippet named so); null where it leaves one as it is. */
-  shape: { tabBar: boolean | null; rails: boolean | null; floating: boolean | null }
-  /** What the first page it pins draws, for its card: its blocks in order (null: it pins nothing; [] not known). */
+  /** How its window is drawn, for its picture (core/bundlesketch.ts). */
+  shape: Sketch["shape"]
+  /** What the first page it pins draws, for its picture: its blocks in order (null: it pins nothing; [] not known). */
   home: HomeBlock[] | null
   /** Vault plugins it brings or installs: they run code; `official`: only Vaultite's own, installed from its directory. */
   code: string[]; official: boolean
@@ -213,8 +207,6 @@ export type Info = {
   /** The note it brings that says how the setup works (bundle.json's `guide`): opened after applying. */
   guide: string | null
   hotkeys: boolean
-  /** Its preview.png's and preview-dark.png's versions (GET /api/bundles/<id>/<file>), or null when it has none. */
-  preview: string | null; previewDark: string | null
   problems: string[]
   /** It has tweaks remembered (tweaks/<id>.json): applying it brings them back, unless fresh. */
   tweaked: boolean
@@ -225,7 +217,6 @@ export type Info = {
    *  (`differs`: its plan's change ids that would apply now, those skipped then left out). */
   applied?: { at: string; skip: string[] }; modified?: boolean; differs?: string[]
 }
-type HomeBlock = { block: string; view: string | null; wide: boolean }
 const kindOf = (b: Bundle, m: Item) => kindFrom(m, Object.keys(b.files))
 
 /** The blocks of the first page a bundle pins (the vault's copy, wherever it moved, else the bundle's, else the
@@ -238,18 +229,7 @@ function homeOf(b: Bundle, host: Host, pinned: string[] | null): HomeBlock[] | n
   try { text = readText(host.vault.abs(host.vault.relocated(homed(host.vault, first)))) } catch {
     text = textOf(b.files[first]) || (pluginPages(host).get(first) ?? "")
   }
-  const out: HomeBlock[] = []
-  const s = scan(text)
-  for (const f of s.fences) {
-    // (a ```base fence: its first view's type, a kanban drawn as a board)
-    const name = f.close === null ? null : blockName(f.info) ?? (f.info.trim().split(/\s/)[0] === "base" ? "base" : null)
-    if (!name) continue
-    const body = s.lines.slice(f.open + 1, f.close!).join("\n")
-    const view = (name === "base" ? /^\s*-?\s*type:\s*['"]?(\w+)/m : /^view:\s*['"]?(\w+)/m).exec(body)?.[1] ?? null
-    out.push({ block: name, view: view === "kanban" ? "board" : view, wide: fenceLayout(f.info, body).wide })
-    if (out.length >= 6) break
-  }
-  return out
+  return homeBlocks(text)
 }
 
 function info(b: Bundle, host: Host): Info {
@@ -264,20 +244,14 @@ function info(b: Bundle, host: Host): Info {
     pinned = p && Array.isArray(p.pinned) ? strs(p.pinned) : null
   } catch { /* problems says */ }
   const installs = installsOf(b.files, host), brings = parts(b.files).code
-  let panels: Info["panels"] = null
-  const s = readSidebars(jsonOr(b, "sidebars.json"))
-  if (s) panels = { left: s.left, right: s.right, collapsed: s.collapsed }
-  const bool = (v: unknown) => (typeof v === "boolean" ? v : null)
-  const snippets = Array.isArray(look.snippets) ? strs(look.snippets) : null
-  const floating = look.paneCards === true || !!snippets?.some((x) => /float/i.test(x)) ? true : look.paneCards === false || snippets ? false : null
+  const sk = sketchOf(look, jsonOr(b, "sidebars.json"), homeOf(b, host, pinned))
   return {
     id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"), kind: kindOf(b, m),
     sort: typeof m.sort === "number" ? m.sort : 1000,
-    author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
-    on, pinned, panels, shape: { tabBar: bool(look.tabBar), rails: bool(look.rails), floating }, home: homeOf(b, host, pinned), code: [...brings, ...installs.map((x) => x.id)],
+    author: str(m.author), theme: sk.theme, scheme: sk.scheme, density: str(look.density) || null,
+    on, pinned, panels: sk.panels, shape: sk.shape, home: sk.home, code: [...brings, ...installs.map((x) => x.id)],
     official: !brings.length && installs.every((x) => official(x.source)), from: str(m.from) || null,
     guide: typeof b.files[str(m.guide)] === "string" ? str(m.guide) : null, hotkeys: b.files["hotkeys.json"] !== undefined,
-    preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null, previewDark: Buffer.isBuffer(b.files[PREVIEW_DARK]) ? hash(b.files[PREVIEW_DARK]) : null,
     problems: b.error ? [b.error] : problems(b.files), tweaked: fs.existsSync(host.vault.abs(`${TWEAKS}/${b.id}.json`)),
   }
 }
@@ -308,7 +282,6 @@ export function problems(files: Files): string[] {
   if (pg && pg.pinned !== undefined && !Array.isArray(pg.pinned)) out.push("pages.json: pinned must be a list of vault paths")
   const sb = ok("sidebars.json")
   if (sb && Object.keys(sb).length && !readSidebars(sb)) out.push("sidebars.json needs left or right (a list of panels), or {} for the default")
-  for (const f of PICTURES) if (files[f] !== undefined && !isPng(files[f])) out.push(`${f} isn't a PNG image`)
   return out
 }
 
@@ -969,8 +942,6 @@ function pruneDirs(v: Vault, rel: string) {
 type SaveOptions = { name: string; description?: string; icon?: string; tint?: string; hotkeys?: boolean; vaultPlugins?: boolean; workspace?: number | null; replace?: boolean
   /** The user's own of the look too (theme, colours, fonts: PERSONAL_LOOK, and the theme's folder): a bundle about looks. */
   look?: boolean
-  /** A screenshot of the app it makes, a PNG as base64: its card's picture. */
-  preview?: string
   /** Save changes to a bundle (its id): one of the user's is saved over, keeping its name, card and where it came from;
    *  one of the app's is saved as a new "My <Name>" (or `name`). */
   over?: string }
@@ -982,11 +953,6 @@ async function current(host: Host, o: SaveOptions, meta: Item | null = null): Pr
   const files: Files = {}
   const put = (rel: string, o: unknown) => { files[rel] = JSON.stringify(o, null, 2) + "\n" }
   put("bundle.json", meta ?? { name: o.name.trim(), ...(o.description?.trim() ? { description: o.description.trim() } : {}), icon: o.icon || "package", ...(o.tint ? { tint: o.tint } : {}) })
-  if (typeof o.preview === "string" && o.preview) {
-    const png = Buffer.from(o.preview.replace(/^data:image\/png;base64,/, ""), "base64")
-    if (!isPng(png)) throw new HTTPError(400, "the preview isn't a PNG image")
-    files[PREVIEW] = png
-  }
   const conf = v.config("plugins")
   await setupOf(host, o, files, put, conf, kinds)
   const pinned = pinnedOf(await slotOf(host, o.workspace ?? null), v)
@@ -1136,10 +1102,8 @@ async function save(host: Host, o: SaveOptions) {
     const had = { hotkeys: o.hotkeys ?? b.files["hotkeys.json"] !== undefined, vaultPlugins: o.vaultPlugins ?? parts(b.files).code.length > 0,
       look: o.look ?? PERSONAL_LOOK.some((k) => Object.hasOwn(jsonOr(b, "appearance.json") ?? {}, k)) }
     if (b.source === "vault") {
-      // (its picture stays until a new one is taken)
-      const png = b.files[PREVIEW]
       ;({ id, meta, replace } = { id: b.id, meta: m, replace: true })
-      o = { ...o, ...had, name: String(m.name ?? b.id), preview: o.preview ?? (Buffer.isBuffer(png) ? png.toString("base64") : undefined) }
+      o = { ...o, ...had, name: String(m.name ?? b.id) }
     } else {
       const name = typeof o.name === "string" && o.name.trim() ? o.name.trim() : mineName(v, String(m.name ?? b.id)), str = (x: unknown) => (typeof x === "string" ? x : undefined)
       o = { ...o, ...had, name, description: o.description ?? str(m.description), icon: o.icon ?? str(m.icon), tint: o.tint ?? str(m.tint) }
@@ -1190,8 +1154,6 @@ async function fork(host: Host, id: string, skip: string[], n: number | null) {
 async function forkedFiles(host: Host, b: Bundle, skip: string[], n: number | null, p: Plan): Promise<Files> {
   const v = host.vault, kinds = known(host)
   const files: Files = { ...b.files }
-  // (its pictures are of the bundle with every change: not this one's)
-  for (const f of PICTURES) delete files[f]
   const obj = (rel: string) => ({ ...json(files, rel) })
   const put = (rel: string, o: unknown) => { files[rel] = JSON.stringify(o, null, 2) + "\n" }
   const at = placeOf(b, v)
@@ -1264,7 +1226,7 @@ async function tweaksOf(host: Host, b: Bundle, n: number | null): Promise<Tweaks
   if (p.empty) return null
   const files = await forkedFiles(host, b, p.changes.map((c) => c.id), n, p)
   const set: Tweaks["set"] = {}
-  const drop = Object.keys(b.files).filter((f) => files[f] === undefined && !PICTURES.includes(f))
+  const drop = Object.keys(b.files).filter((f) => files[f] === undefined)
   for (const f of Object.keys(files)) {
     if (f === "bundle.json" || !f.endsWith(".json") || files[f] === b.files[f]) continue
     const now = jsonOr(files, f) ?? {}, was = b.files[f] === undefined || f === "sidebars.json" ? null : jsonOr(b, f)
@@ -1296,17 +1258,16 @@ const tweakedOf = (v: Vault, b: Bundle, fresh = false) => (fresh || b.error ? b 
 
 /** One part of a bundle to share or leave out: `on` what's sent unless the user says; `own` a page with text of the
  *  user's own (outside its blocks and headings). */
-export type ShareItem = { path: string; kind: "picture" | "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
+export type ShareItem = { path: string; kind: "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
 
 const ownText = (t: string) => t.replace(/^---\n[\s\S]*?\n---\n?/, "").replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, "")
   .split("\n").some((l) => !!l.trim() && !/^#{1,6}\s/.test(l.trim()))
 
-/** The parts sharing sends, the user's own off (the picture, a page with their text); `dropped`: pins to their notes,
+/** The parts sharing sends, the user's own off (a page with their text); `dropped`: pins to their notes,
  *  never sent. */
 function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[] } {
   const { code, settings, vaultFiles } = parts(b.files)
   const items: ShareItem[] = []
-  if (PICTURES.some((f) => b.files[f] !== undefined)) items.push({ path: PREVIEW, kind: "picture", label: "Picture", on: false })
   for (const f of vaultFiles) {
     const t = b.files[f]
     const page = typeof t === "string" && (f.endsWith(".md") || f.endsWith(".base"))
@@ -1344,8 +1305,7 @@ function shared(b: Bundle, host: Host, o: { all?: boolean; include?: string[]; l
   if (o.all || b.error) return b
   const { items, dropped: gone } = shareOf(b, host)
   const out = items.filter((x) => !(x.on || o.include?.includes(x.path)) || !!o.leave?.includes(x.path)).map((x) => x.path)
-  // (the picture's item is its light and dark ones)
-  const left = (f: string) => out.some((x) => (x.endsWith("/") ? f.startsWith(x) : f === x || (x === PREVIEW && f === PREVIEW_DARK)))
+  const left = (f: string) => out.some((x) => (x.endsWith("/") ? f.startsWith(x) : f === x))
   const files: Files = Object.fromEntries(Object.entries(b.files).filter(([f]) => !left(f)))
   const drop = new Set([...gone, ...out])
   const pg = jsonOr(files, "pages.json")
@@ -1405,7 +1365,7 @@ async function fetchFrom(given: string): Promise<{ files: Files; id: string | nu
       const all = readFolder(dir)
       let named: string[] = []
       try { named = [...strs(json(all, "pages.json")?.pinned), String(json(all, "newtab.json")?.page ?? "")] } catch { /* problems says */ }
-      const own = (f: string) => f.includes("/") || f === "bundle.json" || PICTURES.includes(f) || CONFIGS.some((c) => f === `${c}.json`) || named.includes(f)
+      const own = (f: string) => f.includes("/") || f === "bundle.json" || CONFIGS.some((c) => f === `${c}.json`) || named.includes(f)
       files = Object.fromEntries(Object.entries(all).filter(([f]) => own(f)))
     } else {
       const one = fs.readdirSync(dir).filter((n) => n.endsWith(".bundle.json"))
@@ -1557,11 +1517,6 @@ export async function handle(host: Host, method: string, parts: string[], query:
       landing: workspaceOf(body.landing), fresh: body.fresh === true, quiet: body.quiet === true })
   }
   if (parts.length === 2 && action === "fork" && method === "POST") return fork(host, id, strs(body.skip), workspaceOf(body.workspace))
-  if (parts.length === 2 && PICTURES.includes(action) && method === "GET") {
-    const png = find(v, id).files[action]
-    if (!isPng(png)) throw new HTTPError(404, `${id} has no preview`)
-    return new Text(png as Buffer, "image/png", { "Cache-Control": "private, max-age=31536000, immutable" })
-  }
   if (parts.length === 2 && action === "share" && method === "GET") return shareOf(find(v, id), host)
   if (parts.length === 2 && action === "export" && (method === "GET" || method === "POST")) {
     const b = find(v, id)

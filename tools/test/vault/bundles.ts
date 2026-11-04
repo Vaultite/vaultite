@@ -187,21 +187,20 @@ export default async ($: VaultTest) => {
     ;[code] = await api("DELETE", "bundles/zen")
     check("bundles: the app's can't be deleted", code === 400, code)
 
-    // Sharing leaves out what's the user's own: the picture, a page with their text, pins to their notes.
+    // Sharing leaves out what's the user's own: a page with their text, pins to their notes.
     write(".vaultite/bundles/my-desk/Dashboards/Desk.md", "---\ntype: dashboard\n---\n\nPlans for Bob's party\n\n```block-inbox\n```\n")
     write(".vaultite/bundles/my-desk/Dashboards/Plain.md", "---\ntype: dashboard\n---\n\n## Today\n\n```block-inbox\n```\n")
-    for (const f of ["preview.png", "preview-dark.png"]) fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/my-desk", f), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]))
     ;[code, r] = await api("GET", "bundles/my-desk/share")
     const item = (f: string) => r.items?.find((x: Any) => x.path === f)
-    check("bundles: share lists the parts, the user's own off", code === 200 && item("preview.png")?.on === false && item("Dashboards/Desk.md")?.own && !item("Dashboards/Desk.md").on &&
+    check("bundles: share lists the parts, the user's own off", code === 200 && item("Dashboards/Desk.md")?.own && !item("Dashboards/Desk.md").on &&
       item("Dashboards/Plain.md")?.on && item("plugins/page-preview/data.json")?.keys?.includes("delay") && r.dropped.join() === "People/Alice Park.md", r)
     let out = JSON.parse((await api("GET", "bundles/my-desk/export"))[1])
-    check("bundles: shared, it's without them: the pin to a note of the user's is taken out, the app's page kept", !out.files["preview.png"] && !out.files["preview-dark.png"] && !out.files["Dashboards/Desk.md"] &&
+    check("bundles: shared, it's without them: the pin to a note of the user's is taken out, the app's page kept", !out.files["Dashboards/Desk.md"] &&
       !!out.files["Dashboards/Plain.md"] && out.files["pages.json"].pinned.join() === "Dashboards/People.md", Object.keys(out.files))
-    out = JSON.parse((await api("POST", "bundles/my-desk/export", { include: ["preview.png"], leave: ["plugins/page-preview/data.json"] }))[1])
-    check("bundles: what's sent can be chosen (the picture: light and dark)", !!out.files["preview.png"]?.base64 && !!out.files["preview-dark.png"]?.base64 && !out.files["plugins/page-preview/data.json"], Object.keys(out.files))
+    out = JSON.parse((await api("POST", "bundles/my-desk/export", { include: ["Dashboards/Desk.md"], leave: ["plugins/page-preview/data.json"] }))[1])
+    check("bundles: what's sent can be chosen", !!out.files["Dashboards/Desk.md"] && !out.files["plugins/page-preview/data.json"], Object.keys(out.files))
     out = JSON.parse((await api("GET", "bundles/my-desk/export?all=1"))[1])
-    check("bundles: all of it, as kept (a delete's Undo)", !!out.files["preview.png"] && !!out.files["Dashboards/Desk.md"] && out.files["pages.json"].pinned.includes("People/Alice Park.md"), Object.keys(out.files))
+    check("bundles: all of it, as kept (a delete's Undo)", !!out.files["Dashboards/Desk.md"] && out.files["pages.json"].pinned.includes("People/Alice Park.md"), Object.keys(out.files))
 
     // Files that aren't text (an image) go in and out as their bytes; one that can't be read is listed, saying why.
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0xfe, 0x01])
@@ -253,7 +252,7 @@ export default async ($: VaultTest) => {
       fs.rmSync(path.join(VAULT, ".vaultite/bundles/locked"), { recursive: true })
     }
 
-    // A bundle of only the look and the new tab (its page a dashboard it brings), with a picture, as the app's Save the
+    // A bundle of only the look and the new tab (its page a dashboard it brings), as the app's Save the
     // look made them: applied over any setup, plugins, panels and pins as they are.
     write("Dashboards/Lamp room.md", "---\ntype: dashboard\n---\n\n```block-inbox\n```\n")
     const lookBefore = conf("newtab"), appearanceBefore = conf("appearance")
@@ -261,20 +260,20 @@ export default async ($: VaultTest) => {
     write(".vaultite/bundles/lamp-light/appearance.json", JSON.stringify({ scheme: "nord" }))
     write(".vaultite/bundles/lamp-light/newtab.json", JSON.stringify({ page: "Dashboards/Lamp room.md", actions: ["file:new"] }))
     write(".vaultite/bundles/lamp-light/Dashboards/Lamp room.md", read("Dashboards/Lamp room.md"))
-    fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/lamp-light/preview.png"), png)
     fs.rmSync(path.join(VAULT, "Dashboards/Lamp room.md"))
-    ;[code, r] = await api("GET", "bundles/lamp-light/preview.png")
-    check("bundles: its picture is served as its bytes", code === 200 && Buffer.isBuffer(r) && r.equals(png), [code, typeof r])
-    ;[code] = await api("GET", "bundles/lamp-light/preview-dark.png")
-    const lamp = (await api("GET", "bundles"))[1].bundles.find((b: Any) => b.id === "lamp-light")
-    check("bundles: a dark picture is its own, null when there's none", code === 404 && !!lamp.preview && lamp.previewDark === null, [code, lamp])
-    fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/lamp-light/preview-dark.png"), png)
-    ;[code, r] = await api("GET", "bundles/lamp-light/preview-dark.png")
-    const dark = (await api("GET", "bundles"))[1].bundles.find((b: Any) => b.id === "lamp-light")
-    check("bundles: ...and served as the light one is", code === 200 && Buffer.isBuffer(r) && r.equals(png) && dark.previewDark === dark.preview, [code, dark])
-    fs.rmSync(path.join(VAULT, ".vaultite/bundles/lamp-light/preview-dark.png"))
-    ;[code] = await api("POST", "bundles", { name: "Not a picture", preview: Buffer.from("hello").toString("base64") })
-    check("bundles: a picture that isn't a PNG is refused", code === 400, code)
+    write(".vaultite/bundles/frosted/bundle.json", JSON.stringify({ name: "Frosted" }))
+    write(".vaultite/bundles/frosted/appearance.json", JSON.stringify({ translucent: true, translucentPages: true }))
+    const listed = (await api("GET", "bundles"))[1].bundles, lamp = listed.find((b: Any) => b.id === "lamp-light"), frosted = listed.find((b: Any) => b.id === "frosted")
+    check("bundles: a picture is drawn from its sketch: its scheme, glass, the window as it is", lamp.scheme === "nord" && lamp.shape.glass === null && lamp.shape.tabBar === null &&
+      lamp.panels === null && !("preview" in lamp) && frosted.kind === "look" && frosted.shape.glass === "pages", [lamp, frosted])
+    // Saved bundles' screenshots from before (core/migrations.ts): gone, the rest kept.
+    for (const f of ["preview.png", "preview-dark.png"]) fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/frosted", f), "png")
+    const { DONE, migrate } = await import("../../../core/migrations.ts")
+    $.vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "bundle-pictures-out-2026-11") })
+    await migrate($.vault, false)
+    check("bundles: saved ones' screenshots from before are taken out", !exists(".vaultite/bundles/frosted/preview.png") && !exists(".vaultite/bundles/frosted/preview-dark.png") &&
+      exists(".vaultite/bundles/frosted/appearance.json"))
+    fs.rmSync(path.join(VAULT, ".vaultite/bundles/frosted"), { recursive: true })
     setConf("appearance", { ...appearanceBefore, scheme: "dracula" })
     ;[code, r] = await api("GET", "bundles/lamp-light")
     check("bundles: only the look's plan: the scheme and the new tab's page, built in as it brings it; plugins and pins untouched", r.bundle.on === null &&
@@ -429,8 +428,8 @@ export default async ($: VaultTest) => {
     const FORK = ["appearance:density", "editor:propertiesInDocument", "panels", "setting:pages.show", "plugin:glance"]
     ;[code, r] = await api("POST", "bundles/zen/fork", { skip: FORK })
     const forked = r.bundle
-    check("bundles: fork makes the user's copy, its name free, its card copied, not its picture", code === 200 && forked.name === "My Zen 2" && forked.source === "vault" &&
-      forked.icon === "wind" && forked.tint === "teal" && !forked.preview && !forked.previewDark && !forked.from, r)
+    check("bundles: fork makes the user's copy, its name free, its card copied", code === 200 && forked.name === "My Zen 2" && forked.source === "vault" &&
+      forked.icon === "wind" && forked.tint === "teal" && !forked.from, r)
     ;[code] = await api("POST", "bundles/zen/fork", { skip: ["setting:nope.x"] })
     check("bundles: fork with an id that isn't a change is refused", code === 400, code)
     await apply("zen", { skip: FORK })

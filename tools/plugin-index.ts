@@ -4,6 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { kindFrom } from "../core/bundlekind.ts"
+import { homeBlocks, sketchOf } from "../core/bundlesketch.ts"
 import { bundleBlocked, disclosuresOf, ICON_FILE, ICON_MAX, iconOf, PLACE, REPO, svgIcon } from "../core/pluginmeta.ts"
 import { compareVersions, tagVersion } from "../core/version.ts"
 
@@ -178,15 +179,17 @@ async function bundlesOf(get: Get, listed: string[], blocked: Record<string, str
     const raw = (f: string) => `${RAW}/${full}/${commit}/${prefix}${f}`
     const getJson = async (f: string) => { const r = await get(raw(f)); return r.status === 200 && r.body && typeof r.body === "object" && !Array.isArray(r.body) ? r.body as Any : null }
     // Its files: a folder (bundle.json at its top), or one export (<name>.bundle.json: {files: {path: content}})
-    let files: { json: (f: string) => Promise<Any | null>; list: string[]; pictures: boolean }
-    if (paths.includes("bundle.json")) files = { json: getJson, list: paths, pictures: true }
+    const getText = async (f: string) => { const r = await get(raw(f), "application/vnd.github.raw"); return r.status === 200 && typeof r.body === "string" ? r.body : "" }
+    let files: { json: (f: string) => Promise<Any | null>; text: (f: string) => Promise<string>; list: string[] }
+    if (paths.includes("bundle.json")) files = { json: getJson, text: getText, list: paths }
     else {
       const one = paths.filter((f) => !f.includes("/") && f.endsWith(".bundle.json"))
       const o = one.length === 1 ? await getJson(one[0]) : null
       const all = o && typeof o.files === "object" && o.files ? o.files as Any : null
       if (!all) { skipped.push(`${where}: no bundle (a bundle.json at its top, or one .bundle.json)`); continue }
       const parse = (v: unknown) => { if (typeof v !== "string") return v; try { return JSON.parse(v) } catch { return null } }
-      files = { json: async (f) => { const v = parse(all[f]); return v && typeof v === "object" && !Array.isArray(v) ? v as Any : null }, list: Object.keys(all), pictures: false }
+      files = { json: async (f) => { const v = parse(all[f]); return v && typeof v === "object" && !Array.isArray(v) ? v as Any : null },
+        text: async (f) => (typeof all[f] === "string" ? all[f] as string : ""), list: Object.keys(all) }
     }
     const m = await files.json("bundle.json")
     if (!m || typeof m.name !== "string" || !m.name.trim()) { skipped.push(`${where}: its bundle.json has no name`); continue }
@@ -194,15 +197,17 @@ async function bundlesOf(get: Get, listed: string[], blocked: Record<string, str
     const install = pj?.install && typeof pj.install === "object" ? pj.install as Record<string, Any> : {}
     const installs = Object.entries(install).filter(([id, x]) => /^[a-z][a-z0-9-]*$/.test(id) && x && typeof x.source === "string")
       .map(([id, x]) => ({ id, name: typeof x.name === "string" ? x.name : id, source: x.source as string }))
+    // (its picture's home: the first page it pins that it holds)
+    const pins = await files.json("pages.json"), pinned = Array.isArray(pins?.pinned) ? (pins.pinned as unknown[]).filter((x): x is string => typeof x === "string") : null
+    const page = pinned?.find((f) => files.list.includes(f))
+    const sketch = sketchOf(await files.json("appearance.json"), await files.json("sidebars.json"), pinned && !pinned.length ? null : page ? homeBlocks(await files.text(page)) : [])
     const brings = files.list.some((f) => /^plugins\/[^/]+\/manifest\.json$/.test(f))
     out.push({
       name: m.name.trim(), description: typeof m.description === "string" ? m.description : repo.description ?? "", author: repo.owner?.login ?? full.split("/")[0],
       repo: full, ...(unit.dir ? { dir: unit.dir } : {}), commit, address: `${place}@${commit}`, stars: repo.stargazers_count ?? 0,
       updated: ((head!.commit as Any)?.committer as Any)?.date ?? null, topics: repo.topics ?? [], runsCode: brings || installs.length > 0, installs,
       ...(iconOf(m.icon) ? { icon: iconOf(m.icon) } : {}), ...(typeof m.tint === "string" && /^[a-z][a-z-]*$/.test(m.tint) ? { tint: m.tint } : {}),
-      kind: kindFrom(m, files.list),
-      ...(files.pictures && paths.includes("preview.png") ? { preview: raw("preview.png") } : {}),
-      ...(files.pictures && paths.includes("preview-dark.png") ? { previewDark: raw("preview-dark.png") } : {}),
+      kind: kindFrom(m, files.list), sketch,
     })
   }
   return out.sort((a, b) => (b.stars as number) - (a.stars as number) || String(b.updated ?? "").localeCompare(String(a.updated ?? "")))

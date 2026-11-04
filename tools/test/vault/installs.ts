@@ -382,15 +382,16 @@ export default async ($: VaultTest) => {
       const bentry = (o: Any) => ({ description: "Made up.", author: "Bob Lee", stars: 1, updated: "2026-09-01T00:00:00Z", topics: ["vaultite-bundle"], runsCode: false, installs: [], ...o })
       fs.writeFileSync(BINDEX, JSON.stringify({ format: 1, generated: "2026-10-01T00:00:00Z", plugins: [], blocked: { "boblee/bad": ["*"] }, bundles: [
         bentry({ name: "Writing desk", description: "Pages for writing.", author: "repos", repo: "repos/desk", commit: at("v1.1.0"), stars: 9, icon: "pen", tint: "purple",
-          preview: `https://raw.githubusercontent.com/repos/desk/${at("v1.1.0")}/preview.png`, previewDark: "https://example.com/x.png" }),
+          sketch: { scheme: "nord", panels: { left: ["files:files", "<b>"], right: "x" }, shape: { tabBar: false, glass: "frosted" }, home: [{ block: "inbox", wide: true }, {}] } }),
         bentry({ name: "Lamps", repo: "boblee/fleet", dir: "bundles/lamps", commit: "c".repeat(40), runsCode: true, installs: [{ id: "tasks", name: "Tasks", source: "Vaultite/plugins/tasks" }] }),
         bentry({ name: "Bad", repo: "boblee/bad", commit: "b".repeat(40) }), { name: "No commit", repo: "x/y", commit: "abc" } ] }))
       process.env.VAULTITE_PLUGIN_INDEX = BINDEX
       ;[bc, bo] = await api("GET", "bundles/browse?refresh=1")
       const wd = bo.bundles?.find((b: Any) => b.name === "Writing desk"), lamps = bo.bundles?.find((b: Any) => b.name === "Lamps")
       check("browse: the directory's bundles by stars, blocked and unreadable ones left out", bc === 200 && bo.available && bo.bundles.map((b: Any) => b.name).join() === "Writing desk,Lamps", bo)
-      check("browse: each pinned at its commit, its pictures (raw GitHub only), what it installs", wd.address === `repos/desk@${at("v1.1.0")}` && wd.source === "repos/desk" &&
-        wd.preview.endsWith("/preview.png") && !wd.previewDark && lamps.address === `boblee/fleet/bundles/lamps@${"c".repeat(40)}` && lamps.runsCode && lamps.installs[0].source === "Vaultite/plugins/tasks", bo.bundles)
+      check("browse: each pinned at its commit, its sketch (checked), what it installs", wd.address === `repos/desk@${at("v1.1.0")}` && wd.source === "repos/desk" &&
+        wd.sketch.scheme === "nord" && wd.sketch.theme === null && wd.sketch.panels.left.join() === "files:files" && !wd.sketch.panels.right.length && wd.sketch.shape.tabBar === false &&
+        wd.sketch.shape.glass === null && wd.sketch.home.length === 1 && wd.sketch.home[0].wide && !lamps.sketch && !("preview" in wd) && lamps.address === `boblee/fleet/bundles/lamps@${"c".repeat(40)}` && lamps.runsCode && lamps.installs[0].source === "Vaultite/plugins/tasks", bo.bundles)
       check("browse: the user's import of one, and whether it's at the listed commit", wd.imported === "desk" && wd.current === false && lamps.imported === null, wd)
       ;[bc, bo] = await api("GET", "bundles/browse?q=lamps")
       check("browse: searched by its words", bo.bundles.length === 1 && bo.bundles[0].name === "Lamps", bo.bundles)
@@ -626,7 +627,11 @@ export default async ($: VaultTest) => {
     const brepo = (full: string, o: Any = {}) => ({ full_name: full, default_branch: "main", stargazers_count: 0, owner: { login: full.split("/")[0] }, ...o })
     gh["https://api.github.com/search/repositories?q=topic%3Avaultite-bundle&sort=stars&per_page=100&page=1"] = { items: [brepo("dave/desk", { stargazers_count: 30, topics: ["vaultite-bundle"] }),
       brepo("erin/night", { stargazers_count: 2, description: "Dark." }), brepo("frank/old", { archived: true }), brepo("gina/noname"), brepo("hank/bad")] }
-    last("dave/desk", D, "2026-09-28T00:00:00Z"); tree("dave/desk", D, ["bundle.json", "plugins.json", "preview.png", "preview-dark.png", "plugins/lamp/manifest.json", "README.md"])
+    last("dave/desk", D, "2026-09-28T00:00:00Z"); tree("dave/desk", D, ["bundle.json", "plugins.json", "appearance.json", "sidebars.json", "pages.json", "Desk.md", "preview.png", "plugins/lamp/manifest.json", "README.md"])
+    gh[`https://raw.githubusercontent.com/dave/desk/${D}/appearance.json`] = { tabBar: false, translucent: true }
+    gh[`https://raw.githubusercontent.com/dave/desk/${D}/sidebars.json`] = { left: ["search:search", "terminal:sessions"], right: [] }
+    gh[`https://raw.githubusercontent.com/dave/desk/${D}/pages.json`] = { pinned: ["Dashboards/Today.md", "Desk.md"] }
+    gh[`https://raw.githubusercontent.com/dave/desk/${D}/Desk.md`] = "# Desk\n\n```block-inbox\n```\n\n```block-query\nview: kanban\n```\n"
     gh[`https://raw.githubusercontent.com/dave/desk/${D}/bundle.json`] = { name: "Writing desk", description: "Pages for writing.", icon: "pen", tint: "purple" }
     gh[`https://raw.githubusercontent.com/dave/desk/${D}/plugins.json`] = { enabled: ["tasks", "lamp"], install: { tasks: { name: "Tasks", source: "Vaultite/plugins/tasks", tag: "tasks/v1.0.1" } } }
     gh["https://api.github.com/repos/Vaultite/plugins"] = brepo("Vaultite/plugins", { stargazers_count: 12 })
@@ -664,17 +669,18 @@ export default async ($: VaultTest) => {
       (await import("../../../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).plugins.length === 3)
     const bs = index.bundles as Any[], desk = bs.find((b) => b.repo === "dave/desk"), agents = bs.find((b) => b.repo === "Vaultite/plugins"), night = bs.find((b) => b.repo === "erin/night")
     check("index builder: bundles by stars, the topic's and listed.json's (a folder too), each once", bs.map((b) => b.name).join() === "Writing desk,Agents,Night", bs)
-    check("index builder: a bundle pinned at the commit that last changed it, with its address, pictures and what it installs", desk?.commit === D && desk.address === `dave/desk@${D}` &&
-      desk.updated === "2026-09-28T00:00:00Z" && desk.stars === 30 && desk.author === "dave" && desk.icon === "pen" && desk.tint === "purple" && desk.runsCode &&
-      desk.installs[0]?.source === "Vaultite/plugins/tasks" && desk.preview === `https://raw.githubusercontent.com/dave/desk/${D}/preview.png` &&
-      desk.previewDark === `https://raw.githubusercontent.com/dave/desk/${D}/preview-dark.png`, desk)
+    check("index builder: a bundle pinned at the commit that last changed it, with its address, what it installs, and its sketch (home: the first page it pins that it holds)",
+      desk?.commit === D && desk.address === `dave/desk@${D}` && desk.updated === "2026-09-28T00:00:00Z" && desk.stars === 30 && desk.author === "dave" && desk.icon === "pen" &&
+      desk.tint === "purple" && desk.runsCode && desk.installs[0]?.source === "Vaultite/plugins/tasks" && !("preview" in desk) && desk.kind === "layout" &&
+      desk.sketch.shape.tabBar === false && desk.sketch.shape.glass === "sidebars" && desk.sketch.panels.left.join() === "search:search,terminal:sessions" &&
+      desk.sketch.home.map((h: Any) => `${h.block}:${h.view}`).join() === "inbox:null,query:board", desk)
     check("index builder: a listed folder's bundle, at its folder's last commit", agents?.dir === "bundles/agents" && agents.address === `Vaultite/plugins/bundles/agents@${A}` &&
-      !agents.runsCode && !agents.preview && agents.description === "", agents)
-    check("index builder: one .bundle.json, read from its files (its vault plugin runs code)", night?.name === "Night" && night.description === "Dark." && night.runsCode && !night.preview, night)
+      !agents.runsCode && agents.sketch.panels === null && agents.sketch.home?.length === 0 && agents.description === "", agents)
+    check("index builder: one .bundle.json, read from its files (its vault plugin runs code)", night?.name === "Night" && night.description === "Dark." && night.runsCode && night.sketch.shape.tabBar === null, night)
     check("index builder: bundles left out, saying why: archived, no name, blocked, not a place", skipped.includes("frank/old: archived") && skipped.includes("gina/noname: its bundle.json has no name") &&
       skipped.includes("hank/bad: blocked") && skipped.some((x) => x.startsWith("x/../y: not a bundle's place")), skipped)
     const readBack = (await import("../../../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).bundles
-    check("index builder: the app reads its bundles", readBack.length === 3 && readBack[0].address === desk?.address && readBack[0].installs.length === 1 && readBack[1].dir === "bundles/agents", readBack)
+    check("index builder: the app reads its bundles", readBack.length === 3 && readBack[0].address === desk?.address && readBack[0].installs.length === 1 && readBack[0].sketch?.home?.length === 2 && readBack[1].dir === "bundles/agents", readBack)
     check("index builder: the score blends stars with upkeep", scoreOf(1000, "2026-09-30T00:00:00Z", 0, 10, now) === 100 && scoreOf(0, null, 0, 0, now) === 10 &&
       scoreOf(120, "2026-09-20T00:00:00Z", 2, 8, now) > scoreOf(120, "2025-01-01T00:00:00Z", 2, 8, now))
     check("index builder: an excerpt is cut at 280", excerpt("x".repeat(10) + " word".repeat(100)).length <= 280)

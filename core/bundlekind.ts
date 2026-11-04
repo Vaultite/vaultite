@@ -3,7 +3,7 @@
 export type Kind = "layout" | "pack" | "look"
 export const KINDS: readonly string[] = ["layout", "pack", "look"]
 /** A file only a restyle holds. */
-const lookOnly = (f: string) => ["bundle.json", "appearance.json", "preview.png", "preview-dark.png"].includes(f) || /^(themes|snippets)\//.test(f)
+const lookOnly = (f: string) => ["bundle.json", "appearance.json"].includes(f) || /^(themes|snippets)\//.test(f)
 
 /** A bundle's kind from its bundle.json (`m`: its `kind`) and its files' paths: unsaid, a look when it holds only
  *  appearance.json, themes and snippets, else a layout. */

@@ -15,7 +15,7 @@ const where = (b: Any) => (b.source === "app" ? "built-in" : "yours")
 
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
 sidebars.json, pages.json, appearance.json, editor.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
-pins, and preview.png and preview-dark.png, its card's picture in light and dark); a part it leaves out stays as it is when it's applied. The app's own are
+pins; its picture is drawn from them); a part it leaves out stays as it is when it's applied. The app's own are
 Standard (standard, the app's defaults), Zen (zen) and Browser (browser), layouts; Life OS and Agents, packs (plugins
 and pages, applied over the layout), are in the directory (browse); the user's are in .vaultite/bundles/<id>/. A layout
 leaves the user's theme, colours and fonts alone. \`vau docs bundles\` has the format, so you can write one too.
@@ -229,7 +229,7 @@ Over the API the answer is the bundle's JSON; vau writes it to <id>.bundle.json,
     kind: "read",
     params: {
       id: ID,
-      include: { type: "array", items: { type: "string" }, description: "parts left out by default to send anyway: preview.png, a page's path (GET /api/bundles/<id>/share lists them)" },
+      include: { type: "array", items: { type: "string" }, description: "parts left out by default to send anyway: a page's path (GET /api/bundles/<id>/share lists them)" },
       leave: { type: "array", items: { type: "string" }, description: "parts to leave out (a plugin's settings, plugins/<id>/data.json; its code, plugins/<id>/)" },
       all: { type: "boolean", description: "every file as it is, the user's pins and picture too (a copy to keep, not to share)" },
     },

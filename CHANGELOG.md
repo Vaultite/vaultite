@@ -154,7 +154,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   one setting for every folder. A
   folder in it opens in the same tab and Back comes out, as in the Files app; its crumbs go up.
 - **Layouts are picked from drawn tiles in Settings, Appearance**: Standard, Zen, Browser and yours, each a small
-  drawing of its window in your colours. A click switches at once, with Undo; a changed one says so, and its menu has
+  drawing of its window in your colours. Every layout, pack and look is drawn the same way wherever it shows (Get's
+  cards, Details, the phone), crisp at any size and light or dark: a look in its scheme, glass with the desktop
+  showing through; no more screenshots. A click switches at once, with Undo; a changed one says so, and its menu has
   Details, Reset, Save as new (named, "My Zen"), Share and Delete. Your setup, "In use · modified" and Modify are gone.
 - **Setup is Your plugins and Get**: Get shows the directory's plugins, layouts and packs together under one search,
   with Import for a bundle someone sent; layouts aren't listed in Setup any more.

@@ -208,8 +208,8 @@ await fetch(`${B}api/bundles/days`, { method: "DELETE" }) // (none of the user's
   const path = `${OUT}qa-desk.bundle.json`
   await dl.saveAs(path)
   const exp = JSON.parse(readFileSync(path, "utf8"))
-  check("Share's Save file downloads one JSON file, without a picture", dl.suggestedFilename() === "qa-desk.bundle.json" && exp.vaultite === "bundle" && !!exp.files["plugins.json"] &&
-    !exp.files["preview.png"], dl.suggestedFilename())
+  check("Share's Save file downloads one JSON file", dl.suggestedFilename() === "qa-desk.bundle.json" && exp.vaultite === "bundle" && !!exp.files["plugins.json"],
+    dl.suggestedFilename())
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(B).origin })
   await page.locator("dialog[open] [data-bundle-copy-agent]").click()
   await wait(300)

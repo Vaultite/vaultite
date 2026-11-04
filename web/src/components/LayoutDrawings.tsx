@@ -1,7 +1,12 @@
-// Layouts' drawings (components/LayoutPicker.tsx): each a small window in the theme's colours, drawn as shapes. The
-// built-ins are drawn by hand, each showing what sets it apart; the user's own are drawn from their structure only.
+// Every bundle's picture (Settings' layouts, Get's cards, a bundle's preview): a window in the theme's colours, drawn
+// as shapes. The built-in layouts are drawn by hand, each showing what sets it apart; others from their sketch.
 import { useId, type CSSProperties, type ReactNode } from "react"
-import type { BundleInfo } from "@/core/bundles"
+import type { Sketch } from "../../../core/bundlesketch.ts"
+import { onlyMode } from "@/core/appearance"
+import { cn } from "@/lib/utils"
+
+/** What a picture is drawn from: a bundle (core/bundles.ts Info), or a listed one's sketch. */
+export type Drawable = Pick<Sketch, "theme" | "scheme" | "panels" | "home"> & { id: string; source: "app" | "vault"; shape: Partial<Sketch["shape"]> | null }
 
 // The drawing's box: 16:10, as a window.
 const W = 160, H = 100
@@ -24,9 +29,9 @@ const HLine = ({ y, x = 0, x2 = W }: { y: number; x?: number; x2?: number }) => 
 /** The window's buttons. */
 const Lights = ({ x = 6, y = 6 }: { x?: number; y?: number }) => <>{["var(--red)", "var(--yellow)", "var(--green)"].map((c, i) => <Dot key={c} x={x + i * 4.6} y={y} r={1.5} c={c} />)}</>
 
-/** A sidebar, its colour and its edge. */
-function Side({ x, w, children }: { x: number; w: number; children?: ReactNode }) {
-  return <g><R x={x} y={0} w={w} h={H} c={SIDE} /><VLine x={x === 0 ? w : x} />{children}</g>
+/** A sidebar, its colour (`c`: glass's) and its edge. */
+function Side({ x, w, c = SIDE, children }: { x: number; w: number; c?: string; children?: ReactNode }) {
+  return <g><R x={x} y={0} w={w} h={H} c={c} /><VLine x={x === 0 ? w : x} />{children}</g>
 }
 
 /** A row: a mark (`c`) and a bar. */
@@ -197,10 +202,10 @@ function Panels({ keys, folded, x, w, top }: { keys: string[]; folded: string[];
   return <>{out}</>
 }
 
-/** The user's own, from what it sets: which sidebars and their panels, the tab bar, panes floating, sidebars hidden at
- *  the edges (rails off with floating panes: drawn as Zen is), and a dashboard or a note for a page. */
-function Drawn({ b, shadow }: { b: BundleInfo; shadow: string }) {
-  const s = b.shape ?? { tabBar: null, rails: null, floating: null }
+/** Any other, from what it sets: which sidebars and their panels, the tab bar, panes floating, sidebars hidden at the
+ *  edges (rails off with floating panes: drawn as Zen is), glass (the desktop through it), a dashboard or a note. */
+function Drawn({ b, shadow, desk }: { b: Drawable; shadow: string; desk: string }) {
+  const s = b.shape ?? {}
   const left = b.panels?.left ?? ["search:search", "pages:pages", "files:files"], right = b.panels?.right ?? []
   const folded = b.panels?.collapsed ?? []
   const floating = !!s.floating, hidden = floating && s.rails === false, tabs = s.tabBar !== false
@@ -211,16 +216,19 @@ function Drawn({ b, shadow }: { b: BundleInfo; shadow: string }) {
   const py = inset + (hidden ? 8 : 0), ph = H - py - inset - (hidden ? 2 : 0)
   // (no sidebar or tabs at the top left: the page starts under the window's buttons)
   const body = tabs ? 14 : !lw && !floating ? 8 : 0
+  // (glass: the desktop shows through the sidebars, and the pages too when they're glass)
+  const glass = s.glass ?? null, side = glass ? tint(SIDE, 40) : SIDE, bg = glass === "pages" ? tint(BG, 55) : BG
   const page = b.home && b.home.length ? <Cards x={px + 8} y={py + body + 8} w={pw - 16} h={ph - body - 12} /> : <Note x={px + 9} y={py + body + 8} w={pw - 18} n={pw > 90 ? 5 : 4} />
   return <>
-    <R x={0} y={0} w={W} h={H} c={floating ? SIDE : BG} />
-    {lw > 0 && <Side x={0} w={lw}><Panels keys={left} folded={folded} x={5} w={30} top={13} /></Side>}
-    {rw > 0 && <Side x={W - rw} w={rw}><Panels keys={right} folded={folded} x={W - rw + 4} w={24} top={7} /></Side>}
+    {glass && <rect x={0} y={0} width={W} height={H} fill={`url(#${desk})`} />}
+    {glass ? <R x={lw} y={0} w={W - lw - rw} h={H} c={floating ? side : bg} /> : <R x={0} y={0} w={W} h={H} c={floating ? SIDE : BG} />}
+    {lw > 0 && <Side x={0} w={lw} c={side}><Panels keys={left} folded={folded} x={5} w={30} top={13} /></Side>}
+    {rw > 0 && <Side x={W - rw} w={rw} c={side}><Panels keys={right} folded={folded} x={W - rw + 4} w={24} top={7} /></Side>}
     <Lights />
     {hidden && left.length > 0 && <Edge side="left" />}
     {hidden && right.length > 0 && <Edge side="right" />}
     {floating ? <>
-      <g filter={hidden ? `url(#${shadow})` : undefined}><R x={px} y={py} w={pw} h={ph} r={6} c={BG} /></g>
+      <g filter={hidden ? `url(#${shadow})` : undefined}><R x={px} y={py} w={pw} h={ph} r={6} c={bg} /></g>
       <rect x={px + 0.25} y={py + 0.25} width={pw - 0.5} height={ph - 0.5} rx={5.8} fill="none" style={{ stroke: PANE }} strokeWidth={0.6} />
     </> : null}
     {tabs && (floating ? <g transform={`translate(0 ${py})`}><TabBar x={px} w={pw} /></g> : <TabBar x={px} w={pw} />)}
@@ -232,18 +240,27 @@ const BUILT_IN: Record<string, (shadow: string) => ReactNode> = {
   standard: () => <Standard />, zen: (s) => <Zen shadow={s} />, browser: () => <Browser />,
 }
 
-/** A layout's drawing, filling its box (16:10): the app's own by hand, others from their structure. */
-export function LayoutDrawing({ b, className }: { b: BundleInfo; className?: string }) {
-  const shadow = `ld${useId().replace(/[^\w-]/g, "")}`
+/** A bundle's drawing, filling its box (16:10): the app's layouts by hand, others from their sketch; in the colour
+ *  scheme and light or dark it sets, else the app's. */
+export function LayoutDrawing({ b, className }: { b: Drawable; className?: string }) {
+  const id = useId().replace(/[^\w-]/g, ""), shadow = `ld${id}`, desk = `ldd${id}`
   const own = b.source === "app" ? BUILT_IN[b.id] : undefined
+  const mode = b.scheme ? onlyMode(b.scheme) : undefined, theme = mode ?? (b.theme === "dark" || b.theme === "light" ? b.theme : null)
+  const look = !!b.scheme || !!theme
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} aria-hidden className={className} preserveAspectRatio="xMidYMid slice" data-layout-drawing={own ? b.id : "drawn"}>
+    <svg viewBox={`0 0 ${W} ${H}`} aria-hidden preserveAspectRatio="xMidYMid slice" data-layout-drawing={own ? b.id : "drawn"}
+      data-scheme={b.scheme && b.scheme !== "default" ? b.scheme : undefined}
+      className={cn(look && "scheme-preview", theme === "dark" && "dark", className)}>
       <defs>
         <filter id={shadow} x="-20%" y="-20%" width="140%" height="150%">
           <feDropShadow dx={0} dy={1.5} stdDeviation={2.2} floodColor="black" floodOpacity={0.14} />
         </filter>
+        {/* (a desktop behind glass: two of the scheme's colours) */}
+        <linearGradient id={desk} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" style={{ stopColor: "var(--teal)" }} /><stop offset="0.5" style={{ stopColor: "var(--blue)" }} /><stop offset="1" style={{ stopColor: "var(--purple)" }} />
+        </linearGradient>
       </defs>
-      {own ? own(shadow) : <Drawn b={b} shadow={shadow} />}
+      {own ? own(shadow) : <Drawn b={b} shadow={shadow} desk={desk} />}
     </svg>
   )
 }

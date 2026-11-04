@@ -1,6 +1,6 @@
 // Bundles in the app: its side of the API (list, apply with Undo, restore, save, export, import). Format and applying
 // are the server's (core/bundles.ts); layouts are picked in LayoutPicker.tsx, the rest got in Get (pages/Bundles.tsx).
-import { useEffect, useSyncExternalStore } from "react"
+import { useEffect } from "react"
 import { getStore, reload } from "@/core/data"
 import { del, get, op, post, request } from "@/core/http"
 import { openTab } from "@/core/workspace"
@@ -9,11 +9,10 @@ import { openFile } from "@/core/files"
 import { dismissNotice, notify, notifyError } from "@/core/notify"
 import { currentWorkspace, landingWorkspace } from "@/core/scope"
 import type { Info as BundleInfo, Plan, PlanChange, ShareItem } from "../../../core/bundles.ts"
+import type { Sketch } from "../../../core/bundlesketch.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
 import { registerCommands } from "@/core/commands"
-import { onLook } from "@/core/appearance"
-import { isDark } from "@/lib/utils"
 
 export type { BundleInfo, Plan, PlanChange, ShareItem }
 
@@ -171,19 +170,7 @@ export async function skipOnboarding() {
   void refreshBundles()
 }
 
-export type SaveOptions = { name: string; description?: string; icon?: string; hotkeys?: boolean; vaultPlugins?: boolean; replace?: boolean
-  /** The card's picture: a PNG as base64. */
-  preview?: string }
-
-/** A bundle's card picture as the app looks now: its dark one while dark, each the other's fallback; null: it has none
- *  (the card draws a sketch). `file`: an import's export, which holds them (it isn't among the bundles yet). */
-export function usePicture(b: Pick<BundleInfo, "id" | "preview" | "previewDark">, file?: unknown): string | null {
-  const dark = useSyncExternalStore(onLook, isDark)
-  const [name, v] = (dark && b.previewDark) || !b.preview ? ["preview-dark.png", b.previewDark] : ["preview.png", b.preview]
-  if (!v) return null
-  const inline = (file as { files?: Record<string, { base64?: string } | undefined> } | undefined)?.files?.[name]?.base64
-  return inline ? `data:image/png;base64,${inline}` : `api/bundles/${encodeURIComponent(b.id)}/${name}?v=${v}`
-}
+export type SaveOptions = { name: string; description?: string; icon?: string; hotkeys?: boolean; vaultPlugins?: boolean; replace?: boolean }
 
 /** Save the current setup as one of the user's bundles (the current workspace's panels and pins when it has its own). */
 export async function saveBundle(o: SaveOptions) {
@@ -315,7 +302,7 @@ export function openImport(source: ImportSource) {
  *  `imported`: the user's bundle from the same place, `current`: it's at that commit. */
 export type Listed = { name: string; description: string; author: string; repo: string; dir: string | null; commit: string; address: string; source: string
   stars: number; updated: string | null; topics: string[]; runsCode: boolean; installs: { id: string; name: string; source: string }[]
-  icon?: string; tint?: string; preview?: string; previewDark?: string; imported: string | null; current: boolean
+  icon?: string; tint?: string; sketch?: Sketch; imported: string | null; current: boolean
   /** A layout, a pack (plugins and pages) or a look (core/bundlekind.ts). */
   kind?: "layout" | "pack" | "look" }
 /** `available`: the index could be read (else `error` says why; offline, say). */
@@ -323,12 +310,6 @@ export type Directory = { url: string; available: boolean; fetched: string | nul
 
 /** The directory's bundles with these words. */
 export const browseBundles = (q: string) => get<Directory>(`bundles/browse${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`)
-
-/** A listed bundle's picture as the app looks now (each stands in for the other), or null. */
-export function useListedPicture(e: Pick<Listed, "preview" | "previewDark">): string | null {
-  const dark = useSyncExternalStore(onLook, isDark)
-  return (dark ? e.previewDark ?? e.preview : e.preview ?? e.previewDark) ?? null
-}
 
 /** Whether a new vault, still offered a layout, should show its welcome card now (once per load). */
 let offered = false
