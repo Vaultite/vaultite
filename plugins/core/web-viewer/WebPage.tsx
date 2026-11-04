@@ -267,7 +267,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       if (covered && cover !== "app" && free && mine) void web.go(id, "focus")
       covered = cover === "app"
       // (an error that came before its first step: the page web:open showed is hidden under it)
-      if (!show) { if (at || !known) await move(null); return }
+      if (!show) { if (at || (!known && live.current.error)) await move(null); return }
       if (sameRect(at, r)) return
       const wasHidden = !at
       const placed = await move(r)
