@@ -80,6 +80,8 @@ try {
   await shot(page, "tab-empty")
   await page.click('[aria-label="Search syntax"] button:has-text("tag:")')
   check("a click adds the operator", (await page.inputValue('[aria-label="Search the vault"]')) === "tag:", await page.inputValue('[aria-label="Search the vault"]'))
+  // (…and gives the field back the keyboard, its caret after it, a frame later: filled before, the words land after "tag:")
+  check("… the field has the keyboard again", await until(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label") === "Search the vault"), 3000))
   await page.fill('[aria-label="Search the vault"]', "rent food")
   // (wait for its lines' marks: the file may be listed before its lines are)
   const lineMarksOf = () => page.$$eval('[data-search-file="Qa search/Budget plan.md"] li mark', (ms) => ms.map((m) => m.textContent))
