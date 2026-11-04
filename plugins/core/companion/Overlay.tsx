@@ -871,11 +871,14 @@ export function Overlay() {
   useEffect(() => {
     let frame = 0
     // (nothing placed nor any room left to take back: a keystroke or a scroll draws nothing, nor looks for panes)
-    const idle = () => { const st = getState(); return !st.draft && !roomy.size && !adding && (st.mode === "off" ? !st.notes.some((n) => n.by) : !st.notes.length && !st.agents.length) && !selecting() }
-    // (ticks only with something to place: an idle app with no agents or comments wakes for nothing)
-    let tick = 0
-    const later = () => { if (idle()) return; arm(); if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); if (!idle()) redraw() }) }
-    const arm = () => { if (!tick && !idle()) tick = window.setInterval(() => { if (idle()) { clearInterval(tick); tick = 0 } else if (document.visibilityState === "visible") later() }, 1500) }
+    // (a thread counts only in a note on screen: the vault's others, in files not open, place nothing)
+    const placed = (n: Note) => !n.path || !!viewOf(n.path)
+    const idle = () => { const st = getState(); return !st.draft && !roomy.size && !adding && (st.mode === "off" ? !st.notes.some((n) => n.by && placed(n)) : !st.agents.length && !st.notes.some(placed)) && !selecting() }
+    // (ticks only with something to place: an idle app with no agents or comments wakes for nothing; turning idle, it
+    // draws once more to take down what it showed)
+    let tick = 0, busy = false
+    const later = () => { if (idle() && !busy) return; arm(); if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); busy = !idle(); redraw() }) }
+    const arm = () => { if (!tick && !idle()) tick = window.setInterval(() => { if (idle()) { clearInterval(tick); tick = 0; later() } else if (document.visibilityState === "visible") later() }, 1500) }
     const off = onBump(later)
     const resized = () => { insets = new WeakMap(); later() }
     addEventListener("scroll", later, { capture: true, passive: true })

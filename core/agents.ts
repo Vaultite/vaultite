@@ -1,6 +1,7 @@
 // The coding agents API (@vaultite/core/agents.ts, built-in and vault plugins alike): what an agent plugin reads its tool
 // with (usage tallies, processes, transcripts, databases), its routes and blocks (codingAgent), and starting agents.
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -17,7 +18,7 @@ export { agentIn, agentName, KNOWN_AGENTS, MODEL_NAME, newTerminalId, parseTermi
 /** An agent's own session's variables (core/sessionenv.ts). */
 export { agentSession } from "./sessionenv.ts"
 import { USAGE_BLOCKS } from "./rules.ts"
-import { type Item, sortBy } from "./vault.ts"
+import { type Item, sortBy, writeAtomic } from "./vault.ts"
 
 /** This machine's home folder, where agents keep their files. */
 export const HOME = os.homedir()
@@ -609,18 +610,41 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
   resp = new Map<string, R>()   // a response by its key: what it cost
   turns = new Map<string, Turn>()
   version = 0                   // bumps when anything above changed
-  refresh = throttled(() => scanMs, () => this.run(), () => this.reach < scanDays())
+  refresh = throttled(() => scanMs, () => this.scan(), () => this.reach < scanDays())
   private dirs: () => string[]
   private pruned = 0
   private reach = scanDays()
-  constructor(dirs: () => string[]) { this.dirs = dirs }
+  private keep: (() => string) | null
+  private loaded = false
+  private running = false
+  private saved = { version: 0, at: 0 }
+  private seen = new Set<string>() // the files the last run looked at (what's kept of the rest is read again if needed)
+  // keep: a file on the server's disk, so a restart reads on from there (a month of transcripts was gigabytes a start)
+  constructor(dirs: () => string[], keep?: () => string) {
+    this.dirs = dirs
+    this.keep = keep ?? null
+    if (keep) process.on("exit", () => { if (!this.running) this.save() })
+  }
 
   protected fresh(_file: string): F { return { offset: 0 } as F }
   protected line(_line: Buffer, _f: F) { /* the agent's */ }
+  /** What else a scan knows that's kept with it (titles, names), and given back after a restart. */
+  protected extra(): unknown { return null }
+  protected restore(_extra: unknown) { /* the agent's */ }
+
+  private async scan() {
+    this.running = true
+    try {
+      if (!this.loaded) this.load()
+      await this.run()
+    } finally { this.running = false }
+    if (this.version !== this.saved.version && Date.now() - this.saved.at > SAVE_MS) this.save()
+  }
 
   protected async run() {
     if (this.reach < scanDays()) { this.files.clear(); this.resp.clear(); this.turns.clear(); this.reach = scanDays() }
     const cutoff = Date.now() / 1000 - this.reach * 86400
+    this.seen = new Set()
     for (const dir of this.dirs()) {
       let names: string[] = []
       try { names = (fs.readdirSync(dir, { recursive: true }) as string[]).filter((n) => n.endsWith(".jsonl")) } catch { continue }
@@ -629,7 +653,9 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
         let st: fs.Stats
         try { st = fs.statSync(p) } catch { continue }
         const f = this.files.get(p)
-        if (st.mtimeMs / 1000 < cutoff || st.size === f?.offset) continue
+        if (st.mtimeMs / 1000 < cutoff) continue
+        this.seen.add(p)
+        if (st.size === f?.offset) continue
         const state = !f || st.size < f.offset ? this.fresh(p) : f
         this.files.set(p, state)
         state.offset = await readLines(p, state.offset, (l) => this.line(l, state))
@@ -643,7 +669,46 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
       this.version++
     }
   }
+
+  /** What's kept is this scan's own: the same code (its class's source, so a change to what it reads reads all again),
+   *  the same time zone (its days are local) and at least as many days back. */
+  private stamp() {
+    return createHash("sha1").update(`${KEEP_FORMAT}\0${this.constructor.toString()}\0${Intl.DateTimeFormat().resolvedOptions().timeZone}`).digest("hex").slice(0, 16)
+  }
+
+  private load() {
+    this.loaded = true
+    const file = this.keep?.()
+    if (!file) return
+    let k: Item
+    try { k = JSON.parse(fs.readFileSync(file, "utf8")) } catch { return }
+    if (k?.stamp !== this.stamp() || !(k.reach >= this.reach) || !Array.isArray(k.files)) return
+    this.files = new Map(k.files)
+    this.resp = new Map(k.resp)
+    this.turns = new Map(k.turns)
+    this.reach = k.reach
+    try { this.restore(k.extra) } catch { /* the rest still stands */ }
+    this.version++
+    this.saved = { version: this.version, at: Date.now() }
+  }
+
+  private save() {
+    const file = this.keep?.()
+    if (!file || !this.loaded) return
+    const cutoff = Date.now() / 1000 - this.reach * 86400
+    const fresh = <V extends { ts: number }>(m: Map<string, V>) => [...m].filter(([, v]) => v.ts >= cutoff)
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      writeAtomic(file, JSON.stringify({ stamp: this.stamp(), reach: this.reach, files: [...this.files].filter(([p]) => this.seen.has(p)),
+        resp: fresh(this.resp), turns: fresh(this.turns), extra: this.extra() }))
+      this.saved = { version: this.version, at: Date.now() }
+    } catch { /* read again next start */ }
+  }
 }
+/** How often a scan that read something new is kept at most (and as the server stops). */
+const SAVE_MS = 30 * 60_000
+/** What's kept's own shape: bumped when JsonlScan keeps something else. */
+const KEEP_FORMAT = 1
 
 /** A session's first prompt as its title (`find` it by id), on one line and cut to 80 characters; kept once found. */
 export function firstPrompts(find: (id: string) => string) {

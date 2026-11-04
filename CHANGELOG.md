@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Faster restarts, a quieter idle**: the server keeps what it read of the coding agents' transcripts, so a restart
+  reads on instead of a month of them again (about 25 s of CPU on a busy Mac, now under 2); comment threads in notes
+  that aren't open no longer wake every window every 1.5 s; typing in the quick switcher searches a big vault three
+  times faster.
 - **Sidebar rows hold still**: hovering a row (a tab, a pinned page, a session) no longer moves anything: its … and
   Close fade in over the label's end, and a panel scrolling in its own box ends between two rows, not a sliver into
   the next.

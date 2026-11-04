@@ -16,6 +16,34 @@ export default async ($: VaultTest) => {
       check(`transcripts: long lines read whole, a chunk of ${chunk} bytes`, JSON.stringify(got) === JSON.stringify(lines) && at === lines.join("\n").length + 1, [got.length, at])
     }
   }
+  // A scan kept on disk: a new server reads on from where the last stopped, and a scan of other code reads all again.
+  {
+    const { JsonlScan } = await import("../../../core/agents.ts")
+    const dir = path.join(tmp, "kept-scan"), file = path.join(dir, "projects", "a.jsonl"), keep = path.join(dir, "scan.json")
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const row = (id: string) => JSON.stringify({ id, ts: Date.now() / 1000 }) + "\n"
+    fs.writeFileSync(file, row("r1") + row("r2"))
+    class Counted extends JsonlScan<{ ts: number }> {
+      heard = 0
+      protected line(l: Buffer) { this.heard++; const d = JSON.parse(l.toString()); this.resp.set(d.id, { ts: d.ts }) }
+      protected extra() { return { heard: "before" } }
+      protected restore(x: unknown) { this.restored = x }
+      restored: unknown = null
+      keepNow() { (this as unknown as { save(): void }).save() }
+    }
+    const first = new Counted(() => [path.join(dir, "projects")], () => keep)
+    await first.refresh()
+    first.keepNow()
+    fs.appendFileSync(file, row("r3"))
+    const next = new Counted(() => [path.join(dir, "projects")], () => keep)
+    await next.refresh()
+    check("kept scan: a restart reads only what was added, with what was read and its extras", next.heard === 1 && next.resp.size === 3 &&
+      (next.restored as Any)?.heard === "before", [next.heard, next.resp.size, next.restored])
+    class Other extends JsonlScan<{ ts: number }> { heard = 0; protected line() { this.heard++ } }
+    const other = new Other(() => [path.join(dir, "projects")], () => keep)
+    await other.refresh()
+    check("kept scan: another scan's code reads every line again", other.heard === 3, other.heard)
+  }
   // Claude Code: one session's conversation (plugins/core/claude-code/transcript.ts), from the fixture.
   {
     const sid = "0a1b2c3d-1111-4222-8333-444455556666"

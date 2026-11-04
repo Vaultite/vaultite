@@ -1,6 +1,7 @@
 // Idle wakeups: an open window with one note and the sidebars, left alone, runs almost nothing (timer, frame and idle
-// callbacks a minute, shown and hidden), and its server's main thread sleeps (Linux). Reads only. Covers
-// plugins/core/companion/Overlay.tsx, core/live.ts, core/schedule.ts, plugins/core/activity/plugin.ts.
+// callbacks a minute, shown and hidden), and its server's main thread sleeps (Linux), with a comment thread in a note
+// not open. WRITES that thread: throwaway server. Covers plugins/core/companion/Overlay.tsx, core/live.ts,
+// core/schedule.ts, plugins/core/activity/plugin.ts.
 //   node web/qa/wakeups.mjs <base url> [--print]
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -38,6 +39,13 @@ const HOOK = () => {
 const page = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }))
 await page.addInitScript(HOOK)
 await page.goto(B)
+// (a vault's threads in notes not open place nothing: the companion's overlay stays asleep)
+check("a thread left in another note", await page.evaluate(() => new Promise((ok) => {
+  const ws = new WebSocket(new URL("api/companion/live", location.href).href.replace(/^http/, "ws"))
+  ws.onopen = () => ws.send(JSON.stringify({ t: "comment", path: "Notes/Lisbon trip.md", line: 1, text: "A thread elsewhere" }))
+  ws.onmessage = (e) => { if (String(e.data).includes("A thread elsewhere")) { ws.close(); ok(true) } }
+  setTimeout(() => ok(false), 8000)
+})))
 await page.locator("aside[data-side=left]").getByText("How this vault works").first().click()
 check("the note opens", await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("How this vault works")), 8000))
 await page.mouse.move(700, 450)

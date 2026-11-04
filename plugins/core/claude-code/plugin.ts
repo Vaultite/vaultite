@@ -1,6 +1,7 @@
 // Claude Code: what it does on this machine, in each of its accounts (config folders), read from its own files; nothing is
 // written anywhere. Value = the tokens at API list prices (PRICES), not what was paid.
 import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -58,8 +59,8 @@ function accounts(): Account[] {
   try { names = fs.readdirSync(parent) } catch { /* none */ }
   for (const n of names.sort()) {
     const id = n.startsWith(base + "-") ? n.slice(base.length + 1).toLowerCase() : ""
-    const ran = ["projects", ".claude.json"].some((f) => fs.existsSync(path.join(parent, n, f)))
-    if (ACCOUNT_ID.test(id) && ran) byDir.set(path.join(parent, n), id)
+    // (the name first: the home folder's other entries aren't looked into, as the sessions' watch asks often)
+    if (ACCOUNT_ID.test(id) && ["projects", ".claude.json"].some((f) => fs.existsSync(path.join(parent, n, f)))) byDir.set(path.join(parent, n), id)
   }
   for (const [id, o] of Object.entries(set)) {
     if (ACCOUNT_ID.test(id) && o && typeof o === "object" && typeof o.dir === "string" && o.dir && !inVault(expandHome(o.dir))) byDir.set(expandHome(o.dir), id)
@@ -99,6 +100,8 @@ const TYPE_FIRST = Buffer.from('{"type":"')
 
 class Scan extends JsonlScan<Resp> {
   titles = new Map<string, [string, string]>()  // session -> [custom | ai, title]
+  protected extra() { return [...this.titles] }
+  protected restore(x: unknown) { if (Array.isArray(x)) this.titles = new Map(x) }
 
   protected line(line: Buffer) {
     // Cheap byte tests first: most lines are tool output nobody needs. A line's own type comes first in some (titles,
@@ -149,9 +152,11 @@ class Scan extends JsonlScan<Resp> {
 }
 
 const scans = new Map<string, Scan>() // account folder -> its transcripts
+const keyOf = (dir: string) => createHash("sha1").update(dir).digest("hex").slice(0, 12)
 const scanOf = (a: Account) => {
   let s = scans.get(a.dir)
-  if (!s) scans.set(a.dir, (s = new Scan(() => [path.join(a.dir, "projects")])))
+  // (what's read kept on this server's disk, by the folder: a restart reads on, not a month of transcripts again)
+  if (!s) scans.set(a.dir, (s = new Scan(() => [path.join(a.dir, "projects")], () => path.join(plugin.localDir(), `scan-${keyOf(a.dir)}.json`))))
   return s
 }
 /** A session's title, whichever account it's in (never a private one's). */

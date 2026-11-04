@@ -139,6 +139,11 @@ function shown(d: Doc, words: string[], inTitle: boolean): { meta: string; metaM
   return { meta: lead + ex.text, metaMarks: marksOf(ex.ranges.map(([a, b]) => [a + lead.length, b + lead.length])) }
 }
 
+/** A doc's title and text lowercased, made once a doc (the index is the same objects until the store changes): per
+ *  keystroke it was most of the switcher's time in a big vault. */
+const hays = new WeakMap<Doc, string>()
+const hayOf = (d: Doc) => { let h = hays.get(d); if (h === undefined) hays.set(d, h = `${d.title} ${d.text}`.toLowerCase()); return h }
+
 export function search(docs: Doc[], query: string, limit = 40): Hit[] {
   const q = query.trim()
   if (!q) return []
@@ -152,7 +157,7 @@ export function search(docs: Doc[], query: string, limit = 40): Hit[] {
     const n = name && name !== d.title && name.startsWith(d.title) ? fuzzy(q, name) : null
     if (n) { out.push({ ...d, ...shown(d, words, true), marks: n.marks.filter((i) => i < d.title.length), score: n.score + (d.weight ?? 0) }); continue }
     // Not in the title: every word somewhere in the title or the text (not the grey text: every page's says "Page").
-    const hay = `${d.title} ${d.text}`.toLowerCase()
+    const hay = hayOf(d)
     if (words.every((w) => hay.includes(w))) {
       out.push({ ...d, ...shown(d, words, false), marks: marksOf(wordRanges(d.title, words)), score: 10 + (d.weight ?? 0) / 2 })
     }

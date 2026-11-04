@@ -58,6 +58,8 @@ const int = (v: unknown) => Math.max(Math.trunc(Number(v) || 0), 0)
 class Scan extends JsonlScan<Resp, FileState> {
   names = new Map<string, string>() // session -> the name it was given
   limits: { observed: number; rl: Item } | null = null // the newest rate limits a session saw
+  protected extra() { return this.limits }
+  protected restore(x: unknown) { if (x && typeof x === "object") this.limits = x as Scan["limits"] }
 
   protected fresh(p: string): FileState {
     const id = FILE_ID.exec(path.basename(p))?.[1] ?? path.basename(p, ".jsonl")
@@ -161,7 +163,7 @@ class Scan extends JsonlScan<Resp, FileState> {
   }
 }
 
-const scan = new Scan(() => [path.join(CODEX, "sessions"), path.join(CODEX, "archived_sessions")])
+const scan = new Scan(() => [path.join(CODEX, "sessions"), path.join(CODEX, "archived_sessions")], () => path.join(plugin.localDir(), "scan.json"))
 
 function cost(r: Resp) {
   const p = price(r.model)

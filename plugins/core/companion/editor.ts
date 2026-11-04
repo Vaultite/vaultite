@@ -437,6 +437,7 @@ function watcher(path: string) {
       this.pending = ChangeSet.empty(view.state.doc.length)
       views.set(view, path)
       sayWhereSoon()
+      bump() // (a thread in it: the overlay places it)
       // (its tab kept hidden, or shown again: whether an edit can be typed in here changes)
       let shown = false
       this.sight = new ResizeObserver(() => { const now = view.dom.getClientRects().length > 0; if (now !== shown) { shown = now; sayWhereSoon() } })
