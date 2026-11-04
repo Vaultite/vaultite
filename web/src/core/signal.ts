@@ -8,8 +8,9 @@ export function signal() {
   const current = () => version
   return {
     subscribe,
-    /** Tell everything that reads it: hooks redraw, subscribers run. */
-    notify: () => { version++; subs.forEach((f) => f()) },
+    /** Tell everything that reads it: hooks redraw, subscribers run. One that throws (a plugin's) is reported, never
+     *  stopping the others or the change that told them (a tab switched with its address left behind). */
+    notify: () => { version++; subs.forEach((f) => { try { f() } catch (e) { console.error(e) } }) },
     version: current,
     /** A hook: `read()` (the counter when omitted), drawn again when it's notified. `read` returns the same value
      *  until something changes (useSyncExternalStore's rule). */

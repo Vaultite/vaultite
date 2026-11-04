@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A plugin that fails can't half-switch a tab**: one plugin's error while tabs change is reported, and the address
+  and the panels' highlight still follow the tab on screen (an older Obsidian plugins left the Terminals panel stuck).
 - **A first run that asks, not assumes**: the desktop app's first window is one page, the vault (create one, or open a
   folder: Obsidian vaults by name), with page dots instead of numbered steps. The vault then opens with a welcome card
   over it: pick a layout and light or dark and see it behind the card; use the coding agents found on this Mac or not
