@@ -1,7 +1,7 @@
 // Companion beyond notes: its cursor points at the app's UI (look --ui) and at a terminal pane's row (look --pane --find),
 // and lights it; dropped on a terminal it's a point (with that row's text) and a follow, whose command's end comes as a
 // change moment; a watch of a note tells it once what it waits for is there.
-// WRITES "QA companion panes/", the companion's and watches' data.json: throwaway server only.
+// WRITES "QA companion panes/", the companion's data.json, folders.json: throwaway server only.
 //   node web/qa/companion-panes.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { PROMPT, qa, terminalText, wait } from "./lib/qa.mjs"
@@ -10,7 +10,7 @@ const B = BASE.replace(/\/+$/, "")
 mkdirSync(OUT, { recursive: true })
 const file = (rel) => `${VAULT}/${rel}`
 const keep = (rel) => { const was = existsSync(file(rel)) ? readFileSync(file(rel), "utf8") : null; return () => { if (was === null) rmSync(file(rel), { force: true }); else writeFileSync(file(rel), was) } }
-const restore = [keep(".vaultite/plugins/companion/data.json"), keep(".vaultite/plugins/watches/data.json"), keep(".vaultite/plugins.json")]
+const restore = [keep(".vaultite/plugins/companion/data.json"), keep(".vaultite/plugins/watches/data.json"), keep(".vaultite/plugins.json"), keep(".vaultite/folders.json")]
 const api = (method, p, body) => fetch(`${B}/api/${p}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) }).then((r) => r.json())
 const op = (id, params = {}) => fetch(`${B}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "cli", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params) }).then((r) => r.json())
 const until = async (pred, ms = 8000) => { for (let t = 0; t < ms; t += 100) { if (await pred()) return true; await wait(100) } return false }
@@ -89,9 +89,9 @@ await op("companion.unfollow", { id: pane })
 
 // A watch: a note's text, told once what it waits for is there.
 await api("PUT", "file", { path: `${DIR}/Order.md`, text: "Status: packing\n" })
-await api("PATCH", "config/plugin/watches", { folder: `${DIR}/Watches` })
+await api("PATCH", "config/folders", { watches: `${DIR}/Watches` })
 r = await op("watches.add", { source: `note:${DIR}/Order.md`, until: "shipped", why: "Tell me when it ships", title: "Order" })
-check("a watch is a file in the folder of the setting", existsSync(file(`${DIR}/Watches/Order.md`)), r)
+check("a watch is a file in the folder set for watches (folders.json)", existsSync(file(`${DIR}/Watches/Order.md`)), r)
 await wait(1200)
 await api("PUT", "file", { path: `${DIR}/Order.md`, text: "Status: packed\n" })
 await wait(1200)
