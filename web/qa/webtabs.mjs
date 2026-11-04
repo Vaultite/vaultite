@@ -207,6 +207,12 @@ await noteLink().click({ force: true, modifiers: ["ControlOrMeta"] })
 check("⌘-click on a web link in a note: a web tab behind it", await until(async () => (await tabs()).list.length === n0 + 1 && (await tabs()).active === "file:Notes/Qa tabs.md", 8000), await tabs())
 await noteLink().click({ force: true, modifiers: ["ControlOrMeta", "Shift"] })
 check("⌘⇧-click: a web tab in front", await until(async () => (await tabs()).list.length === n0 + 2 && (await tabs()).active === at("/one"), 8000), await tabs())
+// (a title measured hidden is 0 high: shown again, the note under it moved a frame later, under the next click)
+await wait(300)
+check("… the note kept behind it keeps its title's height", await win.evaluate(() => {
+  const t = [...document.querySelectorAll("[data-title-row] textarea")].find((x) => !x.offsetWidth)
+  return !!t && t.style.height !== "0px"
+}))
 await menuClick("Close tab")
 await until(async () => (await tabs()).active === "file:Notes/Qa tabs.md", 8000)
 const out0 = (await app.evaluate(() => globalThis.__opened)).length

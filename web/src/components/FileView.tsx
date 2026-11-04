@@ -100,7 +100,8 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
   const enter = useRef(false)
   useEffect(() => { if (focus && editable) { ref.current?.focus(); ref.current?.select() } }, [focus, editable])
   useEffect(() => setV(name), [name])
-  const fit = () => { const t = ref.current; if (t) { t.style.height = "0"; t.style.height = `${t.scrollHeight}px` } }
+  // (not while its tab is kept hidden: measured there it'd be 0 high, and shown again the page under it jumps a frame later)
+  const fit = () => { const t = ref.current; if (t?.offsetWidth) { t.style.height = "0"; t.style.height = `${t.scrollHeight}px` } }
   useEffect(fit, [v, editable])
   // Its pane can get narrower or wider without the window changing (a split, a divider dragged).
   useEffect(() => {
