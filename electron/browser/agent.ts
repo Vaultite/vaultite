@@ -540,7 +540,8 @@ eachPage((p) => {
   used.set(p.id, Date.now())
   actor.set(p.wc, by.name || "Agent")
   doing.set(p.id, { what: `Opening ${hostOf(p.url)}`, at: Date.now(), by })
-  hold(p)
+  // (held once the contents window.open made are set up: CDP on them mid-creation crashes the app)
+  setImmediate(() => hold(p))
 })
 
 // ---------- the pages agents are at work in, told to their window as they change (its corner card, tabs) ----------
