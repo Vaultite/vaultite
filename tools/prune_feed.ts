@@ -36,7 +36,7 @@ for (const k of lists) {
   const text = await (await call(`${api}/${encodeURIComponent(k)}`)).text()
   for (const [, file] of text.matchAll(/^\s*(?:- url|path): *['"]?([^'"\n]+?)['"]?\s*$/gm)) named.add(dir + file)
 }
-const installer = /(-mac\.zip|\.AppImage|\.exe)$/
+const installer = /(-mac\.zip|\.AppImage|\.deb|\.exe)$/
 const stale = keys.filter((k) => installer.test(k) && !named.has(k))
 if (keys.some((k) => installer.test(k)) && !keys.some((k) => installer.test(k) && named.has(k))) {
   throw new Error(`${bucket}/${dir}: its update lists name none of its installers: nothing pruned`)
