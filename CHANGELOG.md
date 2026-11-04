@@ -9,6 +9,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Faster first load on a phone**: the app's code comes in about a dozen files instead of over a hundred, the vault
   arrives while it loads, and its files are compressed smaller; after an update the new version is fetched in the
   background, so the next launch doesn't wait for it. On 4G through the tailnet the first screen draws in half the time.
+  The iPhone app's server list, shown at every launch, and the desktop app's Manage vaults window load a fifth of the
+  code they did.
 - **Splits and swipes on the phone**: a split tab's panes sit side by side, the next one coming in with the finger from the first
   pixels; let go past halfway or flick and it settles in on a spring at the finger's speed, past the ends it gives, a
   finger down mid-settle catches it, and vertical scrolls stay scrolls. In the tab list a split's card shows its

@@ -29,14 +29,19 @@ function graph(entry: string) {
 const main = graph(path.join(ROOT, JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).main))
 const kb = (n: number) => Math.round(n / 1024)
 const now: Record<string, number> = { desktopMainKB: kb([...main.values()].reduce((a, b) => a + b, 0)) }
-const html = path.join(ROOT, "web", "dist", "index.html")
-if (fs.existsSync(html)) {
-  const eager = [...fs.readFileSync(html, "utf8").matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1])
-  const size = (ext: string) => kb(eager.filter((f) => f.endsWith(ext)).reduce((n, f) => n + fs.statSync(path.join(ROOT, "web", "dist", f)).size, 0))
-  now.webEagerJsKB = size(".js")
-  now.webEagerCssKB = size(".css")
+const DIST = path.join(ROOT, "web", "dist")
+/** The files a page of web/dist loads before drawing. */
+const eagerOf = (page: string) =>
+  [...fs.readFileSync(path.join(DIST, page), "utf8").matchAll(/<(?:script|link)\b[^>]*?(?:src|href)="\.?\/?(assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1])
+const sizeOf = (files: string[], ext: string) => kb(files.filter((f) => f.endsWith(ext)).reduce((n, f) => n + fs.statSync(path.join(DIST, f)).size, 0))
+if (fs.existsSync(path.join(DIST, "index.html"))) {
+  const eager = eagerOf("index.html")
+  now.webEagerJsKB = sizeOf(eager, ".js")
+  now.webEagerCssKB = sizeOf(eager, ".css")
   // (a browser asks 6 at a time over HTTP/1.1: a hundred small files cost a phone seconds; vite.config.ts bootChunks)
   now.webEagerFiles = eager.length
+  // The iPhone app's first screen, at every launch: a server list, not the app (whose code its imports could reach)
+  now.phoneEagerJsKB = sizeOf(eagerOf("phone.html"), ".js")
 } else console.log("startup: no web/dist (npm run build first): the web app's part skipped")
 
 const limits: Record<string, number> = fs.existsSync(LIMITS) ? JSON.parse(fs.readFileSync(LIMITS, "utf8")) : {}

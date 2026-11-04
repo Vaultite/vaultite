@@ -7,7 +7,7 @@ import "./core/appearance" // applies the theme, scheme, density and fonts befor
 import "./core/selectAll" // ⌘A selects the text the user is in, never the whole window
 import App from "./App.tsx"
 import { startStore } from "./core/data"
-import { startDesktop } from "./core/desktop"
+import { startDesktop } from "./core/desktopapp"
 import { prefetchShown, watchOpeningSoon } from "./core/files"
 import { noteAppError, recoverFromStaleBuild, startAppErrors } from "./core/errors"
 

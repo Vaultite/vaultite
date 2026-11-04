@@ -1,6 +1,7 @@
 {
   "desktopMainKB": 638,
-  "webEagerJsKB": 2951,
+  "webEagerJsKB": 2931,
   "webEagerCssKB": 336,
-  "webEagerFiles": 17
+  "webEagerFiles": 17,
+  "phoneEagerJsKB": 511
 }
