@@ -42,6 +42,14 @@ async function finger(x, y, path, lift = true) {
 /** A straight move by (dx, dy) over `ms`, in 16 ms steps. */
 const line = (dx, dy, ms, from = [0, 0]) => { const n = Math.max(1, Math.round(ms / 16)); return Array.from({ length: n }, (_, i) => [from[0] + (dx * (i + 1)) / n, from[1] + (dy * (i + 1)) / n, 16]) }
 
+/** Where the page was as a finger landed (`__landed`, px): a busy page hears a touch late, its glide going on meanwhile.
+ *  (Heard on the window before the page's own listeners.) */
+const landing = () => {
+  if (window.__landing) return
+  window.__landing = true
+  addEventListener("touchstart", () => { const m = document.querySelector("#main-scroll > main"); window.__landed = m ? Math.round(new DOMMatrix(getComputedStyle(m).transform).m41) : null }, { capture: true })
+}
+
 /** Frame timings while `fn` runs: rAF gaps, long tasks, and layouts and style recalcs (CDP's counts). */
 async function frames(label, fn) {
   await P.evaluate(() => {
@@ -150,14 +158,17 @@ try {
   await finger(60, Y, line(200, 0, 100)); await wait(700)
 
   // ---------- caught mid-flight: it stays under the finger ----------
+  await P.evaluate(landing)
   await finger(X, Y, line(-90, 0, 48))
   await wait(60)
-  const flying = await shift()
+  await P.evaluate(() => { window.__landed = undefined })
   await touch("touchStart", X, Y)
+  await until(() => P.evaluate(() => window.__landed !== undefined), 3000)
   await wait(32)
-  const caught = await shift()
-  check("caught while settling: held where it was (no jump)", flying !== null && flying < -40 && caught !== null && Math.abs(caught - flying) < 60, [flying, caught])
-  await finger(X, Y, line(160, 0, 300).map(([x, y, ms]) => [x, y, ms]), false).catch(() => {})
+  const flying = await P.evaluate(() => window.__landed), caught = await shift()
+  check("caught while settling: held where it was (no jump)", flying != null && flying < -40 && caught !== null && Math.abs(caught - flying) < 10, [flying, caught])
+  // (the same finger on: a second touchstart would be a second finger, which drops the swipe)
+  for (const [px, py, ms] of line(160, 0, 300)) { await wait(ms); await touch("touchMove", X + px, Y + py) }
   await touch("touchEnd", X + 160, Y); await wait(700)
   check("...and dragged back, it's the pane it came from", (await at()) === 1 && (await shift()) === 0, [await at(), await shift()])
 
@@ -237,11 +248,11 @@ try {
   check("webkit: let go short of halfway, held: springs back", (await wShift()) === 0 && (await wAt()) === 0, [await wShift(), await wAt()])
   await wFinger(200, 500, line(-70, 0, 64)); await wait(700)
   check("webkit: a flick goes to the next pane", (await wAt()) === 1 && (await wShift()) === 0, [await wAt(), await wShift()])
+  await W.evaluate(landing)
   await wFinger(200, 500, line(-90, 0, 48)); await wait(80)
-  const wFlying = await wShift()
   await wFinger(200, 500, [[0, 0, 16]], false)
-  const wCaught = await wShift()
-  check("webkit: caught while settling, held where it was", wFlying < -40 && Math.abs(wCaught - wFlying) < 60, [wFlying, wCaught])
+  const wFlying = await W.evaluate(() => window.__landed), wCaught = await wShift()
+  check("webkit: caught while settling, held where it was", wFlying != null && wFlying < -40 && Math.abs(wCaught - wFlying) < 10, [wFlying, wCaught])
   await wLift(200)
   await wait(800)
   check("webkit: ...let go there, it lands on a pane", (await wShift()) === 0 && (await wAt()) >= 1, [await wShift(), await wAt()])
