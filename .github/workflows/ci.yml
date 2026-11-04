@@ -108,8 +108,9 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
-      - run: npx playwright-core install --with-deps chromium
+          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+      # (WebKit: what only iOS's engine draws, in paneswipe and textselect)
+      - run: npx playwright-core install --with-deps chromium webkit
       - run: sudo apt-get install -y xvfb ffmpeg
       - run: npm run build
       - run: node tools/qa.ts --lint
