@@ -48,6 +48,8 @@ async function spot(id, where) {
 /** Drag a chip or handle to (x, y); before letting go, what's offered there (a zone, the bar making way, or nothing). */
 async function drag(from, [x, y], { drop = true, name } = {}) {
   const b = await from.boundingBox()
+  const lefts = () => page.$$eval("[data-tab-strip] [data-tab-id]", (els) => els.map((e) => Math.round(e.getBoundingClientRect().left)))
+  const before = await lefts()
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
   await page.mouse.down()
   await page.mouse.move(b.x + b.width / 2 + 8, b.y + b.height / 2 + 4, { steps: 2 })
@@ -56,6 +58,9 @@ async function drag(from, [x, y], { drop = true, name } = {}) {
     zone: document.querySelector("[data-drop-zone]")?.dataset.dropZone ?? null,
     line: !!document.querySelector("[data-drop-preview]"),
   }))
+  // (the tabs that moved to make way, the dragged one aside: it follows the pointer)
+  const now = await lefts(), lifted = before.indexOf(Math.round(b.x))
+  offered.moved = now.some((x, i) => i !== lifted && Math.abs(x - before[i]) > 1)
   if (name) await shot(name)
   if (drop) await page.mouse.up(); else { await page.keyboard.press("Escape"); await page.mouse.up() }
   await wait(400)
@@ -156,7 +161,7 @@ try {
   check("reorder: the first tab went last", cs.map((c) => c.panes[0]).join("|") === [...order0.slice(1), order0[0]].join("|"), cs)
   // Dropping a tab back where it is isn't offered.
   o = await drag(chip(cs[1].panes[0]), await barSpot(cs[1].panes[0]))
-  check("nothing makes way where it already is", !o.line, o)
+  check("nothing makes way where it already is", !o.moved && !o.zone, o)
   // The tab on screen onto its own pane: nothing to do.
   await chip(A).locator("[role=tab]").click(); await wait(400)
   const pa = (await panes())[0]

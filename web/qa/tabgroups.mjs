@@ -83,7 +83,7 @@ try {
   // A new tab (⌘T) from a grouped tab is past its group, in none, whatever it opens (a link from it joins it).
   const fresh = () => page.$$eval("[data-tab-bar] [data-tab-id]", (els) => { const i = els.findIndex((e) => e.querySelector("[aria-selected=true]"))
     return { prev: els[i - 1]?.textContent.trim(), at: els[i]?.textContent.trim(), grouped: !!els[i]?.dataset.inGroup } })
-  const newtab = keep("newtab.json"), shown = await page.$eval("[data-tab-bar] [data-tab-id]:has([aria-selected=true])", (e) => e.dataset.tabId)
+  const newtab = keep("newtab.json"), wasShown = await page.$eval("[data-tab-bar] [data-tab-id]:has([aria-selected=true])", (e) => e.dataset.tabId)
   for (const opens of [null, "switcher"]) {
     writeFileSync(newtab.p, JSON.stringify({ opens }) + "\n"); await wait(800)
     await tab("Lighthouse").click(); await wait(200)
@@ -95,7 +95,7 @@ try {
     await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Close", exact: true }).click(); await wait(400)
   }
   if (newtab.was === null) rmSync(newtab.p); else writeFileSync(newtab.p, newtab.was)
-  await page.click(`[data-tab-bar] [data-tab-id="${shown}"]`); await wait(300)
+  await page.click(`[data-tab-bar] [data-tab-id="${wasShown}"]`); await wait(300)
   await menu(tab("2026-10-20"), "Add tab to group", "New group")
   await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await wait(300)
   const chips = await page.$$eval("[data-group-chip]", (els) => els.map((e) => ({ text: ((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e), name: e.querySelector("[data-group-name]").getAttribute("aria-label"), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
