@@ -1,7 +1,9 @@
 // Long desktop session on a made-up vault (notes, tabs, panes, panels, terminals, an agent writing; idle still, shown, hidden, a graph), driven through the app's ops with nothing attached (a debugger keeps what the page logs and compiles, so its heap grows by itself): each process's memory and CPU, the page's heap, DOM and timers; growth an hour.
 // node tools/perf/soak.ts [--minutes 30 (0: idle only)] [--scale 10] [--idle 3 (min a phase)] [--phases still,shown,hidden,graph] [--snapshots (attaches CDP from the first)] [--budget (exit 1 past it: nightly CI)] [--out dir] [--root <checkout>]   not as root; heavy: check `uptime`
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
+import { once } from "node:events"
 import fs from "node:fs"
+import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
@@ -81,9 +83,12 @@ const inPage = async <T>(fn: (a: never) => unknown, a: unknown = null, timeout =
   (await op("dev.eval", { code: `(${fn})(${JSON.stringify(a)})`, timeout })).value as T
 const command = (id: string) => op("ui.command", { id }).then(() => wait(400), (e: Error) => step(`command ${id}: ${e.message}`))
 const go = (hash: string) => inPage((h: string) => { location.hash = h }, hash)
+/** Why the last `until` gave up: its check's last error. */
+let lastWhy = ""
 async function until(what: string, f: () => Promise<boolean>, ms: number) {
-  for (const end = Date.now() + ms; Date.now() < end; await wait(250)) if (await f().catch(() => false)) return true
-  step(`gave up waiting for ${what}`)
+  lastWhy = ""
+  for (const end = Date.now() + ms; Date.now() < end; await wait(250)) if (await f().catch((e: Error) => { lastWhy = e.message; return false })) return true
+  step(`gave up waiting for ${what}${lastWhy ? `: ${lastWhy}` : ""}`)
   return false
 }
 
@@ -354,19 +359,26 @@ let aborted = false, within = true
 let stopAgent = () => {}
 try {
   if (SNAPSHOTS) debugPort = await freePort()
-  const electron = path.join(ROOT, "node_modules", "electron", "dist", MAC ? "Electron.app/Contents/MacOS/Electron" : "electron")
-  const flags = ["--js-flags=--expose-gc", "--enable-precise-memory-info", ...(SNAPSHOTS ? [`--remote-debugging-port=${debugPort}`] : []), ROOT, "--vault", VAULT]
+  // (electron's own path, which downloads its binary on first use: a fresh npm ci has none)
+  const electron = createRequire(path.join(ROOT, "package.json"))("electron") as string
+  // (Linux: --no-sandbox, as Playwright launches the QA scripts: a checkout's chrome-sandbox isn't setuid root)
+  const flags = ["--js-flags=--expose-gc", "--enable-precise-memory-info", ...(SNAPSHOTS ? [`--remote-debugging-port=${debugPort}`] : []),
+    ...(process.platform === "linux" ? ["--no-sandbox"] : []), ROOT, "--vault", VAULT]
   const headless = process.platform === "linux" && !process.env.DISPLAY
   // (its own process group: the soak ends xvfb-run, Electron and the server it forked together)
   child = spawn(headless ? "xvfb-run" : electron, headless ? ["-a", electron, ...flags] : flags, { stdio: ["ignore", "ignore", "pipe"], detached: true,
     env: { ...process.env, ...isolated(path.join(tmp, "home")), VAULTITE_QUIET: "1", VAULTITE_USER_DATA: userData, VAULTITE_LOCAL: path.join(tmp, "local") } })
   let said = ""
   child.stderr!.on("data", (b: Buffer) => { said = (said + b).slice(-20000) })
-  const up = await until("the app", async () => {
-    if (child!.exitCode !== null) throw new Error(`the app exited:\n${said}`)
-    return await inPage<boolean>(() => !!document.querySelector("[role=tree]"))
-  }, 120000)
-  if (!up) throw new Error(`the app didn't come up:\n${said}`)
+  const up = await until("the app", async () => child!.exitCode !== null || await inPage<boolean>(() => !!document.querySelector("[role=tree]")), 120000)
+  if (child.exitCode !== null) {
+    await Promise.race([once(child, "close"), wait(2000)]) // (its last words)
+    throw new Error(`the app exited (${child.exitCode}):\n${said}`)
+  }
+  if (!up) {
+    const all = ps(), running = [...tree(all, child.pid!)].map((pid) => all.find((p) => p.pid === pid)?.cmd.slice(0, 160)).filter(Boolean)
+    throw new Error(`the app didn't come up (${lastWhy || "no tree drawn"}); its processes:\n${running.join("\n")}\n${said}`)
+  }
   // (a worktree's node_modules is often a link to another checkout's: the process runs from where it leads)
   const real = fs.realpathSync(electron)
   mainPid = [...tree(ps(), child.pid!)].map((pid) => ps().find((p) => p.pid === pid)!).find((p) => p && [electron, real].some((e) => p.cmd.startsWith(e)) && !p.cmd.includes("--type="))!.pid

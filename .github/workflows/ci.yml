@@ -13,9 +13,10 @@ on:
   schedule:
     - cron: "17 5 * * *" # (off the hour: GitHub delays, and may drop, runs on it)
 # A pull request's newer push cancels its older run; main's runs finish, the newest push waiting while one runs (GitHub
-# drops the ones queued between), so main's head is always tested and a run's failure names its commit.
+# drops the ones queued between), so main's head is always tested and a run's failure names its commit. The nightly and
+# runs by hand (QA) queue apart, so a push never drops one.
 concurrency:
-  group: ci-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || github.event_name == 'workflow_dispatch' && '-qa' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:

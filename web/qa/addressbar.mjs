@@ -9,13 +9,11 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-addressbar-"))
-const awake = process.platform !== "darwin" ? null
-  : (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "600"], { stdio: "ignore" })
-process.on("exit", () => awake?.kill())
+keepAwake(600)
 
 const server = http.createServer((req, res) => {
   const name = (req.url ?? "/").slice(1).split(/[?#]/)[0] || "home"

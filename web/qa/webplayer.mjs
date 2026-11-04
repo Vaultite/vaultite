@@ -13,15 +13,13 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
 import { stopTerminals } from "../../tools/test/lib.ts"
 
 const { args: [VAULT, OUT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 if (OUT) fs.mkdirSync(OUT, { recursive: true })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webplayer-"))
-const awake = process.platform !== "darwin" ? null
-  : (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "600"], { stdio: "ignore" })
-process.on("exit", () => awake?.kill())
+keepAwake(600)
 
 // ---------- made-up pages: a film in the page, and one in an embedded player of another site ----------
 const FILM = `<canvas id="c" width="320" height="180" hidden></canvas><script>

@@ -10,13 +10,12 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { BACK_KEY, ROOT, SHOTS, qa, until, wait } from "./lib/qa.mjs"
+import { BACK_KEY, ROOT, SHOTS, qa, until, wait, keepAwake } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 if (process.platform !== "darwin") { console.log("browserkeys: a Mac's keys, skipped"); process.exit(0) }
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-browserkeys-"))
-const awake = (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "600"], { stdio: "ignore" })
-process.on("exit", () => awake.kill())
+keepAwake(600)
 
 // ---------- made-up pages ----------
 const page = (title, body, script = "") => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>

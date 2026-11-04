@@ -12,13 +12,11 @@ import http from "node:http"
 import https from "node:https"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until } from "./lib/qa.mjs"
+import { ROOT, qa, until, keepAwake } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-browserpolish-"))
-const awake = process.platform !== "darwin" ? null
-  : (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "600"], { stdio: "ignore" })
-process.on("exit", () => awake?.kill())
+keepAwake(600)
 
 // ---------- made-up pages ----------
 const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>

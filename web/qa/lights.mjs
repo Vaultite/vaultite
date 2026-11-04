@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
 
 const { args: [VAULT, OUT_ARG = "/tmp/lights-shots"], check, watch, done } = await qa(import.meta.url, { chrome: false })
 if (process.platform !== "darwin") { console.log("skipped: the traffic lights are a Mac's"); process.exit(0) }
@@ -15,9 +15,7 @@ const OUT = path.resolve(OUT_ARG)
 const HALF = Number(os.release().split(".")[0]) >= 25 ? 7 : 8
 fs.mkdirSync(OUT, { recursive: true })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-lights-"))
-// (a window on a sleeping display draws no frames)
-const awake = (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "600"], { stdio: "ignore" })
-process.on("exit", () => awake.kill())
+keepAwake(600)
 
 fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
 fs.writeFileSync(path.join(VAULT, ".vaultite/appearance.json"), JSON.stringify({ theme: "dark", rails: false }))

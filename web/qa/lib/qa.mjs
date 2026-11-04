@@ -1,6 +1,6 @@
 // What every QA script shares: its arguments (read from its own usage line), Chrome, the checks and the exit code.
 //   const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import { createRequire } from "node:module"
 import net from "node:net"
@@ -20,6 +20,13 @@ export const ROOT = fileURLToPath(new URL("../../../", import.meta.url))
 export const WEBGL = ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--ignore-gpu-blocklist"]
 
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+
+/** A Mac's display kept awake for `seconds` (a window on a sleeping display draws no frames), till the script exits. */
+export function keepAwake(seconds) {
+  if (process.platform !== "darwin") return
+  const awake = spawn("caffeinate", ["-u", "-d", "-t", String(seconds)], { stdio: "ignore" })
+  process.on("exit", () => awake.kill())
+}
 // (imported when used: boot.mjs, the smoke test, says it's skipped rather than failing where there's no Chrome)
 // (each waits for this machine's QA slot first: tools/qa_slots.ts)
 // (muted: a test never plays on the machine's speakers)

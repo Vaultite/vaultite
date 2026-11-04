@@ -9,13 +9,11 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, apiAt, qa, until, wait, keepAwake } from "./lib/qa.mjs"
 
 const { args: [VAULT, RUNS = "3"], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-sidebarmotion-"))
-// (a window on a sleeping display draws no frames)
-const awake = (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "600"], { stdio: "ignore" })
-process.on("exit", () => awake.kill())
+keepAwake(600)
 
 const server = http.createServer((_req, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
