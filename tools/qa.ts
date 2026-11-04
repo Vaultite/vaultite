@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { freePort, killTree, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
+import { quietGrants } from "./qa_grants.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
 import { MOVED } from "../core/migrations.ts"
 import { ANCHOR } from "../core/sandbox.ts"
@@ -136,11 +137,7 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
   fs.cpSync(path.join(ROOT, "tools/fixtures/claude"), claude, { recursive: true })
   const made = spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", vault, ...(UNDATED.has(name) ? ["--today", ANCHOR] : [])], { encoding: "utf8" })
   if (made.status !== 0) return { ok: false, ms: 0, out: made.stderr || made.stdout }
-  // (plugins' writes on their own answered "not now": no "wants to write" dialog over the page, nothing written)
-  fs.writeFileSync(path.join(vault, ".vaultite/grants.json"), JSON.stringify(Object.fromEntries(fs.readdirSync(path.join(ROOT, "plugins/core")).flatMap((id) => {
-    const writes = JSON.parse(fs.readFileSync(path.join(ROOT, "plugins/core", id, "manifest.json"), "utf8")).writes ?? []
-    return writes.length ? [[id, Object.fromEntries(writes.map((w: { folder?: string; file?: string }) => [w.folder ?? w.file, "not now"]))]] : []
-  }))))
+  quietGrants(vault)
   const servers: Server[] = []
   const t = Date.now()
   try {

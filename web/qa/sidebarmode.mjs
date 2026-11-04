@@ -13,11 +13,6 @@ const pluginsFile = path.join(VAULT, ".vaultite/plugins.json")
 const pluginsBefore = existsSync(pluginsFile) ? readFileSync(pluginsFile, "utf8") : null
 const o = JSON.parse(pluginsBefore ?? "{}")
 writeFileSync(pluginsFile, JSON.stringify({ ...o, disabled: (o.disabled ?? []).filter((x) => x !== "activity" && x !== "workspaces"), enabled: [...new Set([...(o.enabled ?? []), "activity", "workspaces"])] }, null, 2) + "\n")
-// (Activity's own recaps answered "not now": its "wants to write" dialog would cover the page)
-const grantsFile = path.join(VAULT, ".vaultite/grants.json")
-const grantsBefore = existsSync(grantsFile) ? readFileSync(grantsFile, "utf8") : null
-const g = JSON.parse(grantsBefore ?? "{}")
-writeFileSync(grantsFile, JSON.stringify({ ...g, activity: { ...g.activity, Recaps: "not now" } }, null, 2) + "\n")
 await wait(800)
 // Something done, so the feed has rows: a note written through the API.
 const NOTE = "Notes/Sidebar mode check.md", NOTE2 = "Notes/Sidebar mode live.md"
@@ -95,7 +90,6 @@ try {
   check("...which shows them", !!(await until(async () => !(await mode(page)))))
 } finally {
   writeFileSync(pluginsFile, pluginsBefore ?? "{}\n")
-  if (grantsBefore === null) rmSync(grantsFile, { force: true }); else writeFileSync(grantsFile, grantsBefore)
   for (const f of [NOTE, NOTE2]) await fetch(`${B}api/file?path=${encodeURIComponent(f)}`, { method: "DELETE" }).catch(() => {})
 }
 await done()

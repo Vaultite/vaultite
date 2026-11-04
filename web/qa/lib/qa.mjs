@@ -7,6 +7,7 @@ import net from "node:net"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { hold } from "../../../tools/qa_slots.ts"
+import { quietGrants } from "../../../tools/qa_grants.ts"
 
 /** Playwright's Chromium, else Google Chrome (Chromium on Linux), VAULTITE_CHROME picks one. Not the installed Chrome
  *  first: a headless one left running is the one macOS brings forward, so opening Chrome shows no window. */
@@ -64,6 +65,8 @@ function args(script) {
  *  on any failure (noErrors() checks earlier, before a cleanup that could add some). */
 export async function qa(script, { chrome = {} } = {}) {
   const argv = args(script)
+  // (a sandbox given, run by hand: its plugins' writes answered, as tools/qa.ts' vaults are, or their ask covers the page)
+  for (const a of argv) if (typeof a === "string" && fs.existsSync(path.join(a, ".vaultite/sandbox.json"))) quietGrants(a)
   await hold()
   const browser = chrome ? await launch(chrome) : null
   // (a throw ends the run with Chrome closed: left open, it holds the runner's pipe and the run hangs to its timeout)
