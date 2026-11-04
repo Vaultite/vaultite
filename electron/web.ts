@@ -420,10 +420,10 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   if (agent) park(p)
   const wc = view.webContents
   if (taken) wc.once("did-navigate", () => { wc.navigationHistory.clear(); p.blankBehind = false })
-  // (its address mid-restore is any of its entries': the tab mustn't follow it, and load that over it)
+  // (its address mid-restore is any of its entries': the tab mustn't follow it till it's at its own)
   if (kept) {
     p.restoring = true
-    const done = () => { if (kept.load && wc.navigationHistory.getActiveIndex() < kept.entries.length) return; p.restoring = false; wc.off("did-navigate", done); sendState(p) }
+    const done = () => { if (wc.navigationHistory.getActiveIndex() < kept.index) return; p.restoring = false; wc.off("did-navigate", done); sendState(p) }
     wc.on("did-navigate", done)
   }
   // (its window as it is now: a tab moved to another window takes its page along, `moveTo`)
@@ -692,11 +692,10 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   })
 
   if (kept) {
-    // (restoring loads where it was; with `load`, the address loads over that before it asks for anything. A restore's
+    // (restoring loads its entry at `index`, its address: the only load, never an earlier page's cut short. A restore's
     // promise can fail, ERR_ABORTED, with the page on its way in: loaded afresh only if nothing came)
     const restored = wc.navigationHistory.restore({ entries: kept.entries, index: kept.index })
-    if (kept.load) { void restored.catch(() => {}); void wc.loadURL(url).catch(() => {}) }
-    else void restored.catch(() => { if (!wc.isDestroyed() && !wc.getURL() && !wc.isLoading()) void wc.loadURL(url).catch(() => {}) })
+    void restored.catch(() => { if (!wc.isDestroyed() && !wc.getURL() && !wc.isLoading()) void wc.loadURL(url).catch(() => {}) })
   } else if (!adopt) void wc.loadURL(url).catch(() => { /* did-fail-load says why */ })
   return p
 }

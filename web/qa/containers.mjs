@@ -1,8 +1,8 @@
 // The Browser's containers in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this
 // script serves on 127.0.0.1 (a cookie login): a tab in Work (persist:web-c-work) signed in, the same site in Personal
 // isn't, nor in no container; the bar shows the tab's container (a chip inside the address; a line along every
-// container tab's top); a site set to always open in Work goes there from a
-// plain link; the container menu moves a tab to another and only chooses (every row led by its icon), containers are
+// container tab's top); a site set to always open in Work goes there from a plain link; the container menu moves a tab
+// to another (Back kept, only its page loaded there) and only chooses (every row led by its icon), containers are
 // added and deleted in Sites, deleting clearing its logins; switching web tabs is never see-through. A link from another
 // app opens in a web tab. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
 // speaker unmutes it; a video keeps its speaker through a quiet scene, till it pauses.
@@ -89,9 +89,27 @@ check("no container: the workspace's logins, not signed in", await until(async (
 check("… the bar offers containers", await win.locator("[data-web-page] [data-web-container='']:visible").count() === 1, null)
 
 // ---------- the container menu moves the tab ----------
+// (with a page before this one: Back goes there in Work too, never loaded there till then)
+await inPage(`location.href = ${JSON.stringify(`${SITE}/whoami?next`)}`)
+await until(async () => (await visible())?.url === `${SITE}/whoami?next`, 10000)
+// (where the new page sets out for: only its address, never its earlier page, not even cut short)
+await app.evaluate(({ app: a, session }) => {
+  globalThis.qaStarts = []
+  a.on("web-contents-created", (_e, wc) => wc.on("did-start-navigation", (d) => {
+    if (d.isMainFrame && wc.session === session.fromPartition("persist:web-c-work")) globalThis.qaStarts.push(d.url)
+  }))
+})
 await win.locator("[data-web-page] [data-web-container='']:visible").click()
 await win.locator("[role^=menuitem]", { hasText: /^Work$/ }).click()
 check("moved to Work from the menu: signed in", await until(async () => { const v = await visible(); return v?.partition === "persist:web-c-work" && v.text === "who:Alice" }, 15000), await visible())
+const past = await app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
+  const h = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())?.webContents.navigationHistory
+  return h && { urls: h.getAllEntries().map((e) => e.url), at: h.getActiveIndex() }
+})
+check("… Back still goes to its page before", past?.urls.at(-2) === `${SITE}/whoami?none` && past.at === past.urls.length - 1, past)
+const starts = await app.evaluate(() => globalThis.qaStarts)
+check("… which only its own page loaded there", starts.includes(`${SITE}/whoami?next`) && !starts.some((u) => u.startsWith(`${SITE}/whoami?none`)), starts)
 
 // ---------- the container menu only chooses: its options are in Sites ----------
 const SHOTS = process.env.SHOTS

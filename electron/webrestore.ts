@@ -43,7 +43,7 @@ export function copyPast(from: string, to: string) {
   if (k) { pastsOf().set(to, { ...k, at: Date.now() }); pastTimer ??= setTimeout(savePasts, 2000) }
 }
 /** How tab `tab`'s page starts in `profile` at `url`, from its kept history: as it was (its page come back), or, in other
- *  logins or at another address (moved to another container), its places up to there with `url` loaded after (`load`). */
+ *  logins or at another address (moved to another container), its places up to there and `url` after them (`load`). */
 export function pastOf(tab: string, profile: string, url: string) {
   const k = pastsOf().get(tab)
   if (!k) return null
@@ -51,7 +51,9 @@ export function pastOf(tab: string, profile: string, url: string) {
   // (without what sites keep in them: another session's)
   const back = k.entries.slice(0, k.index + 1).map(({ url, title }) => ({ url, title }))
   if (back.at(-1)?.url === url) back.pop()
-  return back.length ? { entries: back, index: back.length - 1, load: true } : null
+  // (`url` restored last, the one load: an earlier place loaded there and cut short (an extension's page, in a new
+  // container) left the extension's next navigation dropped on Linux)
+  return back.length ? { entries: [...back, { url, title: "" }], index: back.length, load: true } : null
 }
 /** The titles tabs' pages had, by address: a tab not loaded yet is named as it was. */
 export const pastTitles = () => Object.fromEntries([...pastsOf().values()].flatMap((k) => { const e = k.entries[k.index]; return e?.title ? [[e.url, e.title]] : [] }))
