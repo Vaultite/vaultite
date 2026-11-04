@@ -234,8 +234,9 @@ check("a tooltip of the bar over the page: the window goes over it, the page sta
 await win.mouse.move(5, 400)
 check("… and back under it as it goes", await until(async () => !(await raised()), 10000))
 
-// A tab dragged over the page: the window goes over it, so the pane's drop zones show (and the drag keeps the pointer).
-const tb = await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().boundingBox()
+// Another tab dragged over the page: the window goes over it, so the pane's drop zones show (and the drag keeps the
+// pointer). (Not the page's own tab: a tab can't split beside itself.)
+const tb = await win.locator("[role=tab]", { hasText: "Reading list" }).first().boundingBox()
 await win.mouse.move(tb.x + 40, tb.y + tb.height / 2)
 await win.mouse.down()
 // (to the pane's left edge: a drop there would split it)

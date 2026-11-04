@@ -345,6 +345,8 @@ function PlaceBody({ pane, tab, shown, focused, ...p }: Props & { pane: Pane; ta
     if (shown && !wasShown.current && box.current && !full) box.current.scrollTop = scrollOf(place.current)
     // (hidden, what plays in it stops, as it did when a tab left was drawn no more; a player that carries on says so)
     if (!shown && wasShown.current) for (const m of box.current?.querySelectorAll("audio:not([data-keeps-playing]), video:not([data-keeps-playing])") ?? []) (m as HTMLMediaElement).pause()
+    // (and lets go of the keyboard now, not a frame later: what's shown instead finds it free, a new tab's field takes it)
+    if (!shown && wasShown.current && document.activeElement instanceof HTMLElement && box.current?.contains(document.activeElement)) document.activeElement.blur()
     wasShown.current = shown
   }, [shown, full])
   const ctx = useMemo(() => ({ pane: id, tab: tab.id, focused, hidden: !shown }), [id, tab.id, focused, shown])
