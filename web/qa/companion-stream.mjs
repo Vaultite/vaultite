@@ -76,18 +76,18 @@ check("stream: what the user typed meanwhile reaches it as theirs alone, a hunk 
   { line: title + 6, removed: ["Line two."], added: ["Line two. mine"] }]), edit)
 
 // Undo: their last typing, all of its edit at once (it ended after they typed the title), then the title.
-await page.keyboard.press("Meta+z")
+await page.keyboard.press("ControlOrMeta+z")
 await wait(150)
 const zero = await doc()
-await page.keyboard.press("Meta+z")
+await page.keyboard.press("ControlOrMeta+z")
 await wait(150)
 const once = await doc()
-await page.keyboard.press("Meta+z")
+await page.keyboard.press("ControlOrMeta+z")
 await wait(150)
 const twice = await doc()
 check("undo: Cmd+Z takes all of its edit in one step, never with the user's typing", zero === fin && once === TEXT.replace("# Stream", "# Streamxx") && twice === TEXT, [zero, once, twice])
-await page.keyboard.press("Meta+Shift+z")
-await page.keyboard.press("Meta+Shift+z")
+await page.keyboard.press("ControlOrMeta+Shift+z")
+await page.keyboard.press("ControlOrMeta+Shift+z")
 await wait(150)
 check("redo: and back", (await doc()) === fin, await doc())
 

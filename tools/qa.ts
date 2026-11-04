@@ -202,7 +202,9 @@ await Promise.all(Array.from({ length: jobs }, async () => {
     runs.set(name, [...runs.get(name) ?? [], r.ok])
     times.set(name, r.ms)
     console.log(`${r.ok ? "ok  " : "FAIL"} ${name} (${(r.ms / 1000).toFixed(0)} s)`)
-    if (!r.ok) fails.push(`--- ${name}\n${r.out.trim().split("\n").filter((l) => !l.startsWith("ok")).slice(-25).join("\n")}`)
+    // (what failed, and the last check that passed: where a script that threw got to)
+    const lines = r.out.trim().split("\n"), lastOk = lines.findLastIndex((l) => l.startsWith("ok"))
+    if (!r.ok) fails.push(`--- ${name}\n${lines.filter((l, i) => i === lastOk || !l.startsWith("ok")).slice(-25).join("\n")}`)
   }
 }))
 record("qa", [...runs].map(([name, rs]) => ({ name, ms: times.get(name) ?? 0, ok: rs.every(Boolean), fails: rs.every(Boolean) ? [] : [name] })), Date.now() - t0)
