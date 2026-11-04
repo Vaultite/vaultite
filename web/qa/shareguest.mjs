@@ -120,7 +120,8 @@ try {
   await guest.locator(".cm-content").first().waitFor({ timeout: 30_000 })
   check("a note reads as in the app, its image drawn", await until(() => guest.evaluate(() => [...document.querySelectorAll("img")].some((i) => /Circle\.png/.test(i.src) && i.naturalWidth === 120)), 15_000))
   await shot(guest, "guest-note")
-  await guest.locator(".cm-content").getByText("Major scale").first().click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] }).catch(() => {})
+  // (a plain click: ⌘ asks for a new tab behind)
+  await guest.locator(".cm-content").getByText("Major scale").first().click().catch(() => {})
   check("a link goes to the note it names, in the folder", await until(() => guest.evaluate(() => decodeURIComponent(location.hash).includes("Scales/Major scale.md")), 10_000), await guest.evaluate(() => location.hash))
 
   // The page, played together: the owner in the app, Ada through her link, each seeing the other's answers live.
