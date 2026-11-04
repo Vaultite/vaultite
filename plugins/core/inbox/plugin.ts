@@ -640,13 +640,13 @@ const isOne = (e: InboxEvent, ids: string[]) => ids.includes(splitMachine(e.id)[
 
 /** Only this machine's owner (core/owner.ts) writes events: they're toasts and notifications on their screen. */
 async function owner(req: Request) {
-  if (plugin.isOff()) throw new HTTPError(404, "the Inbox plugin is off (Setup > Plugins)")
+  if (plugin.isOff()) throw new HTTPError(404, "the Inbox plugin is off (Plugins)")
   await plugin.ownerOnly(req, "the inbox")
 }
 
 /** The events, newest first (`open`: only what isn't done, as the phone's widgets and the watch list them). */
 plugin.route("GET", "inbox/events", async (req) => {
-  if (plugin.isOff()) throw new HTTPError(404, "the Inbox plugin is off (Setup > Plugins)")
+  if (plugin.isOff()) throw new HTTPError(404, "the Inbox plugin is off (Plugins)")
   const limit = req.query.all ? Infinity : Math.max(Math.trunc(Number(req.query.limit)) || 50, 1)
   const local = !!req.query.local
   if (!local) await others()

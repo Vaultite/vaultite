@@ -3,11 +3,11 @@ A bundle is a whole setup of the app at once: which plugins are on, their settin
 pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks a layout in
 Settings, Appearance (its first section: a drawn tile each, a click applies it with Undo; a new vault starts from
 Standard, its welcome card offering the three on a computer, `.vaultite/bundles/onboarding.json` until it closes). A tile's menu: Details… (its preview), Reset (changed or tweaked), Save as new… (the one in use, named),
-Share…, Delete (the user's). Setup's Get (beside Your plugins) lists the directory's bundles over its plugins and
+Share…, Delete (the user's). Plugins' Get (beside Your plugins) lists the directory's bundles over its plugins and
 imports others' (Import…, or pasting or dropping one on the page: its preview first).
 The app's own, layouts: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
 sidebars hide until the pointer reaches the window's edge, no tab bar, Glance), Browser (`browser`: favourites and vertical
-tabs, ⌘T as an address bar, spaces, tabs archived on their own, a page's notes beside it). In the directory (Setup's Get),
+tabs, ⌘T as an address bar, spaces, tabs archived on their own, a page's notes beside it). In the directory (Plugins' Get),
 packs: Life OS (days, people, health, books, and pages over them) and Agents (coding agents in terminals, their machines).
 - **Kinds** (bundle.json's `kind`): a `layout` (the user calls it that: the layout picker's), a `pack` (mostly plugins
   and pages: the store's) or a `look` (a restyle, Glass). Unsaid: a look when it holds only appearance.json, themes and
@@ -100,7 +100,7 @@ packs: Life OS (days, people, health, books, and pages over them) and Agents (co
   .bundle.json) and those Vaultite/plugins' `directory/listed.json` names (`bundles`: owner/name or owner/name/folder),
   each pinned at the commit that last changed it. Its `address`, `owner/name[/folder]@<commit>`, imports exactly that
   commit (`vau bundle import <address>`), kept in bundle.json's `from`; `imported` names the user's bundle from the same
-  place, `current` whether it's at that commit. The blocklist leaves one out. Setup's Get lists them as Layouts and packs (Get's
+  place, `current` whether it's at that commit. The blocklist leaves one out. Plugins' Get lists them as Layouts and packs (Get's
   search finds them too), each Imported or Update available; opening one is its import preview at that commit.
 - `vau bundle --help` (each is an op, `POST /api/ops/bundle.<name>`). An export is one JSON file:
   `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`.

@@ -17,4 +17,4 @@ Browser makes the app a web browser first, with your notes one move away.
 - On your phone and in a web browser, web pages open in that device's browser, and Tabs shows your Mac's open pages live.
 
 ## Making it yours
-Each part is a setting: how long tabs wait before they're archived (or never) in Tabs' settings, the tab bar and the colours in Appearance, the Inbox button from a right-click on the sidebar's header. Glass, in Setup's Get, makes the window translucent. Your old layout is a click away in Settings, Appearance (or Restore previous layout in the command palette), and this guide is yours to edit or delete.
+Each part is a setting: how long tabs wait before they're archived (or never) in Tabs' settings, the tab bar and the colours in Appearance, the Inbox button from a right-click on the sidebar's header. Glass, in Plugins' Get, makes the window translucent. Your old layout is a click away in Settings, Appearance (or Restore previous layout in the command palette), and this guide is yours to edit or delete.

@@ -15,6 +15,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   (folders not to review, its button in files' headers) and keeps what you reviewed off the vault. The keys over a
   phone's keyboard are drawn as they show, to move, take off or add. Watches' folder is its kind's folder, like every
   other kind's.
+- **Setup is now Plugins, and says things without a hover**: the sidebar's button, the page and the menu bar say
+  Plugins. Get keeps the categories beside it, as Your plugins does, and picking one shows only its plugins. Its layout
+  and pack cards put the kind beside the name, drop the Vaultite byline, and say in orange what a pack installs instead
+  of a red shield to hover. The layout picker (the welcome card, Settings > Appearance) says what the picked layout is
+  under the tiles, no tooltip.
 - **A plugin that fails can't half-switch a tab**: one plugin's error while tabs change is reported, and the address
   and the panels' highlight still follow the tab on screen (an older Obsidian plugins left the Terminals panel stuck).
 - **A first run that asks, not assumes**: the desktop app's first window is one page, the vault (create one, or open a

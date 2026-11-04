@@ -89,7 +89,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BlockView(props)`: ```block-<name> drawn by its plugin with its options (defaults filled in); one whose plugin is off says so (`quiet`: nothing).
 - `BrandIcon({ d, fillRule, size, strokeWidth, absoluteStrokeWidth, … })`: A brand's mark (Lucide has none: GitHub, Claude) drawn like a lucide icon: one filled path in 24x24, so strokeWidth is ignored.
 - `BrowseEntry`
-- `BrowseSource`: A source of plugins to install in Get plugins (Setup's Plugins tab; a host's: another app's plugins).
+- `BrowseSource`: A source of plugins to install in Get plugins (the Plugins page; a host's: another app's plugins).
 - `Button({ look, size, className, type, busy, disabled, children, … })`: A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it.
 - `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
@@ -488,7 +488,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PluginCommand`: Something it can do from the command palette (⌘P); `keys` also bind it ("Mod+Shift+T").
 - `PluginDef`
 - `pluginFileGroups(path, skip?, folder?)`: Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by `section`: navigate, more, away (with Delete), then the rest a group each, in…
-- `PluginHost`: What hosts plugins (hostPlugins): its plugins' byline on Setup's Plugins tab and the answers to its plugins' buttons.
+- `PluginHost`: What hosts plugins (hostPlugins): its plugins' byline on the Plugins page and the answers to its plugins' buttons.
 - `pluginSettings(id)`: A plugin's settings (its data.json) as module state, one per plugin: read on first use and whenever the file changes.
 - `PluginState`
 - `plural(n, word, many?)`: A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s).

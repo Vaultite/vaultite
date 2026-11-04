@@ -1,6 +1,6 @@
-// The app's own pages, at the left sidebar's foot (a phone's: its drawer's, and its bar's menu): Setup and Settings.
-// Every other page is a file. Setup's tabs (pages/Setup.tsx) are each an address: #plugins, #get.
-import { Blocks, Settings, type LucideIcon } from "lucide-react"
+// The app's own pages, at the left sidebar's foot (a phone's: its drawer's, and its bar's menu): Plugins and Settings.
+// Every other page is a file. Plugins' tabs (pages/Setup.tsx, id "setup") are each an address: #plugins, #get.
+import { Puzzle, Settings, type LucideIcon } from "lucide-react"
 import { isDesktop } from "@/core/platform"
 import { share } from "@/core/share"
 import { findOpen, go, replaceTabTarget } from "@/core/workspace"
@@ -20,11 +20,11 @@ export type AppPage = { id: "setup" | "settings"; label: string; icon: LucideIco
   full?: boolean }
 
 export const APP_PAGES: AppPage[] = share ? [] : [
-  { id: "setup", label: "Setup", icon: Blocks, tint: "var(--primary)", words: "plugins extensions store get bundles packs", tabs: SETUP_TABS, full: true },
+  { id: "setup", label: "Plugins", icon: Puzzle, tint: "var(--primary)", words: "setup extensions install store get bundles packs", tabs: SETUP_TABS, full: true },
   { id: "settings", label: "Settings", icon: Settings, tint: "var(--muted-foreground)", keys: ["Mod+,"], full: true },
 ]
 
-/** The page an address shows (`plugins`: Setup), or null: a file, a view. */
+/** The page an address shows (`plugins`: the Plugins page), or null: a file, a view. */
 export const appPageOf = (to: string) => APP_PAGES.find((p) => (p.tabs ?? [p.id]).includes(to)) ?? null
 export const isSetupTab = (to: string): to is SetupTab => (SETUP_TABS as readonly string[]).includes(to)
 export const hrefOf = (p: AppPage) => `#${p.tabs?.[0] ?? p.id}`
@@ -37,7 +37,7 @@ export function openAppPage(p: AppPage, newTab = false) {
   else goTo(hrefOf(p).slice(1), newTab)
 }
 
-/** Open Setup on `tab`, else as a tab already showing it is (Your plugins if none does). Setup stays one tab: the one
+/** Open Plugins on `tab`, else as a tab already showing it is (Your plugins if none does). It stays one tab: the one
  *  open switches to `tab`. */
 export function openSetup(tab?: SetupTab) {
   const open = findOpen(...SETUP_TABS)

@@ -49,7 +49,7 @@ A folder of Markdown files (your vault) that you and your AI write in, and Vault
    Codex in Vaultite's terminals already know the vault.
 
 Then try "log a 30 minute run this morning" or "what did I tell you about Alice?". Layouts and packs add more: the Browser
-layout (Settings, Appearance) makes it a web browser first; in Setup's Get, Life OS for your days, people and health,
+layout (Settings, Appearance) makes it a web browser first; in Plugins' Get, Life OS for your days, people and health,
 and Agents for your coding agents.
 
 Agents outside Vaultite: `claude mcp add vaultite -- vau mcp`. Skills that teach any agent the vault's rules and how to

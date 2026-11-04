@@ -122,7 +122,8 @@ function Welcome({ ask }: { ask: WelcomeAsk }) {
         {page !== "done" && (
           <Button size="small" look="quiet" className="absolute top-3 right-3 z-[1] h-6.5 px-2 text-[12.5px]" onClick={() => finish("skip")} data-welcome-skip>Skip</Button>
         )}
-        <div key={page} className={cn("flex min-h-[300px] flex-col justify-center px-8 pt-9 pb-3 animate-in fade-in duration-200", dir > 0 ? "slide-in-from-right-3" : "slide-in-from-left-3")} data-welcome-body={page}>
+        {/* (its sides in px: a comfortable density mustn't push the layouts' tiles onto two rows) */}
+        <div key={page} className={cn("flex min-h-[300px] flex-col justify-center px-[32px] pt-9 pb-3 animate-in fade-in duration-200", dir > 0 ? "slide-in-from-right-3" : "slide-in-from-left-3")} data-welcome-body={page}>
           {page === "look" && <LookPage />}
           {page === "ai" && <AiPage agents={agents} />}
           {page === "permissions" && <PermissionsPage />}
@@ -166,9 +167,9 @@ function LookPage() {
   return (
     <>
       <Head title="Choose a layout">It changes behind this card as you pick. {"Settings > Appearance"} has it too.</Head>
-      <LayoutPicker builtInOnly menus={false} open="none" silent className="justify-center" />
+      <LayoutPicker builtInOnly menus={false} open="none" silent describe="center" className="flex-nowrap justify-center gap-x-[12px]" />
       <Segmented<Theme> label="Theme" value={theme} onChange={(t) => setPrefs({ theme: t })} options={THEMES.map((t) => ({ ...t, attrs: { "data-welcome-theme": t.value } }))}
-        className="mx-auto mt-6 w-full max-w-[300px]" />
+        className="mx-auto mt-4 w-full max-w-[300px]" />
     </>
   )
 }
@@ -280,7 +281,7 @@ function PermissionRow({ p, busy, onAllow }: { p: Permission; busy: boolean; onA
 function DonePage({ pressed, finish }: { pressed: boolean; finish: () => void }) {
   const keys = firstKeys(LEARN)
   const settings = () => { finish(); openSettings("appearance") }
-  const setup = () => { finish(); openSetup("plugins") }
+  const plugins = () => { finish(); openSetup("plugins") }
   return (
     <div className="flex flex-1 flex-col items-center text-center" data-welcome-done={pressed ? "pressed" : ""}>
       <div className="flex flex-1 flex-col items-center justify-center">
@@ -299,7 +300,7 @@ function DonePage({ pressed, finish }: { pressed: boolean; finish: () => void })
       </p>
       </div>
       <p className="pt-6 pb-1 text-[12px] leading-[16px] text-muted-foreground">
-        Layouts are in <TextLink onClick={settings}>Settings</TextLink>, and plugins in <TextLink onClick={setup}>Setup</TextLink>.
+        Change the layout in <TextLink onClick={settings}>Settings</TextLink>, and add features in <TextLink onClick={plugins}>Plugins</TextLink>.
       </p>
     </div>
   )

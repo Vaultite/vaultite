@@ -70,8 +70,8 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
     await page.locator("[data-layout-picker]").count() === 1, ids)
   check("a new vault: Standard is the one in use", (await current(page)).join() === "standard", await current(page))
   const drawn = await page.locator("[data-layout-drawing]").evaluateAll((els) => els.map((e) => e.dataset.layoutDrawing))
-  check("each built-in its own drawing, its description in its tip", drawn.join() === "standard,zen,browser" &&
-    /browser/i.test(await page.locator('[data-layout-pick="browser"]').getAttribute("data-tip")), drawn)
+  check("each built-in its own drawing, the one in use described under them (no tip)", drawn.join() === "standard,zen,browser" &&
+    /^Notes and links/.test(await page.locator("[data-layout-about]").innerText()) && !(await page.locator('[data-layout-pick="browser"]').getAttribute("data-tip")), drawn)
   await shot(page, "picker-new-vault")
   await page.locator('[data-layout-pick="browser"]').click()
   check("a click checks it at once", (await current(page)).join() === "browser")

@@ -1,5 +1,5 @@
 // The layout picker (Settings > Appearance, the welcome card): a click applies one at once, with Undo (the window
-// is the preview); a tile's menu has the rest. A layout is a bundle (core/bundles.ts); packs and looks are in Setup's Get.
+// is the preview); a tile's menu has the rest. A layout is a bundle (core/bundles.ts); packs and looks are in Plugins' Get.
 import { useEffect, useRef, type KeyboardEvent } from "react"
 import { Check, Copy, Info, MoreHorizontal, RefreshCw, RotateCcw, Share, Trash2 } from "lucide-react"
 import {
@@ -89,7 +89,7 @@ function menuOf(b: BundleInfo, current: boolean, open: ApplyOptions["open"]): Me
 function Tile({ b, on, changed, onPick, menu }: { b: BundleInfo; on: boolean; changed: string | null; onPick: () => void; menu: (() => MenuItem[]) | null }) {
   return (
     <div className="group/tile relative w-[132px] shrink-0 max-md:w-auto" onContextMenu={menu ? menuFor(menu) : undefined} data-layout={b.id}>
-      <button type="button" role="radio" aria-checked={on} aria-label={b.name} data-tip={b.description || undefined} data-layout-pick={b.id}
+      <button type="button" role="radio" aria-checked={on} aria-label={b.name} data-layout-pick={b.id}
         onClick={() => { if (!on) { haptic("selection"); onPick() } }}
         className="flex w-full cursor-pointer flex-col gap-1.5 rounded-[9px] text-left focus-visible:outline-none">
         <span className={cn("relative block aspect-[16/10] w-full overflow-hidden rounded-[8px] ring-[0.5px] ring-border transition-shadow",
@@ -138,11 +138,13 @@ export type LayoutPickerProps = {
   silent?: boolean
   /** After a pick is applied. */
   onPicked?: (b: BundleInfo) => void
+  /** What the one picked is, a line under the tiles (centred, as the welcome card's). */
+  describe?: "start" | "center"
   className?: string
 }
 
 /** The layouts as tiles, the app's then the user's: a click applies one, with Undo in its toast. */
-export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silent, onPicked, className }: LayoutPickerProps) {
+export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silent, onPicked, describe, className }: LayoutPickerProps) {
   const { loaded, list, current } = useLayouts()
   const [shown, choose] = useChosen(current)
   const shownList = builtInOnly ? list.filter((b) => b.source === "app") : list
@@ -159,7 +161,9 @@ export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silen
     e.preventDefault()
     all[(i + by + all.length) % all.length]?.focus()
   }
-  return (
+  // What the one picked is, said under the tiles (never a tooltip: nobody hovers a picture to read it).
+  const about = shownList.find((b) => b.id === shown)?.description
+  const tiles = (
     <div ref={group} role="radiogroup" aria-label="Layout" onKeyDown={keys} data-layout-picker className={cn("flex flex-wrap gap-x-3 gap-y-3.5 py-[5px] pl-[5px] max-md:grid max-md:grid-cols-2 max-md:gap-x-4 max-md:gap-y-4 max-md:pl-0", className)}>
       {!loaded ? [0, 1, 2].map((i) => <Placeholder key={i} />) : shownList.map((b) => {
         const on = b.id === shown
@@ -168,6 +172,15 @@ export function LayoutPicker({ menus = true, open = "behind", builtInOnly, silen
             onPick={() => choose(b.id, async () => { if (await pickLayout(b, { open, silent })) onPicked?.(b) }, `Couldn't switch to ${b.name}`)} />
         )
       })}
+    </div>
+  )
+  if (!describe) return tiles
+  return (
+    <div data-layout-picker-wrap>
+      {tiles}
+      {/* (its lines' room kept, so picking a shorter one moves nothing under it; none picked yet, the welcome card's only) */}
+      {(about || describe === "center") && <p aria-live="polite" data-layout-about className={cn("mt-2 text-[13px] leading-[18px] text-pretty text-muted-foreground max-md:text-[15px] max-md:leading-[20px]",
+        describe === "center" ? "mx-auto min-h-[54px] max-w-[400px] text-center max-md:min-h-[60px]" : "line-clamp-2 min-h-[36px] max-w-[600px] pl-[5px] max-md:min-h-[40px] max-md:pl-0")}>{about}</p>}
     </div>
   )
 }

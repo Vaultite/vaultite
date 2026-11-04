@@ -224,8 +224,8 @@ const { ctx, page } = await open(1600, 900)
   check("Get: the directory's bundles, by stars", listed.join() === "qa/desk,boblee/fleet/bundles/lamps", listed)
   check("and its plugins under them, one search for both", await page.locator("[data-setup=get] [data-plugin-browse]").count() === 1 && await page.locator("[data-setup=get] [data-plugins-search]").count() === 1 &&
     await page.locator("[data-setup=get] [data-bundles-import]").count() === 1)
-  check("each with its kind, author and stars, one that runs code marked", /Look\s*·\s*Alice Park/.test(await browse.locator('[data-listed="qa/desk"]').innerText()) &&
-    await browse.locator('[data-listed="boblee/fleet/bundles/lamps"] [data-bundle-runs-code]').count() === 1, await browse.locator('[data-listed="qa/desk"]').innerText())
+  check("each with its kind by its name, its author (not Vaultite's) under it, one that runs code saying so", /Look\s+by Alice Park/.test(await browse.locator('[data-listed="qa/desk"]').innerText()) &&
+    /Installs|Runs code/.test(await browse.locator('[data-listed="boblee/fleet/bundles/lamps"] [data-bundle-runs-code]').innerText()), await browse.locator('[data-listed="qa/desk"]').innerText())
   await shot(page, "get")
   const search = page.locator("[data-setup=get] [data-plugins-search] input")
   await search.fill("lamps")

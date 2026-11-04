@@ -23,7 +23,8 @@ import { Bar as Line, Panel, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
 import { askToRun } from "@/components/LayoutPicker"
 import { LayoutDrawing } from "@/components/LayoutDrawings"
-import { cn } from "@/lib/utils"
+import { cn, plural } from "@/lib/utils"
+import { official } from "../../../core/updates.ts"
 import { Button } from "@/components/Button"
 import { BundleLink } from "./BundleLink"
 
@@ -91,40 +92,49 @@ const plainOf = (e: Listed): BundleInfo => ({ id: e.address, source: "vault", na
   author: e.author, sort: 0, theme: null, scheme: null, density: null, on: null, pinned: null, panels: null, shape: { tabBar: null, rails: null, floating: null }, home: null,
   code: [], official: true, from: e.address, guide: null, hotkeys: false, preview: null, previewDark: null, problems: [], kind: e.kind ?? "layout", tweaked: false })
 
-/** A bundle the directory lists, as a card: who made it and its stars under its name, and whether the user has it.
- *  Opening it is its import preview, pinned at the commit listed (an update says what changed). */
+/** A listed bundle's card: its picture (else its shape, drawn as Settings' are), its name and kind, and only then that it
+ *  runs code, who made it (not Vaultite) and its stars. Opening it is its import preview, pinned at the commit listed. */
 function ListedCard({ e }: { e: Listed }) {
   const src = useListedPicture(e)
   const [broken, setBroken] = useState(false)
-  const b = plainOf(e), Icon = iconOfBundle(b)
+  const b = plainOf(e)
+  const theirs = !official(e.repo)
   return (
     <button type="button" onClick={() => openImport(e.address)} data-listed={e.source} data-keyrow className={cn(CARD, "relative")}>
       {src && !broken ? <Picture src={src} onError={() => setBroken(true)} />
         : <span className="block aspect-[16/10] w-full overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border"><LayoutDrawing b={b} className="block size-full" /></span>}
-      {/* (over its picture, where a narrow card's name and author keep their room) */}
+      {/* (over its picture, where a narrow card's name keeps its room) */}
       {e.imported && (
         <span className={cn("absolute top-2 right-2 rounded-[6px] bg-background/85 px-1.5 text-[11px] leading-[20px] font-medium shadow-[0_0_0_0.5px_var(--border)] backdrop-blur",
           e.current ? "text-muted-foreground" : "text-primary")} {...(e.current ? { "data-listed-imported": true } : { "data-listed-update": true })}>
           {e.current ? "Imported" : "Update available"}
         </span>
       )}
-      <div className="flex min-w-0 flex-1 flex-col p-3.5 pt-3">
-        <div className="flex items-center gap-2">
-          <span className="grid size-7 shrink-0 place-items-center rounded-[7px] bg-muted" style={{ color: tintOfBundle(b) }}>
-            <Icon className="size-4" strokeWidth={2.25} />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{e.name}</span>
-          {e.runsCode && <span className="shrink-0 text-[var(--red)]" data-bundle-runs-code data-tip={`Runs code${e.installs.length ? `: installs ${AND.format(e.installs.map((x) => x.name))}` : ""}`}><ShieldAlert className="size-4" strokeWidth={2} /></span>}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3.5 py-3">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate text-[15px] leading-[20px] font-semibold">{e.name}</span>
+          {e.kind && <span className="shrink-0 text-[13px] text-muted-foreground md:text-[12px]" data-listed-kind={e.kind}>{KIND[e.kind]}</span>}
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 pl-9 text-[13px] text-muted-foreground">
-          {e.kind && <><span className="shrink-0" data-listed-kind={e.kind}>{KIND[e.kind]}</span><span aria-hidden>·</span></>}
-          <span className="min-w-0 truncate">{e.author}</span>
-          {e.stars > 0 && <><span aria-hidden>·</span><Star className="size-3 shrink-0" strokeWidth={2.25} /><span className="tabular-nums" aria-label={`${e.stars} stars`}>{e.stars}</span></>}
-        </div>
+        {(e.runsCode || theirs || e.stars > 0) && (
+          <div className="flex min-w-0 items-center gap-1.5 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">
+            {/* (a caution, not an alarm: applying it asks first, and says what it installs) */}
+            {e.runsCode && (
+              <span className="flex min-w-0 items-center gap-1 text-ink-(--orange)" data-bundle-runs-code
+                data-tip={e.installs.length ? `Installs ${AND.format(e.installs.map((x) => x.name))}` : undefined}>
+                <ShieldAlert className="size-3.5 shrink-0" strokeWidth={2.25} />
+                <span className="truncate">{e.installs.length ? `Installs ${plural(e.installs.length, "plugin")}` : "Runs code"}</span>
+              </span>
+            )}
+            {theirs && <><Sep show={e.runsCode} /><span className="min-w-0 truncate" data-listed-author>by {e.author}</span></>}
+            {e.stars > 0 && <><Sep show={e.runsCode || theirs} /><Star className="size-3 shrink-0" strokeWidth={2.25} /><span className="tabular-nums" aria-label={`${e.stars} stars`}>{e.stars}</span></>}
+          </div>
+        )}
       </div>
     </button>
   )
 }
+
+const Sep = ({ show }: { show: boolean }) => (show ? <span aria-hidden>·</span> : null)
 
 /** Get's layouts and packs: the directory's bundles (shared on GitHub), by Get's search, and Import for one someone
  *  sent (also by pasting it, or dropping its file, anywhere on the page). Unreachable, one quiet line says so. */
@@ -165,19 +175,15 @@ export function StoreBundles({ query: q }: { query: string }) {
   )
 }
 
-/** The directory on its way: ListedCard's shape, its picture a muted block and its lines bars. */
+/** The directory on its way: ListedCard's shape, its picture a muted block and its name a bar. */
 function CardSkeletons({ count }: { count: number }) {
   return (
     <div className={cn(GRID, "loading-in")} aria-busy data-bundles-loading>
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className={cn(CARD, "cursor-default hover:ring-0")}>
           <div className="skeleton aspect-[16/10] w-full rounded-none rounded-t-[11px]" />
-          <div className="flex min-w-0 flex-1 flex-col p-3.5 pt-3">
-            <div className="flex items-center gap-2">
-              <span className="size-7 shrink-0 rounded-[7px] bg-muted" />
-              <span className="min-w-0 flex-1 text-[15px] leading-[20px]"><Line w={i % 2 ? "45%" : "58%"} /></span>
-            </div>
-            <div className="mt-1 pl-9 text-[13px] leading-[18px]"><Line w={i % 2 ? "32%" : "40%"} /></div>
+          <div className="flex min-w-0 flex-1 px-3.5 py-3">
+            <span className="min-w-0 flex-1 text-[15px] leading-[20px]"><Line w={i % 2 ? "45%" : "58%"} /></span>
           </div>
         </div>
       ))}
@@ -452,8 +458,8 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
     <>
       {b.on !== null && <p className="-mt-2 mb-4 text-[13px] leading-[18px] text-muted-foreground" data-bundle-reach>Applies to every window and device on this vault; agents lose the tools of plugins it turns off.</p>}
       {code && (
-        <div className="mb-4 flex gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--red)_10%,transparent)] p-3.5" data-bundle-code>
-          <ShieldAlert className="mt-0.5 size-5 shrink-0 text-[var(--red)]" strokeWidth={2} />
+        <div className="mb-4 flex gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--orange)_12%,transparent)] p-3.5" data-bundle-code>
+          <ShieldAlert className="mt-0.5 size-5 shrink-0 text-ink-(--orange)" strokeWidth={2} />
           <div className="text-[14px] leading-[20px]">
             <div className="font-semibold">It runs code on this machine</div>
             <div className="text-muted-foreground">It brings vault plugins: {chosen.code.map((c) => c.name + (c.kept ? " (you have one by that name: yours stays)" : c.source ? ` (installed from ${c.source})` : "")).join(", ")}. Applying asks you first.</div>

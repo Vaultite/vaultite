@@ -19,7 +19,7 @@ A vault another Markdown app made (an Obsidian vault) opens as it is (both apps 
 - Its plugins: offered once when the vault opens. Each runs as it is (the original, through a plugin that
   runs them: `replaces: {"obsidian": ["*"]}`) or with what stands in for it here; `vau other-apps plugins`, `vau
   other-apps use <id> original|<plugin>`, `vau other-apps run-all`, or the sheet of Vaults from other apps. Never both:
-  turning one on turns the other off. More are in Get plugins (Setup ▸ Plugins), under that app's source.
+  turning one on turns the other off. More are in Plugins ▸ Get, under that app's source.
 - Renames and moves update links to the file: wikilinks, embeds and Markdown links (relative, from the vault's top or
   by name alone, as Obsidian's shortest path writes them).
 - `.obsidian/hotkeys.json`: the keys of the commands the app has too (its core ones matched by id, its plugins' kept

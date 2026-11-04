@@ -12,7 +12,8 @@ import { notify, notifyError } from "@/core/notify"
 import { pluginIcon } from "@/core/pages"
 import { useKeptCount } from "@/core/heights"
 import { official } from "../../../core/updates.ts"
-import { categoryOf } from "../../../core/categories.ts"
+import { CATEGORIES, categoryOf, OTHER } from "../../../core/categories.ts"
+import { cell } from "@/core/signal"
 import { Bar, List, Loading, Panel, Row, Section, SheetHead } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
 import { confirmDialog } from "@/components/ConfirmDialog"
@@ -54,6 +55,31 @@ export const sortsOf = (source: string) => (source ? hostSource(source)?.sorts ?
 export const sortOf = (f: GetFilters) => { const all = sortsOf(f.source); return all.find((s) => s.value === f.sort)?.value ?? all[0]?.value ?? "" }
 export const passesGet = (e: { installed: boolean; category?: string }, f: GetFilters) =>
   (f.show === "all" || e.installed === (f.show === "installed")) && (!f.cat || categoryOf(e.category).id === f.cat)
+
+/** The categories a source's list has, in the order of the Plugins page's (none for a host's: its plugins have none). */
+export function categoriesIn(l: Listed | null) {
+  if (!l?.some((e) => e.category)) return []
+  const ids = new Set(l.map((e) => categoryOf(e.category).id))
+  return [...CATEGORIES, OTHER].filter((c) => ids.has(c.id))
+}
+
+/** Get's category, picked in the menu beside the page (pages/Setup.tsx) or in Filter: one value for both. */
+export const getCategory = cell("")
+export type GetCategory = { id: string; label: string; count: number }
+/** The directory's categories with how many plugins each has (the whole list, not a search's), kept while the app runs
+ *  so the menu beside Get draws the same rows each time it opens. */
+export const getCategories = cell<GetCategory[]>([])
+function noteCategories(l: Listed) {
+  const next = categoriesIn(l).map((c) => ({ ...c, count: l.filter((e) => categoryOf(e.category).id === c.id).length }))
+  if (JSON.stringify(next) !== JSON.stringify(getCategories.get())) getCategories.set(next)
+}
+/** Asked once, before Get is first shown: its menu has its categories as it opens. */
+let primed = false
+export function primeCategories() {
+  if (primed || getCategories.get().length) return
+  primed = true
+  op<Found>("plugin.search", { q: "", sort: SORTS[0].value }).then((f) => { if (f.available) noteCategories(f.plugins.map((e) => ({ installed: e.installed !== null, category: e.category }))) }, () => {})
+}
 
 /** Its repository (and its folder in it) on GitHub. */
 const githubOf = (e: Entry) => `https://github.com/${e.repo}${e.dir ? `/tree/HEAD/${e.dir}` : ""}`
@@ -347,7 +373,12 @@ function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact
     }, query ? 200 : 0)
     return () => { live = false; clearTimeout(t) }
   }, [query, sort, n, fresh, v])
-  useEffect(() => { onListed?.(found?.available ? found.plugins.map((e) => ({ installed: e.installed !== null, category: e.category })) : null) }, [found, onListed])
+  useEffect(() => {
+    const l = found?.available ? found.plugins.map((e) => ({ installed: e.installed !== null, category: e.category })) : null
+    onListed?.(l)
+    if (l && !compact && !query.trim()) noteCategories(l)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [found, onListed])
   const shown = found?.plugins.filter((e) => passesGet({ installed: e.installed !== null, category: e.category }, filters)) ?? []
   const rows = useKeptCount(compact ? "plugins:matches" : "plugins:directory", found ? shown.length : undefined)
 

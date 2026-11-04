@@ -201,7 +201,7 @@ export function AppearancePanel() {
   return (
     <div className="flex flex-col gap-6">
       <Section title="Layout">
-        <Group><LayoutPicker className="py-3" /></Group>
+        <Group><div className="py-3"><LayoutPicker describe="start" /></div></Group>
       </Section>
       <Section title="Colours">
         <Group>

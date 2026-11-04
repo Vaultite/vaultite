@@ -90,10 +90,10 @@ try {
   await wait(1500)
   check("an always-on plugin's panel stays", (await panels()).includes("search:search"), await panels())
   setDisabled(["backlinks"])
-  // A sidebar with no panels: Setup and Settings stay.
+  // A sidebar with no panels: Plugins and Settings stay.
   setDefault([])
   check("empty sidebar", !!(await until(async () => (await panels()).length === 0)), await panels())
-  check("Setup and Settings stay", !!(await page.$("aside nav[aria-label='App'] [aria-label='Setup']")) && !!(await page.$("aside nav[aria-label='App'] [aria-label='Settings']")))
+  check("Plugins and Settings stay", !!(await page.$("aside nav[aria-label='App'] [aria-label='Plugins']")) && !!(await page.$("aside nav[aria-label='App'] [aria-label='Settings']")))
   await page.screenshot({ path: `${OUT}3-empty.png` })
 
   // Back: the session is still running.

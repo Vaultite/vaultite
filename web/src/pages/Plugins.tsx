@@ -14,10 +14,10 @@ import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
 import { FilterField, IconTile, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
 import { Button } from "@/components/Button"
-import { DirectoryMatches, GET_NONE, getSources, passesGet, PluginBrowse, SHOWS, sortOf, sortsOf, type GetFilters, type GetShow, type Listed } from "@/components/PluginBrowse"
+import { categoriesIn, DirectoryMatches, GET_NONE, getCategory, getSources, passesGet, PluginBrowse, SHOWS, sortOf, sortsOf, type GetFilters, type GetShow, type Listed } from "@/components/PluginBrowse"
 import { Certified } from "@/components/Certified"
 import { GroupRow, groupIcon, groupMembers, groupWords } from "@/components/PluginGroup"
-import { CATEGORIES, categoryOf, groupOf, OTHER } from "../../../core/categories.ts"
+import { categoryOf, groupOf } from "../../../core/categories.ts"
 import { hasWords } from "@/core/fuzzy"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
 import { glide } from "@/core/animation"
@@ -216,14 +216,7 @@ function ActiveFilters<K extends string>({ chips, count, remove, clear }: { chip
 type Tab = "installed" | "get"
 export type PluginsView = Tab
 
-/** The categories a source's list has plugins in, in the page's order (none: it has no categories). */
-function categoriesIn(l: Listed | null) {
-  if (!l?.some((e) => e.category)) return []
-  const ids = new Set(l.map((e) => categoryOf(e.category).id))
-  return [...CATEGORIES, OTHER].filter((c) => ids.has(c.id))
-}
-
-/** Setup's Plugins tab (pages/Setup.tsx). `view`: yours or to get, chosen in Setup's menu (no tabs of its own).
+/** The Plugins page's list (pages/Setup.tsx). `view`: yours or to get, chosen in Plugins' menu (no tabs of its own).
  *  `above`: what Get shows over its plugins, by the same search and filters (the store's layouts and packs). */
 export function Plugins({ store, view, onView, above }: { store: Store; view?: Tab; onView?: (v: Tab) => void; above?: (query: string, filters: GetFilters) => ReactNode }) {
   const files = store.pluginSettings ?? []
@@ -237,9 +230,13 @@ export function Plugins({ store, view, onView, above }: { store: Store; view?: T
   const latest = useRef(filters)
   const setFilters = (f: Filters) => { latest.current = f; setFiltersState(f) }
   // Get plugins' filters (in a ref too, as Your plugins'), and what its source lists, for the menu's counts.
-  const [got, setGotState] = useState(GET_NONE)
+  // (its category is the menu beside the page's too: getCategory)
+  const [gotOwn, setGotState] = useState(GET_NONE)
+  const getCat = getCategory.use()
+  const got = gotOwn.cat === getCat ? gotOwn : { ...gotOwn, cat: getCat }
   const gotRef = useRef(got)
-  const setGot = (f: GetFilters) => { gotRef.current = f; setGotState(f) }
+  if (gotRef.current.cat !== getCat) gotRef.current = { ...gotRef.current, cat: getCat }
+  const setGot = (f: GetFilters) => { gotRef.current = f; setGotState(f); getCategory.set(f.cat) }
   const [listed, setListedState] = useState<Listed | null>(null)
   const listedRef = useRef(listed)
   const setListed = useCallback((l: Listed | null) => { listedRef.current = l; setListedState(l) }, [])

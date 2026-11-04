@@ -15,7 +15,7 @@ const jobs: Job[] = []
 let queue: Promise<unknown> = Promise.resolve()
 let n = 0
 
-const on = () => { if (plugin.isOff()) throw new HTTPError(404, "the Importer plugin is off (Setup > Plugins)") }
+const on = () => { if (plugin.isOff()) throw new HTTPError(404, "the Importer plugin is off (Plugins)") }
 const folder = (given?: string) => {
   const s = plugin.settings({})
   const f = (given ?? (typeof s.folder === "string" ? s.folder : "")).trim()

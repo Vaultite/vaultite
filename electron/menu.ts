@@ -143,7 +143,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
   const settings = () => [
     cmd("page:settings", "Settings…", "settings", { key: "Mod+,", always: true }),
     cmd("hotkeys:open", "Hotkeys", "keyboard", { always: true }),
-    cmd("page:setup", "Setup", "blocks", { always: true }),
+    cmd("page:setup", "Plugins", "puzzle", { always: true }),
     { label: "Set up Vaultite", icon: icon("circle-play"), click: ctx.setup },
   ]
 

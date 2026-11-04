@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyPlus, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, LayoutTemplate, Link, ListChecks, ListTree, Moon, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, Store as StoreIcon, SquareArrowOutUpRight, SquareSplitHorizontal, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyPlus, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, LayoutTemplate, Link, ListChecks, ListTree, Moon, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, Store as StoreIcon, SquareArrowOutUpRight, SquareSplitHorizontal, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
 import { cell } from "@/core/signal"
 import { getStore, onState, reload, useStore, vaultName as vaultNameOf, type Store } from "@/core/data"
 import { share } from "@/core/share"
@@ -457,8 +457,7 @@ export default function App() {
     { id: "file:reveal-finder", name: "Reveal current file in Finder", when: () => !!tabFile() && canReveal(), run: () => revealInFinder(tabFile()), icon: FolderOpen,
       ...(isMac ? {} : { name: isWindows ? "Show current file in Explorer" : "Show current file in folder" }) },
     ...APP_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys, words: p.words, run: () => openAppPage(p), icon: p.icon })),
-    // Setup's tabs, Plugins and Get; and layouts (core/bundles.ts), picked in Settings > Appearance.
-    { id: "page:plugins", name: "Open Plugins", words: "setup extensions install", run: () => openSetup("plugins"), icon: Puzzle },
+    // (page:setup above is Open Plugins) Its Get, and layouts (core/bundles.ts), picked in Settings > Appearance.
     { id: "page:get", name: "Get plugins and layouts", words: "setup store directory install bundles packs", run: () => openSetup("get"), icon: StoreIcon },
     { id: "layouts:choose", name: "Choose a layout…", words: "bundle setup zen browser standard", run: () => openSettings("appearance"), icon: LayoutTemplate },
     { id: "layouts:save", name: "Save layout as new…", words: "bundle setup", run: () => saveAsNew(currentLayout()), icon: CopyPlus },
@@ -598,7 +597,7 @@ export default function App() {
               <div key={key} data-header-item={key} className="flex"><Guard what="This item"><Drawn draw={() => item.render({ store, open: false, file: filePath, tab: targetOf(tab) })} /></Guard></div>
             )) : undefined} />}
         </div>
-        {/* The vault's profile: the vault's name (a menu), then Setup and Settings as buttons. As a rail,
+        {/* The vault's profile: the vault's name (a menu), then Plugins and Settings as buttons. As a rail,
             the two buttons stack, in line with the icons above. */}
         <nav aria-label="App" className={cn("-mx-2 -mb-2 flex shrink-0 gap-1 border-t-[0.5px] border-border p-2", !leftOpen && "flex-col items-start")}>
           {leftOpen && share && <SharedWith />}
