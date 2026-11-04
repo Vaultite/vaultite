@@ -66,7 +66,12 @@ export function ArtifactFrame({ path, page, height, className }: {
   // The page's shared state (vau.shared()), joined while this load of it lasts.
   const shared = useRef<SharedLink | null>(null)
   useEffect(() => () => { shared.current?.close(); shared.current = null }, [url])
-  useEffect(() => { declined.current = false }, [path])
+  useEffect(() => { declined.current = false; scope.current = null }, [path])
+  // A page in a shared folder reads only inside it, here too: its guests set what it does (shared state). Unknown, its own.
+  const scope = useRef<Promise<string> | null>(null)
+  const scopeOf = () => scope.current ??= share ? Promise.resolve("") : fetch(`api/artifact/scope?path=${encodeURIComponent(path)}`)
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    .then((b) => (typeof b.folder === "string" ? b.folder : ""), () => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""))
 
   // The theme is read when the frame loads (no flash); later changes are sent to it.
   useEffect(() => { setUrl(src(path, !page, reloads)); setReady(false); reads.current.clear(); listening.current = false }, [path, page, reloads])
@@ -132,12 +137,13 @@ export function ArtifactFrame({ path, page, height, className }: {
       else if (d.type === "shared-set" && d.values && typeof d.values === "object") shared.current?.set(d.values)
       else if (d.type === "ask") {
         if (outside) return reply(undefined, "a page from outside the vault can't read the vault")
-        // (a shared folder's page, for its guest: it asks the app nothing)
-        if (share) return reply(undefined, "a shared folder's page reads nothing of the vault", "unavailable")
+        // (a shared folder's page, for its guest: its folder's files (their vault), its shared state; nothing of the user's)
+        if (share && !["read", "files", "shared"].includes(String(d.op))) return reply(undefined, "a shared folder's page can't do that here", "unavailable")
         const args = (d.args ?? {}) as Record<string, unknown>
+        const within = await scopeOf(), mayRead = (p: string) => !within || p.startsWith(`${within}/`)
         if (d.op === "read") {
           const p = String(args.path ?? "")
-          if (!p || isHidden(p) || outsideVault(p)) return reply(undefined, `can't read '${p}'`)
+          if (!p || isHidden(p) || outsideVault(p) || !mayRead(p)) return reply(undefined, within ? `a shared folder's page reads only inside it: can't read '${p}'` : `can't read '${p}'`)
           try {
             const f = await readFile(p)
             reads.current.set(p, f.mtime)
@@ -150,7 +156,7 @@ export function ArtifactFrame({ path, page, height, className }: {
           const pre = String(args.prefix ?? "")
           const s = getStore()
           const all = s ? [...s.files.files, ...s.files.others] : []
-          reply(all.filter((f) => f.path.startsWith(pre) && !isHidden(f.path)).map((f) => ({ path: f.path, mtime: f.mtime, size: f.size })))
+          reply(all.filter((f) => f.path.startsWith(pre) && !isHidden(f.path) && mayRead(f.path)).map((f) => ({ path: f.path, mtime: f.mtime, size: f.size })))
         } else if (d.op === "consent") {
           if (declined.current) return reply(false)
           const ok = await confirmDialog({
@@ -212,7 +218,6 @@ export function ArtifactFrame({ path, page, height, className }: {
   // own no-op writes don't count): it's told, or reloaded. Its own file changing reloads it.
   const self = useRef<number | null | undefined>(undefined)
   const stat = async (paths: string[]): Promise<Record<string, number | null> | null> => {
-    if (share) return null // (not a guest's to ask)
     try {
       const r = await fetch("api/artifact/stat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) })
       return await r.json()

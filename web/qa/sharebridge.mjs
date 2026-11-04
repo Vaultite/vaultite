@@ -1,6 +1,7 @@
 // A shared folder's note typed in from another machine of the vault (plugins/core/companion/bridge.ts): two servers on
 // two copies of a vault that never sync, one sharing a folder. The other's app and the guest type in the note live, each
-// sees the other's caret, the sharing one writes it and the other never does. Starts both servers itself.
+// sees the other's caret, the sharing one writes it and the other never does; a page's shared state is the host's too.
+// Starts both servers itself.
 //   node web/qa/sharebridge.mjs <vault copy>
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -14,7 +15,7 @@ const { args: [VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-qa-sharebridge-"))
 const [hostPort, otherPort, pubPort] = [await freePort(), await freePort(), await freePort()]
 const HOST = `http://127.0.0.1:${hostPort}/`, OTHER = `http://127.0.0.1:${otherPort}/`, PUB = `http://127.0.0.1:${pubPort}`
-const NOTE = "Qa bridge/Plan.md", TEXT = "# Plan\n\nA line to start from.\n"
+const NOTE = "Qa bridge/Plan.md", TEXT = "# Plan\n\nA line to start from.\n", PAGE = "Qa bridge/Duel.html"
 const vaults = ["host", "other"].map((n) => path.join(tmp, n))
 for (const v of vaults) {
   fs.cpSync(VAULT, v, { recursive: true })
@@ -26,6 +27,9 @@ for (const v of vaults) {
   fs.writeFileSync(pj, JSON.stringify({ ...on, enabled: [...new Set([...(on.enabled ?? []), "machines"])], disabled: (on.disabled ?? []).filter((x) => x !== "machines") }))
   fs.mkdirSync(path.join(v, "Qa bridge"), { recursive: true })
   fs.writeFileSync(path.join(v, NOTE), TEXT)
+  fs.writeFileSync(path.join(v, PAGE), `<!doctype html><html><head><title>Duel</title></head><body><script type="module">
+window.room = await vau.shared(); window.__ready = true
+</script></body></html>`)
 }
 const locals = ["host", "other"].map((n) => fs.mkdirSync(path.join(tmp, `local-${n}`), { recursive: true }) ?? path.join(tmp, `local-${n}`))
 fs.writeFileSync(path.join(locals[0], "config.json"), JSON.stringify({ mcp: { public: { url: PUB, port: pubPort } } }))
@@ -37,7 +41,7 @@ const stop = () => {
     try { process.kill(Number(fs.readFileSync(path.join(os.tmpdir(), `vaultite-ptyd1-vaultite-${port}.sock.pid`), "utf8"))) } catch {}
     spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
   }
-  fs.rmSync(tmp, { recursive: true, force: true })
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 })
 }
 const onDisk = (i) => fs.readFileSync(path.join(vaults[i], NOTE), "utf8")
 
@@ -79,6 +83,26 @@ try {
   const blame = await (await fetch(`${HOST}api/ops/provenance.blame`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: NOTE }) })).json()
   const runs = blame.result?.runs ?? blame.runs ?? []
   check("the guest's line is theirs, the other machine's the user's", runs.some((r) => r.guest && r.text.includes("Typed by the guest")) && !runs.some((r) => r.guest && r.text.includes("Typed on the other machine")), runs)
+
+  // A page's shared state (vau.shared()) is the host's too: the other machine's app and the guest play in one room.
+  const frameOf = (p) => until(async () => {
+    const f = p.frames().find((x) => x.url().includes("frame=1") && x.url().includes("Duel.html"))
+    return f && (await f.evaluate(() => window.__ready)) ? f : null
+  }, 30_000, 250)
+  await mine.goto("about:blank"); await mine.goto(`${OTHER}#file/${encodeURIComponent(PAGE)}`)
+  await theirs.goto("about:blank"); await theirs.goto(`${PUB}/s/${made.result?.id ?? made.id}/#file/${encodeURIComponent("Duel.html")}`)
+  const [pm, pt] = [await frameOf(mine), await frameOf(theirs)]
+  check("the other machine's page and the guest's are in one room", !!pm && !!pt && await until(async () => (await pm.evaluate(() => window.room.people.map((x) => x.name).join())).includes("Ada Lovelace"), 10_000),
+    await pm?.evaluate(() => window.room.people))
+  await pm.evaluate(() => window.room.set("from", "other machine"))
+  await pt.evaluate(() => window.room.set("guest", "Ada"))
+  check("...each sees the other's sets", await until(async () => (await pt.evaluate(() => window.room.state.from)) === "other machine" && (await pm.evaluate(() => window.room.state.guest)) === "Ada", 10_000))
+  check("...kept on the host, not the other machine", await until(() => fs.existsSync(path.join(vaults[0], ".vaultite/artifacts", `${PAGE}.shared.json`)), 5000)
+    && !fs.existsSync(path.join(vaults[1], ".vaultite/artifacts", `${PAGE}.shared.json`)))
+  await mine.goto("about:blank"); await mine.goto(`${OTHER}#file/${encodeURIComponent(NOTE)}`)
+  await theirs.goto("about:blank"); await theirs.goto(`${PUB}/s/${made.result?.id ?? made.id}/#file/${encodeURIComponent("Plan.md")}`)
+  await editor(mine).waitFor({ timeout: 60_000 }); await editor(theirs).waitFor({ timeout: 60_000 })
+  await wait(3000)
 
   // The host gone: the other machine's app types on its own (saved there), and nothing typed is lost.
   const [, hostProc] = procs[0]

@@ -1,8 +1,9 @@
 // Sharing's app side: Share… in a folder's menu opens its sheet, as shared documents have it: a link for one person (their
 // name, what they may do, for how long), shown once to copy, and who has access, to remove.
 import { useEffect, useState } from "react"
-import { Check, Copy, Share2 } from "lucide-react"
-import { Button, confirmDialog, copyText, dateText, definePlugin, detailPath, Empty, fmtAgo, Group, Loading, notify, notifyError, op, openDetail, Row, Section, Segmented, SettingRow, SheetHead, share } from "@vaultite"
+import { CalendarPlus, Check, ChevronDown, Copy, Share2, UserMinus } from "lucide-react"
+import { activePane, Button, confirmDialog, copyText, currentFile, dateText, definePlugin, detailPath, Empty, fileRowsChanged, fmtAgo, getStore, Group, Loading, menuBelow, notify, notifyError, op, openDetail, Row, Section, Segmented, SettingRow, SheetHead, share, useStore, type FileRow, type MenuItem } from "@vaultite"
+import type { SharedFolders } from "./types.ts"
 
 type Role = "read" | "comment" | "edit"
 type Shared = { id: string; folder: string; guest: string; role: Role; created: string; expires: string; expired: boolean; used: string | null }
@@ -25,18 +26,33 @@ function ShareSheet({ folder }: { folder: string }) {
     try { await op("share.revoke", { id: s.id }); notify(`${s.guest} can't open ${name(folder)} any more`) } catch (e) { notifyError(e, "Couldn't remove it") }
     setAgain((n) => n + 1)
   }
+  const change = async (s: Shared, to: { role?: Role; days?: number }) => {
+    try { await op("share.update", { id: s.id, ...to }) } catch (e) { notifyError(e, "Couldn't change it") }
+    setAgain((n) => n + 1)
+  }
+  // (a person's access as shared documents have it: what they may do, a menu; Remove access, at its foot)
+  const menu = (s: Shared): MenuItem[] => [
+    ...ROLES.map((r) => ({ label: r.label, checked: s.role === r.value, run: () => { if (s.role !== r.value) void change(s, { role: r.value }) } })),
+    { label: s.expired ? "Turn on for 30 days" : "Keep for 30 more days", icon: CalendarPlus, sep: true, run: () => void change(s, { days: 30 }) },
+    { label: "Remove access", icon: UserMinus, danger: true, sep: true, run: () => void remove(s) },
+  ]
+  const online = useStore().store?.shareLinks !== false
   return (
     <div className="flex flex-col gap-5" data-share-sheet={folder}>
       <SheetHead icon={Share2} tint="var(--primary)" title={`Share ${name(folder)}`}
         sub="Each person gets a link of their own: they see this folder and nothing else of your vault, and no agent works for them." />
-      <NewLink folder={folder} made={() => setAgain((n) => n + 1)} />
+      {online ? <NewLink folder={folder} made={() => setAgain((n) => n + 1)} />
+        : <Empty>Links need this vault on the internet (MCP's public address: vau docs mcp). Share from the machine that has it.</Empty>}
       <Section title="People with access">
         {!list ? <Loading error={error} />
           : !list.length ? <Empty>Nobody yet.</Empty>
           : <Group>{list.map((s) => (
             <Row key={s.id} title={s.guest} data-share-row={s.id}
-              meta={[ROLES.find((r) => r.value === s.role)?.label, s.expired ? "expired" : `until ${dateText(new Date(s.expires), DAY)}`, s.used ? `opened ${fmtAgo(s.used)}` : "not opened yet"].join(" · ")}
-              right={<button type="button" onClick={() => void remove(s)} className="cursor-pointer text-[14px] text-destructive" data-share-remove>Remove</button>} />
+              meta={[s.expired ? "Link expired" : `Until ${dateText(new Date(s.expires), DAY)}`, s.used ? `opened ${fmtAgo(s.used)}` : "not opened yet"].join(" · ")}
+              right={<button type="button" onClick={(e) => menuBelow(e, menu(s))} data-share-role={s.role}
+                className="flex shrink-0 cursor-pointer items-center gap-0.5 rounded-[6px] px-1.5 py-1 text-[14px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:text-[16px]">
+                {ROLES.find((r) => r.value === s.role)?.label}<ChevronDown className="size-3.5" strokeWidth={2.25} />
+              </button>} />
           ))}</Group>}
       </Section>
     </div>
@@ -56,7 +72,9 @@ function NewLink({ folder, made }: { folder: string; made: () => void }) {
     setBusy(true)
     try {
       const r = await op<{ link: string; guest: string }>("share.create", { folder, guest: guest.trim(), role, days: Number(days) })
-      setLink({ guest: r.guest, url: r.link }); setGuest(""); setCopied(false); made()
+      setLink({ guest: r.guest, url: r.link }); setGuest(""); made()
+      // (copied at once, as a share link is: the click that made it is still the user's)
+      copyText(r.link).then(() => setCopied(true), () => setCopied(false))
     } catch (e) { notifyError(e, "Couldn't make a link") } finally { setBusy(false) }
   }
   const copy = () => copyText(link!.url).then(() => setCopied(true), (e) => notifyError(e, "Couldn't copy it"))
@@ -88,8 +106,49 @@ function NewLink({ folder, made }: { folder: string; made: () => void }) {
 
 /** A folder that can be shared from the app: not hidden, and not in a guest's own app. */
 const shareable = (path: string) => !share && !!path && !path.split("/").some((x) => x.startsWith("."))
+const openShare = (folder: string) => openDetail(detailPath("share", folder))
+
+/** The folder in sight: a folder's tab, else the open file's. */
+function folderHere() {
+  const to = activePane()?.to ?? ""
+  if (to.startsWith("view:folder/")) return to.slice("view:folder/".length)
+  const f = currentFile()
+  return f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : ""
+}
+
+// The tree marks a shared folder after its name, as Finder and Drive do; its tooltip says with whom.
+const USERS = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+let marked: { from: SharedFolders | undefined; rows: Record<string, FileRow> } = { from: undefined, rows: {} }
+function sharedRows(): Record<string, FileRow> {
+  const from = getStore()?.sharedFolders
+  if (from === marked.from) return marked.rows
+  const rows: Record<string, FileRow> = {}
+  for (const [folder, people] of Object.entries(from ?? {})) {
+    const live = people.filter((p) => Date.parse(p.expires) > Date.now())
+    if (!live.length) continue
+    const mark = document.createElement("span")
+    mark.className = "ml-1 inline-grid size-[13px] shrink-0 place-items-center text-tertiary [&>svg]:size-full"
+    mark.dataset.sharedMark = ""
+    mark.dataset.tip = `Shared with ${live.map((p) => p.guest).join(", ")}`
+    mark.innerHTML = USERS
+    rows[folder] = { after: [mark] }
+  }
+  marked = { from, rows }
+  return rows
+}
+/** The tree drawn again when what's shared changes. */
+function Marks() {
+  const from = useStore().store?.sharedFolders
+  useEffect(() => { fileRowsChanged() }, [from])
+  return null
+}
 
 export default definePlugin({
   details: { share: { title: (_s, [folder]) => `Share ${name(folder ?? "")}`, render: (_s, [folder]) => <ShareSheet folder={folder ?? ""} /> } },
-  folderMenu: (path) => (shareable(path) ? [{ label: "Share…", icon: Share2, section: "share", run: () => openDetail(detailPath("share", path)) }] : []),
+  folderMenu: (path) => (shareable(path) ? [{ label: "Share…", icon: Share2, section: "share", run: () => openShare(path) }] : []),
+  commands: [{ id: "share:folder", name: "Share folder…", words: "invite link people access guest", icon: Share2, when: () => shareable(folderHere()), run: () => openShare(folderHere()) }],
+  fileRows: () => (share ? {} : sharedRows()),
+  // (a guest's first tab: the folder shared with them, as a shared folder's link opens)
+  home: () => (share ? "view:folder" : null),
+  background: () => (share ? null : <Marks />),
 })

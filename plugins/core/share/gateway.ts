@@ -38,8 +38,8 @@ const PAGE_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-
   "img-src data: blob:; font-src data:; media-src data: blob:; worker-src blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'"
 /** ...framed by a page that keeps its frame on its own address (`at`: /s/<id>/v/). */
 const wrapCsp = (at: string) => `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src ${at}; base-uri 'none'; frame-ancestors 'self'`
-/** The app's plugins a guest's app runs: reading, writing and comments; never agents, terminals or settings. */
-export const GUEST_PLUGINS = ["files", "editing", "folding", "outline", "find", "properties", "tags", "page-preview", "backlinks", "search", "companion", "html", ...VIEWS]
+/** The app's plugins a guest's app runs: reading, writing and comments (Sharing's: their first tab); never agents, terminals or settings. */
+export const GUEST_PLUGINS = ["share", "files", "editing", "folding", "outline", "find", "properties", "tags", "page-preview", "backlinks", "search", "companion", "html", ...VIEWS]
 
 export const sha = (s: string) => crypto.createHash("sha256").update(s).digest("base64url")
 const same = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
@@ -104,7 +104,7 @@ export class Gateway {
   secret = crypto.randomBytes(32)
   hits = new Map<string, { n: number; until: number }>()
   wss = new WebSocketServer({ noServer: true, maxPayload: 64 << 10 })
-  sockets = new Map<WebSocket, { g: Guest; kind: "events" | "threads" }>()
+  sockets = new Map<WebSocket, { g: Guest; kind: "events" | "threads" | "page" }>()
 
   constructor(plugin: Plugin, shares: () => Record<string, Share>, used: (id: string) => void) {
     this.plugin = plugin
@@ -147,18 +147,28 @@ export class Gateway {
 
   /** A WebSocket for a guest's app (its live changes, its threads): true when it was one, taken or refused. */
   upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
-    const p = new URL(req.url ?? "/", "http://x").pathname
+    const url = new URL(req.url ?? "/", "http://x"), p = url.pathname
     if (!p.startsWith("/s/") || !this.ours(req)) return false
-    const m = /^\/s\/([A-Za-z0-9_-]{11})\/api\/(events|companion\/live)$/.exec(p)
+    const m = /^\/s\/([A-Za-z0-9_-]{11})\/api\/(events|companion\/live|artifact\/shared)$/.exec(p)
     const g = m && this.sameSite(req) ? this.guestOf(req, m[1]) : null
+    // (an HTML page's shared state: one of their folder's pages, there)
+    let page = ""
+    if (g && m![2] === "artifact/shared") try { page = this.folderOf(g).at(url.searchParams.get("path")) } catch { /* refused below */ }
+    const join = this.plugin.service("html:shared")
     // (a share's sockets are counted: a guest's limits are per socket, so not as many as they like)
-    if (!g || [...this.sockets.values()].filter((s) => s.g.id === g.id).length >= SOCKETS) { socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); return true }
+    if (!g || [...this.sockets.values()].filter((s) => s.g.id === g.id).length >= SOCKETS
+      || (m![2] === "artifact/shared" && (!/\.html?$/i.test(page) || !fs.existsSync(this.plugin.vault.abs(page)) || typeof join !== "function"))) {
+      socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); return true
+    }
     this.wss.handleUpgrade(req, socket, head, (ws) => {
-      const kind = m![2] === "events" ? "events" : "threads"
+      const kind = m![2] === "events" ? "events" : m![2] === "artifact/shared" ? "page" : "threads"
       this.sockets.set(ws, { g, kind })
       ws.on("close", () => this.sockets.delete(ws))
       ws.on("error", () => ws.close())
-      if (kind === "events") return ws.send(JSON.stringify({ type: "hello", v: this.v() }))
+      if (kind === "events") return ws.send(JSON.stringify({ type: "hello", v: this.v(), role: g.share.role }))
+      // (one person a share, whichever device; a guest who may only view sees the page live and changes nothing)
+      if (kind === "page") return (join as (ws: WebSocket, rel: string, v: object) => void)(ws, page, { shown: this.folderOf(g).see(page) ?? "",
+        id: `g_${g.id}`, name: g.share.guest, ua: String(req.headers["user-agent"] ?? ""), watch: g.share.role === "read" ? "you can only view this folder" : undefined })
       // (Companion's: threads for a guest who may comment, who's in a note and its text as typed, in their folder, by their paths)
       const threads = this.plugin.service("companion:guest"), f = this.folderOf(g)
       if (typeof threads === "function") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, who: guestWho(g.share), role: g.share.role, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS), holds: () => this.holds(g),
@@ -269,7 +279,8 @@ export class Gateway {
     if (key === "GET state") return this.json(res, 200, { v: this.v(), state: await this.state(g, f) })
     if (key === "GET file") return this.json(res, 200, theirs(await api("GET", `file?path=${encodeURIComponent(f.at(q.path))}`) as Item))
     if (key === "GET file/info") return this.json(res, 200, theirs(await api("GET", `file/info?path=${encodeURIComponent(f.at(q.path))}`) as Item))
-    if (key === "GET raw") return this.raw(req, res, f.at(q.path))
+    // (as the app asks for it: api/raw/<its name>?path=..., the name only for the browser's sake)
+    if (method === "GET" && (route === "raw" || route.startsWith("raw/"))) return this.raw(req, res, f.at(q.path), q.download === "1")
     if (key === "GET file/linked") {
       // Their files linking to it, and its own links as written: wikilinks only (a Markdown link by path is resolved
       // only when its file is there, which would tell what's outside the folder).
@@ -287,7 +298,15 @@ export class Gateway {
       const page = (found.results as Item[]).flatMap((r) => { const p = f.see(String(r.path)); return p === null ? [] : [{ ...r, path: p }] })
       return this.json(res, 200, q.total === "1" ? { results: page, files: found.files, lines: found.lines } : page)
     }
+    if (key === "POST artifact/stat") {
+      // (when what a page read changed: their paths, each the vault's for it)
+      const asked = (await this.body(req) as Item).paths, rels = new Map<string, string>()
+      for (const x of Array.isArray(asked) ? asked.slice(0, 200) : []) try { rels.set(f.at(x), String(x)) } catch { /* not theirs */ }
+      const now = await this.plugin.host.api("POST", "artifact/stat", { paths: [...rels.keys()] }) as Record<string, number | null>
+      return this.json(res, 200, Object.fromEntries([...rels].map(([rel, x]) => [x, now[rel] ?? null])))
+    }
     if (key === "GET config/plugin") return this.json(res, 200, Object.fromEntries(String(q.ids ?? "").split(",").filter(Boolean).slice(0, 100).map((x) => [x, {}])))
+    if (key === "GET loading") return this.json(res, 200, { ready: true, downloading: [] })
     if (method === "GET" && ["ops", "vaults", "plugins", "blocks"].includes(route)) return this.json(res, 200, route === "vaults" ? { vaults: [] } : [])
     // The views that only read (VIEWS): their code, Excalidraw's fonts, and Dataview's queries over the folder alone.
     const code = method === "GET" && /^plugins\/([a-z0-9-]+)\/[^/]+\/[\w.-]+\.js$/.exec(route)
@@ -311,16 +330,26 @@ export class Gateway {
       if (this.limited(`write:${g.id}`, WRITES) || (method === "POST" && this.limited(`new:${g.id}`, NEW_NOTES))) return this.json(res, 429, { error: "too many changes at once: wait a moment" })
       const body = await this.body(req) as Item
       const rel = f.at(body.path)
-      if (!/\.md$/i.test(rel) || typeof body.text !== "string") throw new HTTPError(400, "only notes' text can be written here")
-      if (body.text.length > NOTE_MAX) throw new HTTPError(413, "a note this long can't be written here")
+      // (an editor's save sends only its edit of the text it had: the text it makes is checked here, the core applies it)
+      const edit = method === "PUT" && typeof body.text !== "string" ? body.edit as { at?: unknown; cut?: unknown; add?: unknown } | undefined : undefined
+      let text = typeof body.text === "string" ? body.text : null
+      if (edit && typeof body.baseHash === "string") {
+        let cur = ""
+        try { cur = fs.readFileSync(this.plugin.vault.abs(rel), "utf8") } catch { /* the core says it's gone */ }
+        const { at, cut, add } = edit
+        if (Number.isInteger(at) && Number.isInteger(cut) && typeof add === "string" && Number(at) >= 0 && Number(cut) >= 0 && Number(at) + Number(cut) <= cur.length)
+          text = cur.slice(0, Number(at)) + add + cur.slice(Number(at) + Number(cut))
+      }
+      if (!/\.md$/i.test(rel) || text === null) throw new HTTPError(400, "only notes' text can be written here")
+      if (text.length > NOTE_MAX) throw new HTTPError(413, "a note this long can't be written here")
       // (a PUT to a note that isn't there makes one: as a POST, it counts as a new note; a new note's dates take room too)
       const fresh = method === "POST" || !fs.existsSync(this.plugin.vault.abs(rel))
       if (fresh && method === "PUT" && this.limited(`new:${g.id}`, NEW_NOTES)) return this.json(res, 429, { error: "too many changes at once: wait a moment" })
       const has = folderSize(this.plugin.vault, f.folder), room = g.share.room ?? { notes: has.notes + ROOM.notes, bytes: has.bytes + ROOM.bytes }
-      const grows = Buffer.byteLength(body.text) + (fresh ? 512 : -(this.plugin.vault.entries.get(rel)?.stat.size ?? 0))
+      const grows = Buffer.byteLength(text) + (fresh ? 512 : -(this.plugin.vault.entries.get(rel)?.stat.size ?? 0))
       if ((fresh && has.notes >= room.notes) || (grows > 0 && has.bytes + grows > room.bytes)) throw new HTTPError(507, "this folder is full: ask whoever shared it")
       // (the file route checks what lands, as a guest's: core/guests.ts)
-      const sent: Item = { path: rel, text: body.text, ...pick(body, method === "PUT" ? ["base", "baseHash", "lean"] : ["unique"]) }
+      const sent: Item = { path: rel, ...(edit ? { edit } : { text }), ...pick(body, method === "PUT" ? ["base", "baseHash", "lean"] : ["unique"]) }
       try { return this.json(res, method === "POST" ? 201 : 200, theirs(await api(method, "file", sent) as Item)) } catch (e) {
         // (a save that couldn't merge: the file as it is, so the editor shows it)
         if ((e as { status?: number }).status === 409 && method === "PUT") return this.json(res, 409, { error: "the note changed meanwhile", ...theirs(await api("GET", `file?path=${encodeURIComponent(rel)}`) as Item) })
@@ -368,14 +397,14 @@ export class Gateway {
   }
 
   /** A file's bytes (an image in a note), as the app's /api/raw serves them, never run as a page. */
-  raw(req: IncomingMessage, res: ServerResponse, rel: string) {
+  raw(req: IncomingMessage, res: ServerResponse, rel: string, download = false) {
     const abs = path.join(this.plugin.vault.path, rel)
     let st: fs.Stats
     try { st = fs.statSync(abs) } catch { return this.json(res, 404, { error: "not found" }) }
     if (!st.isFile()) return this.json(res, 404, { error: "not found" })
     res.writeHead(200, { "Content-Type": contentType(rel), "Content-Length": String(st.size), "Cache-Control": "no-cache",
       "Content-Security-Policy": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'",
-      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(path.basename(rel))}` })
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(path.basename(rel))}` })
     if (req.method === "HEAD") return res.end()
     fs.createReadStream(abs).on("error", () => res.destroy()).pipe(res)
   }

@@ -553,8 +553,8 @@ export type ReadingBlocks = {
   draw: (el: HTMLElement, block: ReadingBlock) => ReadingDrawn | null | Promise<ReadingDrawn | null>
 }
 
-/** An item in a file's menu. `section`: "actions" (default, top level: what a file of its kind is for), "navigate", "more"
- *  (More ▸, where most belong), "away" (with Delete: Archive), or a group of its own. Keep the top level short. */
+/** An item in a file's menu. `section`: "actions" (default: what its kind is for), "navigate", "share" (in sight in a tab's
+ *  short menu too), "more" (More ▸, where most belong), "away" (with Delete: Archive), or a group of its own. */
 export type FileMenuItem = { label: string; icon?: LucideIcon; run: () => void; disabled?: boolean; section?: string
   /** Do it to several files at once (core/select.ts: files selected together), saying so once. Offered for a selection
    *  only when every file's menu has this item (same label) with `many`. */

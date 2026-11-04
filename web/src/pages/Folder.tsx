@@ -1,7 +1,7 @@
 // A folder's page (view:folder/<path>, the Files plugin's): a grid, a list, columns or a gallery (files.json
 // `folderView`, every folder the same; a phone has the first two), as Finder. Folders open in its tab, files beside.
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FocusEvent, type MouseEvent, type PointerEvent } from "react"
-import { ArrowUpDown, Columns3, Ellipsis, FileInput, FilePlus, FolderInput, FolderOpen, FolderPlus, GalleryHorizontalEnd, Group, LayoutGrid, List, RotateCcw, Trash2 } from "lucide-react"
+import { ArrowUpDown, Columns3, Ellipsis, FileInput, FilePlus, FolderInput, FolderOpen, FolderPlus, GalleryHorizontalEnd, Group, LayoutGrid, List, RotateCcw, Share, Trash2 } from "lucide-react"
 import { dateText, getStore, reload, useStore, vaultName, type Store } from "@/core/data"
 import { createFolder, folderOf, freeName, inArchive, inTrash, openFile, openingSoon, pathTarget, restoreFile } from "@/core/files"
 import { edgeScroller, startDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
@@ -16,7 +16,7 @@ import { openInSplit } from "@/core/splits"
 import { useVirtual } from "@/core/virtual"
 import { useFocusedFile } from "@/core/workspace"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
-import { copyPathItem, fileMenu, filesMenu, folderMenu, grouped, openFolderHereItem, openItem, remove } from "@/components/FileActions"
+import { copyPathItem, fileMenu, filesMenu, folderMenu, grouped, openFolderHereItem, openItem, pluginFileGroups, remove } from "@/components/FileActions"
 import { askMove, canMoveInto, fixed, folderItems, moveManyInto, newNote, SORTS, treeShownItems, type FolderItem } from "@/components/FileTree"
 import { ROW, SidebarRow } from "@/components/Sidebar"
 import type { SwipeAction } from "@/components/SwipeRow"
@@ -149,10 +149,23 @@ function Toolbar({ path, view }: { path: string; view: FolderView }) {
       <button type="button" aria-label="Sort and group" data-tip="Sort and group" data-folder-arrange onClick={(e) => menuBelow(e, arrangeItems())} className={cn(tool, grouped && "text-primary hover:text-primary")}>
         <ArrowUpDown className="size-[15px]" strokeWidth={2} />
       </button>
+      <ShareButton path={path} className={tool} />
       <button type="button" aria-label="More" data-tip="More" data-folder-more onClick={(e) => menuBelow(e, pageMenu(path))} className={tool}>
         <Ellipsis className="size-4" strokeWidth={2} />
       </button>
     </div>
+  )
+}
+
+/** Share, as Finder's toolbar has it: the plugins' share items for the folder (one runs, several are a menu). */
+function ShareButton({ path, className, size = "size-[15px]" }: { path: string; className: string; size?: string }) {
+  const items = path ? pluginFileGroups(path, undefined, true).share : []
+  if (!items.length) return null
+  const Icon = items[0].icon ?? Share
+  return (
+    <button type="button" aria-label="Share" data-tip="Share" data-folder-share onClick={(e) => (items.length === 1 ? items[0].run() : menuBelow(e, items))} className={className}>
+      <Icon className={size} strokeWidth={2} />
+    </button>
   )
 }
 
@@ -341,6 +354,7 @@ function PhoneHead({ path, view }: { path: string; view: FolderView }) {
         ))}
       </p>
       <div className="flex shrink-0 items-center gap-2">
+        <ShareButton path={path} size="size-[18px]" className="relative mb-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-muted text-primary after:absolute after:-inset-1 active:opacity-60" />
         <button type="button" aria-label={`Show as ${next.label.toLowerCase()}`} data-folder-view={next.value} onClick={() => setView(next.value)}
           className="relative mb-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-muted text-primary after:absolute after:-inset-1 active:opacity-60">
           <next.icon className="size-[18px]" strokeWidth={2.25} />

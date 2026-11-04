@@ -2,11 +2,12 @@
 // it's off), plus `text:html` and `looks:html`. An artifact is framed by a wrapper (frame=1 asks for the page itself).
 import crypto from "node:crypto"
 import fs from "node:fs"
-import { contentType, HTTPError, isOutside, OpError, outsidePath, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
+import { contentType, HTTPError, isOutside, type Machine, machineSocket, OpError, outsidePath, pipeSockets, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
 import type { Item, Vault } from "../../../core/vault.ts"
 import { ARTIFACT, artifactText, cdn, CSP, looks, moved, page, saveState, stat, WRAP_CSP, wrapper } from "./artifacts.ts"
 import { artifactIn, dataOf, movedData, publish, sampleGrant, sampleSocket, saveData, versionOf } from "./claude.ts"
 import { sharedPages } from "./shared.ts"
+import type { RawData, WebSocket } from "ws"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -94,11 +95,46 @@ plugin.socket("artifact/sample", (ws) => sampleSocket(plugin, ws), {
 export const shared = sharedPages(() => plugin.vault)
 plugin.onUnload(() => shared.flush())
 const DEVICES: [RegExp, string][] = [[/iPhone/, "iPhone"], [/iPad/, "iPad"], [/Android/, "Android"], [/Macintosh/, "Mac"], [/Windows/, "Windows"], [/Linux|CrOS/, "Linux"]]
+const deviceOf = (ua: string) => DEVICES.find(([re]) => re.test(ua))?.[1]
+/** A shared folder's guest joins a page's shared state (plugins/core/share's gateway: the page in their folder, as them). */
+plugin.provide("html:shared", (ws: WebSocket, rel: string, v: { shown: string; id: string; name: string; ua: string; watch?: string }) =>
+  shared.join(ws, artifactIn(plugin.vault, rel), { shown: v.shown, person: { id: v.id, name: v.name, device: deviceOf(v.ua) }, watch: v.watch }))
+type Host = { m: Machine; folders: string[] }
+const inside = (rel: string, folder: string) => rel.startsWith(`${folder}/`)
+/** The machine whose rooms a page's shared state is in: another of the vault's that shares its folder (its guests are
+ *  there), unless this one shares it too. */
+async function hostOf(rel: string) {
+  if (((plugin.service("share:folders")?.() ?? []) as string[]).some((f) => inside(rel, f))) return null
+  return (await plugin.ask<Host[]>("share:hosts", [])).find((h) => (down.get(h.m.id) ?? 0) < Date.now() && h.folders.some((f) => inside(rel, f)))?.m ?? null
+}
+const down = new Map<string, number>()
 plugin.socket("artifact/shared", (ws, req, { query }) => {
-  const rel = artifactIn(plugin.vault, query.path), ua = String(req.headers["user-agent"] ?? "")
+  const rel = artifactIn(plugin.vault, query.path), ua = String(req.headers["user-agent"] ?? query.ua ?? "")
   const id = /^[a-z0-9]{8,32}$/.test(query.device ?? "") ? query.device : `w${crypto.randomUUID().slice(0, 8)}`
-  shared.join(ws, rel, { shown: rel, person: { id, name: ownerName() || "Owner", device: DEVICES.find(([re]) => re.test(ua))?.[1] } })
+  const here = () => shared.join(ws, rel, { shown: rel, person: { id, name: ownerName() || "Owner", device: deviceOf(ua) } })
+  // (another machine's view, here: never sent on again)
+  if (String(req.headers["x-vaultite-client"] ?? "").startsWith("machine/")) return here()
+  const early: RawData[] = [], hold = (d: RawData) => void early.push(d)
+  ws.on("message", hold)
+  void hostOf(rel).then((m) => {
+    ws.off("message", hold)
+    if (ws.readyState !== ws.OPEN) return
+    if (!m) here()
+    else pipeSockets(ws, machineSocket(m, "artifact/shared", { path: rel, device: id, ua }, { handshakeTimeout: 8000 }), () => {
+      down.set(m.id, Date.now() + 15_000)
+      ws.close(1011, "unreachable")
+    })
+    for (const d of early) ws.emit("message", d, false)
+  })
 }, { accept: (_req, { query }) => void artifactIn(plugin.vault, query.path) })
+
+// A page in a shared folder (here or on another machine): the folder its views may read in, since its guests set
+// what the page does. The innermost, when folders in folders are shared.
+plugin.route("GET", "artifact/scope", async (req) => {
+  const rel = artifactIn(plugin.vault, req.query.path)
+  const folders = [...(plugin.service("share:folders")?.() ?? []) as string[], ...(await plugin.ask<Host[]>("share:hosts", [])).flatMap((h) => h.folders)]
+  return { folder: folders.filter((f) => inside(rel, f)).sort((a, b) => b.length - a.length)[0] ?? null }
+}, { lock: false, sync: false })
 
 /** An op's page: an artifact in the vault, else an OpError. */
 const pageOf = (p: unknown) => { try { return artifactIn(plugin.vault, p) } catch (e) { throw new OpError((e as Error).message) } }

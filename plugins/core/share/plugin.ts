@@ -3,7 +3,7 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { byUser, localDate, type OpCtx, OpError, Plugin, whoOf } from "../../../core/plugins.ts"
+import { byUser, localDate, type Machine, MACHINE_CLIENT, type OpCtx, OpError, Plugin, whoOf } from "../../../core/plugins.ts"
 import { expired, folderSize, Gateway, ROOM, type Role, type Share, sha } from "./gateway.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -19,7 +19,15 @@ function save(fn: (all: Record<string, Share>) => void) {
   s.shares ??= {}
   fn(s.shares)
   plugin.saveSecrets(s)
+  mirror()
 }
+/** Who each folder is shared with, for the app (/api/state's `sharedFolders`: the tree marks them): never a link's hash. */
+type People = Record<string, { guest: string; role: Role; expires: string }[]>
+const mirror = () => plugin.keep("folders", Object.entries(shares()).filter(([, s]) => !expired(s)).reduce<People>((out, [, s]) =>
+  ((out[s.folder] ??= []).push({ guest: s.guest, role: s.role, expires: s.expires }), out), {}))
+plugin.onSync(() => mirror())
+// (`shareLinks`: this machine can make links, being on the internet)
+plugin.state(() => ({ sharedFolders: plugin.kept<People>("folders", {}), shareLinks: !!(plugin.secrets().mcp as { public?: { url?: string } } | undefined)?.public?.url }))
 
 // (when a guest was last here, written at most every 10 minutes)
 const seen = new Map<string, number>()
@@ -35,6 +43,26 @@ plugin.onChange((paths) => gateway.changed(paths))
 const sharedFolders = () => [...new Set(Object.values(shares()).filter((s) => !expired(s)).map((s) => s.folder))]
 /** The folders shared now (not expired): the vault's other machines type in their notes here, with the guests. */
 plugin.provide("share:folders", sharedFolders)
+/** The vault's other machines that share folders now, and which: asked at most every 10 seconds. */
+let hostsAt = 0, hosts: Promise<{ m: Machine; folders: string[] }[]> = Promise.resolve([])
+plugin.provide("share:hosts", () => {
+  if (Date.now() - hostsAt > 10_000) { hostsAt = Date.now(); hosts = askHosts().catch(() => []) }
+  return hosts
+})
+async function askHosts() {
+  const vault = await plugin.ask<string>("machines:vault", "")
+  if (!vault) return []
+  const ms = (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.url && m.vault === vault && m.plugins?.includes("share"))
+  const got = await Promise.all(ms.map(async (m) => {
+    try {
+      const r = await fetch(`${m.url}/api/share/folders`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(5000) })
+      const b = r.ok ? await r.json() as { folders?: unknown } : null
+      const folders = Array.isArray(b?.folders) ? b.folders.filter((f): f is string => typeof f === "string" && !!f) : []
+      return folders.length ? { m, folders } : null
+    } catch { return null }
+  }))
+  return got.filter((h) => !!h)
+}
 plugin.route("GET", "share/folders", async (req) => {
   await plugin.ownerOnly(req, "The shared folders")
   return { folders: sharedFolders() }
@@ -142,6 +170,40 @@ plugin.op({
   run: ({ folder }) => Object.entries(shares()).filter(([, s]) => !folder || s.folder === folder).map(([id, s]) => listed(id, s))
     .sort((a, b) => a.folder.localeCompare(b.folder) || a.created.localeCompare(b.created)),
   text: (r: ReturnType<typeof listed>[]) => (r.length ? r.map(line).join("\n") : "No folder is shared."),
+})
+
+plugin.op({
+  id: "share.update",
+  cli: "share update",
+  owner: OWNER,
+  summary: "Change what a share's guest may do (read, comment, edit), or how long their link works from now; the link stays the same.",
+  help: "Its id is in `vau share list`.\n\n  vau share update <id> --role edit\n  vau share update <id> --days 30",
+  kind: "write",
+  params: {
+    id: { type: "string", required: true, description: "the share's id (vau share list)" },
+    role: { type: "string", enum: ROLES, description: "read; comment: and add comments; edit: and change its notes" },
+    days: { type: "number", description: "the link works this many days from now (1 to 365)" },
+  },
+  args: ["id"],
+  lock: false,
+  run: async ({ id, role, days }, ctx) => {
+    let s = shares()[id]
+    if (!s) throw new OpError(`no share ${id} (vau share list)`, 404)
+    if (role !== undefined && !ROLES.includes(role)) throw new OpError(`\`role\` is one of ${ROLES.join(", ")}`)
+    const n = days === undefined ? null : Math.round(Number(days))
+    if (n !== null && !(n >= 1 && n <= 365)) throw new OpError("`days`: 1 to 365")
+    if (role === undefined && n === null) throw new OpError("say what changes: `role` or `days`")
+    await yes(ctx, "share.update", { id, role, days: n }, `change ${s.guest}'s access to ${s.folder} (${[role, n && `${n} days`].filter(Boolean).join(", ")})`)
+    s = shares()[id]
+    if (!s) throw new OpError(`no share ${id} (vau share list)`, 404)
+    const was = s.role
+    save((all) => { all[id] = { ...all[id], ...(role ? { role } : {}), ...(n ? { expires: new Date(Date.now() + n * 86_400_000).toISOString() } : {}) } })
+    // (their open pages come back with what they may do now)
+    if (role && role !== was) gateway.close(id)
+    return listed(id, shares()[id])
+  },
+  text: (r) => `${r.guest} can ${r.role === "read" ? "view" : r.role} ${r.folder} until ${localDate(Date.parse(r.expires))}.`,
+  did: (p) => ({ action: "settings", text: `Changed a share (${p.id})` }),
 })
 
 plugin.op({

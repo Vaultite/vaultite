@@ -198,6 +198,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `history:keep` (history): Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's review compares with it). Sync, so it runs before the write.
 - `history:changed` (history): The files followed whose text was last written at or after `since` (ms).
 - `html:guest` (html): A page as a shared folder's guest gets it (plugins/core/share), at their path for it, nothing of the user's (name, Claude, what it kept), and the wrapper framing it: the guest's gateway serves both, with its own policies.
+- `html:shared` (html): A shared folder's guest joins a page's shared state (plugins/core/share's gateway: the page in their folder, as them).
 - `inbox:folder` (inbox): Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this plugin is on.
 - `inbox:needs` (inbox): Whether an agent's session (by its terminal, or its own session id) has a thread that needs the user, unread: Terminal's list says so (its tab's dot, Terminals' first rows).
 - `inbox:state` (inbox): Terminal's stream of its terminals' states.
@@ -240,6 +241,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `share:upgrade` (share)
 - `share:gateway` (share)
 - `share:folders` (share): The folders shared now (not expired): the vault's other machines type in their notes here, with the guests.
+- `share:hosts` (share)
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).

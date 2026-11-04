@@ -1,7 +1,7 @@
 // While the server reads the vault (GET /api/loading): that it's reading, and the files iCloud is still downloading,
 // which can take minutes. Once read, files still downloading are a toast (they show when they arrive).
 import { useEffect, useState } from "react"
-import { type Store } from "@/core/data"
+import { getStore, type Store } from "@/core/data"
 import { get } from "@/core/http"
 import { notify } from "@/core/notify"
 
@@ -17,6 +17,8 @@ export function VaultLoading() {
   useEffect(() => {
     let on = true, timer: ReturnType<typeof setTimeout>
     const look = async () => {
+      // (a hidden pane keeps this drawn after the store came: it stops asking then)
+      if (getStore()) return
       try {
         const r = await get<{ ready: boolean; downloading: string[] }>("loading")
         if (on) { setFiles(r.downloading); setShown(true) }

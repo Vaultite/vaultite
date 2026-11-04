@@ -309,6 +309,77 @@ export default async ($: VaultTest) => {
     check("share: live changes say only the folder's, by the guest's paths", ev.got[0]?.type === "hello" && changes.length === 1 && JSON.stringify(changes[0].paths) === JSON.stringify(["A.md"]), ev.got)
     ev.ws.close()
 
+    {
+      // A folder's page's shared state (vau.shared()) through the gateway: as the guest, at their path; a reader watches.
+      write("Shared/duel.html", "<html><body>duel</body></html>")
+      write("Shared/Sub/duel.html", "<html><body>duel</body></html>")
+      await $.vault.sync()
+      type Open = Exclude<Awaited<ReturnType<typeof socket>>, number>
+      const page = (g: typeof a, p: string, origin?: string) => socket(g, `artifact/shared?path=${encodeURIComponent(p)}`, origin)
+      const no = await Promise.all([page(a, "../Secret/page.html"), page(a, "A.md"), page(a, "nope.html"), page(a, "link.md"), page(a, "duel.html", "https://evil.example"), page({ ...a, cookie: "" }, "duel.html")])
+      check("share: no page's shared state outside the folder, of a note, of no page, from another site or without the cookie", no.every((x) => x === 403), no)
+      const pa = await page(a, "duel.html") as Open, pc = await page(c, "duel.html") as Open
+      await wait()
+      check("share: a guest joins a page's shared state as themselves, and sees who's here", pa.got[0]?.t === "hello" && pa.got[0].me?.name === "Alice Park"
+        && pa.got.some((m) => m.t === "people" && m.people.some((x: Any) => x.name === "Carol")), pa.got)
+      pa.ws.send(JSON.stringify({ t: "set", n: 1, values: { "a:alice": "C4" } }))
+      await wait(500)
+      const kept = await op("html.shared", { path: "Shared/duel.html" })
+      check("share: an edit guest's set reaches the others, by them, and is kept under the vault's path", pc.got.some((m) => m.t === "set" && m.values["a:alice"] === "C4" && m.by === `g_${edit.id}`)
+        && kept.state["a:alice"] === "C4" && JSON.parse(read(".vaultite/artifacts/Shared/duel.html.shared.json"))["a:alice"] === "C4", [pc.got, kept])
+      await op("html.shared-set", { path: "Shared/duel.html", values: { round: 2 } })
+      await wait()
+      check("share: ...and an agent's set reaches the guests", pa.got.some((m) => m.t === "set" && m.values.round === 2))
+      const pd = await page(d, "duel.html") as Open
+      await wait()
+      pd.ws.send(JSON.stringify({ t: "set", n: 1, values: { "a:dan": "G" } }))
+      await wait(500)
+      check("share: a guest who may only view sees the page live and sets nothing", pd.got[0]?.t === "hello" && pd.got.some((m) => m.t === "no" && m.n === 1)
+        && !("a:dan" in (await op("html.shared", { path: "Shared/Sub/duel.html" })).state), pd.got)
+      for (const x of [pa, pc, pd]) x.ws.close()
+
+      // What a guest's page reads changing (vau.on("change")), by their paths; the app's raw/<name> address for images.
+      const st = await (await send("POST", `${a.at}/api/artifact/stat`, { paths: ["A.md", "../Secret/S.md", "link.md"] }, as(a))).json()
+      check("share: a guest's page hears when what it read changed, nothing outside the folder", typeof st["A.md"] === "number" && Object.keys(st).length === 1, st)
+      const img = await get(`${a.at}/api/raw/img.png?path=img.png`, as(a)), dl = await get(`${a.at}/api/raw/img.png?path=img.png&download=1`, as(a)), out = await get(`${a.at}/api/raw/S.md?path=../Secret/S.md`, as(a))
+      check("share: images by the app's own address (raw/<name>), downloads as files, nothing outside", img.status === 200 && /^inline/.test(String(img.headers.get("content-disposition")))
+        && /^attachment/.test(String(dl.headers.get("content-disposition"))) && out.status >= 400, [img.status, dl.status, out.status])
+      const loading = await get(`${a.at}/api/loading`, as(a))
+      check("share: the app's loading question answers (a guest's folder is read)", loading.status === 200 && (await loading.json()).ready === true)
+
+      // An editor's save sends only its edit, with its base's fingerprint: checked as the text it makes, as theirs.
+      const { textHash } = await import("../../../core/texthash.ts")
+      const cur = read("Shared/A.md"), add = "\nAn edit sent as an edit.\n"
+      const saved = await send("PUT", `${a.at}/api/file`, { path: "A.md", edit: { at: cur.length, cut: 0, add }, baseHash: textHash(cur), lean: true }, as(a))
+      const stale = await send("PUT", `${a.at}/api/file`, { path: "A.md", edit: { at: 0, cut: 0, add: "x" }, baseHash: "stale", lean: true }, as(a))
+      const typedIn = await send("PUT", `${a.at}/api/file`, { path: "A.md", edit: { at: 0, cut: 0, add: "---\ntype: person\n---\n" }, baseHash: textHash(read("Shared/A.md")), lean: true }, as(a))
+      const byReader = await send("PUT", `${c.at}/api/file`, { path: "A.md", edit: { at: 0, cut: 0, add: "x" }, baseHash: textHash(read("Shared/A.md")) }, as(c))
+      check("share: an editor's edit saves; a stale one asks for its base; a type or a reader's edit doesn't land", saved.status === 200 && read("Shared/A.md").endsWith(add)
+        && stale.status === 412 && typedIn.status === 403 && byReader.status === 403 && !read("Shared/A.md").includes("type:"), [saved.status, stale.status, typedIn.status, byReader.status])
+      const blamed = await op("provenance.blame", { path: "Shared/A.md" })
+      check("share: ...and the edit is the guest's", blamed.runs?.some((x: Any) => x.guest && x.text.includes("An edit sent as an edit")), blamed)
+
+      // The owner's view of a page in a shared folder reads only inside it (its innermost shared folder), as the app asks.
+      const scope = await Promise.all(["Shared/duel.html", "Shared/Sub/duel.html", "Secret/page.html"].map(async (p) => (await $.api("GET", `artifact/scope?path=${p}`))[1].folder))
+      check("share: a page's scope is the shared folder it's in, the innermost; none outside", JSON.stringify(scope) === JSON.stringify(["Shared", "Shared/Sub", null]), scope)
+      const state = (await $.api("GET", "state"))[1]
+      check("share: the app's state says who each folder is shared with (no link, no hash)", state.sharedFolders?.Shared?.some((x: Any) => x.guest === "Alice Park" && x.role === "edit")
+        && state.sharedFolders?.["Shared/Sub"]?.[0]?.guest === "Dan" && state.shareLinks === true && !JSON.stringify(state.sharedFolders).includes(config().share.shares[edit.id].token), state.sharedFolders)
+
+      // A guest's access changed in place: the same link, their sockets come back with it.
+      const live = await socket(c, "events") as Open
+      const bye = new Promise<boolean>((ok) => { live.ws.on("close", () => ok(true)); setTimeout(() => ok(false), 1000) })
+      const up = await op("share.update", { id: comment.id, role: "edit", days: 10 })
+      const back = await socket(c, "events") as Open
+      await wait()
+      check("share: update changes a guest's role and days, the link the same; their sockets come back saying so", up.role === "edit" && Date.parse(up.expires) - Date.now() > 9 * 86_400_000
+        && await bye && back.got[0]?.role === "edit" && (await put(c, "A.md", read("Shared/A.md") + "Carol edits now.\n")).status === 200, [up, back.got])
+      back.ws.close()
+      const bad = await Promise.all([op("share.update", { id: comment.id, role: "owner" }), op("share.update", { id: comment.id }), op("share.update", { id: "nope", role: "read" }), op("share.update", { id: comment.id, days: 900 })])
+      check("share: update needs a role or days that make sense, of a share there", bad.every((x) => x.error), bad)
+      await op("share.update", { id: comment.id, role: "comment" })
+    }
+
     // Comments (Companion's threads): a guest's are people's, which no agent hears of; agents' threads never reach them.
     await op("companion.comment", { text: "An agent's thought, from ME.md", path: "Shared/A.md", find: "Hello" })
     const th = await socket(c, "companion/live") as Exclude<Awaited<ReturnType<typeof socket>>, number>

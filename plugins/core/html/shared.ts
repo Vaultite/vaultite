@@ -7,8 +7,9 @@ import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 /** Someone with a page open, as everyone sees them (the server names them, never the page). */
 export type Person = { id: string; name: string; device?: string }
-/** A view of a page: who it is, and the page's path as they name it (a guest's is inside their folder). */
-export type Viewer = { person: Person; shown: string }
+/** A view of a page: who it is, the page's path as they name it (a guest's is inside their folder), and why its sets are
+ *  refused, when they are (a guest who may only view). */
+export type Viewer = { person: Person; shown: string; watch?: string }
 type Room = { rel: string; state: Map<string, unknown>; sizes: Map<string, number>; bytes: number; views: Map<WebSocket, Viewer & { tint: string }>; timer: ReturnType<typeof setTimeout> | null }
 
 export const sharedPath = (rel: string) => `.vaultite/artifacts/${rel}.shared.json`
@@ -106,7 +107,7 @@ export function sharedPages(vaultOf: () => Vault) {
         if (m.t !== "set" || rooms.get(rel) !== r || !r.views.has(ws)) return
         const t = Date.now(), h = hits.get(ws)
         if (!h || h.until < t) hits.set(ws, { n: 1, until: t + 60_000 })
-        const why = h && h.until >= t && ++h.n > SETS ? "too many changes a minute" : refusal(r, m.values)
+        const why = viewer.watch || (h && h.until >= t && ++h.n > SETS ? "too many changes a minute" : refusal(r, m.values))
         // (refused: the view is sent what those keys hold, to show again)
         if (why) {
           const keys = m.values && typeof m.values === "object" ? Object.keys(m.values).slice(0, KEYS_MAX) : []

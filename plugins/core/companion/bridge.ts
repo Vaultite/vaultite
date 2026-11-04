@@ -1,7 +1,7 @@
 // A note in a folder another machine of the vault shares is typed in its rooms, with its guests (a socket per window):
 // it writes the file, this machine doesn't meanwhile. Gone, or no longer sharing it: the note is this one's (`y-gone`).
 import type { RawData, WebSocket } from "ws"
-import { MACHINE_CLIENT, type Machine, machineSocket, type Plugin } from "../../../core/plugins.ts"
+import { type Machine, machineSocket, type Plugin } from "../../../core/plugins.ts"
 
 /** A machine of this vault and the folders it shares. */
 export type Host = { m: Machine; folders: string[] }
@@ -80,20 +80,7 @@ export function bridges(plugin: Plugin, local: (ws: WebSocket, m: Record<string,
     }
   }
 
-  async function hostsNow(): Promise<Host[]> {
-    const vault = await plugin.ask<string>("machines:vault", "")
-    if (!vault) return []
-    const ms = (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.url && m.vault === vault && m.plugins?.includes("share"))
-    const got = await Promise.all(ms.map(async (m): Promise<Host | null> => {
-      try {
-        const r = await fetch(`${m.url}/api/share/folders`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(5000) })
-        const b = r.ok ? await r.json() as { folders?: unknown } : null
-        const folders = Array.isArray(b?.folders) ? b.folders.filter((f): f is string => typeof f === "string" && !!f) : []
-        return folders.length ? { m, folders } : null
-      } catch { return null }
-    }))
-    return got.filter((h): h is Host => !!h)
-  }
+  const hostsNow = () => plugin.ask<Host[]>("share:hosts", [])
 
   // (asked only while notes are open: the first one opened after a while asks, and moves there if it's shared)
   async function refresh() {

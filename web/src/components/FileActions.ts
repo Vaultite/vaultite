@@ -172,14 +172,14 @@ async function deleteForGood(path: string) {
 /** Delete, the right way for where it is: to the trash with Undo, or for good (asking) in the trash. */
 export const remove = (path: string) => (path === ".trash" || inTrash(path) ? deleteForGood(path) : trash(path))
 
-export type PluginGroups = { navigate: MenuItem[]; more: MenuItem[]; away: MenuItem[]; rest: MenuItem[][] }
-export const noGroups: PluginGroups = { navigate: [], more: [], away: [], rest: [] }
+export type PluginGroups = { navigate: MenuItem[]; share: MenuItem[]; more: MenuItem[]; away: MenuItem[]; rest: MenuItem[][] }
+export const noGroups: PluginGroups = { navigate: [], share: [], more: [], away: [], rest: [] }
 
 /** Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by
- *  `section`: navigate, more, away (with Delete), then the rest a group each, in the plugins' order. */
+ *  `section`: navigate, share (in sight even in a tab's short menu), more, away (with Delete), then the rest a group each. */
 export function pluginFileGroups(path: string, skip?: string, folder = false): PluginGroups {
   const disabled = getPrefs().disabled
-  const by = new Map<string, MenuItem[]>([["navigate", []], ["more", []], ["away", []], ["actions", []]])
+  const by = new Map<string, MenuItem[]>([["navigate", []], ["share", []], ["more", []], ["away", []], ["actions", []]])
   for (const p of PLUGINS) {
     const menu = folder ? p.folderMenu : p.fileMenu
     if (!menu || !isEnabled(p.id, disabled) || p.id === skip) continue
@@ -192,8 +192,8 @@ export function pluginFileGroups(path: string, skip?: string, folder = false): P
   }
   // The ops that act on its kind (core/actions.ts) whose plugin has no item of its own for them
   for (const a of fileActions(path, skip)) if (a.menu) by.get("actions")!.push({ label: a.label, icon: actionIcon(a), run: () => void runAction(a) })
-  const { navigate, more, away, ...rest } = Object.fromEntries(by)
-  return { navigate, more, away, rest: Object.values(rest) }
+  const { navigate, share, more, away, ...rest } = Object.fromEntries(by)
+  return { navigate, share, more, away, rest: Object.values(rest) }
 }
 
 /** The plugins' "more" items as More ▸ (the menu's last before Delete), by name (they come from several plugins: an order to find them by), or one
@@ -216,7 +216,7 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
   // (Delete too: not a misclick away from Close)
   if (opts.short) {
     const more = grouped([change, plug.navigate, ...plug.rest, plug.more, [...plug.away, ...del]])
-    return grouped([...(opts.top ?? []), [...(locked ? [] : [rename]), copyPathItem(file), ...reveal, ...revealItem(file),
+    return grouped([...(opts.top ?? []), plug.share, [...(locked ? [] : [rename]), copyPathItem(file), ...reveal, ...revealItem(file),
       ...(more.length ? [{ label: "More file actions", icon: Ellipsis, run: () => {}, items: more }] : [])]])
   }
   return grouped([
@@ -224,6 +224,7 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
     // (a phone renames in its title, so Change icon is an item of its own there)
     locked ? [] : [...(opts.phone ? iconItem(file) : [rename]), ...change],
     plug.navigate,
+    plug.share,
     ...plug.rest,
     [copyPathItem(file), ...(opts.phone ? [] : reveal), ...revealItem(file), ...moreItem(plug.more)],
     [...plug.away, ...del],
@@ -247,6 +248,7 @@ export function folderMenu(folder: string, opts: { skip?: string; open?: boolean
     const more = grouped([locked ? [] : [{ label: "Move folder to…", icon: FolderInput, run: () => askMove(folder) }], plug.navigate, ...plug.rest, plug.more, [...plug.away, ...del]])
     return grouped([
       locked ? [] : [{ label: "New note", icon: FilePlus, run: () => void newNote(folder) }, ...(opts.newFolder ? [{ label: "New folder", icon: FolderPlus, run: opts.newFolder }] : [])],
+      plug.share,
       [copyPathItem(folder, { folder: true }), ...(isPopout() ? [] : [{ label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(folder, { scroll: true, flash: true, open: true }) }]), ...computer,
         ...(more.length ? [{ label: "More folder actions", icon: Ellipsis, run: () => {}, items: more }] : [])],
     ])
@@ -256,6 +258,7 @@ export function folderMenu(folder: string, opts: { skip?: string; open?: boolean
     locked ? [] : [{ label: "New note", icon: FilePlus, run: () => void newNote(folder) }, ...(opts.newFolder ? [{ label: "New folder", icon: FolderPlus, run: opts.newFolder }] : [])],
     locked ? [] : [...(opts.rename ? [renameItem(folder, opts.rename)] : []), { label: "Move folder to…", icon: FolderInput, run: () => askMove(folder) }],
     plug.navigate,
+    plug.share,
     ...plug.rest,
     [
       copyPathItem(folder, { folder: true }),

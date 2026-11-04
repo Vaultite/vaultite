@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import { DEVICE } from "@/core/device"
 import { notify } from "@/core/notify"
+import { share } from "@/core/share"
 
 /** Changed vault paths (a folder: anything in it), or null: anything may have changed. */
 export type Paths = string[] | null
@@ -155,7 +156,7 @@ function connect() {
   last = Date.now()
   s.onmessage = (e) => {
     last = Date.now()
-    let m: { type?: string; v?: string; at?: string; web?: string; paths?: Paths; from?: string; to?: string | null; names?: string[]; kept?: string; state?: number } & Partial<UiAction>
+    let m: { type?: string; v?: string; at?: string; web?: string; role?: string; paths?: Paths; from?: string; to?: string | null; names?: string[]; kept?: string; state?: number } & Partial<UiAction>
     try { m = JSON.parse(String(e.data)) } catch { return }
     if (m.type === "hello") {
       tries = 0
@@ -168,6 +169,9 @@ function connect() {
       seen = m.v ?? null
       heard = m.at ?? null
       heardKept(null, m.kept, m.state)
+      // (a shared folder's guest whose access changed: the app draws what they may do from its page)
+      if (share && m.role && m.role !== share.role)
+        notify(m.role === "read" ? "You can now only view this folder" : m.role === "edit" ? "You can now edit this folder" : "You can now comment in this folder", { id: "share-role", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
       if (m.web && BUILD && m.web !== BUILD)
         notify("A new version of Vaultite is ready", { id: "update", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
     } else if (m.type === "change") {

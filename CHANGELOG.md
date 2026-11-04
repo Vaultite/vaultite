@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Sharing a folder, end to end**: Share sits on a folder's toolbar, in its menus and in the palette (Share folder…);
+  the link is copied as it's made, the tree marks shared folders, and each person's access is a menu (Can view,
+  comment, edit; 30 more days; Remove access), the same link kept. A guest lands on the folder's page, sees its images,
+  and edits again (their saves were refused since saves sent only the edit). Its HTML pages read the folder's files and
+  play live with the owner (`vau.shared()`: a reader watches), from the owner's other Macs too; the owner's view of
+  such a page reads only inside the folder.
 - **Folders as Finder shows them**: a folder's page shows as a grid, a list, columns (each folder down to it side by
   side, a preview of the file picked) or a gallery (the picked thing large over a strip, ← → through it); a list or
   grid can be grouped by kind or date modified. Every file has a picture: a PDF's first page, a video's frame, a web
