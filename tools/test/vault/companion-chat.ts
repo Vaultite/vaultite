@@ -75,7 +75,7 @@ export default async ($: VaultTest) => {
       await w.ask("follow")
       const spec = { id, resume: false, cwd: VAULT, env: {}, tools: [{ name: "shout", description: "Shout it", schema: { properties: { text: { type: "string" } }, required: ["text"] } }] }
       const started = await w.ask("start", { spec, prompt: 'call shout {"text":"hi"}' })
-      const call = await waitFor(() => w.heard.find((e) => e.t === "tool"), 5000, 20)
+      const call = await waitFor(() => w.heard.find((e) => e.t === "tool"), 15_000, 20)
       await w.close()
       w = wire(sock)
       await w.ask("follow")
@@ -96,7 +96,8 @@ export default async ($: VaultTest) => {
   const status = async () => (await api("POST", "ops/companion.status", {}))[1]
   const claude = async () => (await status()).agents.find((a: Any) => a.name === "Claude")
   const said = async (id: string) => ((await api("POST", "ops/claude-code.chat-read", { id, limit: 100 }))[1].entries ?? []) as Any[]
-  const idle = (id: string) => waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === id)?.state === "idle", 5000, 50)
+  // (an agent's turn waited for generously: under the whole suite a Windows runner once took over 5 s; it ends when done)
+  const idle = (id: string) => waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === id)?.state === "idle", 15_000, 50)
   let k = await keeper(CHAT_SOCKET)
   try {
     await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", model: "haiku" })
@@ -123,7 +124,7 @@ export default async ($: VaultTest) => {
     // An ask is its message; the say it calls is relayed to the server and drawn by its cursor.
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'call say {"text":"Hello from a tool","path":"Notes/Chat.md","find":"Alice"}' })
     check("companion chat: an ask shows it thinking at once", (await claude())?.state === "thinking")
-    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /^Called:/.test(e.text)), 5000, 50)
+    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /^Called:/.test(e.text)), 15_000, 50)
     await idle(id)
     entries = await said(id)
     const ask = entries.filter((e) => e.k === "user").at(-1)
@@ -138,7 +139,7 @@ export default async ($: VaultTest) => {
     await $.sleep(100)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 1, text: "second" })
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 1, text: "third" })
-    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && e.text === "Read it (2 asks)"), 5000, 50)
+    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && e.text === "Read it (2 asks)"), 15_000, 50)
     entries = await said(id)
     const users = entries.filter((e) => e.k === "user")
     check("companion chat: moments that come while a turn runs go together, once it ends", /"slow one"/.test(users.at(-2)?.text ?? "") &&
@@ -148,7 +149,7 @@ export default async ($: VaultTest) => {
 
     // Its tools: the companion's actions (as it, never another), and reading the vault unasked; told how moments come.
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "list" })
-    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /^Tools:/.test(e.text)), 5000, 50)
+    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /^Tools:/.test(e.text)), 15_000, 50)
     const tools = (await said(id)).findLast((e) => e.k === "text" && /^Tools:/.test(e.text))?.text ?? ""
     check("companion chat: a turn may end right after its actions, without words (Claude Code's terminal tools), not after reading",
       /Ends: [^.]*mcp__vaultite-app__say\b/.test(tools) && /mcp__vaultite-app__edit\b/.test(tools) && !/Ends: [^.]*__status\b/.test(tools), tools)
@@ -157,13 +158,13 @@ export default async ($: VaultTest) => {
       /Allowed: mcp__vaultite-app,Bash\(vau docs:\*\)/.test(tools) && !/Allowed: [^.]*vau companion/.test(tools) && /Denied: Bash\(vau companion:\*\)/.test(tools) && /Told: tools/.test(tools), tools)
     await idle(id)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'call comment {"text":"Alice is away","path":"Notes/Chat.md","find":"Alice"}' })
-    const comment = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "comment" && n.text === "Alice is away"), 5000, 50)
+    const comment = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "comment" && n.text === "Alice is away"), 15_000, 50)
     check("companion chat: a comment it calls stays by its words", comment?.agent === "Claude" && comment.find === "Alice" && comment.path === "Notes/Chat.md", comment)
     await idle(id)
 
     // Its last call for a moment (done) ends its turn: no words of its own after it.
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'call say {"text":"That is all","done":true}' })
-    await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === "That is all"), 5000, 50)
+    await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === "That is all"), 15_000, 50)
     await idle(id)
     entries = await said(id)
     const lastTurn = entries.slice(entries.findLastIndex((e) => e.k === "user") + 1)
@@ -173,13 +174,13 @@ export default async ($: VaultTest) => {
     const w = await window("Notes/Chat.md")
     w.open($.app.plugins)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream say {"text":"Streaming words to you now, a few at a time"}' })
-    await waitFor(() => w.got.some((m) => m.t === "note" && m.note.kind === "say" && m.note.text === "Streaming words to you now, a few at a time"), 5000, 20)
+    await waitFor(() => w.got.some((m) => m.t === "note" && m.note.kind === "say" && m.note.text === "Streaming words to you now, a few at a time"), 15_000, 20)
     const bubbles = w.got.filter((m) => m.t === "note" && m.note.kind === "say" && /^Streaming/.test(m.note.text)).map((m) => m.note)
     check("companion chat: a say's bubble grows as it's written, one bubble, its call ending it", bubbles.length > 2 && new Set(bubbles.map((n) => n.id)).size === 1 &&
       bubbles[0].text.length < bubbles.at(-1).text.length, bubbles.map((n) => n.text))
     await idle(id)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"path":"Notes/Chat.md","after":"Call Alice friday","text":"- Book the train\\n- Pack light"}' })
-    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /Typed into Notes\/Chat\.md/.test(e.text)), 5000, 20)
+    await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /Typed into Notes\/Chat\.md/.test(e.text)), 15_000, 20)
     const opened = w.got.find((m) => m.t === "stream"), more = w.got.filter((m) => m.t === "stream-more" && m.rid === opened?.rid), ended = w.got.find((m) => m.t === "stream-end" && m.rid === opened?.rid)
     check("companion chat: an edit's words go to the window as they're written: its place first, then more, then all of it",
       opened?.after === "Call Alice friday" && opened.text.length < 20 && more.length > 1 && ended?.text === "- Book the train\n- Pack light" &&
@@ -193,20 +194,20 @@ export default async ($: VaultTest) => {
     w.got.length = 0
     const typedSoFar = async () => (await said(id)).filter((e) => e.k === "text" && /Typed into/.test(e.text)).length, before = await typedSoFar()
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"text":"Late place","path":"Notes/Chat.md","after":"Pack light"}' })
-    await waitFor(async () => (await typedSoFar()) > before, 5000, 20)
+    await waitFor(async () => (await typedSoFar()) > before, 15_000, 20)
     await idle(id)
     check("companion chat: an edit whose place comes after its words is typed in whole by its call", !w.got.some((m) => m.t === "stream") && w.got.some((m) => m.t === "edit" && m.text === "Late place"), w.got.map((m) => m.t))
     // (cut off as it wrote: what it had stays, the window told it's over)
     w.got.length = 0
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'cut edit {"path":"Notes/Chat.md","after":"Late place","text":"Half of a longer thought that goes on and on, about the trip, the train, the coast and the bus back home"}' })
-    const cutEnd = await waitFor(() => w.got.find((m) => m.t === "stream-end"), 5000, 20)
+    const cutEnd = await waitFor(() => w.got.find((m) => m.t === "stream-end"), 15_000, 20)
     check("companion chat: an edit cut off as it's written ends with what it had", !!cutEnd && cutEnd.text.length > 0 && cutEnd.text.length < 100 && /^Half/.test(cutEnd.text), cutEnd)
     await idle(id)
     // (its window no longer shows the note, a tab kept hidden: its call writes the file instead)
     const hid = await window("Notes/Chat.md", { hidden: true })
     hid.open($.app.plugins)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"path":"Notes/Chat.md","after":"Call Alice friday","text":"Hidden tab line"}' })
-    const wrote = await waitFor(async () => (await said(id)).find((e) => e.k === "text" && /Wrote Notes\/Chat\.md|couldn't type/.test(e.text))?.text, 5000, 20)
+    const wrote = await waitFor(async () => (await said(id)).find((e) => e.k === "text" && /Wrote Notes\/Chat\.md|couldn't type/.test(e.text))?.text, 15_000, 20)
     check("companion chat: a streamed edit its window can't show is written to the file by its call", /Wrote Notes\/Chat\.md/.test(wrote ?? "") &&
       $.read("Notes/Chat.md").includes("Call Alice friday\nHidden tab line\n"), [wrote, $.read("Notes/Chat.md")])
     await idle(id)
@@ -215,7 +216,7 @@ export default async ($: VaultTest) => {
     const gone = await window("Notes/Chat.md", { closes: true })
     gone.open($.app.plugins)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"path":"Notes/Chat.md","after":"Hidden tab line","text":"The window goes as this is typed"}' })
-    const failed = await waitFor(async () => (await said(id)).find((e) => e.k === "text" && /closed as it was typed/.test(e.text))?.text, 5000, 20)
+    const failed = await waitFor(async () => (await said(id)).find((e) => e.k === "text" && /closed as it was typed/.test(e.text))?.text, 15_000, 20)
     check("companion chat: a window that closes as a streamed edit is typed fails its call at once", !!failed, await said(id).then((x) => x.slice(-2)))
     await idle(id)
 
@@ -242,7 +243,7 @@ export default async ($: VaultTest) => {
     await waitFor(async () => (await said(id)).some((e) => e.k === "user" && /slow: how long is the train ride to the coast"/.test(e.text)), 3000, 20)
     await $.sleep(100)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "slow: how long is the train ride to the coast, and is it cheaper by bus" })
-    const again = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /cheaper by bus/.test(e.text))?.text, 5000, 20)
+    const again = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /cheaper by bus/.test(e.text))?.text, 15_000, 20)
     check("companion chat: going on with an ask it hasn't answered stops its turn and sends it again, whole", /they went on writing it/.test(again ?? ""), again)
     await idle(id)
 
@@ -254,7 +255,7 @@ export default async ($: VaultTest) => {
     check("companion chat: interrupt stops its turn", st === 200 && r.stopped === true, r)
     await idle(id)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "next" })
-    const told = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /"next"/.test(e.text))?.text, 5000, 20)
+    const told = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /"next"/.test(e.text))?.text, 15_000, 20)
     check("companion chat: after Esc, its next message says it was stopped", /They stopped your last answer/.test(told ?? ""), told)
     await idle(id)
     // (stopped as it streamed a bubble: it isn't writing any more, so going on with an ask still sends it again)
@@ -267,7 +268,7 @@ export default async ($: VaultTest) => {
     await waitFor(async () => (await said(id)).some((e) => e.k === "user" && /slow: which bus goes to the coast"/.test(e.text)), 3000, 20)
     await $.sleep(100)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "slow: which bus goes to the coast, and when is the last one" })
-    const resent = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /when is the last one/.test(e.text))?.text, 5000, 20)
+    const resent = await waitFor(async () => (await said(id)).find((e) => e.k === "user" && /when is the last one/.test(e.text))?.text, 15_000, 20)
     check("companion chat: after Esc on a streamed answer, going on with an ask still stops its turn and sends it again", /they went on writing it/.test(resent ?? ""), resent)
     await idle(id)
     w.close()
@@ -285,12 +286,12 @@ export default async ($: VaultTest) => {
       !!back && /\bsay\b/.test(back) && /Allowed: mcp__vaultite-app/.test(back) && /Told: tools/.test(back), back)
     await idle(id)
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'call say {"text":"Back again","path":"Notes/Chat.md"}' })
-    check("companion chat: and its tools still reach the server", !!(await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === "Back again"), 5000, 50)))
+    check("companion chat: and its tools still reach the server", !!(await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === "Back again"), 15_000, 50)))
     await idle(id)
 
     // Start fresh: it's asked to hand over (its handover tool), and a new session takes over with its summary.
     await api("POST", "ops/companion.fresh", {})
-    const asked = await waitFor(async () => (await said(id)).filter((e) => e.k === "user").at(-1)?.text, 5000, 50)
+    const asked = await waitFor(async () => (await said(id)).filter((e) => e.k === "user").at(-1)?.text, 15_000, 50)
     check("companion chat: Start fresh asks it to hand over with its tool", /call your handover tool/.test(asked ?? ""), asked)
     await idle(id)
     ;[st, r] = await api("POST", "ops/companion.handover", { summary: "Alice's trip is on Tuesday." })
