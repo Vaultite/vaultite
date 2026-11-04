@@ -123,9 +123,11 @@ try {
   await page.keyboard.press("ControlOrMeta+\\")
   await wait(300)
   check("the old keys don't", (await open()) === was)
-  // A conflict: give it ⌘P too.
+  // Keys another command has: asked first, Replace or Keep both; kept both, the conflict is said.
   await page.click(`${row} button[aria-label^='Add a hotkey']`)
   await page.keyboard.press("ControlOrMeta+P")
+  check("taken keys ask first", !!(await until(() => page.$(`${row} [data-hotkey-taken]`))) && !(conf("hotkeys")["sidebar:toggle"] ?? []).includes("Mod+P"))
+  await page.click(`${row} [data-hotkey-taken] button:has-text("Keep both")`)
   check("conflict shown", !!(await until(() => page.$(`${row} [data-hotkey-conflict]`))))
   await page.screenshot({ path: `${OUT}4-hotkeys.png` })
   await page.click(`${row} button[aria-label='Restore default']`)

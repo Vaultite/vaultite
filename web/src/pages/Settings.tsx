@@ -1,22 +1,21 @@
-// Settings: sections beside the one shown (a sheet each where narrow), headed by Setup. Plugins' pages: the app's
-// own beside its sections, the rest under Features (folded) with the app's plugins' options; others' a gear away in Setup.
+// Settings: sections beside the one shown (a sheet each where narrow). The app's own plugins' settings are parts of the
+// section their kind belongs to (Search field's in Files); optional plugins' are a gear away on Plugins, the menu's last.
 import { useMemo, useState, useEffect, type ReactNode } from "react"
-import { ChevronRight, CircleArrowDown, Keyboard, Palette, PenLine, ShieldCheck, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react"
+import { Cog, FolderOpen, Keyboard, Palette, PenLine, ShieldCheck, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
 import { APP_PAGES, openSetup, settingsSection } from "@/core/apppages"
 import { openDetail } from "@/core/nav"
 import { isEnabled, PLUGINS, pluginById, tileTint, type Plugin } from "@/core/plugins"
-import { hasSettings, openPluginSettings, revealRow, withSettings, settingsTitle } from "@/core/pluginSettings"
+import { hasSettings, openPluginSettings, revealRow, settingsApart, settingsHome, settingsTitle, withSettings } from "@/core/pluginSettings"
 import { setPrefs, usePrefs } from "@/core/prefs"
-import { cell } from "@/core/signal"
 import { textSizeKinds } from "@/core/textsize"
 import { allSwitches, placeOf, useSwitches, type SwitchDef } from "@/core/switches"
 import { PLUGIN_UPDATE_POLICIES } from "@/core/choices"
 import { capitalize, cn } from "@/lib/utils"
 import { HotkeysSheet } from "@/pages/Hotkeys"
-import { DenseRows, Group, Logo, Panel, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
+import { DenseRows, Group, IconTile, Logo, Panel, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { RailLayout, RailMenu, useRail, type RailItem } from "@/components/RailLayout"
 import { PluginSettings } from "@/components/PluginSettings"
 import { AppearancePanel } from "@/components/Appearance"
@@ -29,10 +28,11 @@ import { notifyError } from "@/core/notify"
 import { APP_VERSION } from "../../../core/version.ts"
 import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
 
-/** Features in the menu: folded until opened (or a find in it is shown), while the app runs. */
-const featuresOpen = cell(false)
+const SETUP = APP_PAGES.find((p) => p.id === "setup")!
 
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
+/** The section a built-in plugin's settings are in, by name: what search says is where they are. */
+const homeName = (p: Plugin) => { const h = settingsHome(p); return h ? CORE.find((s) => s.id === h)?.label ?? null : null }
 
 const UPDATES: Record<UpdateMode, string> = {
   automatic: "Downloaded, then the app restarts into it while you're away, with nothing unsaved",
@@ -91,23 +91,61 @@ function Updates() {
 
 // ---------- sections
 
-/** A section: the app's own (general, appearance…), a plugin's page (`<plugin>:<page>`) or its options (`plugin:<id>`). */
+/** A section: the app's own (appearance, editor…), with its plugins' settings under it; a plugin's page
+ *  (`<plugin>:<page>`); or an optional plugin's settings (`plugin:<id>`, found by search: its sheet's). */
 type Sec = { id: string; label: string; icon: LucideIcon; tint?: string; render: (store: Store) => ReactNode }
 const headed = (id: string, label: string, icon: LucideIcon, tint: string, body: (store: Store) => ReactNode, sub?: string): Sec =>
-  ({ id, label, icon, tint, render: (store) => <><SheetHead icon={icon} tint={tint} title={label} sub={sub} />{body(store)}</> })
+  ({ id, label, icon, tint, render: (store) => <><SheetHead icon={icon} tint={tint} title={label} sub={sub} />{body(store)}<Members store={store} section={id} /></> })
 const CORE: Sec[] = [
   headed("appearance", "Appearance", Palette, "var(--blue)", () => <AppearancePanel />),
   headed("editor", "Editor", PenLine, "var(--orange)", (store) => <EditorPanel store={store} />),
+  headed("files", "Files", FolderOpen, "var(--teal)", () => null, "Finding, opening and keeping track of them"),
   { id: "hotkeys", label: "Hotkeys", icon: Keyboard, tint: "var(--gray)", render: () => <HotkeysSheet /> },
   // (first of the setup's own: the app's plugins' pages follow it)
   headed("ai", "AI", Sparkles, "var(--purple)", (store) => <AiPanel store={store} />),
+  headed("general", "General", Cog, "var(--gray)", () => <Updates />),
   // (macOS's: the desktop app on a Mac only)
   ...(desktopApp?.permission ? [headed("permissions", "Permissions", ShieldCheck, "var(--blue)", () => <PermissionsPanel />, "What macOS lets Vaultite do on this Mac")] : []),
-  headed("updates", "Updates", CircleArrowDown, "var(--green)", () => <Updates />),
 ]
-/** The app's sections with something of a plugin's between them: AI heads the app's plugins' pages, Permissions and
- *  Updates go last. */
-const AFTER = ["ai"], LAST = ["permissions", "updates"]
+/** The app's sections with something of a plugin's between them: AI heads the app's plugins' pages, General and
+ *  Permissions go after them. */
+const AFTER = ["ai"], LAST = ["general", "permissions"]
+
+/** The app's own plugins whose settings a section draws under its own (pluginSettings.ts' settingsHome), by name. */
+function membersOf(store: Store, disabled: string[], section: string) {
+  return withSettings(store, disabled).filter((p) => settingsHome(p) === section).sort((a, b) => byName.compare(a.name, b.name))
+}
+
+/** Those plugins' settings, each under its name; a long form is a row to its sheet. */
+function Members({ store, section }: { store: Store; section: string }) {
+  const { disabled } = usePrefs()
+  const list = membersOf(store, disabled, section)
+  if (!list.length) return null
+  const drawn = list.filter((p) => !settingsApart(p)), apart = list.filter(settingsApart)
+  return (
+    <div className="mt-6 flex flex-col gap-6" data-settings-members={section}>
+      {drawn.map((p) => (
+        <section key={p.id} aria-label={p.name} data-settings-member={p.id}>
+          <Section title={p.name}>
+            <Catch fallback={() => <p className="text-[13px] text-muted-foreground">Its settings couldn't be drawn.</p>}>
+              <PluginSettings store={store} plugin={p} embedded />
+            </Catch>
+          </Section>
+        </section>
+      ))}
+      {!!apart.length && (
+        <Section title="More">
+          <Group>
+            {apart.map((p) => (
+              <SettingRow key={p.id} data-settings-member={p.id} onClick={() => openPluginSettings(p.id)} sub={`${Object.keys(p.settingsDecls ?? {}).length} settings`}
+                label={<span className="flex items-center gap-2"><IconTile icon={p.icon} tint={tileTint(p.id)} className="size-5 rounded-[5px]" iconClassName="size-3" />{p.name}</span>} />
+            ))}
+          </Group>
+        </Section>
+      )}
+    </div>
+  )
+}
 
 /** The pages plugins that are on add (MCP's Remote access; Apple Health), in plugin order; not those drawn in the AI
  *  section (AiSettings.tsx). */
@@ -126,6 +164,12 @@ function sectionOf(id: string, disabled: string[]): Sec | null {
   return CORE.find((s) => s.id === id) ?? pluginPages(disabled).find((s) => s.id === id) ?? null
 }
 
+/** Where a plugin's settings are: the app's own in their section (one apart: its sheet), the others' their sheet. */
+function placeOfPlugin(id: string): { section: string } | { sheet: string } {
+  const p = pluginById(id), home = p && settingsHome(p)
+  return home && !settingsApart(p) ? { section: home } : { sheet: id }
+}
+
 /** One section on its own: the sheet a narrow pane opens (`settings-section/<id>`). */
 export function SettingsSection({ store, id }: { store: Store; id: string }) {
   const { disabled } = usePrefs()
@@ -134,30 +178,29 @@ export function SettingsSection({ store, id }: { store: Store; id: string }) {
   return <Catch fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{s.render(store)}</Catch>
 }
 
-/** A section that's under Features: an optional plugin's page, or the options of one of the app's own plugins. */
-const isFeature = (id: string) => id.startsWith("plugin:") || !!pluginPages([]).find((s) => s.id === id && !s.plugin.alwaysOn)
-
-/** The menu: the app's sections, the app's plugins' pages (AI apps), Permissions and Updates, then Features (folded):
- *  other plugins' pages and the options of the app's own, by name. */
-function menu(store: Store, disabled: string[], fold: RailItem["fold"]): RailItem[] {
+/** The menu: the app's sections, the app's plugins' pages (AI's), General and Permissions, then Plugins (their page)
+ *  with the pages optional plugins add. */
+function menu(disabled: string[]): RailItem[] {
   const pages = pluginPages(disabled)
-  const options = withSettings(store, disabled).filter((p) => p.alwaysOn).map((p) => pluginSec(p.id)!)
-  const features = [...pages.filter((s) => !s.plugin.alwaysOn), ...options].sort((a, b) => byName.compare(a.label, b.label))
   const item = (s: Sec, more: Partial<RailItem> = {}): RailItem => ({ id: s.id, label: s.label, icon: s.icon, tint: s.tint, attrs: { "data-settings-nav": s.id }, ...more })
   const last = CORE.filter((s) => LAST.includes(s.id))
+  const on = PLUGINS.filter((p) => !p.alwaysOn && isEnabled(p.id, disabled)).length
   return [
     ...CORE.filter((s) => !LAST.includes(s.id) && !AFTER.includes(s.id)).map((s) => item(s)),
     ...[...CORE.filter((s) => AFTER.includes(s.id)), ...pages.filter((s) => s.plugin.alwaysOn)].map((s, i) => item(s, { gap: i === 0 })),
     ...last.map((s, i) => item(s, { gap: i === 0 })),
-    ...features.map((s, i) => item(s, i === 0 ? { heading: "Features", fold } : {})),
+    { id: PLUGINS_ITEM, label: "Plugins", icon: SETUP.icon, tint: "var(--primary)", count: on, gap: true, attrs: { "data-settings-nav": PLUGINS_ITEM, "data-settings-setup": "" } },
+    ...pages.filter((s) => !s.plugin.alwaysOn).sort((a, b) => byName.compare(a.label, b.label)).map((s) => item(s)),
   ]
 }
+/** The menu's Plugins: not a section, it opens the Plugins page. */
+const PLUGINS_ITEM = "plugins"
 
-/** What the menu lights: for a plugin's settings found by search, its own (under Features), the section its switch is
- *  in (Vim keys: Editor), else none (it's switched on Setup's Plugins). */
+/** What the menu lights: for an optional plugin's settings found by search, the section its switch is in (Vim keys:
+ *  Editor), else none (it's switched on Plugins). */
 function litOf(active: string) {
   const of = active.startsWith("plugin:") ? pluginById(active.slice(7)) : null
-  return of && !of.alwaysOn ? of.switchIn?.section ?? null : active
+  return of ? of.switchIn?.section ?? null : active
 }
 
 // ---------- search
@@ -183,8 +226,8 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     ] : []),
     // (Setup's tabs, a page of their own)
     { ...row("layout", "Layout", "Appearance", "[data-layout-picker]", "Standard, Zen, Browser or yours"), words: "bundle setup zen browser standard save share restore" },
-    { id: "plugins", label: "Plugins", sub: "Turn plugins on and off", where: "Setup", words: "extensions install", run: () => openSetup("plugins") },
-    { id: "get", label: "Get plugins and layouts", sub: "From Vaultite's directory, or import a bundle", where: "Setup", words: "store install bundles packs import", run: () => openSetup("get") },
+    { id: "plugins", label: "Plugins", sub: "Turn plugins on and off", where: "Plugins", words: "extensions install setup features", run: () => openSetup("plugins") },
+    { id: "get", label: "Get plugins and layouts", sub: "From Vaultite's directory, or import a bundle", where: "Plugins", words: "store install bundles packs import", run: () => openSetup("get") },
     { ...row("theme", "Theme", "Appearance", '[data-settings-row="theme"]', "System, light or dark"), words: "dark mode light mode" },
     { ...row("scheme", "Colour scheme", "Appearance", '[data-settings-row="scheme"]'), words: "color colors colours obsidian themes" },
     { ...row("density", "Density", "Appearance", '[data-settings-row="density"]', "Compact or comfortable"), words: "spacing" },
@@ -209,11 +252,11 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     { id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => show("hotkeys") },
     { id: "vaults", label: "Manage vaults", sub: store.vault.path, where: "Vaults", words: "vault folder",
       run: () => { if (desktopApp) void desktopApp.manageVaults(); else openDetail("vaults") } },
-    { ...row("version", "Version", "Updates", '[data-settings-row="version"]', `Vaultite ${APP_VERSION}`), words: "about" },
+    { ...row("version", "Version", "General", '[data-settings-row="version"]', `Vaultite ${APP_VERSION}`), words: "about" },
     ...(desktopApp?.permission ? [{ id: "permissions", label: "Permissions", sub: "What macOS lets Vaultite do", where: "Settings", run: () => show("permissions"),
       words: "privacy security macos microphone camera location accessibility screen recording input monitoring automation files folders desktop documents downloads full disk access icloud vault signed signature" }] : []),
-    ...(desktopApp?.updates ? [{ ...row("updates", "App updates", "Updates", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
-    { ...row("plugin-updates", "Plugin updates", "Updates", '[data-settings-row="plugin-updates"]', "Vaultite's, all or none"), words: "update automatically plugins" },
+    ...(desktopApp?.updates ? [{ ...row("updates", "App updates", "General", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
+    { ...row("plugin-updates", "Plugin updates", "General", '[data-settings-row="plugin-updates"]', "Vaultite's, all or none"), words: "update automatically plugins" },
   ]
   const plugins = PLUGINS.filter((p) => hasSettings(p, store.pluginSettings ?? [])).sort((a, b) => byName.compare(a.name, b.name)).flatMap((p) => {
     const where = isEnabled(p.id, disabled) ? p.name : `${p.name} (off)`
@@ -226,7 +269,7 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     ]
     const sheet = `[data-plugin-settings-sheet="${CSS.escape(p.id)}"]`
     return [
-      { id: `plugin:${p.id}`, label: settingsTitle(p.name), where: "Plugin", words: "", run: () => show(`plugin:${p.id}`) },
+      { id: `plugin:${p.id}`, label: settingsTitle(p.name), where: homeName(p) ?? "Plugin", words: "", run: () => show(`plugin:${p.id}`) },
       ...own.map((e, i): Found => ({ id: `plugin:${p.id}:${e.key ?? i}`, label: e.label, sub: e.description ? capitalize(e.description) : "",
         where, words: e.key ?? "", run: () => show(`plugin:${p.id}`, e.key ? `${sheet} [data-setting="${CSS.escape(e.key)}"]` : undefined),
         switch: isEnabled(p.id, disabled) ? switchOf(p.id, e.key) : undefined })),
@@ -293,25 +336,6 @@ function FoundList({ found, query }: { found: Found[]; query: string }) {
   )
 }
 
-const SETUP = APP_PAGES.find((p) => p.id === "setup")!
-
-/** Setup, heading the menu: it isn't a section, it goes to Setup's page (plugins, and Get). */
-function SetupCard() {
-  return (
-    <button type="button" onClick={() => openSetup("plugins")} data-settings-setup
-      className="mb-3 flex w-full cursor-pointer items-center gap-2.5 rounded-[10px] bg-foreground/[0.03] p-2 text-left transition-colors hover:bg-foreground/[0.06]">
-      <span className="grid size-10 shrink-0 place-items-center rounded-[9px] bg-primary text-primary-foreground md:size-8 md:rounded-[8px]">
-        <SETUP.icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[17px] leading-[22px] font-semibold md:text-[13px] md:leading-[18px]">Setup</span>
-        <span className="block truncate text-[15px] leading-[20px] text-muted-foreground md:text-[12px] md:leading-[16px]">Your plugins, and more to get</span>
-      </span>
-      <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
-    </button>
-  )
-}
-
 export function Settings({ store }: { store: Store }) {
   const { disabled } = usePrefs()
   const [query, setQuery] = useState("")
@@ -322,8 +346,12 @@ export function Settings({ store }: { store: Store }) {
   const current = settingsSection.use()
   // A plugin turned off takes its section with it: back to the first.
   const sec = sectionOf(current, disabled) ?? CORE[0]
-  const show: Show = (id, selector) => {
-    if (isFeature(id)) featuresOpen.set(true)
+  const show: Show = (to, selector) => {
+    if (to === PLUGINS_ITEM) return openSetup("plugins")
+    let id = to
+    // (the app's own plugins' settings are in a section: there, at its part)
+    const at = id.startsWith("plugin:") ? placeOfPlugin(id.slice(7)) : null
+    if (at && "section" in at) { selector ??= `[data-settings-member="${CSS.escape(id.slice(7))}"]`; id = at.section }
     if (wide) {
       settingsSection.set(id)
       if (selector) revealRow(selector)
@@ -348,15 +376,12 @@ export function Settings({ store }: { store: Store }) {
     requestAnimationFrame(() => document.querySelector(`[data-settings-result="${CSS.escape(f.id)}"]`)?.scrollIntoView({ block: "nearest" }))
   }
   const typed = (v: string) => { setQuery(v); setPicked(null) }
-  const open = featuresOpen.use()
-  const items = menu(store, disabled, { open, toggle: () => featuresOpen.set(!open) })
-  const setup = <SetupCard />
+  const items = menu(disabled)
   const menuOf = (active: string | null) => <RailMenu label="Settings" tiles items={items} active={active} pick={(id) => show(id)} data-settings-list="" />
-  const list = (active: string | null) => <>{setup}{menuOf(active)}</>
   return (
     <div data-settings>
       <RailLayout rail={rail} page={sec.id} title="Settings"
-        side={q ? <Results found={found} query={q} picked={picked} choose={choose} /> : list(litOf(sec.id))}
+        side={q ? <Results found={found} query={q} picked={picked} choose={choose} /> : menuOf(litOf(sec.id))}
         search={{ value: query, onChange: typed, placeholder: "Search settings", attrs: { "data-settings-search": "" },
           onSubmit: () => { const f = lit ?? found[0]; if (!f) return; if (wide) choose(f); else f.run() }, onMove: wide ? move : undefined }}>
         {wide ? (
@@ -367,7 +392,7 @@ export function Settings({ store }: { store: Store }) {
           </DenseRows.Provider>
         ) : q ? <FoundList found={found} query={q} />
           // (the page, a phone's or a narrow pane's: its rows a size up, as every page of the sidebar's lists)
-          : <>{setup}<div className="size-up-bleed"><div data-size-up>{menuOf(null)}</div></div></>}
+          : <div className="size-up-bleed"><div data-size-up>{menuOf(null)}</div></div>}
       </RailLayout>
     </div>
   )

@@ -174,11 +174,9 @@ const community = path.join(VAULT, ".obsidian", "community-plugins.json")
 const hadCommunity = fs.existsSync(community) ? fs.readFileSync(community, "utf8") : null
 fs.mkdirSync(path.dirname(community), { recursive: true })
 fs.writeFileSync(community, JSON.stringify(["recent-files-obsidian", "tag-wrangler", "qa-made-up"]))
-// (an always-on plugin: its options are a Features section of Settings)
+// (an always-on plugin: its options are a part of Settings' Files)
 await page.goto("about:blank"); await page.goto(`${B}#settings`)
-const fold = page.locator('[data-rail-fold="Features"]')
-if ((await fold.getAttribute("aria-expanded")) === "false") await fold.click()
-await page.locator('[data-settings-nav="plugin:other-apps"]').click()
+await page.locator('[data-settings-nav="files"]').click()
 const op = page.locator("[data-obsidian-plugins]")
 await op.locator("[data-obsidian-plugin]").first().waitFor({ timeout: 15000 })
 check("its Settings section lists the vault's Obsidian plugins, each with what stands in for it", await op.locator('[data-obsidian-plugin="recent-files-obsidian"]', { hasText: "Recent files" }).count() === 1 &&

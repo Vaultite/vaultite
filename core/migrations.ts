@@ -262,6 +262,17 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     }),
   },
   {
+    // Watches' own folder setting, the same as its kind's folder (folders.json's watches): moved there.
+    id: "watches-folder-2026-11",
+    run: (v) => eachSettings(v, (get, set) => {
+      const conf = get("plugins/watches/data")
+      if (!conf || !("folder" in conf)) return
+      const { folder, ...rest } = conf, folders = get("folders") ?? {}
+      if (typeof folder === "string" && folder.trim() && !("watches" in folders)) set("folders", { ...folders, watches: folder.trim().replace(/^\/+|\/+$/g, "") })
+      set("plugins/watches/data", rest)
+    }),
+  },
+  {
     // The companion's notice mode, merged into pair: its setting and its palette command's keys.
     id: "companion-notice-pair-2026-11",
     run: (v) => eachSettings(v, (get, set) => {

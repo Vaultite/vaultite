@@ -742,6 +742,9 @@ export type PluginDef = {
   settingsPanel?: (ctx: { store: Store }) => ReactNode
   /** Its settingsPanel above its declared settings: when the panel is what the sheet is for (Import, Connect). */
   settingsPanelFirst?: boolean
+  /** Declared settings its settingsPanel draws its own way (Editing's keys over the keyboard, as they'll show), left out
+   *  of the form; still found by search, the palette and agents as declared. */
+  settingsPanelDraws?: string[]
   /** What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves). */
   settingsSearch?: SettingsSearchEntry[]
   /** Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile). */

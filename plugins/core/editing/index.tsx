@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
 import { activeFile, currentEditor, definePlugin, HIGHLIGHT_EMOJI, keysInEditor, notifyError, unhighlight, type PluginCommand } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
-import { NoteKeys } from "./keys"
+import { NoteKeys, ToolbarSettings } from "./keys"
 import { addPhotos } from "./photo"
 
 // Editing commands with Obsidian's ids, so names and keys carry over; they win over the editor's keys and make its
@@ -35,6 +35,8 @@ const blocks: [string, string, string][] = [
 ]
 
 export default definePlugin({
+  settingsPanel: () => <ToolbarSettings />,
+  settingsPanelDraws: ["toolbar"],
   // Their keys only while the keyboard is in the note: ⌘L on a sidebar's row isn't the note's (the palette still offers them).
   commands: ([
     // (a coloured highlight, ==🟢text==, goes with its colour)

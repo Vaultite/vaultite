@@ -150,6 +150,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `settingsPages`: Its pages in Settings' list, beside the app's own: for setting the app up, not its options. `in: "ai"`: a part of Settings' AI section instead (Connections' apps), under its label and `sub`, drawn only while AI is on.
 - `settingsPanel`: Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. Drawn after its declared settings (a short option above a list that grows), unless `settingsPanelFirst`.
 - `settingsPanelFirst`: Its settingsPanel above its declared settings: when the panel is what the sheet is for (Import, Connect).
+- `settingsPanelDraws`: Declared settings its settingsPanel draws its own way (Editing's keys over the keyboard, as they'll show), left out of the form; still found by search, the palette and agents as declared.
 - `settingsSearch`: What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves).
 - `newFiles`: Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile).
 - `player`: Plays audio and video wherever the app shows them (a file's tab, an embed), instead of the browser's bare player: the first plugin that's on wins.

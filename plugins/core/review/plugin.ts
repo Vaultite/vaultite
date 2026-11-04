@@ -1,5 +1,5 @@
 // Review: the files AI apps and coding agents changed that the user hasn't looked at yet. Who changed what is Activity's
-// (asked as a service), the text before is File history's; what's reviewed is a mark per file (its data.json).
+// (asked as a service), the text before is File history's; what's reviewed is a mark per file (kept by the server).
 import { byUser, diffLines, fmtAgo, HTTPError, type OpCtx, OpError, Plugin, type Who, whoOf } from "../../../core/plugins.ts"
 import { isHiddenPath, type Item, parseText, readText, setPropertyText, type Vault } from "../../../core/vault.ts"
 
@@ -41,21 +41,37 @@ const isAi = (w: Who) => w.client === "mcp" || !!w.agent
 /** Not the user's files: settings, the app's own pages, the trash, archives (a path with a part starting with a dot). */
 const hidden = (p: string) => isHiddenPath(p) || p.split("/").some((x) => x.startsWith("."))
 
-// ---------- what's been reviewed: { files: { "<path>": <reviewed up to, ms> } } in its data.json
+// ---------- what's been reviewed: { "<path>": <reviewed up to, ms> }, kept by the server (shared with the other
+// machines), not the vault: it changes on every keep, and it isn't a setting
 
-const marks = (): Record<string, number> => {
-  const f = plugin.settings({}).files
-  return f && typeof f === "object" ? f as Record<string, number> : {}
+/** The marks a vault kept in its data.json before (`files`), taken in once a start: the later mark per file wins. */
+let takenIn = false
+function takeIn() {
+  if (takenIn) return
+  takenIn = true
+  const conf = plugin.readSettings()
+  if (!conf || !("files" in conf)) return
+  const old = (conf.files && typeof conf.files === "object" ? conf.files : {}) as Record<string, unknown>, cur = plugin.kept<Record<string, number>>("marks", {})
+  for (const [k, t] of Object.entries(old)) if (typeof t === "number" && t > (cur[k] ?? 0)) cur[k] = t
+  plugin.keep("marks", cur, { shared: true })
+  const { files: _, ...rest } = conf
+  plugin.saveSettings(Object.keys(rest).length ? rest : null)
 }
-/** Change the marks (read from disk, so nothing another write made is lost); old ones dropped. */
+const marks = (): Record<string, number> => { takeIn(); return plugin.kept<Record<string, number>>("marks", {}) }
+/** Change the marks; old ones dropped. */
 function remark(change: (m: Record<string, number | null>) => void) {
-  const cur = ((plugin.readSettings() ?? {}).files ?? {}) as Record<string, number>
-  const next: Record<string, number | null> = { ...cur }
+  const next: Record<string, number | null> = { ...marks() }
   change(next)
   const old = Date.now() - 31 * DAY
   const kept = Object.entries(next).filter(([, t]) => typeof t === "number" && t > old).sort(([a], [b]) => a.localeCompare(b))
-  plugin.saveSettings({ ...(plugin.readSettings() ?? {}), files: kept.length ? Object.fromEntries(kept) : undefined })
+  plugin.keep("marks", kept.length ? Object.fromEntries(kept) : null, { shared: true })
 }
+/** Folders whose changes don't wait for review (its `skip` setting). */
+const skipped = (): string[] => {
+  const s = plugin.settings({}).skip
+  return Array.isArray(s) ? s.filter((x): x is string => typeof x === "string").map((x) => x.replace(/^\/+|\/+$/g, "")).filter(Boolean) : []
+}
+const inSkipped = (p: string, folders: string[]) => folders.some((f) => p === f || p.startsWith(`${f}/`))
 // Marks follow their files (moved by the app or vau move).
 plugin.onMove((from, to) => {
   const m = marks()
@@ -96,14 +112,14 @@ async function asNow(vault: Vault, rel: string, before: string, now: string) {
 /** Every file an AI changed since it was last reviewed, newest first; `only` keeps those one writer changed; `path`
  *  just that file. With the text before when `texts`. */
 async function find(vault: Vault, opts: { by?: string; path?: string; texts?: boolean } = {}): Promise<Found[]> {
-  const m = marks(), now = Date.now()
+  const m = marks(), now = Date.now(), skip = skipped()
   const changes = await plugin.ask<Change[]>("activity:changes", [], now - 15 * DAY)
   const files = new Map<string, { by: string[]; first: number; last: number; start: number; created: boolean; own: Set<Change> }>()
   for (const e of changes) {
     if (!byAi(e)) continue
     const end = e.last ?? e.t
     for (const p of e.paths ?? []) {
-      if ((opts.path && p !== opts.path) || hidden(p) || end <= (m[p] ?? 0)) continue
+      if ((opts.path && p !== opts.path) || hidden(p) || inSkipped(p, skip) || end <= (m[p] ?? 0)) continue
       // (a run of writes that went on past the last review: its last one is after it)
       const t0 = e.t > (m[p] ?? 0) ? e.t : end
       const f = files.get(p) ?? { by: [], first: t0, last: end, start: e.method || t0 > e.t ? t0 - OWN_LAG : t0 - HOOK_LAG, created: false, own: new Set<Change>() }

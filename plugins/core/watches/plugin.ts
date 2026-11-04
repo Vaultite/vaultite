@@ -16,9 +16,6 @@ export function periodOf(every: unknown): number | null {
   const m = /^(\d+)\s*([mhdw])$/.exec(s)
   return m && Number(m[1]) > 0 ? Number(m[1]) * UNIT[m[2]] : null
 }
-/** Where new watches go. */
-const folder = () => str(plugin.settings().folder).trim().replace(/^\/+|\/+$/g, "") || "Watches"
-
 plugin.kind(new Kind({
   type: "watch", collection: "watches", folder: "Watches", label: "Watches",
   parse(fm, body, stem) {
@@ -31,7 +28,8 @@ plugin.kind(new Kind({
   },
   render: (w) => [{ source: w.source || null, every: w.every || "live", until: w.until || null, status: w.status || "active", by: w.by || null, created: w.created || null }, w.body || ""],
   prepare(w) { w.created = w.created || nowStamp(); w.status = w.status || "active"; return w },
-  filename: (w, at) => (at.old ? joinPath(at.folder, stemOf(at.old.id)) : joinPath(folder(), safeName(w.title || "Watch"))),
+  // (a new one where the kind's folder is: folders.json's watches, else where they are)
+  filename: (w, at) => joinPath(at.folder, at.old ? stemOf(at.old.id) : safeName(w.title || "Watch")),
   stamps: ["created"],
 }))
 

@@ -31,11 +31,21 @@ export default async ($: VaultTest) => {
   check("watches: listed as done", r.find((x: Any) => x.title === "Watch Order")?.state === "done", r)
   ;[st] = await api("POST", "ops/watches.pause", { id: "Watch Order" })
   check("watches: paused in its file", st === 200 && /status: paused/.test(read("Watches/Watch Order.md")))
-  await api("PATCH", "config/plugin/watches", { folder: "Inbox/Watches" })
+  await api("PATCH", "config/folders", { watches: "Inbox/Watches" })
   ;[st, r] = await api("POST", "ops/watches.add", { source: "site:https://example.com/order", every: "30m", title: "Order page" })
-  check("watches: new ones go to the folder of the setting", st === 200 && exists("Inbox/Watches/Order page.md"), [st, r])
+  check("watches: new ones go to their kind's folder", st === 200 && exists("Inbox/Watches/Order page.md"), [st, r])
   check("watches: a cadence it can't read is refused", (await api("POST", "ops/watches.add", { source: "Notes/Order.md", every: "often" }))[0] === 400)
   for (const id of ["Watch Order", "Order page"]) await api("POST", "ops/watches.remove", { id })
   check("watches: removed, its file goes", !exists("Watches/Watch Order.md") && !exists("Inbox/Watches/Order page.md"))
-  await api("PATCH", "config/plugin/watches", { folder: null })
+  await api("PATCH", "config/folders", { watches: null })
+  {
+    // Its own folder setting was the kind's folder's twin: moved to folders.json (core/migrations.ts).
+    const { DONE, migrate } = await import("../../../core/migrations.ts")
+    $.vault.patchConfig("plugins/watches/data", { folder: "Inbox/Watches" })
+    $.vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "watches-folder-2026-11") })
+    await migrate($.vault, false)
+    check("watches: a vault's folder setting becomes its kind's folder", $.vault.readConfig("folders")?.watches === "Inbox/Watches" && !("folder" in ($.vault.readConfig("plugins/watches/data") ?? {})),
+      [$.vault.readConfig("folders"), $.vault.readConfig("plugins/watches/data")])
+    $.vault.patchConfig("folders", { watches: null })
+  }
 }

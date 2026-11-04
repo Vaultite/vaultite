@@ -297,11 +297,14 @@ export function List({ children }: { children: ReactNode }) {
 }
 
 /** A labelled group inside a card ("Up next", "Lifts"). */
+/** Inside a section: a section in it is headed a size down (a plugin's Folders, under its name in Settings' Files). */
+const InSection = createContext(false)
 export function Section({ title, children, className }: { title: ReactNode; children: ReactNode; className?: string }) {
+  const dense = useContext(DenseRows), inner = useContext(InSection)
   return (
     <div className={className}>
-      <div className={cn("mb-1 text-[13px] font-semibold", useContext(DenseRows) ? "px-1 md:mb-1.5" : "text-muted-foreground")}>{title}</div>
-      {children}
+      <div className={cn("mb-1 text-[13px] font-semibold", dense ? "px-1 md:mb-1.5" : "text-muted-foreground", inner && "text-[12px] font-medium text-muted-foreground")}>{title}</div>
+      <InSection.Provider value>{children}</InSection.Provider>
     </div>
   )
 }

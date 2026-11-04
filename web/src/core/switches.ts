@@ -9,7 +9,7 @@ import { editorSet, editorSettings, setEditor, type EditorSettings } from "@/cor
 import { openDetail } from "@/core/nav"
 import { notify, notifyError } from "@/core/notify"
 import { isEnabled, pluginById, PLUGINS, setSwitch, switchedOn } from "@/core/plugins"
-import { openPluginSettings, pluginSettings, revealRow, settingDefault } from "@/core/pluginSettings"
+import { openPluginSettings, pluginSettings, revealRow, settingDefault, settingsApart, settingsHome } from "@/core/pluginSettings"
 import { getPrefs, onPrefs, setPrefs, type Prefs } from "@/core/prefs"
 import { signal } from "@/core/signal"
 import { quickTextSizeSub } from "@/core/textsize"
@@ -35,7 +35,7 @@ export type SwitchDef = {
 }
 
 /** The app's Settings sections that have switches, by id, as their list names them. */
-const SECTIONS: Record<string, string> = { appearance: "Appearance", editor: "Editor", sidebars: "Sidebars", ai: "AI" }
+const SECTIONS: Record<string, string> = { appearance: "Appearance", editor: "Editor", files: "Files", sidebars: "Sidebars", ai: "AI", general: "General" }
 
 type Flag = { [K in keyof Prefs]: Prefs[K] extends boolean ? K : never }[keyof Prefs]
 const pref = (k: Flag) => ({ get: () => getPrefs()[k], set: (on: boolean) => setPrefs({ [k]: on }) })
@@ -130,8 +130,13 @@ export const allSwitches = (disabled = getPrefs().disabled) => [...CORE, ...swit
 /** Where Settings has it (a switch, or a choice: core/choices.ts), and how to go there: its row flashes once it's drawn. */
 export function placeOf(s: Pick<SwitchDef, "id" | "section" | "plugin">) {
   if (s.plugin) {
-    const { id, key } = s.plugin
-    return { name: pluginById(id)?.name ?? id, open: () => openPluginSettings(id, key) }
+    const { id, key } = s.plugin, p = pluginById(id), home = p && settingsHome(p)
+    // (the app's own plugins' are a part of a Settings section)
+    if (home && !settingsApart(p)) return { name: p.name, open: () => {
+      openDetail(`settings-section/${encodeURIComponent(home)}`)
+      revealRow(`[data-plugin-settings-sheet="${CSS.escape(id)}"] [data-setting="${CSS.escape(key)}"]`)
+    } }
+    return { name: p?.name ?? id, open: () => openPluginSettings(id, key) }
   }
   const section = s.section ?? "appearance"
   return { name: SECTIONS[section] ?? capitalize(section), open: () => {

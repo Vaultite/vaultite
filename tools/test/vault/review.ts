@@ -75,7 +75,9 @@ export default async ($: VaultTest) => {
   check("review: the new file is labelled ai (Provenance)", /^origin: ai$/m.test(read(NEW)), read(NEW))
   let kept = await call("review.keep", { path: NEW })
   check("review: keep takes it off the list, and labels what an AI wrote reviewed", !(await pending(NEW)) && /^origin: reviewed$/m.test(read(NEW)) && kept.relabeled[0]?.was === "ai", [kept, read(NEW)])
-  check("review: its mark is the plugin's data", typeof JSON.parse(read(".vaultite/plugins/review/data.json")).files[NEW] === "number")
+  const { keptOf } = await import("../../../core/kept.ts")
+  const marks = () => keptOf(VAULT).get<Any>("review/marks", {})
+  check("review: its mark is kept by the server, not in its settings", typeof marks()[NEW] === "number" && !exists(".vaultite/plugins/review/data.json"))
   // Undo (the app's): the marks put back, and the label.
   await api("POST", "review/marks", { was: kept.was }, sentBy("app/desktop"))
   await call("provenance.set", { path: NEW, origin: kept.relabeled[0].was })
@@ -124,7 +126,16 @@ export default async ($: VaultTest) => {
   await call("file.edit", { path: MAYA, old: "Likes green tea.", new: "Likes mint tea." }, chatgpt)
   await call("review.keep", { path: MAYA })
   await call("file.move", { from: MAYA, to: "Rev/Maya Silva.md" })
-  check("review: a mark follows its file", typeof JSON.parse(read(".vaultite/plugins/review/data.json")).files["Rev/Maya Silva.md"] === "number")
+  check("review: a mark follows its file", typeof marks()["Rev/Maya Silva.md"] === "number" && !marks()[MAYA])
+
+  // A folder set not to review: an AI's changes there don't wait.
+  write(".vaultite/plugins/review/data.json", JSON.stringify({ skip: ["Rev/Agent/"] }))
+  await sleep(50)
+  await call("file.write", { path: "Rev/Agent/Log.md", text: "ran\n" }, chatgpt)
+  await call("file.write", { path: "Rev/Other.md", text: "x\n" }, chatgpt)
+  check("review: a skipped folder's changes aren't listed, the rest are", !(await pending("Rev/Agent/Log.md")) && !!(await pending("Rev/Other.md")))
+  fs.rmSync(path.join(VAULT, ".vaultite/plugins/review/data.json"))
+  await call("review.keep", { all: true })
 
   // With Note dates on (the harness turns its dates off): the updated an AI's edit moves is the app's, not shown or
   // counted as its change; Revert brings the text before back as it was, its updated too.

@@ -4,8 +4,5 @@
   "category": "agents",
   "alwaysOn": true,
   "name": "Watches",
-  "description": "Things kept an eye on for you: a terminal, a web page, a note or a tab group, checked live or every few minutes, until something happens. A check that sees no change wakes no one; a change goes to the companion as a moment, or to your inbox when it isn't running. Each is a file (type: watch) in Watches/.",
-  "settings": {
-    "folder": { "type": "string", "default": "Watches", "label": "Folder", "description": "where new watches go, from the vault's top (a watch elsewhere is found by its type)" }
-  }
+  "description": "Things kept an eye on for you: a terminal, a web page, a note or a tab group, checked live or every few minutes, until something happens. A check that sees no change wakes no one; a change goes to the companion as a moment, or to your inbox when it isn't running. Each is a file (type: watch) in Watches/."
 }

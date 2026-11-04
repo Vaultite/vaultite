@@ -6,6 +6,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Settings without Features**: the app's own plugins' settings are parts of the section they belong to (File
+  explorer, Search and Pinned in a new Files section; Templates and the phone's keys over the keyboard in Editor;
+  Review and Inbox in AI; File history, Errors and Terminal with updates in General), and Plugins, the last item,
+  opens the plugins you add. Hotkeys shows a keyboard of what each key does with the modifiers picked (and which are
+  free), groups commands by area, finds a command by pressing its keys, and asks before taking keys another command
+  has. All properties' settings list the properties that make good chips, one tap to add. Review has real settings
+  (folders not to review, its button in files' headers) and keeps what you reviewed off the vault. The keys over a
+  phone's keyboard are drawn as they show, to move, take off or add. Watches' folder is its kind's folder, like every
+  other kind's.
 - **A plugin that fails can't half-switch a tab**: one plugin's error while tabs change is reported, and the address
   and the panels' highlight still follow the tab on screen (an older Obsidian plugins left the Terminals panel stuck).
 - **A first run that asks, not assumes**: the desktop app's first window is one page, the vault (create one, or open a

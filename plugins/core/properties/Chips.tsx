@@ -1,9 +1,10 @@
 // Properties pinned to files' headers: a key whose values are a short list, drawn as a chip (like Provenance's) for the
 // kinds of file asked, set up in its settings sheet.
 import { useState } from "react"
+import { Plus } from "lucide-react"
 import {
-  CHIP_TINTS, ChipValuesEditor, chipValues, get, getStore, Group, isHidden, notify, openPluginSettings, optimistic, patch, PropertyChip, Section, SettingRow,
-  Switch, useStore, type ChipValue, type FileHead, type Store,
+  CHIP_TINTS, ChipValuesEditor, chipValues, get, getStore, Group, isHidden, notify, notifyError, openPluginSettings, openView, optimistic, patch, plural,
+  PropertyChip, Section, SettingRow, Switch, useLive, useStore, type ChipValue, type FileHead, type Store,
 } from "@vaultite"
 import type { PropChip, PropSummary } from "./types"
 
@@ -86,35 +87,58 @@ function Kinds({ c, set }: { c: Chip; set: (types: string[]) => void }) {
 export function ChipsSettings({ store }: { store: Store }) {
   const list = chipsOf(store)
   const put = (i: number, c: Partial<Chip>) => save(list.map((x, j) => (j === i ? { ...x, ...c } : x)))
-  if (!list.length) {
-    return (
-      <Section title="In files' headers">
-        <p className="px-1 text-[13px] leading-[18px] text-muted-foreground" data-chips-empty>
-          None yet. Right-click a property in All properties (status, priority…), then Show in files' headers: it becomes a chip next to the
-          file's origin, its values each with an icon and a colour.
-        </p>
-      </Section>
-    )
-  }
+  const all = store.properties ?? []
   return (
-    <>
-      {list.map((c, i) => (
-        <Section key={c.key} title={c.key}>
-          <div data-chip-settings={c.key} className="space-y-2">
-            <Group><ChipValuesEditor values={c.values} onChange={(values) => put(i, { values })} label={`${c.key}'s values`} /></Group>
-            <Group>
-              <Kinds c={c} set={(types) => put(i, { types })} />
-              <SettingRow label="When a file doesn't have it" sub="A dashed icon to set it from">
-                <Switch on={c.showUnset} onChange={(showUnset) => put(i, { showUnset })} label="When a file doesn't have it" />
-              </SettingRow>
-              <SettingRow label="In the status bar">
-                <Switch on={c.statusBar} onChange={(statusBar) => put(i, { statusBar })} label="In the status bar" />
-              </SettingRow>
-              <SettingRow label={<span className="text-ink-(--red)">Remove from files' headers</span>} onClick={() => unpin(c.key)} chevron={null} data-chip-unpin={c.key} />
-            </Group>
-          </div>
-        </Section>
+    <div className="space-y-5">
+      <Group>
+        <SettingRow label="Every property" sub="Its files, and renamed or retyped everywhere at once"
+          value={all.length ? plural(all.length, "property", "properties") : ""} onClick={() => openView("properties")} data-properties-all />
+      </Group>
+      <Section title="In files' headers">
+        <p className="mb-1.5 px-1 text-[12px] leading-[16px] text-muted-foreground">A property shown as a chip at the top of each file, set from there, its values each with an icon and a colour.</p>
+        <div className="space-y-2">
+          {list.map((c, i) => (
+            <div key={c.key} data-chip-settings={c.key} className="space-y-2">
+              <div className="px-1 pt-1 text-[13px] font-semibold">{c.key}</div>
+              <Group><ChipValuesEditor values={c.values} onChange={(values) => put(i, { values })} label={`${c.key}'s values`} /></Group>
+              <Group>
+                <Kinds c={c} set={(types) => put(i, { types })} />
+                <SettingRow label="When a file doesn't have it" sub="A dashed icon to set it from">
+                  <Switch on={c.showUnset} onChange={(showUnset) => put(i, { showUnset })} label="When a file doesn't have it" />
+                </SettingRow>
+                <SettingRow label="In the status bar">
+                  <Switch on={c.statusBar} onChange={(statusBar) => put(i, { statusBar })} label="In the status bar" />
+                </SettingRow>
+                <SettingRow label={<span className="text-ink-(--red)">Remove from files' headers</span>} onClick={() => unpin(c.key)} chevron={null} data-chip-unpin={c.key} />
+              </Group>
+            </div>
+          ))}
+          <AddChip pinned={list.map((c) => c.key)} />
+        </div>
+      </Section>
+    </div>
+  )
+}
+
+/** The vault's properties that make good chips (properties/chippable: a short list of words each), most used first:
+ *  one tap shows it in files' headers. */
+function AddChip({ pinned }: { pinned: string[] }) {
+  const [more, setMore] = useState(false)
+  const { data } = useLive<{ key: string; count: number; values: number }[]>("properties/chippable")
+  if (!data) return null
+  const can = data.filter((p) => !pinned.includes(p.key))
+  if (!can.length) {
+    return pinned.length ? null : <p className="px-1 text-[13px] leading-[18px] text-muted-foreground" data-chips-empty>None yet: no property in the vault has a short list of values (status, priority…).</p>
+  }
+  const shown = more ? can : can.slice(0, 5)
+  const add = (p: (typeof can)[number]) => { pin({ key: p.key, count: p.count, type: "text", types: {} }).catch((e) => notifyError(e, "Couldn't add it")) }
+  return (
+    <Group>
+      <div className="pt-2 pb-1 text-[12px] font-medium text-muted-foreground" data-chips-add>{pinned.length ? "Add another" : "Add one"}</div>
+      {shown.map((p) => (
+        <SettingRow key={p.key} data-chip-add={p.key} onClick={() => add(p)} chevron={Plus} label={p.key} sub={`${plural(p.values, "value")}, in ${plural(p.count, "file")}`} />
       ))}
-    </>
+      {can.length > shown.length && <SettingRow label={<span className="text-primary">Show all {can.length}</span>} onClick={() => setMore(true)} chevron={null} />}
+    </Group>
   )
 }

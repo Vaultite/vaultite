@@ -3,7 +3,7 @@ A watch keeps an eye on something for the user, checked by the server, not a mod
 same text) wakes no one. A change becomes a moment to the companion (`watch`, with what changed), or an inbox event
 when it isn't running. Add them with `vau watches add`, never by hand unless asked.
 
-A file of `type: watch`, in the folder of the setting `folder` (Watches/ by default):
+A file of `type: watch`, in its kind's folder (folders.json's `watches`; Watches/ by default):
 ```yaml
 type: watch
 source: terminal:claude-k3j2h1g0   # note:<path>, terminal:<id>, site:<url>, group:<tab group id>

@@ -33,10 +33,13 @@ export function usePluginSettings(id: string): [Data | null, (changes: Data) => 
   return [s.use(true), s.set]
 }
 
-export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin }) {
+/** `embedded`: one part of a Settings section (Files, AI…), under its name: no head, no file line. */
+export function PluginSettings({ store, plugin, embedded = false }: { store: Store; plugin: Plugin; embedded?: boolean }) {
   const { disabled } = usePrefs()
   const on = isEnabled(plugin.id, disabled)
-  const decls = plugin.settingsDecls ?? {}
+  // (those its panel draws itself, while it's drawn)
+  const drawn = on && plugin.settingsPanel ? plugin.settingsPanelDraws ?? [] : []
+  const decls = Object.fromEntries(Object.entries(plugin.settingsDecls ?? {}).filter(([k]) => !drawn.includes(k)))
   const declared = Object.keys(decls).length > 0
   const hasFile = (store.pluginSettings ?? []).includes(plugin.id)
   const blocked = (plugin.requires ?? []).filter((r) => !isEnabled(r, disabled))
@@ -50,7 +53,7 @@ export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin
   }, [plugin.id])
   return (
     <div data-plugin-settings-sheet={plugin.id}>
-      <SheetHead icon={plugin.icon} tint={tileTint(plugin.id)} title={plugin.name} />
+      {!embedded && <SheetHead icon={plugin.icon} tint={tileTint(plugin.id)} title={plugin.name} />}
       {!on && (
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5">
           <span className="flex-1 text-[15px] text-muted-foreground">{blocked.length ? `Off: it needs ${names(blocked)}` : "Off"}</span>
@@ -59,14 +62,14 @@ export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin
       )}
       <div className="space-y-5">
         {panel && plugin.settingsPanelFirst && panel}
-        {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!panel} />}
+        {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!panel && !embedded} />}
         {panel && !plugin.settingsPanelFirst && panel}
         <Homes store={store} plugin={plugin.id} />
         <Writes store={store} plugin={plugin.id} />
-        {!declared && !(plugin.settingsPanel && on) && (hasFile ? <SettingsJson path={settingsFile(plugin.id)} /> : (
+        {!declared && !(plugin.settingsPanel && on) && (hasFile ? <SettingsJson path={settingsFile(plugin.id)} /> : !embedded && (
           <p className="text-[15px] text-muted-foreground">Nothing set yet.</p>
         ))}
-        {(declared || hasFile) && <Where path={settingsFile(plugin.id)} lead={hasFile ? "Kept in" : "Kept, once set, in"}
+        {!embedded && (declared || drawn.length > 0 || hasFile) && <Where path={settingsFile(plugin.id)} lead={hasFile ? "Kept in" : "Kept, once set, in"}
           open={hasFile ? () => openFile(settingsFile(plugin.id)) : undefined} />}
       </div>
     </div>

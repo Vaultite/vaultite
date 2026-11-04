@@ -57,7 +57,7 @@ export const commandName = (c: Pick<Command, "name" | "on" | "nameWhenOn">) => (
 const reg = new Map<string, Command>()
 /** Every command registered since the page loaded, still there or not (Settings > Hotkeys lists them all: a file's
  *  commands come and go with its tab). */
-type Known = { id: string; name: string; keys?: string[]; nameWhenOn?: string; where?: string }
+type Known = { id: string; name: string; keys?: string[]; nameWhenOn?: string; where?: string; icon?: Command["icon"] }
 const known = new Map<string, Known>()
 const commandsChanged = signal()
 let list: Command[] = []
@@ -69,7 +69,7 @@ export function registerCommands(cs: Command[]) {
   cs = cs.filter((c) => guestCommand(c.id))
   // (none: nothing to tell, as a file that isn't live registers none, redrawing every keys hint as tabs switch)
   if (!cs.length) return () => {}
-  for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys, nameWhenOn: c.nameWhenOn, where: c.place?.name }) }
+  for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys, nameWhenOn: c.nameWhenOn, where: c.place?.name, icon: c.icon }) }
   changed()
   return () => { for (const c of cs) if (reg.get(c.id) === c) reg.delete(c.id); changed() }
 }

@@ -85,6 +85,26 @@ export const chips = () => {
 
 plugin.state(() => ({ properties: summary(plugin.vault), propertyChips: chips() }))
 
+/** The keys that make good chips: words for values, from a short list each file picks from (status, priority): 2 to
+ *  12 values, some shared. Not `type` (a file's kind) nor `origin` (Provenance's chip). Kept until the files change. */
+let chippable: { vault: Vault; version: number; list: { key: string; count: number; values: number }[] } | null = null
+plugin.route("GET", "properties/chippable", () => {
+  const vault = plugin.vault
+  if (chippable?.vault === vault && chippable.version === vault.version) return chippable.list
+  const seen = new Map<string, { count: number; values: Set<string> }>()
+  for (const [, e] of files(vault)) for (const [key, v] of Object.entries(e.fm ?? {})) {
+    if (key === "type" || key === "origin" || typeof v !== "string" || !v.trim()) continue
+    const s = seen.get(key) ?? { count: 0, values: new Set<string>() }
+    s.count++
+    if (s.values.size <= 12) s.values.add(v.trim())
+    seen.set(key, s)
+  }
+  const list = sortBy([...seen].filter(([, s]) => s.values.size >= 2 && s.values.size <= 12 && s.values.size < s.count).map(([key, s]) => ({ key, count: s.count, values: s.values.size })),
+    (r) => [-r.count, r.key.toLowerCase()])
+  chippable = { vault, version: vault.version, list }
+  return list
+})
+
 plugin.route("GET", "properties", (req) => {
   const key = req.query.key === undefined ? null : String(req.query.key)
   if (key === null) return summary(plugin.vault)

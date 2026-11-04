@@ -12,5 +12,20 @@
   "enhances": [
     "history",
     "provenance"
-  ]
+  ],
+  "settings": {
+    "header": {
+      "type": "boolean",
+      "default": true,
+      "label": "Review in changed files' headers",
+      "description": "a Review button at the top of a file an AI changed, with who changed it and when"
+    },
+    "skip": {
+      "type": "list",
+      "folder": true,
+      "default": [],
+      "label": "Folders not to review",
+      "description": "AI changes to files in these folders don't wait for you (an agent's own notes, its logs)"
+    }
+  }
 }

@@ -145,3 +145,10 @@ export const settingsCommands = (): Command[] =>
     run: () => openPluginSettings(p.id),
     icon: p.icon,
   }))
+
+/** Where Settings shows the settings of one of the app's own plugins (always on): in a section, by its category. The
+ *  others' are a gear away on Plugins. */
+const HOMES: Record<string, string> = { writing: "editor", navigation: "files", formats: "files", life: "files", agents: "ai", "ai-apps": "ai", system: "general" }
+export const settingsHome = (p: Plugin): string | null => (p.alwaysOn ? HOMES[p.category ?? ""] ?? "general" : null)
+/** Its settings are a row in that section, opening their sheet, rather than drawn there: a long form (Graph view's). */
+export const settingsApart = (p: Plugin) => Object.keys(p.settingsDecls ?? {}).length > 10

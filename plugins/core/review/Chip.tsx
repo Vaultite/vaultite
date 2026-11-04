@@ -1,7 +1,7 @@
 // What shows without opening Review (the status bar's count, a changed file's chip), apart from Review.tsx, which loads
 // with its first tab.
 import { GitCompareArrows } from "lucide-react"
-import { AmbientButton, cn, fmtAgo, plural, type FileHead } from "@vaultite"
+import { AmbientButton, cn, fmtAgo, Group, pluginSettings, plural, SettingRow, type FileHead } from "@vaultite"
 import { reviewFileView, reviewView, useReview, type Pending } from "./open"
 
 export const names = (by: string[]) => (by.length <= 2 ? by.join(" and ") : `${by.slice(0, -1).join(", ")} and ${by.at(-1)}`)
@@ -17,7 +17,8 @@ export function ReviewCount() {
 /** In a changed file's header: Review, opening its review; who changed it and when in its tip (the row stays short). */
 export function ReviewChip({ file }: { file: FileHead & { place: "bar" | "line" } }) {
   const f = useReview().data?.files.find((x) => x.path === file.path)
-  if (!f) return null
+  const shown = pluginSettings<{ header?: boolean }>("review").use().header !== false
+  if (!f || !shown) return null
   const bar = file.place === "bar"
   const what = `${whoDid(f)} this ${fmtAgo(f.last)}`
   return (
@@ -29,5 +30,16 @@ export function ReviewChip({ file }: { file: FileHead & { place: "bar" | "line" 
       <GitCompareArrows className={bar ? "size-3.5" : "size-4"} strokeWidth={2.25} />
       Review
     </button>
+  )
+}
+
+/** Its settings' head: what's waiting, a tap from Review. */
+export function ReviewSettings() {
+  const n = useReview().data?.files.length
+  return (
+    <Group>
+      <SettingRow label="AI changes to review" sub="Keep or revert each, file by file" value={n === undefined ? "" : n ? plural(n, "file") : "None"}
+        onClick={() => reviewView()} data-review-waiting />
+    </Group>
   )
 }
