@@ -268,8 +268,16 @@ check("… their pages too", (await pages()).filter((p) => [at("/one"), at("/two
 
 // ---------- ⌘⇧T: back with its history, after a relaunch too ----------
 await openOpener()
+// (under Playwright a page navigates in its own frame, not one swapped in: main.ts, RenderDocument)
+const frameShown = () => app.evaluate(({ BaseWindow, BrowserWindow }) => {
+  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow))
+  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && x.getBounds().x > -1000)
+  return v && `${v.webContents.id}:${v.webContents.mainFrame.routingId}`
+})
+const frame0 = await frameShown()
 await clickInPage("#a")
 await until(async () => (await shownUrl()) === at("/one"), 8000)
+check("(a page navigates in its own frame under Playwright)", (await frameShown()) === frame0, [frame0, await frameShown()])
 await menuClick("Close tab")
 await wait(500)
 await menuClick("Reopen closed tab")
