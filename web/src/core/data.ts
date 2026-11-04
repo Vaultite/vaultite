@@ -397,7 +397,12 @@ export function startStore() {
 
 /** The store and the last error loading it, redrawn when either changes. */
 export function useStore() {
-  return useSyncExternalStore((f) => { listeners.add(f); return () => { listeners.delete(f) } }, () => loaded)
+  return useSyncExternalStore(onStore, () => loaded)
+}
+/** What `pick` reads of the store (null till it loads), redrawn only when that changes: a slice the store didn't
+ *  change keeps its object, so pick one (or a value), never a new array or object made per call. */
+export function useStoreWith<T>(pick: (s: Store | null) => T): T {
+  return useSyncExternalStore(onStore, () => pick(loaded.store))
 }
 
 // ---------- dates (local) ----------

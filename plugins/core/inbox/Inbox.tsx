@@ -8,7 +8,7 @@ import {
 import {
   activePane, askMove, askMoveMany, backDetail, closePane, currentRow, moveInList, Badged, Button, cn, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, Markdown, menuBelow, menuFor,
   notify, notifyError, openDetail, replaceDetail, openFile, openMenu, openView, openWebLink, optimistic, Panel, paneTab, panesShowing, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, selectPane, setProperty, SheetHead, snippet,
-  SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
+  SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useStoreWith, useTick, type MenuItem,
   type FileHead, type SidebarCtx, type Store, type SwipeAction, type TabButton,
 } from "@vaultite"
 import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, openSession, pinEvents, SESSION_DETAIL, unsettle, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
@@ -231,8 +231,8 @@ export const tabButtonsOf = (to: string) => { const r = to.startsWith("file:") ?
 
 /** In a result's file bar (a phone's line above its title): Settle and Snooze. */
 export function ItemBar({ file }: { file: FileHead & { place: "bar" | "line" } }) {
-  const { store } = useStore()
-  const r = store?.inbox?.find((x) => pathOf(x) === file.path && reviewing(x))
+  // (its result only: every note changed elsewhere would redraw it)
+  const r = useStoreWith((s) => s?.inbox?.find((x) => pathOf(x) === file.path && reviewing(x)))
   if (!r) return null
   const bar = file.place === "bar"
   return (

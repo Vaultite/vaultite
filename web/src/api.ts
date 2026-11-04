@@ -6,7 +6,7 @@ import { getPrefs } from "@/core/prefs"
 // they `require`; never the core's internals (web/src/core, components), so the core can change underneath them.
 export {
   addDays, dateText, dow, fmtAgo, fmtDay, fmtLongDay, fmtMin, fmtStamp, fmtTime, getStore, stampMs, iso, mutate, numberText, optimistic, parse, plain,
-  range, reload, today, useLive, usePatched, usePreview, useStore, useTick, weekStart,
+  range, reload, today, useLive, usePatched, usePreview, useStore, useStoreWith, useTick, weekStart,
 } from "@/core/data"
 export { appDevice, del, get, op, patch, post, put } from "@/core/http"
 /** A shared folder's guest (plugins/core/share), when this app is theirs: their name, role and folder; else null. */

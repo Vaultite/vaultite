@@ -2,7 +2,7 @@
 // name, what they may do, for how long), shown once to copy, and who has access, to remove.
 import { useEffect, useState } from "react"
 import { CalendarPlus, Check, ChevronDown, Copy, Share2, UserMinus } from "lucide-react"
-import { activePane, Button, confirmDialog, copyText, currentFile, dateText, definePlugin, detailPath, Empty, fileRowsChanged, fmtAgo, getStore, Group, Loading, menuBelow, notify, notifyError, op, openDetail, Row, Section, Segmented, SettingRow, SheetHead, share, useStore, type FileRow, type MenuItem } from "@vaultite"
+import { activePane, Button, confirmDialog, copyText, currentFile, dateText, definePlugin, detailPath, Empty, fileRowsChanged, fmtAgo, getStore, Group, Loading, menuBelow, notify, notifyError, op, openDetail, Row, Section, Segmented, SettingRow, SheetHead, share, useStoreWith, type FileRow, type MenuItem } from "@vaultite"
 import type { SharedFolders } from "./types.ts"
 
 type Role = "read" | "comment" | "edit"
@@ -36,7 +36,7 @@ function ShareSheet({ folder }: { folder: string }) {
     { label: s.expired ? "Turn on for 30 days" : "Keep for 30 more days", icon: CalendarPlus, sep: true, run: () => void change(s, { days: 30 }) },
     { label: "Remove access", icon: UserMinus, danger: true, sep: true, run: () => void remove(s) },
   ]
-  const online = useStore().store?.shareLinks !== false
+  const online = useStoreWith((st) => st?.shareLinks) !== false
   return (
     <div className="flex flex-col gap-5" data-share-sheet={folder}>
       <SheetHead icon={Share2} tint="var(--primary)" title={`Share ${name(folder)}`}
@@ -138,7 +138,7 @@ function sharedRows(): Record<string, FileRow> {
 }
 /** The tree drawn again when what's shared changes. */
 function Marks() {
-  const from = useStore().store?.sharedFolders
+  const from = useStoreWith((s) => s?.sharedFolders)
   useEffect(() => { fileRowsChanged() }, [from])
   return null
 }

@@ -752,6 +752,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useSidebars()`
 - `useSlide(box, order, axis)`: Slide `box`'s `[data-slide]` items (its children, `box` positioned) into `order`, their keys; those left out fade.
 - `useStore()`: The store and the last error loading it, redrawn when either changes.
+- `useStoreWith(pick)`: What `pick` reads of the store (null till it loads), redrawn only when that changes: a slice the store didn't change keeps its object, so pick one (or a value), never a new array or object made…
 - `useTabLabels(store)`: What each tab or pane shows (its label and icon), as the bar does: for plugins (the Tabs panel).
 - `useTabLayout()`: The whole workspace, live.
 - `useTabList()`: This window's tabs, live.
