@@ -424,6 +424,10 @@ function newId() {
 
 function putNote(n: Omit<Note, "id" | "t">, ttl?: number) {
   const note: Note = { ...n, id: newId(), t: Date.now() }
+  // (one by its words gets its line now: else the note's next save finds it, and its card redraws for that alone)
+  if (note.kind !== "proposal" && KEPT.has(note.kind) && note.path && note.find && note.line === undefined) {
+    try { note.line = anchorLine(readText(plugin.vault.abs(note.path)), note) ?? undefined } catch { /* not there yet */ }
+  }
   notes.set(note.id, note)
   broadcast({ t: "note", note })
   if (ttl) timers.set(note.id, setTimeout(() => dropNote(note.id), ttl))
