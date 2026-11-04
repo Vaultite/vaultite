@@ -32,12 +32,20 @@ export function stopFor(stops: number[], at: number, v: number) {
 export const shownAt = (el: HTMLElement) => new DOMMatrix(getComputedStyle(el).transform).m41
 
 /** Track `el` from `from` to `to` (px, its translateX) on a spring starting at `v` px/ms, the Appearance pace (Snappy
- *  quicker); left at `to`. Null when nothing moves: it's there at once. */
-export function glide(el: HTMLElement, from: number, to: number, v = 0): Animation | null {
+ *  quicker); left at `to`. `frame(x)`: where it is, each frame (what follows it). Null when nothing moves. */
+export function glide(el: HTMLElement, from: number, to: number, v = 0, frame?: (x: number) => void): Animation | null {
   el.style.transform = to ? `translateX(${to}px)` : ""
-  if (!moves() || Math.abs(to - from) < 0.5) return null
+  if (!moves() || Math.abs(to - from) < 0.5) { frame?.(to); return null }
   const response = getPrefs().animation === "snappy" ? 0.24 : 0.34
   // (its start speed as whole distances a second, no faster than settles without overshooting)
   const s = spring(response, 1, Math.max(-20, Math.min((2 * Math.PI) / response, (v * 1000) / (to - from))))
-  return el.animate([{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }], { duration: s.ms, easing: s.easing })
+  const a = el.animate([{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }], { duration: s.ms, easing: s.easing })
+  // (the page moves off the main thread; what follows it is told from the same curve, at the animation's own time)
+  const tick = () => {
+    if (a.playState !== "running") return
+    frame!(from + (to - from) * s.at((Number(a.currentTime) || 0) / 1000))
+    requestAnimationFrame(tick)
+  }
+  if (frame) requestAnimationFrame(tick)
+  return a
 }

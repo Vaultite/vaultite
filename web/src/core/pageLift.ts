@@ -3,7 +3,7 @@
 import { onAway } from "@/core/away"
 import { haptic } from "@/core/haptics"
 import { LIFT_RADIUS, pageRect } from "@/core/motion"
-import { openSwitcher } from "@/core/phoneTabs"
+import { openSwitcher, swipingSideways } from "@/core/phoneTabs"
 import { shootTab } from "@/core/tabShots"
 
 /** How far up (px) or how fast (px/ms) a let-go opens the tab list. */
@@ -83,7 +83,8 @@ export function liftFrom(bar: HTMLElement, off: () => boolean) {
     if (!g || e.pointerId !== g.id) return
     const dy = Math.max(0, g.y - e.clientY), dx = Math.abs(e.clientX - g.x)
     if (!g.on) {
-      if (dx > 12 && dx > dy) { g = null; return }
+      // (sideways it's the tabs' swipe, core/phoneTabs.ts)
+      if ((dx > 12 && dx > dy) || swipingSideways()) { g = null; return }
       if (dy < 10) return
       g.on = true
       try { bar.setPointerCapture(e.pointerId) } catch { /* not a live pointer */ }

@@ -1,8 +1,8 @@
 // Phones' tabs, the helpers the bar (components/PhoneBar.tsx) and the tab list (components/TabSwitcher.tsx) share,
-// and a split tab's panes swiped between, side by side.
+// and the swipe between a split's panes or the tabs, side by side.
 import { flushSync } from "react-dom"
 import { folderOf } from "@/core/files"
-import { activePane, activeTab, onWorkspaceChange, panes, selectPane, selectTab } from "@/core/workspace"
+import { activePane, activeTab, here, onWorkspaceChange, panes, selectPane, selectTab } from "@/core/workspace"
 import { onAway } from "@/core/away"
 import { haptic } from "@/core/haptics"
 import { fingerHolding } from "@/core/drag"
@@ -12,7 +12,8 @@ import { fling, glide, shownAt, stopFor, within } from "@/core/pager"
 import { scrollOf } from "@/core/viewstate"
 import { afterSheets, closeDetail, replaceHash, route } from "@/core/nav"
 import { isPage } from "@/core/pages"
-import { panesOf, type Tab } from "../../../core/layout.ts"
+import { focusedPane, foldedAway, panesOf, type Pane, type Tab } from "../../../core/layout.ts"
+import { cell } from "@/core/signal"
 import { share } from "@/core/share"
 import { shootTab, shotOf } from "@/core/tabShots"
 
@@ -67,15 +68,37 @@ export function tabMeta(to: string) {
   return "App"
 }
 
-// ---------- a split tab's panes, side by side ----------
+// ---------- side by side: a split's panes (the page swiped), the tabs (the bottom bar swiped, Safari's) ----------
 
-/** The strips along the screen's edges a pane swipe never starts in (px): the drawers' and the browser's. */
+/** The strips along the screen's edges a swipe never starts in (px): the drawers' and the browser's. */
 const EDGE = 24
-/** The gap between a page and the one beside it (px). */
-export const PANE_GAP = 20
-/** How far a finger goes before its way (sideways or a scroll) is decided. */
-const SLOP = 7
+/** The gap between a page and the one beside it (px; index.css's [data-beside]), and how far a finger goes before its
+ *  way (sideways or a scroll) is decided. */
+const GAP = 20, SLOP = 7
 const page = () => document.querySelector<HTMLElement>("#main-scroll > main")
+
+/** What a swipe goes between. */
+export type Swipe = "panes" | "tabs"
+const swipe = cell<Swipe | null>(null)
+/** The swipe under way: what PhoneFiles.tsx draws either side of the page, and PhoneHeader.tsx names. */
+export const useSwipe = swipe.use
+/** Whether a finger is carrying the page sideways (the bar's drag up, core/pageLift.ts, leaves it then). */
+export const swipingSideways = () => sideways
+let sideways = false
+
+/** The panes either side of the one shown (-1, 1) for a swipe of `k`, with their tabs: a split's own, or the focused
+ *  panes of the tabs either side (those folded away in a group skipped). */
+export function besideOf(k: Swipe | null): { pane: Pane; tab: Tab; side: -1 | 1 }[] {
+  const l = here(), t = activeTab()
+  if (!t) return []
+  const near = <T,>(xs: T[], i: number) => ([[xs[i - 1], -1], [xs[i + 1], 1]] as const).filter((x): x is readonly [T, -1 | 1] => i >= 0 && !!x[0])
+  if (k === "tabs") {
+    const ts = l.tabs.filter((x) => x.id === t.id || !foldedAway(l, x))
+    return near(ts, ts.findIndex((x) => x.id === t.id)).map(([x, side]) => ({ pane: focusedPane(x), tab: x, side }))
+  }
+  const ps = panesOf(t)
+  return near(ps, ps.findIndex((p) => p.id === t.focus)).map(([p, side]) => ({ pane: p, tab: t, side }))
+}
 
 /** Whether what's under the finger (`el`, in `top`) takes sideways drags (`dx`) itself: a field, a swipeable row (its
  *  touch-action), `data-keeps-touch`, or a scroller that can still scroll that way. */
@@ -91,21 +114,31 @@ function ownsSideways(el: Element, top: Element, dx: number) {
   return false
 }
 
-/** Phones: a split's panes side by side (PhoneFiles.tsx draws the neighbours off the edges), carried 1:1 by a sideways
- *  finger, settling as core/pager.ts says; past the ends they give, and a finger down mid-settle catches them. */
-export function swipePanes() {
-  type G = { id: number; x: number; y: number; from: number; axis: "x" | "y" | null; lock: number; moves: [number, number][]; quit?: () => void }
+/** Phones: the page and its neighbours carried 1:1 by a finger on the page (a split's panes) or the bar (the tabs),
+ *  settling as core/pager.ts says; the header follows (--swipe-next, --swipe-prev). Mid-settle, a finger catches it. */
+export function swipeSideways() {
+  type G = { id: number; x: number; y: number; from: number; axis: "x" | "y" | null; lock: number; moves: [number, number][]; kind: Swipe; bar: boolean; quit?: () => void }
   let g: G | null = null
-  /** The page's offset (px; negative: the next pane coming in), and the settle on its way there. */
+  /** The page's offset (px; negative: the next coming in), the settle on its way there, and what it's between. */
   let pos = 0
   let flight: Animation | null = null
-  let m: HTMLElement | null = null
-  const ps = () => { const all = panes(); return { all, i: all.findIndex((p) => p.id === activeTab().focus) } }
-  const step = () => (m?.offsetWidth || innerWidth) + PANE_GAP
-  const put = (x: number) => { pos = x; if (m) m.style.transform = x ? `translateX(${x}px)` : "" }
-  /** The panes beside put where they'll show once they're the page: their scroll, at the window's top. */
+  let kind: Swipe = "panes"
+  /** The page moved, and the one listened to (a split's, for its panes). */
+  let m: HTMLElement | null = null, heard: HTMLElement | null = null
+  const step = () => (m?.offsetWidth || innerWidth) + GAP
+  const follow = (x: number) => {
+    const h = document.querySelector<HTMLElement>("[data-phone-header]"), q = x / step()
+    if (!h) return
+    h.style.setProperty("--swipe-next", x ? String(Math.min(1, Math.max(0, -q))) : "")
+    h.style.setProperty("--swipe-prev", x ? String(Math.min(1, Math.max(0, q))) : "")
+  }
+  const put = (x: number) => { pos = x; if (m) m.style.transform = x ? `translateX(${x}px)` : ""; follow(x) }
+  const ends = () => { const b = besideOf(kind), w = step(); return { lo: b.some((x) => x.side === 1) ? -w : 0, hi: b.some((x) => x.side === -1) ? w : 0 } }
+  /** The neighbours drawn (a swipe of tabs draws its own), then put where they'll show once they're the page: their
+   *  scroll, at the window's top. */
   const lay = () => {
     if (!m || m.dataset.swiping !== undefined) return
+    flushSync(() => swipe.set(kind))
     const r = m.getBoundingClientRect(), cs = getComputedStyle(m), top = parseFloat(cs.paddingTop) || 0, bottom = parseFloat(cs.paddingBottom) || 0
     m.style.setProperty("--beside-top", `${-r.top}px`)
     m.style.setProperty("--beside-h", `${innerHeight}px`)
@@ -118,10 +151,12 @@ export function swipePanes() {
     m.style.willChange = "transform"
   }
   const rest = () => {
+    sideways = false
     if (!m) return
     put(0)
     delete m.dataset.swiping
     m.style.willChange = ""
+    swipe.set(null)
   }
   const halt = () => {
     const f = flight
@@ -130,10 +165,10 @@ export function swipePanes() {
     put(shownAt(m))
     f.cancel()
   }
-  /** The neighbour `k` (1: the next) is the page now: focused, the window at its place, all in one frame. */
+  /** The neighbour `k` (1: the next) is the page now: shown, the window at its place, all in one frame. */
   const land = (k: 1 | -1) => {
-    const { all, i } = ps(), next = all[i + k]
-    if (next) flushSync(() => { selectPane(next.id) })
+    const b = besideOf(kind).find((x) => x.side === k)
+    if (b) flushSync(() => { if (kind === "tabs") selectTab(b.tab.id); else selectPane(b.pane.id); swipe.set(null) })
     rest()
   }
   /** Settle at `to` (px) from where it is, starting at `v` px/ms; at a neighbour, it's the page then. */
@@ -141,7 +176,7 @@ export function swipePanes() {
     halt()
     if (!m) return
     const k = to < 0 ? 1 : to > 0 ? -1 : 0
-    const a = glide(m, pos, to, v)
+    const a = glide(m, pos, to, v, follow)
     pos = to
     if (!a) return k ? land(k) : rest()
     flight = a
@@ -157,28 +192,30 @@ export function swipePanes() {
     g = null
     d?.quit?.()
     if (d?.axis === "x") settle(Math.abs(pos) > step() / 2 ? Math.sign(pos) * step() : 0)
+    else sideways = false
   }
 
-  const start = (e: TouchEvent) => {
+  const start = (e: TouchEvent, k: Swipe, bar = k === "tabs") => {
     if (g) return drop()
-    if (e.touches.length !== 1 || panes().length < 2 || route().detail || !m) return
     const t = e.touches[0]
-    // Caught mid-settle: it stops where it shows, and goes on under the finger.
+    if (e.touches.length !== 1 || route().detail || !t) return
+    // Caught mid-settle: it stops where it shows, and goes on under the finger (as what it was between).
     if (flight) {
       halt()
-      g = { id: t.identifier, x: t.clientX, y: t.clientY, from: pos, axis: "x", lock: t.clientX, moves: [[e.timeStamp, t.clientX]] }
+      g = { id: t.identifier, x: t.clientX, y: t.clientY, from: pos, axis: "x", lock: t.clientX, moves: [[e.timeStamp, t.clientX]], kind, bar }
       g.quit = onAway(drop)
+      sideways = true
       return
     }
-    if (t.clientX < EDGE || t.clientX > innerWidth - EDGE) return
+    if (!besideOf(k).length || t.clientX < EDGE || t.clientX > innerWidth - EDGE) return
     // (a selection being made or adjusted keeps the finger)
     const sel = getSelection()
-    if (sel && !sel.isCollapsed && m.contains(sel.anchorNode)) return
-    g = { id: t.identifier, x: t.clientX, y: t.clientY, from: pos, axis: null, lock: t.clientX, moves: [[e.timeStamp, t.clientX]] }
+    if (k === "panes" && sel && !sel.isCollapsed && heard?.contains(sel.anchorNode)) return
+    g = { id: t.identifier, x: t.clientX, y: t.clientY, from: pos, axis: null, lock: t.clientX, moves: [[e.timeStamp, t.clientX]], kind: k, bar }
   }
-  const move = (e: TouchEvent) => {
+  const move = (e: TouchEvent, block = true) => {
     const d = g
-    if (!d || !m) return
+    if (!d) return
     const t = [...e.changedTouches].find((x) => x.identifier === d.id)
     if (!t) return
     // Held: picked up to be moved (core/drag.ts), not swiped.
@@ -186,20 +223,26 @@ export function swipePanes() {
     const mx = t.clientX - d.x, my = t.clientY - d.y
     if (!d.axis) {
       if (Math.hypot(mx, my) < SLOP) return
-      if (Math.abs(mx) <= Math.abs(my) * 1.15 || ownsSideways(e.target as Element, m, mx)) { g = null; return }
+      // (the bar dragged up is the tab list's, core/pageLift.ts, once it's going)
+      const lifting = document.documentElement.dataset.pageLift !== undefined
+      if (Math.abs(mx) <= Math.abs(my) * 1.15 || lifting || (d.kind === "panes" && heard && ownsSideways(e.target as Element, heard, mx))) { g = null; return }
+      m = page()
+      if (!m) { g = null; return }
       d.axis = "x"
       d.lock = t.clientX
       d.quit = onAway(drop)
+      kind = d.kind
+      sideways = true
       lay()
     }
     // Ours now: the page doesn't scroll (iOS can start one in a scroller inside it, whatever touch-action says).
-    if (e.cancelable) e.preventDefault()
+    if (block && e.cancelable) e.preventDefault()
     d.moves.push([e.timeStamp, t.clientX])
     if (d.moves.length > 8) d.moves.shift()
-    const { all, i } = ps(), w = step()
+    const { lo, hi } = ends()
     // (the way decided, the page catches up the slop over the next 48px rather than jumping it)
     const x = d.from + t.clientX - d.x - (d.lock - d.x) * Math.max(0, 1 - Math.abs(t.clientX - d.lock) / 48)
-    put(within(x, i < all.length - 1 ? -w : 0, i > 0 ? w : 0, w))
+    put(within(x, lo, hi, step()))
   }
   const end = (e: TouchEvent) => {
     const d = g
@@ -212,39 +255,57 @@ export function swipePanes() {
     addEventListener("click", eat, { capture: true, once: true })
     setTimeout(() => removeEventListener("click", eat, { capture: true }), 400)
     const v = e.type === "touchend" ? fling(d.moves, e.timeStamp) : 0
-    const { all, i } = ps(), w = step()
-    const to = stopFor([...(i < all.length - 1 ? [-w] : []), 0, ...(i > 0 ? [w] : [])], pos, v)
+    const { lo, hi } = ends()
+    const to = stopFor([...(lo ? [lo] : []), 0, ...(hi ? [hi] : [])], pos, v)
     if (to) haptic("selection")
     settle(to, v)
   }
 
-  // Listened to on the page while the tab shown is a split (the page's touchmove waits for this one, so only then).
-  const opts = { passive: true }
+  // The page is listened to while the tab shown is a split (its touchmove waits for this one, so only then).
+  const onPage = (e: TouchEvent) => start(e, "panes")
+  const onMove = (e: TouchEvent) => move(e)
   const detach = () => {
-    if (!m) return
-    halt(); g = null; rest()
-    m.style.touchAction = ""
-    m.removeEventListener("touchstart", start)
-    m.removeEventListener("touchmove", move)
-    m.removeEventListener("touchend", end)
-    m.removeEventListener("touchcancel", end)
-    m = null
+    if (!heard) return
+    if (kind === "panes") { halt(); g = null; rest() }
+    heard.style.touchAction = ""
+    heard.removeEventListener("touchstart", onPage)
+    heard.removeEventListener("touchmove", onMove)
+    heard.removeEventListener("touchend", end)
+    heard.removeEventListener("touchcancel", end)
+    heard = null
   }
   const claim = () => {
     const el = page(), on = !!el && panes().length > 1
-    if (m && (m !== el || !on)) detach()
+    if (heard && (heard !== el || !on)) detach()
     // (the tab or its focus changed under a swipe: it starts again from the page now shown)
-    else if (m && !g && !flight && pos) rest()
-    if (!on || m) return
-    m = el
+    else if (!g && !flight && pos) rest()
+    if (!on || heard) return
+    heard = el
     // (pans only up and down, so a sideways finger stays ours; pinches still zoom)
-    m.style.touchAction = "pan-y pinch-zoom"
-    m.addEventListener("touchstart", start, opts)
-    m.addEventListener("touchmove", move, { passive: false })
-    m.addEventListener("touchend", end, opts)
-    m.addEventListener("touchcancel", end, opts)
+    heard.style.touchAction = "pan-y pinch-zoom"
+    heard.addEventListener("touchstart", onPage, { passive: true })
+    heard.addEventListener("touchmove", onMove, { passive: false })
+    heard.addEventListener("touchend", end, { passive: true })
+    heard.addEventListener("touchcancel", end, { passive: true })
   }
+  // The bar (touch-action none: it never scrolls) is heard on the window; not with its menu or a sheet up.
+  const onBar = (e: TouchEvent) => {
+    const bar = (e.target as Element | null)?.closest?.("[data-phone-bar]")
+    if (bar && (flight || !document.querySelector("dialog[open], #bar-menu"))) start(e, "tabs")
+  }
+  const barMove = (e: TouchEvent) => { if (g?.bar) move(e, false) }
+  const barEnd = (e: TouchEvent) => { if (g?.bar) end(e) }
+  addEventListener("touchstart", onBar, { capture: true, passive: true })
+  addEventListener("touchmove", barMove, { capture: true, passive: true })
+  addEventListener("touchend", barEnd, { capture: true, passive: true })
+  addEventListener("touchcancel", barEnd, { capture: true, passive: true })
   const unwatch = onWorkspaceChange(claim)
   claim()
-  return () => { unwatch(); detach() }
+  return () => {
+    unwatch(); detach(); halt(); g = null; rest()
+    removeEventListener("touchstart", onBar, { capture: true })
+    removeEventListener("touchmove", barMove, { capture: true })
+    removeEventListener("touchend", barEnd, { capture: true })
+    removeEventListener("touchcancel", barEnd, { capture: true })
+  }
 }

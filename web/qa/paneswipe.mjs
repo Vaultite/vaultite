@@ -10,9 +10,12 @@ mkdirSync(OUT, { recursive: true })
 const api = (method, p, body) => fetch(`${B}api/${p}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined })
 const long = (name) => `# ${name}\n\n${Array.from({ length: 60 }, (_, i) => `${name} paragraph ${i + 1}: words enough to wrap across the phone's width, twice at least.`).join("\n\n")}\n`
 const NAMES = ["Swipe one", "Swipe two", "Swipe three"]
-for (const n of NAMES) await api("POST", "file", { path: `Qa swipe/${n}.md`, text: long(n) })
+for (const n of [...NAMES, "Tab before", "Tab after"]) await api("POST", "file", { path: `Qa swipe/${n}.md`, text: long(n) })
 const F = (n) => `file:Qa swipe/${n}.md`
-const split = { tabs: [{ id: "tq", focus: "pa", root: { id: "sq", dir: "row", sizes: [1 / 3, 1 / 3, 1 / 3], kids: NAMES.map((n, i) => ({ id: `p${"abc"[i]}`, to: F(n) })) } }], active: "tq" }
+// A tab either side of the split, for the bar's swipe between tabs.
+const split = { tabs: [{ id: "t0", focus: "p0", root: { id: "p0", to: F("Tab before") } },
+  { id: "tq", focus: "pa", root: { id: "sq", dir: "row", sizes: [1 / 3, 1 / 3, 1 / 3], kids: NAMES.map((n, i) => ({ id: `p${"abc"[i]}`, to: F(n) })) } },
+  { id: "t1", focus: "p1", root: { id: "p1", to: F("Tab after") } }], active: "tq" }
 
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
 await ctx.addInitScript((tabs) => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); localStorage.setItem("vaultite.tabs", tabs); sessionStorage.setItem("qa", "1") } }, JSON.stringify(split))
@@ -77,7 +80,15 @@ try {
   check("slow drag: the page follows the finger (within the slop)", mid !== null && mid <= -138 && mid >= -152, mid)
   check("slow drag: the next pane shows beside it, coming in", l.beside.some((x) => x !== null && x > 390 - 150 && x < 390), l)
   await P.screenshot({ path: `${OUT}slow-mid.png` })
-  check("slow drag: no layout per frame", slow.layouts <= 4, slow)
+  check("slow drag: no layout per frame (one as it starts, drawing what's beside)", slow.layouts <= 6, slow)
+  // The header follows: the next pane's name comes in, its dot darkens, as far as the page has come (150 of 410px).
+  const head = await P.evaluate(() => {
+    const op = (sel) => { const el = document.querySelector(sel); return el ? Math.round(Number(getComputedStyle(el).opacity) * 100) / 100 : null }
+    const dot = (i) => getComputedStyle(document.querySelectorAll("[data-pane-dots] button span")[i]).backgroundColor
+    return { now: op("[data-phone-title]"), next: op("[data-phone-title-beside='1']"), name: document.querySelector("[data-phone-title-beside='1']")?.textContent, d0: dot(0), d1: dot(1), d2: dot(2) }
+  })
+  check("slow drag: the header's name crossfades to the next pane's as far as it's come", head.name === "Swipe two" && head.next > 0.25 && head.next < 0.5 && Math.abs(head.now + head.next - 1) < 0.05, head)
+  check("...and the next dot darkens on its way (between the others)", head.d1 !== head.d0 && head.d1 !== head.d2, head)
   // Back a little, held, and let go short of halfway: it springs back.
   await finger(X - 150, Y, line(80, 0, 200), false)
   await touch("touchEnd", X - 70, Y); await wait(700)
@@ -153,6 +164,32 @@ try {
   // ---------- a tap still taps ----------
   await P.touchscreen.tap(X, Y); await wait(300)
   check("a tap after swipes: nothing moves", (await shift()) === 0 && (await at()) === 1, [await shift(), await at()])
+  check("at rest the header shows only the name on screen", !(await P.locator("[data-phone-title-beside]").count()) && (await P.evaluate(() => getComputedStyle(document.querySelector("[data-phone-title]")).opacity)) === "1")
+
+  // ---------- the bottom bar swiped sideways: the tabs either side, as Safari's ----------
+  const bar = await P.locator("[data-phone-bar]").boundingBox(), BY = bar.y + 22
+  const title = () => P.locator("[data-phone-title]").innerText()
+  await finger(X, BY, line(-160, 0, 500), false)
+  const barMid = { shift: await shift(), beside: await P.evaluate(() => [...document.querySelectorAll("[data-beside] [data-title-row]")].map((e) => e.textContent.trim())), name: await P.locator("[data-phone-title-beside='1']").textContent().catch(() => null) }
+  check("bar swiped left: the page follows, the next tab's page beside it, its name coming in", barMid.shift <= -140 && barMid.beside.some((t) => t.includes("Tab after")) && barMid.name === "Tab after", barMid)
+  check("...the split's dots fade out", Number(await P.evaluate(() => getComputedStyle(document.querySelector("[data-pane-dots]")).opacity)) < 0.8)
+  await P.screenshot({ path: `${OUT}bar-mid.png` })
+  await touch("touchEnd", X - 160, BY); await wait(700)
+  check("...let go short of halfway: back, the same tab", (await shift()) === 0 && (await title()) === "Swipe two", [await shift(), await title()])
+  await finger(X, BY, line(-70, 0, 64)); await wait(800)
+  check("bar flicked left: the next tab", (await shift()) === 0 && (await title()) === "Tab after", [await shift(), await title()])
+  check("...nothing in the bar was tapped (no tab list, no menu)", !(await P.locator("dialog[open], #bar-menu").count()))
+  await finger(X, BY, line(-200, 0, 300), false)
+  const barBand = await shift()
+  check("bar: past the last tab it gives", barBand < -10 && barBand > -110, barBand)
+  await touch("touchEnd", X - 200, BY); await wait(700)
+  await finger(X, BY, line(260, 0, 300)); await wait(800)
+  check("bar swiped right: the tab before, the split, on the pane it showed", (await title()) === "Swipe two" && (await at()) === 1, [await title(), await at()])
+  await finger(X, BY, line(80, 0, 64)); await wait(800)
+  check("...and again: the first tab", (await title()) === "Tab before", await title())
+  // Up is still the tab list's (core/pageLift.ts).
+  await finger(X, BY, line(0, -200, 300)); await wait(900)
+  check("bar dragged up still opens the tab list", (await P.locator("dialog[open] [data-tab-row]").count()) > 0)
   check("no sideways scroll", await P.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
 } catch (e) {
   check(String(e?.stack ?? e), false)
@@ -213,6 +250,9 @@ try {
   await wLift(0)
   await wait(700)
   check("webkit: ...and springs back", (await wShift()) === 0 && (await wAt()) === 2, [await wShift(), await wAt()])
+  const wb = await W.locator("[data-phone-bar]").boundingBox()
+  await wFinger(200, wb.y + 22, line(-70, 0, 64)); await wait(800)
+  check("webkit: the bar flicked left shows the next tab", (await W.locator("[data-phone-title]").innerText()) === "Tab after" && (await wShift()) === 0, [await W.locator("[data-phone-title]").innerText(), await wShift()])
 } catch (e) {
   check(`webkit: ${e?.stack ?? e}`, false)
 } finally {

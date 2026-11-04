@@ -792,7 +792,8 @@ export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
   const draw = (items: typeof header) => items.map(({ key, item }) => (
     <div key={key} data-header-item={key} className="flex min-w-0 items-center"><Guard what="This item"><Drawn draw={() => item.render(ctx)} /></Guard></div>
   ))
-  const count = openSplit ? panesOf(openSplit).length : open ? open.tabs.length : tabCount(ws)
+  // (a split's page counts the tabs it's among: its panes aren't tabs)
+  const count = open ? open.tabs.length : tabCount(ws)
   const host = workspaces()
   const pages = host?.list() ?? []
   const at = host ? pages.findIndex((w) => w.n === host.current()) : -1

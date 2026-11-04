@@ -70,6 +70,7 @@ try {
   check("the panes' page: All tabs back, the split's name, a card for each pane", (await list().locator("[data-split-head]").count()) === 1 && (await list().locator("[data-group-back]").innerText()).includes("All tabs")
     && JSON.stringify(await paneNames()) === JSON.stringify(["Alpha", "Bravo"]), await paneNames())
   check("...the pane on screen ringed", (await list().locator("[data-tab-row='pb'] button[aria-current]").count()) === 1)
+  check("...its header still counts the tabs (3), not the panes", (await list().locator("[data-tabs-count]").innerText()).trim() === "3", await list().locator("[data-tabs-count]").innerText())
   await P.screenshot({ path: `${OUT}split-page.png` })
   // Dragged onto the other: the two swap.
   const a = await list().locator("[data-tab-row='pa'] [data-tab-card]").boundingBox(), b = await list().locator("[data-tab-row='pb'] [data-tab-card]").boundingBox()

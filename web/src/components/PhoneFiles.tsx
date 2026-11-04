@@ -4,10 +4,10 @@ import { useEffect, useLayoutEffect, useState } from "react"
 import { FileView } from "@/components/FileView"
 import { useTabLabels } from "@/components/Tabs"
 import { PaneContext } from "@/core/pane"
-import { activeTab, here, paneTab, useWorkspace } from "@/core/workspace"
-import { swipePanes } from "@/core/phoneTabs"
+import { here, paneTab, useWorkspace } from "@/core/workspace"
+import { besideOf, swipeSideways, useSwipe } from "@/core/phoneTabs"
 import { useTabShot } from "@/core/tabShots"
-import { allPanes, panesOf, type Pane } from "../../../core/layout.ts"
+import { allPanes, type Pane } from "../../../core/layout.ts"
 import type { Store } from "@/core/data"
 
 const KEEP = 4
@@ -37,9 +37,8 @@ export function PhoneFiles({ store, pane, path }: { store: Store; pane: string; 
   const open = new Set(allPanes(here()).map((p) => p.id))
   const [state, setState] = useState<{ slots: Slot[]; recent: string[]; near: string }>({ slots: [], recent: [], near: "" })
   const key = path === null ? null : `${pane}\n${path}`
-  // The split's panes either side of the one shown (-1, 1), files drawn as slots too.
-  const all = panesOf(activeTab()), at = all.findIndex((p) => p.id === pane)
-  const beside = at < 0 ? [] : ([[all[at - 1], -1], [all[at + 1], 1]] as const).filter((b): b is [Pane, -1 | 1] => !!b[0])
+  // The panes either side of the one shown (-1, 1): a split's, or the tabs' while the bar is swiped; files as slots too.
+  const beside = besideOf(useSwipe()).map((b) => [b.pane, b.side] as const)
   const near = new Map(beside.filter(([p]) => p.to.startsWith("file:")).map(([p, k]) => [`${p.id}\n${p.to.slice(5)}`, k]))
   let next = state
   const recent = [...(key ? [key] : []), ...state.recent.filter((k) => k !== key && open.has(k.split("\n")[0]))].slice(0, KEEP)
@@ -59,8 +58,8 @@ export function PhoneFiles({ store, pane, path }: { store: Store; pane: string; 
     const a = document.activeElement
     if (a instanceof HTMLElement && a.closest("[data-kept]")) a.blur()
   }, [key])
-  // A split tab's panes, one at a time: swiped between sideways.
-  useEffect(swipePanes, [])
+  // (a split's panes swiped between, and the tabs by the bar)
+  useEffect(swipeSideways, [])
   return <>
     {next.slots.map((s) => {
       const shown = s.key === key, side = shown ? undefined : near.get(s.key)
