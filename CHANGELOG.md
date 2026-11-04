@@ -213,6 +213,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   failed with "The system cannot find the path specified".
 - **The playground names Windows' and Linux's keys**: its notes said only ⌘O, ⌘P and ⌘E; they say Ctrl+O, Ctrl+P
   and Ctrl+E too.
+- **Keys two commands share always go to the same one**: ⌘⇧↩ in a split showing a note zooms the pane, as it did,
+  instead of sometimes starting Claude Code on the note (Dispatch's keys too): which loaded last decided. The app's own
+  come before a plugin's; Settings ▸ Hotkeys still marks the clash.
 
 ## 0.9.0 (2026-11-03)
 

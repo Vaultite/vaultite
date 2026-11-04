@@ -62,7 +62,9 @@ const known = new Map<string, Known>()
 const commandsChanged = signal()
 let list: Command[] = []
 let knownList: Known[] = []
-const changed = () => { list = [...reg.values()]; knownList = [...known.values()]; byKeys = null; commandsChanged.notify() }
+/** Each command's place in `known`: first registered, first (a re-registered one keeps its place). */
+let firstSeen = new Map<string, number>()
+const changed = () => { list = [...reg.values()]; knownList = [...known.values()]; firstSeen = new Map(knownList.map((k, i) => [k.id, i])); byKeys = null; commandsChanged.notify() }
 
 /** Add commands (the same id replaces the older one); returns how to take them away again. */
 export function registerCommands(cs: Command[]) {
@@ -306,8 +308,10 @@ function matching(steps: string[]) {
     if (b.steps.length === steps.length) exact.push(b.c)
     else longer.push(b)
   }
-  // The same keys on two: the one offered only sometimes is the more particular (Vim's ? over Open hotkeys).
-  exact.sort((a, b) => Number(!a.when) - Number(!b.when))
+  // The same keys on two: the one offered only sometimes is the more particular (Vim's ? over Open hotkeys); else the
+  // first registered (the app's before a plugin's), not the last re-registered, which load timing decides.
+  const seen = (c: Command) => firstSeen.get(c.id) ?? Infinity
+  exact.sort((a, b) => Number(!a.when) - Number(!b.when) || seen(a) - seen(b))
   return { exact, longer }
 }
 
