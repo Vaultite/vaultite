@@ -292,13 +292,15 @@ function freshIds(l: Workspace | null, tabs: Tab[]): Tab[] {
     return out
   })
 }
-/** The layout with `tabs` added at the end of its list (not shown: each device keeps the tab it shows), out of any tab
- *  group. A workspace with nothing yet gets them in its place. */
-function withTabs(l: Workspace | null, tabs: Tab[]): { layout: Workspace; tabs: Tab[] } {
+/** The layout with `tabs` added at the end of its list, or at index `at` (not shown: each device keeps the tab it
+ *  shows), out of any tab group but `group` when a neighbour there is in it. A workspace with nothing yet gets them. */
+function withTabs(l: Workspace | null, tabs: Tab[], at?: number, group?: string): { layout: Workspace; tabs: Tab[] } {
   const bare = tabs.map((t) => { const { group: _, ...rest } = t; return rest })
   if (nothing(l)) return { layout: { tabs: bare, active: bare[0].id }, tabs: bare }
-  const fresh = freshIds(l, bare)
-  return { layout: { ...l!, tabs: [...l!.tabs, ...fresh] }, tabs: fresh }
+  const list = l!.tabs, i = at === undefined ? list.length : Math.max(0, Math.min(list.length, at))
+  const inGroup = !!group && (list[i - 1]?.group === group || list[i]?.group === group)
+  const fresh = freshIds(l, bare).map((t) => (inGroup ? { ...t, group } : t))
+  return { layout: { ...l!, tabs: [...list.slice(0, i), ...fresh, ...list.slice(i)] }, tabs: fresh }
 }
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : null)
@@ -376,7 +378,9 @@ plugin.route("POST", "workspaces/move", (req) => {
     save(list)
     return { from: from + 1, to: to + 1, tabs: [], workspaces: shown() }
   }
-  const put = withTabs(dl, [coming])
+  // (Undo puts it back where it was: `at`, its index in that workspace's tabs, and the group it was in)
+  const at = typeof body.at === "number" && Number.isInteger(body.at) ? body.at : undefined
+  const put = withTabs(dl, [coming], at, str(body.group) ?? undefined)
   list[to] = { ...dest, layout: put.layout }
   save(list)
   const tabs = put.tabs.map(local)

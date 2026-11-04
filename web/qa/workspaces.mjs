@@ -21,6 +21,7 @@ const savedSidebars = () => JSON.stringify(JSON.parse(readFileSync(sidebarsFile,
 // Workspace 2 hides every panel but Terminals: its own sidebars are that one panel.
 const onlyTerminals = (w) => JSON.stringify(w?.sidebars?.left) === '["terminal:sessions"]' && !w.sidebars.right?.length
 const moveFile = path.join(VAULT, "Qa ws move.md")
+const undoFiles = ["Qa ws undo a.md", "Qa ws undo b.md"]
 const paneFile = path.join(VAULT, "Qa ws pane.md")
 const openFile = path.join(VAULT, "Qa ws open.md")
 
@@ -400,6 +401,22 @@ try {
   check("rail: ...closed when the drag ends, nothing moved", !!(await until(async () => !(await isOpen()), 2000)) && JSON.stringify(await tabs()) === tabsNow && (await lit()) === "2", await tabs())
   await page.click("[data-sidebar-toggle='']"); await wait(400)
 
+  // ---------- Undo of a move: the tab comes back to its place in the bar, not the end ----------
+  for (const f of undoFiles) {
+    writeFileSync(path.join(VAULT, f), "Moved and back.\n")
+    await page.click("[data-tab-strip] button[aria-label='New tab']"); await wait(200)
+    await page.evaluate((f) => { location.hash = `#file/${encodeURIComponent(f)}` }, f)
+    await until(async () => (await tabs()).some((t) => t.includes(f.replace(/\.md$/, ""))), 6000)
+  }
+  const order = await tabs()
+  check("undo: 2 has the two files' tabs, last", order.length >= 3 && order.at(-2).includes("Qa ws undo a") && order.at(-1).includes("Qa ws undo b"), order)
+  await page.locator("[data-tab-strip] [role=tab]", { hasText: "Qa ws undo a" }).click(); await wait(300)
+  await page.keyboard.press("ControlOrMeta+p"); await wait(300)
+  await page.keyboard.type("Move current tab to workspace 1"); await wait(300); await page.keyboard.press("Enter")
+  check("undo: moved, gone from the bar", !!(await until(async () => (await tabs()).length === order.length - 1, 6000)), await tabs())
+  await page.locator("[data-sonner-toast]", { hasText: "Moved to" }).locator("button", { hasText: "Undo" }).click()
+  check("undo: back in its place in the bar, before the other", !!(await until(async () => JSON.stringify(await tabs()) === JSON.stringify(order), 6000)), [await tabs(), order])
+
   // ---------- plugin off: sidebars.json and pages.json again, no switcher, its files kept; on: 2 again ----------
   // (2 gets a pinned list of its own first: off, the sidebar shows pages.json's.)
   const vaultPins = JSON.parse(readFileSync(path.join(VAULT, ".vaultite/pages.json"), "utf8")).pinned
@@ -432,7 +449,7 @@ try {
     } catch { /* already gone */ }
   }
   clearWorkspaces(B)
-  for (const f of [moveFile, paneFile, openFile]) rmSync(f, { force: true })
+  for (const f of [moveFile, paneFile, openFile, ...undoFiles.map((x) => path.join(VAULT, x))]) rmSync(f, { force: true })
   writeFileSync(settings, original)
   if (sidebarsBefore === null) rmSync(sidebarsFile, { force: true }); else writeFileSync(sidebarsFile, sidebarsBefore)
   await browser.close()

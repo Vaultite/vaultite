@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Undo of a move to another workspace puts the tab back in its place**: in its spot in the bar and its tab group,
+  not at the end.
 - **A plugin setting changed twice quickly keeps the last change**: hiding a graph group and showing it again at once
   no longer leaves it hidden, when a read from before the first change came back late.
 - **⌘A after a click in the sidebar selects nothing**: a click on an empty spot of a sidebar or a bar no longer leaves

@@ -4,7 +4,7 @@ import { Box, CircleSlash, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Setting
 import {
   cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
-  allPanes, cleanTabLayout as clean, focusedPane, shownTab, withMyTabs, withoutPanes, withoutTabs, type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
+  allPanes, cleanTabLayout as clean, focusedPane, panesOf, shownTab, withMyTabs, withoutPanes, withoutTabs, type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
 import { blankLayout, isBlank } from "./blank"
 import { markIcon } from "./Mark"
@@ -329,8 +329,11 @@ export async function sendTo(n: number, what: Sent) {
     // A move can be undone (it comes back, to this workspace's pane focused last, or as a pane of its own), like
     // every other move in the app; files opened there left nothing here to bring back.
     const back: Sent | null = "open" in what || !r.tabs.length ? null : { tab: r.tabs[0].id }
+    // (back where it was: a pane out of a split, beside its tab)
+    const i = before.tabs.findIndex((t) => ("tab" in what ? t.id === what.tab : "pane" in what && panesOf(t).some((p) => p.id === what.pane)))
+    const place = i < 0 ? {} : "tab" in what ? { at: i, group: before.tabs[i].group } : { at: i + 1 }
     notify(r.tabs.length ? ("open" in what ? `Opened in ${named(n)}` : `Moved to ${named(n)}`) : `Already open in ${named(n)}`,
-      back ? { action: { label: "Undo", run: () => void bringBack(n, from, back) } } : undefined)
+      back ? { action: { label: "Undo", run: () => void bringBack(n, from, back, place) } } : undefined)
   } catch (e) {
     if (gone) apply(before, true)
     notifyError(e, "open" in what ? "Couldn't open it there" : "Couldn't move it")
@@ -340,12 +343,12 @@ export async function sendTo(n: number, what: Sent) {
 }
 /** Undo a move to workspace n: what went there comes back to workspace `to`, and if that's still this device's, it
  *  shows here at once. */
-async function bringBack(n: number, to: number, what: Sent) {
+async function bringBack(n: number, to: number, what: Sent, place: { at?: number; group?: string }) {
   if (timer) saveTabs()
   await writing
   moving = true
   try {
-    const r = await post<{ workspaces: unknown[] }>("workspaces/move", { from: n, to, ...what })
+    const r = await post<{ workspaces: unknown[] }>("workspaces/move", { from: n, to, ...what, ...place })
     local = unusedIfBlank(r.workspaces)
     if (current() === to) { const l = local[to - 1]?.layout ?? null; mine.add(shape(l)); apply(l, true) }
     emit()
