@@ -63,6 +63,8 @@ try {
   await page.goto(`${B}#file/${encodeURIComponent("Notes/Alpha.md")}`)
   await page.waitForSelector("aside [data-panel]")
   await until(async () => (await panels()).length === 4, 6000)
+  // (this device's own tabs, which Workspaces sets aside and gives back when it's turned off: 41b716fd)
+  const own = await until(async () => { const t = await tabs(); return t.some((x) => x.includes("Alpha")) ? t : null }, 6000) ?? await tabs()
 
   // ---------- the switcher ----------
   await page.waitForSelector(SWITCHER)
@@ -411,8 +413,8 @@ try {
   check("off: sidebars.json's panels", !!(await until(async () => (await panels()).length === 4, 6000)), await panels())
   const pinsOff = await page.$$eval("aside [data-pin]", (els) => els.map((e) => e.getAttribute("data-pin")))
   check("off: pages.json's pinned pages", pinsOff[0] === vaultPins[0], [pinsOff, vaultPins])
-  const before = await tabs()
-  check("off: the tabs on screen stay", JSON.stringify(before) === JSON.stringify(tabsOn), [before, tabsOn])
+  const before = await until(async () => { const t = await tabs(); return JSON.stringify(t) === JSON.stringify(own) ? t : null }, 6000) ?? await tabs()
+  check("off: this device's own tabs come back, as they were before Workspaces", JSON.stringify(before) === JSON.stringify(own), [before, own])
   await page.keyboard.press(workspaceKey(1)); await wait(500)
   check("off: ⌃1 does nothing", JSON.stringify(await tabs()) === JSON.stringify(before), await tabs())
   await page.screenshot({ path: `${OUT}8-off.png`, clip: { x: 0, y: 0, width: 260, height: 90 } })
