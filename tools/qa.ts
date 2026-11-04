@@ -61,6 +61,12 @@ const names = argv.length ? argv.map((a) => path.basename(a, ".mjs"))
 // together (one would run it half written: ETXTBSY).
 const desktop = (n: string) => { try { return fs.readFileSync(path.join(QA, `${n}.mjs`), "utf8").includes("_electron") } catch { return false } }
 if (names.some(desktop)) createRequire(import.meta.url)("electron")
+// Electron needs a display: on a Linux box without one (ssh, a server), a virtual one, as CI's.
+if (names.some(desktop) && process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+  const r = spawnSync("xvfb-run", ["-a", process.execPath, ...process.argv.slice(1)], { stdio: "inherit" })
+  if (r.error) console.error("qa: the desktop scripts need a display, and there's none (DISPLAY) nor xvfb-run (apt install xvfb)")
+  process.exit(r.status ?? 1)
+}
 
 
 /** The usage line's arguments, after `node web/qa/<name>.mjs`. */
