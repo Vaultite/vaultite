@@ -21,7 +21,7 @@ Its cursor shows up in this note and answers here. With Codex, set the agent in 
 ## Next
 
 - ⌘O finds any file, ⌘P runs any command (Ctrl+O and Ctrl+P on Windows and Linux).
-- Open terminal (⌘P) runs a coding agent in this folder: \`claude\`, \`codex\` or another. It reads the vault's rules.
+- Open terminal (⌘P, or Ctrl+P) runs a coding agent in this folder: \`claude\`, \`codex\` or another. It reads the vault's rules.
 - Settings > Appearance picks a layout: Standard, Zen or Browser.
 - Plugins turns on one feature at a time.
 - Settings > Connections puts Claude, ChatGPT, Muse and Grok Bot in this vault, on the web and on your phone.
@@ -30,7 +30,7 @@ Its cursor shows up in this note and answers here. With Codex, set the agent in 
 `
 
 /** A tour of what a note can hold, each piece written as it's saved (as the playground's, for a vault with nothing yet). */
-const howItWorks = () => `A vault is a folder of plain Markdown files. There's no database: open any file in another editor and it reads fine. To see how each piece below is written, switch to editing (⌘E) and put the cursor on it.
+const howItWorks = () => `A vault is a folder of plain Markdown files. There's no database: open any file in another editor and it reads fine. To see how each piece below is written, switch to editing (⌘E, or Ctrl+E) and put the cursor on it.
 
 ## What a file is
 

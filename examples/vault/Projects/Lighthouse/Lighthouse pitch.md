@@ -36,4 +36,4 @@ A small app that reminds you to water your plants
 
 ## Thanks
 
-Questions? Start presentation from the command palette (⌘P) to see this note as slides.
+Questions? Start presentation from the command palette (⌘P, or Ctrl+P) to see this note as slides.

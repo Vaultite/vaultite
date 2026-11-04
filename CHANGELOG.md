@@ -187,6 +187,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **One palette at a time, and it has the keyboard**: ⌘P, ⌘O, a setting's picker (Animations…) or the Ask box opened
   over another takes its place instead of opening under it, Esc then gives the keyboard back to where it was, a sheet
   opening closes the palette, and the Hotkeys and Sidebars sheets take typing in their filter at once.
+- **Uninstalling on Windows takes `vau` with it**: the `vau` Set up Vaultite installed stayed behind, and typing it
+  failed with "The system cannot find the path specified".
+- **The playground names Windows' and Linux's keys**: its notes said only ⌘O, ⌘P and ⌘E; they say Ctrl+O, Ctrl+P
+  and Ctrl+E too.
 
 ## 0.9.0 (2026-11-03)
 

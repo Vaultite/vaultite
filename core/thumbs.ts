@@ -5,7 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { kindOf } from "./filetypes.ts"
-import { onPath } from "./heic.ts"
+import { imageMagick, onPath } from "./heic.ts"
 import { LOCAL } from "./plugins.ts"
 import { iCloud } from "./vault.ts"
 
@@ -31,7 +31,7 @@ function commands(abs: string, tmp: string, px: number, quicklook: boolean): [st
   if (quicklook) return quicklooks(abs) ? [[QUICKLOOK, ["-t", "-s", String(px), "-o", tmp, abs], path.join(tmp, `${path.basename(abs)}.png`)]] : []
   const out = path.join(tmp, "thumb.png"), kind = kindOf(abs), box = `${px}x${px}>`
   if (kind === "image") {
-    const magick = onPath("magick") ?? (process.platform !== "win32" ? onPath("convert") : null) // (Windows' convert.exe converts disks)
+    const magick = imageMagick()
     if (magick) return [[magick, [`${abs}[0]`, "-auto-orient", "-thumbnail", box, out], out]]
     const vips = onPath("vips")
     return vips ? [[vips, ["thumbnail", abs, out, String(px), "--height", String(px), "--size", "down"], out]] : []

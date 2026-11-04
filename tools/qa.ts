@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
-import { freePort, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
+import { freePort, killTree, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
 import { MOVED } from "../core/migrations.ts"
@@ -105,7 +105,8 @@ async function exec(args: string[], env: Record<string, string>) {
   let text = ""
   child.stdout.on("data", (b) => { text += b })
   child.stderr.on("data", (b) => { text += b })
-  const timer = setTimeout(() => { text += `\n(timed out after ${TIMEOUT / 60_000} min)`; child.kill() }, TIMEOUT)
+  // (its tree, not just it: Playwright answers SIGTERM by closing its browser, which waits on one that hung)
+  const timer = setTimeout(() => { text += `\n(timed out after ${TIMEOUT / 60_000} min)`; killTree(child.pid!) }, TIMEOUT)
   const code = await new Promise<number | null>((r) => child.on("close", r))
   clearTimeout(timer)
   return { code, text }

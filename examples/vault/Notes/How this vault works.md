@@ -9,7 +9,7 @@ origin: ai
 aliases: [Markdown tour]
 ---
 
-A vault is a folder of plain Markdown files. There's no database: open any file in another editor and it reads fine. To see how each piece below is written, switch to editing (⌘E) and put the cursor on it, or pick *Switch to source mode* in the palette (⌘P) to see the whole file as it's saved.
+A vault is a folder of plain Markdown files. There's no database: open any file in another editor and it reads fine. To see how each piece below is written, switch to editing (⌘E, or Ctrl+E) and put the cursor on it, or pick *Switch to source mode* in the palette (⌘P, or Ctrl+P) to see the whole file as it's saved.
 
 ## Where this vault keeps things
 

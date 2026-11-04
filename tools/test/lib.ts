@@ -1,6 +1,6 @@
 // The tests' shared kit: check, skip, sections (timed; one that throws ends there, not the run), the summary, the
 // record of runs (tools/.runs/test-runs.jsonl).
-import { type ChildProcess, spawn, type SpawnOptions } from "node:child_process"
+import { type ChildProcess, spawn, spawnSync, type SpawnOptions } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -77,6 +77,19 @@ export function testServer(o: SpawnOptions = {}): ChildProcess {
  *  verifying), its pid where the server keeps it (Linux: $XDG_RUNTIME_DIR/vaultite, not $TMPDIR). */
 export function stopTerminals(port: number | string) {
   try { process.kill(Number(fs.readFileSync(path.join(runtimeDir(), `vaultite-termd2-vaultite-${port}.sock.pid`), "utf8"))) } catch { /* none */ }
+}
+
+/** Kills `pid` and everything it started, at once (a browser Playwright launched is in a process group of its own). */
+export function killTree(pid: number) {
+  if (process.platform === "win32") { spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" }); return }
+  const kids = new Map<number, number[]>()
+  for (const line of spawnSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" }).stdout?.split("\n") ?? []) {
+    const [p, pp] = line.trim().split(/\s+/).map(Number)
+    if (p && pp) kids.set(pp, [...kids.get(pp) ?? [], p])
+  }
+  const all: number[] = []
+  for (let todo = [pid]; todo.length;) { const p = todo.pop()!; all.push(p); todo.push(...kids.get(p) ?? []) }
+  for (const p of all) { try { process.kill(p, "SIGKILL") } catch { /* gone */ } }
 }
 
 // A test that hangs fails where it is, rather than holding its CI job until the job's timeout: nothing checked for this

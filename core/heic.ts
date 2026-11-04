@@ -15,16 +15,17 @@ export const isHeic = (p: string) => /\.(heic|heif)$/i.test(p)
 export const onPath = (name: string) =>
   (process.env.PATH ?? "").split(path.delimiter).map((d) => path.join(d, process.platform === "win32" ? `${name}.exe` : name)).find((f) => fs.existsSync(f)) ?? null
 
+/** ImageMagick: `magick` (7), or `convert` (Ubuntu's 6) off Windows, whose convert.exe converts disks. */
+export const imageMagick = () => onPath("magick") ?? (process.platform !== "win32" ? onPath("convert") : null)
+
 /** The command that writes `out` (a JPEG) from `src`, or null when this machine has none. */
 function converter(src: string, out: string): [string, string[]] | null {
   if (process.platform === "darwin" && fs.existsSync("/usr/bin/sips")) return ["/usr/bin/sips", ["-s", "format", "jpeg", "-s", "formatOptions", "85", src, "--out", out]]
   const heif = onPath("heif-convert")
   if (heif) return [heif, ["-q", "85", src, out]]
-  const magick = onPath("magick")
+  // (Ubuntu's ImageMagick 6 reads HEIC with libheif, and libvips' `vips` does too)
+  const magick = imageMagick()
   if (magick) return [magick, [src, "-quality", "85", out]]
-  // Ubuntu's ImageMagick 6 is `convert` (it reads HEIC with libheif), and libvips' `vips` does too.
-  const convert = onPath("convert")
-  if (convert && process.platform !== "win32") return [convert, [src, "-quality", "85", out]]
   const vips = onPath("vips")
   if (vips) return [vips, ["copy", src, `${out}[Q=85]`]]
   return null

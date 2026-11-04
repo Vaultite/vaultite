@@ -40,7 +40,7 @@ export default async ($: VaultTest) => {
   const { VAULT, check } = $
   // ---------- files' thumbnails for the folder views (core/thumbs.ts, GET /api/raw?thumb=) ----------
   const { bucket, thumbOf } = await import("../../../core/thumbs.ts")
-  const { onPath } = await import("../../../core/heic.ts")
+  const { imageMagick, onPath } = await import("../../../core/heic.ts")
   check("thumbs: a size asked for is made at its bucket", [1, 256, 257, 512, 600, 1024, 5000].map(bucket).join() === "256,256,512,512,1024,1024,1024")
   const dir = path.join(VAULT, "Thumbs")
   fs.mkdirSync(dir, { recursive: true })
@@ -49,7 +49,7 @@ export default async ($: VaultTest) => {
   const mac = process.platform === "darwin" && fs.existsSync("/usr/bin/qlmanage")
   // Images need a converter on PATH that reads a PNG: a broken one (Windows on Arm's runner has an ImageMagick that can't
   // find its coders) gives none, checked below.
-  const magick = onPath("magick") ?? (process.platform !== "win32" ? onPath("convert") : null), vips = onPath("vips")
+  const magick = imageMagick(), vips = onPath("vips")
   const probe = magick ? spawnSync(magick, [photo, "info:"], { encoding: "utf8" }) : vips ? spawnSync(vips, ["header", photo], { encoding: "utf8" }) : null
   const imageTool = probe?.status === 0, brokenTool = probe && !imageTool ? `${magick ?? vips} can't read a PNG: ${(probe.stderr || String(probe.error)).trim().split("\n")[0]}` : null
 

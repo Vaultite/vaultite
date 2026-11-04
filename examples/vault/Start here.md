@@ -27,4 +27,4 @@ Who to catch up with comes from each person's file in `People/`.
 
 - [[How this vault works]]: where things go, and what a note can hold.
 - [[People]]: a page drawn from the files. Life OS (Plugins ▸ Get) adds Today, Health and Learning.
-- ⌘O finds any file, ⌘P runs any command.
+- ⌘O finds any file, ⌘P runs any command (Ctrl+O and Ctrl+P on Windows and Linux).

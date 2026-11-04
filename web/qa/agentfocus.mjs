@@ -23,8 +23,8 @@ async function run(label, viewport, mobile) {
   check(`${label}: an agent's terminal: a toast with Show`, await until(() => toast.count(), 5000) &&
     await toast.getByRole("button", { name: "Show" }).count() === 1, await toast.innerText().catch(() => ""))
   check(`${label}: and the user stays where they were`, (await hash()) === before, [before, await hash()])
-  const tabs = ((await user("POST", "ops/tabs.list", {}))?.panes ?? []).flatMap((p) => p.tabs)
-  check(`${label}: its tab is there, behind`, tabs.some((t) => t.to === `view:terminal/${id}` && !t.active), tabs)
+  const tabs = (await user("POST", "ops/tabs.list", {}))?.tabs ?? []
+  check(`${label}: its tab is there, behind`, tabs.some((t) => t.panes.some((p) => p.to === `view:terminal/${id}`) && !t.active), tabs)
   await toast.getByRole("button", { name: "Show" }).click().catch(() => {})
   check(`${label}: Show opens it`, await until(async () => (await hash()).includes(`terminal/${id}`), 5000), await hash())
   if (!mobile) {
