@@ -44,10 +44,11 @@ Live.web = webBuild
 const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
+const { thumbOf } = await import("./core/thumbs.ts")
 const { tooBig } = await import("./core/filetypes.ts")
 const { runsCode } = await import("./core/opening.ts")
 const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
-const { fetchFromICloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
+const { fetchFromICloud, iCloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
 const { answers, claim, reclaim, servingKey } = await import("./core/serving.ts")
 const { attach, detach, onHostMessage } = await import("./core/desktopapp.ts")
@@ -264,8 +265,8 @@ async function downloaded(abs: string, wait = 30_000) {
   }
 }
 
-/** A vault file's bytes (range requests so players can seek; `as=jpeg` for HEIC; `download=1`), or an allowed outside
- *  file. Documents are sandboxed so an SVG or HTML can't run script; PDFs can't be (the browser's viewer). */
+/** A vault file's bytes (ranges so players can seek; `as=jpeg` for HEIC; `thumb=<px>` a thumbnail; `download=1`), or an
+ *  allowed outside file. Documents are sandboxed so an SVG or HTML can't run script; PDFs can't be (the browser's viewer). */
 async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: Record<string, string>) {
   let rel: string, abs: string, st: fs.Stats
   try {
@@ -277,9 +278,19 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
     if (e instanceof HTTPError) return json(res, { error: e.message }, e.status)
     return json(res, { error: "not found" }, 404)
   }
-  if (!(await downloaded(abs))) return json(res, { error: "iCloud hasn't brought this file down yet" }, 503)
   let type = contentType(rel)
-  if (query.as === "jpeg" && isHeic(rel)) {
+  const thumb = query.thumb !== undefined
+  if (thumb) {
+    const px = Number(query.thumb)
+    if (!(px > 0)) return json(res, { error: "thumb is the longer side's most pixels" }, 400)
+    // (a placeholder isn't brought down for one: a folder of videos would be; `v`, the mtime, keeps the URL a version's)
+    const made = await thumbOf(abs, st, px)
+    if (!made) return iCloud.on && iCloud.evicted(abs, st) ? json(res, { error: "this file isn't on this machine yet" }, 404) : json(res, { error: "no thumbnail for this file" }, 415)
+    abs = made
+    st = fs.statSync(made)
+    type = "image/png"
+  } else if (!(await downloaded(abs))) return json(res, { error: "iCloud hasn't brought this file down yet" }, 503)
+  if (!thumb && query.as === "jpeg" && isHeic(rel)) {
     const jpeg = await jpegOf(abs, st)
     if (!jpeg) return json(res, { error: "this machine can't convert HEIC photos" }, 415)
     abs = jpeg
@@ -288,7 +299,7 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
   }
   const ext = path.extname(rel).toLowerCase()
   const headers: Record<string, string> = {
-    "Content-Type": type, "Cache-Control": "no-cache", "Accept-Ranges": "bytes",
+    "Content-Type": type, "Cache-Control": thumb ? "private, max-age=31536000, immutable" : "no-cache", "Accept-Ranges": "bytes",
     "X-Content-Type-Options": "nosniff", "Last-Modified": st.mtime.toUTCString(),
   }
   if (ext !== ".pdf") headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"

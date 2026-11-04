@@ -3,7 +3,7 @@
 import { useStore } from "@/core/data"
 import { patch } from "@/core/http"
 import { notifyError } from "@/core/notify"
-import { setPrefs, usePrefs, type FileSort } from "@/core/prefs"
+import { setPrefs, usePrefs, type FileSort, type FolderGroup, type FolderView } from "@/core/prefs"
 import { coreSwitch } from "@/core/switches"
 import { SwitchRow } from "@/components/SwitchRow"
 import { Group } from "@/components/kit"
@@ -12,13 +12,18 @@ import { Field } from "@/components/PluginSettings"
 import type { SettingDecl } from "../../../core/blocks.ts"
 
 const sorts = SORTS.flat()
+const FOLDER_VIEWS: FolderView[] = ["grid", "list", "columns", "gallery"]
+const FOLDER_GROUPS: FolderGroup[] = ["none", "kind", "modified"]
 // (its switches are core/switches.ts', which Settings' search finds by themselves; read late: that module imports this)
 const switchOf = (row: string) => coreSwitch(`setting:${row}`)
-const DECLS: Record<"fileSort" | "folderView" | "folderLimit" | "attachmentFolder" | "excluded" | "samples", SettingDecl> = {
+const DECLS: Record<"fileSort" | "folderView" | "folderGroup" | "folderLimit" | "attachmentFolder" | "excluded" | "samples", SettingDecl> = {
   fileSort: { type: "enum", default: "name", label: "Sort order", values: sorts.map((s) => s.value),
     labels: Object.fromEntries(sorts.map((s) => [s.value, s.label])), description: "folders stay first, by name" },
-  folderView: { type: "enum", default: "list", label: "Show folders as", values: ["list", "grid"], labels: { list: "List", grid: "Grid" },
-    description: "how a folder opened as a tab shows what it holds, every folder the same" },
+  folderView: { type: "enum", default: "list", label: "Show folders as", values: ["grid", "list", "columns", "gallery"],
+    labels: { grid: "Grid", list: "List", columns: "Columns", gallery: "Gallery" },
+    description: "how a folder opened as a tab shows what it holds, every folder the same (on a phone, columns show as a list and a gallery as a grid)" },
+  folderGroup: { type: "enum", default: "none", label: "Group folders by", values: ["none", "kind", "modified"], labels: { none: "None", kind: "Kind", modified: "Date modified" },
+    description: "headings in a folder opened as a tab, as a list or a grid" },
   folderLimit: { type: "number", default: 0, min: 0, label: "Files per folder",
     description: "how many of a folder's files show before a Show more row (in the sort order; its folders always show); 0 shows them all" },
   attachmentFolder: { type: "string", default: "Attachments", label: "Attachment folder",
@@ -53,7 +58,8 @@ export function FilesSettings() {
       <SwitchRow s={switchOf("show-hidden")} />
       <SwitchRow s={switchOf("show-archived")} />
       <Field k="fileSort" d={DECLS.fileSort} value={prefs.fileSort} set={(v) => void setPrefs({ fileSort: (v ?? "name") as FileSort })} />
-      <Field k="folderView" d={DECLS.folderView} value={prefs.folderView} set={(v) => void setPrefs({ folderView: v === "grid" ? "grid" : "list" })} />
+      <Field k="folderView" d={DECLS.folderView} value={prefs.folderView} set={(v) => void setPrefs({ folderView: FOLDER_VIEWS.find((x) => x === v) ?? "list" })} />
+      <Field k="folderGroup" d={DECLS.folderGroup} value={prefs.folderGroup} set={(v) => void setPrefs({ folderGroup: FOLDER_GROUPS.find((x) => x === v) ?? "none" })} />
       <Field k="folderLimit" d={DECLS.folderLimit} value={prefs.folderLimit}
         set={(v) => void setPrefs({ folderLimit: typeof v === "number" && v >= 0 ? Math.floor(v) : 0 })} />
       <SwitchRow s={switchOf("auto-reveal")} />

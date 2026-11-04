@@ -1,6 +1,7 @@
-// A folder's page (view:folder/<path>): a pinned folder's tile on a phone opens it, list and grid, into a subfolder and
-// back, a file opening, crumbs, a folder dropped on a pane, a file dropped on a subfolder, `vau open <folder>`.
-// WRITES "Qa folder", files.json's folderView and fileSort, a pin (all put back): throwaway server only.
+// A folder's page (view:folder/<path>): a pinned folder's tile on a phone opens it, list and grid, columns and gallery,
+// groups, its tab's menu, into a subfolder and back, a file opening, crumbs, a folder dropped on a pane, a file dropped
+// on a subfolder, `vau open <folder>`.
+// WRITES "Qa folder", files.json's folderView, folderGroup and fileSort, a pin (all put back): throwaway server only.
 //   node web/qa/folderpage.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
@@ -18,7 +19,7 @@ await api("POST", "file", { path: `${D}/Alpha.md`, text: "# Alpha\n\nThe first l
 await api("POST", "file", { path: `${D}/Beta.md`, text: "Beta's text.\n" })
 await fetch(`${B}api/upload?path=${encodeURIComponent(`${D}/Pic.png`)}`, { method: "POST", body: PNG })
 const filesBefore = await api("GET", "config/files")
-await api("PATCH", "config/files", { fileSort: "name", folderView: null, autoReveal: false })
+await api("PATCH", "config/files", { fileSort: "name", folderView: null, folderGroup: null, autoReveal: false })
 const pinsBefore = (await api("GET", "config/pages")).pinned ?? []
 await api("POST", "pins", { path: D, pinned: true })
 const hash = (p) => p.evaluate(() => decodeURIComponent(location.hash))
@@ -85,6 +86,39 @@ check("desktop: List from the page's header (its bar can fade)", await until(asy
 await W.screenshot({ path: `${OUT}desktop-list-dark.png` })
 await W.emulateMedia({ colorScheme: "light" }); await wait(300)
 await W.screenshot({ path: `${OUT}desktop-list.png` })
+check("desktop: no count under its name (the rows say it)", !/\bitems?\b/.test(await W.locator("[data-folder-page]:visible header").innerText()))
+
+// Columns: a column for each folder down to it; a file picked shows its preview, → goes into a folder, ← back out.
+await W.locator("[data-folder-page] header [data-folder-view=columns]:visible").click()
+check("desktop: Columns: the vault's top, then it", await until(async () => (await W.locator("[data-folder-column]:visible").evaluateAll((els) => els.map((e) => e.dataset.folderColumn))).join("|") === `|${D}`))
+await W.locator(`[data-folder-column="${D}"] [data-folder-item="${D}/Alpha.md"]`).click()
+check("desktop: Columns: a file picked shows its preview, the tab stays", await until(async () => (await W.locator(`[data-folder-preview="${D}/Alpha.md"]:visible`).count()) === 1) && (await shown(W)) === D)
+await W.screenshot({ path: `${OUT}desktop-columns.png` })
+await W.locator(`[data-folder-column="${D}"] [data-folder-item="${D}/Sub"]`).click()
+check("desktop: Columns: a folder picked shows its things beside it", await until(async () => (await W.locator(`[data-folder-column="${D}/Sub"]:visible`).count()) === 1))
+await W.keyboard.press("ArrowRight")
+check("desktop: Columns: → goes into it", await until(async () => (await shown(W)) === `${D}/Sub`), await hash(W))
+await W.keyboard.press("ArrowLeft")
+check("desktop: Columns: ← comes back out, it still picked", await until(async () => (await shown(W)) === D && (await W.locator(`[data-folder-column="${D}/Sub"]:visible`).count()) === 1), await hash(W))
+// Gallery: the picked thing large, ← → through the strip.
+await W.locator("[data-folder-page] header [data-folder-view=gallery]:visible").click()
+await W.locator(`[data-folder-strip] [data-folder-item="${D}/Pic.png"]`).click()
+check("desktop: Gallery: a thing picked in the strip is shown large", await until(async () => (await W.locator(`[data-folder-stage="${D}/Pic.png"]:visible`).count()) === 1))
+await W.keyboard.press("ArrowLeft")
+check("desktop: Gallery: ← shows the one before", await until(async () => (await W.locator(`[data-folder-stage="${D}/Beta.md"]:visible`).count()) === 1))
+await W.screenshot({ path: `${OUT}desktop-gallery.png` })
+// Group by Kind, from the page's Sort button: headings, folders first.
+await W.locator("[data-folder-page] header [data-folder-view=list]:visible").click()
+await W.locator("[data-folder-arrange]:visible").click()
+await W.locator("[role=menu] [role=menuitemradio]", { hasText: /^Kind$/ }).click()
+check("desktop: Group by Kind: headings", await until(async () => (await W.locator("[data-folder-page]:visible [data-folder-heading]").evaluateAll((els) => els.map((e) => e.dataset.folderHeading))).join() === "Folders,Notes,Images"))
+await api("PATCH", "config/files", { folderGroup: null })
+// Its tab's menu: how it shows, then the folder's own.
+await W.locator("[role=tab][aria-selected=true]").first().click({ button: "right" })
+const tabMenu = await until(async () => (await W.locator("[role=menu]").first().innerText()).split("\n"))
+check("desktop: its tab's menu: Show as, Sort by, Group by, then New note, Copy path, Reveal in file tree",
+  ["Show as", "Sort by", "Group by", "New note", "Copy path", "Reveal in file tree", "More folder actions"].every((l) => tabMenu?.includes(l)), tabMenu)
+await W.keyboard.press("Escape"); await wait(200)
 await W.locator(`[data-folder-item="${D}/Sub"] a`).click()
 check("desktop: a folder opens in the same tab", await until(async () => (await shown(W)) === `${D}/Sub`) && (await W.locator("[role=tab]").count()) === 1, await hash(W))
 await W.locator("nav[aria-label='Folder path'] button", { hasText: D }).click()
@@ -100,8 +134,8 @@ await W.locator(`[data-folder-item="${D}/Beta.md"] a`).click({ modifiers: [mod] 
 await W.locator(`[data-folder-item="${D}/Beta.md"] a`).click({ button: "right" })
 check("desktop: ⌘-click selects, the menu is for both", await until(async () => (await W.locator("[role=menu]").innerText()).includes("2 items selected")) && (await W.locator("[role=tab]").count()) === 1)
 await W.keyboard.press("Escape"); await W.keyboard.press("Escape"); await wait(200)
-// New folder from the bar's …: named in place.
-await W.locator("[data-view-bar]:visible [aria-label=More]").click()
+// New folder from the page's …: named in place.
+await W.locator("[data-folder-more]:visible").click()
 await W.locator("[role=menu] [role=menuitem]", { hasText: /^New folder$/ }).click()
 const field = W.locator("[data-folder-page]:visible input[aria-label='New name']")
 check("desktop: New folder: its name typed in place", await until(async () => (await field.count()) === 1))
@@ -172,6 +206,6 @@ await api("PATCH", "config/plugin/pages", { show: null })
 
 await fetch(`${B}api/file?path=${encodeURIComponent(D)}`, { method: "DELETE" })
 check("a folder gone says so", await until(async () => (await W.locator("[data-folder-gone]:visible").count()) === 1))
-await api("PATCH", "config/files", Object.fromEntries(["fileSort", "folderView", "autoReveal"].map((k) => [k, filesBefore[k] ?? null])))
+await api("PATCH", "config/files", Object.fromEntries(["fileSort", "folderView", "folderGroup", "autoReveal"].map((k) => [k, filesBefore[k] ?? null])))
 if (!pinsBefore.includes(D)) await api("POST", "pins", { path: D, pinned: false })
 await done()

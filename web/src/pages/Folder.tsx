@@ -1,57 +1,83 @@
-// A folder's page (view:folder/<path>, the Files plugin's): what it holds as a list or a grid (files.json `folderView`,
-// one for every folder), as Finder shows a folder and a phone's Files app. Its folders open in its tab, its files beside.
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react"
-import { ArrowUpNarrowWide, Ellipsis, FileInput, FilePlus, FolderInput, FolderOpen, FolderPlus, LayoutGrid, List, RotateCcw, Trash2 } from "lucide-react"
-import { dateText, fmtDay, getStore, iso, reload, useStore, vaultName, type Store } from "@/core/data"
-import { cleanName, createFolder, folderOf, folderTarget, freeName, inArchive, inTrash, joinPath, moveFile, nameable, openFile, openingSoon, restoreFile, stem } from "@/core/files"
+// A folder's page (view:folder/<path>, the Files plugin's): a grid, a list, columns or a gallery (files.json
+// `folderView`, every folder the same; a phone has the first two), as Finder. Folders open in its tab, files beside.
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent } from "react"
+import { ArrowUpDown, Columns3, Ellipsis, FileInput, FilePlus, FolderInput, FolderOpen, FolderPlus, GalleryHorizontalEnd, Group, LayoutGrid, List, RotateCcw, Trash2 } from "lucide-react"
+import { dateText, getStore, reload, useStore, vaultName, type Store } from "@/core/data"
+import { createFolder, folderTarget, freeName, inArchive, inTrash, openFile, openingSoon, restoreFile } from "@/core/files"
 import { edgeScroller, startDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { desktop, dropInto, hasFiles } from "@/core/desktop"
-import { get } from "@/core/http"
-import { kindOf } from "@/core/filekinds"
-import { snippet } from "@/core/plaintext"
-import { step } from "@/core/motion"
+import { kindOf, type FileKind } from "@/core/filekinds"
 import { notifyError } from "@/core/notify"
 import { usePane } from "@/core/pane"
-import { isMac, useDesktop } from "@/core/platform"
-import { getPrefs, setPrefs, usePrefs, type FolderView } from "@/core/prefs"
-import { listOrders, rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
-import { cell } from "@/core/signal"
+import { isDesktop, isMac, useDesktop } from "@/core/platform"
+import { getPrefs, setPrefs, usePrefs, type FolderGroup, type FolderView } from "@/core/prefs"
+import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
 import { openInSplit } from "@/core/splits"
 import { useVirtual } from "@/core/virtual"
-import { setFocusedPane, go, useFocusedFile } from "@/core/workspace"
+import { useFocusedFile } from "@/core/workspace"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
-import { fileMenu, filesMenu, folderMenu, grouped, openItem, remove } from "@/components/FileActions"
-import { rawUrl } from "@/components/FileViewers"
-import { askMove, canMoveInto, fixed, folderIcon, folderItems, iconAt, moveManyInto, newNote, SORTS, treeShownItems, type FolderItem } from "@/components/FileTree"
+import { copyPathItem, fileMenu, filesMenu, folderMenu, grouped, openFolderHereItem, openItem, remove } from "@/components/FileActions"
+import { askMove, canMoveInto, fixed, folderItems, moveManyInto, newNote, SORTS, treeShownItems, type FolderItem } from "@/components/FileTree"
 import { ROW, SidebarRow } from "@/components/Sidebar"
 import type { SwipeAction } from "@/components/SwipeRow"
-import { barButton } from "@/components/ViewBar"
 import { PageHeader } from "@/components/kit"
-import { cn, plural } from "@/lib/utils"
-
-/** The page's selection (core/select.ts), by path. */
-const SELECT = "folder"
-/** What's being named in place, in whichever folder page shows it (`fresh`: a folder just made, no Undo for it). */
-const naming = cell<{ path: string; fresh: boolean } | null>(null)
+import { cn } from "@/lib/utils"
+import { drawnRows, hrefOf, iconFor, metaOf, NameField, naming, SELECT, Tile, useEnter, useKept, usePreviews, type Kids } from "@/pages/FolderParts"
+import { Columns } from "@/pages/FolderColumns"
+import { Gallery } from "@/pages/FolderGallery"
 
 /** A folder's name as its tab says it; the vault's own for its top. */
 export const folderName = (path: string) => (path ? path.slice(path.lastIndexOf("/") + 1) : vaultName(getStore()))
 
-const VIEWS: { value: FolderView; label: string; icon: typeof List }[] = [{ value: "list", label: "List", icon: List }, { value: "grid", label: "Grid", icon: LayoutGrid }]
-const viewOf = (v: unknown): FolderView => (v === "grid" ? "grid" : "list")
+// ---------- how it shows: Show as, Sort by, Group by ----------
+
+type ViewOption = { value: FolderView; label: string; icon: typeof List }
+/** Finder's four, in its order; a phone has room for the first two (the Files app's). */
+const VIEWS: ViewOption[] = [
+  { value: "grid", label: "Grid", icon: LayoutGrid }, { value: "list", label: "List", icon: List },
+  { value: "columns", label: "Columns", icon: Columns3 }, { value: "gallery", label: "Gallery", icon: GalleryHorizontalEnd },
+]
+const viewsFor = (desk: boolean) => (desk ? VIEWS : VIEWS.slice(0, 2))
+const viewOf = (v: unknown): FolderView => VIEWS.find((o) => o.value === v)?.value ?? "list"
+/** The view drawn: on a phone, columns are a list and a gallery a grid (each the nearest it has room for). */
+const shownView = (v: unknown, desk: boolean): FolderView => {
+  const view = viewOf(v)
+  return desk ? view : view === "columns" ? "list" : view === "gallery" ? "grid" : view
+}
 const setView = (v: FolderView) => void setPrefs({ folderView: v })
 
-/** Show as ▸ List, Grid (every folder's page the same) and Sort by ▸ (the file tree's order): its tab's menu. */
-export function folderTabMenu(): MenuItem[] {
-  const v = viewOf(getPrefs().folderView)
-  return [
-    { label: "Show as", icon: v === "grid" ? LayoutGrid : List, run: () => {}, items: VIEWS.map((o) => ({ label: o.label, icon: o.icon, checked: v === o.value, run: () => setView(o.value) })) },
-    { label: "Sort by", icon: ArrowUpNarrowWide, run: () => {}, items: sortItems() },
-  ]
-}
+const GROUPS: { value: FolderGroup; label: string }[] = [{ value: "none", label: "None" }, { value: "kind", label: "Kind" }, { value: "modified", label: "Date modified" }]
+const groupOf = (v: unknown): FolderGroup => GROUPS.find((o) => o.value === v)?.value ?? "none"
+
 function sortItems(): MenuItem[] {
   const { fileSort } = getPrefs()
   return SORTS.flatMap((g, k) => g.map((o, i) => ({ label: o.label, checked: fileSort === o.value, sep: k > 0 && i === 0, run: () => void setPrefs({ fileSort: o.value }) })))
+}
+function groupItems(): MenuItem[] {
+  const by = groupOf(getPrefs().folderGroup)
+  return GROUPS.map((o) => ({ label: o.label, checked: by === o.value, run: () => void setPrefs({ folderGroup: o.value }) }))
+}
+/** Show as ▸, Sort by ▸, Group by ▸: how every folder's page shows (its tab's menu, its empty space's). */
+function viewMenuItems(): MenuItem[] {
+  const v = shownView(getPrefs().folderView, isDesktop())
+  const icon = VIEWS.find((o) => o.value === v)!.icon
+  return [
+    { label: "Show as", icon, run: () => {}, items: viewsFor(isDesktop()).map((o) => ({ label: o.label, icon: o.icon, checked: v === o.value, run: () => setView(o.value) })) },
+    { label: "Sort by", icon: ArrowUpDown, run: () => {}, items: sortItems() },
+    { label: "Group by", icon: Group, run: () => {}, items: groupItems() },
+  ]
+}
+/** The page's Sort button: the order, then the headings (Finder's Group by). */
+const arrangeItems = (): MenuItem[] => [
+  { label: "Sort by", caption: true, run: () => {} }, ...sortItems(),
+  { label: "Group by", caption: true, sep: true, run: () => {} }, ...groupItems(),
+]
+
+/** Its tab's menu: how it shows, then the folder's own, short (as a file's tab has it: the rest in More folder
+ *  actions ▸). */
+export function folderTabMenu(path: string): MenuItem[] {
+  const own = path ? folderMenu(path, { inside: true, short: true, newFolder: () => void newFolderIn(path) }) : rootItems()
+  return grouped([viewMenuItems(), own])
 }
 
 /** A folder made here, its name ready to type. */
@@ -60,26 +86,25 @@ async function newFolderIn(folder: string) {
   if (!s) return
   try { naming.set({ path: await createFolder(folder, freeName(s.files, folder, "New folder", "")), fresh: true }) } catch (e) { notifyError(e, "Couldn't make the folder") }
 }
+const newItems = (path: string): MenuItem[] => [{ label: "New note", icon: FilePlus, run: () => void newNote(path) }, { label: "New folder", icon: FolderPlus, run: () => void newFolderIn(path) }]
+/** The vault's top has no menu of its own: what can be made in it. */
+const rootItems = () => newItems("")
 
-/** The page's own menu (its bar's …, its empty space): a note or folder in it, the folder's menu, what the files show. */
+/** The page's … button: the folder's menu, then what the files show. */
 function pageMenu(path: string): MenuItem[] {
   const shown = treeShownItems({ reveal: false })
-  if (!path) return grouped([[{ label: "New note", icon: FilePlus, run: () => void newNote("") }, { label: "New folder", icon: FolderPlus, run: () => void newFolderIn("") }], shown])
-  return grouped([folderMenu(path, { open: false, newFolder: () => void newFolderIn(path) }), shown])
+  if (!path) return grouped([rootItems(), shown])
+  return grouped([folderMenu(path, { open: false, inside: true, newFolder: () => void newFolderIn(path) }), shown])
+}
+/** A right-click on its empty space, as Finder's: make something, how it shows, where it is. */
+function spaceMenu(path: string): MenuItem[] {
+  const locked = !!path && (fixed(path) || inTrash(path))
+  return grouped([locked ? [] : newItems(path), viewMenuItems(), path ? [copyPathItem(path, { folder: true }), ...openFolderHereItem(path)] : [], treeShownItems({ reveal: false })])
 }
 
-/** Go to another folder in this tab: a step in its history (on a phone the page moves as Back or Forward, `dir`). */
-function useEnter() {
-  const { pane: own } = usePane()
-  const desk = useDesktop()
-  return (folder: string, dir: -1 | 1, newTab = false) => {
-    const change = () => { if (own) setFocusedPane(own); go(folderTarget(folder), newTab) }
-    if (desk || newTab) change(); else step(dir, change)
-  }
-}
-
-/** The desktop bar's crumbs (the vault, then each folder down to this one) and its buttons: Sort, More. */
-export const folderBar = (path: string) => ({ title: <Crumbs path={path} />, right: <BarButtons path={path} /> })
+/** The desktop bar's crumbs: the vault, then each folder down to this one (its buttons are on the page, which shows
+ *  where the bar is faded away). */
+export const folderBar = (path: string) => ({ title: <Crumbs path={path} /> })
 
 function Crumbs({ path }: { path: string }) {
   useStore()
@@ -102,82 +127,79 @@ function Crumbs({ path }: { path: string }) {
   )
 }
 
-/** List or grid, on the page itself (where the bar can be faded away): Finder's two buttons; a phone's one, showing the
- *  other, as Files' does. One for every folder, Settings' Files too. */
-function ShowAs({ desk }: { desk: boolean }) {
-  const view = viewOf(usePrefs().folderView)
-  if (!desk) {
-    const next = VIEWS.find((o) => o.value !== view)!
-    return (
-      <button type="button" aria-label={`Show as ${next.label.toLowerCase()}`} data-folder-view={next.value} onClick={() => setView(next.value)}
-        className="relative mb-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-muted text-primary after:absolute after:-inset-1 active:opacity-60">
-        <next.icon className="size-[18px]" strokeWidth={2.25} />
-      </button>
-    )
-  }
+/** Finder's toolbar, on the page: the four views side by side, Sort (and group), More. One for every folder, Settings'
+ *  Files too. */
+function Toolbar({ path, view }: { path: string; view: FolderView }) {
+  const tool = "grid h-[26px] w-8 cursor-pointer place-items-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+  const grouped = groupOf(usePrefs().folderGroup) !== "none"
   return (
-    <div role="radiogroup" aria-label="Show as" className="mb-1 flex shrink-0 rounded-[7px] bg-foreground/[0.05] p-px">
-      {VIEWS.map((o) => (
-        <button key={o.value} type="button" role="radio" aria-checked={view === o.value} aria-label={o.label} data-tip={o.label} data-folder-view={o.value} onClick={() => setView(o.value)}
-          className={cn("grid h-6 w-7 cursor-pointer place-items-center rounded-[6px] transition-colors",
-            view === o.value ? "bg-card text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.12)] dark:bg-[var(--segment-on)]" : "text-muted-foreground hover:text-foreground")}>
-          <o.icon className="size-[15px]" strokeWidth={2} />
-        </button>
-      ))}
+    <div className="mb-1 flex shrink-0 items-center gap-1.5">
+      <div role="radiogroup" aria-label="Show as" className="flex rounded-[7px] bg-foreground/[0.05] p-px">
+        {VIEWS.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={view === o.value} aria-label={o.label} data-tip={o.label} data-folder-view={o.value} onClick={() => setView(o.value)}
+            className={cn("grid h-6 w-7 cursor-pointer place-items-center rounded-[6px] transition-colors",
+              view === o.value ? "bg-card text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.12)] dark:bg-[var(--segment-on)]" : "text-muted-foreground hover:text-foreground")}>
+            <o.icon className="size-[15px]" strokeWidth={2} />
+          </button>
+        ))}
+      </div>
+      <button type="button" aria-label="Sort and group" data-tip="Sort and group" data-folder-arrange onClick={(e) => menuBelow(e, arrangeItems())} className={cn(tool, grouped && "text-primary hover:text-primary")}>
+        <ArrowUpDown className="size-[15px]" strokeWidth={2} />
+      </button>
+      <button type="button" aria-label="More" data-tip="More" data-folder-more onClick={(e) => menuBelow(e, pageMenu(path))} className={tool}>
+        <Ellipsis className="size-4" strokeWidth={2} />
+      </button>
     </div>
   )
 }
 
-function BarButtons({ path }: { path: string }) {
+// ---------- headings (Group by) ----------
+
+type Section = { title: string; items: FolderItem[] }
+const KIND_HEADS: Record<FileKind, string> = {
+  markdown: "Notes", image: "Images", video: "Videos", audio: "Audio", pdf: "PDFs", code: "Code", json: "Code", notebook: "Code", binary: "Other", other: "Other",
+}
+const KIND_ORDER = ["Folders", "Notes", "Images", "Videos", "Audio", "PDFs", "Web pages", "Code", "Other"]
+const kindHead = (path: string) => (/\.html?$/i.test(path) ? "Web pages" : KIND_HEADS[kindOf(path)])
+const DAY = 86400_000
+/** A file's heading by when it changed, Finder's way, and its place (newest first). */
+function dateHead(ms: number, today: number, year: number): [number, string] {
+  const d = new Date(ms), days = Math.floor((today - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / DAY)
+  if (days <= 0) return [0, "Today"]
+  if (days === 1) return [1, "Yesterday"]
+  if (days < 7) return [2, "Previous 7 days"]
+  if (days < 30) return [3, "Previous 30 days"]
+  if (d.getFullYear() === year) return [100 - d.getMonth(), dateText(d, { month: "long" })]
+  return [1000 + year - d.getFullYear(), String(d.getFullYear())]
+}
+/** Its things under headings, in the sort's order within each (folders first, under their own); null: no headings. */
+function sectionsOf(items: FolderItem[], by: FolderGroup): Section[] | null {
+  if (by === "none") return null
+  const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const out = new Map<string, { at: number; items: FolderItem[] }>()
+  for (const n of items) {
+    const [at, title] = n.folder ? [-1, "Folders"] : by === "kind" ? [KIND_ORDER.indexOf(kindHead(n.path)), kindHead(n.path)] : dateHead(n.mtime, today, now.getFullYear())
+    const s = out.get(title) ?? out.set(title, { at, items: [] }).get(title)!
+    s.items.push(n)
+  }
+  return [...out].sort((a, b) => a[1].at - b[1].at).map(([title, s]) => ({ title, items: s.items }))
+}
+
+function Heading({ title, count, index, k, first }: { title: string; count: number; index: number; k: string; first: boolean }) {
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <button type="button" aria-label="Sort by" data-tip="Sort by" onClick={(e) => menuBelow(e, sortItems())} className={barButton}><ArrowUpNarrowWide className="size-4" strokeWidth={2} /></button>
-      <button type="button" aria-label="More" data-tip="More" onClick={(e) => menuBelow(e, pageMenu(path))} className={barButton}><Ellipsis className="size-4" strokeWidth={2} /></button>
+    <div data-vi={index} data-vk={k} data-folder-heading={title} className={cn("flex items-baseline gap-1.5 px-1.5 pb-1.5 text-[12px] font-semibold text-muted-foreground", first ? "pt-0" : "pt-4")}>
+      {title}<span className="font-normal text-tertiary tabular-nums">{count}</span>
     </div>
   )
 }
 
 // ---------- the page ----------
 
-const TIME = { hour: "numeric", minute: "2-digit" } as const
-/** When a file changed, Finder's way: a time today, else its day. */
-function whenText(ms: number) {
-  if (!ms) return ""
-  const d = new Date(ms)
-  return iso(d) === iso(new Date()) ? dateText(d, TIME) : fmtDay(iso(d))
-}
-const metaOf = (n: FolderItem, counts: Map<string, number>) => (n.folder ? (counts.get(n.path) ? plural(counts.get(n.path)!, "item") : "Empty") : whenText(n.mtime))
-
-/** A row's or card's name typed in place, back to the name on Escape. */
-function NameField({ n, className }: { n: FolderItem; className?: string }) {
-  const done = useRef(false)
-  const finish = (typed: string | null) => {
-    if (done.current) return
-    done.current = true
-    const was = naming.get()
-    naming.set(null)
-    if (typed !== null) void renameTo(n, typed, !!was?.fresh && was.path === n.path)
-  }
-  return (
-    <input autoFocus defaultValue={n.name} aria-label="New name" spellCheck={false} onFocus={(e) => e.target.select()}
-      onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-      onBlur={(e) => finish(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") finish(null) }}
-      className={cn("min-w-0 rounded-[4px] bg-card px-1 outline-none ring-1 ring-primary/60", className)} />
-  )
-}
-async function renameTo(n: FolderItem, typed: string, fresh: boolean) {
-  if (!nameable(typed)) return
-  const name = cleanName(typed)
-  if (!name || name === n.name) return
-  const ext = n.folder || n.other ? "" : n.path.slice(n.path.lastIndexOf("."))
-  try { await moveFile(n.path, joinPath(folderOf(n.path), name + ext), { undo: !fresh }) } catch (e) { notifyError(e, "Couldn't rename") }
-}
-
-/** A folder's page: its header, then what it holds as a list or a grid, or a calm line when it's empty or gone. */
+/** A folder's page: its header, then what it holds in its view, or a calm line when it's empty or gone. */
 export function FolderPage({ store, path }: { store: Store; path: string }) {
-  const { fileSort, showArchived, folderView } = usePrefs()
-  const view = viewOf(folderView)
+  const { fileSort, showArchived, folderView, folderGroup } = usePrefs()
   const desk = useDesktop()
+  const view = shownView(folderView, desk)
   const got = useMemo(() => folderItems(store.files, path, fileSort, showArchived), [store.files, path, fileSort, showArchived])
   // Files open beside it: in the pane of the file focused last when that's another pane (as the Files tab opens them).
   const { pane: own } = usePane()
@@ -187,11 +209,14 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
   const renaming = naming.use((r) => r?.path ?? null)
   const root = useRef<HTMLDivElement>(null)
 
-  const open = (n: FolderItem, e: MouseEvent) => {
-    if (selectClick(e, SELECT, n.path)) return
-    const newTab = e.metaKey || e.ctrlKey || e.button === 1
+  /** Open it: a folder in this tab, a file beside (⌘ or the middle button: in a new tab). */
+  const openIt = (n: FolderItem, newTab = false) => {
     if (n.folder) enter(n.path, 1, newTab)
     else openFile(n.path, { newTab, pane })
+  }
+  const open = (n: FolderItem, e: MouseEvent) => {
+    if (selectClick(e, SELECT, n.path)) return
+    openIt(n, e.metaKey || e.ctrlKey || e.button === 1)
   }
   const menuOf = (n: FolderItem) => rowMenu(SELECT, n.path, (): MenuItem[] => {
     if (inTrash(n.path)) return filesMenu([n.path])
@@ -252,29 +277,30 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
 
   if (!got) return <p data-folder-gone className="mt-2 text-[15px] text-muted-foreground">This folder isn't in the vault any more.</p>
   const { items, counts } = got
-  const count = items.length ? plural(items.length, "item") : ""
   const kids: Kids = { items, counts, open, menuOf, swipe, press, renaming, lit, desk }
+  const sections = view === "list" || view === "grid" ? sectionsOf(items, groupOf(folderGroup)) : null
+  const body = view === "columns" ? <Columns {...kids} files={store.files} folder={path} openIt={openIt} />
+    : !items.length ? <Empty path={path} desk={desk} />
+    : view === "gallery" ? <Gallery {...kids} folder={path} openIt={openIt} />
+    : view === "grid" ? <Grid {...kids} sections={sections} folder={path} /> : <Rows {...kids} sections={sections} />
   return (
-    <div ref={root} data-folder-page={path} data-file-drop {...computer}
-      onContextMenu={(e) => { if (!(e.target as Element).closest("[data-folder-item]")) menuFor(() => pageMenu(path))(e) }}
+    <div ref={root} data-folder-page={path} data-folder-shown={view} data-file-drop {...computer}
+      onContextMenu={(e) => { if (!(e.target as Element).closest("[data-folder-item]")) menuFor(() => spaceMenu(path))(e) }}
       className={cn("min-h-[60vh] rounded-[10px] transition-colors", fromComputer === path && "bg-primary/[0.06]")}>
-      {desk ? <PageHeader title={folderName(path)} subtitle={count}><ShowAs desk /></PageHeader> : <PhoneHead path={path} count={count} />}
-      {!items.length ? <Empty path={path} desk={desk} />
-        : view === "grid" ? <Grid {...kids} folder={path} /> : <Rows {...kids} />}
+      {desk ? <PageHeader title={folderName(path)} className={view === "columns" || view === "gallery" ? "mb-3" : undefined}><Toolbar path={path} view={view} /></PageHeader>
+        : <PhoneHead path={path} view={view} />}
+      {body}
     </div>
   )
 }
 
-type Kids = {
-  items: FolderItem[]; counts: Map<string, number>; open: (n: FolderItem, e: MouseEvent) => void; menuOf: (n: FolderItem) => () => MenuItem[]
-  swipe: (n: FolderItem) => SwipeAction[]; press: (e: PointerEvent<HTMLElement>, n: FolderItem) => void; renaming: string | null; lit: string | null; desk: boolean
-}
-
-/** Phones: under the title (the page's header draws it), the folders above as crumbs, and New note, as Files has. */
-function PhoneHead({ path, count }: { path: string; count: string }) {
+/** Phones: under the title (the page's header draws it), the folders above as crumbs, the other view, and New note, as
+ *  Files has. */
+function PhoneHead({ path, view }: { path: string; view: FolderView }) {
   const enter = useEnter()
   const parts = path ? path.split("/").slice(0, -1) : []
   const above = path ? [{ at: "", name: folderName("") }, ...parts.map((name, i) => ({ at: parts.slice(0, i + 1).join("/"), name }))] : []
+  const next = VIEWS.find((o) => o.value === (view === "grid" ? "list" : "grid"))!
   return (
     <div data-folder-head className="-mt-2 mb-3 flex items-end justify-between gap-3">
       <p className="min-w-0 pb-2 text-[15px] text-muted-foreground">
@@ -284,10 +310,12 @@ function PhoneHead({ path, count }: { path: string; count: string }) {
             <button type="button" onClick={() => enter(c.at, -1)} className="cursor-pointer text-primary active:opacity-60">{c.name}</button>
           </Fragment>
         ))}
-        {above.length && count ? <span className="whitespace-nowrap"> · {count}</span> : count}
       </p>
       <div className="flex shrink-0 items-center gap-2">
-        <ShowAs desk={false} />
+        <button type="button" aria-label={`Show as ${next.label.toLowerCase()}`} data-folder-view={next.value} onClick={() => setView(next.value)}
+          className="relative mb-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-muted text-primary after:absolute after:-inset-1 active:opacity-60">
+          <next.icon className="size-[18px]" strokeWidth={2.25} />
+        </button>
         <button type="button" onClick={() => void newNote(path)} aria-label="New note"
           className="mb-1 flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-muted px-3.5 text-[15px] font-medium text-primary active:opacity-60">
           <FilePlus className="size-[18px]" strokeWidth={2.25} />New note
@@ -307,49 +335,25 @@ function Empty({ path, desk }: { path: string; desk: boolean }) {
   )
 }
 
-/** A file's or folder's icon, as the tree draws it. */
-const iconFor = (n: FolderItem) => (n.folder ? folderIcon(n.path) : iconAt(n.path))
-const hrefOf = (n: FolderItem) => (n.folder ? `#view/${encodeURIComponent(folderTarget(n.path).slice(5))}` : `#file/${encodeURIComponent(n.path)}`)
-
-/** The rows the keyboard needs drawn wherever they're scrolled to: the one it's on and those beside it, the first and
- *  last. Its whole order is the selection's (core/select.ts). */
-function useKept(list: React.RefObject<HTMLDivElement | null>, keys: string[], all: string[]) {
-  const [focusKey, setFocusKey] = useState<string | null>(null)
-  useEffect(() => {
-    const el = list.current
-    if (!el) return
-    listOrders.set(el, () => all)
-    return () => { listOrders.delete(el) }
-  }, [list, all])
-  const i = focusKey === null ? -1 : keys.indexOf(focusKey)
-  const keep = [keys[0], keys[keys.length - 1], ...(i < 0 ? [] : [keys[i - 1], keys[i], keys[i + 1]])]
-  const onFocus = (e: React.FocusEvent) => setFocusKey((e.target as Element).closest<HTMLElement>("[data-vk]")?.dataset.vk ?? null)
-  return { keep, onFocus }
-}
-
-/** Spaces for the rows not drawn (core/virtual.ts), around those that are. */
-function drawnRows(v: ReturnType<typeof useVirtual>, row: (i: number) => ReactNode) {
-  const out: ReactNode[] = []
-  for (const { index, gap } of v.slots) {
-    if (gap > 0.5) out.push(<div key={`gap:${index}`} aria-hidden style={{ height: gap }} />)
-    out.push(row(index))
-  }
-  if (v.rest > 0.5) out.push(<div key="rest" aria-hidden style={{ height: v.rest }} />)
-  return out
-}
+/** A heading's key among the rows' (paths can't hold a NUL). */
+const headKey = (title: string) => `\0${title}`
 
 // ---------- as a list: the sidebar's rows, a size up ----------
 
-function Rows({ items, counts, open, menuOf, swipe, press, renaming, lit, desk }: Kids) {
+type Line = { head: Section } | { n: FolderItem }
+function Rows({ items, counts, open, menuOf, swipe, press, renaming, lit, desk, sections }: Kids & { sections: Section[] | null }) {
   const list = useRef<HTMLDivElement>(null)
-  const keys = useMemo(() => items.map((n) => n.path), [items])
-  const { keep, onFocus } = useKept(list, keys, keys)
+  const lines = useMemo<Line[]>(() => (sections ? sections.flatMap((s) => [{ head: s }, ...s.items.map((n) => ({ n }))]) : items.map((n) => ({ n }))), [items, sections])
+  const keys = useMemo(() => lines.map((l) => ("head" in l ? headKey(l.head.title) : l.n.path)), [lines])
+  const all = useMemo(() => lines.flatMap((l) => ("n" in l ? [l.n.path] : [])), [lines])
+  const { keep, onFocus } = useKept(list, keys, all)
   const v = useVirtual(list, keys, { estimate: desk ? 33 : 41, keep: [...keep, renaming] })
   return (
     <div ref={list} data-keylist data-select-list={SELECT} data-folder-list onFocus={onFocus} className="size-up-bleed">
       {drawnRows(v, (i) => {
-        const n = items[i]
-        return <Row key={n.path} n={n} index={i} meta={metaOf(n, counts)} open={open} menuOf={menuOf} swipe={swipe} press={press} renaming={renaming === n.path} lit={lit === n.path} />
+        const l = lines[i]
+        if ("head" in l) return <Heading key={keys[i]} k={keys[i]} index={i} title={l.head.title} count={l.head.items.length} first={i === 0} />
+        return <Row key={l.n.path} n={l.n} index={i} meta={metaOf(l.n, counts)} open={open} menuOf={menuOf} swipe={swipe} press={press} renaming={renaming === l.n.path} lit={lit === l.n.path} />
       })}
     </div>
   )
@@ -386,30 +390,8 @@ function Row({ n, index, meta, open, menuOf, swipe, press, renaming, lit }: { n:
 /** A card's narrowest (px) and the room between cards, on a computer and a phone (three across, as the Files app). */
 const CARD = { desk: { min: 136, gap: 12 }, phone: { min: 96, gap: 10 } }
 
-/** A note's text without a first heading that is its name: the card's name says it. */
-const untitled = (md: string, path: string) => md.replace(/^#{1,6}[ \t]+([^\n]*)\n*/, (all, h: string) => (snippet(h) === stem(path) ? "" : all))
-/** The start of each note in the folder (its text, never its Markdown), read once per change of its notes. */
-const previews = new Map<string, { sig: string; text: Record<string, string> }>()
-function usePreviews(folder: string, items: FolderItem[]) {
-  const sig = items.filter((n) => n.file).map((n) => `${n.path}\0${n.mtime}`).join("\n")
-  const [text, setText] = useState<Record<string, string>>(() => previews.get(folder)?.text ?? {})
-  useEffect(() => {
-    const had = previews.get(folder)
-    if (had?.sig === sig || !sig) { setText(had?.text ?? {}); return }
-    let on = true
-    get<{ previews: Record<string, string> }>(`files/previews?folder=${encodeURIComponent(folder)}`).then((r) => {
-      const t = Object.fromEntries(Object.entries(r.previews).map(([p, md]) => [p, snippet(untitled(md, p))]))
-      previews.delete(folder)
-      previews.set(folder, { sig, text: t })
-      if (previews.size > 30) previews.delete(previews.keys().next().value!)
-      if (on) setText(t)
-    }, () => {})
-    return () => { on = false }
-  }, [folder, sig])
-  return text
-}
-
-function Grid({ items, counts, open, menuOf, press, renaming, lit, desk, folder }: Kids & { folder: string }) {
+type Band = { head: Section } | { cards: FolderItem[] }
+function Grid({ items, counts, open, menuOf, press, renaming, lit, desk, folder, sections }: Kids & { folder: string; sections: Section[] | null }) {
   const list = useRef<HTMLDivElement>(null)
   const size = desk ? CARD.desk : CARD.phone
   const [cols, setCols] = useState(desk ? 5 : 3)
@@ -422,20 +404,27 @@ function Grid({ items, counts, open, menuOf, press, renaming, lit, desk, folder 
     fit()
     return () => ro.disconnect()
   }, [size.gap, size.min])
-  const rows = useMemo(() => Array.from({ length: Math.ceil(items.length / cols) }, (_, r) => items.slice(r * cols, r * cols + cols)), [items, cols])
-  const keys = useMemo(() => rows.map((r) => `${cols}\0${r[0].path}`), [rows, cols])
-  const all = useMemo(() => items.map((n) => n.path), [items])
+  const bands = useMemo<Band[]>(() => {
+    const rowsOf = (xs: FolderItem[]) => Array.from({ length: Math.ceil(xs.length / cols) }, (_, r) => ({ cards: xs.slice(r * cols, r * cols + cols) }))
+    return sections ? sections.flatMap((s) => [{ head: s }, ...rowsOf(s.items)]) : rowsOf(items)
+  }, [items, sections, cols])
+  const keys = useMemo(() => bands.map((b) => ("head" in b ? headKey(b.head.title) : `${cols}\0${b.cards[0].path}`)), [bands, cols])
+  const all = useMemo(() => bands.flatMap((b) => ("cards" in b ? b.cards.map((n) => n.path) : [])), [bands])
   const { keep, onFocus } = useKept(list, keys, all)
-  const at = renaming ? rows.findIndex((r) => r.some((n) => n.path === renaming)) : -1
+  const at = renaming ? bands.findIndex((b) => "cards" in b && b.cards.some((n) => n.path === renaming)) : -1
   const v = useVirtual(list, keys, { estimate: desk ? 196 : 150, keep: [...keep, at < 0 ? null : keys[at]] })
   const text = usePreviews(folder, items)
   return (
     <div ref={list} data-keylist data-select-list={SELECT} data-folder-grid onFocus={onFocus}>
-      {drawnRows(v, (r) => (
-        <div key={keys[r]} data-vi={r} data-vk={keys[r]} className="grid pb-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, columnGap: size.gap }}>
-          {rows[r].map((n) => <Card key={n.path} n={n} meta={metaOf(n, counts)} text={text[n.path]} open={open} menuOf={menuOf} press={press} renaming={renaming === n.path} lit={lit === n.path} desk={desk} />)}
-        </div>
-      ))}
+      {drawnRows(v, (r) => {
+        const b = bands[r]
+        if ("head" in b) return <Heading key={keys[r]} k={keys[r]} index={r} title={b.head.title} count={b.head.items.length} first={r === 0} />
+        return (
+          <div key={keys[r]} data-vi={r} data-vk={keys[r]} className="grid pb-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, columnGap: size.gap }}>
+            {b.cards.map((n) => <Card key={n.path} n={n} meta={metaOf(n, counts)} text={text[n.path]} open={open} menuOf={menuOf} press={press} renaming={renaming === n.path} lit={lit === n.path} desk={desk} />)}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -459,24 +448,4 @@ function Card({ n, meta, text, open, menuOf, press, renaming, lit, desk }: { n: 
       {meta && <span className={cn("-mt-1 truncate text-tertiary tabular-nums", desk ? "text-[11px]" : "text-[12px]")}>{meta}</span>}
     </Box>
   )
-}
-
-/** What a card shows of what it is: a folder's icon, an image's picture, a note's first lines, else its kind's icon. */
-function Tile({ n, text, desk }: { n: FolderItem; text?: string; desk: boolean }) {
-  const { icon: Icon, tint } = iconFor(n)
-  const [broken, setBroken] = useState(false)
-  const box = "relative grid aspect-[4/3] w-full place-items-center overflow-hidden rounded-[8px]"
-  const paper = "bg-card shadow-[0_1px_3px_rgb(0_0_0/0.08)] ring-[0.5px] ring-border"
-  if (n.folder) return <div className={box}><Icon className="size-[70%] fill-primary/15 text-primary" strokeWidth={1} style={tint ? { color: tint } : undefined} /></div>
-  if (kindOf(n.path) === "image" && !broken) {
-    return <div className={cn(box, paper)}><img src={rawUrl(n.path)} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setBroken(true)} className="size-full object-cover" /></div>
-  }
-  if (text) {
-    return (
-      <div className={cn(box, paper, "place-items-stretch")}>
-        <p className={cn("overflow-hidden text-left text-muted-foreground [mask-image:linear-gradient(to_bottom,black_70%,transparent)]", desk ? "p-2.5 text-[10px] leading-[14px]" : "p-2 text-[8px] leading-[11px]")}>{text}</p>
-      </div>
-    )
-  }
-  return <div className={cn(box, paper)}><Icon className={cn("size-[34%]", !tint && "text-muted-foreground")} strokeWidth={1.5} style={tint ? { color: tint } : undefined} /></div>
 }

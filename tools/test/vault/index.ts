@@ -24,6 +24,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "plugin-modules", deps: ["pages"] },
   { name: "moved", deps: ["pages"] },
   { name: "filetypes", deps: ["pages"] },
+  { name: "thumbs", deps: [] },
   { name: "live", deps: ["pages"] },
   { name: "devices", deps: ["pages"] },
   { name: "kept", deps: [] },

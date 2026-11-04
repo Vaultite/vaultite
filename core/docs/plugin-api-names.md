@@ -236,12 +236,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (its id) (the focused one by default): its editor or terminal, if it shows one.
 - `focusSidebar(side)`: Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree, else its first row.
 - `Foldable({ title, count, big, keep, dflt, children, … })`: Rows under a heading that folds them (a panel's sections).
-- `folderBar(path)`: The desktop bar's crumbs (the vault, then each folder down to this one) and its buttons: Sort, More.
+- `folderBar(path)`: The desktop bar's crumbs: the vault, then each folder down to this one (its buttons are on the page, which shows where the bar is faded away).
 - `folderMenu(folder, opts?)`: A folder's menu away from the tree (a pinned one, a folder's page): Open (`open` false: not), New, Rename (`rename`, where it's typed in place) and Move, the plugins' groups (but `skip`'s), its…
 - `folderName(path)`: A folder's name as its tab says it; the vault's own for its top.
 - `folderOf(path)`
-- `FolderPage({ store, path })`: A folder's page: its header, then what it holds as a list or a grid, or a calm line when it's empty or gone.
-- `folderTabMenu()`: Show as ▸ List, Grid (every folder's page the same) and Sort by ▸ (the file tree's order): its tab's menu.
+- `FolderPage({ store, path })`: A folder's page: its header, then what it holds in its view, or a calm line when it's empty or gone.
+- `folderTabMenu(path)`: Its tab's menu: how it shows, then the folder's own, short (as a file's tab has it: the rest in More folder actions ▸).
 - `foldGroup(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
 - `foldGroupMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or they grow out of it.
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).

@@ -26,6 +26,11 @@ export const rawUrl = (path: string, opts: { download?: boolean; v?: number } = 
   (!opts.download && !opts.v && localCopy(path)) ||
   `api/raw/${encodeURIComponent(path.split("/").pop()!)}?path=${encodeURIComponent(path)}${opts.download ? "&download=1" : !drawsHeic && /\.(heic|heif)$/i.test(path) ? "&as=jpeg" : ""}${opts.v ? `&v=${opts.v}` : ""}`
 
+/** The address of a picture of a file (core/thumbs.ts: a PDF's first page, a video's frame, a web page), its longer side
+ *  at most `px`; `v`, its modified time, makes a changed file a new address (the server lets browsers keep each). */
+export const thumbUrl = (path: string, px: number, v: number) =>
+  `api/raw/${encodeURIComponent(path.split("/").pop()!)}?path=${encodeURIComponent(path)}&thumb=${px}&v=${Math.round(v)}`
+
 /** Size, dates and a PDF's pages, read again when the file changes (`n` counts the changes); `missing` once it's gone. */
 export function useFileInfo(path: string) {
   const [info, setInfo] = useState<FileInfo | null>(null)

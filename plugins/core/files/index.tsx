@@ -9,7 +9,7 @@ export default definePlugin({
   views: {
     files: { icon: FolderClosed, title: () => "Files", tabMenu: () => treeShownItems(), render: ({ store }) => <FilesPage store={store} /> },
     // (pinned, it's the folder itself: Pinned's viewPin)
-    folder: { icon: Folder, title: folderName, pathArg: true, pinAs: () => null, tabMenu: () => folderTabMenu(),
+    folder: { icon: Folder, title: folderName, pathArg: true, pinAs: () => null, tabMenu: (arg) => folderTabMenu(arg),
       bar: ({ arg }) => folderBar(arg), render: ({ store, arg }) => <FolderPage key={arg} store={store} path={arg} /> },
   },
   settingsPanel: () => <FilesSettings />,

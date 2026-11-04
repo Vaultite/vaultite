@@ -66,8 +66,11 @@ else `Attachments`); `excluded`, files left out of search, the graph and unlinke
 switcher, still files you open (each a path they start with, `Archive/`, or a `/regex/`; unset: Obsidian's
 `userIgnoreFilters`; `[]` none); `samples`, folders of examples, not the user's data (`["Examples"]`): their files
 have no kind, and tasks, Dataview and query blocks leave them out unless the query is in a file in that folder;
-`folderView`, how a folder's page (a folder opened as a tab: `vau open <folder>`) shows what it holds, `list` (default)
-or `grid` (cards: a note's first lines, an image's picture), the same for every folder; it sorts by `fileSort`, the tree's.
+`folderView`, how a folder's page (a folder opened as a tab: `vau open <folder>`) shows what it holds, `list` (default),
+`grid` (cards: a note's first lines, a picture of anything else), `columns` (each folder down to it side by side, a
+preview of the picked file) or `gallery` (the picked thing large over a strip), the same for every folder (a phone shows
+columns as a list and a gallery as a grid); it sorts by `fileSort`, the tree's, and `folderGroup` puts a list or grid
+under headings: `none` (default), `kind` or `modified`.
 
 **Folders**, `.vaultite/folders.json`: where new files of a kind go, by its name in the API (`{"people": "Personal/People",
 "days": "Journal", "dashboards": "Pages"}`); one unset goes where most of that kind's files are (daily notes: Obsidian's

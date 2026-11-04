@@ -102,6 +102,10 @@ export const revealInFinder = (path: string) => openOnComputer(path, true)
 export const revealItem = (path: string, sep = false): MenuItem[] =>
   canReveal() ? [{ label: revealLabel, icon: FolderSearch, sep, run: () => revealInFinder(path) }] : []
 
+/** "Open in Finder" for the folder a page shows (its window, not its parent's), where it works. */
+export const openFolderHereItem = (folder: string): MenuItem[] =>
+  canReveal() ? [{ label: isMac ? "Open in Finder" : isWindows ? "Open in Explorer" : "Open in file manager", icon: FolderSearch, run: () => openOnComputer(folder) }] : []
+
 /** A file from outside the vault (desktop app) copied in, Markdown where new files go and the rest where attachments
  *  do, then shown instead of the outside one. */
 export async function copyToVault(abs: string) {
@@ -232,9 +236,21 @@ export const rowFileMenu = (path: string): MenuItem[] => fileMenu(path, { phone:
 
 /** A folder's menu away from the tree (a pinned one, a folder's page): Open (`open` false: not), New, Rename (`rename`, where
  *  it's typed in place) and Move, the plugins' groups (but `skip`'s), its path and Reveal in file tree, Archive, Delete. */
-export function folderMenu(folder: string, opts: { skip?: string; open?: boolean; pane?: string; rename?: () => void; newFolder?: () => void } = {}): MenuItem[] {
+export function folderMenu(folder: string, opts: { skip?: string; open?: boolean; pane?: string; rename?: () => void; newFolder?: () => void; inside?: boolean; short?: boolean } = {}): MenuItem[] {
   const locked = isProtected(folder) || inTrash(folder)
   const plug = pluginFileGroups(folder, opts.skip, true)
+  // `inside`: the folder a page shows, so Finder opens it rather than its parent
+  const computer = opts.inside ? openFolderHereItem(folder) : revealItem(folder)
+  const del: MenuItem[] = locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => remove(folder) }]
+  // `short` (its tab's, as a file's tab has it): making things in it and finding it, the rest in More folder actions ▸
+  if (opts.short) {
+    const more = grouped([locked ? [] : [{ label: "Move folder to…", icon: FolderInput, run: () => askMove(folder) }], plug.navigate, ...plug.rest, plug.more, [...plug.away, ...del]])
+    return grouped([
+      locked ? [] : [{ label: "New note", icon: FilePlus, run: () => void newNote(folder) }, ...(opts.newFolder ? [{ label: "New folder", icon: FolderPlus, run: opts.newFolder }] : [])],
+      [copyPathItem(folder, { folder: true }), ...(isPopout() ? [] : [{ label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(folder, { scroll: true, flash: true, open: true }) }]), ...computer,
+        ...(more.length ? [{ label: "More folder actions", icon: Ellipsis, run: () => {}, items: more }] : [])],
+    ])
+  }
   return grouped([
     opts.open === false || inTrash(folder) ? [] : [openFolderItem(folder, { pane: opts.pane })],
     locked ? [] : [{ label: "New note", icon: FilePlus, run: () => void newNote(folder) }, ...(opts.newFolder ? [{ label: "New folder", icon: FolderPlus, run: opts.newFolder }] : [])],
@@ -244,10 +260,10 @@ export function folderMenu(folder: string, opts: { skip?: string; open?: boolean
     [
       copyPathItem(folder, { folder: true }),
       { label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(folder, { scroll: true, flash: true, open: true }) },
-      ...revealItem(folder),
+      ...computer,
       ...moreItem(plug.more),
     ],
-    [...plug.away, ...(locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => remove(folder) }])],
+    [...plug.away, ...del],
   ])
 }
 

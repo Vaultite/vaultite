@@ -12,8 +12,8 @@ const KEEP_MS = 30 * 86400_000
 
 export const isHeic = (p: string) => /\.(heic|heif)$/i.test(p)
 
-const onPath = (name: string) =>
-  (process.env.PATH ?? "").split(path.delimiter).map((d) => path.join(d, name)).find((f) => fs.existsSync(f)) ?? null
+export const onPath = (name: string) =>
+  (process.env.PATH ?? "").split(path.delimiter).map((d) => path.join(d, process.platform === "win32" ? `${name}.exe` : name)).find((f) => fs.existsSync(f)) ?? null
 
 /** The command that writes `out` (a JPEG) from `src`, or null when this machine has none. */
 function converter(src: string, out: string): [string, string[]] | null {

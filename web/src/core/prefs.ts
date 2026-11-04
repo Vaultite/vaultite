@@ -22,7 +22,9 @@ type SidebarScroll = "panels" | "sidebar"
 /** How the file tree orders files (folders always come first, by name). */
 export type FileSort = "name" | "name-desc" | "modified" | "modified-old" | "created" | "created-old"
 /** How a folder's page shows what it holds (every folder the same). */
-export type FolderView = "list" | "grid"
+export type FolderView = "list" | "grid" | "columns" | "gallery"
+/** What a folder's page puts its things under headings by (every folder the same). */
+export type FolderGroup = "none" | "kind" | "modified"
 export type Prefs = {
   theme: Theme; scheme: Scheme; sidebar: boolean; disabled: string[]
   /** Compact (the default sizes) or comfortable (everything spaced out a little). */
@@ -95,6 +97,7 @@ export type Prefs = {
   pullActions: string[] | null
   fileSort: FileSort
   folderView: FolderView
+  folderGroup: FolderGroup
   /** Files a folder shows in the tree before a "Show N more" row (its folders always show); 0: all of them. */
   folderLimit: number
   /** Show the open file in the tree (open its folders, scroll to it) whenever it changes. */
@@ -118,11 +121,11 @@ export type Prefs = {
 
 const KEY = "vaultite.prefs"
 const DEFAULTS: Prefs = {
-  ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], ai: true, fileSort: "name", folderView: "list", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
+  ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], ai: true, fileSort: "name", folderView: "list", folderGroup: "none", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {
-  appearance: LOOK_KEYS, plugins: ["disabled", "enabled", "ai", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderView", "folderLimit", "autoReveal", "showHidden", "showArchived"],
+  appearance: LOOK_KEYS, plugins: ["disabled", "enabled", "ai", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderView", "folderGroup", "folderLimit", "autoReveal", "showHidden", "showArchived"],
 } as const
 type File = keyof typeof FILES
 /** Prefs that are a whole settings file each: .vaultite/sidebars.json is `sidebars` ({left, right}). */

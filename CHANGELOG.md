@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Folders as Finder shows them**: a folder's page shows as a grid, a list, columns (each folder down to it side by
+  side, a preview of the file picked) or a gallery (the picked thing large over a strip, ← → through it); a list or
+  grid can be grouped by kind or date modified. Every file has a picture: a PDF's first page, a video's frame, a web
+  page, small copies of photos so a folder of them opens fast (made by the server, kept). Its toolbar (view, Sort and
+  group, More) is on the page, its count gone from under its name, and its tab's menu has the folder's own: New note,
+  Copy path, Reveal in file tree, Open in Finder, More folder actions.
 - **Faster restarts, a quieter idle**: the server keeps what it read of the coding agents' transcripts, so a restart
   reads on instead of a month of them again (about 25 s of CPU on a busy Mac, now under 2); comment threads in notes
   that aren't open no longer wake every window every 1.5 s; typing in the quick switcher searches a big vault three
