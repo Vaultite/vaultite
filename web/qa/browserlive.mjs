@@ -118,7 +118,9 @@ const laptop = testServer({ stdio: ["ignore", "pipe", "pipe"],
 let fout = ""
 laptop.stdout.on("data", (d) => { fout += d })
 laptop.stderr.on("data", (d) => { fout += d })
-await until(() => /vaultite: vault read/.test(fout), 60000)
+// (its output, if it doesn't come up: CI's run once found nothing on its port, with no word why)
+check("(the other machine's server is up)", await until(() => /vaultite: vault read/.test(fout) || laptop.exitCode !== null, 60000) && laptop.exitCode === null,
+  { exit: laptop.exitCode, port: PORT + 1, out: fout.slice(-2000) })
 const listed = await until(async () => (await (await fetch(`${F}/api/web-viewer/tabs`)).json()).tabs?.find((t) => t.tab === TAB), 30000)
 check("another machine lists the owner's tab, named as the owner's", listed?.machine === "owner" && listed.machineLabel === "Owner" && listed.appTab === "", listed)
 await op("ask", { tab: TAB, reason: "Sign in, then Done" })
