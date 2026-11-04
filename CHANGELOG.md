@@ -133,7 +133,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Tabs hold panes**: a split is one tab (one row in the sidebar drawn as a small map of its split, panes side by side
   or stacked as they are; one chip in the tab bar) and clicking another
   tab switches it away whole; a file or link opens in the focused pane, and each pane keeps its own view (⌘E switches
-  only the focused one). ⌥-click a tab or drop it on a pane to take its
+  only the focused one; Vim's `:q` and Ctrl+W Q close the focused pane, the last one its tab). ⌥-click a tab or drop it on a pane to take its
   place, on an edge to split; drag a pane out to make it a tab, or hold it over a row to open that tab and drop it in.
   Phones show a split tab as one card and swipe between its panes. Pop-outs keep their tabs in the workspace. `vau tabs`
   lists tabs and their panes and splits, moves, swaps and focuses them; plugins follow `onTabsEvent` (plugin API 6:

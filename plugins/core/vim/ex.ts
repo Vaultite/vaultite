@@ -35,6 +35,9 @@ function command(arg: string) {
   if (!runCommandNamed(want)) notify(`No command ${want}`, { kind: "error" })
 }
 
+/** Vim's :q closes its window: the pane, or the tab with its last pane (pane:close is offered only beside others). */
+const quit = () => { if (!runCommandById("pane:close")) runCommandById("tab:close") }
+
 export type Ex = { name: string; short: string; usage: string; help: string; run: (arg: string, bang: boolean) => void }
 
 /** The : commands, by full name and the shortest prefix that names them (Vim's :e, :sp...). */
@@ -45,9 +48,9 @@ export const EX: Ex[] = [
   { name: "split", short: "sp", usage: ":sp [name]", help: "Split down, with a file", run: (a) => open(a, "down") },
   { name: "vsplit", short: "vs", usage: ":vs [name]", help: "Split right, with a file", run: (a) => open(a, "right") },
   { name: "new", short: "new", usage: ":new", help: "Create a new note", run: () => runCommandById("file:new") },
-  { name: "quit", short: "q", usage: ":q", help: "Close the tab", run: () => runCommandById("tab:close") },
-  { name: "wq", short: "wq", usage: ":wq", help: "Close the tab (files save as you type)", run: () => runCommandById("tab:close") },
-  { name: "xit", short: "x", usage: ":x", help: "Close the tab (files save as you type)", run: () => runCommandById("tab:close") },
+  { name: "quit", short: "q", usage: ":q", help: "Close the pane, or its tab", run: quit },
+  { name: "wq", short: "wq", usage: ":wq", help: "Close the pane, or its tab (files save as you type)", run: quit },
+  { name: "xit", short: "x", usage: ":x", help: "Close the pane, or its tab (files save as you type)", run: quit },
   { name: "write", short: "w", usage: ":w", help: "Nothing to do: files save as you type", run: () => {} },
   { name: "only", short: "on", usage: ":only", help: "Close the other tabs", run: () => runCommandById("tab:close-others") },
   { name: "bnext", short: "bn", usage: ":bn", help: "Go to the next tab", run: () => runCommandById("tab:next") },

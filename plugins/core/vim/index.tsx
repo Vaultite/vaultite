@@ -63,6 +63,8 @@ const LEADER: Record<string, string[]> = {
   "split:focus-bottom": ["Space W J"],
   "split:focus-top": ["Space W K"],
   "split:focus-right": ["Space W L"],
+  // (the window keys close the pane while it has others; the tab's binding takes them on its last)
+  "pane:close": ["Space W Q"],
   "tab:close": ["Space W Q"],
   "tab:close-others": ["Space W O"],
   "tab:new": ["Space W N"],
@@ -77,6 +79,7 @@ const LEADER: Record<string, string[]> = {
 }
 const VIMIUM: Record<string, string[]> = {
   "switcher:open": ["O"],
+  "pane:close": ["Ctrl+W Q", "Ctrl+W C"],
   "tab:close": ["X", "Ctrl+W Q", "Ctrl+W C"],
   "tab:next": ["G T"],
   "tab:previous": ["G Shift+T"],
