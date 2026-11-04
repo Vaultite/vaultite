@@ -55,7 +55,9 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
     const kids = [...(items?.parentElement?.children ?? [])]
     const view = kids.find((k) => k.getAttribute("aria-label") === "Read" || k.getAttribute("aria-label") === "Edit")
     // (Dispatch's buttons, when it's on, sit between it and the view button)
-    const a = chip.getBoundingClientRect(), b = (slot?.nextElementSibling ?? items?.nextElementSibling)?.getBoundingClientRect()
+    // (the next slot drawn: one whose item draws nothing for this file, Inbox item's, is hidden)
+    const after = (el) => { let n = el?.nextElementSibling; while (n && !n.offsetWidth) n = n.nextElementSibling; return n }
+    const a = chip.getBoundingClientRect(), b = (after(slot) ?? after(items))?.getBoundingClientRect()
     return { before: !!view && kids.indexOf(items) < kids.indexOf(view), gap: b ? Math.round(b.left - a.right) : null, mid: b ? Math.abs((a.top + a.height / 2) - (b.top + b.height / 2)) : null }
   })
   check("desktop: the label sits before the view button, centred with it, the next item close by", order.before && order.gap !== null && order.gap >= 0 && order.gap <= 12 && order.mid < 1, order)
