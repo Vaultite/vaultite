@@ -218,6 +218,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Keys two commands share always go to the same one**: ⌘⇧↩ in a split showing a note zooms the pane, as it did,
   instead of sometimes starting Claude Code on the note (Dispatch's keys too): which loaded last decided. The app's own
   come before a plugin's; Settings ▸ Hotkeys still marks the clash.
+- **A Browser page that fails at once stays under its warning**: a site with a bad certificate, refused or offline,
+  failing before its tab had placed the page, showed Chromium's blank error page over "Your connection isn't private".
 
 ## 0.9.0 (2026-11-03)
 

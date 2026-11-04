@@ -233,8 +233,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const el = box.current
     if (!id || !el || away) return
     let raf = 0, covered = false, gone = false, busy = false, again = false, hits: Cover = null
-    /** Where the page is now (null: hidden). */
-    let at: DOMRect | null = null
+    /** Where the page is now (null: hidden). Not known till this places it: `web:open` showed it where the box was. */
+    let at: DOMRect | null = null, known = false
     /** What to look at again (null: only where it is). */
     let dirty: Change = "hits"
     // The window is see-through only where the page is, in every frame (App windows make it transparent): the hole
@@ -245,6 +245,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       if (gone) return undefined
       const placed = await web.place(id, to && { x: to.left, y: to.top, width: to.width, height: to.height }).catch(() => undefined)
       at = placed?.shown === false ? null : to
+      known = true
       setOnScreen(id, !!at)
       if (!gone) setHole(id, el, at)
       return placed
@@ -265,7 +266,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       const mine = el.closest("[data-pane]")?.id === "main-scroll"
       if (covered && cover !== "app" && free && mine) void web.go(id, "focus")
       covered = cover === "app"
-      if (!show) { if (at) await move(null); return }
+      // (an error that came before its first step: the page web:open showed is hidden under it)
+      if (!show) { if (at || !known) await move(null); return }
       if (sameRect(at, r)) return
       const wasHidden = !at
       const placed = await move(r)
