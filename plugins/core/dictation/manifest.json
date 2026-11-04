@@ -5,7 +5,7 @@
   "essential": true,
   "desktopApp": true,
   "name": "Dictation",
-  "description": "Speak where the cursor is (a note, the Ask box, a chat, any app's field with fn): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. With nothing to type into, ⌘J opens the Ask box.",
+  "description": "Speak where the cursor is (a note, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. With nothing to type into, ⌘J opens the Ask box.",
   "settings": {
     "engine": {
       "type": "enum",
@@ -48,8 +48,16 @@
     "fn": {
       "type": "boolean",
       "default": true,
-      "label": "Dictate anywhere with fn",
-      "description": "on a Mac, the fn (globe) key dictates in any app, as ⌘J does here: a tap starts and the next stops, or hold it while you speak. With no text field, what you say is an ask to the companion about the window in front"
+      "label": "Dictate anywhere",
+      "description": "on a Mac, the dictation keys dictate in any app, as ⌘J does here. With no text field, what you say is an ask to the companion about the window in front"
+    },
+    "keys": {
+      "type": "list",
+      "values": ["fn", "right_option", "right_command", "double_control"],
+      "labels": { "fn": "fn", "right_option": "Right Option", "right_command": "Right Command", "double_control": "Double Control" },
+      "default": ["fn", "double_control"],
+      "label": "Dictation keys",
+      "description": "the keys that dictate, each alone, with no other key: fn and the right modifiers, a tap starts and the next stops, or hold while you speak; a double Control starts and the next stops"
     },
     "keep_audio": {
       "local": true,

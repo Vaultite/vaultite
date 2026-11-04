@@ -7,7 +7,7 @@ export default async ($: VaultTest) => {
   // The menu-bar helper (electron/helper.ts): fn as ⌘J, the overlay's scene, the screen plugin and the companion's
   // screen moments. Its native part (screen.swift) only answers here: no key is tapped, no app's tree is woken.
   {
-    const { fnKey, fnActsToo } = await import("../../../core/fnkey.ts")
+    const { fnKey, fnActsToo, controlActsToo, keyCodes, modKeys } = await import("../../../core/fnkey.ts")
     const k = fnKey(450)
     const tap = [k.down(0, false), k.up(100)], again = [k.down(1000, true), k.up(1100)], held = [k.down(2000, false), k.up(2600)]
     check("fn: a tap starts and leaves it listening, the next press stops; held, it stops when let go",
@@ -15,6 +15,55 @@ export default async ($: VaultTest) => {
     const combo = [k.down(3000, false), k.other(), k.up(3100)]
     check("fn: a key pressed with it (fn+arrow) cancels what its press started, and nothing else", combo.join() === "start,cancel," && fnKey().other() === null, combo)
     check("fn: macOS's globe key acts too unless it's set to Do nothing", fnActsToo(null) && fnActsToo("2") && !fnActsToo("0\n"))
+
+    const ALL = ["fn", "right_option", "right_command", "double_control"]
+    const CTRL = 59, ROPT = 61, RCMD = 54, LOPT = 58
+    type Step = { code?: number; on?: boolean; alone?: boolean; at?: number; other?: boolean }
+    const run = (steps: Step[], keys = ALL) => { const m = modKeys(keys); return steps.map((s) => m.heard(s)) }
+    const fired = (steps: Step[], keys = ALL) => run(steps, keys).filter((r) => r.twice).length
+    const press = (at: number, code = CTRL, long = 50): Step[] => [{ code, on: true, alone: true, at }, { code, on: false, alone: false, at: at + long }]
+    const two = [...press(0), ...press(150)]
+    const double = run(two).at(-1)!
+    check("double Control: two quick taps are one tap of fn, on the second's release",
+      double.twice === true && JSON.stringify(double.fn) === '[{"down":true},{"down":false}]' && run(two).slice(0, 3).every((r) => !r.fn.length), double)
+    check("double Control: either side, the two sides mixed too", fired([...press(0, 62), ...press(150, 62)]) === 1 && fired([...press(0, 59), ...press(150, 62)]) === 1)
+    check("double Control: a slow press isn't a tap, nor is a gap too long", fired([...press(0, CTRL, 500), ...press(600)]) === 0 && fired([...press(0), ...press(150, CTRL, 500)]) === 0 && fired([...press(0), ...press(1000)]) === 0)
+    check("double Control: a shortcut between isn't one, a key or another modifier", fired([...press(0), { other: true }, ...press(100)]) === 0 &&
+      fired([...press(0), { code: LOPT, on: true, alone: true, at: 70 }, { code: LOPT, on: false, at: 80 }, ...press(100)]) === 0 &&
+      fired([{ code: CTRL, on: true, alone: true, at: 0 }, { other: true }, { code: CTRL, on: false, at: 40 }, ...press(100)]) === 0)
+    check("double Control: with another modifier held, or both sides at once, it isn't one",
+      fired([{ code: CTRL, on: true, alone: false, at: 0 }, { code: CTRL, on: false, at: 40 }, ...press(100)]) === 0 &&
+      fired([{ code: 59, on: true, alone: true, at: 0 }, { code: 62, on: true, alone: false, at: 10 }, { code: 62, on: false, at: 20 }, { code: 59, on: false, at: 30 }, ...press(100)]) === 0)
+    check("double Control: a third tap does nothing, a fourth neither; after a pause it works again",
+      fired([...two, ...press(350)]) === 1 && fired([...two, ...press(350), ...press(600)]) === 1 && fired([...two, ...press(350), ...press(1500), ...press(1650)]) === 2)
+    check("double Control: held isn't a tap", fired([...press(0), { code: CTRL, on: true, alone: true, at: 150 }, { code: CTRL, on: false, at: 2000 }]) === 0)
+
+    const solo = (code: number) => { const m = modKeys(ALL); return { m, down: m.heard({ code, on: true, alone: true, at: 0 }), up: () => m.heard({ code, on: false, at: 100 }).fn } }
+    const quick = solo(ROPT), quickUp = quick.up()
+    check("right Option: it waits to see it's alone; let go first, it's a tap of fn", quick.down.wait === true && !quick.down.fn.length && JSON.stringify(quickUp) === '[{"down":true},{"down":false}]', quickUp)
+    const long = solo(RCMD), settled = long.m.settled(), heldUp = long.up()
+    check("right Command: still alone, it's fn down, then up when let go", JSON.stringify(settled) === '[{"down":true}]' && JSON.stringify(heldUp) === '[{"down":false}]', { settled, heldUp })
+    const chord = solo(ROPT), chordKey = chord.m.heard({ other: true }).fn, chordSettled = chord.m.settled(), chordUp = chord.up()
+    check("right Option + a key: nothing, it still types its accent", !chordKey.length && !chordSettled.length && !chordUp.length, { chordKey, chordSettled, chordUp })
+    const slow = solo(ROPT), slowDown = slow.m.settled(), slowKey = slow.m.heard({ other: true }).fn, slowUp = slow.up()
+    check("right Option + a key after it counted: that press is cancelled, as fn+key is", JSON.stringify(slowDown) === '[{"down":true}]' && JSON.stringify(slowKey) === '[{"other":true}]' && !slowUp.length, { slowKey, slowUp })
+    const left = modKeys(ALL), leftDown = left.heard({ code: LOPT, on: true, alone: true, at: 0 })
+    check("left Option: not a trigger", !leftDown.wait && !leftDown.fn.length && !left.settled().length && !left.heard({ code: LOPT, on: false, at: 100 }).fn.length)
+    const withShift = modKeys(ALL), shifted = withShift.heard({ code: RCMD, on: true, alone: false, at: 0 })
+    check("right Command with another modifier held: not a trigger", !shifted.wait && !withShift.settled().length && !withShift.heard({ code: RCMD, on: false, at: 100 }).fn.length)
+    const both = modKeys(ALL)
+    both.heard({ code: ROPT, on: true, alone: true, at: 0 })
+    const second = both.heard({ code: RCMD, on: true, alone: false, at: 20 })
+    check("right Option and Command together: neither", !second.wait && !both.settled().length && !both.heard({ code: ROPT, on: false, at: 50 }).fn.length && !both.heard({ code: RCMD, on: false, at: 60 }).fn.length)
+    const defaults = ["fn", "double_control"], off = modKeys(defaults), offDown = off.heard({ code: ROPT, on: true, alone: true, at: 0 })
+    check("a key not picked: not a trigger; double Control, unpicked, neither", !offDown.wait && !off.settled().length && !off.heard({ code: ROPT, on: false, at: 100 }).fn.length && fired(two, ["fn", "right_option"]) === 0 && fired(two, defaults) === 1)
+    check("the tap hears the picked keys' codes", keyCodes(ALL).join() === "63,61,54,59,62" && keyCodes(["nope"]).length === 0 && keyCodes([]).length === 0)
+
+    const hotKey = (type: string, modifiers: number, enabled = true) => JSON.stringify({ enabled, value: { type, parameters: [modifiers, modifiers] } })
+    check("macOS's dictation shortcut as Control twice: it acts too; anything else doesn't",
+      controlActsToo(hotKey("modifier", 0x40000), "1") && controlActsToo(hotKey("modifier", 0x40000), null) &&
+      !controlActsToo(hotKey("modifier", 0x100008), "1") && !controlActsToo(hotKey("standard", 0x140000), "1") && !controlActsToo(hotKey("modifier", 0x40000, false), "1") &&
+      !controlActsToo(hotKey("modifier", 0x40000), "0\n") && !controlActsToo(null, "1") && !controlActsToo("not json", "1"))
   }
   {
     const { joinText, replacer } = await import("../../../core/dictationtext.ts")
@@ -33,10 +82,10 @@ export default async ($: VaultTest) => {
   }
   {
     const { hunksOf, pointIn, prefsOf, sceneFor } = await import("../../../electron/helperlogic.ts")
-    const defaults = { dictation: { fn: { default: true } }, companion: { screen_cursor: { default: "dock" } }, screen: { private_apps: { default: ["1Password"] } } }
-    const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false }, { screen_cursor: "trail" }, { private_apps: [] }, defaults)
+    const defaults = { dictation: { fn: { default: true }, keys: { default: ["fn", "double_control"] } }, companion: { screen_cursor: { default: "dock" } }, screen: { private_apps: { default: ["1Password"] } } }
+    const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, { screen_cursor: "trail" }, { private_apps: [] }, defaults)
     check("helper: settings left out are the manifests' defaults; set ones win, an empty private list too",
-      none.fn && none.cursor === "dock" && none.privateApps.join() === "1Password" && !set.fn && set.cursor === "trail" && set.privateApps.length === 0, { none, set })
+      none.fn && none.keys.join() === "fn,double_control" && set.keys.join() === "right_option" && none.cursor === "dock" && none.privateApps.join() === "1Password" && !set.fn && set.cursor === "trail" && set.privateApps.length === 0, { none, set })
     check("helper: it points at an element by its left edge's middle, at a window by its title bar",
       JSON.stringify(pointIn({ x: 100, y: 200, width: 80, height: 20 }, true)) === '{"x":116,"y":210}' &&
       JSON.stringify(pointIn({ x: 0, y: 30, width: 800, height: 600 }, false)) === '{"x":400,"y":42}')

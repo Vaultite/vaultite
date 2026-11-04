@@ -1,10 +1,13 @@
 ## Dictation
 In the Mac desktop app, ⌘J (`dictation:start`) dictates where the cursor is: a note's editor, or a field (the Ask box, a
-chat's input); with neither, it opens the Ask box and dictates there. fn does the same in the window, and in any other
-app (`fn`, on by default): into its field, or with none an ask to the companion about the window in front. A tap starts and the next stops; held, it listens
-until it's let go. Words not settled yet show dimmed by the cursor, never in the file; at each pause they settle and are
-typed in as the user's own input (`userEvent` `input.dictation`), so the note only ever holds final text. Browsers and
-phones don't have it.
+chat's input); with neither, it opens the Ask box and dictates there. The dictation keys do the same in the window, and
+in any other app (`fn`, Dictate anywhere, on by default): into its field, or with none an ask to the companion about the
+window in front. `keys` picks them, each alone (default `fn`, `double_control`; also `right_option`, `right_command`;
+with another key it's only what it always was): a tap starts and the next stops; held, it listens until it's let go. A
+double Control only toggles (macOS's own Keyboard, Dictation, Shortcut as Control twice gets a notice to set it to Off).
+Words not settled yet show dimmed by the cursor, never in the file; at each pause they settle and are typed in as the
+user's own input (`userEvent` `input.dictation`), so the note only ever holds final text. Browsers and phones don't have
+it.
 - Settings (`.vaultite/plugins/dictation/data.json`): `engine` `auto` | `apple` | `parakeet`; `language` (Apple's,
   `pt-BR`; the Mac's when left out); `silence` (seconds without speech before a tapped dictation stops; 0, the default,
   never); `replacements`, lines of "said: written" (`at Claude: @claude`), whose said words the recognizer listens for;

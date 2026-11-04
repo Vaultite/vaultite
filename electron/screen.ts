@@ -3,6 +3,7 @@
 import { app } from "electron"
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { buildScreen, screenHelperName } from "./screen-build.ts"
 
@@ -86,5 +87,9 @@ export async function windowShot(window: number, dir: string): Promise<string | 
 }
 
 /** "Press 🌐 key to", as macOS has it (null: never set). */
-export const fnUsage = () => new Promise<string | null>((done) =>
-  execFile("/usr/bin/defaults", ["read", "com.apple.HIToolbox", "AppleFnUsageType"], { timeout: 5000 }, (e, out) => done(e ? null : String(out).trim())))
+const reading = (program: string, args: string[]) => new Promise<string | null>((done) =>
+  execFile(program, args, { timeout: 5000 }, (e, out) => done(e ? null : String(out).trim())))
+export const fnUsage = () => reading("/usr/bin/defaults", ["read", "com.apple.HIToolbox", "AppleFnUsageType"])
+/** macOS's dictation shortcut and whether dictation's on: core/fnkey.ts controlActsToo reads them. */
+export const dictationAuto = () => reading("/usr/bin/defaults", ["read", "com.apple.HIToolbox", "AppleDictationAutoEnable"])
+export const dictationHotKey = () => reading("/usr/bin/plutil", ["-extract", "AppleSymbolicHotKeys.164", "json", "-o", "-", path.join(os.homedir(), "Library/Preferences/com.apple.symbolichotkeys.plist")])

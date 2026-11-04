@@ -1,4 +1,4 @@
-// The screen helper (electron/screen.ts): the fn key, the app in front, and other apps' fields and text, through the
+// The screen helper (electron/screen.ts): the dictation keys, the app in front, and other apps' fields and text, through the
 // Accessibility API. JSON lines in and out; stdin closing ends it.
 import AppKit
 import ApplicationServices
@@ -35,14 +35,40 @@ func appInfo(_ pid: pid_t) -> [String: Any] {
   return ["bundle": a?.bundleIdentifier ?? "", "name": a?.localizedName ?? "", "pid": Int(pid)]
 }
 
-// ---------- fn: down and up, on its own thread (a slow request never holds the key)
+// ---------- the dictation keys: down and up, on its own thread (a slow request never holds the key)
+
+/** The dictation keys the helper asked for, by keycode: others aren't told. */
+let keysLock = NSLock()
+var watching = Set<Int64>()
+func watched(_ code: Int64) -> Bool { keysLock.lock(); defer { keysLock.unlock() }; return watching.contains(code) }
+
+let MODS: [Int64: CGEventFlags] = [59: .maskControl, 62: .maskControl, 61: .maskAlternate, 54: .maskCommand]
+/** The left key's own flag: held with the right one, that's not alone. */
+let LEFT: [Int64: UInt64] = [61: 0x20, 54: 0x08]
+let ANY_MOD: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand, .maskShift, .maskSecondaryFn]
+var modHeld = Set<Int64>(), modLive = false
+/** Control's and the right modifiers' presses as they are (core/fnkey.ts decides); what follows one says only that it came. */
+func tappedMod(_ type: CGEventType, _ e: CGEvent) {
+  let code = e.getIntegerValueField(.keyboardEventKeycode)
+  guard type == .flagsChanged, let own = MODS[code], watched(code) else {
+    if modLive { modLive = false; send(["event": "mod", "other": true]) }
+    return
+  }
+  // (the flag stays while the key's other side is down: a held key's next event is its release)
+  let on = e.flags.contains(own) && !modHeld.contains(code)
+  let alone = on && modHeld.isEmpty && e.flags.intersection(ANY_MOD).subtracting(own).isEmpty && e.flags.rawValue & (LEFT[code] ?? 0) == 0
+  if on { modHeld.insert(code) } else { modHeld.remove(code) }
+  modLive = true
+  send(["event": "mod", "code": code, "on": on, "alone": alone, "at": DispatchTime.now().uptimeNanoseconds / 1_000_000])
+}
 
 var fnDown = false, fnOther = false
 func tapped(_ type: CGEventType, _ e: CGEvent) {
+  tappedMod(type, e)
   if type == .flagsChanged {
     let on = e.flags.contains(.maskSecondaryFn)
     if e.getIntegerValueField(.keyboardEventKeycode) == 63 {
-      if on && !fnDown { fnDown = true; fnOther = false; send(["event": "fn", "down": true]) }
+      if on && !fnDown && watched(63) { fnDown = true; fnOther = false; send(["event": "fn", "down": true]) }
       else if !on && fnDown { fnDown = false; send(["event": "fn", "down": false]) }
     } else if fnDown && !fnOther { fnOther = true; send(["event": "fn", "other": true]) }
   } else if type == .keyDown && fnDown && !fnOther { fnOther = true; send(["event": "fn", "other": true]) }
@@ -50,7 +76,8 @@ func tapped(_ type: CGEventType, _ e: CGEvent) {
 var tap: CFMachPort?
 /** Started once asked (`fn`): only the menu-bar helper's app hears the key. */
 let tapThread = Thread {
-  let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue) | CGEventMask(1 << CGEventType.keyDown.rawValue)
+  // (a click too: Option-click or Control-click isn't a key alone)
+  let mask = [CGEventType.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown].reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) }
   let cb: CGEventTapCallBack = { _, type, e, _ in
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput { if let t = tap { CGEvent.tapEnable(tap: t, enable: true) } }
     else { tapped(type, e) }
@@ -278,6 +305,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
     let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: req["prompt"] as? Bool ?? false] as CFDictionary
     return ["trusted": AXIsProcessTrustedWithOptions(opts)]
   case "fn":
+    keysLock.lock(); watching = Set((req["keys"] as? [Int] ?? []).map { Int64($0) }); keysLock.unlock()
     if !tapThread.isExecuting && !tapThread.isFinished { tapThread.start() }
     return ["ok": true]
   case "focus": return focus()

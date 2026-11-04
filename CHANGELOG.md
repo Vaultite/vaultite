@@ -12,11 +12,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   (none found, Vaultite says it works fully without AI); only if you use them, Accessibility and Screen recording, each
   one drag; then learn ⌘O by pressing it. Skip or Esc ends it at any page; Show welcome in the palette brings it back. A
   new vault on the web gets the same card; on a phone it starts on Standard. Setup's welcome page is gone.
-- **Mac: Vaultite stays in the menu bar with no window open**: the companion goes on, and fn dictates in any app (a tap
-  starts and the next stops, or hold it), with a pill of bars that follow your voice there and in the window. With no
-  text field, what you say asks the companion about the window in front. Its cursor shows over the whole screen
-  (waiting at the edge, or by the pointer), and dropped on another app's window it looks at it and follows it.
-  Password managers and money apps are private by default (Screen's settings). Quit is in the menu bar.
+- **Mac: Vaultite stays in the menu bar with no window open**: the companion goes on, and the dictation keys you pick
+  (fn, right Option, right Command, double Control) dictate in any app (a tap starts and the next stops, or hold it),
+  with a pill of bars that follow your voice there and in the window. With no text field, what you say asks the
+  companion about the window in front. Its cursor shows over the whole screen (waiting at the edge, or by the pointer),
+  and dropped on another app's window it looks at it and follows it. Password managers and money apps are private by
+  default (Screen's settings). Quit is in the menu bar.
 - **The companion follows any pane and points at the app**: drop its cursor on a terminal, a web page, a tab or a panel
   to have it look and keep following (a terminal at a command's end, a page as it changes; a tab's or a group's row in the
   sidebar: all its panes, the row showing an eye that stops it); it points at, highlights and

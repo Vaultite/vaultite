@@ -6,18 +6,18 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
-import { fnActsToo, fnKey, type FnAction } from "../core/fnkey.ts"
+import { ALONE_MS, controlActsToo, fnActsToo, fnKey, keyCodes, modKeys, type FnAction, type FnEvent, type ModEvent } from "../core/fnkey.ts"
 import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
 import { hunksOf, pointIn, prefsOf, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
 import { overlayActs, showOverlay } from "./overlay.ts"
-import { fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
+import { dictationAuto, dictationHotKey, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
-/** This Mac's say (vaults.json): open at login, and the fn notice shown. */
-export type HelperPrefs = { login?: boolean; fnNotice?: boolean }
+/** This Mac's say (vaults.json): open at login, and the notices about macOS acting too, shown. */
+export type HelperPrefs = { login?: boolean; fnNotice?: boolean; controlNotice?: boolean }
 export type HelperHost = {
   home: () => Home | null
   /** Open (or bring forward) the home vault's window; none known: the vaults list. */
@@ -76,7 +76,7 @@ export async function startHelper(h: HelperHost) {
   if (!QUIET) await startScreen().catch((e) => console.error("vaultite: the screen helper didn't start:", e))
   // (a copy a script drives (web/qa/helper.mjs) shows nothing in the menu bar and never hears the user's fn)
   if (!QUIET) {
-    void screenAsk("fn")
+    void listen()
     const icon = nativeImage.createFromPath(h.icon)
     icon.setTemplateImage(true)
     tray = new Tray(icon)
@@ -109,7 +109,7 @@ function menu() {
   return Menu.buildFromTemplate([
     { label: home ? `Open ${home.name}` : `Open ${app.getName()}`, click: () => h.openHome() },
     { type: "separator" },
-    { label: "Dictate anywhere with fn", type: "checkbox", checked: prefs.fn, enabled: !!home, click: setting("plugin/dictation", { fn: !prefs.fn }) },
+    { label: "Dictate anywhere", type: "checkbox", checked: prefs.fn, enabled: !!home, click: setting("plugin/dictation", { fn: !prefs.fn }) },
     { label: "Companion's cursor outside Vaultite", enabled: !!home, submenu: [
       { label: "Docked at the screen's edge", type: "radio", checked: prefs.cursor === "dock", click: setting("plugin/companion", { screen_cursor: null }) },
       { label: "Following the pointer", type: "radio", checked: prefs.cursor === "trail", click: setting("plugin/companion", { screen_cursor: "trail" }) },
@@ -132,7 +132,7 @@ const manifest = (id: string) => {
 }
 const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("companion"), screen: manifest("screen") }
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
-let prefs: Prefs = { fn: true, cursor: "dock", privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {} }
+let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], cursor: "dock", privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {} }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -154,6 +154,7 @@ async function refresh() {
   const get = (name: string) => op("settings.get", { name }).catch(() => ({}))
   const [d, c, s] = await Promise.all([get("plugin/dictation"), get("plugin/companion"), get("plugin/screen")])
   prefs = prefsOf(d, c, s, DEFAULTS)
+  followKeys()
   draw()
 }
 
@@ -199,27 +200,28 @@ let front: AppWindowInfo | null = null
 const hidden = (a: { bundle?: string; name?: string } | null) => !!a && privateApp(a, prefs.privateApps)
 
 function heard(m: Record<string, unknown>) {
-  if (m.event === "fn") return fnHeard(m)
+  if (m.event === "fn") return prefs.keys.includes("fn") ? fnHeard(m) : undefined
+  if (m.event === "mod") return modHeard(m)
   if (m.event === "front") {
     front = m as unknown as AppWindowInfo
     host?.event("screen:front", hidden(front) ? { bundle: front.bundle, name: front.name, private: true } : { bundle: front.bundle, name: front.name, title: front.title, window: front.window, vaultite: !!front.vaultite })
     return draw()
   }
-  if (m.event === "tap" && m.ok === false) notice("tap", "fn needs Vaultite in Accessibility", "Allow it in System Settings, Privacy & Security, Accessibility, then press fn again.",
+  if (m.event === "tap" && m.ok === false) notice("tap", "Dictation keys need Vaultite in Accessibility", "Allow it in System Settings, Privacy & Security, Accessibility, then press one again.",
     "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility")
-  if (m.event === "exit" && host) setTimeout(() => { if (host) void startScreen().then(() => screenAsk("fn")).catch(() => {}) }, 2000)
+  if (m.event === "exit" && host) setTimeout(() => { if (host) void startScreen().then(listen).catch(() => {}) }, 2000)
 }
 
 const said = new Set<string>()
-/** A notice once a launch (`once`: once ever, kept in vaults.json); a click opens `link`. */
-function notice(key: string, title: string, body: string, link?: string, once = false) {
+/** A notice once a launch (`once`: once ever, kept in vaults.json under that name); a click opens `link`. */
+function notice(key: string, title: string, body: string, link?: string, once?: "fnNotice" | "controlNotice") {
   if (QUIET) return void asked.push({ notice: key })
   if (said.has(key) || !Notification.isSupported()) return
   said.add(key)
   const n = new Notification({ title, body, silent: true })
   if (link) n.on("click", () => void shell.openExternal(link))
   n.show()
-  if (once) host?.setPrefs({ fnNotice: true })
+  if (once) host?.setPrefs({ [once]: true })
 }
 
 // ---------- fn: dictation anywhere
@@ -232,7 +234,28 @@ let session: Session | null = null
 /** The window's page that has this press (fn there is its ⌘J), till it's let go. */
 let page: WebContents | null = null
 
-function fnHeard(m: Record<string, unknown>) {
+/** The screen helper's tap hears the picked keys only (none while Dictate anywhere is off). */
+const heardKeys = () => (prefs.fn ? prefs.keys : [])
+const listen = () => screenAsk("fn", { keys: keyCodes(heardKeys()) })
+let mods = modKeys(heardKeys()), followed = heardKeys().join()
+function followKeys() {
+  if (heardKeys().join() === followed) return
+  followed = heardKeys().join()
+  mods = modKeys(heardKeys())
+  void listen().catch(() => {})
+}
+
+let settling: ReturnType<typeof setTimeout> | null = null
+const asFn = (events: FnEvent[]) => { for (const e of events) fnHeard(e, false) }
+function modHeard(m: Record<string, unknown>) {
+  const r = mods.heard(m as ModEvent)
+  if (settling) clearTimeout(settling)
+  settling = r.wait ? setTimeout(() => { settling = null; asFn(mods.settled()) }, ALONE_MS) : null
+  asFn(r.fn)
+  if (r.twice) void firstTwice()
+}
+
+function fnHeard(m: Record<string, unknown>, byFn = true) {
   if (!prefs.fn || !host?.home()) return
   const to = page && !page.isDestroyed() ? page : null
   if (m.other === true) { if (to) to.send("vaultite:fn", { other: true }); else act(key.other()) ; return }
@@ -240,7 +263,7 @@ function fnHeard(m: Record<string, unknown>) {
     if (!session) page = host.focusedPage()
     if (page && !session) return void page.send("vaultite:fn", { down: true })
     page = null
-    void firstUse()
+    if (byFn) void firstUse()
     return act(key.down(Date.now(), !!session || starting))
   }
   if (to) { to.send("vaultite:fn", { down: false }); return }
@@ -253,7 +276,16 @@ async function firstUse() {
   if (checkedFn || host?.prefs().fnNotice) return
   checkedFn = true
   if (fnActsToo(await fnUsage())) notice("fn-usage", "macOS acts on fn too", "In System Settings, Keyboard, set \"Press globe key to\" to \"Do nothing\".",
-    "x-apple.systempreferences:com.apple.Keyboard-Settings.extension", true)
+    "x-apple.systempreferences:com.apple.Keyboard-Settings.extension", "fnNotice")
+}
+
+let checkedControl = false
+/** The first double Control: macOS's own Control-twice shortcut would start its dictation too: say how to stop it, once. */
+async function firstTwice() {
+  if (checkedControl || !prefs.fn || !host?.home() || host.prefs().controlNotice) return
+  checkedControl = true
+  if (controlActsToo(await dictationHotKey(), await dictationAuto())) notice("control-usage", "macOS dictates on double Control too", "In System Settings, Keyboard, Dictation, set Shortcut to Off.",
+    "x-apple.systempreferences:com.apple.Keyboard-Settings.extension", "controlNotice")
 }
 
 /** A session on its way (the field asked for, the recognizer starting): a release meanwhile waits for it. */
