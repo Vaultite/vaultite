@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **A tab moved to another container loads only its page there**: its earlier page no longer starts loading in the new
   container on the way, which on Linux could leave an extension's redirect there (a site blocker's) undone.
+- **A click as a note opens stays where it went**: clicking a table's cell or a line while the note was still coming
+  back to its place no longer has the cursor jump back to where it was left a moment later.
 - **Faster first load on a phone**: the app's code comes in about a dozen files instead of over a hundred, the vault
   arrives while it loads, and its files are compressed smaller; after an update the new version is fetched in the
   background, so the next launch doesn't wait for it. On 4G through the tailnet the first screen draws in half the time.

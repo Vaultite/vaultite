@@ -639,8 +639,11 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
         if (a && a !== document.body && typingIn(a) && !article.current?.contains(a)) return
         let stopFocus: (() => void) | undefined
         if (tookLine.current) return
-        const unwait = afterPlaced(`file:${path}`, () => { if (!tookLine.current) stopFocus = focusText(cursorOf(path)) })
-        stop = putBack.current = () => { unwait(); stopFocus?.() }
+        // (a click while the place is still being found put the keyboard where the user wanted it: a table's cell, a line)
+        const press = () => stop?.()
+        addEventListener("pointerdown", press, true)
+        const unwait = afterPlaced(`file:${path}`, () => { removeEventListener("pointerdown", press, true); if (!tookLine.current) stopFocus = focusText(cursorOf(path)) })
+        stop = putBack.current = () => { removeEventListener("pointerdown", press, true); unwait(); stopFocus?.() }
       })
     })
     return () => { cancelAnimationFrame(frame); stop?.() }
