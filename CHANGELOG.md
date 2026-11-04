@@ -15,13 +15,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   background, so the next launch doesn't wait for it. On 4G through the tailnet the first screen draws in half the time.
   The iPhone app's server list, shown at every launch, and the desktop app's Manage vaults window load a fifth of the
   code they did.
-- **Splits and swipes on the phone**: a split tab's panes sit side by side, the next one coming in with the finger from the first
-  pixels; let go past halfway or flick and it settles in on a spring at the finger's speed, past the ends it gives, a
-  finger down mid-settle catches it, and vertical scrolls stay scrolls. In the tab list a split's card shows its
-  panes (tap one to show it), its panes open as a page of cards (drag one onto another to swap, swipe or X to close,
-  + for a new pane), and tab menus have Open in split, Swap panes, Separate panes and Move to new tab. Swiping
-  between workspaces there settles the same way. The bottom bar swiped sideways goes to the tab either side, as
-  Safari's, and while either swipe goes the header's name and dots follow the finger.
+- **Splits and swipes on the phone**: a split tab's panes sit side by side, the next one coming in with the finger from
+  the first pixels; let go past halfway or flick and it settles in on a spring at the finger's speed, past the ends it
+  gives, a finger down mid-settle catches it (on the pane coming in too), and vertical scrolls stay scrolls. In the tab
+  list a split's card shows its panes (tap one to show it), its panes open as a page of cards (drag one onto another to
+  swap, swipe or X to close, + for a new pane), and tab menus have Open in split, Swap panes, Separate panes and Move to
+  new tab. Swiping between workspaces there settles the same way. The bottom bar swiped sideways goes to the tab either
+  side, as Safari's, and while either swipe goes the header's name and dots follow the finger.
 - **Reopen closed tab brings back what closed, as it was**: what closed together comes back with one ⌘⇧T (Close
   others, a tab group with its name and colour, a pop-out window, all the tabs), each tab in its place; a split's pane
   goes back where it sat at its size, floating or zoomed as it was. Tabs a layout or another device takes away that

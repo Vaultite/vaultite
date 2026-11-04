@@ -288,10 +288,12 @@ export function swipeSideways() {
     heard.addEventListener("touchend", end, { passive: true })
     heard.addEventListener("touchcancel", end, { passive: true })
   }
-  // The bar (touch-action none: it never scrolls) is heard on the window; not with its menu or a sheet up.
+  // The bar (touch-action none: it never scrolls) is heard on the window; not with its menu or a sheet up. So is a
+  // finger catching a settle where the page isn't heard: the pane coming in takes no pointer, so it's #main-scroll's.
   const onBar = (e: TouchEvent) => {
-    const bar = (e.target as Element | null)?.closest?.("[data-phone-bar]")
+    const el = e.target as Element | null, bar = el?.closest?.("[data-phone-bar]")
     if (bar && (flight || !document.querySelector("dialog[open], #bar-menu"))) start(e, "tabs")
+    else if (flight && el && m?.parentElement?.contains(el) && !heard?.contains(el) && !el.closest("[data-phone-header]")) start(e, kind, true)
   }
   const barMove = (e: TouchEvent) => { if (g?.bar) move(e, false) }
   const barEnd = (e: TouchEvent) => { if (g?.bar) end(e) }
