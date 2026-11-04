@@ -125,7 +125,8 @@ const sheetText = () => app.evaluate(({ BrowserWindow }) => {
 /** Answer it: the fields' values, typed, then its button. */
 const answerSheet = (values) => app.evaluate(({ BrowserWindow }, values) => {
   const s = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().startsWith("data:text/html"))
-  return s.webContents.executeJavaScript(`(() => { for (const [k, v] of Object.entries(${JSON.stringify(values)})) document.getElementById(k).value = v; document.querySelector("form").requestSubmit() })()`)
+  // (submitted once this call has returned: the answer closes the sheet, and a call whose page closes under it never ends)
+  return s.webContents.executeJavaScript(`(() => { for (const [k, v] of Object.entries(${JSON.stringify(values)})) document.getElementById(k).value = v; setTimeout(() => document.querySelector("form").requestSubmit(), 50) })()`)
 }, values)
 const open = async (p) => {
   await ui({ action: "open", path: at(p), newTab: true })
