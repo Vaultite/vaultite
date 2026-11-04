@@ -1,5 +1,5 @@
 // The Inbox by keyboard, Gmail's keys: J and K move along its rows, E marks one done (the keyboard goes on to the next),
-// B snoozes, P pins, the same in a session's sheet (J and K to the next and previous one), Shift+U and Shift+I unread and read, G I opens it. WRITES Inbox/ and the inbox's events: throwaway server only.
+// B snoozes, P pins, the same in a session's sheet (J and K to the next and previous one, E on to the next), Shift+U and Shift+I unread and read, G I opens it. WRITES Inbox/ and the inbox's events: throwaway server only.
 //   node web/qa/inboxkeys.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
@@ -70,7 +70,7 @@ check("Shift+I reads it", !!(await until(async () => (await api("GET", "inbox/ev
 await page.keyboard.press("Shift+U")
 check("Shift+U unreads it", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === ask.id)?.read === false)))
 
-// In a session's sheet: J and K go to the next or previous session's, P pins it, E marks it done and closes it.
+// In a session's sheet: J and K go to the next or previous session's, P pins it, E marks it done and goes on to the next (the last one's closes).
 const hook = (name, text) => api("POST", `inbox/hook?agent=claude&terminal=qk${name}${Date.now().toString(36)}`, { hook_event_name: "Stop", cwd: `/tmp/${name}`, last_assistant_message: text })
 await hook("harbor", "Which port should the server use, 8080 or 9090?")
 await hook("lighthouse", "Should I bump the version to 0.6.1 or retag 0.6.0?")
@@ -96,8 +96,14 @@ check("and then a letter is typed, not a key", (await page.locator("[data-sessio
 await page.locator("[data-session-sheet] textarea[data-reply]").fill("")
 await page.evaluate(() => document.activeElement?.blur())
 await page.keyboard.press("e")
-check("E marks it done and closes the sheet", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === sessions[0].id)?.state === "done")) &&
-  !!(await until(async () => ((await sheet()) === null ? true : null))))
+// (settled in its sheet, a session goes on to the next one's, as Mail does: the last one's closes, e9482a68)
+const settled = (id) => until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === id)?.state === "done")
+check("E marks it done and goes on to the next session's sheet", !!(await settled(sessions[0].id)) &&
+  (await until(async () => ((await sheet()) === sessions[1].id ? true : null))) === true, await sheet())
+await wait(400)
+await page.keyboard.press("e")
+check("...E on the last one: done, and the sheet closes", !!(await settled(sessions[1].id)) &&
+  !!(await until(async () => ((await sheet()) === null ? true : null))), await sheet())
 
 // Typing elsewhere, the keys are letters: a note's editor gets its J.
 await page.goto(`${B}#file/Start%20here.md`)
