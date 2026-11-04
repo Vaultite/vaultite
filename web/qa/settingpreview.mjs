@@ -45,6 +45,8 @@ const loops = (page) => page.evaluate(() => document.querySelector("[data-settin
 await setLook({ fileIcons: true, fileBarFade: "off" })
 {
   const page = await open()
+  // (both rows on screen before the first hover: scrolling to the second would close the card)
+  await row(page, "pane-cards").scrollIntoViewIfNeeded()
   await hover(page, "file-icons"); await wait(150)
   check("hover: nothing at once (an intent delay)", (await shown(page)) === 0)
   await until(() => shown(page), 1500)
