@@ -48,6 +48,28 @@ check("still open after a reload", await until(async () => (await sub.count()) =
 await row.click()
 check("a click closes it", await until(async () => (await sub.count()) === 0))
 
+// Dragged as a tab is: onto a pane's edge it splits there, onto the tab bar it's a tab, each drawn while held.
+const glide = async ([x0, y0], [x1, y1], steps = 12) => { for (let i = 1; i <= steps; i++) { await page.mouse.move(x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps); await wait(16) } }
+const folderShown = () => page.locator(`[data-pane-body] [data-folder-page="${D}"]:visible`).count()
+async function dragRow(to, held) {
+  const r = await row.boundingBox(), from = [r.x + 30, r.y + r.height / 2]
+  await page.mouse.move(...from); await page.mouse.down()
+  await glide(from, [from[0] + 10, from[1] + 6], 2); await glide([from[0] + 10, from[1] + 6], to); await wait(250)
+  const drawn = await held()
+  await page.mouse.up(); await wait(600)
+  return drawn
+}
+const pane = await page.locator("[data-pane-body]").first().boundingBox()
+check("dragged to a pane's right edge: the split it makes is drawn", await dragRow([pane.x + pane.width - 25, pane.y + pane.height / 2],
+  () => page.locator("[data-drop-zone=right]").count().then((n) => n === 1)))
+check("let go: its page opens in a split there", await until(async () => (await page.locator("[data-pane-body]").count()) === 2 && (await folderShown()) === 1))
+const tabs = () => page.locator("[data-tab-strip] [role=tab]").count()
+const tabsWere = await tabs(), strip = await page.locator("[data-tab-strip]").first().boundingBox()
+check("dragged onto the tab bar: the tabs make way for it", await dragRow([strip.x + strip.width / 2, strip.y + strip.height / 2],
+  () => page.evaluate(() => !!document.querySelector("[data-tab-strip] [data-slide=incoming]"))))
+check("let go: a tab of its own", await until(async () => (await tabs()) === tabsWere + 1 && (await page.locator("[role=tab][aria-selected=true]").first().innerText()).trim() === "Trips"), [tabsWere, await tabs()])
+await page.screenshot({ path: `${OUT}/folderpins-dragged.png` })
+
 // A recording pinned shows, with its extension.
 await api("POST", "pins", { path: `${D}/Voice note.m4a`, pinned: true })
 const media = page.locator(`aside [data-pin="${D}/Voice note.m4a"]`)

@@ -381,6 +381,8 @@ export const modifiedSteps = () => [...table().keys()].filter((s) => /(^|\+)(mod
 /** A command that's available now has these keys, or a sequence goes on with them: a key the app would take (a
  *  terminal lets these through to it). */
 export const appShortcut = (e: KeyboardEvent) => !!intent(e)
+/** This key alone runs a command now (not one that only starts a sequence, like G of "G I"). */
+export const runsCommand = (e: KeyboardEvent) => { const it = intent(e); return !!it && !("cancel" in it) && !!it.exact && !it.longer && !pending }
 
 /** Take a keydown if the app's keys have it (a command, or a sequence step): true if taken. Widgets that stop keys from
  *  reaching the app (Excalidraw) call it first in capture and stop the event when true. */

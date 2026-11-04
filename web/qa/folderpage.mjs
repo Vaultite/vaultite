@@ -198,7 +198,8 @@ check("vau open <folder> shows its page", await until(async () => (await shown(W
 
 // The sidebar's pinned pages as tiles: a folder's tile opens its page on a computer too.
 await api("PATCH", "config/plugin/pages", { show: "tiles" })
-const deskTile = W.locator(`aside [data-pin="${D}"]`).first()
+// (a tile: until the list redraws as tiles, its row is there too, a click on which opens it in place)
+const deskTile = W.locator(`aside [data-pin-tiles] [data-pin="${D}"]`).first()
 await until(async () => (await deskTile.count()) === 1)
 await deskTile.click()
 check("desktop: a folder's tile in the sidebar opens its page", await until(async () => (await shown(W)) === D), await hash(W))

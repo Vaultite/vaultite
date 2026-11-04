@@ -243,6 +243,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `folderOf(path)`
 - `FolderPage({ store, path })`: A folder's page: its header, then what it holds in its view, or a calm line when it's empty or gone.
 - `folderTabMenu(path)`: Its tab's menu: how it shows, then the folder's own, short (as a file's tab has it: the rest in More folder actions ▸).
+- `folderTarget(path)`: A folder's page as a tab's target (the Files plugin's view; "" the vault's top).
 - `foldGroup(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
 - `foldGroupMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or they grow out of it.
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).

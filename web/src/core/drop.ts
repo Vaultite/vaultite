@@ -8,7 +8,6 @@ import {
 } from "@/core/splits"
 import { canMoveGroup, moveGroupTo } from "@/core/tabgroups"
 import { here, paneById, paneTab, selectTab } from "@/core/workspace"
-import { getStore } from "@/core/data"
 import { INCOMING } from "@/core/slide"
 
 /** Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none;
@@ -50,14 +49,14 @@ export function dropOn(item: DragItem, d: Drop) {
     else if (item.group) moveGroupTo(item.group, d.index)
     else if (item.tabs?.length) placeTabs(item.tabs, item.tab!, d.index, d.group)
     else if (item.tab) placeTab(item.tab, d.index, d.group)
-    // Files selected together: each in a tab of its own, in their order.
-    else if (item.paths) openAllAtIndex(filesAmong(item.paths).map((p) => `file:${p}`), d.index, d.group)
+    // Several selected together: each in a tab of its own, in their order.
+    else if (item.tos?.length) openAllAtIndex(item.tos, d.index, d.group)
     else if (item.to) openAtIndex(item.to, d.index, d.group)
     return
   }
   if (item.pane) paneIntoPane(item.pane, d.pane, d.zone)
   else if (item.tab) tabIntoPane(item.tab, d.pane, d.zone)
-  else if (item.paths) openAllAt(filesAmong(item.paths).map((p) => `file:${p}`), d.pane, d.zone)
+  else if (item.tos?.length) openAllAt(item.tos, d.pane, d.zone)
   // (A sidebar panel dragged by its heading opens as its view.)
   else if (item.to) openAt(item.to, d.pane, d.zone)
 }
@@ -159,13 +158,6 @@ export function dropAt(item: DragItem, x: number, y: number, el: Element | null,
     : placeAt(x, y, el, !item.tab && !item.pane && !item.group)
   if (d?.kind === "list") return listDrop(item, item.group ? { ...d, group: null } : d)  // (a tab group joins none)
   return d && canDropAt(item, d) ? d : null
-}
-
-/** The files among paths selected in the tree (its folders don't open in a tab). */
-function filesAmong(paths: string[]) {
-  const s = getStore()
-  const known = new Set([...(s?.files.files ?? []), ...(s?.files.others ?? [])].map((f) => f.path))
-  return paths.filter((p) => known.has(p))
 }
 
 // ---------- spring-loaded tabs: a dragged pane or tab held over another tab's row opens it (Rex) ----------

@@ -9,7 +9,7 @@ import { getStore, reload, type Store } from "@/core/data"
 import { edgeScroller, getDrag, startDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { desktop, dropInto, hasFiles } from "@/core/desktop"
 import { isMac, isDesktop } from "@/core/platform"
-import { cleanName, createFile, createFolder, folderList, folderOf, folderTarget, freeName, inArchive, inTrash, isDoc, isFolder, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
+import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isFolder, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, pathTarget, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
 import { currentFile, getWorkspace, onWorkspaceChange } from "@/core/workspace"
 import { allPanes, type Workspace } from "../../../core/layout.ts"
 import { useVirtual } from "@/core/virtual"
@@ -635,8 +635,8 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
     // Held among others selected: they all go (a pane opens the files among them, a folder takes them all).
     const keys = selectionFor(SELECT, n.path, false)?.filter((p) => !fixed(p))
     const item: DragItem = keys && keys.length > 1
-      ? { from: "tree", path: n.path, paths: keys, folder: n.folder || undefined, to: n.folder ? undefined : `file:${n.path}`, label: `${keys.length} items` }
-      : n.folder ? { from: "tree", path: n.path, folder: true, to: folderTarget(n.path) } : { from: "tree", path: n.path, to: `file:${n.path}` }
+      ? { from: "tree", path: n.path, paths: keys, tos: keys.map(pathTarget), folder: n.folder || undefined, to: pathTarget(n.path), label: `${keys.length} items` }
+      : { from: "tree", path: n.path, folder: n.folder || undefined, to: pathTarget(n.path) }
     startDrag(e, item, { touch: true })
   }
   const hover = useRef<{ path: string; timer: number } | null>(null)

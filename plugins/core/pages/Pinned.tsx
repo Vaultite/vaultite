@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
 import {
-  coarse, edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isListedPage, menuFor, notifyError, offPlugin, openAt, openFile, openFolder,
+  coarse, edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, folderTarget, getStore, HeadingButton, iconAt, isFolder, isListedPage, menuFor, notifyError, offPlugin, openAt, openFile, openFolder,
   openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings,
   INCOMING, openItem, openView, pastEnd, PIN_SEARCH, reorder, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, slotAt, startDrag, stem, useDrag,
   useDropHit, useDropTarget, useEnabled, useSelectable, useSelectedKeys, useSlide, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem,
@@ -30,9 +30,9 @@ const inVault = (p: string) => {
 /** The pinned pages' selection (core/select.ts), by entry key. */
 const SELECT = "pins"
 /** Where a pinned entry opens, as a tab's target (a heading: its note; a conversation: the terminal running it, if one
- *  does). */
+ *  does; a folder: its page, where a drag takes it). */
 const targetOf = (e: PinEntry) => (e.kind === "search" ? `view:search/${e.query}` : e.kind === "view" ? resolveView(e.target)
-  : e.kind === "folder" ? undefined : `file:${e.kind === "file" ? e.path : e.file.path}`)
+  : e.kind === "folder" ? folderTarget(e.path) : `file:${e.kind === "file" ? e.path : e.file.path}`)
 /** Open a pinned entry: a page, a note at its heading, a search, a view (a conversation, resumed unless it's running).
  *  A folder opens in place instead (its row's click). */
 function openEntry(e: PinEntry, opts: { newTab?: boolean; pane?: string }) {
@@ -212,7 +212,8 @@ export function PinnedPages({ store, open, file, tab, panel, pane, flyout, tiles
       <div onPointerDown={(e) => {
         if (file) openingSoon(file, true)
         const keys = selectionFor(SELECT, id, false)
-        startDrag(e, keys && keys.length > 1 ? { from: "pin", to, path: id, paths: keys, label: `${keys.length} pages` } : { from: "pin", to, path: id }, { touch: true })
+        const tos = keys && keys.length > 1 ? pages.filter((x) => keys.includes(x.key)).map(targetOf) : undefined
+        startDrag(e, keys && tos ? { from: "pin", to, path: id, paths: keys, tos, label: `${keys.length} pages` } : { from: "pin", to, path: id, folder: !!folder || undefined }, { touch: true })
       }}
         onPointerEnter={() => file && openingSoon(file)} onPointerLeave={() => openingSoon(null)}
         // Right-clicked (or its …) on a page: opening it, a file's menu as anywhere else (its own Unpin left out), then

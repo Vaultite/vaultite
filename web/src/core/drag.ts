@@ -19,6 +19,8 @@ export type DragItem = {
   path?: string
   /** Several selected together (core/select.ts), `path` the one held: the tree's files and folders, pinned pages. */
   paths?: string[]
+  /** What those several open, in order (`to` is the held one's): each a tab of its own. */
+  tos?: string[]
   /** Several tabs selected together, `tab` the one held. */
   tabs?: string[]
   folder?: boolean

@@ -8,7 +8,7 @@ import { getPrefs, setPrefs } from "@/core/prefs"
 import { activePane, panes, setFocusedPane } from "@/core/workspace"
 import { focusSide, hasNeighbour } from "@/core/splits"
 import { sidebars } from "@/core/plugins"
-import { asKeys, getSelection } from "@/core/select"
+import { asKeys, getSelection, OWN } from "@/core/select"
 
 const ROW = "[data-keyrow]"
 
@@ -318,17 +318,19 @@ export function focusArea(id = activePane().id) {
 
 // ---------- the commands ----------
 const onRow = () => inKeyList()
-const editableRow = () => { const r = currentRow(); return !!r && !/^(BUTTON|A)$/.test(r.tagName) && r.getAttribute("role") !== "button" }
+/** On a row, not of a view that moves its keyboard itself. */
+const moves = () => onRow() && !document.activeElement?.closest(OWN)
+const editableRow = () => { const r = moves() && currentRow(); return !!r && !/^(BUTTON|A)$/.test(r.tagName) && r.getAttribute("role") !== "button" }
 registerCommands([
-  { id: "list:down", name: "Move down the list", keys: ["ArrowDown"], when: onRow, run: () => moveInList(1), icon: ArrowDown },
-  { id: "list:up", name: "Move up the list", keys: ["ArrowUp"], when: onRow, run: () => moveInList(-1), icon: ArrowUp },
-  { id: "list:first", name: "Move to the top of the list", keys: ["Home"], when: onRow, run: () => moveInList("first"), icon: ArrowUpToLine },
-  { id: "list:last", name: "Move to the bottom of the list", keys: ["End"], when: onRow, run: () => moveInList("last"), icon: ArrowDownToLine },
-  { id: "list:expand", name: "Open the folder in the list", keys: ["ArrowRight"], when: onRow, run: () => foldInList(true), icon: FolderOpen },
-  { id: "list:collapse", name: "Close the folder in the list, or go to its parent", keys: ["ArrowLeft"], when: onRow, run: () => foldInList(false), icon: FolderClosed },
+  { id: "list:down", name: "Move down the list", keys: ["ArrowDown"], when: moves, run: () => moveInList(1), icon: ArrowDown },
+  { id: "list:up", name: "Move up the list", keys: ["ArrowUp"], when: moves, run: () => moveInList(-1), icon: ArrowUp },
+  { id: "list:first", name: "Move to the top of the list", keys: ["Home"], when: moves, run: () => moveInList("first"), icon: ArrowUpToLine },
+  { id: "list:last", name: "Move to the bottom of the list", keys: ["End"], when: moves, run: () => moveInList("last"), icon: ArrowDownToLine },
+  { id: "list:expand", name: "Open the folder in the list", keys: ["ArrowRight"], when: moves, run: () => foldInList(true), icon: FolderOpen },
+  { id: "list:collapse", name: "Close the folder in the list, or go to its parent", keys: ["ArrowLeft"], when: moves, run: () => foldInList(false), icon: FolderClosed },
   // (Enter on a button or a link clicks it already; a table row needs this.)
   { id: "list:open", name: "Open the row", keys: ["Enter"], when: editableRow, run: () => openInList(false), icon: CornerDownLeft },
-  { id: "list:open-tab", name: "Open the row in a new tab", keys: ["Mod+Enter"], when: onRow, run: () => openInList(true), icon: SquareArrowOutUpRight },
+  { id: "list:open-tab", name: "Open the row in a new tab", keys: ["Mod+Enter"], when: moves, run: () => openInList(true), icon: SquareArrowOutUpRight },
   { id: "list:leave", name: "Leave the sidebar", keys: ["Escape"], when: () => onRow() && !!sidebarOfFocus() && !getSelection(), run: leaveList, icon: LogOut },
   { id: "list:tab-out", name: "Move past the list", keys: ["Tab"], when: () => onRow() && !!runOf(currentRow()!), run: () => tabPastList(false), icon: StepForward },
   { id: "list:tab-back", name: "Move before the list", keys: ["Shift+Tab"], when: () => onRow() && !!runOf(currentRow()!), run: () => tabPastList(true), icon: StepBack },

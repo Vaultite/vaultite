@@ -156,6 +156,9 @@ export const selectedAttr = (on: boolean) => (on ? { "data-selected": "" } : {})
 
 // ---------- the keyboard ----------
 const ROW = "[data-keyrow]"
+/** A view that moves its keyboard itself, with commands of its own (a folder's page: pages/FolderKeys.ts). */
+export const OWN = "[data-own-keys]"
+const owned = () => !!document.activeElement?.closest(OWN)
 /** The selectable row the keyboard is on: its list and key. */
 function keyRow() {
   const a = document.activeElement
@@ -173,12 +176,17 @@ function extend(delta: 1 | -1) {
   // (the row beside the keyboard's is drawn, in a list that draws only some)
   const next = key === undefined || i < 0 ? null : shownRows(box).find((r) => r.dataset.selectKey === key)
   if (!next) return
-  const anchor = sel?.list === at.list && sel.anchor && order.includes(sel.anchor) ? sel.anchor : at.key
-  const [a, b] = [order.indexOf(anchor), i + delta].sort((x, y) => x - y)
-  put(make(at.list, order.slice(a, b + 1), anchor))
+  selectTo(at.list, order, at.key, key)
   const focus = next.matches(ROW) ? next : next.querySelector<HTMLElement>(ROW) ?? next
   focus.focus({ preventScroll: true })
   focus.scrollIntoView({ block: "nearest" })
+}
+/** ⇧ and a key that moves the keyboard from `from` to `key` (a row, or a grid's row down): the selection runs from where
+ *  it started (else `from`) to there, in `order`. */
+export function selectTo(list: string, order: string[], from: string, key: string) {
+  const anchor = sel?.list === list && sel.anchor && order.includes(sel.anchor) ? sel.anchor : from
+  const [a, b] = [order.indexOf(anchor), order.indexOf(key)].sort((x, y) => x - y)
+  if (a >= 0) put(make(list, order.slice(a, b + 1), anchor))
 }
 function selectAll() {
   const at = keyRow()
@@ -196,8 +204,8 @@ if (typeof window !== "undefined") {
 }
 
 registerCommands([
-  { id: "list:select-down", name: "Select the next row too", keys: ["Shift+ArrowDown"], when: () => !!keyRow(), run: () => extend(1), icon: SquareMousePointer },
-  { id: "list:select-up", name: "Select the row above too", keys: ["Shift+ArrowUp"], when: () => !!keyRow(), run: () => extend(-1), icon: SquareMousePointer },
+  { id: "list:select-down", name: "Select the next row too", keys: ["Shift+ArrowDown"], when: () => !!keyRow() && !owned(), run: () => extend(1), icon: SquareMousePointer },
+  { id: "list:select-up", name: "Select the row above too", keys: ["Shift+ArrowUp"], when: () => !!keyRow() && !owned(), run: () => extend(-1), icon: SquareMousePointer },
   { id: "list:select-all", name: "Select every row in the list", keys: ["Mod+A"], when: () => !!keyRow(), run: selectAll, icon: CheckSquare },
   { id: "list:select-none", name: "Clear the selection", keys: ["Escape"], when: () => !!sel && !menuShowing(), run: clearSelection, icon: SquareDashed },
 ])

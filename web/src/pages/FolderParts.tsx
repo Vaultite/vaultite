@@ -8,7 +8,7 @@ import { formatSize, kindName, kindOf } from "@/core/filekinds"
 import { get } from "@/core/http"
 import { notifyError } from "@/core/notify"
 import { snippet } from "@/core/plaintext"
-import { cell } from "@/core/signal"
+import { cell, signal } from "@/core/signal"
 import { step } from "@/core/motion"
 import { usePane } from "@/core/pane"
 import { useDesktop } from "@/core/platform"
@@ -28,13 +28,23 @@ export const naming = cell<{ path: string; fresh: boolean } | null>(null)
 
 /** What every view of a folder is given: its things and what a click, a right-click and a press on one does. */
 export type Kids = {
+  /** The view says how the keyboard moves in it. */
+  setMoves: (m: Moves) => void
   items: FolderItem[]; counts: Map<string, number>; open: (n: FolderItem, e: MouseEvent) => void; menuOf: (n: FolderItem) => () => MenuItem[]
   swipe: (n: FolderItem) => SwipeAction[]; press: (e: PointerEvent<HTMLElement>, n: FolderItem) => void; renaming: string | null; lit: string | null; desk: boolean
 }
 
-/** The thing picked in each folder shown as columns or a gallery (a file previewed, a folder whose things show beside
- *  it): kept while the app runs, so coming back to a folder finds it as it was. */
-export const picked = new Map<string, string>()
+/** The thing the keyboard is on in each folder, whichever view shows it (as columns or a gallery: the one previewed, or
+ *  the folder whose things show beside it): kept while the app runs, so coming back to a folder finds it as it was. */
+const picked = new Map<string, string>()
+const pickedSubs = signal()
+export const pickedIn = (folder: string) => picked.get(folder) ?? null
+export const usePicked = (folder: string) => pickedSubs.use(() => picked.get(folder) ?? null)
+export function pick(folder: string, path: string) { if (picked.get(folder) !== path) { picked.set(folder, path); pickedSubs.notify() } }
+
+/** How the keyboard moves in a view (pages/FolderKeys.ts): its things in lines as laid out; `along`: ← → go in order;
+ *  `side`: what ← → do instead (columns); `preview`: Space there, when the view previews (true: done). */
+export type Moves = { lines: string[][]; along?: boolean; side?: (dir: -1 | 1) => void; preview?: () => boolean }
 
 /** A file's or folder's icon, as the tree draws it. */
 export const iconFor = (n: FolderItem) => (n.folder ? folderIcon(n.path) : iconAt(n.path))
@@ -186,6 +196,13 @@ export function Preview({ n, text, stage }: { n: FolderItem; text?: string; stag
   return <Picture key={n.path} n={n} px={1024} icon={big} whole className="size-full" />
 }
 
+/** Space on a preview: its video or sound plays, or stops (true: there was one). */
+export function playPause(m: HTMLMediaElement | null | undefined) {
+  if (!m) return false
+  if (m.paused) void m.play().catch(() => {}); else m.pause()
+  return true
+}
+
 /** What it is, its size and when it was made and changed: under a preview. */
 export function Facts({ n, counts, short }: { n: FolderItem; counts: Map<string, number>; short?: boolean }) {
   return n.folder ? <FactList n={n} what={["Folder", counts.get(n.path) ? plural(counts.get(n.path)!, "item") : "Empty"]} rows={[]} /> : <FileFacts n={n} short={short} />
@@ -226,20 +243,16 @@ export function useEnter() {
   }
 }
 
-/** The rows the keyboard needs drawn wherever they're scrolled to: the one it's on and those beside it, the first and
- *  last. Its whole order is the selection's (core/select.ts). */
-export function useKept(list: React.RefObject<HTMLDivElement | null>, keys: string[], all: string[]) {
-  const [focusKey, setFocusKey] = useState<string | null>(null)
+/** The rows the keyboard needs drawn wherever they're scrolled to: the one it's on (`at`, by its row's key), the first
+ *  and last. Its whole order is the selection's (core/select.ts). */
+export function useKept(list: React.RefObject<HTMLDivElement | null>, keys: string[], all: string[], at: string | null) {
   useEffect(() => {
     const el = list.current
     if (!el) return
     listOrders.set(el, () => all)
     return () => { listOrders.delete(el) }
   }, [list, all])
-  const i = focusKey === null ? -1 : keys.indexOf(focusKey)
-  const keep = [keys[0], keys[keys.length - 1], ...(i < 0 ? [] : [keys[i - 1], keys[i], keys[i + 1]])]
-  const onFocus = (e: React.FocusEvent) => setFocusKey((e.target as Element).closest<HTMLElement>("[data-vk]")?.dataset.vk ?? null)
-  return { keep, onFocus }
+  return [keys[0], keys[keys.length - 1], at]
 }
 
 /** Spaces for the rows not drawn (core/virtual.ts), around those that are. */

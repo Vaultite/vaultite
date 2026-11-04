@@ -11,11 +11,16 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   grid can be grouped by kind or date modified. Every file has a picture: a PDF's first page, a video's frame, a web
   page, small copies of photos so a folder of them opens fast (made by the server, kept). Its toolbar (view, Sort and
   group, More) is on the page, its count gone from under its name, and its tab's menu has the folder's own: New note,
-  Copy path, Reveal in file tree, Open in Finder, More folder actions.
+  Copy path, Reveal in file tree, Open in Finder, More folder actions. Its keys are Finder's: arrows move in every
+  view (a grid's both ways, columns' ← → out of folders and into them), ↵ or ⌘↓ opens, ⌘↑ goes up, Space shows it
+  beside, F2 renames, ⌥⌘1–4 change the view, a name typed goes to it; a view's button clicked leaves the arrows to the
+  files.
 - **Tidier tab menus**: Hide page bar sits with Show tabs on top, the tab bar and pane titles at the end of every menu
   that has it; the Tabs panel's Show tabs on top is with Move to right sidebar; with a group to join, Add tab to group
   has New group first, as in Chrome; Separate panes has an icon of its own; a new tab (⌘T) opens past a tab group,
   never in it, whatever new tabs open.
+- **Pinned folders drag like tabs**: onto a pane's edge to split, onto the tab bar to place a tab, with the same
+  previews; so do several pinned pages, or files and folders selected together.
 - **Faster restarts, a quieter idle**: the server keeps what it read of the coding agents' transcripts, so a restart
   reads on instead of a month of them again (about 25 s of CPU on a busy Mac, now under 2); comment threads in notes
   that aren't open no longer wake every window every 1.5 s; typing in the quick switcher searches a big vault three

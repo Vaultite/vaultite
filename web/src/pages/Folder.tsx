@@ -1,9 +1,9 @@
 // A folder's page (view:folder/<path>, the Files plugin's): a grid, a list, columns or a gallery (files.json
 // `folderView`, every folder the same; a phone has the first two), as Finder. Folders open in its tab, files beside.
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent } from "react"
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FocusEvent, type MouseEvent, type PointerEvent } from "react"
 import { ArrowUpDown, Columns3, Ellipsis, FileInput, FilePlus, FolderInput, FolderOpen, FolderPlus, GalleryHorizontalEnd, Group, LayoutGrid, List, RotateCcw, Trash2 } from "lucide-react"
 import { dateText, getStore, reload, useStore, vaultName, type Store } from "@/core/data"
-import { createFolder, folderTarget, freeName, inArchive, inTrash, openFile, openingSoon, restoreFile } from "@/core/files"
+import { createFolder, folderOf, freeName, inArchive, inTrash, openFile, openingSoon, pathTarget, restoreFile } from "@/core/files"
 import { edgeScroller, startDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { desktop, dropInto, hasFiles } from "@/core/desktop"
 import { kindOf, type FileKind } from "@/core/filekinds"
@@ -22,7 +22,8 @@ import { ROW, SidebarRow } from "@/components/Sidebar"
 import type { SwipeAction } from "@/components/SwipeRow"
 import { PageHeader } from "@/components/kit"
 import { cn } from "@/lib/utils"
-import { drawnRows, hrefOf, iconFor, metaOf, NameField, naming, SELECT, Tile, useEnter, useKept, usePreviews, type Kids } from "@/pages/FolderParts"
+import { drawnRows, hrefOf, iconFor, metaOf, NameField, naming, pick, pickedIn, SELECT, Tile, useEnter, useKept, usePicked, usePreviews, type Kids, type Moves } from "@/pages/FolderParts"
+import { arrive, arrived, focusThing, keyedPages } from "@/pages/FolderKeys"
 import { Columns } from "@/pages/FolderColumns"
 import { Gallery } from "@/pages/FolderGallery"
 
@@ -130,13 +131,15 @@ function Crumbs({ path }: { path: string }) {
 /** Finder's toolbar, on the page: the four views side by side, Sort (and group), More. One for every folder, Settings'
  *  Files too. */
 function Toolbar({ path, view }: { path: string; view: FolderView }) {
+  // A click on a view keeps the keyboard on the files (Finder's); Tab and Space still reach the choices.
+  const choose = (v: FolderView, e: MouseEvent) => { if (e.detail) arrive(path); setView(v) }
   const tool = "grid h-[26px] w-8 cursor-pointer place-items-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
   const grouped = groupOf(usePrefs().folderGroup) !== "none"
   return (
     <div className="mb-1 flex shrink-0 items-center gap-1.5">
       <div role="radiogroup" aria-label="Show as" className="flex rounded-[7px] bg-foreground/[0.05] p-px">
         {VIEWS.map((o) => (
-          <button key={o.value} type="button" role="radio" aria-checked={view === o.value} aria-label={o.label} data-tip={o.label} data-folder-view={o.value} onClick={() => setView(o.value)}
+          <button key={o.value} type="button" role="radio" aria-checked={view === o.value} aria-label={o.label} data-tip={o.label} data-folder-view={o.value} onMouseDown={(e) => e.preventDefault()} onClick={(e) => choose(o.value, e)}
             className={cn("grid h-6 w-7 cursor-pointer place-items-center rounded-[6px] transition-colors",
               view === o.value ? "bg-card text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.12)] dark:bg-[var(--segment-on)]" : "text-muted-foreground hover:text-foreground")}>
             <o.icon className="size-[15px]" strokeWidth={2} />
@@ -208,6 +211,7 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
   const enter = useEnter()
   const renaming = naming.use((r) => r?.path ?? null)
   const root = useRef<HTMLDivElement>(null)
+  const moves = useRef<Moves | null>(null)
 
   /** Open it: a folder in this tab, a file beside (⌘ or the middle button: in a new tab). */
   const openIt = (n: FolderItem, newTab = false) => {
@@ -236,8 +240,8 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
     if (renaming === n.path || fixed(n.path)) return
     if (!n.folder) openingSoon(n.path, true)
     const keys = selectionFor(SELECT, n.path, false)?.filter((p) => !fixed(p))
-    const item: DragItem = keys && keys.length > 1 ? { from: "tree", path: n.path, paths: keys, folder: n.folder || undefined, to: n.folder ? undefined : `file:${n.path}`, label: `${keys.length} items` }
-      : { from: "tree", path: n.path, folder: n.folder || undefined, to: n.folder ? folderTarget(n.path) : `file:${n.path}` }
+    const item: DragItem = keys && keys.length > 1 ? { from: "tree", path: n.path, paths: keys, tos: keys.map(pathTarget), folder: n.folder || undefined, to: pathTarget(n.path), label: `${keys.length} items` }
+      : { from: "tree", path: n.path, folder: n.folder || undefined, to: pathTarget(n.path) }
     startDrag(e, item, { touch: true })
   }
 
@@ -275,16 +279,41 @@ export function FolderPage({ store, path }: { store: Store; path: string }) {
   }
   const lit = dropOn ?? (fromComputer !== null && fromComputer !== path ? fromComputer : null)
 
+  // The keys (pages/FolderKeys.ts): what they need of the page, and the keyboard on its things once the keys came here.
+  useEffect(() => {
+    const el = root.current
+    if (!el || !got) return
+    keyedPages.set(el, () => ({
+      path, items: got.items, moves: moves.current, view, open: openIt,
+      // (Space: beside it, the keyboard staying here; a phone has no beside)
+      show: (n) => (desk ? void openInSplit(pathTarget(n.path), "right", false) : openIt(n)),
+      up: () => { const parent = folderOf(path); pick(parent, path); arrive(parent); enter(parent, -1) },
+      showAs: (v) => { arrive(path); setView(v) },
+    }))
+  })
+  useEffect(() => {
+    const el = root.current, all = got?.items
+    if (!el || !all?.length || !arrived(path)) return
+    // (none picked: none taken, the first arrow takes the first, as in Finder)
+    const was = pickedIn(path)
+    if (was && all.some((n) => n.path === was)) focusThing(el, was)
+  }, [path, view, got])
+  /** The keyboard on a thing of the page: the one it's on in every view. */
+  const onThing = (e: FocusEvent) => {
+    const k = (e.target as Element).closest<HTMLElement>("[data-folder-item]")?.dataset.folderItem
+    if (k && got?.items.some((n) => n.path === k)) pick(path, k)
+  }
+
   if (!got) return <p data-folder-gone className="mt-2 text-[15px] text-muted-foreground">This folder isn't in the vault any more.</p>
   const { items, counts } = got
-  const kids: Kids = { items, counts, open, menuOf, swipe, press, renaming, lit, desk }
+  const kids: Kids = { setMoves: (m) => { moves.current = m }, items, counts, open, menuOf, swipe, press, renaming, lit, desk }
   const sections = view === "list" || view === "grid" ? sectionsOf(items, groupOf(folderGroup)) : null
   const body = view === "columns" ? <Columns {...kids} files={store.files} folder={path} openIt={openIt} />
     : !items.length ? <Empty path={path} desk={desk} />
     : view === "gallery" ? <Gallery {...kids} folder={path} openIt={openIt} />
-    : view === "grid" ? <Grid {...kids} sections={sections} folder={path} /> : <Rows {...kids} sections={sections} />
+    : view === "grid" ? <Grid {...kids} sections={sections} folder={path} /> : <Rows {...kids} sections={sections} folder={path} />
   return (
-    <div ref={root} data-folder-page={path} data-folder-shown={view} data-file-drop {...computer}
+    <div ref={root} data-folder-page={path} data-folder-shown={view} data-own-keys data-file-drop {...computer} onFocus={onThing}
       onContextMenu={(e) => { if (!(e.target as Element).closest("[data-folder-item]")) menuFor(() => spaceMenu(path))(e) }}
       className={cn("min-h-[60vh] rounded-[10px] transition-colors", fromComputer === path && "bg-primary/[0.06]")}>
       {desk ? <PageHeader title={folderName(path)} className={view === "columns" || view === "gallery" ? "mb-3" : undefined}><Toolbar path={path} view={view} /></PageHeader>
@@ -341,15 +370,16 @@ const headKey = (title: string) => `\0${title}`
 // ---------- as a list: the sidebar's rows, a size up ----------
 
 type Line = { head: Section } | { n: FolderItem }
-function Rows({ items, counts, open, menuOf, swipe, press, renaming, lit, desk, sections }: Kids & { sections: Section[] | null }) {
+function Rows({ setMoves, items, counts, open, menuOf, swipe, press, renaming, lit, desk, sections, folder }: Kids & { sections: Section[] | null; folder: string }) {
   const list = useRef<HTMLDivElement>(null)
   const lines = useMemo<Line[]>(() => (sections ? sections.flatMap((s) => [{ head: s }, ...s.items.map((n) => ({ n }))]) : items.map((n) => ({ n }))), [items, sections])
   const keys = useMemo(() => lines.map((l) => ("head" in l ? headKey(l.head.title) : l.n.path)), [lines])
   const all = useMemo(() => lines.flatMap((l) => ("n" in l ? [l.n.path] : [])), [lines])
-  const { keep, onFocus } = useKept(list, keys, all)
+  const keep = useKept(list, keys, all, usePicked(folder))
   const v = useVirtual(list, keys, { estimate: desk ? 33 : 41, keep: [...keep, renaming] })
+  useEffect(() => setMoves({ lines: all.map((k) => [k]) }))
   return (
-    <div ref={list} data-keylist data-select-list={SELECT} data-folder-list onFocus={onFocus} className="size-up-bleed">
+    <div ref={list} data-keylist data-select-list={SELECT} data-folder-list className="size-up-bleed">
       {drawnRows(v, (i) => {
         const l = lines[i]
         if ("head" in l) return <Heading key={keys[i]} k={keys[i]} index={i} title={l.head.title} count={l.head.items.length} first={i === 0} />
@@ -391,7 +421,7 @@ function Row({ n, index, meta, open, menuOf, swipe, press, renaming, lit }: { n:
 const CARD = { desk: { min: 136, gap: 12 }, phone: { min: 96, gap: 10 } }
 
 type Band = { head: Section } | { cards: FolderItem[] }
-function Grid({ items, counts, open, menuOf, press, renaming, lit, desk, folder, sections }: Kids & { folder: string; sections: Section[] | null }) {
+function Grid({ setMoves, items, counts, open, menuOf, press, renaming, lit, desk, folder, sections }: Kids & { folder: string; sections: Section[] | null }) {
   const list = useRef<HTMLDivElement>(null)
   const size = desk ? CARD.desk : CARD.phone
   const [cols, setCols] = useState(desk ? 5 : 3)
@@ -410,12 +440,14 @@ function Grid({ items, counts, open, menuOf, press, renaming, lit, desk, folder,
   }, [items, sections, cols])
   const keys = useMemo(() => bands.map((b) => ("head" in b ? headKey(b.head.title) : `${cols}\0${b.cards[0].path}`)), [bands, cols])
   const all = useMemo(() => bands.flatMap((b) => ("cards" in b ? b.cards.map((n) => n.path) : [])), [bands])
-  const { keep, onFocus } = useKept(list, keys, all)
-  const at = renaming ? bands.findIndex((b) => "cards" in b && b.cards.some((n) => n.path === renaming)) : -1
-  const v = useVirtual(list, keys, { estimate: desk ? 196 : 150, keep: [...keep, at < 0 ? null : keys[at]] })
+  /** The row of cards a thing is on. */
+  const bandOf = (p: string | null) => { const i = p ? bands.findIndex((b) => "cards" in b && b.cards.some((n) => n.path === p)) : -1; return i < 0 ? null : keys[i] }
+  const keep = useKept(list, keys, all, bandOf(usePicked(folder)))
+  const v = useVirtual(list, keys, { estimate: desk ? 196 : 150, keep: [...keep, bandOf(renaming)] })
   const text = usePreviews(folder, items)
+  useEffect(() => setMoves({ lines: bands.flatMap((b) => ("cards" in b ? [b.cards.map((n) => n.path)] : [])), along: true }))
   return (
-    <div ref={list} data-keylist data-select-list={SELECT} data-folder-grid onFocus={onFocus}>
+    <div ref={list} data-keylist data-select-list={SELECT} data-folder-grid>
       {drawnRows(v, (r) => {
         const b = bands[r]
         if ("head" in b) return <Heading key={keys[r]} k={keys[r]} index={r} title={b.head.title} count={b.head.items.length} first={r === 0} />

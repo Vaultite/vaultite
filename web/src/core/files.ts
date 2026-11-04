@@ -136,6 +136,8 @@ setFileOpener((path) => openFile(path))
 
 /** A folder's page as a tab's target (the Files plugin's view; "" the vault's top). */
 export const folderTarget = (path: string) => (path ? `view:folder/${path}` : "view:folder")
+/** What a vault path opens as a tab: a folder's page, else the file. */
+export const pathTarget = (path: string) => { const t = getStore()?.files; return t && isFolder(t, path) ? folderTarget(path) : `file:${path}` }
 /** Open a folder's page, as openFile opens a file: in the current tab when it shows a folder, else beside it. */
 export function openFolder(path: string, opts: { newTab?: boolean; pane?: string } = {}) {
   const to = folderTarget(path)

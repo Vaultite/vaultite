@@ -1,0 +1,132 @@
+// A folder's page from the keyboard (pages/FolderKeys.ts): a view button clicked leaves the arrows to the files, a grid
+// moves both ways, a gallery and columns along and in and out, ↵ ⌘↑ ⌘↓, a name typed, ⇧ arrows, Space, F2, ⌥⌘1–4, and
+// an editor beside keeping its own keys. WRITES "Qa keys" and files.json's folderView (put back): throwaway server only.
+//   node web/qa/folderkeys.mjs <base url> [out dir]
+import { mkdirSync } from "node:fs"
+import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+const { args: [B, OUT = "/tmp/folderkeys-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+mkdirSync(OUT, { recursive: true })
+const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
+const MOD = process.platform === "darwin" ? "Meta" : "Control"
+
+const D = "Qa keys"
+await fetch(`${B}api/file?path=${encodeURIComponent(D)}`, { method: "DELETE" })
+await api("POST", "folder", { path: D })
+await api("POST", "folder", { path: `${D}/Sub` })
+await api("POST", "file", { path: `${D}/Sub/Inner.md`, text: "Inside.\n" })
+const names = ["Apple", "Banana", "Cherry", "Date", "Elder", "Fig", "Grape", "Hazel", "Iris", "Juniper", "Kiwi"]
+for (const n of names) await api("POST", "file", { path: `${D}/${n}.md`, text: `${n}'s text.\n` })
+const order = [`${D}/Sub`, ...names.map((n) => `${D}/${n}.md`)]
+const filesBefore = await api("GET", "config/files")
+await api("PATCH", "config/files", { fileSort: "name", folderView: "list", folderGroup: null, autoReveal: false })
+
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+await ctx.addInitScript(() => { try { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } } catch { /* about:blank */ } })
+const W = watch(await ctx.newPage(), { label: "desktop", console: true })
+const shown = () => W.locator("[data-folder-page]:visible").first().getAttribute("data-folder-page").catch(() => null)
+/** The thing with the keyboard, and whether it's drawn ringed. */
+const on = () => W.evaluate(() => { const a = document.activeElement; return a?.closest("[data-folder-item]")?.dataset.folderItem ?? (a === document.body ? "body" : a?.tagName) })
+const ringed = () => W.evaluate(() => document.activeElement?.matches(":focus-visible") ?? false)
+const view = () => W.locator("[data-folder-page]:visible").first().getAttribute("data-folder-shown")
+const press = async (k, n = 1) => { for (let i = 0; i < n; i++) { await W.keyboard.press(k); await wait(60) } await wait(150) }
+
+await W.goto("about:blank"); await W.goto(`${B}#view/${encodeURIComponent(`folder/${D}`)}`)
+check("its page", await until(async () => (await shown()) === D))
+
+// The bug: Gallery clicked, the arrows went along the view buttons.
+await W.locator("[data-folder-page] header [data-folder-view=gallery]:visible").click(); await wait(400)
+check("gallery: a click on its button leaves no view button with the keyboard", await W.evaluate(() => !document.activeElement?.closest("[role=radiogroup]")))
+const stage = () => W.locator("[data-folder-stage]:visible").first().getAttribute("data-folder-stage")
+check("gallery: its first file large", await until(async () => (await stage()) === `${D}/Apple.md`), await stage())
+await press("ArrowRight")
+check("gallery: → shows the next file, not the next view", await until(async () => (await stage()) === `${D}/Banana.md`) && (await view()) === "gallery", [await stage(), await view()])
+check("gallery: and the keyboard is on it, ringed", (await on()) === `${D}/Banana.md` && await ringed(), await on())
+await press("ArrowLeft", 2)
+check("gallery: ← ← back past the first file to the folder", await until(async () => (await stage()) === `${D}/Sub`), await stage())
+await W.screenshot({ path: `${OUT}gallery.png` })
+
+// A grid: ← → along, ↑ ↓ a row, Home End.
+await W.locator("[data-folder-page] header [data-folder-view=grid]:visible").click(); await wait(400)
+check("grid: the thing picked keeps the keyboard across views", await until(async () => (await on()) === `${D}/Sub`), await on())
+const cols = await W.locator("[data-folder-grid] > [data-vi]").first().evaluate((r) => getComputedStyle(r).gridTemplateColumns.split(" ").length)
+await press("ArrowRight", 2)
+check("grid: → → along", (await on()) === order[2], await on())
+await press("ArrowDown")
+check(`grid: ↓ a row down (${cols} across)`, (await on()) === order[2 + cols], [await on(), cols])
+await press("ArrowUp")
+check("grid: ↑ back up", (await on()) === order[2], await on())
+await press("End")
+check("grid: End the last", (await on()) === order.at(-1), await on())
+await press("Home")
+check("grid: Home the first", (await on()) === order[0], await on())
+check("grid: ringed", await ringed())
+await W.screenshot({ path: `${OUT}grid.png` })
+
+// ⌥⌘2: as a list. ↑ ↓, a name typed, ⇧↓.
+await press(`${MOD}+Alt+2`)
+check("⌥⌘2 shows it as a list", await until(async () => (await view()) === "list"), await view())
+check("list: the keyboard still on its thing", await until(async () => (await on()) === order[0]), await on())
+await press("ArrowDown", 3)
+check("list: ↓ ↓ ↓", (await on()) === order[3], await on())
+await press("ArrowLeft")
+check("list: ← moves nothing", (await on()) === order[3] && (await view()) === "list", await on())
+await W.keyboard.type("gr"); await wait(200)
+check("list: a name typed goes to it", (await on()) === `${D}/Grape.md`, await on())
+await wait(1100)
+await W.keyboard.type("b"); await wait(200)
+check("list: typed again after a pause, starts anew", (await on()) === `${D}/Banana.md`, await on())
+await press("Shift+ArrowDown", 2)
+check("list: ⇧↓ ⇧↓ selects three", await until(async () => (await W.locator("[data-folder-page]:visible [data-selected]").count()) === 3))
+await press("ArrowDown")
+check("list: an arrow alone lets the selection go", await until(async () => (await W.locator("[data-folder-page]:visible [data-selected]").count()) === 0) && (await on()) === `${D}/Elder.md`, await on())
+await press("F2")
+const field = W.locator("[data-folder-page]:visible input[aria-label='New name']")
+check("F2 names it in place", await until(async () => (await field.count()) === 1))
+await press("Escape")
+check("Escape keeps its name", await until(async () => (await field.count()) === 0) && (await api("GET", "files")).files.some((f) => f.path === `${D}/Elder.md`))
+
+// Into a folder and up again.
+await press("Home"); await press("Enter")
+check("↵ on a folder goes into it", await until(async () => (await shown()) === `${D}/Sub`), await shown())
+await press("ArrowDown")
+check("in it, the first arrow takes its first", await until(async () => (await on()) === `${D}/Sub/Inner.md`), await on())
+await press(`${MOD}+ArrowUp`)
+check("⌘↑ goes up, the keyboard on the folder it came from", await until(async () => (await shown()) === D && (await on()) === `${D}/Sub`), [await shown(), await on()])
+await press(`${MOD}+ArrowDown`)
+check("⌘↓ opens it too", await until(async () => (await shown()) === `${D}/Sub`), await shown())
+await press(`${MOD}+ArrowUp`); await until(async () => (await shown()) === D)
+
+// Columns: ↓ down the last, → into a folder, ← out.
+await press(`${MOD}+Alt+3`)
+check("⌥⌘3 shows columns", await until(async () => (await view()) === "columns"), await view())
+check("columns: the keyboard on its thing", await until(async () => (await on()) === `${D}/Sub`), await on())
+await press("ArrowRight")
+check("columns: → into the folder, its first picked", await until(async () => (await shown()) === `${D}/Sub` && (await on()) === `${D}/Sub/Inner.md`), [await shown(), await on()])
+check("columns: its preview beside", await until(async () => (await W.locator(`[data-folder-preview="${D}/Sub/Inner.md"]:visible`).count()) === 1))
+await press("ArrowLeft")
+check("columns: ← back out, on the folder", await until(async () => (await shown()) === D && (await on()) === `${D}/Sub`), [await shown(), await on()])
+await press("ArrowDown", 2)
+check("columns: ↓ ↓ picks as it goes, previewed", await until(async () => (await on()) === order[2] && (await W.locator(`[data-folder-preview="${order[2]}"]:visible`).count()) === 1), await on())
+await W.screenshot({ path: `${OUT}columns.png` })
+
+// A view's button from the keyboard is still a choice: Tab there, the arrows go along them.
+await W.locator("[data-folder-page] header [data-folder-view=columns]:visible").focus()
+await press("ArrowRight")
+check("a view button with the keyboard: → goes to the next one", await W.evaluate(() => document.activeElement?.getAttribute("data-folder-view")) === "gallery")
+
+// Space: shown beside, the keyboard staying here; an editor there keeps its own arrows.
+await press(`${MOD}+Alt+2`)
+await until(async () => (await view()) === "list")
+await W.locator(`[data-folder-item="${D}/Cherry.md"] a`).focus(); await wait(100)
+await press("Space")
+check("Space shows it in a pane beside", await until(async () => (await W.locator("[data-pane-body]").count()) === 2 && (await W.locator(".cm-content:visible").count()) >= 1))
+check("...the keyboard still on it here", (await on()) === `${D}/Cherry.md`, await on())
+await W.locator(".cm-content:visible").first().click(); await wait(200)
+await press("ArrowDown"); await press("End")
+check("an editor beside keeps its arrows and End", await W.evaluate(() => !!document.activeElement?.closest(".cm-editor")) && (await W.locator("[data-folder-page]:visible").count()) === 1)
+check("...and moved nothing in the folder", await W.evaluate(() => !document.activeElement?.closest("[data-folder-page]")))
+await W.screenshot({ path: `${OUT}space.png` })
+
+await api("PATCH", "config/files", { fileSort: filesBefore.fileSort ?? null, folderView: filesBefore.folderView ?? null, folderGroup: filesBefore.folderGroup ?? null, autoReveal: filesBefore.autoReveal ?? null })
+await fetch(`${B}api/file?path=${encodeURIComponent(D)}`, { method: "DELETE" })
+await done()
