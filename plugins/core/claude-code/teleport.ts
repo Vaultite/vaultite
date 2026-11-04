@@ -27,13 +27,17 @@ const names = (remotes: string, repo: string) => remotes.split("\n").some((l) =>
   return new RegExp(`github\\.com[:/]${repo.replace(/[.]/g, "\\.")}(\\.git)?/?$`, "i").test(u)
 })
 
+/** A folder in one spelling, to compare and hand on: Windows' git says C:/a/b, its temp folder may be C:\Users\RUNNER~1. */
+const real = (p: string) => { const r = path.resolve(p); try { return fs.realpathSync.native(r) } catch { return r } }
+const same = (a: string, b: string) => (process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b)
+
 /** A checkout of `repo` among `roots` (the projects Claude Code ran in lately, most recent first): a main one first. */
 export async function checkoutOf(repo: string, roots: string[]) {
   const found: { root: string; main: boolean }[] = []
   for (const r of roots.slice(0, 80)) {
     try {
-      const top = path.resolve((await git(r, "rev-parse", "--show-toplevel")).trim()) // (Windows: git says C:/a/b)
-      if (found.some((f) => f.root === top) || !names(await git(top, "remote", "-v"), repo)) continue
+      const top = real((await git(r, "rev-parse", "--show-toplevel")).trim())
+      if (found.some((f) => same(f.root, top)) || !names(await git(top, "remote", "-v"), repo)) continue
       found.push({ root: top, main: fs.statSync(path.join(top, ".git")).isDirectory() })
       if (found.at(-1)!.main) break
     } catch { /* not a checkout */ }
@@ -43,9 +47,9 @@ export async function checkoutOf(repo: string, roots: string[]) {
 
 /** The worktree to teleport in: the one that has `branch` already (it was continued here before), else a new one beside
  *  the checkout, named for the branch (megaset-vibrant-pasteur-7o0vgx) or the session. */
-export async function worktreeFor(root: string, session: string, branch: string | undefined) {
-  const list = await git(root, "worktree", "list", "--porcelain")
-  const where = (block: string) => { const l = block.split("\n").find((x) => x.startsWith("worktree ")); return l ? path.resolve(l.slice(9)) : null }
+export async function worktreeFor(checkout: string, session: string, branch: string | undefined) {
+  const root = real(checkout), list = await git(root, "worktree", "list", "--porcelain")
+  const where = (block: string) => { const l = block.split("\n").find((x) => x.startsWith("worktree ")); return l ? real(l.slice(9).trim()) : null }
   if (branch) {
     const p = where(list.split("\n\n").find((b) => b.split("\n").includes(`branch refs/heads/${branch}`)) ?? "")
     if (p && fs.existsSync(p)) return p
@@ -53,11 +57,11 @@ export async function worktreeFor(root: string, session: string, branch: string 
   const tail = (branch?.split("/").pop() || session.slice(-8)).toLowerCase().replace(/[^a-z0-9-]+/g, "-").slice(0, 60)
   const dir = path.join(path.dirname(root), `${path.basename(root)}-${tail}`)
   if (fs.existsSync(dir)) {
-    if (list.split("\n\n").some((b) => where(b) === dir)) return dir
+    if (list.split("\n\n").some((b) => { const w = where(b); return !!w && same(w, real(dir)) })) return real(dir)
     throw new OpError(`${dir} is there already and isn't a worktree of ${path.basename(root)}: give cwd`, 409)
   }
   await git(root, "worktree", "add", "--detach", dir)
-  return dir
+  return real(dir)
 }
 
 export function teleports(plugin: Plugin, o: { accounts: () => Account[]; json: (a: Account) => string; roots: () => Promise<string[]> }) {

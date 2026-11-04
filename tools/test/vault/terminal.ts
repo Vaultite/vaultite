@@ -211,7 +211,7 @@ export default async ($: VaultTest) => {
       const tp = await import("../../../plugins/core/claude-code/teleport.ts")
       const { execFileSync } = await import("node:child_process")
       const { gitEnv } = await import("../../../core/gitenv.ts")
-      const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "vau-teleport-")))
+      const base = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "vau-teleport-")))
       const repo = path.join(base, "web"), git = (cwd: string, ...a: string[]) => execFileSync("git", ["-C", cwd, ...a], { stdio: "pipe", env: gitEnv() }).toString()
       fs.mkdirSync(repo)
       git(repo, "init", "-q"); git(repo, "-c", "user.email=a@b", "-c", "user.name=A", "commit", "-q", "--allow-empty", "-m", "x")
