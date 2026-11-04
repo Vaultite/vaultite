@@ -45,8 +45,15 @@ function keep(id: string) {
   const show = () => { const s = saved.get(); value.set(over ? { ...(s ?? {}), ...over } : s) }
   saved.subscribe(show)
   let reading: Promise<void> | null = null
-  const got = (d: unknown) => saved.set(isObj<Data>(d) ? d : {}), failed = () => { if (!saved.get()) saved.set({}) }
-  const read = () => readSoon(id).then(got, failed)
+  // A read that a write overtook (asked before it, or answered while one is out) is older than what's shown: dropped,
+  // and read again once the writes are in. Writes go one at a time, so the server keeps the last one.
+  let writes = 0, gen = 0, stale = false, queue: Promise<unknown> = Promise.resolve()
+  const got = (g: number) => (d: unknown) => {
+    if (writes || g !== gen) { stale = true; if (!writes) void read(); return }
+    saved.set(isObj<Data>(d) ? d : {})
+  }
+  const failed = () => { if (!saved.get()) saved.set({}) }
+  const read = (): Promise<void> => { stale = false; return readSoon(id).then(got(gen), failed) }
   const start = () => {
     if (reading) return
     reading = read()
@@ -58,7 +65,11 @@ function keep(id: string) {
     const was = saved.get() ?? {}, next = { ...was }
     for (const [k, v] of Object.entries(changes)) if (v === null || v === undefined) delete next[k]; else next[k] = v
     saved.set(next)
-    try { await patch(`config/plugin/${id}`, Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? null]))) } catch (e) { saved.set(was); throw e }
+    gen++; writes++
+    const body = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? null]))
+    const sent = queue.then(() => patch(`config/plugin/${id}`, body))
+    queue = sent.catch(() => {})
+    try { await sent } catch (e) { saved.set(was); throw e } finally { if (!--writes && stale) void read() }
   }
   const preview = (keys: Data | null) => { start(); over = keys; show() }
   return { value, start, set, preview, ready: () => { start(); return reading! } }

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A plugin setting changed twice quickly keeps the last change**: hiding a graph group and showing it again at once
+  no longer leaves it hidden, when a read from before the first change came back late.
 - **A tab moved to another container loads only its page there**: its earlier page no longer starts loading in the new
   container on the way, which on Linux could leave an extension's redirect there (a site blocker's) undone.
 - **A click as a note opens stays where it went**: clicking a table's cell or a line while the note was still coming
