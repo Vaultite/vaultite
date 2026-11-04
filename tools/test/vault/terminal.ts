@@ -190,7 +190,8 @@ export default async ($: VaultTest) => {
     const term = await import("../../../plugins/core/terminal/plugin.ts")
     const { splitMachine } = await import("../../../core/plugins.ts")
     check("terminal: an agent's id may name its account", JSON.stringify(term.agentOf("claude_work-k3j2h1g0")) === JSON.stringify({ name: "claude", resume: null, profile: "work" }) &&
-      term.agentOf("claude-k3j2h1g0")?.profile === null && term.agentOf("resume-claude-0d1e2f3a-4444")?.resume === "0d1e2f3a-4444", term.agentOf("claude_work-k3j2h1g0"))
+      term.agentOf("claude-k3j2h1g0")?.profile === null && term.agentOf("resume-claude-0d1e2f3a-4444")?.resume === "0d1e2f3a-4444" &&
+      JSON.stringify(term.agentOf("resume-claude_work-session_01AbC")) === JSON.stringify({ name: "claude", resume: "session_01AbC", profile: "work" }), term.agentOf("claude_work-k3j2h1g0"))
     check("terminal: @<machine> is another machine's", JSON.stringify(splitMachine("claude-k3j2@studio")) === JSON.stringify(["claude-k3j2", "studio"]) &&
       JSON.stringify(splitMachine("k3j2h1g0")) === JSON.stringify(["k3j2h1g0", ""]) && term.TERMINAL_ID.test("claude_work-k3@box-2") &&
       !term.TERMINAL_ID.test("a@B") && !term.TERMINAL_ID.test("a@b@c"), splitMachine("claude-k3j2@studio"))
@@ -203,6 +204,39 @@ export default async ($: VaultTest) => {
       JSON.stringify(trust.approve) === JSON.stringify(["\x1b[B", "\r"]) && JSON.stringify(trust.deny) === JSON.stringify(["\x1b"]), trust)
     const perm = await term.askOn(showing(" Bash command\n   rm -rf build\n Do you want to proceed?\n ❯ 1. Yes\n   2. No"), "t", asks)
     check("terminal: its permission dialog is one too, Yes first", perm?.id === "permission" && JSON.stringify(perm.approve) === JSON.stringify(["\r"]), perm)
+    // A cloud session (session_...) continued here: claude --teleport, in a worktree beside a checkout of its repository.
+    const cloudRun = await cc.plugin.services["agent:claude"]({ resume: "session_01AbCdEf", profile: null, context: "", state: null, prompt: "ignored" })
+    check("terminal: a cloud session's terminal teleports it, no prompt", /claude --teleport '?session_01AbCdEf/.test(cloudRun.command) && !cloudRun.command.includes("--resume") && !cloudRun.command.includes("ignored"), cloudRun)
+    {
+      const tp = await import("../../../plugins/core/claude-code/teleport.ts")
+      const { execFileSync } = await import("node:child_process")
+      const { gitEnv } = await import("../../../core/gitenv.ts")
+      const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "vau-teleport-")))
+      const repo = path.join(base, "web"), git = (cwd: string, ...a: string[]) => execFileSync("git", ["-C", cwd, ...a], { stdio: "pipe", env: gitEnv() }).toString()
+      fs.mkdirSync(repo)
+      git(repo, "init", "-q"); git(repo, "-c", "user.email=a@b", "-c", "user.name=A", "commit", "-q", "--allow-empty", "-m", "x")
+      git(repo, "remote", "add", "origin", "git@github.com:lighthouse/web.git")
+      fs.writeFileSync(path.join(repo, "dirty.txt"), "the user's own change")
+      const root = await tp.checkoutOf("lighthouse/web", [path.join(base, "nowhere"), repo])
+      check("teleport: a checkout of the repository is found among the folders, by its remote", root === repo && await tp.checkoutOf("lighthouse/other", [repo]) === null, root)
+      const wt = await tp.worktreeFor(repo, "session_01AbCdEf", "claude/fix-build")
+      check("teleport: a new worktree beside it, named for the branch; the checkout untouched", wt === path.join(base, "web-fix-build") && fs.existsSync(path.join(wt, ".git")) &&
+        fs.existsSync(path.join(repo, "dirty.txt")) && !fs.existsSync(path.join(wt, "dirty.txt")), wt)
+      check("teleport: the same worktree again for that session's branch", await tp.worktreeFor(repo, "session_01AbCdEf", "claude/fix-build") === wt)
+      git(wt, "checkout", "-q", "-b", "claude/fix-build")
+      check("teleport: a worktree that has the branch is the one used", await tp.worktreeFor(repo, "session_09Zz", "claude/fix-build") === wt)
+      // The op: in the folder named, its terminal named for the session, shown in a tab.
+      const { checkParams, whoOf } = await import("../../../core/ops.ts")
+      const said: string[] = []
+      const ctx = { who: whoOf("cli", null), api: async (m: string, r: string, b?: unknown) => { said.push(`${m} ${r} ${b ? JSON.stringify(b) : ""}`.trim()); return {} },
+        ui: async (b: unknown) => { said.push(`ui ${JSON.stringify(b)}`); return {} } }
+      const top = cc.plugin.ops.find((o) => o.id === "claude-code.teleport")!
+      const r = await top.run(checkParams(top, { session: "https://claude.ai/code/session_01AbCdEf?from=cli", cwd: wt, title: "Fix the build" }), ctx as never) as Any
+      check("teleport op: its terminal starts in the folder, named, its tab opened", r.session === "session_01AbCdEf" && /^resume-claude(_\w+)?-session_01AbCdEf$/.test(r.id) &&
+        said[0] === `POST terminals/${r.id} ${JSON.stringify({ cwd: wt })}` && said[1] === `POST terminals/${r.id}/name {"name":"Fix the build"}` &&
+        said[2] === `ui {"action":"open","path":"view:terminal/${r.id}","newTab":true}`, [r, said])
+      fs.rmSync(base, { recursive: true, force: true })
+    }
     // Codex has no hooks (and before 0.163 no OSC 7501, whose blocked has no kind): its approval, seen by its last lines, is Yes by Enter.
     const cx = await import("../../../plugins/core/codex/plugin.ts")
     const codexAsk = await term.askOn(showing("  $ curl -sI https://example.com | head -1\n\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `curl` (p)\n" +

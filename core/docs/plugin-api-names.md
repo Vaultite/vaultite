@@ -128,7 +128,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `closeTab(id, force?)`: Close a tab, every pane in it (`force`: without its views asking first, e.g.
 - `closeView(to)`: Close every pane showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudAccount`: A claude.ai organization whose sessions are read: its name (a personal one's: its login's email), and the logins (profiles) it's in.
-- `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with, `account` its organization's id (older builds don't say).
+- `CloudSession`: A session of Claude Code on the web (electron/cloud.ts, which says what each is): `updated` in ms, `url` its page, `profile` the logins it was read with, `account` its organization's id; older…
 - `CloudState`: `signedIn`: a profile named is signed in to claude.ai (from its cookies: nothing asked); the rest once read.
 - `cn`
 - `coarse`: A finger is the pointer (phones, tablets): no hover, so what shows on hover is swiped or held for instead.
@@ -1074,7 +1074,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `projectRoots(cwds, own?)`: Folder -> its project's root.
 - `Question`: A question an agent asks in its own words (Claude Code's AskUserQuestion): its options, one or several of them, an answer typed instead and Chat about this; `closed`, a dialog read off its screen:…
 - `readLines(file, offset, line, chunk?)`: Calls `line` with each whole line of `file` from byte `offset`; returns where the last one ended.
-- `resumeTerminalId(name, session)`: The id of a terminal resuming agent `name`'s session `session`.
+- `resumeTerminalId(name, session, profile?)`: The id of a terminal resuming agent `name`'s session `session` (in account `profile`: one only it can reach, a cloud session's).
 - `Said`
 - `SampleAnswer`
 - `SampleAsk`: What the service "sample" is asked: one reply to `prompt`, no tools, nothing remembered (an artifact's claude.sample).

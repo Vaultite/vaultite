@@ -1,4 +1,4 @@
-// A terminal's id says what it runs: "<agent>-<random>", "<agent>_<profile>-…" (account), "resume-<agent>-<session>",
+// A terminal's id says what it runs: "<agent>-<random>", "<agent>_<profile>-…" (account), "resume-<agent>[_<profile>]-<session>",
 // then "@<machine>" when elsewhere; else a plain shell. Read and made only here; Node-free: the web imports it.
 
 /** An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal"). */
@@ -14,8 +14,8 @@ export function parseTerminal(id: string): TerminalAgent | null {
   const at = id.indexOf("@")
   const own = at < 0 ? id : id.slice(0, at), machine = at < 0 ? null : id.slice(at + 1)
   if (own.startsWith("resume-")) {
-    const m = /^([a-z][a-z0-9]*)-([\w.-]{4,100})$/.exec(own.slice(7))
-    return m ? { agent: m[1], profile: null, resume: m[2], machine } : null
+    const m = /^([a-z][a-z0-9]*)(?:_([a-z0-9]{1,32}))?-([\w.-]{4,100})$/.exec(own.slice(7))
+    return m ? { agent: m[1], profile: m[2] ?? null, resume: m[3], machine } : null
   }
   const m = /^([a-z][a-z0-9]*)(?:_([a-z0-9]{1,32}))?-[\w-]+$/.exec(own)
   return m ? { agent: m[1], profile: m[2] ?? null, resume: null, machine } : null
@@ -30,8 +30,9 @@ export function newTerminalId(agent?: string | null) {
   return agent ? `${agent}-${id}` : id
 }
 
-/** The id of a terminal resuming agent `name`'s session `session`. */
-export const resumeTerminalId = (name: string, session: string) => `resume-${name}-${session}`
+/** The id of a terminal resuming agent `name`'s session `session` (in account `profile`: one only it can reach, a
+ *  cloud session's). */
+export const resumeTerminalId = (name: string, session: string, profile?: string | null) => `resume-${agentIn(name, profile)}-${session}`
 
 /** The AI agents Vaultite tells apart, the first match winning: id (its plugin's), name, its name in a terminal, what its
  *  writes say they came from (default its id), how it calls itself (an MCP client's name) and its process's command. */

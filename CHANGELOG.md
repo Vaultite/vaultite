@@ -21,6 +21,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   window back as it was, still a player; full screen at once is a setting (Players open full screen).
 - **A bookmark star in the Browser's address bar**, as Chrome's: outline, or filled for a bookmarked page. A click (or ⌘D)
   bookmarks the page and opens a small card to rename it, pick its folder or remove it; the … menu says Edit bookmark… once it is.
+- **Cloud sessions, a page of their own**: the Cloud panel picks an account on its heading (or All accounts), with
+  which accounts show at all in the same menu. As a tab it's a list like a pull request list: Needs you, Working,
+  Ready for review and Recent, each session with its repository, branch, where it stands, its pull request (through
+  `gh`) and when it last moved; search it, narrow it to a repository, start a new one. From a row: archive (with
+  Undo), rename, open its changes on GitHub, or Continue in a terminal (`claude --teleport`, in a worktree beside your
+  checkout, in the Claude Code account signed in to it). The Inbox's news says what a session asked or did.
+- **Phone pages titled once**: a page with its own header (Sites, Extensions, Cloud sessions) no longer repeats its
+  title under the phone's.
 - **Folders as Finder shows them**: a folder's page shows as a grid, a list, columns (each folder down to it side by
   side, a preview of the file picked) or a gallery (the picked thing large over a strip, ← → through it); a list or
   grid can be grouped by kind or date modified. Every file has a picture: a PDF's first page, a video's frame, a web

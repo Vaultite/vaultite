@@ -16,7 +16,7 @@ import { newPhoneTab, pickTab } from "@/core/phoneTabs"
 import { shownHeaderItems, viewFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { haptic } from "@/core/haptics"
-import { Badged, PageHeader, usePortalHost } from "@/components/kit"
+import { Badged, PageHeader, TitledAbove, usePortalHost } from "@/components/kit"
 import { groupItems, groupMenu, groupName, TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
 import { colorVar } from "../../../core/colors.ts"
 import { namedIcon } from "@/core/pages"
@@ -822,7 +822,8 @@ function PaneBody({ store, to }: { store: Store; to: string }) {
   return (
     <>
       <PageHeader title={v.title} />
-      {v.drawn ? <HeldView to={to} view={view}>{v.drawn}</HeldView> : <p className="text-[15px] text-muted-foreground">{v.note}</p>}
+      {/* (titled here: a PageHeader of the view's own leaves its title out) */}
+      {v.drawn ? <TitledAbove.Provider value><HeldView to={to} view={view}>{v.drawn}</HeldView></TitledAbove.Provider> : <p className="text-[15px] text-muted-foreground">{v.note}</p>}
     </>
   )
 }

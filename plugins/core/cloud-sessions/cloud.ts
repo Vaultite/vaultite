@@ -1,6 +1,6 @@
-// Claude Code on the web's sessions, read by the desktop app with the Browser's logins (electron/web.ts): one state for
+// Claude Code on the web's sessions, read by the desktop app with the Browser's logins (electron/cloud.ts): one state for
 // the app, asked again when the profiles, the user's yes or the hidden accounts change. None but in the desktop app.
-import { isViewOpen, notify, openView, pluginSettings, subscribeScoped, webPages, workspaceList, workspaces,
+import { askText, get, isViewOpen, notify, notifyError, op, openView, pluginSettings, removals, scopedState, subscribeScoped, webPages, workspaceList, workspaces,
   type CloudAccount, type CloudSession, type CloudState } from "@vaultite"
 import { argOf, containerById, containerOfProfile, containers, profileIn } from "@plugins/web-viewer/containers"
 import { profileFor, settings as browser, settingsRead } from "@plugins/web-viewer/state"
@@ -66,15 +66,45 @@ export function setHidden(label: string, hide: boolean) {
   return settings.set({ hidden: hide ? [...new Set([...was, label])] : was.filter((l) => l !== label) })
 }
 
-/** The ones a list shows: waiting on you, working, then idle ones touched in the last two days, at most ten; `older`:
- *  the rest, behind Show older. */
+/** The account the panel and the tab show, per workspace (null: all of them). */
+export const PICKED = "cloud-sessions:account"
+export const pickedNow = () => scopedState<string | null>(PICKED, null)
+/** The account picked, if it's still one shown; else all of them. */
+export const pickedOf = (shown: CloudAccount[], id: string | null | undefined) => shown.find((a) => a.id === id)
+
+// ---------- where a session stands
+
+/** It waits for you: a permission or a question while it runs, or a question it ended its turn on in the last three
+ *  days (an older one was left, not waited on). */
+export const needsYou = (c: CloudSession) => c.state === "waiting" || (c.state === "idle" && c.outcome === "input" && Date.now() - c.updated < 3 * 86_400_000)
+export type Status = "needs" | "working" | "review" | "done"
+export const statusOf = (c: CloudSession): Status => (needsYou(c) ? "needs" : c.state === "running" ? "working"
+  : c.outcome === "review" && Date.now() - c.updated < 7 * 86_400_000 ? "review" : "done")
+export const STATUS: Record<Status, string> = { needs: "Needs you", working: "Working", review: "Ready for review", done: "Idle" }
+/** A session's dot: working, waiting on you, or an answer you haven't read. */
+export const badgeOf = (c: CloudSession) => (c.state === "running" ? "working" as const : needsYou(c) ? "ask" as const : c.unread ? "unread" as const : undefined)
+
+/** The ones a list shows: needing you, working, then idle ones touched in the last two days, at most ten; `older`: the
+ *  rest, behind Show older. */
 export const cloudListed = (list: CloudSession[]) => {
-  const rank = { waiting: 0, running: 1, idle: 2 }
-  const recent = (c: CloudSession) => c.state !== "idle" || Date.now() - c.updated < 2 * 86_400_000
-  const sorted = [...list].sort((a, b) => Number(!recent(a)) - Number(!recent(b)) || rank[a.state] - rank[b.state] || b.updated - a.updated)
+  const rank = { needs: 0, working: 1, review: 2, done: 2 }
+  const recent = (c: CloudSession) => statusOf(c) !== "done" || Date.now() - c.updated < 2 * 86_400_000
+  const sorted = [...list].sort((a, b) => Number(!recent(a)) - Number(!recent(b)) || rank[statusOf(a)] - rank[statusOf(b)] || b.updated - a.updated)
   const n = Math.min(10, sorted.filter(recent).length)
   return { listed: sorted.slice(0, n), older: sorted.slice(n) }
 }
+
+/** Its first repository and branch, for its row. */
+export const repoOf = (c: CloudSession) => c.repos?.find((r) => r.branch) ?? c.repos?.[0]
+export const repoName = (repo: string) => repo.split("/").pop() ?? repo
+export const github = (repo: string, rest = "") => `https://github.com/${repo}${rest}`
+/** Where its work is on GitHub: its pull request, else its branch's diff with a pull request to open. */
+export const diffUrl = (c: CloudSession) => {
+  const r = repoOf(c)
+  return c.pr?.url ?? (r?.branch ? github(r.repo, `/compare/${encodeURIComponent(r.branch).replace(/%2F/g, "/")}?expand=1`) : null)
+}
+
+// ---------- opening one
 
 /** Open `url` (claude.ai) in logins among `among`: this workspace's when it's one of them, else a container's (from
  *  anywhere), else another workspace's, switched to. */
@@ -95,7 +125,52 @@ export function openIn(url: string, among: string[], opts: { newTab?: boolean } 
 
 /** A session's page, in its account's logins. */
 export const openSession = (c: CloudSession, newTab?: boolean) => openIn(c.url, accountOf(now, c)?.profiles ?? [c.profile], { newTab })
+/** A page of GitHub's, in this workspace's logins. */
+export const openGitHub = (url: string) => openIn(url, [], { newTab: true })
 
 /** claude.ai's new session page; `prompt` waits in its box, for the user to pick the repository and send. */
 export const newSessionUrl = (base: string, prompt?: string) => `${base}/code${prompt ? `?q=${encodeURIComponent(prompt)}` : ""}`
 export const newSession = (a: CloudAccount | undefined, prompt?: string) => openIn(newSessionUrl(now.base ?? "https://claude.ai", prompt), a?.profiles ?? [], { newTab: true })
+
+// ---------- what's done to one: archived (with Undo), renamed, continued here
+
+/** Sessions on their way to the archive: their rows fold away at once. */
+export const leaving = removals()
+export const canAct = () => !!webPages?.cloudAct
+
+export async function archive(c: CloudSession) {
+  const act = webPages?.cloudAct
+  if (!act) return
+  const ok = await leaving.remove(c.id, () => act("archive", c.id), "Couldn't archive it")
+  if (ok) notify(`Archived “${c.title}”`, { action: { label: "Undo", run: () => void unarchive(c) } })
+}
+async function unarchive(c: CloudSession) {
+  leaving.back([c.id])
+  try { await webPages!.cloudAct!("unarchive", c.id, { account: c.account ?? "" }) } catch (e) { notifyError(e, "Couldn't bring it back") }
+}
+
+export function rename(c: CloudSession) {
+  const act = webPages?.cloudAct
+  if (!act) return
+  askText({ title: "Rename session", placeholder: "Its name", typed: c.title, hint: "Its name on claude.ai too",
+    label: (t) => `Rename to “${t}”`,
+    onText: (t) => { if (t !== c.title) void act("rename", c.id, t).catch((e) => notifyError(e, "Couldn't rename it")) } })
+}
+
+/** Which claude.ai organizations a Claude Code account here is signed in to (its sessions can be continued here),
+ *  asked of the server once a minute at most. */
+let orgs: { at: number; list: Promise<string[]> } | null = null
+export function teleportable(): Promise<string[]> {
+  if (!orgs || Date.now() - orgs.at > 60_000) {
+    orgs = { at: Date.now(), list: get<{ account: string; org: string }[]>("claude-code/organizations").then((l) => l.map((x) => x.org), () => []) }
+  }
+  return orgs.list
+}
+
+/** Continue it here: `claude --teleport` in a terminal tab, in a worktree of its repository. */
+export async function teleport(c: CloudSession) {
+  const r = repoOf(c)
+  try {
+    await op("claude-code.teleport", { session: c.id, ...(c.account ? { org: c.account } : {}), ...(r ? { repo: r.repo } : {}), ...(r?.branch ? { branch: r.branch } : {}), title: c.title })
+  } catch (e) { notifyError(e, "Couldn't continue it here") }
+}

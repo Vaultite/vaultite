@@ -1,18 +1,19 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { Cloud, Send } from "lucide-react"
 import { activeFile, choose, currentFile, definePlugin, devicePref, isViewOpen, offerPanel, openView, panelSide, notify, notifyError, Panel, readFile, splitFm, stem, type CloudAccount } from "@vaultite"
-import { getCloud, hasCloud, newSession, openSession, settings, shownAccounts, subscribeCloud } from "./cloud"
-import { CloudList, CloudPanel, CloudView } from "./CloudPanel"
+import { getCloud, hasCloud, newSession, openSession, pickedNow, pickedOf, repoOf, settings, shownAccounts, STATUS, statusOf, subscribeCloud } from "./cloud"
+import { CloudList, CloudPanel } from "./CloudPanel"
+import { CloudView } from "./CloudPage"
 
 const isNote = (p: string) => /\.md$/i.test(p) && !p.startsWith(".")
 const here = () => { const f = currentFile() || activeFile()?.path || ""; return isNote(f) ? f : "" }
 const reading = () => hasCloud() && settings.get().read === true
 const PANEL = "cloud-sessions:cloud"
 
-/** The account to start in: the one shown, else the user's pick in the palette (null: dismissed). */
+/** The account to start in: the one picked or shown, else the user's pick in the palette (null: dismissed). */
 function pickAccount(then: (a: CloudAccount | undefined) => void) {
-  const s = getCloud(), shown = shownAccounts(s, settings.get().hidden)
-  if (shown.length <= 1) return then(shown[0])
+  const s = getCloud(), shown = shownAccounts(s, settings.get().hidden), picked = pickedOf(shown, pickedNow().get())
+  if (picked || shown.length <= 1) return then(picked ?? shown[0])
   choose({ title: "New cloud session", placeholder: "Which account?", items: shown.map((a) => ({ id: a.id, label: a.label, icon: Cloud })),
     onPick: (it) => then(shown.find((a) => a.id === it.id)) })
 }
@@ -48,9 +49,9 @@ function Preview() {
     <Panel title="Cloud sessions" icon={Cloud} tint="var(--orange)">
       <p className="text-[15px] leading-[20px] text-muted-foreground">
         Claude Code on the web's sessions in the sidebar, live: a dot while one works, bold when it waits for you, and the
-        Inbox tells you when one finishes or needs you. Every claude.ai account the Browser is signed in to shows, each
-        under its name, and a click opens a session in the logins it belongs to, from any workspace. Start a new one with
-        +, or send a note as a new session's prompt.
+        Inbox tells you when one finishes or needs you. Pick an account on the panel's heading, or see all of them, and a
+        click opens a session in the logins it belongs to. As a tab, they're a list with their repository, branch and pull
+        request, to search, continue in a terminal here or archive. Start a new one with +, or send a note as its prompt.
       </p>
     </Panel>
   )
@@ -75,10 +76,11 @@ export default definePlugin({
     docs: () => {
       const s = getCloud()
       return s.sessions.map((c) => {
-        const account = s.accounts.find((a) => a.id === c.account)
-        const state = c.state === "running" ? "Working" : c.state === "waiting" ? "Waiting for you" : "Idle"
-        return { id: `cloud-${c.id}`, title: c.title, kind: "Cloud session", icon: Cloud, tint: "var(--orange)", meta: [account?.label, state].filter(Boolean).join(" · "),
-          run: (newTab: boolean) => openSession(c, newTab), text: account?.label ?? "", recent: c.updated, weight: 6 }
+        const account = s.accounts.find((a) => a.id === c.account), r = repoOf(c)
+        return { id: `cloud-${c.id}`, title: c.title, kind: "Cloud session", icon: Cloud, tint: "var(--orange)",
+          meta: [account?.label, r && r.repo.split("/").pop(), STATUS[statusOf(c)]].filter(Boolean).join(" · "),
+          run: (newTab: boolean) => openSession(c, newTab), text: [account?.label, ...(c.repos ?? []).flatMap((x) => [x.repo, x.branch]), c.summary].filter(Boolean).join(" "),
+          recent: c.updated, weight: 6 }
       })
     },
   },

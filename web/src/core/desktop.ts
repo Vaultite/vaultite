@@ -188,6 +188,9 @@ export type WebPages = {
   /** Claude Code on the web's sessions in the profiles named, read with their logins once `read` (the user's yes), told
    *  from now on as `cloud` events, news as `session` ones. Older builds take nothing and answer the sessions. */
   cloud?: (want: { profiles: string[]; read: boolean; hidden: string[] }) => Promise<CloudState | CloudSession[]>
+  /** A cloud session archived, back from the archive, or renamed (`value`: its new title) on claude.ai. Older builds
+   *  don't have it. */
+  cloudAct?: (action: "archive" | "unarchive" | "rename", id: string, value?: string | { account: string }) => Promise<{ ok: boolean }>
   /** The window over its pages while something covers one (null: under them): "app" takes the pointer (a menu, a drag),
    *  "through" leaves what lands on a page to it (beside a toast, the mini player), passed on with `pointer`. */
   raise: (how: "app" | "through" | null) => Promise<unknown>
@@ -249,9 +252,12 @@ export type WebEvent =
   | ({ type: "cloud" } & Partial<CloudState> & { sessions: CloudSession[] })
   /** Something a feature of the browser engine tells (electron/browser/engine.ts `tell`): its own `type`. */
   | { type: `engine:${string}`; [k: string]: unknown }
-/** A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was
- *  read with, `account` its organization's id (older builds don't say). */
-export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string; account?: string }
+/** A session of Claude Code on the web (electron/cloud.ts, which says what each is): `updated` in ms, `url` its page,
+ *  `profile` the logins it was read with, `account` its organization's id; older builds say only these. */
+export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string; account?: string
+  summary?: string; outcome?: "done" | "input" | "review"; unread?: boolean; created?: number
+  repos?: { repo: string; branch?: string }[]; origin?: "web" | "cli" | "phone"; remote?: boolean
+  pr?: { number: number; url: string; state: "open" | "draft" | "merged" | "closed" } }
 /** A claude.ai organization whose sessions are read: its name (a personal one's: its login's email), and the logins
  *  (profiles) it's in. */
 export type CloudAccount = { id: string; label: string; profiles: string[] }

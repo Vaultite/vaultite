@@ -18,14 +18,19 @@ export function usePortalHost(id: string | null) {
   return host
 }
 
+/** A view drawn under a title of its phone page's own (TabSwitcher's PaneBody): a PageHeader in it leaves its title out. */
+export const TitledAbove = createContext(false)
+
 /** A page's large title, on desktop right under its tab's bar (ViewBar), like a file's. `section`: at a Settings
  *  section's size. `tabs`: the page's tabs under it (a Segmented), `children` (what it does) in line with them. */
 export function PageHeader({ title, subtitle, section, tabs, children, className }: { title: string; subtitle?: ReactNode; section?: boolean; tabs?: ReactNode; children?: ReactNode; className?: string }) {
   // On phones a size down: the header above names the page too (PhoneHeader).
+  const above = useContext(TitledAbove)
+  if (above && !subtitle && !tabs && !children) return null
   return (
-    <header className={cn("mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pt-1 md:pt-0", className)}>
+    <header className={cn("mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3", !above && "pt-1 md:pt-0", above && "-mt-3", className)}>
       <div className={cn(tabs && "min-w-0 max-md:w-full")}>
-        <h1 className={cn("text-[24px] leading-[30px] font-bold", !section && "title-font md:text-[34px] md:leading-[41px]")}>{title}</h1>
+        {!above && <h1 className={cn("text-[24px] leading-[30px] font-bold", !section && "title-font md:text-[34px] md:leading-[41px]")}>{title}</h1>}
         {subtitle && <p className="mt-0.5 text-[15px] leading-[20px] text-muted-foreground">{subtitle}</p>}
         {tabs && <div className="mt-3">{tabs}</div>}
       </div>

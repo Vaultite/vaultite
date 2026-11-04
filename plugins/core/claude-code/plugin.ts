@@ -14,6 +14,7 @@ import { askingIn, Conversation, WANTED } from "./transcript.ts"
 import { chats } from "./chat.ts"
 import { dialogOn } from "./dialog.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
+import { teleports } from "./teleport.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const int = (v: unknown) => Math.trunc(Number(v) || 0)
 
@@ -516,19 +517,23 @@ function hooks({ state, report, stateHook, reportUrl }: Pick<AgentStart, "state"
 
 /** `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile
  *  names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none). */
-const FLAGS = new Set(["--resume", "--append-system-prompt", "--settings", "--allowedTools", "--model", "--effort", "--permission-mode", "--"])
+const CLOUD_SESSION = /^session_\w{4,80}$/
+const FLAGS = new Set(["--resume", "--teleport", "--append-system-prompt", "--settings", "--allowedTools", "--model", "--effort", "--permission-mode", "--"])
 plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> => {
   const { resume, context, profile, prompt, dark, allow, model, effort, mode, wsl } = start
   // (a plugin's session that runs now, the companion's, stays: a terminal would have none of the tools it serves, and
   // taking it over ends it for that plugin)
   const driver = resume ? chat.driving(resume) : ""
   if (driver) return agentRefusal(`This is ${driver === "companion" ? "the companion's" : `the ${driver} plugin's`} Claude Code session, running in the app with tools only the app serves: open it in its chat tab, or stop it there first to resume it here.`)
-  // (inside WSL its sessions and accounts are the distro's own, not these)
-  const found = resume && !wsl ? sessionFile(resume, true) : null
-  if (resume && !found && !wsl) return notOnThisMachine("Claude Code", resume)
+  // (a cloud session's, session_..., comes here with --teleport, into the folder it was asked to start in: a checkout of
+  // its repository; inside WSL its sessions and accounts are the distro's own, not these)
+  const cloud = !!resume && CLOUD_SESSION.test(resume)
+  const found = resume && !wsl && !cloud ? sessionFile(resume, true) : null
+  if (resume && !found && !wsl && !cloud) return notOnThisMachine("Claude Code", resume)
   // (a session the chat runs goes to the terminal: one writes it)
-  if (resume && chat.hosted(resume)) await chat.letGo(resume)
+  if (resume && !cloud && chat.hosted(resume)) await chat.letGo(resume)
   const a = wsl ? undefined : found?.account ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
+  if (cloud && profile && !a) return agentRefusal(`There's no Claude Code account "${profile}" on this machine to continue that cloud session in.`)
   const env: Record<string, string> = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? { CLAUDE_CONFIG_DIR: a.dir } : {}
   const cwd = found ? (await transcript(found.file))?.talk.head.cwd || null : null
   // Its ANSI themes draw in the terminal's 16 colours, which are the app's colour scheme.
@@ -537,9 +542,9 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
   const settings = told || theme ? { ...told, ...theme } : null
   // (Bash(...) and PowerShell(...): without Git Bash, Windows' Claude Code runs commands with its PowerShell tool)
   const allowed = allow?.flatMap((x) => [`Bash(${x}:*)`, ...(process.platform === "win32" && !wsl ? [`PowerShell(${x}:*)`] : [])])
-  const args = [...(resume ? ["--resume", resume] : []), ...(context ? ["--append-system-prompt", context] : []), ...(settings ? ["--settings", JSON.stringify(settings)] : []),
+  const args = [...(resume ? [cloud ? "--teleport" : "--resume", resume] : []), ...(context ? ["--append-system-prompt", context] : []), ...(settings ? ["--settings", JSON.stringify(settings)] : []),
     ...(allowed?.length ? ["--allowedTools", ...allowed] : []), ...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : []),
-    ...(mode ? ["--permission-mode", mode] : []), ...(prompt ? ["--", prompt] : [])]
+    ...(mode ? ["--permission-mode", mode] : []), ...(prompt && !cloud ? ["--", prompt] : [])]
   return {
     command: [...Object.entries(env).map(([k, v]) => `${k}=${shellQuote(v)}`), "claude", ...args.map((x) => (FLAGS.has(x) ? x : shellQuote(x)))].join(" "),
     argv: ["claude", ...args], env, cwd,
@@ -810,3 +815,9 @@ const chat = chats(plugin, {
   },
 })
 plugin.exports.chat = chat.api
+
+// A cloud session continued here: its account by its organization, its repository's checkout among every account's projects.
+teleports(plugin, { accounts, json: accountJson, roots: async () => {
+  const u = await summary(30, accounts())
+  return sortBy((u.projects as Item[]).filter((p) => typeof p.root === "string" && p.root), (p) => [String(p.last ?? "")]).reverse().map((p) => String(p.root))
+} })
