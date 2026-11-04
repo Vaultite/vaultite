@@ -173,24 +173,29 @@ try {
   await api("PUT", "workspaces/1", { sidebars: { left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [], heights: { "pages:pages": 160 }, heightsAt: 400 } })
   await page.waitForSelector("aside [data-panel='files:files'] [data-panel-handle]")
   if (await page.$("aside [aria-label='Expand all']")) await page.click("aside [aria-label='Expand all']", { force: true })
-  let seenTall = null
-  const tall = await until(async () => {
-    const r = seenTall = await page.evaluate(() => {
-      const box = document.querySelector("[data-sidebar-body=left]"), el = document.querySelector("aside [data-panel='pages:pages']")
-      return box && el ? { box: box.clientHeight, h: el.getBoundingClientRect().height, sums: [...box.querySelectorAll(":scope > [data-panel]")].map((w) => [w.dataset.panel, Math.round(w.getBoundingClientRect().height), Math.round(w.querySelector("[data-panel-content]").getBoundingClientRect().height)]) } : null
-    })
-    return r && Math.abs(r.h - 160 * r.box / 400) <= 2 ? r : null
-  }, 6000)
-  check("a panel's height drawn in proportion to the sidebar's (heightsAt)", !!tall, seenTall)
+  // The panel ends between two rows (components/panelLayout.ts snapToRows): its height in proportion, at the row end
+  // just above or below it.
+  const pagesPanel = () => page.evaluate(() => {
+    const body = document.querySelector("[data-sidebar-body=left]"), el = document.querySelector("aside [data-panel='pages:pages']")
+    const scroll = el?.querySelector("[data-panel-scroll]"), inner = scroll?.firstElementChild
+    if (!body || !inner) return null
+    const top = inner.getBoundingClientRect().top, h = el.getBoundingClientRect().height
+    return { box: body.clientHeight, h, chrome: h - scroll.getBoundingClientRect().height, ends: [...inner.querySelectorAll("[data-panel-handle], [data-keyrow]")].map((r) => r.getBoundingClientRect().bottom - top),
+      sums: [...body.querySelectorAll(":scope > [data-panel]")].map((w) => [w.dataset.panel, Math.round(w.getBoundingClientRect().height), Math.round(w.querySelector("[data-panel-content]").getBoundingClientRect().height)]) }
+  })
+  const inProportion = (r) => {
+    if (!r) return false
+    const want = 160 * r.box / 400 - r.chrome
+    const below = Math.max(0, ...r.ends.filter((e) => e <= want + 0.5)), above = Math.min(...r.ends.filter((e) => e > want + 0.5))
+    // (drawing more than that: not just as tall as what it draws)
+    return r.ends.at(-1) > want + 0.5 && [below, above].some((e) => Math.abs(r.h - r.chrome - e) <= 1)
+  }
+  let seenTall = null, seenShort = null
+  const tall = await until(async () => { const r = seenTall = await pagesPanel(); return inProportion(r) ? r : null }, 6000)
+  check("a panel's height drawn in proportion to the sidebar's (heightsAt)", !!tall, seenTall && { ...seenTall, ends: undefined })
   await page.setViewportSize({ width: 1280, height: 600 })
-  const short = await until(async () => {
-    const r = await page.evaluate(() => {
-      const box = document.querySelector("[data-sidebar-body=left]"), el = document.querySelector("aside [data-panel='pages:pages']")
-      return { box: box.clientHeight, h: el.getBoundingClientRect().height }
-    })
-    return Math.abs(r.h - 160 * r.box / 400) <= 2 ? r : null
-  }, 6000)
-  check("...and follows it on a shorter window", !!short && short.h < tall.h, [tall, short])
+  const short = await until(async () => { const r = seenShort = await pagesPanel(); return inProportion(r) && r.box < tall?.box ? r : null }, 6000)
+  check("...and follows it on a shorter window", !!short && short.h < tall.h, [tall?.h, seenShort && { ...seenShort, ends: undefined }])
   await page.setViewportSize({ width: 1280, height: 800 })
   await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pinsBefore) })
   await api("PUT", "workspaces/1", { pinned: ownPinsBefore })
