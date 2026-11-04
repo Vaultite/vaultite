@@ -331,14 +331,26 @@ function switchTo(t: Tab, p: Pane, from?: string) {
   set(l)
 }
 
-/** Where the tabs made now go in the list: beside the tab on screen, or at its end (`newTabsAt`). */
-let placing: "end" | undefined
-/** Runs `fn` with the tabs it makes put at the list's end, in no tab group, instead of beside the tab on screen: a
- *  tab bar's + and the Tabs panel's New tab row, whose place the new tab takes. */
-export function newTabsAt<T>(at: "end" | undefined, fn: () => T): T {
+/** Where the tabs made now go in the list (`newTabsAt`): beside the tab they're opened from, in its tab group (a link);
+ *  a new tab's place ("new": past the tab on screen's group, in none, as ⌘T); or the list's end ("end"). */
+export type TabsAt = "new" | "end" | undefined
+let placing: TabsAt
+/** Runs `fn` with the tabs it makes put as a new tab is, in no tab group: beside the tab on screen, past its group
+ *  (⌘T), or at the list's end (a tab bar's + and the Tabs panel's New tab row, whose place the new tab takes). */
+export function newTabsAt<T>(at: TabsAt, fn: () => T): T {
   const was = placing
   placing = at
   try { return fn() } finally { placing = was }
+}
+
+/** Where in `l` a tab made now after tab `after` goes, and the tab group it joins (`how`: `placing`). */
+function placeAfter(l: TabList, after: string, how = placing): { at: number; group?: string } {
+  if (how === "end") return { at: l.tabs.length }
+  let at = l.tabs.findIndex((t) => t.id === after) + 1
+  const group = l.tabs[at - 1]?.group
+  if (!how) return { at, group }
+  while (group && l.tabs[at]?.group === group) at++
+  return { at }
 }
 
 /** The pane of the tab on screen that `to` opens in: the focused one when it shows the same sort of thing (or
@@ -395,7 +407,7 @@ let lastChild: { opener: string; tab: string } | null = null
 export function openTab(to: string, { background = false, from, id = newPaneId() }: { background?: boolean; from?: string; id?: string } = {}): string {
   const l = here(), owner = (from && tabOfPane(l, from)) || activeTab(), cur = activePane()
   if (!from && !background && isBlankTab(owner)) {
-    const t: Tab = { ...tabOf(to, { pane: id, id: owner.id }), ...(owner.group ? { group: owner.group } : {}) }
+    const t: Tab = { ...tabOf(to, { pane: id, id: owner.id }), ...(owner.group && !placing ? { group: owner.group } : {}) }
     set({ ...mapTab(l, owner.id, () => t), active: t.id })
     show(to, true)
     return id
@@ -403,8 +415,8 @@ export function openTab(to: string, { background = false, from, id = newPaneId()
   const fromPane = from && panesOf(owner).some((p) => p.id === from) ? from : owner.id === activeTab().id ? cur.id : focusedPane(owner).id
   const tab = tabOf(to, { pane: id, from: fromPane })
   const after = background && lastChild?.opener === owner.id && l.tabs.some((t) => t.id === lastChild!.tab) ? lastChild.tab : owner.id
-  const at = l.tabs.findIndex((t) => t.id === after) + 1
-  const placed = owner.group ? inGroup(tab, owner.group) : tab
+  const { at, group } = placeAfter(l, after)
+  const placed = inGroup(tab, group)
   set({ ...l, tabs: [...l.tabs.slice(0, at), placed, ...l.tabs.slice(at)], active: background ? l.active : tab.id })
   openers.set(tab.id, owner.id)
   if (background) lastChild = { opener: owner.id, tab: tab.id }
@@ -413,10 +425,9 @@ export function openTab(to: string, { background = false, from, id = newPaneId()
 }
 
 /** A list with a new tab showing `to` right after tab `after`, shown (`from`: the pane it was opened from, Pane.from),
- *  in `after`'s tab group, as a browser's link opened from a grouped tab is (or at its end: `newTabsAt`). */
+ *  in `after`'s tab group, as a browser's link opened from a grouped tab is (or as a new tab is: `newTabsAt`). */
 function withTabAfter(l: TabList, after: string, to: string, from?: string): TabList {
-  const at = placing === "end" ? l.tabs.length : l.tabs.findIndex((t) => t.id === after) + 1
-  const group = placing === "end" ? undefined : l.tabs[at - 1]?.group
+  const { at, group } = placeAfter(l, after)
   const tab = inGroup(tabOf(to, from ? { from } : {}), group)
   return { ...l, tabs: [...l.tabs.slice(0, at), tab, ...l.tabs.slice(at)], active: tab.id }
 }
@@ -913,16 +924,15 @@ let toRename: string | null = null
 export function askRename(path: string) { toRename = path; dispatchEvent(new Event("vaultite:rename")) }
 export const takeRename = (path: string) => { if (toRename !== path) return false; toRename = null; return true }
 
-/** A new blank tab next to the one on screen (or at the end: `newTabsAt`, a tab bar's +): one blank tab at a time (the
- *  one there is moves there instead; on screen already: nothing moves). */
+/** A new blank tab next to the one on screen, past its tab group and in none (or at the end: `newTabsAt`, a tab bar's
+ *  +): one blank tab at a time (the one there is moves there instead; on screen already: nothing moves). */
 export function newTab() {
   // (asked for before the vault arrived, on a first visit's blank tab: it stays one, not filled with the home page)
   unsaved = false
   const l = here()
   if (isBlankTab(activeTab())) return show("new", true)
   const had = l.tabs.find(isBlankTab), blank = had ? inGroup(had, undefined) : tabOf("new")
-  const tabs = l.tabs.filter((t) => t.id !== blank.id)
-  const at = placing === "end" ? tabs.length : tabs.findIndex((t) => t.id === l.active) + 1
+  const tabs = l.tabs.filter((t) => t.id !== blank.id), { at } = placeAfter({ ...l, tabs }, l.active, placing ?? "new")
   set({ ...l, tabs: [...tabs.slice(0, at), blank, ...tabs.slice(at)], active: blank.id })
   show("new", true)
 }

@@ -180,7 +180,7 @@ try {
     const left = () => page.$eval("[data-tab-id='c1']", (e) => e.getBoundingClientRect().left)
     const x0 = await left()
     await page.click("[data-tab-id='x']", { button: "right" }); await wait(200)
-    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Add to group", exact: true }).hover(); await wait(200)
+    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Add tab to group", exact: true }).hover(); await wait(200)
     await xs("c1")
     await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Lighthouse", exact: true }).click(); await wait(700)
     const path1 = (await page.evaluate(() => window.__xs)).filter((x) => x !== null), x1 = await left()

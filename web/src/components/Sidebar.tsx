@@ -14,7 +14,7 @@ import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
 import { coarse } from "@/core/haptics"
-import { checklist, menuFor, rightClickBelow, type CheckItem, type MenuItem } from "@/components/ContextMenu"
+import { checklist, commandItems, menuFor, rightClickBelow, type CheckItem, type MenuItem } from "@/components/ContextMenu"
 import { HeadingButton } from "@/components/Button"
 import { FileTree } from "@/components/FileTree"
 import { Drawn, Guard } from "@/components/Guard"
@@ -347,7 +347,9 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   const dock: MenuItem[] = me.dockable && !isDesktop() ? [{ label: docked ? "Take out of the dock" : "Put in the dock", icon: docked ? PanelBottomClose : PanelBottom, sep: !!(own.length || open.length), run: () => setPanelDocked(key, !docked) }] : []
   return [...own, ...open, ...dock,
     { label: "Panels", icon: Layers, sep: !!(own.length || open.length || dock.length), run: () => {}, items: list },
-    { label: `Move to ${other} sidebar`, icon: other === "right" ? PanelRight : PanelLeft, sep: true, run: () => dockAtEnd(key, other) },
+    // Where it is, together: the tab list on top instead (the tab bar), in the other sidebar, nowhere.
+    ...(me.tabList ? commandItems("tab:sidebar").map((it, i) => ({ ...it, sep: i === 0 })) : []),
+    { label: `Move to ${other} sidebar`, icon: other === "right" ? PanelRight : PanelLeft, sep: !me.tabList, run: () => dockAtEnd(key, other) },
     // (a top bar item's own menu has Move to top bar, which this would be)
     ...(isBarItem(key) ? [] : [{ label: `Hide ${me.title}`, icon: EyeOff, run: () => hidePanel(key) }]),
   ]

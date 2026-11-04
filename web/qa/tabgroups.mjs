@@ -3,7 +3,7 @@
 //   node web/qa/tabgroups.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { palette, qa, until, wait } from "./lib/qa.mjs"
+import { command, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B0, VAULT, OUT = "/tmp/tabgroups-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 mkdirSync(OUT, { recursive: true })
@@ -72,9 +72,31 @@ try {
   const chipW = await page.$eval("[data-group-chip] [data-group-name]", (e) => Math.round(e.getBoundingClientRect().width))
   check("  a long name is cut off in its chip", chipW <= 160, chipW)
   await rename("Lighthouse work")
-  await menu(tab("ME"), "Add to group", "Lighthouse work"); await wait(200)
+  await tab("ME").click({ button: "right" }); await wait(200)
+  await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Add tab to group", exact: true }).hover(); await wait(300)
+  const sub = await page.locator("[role=menu]").last().getByRole("menuitem").allTextContents()
+  check("with a group to join: Add tab to group ▸, New group first, then the groups (no row of its own for a new one)",
+    sub[0]?.trim() === "New group" && sub[1]?.trim() === "Lighthouse work" && await page.getByRole("menuitem", { name: "Add tab to new group", exact: true }).count() === 0, sub)
+  await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await wait(200)
+  await menu(tab("ME"), "Add tab to group", "Lighthouse work"); await wait(200)
   check("another tab joins it from its menu, at its end", (await bar()).includes("<Lighthouse work> Lighthouse ME"), await bar())
-  await menu(tab("2026-10-20"), "Add tab to new group")
+  // A new tab (⌘T) from a grouped tab is past its group, in none, whatever it opens (a link from it joins it).
+  const fresh = () => page.$$eval("[data-tab-bar] [data-tab-id]", (els) => { const i = els.findIndex((e) => e.querySelector("[aria-selected=true]"))
+    return { prev: els[i - 1]?.textContent.trim(), at: els[i]?.textContent.trim(), grouped: !!els[i]?.dataset.inGroup } })
+  const newtab = keep("newtab.json"), shown = await page.$eval("[data-tab-bar] [data-tab-id]:has([aria-selected=true])", (e) => e.dataset.tabId)
+  for (const opens of [null, "switcher"]) {
+    writeFileSync(newtab.p, JSON.stringify({ opens }) + "\n"); await wait(800)
+    await tab("Lighthouse").click(); await wait(200)
+    await command(page, "Open new tab", 500)
+    if (opens) { await page.keyboard.type("Lisbon trip"); await wait(500); await page.keyboard.press("Enter"); await wait(500) }
+    const f = await fresh()
+    check(`a new tab (${opens ?? "blank"}) from a grouped tab goes past its group, in none`, f.prev === "ME" && f.at === (opens ? "Lisbon trip" : "New tab") && !f.grouped, [f, await bar()])
+    await page.locator("[data-tab-bar] [data-tab-id]:has([aria-selected=true])").click({ button: "right" }); await wait(200)
+    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Close", exact: true }).click(); await wait(400)
+  }
+  if (newtab.was === null) rmSync(newtab.p); else writeFileSync(newtab.p, newtab.was)
+  await page.click(`[data-tab-bar] [data-tab-id="${shown}"]`); await wait(300)
+  await menu(tab("2026-10-20"), "Add tab to group", "New group")
   await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await wait(300)
   const chips = await page.$$eval("[data-group-chip]", (els) => els.map((e) => ({ text: ((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e), name: e.querySelector("[data-group-name]").getAttribute("aria-label"), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
   check("a group without a name is a square of its colour, in the next colour", chips.length === 2 && chips[1].text === "" && chips[1].name === "Blue group" && chips[0].bg !== chips[1].bg, chips)

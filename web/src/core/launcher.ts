@@ -4,7 +4,7 @@ import { runCommandById } from "@/core/commands"
 import { openView } from "@/core/files"
 import { active, viewFor } from "@/core/plugins"
 import { getPrefs, setPrefs } from "@/core/prefs"
-import { newTab, newTabsAt } from "@/core/workspace"
+import { newTab, newTabsAt, type TabsAt } from "@/core/workspace"
 import { groupById, newTabInGroup } from "@/core/tabgroups"
 
 /** Whether a new tab opens the quick switcher instead of a tab. */
@@ -30,14 +30,14 @@ function viewHere(opens: string | null) {
 }
 
 /** Where the quick switcher, opened as a new tab, puts what's picked (`newTabsAt`): set as it opens, gone as it closes. */
-let launchAt: "end" | undefined
+let launchAt: TabsAt
 export const launcherAt = () => launchAt
 export const launcherClosed = () => { launchAt = undefined }
 
-/** A new tab (or at the end of tab group `group`, a phone's open one): a blank one, or newtab.json's `opens`. Beside the
- *  tab on screen (⌘T), or `at` the list's end (a tab bar's +, the Tabs panel's row). */
-export function openNewTab({ group, at }: { group?: string; at?: "end" } = {}) {
-  const { opens } = getPrefs().newTab, view = viewHere(opens)
+/** A new tab (or at the end of tab group `group`, a phone's open one): a blank one, or newtab.json's `opens`. Past the
+ *  tab on screen and its group, in none (⌘T), or `at` the list's end (a tab bar's +, the Tabs panel's row). */
+export function openNewTab({ group, at: end }: { group?: string; at?: "end" } = {}) {
+  const { opens } = getPrefs().newTab, view = viewHere(opens), at: TabsAt = end ?? "new"
   if (group && !groupById(group)) group = undefined
   if (opens !== "switcher" && !view) return group ? newTabInGroup(group) : newTabsAt(at, () => newTab())
   if (view) return newTabsAt(at, () => openView(view, { another: true }))

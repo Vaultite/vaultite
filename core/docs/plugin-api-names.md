@@ -375,7 +375,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NewFile`: A kind of file it makes, in the New submenu: `make` writes one in `folder` ("" the top) and answers its path, which opens with its name ready to type.
 - `newNoteFolder(s, from?)`: The folder every new note goes in ("" = the top), unless the vault says otherwise.
 - `newPaneId()`: A new pane's id (panes opened before tabs held panes kept their tabs' "t…" ids).
-- `newTab()`: A new blank tab next to the one on screen (or at the end: `newTabsAt`, a tab bar's +): one blank tab at a time (the one there is moves there instead; on screen already: nothing moves).
+- `newTab()`: A new blank tab next to the one on screen, past its tab group and in none (or at the end: `newTabsAt`, a tab bar's +): one blank tab at a time (the one there is moves there instead; on screen…
 - `NewTabCtx`
 - `newTabId()`
 - `NewTabSection`: A section of a blank tab's page, among the app's (Buttons 10, Recently opened here 20, Recently changed 30), in newtab.json's order, else by `sort`.

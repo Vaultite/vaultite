@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { createPortal } from "react-dom"
 import {
   AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, PictureInPicture2, Folder,
-  PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, SquareSplitHorizontal, Undo2, Ungroup, X, type LucideIcon, PencilLine,
+  PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, type LucideIcon, PencilLine,
 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { edgeScroller, getDrag, onDrag, onDragEnd, startDrag, useDrag, useDragItem, useDropHit, type Drag, type DragItem } from "@/core/drag"
@@ -78,7 +78,7 @@ function tabMenu(tab: Tab): MenuItem[] {
       { label: "Open in split right", icon: Columns2, sep: true, run: () => moveToSplit("right", tab.id), disabled: !canJoin(tab.id) },
       { label: "Open in split down", icon: Rows2, run: () => moveToSplit("bottom", tab.id), disabled: !canJoin(tab.id) },
     ]),
-    ...(split ? [{ label: "Separate panes", icon: SquareSplitHorizontal, run: () => separate(tab) }] : []),
+    ...(split ? [{ label: "Separate panes", icon: UnfoldHorizontal, run: () => separate(tab) }] : []),
     ...(isPopout() ? [{ label: "Move to main window", icon: AppWindow, run: () => moveToMain([tab.id]), disabled: !hasMainWindow() }] : []),
     withVariant({ label: "Move to new window", icon: AppWindow, run: () => popOut(tab.id, true), disabled: blank },
       { label: "Open in new window", icon: AppWindow, run: () => popOut(tab.id), disabled: blank }),
@@ -98,10 +98,9 @@ function separate(tab: Tab) {
 function paneMenu(id: string): MenuItem[] {
   const p = paneById(id), t = paneTab(id)
   if (!p || !t) return []
-  const zoomed = t.zoom === id, view = viewPaneItems(p), several = panesOf(t).length > 1
+  const zoomed = t.zoom === id, several = panesOf(t).length > 1
   return [
-    ...view,
-    { label: "Split right", icon: Columns2, sep: view.length > 0, run: () => splitPane("right", id) },
+    { label: "Split right", icon: Columns2, run: () => splitPane("right", id) },
     { label: "Split down", icon: Rows2, run: () => splitPane("bottom", id) },
     ...(canPaneToTab(id) ? [{ label: "Move to new tab", icon: SquareArrowOutUpRight, run: () => paneToTab(id) }] : []),
     ...(p.float ? [{ label: "Dock pane", icon: PictureInPicture2, run: () => dockPane(id) }]
@@ -115,22 +114,22 @@ function paneMenu(id: string): MenuItem[] {
 /** Right-click on a pane's bar (or the view's top bar that's its title row): a split's pane's own menu; a tab's only
  *  pane's is the tab's, as its chip has it (with the tab bar off, nothing else is the tab's). Then how they show. */
 function barMenuOf(id: string): MenuItem[] {
-  const t = paneTab(id)
-  if (!t || panesOf(t).length > 1) return [...paneMenu(id), ...shownItems()]
-  const view = viewPaneItems(focusedPane(t))
-  return [...view, ...(view.length ? after(tabMenu(t)) : tabMenu(t)),
-    ...after([{ label: "New tab", icon: Plus, run: () => openNewTab({ at: "end" }) }, ...commandItems("tab:reopen", "tab:search")]), ...shownItems()]
+  const t = paneTab(id), p = paneById(id)
+  if (!t || panesOf(t).length > 1) return [...paneMenu(id), ...shownItems(p)]
+  return [...tabMenu(t),
+    ...after([{ label: "New tab", icon: Plus, run: () => openNewTab({ at: "end" }) }, ...commandItems("tab:reopen", "tab:search")]), ...shownItems(p)]
 }
 
-/** What the view in a pane offers at its top (its `paneMenu`: the Browser's Hide page bar). */
+/** How the view in a pane shows (its `paneMenu`: the Browser's Hide page bar), with the rest of how things show. */
 function viewPaneItems(p: Pane): MenuItem[] {
   const v = p.to.startsWith("view:") ? viewFor(p.to, getPrefs().disabled) : null
   if (!v?.on || !v.def.paneMenu) return []
   try { return v.def.paneMenu(v.arg, p.id) } catch { return [] }
 }
 
-/** How the tabs and panes show: in the sidebar or on top, the tab bar, pane titles. */
-function shownItems(): MenuItem[] {
+/** How the tabs and panes show, outside in: in the sidebar or on top, the tab bar, pane titles, then how pane `p`'s
+ *  view shows (the Browser's page bar), the same group in every menu that has it. */
+function shownItems(p?: Pane): MenuItem[] {
   const { paneTitles } = getPrefs(), tabBar = tabBarOn()
   // With the tabs in the sidebar, the way back is to put them on top (the tab bar on, the list gone). (A pop-out's
   // bar is drawn for want of a sidebar: nothing to switch there.)
@@ -139,16 +138,17 @@ function shownItems(): MenuItem[] {
     ...commandItems("tab:sidebar"),
     ...(vertical ? [] : [{ label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) }]),
     { label: paneTitles ? "Hide pane titles" : "Show pane titles", icon: Heading1, run: () => setPrefs({ paneTitles: !paneTitles }) },
+    ...(p ? viewPaneItems(p).map((it) => ({ ...it, sep: false })) : []),
   ])
 }
 
-/** Right-click on the tab bar's empty space. */
+/** Right-click on the tab bar's empty space: then how things show, the tab on screen's view too. */
 function barMenu(): MenuItem[] {
   return [
     { label: "New tab", icon: Plus, run: () => openNewTab({ at: "end" }) },
     ...commandItems("tab:reopen", "tab:search"),
     ...(hasMainWindow() ? [{ label: "Move all to main window", icon: AppWindow, run: () => moveToMain(here().tabs.map((t) => t.id)) }] : []),
-    ...shownItems(),
+    ...shownItems(activePane()),
   ]
 }
 
@@ -160,19 +160,19 @@ export const TABS = "tabs"
 /** What a tab group is called: its name, or its colour's ("Blue group"). */
 export const groupName = (g: Group) => g.name || `${COLOR_NAMES[g.color]} group`
 
-/** A tab menu's tab group rows, for one tab or several selected: into a new group (its editor opening on it), into
- *  another group, out of theirs. */
+/** A tab menu's tab group rows, for one tab or several selected, as a browser's: into a new group (its editor opening
+ *  on it), or with other groups to join, Add to group ▸ with New group first; then out of theirs. */
 export function groupItems(ids: string[]): MenuItem[] {
   const tabs = here().tabs.filter((t) => ids.includes(t.id))
   if (!tabs.length) return []
-  const n = tabs.length, own = new Set(tabs.map((t) => t.group))
+  const n = tabs.length, own = new Set(tabs.map((t) => t.group)), what = n === 1 ? "tab" : `${n} tabs`
   const others = allGroups().filter((g) => !(own.size === 1 && own.has(g.id)))
+  const fresh = () => { const id = makeGroup(ids); if (id) editGroup(id) }
   return [
-    { label: n === 1 ? "Add tab to new group" : `Add ${n} tabs to new group`, icon: GroupIcon, sep: true, run: () => {
-      const id = makeGroup(ids)
-      if (id) editGroup(id)
-    } },
-    ...(others.length ? [{ label: "Add to group", icon: Layers, run: () => {}, items: others.map((g) => ({ label: groupName(g), icon: dotIcon(colorVar(g.color)), run: () => addToGroup(ids, g.id) })) }] : []),
+    others.length
+      ? { label: `Add ${what} to group`, icon: GroupIcon, sep: true, run: () => {}, items: [{ label: "New group", icon: Plus, run: fresh },
+        ...others.map((g, i) => ({ label: groupName(g), icon: dotIcon(colorVar(g.color)), sep: i === 0, run: () => addToGroup(ids, g.id) }))] }
+      : { label: `Add ${what} to new group`, icon: GroupIcon, sep: true, run: fresh },
     ...(tabs.some((t) => t.group) ? [{ label: "Remove from group", icon: Ungroup, run: () => leaveGroup(ids) }] : []),
   ]
 }

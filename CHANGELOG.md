@@ -12,6 +12,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   page, small copies of photos so a folder of them opens fast (made by the server, kept). Its toolbar (view, Sort and
   group, More) is on the page, its count gone from under its name, and its tab's menu has the folder's own: New note,
   Copy path, Reveal in file tree, Open in Finder, More folder actions.
+- **Tidier tab menus**: Hide page bar sits with Show tabs on top, the tab bar and pane titles at the end of every menu
+  that has it; the Tabs panel's Show tabs on top is with Move to right sidebar; with a group to join, Add tab to group
+  has New group first, as in Chrome; Separate panes has an icon of its own; a new tab (⌘T) opens past a tab group,
+  never in it, whatever new tabs open.
 - **Faster restarts, a quieter idle**: the server keeps what it read of the coding agents' transcripts, so a restart
   reads on instead of a month of them again (about 25 s of CPU on a busy Mac, now under 2); comment threads in notes
   that aren't open no longer wake every window every 1.5 s; typing in the quick switcher searches a big vault three

@@ -56,4 +56,4 @@
   is raised over the page (layers.ts) and hears the pointer leave it. The window never hears the pointer over a page:
   electron/web.ts tells when it's at the page's top (`top`, again while it stays: the page hears nothing while the bar's
   over it), as it tells the window's edges for the sidebars. The pane's top above it (Tabs.tsx's `data-tabs-hidden`
-  strip or title, the window's to hear) brings it too, and its menu starts with the bar's switch (the view's `paneMenu`).
+  strip or title, the window's to hear) brings it too, and its menu ends with the bar's switch (the view's `paneMenu`), with the tab bar's and pane titles': every menu that has it puts it last.

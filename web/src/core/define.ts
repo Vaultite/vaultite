@@ -277,8 +277,8 @@ export type ViewDef = {
   /** Whether its tab, unpinned, archives itself once unseen a while (Tabs' setting); a function says per tab (a page
    *  playing sound doesn't). Unset: yes, unless closing it ends something (keepsTab, onClose, confirmClose). */
   archives?: boolean | ((arg: string, tab: string) => boolean)
-  /** Items for its pane's top while its tab is on screen (the tab bar's empty space; with the tab bar off, the pane's
-   *  title or strip, first there): the Browser's Hide page bar. */
+  /** How its pane shows (the Browser's Hide page bar): at the end of its pane's top's menu (the tab bar's empty space;
+   *  with the tab bar off, the pane's title or strip), with the tab bar's and the pane titles' rows. */
   paneMenu?: (arg: string, tab: string) => FileMenuItem[]
   /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session); `tab`: its pane's id. */
   tabMenu?: (arg: string, tab: string) => (FileMenuItem & { danger?: boolean })[]
@@ -355,7 +355,8 @@ export type SidebarPanel = {
   menu?: () => FileMenuItem[]
   /** Draws an icons-only form with `dock` (Buttons): a phone can draw it in its drawer's dock, at the thumb, instead. */
   dockable?: true
-  /** It lists the open tabs (Tabs): Show tabs in the sidebar puts it at the top of the left sidebar, the tab bar off. */
+  /** It lists the open tabs (Tabs): Show tabs in the sidebar puts it at the top of the left sidebar, the tab bar off;
+   *  its menu has Show tabs on top with Move to the other sidebar. */
   tabList?: true
   /** A double-click on its empty room: in its box under what it draws, or under it as the sidebar's last panel (Tabs: a
    *  new tab, as under a browser's vertical tabs). */
