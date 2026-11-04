@@ -2,7 +2,7 @@
 // editable, no browser menu. WRITES (renames a note, makes and edits AGENTS.md): throwaway only.
 //   node web/qa/workspace.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
+import { SHOTS, command, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 
 for (const dark of [false, true]) {
@@ -141,12 +141,12 @@ for (const dark of [false, true]) {
     await page.keyboard.press("Escape"); await wait(100)
     await sb.click(); await wait(200)
     await page.locator("[role=menu] button", { hasText: "Live preview" }).click(); await wait(300)
-    // Folder crumb: reveals and pulses the folder in the tree.
-    await head("Collapse all").click().catch(() => {}); await wait(200)
-    await bar.locator("button", { hasText: /^Notes$/ }).click(); await wait(600)
-    check("folder crumb opens the folder in the tree", await tree.locator("[data-tree-path='Notes']").locator("[role=treeitem]").getAttribute("aria-expanded") === "true")
-    check("...and pulses it", await tree.locator("[data-tree-path='Notes'].reveal-flash").count() === 1)
-    await shot("crumb-reveal")
+    // Folder crumb: opens the folder's page in a tab of its own (bbce1edb; folderpage.mjs has the rest); closed, the note.
+    await bar.locator("button", { hasText: /^Notes$/ }).click()
+    check("folder crumb opens the folder's page", await until(async () => (await page.locator("[data-folder-page]:visible").first().getAttribute("data-folder-page").catch(() => null)) === "Notes"))
+    await shot("crumb-folder")
+    await command(page, "Close current tab")
+    check("...its tab closed, the note's on screen again", await until(async () => (await bar.count()) && (await bar.innerText()).includes(note)), await bar.innerText().catch(() => ""))
     // Rename by clicking the name.
     await bar.locator("button", { hasText: note }).click(); await wait(200)
     await page.keyboard.type(`${note} renamed`); await page.keyboard.press("Enter")
