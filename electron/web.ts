@@ -1135,6 +1135,7 @@ function keepPast(p: Page, settle = false) {
   const h = wc.navigationHistory
   restoreMod.keepPast(p.tab, p.profile, h.getAllEntries(), h.getActiveIndex(), shows, settle)
 }
+const FRAME_MS = 1500
 /** Page `p` as drawn now, kept as its tab's picture (null: none, an agent's, unpainted, failed); asked at once, so it may
  *  be hidden right after. */
 function keepFrame(p: Page): Promise<void> | null {
@@ -1143,7 +1144,9 @@ function keepFrame(p: Page): Promise<void> | null {
   const tab = p.tab, b = p.view.getBounds(), z = p.win.webContents.getZoomFactor()
   const f = { url: wc.getURL(), profile: p.profile, width: Math.round(b.width / z), height: Math.round(b.height / z) }
   if (b.width < 2 || b.height < 2) return null
-  return wc.capturePage().then(async (img) => (await restore()).keepFrame(tab, img, f)).catch(() => {})
+  // (bounded: on Linux a page just back from its closing player never gets its capture, and its close waits on this)
+  const img = Promise.race([wc.capturePage(), new Promise<null>((r) => setTimeout(r, FRAME_MS, null).unref())])
+  return img.then(async (i) => { if (i) (await restore()).keepFrame(tab, i, f) }).catch(() => {})
 }
 
 // Claude Code on the web's sessions, read with the profiles' claude.ai logins (cloud.ts, loaded when first asked).
