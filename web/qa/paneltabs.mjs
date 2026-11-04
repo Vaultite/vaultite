@@ -123,7 +123,9 @@ try {
     await wait(400)
     return { zone, line, ghost }
   }
-  let [px, py, pb] = await center("[data-pane-body]")
+  // The shown tab's pane: the last few tabs' panes stay drawn, hidden (Workspace.tsx: keepPanes).
+  const BODY = "section[data-pane-frame]:not([data-away]) [data-pane-body]"
+  let [px, py, pb] = await center(BODY)
   let r = await dragFrom("pages:pages", [px, py])
   check("drag Pinned's heading onto a pane's middle: offered there", r.zone === "center", r)
   check("  the dragged item says what it opens", r.ghost?.includes("Pinned pages"), r.ghost)
@@ -138,15 +140,18 @@ try {
   check("  onto a tab bar whose pane has it: that tab shown, not a second", (await tabs()).filter((t) => t === "Pinned pages").length === 1 && (await hash()) === "#view/pages", [await tabs(), await hash()])
   r = await dragFrom("terminal:sessions", [barBox.x + barBox.width - 60, barBox.y + barBox.height / 2])
   check("drag Terminals' heading onto the tab bar: room made, then a tab", r.line && (await tabs()).includes("Terminals"), [r, await tabs()])
-  ;[px, py, pb] = await center("[data-pane-body]")
+  ;[px, py, pb] = await center(BODY)
   // (Not at the window's very edge: that's where a panel goes to the right sidebar.)
   r = await dragFrom("files:files", [pb.x + pb.width - 90, py])
-  check("drag Files' heading onto a pane's right edge: a split with Files", r.zone === "right" && (await page.$$("[data-tab-bar]")).length === 2, [r, (await page.$$("[data-tab-bar]")).length])
+  // (a split is one tab of two panes, under the one tab bar)
+  const split = () => page.$$eval("section[data-pane-frame]:not([data-away])", (els) => els.map((e) => !!e.querySelector("[data-files-view]")))
+  check("drag Files' heading onto a pane's right edge: a split with Files", r.zone === "right" && JSON.stringify(await split()) === "[false,true]", [r, await split()])
   await page.screenshot({ path: `${OUT}dragged-split.png` })
   const after = JSON.stringify(JSON.parse(readFileSync(sidebarsFile, "utf8")))
   check("the sidebar's panels are unchanged by those drops", after === DEFAULT, after)
 
   // ---- a terminal tab named like its sidebar row ----
+  await palette("Close pane") // (Files: the split is one tab, which Close all other tabs keeps)
   await palette("Close all other tabs")
   await page.evaluate((id) => { location.hash = `#view/terminal%2F${id}` }, sid)
   await page.waitForSelector(".xterm-screen")
