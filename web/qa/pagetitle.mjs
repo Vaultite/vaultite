@@ -52,7 +52,12 @@ const title = "article.file-view [data-title-row]"
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   const page = watch(await ctx.newPage(), { label: "phone" })
-  const headerName = () => page.locator("[data-phone-title]").evaluate((e) => Number(getComputedStyle(e).opacity))
+  // The name fades on a wrapper (its own opacity follows swipes), so what shows is the product up to the header.
+  const headerName = () => page.locator("[data-phone-title]").evaluate((e) => {
+    let o = 1
+    for (let n = e; n && !n.matches("[data-phone-header]"); n = n.parentElement) o *= Number(getComputedStyle(n).opacity)
+    return o
+  })
   await page.goto(`${B}${hash(NOTE)}`)
   await until(() => page.locator(`${title} h1`).count(), 8000); await wait(400)
   check("phone: the header's name is hidden while the title is in sight", (await headerName()) === 0, await headerName())
