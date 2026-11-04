@@ -123,6 +123,40 @@ export function addBookmarks(body: string, bookmarks: Bookmark[]): { body: strin
   return { body: added && !text.endsWith("\n") ? `${text}\n` : text, added }
 }
 
+/** The lines that bookmark `url` (not headings, nor in code). */
+function linesOfUrl(body: string, url: string): { text: string[]; at: number[] } {
+  const { text, info } = linesOf(body)
+  const at = text.flatMap((l, i) => {
+    if (info[i].heading || info[i].code) return []
+    const m = LINK.exec(l), bare = m ? null : BARE.exec(l)
+    return (m ? m[2].replace(/^<|>$/g, "").trim() : bare?.[1]) === url ? [i] : []
+  })
+  return { text, at }
+}
+
+/** The note without its bookmarks of `url`: only their lines go, folders stay. */
+export function removeBookmark(body: string, url: string): { body: string; removed: number } {
+  const { text, at } = linesOfUrl(body, url)
+  const gone = new Set(at)
+  return { body: text.filter((_, i) => !gone.has(i)).join("\n"), removed: at.length }
+}
+
+/** Bookmark `url` renamed in its line (its list mark kept), or moved to `folder`: its line goes there. */
+export function editBookmark(body: string, url: string, change: { title?: string; folder?: string }): { body: string; changed: boolean } {
+  const was = readBookmarks(body).find((b) => b.url === url)
+  if (!was) return { body, changed: false }
+  const title = change.title ?? was.title
+  const folder = change.folder?.split("/").map((x) => x.trim()).filter(Boolean).join("/")
+  if (folder !== undefined && folder !== was.folder) {
+    const out = addBookmarks(removeBookmark(body, url).body, [{ url, title, folder }])
+    return { body: out.body, changed: true }
+  }
+  if (title === was.title) return { body, changed: false }
+  const { text, at } = linesOfUrl(body, url)
+  for (const i of at) text[i] = (/^\s*[-*+][ \t]+(?:\[[ xX]\][ \t]+)?/.exec(text[i])?.[0] ?? "- ") + bookmarkLine({ url, title }).slice(2)
+  return { body: text.join("\n"), changed: true }
+}
+
 /** Bookmarks whose title or address has every word of `text`, best first (a title's word starting so first). */
 export function matchBookmarks(all: Bookmark[], text: string, limit = 3): Bookmark[] {
   const ws = text.toLowerCase().split(/\s+/).filter(Boolean)

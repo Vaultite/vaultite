@@ -12,6 +12,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   and edits again (their saves were refused since saves sent only the edit). Its HTML pages read the folder's files and
   play live with the owner (`vau.shared()`: a reader watches), from the owner's other Macs too; the owner's view of
   such a page reads only inside the folder.
+- **Players open as a window you can share**: Open as player is a window with no title bar at the video's aspect,
+  where the last one was, its video edge to edge (letterboxed when resized to another shape, steady as it's resized);
+  its controls (the traffic lights, or Windows' and Linux's buttons) show with the pointer at its top, which drags it.
+  The site's full screen (its button, YouTube's F) and the window's are one, and Esc or either way out brings the
+  window back as it was, still a player; full screen at once is a setting (Players open full screen).
+- **A bookmark star in the Browser's address bar**, as Chrome's: outline, or filled for a bookmarked page. A click (or ⌘D)
+  bookmarks the page and opens a small card to rename it, pick its folder or remove it; the … menu says Edit bookmark… once it is.
 - **Folders as Finder shows them**: a folder's page shows as a grid, a list, columns (each folder down to it side by
   side, a preview of the file picked) or a gallery (the picked thing large over a strip, ← → through it); a list or
   grid can be grouped by kind or date modified. Every file has a picture: a PDF's first page, a video's frame, a web

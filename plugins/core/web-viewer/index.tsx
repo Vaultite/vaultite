@@ -14,7 +14,8 @@ import { liveTitle } from "./livetitles"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
-import { bookmark, focusedPage, focusedPageId, linksInViewer, loadingIn, onScreen, pageOfTab, pageTookKeyboard, passkeyAsks, profile, setPageFlags, stateCame, setPlayer, setSounds, settings, shown, soundOf, titleOf, typedIn } from "./state"
+import { openBookmark, starOf } from "./Star"
+import { focusedPage, focusedPageId, linksInViewer, loadingIn, onScreen, pageOfTab, pageTookKeyboard, passkeyAsks, profile, setPageFlags, stateCame, setPlayer, setSounds, settings, shown, soundOf, titleOf, typedIn } from "./state"
 import { agentPage, agentPageOfTab, agentPages, openAsTab, pauseAgents, setAgentPages, working, type AgentPage } from "./agentpages"
 import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
@@ -66,10 +67,11 @@ async function duplicate(arg: string, tab: string) {
   openTab(`view:web/${arg}`, { from: tab, id: made })
 }
 
-/** Bookmark the page in the focused pane. */
+/** Bookmark the page in the focused pane, or edit its bookmark: its star's card. */
 function bookmarkPage() {
   const url = focusedPage()?.url()
-  if (url) void bookmark(url, titleOf(url) ?? "")
+  const r = starOf(focusedPageId())?.getBoundingClientRect()
+  if (url) openBookmark(url, titleOf(url) ?? "", r?.width ? r : new DOMRect(innerWidth - 24, 48, 0, 0))
 }
 
 /** The focused pane shows a web tab (with a page or not): the browser's keys are the page's, never the app's menu's
@@ -365,7 +367,7 @@ export default definePlugin({
     { id: "web:player", name: "Open current web page as player", nameWhenOn: "Bring current web page back from player", keys: ["Mod+Alt+P"], icon: MonitorPlay,
       when: () => !!webPages?.player && /^https?:\/\//i.test(focusedPage()?.url() ?? ""), on: () => !!focusedPage()?.inPlayer(),
       run: () => setPlayer(focusedPageId(), !focusedPage()?.inPlayer()) },
-    { id: "web:bookmark", name: "Bookmark current web page", keys: ["Mod+D"], when: () => !!focusedPage(), run: bookmarkPage, icon: Bookmark },
+    { id: "web:bookmark", name: "Bookmark current web page", on: () => { const u = focusedPage()?.url(); return !!u && !!getStore()?.bookmarks?.some((b) => b.url === u) }, nameWhenOn: "Edit bookmark of current web page", keys: ["Mod+D"], when: () => !!focusedPage(), run: bookmarkPage, icon: Bookmark },
     // The browser's keys, as Chrome's, wherever the keyboard is while a web tab is in front (a page takes ⌘F, ⌘G and zoom
     // first: electron/web.ts BROWSER_KEYS); elsewhere they're the app's.
     { id: "web:reload", name: "Reload current web page", keys: ["Mod+R"], when: onWebTab, run: () => onPage("reload"), icon: RotateCw },

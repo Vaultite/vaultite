@@ -1,10 +1,10 @@
 // A web page in a tab: a slim bar over the desktop app's native page. While anything of the app covers the box, the
 // window goes over its pages and shows the live page through a hole (layers.ts).
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
-  Search, ShieldAlert, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
+import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
+  Search, ShieldAlert, Star, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
-  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
+  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, post, typingIn, useEnabled, usePane, usePaneTopBar, useStore, webPageActions, webPages,
   type MenuItem, type PaneMotion, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
@@ -18,8 +18,9 @@ import { fallbackFor, fallsBack, guessedFor, openWebTab, useDraft } from "./draf
 import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
+import { openBookmark, StarButton, starOf } from "./Star"
 import { Passkey } from "./Passkey"
-import { bookmark, forgetUnheard, hasKeyboard, passkeyAsks, setFocusedPage, setOnScreen, setPlayer, settingsRead, setTitle, shown, takeUnheard, type FindAsk } from "./state"
+import { forgetUnheard, hasKeyboard, passkeyAsks, setFocusedPage, setOnScreen, setPlayer, settingsRead, setTitle, shown, takeUnheard, type FindAsk } from "./state"
 import { FindBar, findOpen, setFindOpen, type Found } from "./FindBar"
 import { siteIcon } from "./icons"
 import { pageBarItem, usePageBar } from "./pagebar"
@@ -419,6 +420,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const inNewTab = (to: unknown) => { if (typeof to === "string" && to) openBehind(to, destination(to, { from: container, fresh: false, opened: true }).container, tab || undefined) }
 
   const onWeb = http(state.url)
+  const bookmarked = useStore().store?.bookmarks?.some((b) => b.url === state.url) ?? false
   const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []
   // Back and Forward walk the page's history, then the tab's (Back from a page opened from another tab goes back to it).
   const me = allPanes(getTabLayout()).find((t) => t.id === tab)
@@ -454,7 +456,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         <AddressBar url={state.url} tab={tab} more={() => [pageBarItem()]} blank={blank} draft={draft} setDraft={setDraft} inputRef={address} onGo={go} onTurn={turn} onTarget={setTarget}
           onLeave={() => { if (id) void web.go(id, "focus") }}
           lead={<ContainerButton container={into.container} url={drafting ? target ?? "" : state.url || arg} why={into.why} pick={pickContainer} manage={manageContainers} />}
-          trail={id > 0 && onWeb ? <>{state.zoom && <ZoomButton zoom={state.zoom} reset={() => void web.go(id, "zoom-reset")} />}<ShieldsButton id={id} url={state.url} loading={state.loading} /></> : null} />
+          trail={id > 0 && onWeb ? <>{state.zoom && <ZoomButton zoom={state.zoom} reset={() => void web.go(id, "zoom-reset")} />}<ShieldsButton id={id} url={state.url} loading={state.loading} /><StarButton url={state.url} title={state.title} /></> : null} />
         {id > 0 && <AgentChip id={id} />}
         {(state.playing || state.muted) && (
           <BarButton icon={state.muted ? VolumeX : Volume2} label={state.muted ? "Unmute tab" : "Mute tab"} onClick={() => void web.go(id, state.muted ? "unmute" : "mute")} />
@@ -462,7 +464,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         <ExtensionButtons bar={ext} className="@max-md/bar:hidden" />
         <SaveButton disabled={!id || !onWeb} saving={saving} onSave={() => void clip()} actions={actions.filter((a) => a.kind === "save")} />
         <MoreButton disabled={!onWeb} items={(at) => [
-          { label: "Bookmark", icon: Bookmark, hint: commandKeys("web:bookmark") || undefined, run: () => void bookmark(state.url, state.title) },
+          { label: bookmarked ? "Edit bookmark…" : "Bookmark this page…", icon: Star, hint: commandKeys("web:bookmark") || undefined,
+            run: () => openBookmark(state.url, state.title, (starOf(id) ?? at).getBoundingClientRect()) },
           ...(id && web.find ? [{ label: "Find in page…", icon: Search, hint: commandKeys("web:find") || undefined, run: () => askFind("open") }] : []),
           ...(id ? [{ label: "Print…", icon: Printer, run: () => void web.go(id, "print") }] : []),
           { label: "View page source", icon: FileCode2, hint: commandKeys("web:source") || undefined, run: () => viewSource(state.url, container, tab) },

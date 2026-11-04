@@ -1818,7 +1818,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Browser: the bookmarks note (plugins/core/web-viewer/bookmarks.ts) ----------
 {
-  const { addBookmarks, matchBookmarks, readBookmarks } = await import("../plugins/core/web-viewer/bookmarks.ts")
+  const { addBookmarks, editBookmark, matchBookmarks, readBookmarks, removeBookmark } = await import("../plugins/core/web-viewer/bookmarks.ts")
   const note = "# Links\n\n- [Top](https://top.example.com/)\n\n## Reading\n* <https://bare.example.com/a>\n\n```\n## Not a folder\n- [No](https://no.example.com/)\n```\n\n### Later\n- [x] [Done \\] it](https://later.example.com/)\n"
   const read = readBookmarks(note)
   check("bookmarks: links by their folders (a # title isn't one), a code block's ignored", JSON.stringify(read.map((b) => [b.folder, b.title, b.url])) === JSON.stringify([
@@ -1829,6 +1829,15 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && added.body.includes("[x] [Done \\] it](https://later.example.com/)\n- [New](https://new.example.com/)\n\n#### Deeper\n- [Deep](https://deep.example.com/)\n")
     && added.body.startsWith(note.slice(0, -1)), added)
   check("bookmarks: matched by title and address", matchBookmarks(read, "later")[0]?.url === "https://later.example.com/" && !matchBookmarks(read, "nothing").length)
+  const gone = removeBookmark(note, "https://bare.example.com/a")
+  check("bookmarks: removed, only its line (its folder stays, a code block's look-alike too)", gone.removed === 1 && gone.body === note.replace("* <https://bare.example.com/a>\n", ""), gone)
+  const renamed = editBookmark(note, "https://later.example.com/", { title: "Kept [for] later" })
+  check("bookmarks: renamed in its line, its list mark and tick kept", renamed.changed && renamed.body === note.replace("[Done \\] it]", "[Kept \\[for\\] later]"), renamed)
+  const moved = editBookmark(note, "https://top.example.com/", { folder: "Reading" })
+  check("bookmarks: moved to another folder, under its heading", moved.changed && JSON.stringify(readBookmarks(moved.body).find((b) => b.url === "https://top.example.com/")) === JSON.stringify({ url: "https://top.example.com/", title: "Top", folder: "Reading" })
+    && readBookmarks(moved.body).length === 3, moved.body)
+  check("bookmarks: an edit of nothing, or of an address not there, changes nothing", !editBookmark(note, "https://top.example.com/", { title: "Top", folder: "" }).changed
+    && !editBookmark(note, "https://none.example.com/", { title: "X" }).changed && removeBookmark(note, "https://none.example.com/").removed === 0)
 }
 
 // ---------- Browser: the blocked elements note (plugins/core/web-viewer/elements.ts) ----------

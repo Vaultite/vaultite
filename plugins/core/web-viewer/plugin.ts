@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { OpError, Plugin, vaultPath, type OpCtx } from "../../../core/plugins.ts"
 import { Kind, writeAtomic, type Vault } from "../../../core/vault.ts"
-import { addBookmarks, readBookmarks, type Bookmark } from "./bookmarks.ts"
+import { addBookmarks, editBookmark, readBookmarks, removeBookmark, type Bookmark } from "./bookmarks.ts"
 import { addRule, BLOCKED, makeRule, readRules, removeRule } from "./elements.ts"
 import { siteName, styleFile, STYLES, template, type SiteStyle } from "./sitestyles.ts"
 import { liveView } from "./liveroutes.ts"
@@ -501,7 +501,7 @@ plugin.kind(new Kind({
 }))
 
 const note = () => plugin.vault.get("bookmarks", "bookmarks")
-plugin.state(() => ({ bookmarks: (note()?.links as Bookmark[] | undefined) ?? [], blockedElements: readRules(blockedText(plugin.vault)), siteStyles: siteStyles(plugin.vault) }))
+plugin.state(() => ({ bookmarks: (note()?.links as Bookmark[] | undefined) ?? [], bookmarksNote: note() ? `${note()!.id}.md` : null, blockedElements: readRules(blockedText(plugin.vault)), siteStyles: siteStyles(plugin.vault) }))
 
 const clean = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "")
 
@@ -539,6 +539,57 @@ isn't added again; a folder that isn't there yet gets its heading. links adds ma
   text: (r) => (r.added ? `Added ${r.added} bookmark${r.added === 1 ? "" : "s"} to ${r.path}${r.already ? ` (${r.already} already there)` : ""}.`
     : `Already bookmarked${r.path ? ` in ${r.path}` : ""}.`),
   did: (p) => ({ action: "edit", text: Array.isArray(p.links) ? `Bookmarked ${p.links.length} pages` : `Bookmarked ${clean(p.url, 120)}` }),
+})
+
+/** The bookmarks note, changed by `change` and saved when it did (its path, or null when there's none). */
+async function changeNote(change: (body: string) => { body: string; did: boolean }) {
+  const old = note()
+  if (!old) return { path: null, changed: false }
+  const r = change(typeof old.body === "string" ? old.body : "")
+  if (r.did) await plugin.vault.save("bookmarks", { body: r.body }, old.id)
+  return { path: `${old.id}.md`, changed: r.did }
+}
+const urlOf = (p: Record<string, unknown>) => {
+  const url = clean(p.url, 4000)
+  if (!/^https?:\/\/\S+$/i.test(url)) throw new OpError(`not a web address: ${url || "(empty)"}`)
+  return url
+}
+
+plugin.op({
+  id: "bookmarks.edit",
+  cli: "bookmark edit",
+  summary: "Rename a bookmark, or move it to another folder (its line goes under that folder's heading).",
+  kind: "write",
+  params: {
+    url: { type: "string", description: "the bookmark's address" },
+    title: { type: "string", description: "its new title" },
+    folder: { type: "string", description: "its new folder, a path with / between levels (\"\": the top)" },
+  },
+  args: ["url"],
+  run: async (p) => {
+    const url = urlOf(p)
+    if (typeof p.title !== "string" && typeof p.folder !== "string") throw new OpError("give a `title` or a `folder`")
+    const change = { ...(typeof p.title === "string" ? { title: clean(p.title, 300) } : {}), ...(typeof p.folder === "string" ? { folder: clean(p.folder, 300) } : {}) }
+    if (!readBookmarks(typeof note()?.body === "string" ? note()!.body as string : "").some((b) => b.url === url)) throw new OpError(`${url} isn't bookmarked`)
+    return changeNote((body) => { const r = editBookmark(body, url, change); return { body: r.body, did: r.changed } })
+  },
+  text: (r) => (r.changed ? `Changed the bookmark in ${r.path}.` : "The bookmark was already so."),
+  did: (p) => ({ action: "edit", text: `Changed the bookmark of ${clean(p.url, 120)}` }),
+})
+
+plugin.op({
+  id: "bookmarks.remove",
+  cli: "bookmark remove",
+  summary: "Remove a bookmark: its line goes from the bookmarks note (its folder stays).",
+  kind: "write",
+  params: { url: { type: "string", description: "the bookmark's address" } },
+  args: ["url"],
+  run: async (p) => {
+    const url = urlOf(p)
+    return changeNote((body) => { const r = removeBookmark(body, url); return { body: r.body, did: r.removed > 0 } })
+  },
+  text: (r) => (r.changed ? `Removed the bookmark from ${r.path}.` : "It wasn't bookmarked."),
+  did: (p) => ({ action: "edit", text: `Removed the bookmark of ${clean(p.url, 120)}` }),
 })
 
 // ---------- blocked elements ----------

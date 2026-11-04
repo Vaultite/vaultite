@@ -1,6 +1,6 @@
 // The Browser's state in the app: its settings, the pages' titles and the pages on screen, for the desktop app's
 // events.
-import { cell, currentWorkspace, notify, notifyError, op, openFile, pluginSettings, viewsChanged, webPages, type WebPageState } from "@vaultite"
+import { cell, currentWorkspace, notifyError, pluginSettings, viewsChanged, webPages, type WebPageState } from "@vaultite"
 import type { Container } from "./containers"
 
 export type Settings = {
@@ -151,16 +151,6 @@ let keyboard = 0
 export const pageTookKeyboard = (id: number) => { keyboard = id }
 export const hasKeyboard = (id: number) => keyboard === id
 if (typeof window !== "undefined") addEventListener("focus", () => { keyboard = 0 })
-
-/** Bookmark a page: a line in the bookmarks note (⌘D, the bar's … menu). */
-export async function bookmark(url: string, title: string) {
-  if (!/^https?:\/\//i.test(url)) return
-  try {
-    const r = await op<{ path: string | null; added: number }>("bookmarks.add", { url, title })
-    const path = r.path
-    notify(r.added ? "Bookmarked" : "Already bookmarked", { action: path ? { label: "Open bookmarks", run: () => openFile(path) } : undefined })
-  } catch (e) { notifyError(e, "Couldn't bookmark the page") }
-}
 
 /** Page `id` into its player (full screen as the settings say), or back in its tab. */
 export const setPlayer = (id: number, on: boolean) =>

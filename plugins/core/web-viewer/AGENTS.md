@@ -151,8 +151,8 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   rows removed (Undo), and "Clear browsing history…" for a time range.
 - Bookmarks are a note, `Bookmarks.md` (`type: bookmarks`; one moved keeps working): a heading per folder (`## Reading`,
   `### Later` under it) and a `- [title](url)` line per bookmark, which the address bar suggests. Add with
-  `vau bookmark <url> --title ... --folder "Reading/Later"` (bookmarks.add, `links` for many) or ⌘D on a page; edit the
-  note by hand like any other.
+  `vau bookmark <url> --title ... --folder "Reading/Later"` (bookmarks.add, `links` for many) or the address bar's star (⌘D); rename or move one with
+  `vau bookmark edit <url> --title ... --folder ...`, remove with `vau bookmark remove <url>`.
 - "Import from Brave…" / "Import from Chrome…" (on the Mac whose browser it is): a profile's history into the Mac's
   history, its bookmarks into `Bookmarks.md` under their folders; nothing twice when imported again, never passwords or
   cookies.
