@@ -210,20 +210,22 @@ try {
   const wShift = () => W.evaluate(() => Math.round(new DOMMatrix(getComputedStyle(document.querySelector("#main-scroll > main")).transform).m41))
   /** A finger in the page: down at (x, y), moved along `path` (as line() makes), lifted unless `lift` is false. */
   await W.evaluate(() => {
-    window.__fire = (target, type, cx, cy) => {
+    // (`at`: when a finger would have been there; a busy page runs the timers late, as it hears a real finger late)
+    window.__fire = (target, type, cx, cy, at = performance.now()) => {
       const t = { identifier: 7, target, clientX: cx, clientY: cy }, e = new Event(type, { bubbles: true, cancelable: true })
       const on = type === "touchend" ? [] : [t]
-      Object.defineProperties(e, { touches: { value: on }, targetTouches: { value: on }, changedTouches: { value: [t] } })
+      Object.defineProperties(e, { touches: { value: on }, targetTouches: { value: on }, changedTouches: { value: [t] }, timeStamp: { value: at } })
       target.dispatchEvent(e)
     }
   })
   const wLift = (x) => W.evaluate((x) => window.__fire(document.querySelector("#main-scroll > main article"), "touchend", x, 500), x)
   const wFinger = (x, y, path, lift = true) => W.evaluate(async ([x, y, path, lift]) => {
     const target = document.elementFromPoint(x, y)
-    const fire = (type, cx, cy) => window.__fire(target, type, cx, cy)
+    let at = performance.now()
+    const fire = (type, cx, cy) => window.__fire(target, type, cx, cy, at)
     fire("touchstart", x, y)
     let cx = x, cy = y
-    for (const [dx, dy, ms] of path) { await new Promise((r) => setTimeout(r, ms)); cx = x + dx; cy = y + dy; fire("touchmove", cx, cy) }
+    for (const [dx, dy, ms] of path) { await new Promise((r) => setTimeout(r, ms)); at += ms; cx = x + dx; cy = y + dy; fire("touchmove", cx, cy) }
     if (lift) fire("touchend", cx, cy)
   }, [x, y, path, lift])
   await wFinger(200, 500, line(-150, 0, 500), false)
