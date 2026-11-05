@@ -12,6 +12,8 @@ import { floatCover, hitCover, matters, moved, overlap, painted, passPointer, po
 import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
+import { signInReached, watchTab } from "./linklogins"
+import { movedFrom } from "./where.ts"
 import { manageContainers } from "./Sites"
 import { argOf, containerById, containers, destination, keepOutside, keptOutside, openBehind, profileIn, splitArg, viewSource } from "./containers"
 import { fallbackFor, fallsBack, guessedFor, openWebTab, useDraft } from "./drafts"
@@ -132,6 +134,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     settingsRead().then(() => {
       // Opened in none: a site that always opens in a container, or a workspace with one of its own, takes its tab
       // there (drawn afresh, index.tsx), unless the user put it in none.
+      watchTab(arg, tab)
       const into = container || keptOutside(arg) ? null : destination(arg, { from: null, fresh: true }).container
       if (into) { live.current.setTabArg(argOf(arg, into)); return Promise.reject(null) }
       // (where its box is now: shown at once, not after this tab draws again; not under something of the app's)
@@ -184,6 +187,13 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     if (ownPage(state.url) && state.url !== live.current.arg) { told.current = state.url; live.current.setArg(state.url) }
     if (ownPage(state.url)) setTitle(state.url, state.title)
   }, [state.url, state.title])
+  // Another app's link no login chose reached a sign-in on the way (an app's auth start): where that account is, it
+  // starts there again (linklogins.ts).
+  useEffect(() => {
+    const { signIn, opened } = state
+    if (signIn && opened && tab) void signInReached(tab, container, signIn, opened, (url, c) => live.current.setTabArg(argOf(url, c)))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.signIn])
   // (another page: what was found was found there)
   useEffect(() => setFound(null), [state.url])
 
@@ -423,7 +433,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const choose = (chosen: string | null) => setDraft({ text: draft?.text ?? null, chosen, on: draft?.on ?? state.url })
   const pickContainer = (id: string | null) => {
     if (drafting) return choose(id)
-    const url = state.url || arg
+    const url = movedFrom(state, arg)
     if (id === null) keepOutside(url)
     setTabArg(argOf(url, id))
   }

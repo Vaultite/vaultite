@@ -46,6 +46,10 @@
 - The page keeps the keyboard; the app's ⌘/⌃/⌥ shortcuts come back as `key` events. The browser's keys a site may take
   (⌘F, ⌘G, zoom: web.ts BROWSER_KEYS) reach the page first and come back only if it left them (web-preload.cjs), never
   to the menu bar, whose ⌘F and ⌘= are the app's.
+- Another app's link (desktopapp.ts, `fromApp`) is the only one that may ask which container (linklogins.ts): who's
+  signed in is the engine's to say (web.ts `web:who`, bounded, as last named when slow), and what a page's flow is too
+  (webpages.ts `flowOn`: its start and the sign-in it reached, ended by a press in the page followed by a navigation;
+  sign-ins are known by OAuth's, SAML's and OpenID's own fields, core/signin.ts, never by naming a site).
 - Claude Code on the web's sessions are read here (electron/web.ts) for the Cloud sessions plugin, which says what.
 - Extensions (electron/browser/extensions.ts) are this Mac's, in userData: each is code with every site's logins, so a
   synced vault setting never chooses one (plugins rule 4). Their bar buttons, popups and the Extensions tab:

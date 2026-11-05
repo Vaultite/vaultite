@@ -5,7 +5,9 @@
 // to another (Back kept, only its page loaded there) and only chooses (every row led by its icon); a note's `container:`
 // takes its links there, a link's menu opens one in a container or sets the note's; containers are added and deleted
 // in Sites, deleting clearing its logins; switching web tabs is never see-through. A link from another app opens in a
-// web tab. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
+// web tab; one through an app's sign-in (its auth start setting a state cookie, then another site's sign-in) moved to
+// another container before the user touches it starts there again from its start, so its state lands there; moved on
+// by the user first, it moves where it is. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
 // speaker unmutes it; a video keeps its speaker through a quiet scene, till it pauses.
 // WRITES: the throwaway vault only.
 //   node web/qa/containers.mjs <vault copy>
@@ -25,6 +27,12 @@ const server = http.createServer((req, res) => {
   const u = new URL(req.url ?? "/", SITE)
   const who = /(?:^|; )who=([^;]+)/.exec(req.headers.cookie ?? "")?.[1]
   const headers = { "Content-Type": "text/html; charset=utf-8" }
+  // (an app's sign-in: its start on localhost keeps a state, the identity provider is another site, its answer needs the state)
+  if (u.pathname === "/auth/start") {
+    res.writeHead(302, { "Set-Cookie": `st=${u.searchParams.get("n")}; Path=/; Max-Age=600`, Location: `${SITE}/authorize?client_id=qa&response_type=code&redirect_uri=${encodeURIComponent(`${APP}/callback`)}` })
+    return res.end()
+  }
+  if (u.pathname === "/callback") { res.writeHead(200, headers); return res.end(`<!doctype html><title>Back</title><p id="who">state:${/(?:^|; )st=([^;]+)/.exec(req.headers.cookie ?? "")?.[1] ?? "none"}</p>`) }
   if (u.pathname === "/login") headers["Set-Cookie"] = `who=${u.searchParams.get("u")}; Path=/; Max-Age=3600`
   res.writeHead(200, headers)
   // (a second of tone, then silence: a video's quiet scene, past Chromium's 2s of audible)
@@ -34,7 +42,7 @@ const server = http.createServer((req, res) => {
 })
 await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
 const PORT = server.address().port
-const SITE = `http://127.0.0.1:${PORT}`
+const SITE = `http://127.0.0.1:${PORT}`, APP = `http://localhost:${PORT}`
 
 // ---------- the app ----------
 // (a muted copy plays nothing, so no page is audible: sound on, the test page's tone too low and deep to hear)
@@ -67,6 +75,11 @@ const inPage = (code) => app.evaluate(({ BaseWindow }, code) => {
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   return v ? v.webContents.executeJavaScript(code) : null
 }, code)
+/** A click in the visible page, as the user's. */
+const press = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0], v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
+  for (const type of ["mouseDown", "mouseUp"]) v.webContents.sendInputEvent({ type, x: 5, y: 5, button: "left", clickCount: 1 })
+})
 const activeTab = () => win.evaluate(() => document.querySelector("[role=tab][aria-selected=true]")?.textContent ?? "")
 
 // ---------- Work: signed in ----------
@@ -91,6 +104,8 @@ check("… the bar offers containers", await win.locator("[data-web-page] [data-
 
 // ---------- the container menu moves the tab ----------
 // (with a page before this one: Back goes there in Work too, never loaded there till then)
+// (the user's own move: a press in the page, then it goes on)
+await press()
 await inPage(`location.href = ${JSON.stringify(`${SITE}/whoami?next`)}`)
 await until(async () => (await visible())?.url === `${SITE}/whoami?next`, 10000)
 // (where the new page sets out for: only its address, never its earlier page, not even cut short)
@@ -262,6 +277,23 @@ await setting({ containers: [{ id: "personal", name: "Personal", color: "blue" }
 // ---------- a link from another app (Vaultite as the Mac's browser) ----------
 await app.evaluate(({ app }, url) => app.emit("open-url", { preventDefault() {} }, url), `${SITE}/whoami?from-mail`)
 check("a web link from another app opens in a web tab", await until(async () => (await visible())?.url.endsWith("?from-mail"), 15000), await visible())
+await app.evaluate(({ app }, url) => app.emit("open-url", { preventDefault() {} }, url), `${APP}/auth/start?n=1`)
+check("an app's sign-in from another app: in no container, at the identity provider", await until(async () => { const v = await visible(); return v?.partition === "persist:web" && v.url.includes("/authorize?") }, 15000), await visible())
+await win.locator("[data-web-page] [data-web-container='']:visible").click()
+await win.locator("[role^=menuitem]", { hasText: /^Personal$/ }).click()
+check("… moved to Personal before it's touched: it starts there again from its start", await until(async () => { const v = await visible(); return v?.partition === "persist:web-c-personal" && v.url.includes("/authorize?") }, 15000), await visible())
+check("… so its state is in Personal's cookies", (await cookiesIn("persist:web-c-personal")).includes("st=1"), await cookiesIn("persist:web-c-personal"))
+await inPage(`location.href = ${JSON.stringify(`${APP}/callback`)}`)
+check("… and its answer finds it", await until(async () => (await visible())?.text === "state:1", 10000), await visible())
+await app.evaluate(({ app }, url) => app.emit("open-url", { preventDefault() {} }, url), `${APP}/auth/start?n=2`)
+await until(async () => { const v = await visible(); return v?.partition === "persist:web" && v.url.includes("/authorize?") }, 15000)
+// (the user presses in the page, which goes on: theirs now)
+await press()
+await inPage(`location.href = ${JSON.stringify(`${SITE}/whoami?after`)}`)
+await until(async () => (await visible())?.url.endsWith("?after"), 10000)
+await win.locator("[data-web-page] [data-web-container='']:visible").click()
+await win.locator("[role^=menuitem]", { hasText: /^Personal$/ }).click()
+check("… moved on by the user first, it moves where it is", await until(async () => { const v = await visible(); return v?.partition === "persist:web-c-personal" && v.url.endsWith("?after") }, 15000), await visible())
 
 // ---------- sound ----------
 await open(`view:web/${SITE}/sound`)

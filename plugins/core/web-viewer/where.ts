@@ -1,5 +1,6 @@
 // Where a page opens, worked out from the containers alone (containers.ts passes them in), so tools/test_web.ts checks it.
 import { siteOf } from "./address.ts"
+import { signInOf } from "../../../core/signin.ts"
 
 type Named = { id: string; name: string; sites?: string[] }
 /** Where an address opens and why (the chip says it while it's typed): `container` null is the workspace's own logins. */
@@ -37,3 +38,23 @@ export function whereIn<C extends Named>(list: C[], url: string, { from, fresh, 
   const mine = fresh ? byId(list, own) : null
   return mine ? { container: mine.id, why: "This workspace's container" } : { container: null, why: "" }
 }
+
+/** The site whose rule counts for a link from another app: a sign-in link's site signed in to (where it answers), else
+ *  its own. Its login's site is its own all the same: a sign-in's is its identity provider's. */
+export const ruleSiteOf = (url: string) => siteOf(signInOf(url)?.back ?? "") || siteOf(url)
+/** The container a link from another app opens in by a site's rule (ruleSiteOf's, then its own), or null. */
+export function linkRuleIn(list: Named[], url: string): string | null {
+  const back = signInOf(url)?.back
+  return (back ? ruleIn(list, back) : null) ?? ruleIn(list, url)
+}
+
+/** Where a page opens by who's signed in to the site it needs, among sets of logins in their order (a container's id,
+ *  null the workspace's): one, there (`open`); several, the user picks (`ask`); none, the rules as ever (neither). */
+export function byLogins(signed: (string | null)[]): { open?: string | null; ask?: (string | null)[] } {
+  const ids = [...new Set(signed)]
+  return ids.length === 1 ? { open: ids[0] } : ids.length > 1 ? { ask: ids } : {}
+}
+
+/** The address a tab moved to another container opens there: where its page's flow began (`opened`: only redirects and
+ *  the page moved it on since), so what its first pages set lands there too; else where it is. */
+export const movedFrom = (state: { url: string; opened?: string }, arg: string) => state.opened || state.url || arg

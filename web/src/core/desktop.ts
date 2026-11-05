@@ -127,7 +127,12 @@ export type WebPageState = { url: string; title: string; back: boolean; forward:
    *  it holds typed, unsent input. Older builds don't say. */
   unsafe?: boolean; crashed?: boolean; typed?: boolean
   /** Its page has painted since it was made (older builds don't say). */
-  painted?: boolean }
+  painted?: boolean
+  /** The address it was opened with (or last sent to), while only redirects and the page itself have moved it on since:
+   *  moved to another container, it starts there again (a sign-in's first pages set cookies its last ones need). */
+  opened?: string
+  /** The identity provider's site that flow went to sign in with (google.com): another site's sign-in it reached. */
+  signIn?: string }
 /** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's); `radius`, a page's corners' (Electron
  *  rounds all four). */
 type WebRect = { x: number; y: number; width: number; height: number; radius?: number }
@@ -175,6 +180,9 @@ export type WebPages = {
   /** The sites a profile keeps cookies for, signed-in ones first, then the latest visited, with the account where the
    *  app knows how to ask. */
   sites?: (profile: string) => Promise<WebSite[]>
+  /** Who's signed in to a site in each of these profiles (null: nobody, never used, locked, or no way to ask), each
+   *  answering within moments. */
+  who?: (site: string, profiles: string[]) => Promise<Record<string, { account: string; more?: string[] } | null>>
   /** Sign out of a site in a profile: its cookies and storage go, its open pages reload. */
   forget?: (profile: string, site: string) => Promise<unknown>
   /** Move a login (its sites' cookies) to another profile, or copy it (`copy`): not ok when the site there names nobody

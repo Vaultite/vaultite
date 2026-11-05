@@ -2005,6 +2005,41 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && whereIn(list, "https://example.com/", { from: null, fresh: true, chosen: linkChoice(list, "nope"), own: "personal" }).container === "personal")
 }
 
+// ---------- Browser: which container another app's link opens in, and a tab moved mid sign-in (where.ts, core/signin.ts, electron/webpages.ts) ----------
+{
+  const { byLogins, linkRuleIn, movedFrom, ruleSiteOf } = await import("../plugins/core/web-viewer/where.ts")
+  const { signInOf } = await import("../core/signin.ts")
+  const { flowOn } = await import("../electron/webpages.ts")
+  const auth = "https://accounts.google.com/o/oauth2/v2/auth?client_id=1.apps.example&redirect_uri=https%3A%2F%2Fapi.lighthouse.app%2Fauth%2Fcallback&response_type=code&state=x"
+  check("sign-in: an OAuth request, SAML's and OpenID's, by their fields alone; a page with a stray client_id isn't one",
+    JSON.stringify(signInOf(auth)) === JSON.stringify({ host: "accounts.google.com", back: "https://api.lighthouse.app/auth/callback" })
+    && signInOf("https://login.example.com/saml?SAMLRequest=abc")?.host === "login.example.com"
+    && signInOf("https://id.example.org/server?openid.mode=checkid_setup&openid.return_to=https%3A%2F%2Fa.example.com%2F")?.back === "https://a.example.com/"
+    && signInOf("https://shop.example.com/item?client_id=7") === null && signInOf("https://api.lighthouse.app/auth/start?lighthouse_state=1") === null
+    && signInOf("https://idp.example.com/a?client_id=1&redirect_uri=javascript:alert(1)")?.back === "" && signInOf("not a url") === null)
+  const list = [{ id: "personal", name: "Personal" }, { id: "alt", name: "Alternative", sites: ["lighthouse.app"] }, { id: "agents", name: "Agents", sites: ["google.com"] }]
+  check("link from an app: a sign-in's rule is the site it signs in to's, before the identity provider's own; else the link's site's",
+    linkRuleIn(list, auth) === "alt" && ruleSiteOf(auth) === "lighthouse.app"
+    && linkRuleIn(list, "https://accounts.google.com/o/oauth2/v2/auth?client_id=1&redirect_uri=https://other.example.com/cb") === "agents"
+    && linkRuleIn(list, "https://docs.lighthouse.app/a") === "alt" && linkRuleIn(list, "https://example.com/") === null && ruleSiteOf("https://www.example.com/a") === "example.com")
+  check("link from an app: one set of logins signed in opens there (none, the workspace's, too), several ask in their order, none leaves it to the rules",
+    JSON.stringify(byLogins(["alt"])) === JSON.stringify({ open: "alt" }) && JSON.stringify(byLogins([null])) === JSON.stringify({ open: null })
+    && JSON.stringify(byLogins([null, "personal", "alt", "alt"])) === JSON.stringify({ ask: [null, "personal", "alt"] }) && JSON.stringify(byLogins([])) === "{}")
+  const site = (h: string) => h.split(".").slice(-2).join(".")
+  const start = "https://api.lighthouse.app/auth/start?lighthouse_state=1"
+  let f = flowOn({ opened: start }, start, false, site)
+  f = flowOn(f, auth, false, site)
+  check("flow: an app's auth start reaching another site's sign-in by redirects notes its identity provider, its start kept",
+    f.opened === start && f.signIn === "google.com", f)
+  check("flow: the user pressing in the page before it moves on ends it; a sign-in on its own site isn't another's; no flow stays none",
+    JSON.stringify(flowOn(f, "https://accounts.google.com/signin/next", true, site)) === "{}"
+    && flowOn({ opened: "https://app.example.com/" }, "https://auth.example.com/authorize?client_id=1&response_type=code", false, site).signIn === undefined
+    && JSON.stringify(flowOn({}, auth, false, site)) === "{}")
+  check("moved to another container: from where its flow began while the user hasn't moved it on, else where it is",
+    movedFrom({ url: "https://accounts.google.com/v3/signin", opened: start }, "x") === start && movedFrom({ url: "https://a.example.com/" }, "x") === "https://a.example.com/"
+    && movedFrom({ url: "" }, "https://b.example.com/") === "https://b.example.com/")
+}
+
 // ---------- Browser: the bookmarks note (plugins/core/web-viewer/bookmarks.ts) ----------
 {
   const { addBookmarks, editBookmark, matchBookmarks, readBookmarks, removeBookmark } = await import("../plugins/core/web-viewer/bookmarks.ts")

@@ -10,7 +10,7 @@ import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
 import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
 import { otherAppScheme } from "../core/opening.ts"
-import { claim, discardable, hear, letGo, media, MOVE_MS, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Owned, type Playback } from "./webpages.ts"
+import { claim, discardable, flowOn, hear, letGo, media, MOVE_MS, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Flow, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -67,7 +67,9 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
    *  `resting`: hidden there a while (`rest`), `woke` when it last woke. */
   drawn?: boolean; parked?: boolean; resting?: boolean; woke?: number
   /** When the user last pressed a key or the pointer in it, any frame (Chromium's user activation, for its opens). */
-  input: number }
+  input: number
+  /** Where it was opened and the sign-in it reached, till the user moves it on (webpages.ts Flow). */
+  flow: Flow }
 /** A site a profile keeps cookies for: whether it's signed in and who as, when we know how to ask, sites the same login covers (`with`),
  *  its last visit, and `other` when no page of it was opened (its cookies came with other sites' pages: trackers). */
 export type WebSite = { site: string; signed?: boolean; account?: string; more?: string[]; avatar?: string; with?: string[]; last?: number; other?: boolean }
@@ -264,7 +266,8 @@ function stateOf(p: Page): WebState {
   return { url: (!blank && wc.getURL()) || p.target, title: (!blank && wc.getTitle()) || "", back: canBack(p), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
     ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.paused ? { paused: true } : {}), ...(p.player ? { player: true } : {}), ...(Math.abs(zoom - 1) > 0.001 ? { zoom } : {}),
     ...(p.cert && p.error ? { unsafe: true } : {}), ...(p.crashed ? { crashed: true } : {}), ...([...p.typed.values()].some(Boolean) ? { typed: true } : {}),
-    ...(p.fresh ? {} : { painted: true }) }
+    ...(p.fresh ? {} : { painted: true }),
+    ...(p.flow.opened && p.flow.opened !== wc.getURL() ? { opened: p.flow.opened } : {}), ...(p.flow.signIn ? { signIn: p.flow.signIn } : {}) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
 const NOTIFY = "__vaultite_notify__"
@@ -422,7 +425,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   addPage(win, view)
   const p: Page = { id: nextId(), win, view, profile, tab, agent, drawn: agent, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(),
-    blankBehind: !!taken, fresh: true, typed: new Map(), input: 0 }
+    blankBehind: !!taken, fresh: true, typed: new Map(), input: 0, flow: !kept && !agent && shows(url) ? { opened: url } : {} }
   pages.set(p.id, p)
   if (agent) park(p)
   const wc = view.webContents
@@ -491,7 +494,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
       if (!agents && !blank) hand(to)
       else if (!agents) {
         const cw = child.view.webContents
-        const sent = (d: { url: string; isMainFrame: boolean }) => { if (d.isMainFrame && shows(d.url)) { cw.off("did-start-navigation", sent); child.target = d.url; hand(d.url) } }
+        const sent = (d: { url: string; isMainFrame: boolean }) => { if (d.isMainFrame && shows(d.url)) { cw.off("did-start-navigation", sent); child.target = d.url; child.flow = { opened: d.url }; hand(d.url) } }
         cw.on("did-start-navigation", sent)
         child.orphan = Date.now()
         setTimeout(() => { if (child.orphan !== undefined && !child.tab && pages.has(child.id) && !shows(cw.isDestroyed() ? "" : cw.getURL())) end(child) }, BLANK_MS).unref()
@@ -502,6 +505,12 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
 
   // (its media pausing as it closes comes after its view let go of its contents)
   const changed = () => { if (p.view.webContents && !wc.isDestroyed()) sendState(p) }
+  // (a press in it just before is the user moving it on, as for its opens)
+  const flowTo = (to: string) => {
+    const was = p.flow
+    p.flow = flowOn(was, to, Date.now() - p.input < ACTIVATION_MS, siteOf)
+    if (p.flow.signIn !== was.signIn || !p.flow.opened !== !was.opened) changed()
+  }
   revive(wc, undefined, () => { p.crashed = true; changed() })
   wc.on("did-start-loading", () => { p.error = undefined; p.crashed = false; changed() })
   // A certificate this Mac doesn't trust: refused, as Chrome does, unless the user chose to go on to that host with that very
@@ -512,7 +521,8 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     done(false)
     if (main && /\bERR_CERT_/.test(error)) p.cert = { url: to, host, fp: cert.fingerprint }
   })
-  wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) { p.cert = undefined; if (shows(d.url)) p.target = d.url } })
+  wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) { p.cert = undefined; if (shows(d.url)) { p.target = d.url; flowTo(d.url) } } })
+  wc.on("did-redirect-navigation", (d) => { if (d.isMainFrame && shows(d.url)) flowTo(d.url) })
   wc.on("did-stop-loading", changed)
   wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.paused = false; p.typed.clear(); noteVisit(profile, to); if (!p.agent && !pageHeld(p.id)) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
   wc.on("found-in-page", (_e, r) => tell(p.win, { type: "found", id: p.id, request: r.requestId, active: r.activeMatchOrdinal, matches: r.matches, final: r.finalUpdate }))
@@ -521,7 +531,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     if (p.fresh && shows(wc.getURL())) setTimeout(() => painted(p), 1000).unref()
     if (p.status !== undefined && p.status >= 400) void emptyError(p, p.status)
   })
-  wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) { changed(); keepPast(p) } })
+  wc.on("did-navigate-in-page", (_e, to, main) => { if (main) { flowTo(to); changed(); keepPast(p) } })
   wc.on("page-title-updated", () => { changed(); keepPast(p) })
   wc.on("dom-ready", () => tellGlance(wc))
   // (the window's page shows it while it's over this one, passing it the pointer: layers.ts)
@@ -888,8 +898,8 @@ function go(p: Page, action: string, url?: string): unknown {
   const wc = p.view.webContents
   const h = wc.navigationHistory
   // (answering whether it went: the window's idea of where it is may be a move behind)
-  if (action === "back") { if (!canBack(p)) return false; h.goBack(); return true }
-  else if (action === "forward") { if (!h.canGoForward()) return false; h.goForward(); return true }
+  if (action === "back") { if (!canBack(p)) return false; p.flow = {}; h.goBack(); return true }
+  else if (action === "forward") { if (!h.canGoForward()) return false; p.flow = {}; h.goForward(); return true }
   // (a page that crashed for good starts a renderer again)
   else if (action === "reload") { reloaded.set(wc, Date.now()); wc.reload() }
   // The user chose to go on past its certificate warning: that host with that certificate, in these logins, this session.
@@ -909,7 +919,7 @@ function go(p: Page, action: string, url?: string): unknown {
   else if (action === "print") wc.print({}, () => {})
   // Back's and Forward's lists: each place it can go, by its index (`go-to` goes there), `at` the one it's on.
   else if (action === "history") return { at: h.getActiveIndex(), entries: h.getAllEntries().map((x, i) => ({ i, url: x.url, title: x.title })).filter((x) => shows(x.url)) }
-  else if (action === "go-to") { const i = Number(url); if (Number.isInteger(i) && i >= 0 && i < h.length() && shows(h.getEntryAtIndex(i)?.url ?? "")) h.goToIndex(i) }
+  else if (action === "go-to") { const i = Number(url); if (Number.isInteger(i) && i >= 0 && i < h.length() && shows(h.getEntryAtIndex(i)?.url ?? "")) { p.flow = {}; h.goToIndex(i) } }
   // (where Back or Forward would go, for a tab of its own)
   else if (action === "back-address") return canBack(p) ? h.getEntryAtIndex(h.getActiveIndex() - 1)?.url : undefined
   else if (action === "forward-address") return h.canGoForward() ? h.getEntryAtIndex(h.getActiveIndex() + 1)?.url : undefined
@@ -917,7 +927,7 @@ function go(p: Page, action: string, url?: string): unknown {
   else if (action === "mute" || action === "unmute") { wc.setAudioMuted(action === "mute"); sendState(p) }
   // (a hidden page never has the keyboard: it gets it as it's shown, `web:place` answering `focused`)
   else if (action === "focus") { if (p.player) return; if (shownNow(p)) wc.focus(); else p.hadFocus = true }
-  else if (action === "load" && url && shows(url)) { p.target = url; void wc.loadURL(url).catch(() => {}) }
+  else if (action === "load" && url && shows(url)) { p.target = url; if (!p.agent) p.flow = { opened: url }; void wc.loadURL(url).catch(() => {}) }
   // (answers "none" when the page has no video)
   else if (action === "pip") return playerKit().then((k) => wc.executeJavaScriptInIsolatedWorld(1004, [{ code: k.PIP }], true)).catch(() => null)
   // (answers how many it paused or started; kept in its own world, the site never sees them listed)
@@ -1297,6 +1307,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "web:list": (win) => [...pages.values()].filter((p) => p.win === win && !p.closing)
     .map((p) => ({ id: p.id, profile: p.profile, tab: p.tab, shown: p.holds > 0, ...stateOf(p) })),
   "web:sites": (_win, profile) => sitesOf(profileOf(profile)),
+  "web:who": (_win, site, profiles) => whoIn(str(site), Array.isArray(profiles) ? profiles.map(profileOf).filter(Boolean).slice(0, 40) : []),
   "web:forget": async (_win, profile, site) => forgetSite(profileOf(profile), str(site).toLowerCase()),
   "web:move": (_win, from, to, sites, copy) => moveLogins(profileOf(from), profileOf(to),
     (Array.isArray(sites) ? sites : []).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase()).slice(0, 20), copy === true),
@@ -1443,6 +1454,23 @@ async function sitesOf(profile: string): Promise<WebSite[]> {
   // Signed in first, then the latest visited, then A to Z.
   return out.filter((s) => !joined.has(s.site))
     .sort((a, b) => Number(!b.signed) - Number(!a.signed) || (b.last ?? 0) - (a.last ?? 0) || a.site.localeCompare(b.site))
+}
+
+/** Who's signed in to `site` in each used profile of `profiles` (null: nobody, or no way to ask; a covered site is its
+ *  login's: youtube.com is Google's), for a link to open where its account is. Each in WHO_MS, else as last named. */
+const WHO_MS = 1500
+async function whoIn(site: string, profiles: string[]): Promise<Record<string, { account: string; more?: string[] } | null>> {
+  const name = ACCOUNTS[site] ? site : Object.keys(ACCOUNTS).find((k) => Object.keys(ACCOUNTS[k].with ?? {}).some((w) => covers(w, site)))
+  const used = (p: string) => sessions.has(p) || fs.existsSync(path.join(app.getPath("userData"), "Partitions", partitionOf(p).replace(/^persist:/, "")))
+  const out: Record<string, { account: string; more?: string[] } | null> = {}
+  await Promise.all([...new Set(profiles)].map(async (p) => {
+    if (!name || !used(p) || !mayOpen(p)) return void (out[p] = null)
+    const cookies = await (await readySession(p)).cookies.get({ domain: name }).catch(() => [])
+    const late = new Promise<Who | null>((r) => setTimeout(() => r(loadKnown()[p]?.[name]?.who ?? null), WHO_MS).unref())
+    const who = cookies.length ? await Promise.race([accountOf(p, name, cookies).catch(() => null), late]) : null
+    out[p] = who ? { account: who.account, ...(who.more?.length ? { more: who.more } : {}) } : null
+  }))
+  return out
 }
 
 /** Sign out of a site in a profile: its cookies and storage go, its open pages reload. */

@@ -101,7 +101,7 @@ export function startDesktop() {
     else if (m.type === "link" && m.bundle) void import("@/core/bundles").then((b) => b.openImport(m.bundle!))
     else if (m.type === "open" && m.path) open(m.path)
     // A web link from another app (Vaultite as the Mac's browser).
-    else if (m.type === "web" && m.url && /^https?:\/\//i.test(m.url)) { const url = m.url; void import("@/core/links").then((l) => l.openWebLink(url)) }
+    else if (m.type === "web" && m.url && /^https?:\/\//i.test(m.url)) { const url = m.url; void import("@/core/links").then((l) => l.openWebLink(url, { newTab: false, fromApp: true })) }
     else if (m.type === "go" && m.path) openFile(m.path)
     else if (m.type === "spelling") spellingHeard({ word: m.word ?? "", suggestions: m.suggestions ?? [] })
     else if (m.type === "update") {

@@ -15,7 +15,7 @@ import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
 import { openBookmark, starOf } from "./Star"
-import { focusedPage, focusedPageId, keptTitles, linksInViewer, loadingIn, onScreen, pageOfTab, pageTookKeyboard, passkeyAsks, profile, setPageFlags, stateCame, setPlayer, setSounds, settings, shown, soundOf, titleOf, typedIn } from "./state"
+import { focusedPage, focusedPageId, keptTitles, linksInViewer, loadingIn, onScreen, pageOfTab, pageTookKeyboard, passkeyAsks, profile, setPageFlags, stateCame, setPlayer, setSounds, settings, settingsRead, shown, soundOf, titleOf, typedIn } from "./state"
 import { agentPage, agentPageOfTab, agentPages, openAsTab, pauseAgents, setAgentPages, working, type AgentPage } from "./agentpages"
 import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
@@ -26,6 +26,7 @@ import { SoundCard, watchSoundCard } from "./SoundCard"
 import { barHidden, pageBarItem, setBarHidden } from "./pagebar"
 import { switcherSearch } from "./switcher"
 import { focusedReplay } from "./replaykeys"
+import { openFromApp } from "./linklogins"
 
 const WebPage = lazy(() => import("./WebPage"))
 // Pages opened on demand load with their first tab.
@@ -344,9 +345,10 @@ export default definePlugin({
   },
   // (a container chosen, the link's menu's or its note's, opens here even with links set to the system browser: only
   // this browser has containers; one no container is called is left to the rules)
-  webLink: (url, { newTab, front, out, container }) => {
+  webLink: (url, { newTab, front, out, container, fromApp }) => {
     const chosen = chosenFor(container)
     if (!webPages || out || (!linksInViewer() && chosen === undefined)) return false
+    if (fromApp && chosen === undefined) { void settingsRead().then(() => openFromApp(url, openPage)); return true }
     const c = destination(url, { from: null, fresh: true, chosen }).container
     if (c === null && chosen === null) keepOutside(url)
     if (newTab && front) openTab(`view:web/${argOf(url, c)}`)

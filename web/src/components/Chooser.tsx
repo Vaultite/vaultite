@@ -5,7 +5,7 @@ import { Check, type LucideIcon } from "lucide-react"
 import { anyIcon } from "@/core/icons"
 import { answerUi } from "@/core/live"
 import { fuzzy } from "@/core/fuzzy"
-import { marked, NoMatches, Palette } from "@/components/Palette"
+import { marked, NoMatches, Palette, type Pick as How } from "@/components/Palette"
 import { signal } from "@/core/signal"
 
 export type Choice = { id: string; label: string; detail?: string
@@ -16,7 +16,10 @@ export type Choose<C extends Choice = Choice> = {
   title: string
   placeholder: string
   items: C[]
-  onPick: (item: C) => void
+  /** `how.mod`: picked with ⌘Enter or a ⌘-click (what that does besides: `modHint`). */
+  onPick: (item: C, how: How) => void
+  /** What picking with ⌘ does too, said along the bottom ("to always open it there"). */
+  modHint?: string
   /** Closed without a pick (Esc, a click outside, another `choose` in its place). */
   onDismiss?: () => void
   /** A line above the list (the question asked). */
@@ -109,11 +112,11 @@ function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
   const field = !c.items.length && !!c.other
   return (
     <Palette label={c.title} placeholder={c.placeholder} query={q} setQuery={setQ} items={items} onClose={onClose} start={start} onSelect={c.preview} select={!!c.typed}
-      onPick={(it) => {
-        if (it) { show(null); c.onPick(it) } else if (!q.trim() && c.onBlank) { show(null); c.onBlank() }
+      onPick={(it, how) => {
+        if (it) { show(null); c.onPick(it, how) } else if (!q.trim() && c.onBlank) { show(null); c.onBlank() }
       }} heading={c.heading}
       empty={c.empty ?? <NoMatches what="Nothing matches" query={q} />}
-      hints={field ? [["Enter", "to confirm"], ["Escape", "to cancel"]] : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ["Escape", "to dismiss"]]}
+      hints={field ? [["Enter", "to confirm"], ["Escape", "to cancel"]] : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(c.modHint ? [["Mod+Enter", c.modHint] as [string, string]] : []), ["Escape", "to dismiss"]]}
       row={(h) => (
         <>
           {h.icon && <span className="flex size-5 shrink-0 items-center justify-center">{iconOf(h.icon)}</span>}

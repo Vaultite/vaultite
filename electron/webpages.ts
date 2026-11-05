@@ -1,5 +1,6 @@
 // Whose each web page is (electron/web.ts keeps the pages, this decides): a tab owns its page by the tab's id, so a
 // tab shown again gets the same page and closing it ends it. No Electron here, so tools/test_web.ts runs it on Node.
+import { signInOf } from "../core/signin.ts"
 
 export type Owned<W> = {
   id: number; win: W
@@ -115,3 +116,17 @@ export function media(p: Playback, playing: boolean, audible: boolean) {
 export const quietEnds = (p: Playback) => (p.quiet === undefined ? undefined : p.quiet + (p.media ? MEDIA_QUIET_MS : QUIET_MS))
 
 export const playing = (p: Playback, audible: boolean, now: number) => p.heard && (audible || now < (quietEnds(p) ?? 0))
+
+/** Where a page was opened (or last sent by the app) while only redirects and the page moved it on, and the identity
+ *  provider's site it reached: moved to another container, it starts again from `opened`, its first cookies with it. */
+export type Flow = { opened?: string; signIn?: string }
+
+/** Its main frame going to `url`; `user`: the user pressed in the page just before. The user moving it on ends the
+ *  flow; `site` is a host's site (web.ts siteOf). */
+export function flowOn(f: Flow, url: string, user: boolean, site: (host: string) => string): Flow {
+  if (!f.opened || url === f.opened) return f
+  if (user) return {}
+  const s = signInOf(url), from = hostOf(f.opened)
+  return s && site(s.host) !== site(from) ? { ...f, signIn: site(s.host) } : f
+}
+const hostOf = (u: string) => { try { return new URL(u).hostname } catch { return "" } }

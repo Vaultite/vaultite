@@ -52,7 +52,9 @@ function mdTarget(s: Store, href: string, from?: string) {
  *  in front with ⇧ too, as browsers do); ⌥⌘ sends a web page to the system browser (`out`). */
 export type LinkClick = { newTab: boolean; front?: boolean; out?: boolean
   /** The Browser's container a web page opens in (an id or a name; null: none): the link menu's, or its note's `container:`. */
-  container?: string | null }
+  container?: string | null
+  /** Another app's link (Vaultite as the Mac's browser): the Browser may ask which container, as it never does for the app's own. */
+  fromApp?: boolean }
 export function linkClick(e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; button: number }): LinkClick {
   const mod = e.metaKey || e.ctrlKey
   return { newTab: mod || e.button === 1, ...(mod && e.shiftKey ? { front: true } : {}), ...(mod && e.altKey ? { out: true } : {}) }
