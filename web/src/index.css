@@ -406,21 +406,20 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 }
 @media (min-width: 768px) { .chip-row { flex-wrap: wrap; overflow: visible; } }
 
-/* Scrollbars: thin and translucent in the theme's colours, instead of the browser's default (white in dark mode). In
-   the base layer, so a scroller's own `[scrollbar-width:none]` wins (the tab strip's, the rail's). */
+/* Scrollbars are the system's where they overlay the page (a Mac's, phones'). Where they'd always show (platform.ts),
+   ours show only while scrolling, as a Mac's do; `[scrollbar-width:none]` still hides one (Chromium then skips these). */
 :root { color-scheme: light; --scrollbar: rgb(60 60 67 / 0.28); --scrollbar-hover: rgb(60 60 67 / 0.45); }
 .dark { color-scheme: dark; --scrollbar: rgb(235 235 245 / 0.22); --scrollbar-hover: rgb(235 235 245 / 0.38); }
-@layer base {
-  @supports (scrollbar-color: auto) {
-    * { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
-  }
+html[data-classic-scrollbars] ::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }
+html[data-classic-scrollbars] ::-webkit-scrollbar-thumb {
+  background: transparent padding-box; border: 3px solid transparent; border-radius: 12px; min-height: 32px; min-width: 32px;
 }
-@supports not (scrollbar-color: auto) {
-  ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
-  ::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover); }
-  ::-webkit-scrollbar-corner { background: transparent; }
+html[data-classic-scrollbars] [data-scrolling]::-webkit-scrollbar-thumb { background-color: var(--scrollbar); }
+/* under the pointer it widens and darkens, as a Mac's does */
+html[data-classic-scrollbars] ::-webkit-scrollbar-thumb:hover, html[data-classic-scrollbars] ::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-hover); border-width: 2px;
 }
+html[data-classic-scrollbars] ::-webkit-scrollbar-corner { background: transparent; }
 /* A scroller that fades out at an edge while there's more past it: `edge-fade-x` (strips of chips, keys, tabs),
    `edge-fade-y`, and `edge-fade-b` (the bottom only, under sticky headings). Driven by its own scroll, no JS: one that
    doesn't overflow has no timeline, so no fade. */

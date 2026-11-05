@@ -95,7 +95,7 @@ export function ActivityPanel({ store, open, mode }: SidebarCtx) {
           </button>
         ))}
       </SidebarHeading>
-      <div className={cn("flex flex-col gap-px", mode && "edge-fade-b min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]")}>
+      <div className={cn("flex flex-col gap-px", mode && "edge-fade-b min-h-0 flex-1 overflow-y-auto")}>
         {!data ? (
           error ? <p className={note}>Couldn't read the activity</p>
             : rows ? <Skeleton count={rows} />

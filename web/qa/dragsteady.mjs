@@ -78,7 +78,7 @@ await api("PATCH", "config/plugin/pages", { show: "tiles" })
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } })
 await ctx.addInitScript(WATCH)
 // (a sidebar just wide enough for four tiles a row: a scrollbar's room would leave three)
-await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); localStorage.setItem("vaultite.prefs", JSON.stringify({ sidebarWidth: 214 })); sessionStorage.setItem("qa", "1") } })
+await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); localStorage.setItem("vaultite.prefs", JSON.stringify({ sidebarWidth: 215 })); sessionStorage.setItem("qa", "1") } })
 const page = watch(await ctx.newPage(), { console: true })
 try {
   await page.goto(`${B}#new`)

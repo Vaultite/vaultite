@@ -691,7 +691,7 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
         {!writing && items().length > 0 && <button type="button" aria-label="More" data-tip="More" className={BTN} onClick={(e) => menuBelow(e, items())}><Ellipsis className="size-4" /></button>}
       </div>
       {/* (open, one taller than the pane scrolls inside, its buttons kept in sight) */}
-      <div ref={body} className={cn("min-h-0 px-2.5", open ? "overflow-y-auto overscroll-contain [scrollbar-width:thin]" : "max-h-[62px] overflow-hidden", more && "companion-more")}>
+      <div ref={body} className={cn("min-h-0 px-2.5", open ? "overflow-y-auto overscroll-contain" : "max-h-[62px] overflow-hidden", more && "companion-more")}>
         {n.orphaned && <div className="pt-1.5 text-[12px] text-muted-foreground">Its text was removed</div>}
         {n.text && <div className="pt-1.5 text-foreground"><Markdown text={n.text} className="companion-md" /></div>}
         {proposal && <Proposal n={n} tint={tint} />}

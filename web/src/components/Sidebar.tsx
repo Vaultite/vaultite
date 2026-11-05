@@ -128,7 +128,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     <SidebarSide.Provider value={side}>
     {rail}
     <div ref={box} data-sidebar-body={ctx.open ? side : undefined} data-sidebar-kept={ctx.open ? undefined : side} inert={!ctx.open} data-mode-fade={fades || undefined} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
-      className={cn("edge-fade-b relative flex min-h-0 flex-1 flex-col pb-1", !ctx.open && "hidden", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]",
+      className={cn("edge-fade-b relative flex min-h-0 flex-1 flex-col pb-1", !ctx.open && "hidden", own ? "overflow-x-hidden overflow-y-auto" : "overflow-y-auto overscroll-contain",
         making && "[&>:not([data-slide])]:invisible")}>
       {panels.length ? panels.map((p, i) => {
         const { key, panel } = p
@@ -153,7 +153,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
             className={cn("flex shrink-0 flex-col pb-1", item?.panel === key && (item.drawn ? "invisible" : "opacity-50"))}>
             {/* Its own box (each panel scrolling in its own: the height usePanelLayout gives it), around what it draws
                 (measured: the most it's given). Scrolling as one, both are plain. */}
-            <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "edge-fade-b overflow-y-auto [scrollbar-width:thin]")}>
+            <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "edge-fade-b overflow-y-auto")}>
               <div data-panel-content className="flex shrink-0 flex-col">
                 <PanelFold.Provider value={{ collapsed: folded, toggle: () => foldPanel(box.current, key, () => togglePanelCollapsed(key)) }}>
                   {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.({ ...shown, panel: key })}</SidebarHeading>}

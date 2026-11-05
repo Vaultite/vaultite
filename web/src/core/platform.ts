@@ -30,16 +30,42 @@ export const isDesktop = () => matchMedia(DESKTOP).matches
 /** isDesktop that follows the window: a phone's width and a computer's swap as it's resized. */
 export const useDesktop = () => useSyncExternalStore((f) => { const m = matchMedia(DESKTOP); m.addEventListener("change", f); return () => m.removeEventListener("change", f) }, isDesktop)
 
-/** A thin scrollbar's width here, as `--scrollbar-room`: 0 where scrollbars overlay the page (macOS' default, phones).
- *  Measured again when the zoom changes, which changes it. */
+// Where the system's scrollbars take room and always show (Windows, Linux, a Mac with a mouse), the app draws its own
+// (index.css: data-classic-scrollbars), which show while scrolling; `--scrollbar-room` is their room, 0 when overlaid.
 let measuredAt = 0
-function measureScrollbar() {
-  if (measuredAt === devicePixelRatio) return
-  measuredAt = devicePixelRatio
-  const probe = document.createElement("div")
-  probe.style.cssText = "position:fixed;top:-200px;width:100px;height:100px;overflow:scroll;scrollbar-width:thin;visibility:hidden"
-  document.documentElement.append(probe)
-  document.documentElement.style.setProperty("--scrollbar-room", `${probe.offsetWidth - probe.clientWidth}px`)
-  probe.remove()
+const probe = () => {
+  const el = document.createElement("div")
+  el.style.cssText = "position:fixed;top:-200px;width:100px;height:100px;overflow:scroll;visibility:hidden"
+  return el
 }
-if (typeof document !== "undefined" && typeof devicePixelRatio === "number") { measureScrollbar(); addEventListener("resize", measureScrollbar) }
+function measureScrollbars(again = false) {
+  if (!again && measuredAt === devicePixelRatio) return
+  measuredAt = devicePixelRatio
+  const html = document.documentElement
+  // the system's own bar, in a shadow root that the app's ::-webkit-scrollbar rules don't reach
+  const host = html.appendChild(document.createElement("div")), native = host.attachShadow({ mode: "open" }).appendChild(probe())
+  const classic = native.offsetWidth > native.clientWidth
+  host.remove()
+  if (classic !== html.hasAttribute("data-classic-scrollbars")) html.toggleAttribute("data-classic-scrollbars", classic)
+  let room = "0px"
+  if (classic) { const ours = html.appendChild(probe()); room = `${ours.offsetWidth - ours.clientWidth}px`; ours.remove() }
+  if (html.style.getPropertyValue("--scrollbar-room") !== room) html.style.setProperty("--scrollbar-room", room)
+  if (classic) addEventListener("scroll", scrolled, { capture: true, passive: true })
+  else removeEventListener("scroll", scrolled, { capture: true })
+}
+// A scroller is `data-scrolling` while it scrolls and a moment after, as a Mac's bars show and fade.
+const scrolling = new Map<Element, number>()
+function scrolled(e: Event) {
+  const el = e.target
+  if (!(el instanceof Element)) return
+  const was = scrolling.get(el)
+  if (was) clearTimeout(was)
+  else el.setAttribute("data-scrolling", "")
+  scrolling.set(el, window.setTimeout(() => { scrolling.delete(el); el.removeAttribute("data-scrolling") }, 1000))
+}
+if (typeof document !== "undefined" && typeof devicePixelRatio === "number") {
+  measureScrollbars()
+  addEventListener("resize", () => measureScrollbars())
+  // System Settings' "Show scroll bars", or a mouse plugged in, change them while the app runs
+  addEventListener("focus", () => measureScrollbars(true))
+}
