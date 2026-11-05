@@ -1,8 +1,8 @@
 // Companion, its cursor's states: each shows by itself, unhovered and long after it began, on a desktop and a phone:
 // reading and thinking its dots (thinking bobs), starting its dots and word, writing its name, a question its word,
-// listening a wave, words waiting for the user's pause its dots; a bubble never shows without words. On a Mac, dictation
-// end to end in the app (its helper's events played): it listens where they speak, what it says meanwhile waits as dots
-// and shows at their pause, and the words they go on saying don't take it away before it showed a moment.
+// listening a wave, words waiting for the user's pause its dots, idle it goes home; a bubble never shows without words.
+// On a Mac, dictation end to end in the app (its helper's events played): it listens where they speak, what it says
+// meanwhile waits as dots and shows at their pause, and the words they go on saying don't take it away before it showed.
 // WRITES "QA presence/" and the plugin's data.json: throwaway server only.
 //   node web/qa/companion-presence.mjs <base url> <vault path>
 import { _electron } from "playwright-core"
@@ -111,7 +111,7 @@ for (const phone of [false, true]) {
   c = await played({ state: "thinking", asks: { event: "chat:q", text: "Run vau tabs?" } })
   check(`${L}: asking leave, its flag says it needs you`, shows(c, null) && c.words.includes("needs you"), c)
   c = await played({ state: "watching", seen: true, why: "not for me" })
-  check(`${L}: watching a while, it fades to the bare arrow`, !!c && c.flag < 0.1 && c.cursor < 0.7, c)
+  check(`${L}: watching a while, it goes home: nothing of it in the note`, !!c && c.docked, c)
 
   // A bubble with no words yet is none; its words come, it shows them.
   await page.evaluate((p) => window.__play({ t: "note", note: { id: "qempty", kind: "say", agent: "Claude", text: " ", path: p, line: 5, t: Date.now() } }), NOTE)

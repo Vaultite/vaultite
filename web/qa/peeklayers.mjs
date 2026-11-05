@@ -48,7 +48,7 @@ try {
   await card.waitFor({ timeout: 5000 }).catch(() => {})
   check("a comment card in the margin", (await card.count()) === 1)
   // (the agent looks at the long paragraph's first row: its cursor at the row's end, in the right margin)
-  const cursor = page.locator(".companion-cursor[data-agent] [data-companion-grip]").first()
+  const cursor = page.locator(".companion-cursor[data-agent] [data-companion-flag]").first()
   await cursor.waitFor({ timeout: 5000 }).catch(() => {})
   await wait(900)
   const peeks = (s) => page.evaluate((s) => document.querySelector(`aside[data-side=${s}]`).dataset.peek === "true", s)
@@ -75,12 +75,15 @@ try {
 
   // Before: nothing slid in, the card and the cursor are on top where they are.
   check("hidden: the card is on top", (await top(`[data-companion-note="${id}"]`, "right")).self)
-  check("hidden: the cursor is on top", (await top(".companion-cursor[data-agent] [data-companion-grip]", "right")).self)
+  // (its name shows a moment after it looks: what's on top there)
+  await op("companion.look", { path: NOTE, find: "Basil" })
+  await wait(900)
+  check("hidden: the cursor is on top", (await top(".companion-cursor[data-agent] [data-companion-flag]", "right")).self)
 
   await slide("right")
   const c = await top(`[data-companion-note="${id}"]`, "right")
   check("right slid in: it covers the card", c.under && c.sidebar, c)
-  const k = await top(".companion-cursor[data-agent] [data-companion-grip]", "right")
+  const k = await top(".companion-cursor[data-agent] [data-companion-flag]", "right")
   check("right slid in: it covers the agent's cursor", k.under && k.sidebar, k)
   const t = await top("[data-sidebar-toggle=right]", "right")
   check("right slid in: its toggle rides over it", t.self, t)
@@ -96,7 +99,7 @@ try {
   await op("companion.look", { path: NOTE, find: "Bee." })
   await wait(900)
   await slide("left")
-  const l = await top(".companion-cursor[data-agent] [data-companion-grip]", "left")
+  const l = await top(".companion-cursor[data-agent] [data-companion-flag]", "left")
   check("left slid in: it covers the agent's cursor", l.under && l.sidebar, l)
   await page.screenshot({ path: `${OUT}left.png`, clip: { x: 0, y: 0, width: 720, height: 400 } })
 

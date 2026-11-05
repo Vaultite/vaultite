@@ -975,7 +975,7 @@ export function Overlay() {
     if (h?.left && !stays(a, h.left)) { holds.current.delete(a.name); h = undefined }
     // (only while it works, writes, speaks or points, as a collaborator in a shared doc: idle a while, it rests at home)
     const idle = !h && !said && !waiting && !a.asks && typing?.agent !== a.name && a.state === "watching" && Date.now() - a.t > IDLE_MS
-    const at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : idle ? home(a, i) : spotOf(a, i)
+    const at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : idle ? { ...home(a, i), docked: true } : spotOf(a, i)
     // (left on a line of a note not on screen now: where that note is, as it would be)
     const off = !!h?.left && !h.screen && !(h.at.path && viewOf(h.at.path))
     return { a, i, spot: at && h && !h.screen && !off ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, waiting, with: [] as Agent[], under: false, shift: 0, held: h }
