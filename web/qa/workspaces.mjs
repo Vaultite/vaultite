@@ -124,14 +124,14 @@ try {
   sid = await until(async () => decodeURIComponent(page.url()).match(/terminal\/([a-z0-9]+)/)?.[1], 6000)
   check("a terminal opened in 2", !!sid, page.url())
   await until(async () => PROMPT.test(await text()), 8000)
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.type("echo pid-$$"); await page.keyboard.press("Enter")
   const pid = (await until(async () => (await text()).match(/pid-(\d+)/)?.[1], 6000))
   check("the terminal answers", !!pid, (await text()).slice(-200))
   await page.screenshot({ path: `${OUT}2-workspace-2.png` })
 
   // ---------- ⌃1 from inside the terminal: back to 1, its panels and tabs ----------
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.press(workspaceKey(1))
   check("⌃1 (typed in the terminal) switches to 1", !!(await until(async () => (await lit()) === "1", 6000)), await numbers())
   check("1's panels are back", !!(await until(async () => (await panels()).length === 4, 6000)), await panels())
@@ -150,7 +150,7 @@ try {
   // (The first keys typed into a terminal that just reattached can be lost, here and in splits.mjs: try a few times.)
   let again = null
   for (let i = 0; i < 3 && !again; i++) {
-    await page.locator(".xterm").click(); await wait(500)
+    await page.locator("[data-term]").click(); await wait(500)
     await page.keyboard.type("echo again-$$"); await page.keyboard.press("Enter")
     again = await until(async () => (await text()).match(/^again-(\d+)\s*$/m)?.[1], 3000)
   }

@@ -24,7 +24,7 @@ const add = (topic: string, fields: Record<string, unknown>) => push({ at: Date.
 export function where(t: EventTarget | null): string {
   const el = t instanceof Element ? t : t instanceof Node ? t.parentElement : null
   if (!el) return t === window ? "window" : t === document ? "document" : ""
-  const area = el.closest(".cm-editor") ? "editor" : el.closest(".xterm") ? "terminal" : el.closest("[role=dialog]") ? "dialog"
+  const area = el.closest(".cm-editor") ? "editor" : el.closest("[data-term]") ? "terminal" : el.closest("[role=dialog]") ? "dialog"
     : el.closest("[data-palette], [cmdk-root]") ? "palette" : el.closest("[role=menu]") ? "menu" : el.closest("aside, [data-sidebar]") ? "sidebar"
     : el.closest("[data-pane], #main-scroll") ? "pane" : ""
   const named = el.closest("[aria-label], [data-tip], [data-path], [data-select-key], button, a, input, textarea")
@@ -34,7 +34,7 @@ export function where(t: EventTarget | null): string {
   return [area, name ? `${tag} (${name})` : tag].filter(Boolean).join(" ")
 }
 
-const secret = (t: EventTarget | null) => t instanceof Element && (!!t.closest(".xterm") || (t instanceof HTMLInputElement && t.type === "password"))
+const secret = (t: EventTarget | null) => t instanceof Element && (!!t.closest("[data-term]") || (t instanceof HTMLInputElement && t.type === "password"))
 const MODS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Fn"])
 function combo(e: KeyboardEvent) {
   const key = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key
@@ -91,7 +91,7 @@ export function startRecording(): () => void {
   const tops = new WeakMap<Element, { top: number; ev: Ev; last: number }>()
   const scrolled = (e: Event) => {
     const el = e.target instanceof Element ? e.target : document.scrollingElement
-    if (!el || el.closest(".xterm")) return
+    if (!el || el.closest("[data-term]")) return
     const was = tops.get(el), top = Math.round(el.scrollTop)
     const now = Date.now(), by = now - lastInput < 800 ? "user" : "app"
     if (was && now - was.last < 400 && was.ev.by === by) { was.ev.to = top; was.top = top; was.last = now; return }

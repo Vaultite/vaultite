@@ -34,7 +34,7 @@ const until = (re, ms = 20000) => page.evaluate(({ src, ms }) => new Promise((re
   const re = new RegExp(src), t0 = window.__input, end = performance.now() + ms
   let chunk = null, first = null
   const step = () => {
-    const rows = document.querySelector("[data-terminal]") || document.querySelector(".xterm-rows")
+    const rows = document.querySelector("[data-terminal]")
     if (rows && chunk == null) chunk = performance.now() - t0
     const text = !rows ? "" : rows.terminalText ? rows.terminalText() : [...rows.children].map((d) => d.textContent).join("\n")
     if (text.trim() && first == null) first = performance.now() - t0
@@ -57,7 +57,7 @@ for (let i = 0; i < Number(RUNS); i++) {
   rows.push({ step: `new shell ${i + 1}`, ...r })
   const id = await page.evaluate(() => window.__ws.at(-1).url)
   ids.push(id)
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.type(`clear; echo MARK-${i}`); await page.keyboard.press("Enter")
   await wait(800)
 }

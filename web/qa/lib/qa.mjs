@@ -113,7 +113,7 @@ export const viewsAt = (base) => (mode) => apiAt(base)("POST", "ops/settings.set
 /** Opens the command palette: ⌘P, or Ctrl+P off a Mac, where a focused terminal keeps Ctrl+letters for its shell
  *  (plugins/core/terminal/Terminal.tsx), so it's left first, as a user there clicks out of it. */
 export async function openPalette(page) {
-  if (!MAC) await page.evaluate(() => { const a = document.activeElement; if (a instanceof HTMLElement && a.closest(".xterm")) a.blur() })
+  if (!MAC) await page.evaluate(() => { const a = document.activeElement; if (a instanceof HTMLElement && a.closest("[data-term]")) a.blur() })
   await page.keyboard.press("ControlOrMeta+p")
 }
 

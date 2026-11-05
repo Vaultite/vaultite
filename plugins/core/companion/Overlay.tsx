@@ -159,11 +159,11 @@ const uiSpot = (id: string) => { const el = uiElement(id); return el ? atElement
 type Screen = { r: DOMRect; lines: string[]; rowH: number; cw: number }
 /** A terminal pane's screen as drawn: its box, its lines (terminalText: with WebGL it's a canvas), a row's height, a cell's width. */
 function screenOf(pane: HTMLElement): Screen | null {
-  const host = pane.querySelector<HTMLElement & { terminalText?: () => string }>("[data-terminal]"), scr = host?.querySelector<HTMLElement>(".xterm-screen")
+  const host = pane.querySelector<HTMLElement & { terminalText?: () => string; terminalCell?: () => { width: number } | null }>("[data-terminal]")
+  const scr = host?.querySelector<HTMLElement>("[data-term-screen]")
   if (!host?.terminalText || !scr) return null
-  const lines = host.terminalText().split("\n"), r = scr.getBoundingClientRect(), m = host.querySelector(".xterm-char-measure-element")
-  const cw = m?.textContent ? m.getBoundingClientRect().width / m.textContent.length : 0
-  return { r, lines, rowH: r.height / Math.max(1, lines.length), cw: cw || 8 }
+  const lines = host.terminalText().split("\n"), r = scr.getBoundingClientRect()
+  return { r, lines, rowH: r.height / Math.max(1, lines.length), cw: host.terminalCell?.()?.width || 8 }
 }
 /** The row (from 1) a place names on a screen: its row, else the last showing its text, else the last written. */
 function rowIn(s: Screen, t: { row?: number; find?: string }) {

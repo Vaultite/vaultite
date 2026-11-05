@@ -26,11 +26,11 @@ const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } })
 const page = watch(await ctx.newPage(), { label: "desktop" })
 const sid = `qa${Date.now().toString(36)}`
 await page.goto(`${B}#view/terminal%2F${sid}`)
-check("a terminal drawn", await until(async () => (await page.locator(".xterm-screen").count()) > 0))
+check("a terminal drawn", await until(async () => (await page.locator("[data-term-screen]").count()) > 0))
 await until(async () => PROMPT.test(await terminalText(page)), 8000)
 const pane = await page.evaluate(() => document.querySelector("[data-ui^='pane:'] [data-terminal]")?.closest("[data-ui]")?.getAttribute("data-ui")?.slice(5))
 check("its pane carries its tab's id (data-ui pane:<id>)", !!pane, pane)
-await page.locator(".xterm").click()
+await page.locator("[data-term]").click()
 await page.keyboard.type("echo needle-17"); await page.keyboard.press("Enter")
 await until(async () => /^needle-17\s*$/m.test(await terminalText(page)))
 // (the window has told the server its panes)
@@ -51,7 +51,7 @@ check("look --ui: its cursor goes to that part of the app", !!at && at.x >= box.
 r = await op("companion.look", { pane, find: "needle-17" })
 await wait(900)
 const row = await page.evaluate(() => {
-  const host = document.querySelector("[data-terminal]"), lines = host.terminalText().split("\n"), s = host.querySelector(".xterm-screen").getBoundingClientRect()
+  const host = document.querySelector("[data-terminal]"), lines = host.terminalText().split("\n"), s = host.querySelector("[data-term-screen]").getBoundingClientRect()
   const i = lines.findLastIndex((l) => l.includes("needle-17")), h = s.height / lines.length
   return { top: s.top + i * h, bottom: s.top + (i + 1) * h }
 })
@@ -75,7 +75,7 @@ check("it follows that pane", st.follows?.some((f) => f.pane === pane), st.follo
 await wait(2500)
 
 // The follow: a command's end, its new output.
-await page.locator(".xterm").click()
+await page.locator("[data-term]").click()
 await page.keyboard.type("sleep 1; echo done-$((40+2))"); await page.keyboard.press("Enter")
 check("(the command ran)", await until(async () => /^done-42\s*$/m.test(await terminalText(page)), 6000), (await terminalText(page)).slice(-300))
 let change = null

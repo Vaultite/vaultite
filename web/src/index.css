@@ -1417,7 +1417,7 @@ html[data-translucent][data-translucent-pages] { --page-glass: color-mix(in srgb
 html[data-translucent][data-translucent-pages] {
   & [data-pane-body] { background: var(--page-glass); }
   /* What paints the page's own ground over it lets it through: terminals (their theme too), canvases, the graph. */
-  & [data-pane-body] :is([data-terminal-view], [data-terminal-view] .xterm-viewport, [data-canvas-board], [data-graph-view]) { background: transparent; }
+  & [data-pane-body] :is([data-terminal-view], [data-terminal-view] [data-term-viewport], [data-canvas-board], [data-graph-view]) { background: transparent; }
   /* A file's bar: clear at the top, the page blurred under it once it scrolls (sticky: stuck). */
   & [data-pane-body] [data-view-bar] { background: none; container-type: scroll-state; }
 }

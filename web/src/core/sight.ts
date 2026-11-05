@@ -68,7 +68,7 @@ export function wholly(v: View, pos: number) {
  *  page (the palette, a menu: fixed, with nothing scrolling it) and a terminal (it keeps its own rows in sight). */
 function typingAt(): { el: HTMLElement; top: number; bottom: number } | null {
   const at = document.activeElement
-  if (!(at instanceof HTMLElement) || !at.matches("input, textarea, [contenteditable=true]") || at.closest(".xterm")) return null
+  if (!(at instanceof HTMLElement) || !at.matches("input, textarea, [contenteditable=true]") || at.closest("[data-term]")) return null
   // (in a note, from the editor: its own scroller isn't what scrolls it)
   const el = at.closest<HTMLElement>(".cm-editor") ?? at, ed = currentEditor()
   if (ed?.view.contentDOM === at) {

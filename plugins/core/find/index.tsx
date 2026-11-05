@@ -17,7 +17,7 @@ const open = (replace: boolean) => {
 const page = () => {
   if (document.querySelector("dialog[open]")) return true
   const pane = document.getElementById("main-scroll")
-  return !!pane && !pane.querySelector(".xterm, [data-web-box]")
+  return !!pane && !pane.querySelector("[data-term], [data-web-box]")
 }
 
 export default definePlugin({

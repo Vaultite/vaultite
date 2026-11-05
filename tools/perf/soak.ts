@@ -65,7 +65,7 @@ const MEASURE = () => {
   const mem = (performance as unknown as { memory: { usedJSHeapSize: number } }).memory
   return { heap: mem.usedJSHeapSize, nodes: document.getElementsByTagName("*").length, iframes: document.getElementsByTagName("iframe").length,
     intervals: soak.intervals, timeouts: soak.timeouts, frames: soak.frames, ws: soak.wsOpen, wsMade: soak.wsMade,
-    xterms: document.querySelectorAll(".xterm").length, editors: document.querySelectorAll(".cm-editor").length, tabs: document.querySelectorAll("[role=tab]").length }
+    xterms: document.querySelectorAll("[data-term]").length, editors: document.querySelectorAll(".cm-editor").length, tabs: document.querySelectorAll("[role=tab]").length }
 }
 
 // ---------- the app: Electron as a user starts it, and its ops
@@ -255,7 +255,7 @@ async function terminal(i: number) {
   const sid = `soak${i}`
   await command("tab:new")
   await go(`#view/terminal%2F${sid}`)
-  if (!(await until("a terminal", () => inPage<boolean>(() => !!document.querySelector(".xterm")), 10000))) return
+  if (!(await until("a terminal", () => inPage<boolean>(() => !!document.querySelector("[data-term]")), 10000))) return
   await wait(1500)
   await fetch(`${BASE()}api/terminals/${sid}/send`, { method: "POST", headers: CLI,
     body: JSON.stringify({ text: "for i in $(seq 1 3000); do echo line $i of the soak output; done", enter: true }) }).catch(() => {})

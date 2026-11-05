@@ -129,10 +129,10 @@ await page.locator("section", { has: page.getByRole("heading", { name: "Appearan
 // A terminal
 const id = `qats${Date.now().toString(36)}`
 await page.goto(`${B}#view/terminal%2F${id}`)
-check("terminal drawn", await until(async () => (await page.locator(".xterm-screen").count()) > 0, 8000))
+check("terminal drawn", await until(async () => (await page.locator("[data-term-screen]").count()) > 0, 8000))
 const text = () => terminalText(page)
 const cols = async (tag) => {
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.type(`echo ${tag}=$(tput cols)\n`)
   let n = 0
   await until(async () => { const m = (await text()).match(new RegExp(`${tag}=(\\d+)`)); n = m ? Number(m[1]) : 0; return n > 0 }, 8000)
@@ -141,9 +141,9 @@ const cols = async (tag) => {
 await wait(800)
 const c0 = await cols("before")
 // A cell's height (the keyboard field is one cell tall): the font's size, whichever renderer draws it (WebGL: a canvas).
-const cell = () => page.evaluate(() => parseFloat(document.querySelector(".xterm-helper-textarea").style.lineHeight))
+const cell = () => page.evaluate(() => parseFloat(document.querySelector("[data-term-input]").style.lineHeight))
 const h0 = await cell()
-await wheelOver(".xterm", -100, "Meta", 3)
+await wheelOver("[data-term]", -100, "Meta", 3)
 check("⌘ + wheel over a terminal: 130%", (await pref("terminal")) === 130, await pref("terminal"))
 check("the note's size didn't change", (await pref("note")) === 100)
 await wait(500)
@@ -157,7 +157,7 @@ await page.keyboard.type("Reset terminal text size")
 await wait(300)
 await page.keyboard.press("Enter")
 check("Reset terminal text size: 100%", await until(async () => (await pref("terminal")) === 100, 2000))
-await page.locator(".xterm").click()
+await page.locator("[data-term]").click()
 await page.keyboard.type("exit\n")
 await wait(500)
 

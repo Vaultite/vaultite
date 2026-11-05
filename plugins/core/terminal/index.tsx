@@ -155,7 +155,7 @@ export default definePlugin({
     // Out of the shell without a mouse (Vim's ⌃\ ⌃N), so the app's keys work again. Off a Mac ⌃ is the app's ⌘ and ⌃\
     // toggles the sidebar, so no default there.
     { id: "terminal:leave", name: "Leave the terminal", keys: isMac ? ["Ctrl+\\ Ctrl+N"] : undefined,
-      when: () => !!document.activeElement?.matches(".xterm-helper-textarea"), run: () => (document.activeElement as HTMLElement | null)?.blur(), icon: LogOut },
+      when: () => !!document.activeElement?.matches("[data-term-input]"), run: () => (document.activeElement as HTMLElement | null)?.blur(), icon: LogOut },
   ],
   // Every running shell (other machines' too) in the quick switcher and the search tab: by its name, its agent, what
   // it runs and its machine; picking one goes to its tab (or opens one).

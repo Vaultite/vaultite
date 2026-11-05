@@ -19,7 +19,7 @@ const becomes = async (want) => { await until(async () => size() === want, 5000)
 
 const desk = await open({ width: 1280, height: 800 }, false)
 await until(async () => PROMPT.test(await terminalText(desk)), 8000)
-await desk.locator(".xterm").click()
+await desk.locator("[data-term]").click()
 // (uutils' stty, Ubuntu 25.10's, sets the terminal even for `size`, which stops a background job: TTOU ignored)
 await desk.keyboard.type(`(trap '' TTOU; while true; do stty size > ${file}.tmp </dev/tty && mv ${file}.tmp ${file}; sleep 0.2; done) &`)
 await desk.keyboard.press("Enter")
@@ -34,7 +34,7 @@ check("phone joins: the shell takes the phone's size", /^\d+x\d+$/.test(shrunk) 
 await wait(1000)
 check("desktop untouched: stays the phone's", size() === shrunk, size())
 
-await desk.locator(".xterm").click()
+await desk.locator("[data-term]").click()
 check("desktop clicked: its size again", (await becomes(mine)) === mine, size())
 
 await phone.evaluate(() => window.dispatchEvent(new Event("focus")))

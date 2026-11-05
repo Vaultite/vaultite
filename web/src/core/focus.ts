@@ -12,7 +12,7 @@ if (typeof window !== "undefined") addEventListener("keydown", (e) => { if (e.ke
 export const byTab = (e: Event) => e.timeStamp - tabbedAt < 500
 
 /** What in a pane takes the keyboard: its editor (not in reading view), or its terminal. */
-const TYPABLE = ".cm-content[contenteditable=true], .xterm-helper-textarea"
+const TYPABLE = ".cm-content[contenteditable=true], [data-term-input]"
 
 /** Nothing has the keyboard: no element, the page itself, one that's gone, or one inside a <dialog> that has closed (a
  *  sheet just shut, its element still on the page for a moment: its restore ran before the focus left it). */

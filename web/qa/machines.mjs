@@ -21,9 +21,9 @@ await page.screenshot({ path: `${OUT}machines.png` })
 // A shell on the other machine, from this one.
 const sid = `qa${Date.now().toString(36)}`
 await page.goto(`${B}#view/terminal%2F${sid}%40${OTHER}`)
-check("the other machine's terminal is drawn", await until(async () => (await page.locator(".xterm-screen").count()) > 0, 8000))
+check("the other machine's terminal is drawn", await until(async () => (await page.locator("[data-term-screen]").count()) > 0, 8000))
 await until(async () => PROMPT.test(await text()), 8000)
-await page.locator(".xterm").click()
+await page.locator("[data-term]").click()
 await page.keyboard.type("echo at-$VAULTITE_URL"); await page.keyboard.press("Enter")
 const port = new URL(OTHER_URL).port
 check("it runs there", await until(async () => new RegExp(`^at-http://127\\.0\\.0\\.1:${port}\\s*$`, "m").test(await text()), 8000), (await text()).slice(-300))

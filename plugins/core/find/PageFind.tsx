@@ -13,7 +13,7 @@ type Spec = { search: string; caseSensitive: boolean; regexp: boolean; wholeWord
 export function pageRoot(): HTMLElement | null {
   const sheet = [...document.querySelectorAll<HTMLElement>("dialog[open]")].reverse().find((d) => d.getClientRects().length > 0)
   const root = sheet ?? document.getElementById("main-scroll")
-  return root && !root.querySelector(".xterm") ? root : null
+  return root && !root.querySelector("[data-term]") ? root : null
 }
 
 /** The page find that's open: what it looks in, what it found and which one is current. */

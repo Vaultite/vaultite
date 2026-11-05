@@ -91,6 +91,10 @@ function vaultFiles() {
 }
 const BOUND = /[\s"'`([<{=,]/
 
+/** A link under the pointer marks its terminal ([data-term-link]): scripts see it whatever draws the screen. */
+const linkHover = (e: MouseEvent) => (e.target as Element | null)?.closest<HTMLElement>("[data-term]")?.setAttribute("data-term-link", "")
+const linkLeave = (e: MouseEvent) => (e.target as Element | null)?.closest<HTMLElement>("[data-term]")?.removeAttribute("data-term-link")
+
 /** The vault's files named on a terminal row (as the vault has them, after ./ or under the vault's folder), as links that
  *  open them: what an agent says it wrote is a click away. */
 function fileLinks(t: XTerm, y: number): ILink[] | undefined {
@@ -120,7 +124,7 @@ function fileLinks(t: XTerm, y: number): ILink[] | undefined {
       if (start > 0 && !BOUND.test(text[start - 1])) continue
       if (links.length && at[start] <= links[links.length - 1].range.end.x - 1) break
       links.push({ text: path, range: { start: { x: at[start] + 1, y }, end: { x: at[end - 1] + 1, y } },
-        activate: (e) => openFile(path, { newTab: linkClick(e).newTab }) })
+        activate: (e) => openFile(path, { newTab: linkClick(e).newTab }), hover: linkHover, leave: linkLeave })
       break
     }
   }
@@ -273,7 +277,7 @@ function create(id: string): Live {
   })
   const fit = new FitAddon()
   t.loadAddon(fit)
-  t.loadAddon(new WebLinksAddon((e, uri) => openWebLink(uri, linkClick(e))))
+  t.loadAddon(new WebLinksAddon((e, uri) => openWebLink(uri, linkClick(e)), { hover: linkHover, leave: linkLeave }))
   const search = new SearchAddon({ highlightLimit: MAX })
   t.loadAddon(search)
   const files = t.registerLinkProvider({ provideLinks: (y, done) => done(fileLinks(t, y)) })
@@ -328,6 +332,16 @@ function create(id: string): Live {
       gl = g
     } catch { glLost = true /* no WebGL here */ }
     try { fit.fit() } catch { /* not laid out */ } // (their cells may differ by a fraction)
+    if (t.element) t.element.dataset.termRenderer = gl ? "webgl" : "dom"
+  }
+  // The app's own names for its parts (scripts, styles and other plugins use these, never the renderer's classes).
+  const tag = () => {
+    const root = t.element
+    if (!root) return
+    root.dataset.term = ""
+    if (t.textarea) t.textarea.dataset.termInput = ""
+    for (const [cls, name] of [["screen", "data-term-screen"], ["viewport", "data-term-viewport"], ["scrollable-element", "data-term-ground"]])
+      root.querySelector(`.xterm-${cls}`)?.setAttribute(name, "")
   }
   // Its rows drawn now, not at the next frame (xterm.js's own render, not public: if it moves, this does nothing).
   const drawNow = () => {
@@ -527,8 +541,9 @@ function create(id: string): Live {
       opened = true
       opening.mark("view")
       t.open(box)
+      tag()
       renderer()
-      const screen = t.element?.querySelector<HTMLElement>(".xterm-screen")
+      const screen = t.element?.querySelector<HTMLElement>("[data-term-screen]")
       if (screen) offerPicture(screen, () => picture(screen))
       t.textarea?.addEventListener("focus", onFocus)
       l.refit()
@@ -610,6 +625,11 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       for (let y = all ? 0 : b.viewportY, end = all ? b.length : b.viewportY + t.rows; y < end; y++) lines.push(b.getLine(y)?.translateToString(true) ?? "")
       return lines.join("\n")
     } })
+    // Where its cells are on screen: the screen's corner and a cell's size, in CSS pixels.
+    Object.defineProperty(el, "terminalCell", { configurable: true, value: () => {
+      const r = el.querySelector("[data-term-screen]")?.getBoundingClientRect()
+      return r ? { x: r.left, y: r.top, width: r.width / t.cols, height: r.height / t.rows } : null
+    } })
     // In the frame its box changed (a ResizeObserver's turn comes before the paint), so the new size and what it draws
     // show together. Not while a sidebar or split is dragged: it keeps its size, clipped, till the end.
     const refit = () => { if (!resizing()) l.refit() }
@@ -635,7 +655,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       menu({ x: e.clientX, y: e.clientY })
     }
     el.addEventListener("contextmenu", onContextMenu, true)
-    const wheel = (deltaY: number, x: number, y: number) => t.element?.querySelector(".xterm-screen")
+    const wheel = (deltaY: number, x: number, y: number) => t.element?.querySelector("[data-term-screen]")
       ?.dispatchEvent(new WheelEvent("wheel", { deltaY, deltaMode: 0, clientX: x, clientY: y, bubbles: true, cancelable: true }))
     const onTouchStart = (e: TouchEvent) => {
       clearTimeout(press); cancelAnimationFrame(glide)
@@ -760,7 +780,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       <div className="relative isolate min-h-0 flex-1 pl-3 pr-1 pt-2 pb-1">
         {/* Touch: no browser text selection or callout on a long press (the terminal's menu opens instead), and the
             keyboard's hidden field at 16px, or iOS zooms the page in when it's focused. */}
-        <div ref={host} data-terminal={id} className={cn("h-full w-full overflow-hidden", touchUi && "select-none [-webkit-touch-callout:none] [&_.xterm-helper-textarea]:!text-[16px]")} />
+        <div ref={host} data-terminal={id} className={cn("h-full w-full overflow-hidden", touchUi && "select-none [-webkit-touch-callout:none] [&_[data-term-input]]:!text-[16px]")} />
         {finding > 0 && live.current && <FindBar l={live.current} ask={finding} close={closeFind} />}
         {up && (
           <button type="button" aria-label="Scroll to the end" data-tip="Scroll to the end" data-terminal-end

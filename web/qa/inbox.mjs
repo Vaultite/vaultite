@@ -52,7 +52,7 @@ await shot(page, "1-toast-and-badge")
 const term = `claude-qa${Date.now().toString(36)}`
 await api("POST", `terminals/${term}`)
 await page.goto(`${B}#view/terminal%2F${term}`)
-await until(() => page.locator(".xterm").count())
+await until(() => page.locator("[data-term]").count())
 await wait(1500)
 await page.goto(`${B}#file/${enc(PAGE)}`)
 await wait(800)

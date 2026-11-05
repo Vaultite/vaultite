@@ -71,7 +71,7 @@ check("Hide keyboard: the editor lets go, the keys go", !!await until(async () =
   && !(await page.evaluate(() => document.activeElement?.classList.contains("cm-content"))))
 // The terminal's keys are the same bar: esc to paste, then Hide keyboard.
 await page.goto(`${B}#view/terminal%2Fnotekeys-${Date.now()}`)
-const term = page.locator("[data-terminal] .xterm-helper-textarea")
+const term = page.locator("[data-terminal] [data-term-input]")
 await term.waitFor({ state: "attached", timeout: 30000 })
 await tap(page.locator("[data-terminal]")); await term.focus()
 await page.evaluate(() => window.__keyboard(true)); await wait(400)

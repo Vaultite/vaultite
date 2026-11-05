@@ -40,7 +40,7 @@ await until(async () => PROMPT.test(await terminalText(page)), 8000)
 check("set up: both sidebars, the right one with its panels", await until(() => page.evaluate(() => !!document.querySelector('aside[data-side=right] [data-panel="properties:chips"]') && "noRails" in document.documentElement.dataset), 8000))
 const gl = await page.evaluate(() => [...document.querySelectorAll("[data-terminal] canvas")].some((c) => c.__gl))
 const toggle = (label) => page.evaluate((l) => document.querySelector(`button[data-sidebar-toggle][aria-label="${l}"]`)?.click(), label)
-const cols = () => page.evaluate(() => document.querySelector("[data-terminal] .xterm-screen")?.getBoundingClientRect().width ?? 0)
+const cols = () => page.evaluate(() => document.querySelector("[data-terminal] [data-term-screen]")?.getBoundingClientRect().width ?? 0)
 
 if (!gl) console.log("  (no WebGL here: the blank-frame checks are skipped)")
 for (const label of ["Hide left sidebar", "Show left sidebar", "Hide right sidebar", "Show right sidebar"]) {
@@ -75,7 +75,7 @@ await hide.click().catch(() => {})
 await until(() => JSON.parse(fs.readFileSync(LOOK, "utf8")).fileBarHidden?.includes("properties:chips"), 4000)
 check("hidden: out of the sidebar", await until(() => page.evaluate(() => !document.querySelector('[data-panel="properties:chips"]')), 4000))
 check("hidden: out of the top bar", JSON.parse(fs.readFileSync(LOOK, "utf8")).fileBarHidden?.includes("properties:chips"))
-await page.locator(".xterm").click()
+await page.locator("[data-term]").click()
 await page.keyboard.type("exit"); await page.keyboard.press("Enter"); await wait(300)
 for (const [f, v] of [[SIDEBARS, kept.sidebars], [LOOK, kept.look]]) { if (v === null) fs.rmSync(f, { force: true }); else fs.writeFileSync(f, v) }
 await done()

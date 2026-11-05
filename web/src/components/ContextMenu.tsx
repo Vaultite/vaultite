@@ -142,7 +142,7 @@ export function checklist(id: string, { on, off = [], set }: {
 const HOLD_MS = 450
 /** Where a hold stays the system's (text selection, editor, terminal) or something holds for itself (`data-own-hold`).
  *  `data-hold-menu` inside one opts back in (an image or a block in a note), unless a field in it is closer. */
-const OWN_HOLD = "input, textarea, select, [contenteditable=''], [contenteditable='true'], .cm-editor, .xterm, [data-own-hold]"
+const OWN_HOLD = "input, textarea, select, [contenteditable=''], [contenteditable='true'], .cm-editor, [data-term], [data-own-hold]"
 const ownHold = (el: Element) => {
   if (el.closest("[data-own-hold]")) return true
   const own = el.closest(OWN_HOLD), menu = el.closest("[data-hold-menu]")

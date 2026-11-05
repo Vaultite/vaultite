@@ -91,12 +91,12 @@ if (!MAC) {
   await page.goto("about:blank"); await page.goto(`${B}#view/terminal%2F${sid}`)
   const text = () => terminalText(page)
   await until(async () => PROMPT.test(await text()), 10000)
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.type("echo zebra")
   await until(async () => (await text()).includes("echo zebra"), 3000)
   // (drawn on a canvas: the input textarea sits at the cursor, a cell wide, just after "zebra")
   const word = await page.evaluate(() => {
-    const box = document.querySelector(".xterm-helper-textarea")?.getBoundingClientRect()
+    const box = document.querySelector("[data-term-input]")?.getBoundingClientRect()
     return box && box.width ? { x: box.left - 2.5 * box.width, y: box.top + box.height / 2 } : null
   })
   if (word) await page.mouse.dblclick(word.x, word.y)

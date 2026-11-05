@@ -20,7 +20,7 @@ await until(async () => /^row-6000$/m.test(await historyText()), 15000)
 const history = await historyText()
 check("keeper: after a reload, the whole history is back (over 3000 lines)", /^row-1$/m.test(history) && /^row-6000$/m.test(history), history.length)
 // The wheel scrolls xterm.js's own buffer (nothing goes to the server): what it shows moves up the history.
-const box = await page.$("[data-pane] .xterm-screen")
+const box = await page.$("[data-pane] [data-term-screen]")
 const at = await box?.boundingBox()
 if (at) await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2)
 const shown = () => page.evaluate(() => document.querySelector("[data-terminal]")?.terminalText?.() ?? "")

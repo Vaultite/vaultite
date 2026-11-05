@@ -13,7 +13,7 @@ const where = () => page.evaluate(() => {
   return {
     row: row ? (row.closest("[data-tree-path]")?.getAttribute("data-tree-path") ?? row.textContent.trim()) : null,
     side: a?.closest("[data-sidebar-body]")?.getAttribute("data-sidebar-body") ?? null,
-    tag: a?.tagName ?? null, xterm: !!a?.matches(".xterm-helper-textarea"),
+    tag: a?.tagName ?? null, xterm: !!a?.matches("[data-term-input]"),
   }
 })
 const expanded = (p) => page.evaluate((p) => document.querySelector(`[data-sidebar-body=left] [data-tree-path="${p}"]`)?.querySelector("[role=treeitem]")?.getAttribute("aria-expanded"), p)

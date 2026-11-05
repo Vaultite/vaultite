@@ -9,7 +9,7 @@ const page = watch(await (await browser.newContext({ viewport: { width: 1280, he
 await page.goto(`${B}#view/terminal%2F${sid}`)
 await until(async () => PROMPT.test(await terminalText(page)), 8000)
 
-const screen = () => page.evaluate(() => document.querySelector("[data-terminal] .xterm-screen")?.getBoundingClientRect().width ?? 0).then(Math.round)
+const screen = () => page.evaluate(() => document.querySelector("[data-terminal] [data-term-screen]")?.getBoundingClientRect().width ?? 0).then(Math.round)
 const edge = page.getByRole("separator", { name: "Resize the sidebar" })
 const box = await edge.boundingBox()
 const x = box.x + box.width / 2, y = box.y + box.height / 2
@@ -40,6 +40,6 @@ await wait(500)
 check("escape: the sidebar back as it was", Math.abs((await page.evaluate(() => document.querySelector("aside[data-side=left]")?.getBoundingClientRect().width)) - kept) < 1)
 check("escape: the terminal at its size", (await screen()) === after, { after, now: await screen() })
 
-await page.locator(".xterm").click()
+await page.locator("[data-term]").click()
 await page.keyboard.type("exit"); await page.keyboard.press("Enter"); await wait(300)
 await done()

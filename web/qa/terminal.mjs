@@ -61,9 +61,9 @@ for (const dark of [false, true]) {
   const sid = `${id}${dark ? "d" : "l"}`
 
   await page.goto(`${B}#view/terminal%2F${sid}`)
-  check(`${dark ? "dark" : "light"}: terminal drawn`, await until(async () => (await page.locator(".xterm-screen").count()) > 0))
+  check(`${dark ? "dark" : "light"}: terminal drawn`, await until(async () => (await page.locator("[data-term-screen]").count()) > 0))
   await until(async () => PROMPT.test(await text()), 6000) // a prompt
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.type("echo hello-$((40+2))")
   await page.keyboard.press("Enter")
   check(`${dark ? "dark" : "light"}: command output`, await until(async () => /^hello-42\s*$/m.test(await text())), (await text()).slice(-300))
@@ -71,18 +71,18 @@ for (const dark of [false, true]) {
   check(`${dark ? "dark" : "light"}: starts in the vault`, await until(async () => (await text()).includes(vaultName)), (await text()).slice(-300))
   // A right-click opens the app's menu, never the browser's (Windows: it copies or pastes at once).
   if (process.platform !== "win32") {
-    await page.locator(".xterm-screen").click({ button: "right", position: { x: 200, y: 200 } })
+    await page.locator("[data-term-screen]").click({ button: "right", position: { x: 200, y: 200 } })
     check(`${dark ? "dark" : "light"}: right-click opens the terminal's menu`, await until(async () => (await page.getByRole("menuitem", { name: /Paste/ }).count()) > 0))
     await page.keyboard.press("Escape")
   }
-  const bg = await page.evaluate(() => getComputedStyle(document.querySelector(".xterm-scrollable-element")).backgroundColor)
+  const bg = await page.evaluate(() => getComputedStyle(document.querySelector("[data-term-ground]")).backgroundColor)
   const pageBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
   check(`${dark ? "dark" : "light"}: background follows the theme`, bg === pageBg, [bg, pageBg])
   await page.screenshot({ path: `${OUT}terminal-${dark ? "dark" : "light"}.png` })
 
   await page.reload()
   check(`${dark ? "dark" : "light"}: output replayed after reload`, await until(async () => /^hello-42\s*$/m.test(await text())), (await text()).slice(-300))
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.type("echo same-shell-$$"); await page.keyboard.press("Enter")
   await until(async () => /^same-shell-\d+/m.test(await text()))
 
@@ -104,7 +104,7 @@ for (const dark of [false, true]) {
     await page.keyboard.press("Enter").then(count).then((c) => /^\d+ of 100$/.test(c)), await count())
   await page.keyboard.press("Escape")
   check(`${theme}: esc closes it, back in the shell`, await until(async () => !(await page.locator("[data-terminal-find]").count()) &&
-    page.evaluate(() => !!document.activeElement?.closest(".xterm"))))
+    page.evaluate(() => !!document.activeElement?.closest("[data-term]"))))
 
   if (!dark) {
     // A failed exit: the bar with Restart; Restart starts a new shell in the same tab.
@@ -119,12 +119,12 @@ for (const dark of [false, true]) {
     await page.keyboard.type("clear; stty size; printf 'wrote Notes/Lisbon trip.md\\n'"); await page.keyboard.press("Enter")
     await until(async () => /^wrote /m.test(await text()))
     const spot = await page.evaluate(() => {
-      const rows = document.querySelector("[data-terminal]").terminalText().split("\n"), s = document.querySelector(".xterm-screen").getBoundingClientRect()
+      const rows = document.querySelector("[data-terminal]").terminalText().split("\n"), s = document.querySelector("[data-term-screen]").getBoundingClientRect()
       const [r, c] = rows.find((l) => /^\d+ \d+$/.test(l)).split(" ").map(Number), y = rows.findIndex((l) => l.startsWith("wrote "))
       return { x: s.x + 9.5 * s.width / c, y: s.y + (y + 0.5) * s.height / r }
     })
     await page.mouse.move(spot.x, spot.y)
-    check("a vault file in the output is a link", await until(async () => (await page.locator(".xterm-cursor-pointer").count()) > 0, 3000))
+    check("a vault file in the output is a link", await until(async () => (await page.locator("[data-term-link]").count()) > 0, 3000))
     await page.mouse.click(spot.x, spot.y)
     check("clicking it opens the note", await until(async () => (await page.locator('[role="tab"]', { hasText: "Lisbon trip" }).count()) > 0, 5000))
     await page.locator('[role="tab"]', { hasText: "Terminal" }).first().click()
@@ -132,16 +132,16 @@ for (const dark of [false, true]) {
     // Scrolled up its history while output goes on: a button goes back to the end.
     await page.keyboard.type("seq 1 2000; sleep 1; echo tail-$((5*5))"); await page.keyboard.press("Enter")
     await until(async () => /^2000\s*$/m.test(await text()))
-    const screen = await page.locator(".xterm-screen").boundingBox()
+    const screen = await page.locator("[data-term-screen]").boundingBox()
     await page.mouse.move(screen.x + 200, screen.y + 200); await page.mouse.wheel(0, -2000)
     check("scrolled up, the way back to the end shows", await until(async () => (await page.locator("[data-terminal-end]").count()) > 0, 3000))
     await wait(1200)
     await page.locator("[data-terminal-end]").click()
     check("it goes back to the end", await until(async () => /^tail-25\s*$/m.test(await text()) && !(await page.locator("[data-terminal-end]").count()), 3000))
     // Scheme change recolours.
-    const before = await page.evaluate(() => getComputedStyle(document.querySelector(".xterm-scrollable-element")).backgroundColor)
+    const before = await page.evaluate(() => getComputedStyle(document.querySelector("[data-term-ground]")).backgroundColor)
     await page.evaluate(() => { const h = document.documentElement; if (h.dataset.scheme) delete h.dataset.scheme; else h.dataset.scheme = "gruvbox" }); await wait(300)
-    const after = await page.evaluate(() => getComputedStyle(document.querySelector(".xterm-scrollable-element")).backgroundColor)
+    const after = await page.evaluate(() => getComputedStyle(document.querySelector("[data-term-ground]")).backgroundColor)
     check("scheme change recolours", before !== after, [before, after])
     await page.screenshot({ path: `${OUT}terminal-other-scheme.png` })
     // A clean exit closes the tab: its terminal goes (the pane may show another one then: a tab an earlier run left in
@@ -180,7 +180,7 @@ for (const dark of [false, true]) {
   const sid = `${id}p`
   await page.goto(`${B}#view/terminal%2F${sid}`)
   await until(async () => PROMPT.test(await text()), 8000)
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.type("echo parked-$((20+1))"); await page.keyboard.press("Enter")
   await until(async () => (await text()).includes("parked-21"))
   await page.keyboard.press("Control+Backquote") // another terminal, in a new tab: this one's is hidden
@@ -211,7 +211,7 @@ for (const dark of [false, true]) {
   const hid = `${id}h`
   await page.goto(`${B}#view/terminal%2F${hid}`)
   await until(async () => PROMPT.test(await text()), 8000)
-  await page.locator(".xterm").click()
+  await page.locator("[data-term]").click()
   await page.keyboard.press("Control+Backquote") // another terminal in a new tab: the first one's is hidden
   const shown = await until(async () => !!(await page.evaluate((h) => [...document.querySelectorAll("[data-terminal]")].some((e) => e.dataset.terminal !== h), hid))) &&
     await page.evaluate((h) => [...document.querySelectorAll("[data-terminal]")].find((e) => e.dataset.terminal !== h)?.dataset.terminal, hid)

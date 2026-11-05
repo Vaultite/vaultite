@@ -15,7 +15,7 @@ async function targetHere(): Promise<DictationTarget | null> {
   const view = cm instanceof HTMLElement ? (await import("./editor")).viewOf(cm) : null
   if (view) return view.target ?? fieldTarget(view.dom)
   // (a terminal keeps its keys: what's said there would run)
-  if (el instanceof HTMLElement && typingIn(el) && !el.closest("[data-keeps-keys], .xterm")) return fieldTarget(el)
+  if (el instanceof HTMLElement && typingIn(el) && !el.closest("[data-keeps-keys], [data-term]")) return fieldTarget(el)
   return null
 }
 

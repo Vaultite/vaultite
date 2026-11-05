@@ -18,7 +18,7 @@ const where = () => page.evaluate(() => {
   return {
     row: row ? (row.closest("[data-tree-path]")?.getAttribute("data-tree-path") ?? row.textContent.trim()) : null,
     side: a?.closest("[data-sidebar-body]")?.getAttribute("data-sidebar-body") ?? null,
-    tag: a?.tagName ?? null, xterm: !!a?.matches(".xterm-helper-textarea"),
+    tag: a?.tagName ?? null, inTerminal: !!a?.matches("[data-term-input]"),
   }
 })
 const expanded = (p) => page.evaluate((p) => document.querySelector(`[data-sidebar-body=left] [data-tree-path="${p}"]`)?.querySelector("[role=treeitem]")?.getAttribute("aria-expanded"), p)
@@ -77,17 +77,17 @@ check("Vim's j pans a canvas", await bg() !== p0)
 
 // ---- a terminal
 await page.keyboard.press("Control+`"); await wait(3000)
-const ta = page.locator(".xterm-helper-textarea").last()
+const ta = page.locator("[data-term-input]").last()
 await ta.focus(); await wait(300)
-await page.evaluate(() => { window.__takenCtrlW = false; addEventListener("keydown", (e) => { if (e.ctrlKey && e.key === "w" && e.defaultPrevented && !e.target.matches?.(".xterm-helper-textarea")) window.__takenCtrlW = true }) })
+await page.evaluate(() => { window.__takenCtrlW = false; addEventListener("keydown", (e) => { if (e.ctrlKey && e.key === "w" && e.defaultPrevented && !e.target.matches?.("[data-term-input]")) window.__takenCtrlW = true }) })
 await page.keyboard.type("echo abc def"); await page.keyboard.press("Control+w"); await wait(300)
 const hint = await page.locator('[aria-label="Keys"]').count()
-check("in a terminal Ctrl+W stays the shell's", !(await page.evaluate(() => window.__takenCtrlW)) && hint === 0 && (await where()).xterm)
+check("in a terminal Ctrl+W stays the shell's", !(await page.evaluate(() => window.__takenCtrlW)) && hint === 0 && (await where()).inTerminal)
 await page.keyboard.press("Control+c"); await wait(200)
 // (a Mac's keys only: elsewhere Ctrl is the app's Mod and Ctrl+\ toggles the sidebar, so Leave the terminal has none)
 if (process.platform === "darwin") {
   await page.keyboard.press("Control+\\"); await page.keyboard.press("Control+n"); await wait(300)
-  check("Ctrl+\\ Ctrl+N leaves the terminal", !(await where()).xterm)
+  check("Ctrl+\\ Ctrl+N leaves the terminal", !(await where()).inTerminal)
 } else console.log("skip Ctrl+\\ Ctrl+N leaves the terminal: a Mac's keys only")
 await openPalette(page); await wait(300); await page.keyboard.type("End terminal session"); await wait(200)
 await page.keyboard.press("Escape")

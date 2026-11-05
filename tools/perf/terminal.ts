@@ -8,6 +8,7 @@ import path from "node:path"
 import { performance } from "node:perf_hooks"
 import { WebSocket } from "ws"
 import { backendName, serverFiles } from "../../plugins/core/terminal/backend.ts"
+import { PROTOCOL } from "../../plugins/core/terminal/termd/protocol.ts"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
 const arg = (name: string, dflt: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt }
@@ -18,8 +19,10 @@ const PORT = await freePort()
 const BASE = `http://127.0.0.1:${PORT}`, WSBASE = `ws://127.0.0.1:${PORT}`
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-termperf-"))
 const VAULT = path.join(tmp, "vault"), LOCAL = path.join(tmp, "local"), ZDOT = path.join(tmp, "zdot")
-/** The server's terminal server (termd): its socket, and its files (.pid) beside it. */
-const KEEPER = serverFiles(backendName(PORT))
+/** The server's terminal server (termd): its socket, and its files (.pid) beside it; a checkout before this one's
+ *  protocol (--root, for a baseline) runs the one before. */
+const KEEPERS = [PROTOCOL, PROTOCOL - 1].map((v) => serverFiles(backendName(PORT), v))
+const keeper = () => KEEPERS.find((f) => fs.existsSync(`${f.files}.pid`)) ?? KEEPERS[0]
 
 const step = (what: string) => console.error(`${new Date().toISOString().slice(11, 19)} ${what}`)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -31,7 +34,7 @@ function cpu(pid: number | undefined) {
     return t.split(":").reduce((acc, x) => acc * 60 + Number(x), 0) * 1000
   } catch { return 0 }
 }
-const keeperPid = () => { try { return Number(fs.readFileSync(`${KEEPER.files}.pid`, "utf8")) || undefined } catch { return undefined } }
+const keeperPid = () => { try { return Number(fs.readFileSync(`${keeper().files}.pid`, "utf8")) || undefined } catch { return undefined } }
 let server: ChildProcess
 /** CPU the server and the keeper spend in `fn`. */
 async function cpuOf<T>(fn: () => Promise<T>): Promise<{ r: T; server: number; keeper: number }> {
@@ -162,7 +165,7 @@ async function echo(t: Term, n: number) {
 
 /** The same straight to the keeper's socket (attached to the same shell): the path without the server. */
 async function echoKeeper(id: string, n: number) {
-  const sock = net.connect(KEEPER.socket)
+  const sock = net.connect(keeper().socket)
   await new Promise((r) => sock.once("connect", r))
   sock.setEncoding("utf8")
   let buf = "", waiter: (() => void) | null = null
@@ -287,6 +290,20 @@ try {
   }
   result.reattach = { attached: col(back, "attached"), picture: col(back, "first"), bytes: col(back, "bytes") }
 
+  step("noisy terminals")
+  // 50 agents idle in the background (a spinner at 15 Hz) and 5 printing hard, none shown: what the keeper spends.
+  const op = async (id: string, body: object) => (await fetch(`${BASE}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json() as Promise<{ id?: string }>
+  const noisy: string[] = []
+  const spin = "i=0; while :; do i=$((i+1)); printf '\\r\\033[2K\\033[38;5;208m%s\\033[0m waiting %d' x $i; sleep 0.066; done"
+  const flood = "while :; do head -c 49152 /dev/zero | tr '\\0' 'a' | fold -w 100; sleep 0.066; done"
+  for (let i = 0; i < 55; i++) { const r = await op("terminal.start", { command: i < 50 ? spin : flood }); if (r.id) noisy.push(r.id) }
+  await sleep(3000)
+  const nk0 = cpu(keeperPid()), ns0 = cpu(server!.pid), nt0 = performance.now()
+  await sleep(10000)
+  const nsecs = (performance.now() - nt0) / 1000
+  result.noisy = { terminals: noisy.length, keeperCpuPerSec: +((cpu(keeperPid()) - nk0) / nsecs).toFixed(1), serverCpuPerSec: +((cpu(server!.pid) - ns0) / nsecs).toFixed(1) }
+  for (const n of noisy) await op("terminal.end", { id: n }).catch(() => {})
+
   step("list")
   // terminal.list with 10 shells.
   const many: Term[] = []
@@ -339,7 +356,7 @@ async function browserSide() {
     for (let i = 0; i < 100 && !/\$ /.test(await text()); i++) await sleep(100)
     // (the made-up vault's plugins may ask something first: a dialog over the page)
     for (let i = 0; i < 10 && await page.locator("dialog[open]").count(); i++) { await page.keyboard.press("Escape"); await sleep(300) }
-    await page.locator(".xterm").click()
+    await page.locator("[data-term]").click()
     // Input to echo drawn: the key's event, then the frame after the echo is parsed (the row shows it).
     const keys: number[] = []
     for (let i = 0; i < 40; i++) {
@@ -407,6 +424,7 @@ for (const name of Object.keys((result.burst ?? {}) as object)) {
 row("60 fps program: frames seen", "tui.frames", ""); for (const k of ["median", "p90", "p99"]) row(`  frame lateness ${k}`, `tui.${k}`)
 row("  server cpu", "tui.serverCpu"); row("  keeper cpu", "tui.keeperCpu")
 row("reattach (10k lines): attached", "reattach.attached"); row("reattach: picture", "reattach.picture"); row("reattach: bytes", "reattach.bytes", "")
+row("50 idle + 5 printing: keeper cpu per s", "noisy.keeperCpuPerSec"); row("  server cpu per s", "noisy.serverCpuPerSec")
 row("terminal.list (10 shells) median", "list.op.median"); row("terminal.list p90", "list.op.p90"); row("GET terminals/sessions median", "list.sessions.median")
 row("  server cpu per list + sessions", "list.cpuPerPair")
 for (const k of ["median", "p90"]) row(`browser: key to echo drawn ${k}`, `browser.echoDrawn.${k}`)
