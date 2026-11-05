@@ -560,8 +560,14 @@ export default async ($: VaultTest) => {
       got.notes[0]?.lines.includes("Plant the basil") && r.agents.some((a: Any) => a.name === "Claude" && a.state === "thinking" && a.find === "basil"), [got, r.agents])
     check("companion: and reads as look at this", /- point Notes\/P\.md:3: .*look at this[^\n]*\n  on the selection: "the basil"/.test(c.momentsText(got.moments, "pair", null)), c.momentsText(got.moments, "pair", null))
     for (let i = 1; i <= 12; i++) await api("POST", "ops/companion.say", { text: `Say ${i}`, path: "Notes/P.md", find: "Water" })
-    const mine = c.recentSays().filter((n: Any) => n.agent === "Claude")
+    const mine = c.recentSays().filter((n: Any) => n.agent === "Claude" && n.kind === "say")
     check("companion: an agent's last ten says are kept", mine.length === 10 && mine[0].text === "Say 3" && mine[9].text === "Say 12", mine.map((n: Any) => n.text))
+    c.addMoment({ kind: "ask", for: "Claude", path: "Notes/P.md", line: 4, text: "Can you water it" })
+    c.addMoment({ kind: "ask", for: "Claude", path: "Notes/P.md", line: 4, text: "Can you water it tomorrow too" })
+    const asked = c.recentSays().filter((n: Any) => n.kind === "ask" && n.agent === "Claude" && n.text.startsWith("Can you water it"))
+    check("companion: what the user asks it is kept with its says (an ask going on, one row), not costing a say",
+      asked.length === 1 && asked[0].text === "Can you water it tomorrow too" && asked[0].by === "user" && asked[0].seen &&
+      c.recentSays().filter((n: Any) => n.kind === "say" && n.agent === "Claude").length === 10, c.recentSays())
     const pinned = c.pin(mine[9].id)
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: a say pinned is a comment, same words, same line, and no longer a bubble", pinned?.kind === "comment" && pinned.text === "Say 12" && pinned.line === 4 &&

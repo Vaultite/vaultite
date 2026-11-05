@@ -59,7 +59,7 @@ export type Agent = Target & Boxed & { name: string; tint: string; state: "watch
 export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
 /** What an agent leaves in the app: words by its cursor and highlights (gone after a while), a margin comment, a
  *  suggestion, a proposal (a large change, taken in part). `anchor`: a comment's line as it read, to find it again. */
-export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight"; agent: string; t: number
+export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight" | "ask"; agent: string; t: number
   text?: string; replace?: string; anchor?: string; replies?: Reply[]
   /** A proposal's changes not decided yet (its placeholders while it's written); how many were taken and left. */
   changes?: Change[]; took?: number; left?: number
@@ -178,7 +178,8 @@ const dead = new Set<string>() // terminals whose session ended: a call still on
 const watching = new Set<string>() // agents besides the companion that asked for edit and open moments
 const loaded = Date.now(), LIVE_MS = 10 * 60_000
 const notes = new Map<string, Note>()
-/** Each agent's last says, gone from the screen or not: the cursor's popover shows them. */
+/** Each agent's last says, gone from the screen or not, and what the user asked it (`ask`, `by` user): the cursor's
+ *  popover shows them, a conversation. */
 let said: Note[] = []
 export const recentSays = () => said
 const SAID = 10
@@ -279,7 +280,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   if (m.kind === "ask" && !m.item && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
   log.append(full.t, [full])
   const back = rethink(full)
-  if (back) return back
+  if (back) { keepAsked(back); return back }
   // (more of the same lines before any agent saw the last: one moment)
   const last = moments[moments.length - 1]
   const merged = m.kind === "edit" && last?.kind === "edit" && last.path === m.path && ![...delivered.values()].some((d) => d >= last.seq) ? mergeHunks(last.hunks ?? [], m.hunks ?? []) : null
@@ -287,11 +288,12 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   const was = m.kind === "ask" && !m.item ? continues(full) : undefined
   if (was) {
     // (not handed yet: the same ask, as it reads now)
-    if ((delivered.get(key(was.for!)) ?? 0) < was.seq) { Object.assign(was, { text: full.text, line: full.line }); return was }
+    if ((delivered.get(key(was.for!)) ?? 0) < was.seq) { Object.assign(was, { text: full.text, line: full.line }); keepAsked(was); return was }
     full.more = was.seq
   }
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
+  keepAsked(full)
   // (an open wakes no one: it rides along with the next moment, and the cursors free to follow go there now; so do the
   // user's corrections, a bubble closed or words moved)
   if (m.kind === "open") {
@@ -688,11 +690,25 @@ export function fold(name: string, path: string, line: number, text: string) {
   return n
 }
 
-/** A say kept in its agent's last ones (the cursor's history). */
+/** A say (or the user's ask) kept in its agent's last ones (the cursor's history): ten of each. */
 function keepSaid(n: Note) {
-  const mine = said.filter((x) => key(x.agent) === key(n.agent))
+  const mine = said.filter((x) => key(x.agent) === key(n.agent) && (x.kind === "ask") === (n.kind === "ask"))
   said = [...said.filter((x) => !mine.slice(0, -(SAID - 1)).includes(x)), { ...n }]
   broadcast({ t: "said", said })
+}
+
+/** Each ask's row in the history, by its moment's seq: one that goes on (dictation's next sentence) rewrites its row. */
+const askRows = new Map<number, string>()
+/** What the user asked an agent (an ask, a reply to its bubble), kept with its says: the popover shows both. Asks in
+ *  a comment's thread stay in the thread. */
+function keepAsked(m: Moment) {
+  if (!m.for || !m.text?.trim() || !((m.kind === "ask" && !m.item) || (m.kind === "reply" && m.bubble))) return
+  const id = askRows.get(m.more ?? m.seq) ?? `ask-${m.seq}`, text = m.text.trim()
+  askRows.set(m.seq, id)
+  if (askRows.size > 200) askRows.delete(askRows.keys().next().value!)
+  const n = said.find((x) => x.id === id)
+  if (n) { Object.assign(n, { text, t: m.t }); return void broadcast({ t: "said", said }) }
+  keepSaid({ id, kind: "ask", by: "user", agent: m.for, text, t: m.t, seen: true, ...(m.path ? { path: m.path, line: m.line } : {}) })
 }
 
 /** A dismissed comment back in the margin, as it was. */

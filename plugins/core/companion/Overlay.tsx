@@ -21,10 +21,14 @@ export const unsent = () => { notify("Couldn't send it: not connected to the ser
 type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean; rides?: boolean
   /** Over a web page: drawn over it (the window rises over the page for it, layers.ts' floats). */
   over?: boolean }
-/** A cursor's place as drawn: what it looked at, its place among them (home's), its step in a stack; held, it stays
- *  there (offset by dx, dy: where it was dropped). */
-type Place = { at: Target & Pick<Agent, "box">; i: number; shift: number; dx: number; dy: number }
-const placeOf = (a: Agent): Place["at"] => ({ path: a.path, line: a.line, find: a.find, x: a.x, y: a.y, pane: a.pane, ui: a.ui, row: a.row, el: a.el, box: a.box })
+/** A cursor's place as drawn: what it looked at, its place among them, its step in a stack; held, it stays there (dx, dy
+ *  from it, or `screen`: a point of the window); `left`: the user put it there, until its agent looks elsewhere. */
+type Place = { at: Target & Pick<Agent, "box">; i: number; shift: number; dx: number; dy: number; screen?: { x: number; y: number; over: boolean }; left?: Left }
+/** Where the user left a cursor: its agent's place as last seen (`last`), and until when its place may still change to
+ *  what it was dropped on (the point's echo from the server) without taking it away. */
+type Left = { last: string; echo: number }
+const placeOf = (a: Partial<Agent>): Place["at"] => ({ path: a.path, line: a.line, find: a.find, x: a.x, y: a.y, pane: a.pane, ui: a.ui, row: a.row, el: a.el, box: a.box })
+const placeKey = (a: Agent) => JSON.stringify(placeOf(a))
 const FLAG = 44 // the arrow and its flag below it
 const MARGIN = 228 // a card's width and its gaps: less room than this beside the text and it folds to a dot
 export const cut = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
@@ -131,6 +135,11 @@ function spotOf(a: Agent, i: number, held = false): Spot | null {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+/** A cursor the user left off the text: that point of the window, kept inside it. */
+const screenSpot = (p: { x: number; y: number; over: boolean }): Spot => {
+  const x = clamp(p.x, 4, innerWidth - 24), y = clamp(p.y, 4, innerHeight - 24)
+  return { x, y, low: y + FLAG > innerHeight - 40, over: p.over || undefined }
+}
 /** Pointing at the app's own UI: the arrow's tip on the element, a little in from its left. */
 function atElement(el: HTMLElement): Spot {
   const r = el.getBoundingClientRect(), x = r.left + Math.min(r.width * 0.6, Math.max(4, r.width - 6)), y = r.top + r.height * 0.6
@@ -214,8 +223,9 @@ export function follow(a: Target & { name: string }) {
 const answerAsk = (event: string, v: "approve" | "deny") => (event.startsWith("chat:")
   ? op("claude-code.chat-answer", { id: event.slice(5), allow: v === "approve" }) : op("inbox.answer", { id: event, answer: v }))
 
-/** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), or null off the text. */
-function dropAt(agent: string, x: number, y: number) {
+/** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), as the place it points at;
+ *  true on a pane or the app's UI; false on nothing it knows. */
+function dropAt(agent: string, x: number, y: number): Target | boolean {
   const el = document.elementsFromPoint(x, y).find((e) => !e.closest(".companion-overlay") && e.closest(".cm-editor"))
   const v = el ? [...views.keys()].find((x) => x.dom === el.closest(".cm-editor")) : undefined
   const pos = v?.posAtCoords({ x, y })
@@ -223,8 +233,9 @@ function dropAt(agent: string, x: number, y: number) {
   const st = v.state, sel = st.selection.main, on = !sel.empty && pos >= sel.from && pos <= sel.to
   const word = on ? null : st.wordAt(pos), selection = on ? st.sliceDoc(sel.from, sel.to) : undefined
   const find = on ? selection!.split("\n")[0].slice(0, 200) : word ? st.sliceDoc(word.from, word.to) : undefined
-  pointAt(agent, { path: views.get(v)!, line: st.doc.lineAt(on ? sel.from : pos).number, find: find || undefined, selection })
-  return true
+  const at = { path: views.get(v)!, line: st.doc.lineAt(on ? sel.from : pos).number, find: find || undefined }
+  pointAt(agent, { ...at, selection })
+  return at
 }
 
 /** A cursor dropped off a note's text: on a pane (a terminal's row, a point of a page, a view) or the app's UI (a tab,
@@ -285,8 +296,13 @@ function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boo
           onClick={(e) => { close(); menu(e) }}><Ellipsis className="size-3.5 max-sm:size-4.5" /></button>
       </div>
       {mine.length > 0 && (
-        <div ref={list} className="max-h-[280px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:thin] max-sm:max-h-[45vh]">
-          {mine.map((n) => (
+        <div ref={list} className="edge-fade-y max-h-[280px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:none] max-sm:max-h-[45vh] [&::-webkit-scrollbar]:hidden">
+          {mine.map((n) => n.kind === "ask" ? (
+            // (what the user asked it: theirs, on the right, as in any conversation)
+            <div key={n.id} data-asked={n.id} className="flex justify-end pb-2 pl-8">
+              <div className="min-w-0 rounded-[10px] rounded-br-[4px] bg-foreground/[0.07] px-2.5 py-1.5 break-words whitespace-pre-wrap">{n.text}</div>
+            </div>
+          ) : (
             <div key={n.id} data-said={n.id} data-question={n.question || undefined} className="group flex items-start gap-0.5 pb-2">
               <div className="min-w-0 flex-1">
                 <div className="text-[11px] text-muted-foreground">{fmtTime(new Date(n.t).toISOString())}</div>
@@ -309,7 +325,9 @@ const readMs = (text: string) => 1500 + text.split(/\s+/).length * 220
 
 /** Its words by its cursor: a click (a tap) opens a box to reply in, Enter sends it; a question shows its box from the
  *  start. Put in note, Pin and Close by it; held still (past its time) while the pointer or the focus is in it. */
-function Bubble({ n, tint, right, low, maxWidth, drawn, hold, floats }: { n: Note; tint: string; right: boolean; low: boolean; maxWidth: number; drawn: boolean
+function Bubble({ n, tint, right, low, maxWidth, room, drawn, hold, floats }: { n: Note; tint: string; right: boolean; low: boolean; maxWidth: number; drawn: boolean
+  /** How tall its words may grow, up from its cursor, inside the window. */
+  room: number
   hold: (on: boolean) => void
   /** Over a web page: the window rises over it for the bubble. */
   floats?: boolean }) {
@@ -345,21 +363,23 @@ function Bubble({ n, tint, right, low, maxWidth, drawn, hold, floats }: { n: Not
       onPointerEnter={(e) => { if (e.pointerType !== "touch") setInside(true) }} onPointerLeave={(e) => { if (e.pointerType !== "touch") setInside(false) }}
       onFocus={() => setInside(true)} onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node | null)) setInside(false) }}
       onClick={(e) => { if (!drawn && !replying && !(e.target as Element).closest("button, a")) open() }}
-      className={cn("group/bubble companion-pop pointer-events-auto absolute flex w-max flex-col rounded-[12px] border border-border/60 text-[13.5px] leading-snug text-foreground shadow-lg",
+      className={cn("group/bubble companion-pop pointer-events-auto absolute flex w-max min-w-[104px] flex-col rounded-[12px] border border-border/60 text-[13.5px] leading-snug text-foreground shadow-lg",
         n.question ? "bg-[color-mix(in_srgb,var(--c)_9%,var(--background))]" : "bg-background", !replying && !drawn && "cursor-text",
         right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]", low ? "bottom-[22px]" : "bottom-[2px]")}
       style={{ "--c": tint, maxWidth, boxShadow: `0 0 0 ${n.question ? 2 : 1.5}px color-mix(in srgb, ${tint} ${n.question ? 70 : 45}%, transparent), 0 8px 24px rgba(0,0,0,.12)` } as React.CSSProperties}>
-      <div className="flex items-start gap-0.5 py-1.5 pr-1 pl-3">
-        <div className="max-h-[min(50vh,360px)] min-w-0 overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]">
-          <Markdown text={n.text ?? ""} className="companion-md" />
-        </div>
-        {!drawn && (
-          <div className={cn("-my-0.5 flex shrink-0 transition-opacity", inside || replying ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100 [@media(pointer:coarse)]:opacity-100")}>
-            <SayActions n={n} small />
-            <button type="button" aria-label="Close" data-tip={`Close (${keyHint("Escape")})`} className={ICON} onClick={(e) => { e.stopPropagation(); close() }}><X className="size-3" /></button>
-          </div>
-        )}
+      {/* (a long one scrolls with no bar: its edges fade where there's more, as the sidebar's) */}
+      <div style={{ maxHeight: `min(50vh, 360px, ${room}px)` }} className="edge-fade-y min-w-0 overflow-y-auto overscroll-contain px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <Markdown text={n.text ?? ""} className="companion-md" />
       </div>
+      {/* (its buttons float on its far corner, away from the cursor, taking no room from its words; by touch, a row under them) */}
+      {!drawn && (
+        <div className={cn("absolute -top-[22px] z-[1] flex rounded-[8px] border border-border/60 bg-background shadow-sm transition-opacity", right ? "left-2" : "right-2",
+          "[@media(pointer:coarse)]:static [@media(pointer:coarse)]:-mt-1 [@media(pointer:coarse)]:justify-end [@media(pointer:coarse)]:border-0 [@media(pointer:coarse)]:bg-transparent [@media(pointer:coarse)]:px-1 [@media(pointer:coarse)]:shadow-none",
+          inside || replying ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100 [@media(pointer:coarse)]:opacity-100")}>
+          <SayActions n={n} small />
+          <button type="button" aria-label="Close" data-tip={`Close (${keyHint("Escape")})`} className={ICON} onClick={(e) => { e.stopPropagation(); close() }}><X className="size-3" /></button>
+        </div>
+      )}
       {replying && !drawn && (
         <input ref={field} autoFocus={!n.question} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Reply" aria-label={`Reply to ${n.agent}`} enterKeyHint="send"
           onKeyDown={(e) => {
@@ -424,8 +444,8 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   /** It's typing an edit in. */
   typed: boolean
   open: boolean; setOpen: (open: boolean) => void; pop: (name: string) => void
-  /** It's under the pointer, open or dragged: it holds still (`at`: dropped there). */
-  hold: (on: boolean, at?: { x: number; y: number }) => void }) {
+  /** It's under the pointer, open or dragged: it holds still (`at`: dropped there, on `on`'s text or off it). */
+  hold: (on: boolean, at?: { x: number; y: number }, text?: Target) => void }) {
   const tint = `var(--${a.tint})`
   const [hover, setHover] = useState(false)
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
@@ -515,9 +535,11 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
       end()
       if (dragging) {
         const p = tip(ev.clientX, ev.clientY)
-        if (dropAt(a.name, p.x, p.y)) hold(true, p)
         // (out of the window, onto another app's: look at that window, and follow it: the desktop app's helper)
-        else if (p.x < 0 || p.y < 0 || p.x > innerWidth || p.y > innerHeight) void screenDrop?.(ev.screenX, ev.screenY, a.name)
+        if (p.x < 0 || p.y < 0 || p.x > innerWidth || p.y > innerHeight) void screenDrop?.(ev.screenX, ev.screenY, a.name)
+        // (else it stays where it was let go: on the text it points at, or that point of the window; on a pane or a row
+        // it follows, it goes to sit on that, as it moves)
+        else { const on = dropAt(a.name, p.x, p.y); if (on !== true) hold(true, p, on || undefined) }
         setDrag(null)
       } else if (!dead) setOpen(!open)
     }
@@ -578,7 +600,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
         </div>
       ) : bubble && !open && !drag && (
         <Bubble n={bubble} tint={tint} right={right} low={low} drawn={!!spot.drawn} hold={setKeep} floats={!!spot.over}
-          maxWidth={Math.max(200, Math.min(320, right ? at.x - 30 : innerWidth - at.x - 34))} />
+          maxWidth={Math.max(200, Math.min(320, right ? at.x - 30 : innerWidth - at.x - 34))} room={Math.max(80, at.y + (low ? -2 : 18) - 56)} />
       )}
     </div>
   )
@@ -847,15 +869,30 @@ export function Overlay() {
   const rooms = useRef(new Map<EditorView, number>())
   // (a cursor under the pointer, open or dragged stays where it is: nothing moves under the user's pointer)
   const holds = useRef(new Map<string, Place>()), drawn = useRef(new Map<string, Place>())
-  const hold = (name: string, on: boolean, at?: { x: number; y: number }) => {
-    if (!on) { if (holds.current.delete(name)) redraw(); return }
+  const hold = (name: string, on: boolean, at?: { x: number; y: number }, text?: Target) => {
+    // (one the user left somewhere stays when the pointer goes)
+    if (!on) { if (!holds.current.get(name)?.left && holds.current.delete(name)) redraw(); return }
     const d = drawn.current.get(name)
     if (!d) return
     if (!at) { if (!holds.current.has(name)) holds.current.set(name, d); return }
-    // (dropped: on what it looks at now, where it was let go)
-    const a = getState().agents.find((x) => x.name === name), spot = a && spotOf(a, d.i, true)
-    holds.current.set(name, a && spot ? { at: placeOf(a), i: d.i, shift: 0, dx: at.x - spot.x, dy: at.y - spot.y } : d)
+    // (dropped: it stays where it was let go, on the line it points at (scrolling with it), else on that point of the window)
+    const a = getState().agents.find((x) => x.name === name)
+    if (!a) return
+    const left: Left = { last: placeKey(a), echo: Date.now() + 3000 }
+    const there = text && { ...placeOf({}), ...text }, spot = there && spotOf({ ...a, ...there }, d.i, true)
+    const over = document.elementsFromPoint(at.x, at.y).some((e) => !e.closest(".companion-overlay") && !!e.closest("[data-web-box]"))
+    holds.current.set(name, there && spot && !spot.parked ? { at: there, i: d.i, shift: 0, dx: at.x - spot.x, dy: at.y - spot.y, left }
+      : { ...d, shift: 0, dx: 0, dy: 0, screen: { ...at, over }, left })
     redraw()
+  }
+  /** A cursor the user left stays until its agent looks elsewhere (its place changes past the drop's own echo) or types. */
+  const stays = (a: Agent, left: Left) => {
+    if (typing?.agent === a.name) return false
+    const k = placeKey(a)
+    if (k === left.last) return true
+    if (Date.now() > left.echo) return false
+    Object.assign(left, { last: k, echo: 0 })
+    return true
   }
   // The card open: the one clicked, else the one whose text the user's caret is in (as in a shared doc).
   useEffect(() => {
@@ -909,8 +946,12 @@ export function Overlay() {
 
   const cursors = (off ? [] : s.agents).map((a, i) => {
     const mine = says(a), said = mine.findLast((n) => !heldBack(n)) ?? null, waiting = mine.some(heldBack)
-    const h = holds.current.get(a.name), at = h ? spotOf({ ...a, ...h.at }, h.i, true) : spotOf(a, i)
-    return { a, i, spot: at && h ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, waiting, with: [] as Agent[], under: false, shift: 0, held: h }
+    let h = holds.current.get(a.name)
+    if (h?.left && !stays(a, h.left)) { holds.current.delete(a.name); h = undefined }
+    const at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : spotOf(a, i)
+    // (left on a line of a note not on screen now: where that note is, as it would be)
+    const off = !!h?.left && !h.screen && !(h.at.path && viewOf(h.at.path))
+    return { a, i, spot: at && h && !h.screen && !off ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, waiting, with: [] as Agent[], under: false, shift: 0, held: h }
   })
   // (cursors on the same spot, as in a shared doc: side by side, one flag, "Perf +1", fanning out into each of them)
   for (const c of cursors) {
@@ -1013,7 +1054,7 @@ export function Overlay() {
       {cursors.map(({ a, spot, said, waiting, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} waiting={waiting} others={others} under={under} shift={shift}
         dot={unread(a.name).some((n) => n.id !== said?.id)}
         age={Date.now() - a.t < 3000 ? 0 : Date.now() - a.t <= 4000 ? 1 : Date.now() - a.t <= 8000 ? 2 : 3} typed={typing?.agent === a.name}
-        open={popped === a.name} setOpen={(o) => setPopped((was) => (o ? a.name : was === a.name ? null : was))} pop={setPopped} hold={(on, at) => hold(a.name, on, at)} />)}
+        open={popped === a.name} setOpen={(o) => setPopped((was) => (o ? a.name : was === a.name ? null : was))} pop={setPopped} hold={(on, at, text) => hold(a.name, on, at, text)} />)}
     </div>,
     document.body,
   )

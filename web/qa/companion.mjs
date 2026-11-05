@@ -463,6 +463,11 @@ await page.keyboard.press("Enter")
 r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 5000)
 check("click: Enter asks it, with where its cursor is", r?.moments.some((m) => m.kind === "ask" && m.text === "what about the basil?" && m.path === NOTE && m.line === line("Basil")), r?.moments)
 check("click: and the box closes", !(await pop.count()))
+await grip.click()
+await pop.waitFor({ timeout: 2000 })
+const asked = await pop.locator("[data-asked]").allInnerTexts()
+check("click again: what you asked it shows with its words, as yours", asked.at(-1)?.trim() === "what about the basil?", asked)
+await page.keyboard.press("Escape")
 await page.keyboard.press("Escape")
 
 // Right-click its cursor: its menu (its session, the mode, Start fresh, Stop); … in its box opens the same.
@@ -591,6 +596,10 @@ check("drag: it comes with the note's lines", r?.notes?.some((e) => e.path === N
 await wait(900)
 const stays = await cursor.boundingBox()
 check("drag: its cursor stays where it was dropped", Math.abs(stays.y - dest.y) < 24, { stays, dest })
+await page.mouse.move(5, 400)
+await wait(1200)
+const left = await grip.boundingBox()
+check("drag: the pointer gone, it stays where it was let go, not at the line's end", Math.abs(left.x - (dest.x + 40)) < 16 && Math.abs(left.y - stays.y) < 8, { left, dest })
 await page.screenshot({ path: `${OUT}point.png` })
 
 // Follow: from another note, its flag (or the status bar's menu) goes where it is.

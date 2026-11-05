@@ -20,7 +20,7 @@ export type Agent = Target & Boxed & { name: string; tint: string; state: "watch
 export type How = { agent: string; model: string; effort: string }
 /** A coding agent a plugin runs: whether it's installed here, its models (none: it runs its own) and efforts. */
 export type Harness = { id: string; name: string; installed: boolean; models: { id: string; label: string }[]; efforts: string[] }
-export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight"; agent: string; t: number
+export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight" | "ask"; agent: string; t: number
   text?: string; replace?: string; replies?: Reply[]; pinned?: string
   /** A proposal's changes not decided yet (placeholders while it's written), and how many were taken and left. */
   changes?: Change[]; took?: number; left?: number

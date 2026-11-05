@@ -20,6 +20,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   floats any window over other apps' and on every Space. A page's popup (a sign-in, a call's video popped out) is now a
   window of its own at the size it asked, staying put as the window it came from moves or minimizes; its right-click
   hides its title bar and keeps it on top.
+- **The companion's cursor stays where you drop it, and its box shows your side too**: dropped on text it stays on that
+  spot (scrolling with it), dropped anywhere else it stays there, until it looks somewhere new; clicking it shows what
+  you asked with what it answered; a long bubble fits the window and scrolls with no bar, its buttons over its corner.
 - **A subdomain's own site style shows in Shields**: on docs.google.com the menu has "Style for docs.google.com" (its
   own file, else its parent site's), and "Style this site…" makes the page's host's file, not one for all of Google.
 - **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page
