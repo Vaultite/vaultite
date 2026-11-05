@@ -51,6 +51,9 @@ export type DragItem = {
   column?: { table: string; key: string }
   /** Its source draws its own picture of it following the pointer (a phone's tab card, lifted whole): no DragGhost. */
   drawn?: boolean
+  /** Dragged in another of the app's windows and held over this one (a pop-out's tab: core/windows.ts): that window
+   *  draws it, this one only where it would land. */
+  elsewhere?: boolean
 }
 /** `stay`: taken where it is already (a tab over its own place in its list): drawn as taken, let go it goes back. */
 type Hit = { target: string; data: unknown; hint?: string; weak?: boolean; stay?: boolean }
@@ -212,7 +215,7 @@ export function edgeScroller(axis: "x" | "y" = "y") {
 
 /** Ask the targets again what a drop where the pointer rests would do: for an answer that changes with time while the
  *  pointer is still (a card held over another groups them after a moment: TabSwitcher). */
-export function rehit() { if (drag) setDrag({ ...drag, hit: hitAt(drag.item, drag.x, drag.y) }) }
+export function rehit() { if (drag) setDrag({ ...drag, hit: hitAt(drag.item, drag.x, drag.y, drag.item.elsewhere ? takesElsewhere : undefined) }) }
 
 /** What a drop on this target would do right now, while something is dragged over it: the same object while the answer
  *  is (targets answer anew on every move), so it's drawn again only when that changes. */
@@ -229,17 +232,35 @@ export function useDropHit<H>(id: string): H | null {
   })
 }
 
-function hitAt(item: DragItem, x: number, y: number): Hit | null {
+function hitAt(item: DragItem, x: number, y: number, takes?: (target: string) => boolean): Hit | null {
   const el = document.elementFromPoint(x, y)
   let hit: Hit | null = null, weak: Hit | null = null
   // Every target hears every move (the tree scrolls near its edge, opens a folder held over), the first answer wins,
   // a weak one only when nothing else answers.
   for (const [id, t] of targets) {
+    if (takes && !takes(id)) continue
     const h = t.at(item, x, y, el)
     if (h?.weak) weak ??= { target: id, ...h }
     else if (h) hit ??= { target: id, ...h }
   }
   return hit ?? weak
+}
+
+let takesElsewhere: ((target: string) => boolean) | undefined
+/** Another window's drag held at (x, y) here (core/windows.ts; null: gone), drawn as this one's own by the targets
+ *  `takes` lets answer: where it would land last. Never over a drag of this window's own. */
+export function dragElsewhere(item: DragItem | null, x = 0, y = 0, takes?: (target: string) => boolean): Hit | null {
+  if (drag && !drag.item.elsewhere) return null
+  if (!item) {
+    const hit = drag?.hit ?? null
+    if (drag) { setDrag(null); for (const t of targets.values()) t.end?.() }
+    return hit
+  }
+  // (the same item the whole drag, as one of this window's own: what's drawn of it is worked out once)
+  const it = drag?.item.elsewhere && JSON.stringify(drag.item) === JSON.stringify(item) ? drag.item : item
+  takesElsewhere = takes
+  setDrag({ item: it, x, y, hit: hitAt(it, x, y, takes) })
+  return drag!.hit
 }
 
 /** The drag is on: one cursor, no text selection. Returns how it ends: the highlight goes, and a drop (`hit`) is done;

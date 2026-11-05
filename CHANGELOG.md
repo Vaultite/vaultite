@@ -10,6 +10,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   where before they blinked and rewrapped their text all along the drag.
 - **A player always has its controls**: its traffic lights come with the pointer at its top whatever its page does,
   and a player left with no page (a black window with no way to close it) closes itself, its page back in its tab.
+- **Tabs dragged between windows show where they go**: past a window's edge the tab's card keeps following the
+  pointer over the screen, and held over the main window it shows where it would land (a place among the tabs, a
+  split), as a drag inside it does; let go, it lands there.
 - **A subdomain's own site style shows in Shields**: on docs.google.com the menu has "Style for docs.google.com" (its
   own file, else its parent site's), and "Style this site…" makes the page's host's file, not one for all of Google.
 - **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page

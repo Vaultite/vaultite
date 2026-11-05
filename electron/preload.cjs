@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   lookUp: call("text:look-up"),
   learnWord: call("text:learn"),
   capture: call("page:capture"),
+  dragGhost: call("drag:ghost"),
   lights: call("window:lights"),
   // The window's chrome see-through to the desktop (electron/translucency.ts): asked for, told whenever it changes.
   translucent: MAC || WIN ? { set: call("window:translucent"), on: (fn) => { ipcRenderer.on("vaultite:translucent", (_e, t) => fn(t)) } } : undefined,

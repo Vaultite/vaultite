@@ -18,6 +18,7 @@ import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { dictationHandlers, stopDictation } from "./dictation.ts"
 import type { HelperPrefs } from "./helper.ts"
 import { setTranslucent, translucentAt, translucentWindow } from "./translucency.ts"
+import { hideGhost, showGhost, type GhostLook } from "./dragghost.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
@@ -1172,6 +1173,15 @@ ipcMain.handle("page:capture", async (e, rect?: { x: number; y: number; width: n
   let img = await e.sender.capturePage(r)
   while (img.toPNG().length > 20 << 20 && img.getSize().width > 200) img = img.resize({ width: Math.round(img.getSize().width / 2) })
   return { png: img.toPNG().toString("base64"), ...img.getSize() }
+})
+
+// A tab dragged past its window's edge (electron/dragghost.ts): its card shown following the pointer, or (null) hidden.
+ipcMain.handle("drag:ghost", (e, look: GhostLook | null) => {
+  who(e)
+  const n = (x: unknown) => typeof x === "number" && Number.isFinite(x)
+  if (look && [look.x, look.y, look.width, look.height, look.radius, look.grab?.x, look.grab?.y].every(n)) return showGhost(e.sender, look)
+  hideGhost()
+  return false
 })
 
 handle("app:notify", (w, title: string, body: string) => new Promise<boolean>((resolve) => {

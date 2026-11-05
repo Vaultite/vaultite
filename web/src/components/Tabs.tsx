@@ -15,6 +15,7 @@ import { stem } from "@/core/files"
 import { activePane, askRename, closePane, closeTab, closeTabIds, closeTabs, closeWholePane, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, set, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
 import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, keepShown, moveToSplit, paneIntoPane, paneToTab, replaceWithTab, splitOut, splitPane, zoomPane } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
+import { floatGhost } from "@/core/desktop"
 import { focusedPane, isBlankTab, layout, panesOf, paneWith, placesIn, placesOf, shownTab, tabWith, vaultPath, type Group, type Pane, type Rect, type Tab } from "../../../core/layout.ts"
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
@@ -440,6 +441,8 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   const zone = useDrag((d) => (d?.hit?.target === PANES && (d.hit.data as Drop).kind === "pane" ? (d.hit.data as Drop & { kind: "pane" }).zone : null))
   const { fileIcons } = usePrefs()
   const el = useRef<HTMLDivElement>(null), card = useRef<HTMLDivElement>(null), shot = useRef<HTMLDivElement>(null)
+  // (where the pointer holds the card, as it follows: past the window's edge, where it's held over the screen)
+  const held = useRef({ x: 0, y: 0 })
   // (measured once a drag, as it lifts)
   const look = useMemo(() => lookOf(item, getDrag()), [item]), lookRef = useRef(look)
   useEffect(() => { lookRef.current = look }, [look])
@@ -463,6 +466,7 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
       const o = sheet?.getBoundingClientRect() ?? { left: 0, top: 0 }
       let x = look.kind !== "pill" ? d.x - look.grab.x : d.finger ? Math.max(8, Math.min(d.x - 32, innerWidth - 268)) : d.x > innerWidth - 280 ? d.x - 10 - g.offsetWidth : d.x + 10
       let y = look.kind !== "pill" ? d.y - look.grab.y : d.finger ? d.y - 64 : d.y + 10
+      held.current = { x: d.x - x, y: d.y - y }
       // (a card kept in the window, as big as it's becoming)
       if (look.kind !== "pill" || size) {
         x = clamp(x, 4, innerWidth - (size ?? look).w - 4)
@@ -473,6 +477,37 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     follow()
     return onDrag(follow)
   }, [live, look, sheet, finger, hint, size?.w, size?.h, overPanes])
+  // Past the window's edge, where a tab goes on in another window, its card goes on over the screen (the desktop app's:
+  // electron/dragghost.ts), a picture of it as it is then, and leaves the page; back in, it's the page's again.
+  useLayoutEffect(() => {
+    const g = el.current, c = card.current, float = floatGhost
+    if (!g || !c || !live || !float || !(live.tab || live.tabs?.length || live.group || live.pane)) return
+    let state: "in" | "asking" | "out" | "failed" = "in"
+    const restore = () => { g.style.removeProperty("visibility"); g.style.removeProperty("opacity"); g.style.removeProperty("transition") }
+    const check = () => {
+      const d = getDrag()
+      if (!d) return // (ended: the cleanup's)
+      const out = !d.finger && (d.x < 0 || d.y < 0 || d.x >= innerWidth || d.y >= innerHeight)
+      if (!out && state !== "in") { if (state !== "failed") void float(null); state = "in"; restore() }
+      if (!out || state !== "in") return
+      state = "asking"
+      // (its picture whole, not faded as it is over nothing)
+      g.style.transition = "none"; g.style.opacity = "1"
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (state !== "asking") return
+        const r = c.getBoundingClientRect(), radius = parseFloat(getComputedStyle(c).borderTopLeftRadius) || 0
+        void float({ x: r.left, y: r.top, width: r.width, height: r.height, grab: held.current, radius }).then((ok) => {
+          if (state !== "asking") return
+          state = ok ? "out" : "failed"
+          if (ok) g.style.visibility = "hidden"
+          else restore()
+        })
+      }))
+    }
+    check()
+    const off = onDrag(check)
+    return () => { off(); if (state === "asking" || state === "out") void float(null); restore() }
+  }, [live, look])
   // Lifted: a pane shrinks from its place into its card (a copy of it), a tab rises out of its bar with its panes'
   // pictures.
   useLayoutEffect(() => {
@@ -523,7 +558,7 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     return () => a.cancel()
   }, [back, look])
   // (a sidebar panel draws its own card, but over the panes it shows as the tab it would open)
-  if (!item || (item.drawn && !(item.to && overPanes))) return null
+  if (!item || item.elsewhere || (item.drawn && !(item.to && overPanes))) return null
   const dragged = item.tab ? tabById(item.tab) : undefined, pane = item.pane ? paneById(item.pane) : undefined
   const i: TabInfo = item.paths || item.tabs ? { label: item.label ?? "", icon: item.tabs ? Layers : Files }
     : item.folder ? { label: item.path!.split("/").pop()!, icon: Folder }

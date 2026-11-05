@@ -103,7 +103,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `CanvasPeer`: Someone else on a canvas: their pointer (in its units), name and colour (a CSS colour), what they have selected.
 - `canvasShown(c)`
 - `capitalize(s)`
-- `captureWindow()`: The window as a PNG (base64), or null: a browser, or a build without it.
+- `captureWindow()`
 - `cell(initial)`: One value that hooks and subscribers follow: `set` a new one (the same one changes nothing), `use()` it in React (`use(pick)`: a part of it, drawn again only when that part changes).
 - `Cell`
 - `changedFiles(store, n, skip?)`: The vault's recently changed files, newest first, at most `n`, without those in `skip`.
