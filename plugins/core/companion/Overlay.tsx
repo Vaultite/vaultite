@@ -3,7 +3,7 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, screenDrop, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, screenDrop, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { uiElement } from "./panes"
@@ -434,6 +434,35 @@ function Mark({ mark, label, at }: { mark: ReturnType<typeof presence>["mark"]; 
   return null
 }
 
+/** Typing an edit in, it keeps up with the caret (settling in 120 ms). */
+const WRITING_MS = 120
+/** Its cursor's place on screen moved by the cursor's spring (the one over the screen moves by it too: one cursor), written
+ *  onto `el` as it goes, not through React. `instant`: there at once (dragged, back from the screen, a first showing). */
+function useGlide(el: React.RefObject<HTMLDivElement | null>, x: number, y: number, instant: boolean, w: number) {
+  const g = useRef<Glide | null>(null), to = useRef({ x, y, w }), raf = useRef(0)
+  to.current = { x, y, w }
+  useLayoutEffect(() => {
+    const put = () => { if (el.current && g.current) el.current.style.translate = `${g.current.x}px ${g.current.y}px` }
+    if (!g.current || instant || !moves()) {
+      cancelAnimationFrame(raf.current)
+      raf.current = 0
+      g.current = { x, y, vx: 0, vy: 0 }
+      return put()
+    }
+    put()
+    if (raf.current) return
+    let last = performance.now()
+    const frame = (now: number) => {
+      const t = to.current, still = springStep(g.current!, t.x, t.y, t.w, Math.max(0, now - last) / 1000)
+      last = now
+      put()
+      raf.current = still ? 0 : requestAnimationFrame(frame)
+    }
+    raf.current = requestAnimationFrame(frame)
+  })
+  useEffect(() => () => cancelAnimationFrame(raf.current), [])
+}
+
 const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under, shift, age, typed, open, setOpen, pop, hold }: { a: Agent; spot: Spot; said: Note | null; others: Agent[]; under: boolean
   /** It has words waiting for the user's pause (they're speaking). */
   waiting: boolean
@@ -496,10 +525,17 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
     addEventListener("pointerdown", down, true)
     return () => removeEventListener("pointerdown", down, true)
   }, [open, fan, setOpen])
-  if (spot.drawn && !bubble && !a.asks) return null
   // (resting at home, it's its arrow in the status bar: it fades as it lands there, and shows again as it leaves)
   const docked = !!spot.docked && !drag && !open && !fan && !bubble && !a.asks && !typed && !menued
   const away = !!spot.away && !drag && !open
+  // (back from the screen: it's where it's going at once, showing as the screen's cursor lands there)
+  const wasAway = useRef(false), arriveBy = useRef(0)
+  if (wasAway.current && !away) arriveBy.current = Date.now() + 700
+  wasAway.current = away
+  const arriving = Date.now() < arriveBy.current
+  const tx = docked ? at.x : at.x - 3, ty = docked ? at.y : at.y - 2
+  useGlide(box, tx, ty, !!drag || away || arriving, a.state === "writing" || typed ? stiffness(WRITING_MS) : CURSOR_SPRING)
+  if (spot.drawn && !bubble && !a.asks) return null
   const enter = (e: React.PointerEvent) => { if (e.pointerType !== "touch") setHover(true) }
   // Click: the popover. Drag (a finger: hold first), then drop on text: "look at this".
   const down = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -554,9 +590,9 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   return (
     <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-floats={spot.over && !docked ? "" : undefined} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
-      data-docked={docked || undefined} data-away={away || undefined}
-      style={{ transform: docked ? `translate(${at.x}px, ${at.y}px) scale(${DOCK_SCALE})` : `translate(${at.x - 3}px, ${at.y - 2}px)`, transformOrigin: "0 0",
-        transition: drag ? "opacity .3s" : away ? "none" : `transform ${a.state === "writing" || typed ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), ${docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
+      data-docked={docked || undefined} data-away={away || undefined} data-to={`${Math.round(tx)},${Math.round(ty)}`}
+      style={{ scale: docked ? String(DOCK_SCALE) : "1", transformOrigin: "0 0",
+        transition: drag ? "opacity .3s" : away ? "none" : `scale 380ms cubic-bezier(.2,.85,.25,1), ${arriving ? "opacity .2s .35s" : docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
         opacity: docked || away ? 0 : shown.dim ? 0.55 : 1, visibility: docked || away ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || drag || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
       {!spot.drawn && <>
       <div className={cn("relative", shown.bob && !drag && "companion-bob")}>

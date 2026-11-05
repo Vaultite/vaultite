@@ -6,7 +6,7 @@ import { Check } from "lucide-react"
 import "./index.css"
 import { makePill } from "@/core/pill"
 import { snippet } from "@/core/plaintext"
-import { glide, stiffness, type Glide } from "@/core/spring"
+import { CURSOR_SPRING, glide, stiffness, type Glide } from "@/core/spring"
 import { cn, followSystemTheme } from "@/lib/utils"
 // (what its flag shows, by the window's own rule: the two draw one cursor)
 import { presence, type Mark as MarkKind } from "../../plugins/core/companion/look"
@@ -35,7 +35,7 @@ type Mover = { g: Glide; tx: number; ty: number; w: number; el: HTMLElement | nu
   left: { until: number; tx: number; ty: number } | null }
 const movers = new Map<string, Mover>()
 /** An agent's cursor settles in about the in-app one's time; the waiting one trailing the pointer, sooner. */
-const AGENT = stiffness(380), TRAIL = stiffness(160)
+const AGENT = CURSOR_SPRING, TRAIL = stiffness(160)
 let raf = 0, last = 0
 
 function frame(t: number) {

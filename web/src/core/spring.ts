@@ -6,6 +6,8 @@ export type Glide = { x: number; y: number; vx: number; vy: number }
 
 /** The stiffness that settles a move (to within 1%) in `ms`. */
 export const stiffness = (ms: number) => 6.64 / (ms / 1000)
+/** An agent's cursor, in the window and over the screen alike: one cursor, one motion. */
+export const CURSOR_SPRING = stiffness(380)
 
 /** One axis of x'' = -w²(x - to) - 2w x', solved: its place and speed `dt` seconds on. */
 function axis(x: number, v: number, to: number, w: number, dt: number): [number, number] {

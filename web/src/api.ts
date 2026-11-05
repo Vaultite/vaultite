@@ -288,6 +288,8 @@ export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 export { systemNotify } from "@/core/desktop"
 // Settings > Permissions (the desktop app on a Mac; null elsewhere): the terminal's way there when macOS blocks the vault.
 export { openPermissions, screenDrop } from "@/core/desktop"
+/** The companion's cursor's spring (the in-app one and the one over the screen move alike). */
+export { CURSOR_SPRING, glide as springStep, stiffness, type Glide } from "@/core/spring"
 /** Dictation: the session (into a note's editor or a field), its events for plugins (`onDictation`) and its source. */
 export { joinText } from "../../core/dictationtext.ts"
 export { dictation, dictationSource, fnDictation, listening, onDictation, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"

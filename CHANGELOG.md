@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's cursor is one cursor, in the app and over the screen**: both move on the same spring; coming back
+  from another app it shows where it's going as the screen's cursor lands there, and over the screen it hides while a
+  window in front covers what it points at.
 - **Asking about the desktop sees what you point at, and one cursor shows**: an fn ask or a cursor dropped where there's
   no window (the desktop's icons) tells the companion what's under the pointer, with a picture of the screen around it,
   and its cursor answers there; out on the screen, its cursor and bubble no longer show inside Vaultite too.

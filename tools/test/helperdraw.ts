@@ -110,6 +110,12 @@ check("helper draw: waiting, then an app's window found a moment later: first wh
   claude()[0]?.sx === dot2.sx && claude().at(-1)?.sy === 112, { dot2, seen: claude() })
 H.heard({ event: "moved", window: 9, frame: { x: 300, y: 150, width: 800, height: 600 } })
 check("helper draw: that window dragged, the cursor follows it at once", H.scene()!.agents[0]?.sx === 700 && H.scene()!.agents[0]?.sy === 162, H.scene()!.agents[0])
+H.stub("covered", { covered: true })
+front(false)
+check("helper draw: its window covered by one in front (Vaultite's, another app's), it isn't drawn, pointing at nothing seen", await until(() => !H.scene()!.agents.length), H.scene())
+H.stub("covered", { covered: false })
+front(false)
+check("helper draw: uncovered again, it's back", await until(() => H.scene()!.agents.length === 1), H.scene())
 
 front(true)
 setAgent({ app: undefined, path: "Notes/A.md" })

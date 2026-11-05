@@ -208,6 +208,8 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "moved") return windowMoved(m)
   if (m.event === "front") {
     front = m as unknown as AppWindowInfo
+    // (another app in front may cover or uncover what the cursors point at: looked at again)
+    for (const e of placed.values()) e.at = 0
     host?.event("screen:front", hidden(front) ? { bundle: front.bundle, name: front.name, private: true } : { bundle: front.bundle, name: front.name, title: front.title, window: front.window, vaultite: !!front.vaultite })
     return draw()
   }
@@ -394,11 +396,22 @@ async function finish(s: Session, cancelled: boolean) {
 
 /** Places on screen resolved to points (an element's frame by its text, a window's), kept a moment: windows move. Each
  *  knows its window and its frame then, so a move of it (told by the screen helper) moves the point at once. */
-type Placed = { at: number; p: Point | null; pending: boolean; win?: number; frame?: Rect | null; find?: boolean }
+type Placed = { at: number; p: Point | null; pending: boolean; win?: number; frame?: Rect | null; find?: boolean
+  /** A window in front covers it (Vaultite's, another app's): it isn't drawn, pointing at nothing seen. */
+  covered?: boolean }
 const placed = new Map<string, Placed>()
 const placeKey = (a: Agent) => `${a.name}:${a.app ?? ""}|${a.window ?? ""}|${a.find ?? ""}|${a.sx ?? ""}|${a.sy ?? ""}`
 const onScreen = (a: Agent) => !a.path && (!!a.app || (typeof a.sx === "number" && typeof a.sy === "number"))
+/** `r` with whether a window in front of its own covers its point. */
+async function seen(r: Omit<Placed, "at" | "pending">): Promise<Omit<Placed, "at" | "pending">> {
+  if (!r.p) return r
+  const c = await screenAsk<{ covered?: boolean }>("covered", { window: r.win ?? 0, x: r.p.x, y: r.p.y }).catch(() => null)
+  return { ...r, covered: !!c?.covered }
+}
 async function resolve(a: Agent): Promise<Omit<Placed, "at" | "pending">> {
+  return seen(await find(a))
+}
+async function find(a: Agent): Promise<Omit<Placed, "at" | "pending">> {
   if (typeof a.sx === "number" && typeof a.sy === "number") return { p: { x: a.sx, y: a.sy } }
   if (!a.app || hidden({ bundle: a.app, name: a.app })) return { p: null }
   if (a.find) {
@@ -409,8 +422,14 @@ async function resolve(a: Agent): Promise<Omit<Placed, "at" | "pending">> {
   return w.frame ? { p: pointIn(w.frame, false), win: w.window, frame: w.frame } : { p: null }
 }
 function pointOf(a: Agent): Placed {
-  if (typeof a.sx === "number" && typeof a.sy === "number") return { at: Date.now(), p: { x: a.sx, y: a.sy }, pending: false }
   const k = placeKey(a), had = placed.get(k)
+  // (a plain point is there at once; whether it's covered comes a moment later)
+  if (typeof a.sx === "number" && typeof a.sy === "number" && !had) {
+    const p = { x: a.sx, y: a.sy }
+    placed.set(k, { p, at: Date.now(), pending: false })
+    void seen({ p }).then((r) => { placed.set(k, { ...r, at: Date.now(), pending: false }); draw() })
+    return placed.get(k)!
+  }
   if (!had || (!had.pending && Date.now() - had.at > (a.find ? 3000 : 1000))) {
     placed.set(k, { ...(had ?? { p: null }), at: Date.now(), pending: true })
     const done = (r: Omit<Placed, "at" | "pending">) => { placed.set(k, { ...r, at: Date.now(), pending: false }); draw() }
@@ -475,7 +494,7 @@ async function inApp(): Promise<Map<string, { at: Point; to: Point }>> {
   const w = host?.homeWindow()
   if (!w || w.page.isDestroyed()) return new Map()
   const code = `[...document.querySelectorAll(".companion-cursor[data-agent]")].map((el) => { const r = el.getBoundingClientRect(),
-    m = /translate\\(([-\\d.]+)px, ([-\\d.]+)px\\)/.exec(el.style.transform); return [el.dataset.agent, r.left, r.top, m ? +m[1] : r.left, m ? +m[2] : r.top] })`
+    m = /^(-?[\\d.]+),(-?[\\d.]+)$/.exec(el.dataset.to ?? ""); return [el.dataset.agent, r.left, r.top, m ? +m[1] : r.left, m ? +m[2] : r.top] })`
   const rows = await w.page.executeJavaScriptInIsolatedWorld(1007, [{ code }]).catch(() => []) as [string, number, number, number, number][]
   // (its tip: 3, 2 into the box, as both draw the arrow)
   const pt = (x: number, y: number) => ({ x: Math.round(w.bounds.x + (x + 3) * w.zoom), y: Math.round(w.bounds.y + (y + 2) * w.zoom) })
@@ -552,7 +571,7 @@ function draw() {
     if (a.state === "away" || !onScreen(a)) continue
     // (a new place being found: it stays where it was meanwhile, or where it waited)
     const e = pointOf(a), p = e.p ?? (e.pending ? drawnAt.get(keyOf(a)) ?? (a.name === live.state.name ? drawnAt.get("idle") : undefined) : null)
-    if (!p) continue
+    if (!p || e.covered) continue
     const say = says.filter((n) => n.agent === a.name).at(-1)
     agents.push({ name: a.name, tint: a.tint, state: a.state, sx: p.x, sy: p.y, t: a.t, ...(a.seen ? { seen: true } : {}), ...(a.why ? { why: a.why } : {}),
       ...(say?.text ? { say: { id: say.id, text: say.text, ...(say.question ? { question: true } : {}) } } : {}) })

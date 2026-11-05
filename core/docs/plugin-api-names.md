@@ -155,6 +155,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `currentFile()`: The vault file in the focused pane ("" when it shows something else, or a file from outside the vault).
 - `currentRow()`: The row that has the keyboard, or null.
 - `currentWorkspace()`: The current workspace (null: no plugin keeps workspaces).
+- `CURSOR_SPRING`: An agent's cursor, in the window and over the screen alike: one cursor, one motion.
 - `DateOptions`: How weeks count: the day they start on (`start`, 0 Sunday … 6 Saturday) and the day of January week 1 holds (`jan`, moment's doy: 1 for the week of January 1st); unset, ISO's (1 and 4).
 - `dateText(d, options)`: A date (or a time in ms) as text: `dateText(d, { day: "numeric", month: "short" })` is d.toLocaleString(undefined, { day: "numeric", month: "short" }), with the formatter kept.
 - `DefaultPlace`: Where new terminals and agents (and Dispatch) open unasked: a machine (none: this one), an account per agent.
@@ -260,6 +261,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `getTabLayout()`
 - `GitHubIcon`: GitHub's mark: a project's repository, a plugin's on GitHub.
 - `glide()`: A scroll's `behavior`: smooth, unless things are kept still.
+- `Glide`: A point on its way, and its speed (px/s).
 - `goHere(to)`: Show `to` in the focused pane whatever it held (a page's tabs, List -> Map: the same place, its own history).
 - `GridCard`: A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its fence's layout: core/blocks.ts fenceLayout).
 - `GridEdit`: What changes a run of blocks in the file, each block by its index in the run (found where it is now).
@@ -636,6 +638,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `splitMachine(id)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
 - `springing()`: Whether a row is about to spring open (drawn lit, as Rex's), once held on it a moment.
 - `springOver(tab, item, x?, y?)`: What's dragged is at (x, y) on tab `tab`'s row (null: none): held still there a second, that tab opens to drop into its panes; moved on, it waits again.
+- `springStep(g, tx, ty, w, dt)`: Move `g` toward (tx, ty) by `dt` seconds; true once it's there and still (then it's put exactly there).
 - `springTabAt(item, x, y)`: The tab whose chip or row (`data-spring-tab`) a dragged pane or tab is held on the middle of: there it holds still (drop.ts' slotBeside) and opens after a moment (springOver); its edges reorder.
 - `stampMs`
 - `standingIn(app, id)`: The opt-in plugins on that stand in for another app's plugin (`standingIn("obsidian", "dataview")`): its original stays off while one is.
@@ -648,6 +651,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `StatusItem`: Drawn in the desktop status bar for the focused file: before its view and counts (its properties), or `after` them (Token count).
 - `stem(path)`: A file's name as the app shows it: without .md, or the extension of a page a plugin draws (an artifact's .html, a table's .csv: named like notes, FileFormat.page); other files keep theirs.
 - `stepTextSize(kind, step)`: One step bigger (1), smaller (-1), or back to 100% (0).
+- `stiffness(ms)`: The stiffness that settles a move (to within 1%) in `ms`.
 - `stopDictation(cancel?)`: Stop listening: what was heard becomes final (`cancel`: the words not settled yet are dropped).
 - `Store`: The store every block, detail and panel gets: the state without the settings, which the app applies itself.
 - `subscribeScoped(f)`: Subscribe to the current workspace and what's kept in it (for useSyncExternalStore with a getter of your own).

@@ -270,6 +270,15 @@ func under(_ x: Double, _ y: Double) -> [String: Any] {
   m["frame"] = rectJSON(frame(el))
   return m
 }
+/** Whether a window in front of window `id` (0: any window) covers a point: a cursor there would point at nothing seen. */
+func covered(_ id: Int, _ x: Double, _ y: Double) -> [String: Any] {
+  let p = CGPoint(x: x, y: y)
+  for w in windowList() {
+    if id > 0 && (w[kCGWindowNumber as String] as? Int) == id { return ["covered": false] }
+    if (w[kCGWindowAlpha as String] as? Double ?? 1) > 0, boundsOf(w)?.contains(p) == true { return ["covered": true] }
+  }
+  return ["covered": false]
+}
 func windowInfo(_ id: Int) -> [String: Any] {
   guard let w = windowList().first(where: { ($0[kCGWindowNumber as String] as? Int) == id }) else { return ["window": 0] }
   return describe(w)
@@ -357,6 +366,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "front": lastFront = ""; sayFront(); return ["ok": true]
   case "at": return windowAt(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)
   case "under": return under(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)
+  case "covered": return covered(req["window"] as? Int ?? 0, req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)
   case "watch": watchWindows(req["windows"] as? [Int] ?? []); return ["ok": true]
   case "window":
     // (by its number, else an app's focused window)
