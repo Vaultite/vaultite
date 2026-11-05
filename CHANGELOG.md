@@ -22,6 +22,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Agents' runs replay as a visual timeline**: runs by day with pictures and activity, then a run's steps over its
   time and as a filmstrip by page, repeats folded, pauses and failures shown; ← → and Space step and play it, and a
   run of thousands of steps opens at once.
+- **Agents use the browser in fewer, smaller steps**: open and go answer the page's content once it has drawn (data it
+  fetches included), act takes a control by its name (or text the page shows), says what tabs it opened and which
+  controls changed, fill replaces what's there on a Mac, snapshots are about half the size (rows on one line), read
+  gives a page's main part and a Google doc as Markdown, paste puts formatted text into editors, download saves a file
+  with a tab's logins, and `vau docs browsing` says how. In evals (tools/browser-evals) agents finish the same tasks
+  in a third less time, with half the turns and 43% fewer tokens.
 - **Undo of a move to another workspace puts the tab back in its place**: in its spot in the bar and its tab group,
   not at the end.
 - **A plugin setting changed twice quickly keeps the last change**: hiding a graph group and showing it again at once

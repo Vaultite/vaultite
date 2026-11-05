@@ -14,6 +14,20 @@ export default async ($: VaultTest) => {
       at("http://127.0.0.1:8793/", "display-capture") === "deny" && at("http://127.0.0.1:8793/", "hid") === "deny" && at("https://studio.tail1234.ts.net:8447.evil.example/", "media") === "deny")
     check("desktop permissions: another program's page on this machine is anyone's, not the app's",
       at("http://127.0.0.1:3000/", "media") === "deny" && at("http://localhost:5000/", "clipboard-read") === "deny" && at("http://localhost:8793/", "media") === "allow")
+    // What agents get of a page (electron/browser/axlines.ts, plugins/core/web-viewer/find.ts): a control that changed once,
+    // new lines before gone ones; a new page's content without its navigation; a tree's lines with a word, and what holds them.
+    const { changes, mainLines } = await import("../../../electron/browser/axlines.ts")
+    const { within } = await import("../../../plugins/core/web-viewer/find.ts")
+    const diff = changes(["- textbox \"Email\" [ref=e2]: old", "- text \"Saving\"", "- button \"Save\" [ref=e3]"], ["- textbox \"Email\" [ref=e2]: new", "  - button \"Save\" [ref=e3]", "- status \"Saved\""])
+    check("browser agents: an act's diff says a control changed once, new lines first, a moved line not at all",
+      JSON.stringify(diff) === JSON.stringify(["~ textbox \"Email\" [ref=e2]: new", "+ status \"Saved\"", "- text \"Saving\""]), diff)
+    const page = ["- RootWebArea \"Shop\" [ref=e1]", "  - navigation \"Site\"", "    - link \"Home\" [ref=e2]", "  - heading \"Orders\"", "  - contentinfo", "    - link \"Terms\" [ref=e3]"]
+    const withMain = ["- RootWebArea \"Shop\" [ref=e1]", "  - banner", "    - link \"Home\" [ref=e2]", "  - main", "    - heading \"Orders\"", "    - row: \"A-1\" | \"$5\""]
+    check("browser agents: a new page's content is its main part, else the page without navigation, header and footer",
+      JSON.stringify(mainLines(withMain)) === JSON.stringify(["- heading \"Orders\"", "- row: \"A-1\" | \"$5\""]) && JSON.stringify(mainLines(page)) === JSON.stringify(["- heading \"Orders\""]), [mainLines(withMain), mainLines(page)])
+    const tree = ["- main", "  - form \"Settings\"", "    - textbox \"Email\" [ref=e2]", "    - button \"Save settings\" [ref=e3]", "  - link \"Help\" [ref=e4]"].join("\n")
+    check("browser agents: snapshot --find keeps the lines with it and what they're in",
+      within(tree, "save") === ["- main", "  - form \"Settings\"", "    - button \"Save settings\" [ref=e3]"].join("\n") && within(tree, "/e[24]\\]/") === ["- main", "  - form \"Settings\"", "    - textbox \"Email\" [ref=e2]", "  - link \"Help\" [ref=e4]"].join("\n"), within(tree, "save"))
     // An extension's offscreen document (electron/browser/extapi.ts) is one of its own pages, as in Chrome.
     const { extensionPage } = await import("../../../electron/browser/crx.ts")
     const id = "abcdefghijklmnopabcdefghijklmnop"

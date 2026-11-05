@@ -9,7 +9,7 @@
   "requires": ["find"],
   "exports": ["containers", "state"],
   "runsOnServer": true,
-  "forAgents": "A web page for you, beside the user's: `web-viewer.open` (`vau docs web-viewer`).",
+  "forAgents": "A web page for you, beside the user's: `web-viewer.open` (`vau docs browsing` first).",
   "tint": "blue",
   "settings": {
     "pageBar": { "type": "enum", "values": ["shown", "hidden"], "default": "shown", "label": "Page bar", "labels": {"shown": "Always shown", "hidden": "Shown on hover"}, "description": "the bar above each web page (Back, the address, the page's buttons); hidden, the page fills its tab and the bar slides over it while the pointer is at the page's top edge, the address is focused (⌘L) or the tab is new. Right-click the bar to change it" },

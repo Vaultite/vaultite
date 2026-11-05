@@ -1,7 +1,7 @@
 // Agents' steps as the replay shows them: what each did in words, its kind (an icon and a colour), how long things
 // took, and a long run's repeats folded into one card (a script run 6,000 times in a row is one thing to look at).
 import { AppWindow, ArrowDownUp, BookOpen, Braces, Camera, CircleAlert, ClipboardList, FileText, Hand, Hourglass, KeyRound, Keyboard, ListChecks,
-  MousePointer2, MousePointerClick, Navigation, Square, SquareCheck, SquareTerminal, TextCursorInput, Upload, type LucideIcon } from "lucide-react"
+  ClipboardPaste, Download, MousePointer2, MousePointerClick, Navigation, Square, SquareCheck, SquareTerminal, TextCursorInput, Upload, type LucideIcon } from "lucide-react"
 import { numberText } from "@vaultite"
 
 export type Step = {
@@ -23,7 +23,7 @@ export type Run = {
 const WHAT: Record<string, string> = { open: "Opened", navigate: "Went to", click: "Clicked", dblclick: "Double-clicked", hover: "Pointed at", fill: "Filled",
   type: "Typed in", press: "Pressed", check: "Checked", uncheck: "Unchecked", select: "Picked", scroll: "Scrolled", upload: "Uploaded", evaluate: "Ran a script",
   run: "Ran a flow", help: "Asked the user", pdf: "Saved as PDF", login: "Logged in", read: "Read the page", wait: "Waited", screenshot: "Took a screenshot",
-  snapshot: "Looked at the page", act: "Acted", form: "Filled a form" }
+  snapshot: "Looked at the page", act: "Acted", form: "Filled a form", paste: "Pasted into", download: "Downloaded" }
 /** What a run of the same step says, folded ("Ran a script ×6,929"). */
 export const verbOf = (action: string) => WHAT[action] ?? capital(action)
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -34,9 +34,9 @@ export function said(s: Partial<Step>) {
   const what = verbOf(s.action ?? "")
   const on = s.name ? ` “${s.name}”` : ""
   const v = typeof s.value === "string" ? s.value : ""
-  const value = !v || ["run", "evaluate", "help", "login"].includes(s.action ?? "") ? ""
+  const value = !v || ["run", "evaluate", "help", "login", "paste"].includes(s.action ?? "") ? ""
     : s.action === "fill" || s.action === "type" || s.action === "select" ? `: ${v}`
-    : s.action === "open" || s.action === "navigate" ? ` ${hostOf(v)}` : ` ${v}`
+    : s.action === "open" || s.action === "navigate" || s.action === "download" ? ` ${hostOf(v)}` : ` ${v}`
   return `${what}${on}${value}`
 }
 const hostOf = (u: string) => { try { return new URL(u).host.replace(/^www\./, "") } catch { return u } }
@@ -49,9 +49,9 @@ const KINDS: Record<string, Kind> = {
   open: go(AppWindow), navigate: go(Navigation),
   click: input(MousePointerClick), dblclick: input(MousePointerClick), act: input(MousePointerClick), hover: input(MousePointer2), fill: input(TextCursorInput),
   type: input(TextCursorInput), form: input(ClipboardList), press: input(Keyboard), check: input(SquareCheck), uncheck: input(Square), select: input(ListChecks),
-  scroll: input(ArrowDownUp), upload: input(Upload),
+  scroll: input(ArrowDownUp), upload: input(Upload), paste: input(ClipboardPaste),
   evaluate: { icon: Braces, color: "var(--orange)", kind: "script" }, run: { icon: SquareTerminal, color: "var(--orange)", kind: "script" },
-  read: look(BookOpen), snapshot: look(BookOpen), wait: look(Hourglass), screenshot: look(Camera), pdf: look(FileText),
+  read: look(BookOpen), snapshot: look(BookOpen), wait: look(Hourglass), screenshot: look(Camera), pdf: look(FileText), download: look(Download),
   help: { icon: Hand, color: "var(--green)", kind: "user" }, login: { icon: KeyRound, color: "var(--green)", kind: "user" },
 }
 const FAILED: Kind = { icon: CircleAlert, color: "var(--red)", kind: "failed" }

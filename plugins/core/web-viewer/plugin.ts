@@ -3,12 +3,14 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { marked } from "marked"
 import { OpError, Plugin, vaultPath, type OpCtx } from "../../../core/plugins.ts"
 import { Kind, writeAtomic, type Vault } from "../../../core/vault.ts"
 import { addBookmarks, editBookmark, readBookmarks, removeBookmark, type Bookmark } from "./bookmarks.ts"
 import { addRule, BLOCKED, makeRule, readRules, removeRule } from "./elements.ts"
 import { siteName, styleFile, STYLES, template, type SiteStyle } from "./sitestyles.ts"
 import { liveView } from "./liveroutes.ts"
+import { grep, within } from "./find.ts"
 import { approvals } from "./approvals.ts"
 import { machineLogins } from "./machinelogins.ts"
 
@@ -24,7 +26,7 @@ type Tab = { tab: number; url: string; title: string; container: string | null; 
 type Download = { name: string; state: string; path?: string }
 type Page = { tab: number; url: string; title: string; downloads?: Download[] }
 /** What an act changed: lines gone (-) and new (+), or the new page's first lines when it went to another (`page`). */
-type Acted = Page & { navigated: boolean; diff?: { page: boolean; lines: string[]; more: number } }
+type Acted = Page & { navigated: boolean; diff?: { page: boolean; lines: string[]; more: number }; opened?: { tab: number; url: string; title: string }[] }
 
 /** Ask the engine, its refusals as plain errors for the agent. */
 async function ask<T>(name: string, ...args: unknown[]): Promise<T> {
@@ -40,16 +42,17 @@ const task = { type: "string" as const, description: "your task in two or three 
 // writes; pdf's file.upload holds it for its own)
 const tab = { type: "integer" as const, required: true, description: "the tab's number (browser tabs)" }
 const got = (d: Download) => `Downloaded ${d.name}${d.path ? ` to ${d.path}` : ""}${d.state === "completed" ? "" : ` (${d.state})`}`
-const DONE: Record<string, string> = { click: "Clicked", dblclick: "Double-clicked", hover: "Pointed at", fill: "Filled", type: "Typed in", press: "Pressed",
+const DONE: Record<string, string> = { click: "Clicked", dblclick: "Double-clicked", hover: "Pointed at", fill: "Filled", type: "Typed in", paste: "Pasted into", press: "Pressed",
   check: "Checked", uncheck: "Unchecked", select: "Picked in", upload: "Uploaded into", scroll: "Scrolled" }
 const where = (p: Page) => [`Tab ${p.tab}: ${p.title || "(untitled)"}`, p.url, ...(p.downloads ?? []).map(got)].join("\n")
-function changed(r: Acted) {
+function changed(r: Page & { diff?: Acted["diff"] }) {
   const d = r.diff
   if (!d) return ""
-  const more = d.more ? `\n… ${d.more} more line${d.more === 1 ? "" : "s"}: browser snapshot ${r.tab}` : ""
-  if (d.page) return `\n\nThe page now:\n${d.lines.join("\n")}${more}`
-  return d.lines.length ? `\n\nWhat changed (- gone, + new):\n${d.lines.join("\n")}${more}` : "\n\nNothing changed on the page."
+  const more = d.more ? `\n… ${d.more} more line${d.more === 1 ? "" : "s"}: browser snapshot ${r.tab}${d.page ? "" : " (--find to look for something)"}` : ""
+  if (d.page) return d.lines.length ? `\n\nThe page's content (refs to act on; browser snapshot for all of it):\n${d.lines.join("\n")}${more}` : ""
+  return d.lines.length ? `\n\nWhat changed (~ changed, + new, - gone):\n${d.lines.join("\n")}${more}` : "\n\nNothing changed on the page."
 }
+const pageDiff = { type: "string" as const, default: "summary", description: "the page's content answered, with refs: summary (its first 50 lines, skipping navigation, header and footer), none, or this many lines" }
 
 plugin.op({
   id: "web-viewer.tabs",
@@ -80,7 +83,8 @@ plugin.op({
   summary: "Open a web page in the desktop app's browser, in the background (no tab of the user's), for you to read and act in.",
   help: `It opens in the container meant for agents (or the one you name, if agents may act there), signed in to what the
 user signed in to there, in the background: the user watches it live in a corner of their window, and may open it as a
-tab (in a tab group of yours, <you>/<task>). Answers its tab number. summary says what you're doing, for the user watching agents at work ("Show agents in the browser") and
+tab (in a tab group of yours, <you>/<task>). Answers its tab number and, once it has drawn, its content with refs to act
+on (its first lines, past the navigation: often no snapshot is needed). summary says what you're doing, for the user watching agents at work ("Show agents in the browser") and
 searching past runs. Close it when you're done with it, unless the user would want to see it.
 
   vau browser open https://example.com --task "order status" --summary "Checking where order 1042 is"
@@ -92,11 +96,12 @@ searching past runs. Close it when you're done with it, unless the user would wa
     container: { type: "string", description: "the container's id (left out: the one for agents)" },
     task,
     summary: { type: "string", description: "what you're doing there, in a sentence (Checking where order 1042 is)" },
+    diff: pageDiff,
     terminal,
   },
   args: ["url"],
-  run: async (p, ctx) => ask<Page>("agent:open", p.url, p.container ?? null, await by(ctx, p)),
-  text: where,
+  run: async (p, ctx) => ask<Acted>("agent:open", p.url, p.container ?? null, await by(ctx, p), p.diff),
+  text: (r: Acted) => `${where(r)}${changed(r)}`,
   did: (p) => ({ action: "run", text: `Opened ${String(p.url)} in the browser` }),
 })
 
@@ -120,15 +125,21 @@ plugin.op({
   cli: "browser snapshot",
   mcp: "browser_snapshot",
   summary: "A tab's page as an accessibility tree: its text, and its controls with refs (e12) to act on.",
-  help: `Take one before acting. An element keeps its ref while it's on the page (a new page gives new ones), and act answers
-what changed, so you rarely need another.
+  help: `open, go and act already answer what you need most of the time (a new page's content, what an act changed), and act
+takes a control by its name (--name) as well as its ref: take a snapshot when those aren't enough. An element keeps its
+ref while it's on the page (a new page gives new ones). find keeps the lines that have it (any case; /a regex/ too),
+each with the lines it's inside: a control looked for without the whole tree.
 
-  vau browser snapshot 3`,
+  vau browser snapshot 3
+  vau browser snapshot 3 --find "save"`,
   kind: "read",
-  params: { tab },
+  params: { tab, find: { type: "string", description: "only the lines with this (words, or /a regex/), with what they're inside" } },
   args: ["tab"],
-  run: (p) => ask<Page & { snapshot: string }>("agent:snapshot", p.tab),
-  text: (r: Page & { snapshot: string }) => `${where(r)}\n\n${r.snapshot}`,
+  run: async (p) => {
+    const r = await ask<Page & { snapshot: string }>("agent:snapshot", p.tab)
+    return p.find ? { ...r, snapshot: within(r.snapshot, p.find), find: p.find } : r
+  },
+  text: (r: Page & { snapshot: string; find?: string }) => `${where(r)}\n\n${r.find && !r.snapshot ? `No line has "${r.find}".` : r.snapshot}`,
 })
 
 /** Files for a page's file input, read here: the vault's by path, this machine's by absolute path (its owner only). */
@@ -154,18 +165,23 @@ plugin.op({
   id: "web-viewer.act",
   cli: "browser act",
   mcp: "browser_act",
-  summary: "Click, type, fill a form, press a key, pick an option, upload a file or scroll in a tab, by refs from its snapshot, with real input; answers what changed.",
-  help: `Actions: click, dblclick, hover, fill (replaces what's there; with fields, a whole form at once: text typed, a list's
-option picked, a checkbox checked by true or false), type (adds to it), press (a key, on a ref or the page: Enter, Tab,
-Escape, Meta+a...), check, uncheck, select (an option of a list, by its text), upload (files into a file input: vault
-paths, or absolute paths on this machine), scroll (up or down, the page or a ref). Answers once the page settled: where
-the tab is, what it downloaded (into the Downloads folder of the Mac whose browser it is) and what changed on the page
-since you last saw it (diff: summary, up to 30 lines; a number of lines; none), or the new page's first lines when it
-went to another.
+  summary: "Click, type, fill a form, paste, press a key, pick an option, upload a file or scroll in a tab, by a control's ref or name, with real input; answers what changed.",
+  help: `A control by its ref (from open, go, an act's answer or a snapshot) or by its name (--name "Save", --role button when
+several share it: an exact name first, then one that has it). Actions: click, dblclick, hover, fill (replaces what's
+there; with fields, a whole form at once, each field by ref or name: text typed, a list's option picked, a checkbox
+checked by true or false), type (adds to it), paste (text into the control or what has focus, as a paste: --format
+markdown or html keeps its formatting in editors like Google Docs, never the user's clipboard), press (a key, on a control
+or the page: Enter, Tab, Escape, Meta+a...), check, uncheck, select (an option of a list, by its text), upload (files
+into a file input: vault paths, or absolute paths on this machine), scroll (up or down, the page or a control). Answers
+once the page settled: where the tab is, what it downloaded (into the Downloads folder of the Mac whose browser it is)
+and what changed on the page since you last saw it (diff: summary, up to 30 lines; a number of lines; none: ~ a control
+changed, + new, - gone), or the new page's content when it went to another. Act on that answer: it's the page as it is.
 
   vau browser act 3 click e12
+  vau browser act 3 click --name "Save settings"
   vau browser act 3 fill e5 --value "alice@example.com"
-  vau browser act 3 fill --fields '[{"ref":"e5","value":"Alice"},{"ref":"e7","value":"true"},{"ref":"e9","value":"Large"}]'
+  vau browser act 3 fill --fields '[{"name":"Email","value":"alice@example.com"},{"ref":"e7","value":"true"},{"name":"Size","value":"Large"}]'
+  vau browser act 3 paste --format markdown --value - < plan.md
   vau browser act 3 press --key Enter --diff none
   vau browser act 3 upload e8 --files Attachments/cv.pdf
   vau browser act 3 scroll --direction down`,
@@ -173,24 +189,30 @@ went to another.
   lock: false,
   params: {
     tab,
-    action: { type: "string", required: true, enum: ["click", "dblclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "upload", "scroll"], description: "what to do" },
-    ref: { type: "string", description: "the control, from the tab's last snapshot (e12)" },
-    value: { type: "string", description: "the text to fill or type, or the option to select" },
+    action: { type: "string", required: true, enum: ["click", "dblclick", "hover", "fill", "type", "paste", "press", "check", "uncheck", "select", "upload", "scroll"], description: "what to do" },
+    ref: { type: "string", description: "the control, by its ref (e12)" },
+    name: { type: "string", description: "the control, by its name as the page shows it (instead of a ref)" },
+    role: { type: "string", description: "with name: the control's role (button, link, textbox, combobox, checkbox...)" },
+    value: { type: "string", description: "the text to fill, type or paste, or the option to select" },
+    format: { type: "string", enum: ["text", "markdown", "html"], default: "text", description: "paste: what value is (markdown and html paste with their formatting)" },
     key: { type: "string", description: "the key to press (Enter, Tab, Meta+a)" },
     direction: { type: "string", enum: ["up", "down"], description: "which way to scroll" },
     files: { type: "array", items: { type: "string" }, description: "upload: the files, vault paths (Attachments/cv.pdf) or absolute paths on this machine" },
-    fields: { type: "array", items: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref"] },
-      description: "fill: a whole form, each field's ref and value (a checkbox's: true or false; a list's: its option)" },
+    fields: { type: "array", items: { type: "object", properties: { ref: { type: "string" }, name: { type: "string" }, value: { type: "string" } } },
+      description: "fill: a whole form, each field's ref or name and its value (a checkbox's: true or false; a list's: its option)" },
     diff: { type: "string", default: "summary", description: "what changed, answered: summary (up to 30 lines), none, or at most this many lines" },
     terminal,
   },
   args: ["tab", "action", "ref"],
   run: async (p, ctx) => {
     if (p.fields && p.action !== "fill") throw new OpError("`fields` go with fill")
-    return ask<Acted>("agent:act", p.tab, { action: p.action, ref: p.ref, value: p.value, key: p.key, direction: p.direction, fields: p.fields, diff: p.diff,
+    if (p.format && p.format !== "text" && p.action !== "paste") throw new OpError("`format` goes with paste")
+    const value = p.value
+    const html = p.action !== "paste" || !value ? undefined : p.format === "html" ? value : p.format === "markdown" ? await marked.parse(value) : undefined
+    return ask<Acted>("agent:act", p.tab, { action: p.action, ref: p.ref, name: p.name, role: p.role, value, html, key: p.key, direction: p.direction, fields: p.fields, diff: p.diff,
       ...(p.action === "upload" ? { files: await filesFor(p.files, ctx) } : {}) }, await by(ctx, p))
   },
-  text: (r: Acted) => `${r.navigated ? "Went to another page. " : ""}${where(r)}${changed(r)}`,
+  text: (r: Acted) => `${r.navigated ? "Went to another page. " : ""}${where(r)}${(r.opened ?? []).map((o) => `\nOpened tab ${o.tab}: ${o.title || "(untitled)"} ${o.url} (yours: act there by its number)`).join("")}${changed(r)}`,
   // (each names its tab, "browser tab 3": the live view lists a tab's steps from Activity by it)
   did: (p) => ({ action: "run", text: Array.isArray(p.fields) ? `Filled ${p.fields.length} fields in browser tab ${String(p.tab)}`
     : `${DONE[String(p.action)] ?? String(p.action)}${p.action === "press" && p.key ? ` ${String(p.key)}` : ""}${p.ref ? ` ${String(p.ref)}` : ""} in browser tab ${String(p.tab)}` }),
@@ -201,34 +223,22 @@ plugin.op({
   cli: "browser go",
   mcp: "browser_navigate",
   summary: "Send a tab to an address, or back, forward, or reload it.",
-  help: `  vau browser go 3 https://example.com/settings
+  help: `Answers where it went and, once it has drawn, its content with refs (as open).
+
+  vau browser go 3 https://example.com/settings
   vau browser go 3 back`,
   kind: "write",
   lock: false,
-  params: { tab, to: { type: "string", required: true, description: "an http(s) address, or back, forward, reload" }, terminal },
+  params: { tab, to: { type: "string", description: "an http(s) address, or back, forward, reload" }, url: { type: "string", description: "an http(s) address (as to)" }, diff: pageDiff, terminal },
   args: ["tab", "to"],
-  run: async (p, ctx) => ask<Page>("agent:navigate", p.tab, p.to, await by(ctx, p)),
-  text: where,
-  did: (p) => ({ action: "run", text: `Sent browser tab ${String(p.tab)} to ${String(p.to)}` }),
+  run: async (p, ctx) => {
+    const to = p.to ?? p.url
+    if (!to) throw new OpError("where to: an http(s) address, or back, forward, reload")
+    return ask<Acted>("agent:navigate", p.tab, to, await by(ctx, p), p.diff)
+  },
+  text: (r: Acted) => `${where(r)}${changed(r)}`,
+  did: (p) => ({ action: "run", text: `Sent browser tab ${String(p.tab)} to ${String(p.to ?? p.url)}` }),
 })
-
-/** The lines of `text` that have `find` (any case; /a regex/ too), a line around each, numbered. */
-export function grep(text: string, find: string, max = 50) {
-  let re: RegExp
-  const m = /^\/(.+)\/([a-z]*)$/.exec(find)
-  try { re = m ? new RegExp(m[1], m[2].includes("i") ? m[2] : `${m[2]}i`) : new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") }
-  catch { throw new OpError(`not a regex: ${find}`) }
-  const lines = text.split("\n"), keep = new Set<number>(), hits: number[] = []
-  lines.forEach((l, i) => { if (hits.length < max && re.test(l)) { hits.push(i); for (const j of [i - 1, i, i + 1]) if (j >= 0 && j < lines.length) keep.add(j) } })
-  const out: string[] = []
-  let last = -2
-  for (const i of [...keep].sort((a, b) => a - b)) {
-    if (i > last + 1 && out.length) out.push("--")
-    out.push(`${i + 1}${hits.includes(i) ? ":" : "-"} ${lines[i].slice(0, 500)}`)
-    last = i
-  }
-  return { hits: hits.length, text: out.join("\n") }
-}
 
 plugin.op({
   id: "web-viewer.player",
@@ -260,19 +270,22 @@ plugin.op({
   cli: "browser read",
   mcp: "browser_read",
   summary: "A tab's page as plain text: everything it shows, for reading (a snapshot is for acting); or only the lines with some words.",
-  help: `find keeps the lines that have it (any case; /a regex/ too), with a line around each, numbered: a long page
-searched without reading it all.
+  help: `main keeps the page's main part (no navigation, header or footer) when it marks one. find keeps the lines that have
+it (any case; /a regex/ too), with a line around each, numbered: a long page searched without reading it all. A Google
+doc reads as its Markdown, a sheet as the shown sheet's CSV and slides as their text (their exports, with the tab's
+logins): what their canvas never shows whole.
 
   vau browser read 3
+  vau browser read 3 --main
   vau browser read 3 --find "order number"`,
   kind: "read",
-  params: { tab, find: { type: "string", description: "only the lines with this (words, or /a regex/)" } },
+  params: { tab, main: { type: "boolean", description: "only the page's main part" }, find: { type: "string", description: "only the lines with this (words, or /a regex/)" } },
   args: ["tab"],
   run: async (p) => {
-    const r = await ask<Page & { text: string }>("agent:read", p.tab)
+    const r = await ask<Page & { text: string; as?: string }>("agent:read", p.tab, !!p.main)
     return p.find ? { ...r, text: grep(r.text, p.find).text, find: p.find } : r
   },
-  text: (r: Page & { text: string; find?: string }) => `${where(r)}\n\n${r.find && !r.text ? `Nothing has "${r.find}".` : r.text}`,
+  text: (r: Page & { text: string; find?: string; as?: string }) => `${where(r)}${r.as ? `\n(${{ md: "the doc as Markdown", csv: "the sheet as CSV", txt: "the slides' text" }[r.as] ?? r.as}, from its export)` : ""}\n\n${r.find && !r.text ? `Nothing has "${r.find}".` : r.text}`,
 })
 
 plugin.op({
@@ -309,7 +322,7 @@ the Downloads folder of the Mac whose browser it is). helped: the user said Done
   vau browser wait 3 --text "Order placed"
   vau browser wait 3 --url /dashboard --timeout 20
   vau browser wait 3 --download
-  vau browser wait 3 --helped --timeout 60`,
+  vau browser wait 3 --helped --timeout 600`,
   kind: "read",
   params: {
     tab,
@@ -317,7 +330,7 @@ the Downloads folder of the Mac whose browser it is). helped: the user said Done
     url: { type: "string", description: "part of the address it's at" },
     download: { type: "boolean", description: "the tab's last download finished" },
     helped: { type: "boolean", description: "the user said Done to what you asked (browser ask)" },
-    timeout: { type: "integer", minimum: 1, maximum: 60, default: 10, description: "seconds, at most" },
+    timeout: { type: "integer", minimum: 1, maximum: 600, default: 10, description: "seconds, at most (60 at most but for helped, 600)" },
   },
   args: ["tab"],
   run: async (p) => {
@@ -356,17 +369,20 @@ plugin.op({
 most, needing Act like act. Its calls work on the tab: snapshot() (the tree), ref(name, role?) (the first control with
 that name, from a fresh tree: its ref or null), act(action, ref?, value?) or act({ action, ref, value, key, diff }) (as
 browser act; no diff unless asked), fill({ e5: "Alice", e7: true }), read() (the page's text), wait({ text, url,
-download, timeout }), go(url | "back" | "forward" | "reload"), sleep(ms), console.log(...). Each step is kept for replay
+download, timeout }), go(url | "back" | "forward" | "reload"), sleep(ms), console.log(...), and args (--args, as JSON).
+act takes a control by name too: act({ action: "click", name: "Save" }). Each step is kept for replay
 like any other. Answers what it logged and what it returned, as JSON.
 
   vau browser run 3 'await fill({ [await ref("Name")]: "Alice" }); await act("click", await ref("Send", "button"));
     await wait({ text: "Hello" }); return (await read()).split("\\n")[0]'
-  vau browser run 3 - < flow.js`,
+  vau browser run 3 - < flow.js
+  vau browser run 3 --args '{"q":"invoice"}' - < search.js`,
   kind: "write",
   lock: false,
-  params: { tab, script: { type: "string", required: true, stdin: true, description: "the script: an async function's body (await, return)" }, terminal },
+  params: { tab, script: { type: "string", required: true, stdin: true, description: "the script: an async function's body (await, return)" },
+    args: { type: "object", description: "what the script gets as args (JSON): one script for several inputs" }, terminal },
   args: ["tab", "script"],
-  run: async (p, ctx) => ask<Page & { value: string; logs: string[] }>("agent:run", p.tab, p.script, await by(ctx, p)),
+  run: async (p, ctx) => ask<Page & { value: string; logs: string[] }>("agent:run", p.tab, p.script, await by(ctx, p), p.args ?? null),
   text: (r: Page & { value: string; logs: string[] }) => [...r.logs, r.value === "null" && r.logs.length ? "" : r.value].filter(Boolean).join("\n"),
   did: (p) => ({ action: "run", text: `Ran a script of steps in browser tab ${String(p.tab)}` }),
 })
@@ -401,6 +417,38 @@ plugin.op({
 })
 
 plugin.op({
+  id: "web-viewer.download",
+  cli: "browser download",
+  mcp: "browser_download",
+  summary: "Download a file (a PDF, an invoice, an export) as a tab's page would, with its logins, into the vault (the attachments folder).",
+  help: `The address is a link's (from read, evaluate or a snapshot) or relative to the page. It's fetched with the tab's
+logins and its address as referrer, so what you could open there downloads, without clicking through a viewer.
+
+  vau browser download 3 https://dash.example.com/invoices/1042.pdf
+  vau browser download 3 /export.csv --name "Orders October" --folder Finance`,
+  kind: "write",
+  lock: false,
+  params: {
+    tab,
+    url: { type: "string", required: true, description: "the file's address (or one relative to the page)" },
+    name: { type: "string", description: "the file's name (default its own)" },
+    folder: { type: "string", description: "the vault folder to save it in; the attachments folder by default" },
+    note: { type: "string", format: "path", description: "a note to embed it in, at its end" },
+    terminal,
+  },
+  args: ["tab", "url"],
+  run: async (p, ctx) => {
+    const r = await ask<{ tab: number; url: string; name: string; type: string; data: string }>("agent:download", p.tab, p.url, await by(ctx, p))
+    const ext = path.extname(r.name)
+    const name = String(p.name ?? "").trim() ? `${String(p.name).trim().replace(new RegExp(`${ext.replace(".", "\\.")}$`, "i"), "")}${ext}` : r.name
+    const saved = await plugin.runOp("file.upload", { data: r.data, name: name.slice(0, 160), folder: p.folder, note: p.note }, ctx.who)
+    return { tab: r.tab, url: r.url, type: r.type, bytes: Buffer.from(r.data, "base64").length, ...saved.result as { path: string; note: string | null } }
+  },
+  text: (r: { path: string; note: string | null; bytes: number; type: string }) => `Saved ${r.path} (${Math.max(1, Math.round(r.bytes / 1024))} KB${r.type ? `, ${r.type.split(";")[0]}` : ""})${r.note ? `, embedded in ${r.note}` : ""}.`,
+  did: (p) => ({ action: "edit", text: `Downloaded ${String(p.url)} from browser tab ${String(p.tab)}` }),
+})
+
+plugin.op({
   id: "web-viewer.ask",
   cli: "browser ask",
   mcp: "browser_ask_user",
@@ -410,7 +458,7 @@ of it (the Inbox, their phone). Then wait for their Done with browser wait --hel
 they did it (--text, --url). Never ask for their password: they type it themselves, or you log in with browser login.
 
   vau browser ask 3 "Sign in to your bank, then click Done"
-  vau browser wait 3 --helped --timeout 60`,
+  vau browser wait 3 --helped --timeout 600`,
   kind: "write",
   params: { tab, reason: { type: "string", required: true, description: "what to do, in a sentence (Sign in to GitHub)" }, terminal },
   args: ["tab", "reason"],

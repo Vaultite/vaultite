@@ -25,7 +25,12 @@ export function topics(plugins: Plugin[]): Topic[] {
   core.sort((a, b) => a.id.localeCompare(b.id))
   return [...core, ...plugins.flatMap((p) => {
     const d = p.docs()
-    return d ? [{ id: p.id, title: titleOf(d.text, String(p.manifest.name ?? p.id)), plugin: p.id, ...d }] : []
+    // (and its own topics, docs/<topic>.md: a short guide beside its full doc)
+    const more = fs.existsSync(path.join(p.dir, "docs")) ? fs.readdirSync(path.join(p.dir, "docs")).filter((f) => f.endsWith(".md")).sort().map((f): Topic => {
+      const text = readText(path.join(p.dir, "docs", f)).trim()
+      return { id: f.slice(0, -3), title: titleOf(text, f.slice(0, -3)), plugin: p.id, text }
+    }) : []
+    return [...(d ? [{ id: p.id, title: titleOf(d.text, String(p.manifest.name ?? p.id)), plugin: p.id, ...d }] : []), ...more]
   })]
 }
 

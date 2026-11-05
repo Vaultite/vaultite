@@ -7,6 +7,7 @@ import path from "node:path"
 import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 import { THUMB_WIDTH } from "./agentruns.ts"
+import { changes, mainLines } from "./axlines.ts"
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -82,6 +83,7 @@ export function pageFor(tab: unknown, need: "read" | "act", who?: By): EnginePag
   if (who?.remote && localUrl(p.wc.getURL() || p.url)) throw new Error(OUTSIDE)
   used.set(p.id, Date.now())
   void p.wake()
+  if (need === "act") void trackRequests(p)
   return p
 }
 
@@ -100,7 +102,7 @@ type AXNode = { nodeId: string; ignored?: boolean; role?: AXValue; name?: AXValu
   properties?: { name: string; value: AXValue }[] }
 const INTERACTIVE = new Set(["button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio", "switch", "slider", "spinbutton", "menuitem",
   "menuitemcheckbox", "menuitemradio", "option", "tab", "treeitem", "listbox"])
-const SKIP = new Set(["none", "generic", "InlineTextBox", "LineBreak", "presentation", "LayoutTable", "LayoutTableRow", "LayoutTableCell"])
+const SKIP = new Set(["none", "generic", "InlineTextBox", "LineBreak", "presentation", "LayoutTable", "LayoutTableRow", "LayoutTableCell", "MenuListPopup"])
 /** Each page's refs: an element keeps its ref while its document lasts, so refs stay good from one snapshot to the next
  *  and a diff shows only what changed. Never reused in a page: a new document's go on from the last one's. */
 type Refs = { byRef: Map<string, number>; byNode: Map<number, string>; n: number }
@@ -120,7 +122,8 @@ eachPage((p) => p.wc.on("did-navigate", () => {
 const MAX_SNAPSHOT = 60_000
 const MAX_TREE = 1_000_000
 
-/** The page's accessibility tree, a line per node shown, its controls with refs. */
+/** The page's accessibility tree, a line per node shown, its controls with refs; short, as each line costs agents tokens
+ *  (no text a name already says, no empty wrappers, a row of simple parts on one line, a long list's first options). */
 async function tree(p: EnginePage) {
   await cdp(p.wc, "Accessibility.enable")
   const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getFullAXTree")
@@ -128,37 +131,67 @@ async function tree(p: EnginePage) {
   const kids = new Set(nodes.flatMap((n) => n.childIds ?? []))
   const root = nodes.find((n) => !kids.has(n.nodeId)) ?? nodes[0]
   const r = refsOf(p.wc)
-  const lines: string[] = []
   let size = 0
   const text = (v: AXValue | undefined) => (typeof v?.value === "string" ? v.value : v?.value == null ? "" : String(v.value)).replace(/\s+/g, " ").trim()
-  const walk = (node: AXNode | undefined, depth: number) => {
-    if (!node || size > MAX_TREE) return
+  const pad = (depth: number) => "  ".repeat(depth)
+  /** Its lines, at `depth`; `said`: the name of the nearest line above, whose text needn't come again (any text, inside a
+   *  control: its name says what it is). */
+  const walk = (node: AXNode | undefined, depth: number, said: string | true): string[] => {
+    if (!node || size > MAX_TREE) return []
     const role = text(node.role), name = text(node.name).slice(0, 200)
     // (a field the app filled a secret into: its value, and the text inside it, never shown)
     const filled = !!node.backendDOMNodeId && wasFilled(p.wc, node.backendDOMNodeId)
     const shown = !node.ignored && !SKIP.has(role) && !(role === "StaticText" && !name)
-    let d = depth
-    if (shown) {
-      const props = Object.fromEntries((node.properties ?? []).map((x) => [x.name, x.value?.value]))
-      let line = `${"  ".repeat(depth)}- ${role === "StaticText" ? "text" : role}${name ? ` "${name.replace(/"/g, "'")}"` : ""}`
-      const id = node.backendDOMNodeId
-      if ((INTERACTIVE.has(role) || (props.focusable === true && !!name)) && id) {
-        let ref = r.byNode.get(id)
-        if (!ref) { ref = `e${++r.n}`; r.byNode.set(id, ref); r.byRef.set(ref, id) }
-        line += ` [ref=${ref}]`
-      }
-      // (a password field's dots say its length: never)
-      const value = filled || /^[•●*]+$/.test(text(node.value)) ? (text(node.value) ? "•••" : "") : text(node.value)
-      if (value && value !== name) line += `: ${value.slice(0, 200)}`
-      for (const k of ["checked", "pressed", "expanded", "selected", "disabled"]) if (props[k] === true || props[k] === "true" || props[k] === "mixed") line += ` [${k}]`
-      line = scrub(line)
+    const under = (d: number, s: string | true) => (filled ? [] : (node.childIds ?? []).flatMap((c) => walk(byId.get(c), d, s)))
+    if (!shown) return under(depth, said)
+    if (role === "StaticText") {
+      if (said === true || (said && said.includes(name))) return []
+      const line = scrub(`${pad(depth)}- text "${name.replace(/"/g, "'")}"`)
       size += line.length + 1
-      lines.push(line)
-      d = depth + 1
+      return [line]
     }
-    if (!filled) for (const c of node.childIds ?? []) walk(byId.get(c), d)
+    const props = Object.fromEntries((node.properties ?? []).map((x) => [x.name, x.value?.value]))
+    let line = `${pad(depth)}- ${role}${name ? ` "${name.replace(/"/g, "'")}"` : ""}`
+    const id = node.backendDOMNodeId
+    let info = !!name
+    if ((INTERACTIVE.has(role) || (props.focusable === true && !!name)) && id) {
+      let ref = r.byNode.get(id)
+      if (!ref) { ref = `e${++r.n}`; r.byNode.set(id, ref); r.byRef.set(ref, id) }
+      line += ` [ref=${ref}]`
+      info = true
+    }
+    // (a password field's dots say its length: never)
+    const value = filled || /^[•●*]+$/.test(text(node.value)) ? (text(node.value) ? "•••" : "") : text(node.value)
+    if (value && value !== name) { line += `: ${value.slice(0, 200)}`; info = true }
+    for (const k of ["checked", "pressed", "expanded", "selected", "disabled"]) if (props[k] === true || props[k] === "true" || props[k] === "mixed") { line += ` [${k}]`; info = true }
+    const control = INTERACTIVE.has(role) && !!name && !/^(textbox|searchbox|combobox|listbox)$/.test(role)
+    let below = under(depth + 1, control ? true : name && role !== "RootWebArea" ? name : said)
+    const top = (l: string) => l.startsWith(`${pad(depth + 1)}- `)
+    // (a list's options past the first few: one line saying how many, the chosen ones kept)
+    const options = below.filter((l) => top(l) && /^\s*- option\b/.test(l))
+    if (options.length > 15) {
+      let shownOptions = 0
+      below = below.filter((l) => !(top(l) && /^\s*- option\b/.test(l)) || /\[selected\]/.test(l) || shownOptions++ < 10)
+      below.push(`${pad(depth + 1)}- … ${options.length - below.filter((l) => top(l) && /^\s*- option\b/.test(l)).length} more options`)
+    }
+    const tops = below.filter(top)
+    // (an empty wrapper says nothing; one holding a single thing, or a part named as the one thing in it, a cell holding
+    // its link, gives its place to it)
+    if (!info && !below.length) return []
+    if (tops.length === 1 && (!info || (!line.includes("[ref=") && name && new RegExp(`^\\s*- \\S+ "${name.replace(/"/g, "'").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`).test(tops[0])))) {
+      return below.map((l) => l.slice(2))
+    }
+    // (a row or a list's item of simple parts, a line: its parts side by side)
+    if (!info && tops.length > 1 && tops.length <= 12 && tops.length === below.length) {
+      const parts = below.map((l) => l.trim().replace(/^- (?:text|cell|gridcell|paragraph|StaticText) (?=")/, "").replace(/^- /, ""))
+      const joined = `${pad(depth)}- ${role}: ${parts.join(" | ")}`
+      if (joined.length < 500) return [joined]
+    }
+    line = scrub(line)
+    size += line.length + 1
+    return [line, ...below]
   }
-  walk(root, 0)
+  const lines = walk(root, 0, "")
   seen.set(p.wc, { lines, doc: docOf(p.wc) })
   return lines
 }
@@ -173,31 +206,48 @@ async function snapshot(p: EnginePage) {
   return { tab: p.id, url: scrub(p.wc.getURL()), title: scrub(p.wc.getTitle()), snapshot: cut(lines) }
 }
 
-/** What changed between two trees: lines gone (-) then new (+), by what they say, not their depth (a wrapper added moves
- *  nothing). */
-export function changes(before: string[], after: string[]) {
-  const plain = (l: string) => l.trim().replace(/^- /, "")
-  const left = new Map<string, number>()
-  for (const l of before) left.set(plain(l), (left.get(plain(l)) ?? 0) + 1)
-  const added: string[] = []
-  for (const l of after.map(plain)) {
-    const n = left.get(l) ?? 0
-    if (n) left.set(l, n - 1); else added.push(l)
+/** Each agent page's requests for data under way (fetch, XHR), by id with when each began: a client-rendered page draws
+ *  what they bring, so settling waits for them. Over the DevTools protocol, in agents' pages only. */
+const loading = new WeakMap<WebContents, Map<string, number>>()
+async function trackRequests(p: EnginePage) {
+  if (loading.has(p.wc)) return
+  const live = new Map<string, number>()
+  loading.set(p.wc, live)
+  const heard = (_e: unknown, method: string, params: { requestId?: string; type?: string }) => {
+    if (method === "Network.requestWillBeSent" && (params.type === "XHR" || params.type === "Fetch")) live.set(String(params.requestId), Date.now())
+    else if (method === "Network.loadingFinished" || method === "Network.loadingFailed") live.delete(String(params.requestId))
   }
-  const gone = before.map(plain).filter((l) => { const n = left.get(l) ?? 0; if (n) left.set(l, n - 1); return n > 0 })
-  return [...gone.map((l) => `- ${l}`), ...added.map((l) => `+ ${l}`)]
+  const off = () => { p.wc.debugger.off("message", heard); loading.delete(p.wc) }
+  p.wc.debugger.on("message", heard)
+  p.wc.on("did-start-navigation", () => live.clear())
+  try { await cdp(p.wc, "Network.enable", { maxTotalBufferSize: 0, maxResourceBufferSize: 0 }); p.wc.debugger.once("detach", off) } catch { off() }
 }
-
-/** Until the page's DOM is still a moment (300 ms; 2 s at most), so a diff sees what the action drew. */
-const quiet = (p: EnginePage) => p.wc.executeJavaScriptInIsolatedWorld(1014, [{ code: `new Promise((done) => {
-  let t = setTimeout(end, 300)
-  const cap = setTimeout(end, 2000), o = new MutationObserver(() => { clearTimeout(t); t = setTimeout(end, 300) })
-  function end() { o.disconnect(); clearTimeout(t); clearTimeout(cap); done(true) }
-  o.observe(document, { subtree: true, childList: true, attributes: true, characterData: true })
-})` }]).catch(() => {})
+/** Data requests that began since `since` (or a second before) and haven't ended: long-lived ones (a mail app's open
+ *  channel) never hold anything. */
+const fetching = (p: EnginePage, since: number) => [...(loading.get(p.wc)?.values() ?? [])].some((t) => t >= since - 1000 && Date.now() - t < 10_000)
+/** Until the page's DOM is still a moment (300 ms) with no data request it began under way, `cap` at most, so an answer
+ *  sees what the action drew. */
+async function quiet(p: EnginePage, since = Date.now(), cap = 2000) {
+  const until = Date.now() + cap
+  for (;;) {
+    const left = until - Date.now()
+    if (left <= 0 || p.wc.isDestroyed()) return
+    await p.wc.executeJavaScriptInIsolatedWorld(1014, [{ code: `new Promise((done) => {
+      let t = setTimeout(end, 300)
+      const cap = setTimeout(end, ${Math.max(300, left)}), o = new MutationObserver(() => { clearTimeout(t); t = setTimeout(end, 300) })
+      function end() { o.disconnect(); clearTimeout(t); clearTimeout(cap); done(true) }
+      o.observe(document, { subtree: true, childList: true, attributes: true, characterData: true })
+    })` }]).catch(() => {})
+    if (!fetching(p, since)) return
+    while (fetching(p, since) && Date.now() < until) await new Promise((r) => setTimeout(r, 50))
+  }
+}
 
 /** How many changed lines an act answers: summary (30), none (0, no diff taken) or a number. */
 const diffLimit = (d: unknown) => (d === "none" ? 0 : /^\d+$/.test(String(d ?? "")) ? Math.min(1000, Number(d)) : 30)
+const cutTo = (all: string[], limit: number) => ({ lines: all.slice(0, limit), more: Math.max(0, all.length - limit) })
+/** A new page's first lines, its content's (summary: 50; none; or a number). */
+const pageLines = (lines: string[], d: unknown) => ({ page: true, ...cutTo(mainLines(lines), d === undefined || d === null || d === "summary" ? 50 : diffLimit(d)) })
 
 // ---------- downloads, by page: where each landed (the app saves them in Downloads, web.ts) ----------
 
@@ -265,6 +315,7 @@ const POINTER = `(x, y, from, name, clicked) => {
   if (!a || !a.host.isConnected) {
     const host = document.createElement("vaultite-agent")
     host.style.cssText = "all:initial!important;position:fixed!important;inset:0!important;pointer-events:none!important;z-index:2147483647!important;display:block!important"
+    host.setAttribute("aria-hidden", "true") // (never in the tree agents read: its name would be a change after each act)
     const root = host.attachShadow({ mode: "closed" })
     root.innerHTML = \`<style>
       .frame { position: fixed; inset: 0; box-shadow: inset 0 0 0 2px rgba(175,82,222,.5), inset 0 0 28px rgba(175,82,222,.22); opacity: 0; transition: opacity .4s }
@@ -321,6 +372,18 @@ const KEYS: Record<string, { code: string; key: string; vk: number; text?: strin
   home: { code: "Home", key: "Home", vk: 36 }, end: { code: "End", key: "End", vk: 35 }, pageup: { code: "PageUp", key: "PageUp", vk: 33 },
   pagedown: { code: "PageDown", key: "PageDown", vk: 34 },
 }
+/** A Mac's editing keys, which a page takes only as Chromium's editing commands (a key event alone selects nothing): by
+ *  modifiers in order, then the key. Never copy, cut or paste: those would reach the user's clipboard. */
+const MAC_COMMANDS: Record<string, string> = {
+  "meta+a": "selectAll", "meta+z": "undo", "meta+shift+z": "redo",
+  "meta+arrowleft": "moveToBeginningOfLine", "meta+arrowright": "moveToEndOfLine", "meta+arrowup": "moveToBeginningOfDocument", "meta+arrowdown": "moveToEndOfDocument",
+  "meta+shift+arrowleft": "moveToBeginningOfLineAndModifySelection", "meta+shift+arrowright": "moveToEndOfLineAndModifySelection",
+  "meta+shift+arrowup": "moveToBeginningOfDocumentAndModifySelection", "meta+shift+arrowdown": "moveToEndOfDocumentAndModifySelection",
+  "alt+arrowleft": "moveWordLeft", "alt+arrowright": "moveWordRight", "alt+shift+arrowleft": "moveWordLeftAndModifySelection", "alt+shift+arrowright": "moveWordRightAndModifySelection",
+  "meta+backspace": "deleteToBeginningOfLine", "alt+backspace": "deleteWordBackward", "alt+delete": "deleteWordForward",
+  "shift+arrowleft": "moveLeftAndModifySelection", "shift+arrowright": "moveRightAndModifySelection", "shift+arrowup": "moveUpAndModifySelection", "shift+arrowdown": "moveDownAndModifySelection",
+  "shift+home": "moveToBeginningOfLineAndModifySelection", "shift+end": "moveToEndOfLineAndModifySelection",
+}
 /** Copying and cutting: never where a filled secret could be selected (a revealed password). */
 const COPY = /^(?:(?:meta|cmd|control|ctrl)\+(?:shift\+)?[cx]|(?:control|ctrl|shift)\+(?:insert|delete))$/i
 /** A key with modifiers ("Enter", "Meta+a", "Shift+Tab"). */
@@ -334,7 +397,9 @@ export async function press(p: EnginePage, combo: string) {
     : null)
   if (!k) throw new Error(`no key "${last}": Enter, Tab, Escape, Backspace, Delete, Space, arrows, Home, End, PageUp, PageDown or one character`)
   const text = modifiers & ~8 ? undefined : k.text
-  await cdp(p.wc, "Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, modifiers, ...(text ? { text, unmodifiedText: text } : {}) })
+  const command = process.platform === "darwin" ? MAC_COMMANDS[[...new Set(mods.map((m) => (m === "cmd" ? "meta" : m === "ctrl" ? "control" : m)))].sort().concat(last.toLowerCase()).join("+")] : undefined
+  await cdp(p.wc, "Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, modifiers, ...(text ? { text, unmodifiedText: text } : {}),
+    ...(command ? { commands: [command] } : {}) })
   await cdp(p.wc, "Input.dispatchKeyEvent", { type: "keyUp", key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, modifiers })
 }
 
@@ -351,22 +416,70 @@ export async function settle(p: EnginePage, was: string, since = Date.now()) {
   return { tab: p.id, url: scrub(url), title: p.wc.isDestroyed() ? "" : scrub(p.wc.getTitle()), navigated: url !== was, ...(got.length ? { downloads: got.map(shownDownload) } : {}) }
 }
 
-type Field = { ref: string; value: string }
-type Act = { action: string; ref?: string; value?: string; key?: string; direction?: string; files?: unknown; fields?: Field[]; diff?: unknown }
+type Field = { ref: string; value: string; name?: string }
+type Act = { action: string; ref?: string; name?: string; role?: string; at?: { x: number; y: number }; value?: string; html?: string; key?: string; direction?: string; files?: unknown; fields?: Field[]; diff?: unknown }
+
+/** The ref of the control named `name` (an exact name first, then one that has it), of `role` if given, from the page as
+ *  it is now; else why not, with the names it has that come close. */
+async function refFor(p: EnginePage, name: string, role?: string) {
+  const want = name.trim().toLowerCase(), r = String(role ?? "").trim()
+  const all = (await tree(p)).flatMap((l) => [...l.matchAll(/(?:^\s*- |: | \| )(\S+) "([^"]*)"[^|]*?\[ref=(e\d+)\]/g)])
+  const hits = all.filter((m) => !r || m[1] === r)
+  const hit = hits.find((m) => m[2].toLowerCase() === want) ?? hits.find((m) => m[2].toLowerCase().includes(want))
+  if (hit) return hit[3]
+  const words = want.split(/\W+/).filter((w) => w.length > 2)
+  const near = (r ? hits : all).filter((m) => words.some((w) => m[2].toLowerCase().includes(w))).slice(0, 8)
+  throw new Error(`no ${r || "control"} named "${name}" on the page${near.length ? `; close: ${near.map((m) => `${m[1]} "${m[2]}" [${m[3]}]`).join(", ")}` : `: take a snapshot (\`vau browser snapshot ${p.id}\`)`}`)
+}
+/** Where text the page shows is drawn (its first showing, an exact match first), scrolled into view: what a person would
+ *  click to put the caret there, or double-click to select a word. */
+const TEXT_AT = (want: string) => `(() => {
+  const want = ${JSON.stringify(want)}.toLowerCase(), found = []
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+  for (let n; (n = walk.nextNode()) && found.length < 50;) { const t = n.data.toLowerCase(), i = t.indexOf(want); if (i >= 0 && n.parentElement && n.parentElement.getClientRects().length) found.push([n, i, t.trim() === want, !!n.parentElement.closest("[contenteditable=''], [contenteditable=true], textarea")]) }
+  // (whole words before part of one, and text in an editor before the same text around it: a doc's title in its bar)
+  const hit = found.find((f) => f[2] && f[3]) || found.find((f) => f[2]) || found.find((f) => f[3]) || found[0]
+  if (!hit) return null
+  const [node, i] = hit, range = document.createRange()
+  range.setStart(node, i); range.setEnd(node, i + want.length)
+  node.parentElement.scrollIntoView({ block: "center", inline: "nearest" })
+  const b = range.getBoundingClientRect()
+  return { x: b.left + b.width / 2, y: b.top + b.height / 2 }
+})()`
+/** The action with its targets found: a control by its name (else text the page shows, by where it's drawn), and a
+ *  form's fields by their names. */
+async function named(p: EnginePage, a: Act): Promise<Act> {
+  const out = { ...a }
+  if (!out.ref && out.name) {
+    // (a role that's no control's, text or a heading, is text the page shows)
+    if (out.role && !INTERACTIVE.has(out.role)) delete out.role
+    try { out.ref = await refFor(p, out.name, out.role) } catch (e) {
+      const at = out.role ? null : await p.wc.executeJavaScriptInIsolatedWorld(1017, [{ code: TEXT_AT(out.name) }]).catch(() => null) as { x: number; y: number } | null
+      if (!at) throw e
+      out.at = at
+    }
+  }
+  if (out.fields) out.fields = await Promise.all(out.fields.map(async (f) => (f.ref ? f : { ...f, ref: await refFor(p, f.name ?? "") })))
+  return out
+}
+/** Where an action lands: its control (scrolled into view), or the point of the text it named. */
+const targetOf = async (p: EnginePage, a: Act, need: (v: unknown, what: string) => unknown) => (a.at && !a.ref ? { id: 0, ...a.at } : nodeOf(p, need(a.ref, "a ref or a name")))
 /** One action, with real input, not waiting for what it started. */
 async function step(p: EnginePage, a: Act) {
   const need = (v: unknown, what: string) => { if (v === undefined || v === null || v === "") throw new Error(`${a.action} needs ${what}`); return v }
   switch (a.action) {
     case "click": case "dblclick": case "hover": {
-      const n = await nodeOf(p, need(a.ref, "a ref"))
+      const n = await targetOf(p, a, need)
       if (a.action === "hover") { await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y); await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x: n.x, y: n.y }) }
       else await click(p, n.x, n.y, a.action === "dblclick" ? 2 : 1)
       break
     }
     case "fill": case "type": {
-      const n = await nodeOf(p, need(a.ref, "a ref"))
+      // (type with no control: where the caret is, as a person typing on)
+      if (a.action === "type" && !a.ref && !a.at) { await pointTo(p, actor.get(p.wc) ?? "", null, null); if (a.value) await cdp(p.wc, "Input.insertText", { text: String(a.value) }); break }
+      const n = await targetOf(p, a, need)
       await click(p, n.x, n.y)
-      await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {})
+      if (n.id) await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {})
       // (fill: what's there goes first, as a person selecting it all would)
       if (a.action === "fill") { await press(p, process.platform === "darwin" ? "Meta+a" : "Control+a"); await press(p, "Backspace") }
       if (a.value) await cdp(p.wc, "Input.insertText", { text: String(a.value) })
@@ -403,7 +516,14 @@ async function step(p: EnginePage, a: Act) {
       const at = options.findIndex((o) => o === want || o.trim() === want.trim())
       if (at < 0) throw new Error(`no option "${want}" there: ${options.slice(0, 20).join(", ")}`)
       await cdp(p.wc, "DOM.focus", { backendNodeId: n.id })
-      for (const ch of options[at]) await cdp(p.wc, "Input.dispatchKeyEvent", { type: "keyDown", key: ch, text: ch, unmodifiedText: ch })
+      // (picked at once, one input and change as a person's pick makes: typing its name would pick the options on the
+      // way, each a change, which a page acting on change takes)
+      const { object } = await cdp<{ object: { objectId: string } }>(p.wc, "DOM.resolveNode", { backendNodeId: n.id })
+      await cdp(p.wc, "Runtime.callFunctionOn", { objectId: object.objectId, arguments: [{ value: at }], functionDeclaration: `function (i) {
+        if (this.selectedIndex === i) return
+        this.selectedIndex = i
+        this.dispatchEvent(new Event("input", { bubbles: true })); this.dispatchEvent(new Event("change", { bubbles: true })) }` })
+      await cdp(p.wc, "Runtime.releaseObject", { objectId: object.objectId }).catch(() => {})
       break
     }
     case "upload": {
@@ -415,6 +535,22 @@ async function step(p: EnginePage, a: Act) {
       await cdp(p.wc, "DOM.setFileInputFiles", { backendNodeId: n.id, files: uploadFiles(a.files) })
       break
     }
+    case "paste": {
+      // (as a person pasting would, without the user's clipboard: a paste event carrying the text, and its HTML when
+      // given, which editors like Google Docs take with its formatting; a field that ignores it gets the text typed)
+      const text = String(need(a.value, "a value"))
+      if (a.ref || a.at) { const n = await targetOf(p, a, need); await click(p, n.x, n.y); if (n.id) await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {}) }
+      else await pointTo(p, actor.get(p.wc) ?? "", null, null)
+      const code = `(() => { const dt = new DataTransfer(); dt.setData("text/plain", ${JSON.stringify(text)})
+        ${a.html ? `dt.setData("text/html", ${JSON.stringify(String(a.html))})` : ""}
+        let t = document.activeElement
+        for (let i = 0; i < 5 && t; i++) { if (t.shadowRoot && t.shadowRoot.activeElement) t = t.shadowRoot.activeElement; else if (t.tagName === "IFRAME") { try { t = t.contentDocument.activeElement } catch { break } } else break }
+        const e = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true, composed: true })
+        ;(t || document.body).dispatchEvent(e)
+        return e.defaultPrevented })()`
+      if (!await p.wc.executeJavaScriptInIsolatedWorld(1016, [{ code }]).catch(() => false)) await cdp(p.wc, "Input.insertText", { text })
+      break
+    }
     case "scroll": {
       const n = a.ref ? await nodeOf(p, a.ref) : null
       const dy = { up: -600, down: 600 }[String(a.direction ?? a.value ?? "down")] ?? 600
@@ -422,7 +558,7 @@ async function step(p: EnginePage, a: Act) {
       await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseWheel", x: n?.x ?? 400, y: n?.y ?? 300, deltaX: 0, deltaY: dy })
       break
     }
-    default: throw new Error(`no action "${a.action}": click, dblclick, hover, fill, type, press, check, uncheck, select, upload or scroll`)
+    default: throw new Error(`no action "${a.action}": click, dblclick, hover, fill, type, paste, press, check, uncheck, select, upload or scroll`)
   }
 }
 
@@ -447,27 +583,39 @@ async function fillForm(p: EnginePage, fields: Field[]) {
 /** The fields given (a list of { ref, value }), checked. */
 const fieldsOf = (x: unknown): Field[] => {
   if (!Array.isArray(x) || !x.length) throw new Error("fields: a list of { ref, value }")
-  return x.slice(0, 200).map((f: { ref?: unknown; value?: unknown }) => {
-    if (!f || typeof f !== "object" || !String(f.ref ?? "").trim()) throw new Error("fields: each needs a ref (e12) and its value")
-    return { ref: String(f.ref).trim(), value: typeof f.value === "string" ? f.value : f.value == null ? "" : String(f.value) }
+  return x.slice(0, 200).map((f: { ref?: unknown; name?: unknown; value?: unknown }) => {
+    if (!f || typeof f !== "object" || !(String(f.ref ?? "").trim() || String((f as { name?: unknown }).name ?? "").trim())) throw new Error("fields: each needs a ref (e12) or its control's name, and its value")
+    return { ref: String(f.ref ?? "").trim(), name: String((f as { name?: unknown }).name ?? "").trim() || undefined, value: typeof f.value === "string" ? f.value : f.value == null ? "" : String(f.value) }
   })
 }
 
+/** The pages an act on `p` opened (a link to a new tab, a popup), once they've loaded a moment: the agent's own. */
+async function openedBy(p: EnginePage, had: Set<number>) {
+  const opened = allPages().filter((x) => !had.has(x.id) && x.opener === p.id && !x.wc.isDestroyed())
+  if (!opened.length) return {}
+  const until = Date.now() + 5000
+  while (Date.now() < until && opened.some((x) => !x.wc.isDestroyed() && x.wc.isLoading())) await new Promise((r) => setTimeout(r, 100))
+  return { opened: opened.filter((x) => !x.wc.isDestroyed()).map((x) => ({ tab: x.id, url: scrub(x.wc.getURL() || x.url), title: scrub(x.wc.getTitle()) })) }
+}
 /** An action (or a whole form, `fields`) settled: where the tab is, what it downloaded, and what changed on the page since
  *  the agent last saw it (`diff`: lines, or the new page's when it went to another; none takes no tree). */
 async function act(p: EnginePage, a: Act) {
   const limit = diffLimit(a.diff)
   if (limit && !seen.has(p.wc)) await tree(p)
-  const before = seen.get(p.wc), was = p.wc.getURL(), since = Date.now()
+  const before = seen.get(p.wc), was = p.wc.getURL(), since = Date.now(), had = new Set(allPages().map((x) => x.id))
   if (a.fields) await fillForm(p, fieldsOf(a.fields)); else await step(p, a)
-  const r = await settle(p, was, since)
-  if (!limit || p.wc.isDestroyed()) return r
-  await quiet(p)
+  const r = { ...await settle(p, was, since), ...await openedBy(p, had) }
+  if (!limit || p.wc.isDestroyed()) {
+    // (no diff: still till what the action fetched has come, so the next step finds the page it drew)
+    const until = Date.now() + 3000
+    if (fetching(p, since)) { while (fetching(p, since) && Date.now() < until) await new Promise((r) => setTimeout(r, 50)); await new Promise((r) => setTimeout(r, 150)) }
+    return r
+  }
+  await quiet(p, since, r.navigated ? 4000 : 2000)
   const lines = await tree(p).catch(() => null)
   if (!lines) return r
   const page = !before || before.doc !== docOf(p.wc)
-  const all = page ? lines : changes(before.lines, lines)
-  return { ...r, navigated: r.navigated || page, diff: { page, lines: all.slice(0, limit), more: Math.max(0, all.length - limit) } }
+  return { ...r, navigated: r.navigated || page, diff: page ? pageLines(lines, a.diff) : { page: false, ...cutTo(changes(before.lines, lines), limit) } }
 }
 
 // ---------- what agents did, kept for replay (this Mac's userData, never the vault) ----------
@@ -598,9 +746,10 @@ export const byOf = (x: unknown): By => {
   return { name: s("name"), session: s("session"), task: s("task"), summary: s("summary", 300), ...((x as By).remote === true ? { remote: true } : {}) }
 }
 
-const DOING: Record<string, string> = { click: "Clicking", dblclick: "Double-clicking", hover: "Pointing at", fill: "Filling", type: "Typing in",
+const DOING: Record<string, string> = { click: "Clicking", dblclick: "Double-clicking", hover: "Pointing at", fill: "Filling", type: "Typing in", paste: "Pasting into",
   press: "Pressing", check: "Checking", uncheck: "Unchecking", select: "Picking in", upload: "Uploading into", scroll: "Scrolling" }
-async function actIn(p: EnginePage, a: Act, who: By) {
+async function actIn(p: EnginePage, given: Act, who: By) {
+  const a = await named(p, given.fields ? { ...given, fields: fieldsOf(given.fields) } : given)
   if (a.fields) {
     const fields = fieldsOf(a.fields)
     const kept = await Promise.all(fields.map(async (f) => ({ ref: f.ref, ...(await logged(p, f.ref, f.value)) })))
@@ -610,22 +759,37 @@ async function actIn(p: EnginePage, a: Act, who: By) {
     return r
   }
   const files = a.action === "upload" && Array.isArray(a.files) ? (a.files as { name?: unknown }[]).map((f) => String(f?.name ?? "")).join(", ") : ""
-  const kept = await logged(p, a.ref, files || (a.value ?? a.key ?? a.direction))
+  const kept = await logged(p, a.ref, files || (a.action === "paste" ? String(a.value ?? "").slice(0, 300) : a.value ?? a.key ?? a.direction))
+  if (!kept.name && a.name) kept.name = a.name
   acting(p, who, `${DOING[a.action] ?? a.action}${kept.name ? ` “${kept.name}”` : ""}`)
   const r = await act(p, a)
   void record(p, who, { action: a.action, ref: a.ref, ...kept })
   return r
 }
 
-async function readIn(p: EnginePage) {
-  const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: "({ url: location.href, title: document.title, text: document.body ? document.body.innerText : '' })" }]) as { url: string; title: string; text: string }
+/** A page's text: its main part only with `main`; a Google doc, sheet or slides as its export (Markdown, the sheet shown
+ *  as CSV, text), which its canvas never shows whole, with the page's own logins. */
+const READ = (main: boolean) => `(async () => {
+  const g = /^https:\\/\\/docs\\.google\\.com\\/(document|spreadsheets|presentation)\\/d\\/([\\w-]+)/.exec(location.href)
+  if (g) {
+    const as = { document: "md", spreadsheets: "csv", presentation: "txt" }[g[1]], gid = g[1] === "spreadsheets" ? (/[#&?]gid=(\\d+)/.exec(location.href) || [])[1] : ""
+    try {
+      const r = await fetch("/" + g[1] + "/d/" + g[2] + "/export?format=" + as + (gid ? "&gid=" + gid : ""), { credentials: "include" })
+      if (r.ok && !/text\\/html/.test(r.headers.get("content-type") || "")) return { url: location.href, title: document.title, text: await r.text(), as }
+    } catch {}
+  }
+  const root = (${main} && document.querySelector("main, [role=main]")) || document.body
+  return { url: location.href, title: document.title, text: root ? root.innerText : "" }
+})()`
+async function readIn(p: EnginePage, main = false) {
+  const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: READ(main) }]) as { url: string; title: string; text: string; as?: string }
   const text = scrub(r.text)
-  return { tab: p.id, url: scrub(r.url), title: scrub(r.title), text: text.length > 200_000 ? `${text.slice(0, 200_000)}\n… (cut short)` : text }
+  return { tab: p.id, url: scrub(r.url), title: scrub(r.title), ...(r.as ? { as: r.as } : {}), text: text.length > 200_000 ? `${text.slice(0, 200_000)}\n… (cut short)` : text }
 }
 
 type Wait = { text?: string; url?: string; download?: boolean; helped?: boolean }
 async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
-  const wait = Math.min(60_000, Math.max(100, Number(ms) || 10_000)), until = Date.now() + wait
+  const wait = Math.min(w.helped ? 600_000 : 60_000, Math.max(100, Number(ms) || 10_000)), until = Date.now() + wait
   // (the text is looked for here, in what the page shows scrubbed: never an oracle for a filled secret)
   const shows = async () => !w.text || scrub(String(await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code: "document.body ? document.body.innerText : ''" }]).catch(() => ""))).includes(String(w.text))
   const last = () => (downloads.get(p.wc) ?? []).at(-1)
@@ -671,8 +835,16 @@ onRequest("onBeforeRequest", (d, s) => {
 }, undefined, ["mainFrame", "subFrame"])
 
 const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return u } }
-async function navigateIn(p: EnginePage, to: unknown, who: By) {
-  const was = p.wc.getURL(), t = String(to ?? "")
+/** A page just loaded: once its content settled (a client-rendered page draws after its load), its first lines, unless
+ *  `lines` is none (a run's go, which snapshots when it wants). */
+async function firstLines(p: EnginePage, lines: unknown, since = Date.now()) {
+  if (lines === "none" || p.wc.isDestroyed()) return {}
+  await quiet(p, since, 4000)
+  const all = await tree(p).catch(() => null)
+  return all ? { diff: pageLines(all, lines) } : {}
+}
+async function navigateIn(p: EnginePage, to: unknown, who: By, lines: unknown = "none") {
+  const was = p.wc.getURL(), t = String(to ?? ""), since = Date.now()
   if (!["back", "forward", "reload"].includes(t) && !/^https?:\/\//i.test(t)) throw new Error("an http(s) address, back, forward or reload")
   if (who.remote && /^https?:/i.test(t) && localUrl(t)) throw new Error(OUTSIDE)
   acting(p, who, t === "back" ? "Going back" : t === "forward" ? "Going forward" : t === "reload" ? "Reloading" : `Opening ${hostOf(t)}`)
@@ -682,7 +854,7 @@ async function navigateIn(p: EnginePage, to: unknown, who: By) {
   else void p.wc.loadURL(t).catch(() => {})
   const r = await settle(p, was)
   void record(p, who, { action: "navigate", value: t })
-  return r
+  return { ...r, ...await firstLines(p, lines, since) }
 }
 
 /** The page's web pages, each with whose it is: an agent's (`by`, and `mine` for the one asking) or the user's. */
@@ -718,8 +890,9 @@ const BRIDGE = `(() => {
   window.__answer = (id, ok, v) => { const w = waits.get(id); if (!w) return; waits.delete(id); if (ok) w.ok(v); else w.fail(new Error(v)) }
   const call = (name, ...args) => new Promise((ok, fail) => { const id = ++n; waits.set(id, { ok, fail }); console.debug(${JSON.stringify(CALL)} + JSON.stringify({ id, name, args })) })
   const log = (...a) => { if (logs.length < 500) logs.push(a.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(" ").slice(0, 2000)) }
-  window.__run = async (script) => {
+  window.__run = async (script, args) => {
     const api = {
+      args,
       snapshot: () => call("snapshot"),
       act: (action, ref, value) => call("act", action && typeof action === "object" ? action : { action, ref, value }),
       fill: (fields) => call("act", { action: "fill", fields: Array.isArray(fields) ? fields : Object.entries(fields ?? {}).map(([ref, value]) => ({ ref, value: String(value) })) }),
@@ -739,14 +912,9 @@ const BRIDGE = `(() => {
 })()`
 
 /** The first control whose name has `name` (an exact one first), of `role` if given: its ref, or null. */
-async function refIn(p: EnginePage, name: unknown, role: unknown) {
-  const want = String(name ?? "").trim().toLowerCase(), r = String(role ?? "").trim()
-  const hits = (await tree(p)).map((l) => /^\s*- (\S+) "([^"]*)".*\[ref=(e\d+)\]/.exec(l)).filter((m): m is RegExpExecArray => !!m && (!r || m[1] === r))
-  const hit = hits.find((m) => m[2].toLowerCase() === want) ?? hits.find((m) => m[2].toLowerCase().includes(want))
-  return hit?.[3] ?? null
-}
+const refIn = (p: EnginePage, name: unknown, role: unknown) => refFor(p, String(name ?? ""), String(role ?? "") || undefined).catch(() => null)
 
-async function runIn(p: EnginePage, script: string, who: By) {
+async function runIn(p: EnginePage, script: string, who: By, args?: unknown) {
   if (!script.trim()) throw new Error("run needs a script")
   const view = new WebContentsView({ webPreferences: { session: sandboxSession(), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
   const wc = view.webContents
@@ -779,7 +947,7 @@ async function runIn(p: EnginePage, script: string, who: By) {
     await wc.loadURL("about:blank")
     await wc.executeJavaScript(BRIDGE)
     const out = await Promise.race([
-      wc.executeJavaScript(`window.__run(${JSON.stringify(script)})`) as Promise<{ value?: unknown; error?: string; logs: string[] }>,
+      wc.executeJavaScript(`window.__run(${JSON.stringify(script)}, ${JSON.stringify(args ?? null)})`) as Promise<{ value?: unknown; error?: string; logs: string[] }>,
       new Promise<never>((_r, fail) => { timer = setTimeout(() => { late = true; fail(new Error(`the script took over ${RUN_MS / 1000} s: it was stopped`)) }, RUN_MS) }),
     ])
     if (out.error) throw new Error(`the script failed: ${out.error}${out.logs.length ? `\nIt logged:\n${out.logs.join("\n")}` : ""}`)
@@ -900,7 +1068,7 @@ function failed(name: string, a: unknown[], why: string) {
 handle("agent:busy", (_win, of) => { const why = engineBusy(of === "server" ? "server" : "app"); return { busy: !!why, why } })
 
 serve("agent:tabs", (_win, by) => listOf(byOf(by)))
-serve("agent:open", async (win, url, container, by) => {
+serve("agent:open", async (win, url, container, by, lines) => {
   const u = String(url ?? "")
   if (!/^https?:\/\//i.test(u)) throw new Error("only http and https addresses")
   if (byOf(by).remote && localUrl(u)) throw new Error(OUTSIDE)
@@ -909,7 +1077,8 @@ serve("agent:open", async (win, url, container, by) => {
   if (access.get(profile) !== "act" || !mayOpen(profile)) throw new Error(`agents may not act in ${container ? `the container ${String(container)}` : "that container"}`)
   // (in the background of the vault's window: no tab of the user's; they see it in the status bar's agents, and open it
   // as a tab if they want)
-  const who = byOf(by), p = await openInBackground(win, u, profile)
+  const who = byOf(by), p = await openInBackground(win, u, profile), since = Date.now()
+  void trackRequests(p)
   owners.set(p.id, who)
   used.set(p.id, Date.now())
   actor.set(p.wc, who.name || "Agent")
@@ -918,10 +1087,10 @@ serve("agent:open", async (win, url, container, by) => {
   const until = Date.now() + 20_000
   while (Date.now() < until && !p.wc.isDestroyed() && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
   void record(p, who, { action: "open", value: u })
-  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
+  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), ...await firstLines(p, lines, since) }
 })
 serve("agent:snapshot", (_win, tab) => snapshot(pageFor(tab, "read")))
-serve("agent:read", (_win, tab) => readIn(pageFor(tab, "read")))
+serve("agent:read", (_win, tab, main) => readIn(pageFor(tab, "read"), main === true))
 // (the companion in the user's own tab: where an element is, to point at it; what they selected; what's under a point)
 serve("agent:locate", async (_win, tab, ref) => {
   const p = pageFor(tab, "read"), n = await nodeOf(p, ref)
@@ -1000,7 +1169,24 @@ serve("agent:evaluate", async (_win, tab, expression, by) => {
   if (json.length > 100_000) json = `${json.slice(0, 100_000)}… (cut short)`
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value: json }
 })
-serve("agent:run", (_win, tab, script, by) => runIn(pageFor(tab, "act", byOf(by)), String(script ?? ""), byOf(by)))
+/** A file at `url` as the tab's page would get it (its logins, its address as referrer): for a link's PDF, an invoice. */
+serve("agent:download", async (_win, tab, url, by) => {
+  const who = byOf(by), p = pageFor(tab, "act", who), u = String(url ?? "")
+  let to: URL
+  try { to = new URL(u, p.wc.getURL()) } catch { throw new Error("an http(s) address") }
+  if (!/^https?:$/.test(to.protocol)) throw new Error("an http(s) address")
+  if (who.remote && localUrl(to.href)) throw new Error(OUTSIDE)
+  acting(p, who, `Downloading from ${hostOf(to.href)}`)
+  const r = await p.wc.session.fetch(to.href, { credentials: "include", referrer: p.wc.getURL() } as RequestInit)
+  if (!r.ok) throw new Error(`${to.href} answered ${r.status} ${r.statusText}`)
+  const data = Buffer.from(await r.arrayBuffer())
+  if (data.length > 50 << 20) throw new Error("the file is over 50 MB")
+  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(r.headers.get("content-disposition") ?? "")?.[1]
+  const name = decodeURIComponent(named ?? path.basename(to.pathname) ?? "") || "download"
+  void record(p, who, { action: "download", value: to.href })
+  return { tab: p.id, url: scrub(to.href), name, type: r.headers.get("content-type") ?? "", data: data.toString("base64") }
+})
+serve("agent:run", (_win, tab, script, by, args) => runIn(pageFor(tab, "act", byOf(by)), String(script ?? ""), byOf(by), args))
 serve("agent:help", (_win, tab, reason, by) => {
   const p = pageFor(tab, "read", byOf(by))
   const why = String(reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300)
@@ -1017,7 +1203,7 @@ serve("agent:help", (_win, tab, reason, by) => {
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
 serve("agent:wait", (_win, tab, what, ms) => waitIn(pageFor(tab, "read"), (what && typeof what === "object" ? what : {}) as Wait, ms))
-serve("agent:navigate", (_win, tab, to, by) => navigateIn(pageFor(tab, "act", byOf(by)), to, byOf(by)))
+serve("agent:navigate", (_win, tab, to, by, lines) => navigateIn(pageFor(tab, "act", byOf(by)), to, byOf(by), lines ?? "summary"))
 // (any tab, whatever its container lets agents do: it moves the page to a window, nothing in it is read or done)
 serve("agent:player", (_win, tab, on, fullScreen) => {
   const p = allPages().find((x) => x.id === Number(tab))

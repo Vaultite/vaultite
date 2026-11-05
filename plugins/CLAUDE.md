@@ -9,7 +9,7 @@
 - A plugin is one folder, found by glob (no registration). The backend is the `Plugin` class (`core/plugins.ts`), the
   frontend `definePlugin` (`web/src/core/define.ts`): their doc comments are the reference.
 - `forAgents` (manifest) is one line every agent reads while the plugin is on: only what an agent must know up front.
-  Formats go in the plugin's `AGENTS.md` (`vau docs <id>`).
+  Formats go in the plugin's `AGENTS.md` (`vau docs <id>`); a short guide beside it, `docs/<topic>.md` (`vau docs <topic>`).
 - Ask for a service (`plugin.provide` / `plugin.ask`), never for a plugin's id. Whether a plugin is off:
   `plugin.isOff()` / `vault.switchedOff()`.
 - A plugin for AI (an agent, the companion, AI usage; vault plugins' too) says `"ai": true` in its manifest: it's off
