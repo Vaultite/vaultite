@@ -273,7 +273,7 @@ export function GroupLabel({ g, n, target, className }: { g: Group; n?: number; 
   return (
     <span data-group-name data-bare={g.name ? undefined : ""} {...(g.name ? {} : { role: "img", "aria-label": name })}
       className={cn("on-tint inline-flex max-w-full shrink-0 items-center justify-center text-[12px] leading-none font-semibold transition-[background-color,color,box-shadow] duration-(--motion)",
-        g.name && "h-5 rounded-[6px] px-1.5", className)}
+        g.name && "h-5 rounded-control px-1.5", className)}
       style={{ ["--tint" as string]: c, background: c, ...(target ? { boxShadow: `0 0 0 2px var(--background), 0 0 0 4px ${c}` } : {}) }}>
       {g.name && <span className="min-w-0 truncate">{g.name}</span>}
       {n !== undefined && <span data-group-count aria-hidden={!g.collapsed || undefined}><span><span className={cn("block font-medium tabular-nums opacity-80", g.name && "pl-1")}>{n}</span></span></span>}
@@ -694,7 +694,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
     <div ref={el} data-tab-id={tab.id} data-ui={`tab:${tab.id}`} data-spring-tab={tab.id} data-in-group={tab.group} data-line-of={line} data-slide={tab.id} data-select-key={tab.id} data-split={split || undefined}
       {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
       onPointerDown={(e) => dragTab(e, tab)} onClick={click}
-      className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
+      className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-control transition-colors",
         split ? "max-w-[320px]" : "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : lit ? "bg-foreground/[0.08] ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]",
         dragging && (hole ? "bg-foreground/[0.06] shadow-none ring-[0.5px] ring-border [&>button]:invisible" : away ? "[&>[data-tab-close]]:invisible [&>[data-tab-pin]]:invisible [&>[role=tab]]:opacity-40" : "opacity-40"))}
       style={{ ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : {}), ...(buttons.length ? { "--tab-buttons": `${buttons.length * 22}px` } : {}) } as React.CSSProperties}>
@@ -934,7 +934,7 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
         </button>
         {/* Where something from elsewhere would open. */}
         {preview?.tabs.some((t) => t.id === INCOMING) && (
-          <div aria-hidden data-slide={INCOMING} data-line-of={lineOf(INCOMING)} className="pointer-events-none absolute left-0 h-7 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border" />
+          <div aria-hidden data-slide={INCOMING} data-line-of={lineOf(INCOMING)} className="pointer-events-none absolute left-0 h-7 rounded-control bg-foreground/[0.06] ring-[0.5px] ring-border" />
         )}
       </div>
     </div>
@@ -1077,7 +1077,7 @@ function PlaceStrip({ id, places, focused, info, menu, adds, children }: { id: s
             <Plus className="size-4" strokeWidth={2} />
           </button>
         )}
-        {order?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute left-0 h-7 w-28 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border" />}
+        {order?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute left-0 h-7 w-28 rounded-control bg-foreground/[0.06] ring-[0.5px] ring-border" />}
       </div>
       {children}
     </div>
@@ -1093,7 +1093,7 @@ function PlaceChip({ p, shown, focused, info }: { p: Pane; shown: boolean; focus
     <div data-slide={p.id} data-place={p.id} data-ui={`pane:${p.id}`} role="presentation" onContextMenu={menuFor(() => placeMenuOf(p.id))}
       onPointerDown={(e) => startDrag(e, { from: "pane", pane: p.id, to: p.to, label: i.label, place: true })} onClick={() => selectPane(p.id)}
       onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); closePane(p.id) } }} data-tip={item ? undefined : i.label} data-tip-trunc
-      className={cn("group/tab @container/tab relative flex h-7 min-w-12 max-w-[200px] flex-1 basis-0 cursor-pointer items-center gap-1.5 rounded-[6px] pr-6 pl-2 text-[13px] transition-colors",
+      className={cn("group/tab @container/tab relative flex h-7 min-w-12 max-w-[200px] flex-1 basis-0 cursor-pointer items-center gap-1.5 rounded-control pr-6 pl-2 text-[13px] transition-colors",
         shown ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]", item?.pane === p.id && item.place && "opacity-40")}>
       <ChipLabel i={i} icons={fileIcons} strong={shown && focused} muted={!shown} />
       <button type="button" data-place-close={p.id} data-no-drag tabIndex={-1} aria-label={`Close ${i.label}`} onClick={(e) => { e.stopPropagation(); closePane(p.id) }}

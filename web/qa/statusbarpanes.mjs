@@ -40,7 +40,7 @@ try {
   }
   /** Each pane's box, and each part of the bar drawn: its box and what it says. */
   const look = () => page.evaluate(() => {
-    const box = (el) => { const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), w: Math.round(r.width) } }
+    const box = (el) => { const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom), w: Math.round(r.width) } }
     const panes = Object.fromEntries([...document.querySelectorAll("[data-pane-area] > section[data-pane-frame]:not([data-away])")].map((s) => [s.dataset.paneFrame, box(s)]))
     const parts = [...document.querySelectorAll("[data-status-bar]")].filter((el) => el.offsetWidth).map((el) => ({
       kind: "statusLeft" in el.dataset ? "left" : "statusRight" in el.dataset ? "right" : "statusPane" in el.dataset ? "pane" : "word",
@@ -107,12 +107,14 @@ try {
   await page.screenshot({ path: `${SHOTS}statusbarpanes-6-narrow.png`, clip: { x: 0, y: 900 - 90, width: 860, height: 90 } })
   await page.setViewportSize({ width: 1440, height: 900 }); await wait(500)
 
-  // 6. Panes as cards: each part still ends where its card does.
+  // 6. Panes as cards: each part a chip in its card, a gap (6px) in from the card's bottom-right corner.
   await api("PATCH", "config/appearance", { paneCards: true })
   await open(row(g("ga", file(N[0])), g("gb", file(N[1]))), "ga")
   await until(async () => /word/.test(part(await look(), "pane")?.text ?? ""), 10000)
   l = await look()
-  check("as cards: the focused part ends at its card's right", Math.abs(part(l, "pane").r - l.panes.ga.r) <= 2 && within(part(l, "pane"), l.panes.ga), { parts: l.parts, panes: l.panes })
+  const inset = (p, pane) => p && Math.abs(pane.r - p.r - 6) <= 1 && Math.abs(pane.b - p.b - 6) <= 1
+  check("as cards: the focused part a gap in from its card's corner", inset(part(l, "pane"), l.panes.ga) && within(part(l, "pane"), l.panes.ga), { parts: l.parts, panes: l.panes })
+  check("…the right corner a gap in from the right card's", inset(part(l, "right"), l.panes.gb), { parts: l.parts, panes: l.panes })
   await strip("7-cards")
   await api("PATCH", "config/appearance", { paneCards: looks.paneCards ?? null })
 

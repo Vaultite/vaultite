@@ -38,6 +38,8 @@
   A default key off a Mac avoids what Linux desktops take (Ctrl+Alt+arrows, Ctrl+.).
 - Colours are tokens, never hex. A scheme only recolours, never moves anything; nothing is named after another app.
 - Density: sizes that follow it are spacing units (`h-6.5`, `space(n)`); px for text, icons, hairlines, radii.
+- Radii come in three (index.css): `rounded-card` (a pane), `rounded-control` (tabs, chips, fields), `rounded-chip`
+  (set in a card's corner: concentric, the card's radius less its inset). New UI uses them, not a literal.
 - Markdown is never shown raw: `snippet(md)` or `<Markdown>`.
 - Chrome isn't text (index.css): only content selects (editors, fields, `<Markdown>`, `pre`/`code`); other text a person
   may copy opts in with `select-text`, a view inside content is `data-chrome`; chrome needs no `select-none`.

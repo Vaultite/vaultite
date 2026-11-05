@@ -623,7 +623,7 @@ export default function App() {
         </div>
         {/* The vault's profile: the vault's name (a menu), then Plugins and Settings as buttons. As a rail,
             the two buttons stack, in line with the icons above. */}
-        <nav aria-label="App" className={cn("-mx-2 -mb-2 flex shrink-0 gap-1 border-t-[0.5px] border-border p-2", !leftOpen && "flex-col items-start")}>
+        <nav aria-label="App" data-sidebar-foot className={cn("-mx-2 -mb-2 flex shrink-0 gap-1 border-t-[0.5px] border-border p-2", !leftOpen && "flex-col items-start")}>
           {leftOpen && share && <SharedWith />}
           {leftOpen && !share && (
             <button type="button" onClick={vaultMenu} aria-haspopup="menu"

@@ -160,7 +160,7 @@ export function Workspace(props: Props) {
             <Fragment key={id}>
               {/* Under the pane: its colour while it moves (core/panemotion.ts), a zoomed or floating pane's card. */}
               <div aria-hidden data-plate={id} style={{ ...at, zIndex: z }}
-                className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-[10px] shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")} />
+                className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-card shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")} />
               <Frame pane={p} tab={t} {...props} info={info} on={{ at, z, rect, float, zoomed, focused, under, top, lifted: lifted === id, bar: bars, only, box }} />
               {/* The gap above a card at the area's top is its pane's top (a hidden page bar comes there, pagebar.ts):
                   as wide as the card, never the tab bar's nor a divider's. */}
@@ -196,7 +196,7 @@ function Frame({ pane, tab, on, info, ...p }: Props & { pane: Pane; tab: Tab; on
       data-overlay={on?.float || undefined} inert={!on || on.under || undefined} data-lifted={on?.lifted || undefined}
       onPointerDownCapture={on ? () => setFocusedPane(id) : undefined} onPointerDown={on?.float ? (e) => moveCard(e, id, on.box) : undefined}
       style={on ? { ...on.at, zIndex: on.z && on.z + 2 } : { display: "none" }}
-      className={cn("absolute flex min-h-0 min-w-0 flex-col border-border", on?.float ? "overflow-hidden rounded-[10px]" : on && !on.zoomed && cn(r!.x > 1e-6 && "border-l", r!.y > 1e-6 && "border-t"))}>
+      className={cn("absolute flex min-h-0 min-w-0 flex-col border-border", on?.float ? "overflow-hidden rounded-card" : on && !on.zoomed && cn(r!.x > 1e-6 && "border-l", r!.y > 1e-6 && "border-t"))}>
       {on?.bar ? <PaneBar pane={pane} tab={tab} focused={on.focused} info={info} only={on.only} float={on.float} zoomed={on.zoomed} /> : null}
       <PaneBody pane={pane} tab={tab} shown={!!on} focused={!!on?.focused} {...p} />
     </section>

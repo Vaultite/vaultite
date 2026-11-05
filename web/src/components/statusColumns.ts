@@ -44,8 +44,8 @@ export function useColumns(): Columns {
 /** The workspace's width (between the sidebars), and with each tiled pane's gap (index.css' --pane-gap) taken. */
 const W = "(100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px))", G = "var(--pane-gap, 0px)"
 /** Where a column's pane ends, from the window's right (Workspace.tsx' tile(): a pane is a gap in from its share). */
-export const columnRight = (c: Column) => (c.x + c.w > 1 - EDGE ? "var(--right-sidebar, 0px)" : `calc(var(--right-sidebar, 0px) + ${W} - ${c.x + c.w} * (${W} - ${G}))`)
+export const columnRight = (c: Column) => (c.x + c.w > 1 - EDGE ? `calc(var(--right-sidebar, 0px) + ${G})` : `calc(var(--right-sidebar, 0px) + ${W} - ${c.x + c.w} * (${W} - ${G}))`)
 /** A column's pane's width, less each of `less` (CSS lengths). */
 export const columnWidth = (c: Column, ...less: string[]) => `calc(${c.w} * (${W} - ${G})${less.map((l) => ` - ${l}`).join("")})`
 /** Where a column's pane starts, from the window's left. */
-export const columnLeft = (c: Column) => (c.x < EDGE ? "var(--left-sidebar, 0px)" : `calc(var(--left-sidebar, 0px) + ${c.x} * (${W} - ${G}) + ${G})`)
+export const columnLeft = (c: Column) => (c.x < EDGE ? `calc(var(--left-sidebar, 0px) + ${G})` : `calc(var(--left-sidebar, 0px) + ${c.x} * (${W} - ${G}) + ${G})`)

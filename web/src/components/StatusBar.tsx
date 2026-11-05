@@ -26,9 +26,9 @@ const LONG = 32 * 1024
 /** Past this, the counts are made in a worker: a 16 MB note's take seconds. */
 const BIG = 1 << 20
 /** The right corner and its tray stop short of the left corner (`--status-left`, its width) and the left sidebar; the
- *  left corner takes at most half the room. */
-const MAX_WIDTH = "calc(100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px) - var(--status-left, 0px) - 12px)"
-const LEFT_MAX_WIDTH = "calc((100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px)) / 2 - 6px)"
+ *  left corner takes at most half the room. As cards, each is inset a gap in a card a gap in (index.css): 4 gaps less. */
+const MAX_WIDTH = "calc(100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px) - var(--status-left, 0px) - 12px - var(--pane-gap, 0px) * 4)"
+const LEFT_MAX_WIDTH = "calc((100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px)) / 2 - 6px - var(--pane-gap, 0px) * 2)"
 
 /** Right-click on the bar: which items it shows (a hidden one ticked again goes back to its default place). */
 const barMenu = () => {
@@ -369,7 +369,7 @@ export const StatusBar = memo(function StatusBar() {
     <>
       {/* (not live: a status is polite by default, and a screen reader would read the counts at every keystroke) */}
       <div ref={leftRef} role="status" aria-live="off" aria-label="Status bar, left" data-status-bar data-status-left data-dragging={dragged ? "" : undefined} data-drop={leftHit ? "" : undefined}
-        data-off={off || undefined} style={off ? { display: "none" } : { left: columnLeft(first), maxWidth: split ? `calc(${columnWidth(first)} / 2 - 6px)` : LEFT_MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
+        data-off={off || undefined} style={off ? { display: "none" } : { left: columnLeft(first), maxWidth: split ? `calc(${columnWidth(first)} / 2 - 6px - var(--pane-gap, 0px))` : LEFT_MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
         className="vau-room sight-foot fixed bottom-0 z-20 transition-[left] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tr-[8px] border-t-[0.5px] border-r-[0.5px] border-border bg-sidebar pr-2 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
         <div ref={leftRowRef} data-status-row className="flex min-w-0 items-center gap-2">
           <div ref={leftItemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">
@@ -409,8 +409,9 @@ export const StatusBar = memo(function StatusBar() {
 
 /** No panes at the foot (each floating): the bar as for one pane. */
 const WHOLE: Column[] = [{ pane: "", x: 0, w: 1, full: false }]
-/** A part's padding and edge (its width is its content's: box-content), and a little room, kept inside its pane. */
-const PAD = "18px"
+/** A part's padding and edge (its width is its content's: box-content), and a little room, kept inside its pane; as
+ *  cards, its inset on both sides too. */
+const PAD = "calc(18px + var(--pane-gap, 0px) * 2)"
 /** A right-hand part of the bar: the right corner, or a pane's. */
 const FOOT = "vau-room sight-foot fixed bottom-0 z-20 transition-[right] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex"
 

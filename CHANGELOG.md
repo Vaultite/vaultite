@@ -11,6 +11,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   darkened site to another in a tab no longer shows a pale frame; site styles get `--vault-paper-filter` for canvases.
 - **Web pages round with their card**: with panes as cards, a page's corners follow its card's curve instead of poking
   past it; with the page bar hidden, the gap above a card brings the bar too, and its right-click has the bar's switch.
+- **Panes as cards, one shape**: the tab bar sits on the window's chrome with the sidebars and the gaps, so the cards
+  are the only page-coloured surfaces; the status bar is a small chip inside the card it speaks for, inset from its
+  corner, which stays whole; the sidebar's foot lines up with it.
 - **A vault's icon is Vaultite's stone**: Open in the menu bar's menu, Open vault in the File menu and a vault among
   the folders in Manage vaults show the gem, not a safe.
 - **A cleaner menu bar menu**: icons on its rows (a mic for Dictate anywhere, with its keys under it), and where the

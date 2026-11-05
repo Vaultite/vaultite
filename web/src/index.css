@@ -65,6 +65,13 @@
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
 }
+/* The shape's three radii (rounded-card, rounded-control, rounded-chip): a pane's card; a control (tabs, group chips,
+   fields); a chip set in a card's corner, concentric with it: the card's radius less its inset (--pane-gap). */
+@theme {
+    --radius-card: 10px;
+    --radius-control: 6px;
+    --radius-chip: 4px;
+}
 
 /* .scheme-preview: a Settings tile drawn in a scheme's own colours (themes/*.css match it too). */
 :root, .scheme-preview {
@@ -521,7 +528,7 @@ html:not([data-dragging]) [data-group-chip]:hover > [data-group-name] { box-shad
 [data-group-name][data-bare] { height: calc(var(--spacing) * 3.5); min-width: calc(var(--spacing) * 3.5); border-radius: 4px; }
 [data-group-count] { display: grid; grid-template-columns: 0fr; opacity: 0; }
 [data-group-count] > span { min-width: 0; overflow: hidden; }
-:is([data-group-chip], [data-group-row])[aria-expanded=false] :is([data-group-name][data-bare]) { height: calc(var(--spacing) * 5); padding-inline: calc(var(--spacing) * 1.5); border-radius: 6px; }
+:is([data-group-chip], [data-group-row])[aria-expanded=false] :is([data-group-name][data-bare]) { height: calc(var(--spacing) * 5); padding-inline: calc(var(--spacing) * 1.5); border-radius: var(--radius-control); }
 :is([data-group-chip], [data-group-row])[aria-expanded=false] [data-group-count] { grid-template-columns: 1fr; opacity: 1; }
 [data-group-line][data-folded] { opacity: 0; }
 [data-group-moving] :is([data-group-name][data-bare], [data-group-count]) {
@@ -545,7 +552,7 @@ section[data-lifted] { opacity: 0.45; scale: 0.985; transition: opacity var(--mo
 }
 /* Where what comes from elsewhere would land (its INCOMING), the same soft gap in every list. */
 @layer components {
-  [data-slide="incoming"] { pointer-events: none; border-radius: 6px; background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+  [data-slide="incoming"] { pointer-events: none; border-radius: var(--radius-control); background: color-mix(in srgb, var(--foreground) 6%, transparent); }
 }
 
 /* An open sidebar's content is laid out at its open width whatever the sidebar's width while it opens: core/room.ts. */
@@ -692,7 +699,7 @@ dialog { --vau-panel-bottom: 0px; }
 /* Showing nothing, the bar is a faint corner of its height, its outline on hover: right-click brings items back. The
    left corner is gone then, but while an item is dragged: a place to drop it. */
 [data-status-bar]:not(:has([data-status-items] > :is([data-status-key]:not(:empty), [data-status-coming], [data-hold], [data-slide]):not([data-fit-out]), [data-status-more]:not([data-fit-out]), [data-status-word])) {
-  background: transparent; border-color: transparent; min-width: calc(var(--spacing) * 10);
+  background: transparent; border-color: transparent; box-shadow: none; min-width: calc(var(--spacing) * 10);
   &:hover, &[data-drop] { border-color: var(--color-border); }
   &:is([data-status-left], [data-status-pane]):not([data-dragging]) { display: none; }
 }
@@ -1290,9 +1297,12 @@ section[data-moving="up"] { z-index: 4; }
   --card-lift: 0 1px 3px -1px rgb(0 0 0 / 0.08);
 }
 :root.dark[data-pane-cards] { --card-edge: 0 0 0 0.5px color-mix(in srgb, var(--foreground) 12%, transparent); --card-lift: 0 1px 3px -1px rgb(0 0 0 / 0.4); }
-:root[data-pane-cards] [data-pane-area] { background: var(--sidebar); }
+:root[data-pane-cards] [data-pane-area] { background: var(--color-sidebar); }
+/* The tab bar is chrome too, one surface with the gaps and the sidebar (its workspace tint too): the cards are the only
+   page-coloured surfaces. */
+:root[data-pane-cards] [data-tab-bar] { background: var(--color-sidebar); border-bottom-color: transparent; }
 :root[data-pane-cards] [data-pane-area] > :is(section[data-pane-frame]:not([data-floating]), [data-pane-gone]) {
-  border-width: 0; border-radius: 10px; overflow: hidden; background: var(--background); box-shadow: var(--card-edge), var(--card-lift);
+  border-width: 0; border-radius: var(--radius-card); overflow: hidden; background: var(--background); box-shadow: var(--card-edge), var(--card-lift);
   transition: box-shadow var(--motion-fast) var(--ease-out);
 }
 :root[data-pane-cards] [data-pane-area][data-split] > section[data-pane-frame][data-focused]:not([data-floating]) {
@@ -1301,7 +1311,18 @@ section[data-moving="up"] { z-index: 4; }
 :root.dark[data-pane-cards] [data-pane-area][data-split] > section[data-pane-frame][data-focused]:not([data-floating]) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--foreground) 26%, transparent), 0 2px 8px -2px rgb(0 0 0 / 0.5);
 }
-:root[data-pane-cards] [data-pane-area] > [data-plate] { border-radius: 10px; }
+:root[data-pane-cards] [data-pane-area] > [data-plate] { border-radius: var(--radius-card); }
+/* The status bar's parts, chips inside the cards they speak for: a gap in from the card's corner (statusColumns.ts puts
+   them at its edge), concentric with it, so the card's corner stays whole. */
+:root[data-pane-cards] [data-status-bar] {
+  height: calc(var(--spacing) * 6); margin: 0 var(--pane-gap) calc(var(--pane-gap) * 2); padding-right: calc(var(--spacing) * 2);
+  border: 0.5px solid var(--color-border); border-radius: var(--radius-chip); background: var(--card); box-shadow: var(--card-lift);
+}
+@media (min-width: 768px) { :root[data-pane-cards] :is([data-pane], [data-kept]) { --vau-panel-bottom: calc(var(--spacing) * 6 + var(--pane-gap)); } }
+/* The sidebar's foot (the vault, Plugins, Settings) in line with those chips: its buttons centred on theirs, as tall. */
+:root[data-pane-cards] aside[data-side=left]:not([data-collapsed], [data-peek]) [data-sidebar-foot] {
+  padding-top: calc(var(--spacing) * 4.5 - var(--pane-gap) * 2); padding-bottom: calc(var(--pane-gap) * 2 - var(--spacing) * 0.5);
+}
 /* A pop-out with its bars hidden (Hide window bars): what it shows fills it, edge to edge, unless it's split. */
 :root[data-bars-hidden] [data-pane-area]:not([data-split]) { --pane-gap: 0px; }
 :root[data-pane-cards][data-bars-hidden] [data-pane-area]:not([data-split]) > :is(section[data-pane-frame]:not([data-floating]), [data-plate]) { border-radius: 0; box-shadow: none; }
@@ -1314,6 +1335,8 @@ html[data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]
 html[data-translucent][data-pane-cards] [data-pane-area] { background: var(--chrome-sidebar); }
 html[data-translucent][data-pane-cards] [data-pane-area] > section[data-pane-frame]:not([data-floating]) { background: none; }
 html[data-translucent][data-pane-cards] section[data-pane-frame] > [data-pane-bar] { background: var(--chrome); }
+html[data-translucent][data-pane-cards] [data-top] > [data-tab-bar],
+html[data-translucent][data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed] { background: var(--chrome-sidebar); }
 
 /* The bars above files fading (appearance `fileBarFade`, core/barfade.ts): slower than they come back. Typing in a
    file, or always, back while the pointer is at one (or the keyboard in it); leaving it, a moment's grace first. */

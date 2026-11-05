@@ -48,9 +48,9 @@ const Note = ({ className, heading = true }: { className?: string; heading?: boo
 const Pane = ({ className, children }: { className?: string; children: ReactNode }) => <div className={cn("relative flex min-w-0 flex-1 flex-col", className)}>{children}</div>
 
 /** The window's tabs over its panes: the active one a card. `icons`: files' icons. */
-function TabBar({ icons = true, n = 3 }: { icons?: boolean; n?: number }) {
+function TabBar({ icons = true, n = 3, className }: { icons?: boolean; n?: number; className?: string }) {
   return (
-    <div className="flex h-[15px] shrink-0 items-center gap-[2px] border-b-[0.5px] border-border px-[3px]">
+    <div className={cn("flex h-[15px] shrink-0 items-center gap-[2px] border-b-[0.5px] border-border px-[3px]", className)}>
       <span className="flex h-[10px] w-[38%] items-center gap-[2px] rounded-[3px] px-[3px]"
         style={{ background: "color-mix(in srgb, var(--foreground) 9%, transparent)" }}>
         {icons && <span className="size-[4px] shrink-0 rounded-[1px] bg-primary/80" />}
@@ -119,13 +119,13 @@ function DimPanes({ on }: { on: boolean }) {
   )
 }
 
-/** Two panes split: flat, a line between them, or as cards inset on the sidebar's colour, rounded, room between them
- *  (exaggerated a little, to read at this size). */
+/** Two panes split: flat, a line between them, or as cards inset on the sidebar's colour (the tab bar's too), rounded,
+ *  room between them (exaggerated a little, to read at this size). */
 const paneCards = (on: boolean) => (
   <Frame>
     <Side w="20%" />
     <div className="flex min-w-0 flex-1 flex-col">
-      <TabBar n={2} />
+      <TabBar n={2} className={on ? "border-transparent bg-sidebar" : undefined} />
       <div className={cn("flex min-h-0 min-w-0 flex-1", on ? "gap-[4px] bg-sidebar p-[4px]" : "")}>
         {[0, 1].map((i) => (
           <Pane key={i} className={cn(on ? "overflow-hidden rounded-[5px] bg-background shadow-[0_0_0_0.5px_var(--border),0_1px_3px_rgb(0_0_0/0.12)]" : i && "border-l-[0.5px] border-border")}>
