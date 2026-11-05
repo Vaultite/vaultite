@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from "node:child_process"
+import { execFileSync, spawn, spawnSync } from "node:child_process"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 
@@ -81,7 +81,7 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { hunksOf, pointIn, prefsOf, sceneFor } = await import("../../../electron/helperlogic.ts")
+    const { hunksOf, pointIn, prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
     const defaults = { dictation: { fn: { default: true }, keys: { default: ["fn", "double_control"] } }, companion: { screen_cursor: { default: "dock" } }, screen: { private_apps: { default: ["1Password"] } } }
     const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, { screen_cursor: "trail" }, { private_apps: [] }, defaults)
     check("helper: settings left out are the manifests' defaults; set ones win, an empty private list too",
@@ -99,6 +99,47 @@ export default async ($: VaultTest) => {
       !l.agents.length && l.idle?.sx === 978 && !l.pill && r.agents[0]?.sx === 500 && !r.idle && r.pill?.text === "hello", { l, r })
     const noField = sceneFor(left, { ...scene, pill: { ...scene.pill, display: 9 } }, { x: 10, y: 10 }, [left, right])
     check("helper: with no field's display, the pill is on the pointer's", !!noField.pill)
+    const crossing = { ...scene, agents: [{ ...scene.agents[0], from: { x: 900, y: 100 } }] }
+    const cl = sceneFor(left, crossing, { x: 10, y: 10 }, [left, right]), cr = sceneFor(right, crossing, { x: 10, y: 10 }, [left, right])
+    check("helper: a cursor on its way from one display to another is drawn on both, each in its own points",
+      cl.agents[0]?.sx === 1500 && cl.agents[0]?.from?.x === 900 && cr.agents[0]?.sx === 500 && cr.agents[0]?.from?.x === -100, { cl, cr })
+    const a = splitScene(r), moved = splitScene({ ...r, agents: [{ ...r.agents[0], sx: 510, from: { x: 1, y: 2 } }] }), said = splitScene({ ...r, agents: [{ ...r.agents[0], say: { id: "s1", text: "hi" } }] })
+    check("helper: a cursor that only moved sends only its place; one that says something, the whole scene",
+      a.shape === moved.shape && JSON.stringify(moved.at.agents) === '{"Claude":[510,100]}' && a.shape !== said.shape, { a, moved })
+  }
+  {
+    // The helper's cursor between the window and the screen (electron/helper.ts draw), in a Node of its own with Electron
+    // stood in: it needs module mocks.
+    const run = (flags: string[]) => spawnSync(process.execPath, [...flags, "--no-warnings", path.join(import.meta.dirname, "..", "helperdraw.ts")], { encoding: "utf8", timeout: 60_000 })
+    // (a Node whose mocks are no longer behind a flag may not know it)
+    let r = run(["--experimental-test-module-mocks"])
+    if (/bad option/.test(r.stderr)) r = run([])
+    const lines = r.stdout.split("\n").filter((l) => /^(ok|FAIL) /.test(l))
+    for (const l of lines) check(l.replace(/^(ok|FAIL)\s+/, "").replace(/ [[{].*$/, ""), l.startsWith("ok"), l)
+    check("helper draw: ran to its end", r.status === 0 && lines.length >= 12, { status: r.status, err: r.stderr.slice(-2000) })
+  }
+  {
+    // The screen cursor's spring (web/src/core/spring.ts): it settles in its time, never overshoots, and a target
+    // changed mid-way keeps its speed.
+    const { glide, stiffness } = await import("../../../web/src/core/spring.ts")
+    const run = (ms: number, w: number, g = { x: 0, y: 0, vx: 0, vy: 0 }, to = { x: 100, y: 0 }) => {
+      let max = 0, t = 0, still = false
+      for (; t < ms && !still; t += 16) { still = glide(g, to.x, to.y, w, 0.016); max = Math.max(max, g.x) }
+      return { g, t, max, still }
+    }
+    const w = stiffness(380), near = run(380, w), done = run(2000, w)
+    check("spring: within 1% at its time, still and exactly there soon after, never past it",
+      Math.abs(near.g.x - 100) < 1.5 && done.still && done.g.x === 100 && done.t < 900 && done.max <= 100, { near, done })
+    const g = { x: 0, y: 0, vx: 0, vy: 0 }
+    run(100, w, g)
+    const speed = g.vx, bent = { ...g }
+    glide(bent, 100, 100, w, 0.016)
+    check("spring: a new target mid-way keeps the speed it had, bending toward it", speed > 100 && bent.vx > speed * 0.5 && bent.vy > 0, { speed, bent })
+    const big = { x: 0, y: 0, vx: 0, vy: 0 }
+    glide(big, 100, 0, w, 0.25)
+    const steps = { x: 0, y: 0, vx: 0, vy: 0 }
+    for (let i = 0; i < 25; i++) glide(steps, 100, 0, w, 0.01)
+    check("spring: one long frame lands where many short ones do", Math.abs(big.x - steps.x) < 1e-6, { big, steps })
   }
   {
     // The companion hears the user on screen: an ask or a point with the window's text and picture, a change of a window
@@ -138,12 +179,13 @@ export default async ($: VaultTest) => {
     const lines: Record<string, unknown>[] = []
     let buf = ""
     child.stdout.on("data", (b: Buffer) => { buf += b; for (let i; (i = buf.indexOf("\n")) >= 0; buf = buf.slice(i + 1)) try { lines.push(JSON.parse(buf.slice(0, i))) } catch { /* not JSON */ } })
-    child.stdin.write(['{"op":"trusted","id":1}', '{"op":"at","x":-100000,"y":-100000,"id":2}', '{"op":"window","window":2147483000,"id":3}', '{"op":"nope","id":4}'].join("\n") + "\n")
-    for (let i = 0; i < 100 && lines.filter((l) => typeof l.id === "number").length < 4; i++) await new Promise((r) => setTimeout(r, 50))
+    child.stdin.write(['{"op":"trusted","id":1}', '{"op":"at","x":-100000,"y":-100000,"id":2}', '{"op":"window","window":2147483000,"id":3}', '{"op":"nope","id":4}', '{"op":"watch","windows":[2147483000],"id":5}'].join("\n") + "\n")
+    for (let i = 0; i < 100 && lines.filter((l) => typeof l.id === "number").length < 5; i++) await new Promise((r) => setTimeout(r, 50))
     child.stdin.end()
     const by = (id: number) => lines.find((l) => l.id === id)
     check("screen helper: answers whether it's trusted, no window off every screen, none by an unknown number, and says an op is unknown",
       typeof by(1)?.trusted === "boolean" && by(2)?.window === 0 && by(3)?.window === 0 && by(4)?.error === "unknown op", lines)
+    check("screen helper: watching a window that isn't there is no error", by(5)?.ok === true, lines)
     check("screen helper: tells what's in front unasked, metadata only", lines.some((l) => l.event === "front" && typeof l.bundle === "string" && !("text" in l)), lines)
     check("screen helper: never taps the keyboard unless asked", !lines.some((l) => l.event === "tap"))
   }

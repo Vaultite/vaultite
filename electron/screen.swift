@@ -270,6 +270,28 @@ func target(_ id: Int, _ bundle: String = "") -> (AXUIElement, pid_t)? {
   return (w, a.processIdentifier)
 }
 
+/** The windows the companion's cursor points at (helper.ts asks for them all at once): their moves, resizes and closing,
+ *  told as they happen, so the cursor follows a window being dragged. */
+var watchers: [pid_t: AXObserver] = [:]
+func watchWindows(_ ids: [Int]) {
+  for o in watchers.values { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(o), .defaultMode) }
+  watchers = [:]
+  let list = windowList()
+  for id in ids {
+    guard let w = list.first(where: { ($0[kCGWindowNumber as String] as? Int) == id }), let pid = (w[kCGWindowOwnerPID as String] as? Int).map({ pid_t($0) }),
+          pid != vaultitePid, let ax = axWindow(pid, id) else { continue }
+    if watchers[pid] == nil {
+      var o: AXObserver?
+      guard AXObserverCreate(pid, { _, el, n, _ in
+        send(["event": "moved", "window": wid(el) ?? 0, "frame": rectJSON(frame(el)), "gone": (n as String) == kAXUIElementDestroyedNotification])
+      }, &o) == .success, let o else { continue }
+      CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(o), .defaultMode)
+      watchers[pid] = o
+    }
+    for n in [kAXMovedNotification, kAXResizedNotification, kAXUIElementDestroyedNotification] { AXObserverAddNotification(watchers[pid]!, ax, n as CFString, nil) }
+  }
+}
+
 /** What a window says, depth first: its texts, fields (never a password's), headings, buttons and links, one a line;
  *  `find`: instead, the first element saying it, and its frame. Bounded in elements and time. */
 func walk(_ root: AXUIElement, max: Int, find: String?) -> (text: String, found: CGRect?) {
@@ -312,6 +334,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "insert": return insert(req["text"] as? String ?? "")
   case "front": lastFront = ""; sayFront(); return ["ok": true]
   case "at": return windowAt(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)
+  case "watch": watchWindows(req["windows"] as? [Int] ?? []); return ["ok": true]
   case "window":
     // (by its number, else an app's focused window)
     if id == 0, let (w, _) = target(0, req["bundle"] as? String ?? ""), let n = wid(w) { return windowInfo(n) }

@@ -1896,11 +1896,17 @@ app.whenReady().then(async () => {
   if (DEV) app.dock?.setBadge("dev")
   // (a Mac's, but for a copy a script drives or Vaultite Dev, unless VAULTITE_HELPER=1)
   if (process.env.VAULTITE_HELPER === "1" || (MAC && !driven && !DEV && process.env.VAULTITE_HELPER !== "0")) helper = await import("./helper.ts")
+  const homePath = () => lastFocused && (wins.has(lastFocused) || kept.has(lastFocused)) ? lastFocused : [...wins.keys()][0] ?? [...kept.keys()][0]
   if (helper) await helper.startHelper({
     home: () => {
-      const p = lastFocused && (wins.has(lastFocused) || kept.has(lastFocused)) ? lastFocused : [...wins.keys()][0] ?? [...kept.keys()][0]
+      const p = homePath()
       const port = p ? wins.get(p)?.port ?? kept.get(p)?.port : undefined
       return p && port ? { port, path: p, name: nameOf(p) } : null
+    },
+    homeWindow: () => {
+      const p = homePath(), w = p ? wins.get(p)?.win : undefined
+      if (!w || w.isDestroyed() || !w.isVisible() || w.isMinimized()) return null
+      return { page: w.webContents, bounds: w.getContentBounds(), zoom: w.webContents.getZoomFactor() }
     },
     openHome, quit: () => app.quit(),
     focusedPage: () => AppWindow.getFocusedWindow()?.webContents ?? null,

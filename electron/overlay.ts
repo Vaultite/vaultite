@@ -2,7 +2,7 @@
  *  the pointer going through but over the cursor (to drag it); it draws web/screen.html as helper.ts says. */
 import { BrowserWindow, ipcMain, screen, type Display, type IpcMainEvent } from "electron"
 import path from "node:path"
-import { type Scene, sceneFor } from "./helperlogic.ts"
+import { type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 
 /** What the user does to it: drags a cursor and drops it at a point, dismisses a bubble, stops dictating. */
 export type OverlayActs = { drop: (name: string, x: number, y: number) => void; dismiss: (id: string) => void; stop: () => void }
@@ -15,6 +15,11 @@ let acts: OverlayActs | null = null
 let watching = false
 
 const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.idle && !x.pill
+/** What each window was sent last (its scene's shape and places), and its hiding once it's had nothing to draw a while. */
+const sent = new Map<BrowserWindow, { shape: string; at: string }>()
+const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()
+// (an empty window still costs the window server a full-screen layer, but hiding and showing it at once flickers)
+const LINGER = 4000
 
 function make(d: Display) {
   const w = new BrowserWindow({ ...d.bounds, transparent: true, frame: false, hasShadow: false, resizable: false, movable: false, minimizable: false,
@@ -24,16 +29,18 @@ function make(d: Display) {
   // (skipTransformProcessType: else macOS takes the app out of the Dock for it)
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   w.setAlwaysOnTop(true, "screen-saver")
-  w.webContents.on("did-finish-load", () => push())
+  w.webContents.on("did-finish-load", () => { sent.delete(w); push() })
   if (url) void w.loadURL(url).catch(() => {})
   wins.set(d.id, w)
   return w
 }
 
+function drop(w: BrowserWindow) { clearTimeout(hiding.get(w)); hiding.delete(w); sent.delete(w); w.destroy() }
+
 /** Each display has its window, where it is. */
 function fit() {
   const ds = screen.getAllDisplays()
-  for (const [id, w] of [...wins]) if (!ds.some((d) => d.id === id)) { w.destroy(); wins.delete(id) }
+  for (const [id, w] of [...wins]) if (!ds.some((d) => d.id === id)) { drop(w); wins.delete(id) }
   for (const d of ds) {
     const w = wins.get(d.id) ?? make(d)
     const b = w.getBounds()
@@ -47,17 +54,21 @@ function push() {
   for (const d of ds) {
     const w = wins.get(d.id)
     if (!w || w.isDestroyed() || w.webContents.isLoading()) continue
-    const s = sceneFor(d, scene, p, ds)
-    w.webContents.send("vaultite:screen", s)
-    // (shown only with something to draw: an empty one still costs the window server a full-screen layer)
-    if (empty(s)) { if (w.isVisible()) w.hide() } else if (!w.isVisible()) w.showInactive()
+    const s = sceneFor(d, scene, p, ds), { shape, at } = splitScene(s), had = sent.get(w), places = JSON.stringify(at)
+    if (had?.shape !== shape) w.webContents.send("vaultite:screen", s)
+    else if (had.at !== places) w.webContents.send("vaultite:screen-at", at)
+    sent.set(w, { shape, at: places })
+    if (!empty(s)) {
+      clearTimeout(hiding.get(w)); hiding.delete(w)
+      if (!w.isVisible()) w.showInactive()
+    } else if (w.isVisible() && !hiding.has(w)) hiding.set(w, setTimeout(() => { hiding.delete(w); if (!w.isDestroyed() && empty(sceneFor(d, scene, screen.getCursorScreenPoint(), screen.getAllDisplays()))) w.hide() }, LINGER))
   }
 }
 
 /** Draw `s` from the server at `base` (its screen.html); null: none, every window goes. */
 export function showOverlay(base: string | null, s?: Scene) {
   if (s) scene = s
-  if (!base) { for (const w of wins.values()) w.destroy(); wins.clear(); url = ""; return }
+  if (!base) { for (const w of wins.values()) drop(w); wins.clear(); url = ""; return }
   const next = `${base}/screen.html`
   if (next !== url) { url = next; for (const w of wins.values()) void w.loadURL(url).catch(() => {}) }
   if (!watching) {

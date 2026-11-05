@@ -29,26 +29,40 @@ export function hunksOf(a: string[], b: string[]) {
     .map(([, i1, i2, j1, j2]) => ({ line: j1 + 1, removed: a.slice(i1, i2).slice(0, 40), added: b.slice(j1, j2).slice(0, 40) }))
 }
 
-/** An agent's cursor at a point of the screen (global points), with its bubble. */
-export type ScreenAgent = { name: string; tint: string; state: string; sx: number; sy: number; say?: { id: string; text: string; question?: boolean } }
+/** An agent's cursor at a point of the screen (global points): its bubble, its flag's state (`t`: when it last acted);
+ *  `from`: where it just was (glided in from); `leaving`: on its way into the app's window, which draws it there. */
+export type ScreenAgent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean
+  say?: { id: string; text: string; question?: boolean } }
+export type Point = { x: number; y: number }
 /** What the overlay draws: cursors, the companion waiting (`docked` at an edge, else by the pointer) and the
  *  dictation pill, by its display's bottom centre (`display`: the one; else the pointer's). */
 export type Scene = {
   agents: ScreenAgent[]
-  idle: { name: string; tint: string; sx: number; sy: number; docked: boolean } | null
+  idle: { name: string; tint: string; sx: number; sy: number; docked: boolean; from?: Point; leaving?: boolean } | null
   pill: { level: number; text: string; ready: boolean; display?: number } | null
 }
 type Display = { id: number; bounds: Rect }
 const inside = (d: Display, x: number, y: number) => x >= d.bounds.x && x < d.bounds.x + d.bounds.width && y >= d.bounds.y && y < d.bounds.y + d.bounds.height
-/** What one display shows, in its own coordinates. */
-export function sceneFor(d: Display, s: Scene, pointer: { x: number; y: number }, all: Display[]) {
+/** What one display shows, in its own coordinates: a cursor on its way from or to it too. */
+export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
   const on = (x: number, y: number) => inside(d, x, y)
-  const local = <T extends { sx: number; sy: number }>(a: T) => ({ ...a, sx: a.sx - d.bounds.x, sy: a.sy - d.bounds.y })
+  const here = (a: { sx: number; sy: number; from?: Point }) => on(a.sx, a.sy) || (!!a.from && on(a.from.x, a.from.y))
+  const local = <T extends { sx: number; sy: number; from?: Point }>(a: T) =>
+    ({ ...a, sx: a.sx - d.bounds.x, sy: a.sy - d.bounds.y, ...(a.from ? { from: { x: a.from.x - d.bounds.x, y: a.from.y - d.bounds.y } } : {}) })
   const pillHere = !!s.pill && (s.pill.display !== undefined && all.some((x) => x.id === s.pill!.display) ? s.pill.display === d.id : on(pointer.x, pointer.y))
   return {
     width: d.bounds.width, height: d.bounds.height,
-    agents: s.agents.filter((a) => on(a.sx, a.sy)).map(local),
-    idle: s.idle && on(s.idle.sx, s.idle.sy) ? local(s.idle) : null,
+    agents: s.agents.filter(here).map(local),
+    idle: s.idle && here(s.idle) ? local(s.idle) : null,
     pill: pillHere ? s.pill : null,
   }
+}
+export type DisplayScene = ReturnType<typeof sceneFor>
+
+/** A display's scene as what it draws (`shape`, compared as text) and where (`at`): while only places change (the
+ *  pointer's trail, a window moved), only `at` goes to the window. */
+export function splitScene(s: DisplayScene) {
+  const shape = JSON.stringify({ ...s, agents: s.agents.map(({ sx: _x, sy: _y, from: _f, ...a }) => a), idle: s.idle && { ...s.idle, sx: 0, sy: 0, from: undefined } })
+  const at = { agents: Object.fromEntries(s.agents.map((a) => [a.name, [a.sx, a.sy]])), idle: s.idle ? [s.idle.sx, s.idle.sy] : null }
+  return { shape, at }
 }

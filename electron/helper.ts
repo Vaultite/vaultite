@@ -10,7 +10,7 @@ import { ALONE_MS, controlActsToo, fnActsToo, fnKey, keyCodes, modKeys, type FnA
 import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
-import { hunksOf, pointIn, prefsOf, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
+import { hunksOf, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
 import { overlayActs, showOverlay } from "./overlay.ts"
 import { dictationAuto, dictationHotKey, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 
@@ -24,6 +24,8 @@ export type HelperHost = {
   openHome: () => void
   /** The focused vault window's page while this app is in front: fn is its ⌘J there. */
   focusedPage: () => WebContents | null
+  /** The home vault's window while it's on screen (not minimized): its page, where its page is (points), its zoom. */
+  homeWindow: () => { page: WebContents; bounds: Rect; zoom: number } | null
   /** Tell every vault's server unasked (core/desktopapp.ts onDesktopEvent). */
   event: (name: string, data: unknown) => void
   prefs: () => HelperPrefs
@@ -158,7 +160,7 @@ async function refresh() {
   draw()
 }
 
-type Agent = { name: string; tint: string; state: string; app?: string; window?: number; find?: string; sx?: number; sy?: number; display?: number; path?: string }
+type Agent = { name: string; tint: string; state: string; t?: number; seen?: boolean; why?: string; app?: string; window?: number; find?: string; sx?: number; sy?: number; display?: number; path?: string }
 type Note = { id: string; kind: string; agent: string; text?: string; question?: boolean; dismissed?: number }
 /** The companion's socket, as the helper (?screen=1): the agents and their bubbles, and what the user asks on screen. */
 const live = (() => {
@@ -202,6 +204,7 @@ const hidden = (a: { bundle?: string; name?: string } | null) => !!a && privateA
 function heard(m: Record<string, unknown>) {
   if (m.event === "fn") return prefs.keys.includes("fn") ? fnHeard(m) : undefined
   if (m.event === "mod") return modHeard(m)
+  if (m.event === "moved") return windowMoved(m)
   if (m.event === "front") {
     front = m as unknown as AppWindowInfo
     host?.event("screen:front", hidden(front) ? { bundle: front.bundle, name: front.name, private: true } : { bundle: front.bundle, name: front.name, title: front.title, window: front.window, vaultite: !!front.vaultite })
@@ -367,27 +370,151 @@ async function finish(s: Session, cancelled: boolean) {
 
 // ---------- the cursor over the screen
 
-/** Places on screen resolved to points (an element's frame by its text, a window's), kept a moment: windows move. */
-const placed = new Map<string, { at: number; p: { x: number; y: number } | null }>()
-const placeKey = (a: Agent) => `${a.app ?? ""}|${a.window ?? ""}|${a.find ?? ""}|${a.sx ?? ""}|${a.sy ?? ""}`
+/** Places on screen resolved to points (an element's frame by its text, a window's), kept a moment: windows move. Each
+ *  knows its window and its frame then, so a move of it (told by the screen helper) moves the point at once. */
+type Placed = { at: number; p: Point | null; pending: boolean; win?: number; frame?: Rect | null; find?: boolean }
+const placed = new Map<string, Placed>()
+const placeKey = (a: Agent) => `${a.name}:${a.app ?? ""}|${a.window ?? ""}|${a.find ?? ""}|${a.sx ?? ""}|${a.sy ?? ""}`
 const onScreen = (a: Agent) => !a.path && (!!a.app || (typeof a.sx === "number" && typeof a.sy === "number"))
-async function resolve(a: Agent) {
-  if (typeof a.sx === "number" && typeof a.sy === "number") return { x: a.sx, y: a.sy }
-  if (!a.app || hidden({ bundle: a.app, name: a.app })) return null
+async function resolve(a: Agent): Promise<Omit<Placed, "at" | "pending">> {
+  if (typeof a.sx === "number" && typeof a.sy === "number") return { p: { x: a.sx, y: a.sy } }
+  if (!a.app || hidden({ bundle: a.app, name: a.app })) return { p: null }
   if (a.find) {
-    const r = await screenAsk<{ ok?: boolean; found?: Rect | null }>("find", { window: a.window ?? 0, bundle: a.app, text: a.find })
-    if (r.found) return pointIn(r.found, true)
+    const r = await screenAsk<{ ok?: boolean; found?: Rect | null; window?: number; frame?: Rect | null }>("find", { window: a.window ?? 0, bundle: a.app, text: a.find })
+    if (r.found) return { p: pointIn(r.found, true), win: r.window, frame: r.frame, find: true }
   }
   const w = await screenAsk<AppWindowInfo>("window", { window: a.window ?? 0, bundle: a.app })
-  return w.frame ? pointIn(w.frame, false) : null
+  return w.frame ? { p: pointIn(w.frame, false), win: w.window, frame: w.frame } : { p: null }
 }
-function pointOf(a: Agent) {
-  const k = `${a.name}:${placeKey(a)}`, had = placed.get(k)
-  if (!had || Date.now() - had.at > (a.find ? 3000 : 1000)) {
-    placed.set(k, { at: Date.now(), p: had?.p ?? null })
-    void resolve(a).then((p) => { placed.set(k, { at: Date.now(), p }); draw() }, () => {})
+function pointOf(a: Agent): Placed {
+  if (typeof a.sx === "number" && typeof a.sy === "number") return { at: Date.now(), p: { x: a.sx, y: a.sy }, pending: false }
+  const k = placeKey(a), had = placed.get(k)
+  if (!had || (!had.pending && Date.now() - had.at > (a.find ? 3000 : 1000))) {
+    placed.set(k, { ...(had ?? { p: null }), at: Date.now(), pending: true })
+    const done = (r: Omit<Placed, "at" | "pending">) => { placed.set(k, { ...r, at: Date.now(), pending: false }); draw() }
+    void resolve(a).then(done, () => done({ p: null }))
   }
-  return had?.p ?? null
+  return placed.get(k)!
+}
+
+/** The windows the cursors point at are watched for moves and resizes (screen.swift's AXObservers), only those. */
+let watched = ""
+function watchWindows() {
+  const used = new Set([...live.state.agents.values()].filter(onScreen).map(placeKey))
+  for (const [k, e] of placed) if (!used.has(k) && Date.now() - e.at > 60_000) placed.delete(k)
+  const wins = [...new Set([...placed].filter(([k, e]) => used.has(k) && e.win).map(([, e]) => e.win!))].sort()
+  if (wins.join() === watched) return
+  watched = wins.join()
+  void screenAsk("watch", { windows: wins }).catch(() => {})
+}
+const refinding = new Map<number, ReturnType<typeof setTimeout>>()
+/** A watched window moved or resized: its points move with it now; an element in a resized one is found again once it settles. */
+function windowMoved(m: Record<string, unknown>) {
+  const win = Number(m.window) || 0, f = m.frame as Rect | null
+  for (const e of placed.values()) {
+    if (win && e.win !== win) continue
+    if (m.gone || !f) { e.at = 0; continue }
+    if (!e.find) e.p = pointIn(f, false)
+    else if (e.p && e.frame) e.p = { x: e.p.x + f.x - e.frame.x, y: e.p.y + f.y - e.frame.y }
+    const resized = !!e.frame && (e.frame.width !== f.width || e.frame.height !== f.height)
+    e.frame = f
+    if (e.find && resized) {
+      clearTimeout(refinding.get(win))
+      refinding.set(win, setTimeout(() => { refinding.delete(win); for (const x of placed.values()) if (x.win === win) x.at = 0; draw() }, 300))
+    }
+  }
+  draw()
+}
+
+/** Where each cursor (`agent:<name>`, or `idle`: the companion waiting) was drawn last, and where it came from a
+ *  moment ago: one new to a display glides in from there. */
+const drawnAt = new Map<string, Point>(), cameFrom = new Map<string, { p: Point; until: number }>()
+const FROM_MS = 900
+let fromTimer: ReturnType<typeof setTimeout> | undefined
+function cameFromAt(key: string, p: Point) {
+  cameFrom.set(key, { p, until: Date.now() + FROM_MS })
+  clearTimeout(fromTimer)
+  fromTimer = setTimeout(draw, FROM_MS + 20)
+}
+function movedFrom(key: string, p: Point) {
+  const was = drawnAt.get(key)
+  drawnAt.set(key, p)
+  if (was && (was.x !== p.x || was.y !== p.y)) cameFromAt(key, was)
+  const c = cameFrom.get(key)
+  if (c && c.until < Date.now()) cameFrom.delete(key)
+  return c && c.until >= Date.now() ? c.p : undefined
+}
+
+// ---------- one cursor, two drawers: the window draws its agents in it, this the rest; between them it glides, never jumps
+
+/** Where the window's own cursors are (plugins/core/companion/Overlay.tsx), in screen points: `at` where each is drawn
+ *  now (mid-glide too), `to` where it's going. Read from its page's DOM, never its code; none while it isn't on screen. */
+async function inApp(): Promise<Map<string, { at: Point; to: Point }>> {
+  const w = host?.homeWindow()
+  if (!w || w.page.isDestroyed()) return new Map()
+  const code = `[...document.querySelectorAll(".companion-cursor[data-agent]")].map((el) => { const r = el.getBoundingClientRect(),
+    m = /translate\\(([-\\d.]+)px, ([-\\d.]+)px\\)/.exec(el.style.transform); return [el.dataset.agent, r.left, r.top, m ? +m[1] : r.left, m ? +m[2] : r.top] })`
+  const rows = await w.page.executeJavaScriptInIsolatedWorld(1007, [{ code }]).catch(() => []) as [string, number, number, number, number][]
+  // (its tip: 3, 2 into the box, as both draw the arrow)
+  const pt = (x: number, y: number) => ({ x: Math.round(w.bounds.x + (x + 3) * w.zoom), y: Math.round(w.bounds.y + (y + 2) * w.zoom) })
+  return new Map((Array.isArray(rows) ? rows : []).map(([name, x, y, tx, ty]) => [name, { at: pt(x, y), to: pt(tx, ty) }]))
+}
+
+/** A cursor new on screen whose agent was in the window: shown once where it was there is known (a few ms). */
+const fromWindow = new Map<string, { p: Point | null; asked: number }>()
+/** Cursors gone from the screen into the window: drawn a moment longer, gliding to where the window draws them, fading. */
+const intoWindow = new Map<string, { item: ScreenAgent | NonNullable<Scene["idle"]>; to: Point | null; until: number }>()
+const INTO_MS = 450
+let drawnKeys = new Map<string, string>()
+const keyOf = (x: { name: string }, idle = false) => (idle ? "idle" : `agent:${x.name}`)
+
+/** The scene as wanted, made one cursor: a cursor that appears comes from where its agent was (its other form on screen,
+ *  else the window's cursor), and one that goes into the window glides there first. */
+function handOff(agents: ScreenAgent[], idle: Scene["idle"]): { agents: ScreenAgent[]; idle: Scene["idle"] } {
+  const items = new Map<string, ScreenAgent | NonNullable<Scene["idle"]>>(agents.map((a) => [keyOf(a), a]))
+  if (idle) items.set("idle", idle)
+  const shown = !!host?.homeWindow()
+  for (const k of fromWindow.keys()) if (!items.has(k)) fromWindow.delete(k)
+  for (const [k, it] of [...items]) {
+    if (drawnKeys.has(k)) continue
+    // (its other form, the cursor or the companion waiting, was drawn: from there)
+    const twin = [...drawnKeys].find(([k2, name]) => k2 !== k && name === it.name && !items.has(k2))
+    if (twin && drawnAt.has(twin[0])) { cameFromAt(k, drawnAt.get(twin[0])!); continue }
+    const asked = fromWindow.get(k)
+    if (asked && (asked.p || asked.asked === 0 || Date.now() - asked.asked > 150)) { fromWindow.delete(k); if (asked.p) cameFromAt(k, asked.p); continue }
+    if (asked) { items.delete(k); continue }
+    if (!shown) continue
+    // (asked first: drawn once the window says where it was)
+    const ask = { p: null as Point | null, asked: Date.now() }
+    fromWindow.set(k, ask)
+    items.delete(k)
+    void inApp().then((m) => { if (fromWindow.get(k) !== ask) return; Object.assign(ask, { p: m.get(it.name)?.at ?? null, asked: 0 }); draw() })
+    setTimeout(draw, 160)
+  }
+  for (const [k, name] of drawnKeys) {
+    if (items.has(k) || intoWindow.has(k) || !shown) continue
+    const a = live.state.agents.get(name), last = lastScene && (k === "idle" ? lastScene.idle : lastScene.agents.find((x) => x.name === name))
+    // (into the window: its place went there, or they came back to it; else it fades where it is)
+    const into = k === "idle" ? !!front?.vaultite : !!a && !onScreen(a)
+    if (!a || a.state === "away" || !last || !into || [...items.values()].some((x) => x.name === name)) continue
+    const going = { item: last, to: null as Point | null, until: Date.now() + INTO_MS }
+    intoWindow.set(k, going)
+    // (a moment for the window to draw it where it's going)
+    setTimeout(() => void inApp().then((m) => { going.to = m.get(name)?.to ?? null; draw() }), 60)
+    setTimeout(draw, INTO_MS + 20)
+  }
+  drawnKeys = new Map([...items].map(([k, it]) => [k, it.name]))
+  for (const k of new Set([...drawnAt.keys(), ...cameFrom.keys()])) if (!items.has(k)) { drawnAt.delete(k); cameFrom.delete(k) }
+  for (const [k, into] of intoWindow) {
+    if (items.has(k) || Date.now() > into.until) { intoWindow.delete(k); continue }
+    const p = into.to ?? { x: into.item.sx, y: into.item.sy }
+    items.set(k, { ...into.item, sx: p.x, sy: p.y, from: undefined, leaving: true })
+  }
+  const out = [...items].map(([k, it]) => {
+    const from = it.leaving ? undefined : movedFrom(k, { x: it.sx, y: it.sy })
+    return [k, from ? { ...it, from } : it] as const
+  })
+  return { agents: out.filter(([k]) => k !== "idle").map(([, it]) => it as ScreenAgent), idle: (out.find(([k]) => k === "idle")?.[1] as Scene["idle"]) ?? null }
 }
 
 let trailing: ReturnType<typeof setInterval> | null = null
@@ -401,10 +528,12 @@ function draw() {
   const says = [...live.state.notes.values()].filter((n) => n.kind === "say" && !n.dismissed)
   for (const a of live.state.agents.values()) {
     if (a.state === "away" || !onScreen(a)) continue
-    const p = pointOf(a)
+    // (a new place being found: it stays where it was meanwhile, or where it waited)
+    const e = pointOf(a), p = e.p ?? (e.pending ? drawnAt.get(keyOf(a)) ?? (a.name === live.state.name ? drawnAt.get("idle") : undefined) : null)
     if (!p) continue
     const say = says.filter((n) => n.agent === a.name).at(-1)
-    agents.push({ name: a.name, tint: a.tint, state: a.state, sx: p.x, sy: p.y, ...(say?.text ? { say: { id: say.id, text: say.text, ...(say.question ? { question: true } : {}) } } : {}) })
+    agents.push({ name: a.name, tint: a.tint, state: a.state, sx: p.x, sy: p.y, t: a.t, ...(a.seen ? { seen: true } : {}), ...(a.why ? { why: a.why } : {}),
+      ...(say?.text ? { say: { id: say.id, text: say.text, ...(say.question ? { question: true } : {}) } } : {}) })
   }
   const own = live.state.agents.get(live.state.name)
   // (waiting while they're in another app: the window draws its own while Vaultite's in front)
@@ -422,9 +551,10 @@ function draw() {
       idle = { name: own!.name, tint: own!.tint, sx: d.workArea.x + d.workArea.width - 22, sy: d.workArea.y + Math.round(d.workArea.height / 3), docked: true }
     }
   }
+  watchWindows()
   const s = session
   const pill: Scene["pill"] = s ? { level: s.level, text: s.pending || s.finals.at(-1) || "", ready: s.ready, ...(s.focus.frame ? { display: displayOf(s.focus.frame) } : {}) } : null
-  lastScene = { agents, idle, pill }
+  lastScene = { ...handOff(agents, idle), pill }
   showOverlay(based || null, lastScene)
 }
 const displayOf = (r: Rect) => screen.getDisplayMatching({ x: Math.round(r.x), y: Math.round(r.y), width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)) }).id

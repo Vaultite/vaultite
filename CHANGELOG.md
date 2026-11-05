@@ -23,6 +23,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The companion's cursor stays where you drop it, and its box shows your side too**: dropped on text it stays on that
   spot (scrolling with it), dropped anywhere else it stays there, until it looks somewhere new; clicking it shows what
   you asked with what it answered; a long bubble fits the window and scrolls with no bar, its buttons over its corner.
+- **The companion's cursor glides smoothly over other apps**: it moves on a spring at the screen's full frame rate,
+  bends toward a new place mid-move instead of starting over, follows a window as it's dragged or resized, and no
+  longer flickers between places.
+- **The companion's cursor glides smoothly over other apps, as one with the app's**: it moves on a spring at the
+  screen's full frame rate, bends toward a new place mid-move, follows a window as it's dragged or resized, no longer
+  flickers, and looks as in the app (its flag, mark and bubble). Going between another app and a note, or as you switch
+  in and out of Vaultite, it glides out of the window's cursor and back into it instead of jumping.
 - **A subdomain's own site style shows in Shields**: on docs.google.com the menu has "Style for docs.google.com" (its
   own file, else its parent site's), and "Style this site…" makes the page's host's file, not one for all of Google.
 - **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page
