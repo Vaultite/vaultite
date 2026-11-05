@@ -471,11 +471,11 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     if (popup && !agents) {
       const k = popups
       // (Electron puts the new page and what the features asked, its size and place, in its options)
-      if (k) return { action: "allow", overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => k.popup(o as Parameters<typeof k.popup>[0], {
+      if (k) return { action: "allow", overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => k.popup(o as Parameters<typeof k.popup>[0], to, {
         name: () => (p.profile.startsWith("c-") ? menus.containers.find((x) => `c-${x.id}` === p.profile)?.name : "") ?? "",
         away: (u) => { if (shows(u)) return false; void otherApp(p, u); return true },
         link: (u) => { if (web(u)) tell(p.win, { type: "open", id: p.id, tab: p.tab, url: u, profile: p.profile, how: "foreground" }); else void otherApp(p, u) },
-        mayLeave: (wc, w) => mayLeave(wc, w, false), closing: (wc) => unloading.add(wc), opener: p.view.webContents,
+        mayLeave: (wc, w) => mayLeave(wc, w, false), closing: (wc) => unloading.add(wc), opener: p.view.webContents, site: (u) => siteOf(hostOfUrl(u)),
       }) }
     }
     const how = disposition === "background-tab" ? "background" : disposition === "new-window" ? "side" : "foreground"

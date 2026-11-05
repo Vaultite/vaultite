@@ -89,8 +89,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   or use the palette, to bring the bars back; the window keeps it. A tab moved back to the main window keeps its web
   page live (a video goes on where it was), not loaded again. Keep window on top (the palette, Window menu, the strip's pin)
   floats any window over other apps' and on every Space. A page's popup (a sign-in, a call's video popped out) is now a
-  window of its own at the size it asked, staying put as the window it came from moves or minimizes; its right-click
-  hides its title bar and keeps it on top.
+  window of its own at the size it asked, staying put as the window it came from moves or minimizes. One of the page's
+  own (its video popped out) opens bare and black like a player, titled by the page and keeping its video's shape, and
+  opens next time with its title bar and Keep on top as you left them for that site; a sign-in with another site keeps
+  its title bar, naming the site asking. Their right-click shows or hides the title bar and keeps them on top.
 - **The companion's cursor stays where you drop it, and its box shows your side too**: dropped on text it stays on that
   spot (scrolling with it), dropped anywhere else it stays there, until it looks somewhere new; clicking it shows what
   you asked with what it answered; a long bubble fits the window and scrolls with no bar, its buttons over its corner.

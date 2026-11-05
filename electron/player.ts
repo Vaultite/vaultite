@@ -118,6 +118,18 @@ export const PIP = `(() => {
   return v.requestPictureInPicture().then(() => true, () => false)
 })()`
 
+/** Resolves with the page's main video's aspect (width / height) once it has one other than `last`: a page written into
+ *  (a pop-out) gets its video late, and a call's video changes size as the camera on the other end does. */
+export const nextAspect = (last: number | null) => `new Promise((done) => {
+  const look = () => {
+    ${MAIN_VIDEO}
+    const v = best?.video, a = v?.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 0
+    if (a && Math.abs(a - ${last ?? 0}) > 0.005) { clearInterval(timer); done(a) }
+  }
+  const timer = setInterval(look, 500)
+  look()
+})`
+
 const PLAYER_TITLE = "Vaultite player"
 const MAC = process.platform === "darwin"
 const LIGHTS = { x: 14, y: 13 }
@@ -177,13 +189,14 @@ export function playerWindow(bounds: Rectangle, menu: () => MenuItemConstructorO
   return w
 }
 
-/** Lock player `w` to `aspect` (null: none), its content resized to it, keeping its width (and within its screen). */
-export function setAspect(w: BaseWindow, aspect: number | null) {
+/** Lock window `w` to `aspect` (null: none), its content resized to it, keeping its width (and within its screen);
+ *  `top`: points over the video that aren't its (a title bar). */
+export function setAspect(w: BaseWindow, aspect: number | null, top = 0) {
   if (w.isDestroyed()) return
-  w.setAspectRatio(aspect ?? 0)
+  w.setAspectRatio(aspect ?? 0, { width: 0, height: aspect ? top : 0 })
   if (!aspect || w.isFullScreen() || w.isMaximized()) return
   const b = w.getContentBounds(), area = screen.getDisplayMatching(b).workArea
-  let width = b.width, height = Math.round(width / aspect)
-  if (height > area.height) { height = area.height; width = Math.round(height * aspect) }
+  let width = b.width, height = Math.round(width / aspect) + top
+  if (height > area.height) { height = area.height; width = Math.round((height - top) * aspect) }
   if (Math.abs(height - b.height) > 1 || width !== b.width) w.setContentBounds({ x: b.x, y: Math.max(area.y, Math.min(b.y, area.y + area.height - height)), width, height })
 }
