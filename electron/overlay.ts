@@ -32,6 +32,8 @@ function make(d: Display) {
   w.setIgnoreMouseEvents(true, { forward: true })
   // (skipTransformProcessType: else macOS takes the app out of the Dock for it)
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
+  // (not a window to the user: Mission Control leaves it out)
+  w.setHiddenInMissionControl(true)
   w.setAlwaysOnTop(true, "screen-saver")
   w.webContents.on("did-finish-load", () => { sent.delete(w); push() })
   if (url) void w.loadURL(url).catch(() => {})
@@ -131,6 +133,7 @@ export function openPanel(base: string, at: Point, data: PanelData) {
     minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, show: false, type: "panel", backgroundColor: "#00000000",
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } })
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
+  w.setHiddenInMissionControl(true)
   w.setAlwaysOnTop(true, "screen-saver", 1)
   const mine = { w, name: data.name, at, data, height: 0, menu: false }
   panel = mine

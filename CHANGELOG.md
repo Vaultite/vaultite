@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Mission Control leaves out the companion's screen layer**: the see-through window its cursor is drawn in, its
+  conversation and a dragged card's ghost no longer show as Vaultite windows there.
 - **Drag the tab you're on to its own edge to split it off**: dropped on a side of its page (from the tab bar or the
   Tabs panel), it goes on that side and the tab you were on before it comes in beside it, out of the list (a blank page
   when there's no other tab). In a split, a pane's tab dragged to that pane's own edge splits off the same way, the pane

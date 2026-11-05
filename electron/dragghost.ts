@@ -20,6 +20,7 @@ function ghost() {
   win.setIgnoreMouseEvents(true)
   // (over a full screen window too; skipTransformProcessType: else macOS takes the app out of the Dock for it)
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
+  win.setHiddenInMissionControl(true)
   win.setAlwaysOnTop(true, "pop-up-menu")
   return win
 }
