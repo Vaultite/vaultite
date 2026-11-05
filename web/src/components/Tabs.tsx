@@ -26,6 +26,7 @@ import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, groupsAsDrawn, sprangOpen, springing, type Drop } from "@/core/drop"
 import { INCOMING, useSlide } from "@/core/slide"
 import { usePane, usePaneHasTopBar } from "@/core/pane"
+import { useUiMarks } from "@/core/uimarks"
 import { tabButtons, tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { commandItems, menuFor, openMenu, type MenuItem } from "@/components/ContextMenu"
@@ -228,8 +229,17 @@ function GroupChip({ g, n, target }: { g: Group; n: number
       {/* (a long name cut off, as a browser's chip: the tabs keep their room; the tip says it whole) */}
       {/* (the line under the group's tabs starts under it: core/tabline.ts) */}
       <GroupLabel g={g} n={n} target={target} className="max-w-40" />
+      <GroupMarks id={g.id} />
     </button>
   )
+}
+
+/** What other plugins mark a tab group with (a page playing in it, folded): a small button each after its chip. */
+function GroupMarks({ id }: { id: string }) {
+  const marks = useUiMarks(`group:${id}`)
+  return <>{marks.map((m, k) => (
+    <IconAction key={k} action={m} className="ml-1"><m.icon className="size-3.5 shrink-0 text-primary" strokeWidth={2.25} style={m.tint ? { color: m.tint } : undefined} /></IconAction>
+  ))}</>
 }
 
 /** A tab group's name in a solid chip of its colour (the tab bar's, the Tabs panel's), its text white or dark by it; no

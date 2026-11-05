@@ -292,6 +292,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `HostedPlugin`: A plugin another runs (one written for another app): listed by category with its host as byline, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
 - `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math, code's colours and mermaid diagrams.
+- `IconAction({ action, className, children })`: An icon in a row that does something of its own when clicked (a tab's mark: mute it), without the row's click, drag or menu.
 - `iconAt(path)`: A vault file's icon as the tree draws it, by its path (a note, an image, a recording...).
 - `iconNamed(name)`: An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude sessions.
 - `iconOf(f?)`: A file's own icon (its `icon:`), or the icon of the plugin that brought it, or of the plugin whose kind of file it is (a dashboard's, a person's), or the core's for its own kind (Me), if any.
@@ -700,7 +701,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `treeShownItems({ reveal }?)`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse);…
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…
-- `UiMark`
+- `UiMark`: `run` gets the click: a menu at the mark (`menuBelow`).
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
 - `useAgents()`

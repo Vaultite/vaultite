@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react"
 import { AppWindow, Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
   activePane, Badged, beforeStart, edgeScroller, canDropTab, closePane, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
-  groupsAsDrawn, HeadingButton, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, paneMenuOf, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
+  groupsAsDrawn, HeadingButton, IconAction, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, paneMenuOf, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
   selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabButtons, tabListDrop, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabSlotBeside, tabsMenu, useDrag, useDropHit,
   useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
   INCOMING, laidOut,
@@ -26,7 +26,7 @@ function Marks({ id }: { id: string }) {
   const marks = useUiMarks(id)
   return <>{marks.map((m, k) => (
     <HeadingButton key={k} icon={m.icon} label={m.label} data-no-drag className="text-primary" style={m.tint ? { color: m.tint } : undefined}
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); m.run() }} />
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); m.run(e) }} />
   ))}</>
 }
 
@@ -59,12 +59,16 @@ function SplitMap({ t, active, info }: { t: Tab; active: boolean; info: (x: Tab 
     const pi = info(p), on = active && p.id === t.focus
     const mark = <Badged on={pi.badge}><pi.icon className={cn("size-4 shrink-0", pi.tint ? undefined : on ? "text-primary" : "text-muted-foreground", pi.iconClassName)} strokeWidth={2} style={pi.tint ? { color: pi.tint } : undefined} /></Badged>
     const lit = into === p.id && "bg-primary/15"
-    if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} className={cn("flex h-5.5 shrink-0 items-center rounded-[5px] px-1 ring-1 ring-foreground/10 ring-inset", lit)}>{mark}</span>
+    // (its mark, as a tab's row has it: a page playing in it, its speaker a click from muting it)
+    const sign = pi.mark && <IconAction action={pi.mark} className={icon ? undefined : "-ml-1 @max-[52px]:ml-0"}><pi.mark.icon className={cn("size-3.5 shrink-0", !pi.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={pi.mark.tint ? { color: pi.mark.tint } : undefined} /></IconAction>
+    if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} className={cn("flex h-5.5 shrink-0 items-center gap-1 rounded-[5px] px-1 ring-1 ring-foreground/10 ring-inset", lit)}>{mark}
+      {sign}</span>
     // (too narrow for its name: its icon alone, in the middle; its X over its end, where its name fades)
     return (
       <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} style={{ flex: `${size} 1 0` }} className={cn("group/cell @container relative flex h-5.5 min-w-0", lit)}>
-        <span className="flex w-full min-w-0 items-center gap-2 px-1 @max-[52px]:justify-center">
+        <span className="flex w-full min-w-0 items-center gap-2 px-1 @max-[52px]:justify-center @max-[52px]:gap-1">
           {mark}
+          {sign}
           <span className={cn("min-w-0 flex-1 overflow-hidden fade-end @max-[52px]:hidden", active && !on && "font-normal text-muted-foreground")}>{pi.label}</span>
         </span>
         <button type="button" data-cell-close={p.id} data-no-drag aria-label={`Close ${pi.label}`} data-tip="Close pane"

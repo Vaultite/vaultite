@@ -108,8 +108,9 @@ export type MenuSnapshot = {
 export type WebPageState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean
   /** Why the page didn't load ("ERR_NAME_NOT_RESOLVED"), until the next load. */
   error?: string
-  /** It's playing sound: from its first sound till its media pauses, through quiet scenes; its sound is muted. */
-  playing?: boolean; muted?: boolean
+  /** It's playing sound: from its first sound till its media pauses, through quiet scenes; its sound is muted; the app
+   *  paused its media (`pause`, till `play` or another page). */
+  playing?: boolean; muted?: boolean; paused?: boolean
   /** It's in its player, a window of its own (still its tab's). */
   player?: boolean
   /** Its site's zoom, when it isn't 100% (1.25: 125%). */
@@ -136,9 +137,9 @@ export type WebPages = {
    *  this vault's windows, which takes the page, live, as it shows it (older builds end it). */
   close: (tab: string, moved?: boolean) => Promise<unknown>
   /** `back-address`, `forward-address`: where Back or Forward would go. `history`: `{ at, entries: [{ i, url, title }] }`,
-   *  `go-to` entry `url` (its i). `allow-cert`: past its warning (`unsafe`). `duplicate`: tab `url` gets its history. */
+   *  `go-to` entry `url` (its i). `allow-cert`: past its warning. `duplicate`: tab `url` gets its history. `pause`, `play`. */
   go: (id: number, action: "back" | "forward" | "reload" | "hard-reload" | "devtools" | "back-address" | "forward-address" | "stop" | "load" | "focus" | "mute"
-    | "unmute" | "pip" | "zoom-in" | "zoom-out" | "zoom-reset" | "print" | "history" | "go-to" | "allow-cert" | "source" | "duplicate", url?: string) => Promise<unknown>
+    | "unmute" | "pip" | "zoom-in" | "zoom-out" | "zoom-reset" | "print" | "history" | "go-to" | "allow-cert" | "source" | "duplicate" | "pause" | "play", url?: string) => Promise<unknown>
   /** Find `text` in the page, answered by `found` events: `next` goes on from the match it's at (`forward` false: back),
    *  else it's a new search; "" stops. Older builds don't have it. */
   find?: (id: number, text: string, o?: { next?: boolean; forward?: boolean; matchCase?: boolean }) => Promise<unknown>

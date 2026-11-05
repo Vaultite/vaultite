@@ -22,7 +22,7 @@ setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl })
 
 export type WebRect = { x: number; y: number; width: number; height: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
-  player?: boolean; zoom?: number; unsafe?: boolean; crashed?: boolean; typed?: boolean; painted?: boolean }
+  paused?: boolean; player?: boolean; zoom?: number; unsafe?: boolean; crashed?: boolean; typed?: boolean; painted?: boolean }
 type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   /** Its address failed on a certificate it may choose to trust for this session (`allow-cert`). */
   cert?: { url: string; host: string; fp: string }
@@ -50,6 +50,8 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   hadFocus?: boolean
   /** Whether it plays sound, as its tab shows it (webpages.ts), and the timer that ends a quiet stretch's. */
   sound: Playback; hush?: NodeJS.Timeout
+  /** The app paused its media (`pause`): `play` starts those again, till it plays or loads another page. */
+  paused?: boolean
   /** Its first load was a download, before a tab had it: the tab it's handed to closes. */
   downloaded?: boolean
   /** Its history is being put back (a tab come back): what it shows is `target` till that's in. */
@@ -257,7 +259,7 @@ function stateOf(p: Page): WebState {
   const blank = p.blankBehind || p.restoring
   const zoom = wc.getZoomFactor()
   return { url: (!blank && wc.getURL()) || p.target, title: (!blank && wc.getTitle()) || "", back: canBack(p), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
-    ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}), ...(Math.abs(zoom - 1) > 0.001 ? { zoom } : {}),
+    ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.paused ? { paused: true } : {}), ...(p.player ? { player: true } : {}), ...(Math.abs(zoom - 1) > 0.001 ? { zoom } : {}),
     ...(p.cert && p.error ? { unsafe: true } : {}), ...(p.crashed ? { crashed: true } : {}), ...([...p.typed.values()].some(Boolean) ? { typed: true } : {}),
     ...(p.fresh ? {} : { painted: true }) }
 }
@@ -506,7 +508,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   })
   wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) { p.cert = undefined; if (shows(d.url)) p.target = d.url } })
   wc.on("did-stop-loading", changed)
-  wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.typed.clear(); noteVisit(profile, to); if (!p.agent && !pageHeld(p.id)) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
+  wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.paused = false; p.typed.clear(); noteVisit(profile, to); if (!p.agent && !pageHeld(p.id)) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
   wc.on("found-in-page", (_e, r) => tell(p.win, { type: "found", id: p.id, request: r.requestId, active: r.activeMatchOrdinal, matches: r.matches, final: r.finalUpdate }))
   // (loaded and still not told it painted, a page with no paint timing (an extension's): white a moment later)
   wc.on("did-finish-load", () => {
@@ -526,7 +528,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     changed()
   }
   wc.on("audio-state-changed", (e) => { hear(p.sound, e.audible, Date.now()); sounded() })
-  wc.on("media-started-playing", () => { media(p.sound, true, wc.isCurrentlyAudible()); sounded() })
+  wc.on("media-started-playing", () => { p.paused = false; media(p.sound, true, wc.isCurrentlyAudible()); sounded() })
   wc.on("media-paused", () => { media(p.sound, false, wc.isCurrentlyAudible()); sounded() })
   wc.on("did-fail-load", (_e, code, desc, _u, main) => {
     if (!main || code === -3) return // -3: stopped, or another load took over
@@ -920,7 +922,32 @@ function go(p: Page, action: string, url?: string): unknown {
   else if (action === "load" && url && shows(url)) { p.target = url; void wc.loadURL(url).catch(() => {}) }
   // (answers "none" when the page has no video)
   else if (action === "pip") return playerKit().then((k) => wc.executeJavaScriptInIsolatedWorld(1004, [{ code: k.PIP }], true)).catch(() => null)
+  // (answers how many it paused or started; kept in its own world, the site never sees them listed)
+  else if (action === "pause" || action === "play") {
+    return wc.executeJavaScriptInIsolatedWorld(1006, [{ code: action === "pause" ? PAUSE : PLAY }], true).then((n: unknown) => {
+      p.paused = action === "pause" && Number(n) > 0
+      sendState(p)
+      return n
+    }, () => null)
+  }
 }
+
+/** Every video and audio playing in the page (its open shadow roots too) paused, kept to start again (PLAY). Its
+ *  frames from other sites aren't reached: an embed plays on. */
+const PAUSE = `(() => {
+  const all = [], walk = (root) => { all.push(...root.querySelectorAll("video, audio")); for (const e of root.querySelectorAll("*")) if (e.shadowRoot) walk(e.shadowRoot) }
+  walk(document)
+  const on = all.filter((m) => !m.paused && !m.ended)
+  window.__vaultitePaused = on
+  for (const m of on) m.pause()
+  return on.length
+})()`
+const PLAY = `(() => {
+  const on = (window.__vaultitePaused || []).filter((m) => m.isConnected && m.paused)
+  window.__vaultitePaused = []
+  for (const m of on) void m.play().catch(() => {})
+  return on.length
+})()`
 
 /** Certificates the user went on past, by "<profile> <host> <fingerprint>": for this run of the app only. */
 const unsafeOk = new Set<string>()

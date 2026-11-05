@@ -1,7 +1,7 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌥⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, memo, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Printer, Puzzle, RotateCw, Scan, Scissors, Search, Volume2, VolumeX, ZoomIn,
+import { Bookmark, Bot, Box, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RotateCw, Scan, Scissors, Search, Volume2, VolumeX, ZoomIn,
   ZoomOut } from "lucide-react"
 import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
@@ -21,6 +21,7 @@ import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { editStyle, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
+import { muteItem, pauseItems, pauseSound, watchSoundMarks } from "./soundmarks"
 import { barHidden, pageBarItem, setBarHidden } from "./pagebar"
 import { switcherSearch } from "./switcher"
 
@@ -162,14 +163,16 @@ function Background() {
   // Which containers need Touch ID, told to the desktop app as they change.
   const locks = useContainers().filter((c) => c.lock).map((c) => profileIn(c.id)).join(" ")
   useEffect(() => { void webPages?.engine?.("lock:set", locks ? locks.split(" ") : []).catch(() => {}) }, [locks])
+  // (a page playing in a folded tab group: a speaker on the group)
+  useEffect(() => watchSoundMarks(), [])
   // Which pages play sound, shown or in the background: read again as pages change.
   useEffect(() => {
     const web = webPages
     if (!web?.list) return
     let timer = 0
     const read = () => void web.list!().then((list) => {
-      setSounds(list.flatMap((p) => p.muted || p.playing
-        ? [{ playing: !!p.playing, muted: !!p.muted, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title }] : []))
+      setSounds(list.flatMap((p) => p.muted || p.playing || p.paused
+        ? [{ playing: !!p.playing, muted: !!p.muted, paused: !!p.paused, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title }] : []))
       const of = (on: (p: (typeof list)[number]) => boolean | undefined) => new Set(list.flatMap((p) => (p.tab && on(p) ? [p.tab] : [])))
       setPageFlags(of((p) => p.loading && !p.error), of((p) => p.typed))
     }, () => {})
@@ -291,6 +294,8 @@ export default definePlugin({
           return { icon: MousePointer2, label: a.paused ? `${a.by}: paused here, click to resume` : `${a.by} is using this tab: click to pause`, tint: a.paused ? undefined : "var(--purple)",
             run: () => void pauseAgents(a.id, !a.paused) }
         }
+        // (paused from the app and quiet since: a click plays it again)
+        if (s && !s.playing && !s.muted && s.paused) return { icon: Play, label: "Play", run: () => pauseSound(s, false) }
         return s ? { icon: s.muted ? VolumeX : Volume2, label: s.muted ? "Unmute tab" : "Mute tab", run: () => void webPages?.go(s.id, s.muted ? "unmute" : "mute") } : null
       },
       // (a page playing sound or holding what was typed and not sent is in use, seen or not)
@@ -301,11 +306,10 @@ export default definePlugin({
       // (its pane's top: the strip or title over a hidden page bar, the tab bar's empty space)
       paneMenu: () => (webPages ? [pageBarItem()] : []),
       tabMenu: (arg, tab) => {
-        const { url } = splitArg(arg), sound = soundOf(arg)
+        const { url } = splitArg(arg), sound = soundOf(arg, tab)
         return [
           ...(/^https?:\/\//i.test(url) ? [{ label: "Duplicate tab", icon: CopyPlus, run: () => void duplicate(arg, tab) }] : []),
-          ...(sound ? [{ label: sound.muted ? "Unmute tab" : "Mute tab", icon: sound.muted ? Volume2 : VolumeX,
-            run: () => void webPages?.go(sound.id, sound.muted ? "unmute" : "mute") }] : []),
+          ...(sound ? [...pauseItems(sound), muteItem(sound)] : []),
           ...(/^https?:\/\//i.test(url) ? webPageActions({ url, title: titleOf(url) ?? "" }) : []),
         ]
       },

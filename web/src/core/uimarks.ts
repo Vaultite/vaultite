@@ -2,8 +2,10 @@
 // owner draws at its end (the companion's eye on a row it follows). Each plugin sets all of its marks at once.
 import { signal } from "@/core/signal"
 import type { LucideIcon } from "lucide-react"
+import type { MouseEvent } from "react"
 
-export type UiMark = { icon: LucideIcon; label: string; run: () => void; tint?: string }
+/** `run` gets the click: a menu at the mark (`menuBelow`). */
+export type UiMark = { icon: LucideIcon; label: string; run: (e: MouseEvent<HTMLElement>) => void; tint?: string }
 const byOwner = new Map<string, Map<string, UiMark[]>>()
 const changed = signal()
 const NONE: UiMark[] = []

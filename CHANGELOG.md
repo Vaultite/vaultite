@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A tab playing in a folded group shows a speaker on the group**: in the tab bar and the sidebar, a click on it shows
+  the tab, pauses it or mutes it. A split's row in the sidebar shows which pane plays. Pages can be paused and played
+  again from the app: the tab's menu, the speaker's menu and the status bar's Playing have Pause and Play.
 - **A note's links can open in a chosen container**: a web link's menu in a note has Open link in container, and
   Always open this note's links in sets the note's `container:`, which takes its links there before a site's rule.
 - **Every pane of a split shows its close and drag buttons on hover**: notes and Browser pages at the window's top
