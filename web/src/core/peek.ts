@@ -68,6 +68,9 @@ function fitGhost(aside: HTMLElement, ghost: HTMLElement, f: LightsFrame) {
   ghost.style.setProperty("--light-pitch", `${f.pitch / z}px`)
 }
 
+// What of a sidebar moving moves its row (and the lights on it).
+const MOVES = new Set(["translate", "top", "left"])
+
 /** The traffic lights on the left sidebar's top row; the Mac draws them a beat behind the page, so while it slides
  *  stand-ins take their place: it slides out once theirs are gone. Answers whether it's drawn slid in. */
 export function usePeekLights(hidden: boolean, peek: Peek) {
@@ -99,8 +102,9 @@ export function usePeekLights(hidden: boolean, peek: Peek) {
       })
     }
     const place = () => {
-      // (only its sliding moves them: a rail folding changes its width, not where they sit)
-      const sliding = aside?.getAnimations().filter((a) => (a as CSSTransition).transitionProperty === "translate") ?? []
+      // (only its moving moves them: sliding, or pinned from floating, its top and left settling; a rail folding
+      // changes its width, not where they sit)
+      const sliding = aside?.getAnimations().filter((a) => MOVES.has((a as CSSTransition).transitionProperty)) ?? []
       if (sliding.length) {
         void say(null)
         void Promise.allSettled(sliding.map((a) => a.finished)).then(() => { if (live) place() })
