@@ -310,47 +310,14 @@ const pointers = new WeakMap<WebContents, { x: number; y: number }>()
 /** Pages someone watches live (live.ts): the pointer gets there before the agent acts, as on a page on screen. */
 const watched = new Set<number>()
 export const setWatched = (id: number, on: boolean) => { if (on) watched.add(id); else watched.delete(id) }
-const GLIDE_MS = 320
-// (in a world of its own and a closed shadow root: the page's scripts and styles never reach it)
-const POINTER = `(x, y, from, name, clicked) => {
-  let a = window.__vaultiteAgent
-  if (!a || !a.host.isConnected) {
-    const host = document.createElement("vaultite-agent")
-    host.style.cssText = "all:initial!important;position:fixed!important;inset:0!important;pointer-events:none!important;z-index:2147483647!important;display:block!important"
-    host.setAttribute("aria-hidden", "true") // (never in the tree agents read: its name would be a change after each act)
-    const root = host.attachShadow({ mode: "closed" })
-    root.innerHTML = \`<style>
-      .frame { position: fixed; inset: 0; box-shadow: inset 0 0 0 2px rgba(175,82,222,.5), inset 0 0 28px rgba(175,82,222,.22); opacity: 0; transition: opacity .4s }
-      .at { position: fixed; left: 0; top: 0; transition: transform ${GLIDE_MS}ms cubic-bezier(.3,.7,.2,1), opacity .4s; opacity: 0 }
-      svg { display: block; width: 22px; height: 22px; margin: -3px 0 0 -3px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)) }
-      .name { position: absolute; left: 16px; top: 19px; padding: 2px 6px; border-radius: 6px; background: rgb(175,82,222); color: #fff;
-        font: 500 11px/15px -apple-system, system-ui, sans-serif; white-space: nowrap; transition: opacity .4s }
-      .ring { position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgb(175,82,222); opacity: 0 }
-      .ring.go { animation: ring .5s ease-out }
-      @keyframes ring { from { transform: scale(.4); opacity: 1 } to { transform: scale(1.6); opacity: 0 } }
-      :host([data-on]) .frame, :host([data-on]) .at { opacity: 1 }
-      :host([data-quiet]) .name { opacity: 0 }
-    </style><div class="frame"></div><div class="at"><div class="ring"></div><svg viewBox="0 0 24 24"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z" fill="rgb(175,82,222)" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="name"></span></div>\`
-    document.documentElement.append(host)
-    a = window.__vaultiteAgent = { host, at: root.querySelector(".at"), ring: root.querySelector(".ring"), name: root.querySelector(".name"), off: 0, quiet: 0 }
-    a.at.style.transform = \`translate(\${from.x}px, \${from.y}px)\`
-    a.at.getBoundingClientRect()
-  }
-  a.name.textContent = name
-  a.host.setAttribute("data-on", "")
-  a.host.removeAttribute("data-quiet")
-  if (x !== null) a.at.style.transform = \`translate(\${x}px, \${y}px)\`
-  if (clicked) setTimeout(() => { a.ring.classList.remove("go"); a.ring.getBoundingClientRect(); a.ring.classList.add("go") }, ${GLIDE_MS})
-  clearTimeout(a.off); clearTimeout(a.quiet)
-  a.quiet = setTimeout(() => a.host.setAttribute("data-quiet", ""), 2500)
-  a.off = setTimeout(() => a.host.removeAttribute("data-on"), 6000)
-}`
+export const GLIDE_MS = 320
 /** The agent's pointer to x, y (null: where it is, the page lit as at work), `clicked` with a ring; once there when the
  *  page is seen (on screen or watched live), so the act follows it. */
 async function pointTo(p: EnginePage, who: string, x: number | null, y: number | null, clicked = false) {
   const from = pointers.get(p.wc) ?? { x: 160, y: 120 }
   if (x !== null && y !== null) pointers.set(p.wc, { x, y })
   const args = [x === null ? null : Math.round(x), y === null ? null : Math.round(y), from, who || "Agent", clicked].map((v) => JSON.stringify(v)).join(", ")
+  const { POINTER } = await import("./agentrun.ts")
   await p.wc.executeJavaScriptInIsolatedWorld(1010, [{ code: `(${POINTER})(${args})` }]).catch(() => {})
   if (x !== null && (p.visible() || watched.has(p.id))) await new Promise((r) => setTimeout(r, GLIDE_MS))
 }
