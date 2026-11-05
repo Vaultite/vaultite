@@ -1367,8 +1367,17 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   // What closed together comes back together (Chrome's "N tabs"), each where it was, with its group.
   const G1 = { id: "g1", name: "Trip", color: "teal" }
   put([T("a"), T("b", undefined, { group: "g1" }), T("c", undefined, { group: "g1" }), T("d")], "ta", { groups: [G1] })
+  const told: [string, number][] = []
+  ws.setClosedTogether((id: string, n: number) => told.push([id, n]))
   ws.closeTabs("others", "ta", true)
   check("several closed: one entry", tabs() === "a*" && shut() === "tb", [tabs(), shut()])
+  check("several closed: the app is told once, with the entry Undo reopens and how many", told.join("|") === "tb,3", told)
+  ws.reopenClosed("tb")
+  check("several closed: Undo (reopenClosed) brings them all back", rn() === "a,b(Trip),c(Trip),d" && !ws.canReopenTab(), rn())
+  ws.closeTab("td"); ws.reopenTab()
+  check("several closed: one tab closed tells nothing", told.length === 1, told)
+  ws.setClosedTogether(() => {}); ws.selectTab("ta")
+  ws.closeTabs("others", "ta", true)
   ws.reopenTab()
   check("several closed: one ⌘⇧T brings all back where they were, the tab on screen staying, their group back", rn() === "a,b(Trip),c(Trip),d" && ws.here().active === "ta"
     && !ws.canReopenTab(), [rn(), ws.here().active])
@@ -2626,6 +2635,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const { keysText } = await import("../web/src/core/platform.ts")
   const off = (t: string) => keysText(t, false)
   check("keys in text: off a Mac, Ctrl, Alt and Shift", off("Find (⌘F), and replace (⌥⌘F); ⇧⌘T") === "Find (Ctrl+F), and replace (Ctrl+Alt+F); Ctrl+Shift+T", off("Find (⌘F), and replace (⌥⌘F); ⇧⌘T"))
+  check("keys in text: a key bar's labels", off("⇧tab") === "Shift+tab" && off("⌃C") === "Ctrl+C", [off("⇧tab"), off("⌃C")])
   check("keys in text: a key alone, or before -click", off("hold ⌘. ⌘-click, ⌘ held") === "hold Ctrl. Ctrl-click, Ctrl held" && keysText("⌥⌘F", true) === "⌥⌘F", off("hold ⌘. ⌘-click, ⌘ held"))
 }
 

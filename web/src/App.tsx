@@ -5,7 +5,7 @@ import { getStore, onState, reload, useStore, vaultName as vaultNameOf, type Sto
 import { share } from "@/core/share"
 import { setOpenWidth, setRoom } from "@/core/room"
 import { SharedWith } from "@/components/SharedWith"
-import { runCommandLink, useCommands } from "@/core/commands"
+import { commandKeys, runCommandLink, useCommands } from "@/core/commands"
 import { isDesktop, isMac, isWindows, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
@@ -19,7 +19,7 @@ import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
 import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, closeWholePane, currentFile, cycleTab, placesHere, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, activePane, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
-import { barsHidden, hideBars, restTab, tabsInWorkspace, useBarsHidden } from "@/core/workspace"
+import { barsHidden, closedTabs, hideBars, reopenClosed, restTab, setClosedTogether, tabsInWorkspace, useBarsHidden } from "@/core/workspace"
 import { canNudge, evenOutAll, focusByOrder, focusLastPane, hasLastPane, hasNeighbour, severalPanes, movePane, moveTabBy, nudgePane, paneToTab, splitPane, splitToFit, canFloat, canZoom, isFloating, isZoomed, toggleFloat, zoomPane } from "@/core/splits"
 import { Maximize2, PictureInPicture2 } from "lucide-react"
 import { hasMainWindow, moveToMain } from "@/core/windows"
@@ -50,7 +50,7 @@ import { DownloadingNotice, VaultLoading } from "@/components/VaultLoading"
 import { KeyHints } from "@/components/KeyHints"
 import { preloadEditor } from "@/editor/lazy"
 import { Logo, SheetHead, Stone } from "@/components/kit"
-import { notify, notifyError } from "@/core/notify"
+import { dismissNotice, notify, notifyError } from "@/core/notify"
 import { editorSettings, showPropertiesAs } from "@/core/editorPrefs"
 import { PluginPreview } from "@/components/PluginPreview"
 import { PluginSettings } from "@/components/PluginSettings"
@@ -228,6 +228,23 @@ function useRoute() {
 // The vault's own plugins load with each state, before it's drawn.
 onState(loadVaultPlugins)
 
+// A tab's vault file that isn't there any more (deleted from outside the app: its tab isn't reopened).
+const fileGone = (to: string) => {
+  const s = getStore(), p = vaultPath(to)
+  return !!s && p !== null && !inVault(s, p)
+}
+// Several tabs closed at once (Close others, a group): a toast offers them back, naming ⌘⇧T where it's bound, and goes
+// once they're open again by any way (its Undo, the keys, tab search).
+let closedToast = () => {}
+setClosedTogether((id, n) => {
+  closedToast()
+  const keys = commandKeys("tab:reopen"), toast = notify(`Closed ${n} tabs${keys ? ` · Reopen with ${keys}` : ""}`,
+    { id: "tabs-closed", action: { label: "Undo", run: () => reopenClosed(id, fileGone) } })
+  const back = () => { if (!closedTabs().some((e) => e.id === id)) { dismissNotice(toast); closedToast() } }
+  const off = onWorkspaceChange(back), timer = setTimeout(() => closedToast(), 10_000)
+  closedToast = () => { off(); clearTimeout(timer); closedToast = () => {} }
+})
+
 setSheetFile((store, path) => <FileView store={store} path={path} pane={false} />)
 
 // A detail that is a file (a person, a note) opens as the file.
@@ -350,11 +367,6 @@ export default function App() {
   // The file the user means: the editor's (a sheet's over the page too), else the focused tab's.
   const actionTarget = () => currentEditor()?.path ?? currentFile()
   const tabFile = () => (isDesktop() ? currentFile() : "")
-  // A tab's vault file that isn't there any more (deleted from outside the app: its tab isn't reopened).
-  const fileGone = (to: string) => {
-    const s = getStore(), p = vaultPath(to)
-    return !!s && p !== null && !inVault(s, p)
-  }
   const besideText = () => { const ed = currentEditor(); return !!ed?.undo && keysInEditor(ed) }
   useCommands(() => [
     // (`label` and `icon`: as a blank tab's buttons, core/newtab.ts' default ones.)

@@ -8,7 +8,7 @@ import { SearchAddon, type ISearchOptions } from "@xterm/addon-search"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, getStore, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, linkClick, mintedHere, notifyError, offerPicture, onLook, openFile, openMenu, onResized, openPermissions, openWebLink, pastedFiles, pluginSettings, resizing, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, getStore, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, keysText, linkClick, mintedHere, notifyError, offerPicture, onLook, openFile, openMenu, onResized, openPermissions, openWebLink, pastedFiles, pluginSettings, resizing, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { countText, FindField, FindTools, floatingBar, floatingSpot, MAX, type FindOptions } from "@plugins/find/tools"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
@@ -191,7 +191,8 @@ function cursor() {
   const style = s.cursor === "bar" || s.cursor === "underline" ? s.cursor : "block"
   return { cursorStyle: style, cursorInactiveStyle: style === "block" ? "outline" : style, cursorBlink: s.cursorBlink !== false } as const
 }
-/** The keys a phone's keyboard lacks, as the terminal sends them. Arrows follow the program's cursor-keys mode. */
+/** The keys a phone's keyboard lacks, as the terminal sends them (labels as a Mac writes them: keysText where drawn). Arrows
+ *  follow the program's cursor-keys mode. */
 const arrow = (t: XTerm, k: string) => (t.modes.applicationCursorKeysMode ? `\x1bO${k}` : `\x1b[${k}`)
 const KEYS: { label: ReactNode; name: string; send: (t: XTerm) => string }[] = [
   { label: "esc", name: "Escape", send: () => "\x1b" },
@@ -792,7 +793,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
         )}
       </div>
       {full && <KeyBar label="Terminal keys" hide={() => touchActions.current.hide()} keys={[
-        ...KEYS.map((k) => ({ name: k.name, label: k.label, run: () => touchActions.current.key(k.send) })),
+        ...KEYS.map((k) => ({ name: k.name, label: typeof k.label === "string" ? keysText(k.label) : k.label, run: () => touchActions.current.key(k.send) })),
         { name: "Paste", label: <ClipboardPaste className="size-[17px]" strokeWidth={2} />, run: () => touchActions.current.paste() },
       ]} />}
       {status.kind === "connecting" && status.tries > 0 && (

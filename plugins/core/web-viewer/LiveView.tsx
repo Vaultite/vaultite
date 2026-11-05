@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { createPortal } from "react-dom"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, ClipboardPaste, Copy, Globe, Keyboard, MousePointer2, Pause, Play } from "lucide-react"
-import { Button, closePane, cn, copyText, dateText, errorText, get, haptic, KeyBar, LoadingSidebarRows, notify, notifyError, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useScopedState, useVisibleArea, webPages, coarse, type BarKey } from "@vaultite"
+import { Button, closePane, cn, copyText, dateText, errorText, get, haptic, KeyBar, keysText, LoadingSidebarRows, notify, notifyError, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useScopedState, useVisibleArea, webPages, coarse, type BarKey } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
@@ -521,7 +521,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   const barKeys: BarKey[] = [
     { name: "Escape", label: "esc", run: () => send({ type: "key", key: "Escape" }) },
     { name: "Tab", label: "tab", run: () => send({ type: "key", key: "Tab" }) },
-    { name: "Shift Tab", label: "⇧tab", run: () => send({ type: "key", key: "Shift+Tab" }) },
+    { name: "Shift Tab", label: keysText("⇧tab"), run: () => send({ type: "key", key: "Shift+Tab" }) },
     arrow("Left", ArrowLeft), arrow("Up", ArrowUp), arrow("Down", ArrowDown), arrow("Right", ArrowRight),
     { name: "Paste", label: <ClipboardPaste className="size-[17px]" strokeWidth={2} />, run: paste },
   ]

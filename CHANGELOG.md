@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Closing several tabs offers them back**: Close others, Close all or closing a group shows a toast with Undo, naming
+  the keys that reopen them in the desktop app (⌘⇧T, Ctrl+Shift+T elsewhere); it goes once they're back. Phones' key
+  bars over the keyboard (terminal, web viewer) name Shift and Ctrl as non-Mac computers do.
 - **Terminals kept by Ghostty's engine**: the terminal server keeps each terminal's screen and history with
   libghostty-vt instead of xterm.js, several times faster at reading output, reflowing and giving a tab its screen
   back, at half the memory; a busy agent's output reaches the tab in fewer, larger pieces, and keystrokes echo at once.

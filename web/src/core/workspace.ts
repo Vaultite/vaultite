@@ -818,7 +818,7 @@ function closedEntry(t: Tab): ClosedTab | null {
   return at >= 0 ? { tab: keptTab(t), at } : null
 }
 /** Remember tabs closing together (one entry), and panes of tabs that stay, for ⌘⇧T. `from`: the list they were in;
- *  `ending`: leave out the views that end with their pane (closed for good, not taken away). */
+ *  `ending`: leave out the views that end with their pane (closed for good, not taken away). Returns the tabs' entry. */
 function remember(tabs: Tab[], panes: Pane[] = [], { from = here(), window = false, ending = true }: { from?: TabList; window?: boolean; ending?: boolean } = {}) {
   const ends = new Set(ending ? lastOf([...tabs.flatMap(placesIn), ...panes]).filter(keeps) : [])
   const keep = (p: Pane) => !isBlank(p) && !ends.has(p.to)
@@ -838,6 +838,7 @@ function remember(tabs: Tab[], panes: Pane[] = [], { from = here(), window = fal
     reopenable.push({ tabs: kept, ...(groups?.length ? { groups } : {}), ...(shown ? { shown } : {}), ...(window ? { window } : {}), closed, ws })
   }
   keepClosed()
+  return kept.length ? reopenable[reopenable.length - 1] as Extract<Closed, ClosedSet> : null
 }
 /** What a whole list put in place (`next`) takes away from `was` that's open nowhere else (not there by id or place, nor
  *  in another workspace): remembered as closed, so a layout or another device's change loses nothing for good. */
@@ -1018,10 +1019,15 @@ export function closeTabIds(ids: string[], { keep = false, force = false }: { ke
   const going = here().tabs.filter((t) => (keep ? !chosen.has(t.id) && !t.pinned : chosen.has(t.id)))
   if (!going.length) return
   if (!force) return guarded(going.flatMap(placesIn), () => closeTabIds(ids, { keep, force: true }))
-  remember(going)
+  const entry = remember(going)
   heard(going.flatMap(placesIn))
   leave(withoutTabs(here(), new Set(going.map((t) => t.id))))
+  if (entry && entry.tabs.length > 1) closedTogether?.(idOf(entry), entry.tabs.length)
 }
+/** Told when several tabs close at once (Close others, a group, all): their entry's id (reopenClosed's) and how many,
+ *  for the toast that offers them back. Set by the app. */
+let closedTogether: ((id: string, n: number) => void) | null = null
+export const setClosedTogether = (fn: (id: string, n: number) => void) => { closedTogether = fn }
 
 // ---------- tabs that archive themselves: an unpinned tab unseen a while (Tabs' setting; core/tabarchive.ts) ----------
 

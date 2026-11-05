@@ -1,6 +1,6 @@
 // Reopen closed tab (core/workspace.ts reopenTab): what closed comes back as it was, what closed together together.
 // A pane back in its split at its size, a split tab whole, Close others undone by one ⌘⇧T, a tab group with its name,
-// Search tabs' and the phone's Recently closed. Writes workspaces (set aside, put back): throwaway only.
+// its toast's Undo, Search tabs' and the phone's Recently closed. Writes workspaces (set aside, put back): throwaway only.
 //   node web/qa/reopentab.mjs <base url> <vault path>
 import { readdirSync } from "node:fs"
 import path from "node:path"
@@ -67,9 +67,19 @@ try {
   await page.click("[data-tab-strip] [data-tab-id='ta']")
   await command(page, "Close all other tabs")
   check("others closed", await is("a*"), await tabs())
+  const toast = page.locator("[data-sonner-toast]", { hasText: "Closed 3 tabs" }).first()
+  const shows = (n) => until(async () => (await toast.count()) === n, 4000).then(() => true, () => false)
+  // (in a browser ⌘⇧T is the browser's own: the toast names no keys)
+  check("others closed: a toast says so, with Undo", await shows(1) && await toast.getByRole("button", { name: "Undo" }).count() === 1
+    && !/Reopen with/.test(await toast.innerText()), await toast.innerText().catch(() => ""))
   await command(page, "Reopen closed tab")
   check("⌘⇧T once: every tab closed with them back where it was, the split and the group too", await is("a*,[b 0.30|c 0.70],d(Trip),e"), await tabs())
+  check("… and the toast goes, they're back", await shows(0))
   check("… and nothing left to reopen", !(await command(page, "Reopen closed tab")) || await is("a*,[b 0.30|c 0.70],d(Trip),e"), await tabs())
+  await command(page, "Close all other tabs")
+  await shows(1)
+  await toast.getByRole("button", { name: "Undo" }).click()
+  check("the toast's Undo: every tab back where it was", await is("a*,[b 0.30|c 0.70],d(Trip),e"), await tabs())
 
   // Search tabs: what closed together is one row, reopened together.
   await command(page, "Close all other tabs")
