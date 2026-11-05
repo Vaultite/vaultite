@@ -2,8 +2,9 @@
 // and rails off, panes as cards, file bars fading, the tabs in the sidebar. The Tabs panel lists each pane's tabs under
 // the split's row while it's on screen (plugins/core/tabs PaneList): a click shows one, its X closes it, a drag moves it
 // along its pane's list, into the other's or out to the list; a list's tab dragged onto a pane's list joins it; another
-// tab shown, the row folds to its map with +n per cell. ⌘W closes the place shown, the pane's next showing. With the tab
-// bar on, a pane's strip of its tabs (components/Tabs.tsx PlaceStrip). WRITES the vault's appearance.json (put back):
+// tab shown, the row folds to its map with +n per cell. ⌘W closes the place shown, the pane's next showing. The place a
+// pane shows dragged onto its own pane's edge splits off; the tab on screen too. With the tab bar on, a pane's strip of
+// its tabs (components/Tabs.tsx PlaceStrip). WRITES the vault's appearance.json (put back):
 // throwaway server only.
 //   node web/qa/panetabs.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -97,6 +98,29 @@ try {
   await drag(mid(re), { x: lb.x + lb.width / 2, y: lb.y + lb.height - 3 })
   check("a list tab dragged onto a pane's list joins it, shown", await until(async () => same((await shown())?.panes, [`${A} ^${D}`, `${Bn} ^${E}`]) && (await state()).tabs.length === 1, 3000), await state())
 
+  // The place a pane shows dragged from its list onto its own pane's edge: it splits off there, the pane showing its next.
+  const own = (await shown()).ids[1]
+  const edge = async (id, side) => { const r = await page.locator(`[data-pane-body="${id}"]`).boundingBox(); return side === "right" ? { x: r.x + r.width * 0.94, y: r.y + r.height / 2 } : mid(r) }
+  /** What's offered with place `id`'s row held over (x, y), the drag then given up. */
+  const offered = async (id, to) => {
+    const r = mid(await rowBox(id))
+    await page.mouse.move(r.x, r.y); await page.mouse.down()
+    for (let k = 1; k <= 10; k++) { await page.mouse.move(r.x + ((to.x - r.x) * k) / 10, r.y + ((to.y - r.y) * k) / 10); await wait(30) }
+    await wait(150)
+    const zone = await page.evaluate(() => document.querySelector("[data-drop-zone]")?.dataset.dropZone ?? null)
+    await page.keyboard.press("Escape"); await page.mouse.up(); await wait(300)
+    return zone
+  }
+  check("the place a pane shows, held on its own pane's middle: nothing offered", (await offered(own[1], await edge(own[1], "center"))) === null)
+  await drag(mid(await rowBox(own[1])), await edge(own[1], "right"))
+  check("…dropped on its own pane's edge: a pane of its own there, its pane showing its next",
+    await until(async () => same((await shown())?.panes, [`${A} ^${D}`, Bn, E]) && (await state()).focus === own[1], 3000), await state())
+  check("…a pane with one place, held on its own edge: nothing offered", (await offered(own[0], await edge(own[0], "right"))) === null)
+  // (back as it was)
+  const back = await rowBox(own[0])
+  await drag(mid(await rowBox(own[1])), { x: back.x + back.width / 2, y: back.y + back.height - 3 })
+  check("…and back among the other's tabs", await until(async () => same((await shown())?.panes, [`${A} ^${D}`, `${Bn} ^${E}`]), 3000), await shown())
+
   // ⌘W: the place shown closes, the pane's next shows.
   await command(page, "Close current tab")
   check("Close current tab (⌘W) closes the place shown, its pane showing its next", await until(async () => same((await shown())?.panes, [`${A} ^${D}`, Bn]), 3000), await shown())
@@ -140,6 +164,21 @@ try {
   check("…a click on a chip shows it", await until(async () => (await state()).focus === first, 3000), await state())
   await strip.locator(`[data-place-close="${first}"]`).click({ force: true })
   check("…its X closes it, the strip going with the pane's last but one", await until(async () => (await strip.count()) === 0, 3000), await shown())
+  await command(page, "Reopen closed tab")
+  check("…⌘⇧T brings it back, the strip with it", await until(async () => (await strip.count()) === 1 && (await state()).focus === first, 3000), await shown())
+  // A strip's chip, the place its pane shows, dragged onto its own pane's edge: it splits off.
+  const chipAt = mid(await strip.locator(`[data-place="${first}"]`).boundingBox()), panesBefore = (await shown()).panes.length
+  await drag(chipAt, await edge(first, "right"))
+  check("…its chip shown dragged onto its own pane's edge splits it off, the strip going", await until(async () => (await shown()).panes.length === panesBefore + 1 && (await strip.count()) === 0 && (await state()).focus === first, 3000), await shown())
+
+  // The tab on screen dragged from the Tabs panel onto its own pane's edge: a split of it and the tab shown before it.
+  lookAs(USER)
+  await until(async () => (await page.locator("[data-tabs-panel]").count()) === 1, 8000)
+  const was = await shown(), lone = (await state()).tabs.find((t) => t.id !== split)
+  await page.locator(`[data-tabs-panel] [data-open-tab="${lone.id}"]`).click(); await until(async () => (await state()).active === lone.id)
+  await drag(mid(await page.locator(`[data-tabs-panel] [data-open-tab="${lone.id}"]`).boundingBox()), await edge(lone.ids[0][0], "right"))
+  check("the tab on screen dragged from the panel onto its own pane's edge: beside the tab shown before it, which leaves the list",
+    await until(async () => { const s = await state(); return s.tabs.length === 1 && s.active === lone.id && same((await shown()).panes, [...was.panes, ...lone.panes]) }, 3000), await state())
 } finally {
   await browser.close()
   if (was === null) rmSync(look, { force: true }); else writeFileSync(look, was)

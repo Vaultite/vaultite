@@ -1,6 +1,7 @@
-// The desktop's split tabs: splitting, tabs dragged onto the tab bar and onto panes' edges and middles, panes dragged
-// between and out of tabs, dividers, a closed pane closing the tree up, the layout after a reload (the old one
-// migrating), keyboard focus between panes. WRITES the vault's appearance.json (put back): throwaway server only.
+// The desktop's split tabs: splitting, tabs dragged onto the tab bar and onto panes' edges and middles (the tab on
+// screen onto its own pane's edge splitting off), panes dragged between and out of tabs, dividers, a closed pane closing
+// the tree up, the layout after a reload (the old one migrating), keyboard focus between panes. WRITES the vault's
+// appearance.json (put back): throwaway server only.
 //   node web/qa/splits.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { openPalette, PROMPT, qa, terminalText, until, wait } from "./lib/qa.mjs"
@@ -167,8 +168,15 @@ try {
   const pa = (await panes())[0]
   o = await drag(chip(A), await spot(pa.id, "center"))
   check("the tab on screen onto its own pane's middle isn't offered", !o.zone, o)
-  o = await drag(chip(A), await spot(pa.id, "right"))
-  check("...nor its own pane's edge", !o.zone && (await panes()).length === 1, o)
+  // On its own pane's edge it splits off there, beside the tab shown before it (C), which leaves the list.
+  o = await drag(chip(A), await spot(pa.id, "right"), { name: "drag-own-edge" })
+  ps = await panes()
+  check("the tab on screen onto its own pane's edge: offered, a split of it and the tab shown before it",
+    o.zone === "right" && ps.length === 2 && ps[0].label === C && ps[1].label === A && ps[1].focused && (await chips()).length === 2, { o, ps, chips: await chips() })
+  // (back as it was: that pane out to a tab of its own)
+  await drag(await handle(ps[0].id), await barSpot(null))
+  await chip(A).locator("[role=tab]").click(); await wait(400)
+  check("...its pane out again: three tabs", (await chips()).length === 3 && (await panes()).length === 1, await chips())
   // Another tab onto its right edge: a split of the two, the dropped one focused.
   o = await drag(chip(Bn), await spot(pa.id, "right"), { drop: false })
   check("another tab on the right edge: the right half lights up", o.zone === "right", o)
@@ -255,6 +263,17 @@ try {
   // Closing its tab ends it (the tab menu's Close).
   await chip("Terminal").locator("[role=tab]").click({ button: "right" }); await wait(200)
   await page.locator("[role=menu] button", { hasText: /^Close$/ }).click(); await wait(800)
+
+  // ---------- the only tab onto its own pane's edge: beside a blank one ----------
+  await wait(1500)
+  for (const n of [1,2,3,4,5]) await fetch(new URL(`/api/workspaces/${n}`, B), { method: "DELETE" }); await wait(300)
+  await page.goto(`${B}${fileHash(notes[0])}`); await wait(300)
+  await page.evaluate(() => localStorage.removeItem("vaultite.tabs")); await page.reload(); await wait(1500)
+  check("one tab", (await chips()).length === 1 && (await panes()).length === 1, await chips())
+  o = await drag(chip(A), await spot((await panes())[0].id, "left"))
+  ps = await panes()
+  check("the only tab onto its own pane's edge: it goes there, a blank pane beside it, focused",
+    o.zone === "left" && ps.length === 2 && ps[0].label === A && ps[1].label === "New tab" && ps[1].focused && (await chips()).length === 1, { o, ps })
 } finally {
   await ctx.close()
   if (was === null) rmSync(look, { force: true }); else writeFileSync(look, was)

@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Drag the tab you're on to its own edge to split it off**: dropped on a side of its page (from the tab bar or the
+  Tabs panel), it goes on that side and the tab you were on before it comes in beside it, out of the list (a blank page
+  when there's no other tab). In a split, a pane's tab dragged to that pane's own edge splits off the same way, the pane
+  showing its next tab.
 - **The companion over the screen works as in the app**: click its cursor (or its dot at the screen's edge) for its
   conversation, its last words and what you asked, with a box to type an ask or say one into; drop it on a window and it
   stays on that spot (an email's row), not the window's top, moving with the window; its bubbles open below it where

@@ -1191,7 +1191,23 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("replace with tab (⌥-click): in a split, the tab is one of the focused pane's own, shown, what it showed behind it",
     tabs() === "[a|c]*,d" && focus() === "c" && lay.placesOf(ws.activeTab().root.kids[1]).map((p: Any) => p.id).join() === "b,c" && shares() === "0.50,0.50", tabs())
   put([S("tx", row("s0", [a, b]), "b"), T("n", "new")], "tx")
-  check("tab into pane: not onto its own panes, nor a blank tab", !sp.canTabIntoPane("tx", "a", "center") && !sp.canTabIntoPane("tn", "a", "left") && sp.canJoin("tn") === false)
+  check("tab into pane: not onto its own panes, nor a blank tab", !sp.canTabIntoPane("tx", "a", "center") && !sp.canTabIntoPane("tx", "a", "left") && !sp.canTabIntoPane("tn", "a", "left") && sp.canJoin("tn") === false)
+  {
+    const now = Date.now
+    let clock = now()
+    Date.now = () => (clock += 1000)
+    put([T("a", undefined, { group: "G", pinned: true, name: "Docs" }), T("b"), T("c", undefined, { group: "H" })], "tc",
+      { groups: [{ id: "G", name: "G", color: "blue" }, { id: "H", name: "H", color: "red" }] }); ws.selectTab("ta")
+    check("tab into its own pane: not in the middle", !sp.canTabIntoPane("ta", "a", "center") && sp.canTabIntoPane("ta", "a", "right"))
+    sp.tabIntoPane("ta", "a", "right")
+    const t = ws.activeTab()
+    check("tab into its own pane's edge: a split, it on that side, the tab shown before it on the other, out of the list",
+      tabs() === "[c|a]*,b" && focus() === "a" && t.id === "ta" && t.group === "G" && t.pinned && t.name === "Docs" && !ws.here().groups.some((g: Any) => g.id === "H"), [tabs(), t, ws.here().groups])
+    put([T("c"), S("tx", row("s0", [a, b]), "b")], "tx"); ws.selectTab("tc"); Date.now = now; sp.tabIntoPane("tc", "c", "top")
+    check("tab into its own pane's edge: … a split shown before it comes whole", tabs() === "[c/[a|b]]*" && focus() === "c", tabs())
+    put([T("a")], "ta"); sp.tabIntoPane("ta", "a", "left")
+    check("tab into its own pane's edge: … with no other tab, a blank pane, focused", tabs() === "[a|new]*" && ws.activePane().to === "new" && ws.activeTab().id === "ta", tabs())
+  }
   put([S("tx", row("s0", [a, b]), "a")], "tx"); sp.paneIntoPane("a", "b", "center")
   check("pane into pane: in its middle the two swap places, the moved one focused", tabs() === "[b|a]*" && focus() === "a", tabs())
   put([S("tx", row("s0", [a, b]), "a"), T("c")], "tx"); sp.paneIntoPane("c", "a", "center")
@@ -1721,6 +1737,10 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     check("stack: a pane dragged by its bar moves with its tabs", own() === "x ^b k|a|q", own())
     ws.retarget("k.md", "Done/k.md")
     check("stack: a file moved, its stacked places follow", own() === "x ^b Done/k|a|q", own())
+    check("stack: the place a pane shows onto its own pane: not its middle, nor the edge of one with no other",
+      !sp.canPaneIntoPane("b", "b", "center", true) && !sp.canPaneIntoPane("a", "a", "right", true) && !sp.canPaneIntoPane("b", "b", "right") && sp.canPaneIntoPane("b", "b", "right", true))
+    sp.paneIntoPane("b", "b", "bottom", true)
+    check("stack: the place a pane shows onto its own pane's edge splits off there, its pane showing its next", own() === "x ^Done/k|b|a|q" && tabs() === "[[Done/k/b]|a|q]*,y" && focus() === "b", [own(), tabs()])
   }
 
   // ---- Workspaces holding the tabs (a layout turning it on and off): this device's own come back as they were ----

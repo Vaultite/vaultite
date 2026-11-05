@@ -2,7 +2,9 @@
 A window has one list of tabs; a tab holds one pane or several side by side (a split tab: a free tree of splits, plus
 floating panes), each pane one view with its own history. Clicking another tab switches the whole split away; opening
 a file or link goes to the focused pane. ⌥-click a tab, or drop it on a pane's middle: it takes that pane's place, and
-what was there becomes a tab of its own; drop it on a pane's edge: a split. ⌘W (Close current tab) in a split closes the
+what was there becomes a tab of its own; drop it on a pane's edge: a split. The tab on screen dropped on its own pane's
+edge splits off there, the tab shown before it on the other side (out of the list; with none, a blank pane), the split
+keeping the dragged tab's id, group, pin and name. ⌘W (Close current tab) in a split closes the
 focused pane, the tab with its last; Close split (⌥⇧⌘W, or the tab's menu) closes every pane. A pane dragged onto the list (or a half
 dragged out of a split's row) is a tab of its own; held a second over a row, that tab opens to drop into. Ids are
 stable: a tab's (`t…`) and a pane's (`p…`, or a `t…` one from before tabs held panes).
@@ -15,7 +17,8 @@ there too. ⌘W closes the place a pane shows, its next showing (the pane goes w
 pane's menu) closes it with all of them. ⌃Tab and ⇧⌘] go through the focused pane's tabs, then on to the next tab. While
 the split is on screen and a pane has more than one, the Tabs panel lists each pane's under its row, headed by where it
 sits: a click shows one, its X closes it, a drag moves it along its pane's list, into another's, onto a pane (an edge
-splits it off) or out to the list as a tab of its own, and a list's tab dropped on a pane's list joins it; another tab
+splits it off, its own pane's too while that has others) or out to the list as a tab of its own, and a list's tab
+dropped on a pane's list joins it; another tab
 on screen, the row is its map again, each cell saying how many more its pane has (+2). With the tab bar on, such a pane
 has a strip of its tabs on top. A split closed down to one pane has its tabs as tabs of the list. Kept as each pane's
 `stack` (its other places, each a pane of its own, in order) and `stackAt` (where the one it shows sits among them):
