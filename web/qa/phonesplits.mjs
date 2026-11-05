@@ -1,6 +1,7 @@
 // A phone's tab list with a split tab (components/TabSwitcher.tsx) at 390px: one card with its panes side by side, a
 // pane tapped shows that pane, its page of pane cards (swap by dragging, swipe or X to close, a menu to take one out, +
-// for a new pane), the card menu's Open in split, Swap panes, Separate panes, and the header's menu. WRITES Qa splits/.
+// for a new pane), a swipe between panes keeping the header still, the card menu's Open in split, Swap panes, Separate
+// panes, and the header's menu. WRITES Qa splits/.
 //   node web/qa/phonesplits.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -8,7 +9,8 @@ const { args: [B, OUT = "/var/tmp/phonesplits-shots/"], browser, check, watch, d
 mkdirSync(OUT, { recursive: true })
 const api = (method, p, body) => fetch(`${B}api/${p}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined })
 const NAMES = ["Alpha", "Bravo", "Charlie", "Delta"]
-for (const n of NAMES) await api("POST", "file", { path: `Qa splits/${n}.md`, text: `# ${n}\n\n${n} text, a line of it.\n` })
+// (pages long enough to scroll, as a swipe settling is where the header would show its name)
+for (const n of NAMES) await api("POST", "file", { path: `Qa splits/${n}.md`, text: `# ${n}\n\n${Array.from({ length: 30 }, (_, i) => `${n} text, line ${i + 1} of it.`).join("\n\n")}\n` })
 const F = (n) => `file:Qa splits/${n}.md`
 const tabs = {
   tabs: [
@@ -50,6 +52,22 @@ try {
   await P.goto(`${B}#file/${encodeURIComponent("Qa splits/Alpha.md")}`)
   await P.waitForSelector("[data-phone-bar]", { timeout: 30000 })
   await wait(800)
+
+  // ---------- swiped to the next pane at the page's top: the header's name stays out, the dots stay put ----------
+  // (each change to the header's classes kept as it happens: a page settling slides its title out sideways, not a scroll)
+  await P.evaluate(() => {
+    const h = document.querySelector("[data-phone-header]"), w = window
+    const look = () => [h.querySelector("[data-phone-title]").parentElement.classList.contains("opacity-0"), h.querySelector("[data-pane-dots]").className.includes("-translate-y-3")]
+    w.__head = [look()]
+    w.__mo = new MutationObserver(() => w.__head.push(look()))
+    w.__mo.observe(h, { attributes: true, attributeFilter: ["class"], subtree: true })
+  })
+  await touch("touchStart", 300, 500)
+  for (let i = 1; i <= 15; i++) { await wait(16); await touch("touchMove", 300 - i * 14, 500) }
+  await touch("touchEnd", 0, 0)
+  await until(async () => (await state()).shown === "Bravo", 3000); await wait(800)
+  const head = await P.evaluate(() => { window.__mo.disconnect(); return window.__head })
+  check("swiped to the next pane: its name doesn't come into the header, the dots don't move", (await state()).shown === "Bravo" && head.every(([out, up]) => out && up), [head, await state()])
 
   // ---------- the split's card: its panes side by side ----------
   await openList()
@@ -110,8 +128,8 @@ try {
   check("...centred on the screen, whatever the title and buttons", Math.abs(dots.x + dots.width / 2 - 195) < 1.5, dots)
   // The header's menu: the split's own items.
   await P.locator("[data-phone-header] button[aria-label=More]").tap(); await wait(300)
-  const head = (await P.locator("[role=menu] [role=menuitem], [role=menu] button").allInnerTexts()).map((t) => t.trim())
-  check("header menu of a split: Move to new tab, Separate panes, Close pane, Close tab", ["Move to new tab", "Separate panes", "Close pane", "Close tab"].every((x) => head.includes(x)), head)
+  const menu = (await P.locator("[role=menu] [role=menuitem], [role=menu] button").allInnerTexts()).map((t) => t.trim())
+  check("header menu of a split: Move to new tab, Separate panes, Close pane, Close tab", ["Move to new tab", "Separate panes", "Close pane", "Close tab"].every((x) => menu.includes(x)), menu)
   await P.locator("[role=menu] button, [role=menu] [role=menuitem]", { hasText: /^Close pane$/ }).first().click(); await wait(500)
   check("Close pane: the blank pane goes", (await splitOf()) === "Bravo+Alpha", await state())
   // Swiped away on the panes' page: that pane closes.

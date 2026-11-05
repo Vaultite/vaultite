@@ -26,11 +26,13 @@ export function TitleRow({ icon, tint, phone, onIcon, children }: { icon?: unkno
   useLayoutEffect(() => {
     const el = row.current
     if (!phone || hidden || !el) return
-    // In sight: any of it below the header (fixed, over the window that scrolls).
+    // In sight: any of it below the header (fixed, over the window that scrolls). Only up and down: a swipe's slide
+    // sideways isn't a scroll, so the header's name doesn't flash in while a page settles.
     const top = document.querySelector<HTMLElement>("[data-phone-header]")?.offsetHeight ?? 0
-    const io = new IntersectionObserver(([e]) => titleInSight.set(e.isIntersecting), { rootMargin: `-${top}px 0px 0px 0px` })
+    const see = (r: DOMRectReadOnly) => titleInSight.set(r.bottom > top && r.top < innerHeight)
+    const io = new IntersectionObserver(([e]) => see(e.boundingClientRect), { rootMargin: `-${top}px 0px 0px 0px` })
     io.observe(el)
-    titleInSight.set(true)
+    see(el.getBoundingClientRect())
     return () => { io.disconnect(); titleInSight.set(false) }
   }, [phone, hidden])
   const at = "mt-[3px] md:mt-1"
