@@ -2,6 +2,7 @@
 // live routes, owner only, never ops), or watched by the app's window (the agents' panel): its frames sent while watched.
 import type { NativeImage } from "electron"
 import { agentState, helped, press, setPaused, setTaken, setWatched } from "./agent.ts"
+import { scrub } from "./pagesecrets.ts"
 import { allPages, appWindows, busyWhen, cdp, eachPage, handle, mayOpen, tell, tellServer, type EngineWindow, type EnginePage } from "./engine.ts"
 
 /** At most this many frames a second reach the server (a window here: LOCAL_FPS), at most this big (device pixels);
@@ -239,6 +240,16 @@ handle("agent:live:input", (_win, tab, e) => {
     if (w) void tick(w)
   }
   return queued(p.id, () => input(p, (e && typeof e === "object" ? e : {}) as Input)).then(() => null)
+})
+/** What's selected in the page: in its focused field (never a password's), else its text. */
+const SELECTION = `(() => { const e = document.activeElement
+  if (e && (e.tagName === "TEXTAREA" || (e.tagName === "INPUT" && e.type !== "password")) && e.selectionEnd > e.selectionStart) return e.value.slice(e.selectionStart, e.selectionEnd)
+  return String(getSelection() || "") })()`
+// (the owner copying to the device they watch from: a login the app filled stays •••)
+handle("agent:live:selection", async (_win, tab) => {
+  const p = pageOf(tab)
+  const text = String(await p.wc.executeJavaScriptInIsolatedWorld(1016, [{ code: SELECTION }]).catch(() => "") ?? "")
+  return { text: scrub(text).slice(0, 100_000) }
 })
 handle("agent:live:pause", (_win, tab, on) => { setPaused(pageOf(tab).id, on !== false); return stateOf(pageOf(tab)) })
 handle("agent:live:done", (_win, tab) => { helped(pageOf(tab).id); return stateOf(pageOf(tab)) })

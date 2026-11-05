@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page
+  on the clipboard of the device you watch from, a login the app filled never in it; on a phone, while typing, a row
+  over the keyboard has esc, tab, ⇧tab, the arrows and Paste. A double click from another Mac now double-clicks there.
 - **A browser tab watched from your phone zooms**: pinch the picture in (sharper while zoomed), drag to move around it
   and on past its edge to scroll the page, and Zoom to fit to go back; a trackpad's pinch does the same on a Mac. A double
   tap double-clicks, a finger held still a moment presses and drags (to select text or move a slider), and trackpad mode

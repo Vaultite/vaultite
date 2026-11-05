@@ -50,6 +50,14 @@ export function liveView(plugin: Plugin) {
     return r
   }, { lock: false, sync: false })
 
+  // What's selected in the tab, for the owner's Copy.
+  plugin.route("GET", "web-viewer/tabs/*/selection", async (req) => {
+    await plugin.ownerOnly(req, what)
+    const [tab, m] = await tabOf(req.arg(0))
+    if (m) return askThere(m, "GET", `web-viewer/tabs/${tab}/selection`)
+    return desktop<{ text: string }>("agent:live:selection", tab)
+  }, { lock: false, sync: false })
+
   // What agents did in the tab since it opened: Activity's events of the browser's ops that name it.
   plugin.route("GET", "web-viewer/tabs/*/steps", async (req) => {
     await plugin.ownerOnly(req, what)

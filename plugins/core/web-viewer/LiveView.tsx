@@ -1,8 +1,9 @@
 // The browser's tabs, every machine's (liveroutes.ts on the server, electron/browser/live.ts in the desktop app): whose
 // each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done. A tab is `3` or `3@m1`.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { Bot, ChevronLeft, Globe, Keyboard, MousePointer2, Pause, Play } from "lucide-react"
-import { Button, closePane, cn, dateText, errorText, get, haptic, LoadingSidebarRows, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useScopedState, webPages, coarse } from "@vaultite"
+import { createPortal } from "react-dom"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, ClipboardPaste, Copy, Globe, Keyboard, MousePointer2, Pause, Play } from "lucide-react"
+import { Button, closePane, cn, copyText, dateText, errorText, get, haptic, KeyBar, LoadingSidebarRows, notify, notifyError, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useScopedState, useVisibleArea, webPages, coarse, type BarKey } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
@@ -325,6 +326,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   const fingers = useRef(new Map<number, { x: number; y: number }>())
   const gesture = useRef<Gesture | null>(null)
   const lastTap = useRef({ t: 0, x: 0, y: 0 })
+  const clicked = useRef({ t: 0, x: 0, y: 0, n: 1 })
   const moved = useRef(0)
   const press = (action: "down" | "up" | "move", where: { x: number; y: number }) =>
     send({ type: "mouse", action, button: action === "up" || cursor.current.held ? "left" : "none", count: 1, ...where })
@@ -352,7 +354,11 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
       e.preventDefault()
       keys.current?.focus({ preventScroll: true })
       e.currentTarget.setPointerCapture(e.pointerId)
-      send({ type: "mouse", action: "down", button: BUTTON[e.button] ?? "left", count: e.detail || 1, modifiers: mods(e), ...at(e) })
+      // (a pointer event's detail is always 0: clicks are counted here, a double click's second press count 2)
+      const c = clicked.current, now = Date.now()
+      c.n = now - c.t < DOUBLE_MS && Math.hypot(e.clientX - c.x, e.clientY - c.y) < 5 ? Math.min(3, c.n + 1) : 1
+      Object.assign(c, { t: now, x: e.clientX, y: e.clientY })
+      send({ type: "mouse", action: "down", button: BUTTON[e.button] ?? "left", count: c.n, modifiers: mods(e), ...at(e) })
       return
     }
     fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -421,7 +427,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   }
   const up = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "mouse") {
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) send({ type: "mouse", action: "up", button: BUTTON[e.button] ?? "left", count: e.detail || 1, modifiers: mods(e), ...at(e) })
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) send({ type: "mouse", action: "up", button: BUTTON[e.button] ?? "left", count: clicked.current.n, modifiers: mods(e), ...at(e) })
       return
     }
     if (!fingers.current.delete(e.pointerId)) return
@@ -482,10 +488,43 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
     const chord = (e.metaKey || e.ctrlKey) && e.key.length === 1
     if (!SPECIAL.has(e.key) && !chord) return
     if (chord && e.key.toLowerCase() === "v") return // (the paste event brings the text)
+    // (copying is to this device's clipboard, not the Mac's whose page it is)
+    if (chord && e.key.toLowerCase() === "c" && !e.altKey && !e.shiftKey) { e.preventDefault(); return copy() }
     e.preventDefault()
     e.stopPropagation()
     send({ type: "key", key: [e.metaKey && "Meta", e.ctrlKey && "Control", e.altKey && "Alt", e.shiftKey && "Shift", e.key].filter(Boolean).join("+") })
   }
+
+  // Copy: the page's selection (a double tap selects a word, a held finger drags over more) onto this device's clipboard.
+  // Safari lets a tap write to it only with the text still coming, through a ClipboardItem given its promise.
+  const copy = async () => {
+    const got = get<{ text: string }>(`web-viewer/tabs/${id}/selection`).then((r) => r.text)
+    const none = () => notify("Nothing is selected in the page: double-tap a word, or hold a finger on the text and drag")
+    try {
+      if (typeof ClipboardItem === "function" && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ "text/plain": got.then((t) => { if (!t) throw new Error("nothing selected"); return new Blob([t], { type: "text/plain" }) }) })])
+        return notify("Copied")
+      }
+    } catch { /* nothing selected, or the other way */ }
+    let text: string
+    try { text = await got } catch (e) { return notifyError(e, "Couldn't copy from the page") }
+    if (!text) return none()
+    await copyText(text)
+    notify("Copied")
+  }
+  const paste = () => void navigator.clipboard?.readText().then((text) => { if (text) send({ type: "text", text }) },
+    (e) => { if ((e as Error)?.name !== "NotAllowedError") notifyError(e, "Couldn't paste") })
+  // Phones: while typing, the keys their keyboard lacks in a row over it, as a terminal's.
+  const [typing, setTyping] = useState(false)
+  const area = useVisibleArea(coarse && typing)
+  const arrow = (name: string, Icon: typeof ArrowUp) => ({ name, label: <Icon className="size-[17px]" strokeWidth={2} />, run: () => send({ type: "key", key: `Arrow${name}` }) })
+  const barKeys: BarKey[] = [
+    { name: "Escape", label: "esc", run: () => send({ type: "key", key: "Escape" }) },
+    { name: "Tab", label: "tab", run: () => send({ type: "key", key: "Tab" }) },
+    { name: "Shift Tab", label: "⇧tab", run: () => send({ type: "key", key: "Shift+Tab" }) },
+    arrow("Left", ArrowLeft), arrow("Up", ArrowUp), arrow("Down", ArrowDown), arrow("Right", ArrowRight),
+    { name: "Paste", label: <ClipboardPaste className="size-[17px]" strokeWidth={2} />, run: paste },
+  ]
 
   const [paused, choosePaused] = useChosen(!!info.paused)
   const pause = () => choosePaused(!paused, () => post(`web-viewer/tabs/${id}/pause`, { on: !paused }), paused ? "Couldn't let agents go on" : "Couldn't stop the agents")
@@ -514,6 +553,9 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
             <MousePointer2 className="size-4" strokeWidth={2} />
           </Button>
         )}
+        <Button look="quiet" size="small" aria-label="Copy" data-tip="Copy what's selected" onClick={() => void copy()} data-web-live-copy className="max-md:size-11 max-md:px-0">
+          <Copy className="size-4" strokeWidth={2} />
+        </Button>
         <Button look="quiet" size="small" aria-label="Keyboard" data-tip="Type in the page" onClick={() => keys.current?.focus({ preventScroll: true })} className="max-md:size-11 max-md:px-0">
           <Keyboard className="size-4" strokeWidth={2} />
         </Button>
@@ -545,7 +587,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
           {shown && <p className="max-w-[420px] px-4 text-center text-[15px] text-muted-foreground md:text-[13px]">{shown}</p>}
           {status === "connecting" && framed && <span className="absolute top-3 right-3 rounded-[6px] bg-background/90 px-1.5 py-0.5 text-[11px] text-muted-foreground">Reconnecting…</span>}
           {error && status === "live" && <span className="absolute bottom-3 left-1/2 max-w-[90%] -translate-x-1/2 truncate rounded-[6px] bg-background/90 px-2 py-1 text-[12px]">{error}</span>}
-          <textarea ref={keys} onKeyDown={key} aria-label="Type in the page" autoCapitalize="off" autoCorrect="off" autoComplete="off" spellCheck={false}
+          <textarea ref={keys} onKeyDown={key} onFocus={() => setTyping(true)} onBlur={() => setTyping(false)} aria-label="Type in the page" autoCapitalize="off" autoCorrect="off" autoComplete="off" spellCheck={false}
             className="pointer-events-none absolute top-0 left-0 size-px resize-none border-0 bg-transparent p-0 text-[16px] opacity-0 outline-none" />
         </div>
         <aside className="flex max-h-[38%] min-h-0 shrink-0 flex-col border-t-[0.5px] border-border @3xl:max-h-none @3xl:w-[280px] @3xl:border-t-0 @3xl:border-l-[0.5px]" data-web-live-steps={steps.length}>
@@ -560,6 +602,12 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
           </ol>
         </aside>
       </div>
+      {area?.keyboard && createPortal(
+        <div className="fixed inset-x-0 z-[45] -translate-y-full" style={{ top: area.top + area.height }} data-web-live-keys>
+          <KeyBar label="Page keys" keys={barKeys} hide={() => keys.current?.blur()} />
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

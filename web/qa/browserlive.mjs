@@ -1,7 +1,7 @@
 // The desktop app's browser tabs watched and driven from a plain browser (a phone, another Mac), as on an always-on Mac
 // whose app is attached to its server (web/qa/attach.mjs): the list, frames, click or tap, typing, the wheel, Stop/Resume
 // agents, Done for an ask and the tab's steps, on a computer and a phone (a pinch zooms, a tap zoomed in, a double tap,
-// trackpad mode); then from another machine's server (Machines).
+// trackpad mode, Copy onto the viewer's clipboard); then from another machine's server (Machines).
 // WRITES: the throwaway vault only.
 //   node web/qa/browserlive.mjs <vault copy> [shots dir]
 import { _electron } from "playwright-core"
@@ -134,6 +134,14 @@ async function run(label, viewport, mobile, base = B) {
     await page.keyboard.type("xyz")
     await page.keyboard.press("Backspace")
     check(`${label}: typing goes into the page's field`, await until(async () => /v=\S*xy /.test((await tab()).title), 5000), (await tab()).title)
+    await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base })
+    // (a double click on the field's word selects it: the field's text starts 20px in, 24px type)
+    const word = /v=(\S+) /.exec((await tab()).title)?.[1]
+    await page.mouse.dblclick(...at(32 / 1280, 0.05))
+    await wait(400)
+    await page.locator("[data-web-live-copy]").click()
+    const pasted = () => page.evaluate(() => navigator.clipboard.readText()).catch(() => "")
+    check(`${label}: Copy puts the page's selection on this device's clipboard`, await until(async () => !!word && (await pasted()) === word, 5000), [word, await pasted()])
     await page.mouse.move(...at(0.5, 0.6))
     await page.mouse.wheel(0, 300)
     check(`${label}: the wheel scrolls it`, await until(async () => !/ y=0 /.test((await tab()).title), 5000), (await tab()).title)
