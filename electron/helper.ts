@@ -12,7 +12,7 @@ import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, inkOf, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
+import { atOffset, badgeOf, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
 import { closePanel, drawingActs, endDrawing, onPanel, openPanel, overlayActs, ownWindows, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
@@ -76,7 +76,7 @@ export async function startHelper(h: HelperHost) {
   host = h
   app.on("will-quit", stopHelper)
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v),
-    asked: () => [...asked], scene: () => lastScene, badge: () => badged } })
+    asked: () => [...asked], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
   onScreenEvent(heard)
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) } })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
@@ -90,7 +90,7 @@ export async function startHelper(h: HelperHost) {
     icon.setTemplateImage(true)
     tray = new Tray(icon)
     tray.setToolTip(app.getName())
-    tray.on("click", () => tray?.popUpContextMenu(menu()))
+    tray.on("click", () => tray?.popUpContextMenu(Menu.buildFromTemplate(menuItems())))
     login(h.prefs().login ?? app.isPackaged)
   }
   setInterval(() => void refresh(), 10_000).unref()
@@ -128,11 +128,12 @@ function panelMenu(_name: string, at: { window: BrowserWindow; x: number; y: num
 
 // ---------- the menu bar
 
-function menu() {
+function menuItems(): Electron.MenuItemConstructorOptions[] {
   const h = host!, home = h.home()
   const setting = (name: string, values: Record<string, unknown>) => () => void op("settings.set", { name, values }).then(refresh)
   const name = live.state.name, unread = unreadSays().length
-  return Menu.buildFromTemplate([
+  const jobs = jobsShown(live.state.jobs ?? [])
+  return [
     { label: home ? `Open ${home.name}` : `Open ${app.getName()}`, icon: icon("stone"), click: () => h.openHome() },
     { type: "separator" },
     { label: "Dictate anywhere", icon: icon("mic"), sublabel: keysSaid(prefs.keys), type: "checkbox", checked: prefs.fn, enabled: !!home, click: setting("plugin/dictation", { fn: !prefs.fn }) },
@@ -141,10 +142,35 @@ function menu() {
     // (what it said that wasn't seen: the menu bar icon's badge)
     { label: unread ? `What it said (${unread} new)` : "What it said", icon: icon("message-circle"), enabled: !!name && live.state.said.some((n) => n.agent === name && n.kind === "say"),
       click: () => openChat(name, screen.getCursorScreenPoint()) },
+    // (what it handed off: a click opens its tab in Vaultite)
+    ...(jobs.length ? [{ type: "separator" as const }, { label: "Jobs", type: "header" as const },
+      ...jobs.map((j) => ({ label: j.title || "A job", sublabel: `${JOB_SAID[j.state] ?? j.state}${j.unseen ? ", new" : ""}`, icon: jobIcon(j.state), enabled: !!j.link, click: () => void openJob(j) }))] : []),
     { type: "separator" },
     { label: "Open at login", icon: icon("power"), type: "checkbox", checked: app.getLoginItemSettings().openAtLogin, click: (i) => { login(i.checked); h.setPrefs({ login: i.checked }) } },
     { label: `Quit ${app.getName()}`, accelerator: "Command+Q", click: () => h.quit() },
-  ])
+  ]
+}
+
+const JOB_SAID: Record<string, string> = { running: "Working", "needs you": "Needs you", done: "Done", failed: "Failed" }
+const jobIcon = (state: string) => (state === "running" ? icon("clock") : state === "needs you" ? icon("circle-alert") : state === "failed" ? icon("circle-x") : icon("circle-check"))
+/** A job opened: its tab in the home vault's window (opened first if need be), and it's no longer news. */
+async function openJob(j: HelperJob) {
+  live.say({ t: "job-seen", ids: [j.id] })
+  if (!j.link || !host) return
+  host.openHome()
+  // (a window just opening has no page to open it in yet)
+  for (let i = 0; i < 20; i++) {
+    if (await op("ui.open", { path: j.link }).then(() => true, () => false)) return
+    await new Promise((r) => setTimeout(r, 500))
+  }
+}
+/** A job ended or needs them: a notification, whose click opens it. */
+function jobNotice(j: HelperJob) {
+  if (QUIET) return void asked.push({ notice: "job", id: j.id, state: j.state })
+  if (!Notification.isSupported()) return
+  const n = new Notification({ title: j.state === "needs you" ? "A job needs you" : j.state === "failed" ? "A job stopped" : "A job is done", body: j.title, silent: true })
+  n.on("click", () => void openJob(j))
+  n.show()
 }
 
 /** Keys as a Mac writes them: "fn⌃, right ⌥ or ⌃⌥". */
@@ -200,7 +226,9 @@ const live = (() => {
   let ws: WebSocket | null = null, port: number | null = null, wait = 1000, timer: ReturnType<typeof setTimeout> | null = null
   const state = { mode: "quiet", name: "", agents: new Map<string, Agent>(), notes: new Map<string, Note>(),
     /** Each agent's last says and what the user asked it: its conversation. */
-    said: [] as Note[], harnesses: [] as Parameters<typeof howWith>[1] }
+    said: [] as Note[], harnesses: [] as Parameters<typeof howWith>[1],
+    /** What it handed off (null till the server says): the menu's Jobs. */
+    jobs: null as HelperJob[] | null }
   const connect = () => {
     timer = null
     if (port === null) return
@@ -222,7 +250,12 @@ const live = (() => {
       else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a) }
       else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n) }
       else if (m.t === "drop") state.notes.delete(String(m.id))
-      else return
+      else if (m.t === "jobs" && Array.isArray(m.jobs)) {
+        const jobs = m.jobs as HelperJob[]
+        for (const j of jobNews(state.jobs, jobs)) jobNotice(j)
+        state.jobs = jobs
+        return badge()
+      } else return
       draw()
       chatChanged()
     })
@@ -232,7 +265,7 @@ const live = (() => {
   return {
     state,
     open(p: number | null) { this.close(); port = p; if (p !== null) connect() },
-    close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = []; showDrawing(null) },
+    close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = []; state.jobs = null; showDrawing(null) },
     say(m: object) { if (QUIET) asked.push(m); if (ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(m)); return true } return false },
   }
 })()
@@ -409,6 +442,7 @@ async function startSummon() {
   const p = screen.getCursorScreenPoint(), at = Date.now(), own = live.state.agents.get(name)
   const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, state: "listening", ink: [], at, was: own ? placeKey(own) : "" }
   summon = s
+  live.say({ t: "summoning" })
   void screenAsk("ink", { on: true })
   void screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).then((w) => { s.w = w.window ? w : null }, () => {})
   draw()
@@ -878,9 +912,9 @@ function draw() {
   showOverlay(based || null, lastScene)
   badge()
 }
-/** The menu bar icon's badge: how many of its words weren't seen. */
+/** The menu bar icon's badge: how many of its words weren't seen, and jobs ended that weren't opened. */
 function badge() {
-  const n = live.state.mode === "off" ? 0 : unreadSays().length, b = n ? String(n) : ""
+  const b = live.state.mode === "off" ? "" : badgeOf(unreadSays().length, live.state.jobs ?? [])
   if (b === badged) return
   badged = b
   tray?.setTitle(b, { fontType: "monospacedDigit" })

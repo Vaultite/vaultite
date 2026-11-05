@@ -326,21 +326,26 @@ function ReadRow({ a }: { a: Extract<Act, { k: "read" }> }) {
 type Kin = { id: string; agent: string; title: string; state: string; link: string | null }
 type Tasks = Map<string, Kin>
 const AGENT: Record<string, string> = { claude: "Claude Code", codex: "Codex", opencode: "OpenCode", subagent: "a subagent" }
-const KIN_STATE: Record<string, string> = { working: "Working", waiting: "Waiting", done: "Done", error: "Failed", cancelled: "Cancelled" }
+const KIN_STATE: Record<string, string> = { working: "Working", waiting: "Waiting", done: "Done", error: "Failed", cancelled: "Cancelled",
+  running: "Working", "needs you": "Needs you", failed: "Failed" }
 
 /** The tasks it delegated (Delegation's), read again as its turns come and while one works. */
 function useTasks(id: string, turns: Turn[]): Tasks {
   const [kin, setKin] = useState<Tasks>(() => new Map())
   const asked = turns.reduce((n, t) => n + t.acts.filter((a) => a.k === "session" && a.task).length, 0)
-  const working = [...kin.values()].some((k) => k.state === "working" || k.state === "waiting")
+  // (its jobs, handed off for the user: the companion's, not its session's children)
+  const jobs = turns.some((t) => t.acts.some((a) => a.k === "session" && a.job))
+  const working = [...kin.values()].some((k) => k.state === "working" || k.state === "waiting" || k.state === "running" || k.state === "needs you")
   useEffect(() => {
     if (!asked) return
     let gone = false
-    const read = () => void op<{ children: Kin[] }>("delegate.list", { of: id }).then((r) => { if (!gone) setKin(new Map(r.children.map((k) => [k.id, k]))) }, () => {})
+    const read = () => void Promise.all([op<{ children: Kin[] }>("delegate.list", { of: id }).then((r) => r.children, () => []),
+      jobs ? op<{ jobs: Kin[] }>("companion.jobs", {}).then((r) => r.jobs, () => []) : []])
+      .then(([a, b]) => { if (!gone) setKin(new Map([...a, ...b].map((k) => [k.id, k]))) })
     read()
     const t = working ? setInterval(() => { if (document.visibilityState === "visible") read() }, 10_000) : null
     return () => { gone = true; if (t) clearInterval(t) }
-  }, [id, asked, working])
+  }, [id, asked, working, jobs])
   return kin
 }
 
@@ -348,7 +353,7 @@ function SessionRow({ a, tasks }: { a: Extract<Act, { k: "session" }>; tasks: Ta
   const kin = a.task ? tasks.get(a.task) : undefined
   const to = a.terminal ? `terminal/${a.terminal}` : kin?.link ? kin.link.replace(/^view:/, "") : ""
   const who = AGENT[a.agent.split("_")[0]] ?? (a.agent || "a shell")
-  const title = a.terminal || !a.task ? `Opened a terminal: ${who}` : `Delegated to ${who}`
+  const title = a.job ? `Handed off to ${who}` : a.terminal || !a.task ? `Opened a terminal: ${who}` : `Delegated to ${who}`
   return (
     <Row data="session" icon={a.agent === "subagent" ? Bot : SquareTerminal} live={a.live} onClick={to ? () => openView(to, { newTab: !isViewOpen(to) }) : undefined}
       title={<>{a.agent === "subagent" ? "Ran a subagent" : title}{kin && <span className="ml-2 text-tertiary">{KIN_STATE[kin.state] ?? kin.state}</span>}</>}>

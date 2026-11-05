@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -152,6 +153,36 @@ export default async ($: VaultTest) => {
     ;[st, b] = await api("POST", "ops/delegate.start", { agent: "claude", task: "Tell me the date", mode: "async", ...as(parent) }, agent)
     const told = await waitFor(() => runOf(parent).said.slice(before).find((x: Any) => /^\[Vaultite\] Claude Code finished "Tell me the date"/.test(x.text)), 5000, 50)
     check("delegate async: its answer comes to its parent as a message when it's done", !!told && told.text.includes("Done: Tell me the date"), runOf(parent).said.slice(before))
+
+    // The companion's handoff: a job for the user (no parent), with the ask's context, on Opus; listed, told as it ends.
+    const c = await import("../../../plugins/core/companion/plugin.ts")
+    const { matchSocket } = await import("../../../core/plugins.ts")
+    const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
+    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+    await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion" })
+    c.screenMoment({ kind: "ask", agent: "Claude", text: "find me a cheaper flight than this one", app: "com.example.browser", title: "Flights to Lisbon", sx: 10, sy: 20 })
+    ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Find a cheaper flight to Lisbon than the one on their screen", say: "On it: looking for cheaper flights." }, agent)
+    const job = b, jrun = runOf(job.link?.split("/").pop())
+    check("handoff: a job for the user, its task with the ask's words and place, on Opus, its tab linked, and the companion says so",
+      st === 200 && job.state === "running" && /^view:claude-session\//.test(job.link) && jrun?.model === "opus" &&
+      /Find a cheaper flight[^]*They said: "find me a cheaper flight than this one"[^]*Flights to Lisbon/.test(jrun?.said[0]?.text ?? "") &&
+      (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "On it: looking for cheaper flights."), [st, b, jrun?.said[0]?.text])
+    const [, d] = await api("POST", "ops/delegate.status", { id: job.id }, asApp)
+    const ended = await waitFor(() => heard.findLast((m) => m.t === "jobs" && m.jobs.some((j: Any) => j.id === job.id && j.state === "done")), 5000, 50)
+    check("handoff: the user's own task (no parent, no ceiling), and the menu bar hears it end, new till opened",
+      d.byUser === true && !!ended && ended.jobs.find((j: Any) => j.id === job.id).unseen === true, [d, heard.at(-1)])
+    ;[st, b] = await api("POST", "ops/companion.jobs", {})
+    check("companion jobs: its jobs, with what each ended with", st === 200 && b.jobs[0]?.id === job.id && /Done: Find a cheaper flight/.test(b.jobs[0]?.result ?? ""), b)
+    sc.emit("message", Buffer.from(JSON.stringify({ t: "job-seen", ids: [job.id] })))
+    check("handoff: opened from the menu bar, it's no longer new", !!(await waitFor(async () => (await api("POST", "ops/companion.jobs", {}))[1].jobs[0]?.unseen === false, 3000, 50)))
+    ;[st, b] = await api("POST", "ops/companion.handoff", { task: "And trains too", say: "Adding trains.", job: job.id }, agent)
+    await waitFor(() => (runOf(job.link.split("/").pop())?.said.length ?? 0) >= 2, 3000, 50)
+    check("handoff: a follow-up to a job goes on in its same session", st === 200 && b.id === job.id && runOf(job.link.split("/").pop())?.said.at(-1)?.text === "And trains too", [st, b])
+    sc.emit("close")
+    // (the ask taken, so no later area's companion finds it waiting)
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    await api("PATCH", "config/plugin/companion", { mode: "off", summoned_model: "haiku" })
+
     for (const s of host.list()) host.stop(s.id)
     await waitFor(() => !host.list().length, 3000, 50)
   } finally {

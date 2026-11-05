@@ -294,7 +294,7 @@ function Popover({ a, close, menu }: { a: Agent; close: () => void; menu: (e: Re
     const v = a.path ? viewOf(a.path) : null, pos = v ? posIn(v, a) : null
     // (a Talk key's: what was under the pointer, a note's line, a pane or the app's UI; else where its cursor is)
     const place = t ? talkPlace(t.at) : { path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line }
-    if (!sendMoment({ kind: "ask", agent: a.name, ...place, text })) return unsent()
+    if (!sendMoment({ kind: "ask", agent: a.name, ...place, text, ...(t ? { summoned: true } : {}) })) return unsent()
     // (a Talk key's stays open: its answer comes into it, and what's typed next is about the same place)
     if (!t) return close()
     talked = { ...t, send: false }

@@ -260,13 +260,15 @@ const edit = (e: EditAsk) => inTurn(async () => {
 /** Something the user did, for the agents (an ask: for `agent`, else the companion, who shows it thinking at once).
  *  `waited`: ms since they last typed. False when it couldn't go. */
 export function sendMoment(m: { kind: "ask" | "point" | "edit" | "change"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number
-  x?: number; y?: number; changes?: string[]; scene?: string; pane?: string; ui?: string; row?: number; title?: string; under?: string }) {
+  x?: number; y?: number; changes?: string[]; scene?: string; pane?: string; ui?: string; row?: number; title?: string; under?: string; summoned?: boolean }) {
   if (share) return true // (no agent works for a guest)
   if (!say({ t: "moment", ...m })) return false
   const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
   if (a && a.state !== "away" && a.state !== "starting") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : m.pane || m.ui ? { path: undefined, line: undefined, find: undefined, pane: m.pane, ui: m.ui, row: m.row } : {}) }, 10_000)
   return true
 }
+/** Its Talk key pressed here: its summoned session gets ready while they speak. */
+export const summoning = () => void say({ t: "summoning" })
 /** A part of the app's UI an agent follows changed: its new lines (and those gone). */
 export const uiChanged = (agent: string, ui: string, changes: string[], title?: string) => sendMoment({ kind: "change", agent, ui, changes, ...(title ? { title } : {}) })
 /** A say turned into a margin comment, same words, same place. */

@@ -27,6 +27,8 @@ export type Spec = {
   by?: string; account?: string
   /** Its news stays out of the inbox (a plugin's own session). */
   quiet?: boolean
+  /** No thinking before it answers (a quick one's: thinking took 1.5 s of a summoned answer's 2). */
+  quick?: boolean
 }
 
 export type State = "starting" | "working" | "waiting" | "idle" | "error"
@@ -153,8 +155,8 @@ export class Host {
     return x
   }
 
-  /** Start session `spec` (new, or resuming its id) with `prompt` as its first message, if any. */
-  start(spec: Spec, prompt?: string): Summary {
+  /** Start session `spec` (new, or resuming its id) with `prompt` as its first message, if any (`images`: its pictures). */
+  start(spec: Spec, prompt?: string, images: string[] = []): Summary {
     const old = this.sessions.get(spec.id)
     if (old && !old.ended) throw new Error(`session ${spec.id} already runs`)
     if (!spec.resume && !/^[0-9a-f-]{36}$/i.test(spec.id)) throw new Error("a new session's id is a UUID")
@@ -170,7 +172,7 @@ export class Host {
       ...(spec.denied?.length ? { disallowedTools: spec.denied } : {}),
       // (only so the picker can switch to it later, as the TUI's --allow-dangerously-skip-permissions does)
       allowDangerouslySkipPermissions: true,
-      includePartialMessages: true, thinking: { type: "adaptive", display: "summarized" },
+      includePartialMessages: true, thinking: spec.quick ? { type: "disabled" } : { type: "adaptive", display: "summarized" },
       systemPrompt: { type: "preset", preset: "claude_code", ...(spec.append ? { append: spec.append } : {}) },
       settingSources: ["user", "project", "local"],
       ...(spec.title && !spec.resume ? { title: spec.title } : {}),
@@ -202,20 +204,20 @@ export class Host {
       throw e
     }
     void this.run(x)
-    if (prompt) this.send(spec.id, prompt)
+    if (prompt) this.send(spec.id, prompt, undefined, images)
     else this.state(x, "idle")
     return x.s
   }
 
-  /** The user's message to session `id` (`uuid`: its id in the transcript), queued while a turn runs; while it asks
-   *  something it's the answer: what to do instead (a permission, a plan), or a reply in place of its questions. */
-  send(id: string, text: string, uuid: string = crypto.randomUUID()) {
+  /** The user's message to session `id` (`uuid`: its id in the transcript; `images`: pictures sent with it), queued
+   *  while a turn runs; while it asks something it's the answer: what to do instead, or a reply to its questions. */
+  send(id: string, text: string, uuid: string = crypto.randomUUID(), images: string[] = []) {
     const x = this.session(id)
     if (!text.trim()) throw new Error("nothing to send")
     const asked = [...x.asks.keys()].at(-1)
     if (asked) { this.answer(id, asked, { allow: false, message: text.trim() }); return { uuid: "", answered: asked } }
     const at = new Date().toISOString()
-    x.queue.push({ type: "user", uuid, session_id: id, parent_tool_use_id: null, message: { role: "user", content: text }, timestamp: at } as SDKUserMessage)
+    x.queue.push({ type: "user", uuid, session_id: id, parent_tool_use_id: null, message: { role: "user", content: withImages(text, images) }, timestamp: at } as SDKUserMessage)
     x.wake?.()
     for (const e of x.reader.feed({ type: "user", uuid, message: { content: text }, timestamp: at })) this.put(x, e)
     this.state(x, "working", true)
@@ -510,6 +512,16 @@ export function eachMessage(sock: net.Socket, fn: (m: Record<string, unknown>) =
   })
 }
 
+const imagesIn = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 4) : [])
+/** A message's content: its text, after the pictures that still are there (a picture gone is left out). */
+function withImages(text: string, images: string[]): SDKUserMessage["message"]["content"] {
+  const blocks = images.flatMap((f) => {
+    const type = /\.png$/i.test(f) ? "image/png" as const : /\.jpe?g$/i.test(f) ? "image/jpeg" as const : null
+    try { return type ? [{ type: "image" as const, source: { type: "base64" as const, media_type: type, data: fs.readFileSync(f).toString("base64") } }] : [] } catch { return [] }
+  })
+  return blocks.length ? [...blocks, { type: "text" as const, text }] : text
+}
+
 /** Serve `host` at socket `sock` (a Unix socket, or a named pipe on Windows), until `stop`. */
 export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) => void; hello?: () => Record<string, unknown> } = {}) {
   const conns = new Set<net.Socket>(), followers = new Set<net.Socket>()
@@ -523,8 +535,8 @@ export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) =>
       case "follow": followers.add(c); setTimeout(() => { for (const e of host.pendingCalls()) send(c, e) }, 0); return { sessions: host.list() }
       case "list": return { sessions: host.list() }
       case "read": { const r = host.read(id); if (!r) throw new Error(`no session ${id} runs here`); return r }
-      case "start": return { s: host.start(m.spec as Spec, typeof m.prompt === "string" ? m.prompt : undefined) }
-      case "send": return { ...host.send(id, String(m.text ?? ""), typeof m.uuid === "string" ? m.uuid : undefined) }
+      case "start": return { s: host.start(m.spec as Spec, typeof m.prompt === "string" ? m.prompt : undefined, imagesIn(m.images)) }
+      case "send": return { ...host.send(id, String(m.text ?? ""), typeof m.uuid === "string" ? m.uuid : undefined, imagesIn(m.images)) }
       case "interrupt": await host.interrupt(id); return {}
       case "set": return { s: await host.set(id, m as { model?: string; effort?: Effort; mode?: Mode }) }
       case "answer": return { s: host.answer(id, String(m.ask ?? ""), (m.answer ?? {}) as Answer) }

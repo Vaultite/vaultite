@@ -90,5 +90,10 @@ above that), act, run it again, and never end your turn.
   which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words
   stream into their box by the pointer, open for the next ask (a typed one, or the key held again); Esc or moving on
   ends it, and your cursor leaves once you're done there. A tap opens that box to type in; a double tap listens
-  hands-free. `vau docs screen`.
+  hands-free. `vau docs screen`. These asks run in a session of their own (the setting `summoned_model`, Haiku), kept
+  warm and short, apart from the one that watches notes; same name, colour and cursor. In an app or on a site, an ask
+  carries the user's guide to it (`vau docs guides`); with none it says so, and you may offer once to write one.
+- Long work (research, a document, code, writing in their notes): `handoff` starts a background agent (Opus, or Codex)
+  with the ask's context and your few words; it's a job in the menu bar (running, done, needs you), the user told when it
+  ends. `companion jobs` lists them; `handoff --job <id>` follows one up in its session.
 - Drawing on screen (helper): `draw --marks` with your words (`--say`), each mark in a beat (`beat`: the sentence it comes with); it stays till the exchange ends (Esc, moving on, their next ask) or Clear, and each call adds to it. Marks: point, ring, frame, underline, strike, check, cross, spotlight, num, scroll, connect (from, to) at `[x, y]` or `[x, y, w, h]` (screen points), `{"el": "a3"}` (an element the ask found, by id: it snaps to its frame; a label saying only its own word is left out) or `{"pane"}`/`{"ui"}` in the app; on calm space, write, paper (a scratch pad with lines, rects, ellipses, arrows, paths, text, a bar or line chart), sticky, list; copy, open, and a button whose `do` copies, opens or asks the next step. Short labels; one ring beats five. `vau companion draw --help` has every field; Keep (or `companion save-drawing`) saves it as an .excalidraw.

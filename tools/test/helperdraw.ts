@@ -18,7 +18,7 @@ let pointer = { x: 500, y: 500 }
 const display = { id: 1, bounds: { x: 0, y: 0, width: 1600, height: 1000 }, workArea: { x: 0, y: 25, width: 1600, height: 975 } }
 mock.module(pathToFileURL(fs.realpathSync(path.join(ROOT, "node_modules/electron/index.js"))).href, { exports: {
   app: { on() {}, getName: () => "Vaultite", getPath: () => os.tmpdir(), getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false },
-  Menu: { buildFromTemplate() {} }, Notification: class { static isSupported() { return false } }, nativeImage: {}, shell: {}, Tray: class {},
+  Menu: { buildFromTemplate() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
   screen: { getCursorScreenPoint: () => pointer, getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
 } })
 type Acts = { open: (name: string, at: Pt) => void }
@@ -43,10 +43,11 @@ mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink) => { si
 // (the server: settings, and the companion's socket)
 let agent: Record<string, unknown> = { name: "Claude", tint: "orange", state: "watching", t: Date.now(), path: "Notes/A.md", line: 3 }
 let sock: WebSocket | null = null
+const posted: { url: string; body: string }[] = []
 const srv = http.createServer((q, res) => {
   let body = ""
   q.on("data", (c) => { body += c })
-  q.on("end", () => { res.setHeader("Content-Type", "application/json"); res.end("{}") })
+  q.on("end", () => { posted.push({ url: q.url ?? "", body }); res.setHeader("Content-Type", "application/json"); res.end("{}") })
 })
 const wss = new WebSocketServer({ noServer: true })
 srv.on("upgrade", (req, s, h) => wss.handleUpgrade(req, s, h, (ws) => { sock = ws; ws.send(JSON.stringify({ t: "state", mode: "pair", name: "Claude", agents: [agent], notes: [] })) }))
@@ -66,7 +67,9 @@ process.env.VAULTITE_QUIET = "1"
 const helper = await import(at("helper.ts"))
 const hp: Record<string, unknown> = {}
 await helper.startHelper({ home: () => ({ port, path: "/vault", name: "Vault" }), homeWindow, openHome() {}, focusedPage: () => null, event() {}, prefs: () => hp, setPrefs: (x: object) => Object.assign(hp, x), quit() {}, icon: "" })
-const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => void; stub: (op: string, v: object) => void; scene: () => Scene | null; asked: () => Record<string, unknown>[]; badge: () => string } }).vaultiteHelper
+type MenuItem = { label?: string; sublabel?: string; type?: string; enabled?: boolean; click?: () => void }
+const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => void; stub: (op: string, v: object) => void; scene: () => Scene | null; asked: () => Record<string, unknown>[]; badge: () => string
+  menu: () => MenuItem[] } }).vaultiteHelper
 
 let fails = 0
 const check = (name: string, ok: boolean, info?: unknown) => { if (!ok) fails++; console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : ` ${JSON.stringify(info)}`}`) }
@@ -196,6 +199,23 @@ panelActs!.send("Claude", "and this row?")
 await until(() => asks().some((m) => m.text === "and this row?"))
 const typed = asks().find((m) => m.text === "and this row?")
 check("an ask typed there is about where it was opened, to it", typed?.agent === "Claude" && typed?.window === 9 && typed?.app === "com.example.mail", typed)
+
+// ---------- jobs: what it handed off, in the menu bar (running, done, needs you), a notification as one ends
+const job = (state: string, unseen = false) => ({ id: "d1", title: "Compare the flights", state, link: "view:claude-session/abc", unseen, at: Date.now() })
+const jobItem = () => H.menu().find((i) => i.label === "Compare the flights")
+const notices = () => H.asked().filter((m) => m.notice === "job")
+sock!.send(JSON.stringify({ t: "jobs", jobs: [job("running")] }))
+check("jobs: one at work is in the menu bar's Jobs, saying so; the list as first heard tells nothing", await until(() => jobItem()?.sublabel === "Working") && !notices().length && H.badge() === "1", [jobItem(), notices()])
+sock!.send(JSON.stringify({ t: "jobs", jobs: [job("done", true)] }))
+check("jobs: once it's done, a notification, and the badge counts it till it's opened", await until(() => notices().length === 1 && H.badge() === "2") && notices()[0].state === "done" &&
+  /, new$/.test(jobItem()?.sublabel ?? ""), [notices(), H.badge(), jobItem()])
+jobItem()!.click!()
+check("jobs: clicked, it opens in Vaultite, its tab, and it's no longer news", await until(() => posted.some((p) => p.url === "/api/ops/ui.open" && JSON.parse(p.body).path === "view:claude-session/abc")) &&
+  H.asked().some((m) => m.t === "job-seen" && JSON.stringify(m.ids) === '["d1"]'), posted.slice(-2))
+sock!.send(JSON.stringify({ t: "jobs", jobs: [{ ...job("needs you"), id: "d2", title: "Book it" }, job("done")] }))
+await wait(50)
+check("jobs: one that comes to need them isn't news unless it was at work before; needing them, it goes first", notices().length === 1 && H.menu().find((i) => i.label === "Book it")?.sublabel === "Needs you" &&
+  H.menu().findIndex((i) => i.label === "Book it") < H.menu().findIndex((i) => i.label === "Compare the flights") && H.badge() === "1", [notices(), H.menu().map((i) => i.label)])
 
 helper.stopHelper()
 srv.close()

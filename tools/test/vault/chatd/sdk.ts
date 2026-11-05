@@ -53,7 +53,9 @@ export function query({ prompt, options }: Any) {
   void (async () => {
     push({ type: "system", subtype: "init", model: options.model ?? "claude-haiku-5", permissionMode: options.permissionMode ?? "default", cwd: options.cwd, ...base })
     for await (const m of prompt) {
-      const text = String(m.message.content)
+      // (pictures with it: their count, as "[2 images]" before its text)
+      const c = m.message.content, pics = Array.isArray(c) ? c.filter((x: Any) => x.type === "image").length : 0
+      const text = `${pics ? `[${pics} images] ` : ""}${Array.isArray(c) ? c.filter((x: Any) => x.type === "text").map((x: Any) => x.text).join("\n") : String(c)}`
       if (/\bslow\b/.test(text) && await pause(800)) {
         push({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 10, uuid: crypto.randomUUID(), ...base })
         continue
@@ -82,7 +84,7 @@ export function query({ prompt, options }: Any) {
         push({ type: "result", subtype: said.length ? "success" : "error_during_execution", is_error: !said.length, duration_ms: 10, uuid: crypto.randomUUID(), ...base })
         continue
       }
-      say(said.length ? `Called: ${said.join(" | ")}` : `Read it (${(text.match(/^- ask /gm) ?? []).length} asks)`)
+      say(said.length ? `Called: ${said.join(" | ")}` : `Read it (${(text.match(/^- ask /gm) ?? []).length} asks${pics ? `, ${pics} images` : ""})`)
     }
     done = true
     wake?.()

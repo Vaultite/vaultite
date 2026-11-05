@@ -4,7 +4,7 @@ import { cn, currentEditor, definePlugin, dictation, menuAbove, notify, onTalkKe
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { type Agent, bump, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, undoEdit, unread, viewOf } from "./live"
+import { type Agent, bump, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, summoning, undoEdit, unread, viewOf } from "./live"
 import { presence } from "./look"
 import { Arrow, follow, Overlay, showSaid, talkAt, talkDone, talkHeard } from "./Overlay"
 import { Presence } from "./Presence"
@@ -43,6 +43,7 @@ async function talk(): Promise<boolean> {
   if (st.mode === "off") { notify("The companion is off: turn it on to talk to it"); return false }
   if (dictation()) return false
   const p = pointer ?? { x: innerWidth / 2, y: innerHeight / 2 }
+  summoning()
   if (!talkAt(p.x, p.y)) ask()
   return listenInBox()
 }

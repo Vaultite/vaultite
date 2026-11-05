@@ -7,7 +7,7 @@ import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentModels, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
 import { byUser, liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
-import { readText, requestWriter, type Vault, type Writer, writeAtomic } from "../../../core/vault.ts"
+import { joinPath, Kind, readText, requestWriter, safeName, type Vault, type Writer, writeAtomic } from "../../../core/vault.ts"
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { bridges } from "./bridge.ts"
 import { type Follow, follows } from "./follows.ts"
@@ -18,9 +18,21 @@ import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from 
 import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
 import { screenDrawings } from "./drawings.ts"
 import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
+import { inSummoned, type Lane, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
+import { type Job, jobOf, jobsLine, jobsText, jobTask } from "./jobs.ts"
+import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
+
+// The user's guides to their apps and sites (guides.ts): one loads with a summoned ask there.
+plugin.kind(new Kind({
+  type: "guide", collection: "guides", folder: "Guides", label: "Guides",
+  parse: parseGuide,
+  render: (g) => [{ app: (g.app as string[] | undefined)?.length ? g.app : null, site: (g.site as string[] | undefined)?.length ? g.site : null }, String(g.body ?? "")],
+  filename: (g, at) => joinPath(at.folder, safeName(String(g.title || "Guide"))),
+}))
+const guides = () => plugin.vault.shared("guides") as unknown as readonly Guide[]
 
 export type Mode = "off" | "quiet" | "pair"
 /** What the user did, as an agent sees it. ask: they addressed it; point: an ask without words (its Talk key held, they
@@ -41,6 +53,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   x?: number; y?: number; changes?: string[]; scene?: string
   /** A reply to or a dismissal of one of its bubbles (`item`: the say), not a comment. */
   bubble?: boolean
+  /** Asked with its Talk key (on screen, or in the app at the pointer): its summoned session's (summoned.ts). */
+  summoned?: boolean
   /** A move: its words moved by the user, a bubble put in the note or what it wrote folded back into a bubble. */
   into?: "note" | "bubble"
   /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
@@ -200,12 +214,14 @@ const acts = plugin.dayLog<Act>("actions")
 /** What's logged that isn't acting: its turn's bookkeeping. */
 const BOOKKEEPING = new Set(["next", "handed", "done", "again"])
 const did = (as: string, op: string, seqs?: number[]) => {
-  const t = Date.now()
-  acts.append(t, [{ t, as, op, ...(seqs ? { seqs } : {}) }])
-  if (!BOOKKEEPING.has(op)) handed.delete(key(as))
+  const t = Date.now(), quick = inSummoned.getStore() === true
+  acts.append(t, [{ t, as: quick ? lane().as(as) : as, op, ...(seqs ? { seqs } : {}) }])
+  if (BOOKKEEPING.has(op)) return
+  if (quick) lane().acted()
+  else handed.delete(key(as))
 }
 /** An agent's state once it acted: still thinking while busy on an ask (until its next `next`), else watching. */
-const acting = (name: string): Agent["state"] => (asking.has(key(name)) ? "thinking" : "watching")
+const acting = (name: string): Agent["state"] => ((inSummoned.getStore() ? lane().asking() : asking.has(key(name))) ? "thinking" : "watching")
 
 /** The app's windows: which files each has open (`shown`: on screen, where an edit can be typed in), where its user is,
  *  when they last did anything. */
@@ -260,7 +276,7 @@ function addressee(name?: string) {
   return session(name) || profileOf(name, offered()) ? a?.name ?? nameOf(key(name)) : ownName()
 }
 /** Whether `name` gets moment `m`: its own, and edit and open for the companion and agents that watch. */
-const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) : isMain(name) || watching.has(key(name)))
+const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) && !(m.summoned && isMain(name) && lane().on()) : isMain(name) || watching.has(key(name)))
 
 /** Where the user is: the window they used last that has a note (`next`, and the ops' default place, both say this). */
 export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).find((w) => w.focus)?.focus ?? null
@@ -286,7 +302,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   if (m.kind === "edit" || m.kind === "open") delete full.for
   else full.for = addressee(m.for)
   // (an ask already asked, as it reads, a while ago: a line asked again by Enter on it, after a restart too)
-  if (m.kind === "ask" && !m.item && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
+  if (m.kind === "ask" && !m.item && !m.summoned && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
   log.append(full.t, [full])
   const back = rethink(full)
   if (back) { keepAsked(back); return back }
@@ -294,7 +310,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   const last = moments[moments.length - 1]
   const merged = m.kind === "edit" && last?.kind === "edit" && last.path === m.path && ![...delivered.values()].some((d) => d >= last.seq) ? mergeHunks(last.hunks ?? [], m.hunks ?? []) : null
   if (merged) { Object.assign(last, { hunks: merged, t: full.t }); return last }
-  const was = m.kind === "ask" && !m.item ? continues(full) : undefined
+  const was = m.kind === "ask" && !m.item && !m.summoned ? continues(full) : undefined
   if (was) {
     // (not handed yet: the same ask, as it reads now)
     if ((delivered.get(key(was.for!)) ?? 0) < was.seq) { Object.assign(was, { text: full.text, line: full.line }); keepAsked(was); return was }
@@ -303,6 +319,12 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
   keepAsked(full)
+  // (its Talk key's: the summoned session's, which runs warm apart from the long one)
+  if (lane().takes(full)) {
+    setAgent(full.for!, { state: "thinking", ...placeOf(m) })
+    lane().take(full)
+    return full
+  }
   // (an open wakes no one: it rides along with the next moment, and the cursors free to follow go there now; so do the
   // user's corrections, a bubble closed or words moved)
   if (m.kind === "open") {
@@ -341,7 +363,7 @@ async function wake(m: Moment, from: IncomingMessage) {
 /** The ask `m` goes on from: the last to the same agent on that line of that note, a few minutes ago, which `m`'s
  *  text begins like (dictation lands a sentence at a time, and a pause between sends the half written). */
 function continues(m: Moment): Moment | undefined {
-  const was = moments.findLast((x) => x.kind === "ask" && x.path === m.path && x.for === m.for && x.seq !== m.seq)
+  const was = moments.findLast((x) => x.kind === "ask" && x.path === m.path && x.for === m.for && x.seq !== m.seq && !x.summoned === !m.summoned)
   return was && goesOn(was, m) ? was : undefined
 }
 const goesOn = (was: Moment, m: Moment) => {
@@ -800,6 +822,11 @@ const screenDrawing = screenDrawings(plugin, {
   },
 })
 const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said"])
+/** Its jobs (jobs.ts): delegate's tasks it started for the user; [] while Delegation is off. */
+const jobsNow = (): Job[] => ((plugin.service("delegate:jobs") as ((by: string) => Record<string, unknown>[]) | null)?.("companion") ?? []).map(jobOf)
+const jobsSeen = (ids: string[]) => (plugin.service("delegate:seen") as ((by: string, ids: string[]) => void) | null)?.("companion", ids)
+const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
+plugin.onEvent({ types: ["delegate.job"] }, (ev) => { if (ev.by === "companion") toScreens({ t: "jobs", jobs: jobsNow() }) })
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
 function screenPlace(m: Record<string, unknown>) {
   const shot = str(m.shot), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
@@ -830,18 +857,23 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
   // (a point where nothing can be read, as the menu bar: still there, with its picture)
   if (!place.app && place.sx === undefined) return null
   if (place.near) nearBy.set(key(str(m.agent) || ownName()), place.near)
-  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place }, req)
+  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, summoned: true }, req)
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
   send(ws, snapshot())
   if (screenDrawing.current()) send(ws, screenDrawing.message())
+  send(ws, { t: "jobs", jobs: jobsNow() })
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
     // (a bubble over the screen clicked away)
     if (m.t === "hide" && typeof m.id === "string") return void hide(m.id)
     if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
+    // (its Talk key pressed: its summoned session made ready while they speak)
+    if (m.t === "summoning") return void lane().warm()
+    // (a job opened from the menu bar: no longer news)
+    if (m.t === "job-seen" && Array.isArray(m.ids)) return void jobsSeen(m.ids.filter((x): x is string => typeof x === "string").slice(0, 30))
     // (a cursor's conversation opened over the screen: its says seen)
     if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
     if (m.t === "drawing-act") return void drawingAct(m, req)
@@ -898,6 +930,9 @@ plugin.socket("companion/live", (ws, req, { query }) => {
       // (another note, not the same one focused again)
       if (w.focus && m.active && w.focus.path !== w.was) { w.was = w.focus.path; addMoment({ kind: "open", ...w.focus }) }
       if (Array.isArray(m.panes)) w.panes = panesFrom(m.panes)
+      // (a job's tab on screen: seen)
+      const shownJobs = m.active && w.panes.length ? jobsNow().filter((j) => j.unseen && w.panes.some((x) => x.to === j.link)) : []
+      if (shownJobs.length) jobsSeen(shownJobs.map((j) => j.id))
       w.pane = str(m.pane) || undefined
       // (awareness, in pair: the pane they went to that isn't a note, by its title; a private page's never)
       const pn = w.panes.find((x) => x.id === w.pane), kind = pn && paneSource(pn.to).kind
@@ -913,7 +948,10 @@ plugin.socket("companion/live", (ws, req, { query }) => {
         selection: str(m.selection) || undefined, find: m.kind === "point" || str(m.scene) ? str(m.find).slice(0, 200) || undefined : undefined,
         hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined,
         ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}), ...point(m),
-        ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}) }, req)
+        ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}),
+        ...(m.summoned === true && m.kind !== "edit" ? { summoned: true } : {}) }, req)
+    } else if (m.t === "summoning") {
+      lane().warm()
     } else if (m.t === "pin" && typeof m.id === "string") {
       pin(m.id)
     } else if (m.t === "seen" && Array.isArray(m.ids)) {
@@ -1018,13 +1056,13 @@ async function paneMoment(_w: Win, m: Record<string, unknown>, req: IncomingMess
   const agent = str(m.agent) || undefined, title = (p?.title || (tab ? inTab.filter((x) => !privatePane(x)).map((x) => x.title).join(" · ") : "") || str(m.title)).slice(0, 200) || undefined
   const asked = m.kind === "ask" ? str(m.text).slice(0, 4000) || undefined : undefined
   const text = (m.kind === "ask" ? str(m.under) : str(m.text)).slice(0, 4000) || undefined
-  const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}) }
+  const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}), ...(m.summoned === true && m.kind !== "change" ? { summoned: true } : {}) }
   if (m.kind === "change") {
     if (!followed.list().some((f) => f.ui === ui)) return
     return void addMoment({ kind: "change", for: agent, ...where, what: "it changed", changes: Array.isArray(m.changes) ? m.changes.map(String).slice(0, 30) : [] })
   }
   const x = p && paneSource(p.to)
-  if (x?.kind === "note") return void addMoment({ kind: m.kind as "ask", for: agent, path: x.path, line: 1, ...(asked ? { text: asked } : {}) }, req)
+  if (x?.kind === "note") return void addMoment({ kind: m.kind as "ask", for: agent, path: x.path, line: 1, ...(asked ? { text: asked } : {}), ...(where.summoned ? { summoned: true } : {}) }, req)
   let under = text
   if (x?.kind === "site" && m.x !== undefined) {
     const t = await pageOf(p!.id).catch(() => null)
@@ -1448,6 +1486,7 @@ async function stop(as?: string, all = false) {
     else if (await running(s.id)) await plugin.runOp("terminal.end", { id: s.id })
   }
   for (const s of gone) if (s.id) dead.add(s.id)
+  if (all || isMain(gone[0]?.name ?? "")) await lane().stop()
   for (const a of agents.values()) if (all || gone.some((s) => key(s.name) === key(a.name))) ended(a.name)
   return { id: gone[0]?.id || null }
 }
@@ -1480,12 +1519,14 @@ plugin.onEvent({ types: ["terminal.agent-missing"] }, (ev) => {
 // messages, sent as they happen (or as a turn ends), and the actions their tools; a turn ended is a terminal's next `next`
 
 /** A tool served to a chat session, run here: claude-code's chat relays its calls. */
-type ChatTool = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; run: (args: unknown, use?: string) => Promise<unknown>
+export type ChatTool = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; run: (args: unknown, use?: string) => Promise<unknown>
   streams?: boolean; ends?: boolean; stream?: (use: string, json: string, end?: "done" | "stop") => void }
-type ChatHow = { cwd?: string; account?: string; model?: string; effort?: string; append?: string; title?: string; by?: string; inbox?: boolean; allowed?: string[]; denied?: string[]; tools?: ChatTool[] }
-type ChatState = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; error?: string; seq?: number }
+export type ChatHow = { cwd?: string; account?: string; model?: string; effort?: string; append?: string; title?: string; by?: string; inbox?: boolean; allowed?: string[]; denied?: string[]; tools?: ChatTool[]
+  /** Pictures sent with its message (an ask's screenshot); `quick`: no thinking first. */
+  images?: string[]; quick?: boolean }
+export type ChatState = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; error?: string; seq?: number; turn?: { text: string } | null }
 /** What claude-code exports as `chat`. */
-type Chat = {
+export type Chat = {
   start: (o: ChatHow & { prompt?: string }) => Promise<ChatState>
   send: (id: string, text: string, o?: ChatHow) => Promise<unknown>
   stop: (id: string) => Promise<unknown>
@@ -1499,22 +1540,23 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff"]
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover"])
+const STREAMS = new Set(["say", "comment", "edit"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff"])
 /** Those after which its turn always ends. */
-const LAST = new Set(["pass", "handover"])
+const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
 const ALLOWED = ["mcp__vaultite-app", ...ALLOW.filter((c) => c !== "vau companion").map((c) => `Bash(${c}:*)`)]
 const AS_TOOL = whoOf("cli", "claude-code")
 /** The API as excerpts reads notes with, for a chat session's moments. */
 const apiCtx = { api: (method: string, route: string, body?: unknown) => plugin.host.api(method, route, body) } as unknown as OpCtx
 
-/** Agent `name`'s tools, each op's parameters (but `as`, which is it) and words (but its vau examples). */
-function toolsFor(name: string): ChatTool[] {
-  return TOOLS.flatMap((short) => {
+/** Agent `name`'s tools, each op's parameters (but `as`, which is it) and words (but its vau examples); `busy`: its turn
+ *  runs (the summoned session's own). */
+function toolsFor(name: string, list = TOOLS, busy = () => turning.has(key(name))): ChatTool[] {
+  return list.flatMap((short) => {
     const op = plugin.ops.find((o) => o.id === `companion.${short}`)
     if (!op) return []
     const params = Object.entries(op.params ?? {}).filter(([k]) => k !== "as")
@@ -1533,7 +1575,7 @@ function toolsFor(name: string): ChatTool[] {
         try {
           const r = await toolUse.run(use, () => plugin.host.call(op.id, { ...given, ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: `companion ${short}` }))
           // (not its last call: its turn goes on, and its cursor shows it busy, a bubble or not, until it ends)
-          if (ends && done !== true && turning.has(key(name)) && agents.get(key(name))?.state === "watching") setAgent(name, { state: "thinking" })
+          if (ends && done !== true && busy() && agents.get(key(name))?.state === "watching") setAgent(name, { state: "thinking" })
           return { content: [{ type: "text", text: r.text }], ...((ends && done === true) || LAST.has(short) ? { endsTurn: true } : {}) }
         } catch (e) { return { isError: true, content: [{ type: "text", text: (e as Error).message }] } }
         finally { if (use) streamDone(use) }
@@ -1549,6 +1591,29 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
     append: promptFor(name, true), title: isMain(name) ? "Companion" : `Companion: ${name}`, by: "companion", inbox: false, allowed: ALLOWED,
     // (its tools, not the commands the docs show: those go through a server that may be restarting)
     denied: ["Bash(vau companion:*)"], tools: toolsFor(name) }
+}
+
+// ---------- its summoned session (summoned.ts): Talk key asks, on a small model, warm, apart from this long one
+
+/** What the summoned session has: answering at the pointer, pointing, drawing, handing off. */
+const SUMMONED_TOOLS = ["say", "pass", "look", "highlight", "draw", "see", "act", "follow", "clear", "handoff"]
+/** The model summoned asks run on; "" (the setting's companion, or an agent not Claude Code's): the long session takes them. */
+const summonedModel = () => { const m = setting("summoned_model"); return onChat(agentSetting()) && m !== "companion" ? m : "" }
+/** The pictures an ask's text names, attached to its message (no Read call before its first word). */
+const shotsOf = (ms: Moment[]) => [...new Set(ms.flatMap((m) => (m.shot && fs.existsSync(m.shot) ? [m.shot] : [])))].slice(-2)
+let laneOf: { vault: Vault; lane: Lane } | null = null
+const lane = (): Lane => {
+  if (laneOf?.vault === plugin.vault) return laneOf.lane
+  const l = summonedLane({
+    file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel, fresh: freshAfter,
+    options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, quick: true, append: SUMMONED_PROMPT, title: "Companion: summoned",
+      by: "companion", inbox: false, allowed: ALLOWED, denied: ["Bash(vau companion:*)"], tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
+    text: async (ms) => ({ text: [momentsText(ms, mode(), focus(), await excerpts(apiCtx, ms)), jobsLine(jobsNow())].filter(Boolean).join("\n"), images: shotsOf(ms) }),
+    agent: (name) => agents.get(key(name)), setAgent, did,
+    say: (name, text) => { const a = agents.get(key(name)); keepSaid(putNote({ kind: "say", agent: name, text, ...(a?.path ? { path: a.path, line: a.line } : {}) }, sayMs(text))) },
+  })
+  laneOf = { vault: plugin.vault, lane: l }
+  return l
 }
 
 const READY = "Read ME.md and `vau docs companion` first, once."
@@ -1576,6 +1641,7 @@ async function startChat(name: string, how: { agent: string; model: string; effo
     throw e
   }
   writeSession({ id: s.id, name, t: Date.now(), runs: how.agent, ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}), handed: given.length })
+  if (isMain(name)) lane().warm()
   // (what it said before this knew its id)
   const now = c.list().find((x) => x.id === s.id)
   if (now) heard(s.id, now)
@@ -1974,6 +2040,7 @@ const saidText = (id?: string) => { const n = said.find((x) => x.id === id); ret
 
 /** Moments as an agent reads them. */
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = [], aware = "") {
+  const guided = new Set<string>()
   const head = `Mode: ${md}.${f?.path ? ` The user is in ${f.path}${f.x !== undefined ? ` at ${f.x},${f.y}` : ` at line ${f.line ?? 1}`}.` : ""}`
   if (!ms.length) return `${head}${aware ? `\n${aware}` : ""}\nNothing yet: run vau companion next again.`
   const out = [head, ...(aware ? [aware] : [])]
@@ -2019,6 +2086,12 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height}: ${k.points.map((p) => p.join(",")).join(" ")}`)
     if (m.near?.length) out.push("  near their pointer (point at one: --ax <id>):", ...m.near.map((e) => `    ${e.id} ${e.role} ${JSON.stringify(e.label)} at ${e.frame.x},${e.frame.y} ${e.frame.width}×${e.frame.height}`))
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
+    // (its Talk key's, in an app or on a site: the user's guide to it, once a message)
+    if (m.summoned && (m.kind === "ask" || m.kind === "point") && (m.app || m.url)) {
+      const g = guideFor(guides(), m)
+      if (g && !guided.has(g.id)) { guided.add(g.id); out.push(...guideLines(g)) }
+      else if (!g && m.app && m.app !== "private") out.push(`  no guide to ${m.app} yet (Guides/)`)
+    }
   }
   for (const e of notes) {
     if (e.pane) { out.push(`"${e.title ?? e.pane}" (pane ${e.pane}), what it shows now${e.text?.includes("[ref=") || /\be\d+\b/.test(e.text ?? "") ? " (refs for look --el, act)" : ""}:`, e.text ?? ""); continue }
@@ -2094,6 +2167,55 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
     return n
   },
   text: () => "Said.",
+})
+
+plugin.op({
+  id: "companion.handoff",
+  cli: "companion handoff",
+  summary: "Hand long work to a background agent (Opus in Claude Code, or Codex), with the ask's context: it starts at once, and the user is told when it's done.",
+  help: `For what takes more than a minute or two: research, a document, code, a long errand, writing in their notes.
+Your say shows by your cursor as it starts; then end your turn. Its job is in the menu bar's Jobs (running, done, needs
+you) and its tab in the app; the user is told when it ends. job: a follow-up to one of yours (companion jobs), in its
+same session. Needs Delegation on.
+
+  vau companion handoff "Compare the flights in this tab; write the best two in Notes/Trip.md" --say "On it: comparing them."
+  vau companion handoff "Add the trains too" --job d3k2h1g0 --say "Adding the trains."`,
+  kind: "write",
+  lock: false,
+  params: { task: { type: "string", required: true, description: "what to do, standing alone: the goal, where, what to end with (the ask's words, place and picture go with it)" },
+    say: { type: "string", required: true, description: "what you tell the user now, a few words (On it: ...)" },
+    agent: { type: "string", enum: ["claude", "codex"], default: "claude", description: "who does it: Claude Code (on Opus unless model says), or Codex" },
+    model: { type: "string", description: "its model (default: Opus for Claude Code, Codex's own)" },
+    title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words)" },
+    job: { type: "string", description: "a follow-up to this job of yours (its id): the same session goes on" }, as: AS },
+  args: ["task"],
+  run: async (p, ctx) => {
+    const name = who(p), start = plugin.service("delegate:job") as ((ctx: OpCtx, o: Record<string, unknown>) => Promise<Record<string, unknown>>) | null
+    if (!start) throw new OpError("background jobs run through Delegation, which is off: say so, and offer to do what you can now", 409)
+    const ask = (inSummoned.getStore() ? lane().last() : moments).findLast((m) => (m.kind === "ask" || m.kind === "point") && key(m.for ?? "") === key(name))
+    const agent = str(p.agent) || "claude", model = str(p.model) || (agent === "claude" ? "opus" : "")
+    const v = jobOf(await start(ctx, { by: "companion", agent, task: p.job ? str(p.task) : jobTask(str(p.task), ask), ...(model ? { model } : {}),
+      ...(str(p.title) ? { title: str(p.title) } : {}), ...(str(p.job) ? { job: str(p.job) } : {}) }))
+    did(name, "handoff")
+    await plugin.host.call("companion.say", { text: str(p.say), ...(isMain(name) ? {} : { as: name }) }, ctx.who)
+    return v
+  },
+  text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}. The user hears when it's done: end your turn.`,
+  did: (p) => ({ action: "run", text: `Handed off ${JSON.stringify(cut(str(p.task), 60))}`, by: who(p) }),
+})
+
+plugin.op({
+  id: "companion.jobs",
+  cli: "companion jobs",
+  summary: "The jobs the companion handed off (background agents): running, done, needs you, and what each ended with.",
+  help: `  vau companion jobs`,
+  kind: "read",
+  params: { seen: { type: "array", items: { type: "string" }, description: "jobs the user saw: no longer counted new (the menu bar's badge)" } },
+  run: async (p) => {
+    if (Array.isArray(p.seen) && p.seen.length) jobsSeen(p.seen.map(String))
+    return { jobs: jobsNow() }
+  },
+  text: (r) => jobsText(r.jobs),
 })
 
 plugin.op({
@@ -2731,11 +2853,11 @@ plugin.op({
     const id = sessionId()
     const all = await Promise.all(sessions().map(async (s) => ({ ...s, running: await running(s.id) })))
     return { mode: mode(), name: ownName(), session: (await running(id)) ? id : null, windows: windows.size, focus: focus(),
-      sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })),
+      sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel() } : null,
       agents: [...agents.values()].map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
       notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list() }
   },
-  text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}. Windows: ${r.windows}.`,
+  text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}.${r.summoned ? ` Summoned asks: ${r.summoned.model}${r.summoned.id ? `, session ${r.summoned.id}` : ""}.` : ""} Windows: ${r.windows}.`,
     ...r.agents.map((a: Agent & { live: boolean }) => {
       const s = r.sessions.find((x: { name: string }) => key(x.name) === key(a.name))
       return `- ${a.name} (${a.tint})${isMain(a.name) ? ", the companion" : ""}: ${a.live || isMain(a.name) ? a.state : "away"}${a.path ? ` at ${a.path}${a.line ? `:${a.line}` : ""}` : ""}${s ? `, session ${s.id}` : ""}`
@@ -2797,11 +2919,12 @@ plugin.op({
     stopStreams(name)
     const asks = (batches.get(k) ?? []).flatMap((n) => moments.find((m) => m.seq === n && m.kind === "ask")?.text ?? [])
     const keys = s && !isChat(s.id) ? INTERRUPT[runsOf(s).split("_")[0]] : undefined
-    let ok = false
-    if (s && isChat(s.id)) {
+    // (its summoned session, answering a Talk key's ask)
+    let ok = isMain(name) && await lane().interrupt()
+    if (!ok && s && isChat(s.id)) {
       ok = !!(await chat()?.interrupt(s.id).catch(() => false))
       if (ok) { stopped.set(k, asks); resend.delete(k) }
-    } else if (s && keys && !waiters.has(k) && await running(s.id)) {
+    } else if (!ok && s && keys && !waiters.has(k) && await running(s.id)) {
       // (a terminal's agent busy on a moment, not waiting in next: its own interrupt key, then told so and back to next)
       ok = !!(await plugin.runOp("terminal.key", { id: s.id, keys }).catch(() => null))
       if (ok) setTimeout(() => void plugin.runOp("terminal.send", { id: s.id, text: `${STOPPED(asks)} Then run \`${nextCmd(name)}\` again, and never end your turn.` }).catch(() => {}), 1000).unref?.()
@@ -2930,6 +3053,7 @@ plugin.op({
  *  reaches them while they finish what they were doing, before their next `next`. */
 async function rejoin() {
   hearChats()
+  lane().serve()
   for (const x of sessions()) {
     // (a chat session's tools are this server's: served again, so a call it makes now reaches them)
     if (isChat(x.id)) { const s = session(x.name); if (s) chat()?.serve(s.id, chatOptions(s.name, s)) }

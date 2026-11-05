@@ -807,6 +807,25 @@ export default async ($: VaultTest) => {
     helper.emit("close"); win.emit("close")
     fs.rmSync($.vault.abs("Drawings"), { recursive: true, force: true })
   }
+  // Guides (type: guide, Guides/): the user's note on an app or site goes with a summoned ask there, cut when long.
+  {
+    write("Guides/Figma.md", "---\ntype: guide\napp: [com.figma.Desktop]\nsite: figma.com\n---\nFrames are on the left. I name layers in kebab-case.\n")
+    write("Guides/Mail.md", `---\ntype: guide\nsite: mail.example.com\n---\n${"Labels, not folders. ".repeat(120)}\n`)
+    write("Guides/Broken.md", "---\ntype: guide\n---\nFor nothing.\n")
+    const [, vault] = await api("GET", "vault")
+    const at = (m: Any) => c.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "how?", summoned: true, ...m }], "quiet", null)
+    const figma = at({ app: "com.figma.Desktop", title: "Design" }), web = at({ app: "com.google.Chrome", screen: "Inbox\nhttps://www.figma.com/file/abc\nmore" })
+    const mail = at({ app: "com.google.Chrome", screen: "mail.example.com/u/0\n" }), none = at({ app: "com.example.notes" })
+    check("guides: a summoned ask in an app (or on its site, by the address its window shows) carries the user's guide to it",
+      /their guide to it \(Guides\/Figma\.md\):\n {4}Frames are on the left/.test(figma) && /Guides\/Figma\.md/.test(web), [figma, web])
+    check("guides: a long one is cut, saying where the rest is; none, the ask says so (it may offer to write one)",
+      mail.length < 2200 && /… \(the rest: vau read "Guides\/Mail\.md"\)/.test(mail) && /no guide to com\.example\.notes yet/.test(none) &&
+      !/guide/.test(c.momentsText([{ seq: 2, t: 0, kind: "ask", for: "Claude", text: "x", app: "com.figma.Desktop" }], "quiet", null)), [mail.length, none])
+    check("guides: one naming no app nor site says so", JSON.stringify(vault).includes("a guide names its app"), vault)
+    const [, doc] = await api("POST", "ops/docs.read", { topic: "guides" })
+    check("guides: vau docs guides has their format", /type: guide/.test(JSON.stringify(doc)), doc)
+  }
+
   await api("PATCH", "config/plugin/companion", { mode: "off" })
   check("companion: off hears nothing", c.addMoment({ kind: "ask", text: "hello?" }) === null)
 }

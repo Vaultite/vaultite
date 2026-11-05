@@ -15,8 +15,8 @@ export type Act = Place & { id: string; at: string; live?: boolean; error?: stri
   | { k: "look" | "highlight" | "draw" | "clear" | "handover" | "pass"; text?: string }
   /** What it read or looked up: a few at once are one row. */
   | { k: "read"; what: string[] }
-  /** A session it started: a terminal (`terminal`: its id), or a task delegated (`task`: its id). */
-  | { k: "session"; agent: string; title: string; terminal?: string; task?: string }
+  /** A session it started: a terminal (`terminal`: its id), or a task delegated (`task`: its id; `job`: handed off). */
+  | { k: "session"; agent: string; title: string; terminal?: string; task?: string; job?: boolean }
   /** Its own words in its session, which the user only sees there. */
   | { k: "text"; text: string }
   /** Its session asks the user something (a permission). */
@@ -67,6 +67,7 @@ function actOf(t: Extract<Entry, { k: "tool" }>): Act | null {
         return { ...base, ...p, ...(p.path ? {} : { path: pathIn(t.result) }), k: "edit", text: str(i.text), ...(str(i.find) ? { from: str(i.find) } : {}), ...(proposed ? { proposed, item } : {}) }
       }
       case "pass": return { ...base, k: "pass", text: str(i.reason) }
+      case "handoff": return { ...base, k: "session", agent: str(i.agent) || "claude", title: str(i.title) || str(i.task), task: str(i.job) || idIn(t.result), job: true }
       case "look": case "highlight": case "draw": case "clear": case "handover":
         return { ...base, ...p, ...(p.path ? {} : { path: pathIn(t.result) }), k: op, ...(op === "handover" ? { text: str(i.summary) } : op === "clear" && str(i.id) ? { text: str(i.id) } : {}) }
       default: return null

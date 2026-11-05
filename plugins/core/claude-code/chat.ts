@@ -32,6 +32,10 @@ export type ChatDeps = {
  *  (`use`: the tool_use id, which its streamed input named). One that `streams` hears its input as it's written. */
 export type ChatTool = ToolDef & { run: (args: unknown, use?: string) => Promise<unknown>; stream?: (use: string, json: string, end?: "done" | "stop") => void }
 export type ChatStart = { prompt?: string; cwd?: string; account?: string; model?: string; effort?: Effort; mode?: Mode; append?: string
+  /** Pictures on this machine sent with its message (a screenshot), seen without a Read. */
+  images?: string[]
+  /** Answers without thinking first (the summoned companion's). */
+  quick?: boolean
   title?: string; by?: string; tools?: ChatTool[]; inbox?: boolean
   /** Permission rules it runs without asking ("mcp__vaultite-app": its tools; "Bash(vau read:*)"), and never. */
   allowed?: string[]; denied?: string[] }
@@ -392,7 +396,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode || modeDefault(a.id),
       append: [chatContext(), o.append].filter(Boolean).join("\n\n"), ...(o.title ? { title: o.title } : {}),
       ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema, streams, ends }) => ({ name, description, schema, ...(streams ? { streams } : {}), ...(ends ? { ends } : {}) })) } : {}),
-      ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.inbox === false ? { quiet: true } : {}) }
+      ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.inbox === false ? { quiet: true } : {}), ...(o.quick ? { quick: true } : {}) }
   }
 
   /** A new session: its id. `own`: a plugin's, run so again when it's resumed. */
@@ -401,8 +405,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     if (o.cwd && !fs.statSync(o.cwd, { throwIfNoEntry: false })?.isDirectory()) throw new OpError(`there's no folder ${o.cwd}`, 404)
     if (o.model && !d.models().models.some((m) => m.id === o.model) && !/^claude-[\w.-]+$/.test(o.model)) throw new OpError(`'${o.model}' isn't a model Claude Code runs`)
     const id = crypto.randomUUID()
-    if (own) owned.set(id, { ...o, prompt: undefined })
-    const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: false }, a), ...(o.prompt?.trim() ? { prompt: o.prompt.trim() } : {}) }) as { s: Summary }
+    if (own) owned.set(id, { ...o, prompt: undefined, images: undefined })
+    const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: false }, a), ...(o.prompt?.trim() ? { prompt: o.prompt.trim(), ...(o.images?.length ? { images: o.images } : {}) } : {}) }) as { s: Summary }
     // (its news after the answer, in the same read, was heard first: newer)
     if (!hosted.has(id)) hosted.set(id, s)
     return hosted.get(id)!
@@ -429,7 +433,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
         ...(given.effort && given.effort !== s.effort && given.effort !== was?.effort ? { effort: given.effort } : {}),
         ...(given.mode && given.mode !== s.mode ? { mode: given.mode } : {}) }
       if (Object.keys(change).length) await ask("set", { id, ...change })
-      return await ask("send", { id, text: said }) as { uuid: string; answered?: string }
+      return await ask("send", { id, text: said, ...(given.images?.length ? { images: given.images } : {}) }) as { uuid: string; answered?: string }
     }
     const why = await busyElsewhere(id)
     if (why) throw new OpError(why, 409)
@@ -439,7 +443,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     const t = await readTitle(id)
     const was = hosted.get(id)
     const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: true, cwd: o.cwd || t?.cwd || "",
-      model: o.model || was?.model || undefined, effort: o.effort || (was?.effort || undefined) as Effort | undefined, mode: o.mode || was?.mode || kept[id]?.mode }, f.account), prompt: said }) as { s: Summary }
+      model: o.model || was?.model || undefined, effort: o.effort || (was?.effort || undefined) as Effort | undefined, mode: o.mode || was?.mode || kept[id]?.mode }, f.account), prompt: said,
+      ...(given.images?.length ? { images: given.images } : {}) }) as { s: Summary }
     if (hosted.get(id) === was) hosted.set(id, s)
     return { uuid: "", resumed: true }
   }

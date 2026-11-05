@@ -109,3 +109,21 @@ export const offsetIn = (frame: Rect, p: Point) => ({ dx: Math.round(p.x - frame
 /** That point now, the window at `frame`; one left past its size (it shrank) stays inside it. */
 export const atOffset = (frame: Rect, o: { dx: number; dy: number }) =>
   ({ x: frame.x + Math.max(8, Math.min(frame.width - 8, o.dx)), y: frame.y + Math.max(8, Math.min(frame.height - 8, o.dy)) })
+
+/** A job the companion handed off (plugins/core/companion/jobs.ts), as the menu bar lists it. */
+export type HelperJob = { id: string; title: string; state: string; link: string | null; unseen: boolean; at: number }
+const ACTIVE = new Set(["running", "needs you"])
+/** The Jobs in the menu: those needing the user or at work first, then the latest ended ones of the last day; a few. */
+export function jobsShown(jobs: HelperJob[], now = Date.now()) {
+  const rank = (j: HelperJob) => (j.state === "needs you" ? 0 : j.state === "running" ? 1 : 2)
+  return jobs.filter((j) => ACTIVE.has(j.state) || (j.state !== "cancelled" && (j.unseen || now - j.at < 86_400_000)))
+    .sort((a, b) => rank(a) - rank(b) || b.at - a.at).slice(0, 6)
+}
+/** Jobs that ended or came to need the user since `before` (null: the first list heard, no news): a notification each. */
+export function jobNews(before: HelperJob[] | null, after: HelperJob[]) {
+  if (!before) return []
+  const was = new Map(before.map((j) => [j.id, j.state]))
+  return after.filter((j) => was.has(j.id) && was.get(j.id) !== j.state && (j.state === "needs you" || ((j.state === "done" || j.state === "failed") && j.unseen)))
+}
+/** The menu bar icon's badge: its words not seen, and jobs ended that weren't opened. */
+export const badgeOf = (unread: number, jobs: HelperJob[]) => { const n = unread + jobs.filter((j) => j.unseen).length; return n ? String(n) : "" }

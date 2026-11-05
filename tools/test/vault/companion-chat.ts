@@ -100,7 +100,8 @@ export default async ($: VaultTest) => {
   const idle = (id: string) => waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === id)?.state === "idle", 15_000, 50)
   let k = await keeper(CHAT_SOCKET)
   try {
-    await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", model: "haiku" })
+    // (its Talk key's asks the long session's, as before: the summoned one has its own test below)
+    await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", model: "haiku", summoned_model: "companion" })
     write("Notes/Chat.md", "# Chat\n\nCall Alice friday\n")
     let [st, r] = await api("POST", "ops/companion.start", {})
     const id = r.id
@@ -307,6 +308,62 @@ export default async ($: VaultTest) => {
     await api("POST", "ops/companion.stop", {})
     await waitFor(async () => !(await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.length, 5000, 100)
     check("companion chat: stopped, its session ends and its cursor goes", (await claude())?.state === "away" && !fs.existsSync(`${c.plugin.localDir()}/session.json`), await claude())
+    await api("POST", "ops/companion.clear", {})
+
+    // Its Talk key's asks: a session of their own on a small model, warm from the companion's start, apart from the long one.
+    {
+      await api("PATCH", "config/plugin/companion", { summoned_model: "haiku", model: "sonnet" })
+      ;[st, r] = await api("POST", "ops/companion.start", {})
+      const longId = r.id, laneFile = `${c.plugin.localDir()}/summoned.json`
+      const quick = await waitFor(() => { try { return JSON.parse(fs.readFileSync(laneFile, "utf8")).id as string } catch { return null } }, 5000, 50)
+      await idle(longId)
+      await idle(quick!)
+      const listed = (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions as Any[]
+      check("summoned: started with the companion, a session of its own on its model, its prompt cached by a turn", !!quick && quick !== longId &&
+        /^Get ready/.test((await said(quick!)).find((e) => e.k === "user")?.text ?? "") && /haiku/.test(listed.find((s) => s.id === quick)?.model ?? "") &&
+        !/haiku/.test(listed.find((s) => s.id === longId)?.model ?? ""), listed)
+      const shot = path.join($.tmp, "screens", "display-1-1.png")
+      fs.mkdirSync(path.dirname(shot), { recursive: true })
+      fs.writeFileSync(shot, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"))
+      const before = (await said(longId)).length
+      c.screenMoment({ kind: "ask", agent: "Claude", text: 'call say {"text":"That is the Send button","done":true}', app: "com.example.mail", window: 9, title: "Inbox", sx: 500, sy: 480,
+        shot, shotAt: { x: 0, y: 0, width: 1600, height: 1000 }, near: [{ id: "a1", role: "button", label: "Send", frame: { x: 480, y: 470, width: 60, height: 24 } }] })
+      const answered = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "That is the Send button"), 15_000, 50)
+      await idle(quick!)
+      const asked = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
+      check("summoned: an ask on screen is its session's message, its picture attached, answered by the companion's cursor",
+        answered?.agent === "Claude" && /- ask on screen/.test(asked) && /a1 button "Send"/.test(asked) && (await said(longId)).length === before, [answered, asked])
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "what's this?", app: "com.example.mail", window: 9, sx: 500, sy: 480, shot })
+      const seen = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Read it \(1 asks/.test(e.text))?.text, 15_000, 50)
+      check("summoned: the display's picture comes with its message (no Read before its first word)", seen === "Read it (1 asks, 1 images)", seen)
+      await idle(quick!)
+      check("summoned: an answer written as words, not said (a small model forgets its tools), is said by its cursor all the same",
+        !!(await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === "Read it (1 asks, 1 images)"), 3000, 50)))
+      const sent = (await api("POST", "ops/claude-code.chat-read", { id: quick, limit: 100 }))[1].entries.filter((e: Any) => e.k === "text").map((e: Any) => e.text)
+      c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "list", summoned: true })
+      const qtools = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Tools:/.test(e.text))?.text, 15_000, 50)
+      check("summoned: an ask by its Talk key in the app goes there too, with the short list of tools (no writing in notes)",
+        /\bsay\b/.test(qtools ?? "") && /\bdraw\b/.test(qtools ?? "") && !/\bedit\b|\bcomment\b|\bhandover\b/.test((qtools ?? "").split(".")[0]) && (await said(longId)).length === before, [qtools, sent])
+      await idle(quick!)
+      const rows = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((x: Any) => x.as === "Claude (summoned)")
+      check("summoned: timings tell its asks apart, with their first word", rows.some((x: Any) => x.word !== undefined), rows)
+      c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "call pass {\"reason\":\"not for me\"}" })
+      await waitFor(async () => (await said(longId)).length > before, 15_000, 50)
+      check("summoned: an ask in a note (no Talk key) still goes to the long session", (await said(longId)).some((e) => e.k === "user" && /not for me/.test(e.text)))
+      await idle(longId)
+      // (its process gone, idle a while: its Talk key pressed starts a fresh one before the ask)
+      await api("POST", "ops/claude-code.chat-stop", { id: quick })
+      const { matchSocket } = await import("../../../core/plugins.ts")
+      const sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send() {}, close() {}, ping() {}, terminate() {} })
+      matchSocket($.app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+      sc.emit("message", Buffer.from(JSON.stringify({ t: "summoning" })))
+      const warmed = await waitFor(() => { try { const x = JSON.parse(fs.readFileSync(laneFile, "utf8")).id; return x !== quick ? x : null } catch { return null } }, 5000, 50)
+      check("summoned: its Talk key pressed with no process up, a fresh one starts while they speak", !!warmed && (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.some((s: Any) => s.id === warmed), warmed)
+      sc.emit("close")
+      await api("POST", "ops/companion.stop", {})
+      check("summoned: the companion stopped, its summoned session ends too", !!(await waitFor(async () => !(await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.length, 5000, 100)) &&
+        !fs.existsSync(laneFile))
+    }
     await api("POST", "ops/companion.clear", {})
   } finally {
     await api("PATCH", "config/plugin/companion", { mode: "off" })
