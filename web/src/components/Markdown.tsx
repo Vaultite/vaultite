@@ -8,7 +8,7 @@ import { keyHint } from "@/core/commands"
 import { drawnLink, followLink, linkClick, resolver } from "@/core/links"
 import { type MarkdownOpts, renderInline, renderMarkdown } from "@/core/markdown"
 import { dropMermaid, hydrate, markdownDrawn, richClick, tickTask, wireTasks } from "@/core/richmd"
-import { isReadOnly, readFile } from "@/core/files"
+import { fileOf, isReadOnly, readFile } from "@/core/files"
 import { put } from "@/core/http"
 import { notifyError } from "@/core/notify"
 import { assetPath, openEmbedMenu } from "@/components/EmbedMenu"
@@ -74,6 +74,13 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
   const follow = (e: MouseEvent) => {
     if (e.button === 0 && ref.current && richClick(e, ref.current)) return
     const a = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag], [data-url]")
+    // (a web link in a note with a `container:` opens there, which the app's own link handler can't know; ⇧ or ⌥ alone: Glance's)
+    const web = !a && s && from && fileOf(s, from)?.container && !((e.shiftKey || e.altKey) && !(e.metaKey || e.ctrlKey))
+      ? (e.target as Element).closest<HTMLAnchorElement>("a[href]") : null
+    if (web && s && /^https?:/i.test(web.href)) {
+      e.preventDefault(); e.stopPropagation()
+      return void followLink(s, { url: web.href }, linkClick(e), from)
+    }
     if (!a || !s) return
     e.preventDefault()
     e.stopPropagation()

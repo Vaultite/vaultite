@@ -2,7 +2,8 @@
 // to with several accounts side by side. A tab in one is `view:web/@<id>/<address>`; a tab in none has its workspace's.
 import { COLORS, colorVar, currentWorkspace, isColor, openTab, webPages, type Color } from "@vaultite"
 import { settings, settingsRead, profile, type Settings } from "./state"
-import { siteOf } from "./address"
+import { linkChoice, ruleIn, whereIn, type Where } from "./where.ts"
+export type { Where } from "./where.ts"
 
 export type Container = { id: string; name: string; color: Color
   /** Sites it opens ("youtube.com"): a page of one opened in no container opens in this one. */
@@ -50,23 +51,12 @@ export const profileIn = (container: string | null) => (container ? `c-${contain
 export const containerOfProfile = (prof: string) => (prof.startsWith("c-") ? prof.slice(2) : null)
 
 /** The container a page opened in none goes to: the one whose sites have its site, if any. */
-export function ruleFor(url: string): string | null {
-  const site = siteOf(url)
-  return (site && containers().find((c) => c.sites?.includes(site))?.id) || null
-}
-/** Where an address opens and why (the chip says it while it's typed): `container` null is the workspace's own logins. */
-export type Where = { container: string | null; why: string }
-/** Where `url` opens from a tab in `from` (`fresh`: new or blank): the container `chosen` (null: none), else the page's
- *  when a page `opened` it (its link is that account's), else its site's, else the tab's, else (fresh) the workspace's. */
-export function destination(url: string, { from, fresh, chosen, opened }: { from: string | null; fresh: boolean; chosen?: string | null; opened?: boolean }): Where {
-  if (chosen !== undefined) return { container: containerById(chosen)?.id ?? null, why: "" }
-  if (opened && containerById(from)) return { container: from, why: "" }
-  const rule = containerById(url ? ruleFor(url) : null)
-  if (rule) return { container: rule.id, why: `${siteOf(url)} always opens in ${rule.name}` }
-  if (containerById(from)) return { container: from, why: "" }
-  const own = fresh ? containerById(currentWorkspace()?.container) : null
-  return own ? { container: own.id, why: "This workspace's container" } : { container: null, why: "" }
-}
+export const ruleFor = (url: string) => ruleIn(containers(), url)
+/** Where `url` opens from a tab in `from` (where.ts' whereIn, with the workspace's container). */
+export const destination = (url: string, o: { from: string | null; fresh: boolean; chosen?: string | null; opened?: boolean }): Where =>
+  whereIn(containers(), url, { ...o, own: currentWorkspace()?.container })
+/** A link's `container` as destination's `chosen` (where.ts' linkChoice): undefined leaves it to the rules. */
+export const chosenFor = (container: string | null | undefined) => linkChoice(containers(), container)
 
 /** Addresses the user put in no container though their workspace has one: the page opened next there stays out of it. */
 const outside = new Set<string>()

@@ -127,9 +127,10 @@ function linksOf(e: Entry, vault: Vault | null = null) {
 /** A Markdown file's row in the tree. */
 function row(rel: string, e: Entry): Item {
   const aliases = e.fm.aliases
-  // How it shows in the tree, tabs and the sidebar (a dashboard's icon and colour, the plugin that brought it), if the file says.
+  // How it shows in the tree, tabs and the sidebar (a dashboard's icon and colour, the plugin that brought it), and the
+  // container its web links open in, if the file says.
   const look: Item = {}
-  for (const k of ["icon", "tint", "plugin"]) if (typeof e.fm[k] === "string") look[k] = e.fm[k]
+  for (const k of ["icon", "tint", "plugin", "container"]) if (typeof e.fm[k] === "string") look[k] = e.fm[k]
   const title = e.fm.title || e.fm.name || stemOf(rel)
   return {
     ...look,

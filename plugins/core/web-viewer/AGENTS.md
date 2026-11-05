@@ -22,7 +22,7 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   purple, pink, yellow, teal, indigo, gray; `sites`: a page of one opened in no container opens there; else, with
   Workspaces, the workspace's `container`, else the workspace's own logins). While an address is typed, the chip
   shows where it will open and why, and choosing there (or ⌥↑/⌥↓) applies on Enter; a tab moved to another container
-  keeps its back history. What's opened from a page in a container (a link, a new window) opens in it too, even a site that always opens in another: the link is that account's (a Drive file from Work's Drive opens in Work), as in a browser profile; the rule takes what's typed, links from notes and pages in no container. `"lock": true` makes a container need Touch ID: its pages don't open or
+  keeps its back history. What's opened from a page in a container (a link, a new window) opens in it too, even a site that always opens in another: the link is that account's (a Drive file from Work's Drive opens in Work), as in a browser profile; the rule takes what's typed, links from notes and pages in no container. A note's `container:` property (a container's id, or its name in any case) opens every web link followed from it in that container, before any site's rule (`container: work`: a Google Docs link there opens in Work though google.com always opens in another); one no container is called leaves its links to the rules, and ⌥⌘-click still sends one to the system browser. `"lock": true` makes a container need Touch ID: its pages don't open or
   show until unlocked in its tab, and lock again when the Mac locks, sleeps or is idle 15 minutes ("Lock containers").
 - Tabs: each is its own page, as in any browser (two tabs of one address are two pages): one in the background keeps
   its page, closing it ends it, and ⌘⇧T opens it again with its Back and Forward (kept on the Mac, so a relaunch keeps
@@ -84,7 +84,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   opened behind goes to the next of them, then the page), ⇧-click to the side, ⌥-click a glance (with Glance on); tabs
   a page opened stay open when it closes; `window.open` keeps `window.opener`, a page's script opens nothing without a click (it says so, with
   Open), a tab whose page only downloaded closes. The link's menu also has Open link in container, to the side, Glance
-  and Copy link text. What an agent's page opens is its own page, never a tab of the user's.
+  and Copy link text. A note's link's menu has Open link in container too (No container or one of them, in front, the
+  check where a click opens it now), and its Always open this note's links in sets the note's `container:` (the checked
+  one again takes it off). What an agent's page opens is its own page, never a tab of the user's.
 - Agents: the browser ops are `vau browser ...` and MCP tools (`browser_open`, `browser_tabs`, `browser_snapshot`,
   `browser_act`, `browser_run`, `browser_navigate`, `browser_read`, `browser_wait`, `browser_screenshot`, `browser_pdf`,
   `browser_evaluate`, `browser_ask_user`, `browser_login`, `browser_close`). The browser is the desktop app's attached to this server (one server per vault on a

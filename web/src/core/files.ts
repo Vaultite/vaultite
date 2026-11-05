@@ -34,6 +34,8 @@ export type VaultFile = {
   tags?: string[]
   /** From its frontmatter, when it says: how it shows when pinned (a dashboard's icon and colour, the plugin it's from). */
   icon?: string; tint?: string; plugin?: string
+  /** `container:` in its frontmatter: the Browser's container (an id or a name) the web links followed from it open in. */
+  container?: string
   /** `archived: true` in its frontmatter (core/fileprops.ts): dimmed in the tree, left out of lists. */
   archived?: boolean
   /** Excluded files (the File explorer's setting): out of search and the graph, last in the quick switcher. */

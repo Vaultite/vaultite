@@ -11,7 +11,7 @@ import { splitAnchor, tagName } from "../../../core/sections.ts"
 import { openAt } from "@/core/anchors"
 import { runCommandId, runCommandLink } from "@/core/commands"
 import { detailPath } from "@/core/define"
-import { cleanName, createNamed, folderOf, inVault, openView, stem, type VaultFile } from "@/core/files"
+import { cleanName, createNamed, fileOf, folderOf, inVault, openView, stem, type VaultFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { linkedNote, newNoteFolder } from "@/core/conventions"
 import { notify, notifyError } from "@/core/notify"
@@ -50,7 +50,9 @@ function mdTarget(s: Store, href: string, from?: string) {
 
 /** How a link was clicked: ⌘ (Ctrl elsewhere) or a middle click is a new tab (a web page's behind the one on screen,
  *  in front with ⇧ too, as browsers do); ⌥⌘ sends a web page to the system browser (`out`). */
-export type LinkClick = { newTab: boolean; front?: boolean; out?: boolean }
+export type LinkClick = { newTab: boolean; front?: boolean; out?: boolean
+  /** The Browser's container a web page opens in (an id or a name; null: none): the link menu's, or its note's `container:`. */
+  container?: string | null }
 export function linkClick(e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; button: number }): LinkClick {
   const mod = e.metaKey || e.ctrlKey
   return { newTab: mod || e.button === 1, ...(mod && e.shiftKey ? { front: true } : {}), ...(mod && e.altKey ? { out: true } : {}) }
@@ -163,12 +165,16 @@ async function openOtherLink(url: string, mod = false) {
  *  link). A [[link]] to nothing makes that note, or asks which when another file may be what it meant. */
 export async function followLink(s: Store, link: { wiki?: string; url?: string; tag?: string }, how: boolean | LinkClick, from?: string) {
   if (link.tag) return openTag(link.tag)
-  const click = typeof how === "boolean" ? { newTab: how } : how, newTab = click.newTab
+  const click: LinkClick = typeof how === "boolean" ? { newTab: how } : how, newTab = click.newTab
   let wiki = link.wiki ?? ""
   if (link.url) {
     const cmd = COMMAND_LINK.exec(link.url)
     if (cmd) { if (!runCommandLink(cmd[1])) notify("That isn't available here"); return }
-    if (/^https?:/i.test(link.url)) return openWebLink(link.url, click)
+    if (/^https?:/i.test(link.url)) {
+      // (a note's `container:` is where every web link followed from it opens, unless the link's menu chose)
+      const note = from ? fileOf(s, from)?.container : undefined
+      return openWebLink(link.url, click.container === undefined && note ? { ...click, container: note } : click)
+    }
     if (/^[a-z][a-z0-9+.-]*:/i.test(link.url)) return openOtherLink(link.url, newTab)
     wiki = mdTarget(s, link.url, from)
   }

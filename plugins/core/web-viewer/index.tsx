@@ -5,7 +5,7 @@ import { Bookmark, Bot, Box, Code, CopyPlus, Download, Eraser, FileCode2, Extern
   ZoomOut } from "lucide-react"
 import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
-import { addContainer, argOf, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
+import { addContainer, argOf, chosenFor, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
 import { iconCame, siteIcon, spinnerIcon } from "./icons"
 import { painted } from "./layers"
 import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView } from "./Sites"
@@ -329,13 +329,21 @@ export default definePlugin({
     "web-pages": { title: "Sites", names: ["logins", "cookies", "signed in"], heading: false, sort: 34, hidden: true, view: "web-pages",
       menu: sitesPanelMenu, render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} newTab={askAddress} /> },
   },
-  webLink: (url, { newTab, front, out }) => {
-    if (!webPages || out || !linksInViewer()) return false
-    const c = destination(url, { from: null, fresh: true }).container
+  // (a container chosen, the link's menu's or its note's, opens here even with links set to the system browser: only
+  // this browser has containers; one no container is called is left to the rules)
+  webLink: (url, { newTab, front, out, container }) => {
+    const chosen = chosenFor(container)
+    if (!webPages || out || (!linksInViewer() && chosen === undefined)) return false
+    const c = destination(url, { from: null, fresh: true, chosen }).container
+    if (c === null && chosen === null) keepOutside(url)
     if (newTab && front) openTab(`view:web/${argOf(url, c)}`)
     else if (newTab) openBehind(url, c)
-    else openPage(url)
+    else openPage(url, chosen === undefined ? null : c)
     return true
+  },
+  webLinkOpensIn: (url, container) => {
+    const chosen = chosenFor(container)
+    return !webPages || (!linksInViewer() && chosen === undefined) ? undefined : destination(url, { from: null, fresh: true, chosen }).container
   },
   commands: [
     { id: "web:open", name: "Open web page…", desktop: true, when: () => !!webPages, run: () => askAddress() },

@@ -1,15 +1,21 @@
 // One right-click menu for a link wherever drawn Markdown has one (a note, read or edited; a sheet, a timeline): open
 // it, copy it, change it where it's written; a link to a file has the file's own menu too, as Obsidian's does.
-import { Copy, Ellipsis, ExternalLink, FilePlus, Globe, Hash, Link, Mail, Pencil, SquareArrowOutUpRight, Unlink } from "lucide-react"
+import { Box, Copy, Ellipsis, ExternalLink, FilePlus, Globe, Hash, Link, Mail, Pencil, Pin, SquareArrowOutUpRight, Unlink } from "lucide-react"
 import { openAt } from "@/core/anchors"
-import { getStore } from "@/core/data"
-import { openFile } from "@/core/files"
+import { getStore, type Store } from "@/core/data"
+import { fileOf, openFile } from "@/core/files"
+import { setProperty } from "@/core/frontmatter"
+import { notify, notifyError } from "@/core/notify"
+import { webContainers, webLinkOpensIn } from "@/core/plugins"
+import type { WebContainer } from "@/core/define"
 import { followLink, linkPlace, openTag, openWebLink, shortestLink, type Link as Linked } from "@/core/links"
 import { desktop } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
 import { openInSplit } from "@/core/splits"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
 import { copied, fileMenu, grouped, openItem } from "@/components/FileActions"
+import { dotIcon } from "@/components/ColorDot"
+import { colorVar } from "../../../core/colors.ts"
 import { splitAnchor, tagName } from "../../../core/sections.ts"
 
 /** What changes a link where it's written (an editor's): its target selected to type over, or the link taken out
@@ -36,9 +42,10 @@ export function linkItems(link: Linked, opts: { from?: string; text?: string; ed
     let address = mail
     try { address = decodeURIComponent(mail) } catch { /* as written */ }
     // (in the desktop app a web link opens in its Browser: the system's on asking)
-    const out: MenuItem[] = desktop?.web && /^https?:/i.test(url) ? [{ label: "Open link in another browser", icon: Globe, run: () => openWebLink(url, { newTab: false, out: true }) }] : []
+    const web = !!desktop?.web && /^https?:/i.test(url)
+    const out: MenuItem[] = web ? [{ label: "Open link in another browser", icon: Globe, run: () => openWebLink(url, { newTab: false, out: true }) }] : []
     return grouped([
-      [{ label: "Open link", icon: ExternalLink, run: () => follow(false) }, ...out],
+      [{ label: "Open link", icon: ExternalLink, run: () => follow(false) }, ...(web ? inContainer(s, url, from) : []), ...out],
       [mail ? { label: "Copy email address", icon: Mail, run: () => copied(address, "email address") } : { label: "Copy link", icon: Link, run: () => copied(url, "link") }, ...copyText],
       change,
     ])
@@ -61,6 +68,30 @@ export function linkItems(link: Linked, opts: { from?: string; text?: string; ed
     [{ label: "Copy link", icon: Link, run: () => copied(link.wiki !== undefined ? `[[${link.wiki}]]` : written, "link") }, ...copyText],
     change,
   ])
+}
+
+/** Open link in container ▸: in front, in the one picked (the check: where a click opens it now), and, for a link in a
+ *  note, always opening that note's web links in one (its `container:`, an id or a name: matched as the Browser does). */
+function inContainer(s: Store, url: string, from?: string): MenuItem[] {
+  const list = webContainers()
+  if (!list.length) return []
+  const note = from ? fileOf(s, from)?.container : undefined, key = note?.trim().toLowerCase()
+  const mine = key ? list.find((c) => c.id === key) ?? list.find((c) => c.name.toLowerCase() === key) : undefined
+  const now = webLinkOpensIn(url, note)
+  const open = (container: string | null) => openWebLink(url, { newTab: true, front: true, container })
+  const always = (path: string, c: WebContainer) => {
+    const off = mine?.id === c.id
+    void setProperty(path, "container", off ? undefined : c.id).then(() => notify(off ? `This note's links no longer open in ${c.name}` : `This note's links open in ${c.name}`,
+      { action: { label: "Undo", run: () => void setProperty(path, "container", note).catch((e) => notifyError(e, "Couldn't undo it")) } }),
+    (e) => notifyError(e, "Couldn't change the note"))
+  }
+  const dot = (c: WebContainer) => dotIcon(colorVar(c.color))
+  return [{ label: "Open link in container", icon: Box, run: () => {}, items: [
+    { label: "No container", icon: Box, checked: now === null, run: () => open(null) },
+    ...list.map((c) => ({ label: c.name, icon: dot(c), checked: now === c.id, run: () => open(c.id) })),
+    ...(from && /\.md$/i.test(from) ? [{ label: "Always open this note's links in", icon: Pin, sep: true, run: () => {},
+      items: list.map((c) => ({ label: c.name, icon: dot(c), checked: mine?.id === c.id, run: () => always(from, c) })) }] : []),
+  ] }]
 }
 
 export const openLinkMenu = (link: Linked, at: { x: number; y: number }, opts: Parameters<typeof linkItems>[1] = {}) =>

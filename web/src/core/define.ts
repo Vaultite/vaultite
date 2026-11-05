@@ -646,8 +646,11 @@ export type PluginDef = {
   /** Buttons on a tab showing `to` ("file:Inbox/A.md", a view) while the pointer is over it; null: none. */
   tabButtons?: (to: string) => TabButton[] | null
   /** Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser.
-   *  The first plugin that's on and takes it wins. `how`: plain, a new tab (behind, or `front`), or `out` (⌥⌘). */
+   *  The first plugin that's on and takes it wins. `how`: plain, a new tab (behind, or `front`), `out` (⌥⌘), `container`. */
   webLink?: (url: string, how: LinkClick) => boolean
+  /** The container a web link clicked plainly opens in (`container` as in webLink's `how`): its id, null for none;
+   *  undefined when it wouldn't take the link. The link's menu checks it. */
+  webLinkOpensIn?: (url: string, container?: string | null) => string | null | undefined
   /** Links of another app's scheme clicked in the app (`<app>://open?file=…`, `zotero://…`): true when it took one.
    *  The first plugin that's on and takes it wins; none: the link does nothing. */
   schemeLink?: (url: string, how: { mod: boolean }) => boolean

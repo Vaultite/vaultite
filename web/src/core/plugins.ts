@@ -964,6 +964,17 @@ export function webContainers(): WebContainer[] {
   })
 }
 
+/** The container a web link clicked plainly opens in (`webLinkOpensIn`): an id, null for none; undefined: not the
+ *  in-app browser's. */
+export function webLinkOpensIn(url: string, container?: string | null): string | null | undefined {
+  const { disabled } = getPrefs()
+  for (const p of PLUGINS) {
+    if (!p.webLinkOpensIn || !isEnabled(p.id, disabled)) continue
+    try { const c = p.webLinkOpensIn(url, container); if (c !== undefined) return c } catch (e) { console.error(`${p.id}: webLinkOpensIn`, e) }
+  }
+  return undefined
+}
+
 /** The kinds of files the plugins that are on make (NewFile): New canvas, New drawing... */
 export const pluginNewFiles = (disabled: string[]) => PLUGINS.filter((p) => p.newFiles && isEnabled(p.id, disabled)).flatMap((p) => p.newFiles!)
 /** Commands of the plugins that are on, each with its plugin's icon when it has none of its own. */

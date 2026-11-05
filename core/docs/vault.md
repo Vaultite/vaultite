@@ -27,6 +27,8 @@ a file name (the closest file to the link's when several have it; `[[Work/Idea]]
 (`![[Note#Heading]]` its section, `![[Note#^id]]` that block); `/api/render` inlines it as a quote. A Markdown link to
 `vaultite://command/<id>` runs that app command when clicked (`[Open Claude Code](vaultite://command/terminal:claude-split)`);
 `vaultite://open/<path>` opens a vault file, and `vaultite://bundle/<owner>/<name>` a bundle's preview (`vau docs bundles`).
+A note's `container:` (a Browser container's id or name, `container: work`) opens its web links in that container
+(`vau docs web-viewer`).
 
 **Blocks.** A fence like ```` ```block-person ```` (closed by ```` ``` ````, options inside as YAML, like `issues: 3`)
 is where the app draws something: a profile, a project's GitHub numbers, today's routines. What it shows comes from the

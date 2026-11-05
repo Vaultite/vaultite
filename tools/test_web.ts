@@ -1883,6 +1883,19 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("Browser: a tab's name before the page's title is its site", hostOf("https://www.example.com/a") === "example.com" && hostOf("nonsense") === "nonsense")
 }
 
+// ---------- Browser: where a page opens (plugins/core/web-viewer/where.ts) ----------
+{
+  const { containerNamed, linkChoice, whereIn } = await import("../plugins/core/web-viewer/where.ts")
+  const list = [{ id: "personal", name: "Personal" }, { id: "work", name: "Work" }, { id: "agents", name: "PersonalAgents", sites: ["google.com"] }]
+  const doc = "https://docs.google.com/document/d/1", at = (container?: string | null, own?: string | null) =>
+    whereIn(list, doc, { from: null, fresh: true, chosen: linkChoice(list, container), own }).container
+  check("Browser: a container is named by its id or its name in any case", containerNamed(list, "work")?.id === "work" && containerNamed(list, " personalagents ")?.id === "agents"
+    && containerNamed(list, "Nope") === null && containerNamed(list, "") === null)
+  check("Browser: a link's container beats its site's rule and the workspace's, none (null) too", at("Work") === "work" && at("work", "personal") === "work" && at(null) === null && at(null, "work") === null)
+  check("Browser: a container no one is called leaves the link to the site's rule, then the workspace's", at("Nope") === "agents" && at(undefined) === "agents"
+    && whereIn(list, "https://example.com/", { from: null, fresh: true, chosen: linkChoice(list, "nope"), own: "personal" }).container === "personal")
+}
+
 // ---------- Browser: the bookmarks note (plugins/core/web-viewer/bookmarks.ts) ----------
 {
   const { addBookmarks, editBookmark, matchBookmarks, readBookmarks, removeBookmark } = await import("../plugins/core/web-viewer/bookmarks.ts")

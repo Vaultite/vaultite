@@ -2,9 +2,10 @@
 // script serves on 127.0.0.1 (a cookie login): a tab in Work (persist:web-c-work) signed in, the same site in Personal
 // isn't, nor in no container; the bar shows the tab's container (a chip inside the address; a line along every
 // container tab's top); a site set to always open in Work goes there from a plain link; the container menu moves a tab
-// to another (Back kept, only its page loaded there) and only chooses (every row led by its icon), containers are
-// added and deleted in Sites, deleting clearing its logins; switching web tabs is never see-through. A link from another
-// app opens in a web tab. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
+// to another (Back kept, only its page loaded there) and only chooses (every row led by its icon); a note's `container:`
+// takes its links there, a link's menu opens one in a container or sets the note's; containers are added and deleted
+// in Sites, deleting clearing its logins; switching web tabs is never see-through. A link from another app opens in a
+// web tab. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
 // speaker unmutes it; a video keeps its speaker through a quiet scene, till it pauses.
 // WRITES: the throwaway vault only.
 //   node web/qa/containers.mjs <vault copy>
@@ -166,6 +167,40 @@ check("Sites: Work's always-open site is pinned", await until(async () => (await
   await win.locator("[data-web-sites-view]").innerText().catch(() => ""))
 await open(`view:web/${SITE}/whoami?rule`)
 check("a site set to always open in Work goes there", await until(async () => { const v = await visible(); return v?.url.endsWith("?rule") && v.partition === "persist:web-c-work" && v.text === "who:Alice" }, 15000), await visible())
+
+// ---------- a note's links open in its container; the link's menu opens one in another, or sets the note's ----------
+const NOTE = "QA container links.md", notePath = path.join(VAULT, NOTE)
+fs.writeFileSync(notePath, `---\ncontainer: shopping\n---\n\n# Links\n\n[Who](${SITE}/whoami?note)\n`)
+const showNote = async () => {
+  await ui({ action: "open", path: NOTE, newTab: true })
+  await win.waitForSelector(".cm-link[data-url]:visible", { timeout: 15000 })
+  await win.locator(".cm-line:visible", { hasText: "Links" }).first().click()
+}
+await wait(1500)
+await showNote()
+await win.locator(".cm-link[data-url]:visible", { hasText: "Who" }).click()
+check("a note with container: Shopping (its name, any case): its link opens there, past the site's Work", await until(async () => { const v = await visible(); return v?.url.endsWith("?note") && v.partition === "persist:web-c-shop" }, 15000), await visible())
+await showNote()
+const linkMenu = async () => {
+  await win.locator(".cm-link[data-url]:visible", { hasText: "Who" }).click({ button: "right" })
+  await win.locator("[role=menu] [role^=menuitem]", { hasText: /^Open link in container/ }).hover()
+  await wait(400)
+}
+await linkMenu()
+const sub = win.locator("[role=menu]").nth(1)
+const subRows = await sub.locator("[role^=menuitem]").evaluateAll((l) => l.map((e) => `${e.textContent}${e.getAttribute("aria-checked") === "true" ? " ✓" : ""}`))
+check("the link's menu: Open link in container, with No container, each one, the note's checked, and Always open this note's links in",
+  subRows[0]?.startsWith("No container") && subRows.some((r) => r === "Shopping ✓") && subRows.some((r) => r === "Work") && subRows.at(-1)?.startsWith("Always open this note's links in"), subRows)
+await shot("link-container-menu")
+await sub.locator("[role^=menuitem]", { hasText: /^Personal$/ }).click()
+check("… Personal opens it there, in front, past the note's", await until(async () => { const v = await visible(); return v?.url.endsWith("?note") && v.partition === "persist:web-c-personal" }, 15000), await visible())
+await showNote()
+await linkMenu()
+await sub.locator("[role^=menuitem]", { hasText: /^Always open this note's links in/ }).hover()
+await wait(400)
+await win.locator("[role=menu]").nth(2).locator("[role^=menuitem]", { hasText: /^Work$/ }).click()
+check("… Always open this note's links in Work: the note says container: work", await until(() => /^container: work$/m.test(fs.readFileSync(notePath, "utf8")), 5000), fs.readFileSync(notePath, "utf8"))
+fs.rmSync(notePath)
 
 // ---------- deleting a container clears its logins ----------
 await open(`view:web/@shop/${SITE}/whoami?shop`)
