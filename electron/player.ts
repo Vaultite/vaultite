@@ -121,6 +121,8 @@ const PLAYER_TITLE = "Vaultite player"
 const MAC = process.platform === "darwin"
 /** The top strip (points) where the controls show and the window drags. */
 const STRIP = 40
+/** How often a player looks at the pointer, and whether it still has its page (ms). */
+const WATCH_MS = 120
 const LIGHTS = { x: 14, y: 13 }
 const PRELOAD = fileURLToPath(new URL("./player-bar.cjs", import.meta.url))
 // (a shade for the controls to read on; Windows' and Linux's buttons on its right, as their title bars have them)
@@ -175,22 +177,32 @@ export function playerWindow(bounds: Rectangle): BaseWindow {
   })
   w.contentView.addChildView(bar)
 
-  // Shown while the pointer is in the strip (the page tells it's there: `pointerAt`), hidden once it's left it.
-  let shown = false, timer: ReturnType<typeof setInterval> | null = null
+  // Shown while the pointer is in the strip, hidden once it's left it: the window watches the pointer itself, so its
+  // controls come whatever its page does (the page telling it, `pointerAt`, only shows them sooner).
+  let shown = false
   const lights = () => { if (MAC && !w.isDestroyed()) { w.setWindowButtonPosition(LIGHTS); w.setWindowButtonVisibility(shown || w.isFullScreen()) } }
   const reveal = (on: boolean) => {
     if (w.isDestroyed() || (on && w.isFullScreen()) || on === shown) return
     shown = on
     bar.setVisible(on)
     lights()
-    if (timer) { clearInterval(timer); timer = null }
-    if (on) timer = setInterval(() => { if (!inStrip()) reveal(false) }, 120)
   }
   const inStrip = () => {
     if (w.isDestroyed() || !w.isVisible()) return false
     const c = screen.getCursorScreenPoint(), b = w.getContentBounds()
     return c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + STRIP
   }
+  // A player is its page's: one left with no live page (its page gone without taking it along) closes, not a black
+  // window with nothing to close it by. (A moment's grace: a page leaving its player closes it the turn after.)
+  const paged = () => w.contentView.children.some((c) => c !== bar && c instanceof WebContentsView && !c.webContents.isDestroyed())
+  let empty = 0
+  const timer = setInterval(() => {
+    if (w.isDestroyed()) return clearInterval(timer)
+    if (!w.isVisible()) return
+    reveal(inStrip())
+    empty = paged() ? 0 : empty + 1
+    if (empty * WATCH_MS >= 1000) w.close()
+  }, WATCH_MS)
   lights()
   const lay = () => { const [width] = w.getContentSize(); bar.setBounds({ x: 0, y: 0, width, height: STRIP }) }
   lay()
@@ -207,7 +219,7 @@ export function playerWindow(bounds: Rectangle): BaseWindow {
   w.on("resize", note)
   w.on("move", note)
   w.on("close", () => {
-    if (timer) clearInterval(timer)
+    clearInterval(timer)
     if (place) { try { writeAtomic(keptFile(), JSON.stringify(place)) } catch { /* this run's only */ } }
     if (!bar.webContents.isDestroyed()) bar.webContents.close()
   })

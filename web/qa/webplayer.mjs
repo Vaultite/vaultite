@@ -2,8 +2,9 @@
 // (a video drawn from a canvas, a video file, no files of the vault): a page's own full screen fills the window and Esc
 // brings it back; "Open as player" moves the page, playing on and not loaded again, into a window titled "Vaultite
 // player" with no title bar, at its video's aspect, the video filling it edge to edge (letterboxed when it's another
-// shape), its controls showing with the pointer at its top; the page's full screen and the window's are one; it
-// reopens where it was; Bring back, closing it and the agents' op; a video in an embedded frame; picture in picture.
+// shape), its controls showing with the pointer at its top (whatever its page does); one left with no page closes; the
+// page's full screen and the window's are one; it reopens where it was; Bring back, closing it and the agents' op; a
+// video in an embedded frame; picture in picture.
 // YOUTUBE=1 adds a YouTube video (the network). Full screen is played at (VAULTITE_QUIET), never a Space taken.
 // WRITES: the throwaway vault only. Frames of the player (its page and its bar, as drawn) go to [out dir].
 //   node web/qa/webplayer.mjs <vault copy> [out dir]
@@ -186,8 +187,8 @@ check("… drawn edge to edge, no gap at any corner", f1 && f1.colours.every(fil
 // ---------- its controls show with the pointer at its top ----------
 check("its controls are hidden at first", opened && !opened.bar?.shown && (!MAC || (await app.evaluate(() => globalThis.__lights)).at(-1) === false), opened?.bar)
 const strip = (await where()).at
+// (the pointer alone, no event from the page: the window watches it itself, whatever its page does)
 await app.evaluate((_e, at) => { globalThis.__cursor = at }, { x: strip.x + 200, y: strip.y + 10 })
-await send([{ type: "mouseMove", x: 200, y: 10 }])
 const shown = await until(async () => { const w = await where(); return w.bar?.shown ? w : null }, 2000)
 check("the pointer at its top shows its controls: a bar over the page, the width of the window", shown?.bar.top && shown.bar.bounds.width === shown.content.width && shown.bar.bounds.y === 0, shown?.bar)
 if (MAC) check("… and the Mac's traffic lights", (await app.evaluate(() => globalThis.__lights)).at(-1) === true)
@@ -269,6 +270,13 @@ check("minimized, the page still draws (never throttled: a call keeps sharing it
 await player((w) => w.restore()); await wait(300)
 await op("player", { tab, off: true })
 check("browser player --off brings it back", await until(async () => { const w = await where(); return w.in === "vault" && w.players === 0 }, 5000), await where())
+
+// ---------- a player left with no page closes, its page back in its tab ----------
+await op("player", { tab })
+await until(async () => (await where()).in === "player", 5000)
+await player((w) => { for (const v of w.contentView.children) if (!v.webContents?.getURL().startsWith("data:")) w.contentView.removeChildView(v) })
+check("a player whose page left it without closing it closes itself", await until(async () => (await where()).players === 0, 4000), await where())
+check("… its page back in its tab, still playing", await until(async () => (await where()).in === "vault", 3000) && await playing(), await where())
 
 // ---------- full screen: the agents' flag and the setting ----------
 await op("player", { tab, fullScreen: true })

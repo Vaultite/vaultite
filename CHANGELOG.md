@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Terminals hold still while a sidebar or split is dragged**: they keep their size till it's let go, then fit once,
   where before they blinked and rewrapped their text all along the drag.
+- **A player always has its controls**: its traffic lights come with the pointer at its top whatever its page does,
+  and a player left with no page (a black window with no way to close it) closes itself, its page back in its tab.
 - **A subdomain's own site style shows in Shields**: on docs.google.com the menu has "Style for docs.google.com" (its
   own file, else its parent site's), and "Style this site…" makes the page's host's file, not one for all of Google.
 - **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page
