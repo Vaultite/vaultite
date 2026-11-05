@@ -8,7 +8,7 @@ import { SearchAddon, type ISearchOptions } from "@xterm/addon-search"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, getStore, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, linkClick, mintedHere, notifyError, offerPicture, onLook, openFile, openMenu, openPermissions, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, getStore, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, linkClick, mintedHere, notifyError, offerPicture, onLook, openFile, openMenu, onResized, openPermissions, openWebLink, pastedFiles, pluginSettings, resizing, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { countText, FindField, FindTools, floatingBar, floatingSpot, MAX, type FindOptions } from "@plugins/find/tools"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
@@ -598,12 +598,15 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       return lines.join("\n")
     } })
     let frame = 0
-    // (once a frame at most: its shell redraws for every size it's given)
-    const ro = new ResizeObserver(() => {
+    // (once a frame at most: its shell redraws for every size it's given). Not while a sidebar or split is dragged: each
+    // size clears its canvas, so it blinked and its text rewrapped all along; it keeps its size, clipped, till the end.
+    const refit = () => {
       cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => l.refit())
-    })
+      frame = requestAnimationFrame(() => { if (!resizing()) l.refit() })
+    }
+    const ro = new ResizeObserver(refit)
     ro.observe(el)
+    const offResized = onResized(refit)
 
     // Touch: xterm.js neither scrolls nor focuses on a touch, so it's done here: a tap focuses (during the touch, the only
     // time iOS shows the keyboard), a long press opens the menu, a swipe scrolls like a wheel and glides on.
@@ -692,7 +695,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
 
     return () => {
       cancelAnimationFrame(frame)
-      ro.disconnect(); unregister(); onScroll.dispose()
+      ro.disconnect(); offResized(); unregister(); onScroll.dispose()
       el.removeEventListener("touchstart", onTouchStart, true)
       el.removeEventListener("touchmove", onTouchMove, true)
       el.removeEventListener("touchend", onTouchEnd, true)
@@ -749,7 +752,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       <div className="relative isolate min-h-0 flex-1 pl-3 pr-1 pt-2 pb-1">
         {/* Touch: no browser text selection or callout on a long press (the terminal's menu opens instead), and the
             keyboard's hidden field at 16px, or iOS zooms the page in when it's focused. */}
-        <div ref={host} data-terminal={id} className={cn("h-full w-full", touchUi && "select-none [-webkit-touch-callout:none] [&_.xterm-helper-textarea]:!text-[16px]")} />
+        <div ref={host} data-terminal={id} className={cn("h-full w-full overflow-hidden", touchUi && "select-none [-webkit-touch-callout:none] [&_.xterm-helper-textarea]:!text-[16px]")} />
         {finding > 0 && live.current && <FindBar l={live.current} ask={finding} close={closeFind} />}
         {up && (
           <button type="button" aria-label="Scroll to the end" data-tip="Scroll to the end" data-terminal-end

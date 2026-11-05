@@ -23,6 +23,7 @@ import { DragGhost, PaneBar, springTabAt, tabBarOn, TabStrip, tabLabel, useTabIn
 import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { useDrag, useDropTarget, type DragItem } from "@/core/drag"
 import { Resizer } from "@/components/Resizer"
+import { resizing, startResizing, stopResizing } from "@/core/resizing"
 import { ViewBar } from "@/components/ViewBar"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
@@ -211,13 +212,13 @@ function track(e: React.PointerEvent<HTMLElement>, cursor: string, move: (dx: nu
   const el = e.currentTarget, id = e.pointerId, x = e.clientX, y = e.clientY
   e.preventDefault()
   el.setPointerCapture(id)
-  document.body.dataset.resizing = cursor
+  startResizing(cursor)
   const onMove = (m: PointerEvent) => { if (m.pointerId === id) move(m.clientX - x, m.clientY - y) }
   const end = () => {
     el.removeEventListener("pointermove", onMove); el.removeEventListener("pointerup", end); el.removeEventListener("lostpointercapture", end)
     removeEventListener("keydown", esc, true)
-    delete document.body.dataset.resizing
     done?.()
+    stopResizing()
   }
   const esc = (k: KeyboardEvent) => {
     if (k.key !== "Escape") return
@@ -444,7 +445,7 @@ function Divider({ at: d, box }: { at: DividerAt; box: React.RefObject<HTMLEleme
     const at = row ? ((x - b.left - half) / (b.width - g) - r.x) / r.w : ((y - b.top - half) / (b.height - g) - r.y) / r.h
     // (dragged, it follows the pointer at once; a key's step moves there as the layout's changes do)
     const go = () => resize(d.split.id, d.i, at, row ? 200 / (b.width * r.w) : 120 / (b.height * r.h))
-    if ("resizing" in document.body.dataset) quietly(go); else go()
+    if (resizing()) quietly(go); else go()
   }
   // (in the middle of the gap between the panes, when there's one)
   const mid = (at: number) => `calc(${at} * (100% - ${G}) + ${G} / 2 - 3px)`

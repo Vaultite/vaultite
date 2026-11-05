@@ -49,6 +49,8 @@ export { Tooltips } from "@/components/Tooltip"
 export { onLook, onlyMode } from "@/core/appearance"
 /** An element that copies of the page (a closing pane, a dragged card) can't clone gives them its picture instead. */
 export { offerPicture } from "@/core/snapshot"
+/** A resize drag (a sidebar's edge, a split) going on, and its end: what's costly to lay out at each size waits for it. */
+export { onResized, resizing } from "@/core/resizing"
 /** Whether things move: the Animation setting is on and the system doesn't ask for less motion. */
 export { moves } from "@/core/animation"
 export { pickIcon } from "@/components/IconPicker"

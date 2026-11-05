@@ -409,6 +409,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
 - `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, a note's callouts and tables, with their lines): plugins that change rendered Markdown (another app's…
 - `onPaneMotion(fn)`: Hear each move of panes as it starts; a promise back holds it at its start till it settles (at most HOLD_MS): what a pane shows outside the page (a web page's native view) stands in a picture of…
+- `onResized(f)`: Run `f` each time a resize drag ends; returns its undo.
 - `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
 - `onTabsEvent(fn)`: Hear every change of this window's tabs as events; returns the unsubscribe.
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
@@ -537,6 +538,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.
 - `replaceMenu(was, items)`: The open menu's items swapped for others, if it's still the one showing `was` (what came in after it opened: a block's sources).
 - `Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, onReset, resetTip, className, style })`
+- `resizing()`
 - `resolvePlace(agent, asked?)`: Where a new one opens: what's asked (machine "" is this one), else the workspace's default.
 - `resolver(s)`: Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then aliases and plugins' names), or null.
 - `resolveView(target, disabled?)`: The target to open for this one (its view's `resolve`): a conversation already running, its terminal.

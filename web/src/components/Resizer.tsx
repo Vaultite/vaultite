@@ -1,7 +1,8 @@
-// The one drag-to-resize primitive (sidebar edge, split dividers). While dragging, <body data-resizing> stops size
-// animations and keeps the cursor over iframes; Escape puts it back. Keys: the arrows drag it a step, Enter resets it.
+// The one drag-to-resize primitive (sidebar edge, split dividers). While dragging, <body data-resizing> (core/resizing.ts)
+// stops size animations and keeps the cursor over iframes; Escape puts it back. Keys: the arrows drag it a step, Enter resets it.
 import { useLayoutEffect, useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 import { cn } from "@/lib/utils"
+import { resizing, startResizing, stopResizing } from "@/core/resizing"
 
 export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, onReset, resetTip = "reset", className, style }: {
   label: string
@@ -28,13 +29,13 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
     el.setAttribute("aria-valuenow", String(Math.min(100, Math.max(0, Math.round(at * 100 || 0)))))
   }
   useLayoutEffect(place, [])
-  const end = () => { unEscape.current?.(); unEscape.current = null; if (!("resizing" in document.body.dataset)) return; delete document.body.dataset.resizing; onEnd?.(); requestAnimationFrame(place) }
+  const end = () => { unEscape.current?.(); unEscape.current = null; if (!resizing()) return; onEnd?.(); stopResizing(); requestAnimationFrame(place) }
   const down = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.preventDefault()
     const el = e.currentTarget, id = e.pointerId, x = e.clientX, y = e.clientY
     el.setPointerCapture(id)
-    document.body.dataset.resizing = horizontal ? "row" : "col"
+    startResizing(horizontal ? "row" : "col")
     onStart?.(x, y)
     // Escape puts it back where it was and ends the drag, as it does any other.
     const escape = (k: globalThis.KeyboardEvent) => {

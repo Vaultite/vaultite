@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals hold still while a sidebar or split is dragged**: they keep their size till it's let go, then fit once,
+  where before they blinked and rewrapped their text all along the drag.
 - **A subdomain's own site style shows in Shields**: on docs.google.com the menu has "Style for docs.google.com" (its
   own file, else its parent site's), and "Style this site…" makes the page's host's file, not one for all of Google.
 - **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page
