@@ -51,7 +51,8 @@ export type MenuContext = {
 
 // ---------- icons ----------
 const icons = new Map<string, NativeImage | null>()
-function icon(name: string | undefined) {
+/** A lucide icon from menu-icons/ as a template image (tools/menu_icons.ts makes those named here and in helper.ts). */
+export function icon(name: string | undefined) {
   // Template images are a Mac's: GTK menus draw them black, unseen on a dark theme, and don't tint them.
   if (!name || !MAC) return undefined
   if (!icons.has(name)) {

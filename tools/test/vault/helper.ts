@@ -94,6 +94,7 @@ export default async ($: VaultTest) => {
     const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, { screen_cursor: "trail" }, { private_apps: [] }, defaults)
     check("helper: settings left out are the manifests' defaults; set ones win, an empty private list too",
       none.fn && none.keys.join() === "fn,double_control" && set.keys.join() === "right_option" && none.cursor === "dock" && none.privateApps.join() === "1Password" && !set.fn && set.cursor === "trail" && set.privateApps.length === 0, { none, set })
+    check("helper: only inside Vaultite is a place of its own, an unknown one the edge", prefsOf({}, { screen_cursor: "app" }, {}, defaults).cursor === "app" && prefsOf({}, { screen_cursor: "x" }, {}, defaults).cursor === "dock")
     check("helper: it points at an element by its left edge's middle, at a window by its title bar",
       JSON.stringify(pointIn({ x: 100, y: 200, width: 80, height: 20 }, true)) === '{"x":116,"y":210}' &&
       JSON.stringify(pointIn({ x: 0, y: 30, width: 800, height: 600 }, false)) === '{"x":400,"y":42}')

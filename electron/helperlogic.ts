@@ -3,7 +3,7 @@ import { diffLines } from "../core/linediff.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 type Decls = Record<string, { default?: unknown }>
-export type Prefs = { fn: boolean; keys: string[]; cursor: "dock" | "trail"; privateApps: string[]; dictation: Record<string, unknown> }
+export type Prefs = { fn: boolean; keys: string[]; cursor: "dock" | "trail" | "app"; privateApps: string[]; dictation: Record<string, unknown> }
 /** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
  *  `settings` giving the defaults. */
 export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
@@ -12,7 +12,7 @@ export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, 
   return {
     fn: val(d.fn, def(DEFAULTS.dictation, "fn") ?? true) !== false,
     keys: Array.isArray(d.keys) ? d.keys.map(String) : (def(DEFAULTS.dictation, "keys") as string[] | undefined) ?? [],
-    cursor: val(c.screen_cursor, def(DEFAULTS.companion, "screen_cursor")) === "trail" ? "trail" : "dock",
+    cursor: ((x) => (x === "trail" || x === "app" ? x : "dock"))(val(c.screen_cursor, def(DEFAULTS.companion, "screen_cursor"))),
     privateApps: Array.isArray(s.private_apps) ? s.private_apps.map(String) : (def(DEFAULTS.screen, "private_apps") as string[] | undefined) ?? [],
     dictation: d,
   }

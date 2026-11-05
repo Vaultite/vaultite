@@ -11,6 +11,7 @@ import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
+import { icon } from "./menu.ts"
 import { atOffset, dockAt, dockOf, dockPoint, hunksOf, offsetIn, pointIn, prefsOf, type Dock, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
 import { closePanel, onPanel, openPanel, overlayActs, panelData, panelFocused, panelMenuClosed, panelOpen, showOverlay, type PanelData } from "./overlay.ts"
 import { dictationAuto, dictationHotKey, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, regionShot as shootRegion, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
@@ -134,19 +135,28 @@ function cursorMenu(name: string, at: { window: BrowserWindow; x: number; y: num
 function menu() {
   const h = host!, home = h.home()
   const setting = (name: string, values: Record<string, unknown>) => () => void op("settings.set", { name, values }).then(refresh)
+  const place = (label: string, at: Prefs["cursor"], glyph: ReturnType<typeof icon>) => ({ label, icon: glyph, type: "radio" as const, checked: prefs.cursor === at, enabled: !!home,
+    click: setting("plugin/companion", { screen_cursor: at === "dock" ? null : at }) })
   return Menu.buildFromTemplate([
-    { label: home ? `Open ${home.name}` : `Open ${app.getName()}`, click: () => h.openHome() },
+    { label: home ? `Open ${home.name}` : `Open ${app.getName()}`, icon: icon("vault"), click: () => h.openHome() },
     { type: "separator" },
-    { label: "Dictate anywhere", type: "checkbox", checked: prefs.fn, enabled: !!home, click: setting("plugin/dictation", { fn: !prefs.fn }) },
-    { label: "Companion's cursor outside Vaultite", enabled: !!home, submenu: [
-      { label: "Docked at the screen's edge", type: "radio", checked: prefs.cursor === "dock", click: setting("plugin/companion", { screen_cursor: null }) },
-      { label: "Following the pointer", type: "radio", checked: prefs.cursor === "trail", click: setting("plugin/companion", { screen_cursor: "trail" }) },
-    ] },
+    { label: "Dictate anywhere", icon: icon("mic"), sublabel: keysSaid(prefs.keys), type: "checkbox", checked: prefs.fn, enabled: !!home, click: setting("plugin/dictation", { fn: !prefs.fn }) },
     { type: "separator" },
-    { label: "Open at login", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin, click: (i) => { login(i.checked); h.setPrefs({ login: i.checked }) } },
+    // (where its cursor waits while another app is in front; each icon draws the place)
+    { label: "Companion", type: "header" },
+    place("Following the pointer", "trail", icon("mouse-pointer-2")),
+    place("Docked at the screen's edge", "dock", dockOf(h.prefs().dock).side === "left" ? icon("panel-left") : icon("panel-right")),
+    place("Only inside Vaultite", "app", icon("app-window")),
     { type: "separator" },
+    { label: "Open at login", icon: icon("power"), type: "checkbox", checked: app.getLoginItemSettings().openAtLogin, click: (i) => { login(i.checked); h.setPrefs({ login: i.checked }) } },
     { label: `Quit ${app.getName()}`, accelerator: "Command+Q", click: () => h.quit() },
   ])
+}
+
+/** The dictation keys as a Mac writes them: "fn, right ⌥ or ⌃ twice". */
+function keysSaid(keys: string[]) {
+  const said = keys.map((k) => ({ fn: "fn", right_option: "right ⌥", right_command: "right ⌘", double_control: "⌃ twice" } as Record<string, string>)[k]).filter(Boolean)
+  return said.length ? said.length > 1 ? `${said.slice(0, -1).join(", ")} or ${said.at(-1)}` : said[0] : "No keys picked"
 }
 
 function login(on: boolean) {
@@ -701,7 +711,7 @@ function draw() {
   }
   const own = live.state.agents.get(live.state.name)
   // (waiting while they're in another app: the window draws its own while Vaultite's in front)
-  const idleOn = !!own && own.state !== "away" && live.state.mode !== "off" && !onScreen(own) && !!front && !front.vaultite
+  const idleOn = !!own && own.state !== "away" && live.state.mode !== "off" && prefs.cursor !== "app" && !onScreen(own) && !!front && !front.vaultite
   const want = idleOn && prefs.cursor === "trail"
   if (want && !trailing) trailing = setInterval(draw, 33)
   else if (!want && trailing) { clearInterval(trailing); trailing = null }
