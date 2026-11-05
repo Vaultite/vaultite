@@ -5,7 +5,7 @@ import type { Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
-import { closePane, paneById, quietly, replaceTabTarget, setArchivable, setCloseGuard, setFocusedPane, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, setWorkspaceOf, useTabList } from "@/core/workspace"
+import { barsHidden, closePane, paneById, quietly, replaceTabTarget, setArchivable, setCloseGuard, setFocusedPane, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, setWorkspaceOf, useTabList } from "@/core/workspace"
 import { dropAt, dropOn, PANES, springOver, type Drop } from "@/core/drop"
 import { evenOut, placeFloat, resize } from "@/core/splits"
 import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
@@ -133,8 +133,9 @@ export function Workspace(props: Props) {
   if (kept !== was) setKept(kept)
   // (the window's only pane: nothing to close it into)
   const only = l.tabs.length === 1 && shown.length === 1
-  // (each pane's bar: with the tab bar, a tab of one pane needs none, its chip is its handle)
-  const bars = !bar || shown.length > 1
+  // (each pane's bar: with the tab bar, a tab of one pane needs none, its chip is its handle; none in a pop-out with its
+  // bars hidden)
+  const bars = !barsHidden() && (!bar || shown.length > 1)
   const z0 = new Map(drawn.map((b) => [b.id, b]))
   // (what sits in the window's corners keeps to the tab bar, not a pane: index.css)
   useLayoutEffect(() => { document.documentElement.toggleAttribute("data-top-tabs", bar) }, [bar])

@@ -1,10 +1,11 @@
 // Players (web.ts's): the scripts filling a page's video in its window, and that window: no title bar, its controls
-// shown with the pointer at its top, which drags it (the Mac's traffic lights; ours elsewhere: player-bar.cjs).
+// shown with the pointer at its top, which drags it (topstrip.ts).
 import { app, BaseWindow, type Rectangle, screen, WebContentsView } from "electron"
 import fs from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 import { quiet } from "./quiet.ts"
+import { lightsShown, topStrip } from "./topstrip.ts"
+import { isOnTop, setOnTop, watchFocus } from "./ontop.ts"
 import { writeAtomic } from "./setup.ts"
 
 /** The page's main video: the biggest playing (else any), or the biggest frame that may go full screen (an embedded
@@ -119,23 +120,9 @@ export const PIP = `(() => {
 
 const PLAYER_TITLE = "Vaultite player"
 const MAC = process.platform === "darwin"
-/** The top strip (points) where the controls show and the window drags. */
-const STRIP = 40
-/** How often a player looks at the pointer, and whether it still has its page (ms). */
-const WATCH_MS = 120
 const LIGHTS = { x: 14, y: 13 }
-const PRELOAD = fileURLToPath(new URL("./player-bar.cjs", import.meta.url))
-// (a shade for the controls to read on; Windows' and Linux's buttons on its right, as their title bars have them)
-const BUTTONS = MAC ? "" : `<div class="b" data-do="minimize"><svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg></div>
-<div class="b" data-do="maximize"><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9"/></svg></div>
-<div class="b x" data-do="close"><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></div>`
-const BAR = `<!doctype html><meta charset="utf-8"><style>
-html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; cursor: default }
-body { display: flex; justify-content: flex-end; -webkit-app-region: drag; background: linear-gradient(rgb(0 0 0 / .55), rgb(0 0 0 / 0)) }
-.b { -webkit-app-region: no-drag; width: 46px; display: grid; place-items: center; color: #fff }
-.b:hover { background: rgb(255 255 255 / .14) } .x:hover { background: #c42b1c }
-svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1 }
-</style><body>${BUTTONS}</body>`
+/** How often a player looks whether it still has its page (ms). */
+const WATCH_MS = 120
 
 /** The window's last place on this machine (userData), as its area and centre: the next player has it at its aspect. */
 const keptFile = () => path.join(app.getPath("userData"), "player-window.json")
@@ -159,39 +146,14 @@ export function placeFor(aspect: number, near: Rectangle): Rectangle {
   return { x: clamp(cx - width / 2, area.x, area.x + area.width - width), y: clamp(cy - height / 2, area.y, area.y + area.height - height), width, height }
 }
 
-const players = new WeakMap<BaseWindow, { reveal: (on: boolean) => void; bar: WebContentsView }>()
-
 /** A player window at `bounds` (its content), hidden till shown. */
 export function playerWindow(bounds: Rectangle): BaseWindow {
   const w = new BaseWindow({ title: PLAYER_TITLE, ...bounds, useContentSize: true, minWidth: 320, minHeight: 180, backgroundColor: "#000000", show: false,
     ...(MAC ? { titleBarStyle: "hidden", trafficLightPosition: LIGHTS } : { frame: false, autoHideMenuBar: true }) })
   quiet(w)
-  const bar = new WebContentsView({ webPreferences: { partition: "vaultite-player-bar", sandbox: true, contextIsolation: true, spellcheck: false, ...(MAC ? {} : { preload: PRELOAD }) } })
-  bar.setBackgroundColor("#00000000")
-  bar.setVisible(false)
-  void bar.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(BAR)}`)
-  bar.webContents.ipc.on("player:bar", (_e, what) => {
-    if (what === "minimize") w.minimize()
-    else if (what === "maximize") { if (w.isMaximized()) w.unmaximize(); else w.maximize() }
-    else if (what === "close") w.close()
-  })
-  w.contentView.addChildView(bar)
-
-  // Shown while the pointer is in the strip, hidden once it's left it: the window watches the pointer itself, so its
-  // controls come whatever its page does (the page telling it, `pointerAt`, only shows them sooner).
-  let shown = false
-  const lights = () => { if (MAC && !w.isDestroyed()) { w.setWindowButtonPosition(LIGHTS); w.setWindowButtonVisibility(shown || w.isFullScreen()) } }
-  const reveal = (on: boolean) => {
-    if (w.isDestroyed() || (on && w.isFullScreen()) || on === shown) return
-    shown = on
-    bar.setVisible(on)
-    lights()
-  }
-  const inStrip = () => {
-    if (w.isDestroyed() || !w.isVisible()) return false
-    const c = screen.getCursorScreenPoint(), b = w.getContentBounds()
-    return c.x >= b.x && c.x < b.x + b.width && c.y >= b.y && c.y < b.y + STRIP
-  }
+  const { bar } = topStrip(w, () => { if (MAC && !w.isDestroyed()) { w.setWindowButtonPosition(LIGHTS); w.setWindowButtonVisibility(lightsShown(w)) } },
+    { pin: () => setOnTop(w, !isOnTop(w)) })
+  watchFocus(w)
   // A player is its page's: one left with no live page (its page gone without taking it along) closes, not a black
   // window with nothing to close it by. (A moment's grace: a page leaving its player closes it the turn after.)
   const paged = () => w.contentView.children.some((c) => c !== bar && c instanceof WebContentsView && !c.webContents.isDestroyed())
@@ -199,19 +161,9 @@ export function playerWindow(bounds: Rectangle): BaseWindow {
   const timer = setInterval(() => {
     if (w.isDestroyed()) return clearInterval(timer)
     if (!w.isVisible()) return
-    reveal(inStrip())
     empty = paged() ? 0 : empty + 1
     if (empty * WATCH_MS >= 1000) w.close()
   }, WATCH_MS)
-  lights()
-  const lay = () => { const [width] = w.getContentSize(); bar.setBounds({ x: 0, y: 0, width, height: STRIP }) }
-  lay()
-  w.contentView.on("bounds-changed", lay)
-  // (full screen has the system's own top: the Mac's lights come with its menu bar)
-  w.on("enter-full-screen", () => { reveal(false); lights() })
-  w.on("leave-full-screen", lights)
-  // (the Mac lays its title bar out again on these, its lights put back)
-  if (MAC) for (const e of ["focus", "blur", "show", "restore", "resized"] as const) w.on(e as "focus", lights)
 
   // Its last normal place, kept as it closes.
   let place: Rectangle | null = null
@@ -221,18 +173,8 @@ export function playerWindow(bounds: Rectangle): BaseWindow {
   w.on("close", () => {
     clearInterval(timer)
     if (place) { try { writeAtomic(keptFile(), JSON.stringify(place)) } catch { /* this run's only */ } }
-    if (!bar.webContents.isDestroyed()) bar.webContents.close()
   })
-  players.set(w, { reveal, bar })
   return w
-}
-
-/** The pointer moved over player `w`'s page, `y` points from its top: in its top strip, its controls show till it leaves. */
-export const pointerAt = (w: BaseWindow, y: number) => { if (y <= STRIP) players.get(w)?.reveal(true) }
-/** Player `w`'s controls over the page just added to it. */
-export function overPage(w: BaseWindow) {
-  const bar = players.get(w)?.bar
-  if (bar && !w.isDestroyed()) w.contentView.addChildView(bar)
 }
 
 /** Lock player `w` to `aspect` (null: none), its content resized to it, keeping its width (and within its screen). */

@@ -12,7 +12,7 @@ import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
 import { stem } from "@/core/files"
-import { activePane, askRename, closePane, closeTab, closeTabIds, closeTabs, closeWholePane, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, set, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
+import { activePane, askRename, barsHidden, closePane, closeTab, closeTabIds, closeTabs, closeWholePane, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, set, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
 import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, keepShown, moveToSplit, paneIntoPane, paneToTab, replaceWithTab, splitOut, splitPane, zoomPane } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { floatGhost } from "@/core/desktop"
@@ -55,8 +55,8 @@ const withVariant = (it: MenuItem, other: MenuItem): MenuItem => (other.disabled
 const after = (items: MenuItem[]) => items.map((it, i) => (i ? it : { ...it, sep: true }))
 
 /** Whether the window's tabs are drawn in a bar above its panes: the tab bar on (appearance `tabBar`), or a pop-out's
- *  when they'd be in a sidebar, which it hasn't got (it would show no tabs to switch, right-click or drag back). */
-export const tabBarOn = (prefs = getPrefs()) => prefs.tabBar || (isPopout() && tabsInSidebar(prefs))
+ *  when they'd be in a sidebar, which it hasn't got; never in a pop-out with its bars hidden. */
+export const tabBarOn = (prefs = getPrefs()) => (prefs.tabBar || (isPopout() && tabsInSidebar(prefs))) && !barsHidden()
 
 /** Right-click on a tab: the tab's own (closing, splits, where it shows), then what its focused pane shows. */
 function tabMenu(tab: Tab): MenuItem[] {
@@ -164,6 +164,8 @@ function shownItems(p?: Pane): MenuItem[] {
     ...(vertical ? [] : [{ label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) }]),
     { label: paneTitles ? "Hide pane titles" : "Show pane titles", icon: Heading1, run: () => setPrefs({ paneTitles: !paneTitles }) },
     ...(p ? viewPaneItems(p).map((it) => ({ ...it, sep: false })) : []),
+    // (a pop-out: all of them at once, the window only what it shows)
+    ...commandItems("window:bars"),
   ])
 }
 
@@ -173,6 +175,7 @@ function barMenu(): MenuItem[] {
     { label: "New tab", icon: Plus, run: () => openNewTab({ at: "end" }) },
     ...commandItems("tab:reopen", "tab:search"),
     ...(hasMainWindow() ? [{ label: "Move all to main window", icon: AppWindow, run: () => moveToMain(here().tabs.map((t) => t.id)) }] : []),
+    ...commandItems("window:on-top"),
     ...shownItems(activePane()),
   ]
 }

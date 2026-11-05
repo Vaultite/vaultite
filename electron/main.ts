@@ -2,7 +2,7 @@
 // Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
 import "../core/winspawn.ts" // (first: on Windows no program the main process starts opens a console window)
 import "./dockenv.ts" // (before anything reads the environment)
-import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
+import { app, autoUpdater, BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { QUIET, quiet } from "./quiet.ts"
 import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
@@ -10,7 +10,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { menuTemplate, type MenuSnapshot } from "./menu.ts"
-import { revive, unloadPages, webHandlers, webWindow } from "./web.ts"
+import { revive, stripKit, unloadPages, webHandlers, webWindow } from "./web.ts"
 import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
@@ -1126,10 +1126,12 @@ function setLights(w: AppWindow, at: { x: number; y: number } | null) {
 function applyLights(w: AppWindow) {
   const at = lightsOf.get(w)
   if (at === undefined || w.isDestroyed()) return
+  // (a pop-out with its bars hidden: only while the pointer is at its top, topstrip.ts)
+  const shown = !!at && (bare.get(w)?.lightsShown(w) ?? true)
   if (at) w.setWindowButtonPosition(at)
-  w.setWindowButtonVisibility(!!at)
+  w.setWindowButtonVisibility(shown)
   // (shown again, the Mac lays them out where they sit by default: placed once more)
-  if (at) w.setWindowButtonPosition(at)
+  if (shown) w.setWindowButtonPosition(at)
 }
 // The traffic lights in the page's sidebar's top row (`at`, CSS px: `x` right of LIGHTS, centred on `mid` down), hidden
 // while it is (no rails); an older page sends a boolean. Answers how they're drawn, for the page's stand-ins.
@@ -1145,6 +1147,25 @@ ipcMain.handle("window:lights", (e, at: boolean | { x: number; mid: number } | n
   const v = [...wins.values()].find((x) => x.win === w)?.vault
   if (v && !!v.lightsOff !== !at) { if (at) delete v.lightsOff; else v.lightsOff = true; save() }
   return { zoom: e.sender.getZoomFactor(), inset: LIGHTS.x, ...BUTTONS }
+})
+// A pop-out with its bars hidden (Hide window bars): its lights only with the pointer in its top strip, which drags it
+// (topstrip.ts). Keep window on top (core/ontop.ts keeps it): `on` sets it, else it's asked. Both answer whether it's on.
+const bare = new WeakMap<AppWindow, typeof import("./topstrip.ts")>()
+ipcMain.handle("window:bare", async (e, on: unknown) => {
+  who(e)
+  const w = AppWindow.fromWebContents(e.sender)
+  if (!MAC || !w || !popouts.has(e.sender)) return false
+  const k = await stripKit()
+  if (on !== true) { k.noStrip(w); bare.delete(w) }
+  else if (!k.hasStrip(w)) { bare.set(w, k); k.topStrip(w, () => applyLights(w), { page: w.webContents, pin: () => w.webContents.send("vaultite", { type: "command", id: "window:on-top" }) }) }
+  applyLights(w)
+  return on === true
+})
+ipcMain.handle("window:on-top", async (e, on: unknown) => {
+  who(e)
+  const w = AppWindow.fromWebContents(e.sender)
+  if (w && typeof on === "boolean") (await import("./ontop.ts")).setOnTop(w, on)
+  return !!w?.isAlwaysOnTop()
 })
 // The page's appearance `translucent` (electron/translucency.ts): what the window can do of it, now.
 ipcMain.handle("window:translucent", (e, on: unknown) => {
@@ -1594,12 +1615,21 @@ function buildMenu() {
     maximize: () => { const f = AppWindow.getFocusedWindow(); if (f) { if (f.isMaximized()) f.unmaximize(); else f.maximize() } },
     showLogs: () => { fs.mkdirSync(app.getPath("logs"), { recursive: true }); void shell.openPath(app.getPath("logs")) },
     sandbox: () => { sandbox().catch(() => {}) },
+    // (an app window's page keeps it for that window: its command; another window, as it is)
+    onTop: (_i, from) => {
+      const f = from ?? BaseWindow.getFocusedWindow()
+      if (f instanceof AppWindow && ([...wins.values()].some((x) => x.win === f) || popouts.has(f.webContents))) f.webContents.send("vaultite", { type: "command", id: "window:on-top" })
+      else if (f) void import("./ontop.ts").then((k) => k.setOnTop(f, !f.isAlwaysOnTop()))
+    },
   })
   // (The same menu again isn't set: setting it closes one that's open.)
   const key = JSON.stringify([w?.menu ?? null, recent.map((v) => [v.path, wins.has(v.path)]), remotes.map((r) => [r.url, remoteWins.has(r.url)]), ready, !!checking || fetching])
   if (key === menuShown && Menu.getApplicationMenu()) return
   menuShown = key
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  const menu = Menu.buildFromTemplate(template), top = menu.getMenuItemById("on-top")
+  // (checked as the window in front is when it opens)
+  top?.menu?.on("menu-will-show", () => { top.checked = !!BaseWindow.getFocusedWindow()?.isAlwaysOnTop() })
+  Menu.setApplicationMenu(menu)
 }
 AppWindow.each((w) => w.on("focus", () => buildMenu()))
 // Windows draws no menu bar (the title bar is the page's, with its controls): Alt pressed and let go alone opens its menus

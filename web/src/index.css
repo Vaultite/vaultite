@@ -1302,6 +1302,9 @@ section[data-moving="up"] { z-index: 4; }
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--foreground) 26%, transparent), 0 2px 8px -2px rgb(0 0 0 / 0.5);
 }
 :root[data-pane-cards] [data-pane-area] > [data-plate] { border-radius: 10px; }
+/* A pop-out with its bars hidden (Hide window bars): what it shows fills it, edge to edge, unless it's split. */
+:root[data-bars-hidden] [data-pane-area]:not([data-split]) { --pane-gap: 0px; }
+:root[data-pane-cards][data-bars-hidden] [data-pane-area]:not([data-split]) > :is(section[data-pane-frame]:not([data-floating]), [data-plate]) { border-radius: 0; box-shadow: none; }
 /* The sidebars run into the gaps: no line between them. */
 :root[data-pane-cards] aside[data-side]:not([data-peek]) { border-color: transparent; }
 html[data-electron][data-platform=darwin][data-pane-cards]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before,

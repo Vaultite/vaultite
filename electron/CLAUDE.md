@@ -40,3 +40,6 @@
   `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock.
 - Every window is an `AppWindow` (appwindow.ts): a BaseWindow whose page is a view, so it can go over the Browser's
   pages (web.ts `raise`); a BrowserWindow's own page is always under its views. Pop-outs are adopted into one.
+- A page's sized popup (a sign-in, a call's video) is a window of its own (popup.ts), never its opener window's child:
+  on a Mac a child moves, minimizes and changes Space with its parent. Keep on top (ontop.ts) skips Electron's process
+  transform (it takes the app out of the Dock and the menu bar) and turns full screen off for the window meanwhile.

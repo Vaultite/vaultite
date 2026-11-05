@@ -1,6 +1,6 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
 import { allPages, canvasOf, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, mayPicture, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setCanvasHandler, setEngineHost, setOpener } from "./browser/engine.ts"
@@ -406,6 +406,7 @@ function takeSpare(profile: string) {
 /** `agent`: an agent's, in the background (no tab). `adopt`: the contents a page's window.open made (`opener`'s), already
  *  loading `url`. */
 function make(win: AppWindow, url: string, profile: string, tab: string, { agent = false, adopt, opener }: { agent?: boolean; adopt?: WebContents; opener?: number } = {}): Page {
+  if (!popups) void import("./popup.ts").then((k) => { popups = k })
   // (a tab whose page went, or moved to other logins, given its history back: Back and Forward as they were)
   const kept = tab && !adopt ? restoreMod?.pastOf(tab, profile, url) ?? null : null
   const taken = adopt || kept ? null : takeSpare(profile), view = taken ?? newView(profile, adopt)
@@ -458,13 +459,18 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     p.input = 0
     const blank = blankWindow(to)
     if (!blank && !shows(to)) { void otherApp(p, to); return { action: "deny" } }
-    // (a sized popup, signing in with another site, is a small window; else a tab behind, in front or (⇧-click) to the
-    // side, handed the contents Chromium made so `window.opener` works)
+    // (a sized popup, signing in with another site or a video popped out, is a window of its own (popup.ts); else a tab
+    // behind, in front or (⇧-click) to the side; both handed the contents Chromium made so `window.opener` works)
     const popup = disposition === "new-window" && features.split(",").some((f) => !/^\s*(noopener|noreferrer)?\s*$/i.test(f))
     if (popup && !agents) {
-      return { action: "allow", overrideBrowserWindowOptions: {
-        width: 520, height: 700, parent: p.win, autoHideMenuBar: true, webPreferences: prefsOf(profile),
-      } }
+      const k = popups
+      // (Electron puts the new page and what the features asked, its size and place, in its options)
+      if (k) return { action: "allow", overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => k.popup(o as Parameters<typeof k.popup>[0], {
+        name: () => (p.profile.startsWith("c-") ? menus.containers.find((x) => `c-${x.id}` === p.profile)?.name : "") ?? "",
+        away: (u) => { if (shows(u)) return false; void otherApp(p, u); return true },
+        link: (u) => { if (web(u)) tell(p.win, { type: "open", id: p.id, tab: p.tab, url: u, profile: p.profile, how: "foreground" }); else void otherApp(p, u) },
+        mayLeave: (wc, w) => mayLeave(wc, w, false), closing: (wc) => unloading.add(wc), opener: p.view.webContents,
+      }) }
     }
     const how = disposition === "background-tab" ? "background" : disposition === "new-window" ? "side" : "foreground"
     // (outliving its page, as a Chrome tab does: Electron closes what window.open made with its opener, which closed every
@@ -489,10 +495,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
       }
       return child.view.webContents
     } }
-  })
-  wc.on("did-create-window", (child) => {
-    if (pageOf(child.webContents)) return
-    popupOf(p, child)
   })
 
   // (its media pausing as it closes comes after its view let go of its contents)
@@ -602,9 +604,11 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   let atEdge = false, atTop = false, toldTop = 0
   wc.on("before-mouse-event", (_e, m) => {
     if (m.type === "mouseLeave" && atTop) { atTop = false; tell(p.win, { type: "top", id: p.id, at: false }) }
-    if (p.player) { if (m.type === "mouseMove") kit?.pointerAt(p.player, m.y); return }
+    if (p.player) { if (m.type === "mouseMove") strips?.pointerAt(p.player, m.y); return }
     if ((m.type !== "mouseMove" && m.type !== "mouseDown") || p.full || p.win.isDestroyed() || !shownNow(p)) return
     const z = p.win.webContents.getZoomFactor(), b = p.view.getBounds(), [w] = p.win.getContentSize()
+    // (a window with its bars hidden: its top strip, topstrip.ts)
+    if (m.type === "mouseMove") strips?.pointerAt(p.win, b.y + m.y)
     const top = m.y / z <= TOP, down = m.type === "mouseDown", now = Date.now()
     if (top !== atTop || (top && (down || now - toldTop >= TOP_MS))) {
       atTop = top; toldTop = now
@@ -679,6 +683,11 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     else if (said) items.push({ role: "copy" }, ...lookUp, { type: "separator" })
     const h = wc.navigationHistory
     if (p.player) items.push({ label: "Back to its tab", click: () => fromPlayer(p, true) }, { type: "separator" })
+    // (a window with its bars hidden, nothing else of the app's to right-click: the way back, the page's command)
+    else if (strips?.hasStrip(p.win)) {
+      const run = (id: string) => () => p.win.webContents.send("vaultite", { type: "command", id })
+      items.push({ label: "Show window bars", click: run("window:bars") }, { label: "Keep window on top", type: "checkbox", checked: p.win.isAlwaysOnTop(), click: run("window:on-top") }, { type: "separator" })
+    }
     items.push(
       { label: "Back", enabled: canBack(p), click: () => go(p, "back") },
       { label: "Forward", enabled: h.canGoForward(), click: () => go(p, "forward") },
@@ -701,24 +710,6 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     void restored.catch(() => { if (!wc.isDestroyed() && !wc.getURL() && !wc.isLoading()) void wc.loadURL(url).catch(() => {}) })
   } else if (!adopt) void wc.loadURL(url).catch(() => { /* did-fail-load says why */ })
   return p
-}
-
-/** A sized popup a page opened (signing in with another site): titled with its site and container, its own links opening
- *  as the page's would (tabs in its container), closed with its page. */
-function popupOf(p: Page, child: BrowserWindow) {
-  const cw = child.webContents
-  const name = () => { const c = p.profile.startsWith("c-") ? menus.containers.find((x) => `c-${x.id}` === p.profile)?.name : ""; return [hostOfUrl(cw.getURL()) || "Sign in", c].filter(Boolean).join(" · ") }
-  child.on("page-title-updated", (e) => { e.preventDefault(); child.setTitle(name()) })
-  cw.on("did-navigate", () => { if (!child.isDestroyed()) child.setTitle(name()) })
-  cw.on("will-navigate", (e) => { if (!shows(e.url)) { e.preventDefault(); void otherApp(p, e.url) } })
-  cw.setWindowOpenHandler(({ url: to }) => {
-    if (web(to)) tell(p.win, { type: "open", id: p.id, tab: p.tab, url: to, profile: p.profile, how: "foreground" }); else void otherApp(p, to)
-    return { action: "deny" }
-  })
-  cw.on("will-prevent-unload", (e) => { if (mayLeave(cw, child, false)) e.preventDefault() })
-  const close = () => { if (!child.isDestroyed()) { unloading.add(cw); child.close() } }
-  p.view.webContents.once("destroyed", close)
-  child.once("closed", () => { if (!p.view.webContents.isDestroyed()) p.view.webContents.off("destroyed", close) })
 }
 
 /** Where an agent's page is out of sight: off the window, shown and unthrottled, so it draws on in a desktop's viewport
@@ -979,7 +970,10 @@ function zoomSite(p: Page, step: -1 | 0 | 1) {
 
 // (its code, and its pages' scripts, load as the first player opens: not at every launch)
 let kit: typeof import("./player.ts") | undefined
-const playerKit = async () => (kit ??= await import("./player.ts"))
+const playerKit = async () => { await stripKit(); return (kit ??= await import("./player.ts")) }
+let strips: typeof import("./topstrip.ts") | undefined, popups: typeof import("./popup.ts") | undefined
+/** The top strip's code (a player's, a window's with its bars hidden: topstrip.ts), loaded with the first. */
+export const stripKit = async () => (strips ??= await import("./topstrip.ts"))
 /** While a player is open, macOS doesn't nap the app (it's often in the background, shared in a call). */
 let napBlock: number | null = null
 const players = () => [...pages.values()].some((p) => p.player)
@@ -1008,7 +1002,6 @@ async function toPlayer(p: Page, fullScreen: boolean) {
   if (aspect) w.setAspectRatio(aspect)
   p.win.contentView.removeChildView(p.view)
   w.contentView.addChildView(p.view)
-  k.overPage(w)
   wc.setBackgroundThrottling(false)
   // (as its content is laid out: on Linux its menu bar comes and goes with no resize)
   w.contentView.on("bounds-changed", () => fit(p))

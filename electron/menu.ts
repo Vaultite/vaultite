@@ -43,6 +43,8 @@ export type MenuContext = {
   showLogs: () => void
   /** Window ▸ Maximize (off a Mac, whose Zoom is a role): the focused window maximized, or back. */
   maximize: () => void
+  /** Window ▸ Keep window on top, for the window in front (ontop.ts). */
+  onTop: MenuItemConstructorOptions["click"]
   /** Help ▸ Open the playground (the sandbox), when the app has one. */
   sandbox?: () => void
 }
@@ -278,6 +280,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
     ) },
     { label: "Window", role: "window", submenu: items(
       { role: "minimize" }, MAC ? { role: "zoom" } : { label: "Maximize", click: ctx.maximize },
+      { id: "on-top", label: "Keep window on top", type: "checkbox", click: ctx.onTop },
       sep,
       cmd("tab:next", "Next tab", "chevron-right", { key: "Ctrl+Tab", always: true }),
       cmd("tab:previous", "Previous tab", "chevron-left", { key: "Ctrl+Shift+Tab", always: true }),

@@ -2,7 +2,7 @@
 // the pointer's at the page's top, the pane's top or the bar, on a click at those tops, the keyboard in it, a new tab.
 import { useEffect, useState, type RefObject } from "react"
 import { PanelTopClose, PanelTopOpen } from "lucide-react"
-import type { MenuItem, WebPages } from "@vaultite"
+import { useBarsHidden, type MenuItem, type WebPages } from "@vaultite"
 import { settings } from "./state"
 
 /** How long the pointer rests at the page's top or the pane's before the bar comes (a quick pass doesn't bring it), and
@@ -20,14 +20,17 @@ export const pageBarItem = (sep = false): MenuItem => (barHidden()
 /** Whether the bar is hidden (setting), and whether it's out now (always, when it isn't hidden; `keep`: kept out).
  *  `group`: its pane, whose top (Tabs.tsx's `data-tabs-hidden` bar: a strip, or the title) brings it too. */
 export function usePageBar(web: WebPages, id: number, group: string | undefined, bar: RefObject<HTMLElement | null>, keep: boolean) {
-  const hidden = settings.use().pageBar === "hidden"
+  // (a pop-out with its bars hidden: hidden too, and only the keyboard brings it, ⌘L; the pointer at its top is the
+  // window's, to move it)
+  const bare = useBarsHidden()
+  const hidden = settings.use().pageBar === "hidden" || bare
   const [pointer, setPointer] = useState(false)
   const [typing, setTyping] = useState(false)
 
   // Coming: the desktop app tells when the pointer is at the page's top (the window hears nothing over a page), and
   // the window hears it on the pane's top. A click on either brings it at once.
   useEffect(() => {
-    if (!hidden) return
+    if (!hidden || bare) return
     let t = 0
     const come = (now: boolean) => {
       if (now) { clearTimeout(t); t = 0; setPointer(true) }
@@ -45,7 +48,7 @@ export function usePageBar(web: WebPages, id: number, group: string | undefined,
     addEventListener("pointerover", over, { passive: true })
     addEventListener("pointerdown", down, true)
     return () => { stay(); off(); removeEventListener("pointerover", over); removeEventListener("pointerdown", down, true) }
-  }, [hidden, id, group, web])
+  }, [hidden, bare, id, group, web])
 
   // Out, the bar covers the page's top and the window is over the page, so it hears the pointer everywhere: it goes once
   // the pointer has been off it, the pane's top and its menus a moment, and at once on a click elsewhere.

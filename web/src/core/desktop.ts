@@ -83,6 +83,11 @@ export type DesktopApi = {
   /** Show a Mac window's traffic lights at `at` (CSS px: `x` right of where they sit, centred on the line `mid` down),
    *  or hide them (null); answers how they're drawn. Older builds lack it, show them in place, or answer nothing. */
   lights?: (at: Lights | null) => Promise<LightsFrame | undefined>
+  /** A pop-out's bars hidden (Hide window bars): its traffic lights shown only with the pointer at its top, which drags
+   *  it. Answers whether the window does it (a Mac's pop-outs; builds from before it don't have it). */
+  bare?: (on: boolean) => Promise<boolean>
+  /** Keep the window on top of others' (`on`), or ask: answers whether it is. Builds from before it don't have it. */
+  onTop?: (on?: boolean) => Promise<boolean>
   /** Ask for the window's sidebars and bars see-through to the desktop, blurred (appearance `translucent`), and hear
    *  whenever that changes. A Mac's and Windows'; builds from before it don't have it. */
   translucent?: { set: (on: boolean) => Promise<Translucency>; on: (fn: (t: Translucency) => void) => void }
@@ -383,6 +388,10 @@ export const lightsFrame = () => frame
  *  or hidden (null: a sidebar hidden without its rail); nothing elsewhere. Resolves once the window has them so. */
 export const showLights = (at: Lights | null): Promise<void> => isMac && desktop?.lights
   ? desktop.lights(at).then((f) => { if (f && typeof f === "object" && f.zoom > 0) frame = f }, () => {}) : Promise.resolve()
+
+/** The desktop app's window with its bars hidden or back (a pop-out's, Hide window bars): its traffic lights and the strip
+ *  that drags it come with the pointer at its top. Nothing in a browser or elsewhere. */
+export const bareWindow = (on: boolean) => { void desktop?.bare?.(on).catch(() => false) }
 
 /** The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them. */
 export const lookUp = desktop?.lookUp && isMac ? desktop.lookUp : null

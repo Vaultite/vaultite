@@ -68,8 +68,9 @@ function overCorners(): DOMRect[] {
   const d = document.documentElement.dataset
   const out: DOMRect[] = []
   if (!("noRails" in d)) for (const t of document.querySelectorAll("[data-sidebar-toggle]")) out.push(t.getBoundingClientRect())
-  // (index.css: the lights take the window's first 88px; electron/main.ts: they're 16px tall, 14 down at most)
-  if ("electron" in d && d.platform === "darwin" && !("fullscreen" in d) && ("leftRail" in d || "popout" in d)) out.push(new DOMRect(0, 0, 88 - CLEAR, 30))
+  // (index.css: the lights take the window's first 88px; electron/main.ts: they're 16px tall, 14 down at most. A pop-out
+  // with its bars hidden shows them only over its page, with the pointer at its top: electron/topstrip.ts)
+  if ("electron" in d && d.platform === "darwin" && !("fullscreen" in d) && ("leftRail" in d || ("popout" in d && !("barsHidden" in d)))) out.push(new DOMRect(0, 0, 88 - CLEAR, 30))
   // (Windows' controls: the window's top-right corner, as wide as electron/preload.cjs says, a title row high)
   if ("electron" in d && d.platform === "win32" && !("fullscreen" in d)) {
     const w = parseFloat(document.documentElement.style.getPropertyValue("--window-controls")) || 138

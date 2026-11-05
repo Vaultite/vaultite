@@ -249,6 +249,8 @@ export { focusPane, holdFocus, keyboardBusy, useDismiss, useHeldFocus } from "@/
 // Make a pane the focused one (the address, the status bar and commands follow it) without moving the keyboard: a view
 // whose keyboard lives outside the page (the Browser's page) was clicked.
 export { setFocusedPane, isPopout } from "@/core/workspace"
+// A pop-out with its bars hidden (Hide window bars): only what it shows, a view's own bars too (the Browser's page bar).
+export { useBarsHidden } from "@/core/workspace"
 export { offeredCommand, onCommandsChanged, runCommandById, runCommandNamed } from "@/core/commands"
 export { isDesktop, useDesktop } from "@/core/platform"
 // Every command and its keys in effect (Vim's list of its keys).

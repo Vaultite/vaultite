@@ -37,8 +37,8 @@ export type Tab = { id: string; root: Layout; focus: string; zoom?: string
 export type Group = { id: string; name: string; color: Color; collapsed?: boolean }
 /** A window's tabs, in order, their groups (in the order their tabs are) and the one on screen. */
 export type TabList = { tabs: Tab[]; groups?: Group[]; active: string }
-/** A window of its own (a pop-out), with its own tabs. */
-export type Window = TabList & { id: string }
+/** A window of its own (a pop-out), with its own tabs; `barsHidden`: only what it shows (Hide window bars). */
+export type Window = TabList & { id: string; barsHidden?: boolean }
 /** A workspace: the main window's tabs, and its pop-outs'. */
 export type Workspace = TabList & { windows?: Window[] }
 /** Where a new split goes, beside a pane. */
@@ -227,7 +227,7 @@ export function clean(w: unknown): Workspace | null {
   // (a tab or pane in two windows stays in the first)
   const windows = (Array.isArray(x.windows) ? x.windows as Obj[] : []).flatMap((o) => {
     const l = o && typeof o === "object" && str(o.id) ? okList(o, taken) : null
-    return l ? [{ id: o.id as string, ...l }] : []
+    return l ? [{ id: o.id as string, ...l, ...(o.barsHidden === true ? { barsHidden: true } : {}) }] : []
   })
   return windows.length ? { ...main, windows } : main
 }

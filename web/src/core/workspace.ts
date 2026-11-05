@@ -23,6 +23,8 @@ const HELD = "vaultite.tabs.workspace"
 let held = (() => { try { return localStorage.getItem(HELD) !== null } catch { return false } })()
 const tabKey = () => (held ? HELD : KEY)
 if (POPOUT) document.documentElement.dataset.popout = "" // (index.css: the lights' room)
+/** This pop-out's bars are hidden (Window.barsHidden): this window's own, whatever another's copy says. */
+let barsOff = false
 const tabStore = () => localStorage
 
 /** Nothing was saved on this device yet: its first tab is blank until where it starts is known (fillFirstTab). */
@@ -47,6 +49,7 @@ function load(): Workspace {
       const handed = clean(JSON.parse(sessionStorage.getItem(`vaultite.popout.${POPOUT}`) ?? "null"))
       if (handed) w = { ...(w ?? blankList()), windows: [...(w?.windows ?? []), { id: POPOUT, tabs: handed.tabs, ...(handed.groups ? { groups: handed.groups } : {}), active: handed.active }] }
     }
+    barsOff = !!POPOUT && !!w?.windows?.find((x) => x.id === POPOUT)?.barsHidden
     if (w && startedFresh) w = withList(w, fresh(listIn(w)))
     if (w) return w
   } catch { /* private mode */ }
@@ -64,7 +67,7 @@ const listIn = (w: Workspace): TabList => (POPOUT ? w.windows?.find((x) => x.id 
 function withList(w: Workspace, l: TabList): Workspace {
   const own = { tabs: l.tabs, ...(l.groups ? { groups: l.groups } : {}), active: l.active }
   if (!POPOUT) return { ...own, ...(w.windows?.length ? { windows: w.windows } : {}) }
-  const win: Window = { id: POPOUT, ...own }
+  const win: Window = { id: POPOUT, ...own, ...(barsOff ? { barsHidden: true } : {}) }
   const ws = w.windows ?? []
   return { ...w, windows: ws.some((x) => x.id === POPOUT) ? ws.map((x) => (x.id === POPOUT ? win : x)) : [...ws, win] }
 }
@@ -571,6 +574,17 @@ export function selectTabAt(n: number) {
 }
 
 // ---------- pop-outs: windows with tabs of their own (core/windows.ts moves tabs between them) ----------
+
+/** This pop-out shows only what it shows, no bars (Hide window bars), kept with its tabs (Window.barsHidden). */
+export const barsHidden = () => barsOff
+export const useBarsHidden = () => changed.use(barsHidden)
+export function hideBars(on: boolean) {
+  if (!POPOUT || on === barsOff) return
+  barsOff = on
+  state = withList(state, here())
+  save()
+  changed.notify()
+}
 
 /** The pop-outs this device opened, open now. */
 const opened = new Map<string, globalThis.Window>()

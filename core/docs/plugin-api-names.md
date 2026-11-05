@@ -713,6 +713,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useAgents()`
 - `useAi()`
 - `useArchivedTabs()`
+- `useBarsHidden()`
 - `useBaseLayouts()`: The registered layouts, followed: a component using it draws again as plugins add theirs.
 - `useBusy()`: A slow action of a button's: `busy` while it runs (`<Button busy>`: it shows it and takes no second press).
 - `useChosen(value)`: A value the user just changed (a switch, a name), shown at once over `value`, the source's: until the source says the same or moves on, or the old one again when the write fails (saying `failed`).

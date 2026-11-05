@@ -13,6 +13,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Tabs dragged between windows show where they go**: past a window's edge the tab's card keeps following the
   pointer over the screen, and held over the main window it shows where it would land (a place among the tabs, a
   split), as a drag inside it does; let go, it lands there.
+- **A window that's only its page, kept on top**: in a window of its own (Move current tab to new window), Hide window
+  bars (the palette, or the tab bar's menu) leaves only what it shows: no tab, page or status bar, and on a Mac the
+  traffic lights show, with a strip that drags it, only with the pointer at its top. Right-click the page or use the
+  palette to bring the bars back; the window keeps it. Keep window on top (the palette, Window menu, the strip's pin)
+  floats any window over other apps' and on every Space. A page's popup (a sign-in, a call's video popped out) is now a
+  window of its own at the size it asked, staying put as the window it came from moves or minimizes; its right-click
+  hides its title bar and keeps it on top.
 - **A subdomain's own site style shows in Shields**: on docs.google.com the menu has "Style for docs.google.com" (its
   own file, else its parent site's), and "Style this site…" makes the page's host's file, not one for all of Google.
 - **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page

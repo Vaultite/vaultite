@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyPlus, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, LayoutTemplate, Link, ListChecks, ListTree, Moon, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, Store as StoreIcon, SquareArrowOutUpRight, SquareSplitHorizontal, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyPlus, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, LayoutTemplate, Link, ListChecks, ListTree, Moon, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Redo2, RefreshCw, RotateCcw, Rows2, PanelTopDashed, Server, SlidersHorizontal, Smile, Store as StoreIcon, SquareArrowOutUpRight, SquareSplitHorizontal, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
 import { cell } from "@/core/signal"
 import { getStore, onState, reload, useStore, vaultName as vaultNameOf, type Store } from "@/core/data"
 import { share } from "@/core/share"
@@ -9,7 +9,8 @@ import { runCommandLink, useCommands } from "@/core/commands"
 import { isDesktop, isMac, isWindows, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
-import { desktop as desktopApp, hasLights } from "@/core/desktop"
+import { bareWindow, desktop as desktopApp, hasLights } from "@/core/desktop"
+import { canKeepOnTop, keepOnTop, onTop } from "@/core/ontop"
 import { otherVaults } from "@/core/desktopapp"
 import { peekPanel, peekRider, usePeek, usePeekLights } from "@/core/peek"
 import { useBarFade } from "@/core/barfade"
@@ -18,7 +19,7 @@ import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
 import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, closeWholePane, currentFile, cycleTab, placesHere, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, activePane, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
-import { restTab, tabsInWorkspace } from "@/core/workspace"
+import { barsHidden, hideBars, restTab, tabsInWorkspace, useBarsHidden } from "@/core/workspace"
 import { canNudge, evenOutAll, focusByOrder, focusLastPane, hasLastPane, hasNeighbour, severalPanes, movePane, moveTabBy, nudgePane, paneToTab, splitPane, splitToFit, canFloat, canZoom, isFloating, isZoomed, toggleFloat, zoomPane } from "@/core/splits"
 import { Maximize2, PictureInPicture2 } from "lucide-react"
 import { hasMainWindow, moveToMain } from "@/core/windows"
@@ -436,6 +437,13 @@ export default function App() {
     // A window of its own (a pop-out): no sidebars, its own tabs.
     { id: "tab:move-to-window", name: "Move current tab to new window", when: () => isDesktop() && activePane().to !== "new", run: () => popOut(activeTab().id, true), icon: AppWindow },
     { id: "tab:move-to-main", name: "Move current tab to main window", when: hasMainWindow, run: () => moveToMain([activeTab().id]), icon: AppWindow },
+    // A pop-out with only what it shows, as a video call's pop-out: no tab, pane or page bars, no status bar, and on a Mac
+    // its traffic lights only with the pointer at its top (electron/topstrip.ts).
+    { id: "window:bars", name: "Show window bars", nameWhenOn: "Hide window bars", words: "chrome chromeless frameless title bar tab bar toolbar traffic lights compact",
+      when: () => isDesktop() && isPopout(), on: () => !barsHidden(), run: () => hideBars(!barsHidden()), icon: PanelTopDashed },
+    // Over other apps' windows and on every Space, as a video call's pop-out (core/ontop.ts), a window at a time.
+    { id: "window:on-top", name: "Keep window on top", nameWhenOn: "Stop keeping window on top", words: "always on top float pin pip picture",
+      when: () => isDesktop() && canKeepOnTop, on: onTop, run: () => keepOnTop(!onTop()), icon: Pin },
     { id: "tab:open-in-window", name: "Open current tab in new window", when: () => isDesktop() && activePane().to !== "new", run: () => popOut(activeTab().id), icon: SquareArrowOutUpRight },
     // ⌘1–⌘8 the nth tab, ⌘9 the last, like a browser's (the browser's own keys: the desktop app has them).
     ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: `tab:goto-${n}`, name: `Go to tab #${n}`, keys: desktopApp ? [`Mod+${n}`] : undefined,
@@ -523,8 +531,14 @@ export default function App() {
   useCommands(() => textSizeCommands(disabled), [disabled.join(), enabled.join()])
   // Every setting, the app's and the plugins': on/off (core/switches.ts) and of a few values (core/choices.ts).
   useCommands(() => [...allSwitches(disabled).map(switchCommand), ...allChoices(disabled).map(choiceCommand)], [disabled.join(), enabled.join(), pluginsVersion])
-  // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it.
+  // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it; with its bars hidden, only what it shows.
   const popout = isPopout()
+  const bare = useBarsHidden()
+  useLayoutEffect(() => {
+    if (!popout) return
+    document.documentElement.toggleAttribute("data-bars-hidden", bare)
+    bareWindow(bare)
+  }, [popout, bare])
   // Without rails a hidden sidebar takes no room: it slides in over the page from its edge (core/peek.ts).
   const hideLeft = desktop && !popout && !rails && !sidebar
   // (a phone on its side: its notch's room, env(safe-area-inset-*), is added to the sidebar there or takes its place)
@@ -707,7 +721,7 @@ export default function App() {
       <IconPicker />
       {/* (the plugins' ambient items show whatever is open; it leaves out a pane drawn edge to edge, a terminal: its
           columns, StatusBar.tsx) */}
-      {desktop && <StatusBar />}
+      {desktop && !bare && <StatusBar />}
       {desktop && <KeyHints />}
       {desktop && <Tooltips />}
       {!desktop && <SelectionBar />}
