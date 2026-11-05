@@ -37,6 +37,14 @@ const server = http.createServer((req, res) => {
   if (u.startsWith("/ask")) return send(page("Ask", `<button id="b" onclick="document.title = 'said ' + prompt('Your name?', 'Alice')">Name</button>
 <a id="zoom" href="zoommtg://zoom.us/join?confno=1">Join the call</a>
 <button id="share" onclick="navigator.mediaDevices.getDisplayMedia({ video: true }).then((s) => { document.title = 'sharing ' + s.getVideoTracks().length; s.getTracks().forEach((t) => t.stop()) }, (e) => { document.title = 'not shared ' + e.name })">Present</button>`))
+  if (u.startsWith("/tone")) return send(page("Tone", `<h1>Tone</h1><script>window.tone = () => { const c = new AudioContext(), o = c.createOscillator(); o.connect(c.destination); o.start(); setTimeout(() => c.close(), 3000) }</script>`))
+  if (u.startsWith("/room")) return send(page("Room", `<button id="share" onclick="navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }).then(async (s) => {
+  const c = new AudioContext(), a = c.createAnalyser(), d = new Float32Array(a.fftSize); let peak = 0
+  if (s.getAudioTracks().length) c.createMediaStreamSource(s).connect(a)
+  for (let i = 0; i < 20; i++) { await new Promise((r) => setTimeout(r, 100)); a.getFloatTimeDomainData(d); for (const x of d) peak = Math.max(peak, Math.abs(x)) }
+  const v = document.createElement('video'); v.muted = true; v.srcObject = s; await v.play().catch(() => {}); await new Promise((r) => setTimeout(r, 500))
+  document.title = 'shared video ' + s.getVideoTracks().length + ' sound ' + s.getAudioTracks().length + (peak > 0.01 ? ' heard' : ' silent') + ' ' + (v.videoWidth > 0 ? 'frames' : 'no frames'); setTimeout(() => s.getTracks().forEach((t) => t.stop()), 2000)
+}, (e) => { document.title = 'not shared ' + e.name })">Share</button>`))
   if (u.startsWith("/auth")) {
     if (req.headers.authorization === basic("alice", "pw")) return send(page("Signed in", "<h1>In</h1>"))
     res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Lighthouse"', "Content-Type": "text/plain" }); return res.end("")
@@ -133,6 +141,9 @@ const open = async (p) => {
   check(`(${p} is shown)`, await until(async () => (await shown())?.url === at(p), 20000), await pages())
   await wait(500)
 }
+/** The share menu's items (electron/browser/screenshare.ts), once it's asked; and a click on one, by its label. */
+const shareMenu = () => app.evaluate(() => (globalThis.__menu ?? []).map((i) => i.label).filter(Boolean))
+const pickInMenu = (label) => app.evaluate((_e, label) => { const i = (globalThis.__menu ?? []).find((x) => x.label === label); globalThis.__menu = null; i?.click() }, label)
 const titled = (t, ms = 8000) => until(async () => (await pages()).some((p) => p.title === t), ms)
 const ofZoom = async () => (await asked()).filter((m) => /open zoommtg: links/.test(m)).length
 
@@ -191,10 +202,24 @@ const said = await until(sheetText, 8000)
 check("prompt(): asked in a sheet with its message", /127\.0\.0\.1 says/.test(said ?? "") && /Your name\?/.test(said), said)
 await answerSheet({ value: "Bea" })
 check("… answering what's typed", await titled("said Bea"), await pages())
-await answerNext({ response: 1 })
+await app.evaluate(() => { globalThis.__menu = null })
 await clickInPage("#share")
-check("getDisplayMedia: asked what to share", await until(async () => (await asked()).some((m) => /wants to share your screen/.test(m)), 5000), await asked())
+check("getDisplayMedia: asked what to share, in a menu", await until(async () => (await shareMenu()).some((m) => /wants to share/.test(m)), 5000), await shareMenu())
+await pickInMenu("This tab")
 check("… and shares the tab picked", await titled("sharing 1"), await pages())
+
+// ---------- sharing another tab, with its sound (a movie into a call) ----------
+await open("/tone")
+await open("/room")
+await app.evaluate(() => { globalThis.__menu = null })
+await clickInPage("#share")
+check("a call's share offers the other tabs", await until(async () => (await shareMenu()).includes("Tone") && (await shareMenu())[1] === "A tab, with its sound", 5000), await shareMenu())
+await pickInMenu("Tone")
+// (its tone starts once it's shared, when a test's shared tab is silent here, and ends before the share does: nothing
+// reaches the speakers even with VAULTITE_SOUND)
+await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getTitle() === "Tone")?.executeJavaScript("tone()"))
+check("… sharing it: its picture and its sound, while it's hidden behind the call", await until(async () => (await pages()).some((p) => /^shared video 1 sound 1 heard frames$/.test(p.title)), 12000), (await pages()).map((p) => p.title))
+await open("/ask")
 // (Blink marks a misspelling only in a focused window, which a quiet one never is: the menu's told one, as Blink would)
 await app.evaluate(() => { globalThis.__menu = null })
 await onShown("menu", { x: 60, y: 60, linkURL: "", linkText: "", srcURL: "", mediaType: "none", isEditable: true, selectionText: "Lighthuose",
