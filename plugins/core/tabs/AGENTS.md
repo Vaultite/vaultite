@@ -2,7 +2,8 @@
 A window has one list of tabs; a tab holds one pane or several side by side (a split tab: a free tree of splits, plus
 floating panes), each pane one view with its own history. Clicking another tab switches the whole split away; opening
 a file or link goes to the focused pane. ⌥-click a tab, or drop it on a pane's middle: it takes that pane's place, and
-what was there becomes a tab of its own; drop it on a pane's edge: a split. A pane dragged onto the list (or a half
+what was there becomes a tab of its own; drop it on a pane's edge: a split. ⌘W (Close current tab) in a split closes the
+focused pane, the tab with its last; Close split (⌥⇧⌘W, or the tab's menu) closes every pane. A pane dragged onto the list (or a half
 dragged out of a split's row) is a tab of its own; held a second over a row, that tab opens to drop into. Ids are
 stable: a tab's (`t…`) and a pane's (`p…`, or a `t…` one from before tabs held panes).
 

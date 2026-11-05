@@ -1,5 +1,5 @@
-// Close pane (core/workspace.ts closePane) of a split tab with the tab bar and pane titles off, and Reopen closed tab
-// bringing it back where it sat; each pane's X and handle at its view's bar's end (components/Tabs.tsx PaneControls),
+// Close pane (core/workspace.ts closePane) of a split tab with the tab bar and pane titles off (Close current tab, ⌘W,
+// too: the focused pane only; Close split the whole tab), and Reopen closed tab bringing it back where it sat; each pane's X and handle at its view's bar's end (components/Tabs.tsx PaneControls),
 // fading bars and cards too, and the sidebar's split row (plugins/core/tabs): a cell's X, menu and swap. WRITES the
 // vault's appearance.json (put back): throwaway server only.
 //   node web/qa/closepane.mjs <base url> <vault path> [out dir]
@@ -77,16 +77,24 @@ try {
   // The palette's, on the focused pane.
   check("the palette has Close pane", await command(page, "Close pane"))
   check("…closing the focused pane", await until(async () => same(await files(), [a])), await panes())
-  // Its keys, ⌥⇧⌘W.
+  // Close current tab (⌘W) in a split: the focused pane only; Close split: the whole tab.
   await command(page, "Reopen closed tab"); await until(async () => (await panes()).length === 2)
+  await command(page, "Close current tab")
+  check("Close current tab in a split closes only the focused pane", await until(async () => same(await files(), [a])) && (await tabs()).length === 2, [await panes(), await tabs()])
+  await command(page, "Reopen closed tab"); await until(async () => (await panes()).length === 2)
+  check("Close split closes the split tab, every pane", await command(page, "Close split") && await until(async () => (await tabs()).length === 1), await tabs())
+  await command(page, "Reopen closed tab")
+  check("…which comes back whole", await until(async () => same(await panes(), before) && (await tabs()).length === 2), await panes())
+  // Its keys on the web, ⌥⇧⌘W (the desktop app's ⌘W).
   await page.keyboard.press("ControlOrMeta+Alt+Shift+KeyW")
-  check("⌥⇧⌘W closes the focused pane too", await until(async () => same(await files(), [a])), await panes())
+  check("⌥⇧⌘W closes the focused pane on the web", await until(async () => same(await files(), [a])), await panes())
 
   // The window's only pane: nothing to close it with.
   // (the pinned tab goes too: shown, unpinned, closed)
   await command(page, "Go to next tab"); await until(async () => same(await files(), [c]))
   await command(page, "Unpin tab"); await command(page, "Close current tab"); await until(async () => (await tabs()).length === 1)
   check("the only pane: no Close pane in the palette", !(await command(page, "Close pane")))
+  check("…nor Close split", !(await command(page, "Close split")))
   check("…nor an X", (await page.locator("[data-pane-close]").count()) === 0)
   await command(page, "Pin tab"); await command(page, "Close current tab"); await wait(300)
   check("…and a pinned tab alone stays", same(await files(), [a]) && same(await tabs(), ["*>"]), await tabs())

@@ -406,10 +406,11 @@ export default function App() {
     // Off a Mac, ⌃⌥← switches workspaces (GNOME, Xfce): ⌥← there, as browsers have it.
     { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
     { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
-    // (A pinned tab stays: ⌘W rests it, as Arc does; it's closed from its menu, with its pane, or unpinned first.)
+    // In a split, ⌘W closes the focused pane, as Arc's and Chrome's split views do (the split: Close split, its menu).
+    // A pinned tab stays: ⌘W rests it, as Arc does; it's closed from its menu, with its pane, or unpinned first.
     { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, label: "Close tab", icon: X, run: () => {
       const t = activeTab()
-      if (t.pinned) restTab(t.id); else closeTab(t.id)
+      if (t.pinned) restTab(t.id); else if (canClosePane()) closePane(); else closeTab(t.id)
     } },
     // A tab with the keyboard (Tab to it): Delete does what its X does, which a tablist can't hold as a stop of its own.
     { id: "tab:close-focused", name: "Close the tab that has the keyboard", keys: isMac ? ["Backspace", "Delete"] : ["Delete"], label: "Close tab", icon: X,
@@ -419,8 +420,10 @@ export default function App() {
         // (the keyboard stays in the bar, on the tab shown now)
         requestAnimationFrame(() => bar?.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus())
       } },
-    // (⇧⌘W closes the window: ⌥⇧⌘W, beside ⌥⌘W's Close all other tabs.)
-    { id: "pane:close", name: "Close pane", keys: ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
+    // (⇧⌘W closes the window: ⌥⇧⌘W, beside ⌥⌘W's Close all other tabs. The web has no ⌘W: there it's Close pane.)
+    { id: "pane:close", name: "Close pane", keys: desktopApp ? undefined : ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
+    { id: "split:close", name: "Close split", keys: desktopApp ? ["Mod+Alt+Shift+W"] : undefined, words: "whole tab all panes", when: () => isDesktop() && canClosePane(),
+      run: () => { const t = activeTab(); if (t.pinned) restTab(t.id); else closeTab(t.id) }, icon: X },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
     // Vertical tabs, one switch: the tab bar or the Tabs panel at the top of the left sidebar (core/plugins.ts).
     { id: "tab:sidebar", name: "Show tabs in the sidebar", when: () => isDesktop() && !isPopout() && !!tabListPanel(), run: () => showTabsIn(tabsInSidebar() ? "top" : "sidebar"),
