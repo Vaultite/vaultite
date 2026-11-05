@@ -1,13 +1,15 @@
 // Agents in the browser, asked by the vault's server (plugins/core/web-viewer/plugin.ts): a page's accessibility tree with
 // refs, real input on them over the DevTools protocol (no page scripts), scripts of those in a sandbox; access checked here.
-import { app, session, WebContentsView, type Session, type WebContents } from "electron"
+import { app, type WebContents } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
-import { THUMB_WIDTH } from "./agentruns.ts"
 import { changes, mainLines } from "./axlines.ts"
+
+/** A step's small picture, for the replay's filmstrip (agentruns.ts reads them). */
+export const THUMB_WIDTH = 320
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -201,7 +203,7 @@ const cut = (lines: string[], max = MAX_SNAPSHOT) => {
   const at = lines.findIndex((l) => (size += l.length + 1) > max)
   return at < 0 ? lines.join("\n") : `${lines.slice(0, at).join("\n")}\n… (cut short: \`vau browser read\` gives the page's text)`
 }
-async function snapshot(p: EnginePage) {
+export async function snapshot(p: EnginePage) {
   const lines = await tree(p)
   return { tab: p.id, url: scrub(p.wc.getURL()), title: scrub(p.wc.getTitle()), snapshot: cut(lines) }
 }
@@ -417,11 +419,11 @@ export async function settle(p: EnginePage, was: string, since = Date.now()) {
 }
 
 type Field = { ref: string; value: string; name?: string }
-type Act = { action: string; ref?: string; name?: string; role?: string; at?: { x: number; y: number }; value?: string; html?: string; key?: string; direction?: string; files?: unknown; fields?: Field[]; diff?: unknown }
+export type Act = { action: string; ref?: string; name?: string; role?: string; at?: { x: number; y: number }; value?: string; html?: string; key?: string; direction?: string; files?: unknown; fields?: Field[]; diff?: unknown }
 
 /** The ref of the control named `name` (an exact name first, then one that has it), of `role` if given, from the page as
  *  it is now; else why not, with the names it has that come close. */
-async function refFor(p: EnginePage, name: string, role?: string) {
+export async function refFor(p: EnginePage, name: string, role?: string) {
   const want = name.trim().toLowerCase(), r = String(role ?? "").trim()
   const all = (await tree(p)).flatMap((l) => [...l.matchAll(/(?:^\s*- |: | \| )(\S+) "([^"]*)"[^|]*?\[ref=(e\d+)\]/g)])
   const hits = all.filter((m) => !r || m[1] === r)
@@ -431,21 +433,6 @@ async function refFor(p: EnginePage, name: string, role?: string) {
   const near = (r ? hits : all).filter((m) => words.some((w) => m[2].toLowerCase().includes(w))).slice(0, 8)
   throw new Error(`no ${r || "control"} named "${name}" on the page${near.length ? `; close: ${near.map((m) => `${m[1]} "${m[2]}" [${m[3]}]`).join(", ")}` : `: take a snapshot (\`vau browser snapshot ${p.id}\`)`}`)
 }
-/** Where text the page shows is drawn (its first showing, an exact match first), scrolled into view: what a person would
- *  click to put the caret there, or double-click to select a word. */
-const TEXT_AT = (want: string) => `(() => {
-  const want = ${JSON.stringify(want)}.toLowerCase(), found = []
-  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-  for (let n; (n = walk.nextNode()) && found.length < 50;) { const t = n.data.toLowerCase(), i = t.indexOf(want); if (i >= 0 && n.parentElement && n.parentElement.getClientRects().length) found.push([n, i, t.trim() === want, !!n.parentElement.closest("[contenteditable=''], [contenteditable=true], textarea")]) }
-  // (whole words before part of one, and text in an editor before the same text around it: a doc's title in its bar)
-  const hit = found.find((f) => f[2] && f[3]) || found.find((f) => f[2]) || found.find((f) => f[3]) || found[0]
-  if (!hit) return null
-  const [node, i] = hit, range = document.createRange()
-  range.setStart(node, i); range.setEnd(node, i + want.length)
-  node.parentElement.scrollIntoView({ block: "center", inline: "nearest" })
-  const b = range.getBoundingClientRect()
-  return { x: b.left + b.width / 2, y: b.top + b.height / 2 }
-})()`
 /** The action with its targets found: a control by its name (else text the page shows, by where it's drawn), and a
  *  form's fields by their names. */
 async function named(p: EnginePage, a: Act): Promise<Act> {
@@ -454,6 +441,7 @@ async function named(p: EnginePage, a: Act): Promise<Act> {
     // (a role that's no control's, text or a heading, is text the page shows)
     if (out.role && !INTERACTIVE.has(out.role)) delete out.role
     try { out.ref = await refFor(p, out.name, out.role) } catch (e) {
+      const { TEXT_AT } = await import("./agentrun.ts")
       const at = out.role ? null : await p.wc.executeJavaScriptInIsolatedWorld(1017, [{ code: TEXT_AT(out.name) }]).catch(() => null) as { x: number; y: number } | null
       if (!at) throw e
       out.at = at
@@ -624,7 +612,7 @@ const RUNS = () => path.join(app.getPath("userData"), "agent-runs")
 const KEEP_DAYS = 14
 /** Who asked: the agent's name, its session (the op's caller), the task it named and what it said it's doing (`summary`,
  *  given on open), a run each a day. */
-type By = { name?: string; session?: string; task?: string; summary?: string; remote?: boolean }
+export type By = { name?: string; session?: string; task?: string; summary?: string; remote?: boolean }
 const runOf = (by: By) => `${new Date().toISOString().slice(0, 10)}-${[by.session || by.name || "agent", by.task].filter(Boolean).join("-").replace(/[^\w.-]+/g, "_").slice(0, 80)}`
 /** An agent's tabs' group in the window, Neo's way: "<agent>/<task>". */
 const groupOf = (by: By) => [by.name || "Agent", by.task].filter(Boolean).join("/")
@@ -748,7 +736,7 @@ export const byOf = (x: unknown): By => {
 
 const DOING: Record<string, string> = { click: "Clicking", dblclick: "Double-clicking", hover: "Pointing at", fill: "Filling", type: "Typing in", paste: "Pasting into",
   press: "Pressing", check: "Checking", uncheck: "Unchecking", select: "Picking in", upload: "Uploading into", scroll: "Scrolling" }
-async function actIn(p: EnginePage, given: Act, who: By) {
+export async function actIn(p: EnginePage, given: Act, who: By) {
   const a = await named(p, given.fields ? { ...given, fields: fieldsOf(given.fields) } : given)
   if (a.fields) {
     const fields = fieldsOf(a.fields)
@@ -781,14 +769,14 @@ const READ = (main: boolean) => `(async () => {
   const root = (${main} && document.querySelector("main, [role=main]")) || document.body
   return { url: location.href, title: document.title, text: root ? root.innerText : "" }
 })()`
-async function readIn(p: EnginePage, main = false) {
+export async function readIn(p: EnginePage, main = false) {
   const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: READ(main) }]) as { url: string; title: string; text: string; as?: string }
   const text = scrub(r.text)
   return { tab: p.id, url: scrub(r.url), title: scrub(r.title), ...(r.as ? { as: r.as } : {}), text: text.length > 200_000 ? `${text.slice(0, 200_000)}\n… (cut short)` : text }
 }
 
-type Wait = { text?: string; url?: string; download?: boolean; helped?: boolean }
-async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
+export type Wait = { text?: string; url?: string; download?: boolean; helped?: boolean }
+export async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
   const wait = Math.min(w.helped ? 600_000 : 60_000, Math.max(100, Number(ms) || 10_000)), until = Date.now() + wait
   // (the text is looked for here, in what the page shows scrubbed: never an oracle for a filled secret)
   const shows = async () => !w.text || scrub(String(await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code: "document.body ? document.body.innerText : ''" }]).catch(() => ""))).includes(String(w.text))
@@ -818,7 +806,7 @@ async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
 // ---------- agents from outside this machine (an app on the internet, a guest through another machine) ----------
 
 // (the app's own page on loopback is its owner's, a terminal a click away; and a router's or a NAS's are the network's)
-const OUTSIDE = "agents from outside this machine don't use its addresses or its network's (localhost, the LAN, the tailnet)"
+export const OUTSIDE = "agents from outside this machine don't use its addresses or its network's (localhost, the LAN, the tailnet)"
 /** A page such an agent opened, or acted in a moment ago (a click on a link, a script sending it on). */
 const fromOutside = (id: number) => {
   const d = doing.get(id)
@@ -834,7 +822,7 @@ onRequest("onBeforeRequest", (d, s) => {
     () => ({ cancel: true }))
 }, undefined, ["mainFrame", "subFrame"])
 
-const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return u } }
+export const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return u } }
 /** A page just loaded: once its content settled (a client-rendered page draws after its load), its first lines, unless
  *  `lines` is none (a run's go, which snapshots when it wants). */
 async function firstLines(p: EnginePage, lines: unknown, since = Date.now()) {
@@ -843,7 +831,7 @@ async function firstLines(p: EnginePage, lines: unknown, since = Date.now()) {
   const all = await tree(p).catch(() => null)
   return all ? { diff: pageLines(all, lines) } : {}
 }
-async function navigateIn(p: EnginePage, to: unknown, who: By, lines: unknown = "none") {
+export async function navigateIn(p: EnginePage, to: unknown, who: By, lines: unknown = "none") {
   const was = p.wc.getURL(), t = String(to ?? ""), since = Date.now()
   if (!["back", "forward", "reload"].includes(t) && !/^https?:\/\//i.test(t)) throw new Error("an http(s) address, back, forward or reload")
   if (who.remote && /^https?:/i.test(t) && localUrl(t)) throw new Error(OUTSIDE)
@@ -867,99 +855,6 @@ const listOf = (asking: By) => allPages().filter((p) => !p.wc.isDestroyed() && /
     ...(paused.has(p.id) ? { paused: true } : {}), ...(taken.has(p.id) ? { taken: true } : {}), ...(asks.has(p.id) ? { asking: asks.get(p.id)!.reason } : {}),
   }
 })
-
-// ---------- run: an agent's script composing the calls, in a sandbox of its own ----------
-
-/** The script's page: Chromium's sandbox, a session with no network, no permissions and nothing kept. */
-let sandbox: Session | null = null
-function sandboxSession() {
-  if (sandbox) return sandbox
-  const s = session.fromPartition("vaultite-agent-run")
-  s.webRequest.onBeforeRequest((_d, done) => done({ cancel: true }))
-  s.setPermissionRequestHandler((_wc, _what, done) => done(false))
-  s.setPermissionCheckHandler(() => false)
-  return (sandbox = s)
-}
-const RUN_MS = 30_000
-const CALL = "vaultite-run:"
-/** In the script's page: the calls it has (each a message to this side), what it logs, and the script run as an async
- *  function's body. */
-const BRIDGE = `(() => {
-  const waits = new Map(), logs = []
-  let n = 0
-  window.__answer = (id, ok, v) => { const w = waits.get(id); if (!w) return; waits.delete(id); if (ok) w.ok(v); else w.fail(new Error(v)) }
-  const call = (name, ...args) => new Promise((ok, fail) => { const id = ++n; waits.set(id, { ok, fail }); console.debug(${JSON.stringify(CALL)} + JSON.stringify({ id, name, args })) })
-  const log = (...a) => { if (logs.length < 500) logs.push(a.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(" ").slice(0, 2000)) }
-  window.__run = async (script, args) => {
-    const api = {
-      args,
-      snapshot: () => call("snapshot"),
-      act: (action, ref, value) => call("act", action && typeof action === "object" ? action : { action, ref, value }),
-      fill: (fields) => call("act", { action: "fill", fields: Array.isArray(fields) ? fields : Object.entries(fields ?? {}).map(([ref, value]) => ({ ref, value: String(value) })) }),
-      ref: (name, role) => call("ref", name, role),
-      read: () => call("read"),
-      wait: (what) => call("wait", what ?? {}),
-      go: (to) => call("go", to),
-      sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(30000, Number(ms) || 0))),
-      log,
-    }
-    try {
-      const fn = new (async function () {}).constructor(...Object.keys(api), "console", script)
-      const value = await fn(...Object.values(api), { log, info: log, warn: log, error: log, debug: log })
-      return { value: value === undefined ? null : JSON.parse(JSON.stringify(value)), logs }
-    } catch (e) { return { error: String(e && e.message || e), logs } }
-  }
-})()`
-
-/** The first control whose name has `name` (an exact one first), of `role` if given: its ref, or null. */
-const refIn = (p: EnginePage, name: unknown, role: unknown) => refFor(p, String(name ?? ""), String(role ?? "") || undefined).catch(() => null)
-
-async function runIn(p: EnginePage, script: string, who: By, args?: unknown) {
-  if (!script.trim()) throw new Error("run needs a script")
-  const view = new WebContentsView({ webPreferences: { session: sandboxSession(), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
-  const wc = view.webContents
-  wc.setWindowOpenHandler(() => ({ action: "deny" }))
-  wc.on("will-navigate", (e) => e.preventDefault())
-  // (each call checks the tab's access again: the user may pause agents mid-run)
-  const calls: Record<string, (...a: unknown[]) => Promise<unknown>> = {
-    snapshot: async () => (await snapshot(pageFor(p.id, "read", who))).snapshot,
-    act: (a) => actIn(pageFor(p.id, "act", who), { diff: "none", ...(a && typeof a === "object" ? a as Act : { action: "" }) }, who),
-    ref: (name, role) => refIn(pageFor(p.id, "read", who), name, role),
-    read: async () => (await readIn(pageFor(p.id, "read", who))).text,
-    wait: (w) => { const x = (w && typeof w === "object" ? w : {}) as Wait & { timeout?: number }; return waitIn(pageFor(p.id, "read", who), x, (Number(x.timeout) || 10) * 1000) },
-    go: (to) => navigateIn(pageFor(p.id, "act", who), to, who),
-  }
-  const answer = (id: unknown, ok: boolean, v: unknown) => {
-    if (!wc.isDestroyed()) void wc.executeJavaScript(`window.__answer(${JSON.stringify(id)}, ${ok}, ${JSON.stringify(v ?? null)})`).catch(() => {})
-  }
-  wc.on("console-message", (e) => {
-    if (!e.message.startsWith(CALL)) return
-    let m: { id?: unknown; name?: unknown; args?: unknown[] }
-    try { m = JSON.parse(e.message.slice(CALL.length)) } catch { return }
-    const fn = calls[String(m.name)]
-    void (fn ? fn(...(Array.isArray(m.args) ? m.args : [])) : Promise.reject(new Error(`no call ${String(m.name)}`)))
-      .then((v) => answer(m.id, true, v), (err: Error) => answer(m.id, false, err.message))
-  })
-  acting(p, who, "Running a script")
-  void record(p, who, { action: "run", value: script.slice(0, 2000) })
-  let late = false, timer: NodeJS.Timeout | undefined
-  try {
-    await wc.loadURL("about:blank")
-    await wc.executeJavaScript(BRIDGE)
-    const out = await Promise.race([
-      wc.executeJavaScript(`window.__run(${JSON.stringify(script)}, ${JSON.stringify(args ?? null)})`) as Promise<{ value?: unknown; error?: string; logs: string[] }>,
-      new Promise<never>((_r, fail) => { timer = setTimeout(() => { late = true; fail(new Error(`the script took over ${RUN_MS / 1000} s: it was stopped`)) }, RUN_MS) }),
-    ])
-    if (out.error) throw new Error(`the script failed: ${out.error}${out.logs.length ? `\nIt logged:\n${out.logs.join("\n")}` : ""}`)
-    let value = JSON.stringify(out.value ?? null) ?? "null"
-    if (value.length > 100_000) value = `${value.slice(0, 100_000)}… (cut short)`
-    return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value, logs: out.logs }
-  } finally {
-    clearTimeout(timer)
-    if (late && !wc.isDestroyed()) wc.forcefullyCrashRenderer()
-    if (!wc.isDestroyed()) wc.close()
-  }
-}
 
 // ---------- the app's ----------
 
@@ -1169,24 +1064,6 @@ serve("agent:evaluate", async (_win, tab, expression, by) => {
   if (json.length > 100_000) json = `${json.slice(0, 100_000)}… (cut short)`
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value: json }
 })
-/** A file at `url` as the tab's page would get it (its logins, its address as referrer): for a link's PDF, an invoice. */
-serve("agent:download", async (_win, tab, url, by) => {
-  const who = byOf(by), p = pageFor(tab, "act", who), u = String(url ?? "")
-  let to: URL
-  try { to = new URL(u, p.wc.getURL()) } catch { throw new Error("an http(s) address") }
-  if (!/^https?:$/.test(to.protocol)) throw new Error("an http(s) address")
-  if (who.remote && localUrl(to.href)) throw new Error(OUTSIDE)
-  acting(p, who, `Downloading from ${hostOf(to.href)}`)
-  const r = await p.wc.session.fetch(to.href, { credentials: "include", referrer: p.wc.getURL() } as RequestInit)
-  if (!r.ok) throw new Error(`${to.href} answered ${r.status} ${r.statusText}`)
-  const data = Buffer.from(await r.arrayBuffer())
-  if (data.length > 50 << 20) throw new Error("the file is over 50 MB")
-  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(r.headers.get("content-disposition") ?? "")?.[1]
-  const name = decodeURIComponent(named ?? path.basename(to.pathname) ?? "") || "download"
-  void record(p, who, { action: "download", value: to.href })
-  return { tab: p.id, url: scrub(to.href), name, type: r.headers.get("content-type") ?? "", data: data.toString("base64") }
-})
-serve("agent:run", (_win, tab, script, by, args) => runIn(pageFor(tab, "act", byOf(by)), String(script ?? ""), byOf(by), args))
 serve("agent:help", (_win, tab, reason, by) => {
   const p = pageFor(tab, "read", byOf(by))
   const why = String(reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300)

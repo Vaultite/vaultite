@@ -1,6 +1,7 @@
 // Agents' runs for the replay view (agent.ts `record` writes them): a run's steps.jsonl only grows, so it's read once, then
 // only its new lines; its pictures come as the view draws them, never with the steps (a long run's are hundreds of MB).
 import { app, nativeImage } from "electron"
+import { THUMB_WIDTH } from "./agent.ts"
 import fs from "node:fs"
 import path from "node:path"
 import { handle } from "./engine.ts"
@@ -10,7 +11,6 @@ const RUNS = () => path.join(app.getPath("userData"), "agent-runs")
 const LISTED = 200
 /** The activity strip's buckets, over a run's time. */
 const BUCKETS = 48
-const THUMB_WIDTH = 320
 
 /** What a run's file has said so far: read up to `size`, a step per line starting at `starts[i]`. */
 type Scan = {
@@ -154,4 +154,3 @@ handle("agents:shots", async (_win, run, shots, small) => {
   return out
 })
 
-export { THUMB_WIDTH }

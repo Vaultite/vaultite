@@ -5,7 +5,6 @@ import "./sessioncookies.ts"
 import "./containers.ts"
 import "./lock.ts"
 import "./agent.ts"
-import "./agentruns.ts"
 import "./logins.ts"
 import "./live.ts"
 import "./default.ts"
@@ -25,3 +24,5 @@ later(async () => {
 })
 // (what Electron leaves to a browser to ask: rare, so never loaded at launch)
 later(() => Promise.all([import("./httpauth.ts"), import("./prompt.ts"), import("./screenshare.ts")]))
+// (agents' past runs, read when the replay page asks; their scripts and downloads, at their first)
+later(() => Promise.all([import("./agentruns.ts"), import("./agentrun.ts")]))
