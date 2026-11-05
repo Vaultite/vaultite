@@ -248,6 +248,28 @@ func windowAt(_ x: Double, _ y: Double) -> [String: Any] {
   guard let w = windowList().first(where: { boundsOf($0)?.contains(CGPoint(x: x, y: y)) == true && ($0[kCGWindowOwnerPID as String] as? Int).map { pid_t($0) != vaultitePid } ?? false && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0 }) else { return ["window": 0] }
   return describe(w)
 }
+/** What's under a point (screen points, top-left origin), as Accessibility names it: a desktop icon, a button, a row.
+ *  Its words and its parent's, never a password field's; its app. */
+func under(_ x: Double, _ y: Double) -> [String: Any] {
+  var hit: AXUIElement?
+  guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(x), Float(y), &hit) == .success, let el = hit else { return ["ok": false] }
+  let pid = pidOf(el)
+  if pid == vaultitePid { return ["ok": false, "vaultite": true] }
+  var m = appInfo(pid)
+  m["ok"] = true
+  m["role"] = attr(el, kAXRoleDescriptionAttribute) as String? ?? attr(el, kAXRoleAttribute) as String? ?? ""
+  let words = { (e: AXUIElement) -> String in
+    if secure(e) { return "" }
+    for k in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute] {
+      if let v: String = attr(e, k), !v.trimmingCharacters(in: .whitespaces).isEmpty { return String(v.prefix(300)) }
+    }
+    return ""
+  }
+  m["label"] = words(el)
+  if let parent: AXUIElement = attr(el, kAXParentAttribute) { m["in"] = words(parent) }
+  m["frame"] = rectJSON(frame(el))
+  return m
+}
 func windowInfo(_ id: Int) -> [String: Any] {
   guard let w = windowList().first(where: { ($0[kCGWindowNumber as String] as? Int) == id }) else { return ["window": 0] }
   return describe(w)
@@ -334,6 +356,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "insert": return insert(req["text"] as? String ?? "")
   case "front": lastFront = ""; sayFront(); return ["ok": true]
   case "at": return windowAt(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)
+  case "under": return under(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)
   case "watch": watchWindows(req["windows"] as? [Int] ?? []); return ["ok": true]
   case "window":
     // (by its number, else an app's focused window)

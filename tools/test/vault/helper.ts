@@ -151,6 +151,12 @@ export default async ($: VaultTest) => {
     const text = ask ? c.momentsText([ask], "quiet", null) : ""
     check("companion: an ask on screen names the app and window, its picture and its text", !!ask && text.includes('on screen, "zsh" in com.apple.Terminal (window 42)') &&
       text.includes("its picture: /tmp/x/screens/window-42-1.png") && text.includes("    error: no such file"), text)
+    const desk = c.addMoment({ kind: "ask", text: "what is this folder?", app: "com.apple.finder", sx: 812, sy: 440, under: 'Finder: folder "Taxes", in "Desktop"', shot: "/tmp/x/screens/region-1.png" })
+    const deskText = desk ? c.momentsText([desk], "quiet", null) : ""
+    const [, deskSt] = await api("POST", "ops/companion.status", {})
+    check("companion: an ask from the desktop (no window) says what was under the pointer, its point, and the screen around it",
+      deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/region-1.png (the screen around their pointer)") &&
+      (deskSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 812), [deskText, deskSt])
     check("companion: a followed window's change reaches it in quiet; a note's doesn't", edit?.kind === "edit" && c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null)
     await api("PATCH", "config/plugin/companion", { mode: null })
   }

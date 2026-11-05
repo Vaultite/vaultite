@@ -81,8 +81,23 @@ export async function windowShot(window: number, dir: string): Promise<string | 
   fs.mkdirSync(dir, { recursive: true })
   const file = path.join(dir, `window-${window}-${Date.now()}.png`)
   const ok = await new Promise<boolean>((done) => execFile("/usr/sbin/screencapture", ["-x", "-o", `-l${window}`, "-t", "png", file], { timeout: 10_000 }, (e) => done(!e)))
-  const old = fs.readdirSync(dir).filter((f) => f.endsWith(".png")).sort().reverse()
+  prune(dir)
+  return ok && fs.existsSync(file) && fs.statSync(file).size > 0 ? file : null
+}
+
+/** The last 20 pictures kept, newest by when they were taken (the number in their name). */
+function prune(dir: string) {
+  const when = (f: string) => Number(/-(\d+)\.png$/.exec(f)?.[1] ?? 0)
+  const old = fs.readdirSync(dir).filter((f) => f.endsWith(".png")).sort((a, b) => when(b) - when(a))
   for (const f of old.slice(20)) fs.rmSync(path.join(dir, f), { force: true })
+}
+/** A part of the screen's picture (screen points, top-left origin), as a PNG file in `dir`: what's around the pointer
+ *  where there's no window (the desktop); null when macOS gave none. */
+export async function regionShot(r: { x: number; y: number; width: number; height: number }, dir: string): Promise<string | null> {
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, `region-${Date.now()}.png`), R = [r.x, r.y, r.width, r.height].map(Math.round).join(",")
+  const ok = await new Promise<boolean>((done) => execFile("/usr/sbin/screencapture", ["-x", `-R${R}`, "-t", "png", file], { timeout: 10_000 }, (e) => done(!e)))
+  prune(dir)
   return ok && fs.existsSync(file) && fs.statSync(file).size > 0 ? file : null
 }
 

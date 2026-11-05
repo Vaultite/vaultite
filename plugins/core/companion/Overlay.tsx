@@ -19,6 +19,8 @@ export const unsent = () => { notify("Couldn't send it: not connected to the ser
 /** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it;
  *  docked: at its arrow in the status bar (x, y: the arrow's corner), where it rests unseen, the arrow standing for it. */
 type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean; rides?: boolean
+  /** Out on the screen (another app's window): the desktop helper draws it there, so here it hides at once, where it was. */
+  away?: boolean
   /** Over a web page: drawn over it (the window rises over the page for it, layers.ts' floats). */
   over?: boolean }
 /** A cursor's place as drawn: what it looked at, its place among them, its step in a stack; held, it stays there (dx, dy
@@ -497,6 +499,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   if (spot.drawn && !bubble && !a.asks) return null
   // (resting at home, it's its arrow in the status bar: it fades as it lands there, and shows again as it leaves)
   const docked = !!spot.docked && !drag && !open && !fan && !bubble && !a.asks && !typed && !menued
+  const away = !!spot.away && !drag && !open
   const enter = (e: React.PointerEvent) => { if (e.pointerType !== "touch") setHover(true) }
   // Click: the popover. Drag (a finger: hold first), then drop on text: "look at this".
   const down = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -551,10 +554,10 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   return (
     <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-floats={spot.over && !docked ? "" : undefined} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
-      data-docked={docked || undefined}
+      data-docked={docked || undefined} data-away={away || undefined}
       style={{ transform: docked ? `translate(${at.x}px, ${at.y}px) scale(${DOCK_SCALE})` : `translate(${at.x - 3}px, ${at.y - 2}px)`, transformOrigin: "0 0",
-        transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typed ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), ${docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
-        opacity: docked ? 0 : shown.dim ? 0.55 : 1, visibility: docked ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || drag || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
+        transition: drag ? "opacity .3s" : away ? "none" : `transform ${a.state === "writing" || typed ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), ${docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
+        opacity: docked || away ? 0 : shown.dim ? 0.55 : 1, visibility: docked || away ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || drag || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
       {!spot.drawn && <>
       <div className={cn("relative", shown.bob && !drag && "companion-bob")}>
         <Arrow tint={tint} />
@@ -868,7 +871,7 @@ export function Overlay() {
   const heights = useRef(new Map<string, number>())
   const rooms = useRef(new Map<EditorView, number>())
   // (a cursor under the pointer, open or dragged stays where it is: nothing moves under the user's pointer)
-  const holds = useRef(new Map<string, Place>()), drawn = useRef(new Map<string, Place>())
+  const holds = useRef(new Map<string, Place>()), drawn = useRef(new Map<string, Place>()), lastSpots = useRef(new Map<string, Spot>())
   const hold = (name: string, on: boolean, at?: { x: number; y: number }, text?: Target) => {
     // (one the user left somewhere stays when the pointer goes)
     if (!on) { if (!holds.current.get(name)?.left && holds.current.delete(name)) redraw(); return }
@@ -945,6 +948,12 @@ export function Overlay() {
   if (off && !notes.length && !sv) return null
 
   const cursors = (off ? [] : s.agents).map((a, i) => {
+    // (on another app's window, with the desktop helper drawing it and its bubbles there: here, hidden where it was, for
+    // that one to glide out from)
+    if (screenDrop && !a.path && (a.app || a.sx !== undefined)) {
+      const was = lastSpots.current.get(a.name)
+      return { a, i, spot: was ? { ...was, away: true } : null, said: null, waiting: false, with: [] as Agent[], under: false, shift: 0, held: undefined }
+    }
     const mine = says(a), said = mine.findLast((n) => !heldBack(n)) ?? null, waiting = mine.some(heldBack)
     let h = holds.current.get(a.name)
     if (h?.left && !stays(a, h.left)) { holds.current.delete(a.name); h = undefined }
@@ -956,10 +965,11 @@ export function Overlay() {
   // (cursors on the same spot, as in a shared doc: side by side, one flag, "Perf +1", fanning out into each of them)
   for (const c of cursors) {
     // (docked ones each have their own arrow, side by side in the status bar: no stack)
-    const top = c.spot && !c.spot.docked && cursors.find((o) => o !== c && o.spot && !o.spot.docked && !o.under && Math.abs(o.spot.x - c.spot!.x) < 14 && Math.abs(o.spot.y - c.spot!.y) < 10 && cursors.indexOf(o) < cursors.indexOf(c))
+    const top = c.spot && !c.spot.docked && !c.spot.away && cursors.find((o) => o !== c && o.spot && !o.spot.docked && !o.spot.away && !o.under && Math.abs(o.spot.x - c.spot!.x) < 14 && Math.abs(o.spot.y - c.spot!.y) < 10 && cursors.indexOf(o) < cursors.indexOf(c))
     if (top) { c.under = true; top.with.push(c.a); c.shift = top.with.length }
   }
   for (const c of cursors) if (c.held) c.shift = c.held.shift
+  for (const c of cursors) if (c.spot && !c.spot.away) lastSpots.current.set(c.a.name, c.spot)
   drawn.current = new Map(cursors.map((c) => [c.a.name, c.held ?? { at: placeOf(c.a), i: c.i, shift: c.shift, dx: 0, dy: 0 }]))
   // Comments beside their lines, scrolling with the note and clipped to what of its pane shows: cards in the margin (as
   // in a shared doc), or a dot each by the text, the threads being in the Conversations panel.

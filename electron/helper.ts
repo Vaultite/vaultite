@@ -12,7 +12,7 @@ import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
 import { hunksOf, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
 import { overlayActs, showOverlay } from "./overlay.ts"
-import { dictationAuto, dictationHotKey, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
+import { dictationAuto, dictationHotKey, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, regionShot as shootRegion, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
@@ -45,6 +45,7 @@ const stubs = new Map<string, Record<string, unknown>>()
 const screenAsk = <T = Record<string, unknown>>(op: string, req: Record<string, unknown> = {}): Promise<T> =>
   QUIET ? Promise.resolve((stubs.get(op) ?? { ok: false, why: "quiet", window: 0 }) as T) : askHelper<T>(op, req)
 const windowShot = (window: number, dir: string) => (QUIET ? Promise.resolve(null) : shoot(window, dir))
+const regionShot = (r: Rect, dir: string) => (QUIET ? Promise.resolve(null) : shootRegion(r, dir))
 let lock: net.Server | null = null
 let tray: Tray | null = null
 const SHOTS = () => path.join(app.getPath("userData"), "screens")
@@ -323,7 +324,7 @@ async function begin() {
   const into = focus.field ? "field" : "ask"
   const mine: Session = { sink: { tell: (e) => told(mine, e) }, into, focus, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines),
     // (what they're looking at as they start speaking: its text and one picture, never a private app's)
-    context: into === "ask" && !priv && focus.window ? context(focus.window) : null }
+    context: into === "ask" && !priv ? context(focus.window ?? 0, screen.getCursorScreenPoint()) : null }
   session = mine
   draw()
   const how = await engineFor(s)
@@ -336,9 +337,30 @@ async function begin() {
   else if (r.code === "model") notice("model", "Parakeet's model isn't on this Mac", "Handy or Hex downloads it, or pick Apple's recognizer in Dictation's settings.")
 }
 
-async function context(window: number) {
-  const [t, shot] = await Promise.all([screenAsk<{ ok?: boolean; text?: string }>("text", { window, max: 20_000 }), windowShot(window, SHOTS())])
-  return { screen: t.ok ? t.text : undefined, shot }
+async function context(window: number, p: Point): Promise<{ screen?: string; shot?: string | null; under?: string; sx?: number; sy?: number }> {
+  // (no window in front, as on the desktop: what's under the pointer, and the screen around it)
+  if (!window) { const { app: _, ...c } = await pointerContext(p); return c }
+  const [t, shot, under] = await Promise.all([screenAsk<{ ok?: boolean; text?: string }>("text", { window, max: 20_000 }), windowShot(window, SHOTS()), underAt(p)])
+  return { screen: t.ok ? t.text : undefined, shot, ...(under ? { under: under.text } : {}) }
+}
+
+type Under = { ok?: boolean; vaultite?: boolean; bundle?: string; name?: string; role?: string; label?: string; in?: string }
+/** What's under a point of the screen, in words (`Finder: folder "Taxes", in "Desktop"`); null on Vaultite, nothing, or a
+ *  private app's. */
+async function underAt(p: Point): Promise<{ text: string; bundle: string } | null> {
+  const u = await screenAsk<Under>("under", { x: p.x, y: p.y }).catch(() => null)
+  if (!u?.ok || u.vaultite || hidden(u)) return null
+  const what = [u.role, u.label && JSON.stringify(u.label)].filter(Boolean).join(" ")
+  if (!what) return null
+  return { text: `${u.name || u.bundle}: ${what}${u.in && u.in !== u.label ? `, in ${JSON.stringify(u.in)}` : ""}`, bundle: u.bundle ?? "" }
+}
+
+/** Where there's no window (the desktop): what's under the pointer, and a picture of the screen around it. */
+async function pointerContext(p: Point) {
+  const d = screen.getDisplayNearestPoint(p).bounds, w = Math.min(1200, d.width), h = Math.min(800, d.height)
+  const r = { x: Math.max(d.x, Math.min(d.x + d.width - w, p.x - w / 2)), y: Math.max(d.y, Math.min(d.y + d.height - h, p.y - h / 2)), width: w, height: h }
+  const [under, shot] = await Promise.all([underAt(p), regionShot(r, SHOTS())])
+  return { sx: Math.round(p.x), sy: Math.round(p.y), shot, ...(under ? { under: under.text, app: under.bundle } : {}) }
 }
 
 function told(s: Session, e: Record<string, unknown>) {
@@ -569,6 +591,12 @@ const FOLLOW_MS = 4000, FOLLOW_FOR = 30 * 60_000, FOLLOW_GAP = 20_000
 export async function dropAt(name: string, x: number, y: number) {
   const w = await screenAsk<AppWindowInfo>("at", { x, y })
   unfollow()
+  // (on no window, as the desktop's icons: a point at what's there, nothing to follow)
+  if (!w.window && !w.vaultite) {
+    const c = await pointerContext({ x, y })
+    if (c.app) live.say({ t: "moment", kind: "point", agent: name, ...c, shot: c.shot ?? undefined })
+    return
+  }
   if (!w.window || w.vaultite || hidden(w)) return
   const [t, shot] = await Promise.all([screenAsk<{ ok?: boolean; text?: string }>("text", { window: w.window, max: 20_000 }), windowShot(w.window, SHOTS())])
   const text = t.ok ? t.text ?? "" : ""

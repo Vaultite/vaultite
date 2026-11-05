@@ -21,7 +21,7 @@ mock.module(pathToFileURL(fs.realpathSync(path.join(ROOT, "node_modules/electron
   screen: { getCursorScreenPoint: () => ({ x: 500, y: 500 }), getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
 } })
 mock.module(at("overlay.ts"), { exports: { showOverlay: (_b: string, s?: Scene) => { if (s) scenes.push(JSON.parse(JSON.stringify(s))) }, overlayActs() {} } })
-mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async () => ({}), startScreen: async () => {}, stopScreen() {}, windowShot: async () => null,
+mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async () => ({}), startScreen: async () => {}, stopScreen() {}, windowShot: async () => null, regionShot: async () => null,
   fnUsage: async () => null, dictationAuto: async () => null, dictationHotKey: async () => null } })
 mock.module(at("dictation.ts"), { exports: { dictate: async () => ({ ok: true }), dictating: () => false, stopFor() {}, dictationEngines: async () => ({}) } })
 

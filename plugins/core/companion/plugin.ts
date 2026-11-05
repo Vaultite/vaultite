@@ -44,6 +44,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
    *  says (its Accessibility text) and its picture (a PNG on this machine). */
   app?: string; window?: number; title?: string; screen?: string; shot?: string
+  /** On screen: what was under their pointer, in words, and that point (screen points: where to point back). */
+  under?: string; sx?: number; sy?: number
   /** In a pane (a terminal, a web page: today's tab id) or the app's UI (a data-ui id), by its title; a terminal's row, a
    *  page's element (a snapshot ref) or the text under the pointer (`text`). */
   pane?: string; ui?: string; row?: number; el?: string
@@ -256,7 +258,7 @@ const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) 
 export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).find((w) => w.focus)?.focus ?? null
 
 /** Where a moment's agent looks: an app's window, its note's line, its pane's row, or the app's UI (a watch's, nowhere new). */
-const placeOf = (m: Partial<Moment>): Partial<Agent> => (m.app ? { app: m.app, ...(m.window ? { window: m.window } : {}) } : m.path ? { path: m.path, line: m.line, find: m.find }
+const placeOf = (m: Partial<Moment>): Partial<Agent> => (m.app ? { app: m.app, ...(m.window ? { window: m.window } : m.sx !== undefined && m.sy !== undefined ? { sx: m.sx, sy: m.sy } : {}) } : m.path ? { path: m.path, line: m.line, find: m.find }
   : m.pane ? { pane: m.pane, ...(m.row ? { row: m.row } : {}) } : m.ui ? { ui: m.ui } : {})
 
 /** Take in a moment from the app: kept (and logged), and given to the agents waiting. `from`: the window's request, which
@@ -775,11 +777,12 @@ const screens = new Set<WebSocket>()
 const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said"])
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
 function screenPlace(m: Record<string, unknown>) {
-  const shot = str(m.shot), window = Number(m.window)
+  const shot = str(m.shot), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
   return { app: str(m.app).slice(0, 200), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
-    ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}),
+    ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
+    ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     // (only the helper's own pictures: an agent reads what's named here)
-    ...(/[/\\]screens[/\\]window-\d+-\d+\.png$/.test(shot) ? { shot } : {}) }
+    ...(/[/\\]screens[/\\](window-\d+-\d+|region-\d+)\.png$/.test(shot) ? { shot } : {}) }
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
@@ -1945,7 +1948,8 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     else if (m.kind === "move") out.push(m.into === "note" ? `- move${at}: they put your bubble in the note there (more for the note than a bubble), ${JSON.stringify(cut(m.text ?? "", 200))}`
       : `- move${at}: they folded what you wrote there back into a bubble (more for a bubble than the note), ${JSON.stringify(cut(m.text ?? "", 200))}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
-    if (m.shot) out.push(`  its picture: ${m.shot}`)
+    if (m.shot) out.push(`  its picture: ${m.shot}${m.window ? "" : " (the screen around their pointer)"}`)
+    if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
   }
   for (const e of notes) {

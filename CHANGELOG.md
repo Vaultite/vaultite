@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Asking about the desktop sees what you point at, and one cursor shows**: an fn ask or a cursor dropped where there's
+  no window (the desktop's icons) tells the companion what's under the pointer, with a picture of the screen around it,
+  and its cursor answers there; out on the screen, its cursor and bubble no longer show inside Vaultite too.
 - **Terminals hold still while a sidebar or split is dragged**: they keep their size till it's let go, then fit once,
   where before they blinked and rewrapped their text all along the drag.
 - **A player always has its controls**: its traffic lights come with the pointer at its top whatever its page does,
