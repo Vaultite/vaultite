@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals kept by Ghostty's engine**: the terminal server keeps each terminal's screen and history with
+  libghostty-vt instead of xterm.js, several times faster at reading output, reflowing and giving a tab its screen
+  back, at half the memory; a busy agent's output reaches the tab in fewer, larger pieces, and keystrokes echo at once.
 - **Sidebars show and hide smoothly, terminals don't blink**: a sidebar slides in and out with the panes as one, keeping
   its shape (a slid-in one settles into place when pinned); a terminal beside it no longer flashes blank as it resizes,
   and its program redraws for the new size at once. A sidebar dragged shut no longer leaves the pointer stuck resizing;

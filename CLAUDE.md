@@ -53,7 +53,7 @@ is its point.
   else runs (`pgrep -fl "Chrome for Testing"`), close every browser and server you start, and don't raise `--jobs`.
   QA browsers queue for the machine's slots (`tools/qa_slots.ts`); a run waiting for one is normal.
 - Stop a server by its port: `kill $(lsof -tiTCP:<port> -sTCP:LISTEN)`, then its terminal server (the pid in
-  `vaultite-termd2-vaultite-<port>.sock.pid` under `core/runtime.ts`' dir).
+  `vaultite-termd<PROTOCOL>-vaultite-<port>.sock.pid` (termd/protocol.ts) under `core/runtime.ts`' dir).
   Pattern kills (`pkill -f`, `killall`) hit the user's own apps.
 
 ## Working here

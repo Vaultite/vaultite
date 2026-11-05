@@ -141,9 +141,9 @@ const UPLOADS_KEPT = 30 * 86_400_000
 const SPARE = "vauspare-" // a shell kept ready (below)
 
 // The terminal server (termd/), which takes over the keeper's terminals from before it (ptyd, protocol 1) once it runs.
-const keeper = termdBackend(NAME, { daemon: path.join(plugin.dir, "termd", "termd.ts"), log: console.error, oldServers: [serverFiles(NAME, 1)] })
+const keeper = termdBackend(NAME, { daemon: path.join(plugin.dir, "termd", "termd.ts"), log: console.error, oldServers: [serverFiles(NAME, 1), serverFiles(NAME, 2)] })
 // (the keeper's terminals from before are taken over here when the terminal server can't start to take them)
-const fallback = localBackend({ log: (...a) => console.error("terminal (in this server):", ...a), oldServers: [serverFiles(NAME, 1)],
+const fallback = localBackend({ log: (...a) => console.error("terminal (in this server):", ...a), oldServers: [serverFiles(NAME, 1), serverFiles(NAME, 2)],
   adoptOld: async () => !(await keeper.ready().catch(() => false)) })
 /** Another plugin's backend, while it's on (the service "terminal:backend": herdr's, Rex's), or null. One made for the
  *  Backend before this one (no capture) isn't used: its plugin needs an update. */

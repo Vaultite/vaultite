@@ -373,8 +373,8 @@ export default async ($: VaultTest) => {
     await b.send("cap1", { keys: ["Enter"] })
     const ended = await waitFor(async () => (await b.list({ ended: true })).find((x) => x.id === "cap1")?.exit, 10_000, 50)
     const after = await b.capture("cap1", { format: "text", lines: 10 })
-    check("terminal server: a terminal's text, vt (its colors) and html captures, its size and cursor", text.text === "one\nred" && vt.text.includes("\x1b[31mred") &&
-      html.text.includes("color: #cc0000") && text.cols === 40 && text.rows === 6 && text.cursor.y === 2, [text, vt.text, html.text.slice(0, 80)])
+    check("terminal server: a terminal's text, vt (its colors) and html captures, its size and cursor", text.text === "one\nred" && /\x1b\[(?:0m\x1b\[)?(?:31|38;5;1)mred/.test(vt.text) &&
+      /--vt-palette-1: #[0-9a-f]{6}/.test(html.text) && html.text.includes("color: var(--vt-palette-1);\">red<") && text.cols === 40 && text.rows === 6 && text.cursor.y === 2, [text, vt.text, html.text.slice(0, 80)])
     check("terminal server: it keeps what the app gives it (meta, what it runs, its folder)", listed?.command === "the test" && listed.meta?.name === "Capture test" && listed.cwd === tmp &&
       JSON.stringify(meta) === JSON.stringify({ note: "Notes/Idea.md" }), [listed, meta])
     check("terminal server: a command alone ends the terminal, its code kept, its screen still captured", (ended as { code: number })?.code === 4 &&
@@ -452,6 +452,49 @@ export default async ($: VaultTest) => {
       got.includes("kill vauspare-x") && info.via === 4242 && info.title === "Old one" && JSON.stringify(info.said) === JSON.stringify({ seen: true, status: { state: "working" } }), [adopted, got, info])
     check("terminal server: an adopted terminal's screen is its picture then what came after, its input goes through, its end is told",
       cap?.text === "old screen\n$ after" && got.includes("ls\r") && exited?.exit?.code === 2, [cap, got, exited])
+  }
+
+  // Protocol 2 (termd with xterm.js): its changes come as events once subscribed, its picture is xterm.js' serialize.
+  if (process.platform !== "win32") {
+    const net = await import("node:net")
+    const { host } = await import("../../../plugins/core/terminal/termd/host.ts")
+    const { waitFor } = await import("../lib.ts")
+    const old = path.join(tmp, "old-termd2.sock"), ops: string[] = []
+    let ctl: import("node:net").Socket | null = null
+    const oldServer = net.createServer((sock) => {
+      sock.setEncoding("utf8")
+      let buf = ""
+      sock.on("data", (d: string) => {
+        buf += d
+        for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
+          const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1)
+          const re = (x: object) => sock.write(JSON.stringify({ re: m.re, ...x }) + "\n")
+          ops.push(m.op)
+          if (m.op === "hello") { ctl ??= sock; re({ v: 2, pid: 4343 }) }
+          else if (m.op === "list") re({ sessions: [{ id: "two1", pid: 98, process: "claude", created: 2000, title: "Two", cols: 40, rows: 6, said: { seen: true, status: null } }] })
+          else if (m.op === "attach") re({ cols: 40, rows: 6 })
+          else if (m.op === "snapshot") re({ data: "\x1b[1mtwo\x1b[0m screen\r\n\x1b[?2004h> " })
+          else if (m.re !== undefined) re({})
+        }
+      })
+    })
+    await new Promise<void>((r) => oldServer.listen(old, r))
+    const h = host({ log: () => {}, pid: process.pid, file: "test" })
+    const msgs: Record<string, unknown>[] = []
+    const c = h.connect({ session: null, ready: false, send: (m) => msgs.push(m as never), backlog: () => 0 })
+    c.take({ op: "adopt", socket: old, scrollback: 100, re: 1 })
+    const adopted = await waitFor(() => msgs.find((m) => m.re === 1), 5_000, 20) as { adopted?: string[] } | undefined
+    ctl!.write(JSON.stringify({ t: "event", type: "status", id: "two1", said: { seen: true, status: { state: "blocked", kind: "permission" } } }) + "\n")
+    ctl!.write(JSON.stringify({ t: "event", type: "title", id: "two1", title: "Two, renamed" }) + "\n")
+    await new Promise((r) => setTimeout(r, 150))
+    c.take({ op: "capture", id: "two1", re: 2 })
+    c.take({ op: "list", re: 3 })
+    const cap = msgs.find((m) => m.re === 2) as { text?: string } | undefined, info = (msgs.find((m) => m.re === 3) as { sessions: { said: unknown; title: string }[] }).sessions[0]
+    const pasteOn = h.sessions.get("two1")?.term.mode(2004)
+    oldServer.close()
+    check("terminal server: it takes over protocol 2's terminals, their changes heard as events, their picture read (modes too)", JSON.stringify(adopted?.adopted) === '["two1"]' &&
+      ops.includes("subscribe") && !ops.includes("status") && cap?.text === "two screen\n>" && pasteOn === true && info.title === "Two, renamed" &&
+      JSON.stringify(info.said) === JSON.stringify({ seen: true, status: { state: "blocked", kind: "permission" } }), [adopted, ops, cap, info, pasteOn])
   }
 
   // One it couldn't take over (its snapshot failed: too slow on a loaded machine) still runs there: it isn't told as

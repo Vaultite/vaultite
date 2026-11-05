@@ -6,6 +6,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { runtimeDir } from "../../core/runtime.ts"
+import { PROTOCOL } from "../../plugins/core/terminal/termd/protocol.ts"
 
 // (a test's git, run from a hook or `git bisect run`, would otherwise reach the repo running it)
 for (const k of Object.keys(process.env)) if (/^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|NAMESPACE|PREFIX)$/.test(k)) delete process.env[k]
@@ -76,7 +77,7 @@ export function testServer(o: SpawnOptions = {}): ChildProcess {
 /** Ends the terminals of a test server on `port`: its terminal server outlives it on purpose (CLAUDE.md, Running and
  *  verifying), its pid where the server keeps it (Linux: $XDG_RUNTIME_DIR/vaultite, not $TMPDIR). */
 export function stopTerminals(port: number | string) {
-  try { process.kill(Number(fs.readFileSync(path.join(runtimeDir(), `vaultite-termd2-vaultite-${port}.sock.pid`), "utf8"))) } catch { /* none */ }
+  try { process.kill(Number(fs.readFileSync(path.join(runtimeDir(), `vaultite-termd${PROTOCOL}-vaultite-${port}.sock.pid`), "utf8"))) } catch { /* none */ }
 }
 
 /** Kills `pid` and everything it started, at once (a browser Playwright launched is in a process group of its own). */

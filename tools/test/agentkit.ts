@@ -5,6 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { parse as parseYaml } from "yaml"
+import { PROTOCOL } from "../../plugins/core/terminal/termd/protocol.ts"
 import { type Any, check, sleep, testServer, waitFor } from "./lib.ts"
 
 export const REPO = path.resolve(import.meta.dirname, "..", "..")
@@ -69,7 +70,7 @@ export function stopBackends() {
   // (core/runtime.ts: $TMPDIR on a Mac; Linux's $XDG_RUNTIME_DIR/vaultite, else $TMPDIR/vaultite-<uid> as in a bare env)
   for (const dir of [os.tmpdir(), process.env.XDG_RUNTIME_DIR && path.join(process.env.XDG_RUNTIME_DIR, "vaultite"), path.join(os.tmpdir(), `vaultite-${process.getuid?.()}`), `/tmp/vaultite-${process.getuid?.()}`]) {
     if (!dir) continue
-    try { process.kill(Number(fs.readFileSync(path.join(dir, `vaultite-termd2-vaultite-${PORT}.sock.pid`), "utf8").trim()), "SIGTERM") } catch { /* none */ }
+    try { process.kill(Number(fs.readFileSync(path.join(dir, `vaultite-termd${PROTOCOL}-vaultite-${PORT}.sock.pid`), "utf8").trim()), "SIGTERM") } catch { /* none */ }
   }
 }
 

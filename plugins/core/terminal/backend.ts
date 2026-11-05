@@ -313,28 +313,25 @@ export function ptyLink(p: IPty, extra: Partial<Pick<Link, "write" | "onData">> 
   }
 }
 
-/** A Link that gives pictures of one that can't, by reading its output through a headless xterm.js first, so a viewer
- *  who joins gets the screen as it is (for backends whose client only sends what changed). */
+/** A Link that gives pictures of one that can't, by reading its output into a terminal of its own (libghostty-vt)
+ *  first, so a viewer who joins gets the screen as it is (for backends whose client only sends what changed). */
 export async function mirrored(link: RawLink, scrollback = limits.scrollback()): Promise<Link> {
-  const { createRequire } = await import("node:module")
-  const require = createRequire(import.meta.url)
-  const { Terminal } = require("@xterm/headless") as typeof import("@xterm/headless")
-  const { SerializeAddon } = require("@xterm/addon-serialize") as typeof import("@xterm/addon-serialize")
-  const term = new Terminal({ cols: link.cols, rows: link.rows, scrollback, allowProposedApi: true })
-  const ser = new SerializeAddon()
-  term.loadAddon(ser as never)
+  const { newVt } = await import("./vt/load.ts")
+  const term = newVt({ cols: link.cols, rows: link.rows, scrollback })
+  let ended = false
   const data = new Set<(d: string) => void>()
-  // Passed on once read, so a picture and the data around it never overlap.
-  link.onData((d) => term.write(d, () => { for (const fn of data) fn(d) }))
-  link.onExit(() => term.write("", () => term.dispose()))
+  // Parsed, then passed on, so a picture and the data around it never overlap.
+  // (libghostty-vt failing on it: no more pictures, the data still passed on)
+  link.onData((d) => { if (!ended) try { term.write(d) } catch { ended = true }; for (const fn of data) fn(d) })
+  link.onExit(() => { ended = true; term.dispose() })
   return {
     get cols() { return link.cols },
     get rows() { return link.rows },
     write: (b) => link.write(b),
-    resize: (c, r) => { link.resize(c, r); try { term.resize(c, r) } catch { /* disposed */ } },
+    resize: (c, r) => { link.resize(c, r); if (!ended) term.resize(c, r) },
     onData: (fn) => { data.add(fn) },
     onExit: (fn) => link.onExit(fn),
-    snapshot: (fn) => term.write("", () => fn(ser.serialize({ scrollback }))),
+    snapshot: (fn) => fn(ended ? "" : term.serialize()),
     pause: link.pause && (() => link.pause!()),
     resume: link.resume && (() => link.resume!()),
     close: () => link.close(),

@@ -1,10 +1,16 @@
 # Notes for `plugins/core/terminal/`
 
 - Terminals outlive the server in the terminal server (`termd/`: `termd.ts` the detached process, `host.ts` its core,
-  newline JSON over a Unix socket or pipe, `protocol.ts`). It owns each terminal whole: pty, headless xterm (pictures,
-  captures as text, vt or html), the app's meta (`name`, `note`: kept there, so they survive restarts), what it runs,
-  OSC 7501, size, clients, and how it ended (an hour; whole for ten minutes). Its events (started, exited, status,
+  newline JSON over a Unix socket or pipe, `protocol.ts`). It owns each terminal whole: pty, its screen in libghostty-vt
+  (`vt/`: pictures, captures as text, vt or html), the app's meta (`name`, `note`: kept there, so they survive
+  restarts), what it runs, OSC 7501, size, clients, and how it ended (an hour; whole for ten minutes). Its events (started, exited, status,
   meta...) reach plugin.ts' `onEvent`; an end nobody heard (the server was away) goes to the next to subscribe.
+- `vt/vt.ts` is Ghostty's terminal as WebAssembly (`ghostty-vt.wasm`, a release's file: `tools/ghostty_update.ts`
+  takes another, checking its signature), one instance per terminal (its memory goes back when it ends). It answers
+  programs as xterm.js does (`asXterm`), since a page answers in its stead while attached; its pictures are drawn by
+  xterm.js in the pages, so they carry no palette. Output is parsed as it's read and passed on at once after input, or
+  every few ms while it pours (BATCH in host.ts). `tools/test_vt.ts` checks it against xterm.js, `tools/perf/vt.ts`
+  times both.
 - When termd can't start, the same host runs in the server (`localBackend`: an in-process pipe), ending with it. Another
   plugin's `terminal:backend` (herdr, Rex) implements `Backend` (backend.ts); one without `capture` is from before and
   isn't used. Names follow the port (backendName), so a QA server's terminals stay out of the live list, and an app

@@ -6,9 +6,9 @@ import os from "node:os"
 import path from "node:path"
 import { createRequire } from "node:module"
 import type { IPty } from "node-pty"
-import type { Terminal as Headless } from "@xterm/headless"
-import type { SerializeAddon as Serializer } from "@xterm/addon-serialize"
 import { keysBytes } from "../keys.ts"
+import { newVt } from "../vt/load.ts"
+import type { Vt } from "../vt/vt.ts"
 import { REPLY, watcher, type Said } from "../osc7501.ts"
 import { adopter } from "./adopt.ts"
 import { PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit, type Info } from "./protocol.ts"
@@ -20,6 +20,9 @@ const ENDED_WHOLE = 10 * 60_000, ENDED_WHOLE_MAX = 8
 const ENDED_KEPT = 60 * 60_000, ENDED_MAX = 200
 /** Output waiting here (to be parsed, or unread by a client) past which the pty isn't read: its program waits. */
 const HOLD = 1 << 20
+/** While output pours, it's parsed and passed on at most every BATCH ms: a burst arrives in the pty's small reads, and
+ *  one message each would cost every hop more than the bytes. In the TYPING ms after input, it goes at once (echoes). */
+const BATCH = 4, TYPING = 100
 
 const require = createRequire(import.meta.url)
 export const ptyDir = path.dirname(require.resolve("node-pty/package.json"))
@@ -33,8 +36,6 @@ export function fixHelper() {
 }
 fixHelper()
 const pty = require("node-pty") as typeof import("node-pty")
-const { Terminal } = require("@xterm/headless") as typeof import("@xterm/headless")
-const { SerializeAddon } = require("@xterm/addon-serialize") as typeof import("@xterm/addon-serialize")
 
 /** A client's connection: `send` a message to it, `backlog` what it hasn't read yet (bytes). */
 export type Conn = { send: (m: object) => void; backlog: () => number; session: Session | null; ready: boolean; events?: boolean }
@@ -60,46 +61,6 @@ function metaOf(v: unknown): Record<string, string> {
   if (!v || typeof v !== "object") return out
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) if (/^[a-z][\w-]{0,31}$/i.test(k) && typeof x === "string" && x) out[k] = x.replace(/[\r\n]+/g, " ").slice(0, 500)
   return out
-}
-
-/** A terminal's text, a wrapped line joined to the one before, trailing blank lines left out: its last `lines` lines
- *  (null: all). */
-function screenText(term: Headless, lines: number | null) {
-  const b = term.buffer.active
-  const out: string[] = []
-  const from = lines === null ? 0 : Math.max(0, b.length - Math.max(lines, term.rows) * 2)
-  for (let y = from; y < b.length; y++) {
-    const line = b.getLine(y)
-    if (!line) continue
-    const text = line.translateToString(true)
-    if (line.isWrapped && out.length) out[out.length - 1] += text; else out.push(text)
-  }
-  while (out.length && !out[out.length - 1].trim()) out.pop()
-  return (lines === null ? out : out.slice(-lines)).join("\n")
-}
-
-/** A cell drawn faint: dim, or a grey a program draws a suggestion in (Claude Code's suggested reply). */
-function faint(c: { isDim(): number; isFgPalette(): boolean; isFgRGB(): boolean; getFgColor(): number }) {
-  if (c.isDim()) return true
-  const v = c.getFgColor()
-  if (c.isFgPalette()) return v === 8 || (v >= 237 && v <= 249)
-  if (!c.isFgRGB()) return false
-  const r = (v >> 16) & 255, g = (v >> 8) & 255, bl = v & 255
-  return Math.max(r, g, bl) - Math.min(r, g, bl) < 16 && r >= 80 && r <= 170
-}
-/** The cursor's line, its plain and faint text apart. */
-function inputLine(term: Headless) {
-  const b = term.buffer.active, line = b.getLine(b.baseY + b.cursorY)
-  if (!line) return { line: "", typed: "", suggested: "" }
-  let typed = "", suggested = ""
-  const cell = b.getNullCell()
-  for (let x = 0; x < line.length; x++) {
-    const c = line.getCell(x, cell)
-    if (!c) continue
-    const ch = c.getChars() || " "
-    if (faint(c)) suggested += ch; else typed += ch
-  }
-  return { line: line.translateToString(true), typed: typed.trimEnd(), suggested: suggested.trim() }
 }
 
 /** The terminal's foreground process group (what runs in front in it): Linux's /proc, else ps; 0 when unknown (Windows,
@@ -138,10 +99,11 @@ export class Session {
   private h: Around
   id: string; driver: Driver; shell: string; cwd: string; command: string; created = Date.now(); activity = Date.now(); spare: boolean
   title = ""; meta: Record<string, string>; exit?: Exit
-  term: Headless; ser: Serializer
+  /** Its screen and history (libghostty-vt). */
+  term: Vt
   attached = new Set<Conn>()
-  /** Output read while the headless terminal still parses the last piece: written (and passed on) as one. */
-  queued = ""; parsing = false
+  /** Output read and not yet parsed and passed on (BATCH), when that was done last, and when input last went in. */
+  queued = ""; flushing = false; flushed = 0; typed = 0
   /** Its pty not read for now (hold). */
   held = false
   said: Said = { seen: false, status: null }
@@ -154,12 +116,14 @@ export class Session {
     this.id = x.id; this.driver = x.driver; this.shell = x.shell; this.cwd = x.cwd; this.command = x.command; this.spare = x.spare
     this.meta = { ...x.meta }
     if (x.created) this.created = x.created
-    this.term = new Terminal({ cols: x.cols, rows: x.rows, scrollback: x.scrollback > 0 ? x.scrollback : SCROLLBACK, allowProposedApi: true })
-    this.ser = new SerializeAddon()
-    this.term.loadAddon(this.ser as never)
-    this.term.onTitleChange((t) => { if (t === this.title) return; this.title = t; if (!this.spare) this.h.emit({ type: "title", id: this.id, title: t }) })
-    // Its answers to the programs' questions, only while no client is there to answer.
-    this.term.onData((d) => { if (!this.attached.size && !this.exit) this.driver.write(d) })
+    this.term = this.screen(x.cols, x.rows, x.scrollback > 0 ? x.scrollback : SCROLLBACK)
+  }
+
+  private screen(cols: number, rows: number, scrollback: number) {
+    return newVt({ cols, rows, scrollback,
+      onTitle: (t) => { if (t === this.title) return; this.title = t; if (!this.spare) this.h.emit({ type: "title", id: this.id, title: t }) },
+      // Its answers to the programs' questions, only while no client is there to answer.
+      onReply: (d) => { if (!this.attached.size && !this.exit) this.driver.write(d) } })
   }
 
   info(): Info {
@@ -170,20 +134,32 @@ export class Session {
       ...(this.exit ? { exit: this.exit } : {}), ...(this.driver.via ? { via: this.driver.via } : {}) }
   }
 
-  /** Output into the headless terminal, then on once parsed. While a piece is being parsed what follows waits and goes
-   *  as one: a burst arrives in the pty's small reads, and one message each would cost every hop more than the bytes. */
+  /** Output into its terminal, then on: at the end of this turn of the event loop, or while it pours BATCH after it last
+   *  went. */
   output(d: string) {
     this.activity = Date.now()
-    if (this.parsing) { this.queued += d; if (this.queued.length > HOLD) this.hold(); return }
-    this.parsing = true
-    this.term.write(d, () => {
-      for (const c of this.attached) if (c.ready) c.send({ t: "data", d })
-      this.hold()
-      this.parsing = false
-      const next = this.queued
-      this.queued = ""
-      if (next) this.output(next)
-    })
+    this.queued += d
+    if (this.queued.length > HOLD) this.hold()
+    if (this.flushing) return
+    this.flushing = true
+    const go = () => { this.flushing = false; this.flush() }, now = performance.now()
+    const wait = now - this.typed < TYPING ? 0 : BATCH - (now - this.flushed)
+    if (wait > 0) setTimeout(go, wait); else setImmediate(go)
+  }
+  /** What's queued, parsed and passed on now. */
+  flush() {
+    const d = this.queued
+    if (!d || this.exit) return
+    this.queued = ""
+    try { this.term.write(d) } catch (e) {
+      // (libghostty-vt failed on it: a blank screen from here, the output still passed on)
+      this.h.log("screen", this.id, "failed, starting a blank one:", e)
+      const t = this.term
+      this.term = this.screen(t.cols, t.rows, t.scrollback)
+    }
+    for (const c of this.attached) if (c.ready) c.send({ t: "data", d })
+    this.flushed = performance.now()
+    this.hold()
   }
 
   /** The pty is read only while what it said can go on: parsed here, and read by the clients (the app's server holds
@@ -208,29 +184,26 @@ export class Session {
   ended(exit: Omit<Exit, "at">) {
     if (this.exit || this.ending) return
     this.ending = true
-    const last = this.queued
-    this.queued = ""
-    this.term.write(last, () => {
-      this.exit = { ...exit, at: Date.now() }
-      clearTimeout(this.told)
-      for (const c of this.attached) { if (last && c.ready) c.send({ t: "data", d: last }); c.send({ t: "exit", code: exit.code, signal: exit.signal, ...(exit.lost ? { lost: true } : {}) }); c.session = null }
-      this.attached.clear()
-      if (this.h.sessions.get(this.id) === this) this.h.sessions.delete(this.id)
-      this.h.log("exited", this.id, JSON.stringify(exit))
-      if (this.spare) this.term.dispose()
-      else this.h.keepEnded(this, this.h.emit({ type: "exited", id: this.id, exit: this.exit }) > 0)
-      this.h.changed?.()
-    })
+    this.flush()
+    this.exit = { ...exit, at: Date.now() }
+    clearTimeout(this.told)
+    for (const c of this.attached) { c.send({ t: "exit", code: exit.code, signal: exit.signal, ...(exit.lost ? { lost: true } : {}) }); c.session = null }
+    this.attached.clear()
+    if (this.h.sessions.get(this.id) === this) this.h.sessions.delete(this.id)
+    this.h.log("exited", this.id, JSON.stringify(exit))
+    if (this.spare) this.term.dispose()
+    else this.h.keepEnded(this, this.h.emit({ type: "exited", id: this.id, exit: this.exit }) > 0)
+    this.h.changed?.()
   }
 
   /** What it shows, `lines` from its bottom (its screen and history above it), or all of it (null). */
   capture(format: CaptureFormat, lines: number | null): Capture {
-    const b = this.term.buffer.active, rows = this.term.rows
-    const above = Math.min(b.length, lines === null ? b.length : Math.max(0, lines - rows))
-    const head = { cols: this.term.cols, rows, cursor: { x: b.cursorX, y: b.cursorY }, alternate: b.type === "alternate", input: inputLine(this.term) }
-    if (format === "vt") return { ...head, text: this.ser.serialize({ scrollback: above }) }
-    if (format === "html") return { ...head, text: this.ser.serializeAsHTML({ scrollback: above, includeGlobalBackground: true }) }
-    return { ...head, text: screenText(this.term, lines) }
+    const t = this.term, rows = t.rows
+    const above = Math.min(t.length, lines === null ? t.length : Math.max(0, lines - rows))
+    const head = { cols: t.cols, rows, cursor: t.cursor, alternate: t.alternate, input: t.inputLine() }
+    if (format === "vt") return { ...head, text: t.serialize(above) }
+    if (format === "html") return { ...head, text: t.html(above) }
+    return { ...head, text: t.text(lines) }
   }
 }
 
@@ -275,7 +248,7 @@ export function host(o: HostOptions) {
     const now = Date.now(), whole = [...endedOnes.values()].filter((e) => e.session)
     for (const [i, e] of whole.entries()) {
       if (whole.length - i > ENDED_WHOLE_MAX || now - (e.info.exit?.at ?? 0) > ENDED_WHOLE) {
-        e.text = screenText(e.session!.term, 200)
+        e.text = e.session!.term.text(200)
         e.session!.term.dispose()
         e.session = null
       }
@@ -410,10 +383,9 @@ export function host(o: HostOptions) {
           const n = lineCount(m.lines ?? e.info.rows, 200)
           return { text: n === null ? e.text : e.text.split("\n").slice(-n).join("\n"), cols: e.info.cols, rows: e.info.rows, cursor: { x: 0, y: 0 }, alternate: false, ended: true }
         }
-        const n = lineCount(m.lines ?? s.term.rows, (s.term.options.scrollback ?? SCROLLBACK) + s.term.rows)
-        // (after what's still being parsed is in it)
-        s.term.write("", () => c.send({ re: m.re, ...s.capture(format, n), ...(s.exit ? { ended: true } : {}) }))
-        return null
+        const n = lineCount(m.lines ?? s.term.rows, s.term.scrollback + s.term.rows)
+        s.flush()
+        return { ...s.capture(format, n), ...(s.exit ? { ended: true } : {}) }
       }
       case "forget": endedOnes.delete(String(m.id ?? "")); return {}
       case "attach": {
@@ -422,35 +394,31 @@ export function host(o: HostOptions) {
         c.session = s; c.ready = false
         s.attached.add(c)
         emit({ type: "clients", id: s.id, clients: s.attached.size })
-        s.term.write("", () => {
-          if (c.session !== s) return
-          c.send({ re: m.re, cols: s.term.cols, rows: s.term.rows })
-          c.ready = true
-        })
-        return null
+        // (what's queued reaches it as data: its screen so far is what's parsed)
+        c.ready = true
+        return { cols: s.term.cols, rows: s.term.rows }
       }
       case "snapshot": {
         const s = c.session
         if (!s) throw new Error("not attached")
-        s.term.write("", () => c.send({ re: m.re, data: s.ser.serialize({ scrollback: s.term.options.scrollback }) }))
-        return null
+        return { data: s.term.serialize() }
       }
       case "input": {
         // To the attached terminal, or (`id`: typing into one from outside, vau terminal send) that one.
         const s = m.id !== undefined ? live(m.id) : c.session
         if (!s) return undefined
-        s.activity = Date.now()
+        s.activity = Date.now(); s.typed = performance.now()
         // `paste` (vau terminal send, a long text, its markers taken out): bracketed when the program asked for that, so
         // it takes it whole rather than in the pty's pieces.
         const text = Buffer.from(String(m.b64 ?? ""), "base64")
-        s.driver.write(m.paste && s.term.modes.bracketedPasteMode ? `\x1b[200~${text.toString("utf8")}\x1b[201~` : text)
+        s.driver.write(m.paste && s.term.mode(2004) ? `\x1b[200~${text.toString("utf8")}\x1b[201~` : text)
         return m.re !== undefined ? {} : undefined
       }
       // Keys by name (keys.ts), as this terminal's modes have them send (an arrow in application cursor mode).
       case "keys": {
         const s = live(m.id)
-        s.activity = Date.now()
-        s.driver.write(keysBytes(Array.isArray(m.keys) ? m.keys.map(String) : [], { appCursor: s.term.modes.applicationCursorKeysMode }))
+        s.activity = Date.now(); s.typed = performance.now()
+        s.driver.write(keysBytes(Array.isArray(m.keys) ? m.keys.map(String) : [], { appCursor: s.term.mode(1) }))
         return {}
       }
       case "resize": {

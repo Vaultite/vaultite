@@ -1,4 +1,4 @@
-// Taking over an older terminal server's terminals (protocol 1: ptyd.ts, the keeper before), held through it and mirrored
+// Taking over an older terminal server's terminals (protocol 1: ptyd.ts, the keeper before; 2: termd with xterm.js), held through it and mirrored
 // here (screen, OSC 7501, end), so an upgrade keeps them whole; once its last one ends it's let go, and it exits.
 import net from "node:net"
 import { lineReader } from "../lines.ts"
@@ -86,9 +86,16 @@ async function adoptFrom(k: Kit, socket: string, scrollback: number, tries: numb
     const hello = await ctl.ask({ op: "hello" })
     if (Number(hello.v) >= PROTOCOL) throw new Error(`the server at ${socket} speaks protocol ${hello.v}, not an older one`)
     via = Number(hello.pid) || 0
-    // Its terminals' OSC 7501 as they change (it answers their probes itself), and what runs in each, asked every 2 s.
-    ctl.on((m) => { if (m.t === "status" && typeof m.id === "string") mine.get(m.id)?.status({ seen: !!m.seen, status: (m.status ?? null) as Said["status"] }) })
-    ctl.send({ op: "status" })
+    // Its terminals' OSC 7501 as they change (it answers their probes itself: 1 tells them asked, 2 as events) and their
+    // titles, and what runs in each, asked every 2 s.
+    ctl.on((m) => {
+      const s = typeof m.id === "string" ? mine.get(m.id) : undefined
+      if (!s) return
+      if (m.t === "status") s.status({ seen: !!m.seen, status: (m.status ?? null) as Said["status"] })
+      else if (m.t === "event" && m.type === "status") s.status(m.said as Said)
+      else if (m.t === "event" && m.type === "title" && typeof m.title === "string") s.title = m.title
+    })
+    ctl.send({ op: Number(hello.v) >= 2 ? "subscribe" : "status" })
     listed = ((await ctl.ask({ op: "list" })).sessions ?? []) as Listed[]
   } catch (e) { ctl.sock.destroy(); throw e }
   const poll = setInterval(() => {
