@@ -1,8 +1,8 @@
 // The browser's tabs, every machine's (liveroutes.ts on the server, electron/browser/live.ts in the desktop app): whose
 // each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done. A tab is `3` or `3@m1`.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { Bot, ChevronLeft, Globe, Keyboard, Pause, Play } from "lucide-react"
-import { Button, closePane, cn, dateText, errorText, get, LoadingSidebarRows, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, webPages } from "@vaultite"
+import { Bot, ChevronLeft, Globe, Keyboard, MousePointer2, Pause, Play } from "lucide-react"
+import { Button, closePane, cn, dateText, errorText, get, haptic, LoadingSidebarRows, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, useScopedState, webPages, coarse } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
@@ -108,7 +108,17 @@ function Tabs({ open }: { open: (t: LiveTab) => void }) {
   )
 }
 
-type State = Partial<LiveTab> & { tab: number }
+/** w and h: the page's size in its own CSS pixels. */
+type State = Partial<LiveTab> & { tab: number; w?: number; h?: number }
+type View = { s: number; x: number; y: number }
+type Point = { clientX: number; clientY: number }
+/** A touch from its first finger down to its last up; `two` once a second finger came. */
+type Gesture = { start: Point; last: Point; t: number; moved: boolean; hold: number
+  two: { from: View; fromAt: Point; d: number; last: Point; kind: "pinch" | "scroll" | null } | null }
+const MAX_ZOOM = 4, SHARP_AT = 1.3
+const SLOP = 8, HOLD_MS = 450, DOUBLE_MS = 350
+/** Trackpad mode: the pointer moves this much faster than the finger, and the zoomed picture follows it this near its edge. */
+const TRACKPAD_SPEED = 1.5, EDGE = 24
 const SPECIAL = new Set(["Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"])
 const BUTTON = ["left", "middle", "right"]
 const mods = (e: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) =>
@@ -128,6 +138,8 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   const keys = useRef<HTMLTextAreaElement>(null)
   const sock = useRef<WebSocket | null>(null)
   const bar = useRef<HTMLDivElement>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const pointer = useRef<HTMLDivElement>(null)
   usePaneTopBar(bar)
   const live = !hidden && onScreen
 
@@ -148,6 +160,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
       const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/web-viewer/live/${id}`)
       ws.binaryType = "blob"
       sock.current = ws
+      sharpSent.current = false
       let ended = false
       ws.onopen = () => { retry = 0 }
       ws.onmessage = (m) => {
@@ -160,6 +173,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
           if (was) URL.revokeObjectURL(was)
           setFramed(true)
           setStatus("live")
+          syncSharp()
           return
         }
         let d: { t?: string; text?: string; fatal?: boolean } & State
@@ -201,52 +215,245 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
 
   useEffect(() => () => { const u = img.current?.dataset.url; if (u) URL.revokeObjectURL(u) }, [])
 
-  const send = (m: Record<string, unknown>) => { const ws = sock.current; if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "input", ...m })) }
+  const raw = (m: Record<string, unknown>) => { const ws = sock.current; if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)) }
+  const send = (m: Record<string, unknown>) => raw({ t: "input", ...m })
   const at = (e: { clientX: number; clientY: number }) => {
     const r = img.current!.getBoundingClientRect()
     return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }
   }
+  const inside = (p: { x: number; y: number }) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1
 
-  // Input: a mouse as itself; a finger taps (a click) or drags (a scroll); keys through a hidden field that has the focus.
-  const touch = useRef<{ x: number; y: number; t: number; lastX: number; lastY: number; moved: boolean; sent: number } | null>(null)
+  // The picture zoomed (a pinch, or ⌘ and the wheel on a trackpad): scale s, moved x and y px from where it fits, set on
+  // the element rather than through React (a pinch moves it every frame). Zoomed in, frames come at twice the size.
+  const view = useRef<View>({ s: 1, x: 0, y: 0 })
+  const sharpSent = useRef(false)
+  const [zoomed, setZoomed] = useState(false)
+  const [trackpad, setTrackpad] = useScopedState("web-viewer:live-trackpad", false, "device")
+  /** The pointer drawn on the picture (the page's own isn't in its frames): where, 0 to 1, and whether it's held down. */
+  const cursor = useRef({ x: 0.5, y: 0.5, held: false })
+  const fit = (v: View): View => {
+    const el = img.current, bx = box.current
+    if (!el || !bx) return { s: 1, x: 0, y: 0 }
+    const s = Math.min(MAX_ZOOM, Math.max(1, v.s))
+    // (bigger than the box, it covers it; smaller, it's centred)
+    const axis = (off: number, size: number, room: number, t: number) =>
+      size * s <= room ? (room - size * s) / 2 - off : Math.min(-off, Math.max(room - size * s - off, t))
+    return { s, x: axis(el.offsetLeft, el.offsetWidth, bx.clientWidth, v.x), y: axis(el.offsetTop, el.offsetHeight, bx.clientHeight, v.y) }
+  }
+  const syncSharp = () => {
+    const on = view.current.s >= SHARP_AT
+    if (on !== sharpSent.current && sock.current?.readyState === WebSocket.OPEN) { sharpSent.current = on; raw({ t: "sharp", on }) }
+  }
+  const apply = () => {
+    const el = img.current, pt = pointer.current
+    if (!el) return
+    const v = view.current, z = v.s > 1.001
+    // (its size held while zoomed: sharper frames, twice as big, mustn't grow it)
+    if (z && !el.style.width) { el.style.width = `${el.offsetWidth}px`; el.style.height = `${el.offsetHeight}px` }
+    else if (!z && el.style.width) { el.style.width = ""; el.style.height = "" }
+    el.style.transform = z || v.x || v.y ? `translate(${v.x}px, ${v.y}px) scale(${v.s})` : ""
+    setZoomed(z)
+    syncSharp()
+    if (pt) {
+      const c = cursor.current
+      pt.style.display = trackpadOn.current || c.held ? "" : "none"
+      pt.style.transform = `translate(${el.offsetLeft + v.x + c.x * el.offsetWidth * v.s}px, ${el.offsetTop + v.y + c.y * el.offsetHeight * v.s}px)`
+      pt.dataset.held = c.held ? "true" : "false"
+    }
+  }
+  const trackpadOn = useRef(trackpad)
+  trackpadOn.current = trackpad
+  useEffect(apply, [trackpad])
+  /** Zoomed to s around a point on screen, which stays where it is (`from`: the view the gesture began with, `fromAt`
+   *  where the point was then: a pinch's midpoint, moving, pans too). */
+  const zoomTo = (s: number, to: { clientX: number; clientY: number }, from = view.current, fromAt = to) => {
+    const el = img.current, b = box.current?.getBoundingClientRect()
+    if (!el || !b) return
+    const ux = (fromAt.clientX - b.left - el.offsetLeft - from.x) / from.s, uy = (fromAt.clientY - b.top - el.offsetTop - from.y) / from.s
+    const n = Math.min(MAX_ZOOM, Math.max(1, s))
+    view.current = fit({ s: n, x: to.clientX - b.left - el.offsetLeft - ux * n, y: to.clientY - b.top - el.offsetTop - uy * n })
+    apply()
+  }
+  const unzoom = () => { view.current = { s: 1, x: 0, y: 0 }; apply() }
+  useEffect(() => {
+    const el = img.current, bx = box.current
+    if (!el || !bx) return
+    const ro = new ResizeObserver(() => { view.current = fit(view.current); apply() })
+    ro.observe(bx)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // A scroll of the page, by screen px, sent at most every 40 ms. Zoomed, a drag or the wheel moves the picture first,
+  // and only what's left at its edge scrolls the page (as a zoomed page in Safari).
+  const scrolled = useRef({ dx: 0, dy: 0, x: 0, y: 0, timer: 0 })
+  const scroll = (dx: number, dy: number, where: { x: number; y: number }) => {
+    const q = scrolled.current, r = img.current!.getBoundingClientRect()
+    q.dx += dx / r.width
+    q.dy += dy / r.height
+    q.x = where.x
+    q.y = where.y
+    q.timer ||= window.setTimeout(() => {
+      q.timer = 0
+      if (q.dx || q.dy) send({ type: "wheel", x: q.x, y: q.y, dx: q.dx, dy: q.dy })
+      q.dx = q.dy = 0
+    }, 40)
+  }
+  useEffect(() => () => clearTimeout(scrolled.current.timer), [])
+  const panOrScroll = (dx: number, dy: number, where: { x: number; y: number }) => {
+    const v = view.current, n = fit({ ...v, x: v.x + dx, y: v.y + dy })
+    view.current = n
+    apply()
+    const rx = dx - (n.x - v.x), ry = dy - (n.y - v.y)
+    if (Math.abs(rx) + Math.abs(ry) > 0.5) scroll(-rx, -ry, where)
+  }
+  /** Trackpad: the pointer moved by screen px, the picture following it when zoomed. */
+  const moveCursor = (dx: number, dy: number) => {
+    const el = img.current, bx = box.current, c = cursor.current
+    if (!el || !bx) return
+    const r = el.getBoundingClientRect()
+    c.x = Math.min(1, Math.max(0, c.x + (dx * TRACKPAD_SPEED) / r.width))
+    c.y = Math.min(1, Math.max(0, c.y + (dy * TRACKPAD_SPEED) / r.height))
+    const v = view.current, px = el.offsetLeft + v.x + c.x * el.offsetWidth * v.s, py = el.offsetTop + v.y + c.y * el.offsetHeight * v.s
+    const edge = (p: number, room: number) => (p < EDGE ? EDGE - p : p > room - EDGE ? room - EDGE - p : 0)
+    view.current = fit({ ...v, x: v.x + edge(px, bx.clientWidth), y: v.y + edge(py, bx.clientHeight) })
+    apply()
+  }
+
+  // Fingers: a tap clicks (two, a double click), a drag scrolls, two pinch, one held still presses and drags (selecting);
+  // in trackpad mode one moves a pointer that a tap clicks, two scroll or pinch. A mouse is itself.
+  const fingers = useRef(new Map<number, { x: number; y: number }>())
+  const gesture = useRef<Gesture | null>(null)
+  const lastTap = useRef({ t: 0, x: 0, y: 0 })
   const moved = useRef(0)
-  const down = (e: ReactPointerEvent<HTMLImageElement>) => {
+  const press = (action: "down" | "up" | "move", where: { x: number; y: number }) =>
+    send({ type: "mouse", action, button: action === "up" || cursor.current.held ? "left" : "none", count: 1, ...where })
+  const tapCount = (x: number, y: number) => {
+    const l = lastTap.current, now = Date.now()
+    const count = now - l.t < DOUBLE_MS && (trackpadOn.current || Math.hypot(x - l.x, y - l.y) < 30) ? 2 : 1
+    lastTap.current = count === 2 ? { t: 0, x, y } : { t: now, x, y }
+    return count
+  }
+  const pair = () => {
+    const [a, b] = [...fingers.current.values()]
+    return { mid: { clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }, d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) }
+  }
+  /** A finger's press let go (it lifted, or a second came). */
+  const release = (g: Gesture) => {
+    clearTimeout(g.hold)
+    if (!cursor.current.held) return
+    cursor.current.held = false
+    press("up", cursor.current)
+    apply()
+  }
+  const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "mouse") {
+      if (e.target !== img.current) return
       e.preventDefault()
       keys.current?.focus({ preventScroll: true })
       e.currentTarget.setPointerCapture(e.pointerId)
       send({ type: "mouse", action: "down", button: BUTTON[e.button] ?? "left", count: e.detail || 1, modifiers: mods(e), ...at(e) })
-    } else touch.current = { x: e.clientX, y: e.clientY, t: Date.now(), lastX: e.clientX, lastY: e.clientY, moved: false, sent: 0 }
+      return
+    }
+    fingers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (fingers.current.size === 1) {
+      const g: Gesture = { start: { clientX: e.clientX, clientY: e.clientY }, last: { clientX: e.clientX, clientY: e.clientY }, t: Date.now(), moved: false, two: null, hold: 0 }
+      // (held still, it presses: at the finger, or the trackpad's pointer)
+      const where = at(e)
+      if (trackpadOn.current || inside(where)) g.hold = window.setTimeout(() => {
+        if (gesture.current !== g || g.moved || g.two) return
+        if (!trackpadOn.current) { cursor.current.x = where.x; cursor.current.y = where.y }
+        cursor.current.held = true
+        haptic("medium")
+        press("down", cursor.current)
+        apply()
+      }, HOLD_MS)
+      gesture.current = g
+    } else if (fingers.current.size === 2 && gesture.current) {
+      release(gesture.current)
+      const p = pair()
+      gesture.current.two = { from: { ...view.current }, fromAt: p.mid, d: p.d, last: p.mid, kind: null }
+    }
   }
-  const move = (e: ReactPointerEvent<HTMLImageElement>) => {
-    const r = img.current!.getBoundingClientRect()
+  const move = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "mouse") {
       if (Date.now() - moved.current < (e.buttons ? 30 : 100)) return
       moved.current = Date.now()
       send({ type: "mouse", action: "move", button: e.buttons & 1 ? "left" : "none", modifiers: mods(e), ...at(e) })
       return
     }
-    const t = touch.current
-    if (!t) return
-    if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > 8) t.moved = true
-    if (!t.moved || Date.now() - t.sent < 40) return
-    send({ type: "wheel", ...at({ clientX: t.x, clientY: t.y }), dx: (t.lastX - e.clientX) / r.width, dy: (t.lastY - e.clientY) / r.height })
-    t.lastX = e.clientX
-    t.lastY = e.clientY
-    t.sent = Date.now()
+    const g = gesture.current, f = fingers.current.get(e.pointerId)
+    if (!g || !f) return
+    f.x = e.clientX
+    f.y = e.clientY
+    if (g.two) {
+      if (fingers.current.size < 2) return
+      const t = g.two, p = pair()
+      // (trackpad: two fingers scroll, unless they spread or close: then it's a pinch, for the rest of the gesture)
+      t.kind ??= !trackpadOn.current ? "pinch" : Math.abs(p.d - t.d) > 24 ? "pinch"
+        : Math.hypot(p.mid.clientX - t.fromAt.clientX, p.mid.clientY - t.fromAt.clientY) > SLOP ? "scroll" : null
+      if (t.kind === "pinch") zoomTo(t.from.s * (p.d / t.d), p.mid, t.from, t.fromAt)
+      else if (t.kind === "scroll") panOrScroll(p.mid.clientX - t.last.clientX, p.mid.clientY - t.last.clientY, at(p.mid))
+      t.last = p.mid
+      return
+    }
+    const dx = e.clientX - g.last.clientX, dy = e.clientY - g.last.clientY
+    if (!g.moved && Math.hypot(e.clientX - g.start.clientX, e.clientY - g.start.clientY) > SLOP) {
+      g.moved = true
+      if (!cursor.current.held) clearTimeout(g.hold)
+    }
+    if (!g.moved) return
+    g.last = { clientX: e.clientX, clientY: e.clientY }
+    if (trackpadOn.current) {
+      moveCursor(dx, dy)
+      if (Date.now() - moved.current < 30) return
+      moved.current = Date.now()
+      press("move", cursor.current)
+    } else if (cursor.current.held) {
+      const where = at(e)
+      cursor.current.x = Math.min(1, Math.max(0, where.x))
+      cursor.current.y = Math.min(1, Math.max(0, where.y))
+      apply()
+      if (Date.now() - moved.current < 30) return
+      moved.current = Date.now()
+      press("move", cursor.current)
+    } else panOrScroll(dx, dy, at(g.start))
   }
-  const up = (e: ReactPointerEvent<HTMLImageElement>) => {
-    if (e.pointerType === "mouse") { send({ type: "mouse", action: "up", button: BUTTON[e.button] ?? "left", count: e.detail || 1, modifiers: mods(e), ...at(e) }); return }
-    const t = touch.current
-    touch.current = null
-    if (t && !t.moved && Date.now() - t.t < 600) send({ type: "tap", ...at(e) })
+  const up = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse") {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) send({ type: "mouse", action: "up", button: BUTTON[e.button] ?? "left", count: e.detail || 1, modifiers: mods(e), ...at(e) })
+      return
+    }
+    if (!fingers.current.delete(e.pointerId)) return
+    const g = gesture.current
+    if (fingers.current.size || !g) return
+    gesture.current = null
+    if (cursor.current.held) return release(g)
+    clearTimeout(g.hold)
+    if (g.two || g.moved || Date.now() - g.t > HOLD_MS) return
+    if (trackpadOn.current) send({ type: "tap", count: tapCount(0, 0), ...cursor.current })
+    else {
+      const where = at(e)
+      if (inside(where)) send({ type: "tap", count: tapCount(e.clientX, e.clientY), ...where })
+    }
+  }
+  const cancel = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse") return
+    fingers.current.delete(e.pointerId)
+    if (fingers.current.size || !gesture.current) return
+    release(gesture.current)
+    gesture.current = null
   }
   useEffect(() => {
-    const el = img.current
+    const el = box.current
     if (!el) return
     const wheel = (e: WheelEvent) => {
       e.preventDefault()
-      const r = el.getBoundingClientRect(), k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? r.height : 1
+      const r = img.current!.getBoundingClientRect(), k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? r.height : 1
+      // (a trackpad's pinch comes as the wheel with Control held)
+      if (e.ctrlKey) return zoomTo(view.current.s * Math.exp((-e.deltaY * k) / 100), e)
+      if (view.current.s > 1.001) return panOrScroll(-e.deltaX * k, -e.deltaY * k, at(e))
+      if (e.target !== img.current) return
       send({ type: "wheel", ...at(e), dx: (e.deltaX * k) / r.width, dy: (e.deltaY * k) / r.height, modifiers: mods(e) })
     }
     el.addEventListener("wheel", wheel, { passive: false })
@@ -301,6 +508,12 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
           </span>
         </span>
         <span className="flex items-center gap-1 max-md:w-full max-md:justify-end">
+        {coarse && (
+          <Button look="quiet" size="small" aria-label="Trackpad" aria-pressed={trackpad} data-tip="Trackpad"
+            onClick={() => setTrackpad(!trackpad)} data-web-live-trackpad={trackpad} className={cn("max-md:size-11 max-md:px-0", trackpad && "bg-foreground/[0.08] text-foreground")}>
+            <MousePointer2 className="size-4" strokeWidth={2} />
+          </Button>
+        )}
         <Button look="quiet" size="small" aria-label="Keyboard" data-tip="Type in the page" onClick={() => keys.current?.focus({ preventScroll: true })} className="max-md:size-11 max-md:px-0">
           <Keyboard className="size-4" strokeWidth={2} />
         </Button>
@@ -317,10 +530,18 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
         </div>
       )}
       <div className="flex min-h-0 flex-1 flex-col @3xl:flex-row">
-        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-muted p-2">
-          <img ref={img} alt={info.title ?? ""} draggable={false} data-web-live-frame
-            className={cn("max-h-full max-w-full touch-none rounded-[4px] shadow-sm ring-[0.5px] ring-border select-none", (!framed || status === "gone") && "hidden")}
-            onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { touch.current = null }} onContextMenu={(e) => e.preventDefault()} />
+        <div ref={box} className="relative flex min-h-0 min-w-0 flex-1 touch-none items-center justify-center overflow-hidden bg-muted p-2 [-webkit-touch-callout:none]"
+          onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onContextMenu={(e) => e.preventDefault()}>
+          <img ref={img} alt={info.title ?? ""} draggable={false} data-web-live-frame data-web-live-zoom={zoomed ? "in" : "fit"}
+            style={info.w ? { maxWidth: `min(100%, ${info.w}px)` } : undefined}
+            className={cn("max-h-full max-w-full origin-top-left rounded-[4px] shadow-sm ring-[0.5px] ring-border select-none", (!framed || status === "gone") && "hidden")} />
+          <div ref={pointer} aria-hidden data-web-live-pointer className="pointer-events-none absolute top-0 left-0 data-[held=true]:[&>svg]:scale-90" style={{ display: "none" }}>
+            <MousePointer2 className="size-5 -translate-x-[3px] -translate-y-[2px] fill-foreground text-background drop-shadow-sm transition-transform" strokeWidth={1.5} />
+          </div>
+          {zoomed && framed && status !== "gone" && (
+            <Button look="secondary" size="small" onClick={unzoom} onPointerDown={(e) => e.stopPropagation()} data-web-live-unzoom
+              className="absolute right-3 bottom-3 bg-background/90 shadow-sm backdrop-blur-sm max-md:h-11">Zoom to fit</Button>
+          )}
           {shown && <p className="max-w-[420px] px-4 text-center text-[15px] text-muted-foreground md:text-[13px]">{shown}</p>}
           {status === "connecting" && framed && <span className="absolute top-3 right-3 rounded-[6px] bg-background/90 px-1.5 py-0.5 text-[11px] text-muted-foreground">Reconnecting…</span>}
           {error && status === "live" && <span className="absolute bottom-3 left-1/2 max-w-[90%] -translate-x-1/2 truncate rounded-[6px] bg-background/90 px-2 py-1 text-[12px]">{error}</span>}

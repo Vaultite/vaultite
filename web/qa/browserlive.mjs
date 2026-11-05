@@ -1,6 +1,7 @@
 // The desktop app's browser tabs watched and driven from a plain browser (a phone, another Mac), as on an always-on Mac
 // whose app is attached to its server (web/qa/attach.mjs): the list, frames, click or tap, typing, the wheel, Stop/Resume
-// agents, Done for an ask and the tab's steps, on a computer and a phone; then from another machine's server (Machines).
+// agents, Done for an ask and the tab's steps, on a computer and a phone (a pinch zooms, a tap zoomed in, a double tap,
+// trackpad mode); then from another machine's server (Machines).
 // WRITES: the throwaway vault only.
 //   node web/qa/browserlive.mjs <vault copy> [shots dir]
 import { _electron } from "playwright-core"
@@ -82,6 +83,52 @@ async function run(label, viewport, mobile, base = B) {
   const [bx, by] = at(0.09, 0.14)
   if (mobile) await page.touchscreen.tap(bx, by); else await page.mouse.click(bx, by)
   check(`${label}: a ${mobile ? "tap" : "click"} on the picture clicks the page`, await until(async () => clicks((await tab()).title) === clicks(before) + 1, 5000), [before, (await tab()).title])
+  if (mobile) {
+    // (real fingers, through CDP: Playwright's touchscreen only taps)
+    const cdp = await ctx.newCDPSession(page)
+    const touch = (type, pts) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) })
+    const gesture = async (from, to, steps = 10) => {
+      await touch("touchStart", from)
+      for (let i = 1; i <= steps; i++) { await touch("touchMove", from.map(([x, y], k) => [x + (to[k][0] - x) * i / steps, y + (to[k][1] - y) * i / steps])); await wait(20) }
+      await touch("touchEnd", [])
+    }
+    const count = async () => clicks((await tab()).title)
+    const area = await frame.locator("..").boundingBox()
+    const [cx, cy] = [area.x + area.width / 2, area.y + area.height / 2]
+    let was = await count()
+    await page.touchscreen.tap(bx, by)
+    await wait(120)
+    await page.touchscreen.tap(bx, by)
+    check(`${label}: a double tap is a double click`, await until(async () => (await count()) === was + 2, 5000), [was, (await tab()).title])
+    await wait(400)
+    await gesture([[bx - 20, by], [bx + 20, by]], [[bx - 70, by], [bx + 70, by]])
+    const zoom = () => frame.getAttribute("data-web-live-zoom")
+    check(`${label}: a pinch zooms the picture in`, await until(async () => (await zoom()) === "in", 3000), await zoom())
+    const zbox = await frame.boundingBox()
+    check(`${label}: … bigger than it fits, around the fingers`, zbox.width > box.width * 2.5, [box.width, zbox.width])
+    const [zx, zy] = [zbox.x + zbox.width * 0.09, zbox.y + zbox.height * 0.14]
+    was = await count()
+    await page.touchscreen.tap(zx, zy)
+    check(`${label}: zoomed in, a tap clicks where it is on the page`, await until(async () => (await count()) === was + 1, 5000), [zx, zy, (await tab()).title])
+    const y0 = (await tab()).title
+    await gesture([[cx, cy + 40]], [[cx, cy - 40]])
+    await wait(300)
+    check(`${label}: zoomed in, a drag pans the picture, the page staying`, (await tab()).title === y0 && (await frame.boundingBox()).y < zbox.y - 40, [y0, (await tab()).title])
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/live-${label}-zoomed.png` })
+    await page.locator("[data-web-live-unzoom]").click()
+    check(`${label}: Zoom to fit zooms out`, await until(async () => (await zoom()) === "fit", 3000), await zoom())
+    await page.locator("[data-web-live-trackpad]").click()
+    check(`${label}: trackpad mode draws a pointer`, await until(() => page.locator("[data-web-live-pointer]").isVisible(), 3000))
+    // (the pointer starts mid-picture, and goes 1.5 times the finger's way)
+    const fb = await frame.boundingBox()
+    const [mx, my] = [((0.09 - 0.5) * fb.width) / 1.5, ((0.14 - 0.5) * fb.height) / 1.5]
+    await gesture([[cx, cy]], [[cx + mx, cy + my]], 12)
+    was = await count()
+    await page.touchscreen.tap(cx + 20, cy + 20)
+    check(`${label}: trackpad mode, a tap clicks where the pointer is`, await until(async () => (await count()) === was + 1, 5000), [was, (await tab()).title])
+    await page.locator("[data-web-live-trackpad]").click()
+    await cdp.detach()
+  }
   if (!mobile) {
     await page.mouse.click(...at(0.3, 0.05))
     await page.keyboard.type("xyz")

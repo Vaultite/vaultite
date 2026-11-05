@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A browser tab watched from your phone zooms**: pinch the picture in (sharper while zoomed), drag to move around it
+  and on past its edge to scroll the page, and Zoom to fit to go back; a trackpad's pinch does the same on a Mac. A double
+  tap double-clicks, a finger held still a moment presses and drags (to select text or move a slider), and trackpad mode
+  moves a pointer you click with a tap, for menus that open on hover and small targets.
 - **A tab playing in a folded group shows a speaker on the group**: in the tab bar and the sidebar, a click on it shows
   the tab, pauses it or mutes it. A split's row in the sidebar shows which pane plays. Pages can be paused and played
   again from the app: the tab's menu, the speaker's menu and the status bar's Playing have Pause and Play.

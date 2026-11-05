@@ -4,9 +4,11 @@ import type { NativeImage } from "electron"
 import { agentState, helped, press, setPaused, setTaken, setWatched } from "./agent.ts"
 import { allPages, appWindows, busyWhen, cdp, eachPage, handle, mayOpen, tell, tellServer, type EngineWindow, type EnginePage } from "./engine.ts"
 
-/** At most this many frames a second reach the server (a window here: LOCAL_FPS), at most this big (device pixels). */
+/** At most this many frames a second reach the server (a window here: LOCAL_FPS), at most this big (device pixels);
+ *  twice that while a viewer zooms in (`sharp`), a Retina page having the pixels. */
 const FPS = 8, LOCAL_FPS = 15
 const MAX_W = 1280, MAX_H = 1600
+const maxOf = (sharp: boolean) => (sharp ? { maxWidth: MAX_W * 2, maxHeight: MAX_H * 2 } : { maxWidth: MAX_W, maxHeight: MAX_H })
 /** A watch the server stopped renewing (it went away) ends after this. */
 const RENEW_MS = 30_000
 /** Without a frame this long (a hidden page doesn't paint, a still one sends none), the page is drawn for it. */
@@ -15,7 +17,7 @@ const STILL_MS = 1000
 /** `cast` and `drawn`: the last frame each way (a drawing makes the page paint a frame too: each is sent once). `by`: who
  *  watches, the server (SERVER) or a view of a window's (`<window id>:<its key>`), and when each last renewed. */
 type Watch = { p: EnginePage; css: { w: number; h: number }; frame: string; cast: string; drawn: string; sent: number; checked: number
-  trailing: ReturnType<typeof setTimeout> | null
+  sharp: boolean; trailing: ReturnType<typeof setTimeout> | null
   tick: ReturnType<typeof setInterval>; by: Map<string, number>; state: string; onMessage: (...a: unknown[]) => void }
 const watches = new Map<number, Watch>()
 const SERVER = "server"
@@ -66,14 +68,14 @@ async function measure(w: Watch) {
   const m = await cdp<{ cssVisualViewport?: { clientWidth: number; clientHeight: number } }>(w.p.wc, "Page.getLayoutMetrics").catch(() => null)
   if (m?.cssVisualViewport) w.css = { w: m.cssVisualViewport.clientWidth, h: m.cssVisualViewport.clientHeight }
 }
-const jpegOf = (img: NativeImage) => {
-  const { width, height } = img.getSize()
-  const scale = Math.min(1, MAX_W / width, MAX_H / height)
+const jpegOf = (img: NativeImage, sharp: boolean) => {
+  const { width, height } = img.getSize(), { maxWidth, maxHeight } = maxOf(sharp)
+  const scale = Math.min(1, maxWidth / width, maxHeight / height)
   return (scale < 1 ? img.resize({ width: Math.round(width * scale) }) : img).toJPEG(60).toString("base64")
 }
 
 async function start(p: EnginePage) {
-  const w: Watch = { p, css: { w: 0, h: 0 }, frame: "", cast: "", drawn: "", sent: 0, checked: 0, trailing: null, by: new Map(), state: "", tick: setInterval(() => void tick(w), 700),
+  const w: Watch = { p, css: { w: 0, h: 0 }, frame: "", cast: "", drawn: "", sent: 0, checked: 0, sharp: false, trailing: null, by: new Map(), state: "", tick: setInterval(() => void tick(w), 700),
     onMessage: (_e, method, params) => {
       if (method !== "Page.screencastFrame") return
       const f = params as { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }
@@ -87,7 +89,7 @@ async function start(p: EnginePage) {
     await p.wake()
     await measure(w)
     p.wc.debugger.on("message", w.onMessage as never)
-    await cdp(p.wc, "Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: MAX_W, maxHeight: MAX_H })
+    await cdp(p.wc, "Page.startScreencast", { format: "jpeg", quality: 60, ...maxOf(false) })
     await still(w)
   } catch (e) { stop(p.id); throw e }
   return w
@@ -99,14 +101,14 @@ async function still(w: Watch) {
   const img = await w.p.wc.capturePage(undefined, { stayHidden: true }).catch(() => null)
   if (!img || img.isEmpty() || watches.get(w.p.id) !== w) return
   await measure(w)
-  const jpeg = jpegOf(img)
+  const jpeg = jpegOf(img, w.sharp)
   if (jpeg !== w.drawn) offer(w, (w.drawn = jpeg))
 }
 
 async function tick(w: Watch) {
   for (const [k, at] of w.by) if (Date.now() - at > RENEW_MS) w.by.delete(k)
   if (w.p.wc.isDestroyed() || !w.by.size) return stop(w.p.id)
-  const s = JSON.stringify(stateOf(w.p))
+  const s = JSON.stringify({ ...stateOf(w.p), w: w.css.w, h: w.css.h })
   if (s !== w.state) { w.state = s; if (w.by.has(SERVER)) tellServer(w.p.win, "live:state", JSON.parse(s)) }
   if (Date.now() - Math.max(w.sent, w.checked) > STILL_MS) await still(w)
 }
@@ -146,11 +148,14 @@ async function input(p: EnginePage, e: Input) {
   const modifiers = Math.max(0, Math.min(15, Number(e.modifiers) || 0))
   const button = typeof e.button === "string" && e.button in BUTTONS ? e.button : "left"
   switch (e.type) {
-    case "tap":
+    case "tap": {
+      // (count 2: a double tap's second, a double click)
+      const clickCount = Math.min(3, Math.max(1, Number(e.count) || 1))
       await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y })
-      await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 })
-      await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 })
+      await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount })
+      await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount })
       return
+    }
     case "mouse": {
       const type = MOUSE[String(e.action)]
       if (!type) throw new Error("a mouse action is down, up or move")
@@ -199,7 +204,18 @@ function unwatch(id: number, who: string) {
 handle("agent:live:watch", async (_win, tab) => {
   const p = pageOf(tab)
   const w = await watch(p, SERVER)
-  return { ...entryOf(p), frame: w.frame }
+  return { ...entryOf(p), frame: w.frame, w: w.css.w, h: w.css.h }
+})
+// (a viewer zoomed in: frames at twice the size till it zooms out; the screencast restarted at the new size)
+handle("agent:live:sharp", async (_win, tab, on) => {
+  const w = watches.get(pageOf(tab).id)
+  if (!w || w.sharp === (on === true)) return null
+  w.sharp = on === true
+  w.cast = w.drawn = ""
+  await cdp(w.p.wc, "Page.stopScreencast").catch(() => {})
+  await cdp(w.p.wc, "Page.startScreencast", { format: "jpeg", quality: 60, ...maxOf(w.sharp) })
+  await still(w)
+  return null
 })
 handle("agent:live:unwatch", (_win, tab) => unwatch(Number(tab), SERVER))
 // The app's window watching a page of its own (the agents' panel): frames come as engine:live:frame, renewed as here.

@@ -67,6 +67,9 @@ export function liveView(plugin: Plugin) {
   // ---------- watching: a socket per viewer, the engine's frames to each, their input back ----------
 
   const watchers = new Map<number, Set<WebSocket>>()
+  /** The viewers zoomed in, for whom the engine sends frames twice the size. */
+  const sharp = new Set<WebSocket>()
+  const sharpen = (tab: number) => void desktop("agent:live:sharp", tab, [...watchers.get(tab) ?? []].some((ws) => sharp.has(ws))).catch(() => {})
   let renew: ReturnType<typeof setInterval> | null = null
   const each = (tab: number, fn: (ws: WebSocket) => void) => { for (const ws of watchers.get(tab) ?? []) if (ws.readyState === ws.OPEN) fn(ws) }
   const json = (ws: WebSocket, m: unknown) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
@@ -89,7 +92,10 @@ export function liveView(plugin: Plugin) {
   }
   function leave(tab: number, ws: WebSocket) {
     const set = watchers.get(tab)
-    if (!set?.delete(ws) || set.size) return
+    const was = sharp.delete(ws)
+    if (!set?.delete(ws)) return
+    if (was) sharpen(tab)
+    if (set.size) return
     watchers.delete(tab)
     void desktop("agent:live:unwatch", tab).catch(() => {})
     if (!watchers.size && renew) { clearInterval(renew); renew = null }
@@ -111,6 +117,11 @@ export function liveView(plugin: Plugin) {
       let m: { t?: unknown }
       try { m = JSON.parse(String(raw)) } catch { return }
       if (m?.t === "input") void desktop("agent:live:input", tab, m).catch((e) => json(ws, { t: "error", text: (e as Error).message }))
+      else if (m?.t === "sharp" && sharp.has(ws) !== ((m as { on?: unknown }).on === true)) {
+        if ((m as { on?: unknown }).on === true) sharp.add(ws)
+        else sharp.delete(ws)
+        sharpen(tab)
+      }
     })
     try { await watch(tab, ws) } catch (e) {
       json(ws, { t: "error", text: (e as Error).message, fatal: true })
