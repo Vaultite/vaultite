@@ -18,10 +18,11 @@ pane's menu) closes it with all of them. ⌃Tab and ⇧⌘] go through the focus
 the split is on screen and a pane has more than one, the Tabs panel lists each pane's under its row, headed by where it
 sits: a click shows one, its X closes it, a drag moves it along its pane's list, into another's, onto a pane (an edge
 splits it off, its own pane's too while that has others) or out to the list as a tab of its own, and a list's tab
-dropped on a pane's list joins it; another tab
-on screen, the row is its map again, each cell saying how many more its pane has (+2). With the tab bar on, such a pane
-has a strip of its tabs on top. A split closed down to one pane has its tabs as tabs of the list. Kept as each pane's
-`stack` (its other places, each a pane of its own, in order) and `stackAt` (where the one it shows sits among them):
+dropped on a pane's list joins it; another tab on screen, the row is its map again, each cell saying how many more its
+pane has (+2). With the tab bar on, every pane of a split has a strip of its tabs on top, one too, its + opening one
+among them (none for a pinned tab's pane or one that keeps its view, whose new tabs go to the list); a tab dropped on a
+strip joins it. A split closed down to one pane has its tabs as tabs of the list. Kept as each pane's `stack` (its
+other places, each a pane of its own, in order) and `stackAt` (where the one it shows sits among them):
 ```
 {"id": "t2", "focus": "p3", "root": {"id": "s1", "dir": "row", "sizes": [0.5, 0.5], "kids": [{"id": "p2", "to": "file:Notes/b.md"},
   {"id": "p3", "to": "view:web/https://example.com/", "stack": [{"id": "p4", "to": "file:Notes/c.md"}], "stackAt": 1}]}}
@@ -29,8 +30,11 @@ has a strip of its tabs on top. A split closed down to one pane has its tabs as 
 `vau tabs` lists them after their pane (`behind` it); focus, move (`--into <pane> --side center` joins its tabs, `--at`
 takes one out to the list) and closing on a device act on them by id.
 
-The Tabs panel lists the open tabs (a split tab one row, its panes drawn in the shape of its split), so the tab bar can be off: vertical tabs. One switch moves the tabs
-between the two (the palette's Show tabs in the sidebar / Show tabs on top, or right-click the tab bar or the panel): in
+The Tabs panel lists the open tabs (a split tab one row, its panes drawn in the shape of its split), so the tab bar can
+be off: vertical tabs. In a split's row every cell is a pane (lit under the pointer: a press drags that pane, its X
+closes it, a right-click is its menu, the tab's under Tab); the whole tab is the … at the row's end, past the map, where
+a tab's row has its … (its slot kept, so the map never moves): a click opens the tab's menu, a press drags the tab. One
+switch moves the tabs between the two (the palette's Show tabs in the sidebar / Show tabs on top, or right-click the tab bar or the panel): in
 the sidebar, appearance `tabBar` is false and `tabs:tabs` is at the top of the left sidebar (sidebars.json, or the
 workspace's `sidebars`); on top, `tabBar` is true and the panel is hidden. The tabs end in a New tab row: a new tab at
 the end of the list, in its place (double-clicking under the list too, and a tab bar's +; ⌘T opens one beside

@@ -3,9 +3,9 @@
 // the split's row while it's on screen (plugins/core/tabs PaneList): a click shows one, its X closes it, a drag moves it
 // along its pane's list, into the other's or out to the list; a list's tab dragged onto a pane's list joins it; another
 // tab shown, the row folds to its map with +n per cell. ⌘W closes the place shown, the pane's next showing. The place a
-// pane shows dragged onto its own pane's edge splits off; the tab on screen too. With the tab bar on, a pane's strip of
-// its tabs (components/Tabs.tsx PlaceStrip). WRITES the vault's appearance.json (put back):
-// throwaway server only.
+// pane shows dragged onto its own pane's edge splits off; the tab on screen too. With the tab bar on, every pane's strip
+// of its tabs (components/Tabs.tsx PlaceStrip), one tab too: its +, a tab dropped on it. WRITES the vault's
+// appearance.json (put back): throwaway server only.
 //   node web/qa/panetabs.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -13,8 +13,8 @@ import { command, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = "/tmp/panetabs-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
-const notes = ["Notes", "Projects", "People"].flatMap((dir) => (existsSync(path.join(VAULT, dir)) ? readdirSync(path.join(VAULT, dir)) : []).filter((f) => f.endsWith(".md")).map((f) => `${dir}/${f}`)).slice(0, 5)
-const [a, b, c, d, e] = notes
+const notes = ["Notes", "Projects", "People"].flatMap((dir) => (existsSync(path.join(VAULT, dir)) ? readdirSync(path.join(VAULT, dir)) : []).filter((f) => f.endsWith(".md")).map((f) => `${dir}/${f}`)).slice(0, 6)
+const [a, b, c, d, e, f6] = notes
 const look = path.join(VAULT, ".vaultite", "appearance.json")
 const was = existsSync(look) ? readFileSync(look, "utf8") : null
 const lookAs = (o) => writeFileSync(look, JSON.stringify({ ...JSON.parse(was ?? "{}"), ...o }) + "\n")
@@ -153,23 +153,41 @@ try {
     await page.locator("[data-tabs-panel] [data-cell-more]").allInnerTexts())
   await page.locator("[data-tabs-panel]").screenshot({ path: `${OUT}panetabs-folded.png` })
 
-  // The tab bar on: a pane with tabs of its own has a strip of them.
+  // The tab bar on: each pane of the split has a strip of its own tabs, one or more, with its +.
   await page.locator(`[data-tabs-panel] [data-open-tab="${split}"]`).click(); await until(async () => (await state()).active === split)
   lookAs({ ...USER, tabBar: true })
   const strip = page.locator("[data-pane-area] > section:not([data-away]) [data-place-strip]")
-  check("with the tab bar, the pane with tabs of its own has a strip of them", await until(async () => (await strip.count()) === 1 && (await strip.locator("[data-place]").count()) === 2, 8000))
+  const chips = () => strip.evaluateAll((es) => es.map((e) => e.querySelectorAll("[data-place]").length).sort().join())
+  check("with the tab bar, every pane of the split has a strip of its tabs, one tab too", await until(async () => (await strip.count()) === 2 && (await chips()) === "1,2", 8000), await chips())
+  check("…each with its +", (await strip.locator("[data-place-new]").count()) === 2)
   await page.screenshot({ path: `${OUT}panetabs-strip.png` })
   const first = (await shown()).ids.find((x) => x.length > 1)[0]
   await strip.locator(`[data-place="${first}"]`).click()
   check("…a click on a chip shows it", await until(async () => (await state()).focus === first, 3000), await state())
   await strip.locator(`[data-place-close="${first}"]`).click({ force: true })
-  check("…its X closes it, the strip going with the pane's last but one", await until(async () => (await strip.count()) === 0, 3000), await shown())
+  check("…its X closes it, the strip staying with the pane's last", await until(async () => (await strip.count()) === 2 && (await chips()) === "1,1", 3000), await shown())
+  await page.mouse.move(700, 500); await wait(300)
+  await page.screenshot({ path: `${OUT}panetabs-strip-one.png`, clip: { x: 0, y: 0, width: 1280, height: 140 } })
   await command(page, "Reopen closed tab")
-  check("…⌘⇧T brings it back, the strip with it", await until(async () => (await strip.count()) === 1 && (await state()).focus === first, 3000), await shown())
+  check("…⌘⇧T brings it back among them", await until(async () => (await chips()) === "1,2" && (await state()).focus === first, 3000), await shown())
   // A strip's chip, the place its pane shows, dragged onto its own pane's edge: it splits off.
   const chipAt = mid(await strip.locator(`[data-place="${first}"]`).boundingBox()), panesBefore = (await shown()).panes.length
   await drag(chipAt, await edge(first, "right"))
-  check("…its chip shown dragged onto its own pane's edge splits it off, the strip going", await until(async () => (await shown()).panes.length === panesBefore + 1 && (await strip.count()) === 0 && (await state()).focus === first, 3000), await shown())
+  check("…its chip shown dragged onto its own pane's edge splits it off, with a strip of its own", await until(async () => (await shown()).panes.length === panesBefore + 1 && (await chips()) === "1,1,1" && (await state()).focus === first, 3000), await shown())
+  // Its + opens a tab among the pane's own.
+  const second = (await shown()).ids[1][0], tabsNow = (await state()).tabs.length
+  await page.locator(`[data-place-new="${second}"]`).click()
+  check("a strip's + opens a blank tab among its pane's, shown", await until(async () => (await shown())?.panes[1]?.endsWith("^new") && (await state()).tabs.length === tabsNow, 3000), await shown())
+  await command(page, "Close current tab")
+  check("…⌘W closes it again", await until(async () => (await chips()) === "1,1,1", 3000), await chips())
+  // A tab of the list dropped on a pane's one-tab strip joins its tabs.
+  await page.locator("[data-tab-strip] [data-ui='button:tab:new']").click(); await hash(f6)
+  check("(a tab of the list's own)", await until(async () => (await state()).tabs.length === tabsNow + 1 && (await shown())?.panes.join() === short(f6), 5000), await state())
+  const fresh = (await state()).active, at = (await state()).tabs.find((t) => t.id === split).ids[0][0]
+  await page.locator(`[data-tab-strip] [data-tab-id="${split}"] [role=tab]`).first().click(); await until(async () => (await state()).active === split)
+  const from = await page.locator(`[data-tab-strip] [data-tab-id="${fresh}"]`).boundingBox(), onto = await page.locator(`[data-place-strip="${at}"]`).boundingBox()
+  await drag(mid(from), { x: onto.x + onto.width * 0.6, y: onto.y + onto.height / 2 })
+  check("a list's tab dropped on a pane's one-tab strip joins its tabs", await until(async () => (await state()).tabs.length === tabsNow && (await chips()) === "1,1,2", 3000), [await chips(), await state()])
 
   // The tab on screen dragged from the Tabs panel onto its own pane's edge: a split of it and the tab shown before it.
   lookAs(USER)

@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react"
-import { AppWindow, Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
+import { AppWindow, Archive, ChevronDown, Ellipsis, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
-  activePane, Badged, beforeStart, edgeScroller, canDropTab, closePane, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
-  groupsAsDrawn, HeadingButton, IconAction, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, paneMenuOf, panesOf, placeMenuOf, placesIn, placesOf, reorder, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
+  activePane, Badged, beforeStart, edgeScroller, canDropTab, closePane, closeTab, cn, coarse, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
+  groupsAsDrawn, HeadingButton, IconAction, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, paneMenuOf, panesOf, placeMenuOf, placesIn, placesOf, reorder, rightClickBelow, useArchivedTabs, useMenuShowing, pastEnd, put, rowMenu, RowKeys, selectClick,
   selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabButtons, tabListDrop, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabSlotBeside, tabsMenu, useDrag, useDropHit,
   useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
   INCOMING, laidOut,
@@ -56,18 +56,21 @@ function SplitMap({ t, active, info, folded }: { t: Tab; active: boolean; info: 
     const h = d?.hit, at = h?.data as TabDrop | undefined
     return h && h.target.startsWith(LIST) && at?.kind === "pane" ? at.pane : null
   })
+  // (its frame and the lines between its cells, one weight: panes in a window)
+  const line = active ? "border-foreground/20 ring-foreground/20" : "border-foreground/15 ring-foreground/15"
   const menu = (p: Pane) => menuFor(() => [...paneMenuOf(p.id), { label: "Tab", icon: AppWindow, sep: true, run: () => {}, items: tabMenuOf(t.id) }])
   const cell = (p: Pane, size: number, icon = false) => {
     const pi = info(p), on = active && p.id === t.focus
     const mark = <Badged on={pi.badge}><pi.icon className={cn("size-4 shrink-0", pi.tint ? undefined : on ? "text-primary" : "text-muted-foreground", pi.iconClassName)} strokeWidth={2} style={pi.tint ? { color: pi.tint } : undefined} /></Badged>
-    const lit = into === p.id && "bg-primary/15", more = folded ? placesOf(p).length - 1 : 0
+    // (lit as a dragged pane's swap target, else under the pointer: the pane a press would grab)
+    const lit = into === p.id ? "bg-primary/15" : !into && "hover:bg-foreground/[0.06]", more = folded ? placesOf(p).length - 1 : 0
     // (its mark, as a tab's row has it: a page playing in it, its speaker a click from muting it)
     const sign = pi.mark && <IconAction action={pi.mark} className={icon ? undefined : "-ml-1 @max-[52px]:ml-0"}><pi.mark.icon className={cn("size-3.5 shrink-0", !pi.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={pi.mark.tint ? { color: pi.mark.tint } : undefined} /></IconAction>
-    if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} className={cn("flex h-5.5 shrink-0 items-center gap-1 rounded-[5px] px-1 ring-1 ring-foreground/10 ring-inset", lit)}>{mark}
+    if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} className={cn("flex h-5.5 shrink-0 items-center gap-1 rounded-[5px] px-1 ring-1 ring-inset transition-colors", line, lit)}>{mark}
       {sign}</span>
     // (too narrow for its name: its icon alone, in the middle; its X over its end, where its name fades)
     return (
-      <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} style={{ flex: `${size} 1 0` }} className={cn("group/cell @container relative flex h-5.5 min-w-0", lit)}>
+      <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} style={{ flex: `${size} 1 0` }} className={cn("group/cell @container relative flex h-5.5 min-w-0 transition-colors", lit)}>
         <span className="flex w-full min-w-0 items-center gap-2 px-1 @max-[52px]:justify-center @max-[52px]:gap-1">
           {mark}
           {sign}
@@ -89,7 +92,7 @@ function SplitMap({ t, active, info, folded }: { t: Tab; active: boolean; info: 
       <span key={n.id} style={{ flex: `${size} 1 0` }} className={cn("flex min-w-0", stacked ? "flex-col" : "items-stretch")}>
         {tiledKids(n).map(({ k, size: s }, j) => (
           <span key={k.id} style={stacked ? undefined : { flex: `${s} 1 0` }}
-            className={cn("flex min-w-0 items-center", j && (stacked ? "border-t border-foreground/10" : "border-l border-foreground/10"))}>
+            className={cn("flex min-w-0 items-center", j && (stacked ? "border-t" : "border-l"), j && line)}>
             {draw(k, 1, stacked ? linesOf(k) : room)}
           </span>
         ))}
@@ -99,15 +102,28 @@ function SplitMap({ t, active, info, folded }: { t: Tab; active: boolean; info: 
   return (
     // (framed as a small window, its icons in line with the other rows')
     <span data-split-map className="-ml-1 flex w-full min-w-0 items-center gap-1">
-      <span className={cn("flex min-w-0 flex-1 overflow-hidden rounded-[5px] ring-1 ring-inset", active ? "ring-foreground/20" : "ring-foreground/10")}>{draw(t.root, 1, MAX_LINES)}</span>
+      <span className={cn("flex min-w-0 flex-1 overflow-hidden rounded-[5px] ring-1 ring-inset", line)}>{draw(t.root, 1, MAX_LINES)}</span>
       {floats.map((p) => cell(p, 0, true))}
     </span>
   )
 }
 
-/** A split's map: no fade at its end (it would cut its frame), but under the row's buttons on hover it fades as a
- *  label does (index.css' fade-end, by --fade-reserve). */
-const MAP_LABEL = "[mask-image:none] group-hover/row:[mask-image:linear-gradient(to_right,#000_calc(100%-1.25rem-var(--fade-reserve)),transparent_calc(100%-var(--fade-reserve)))]"
+/** A split tab's handle past its map (all panes): a click opens the tab's menu under it, a press drags the whole tab.
+ *  Where a tab's row has its …, its slot kept so the map never moves; shown on hover, focus, its menu open or dragged. */
+function SplitMore({ label, held }: { label: string; held: boolean }) {
+  const showing = useMenuShowing(), [menued, setMenued] = useState(false)
+  useEffect(() => { if (!showing) setMenued(false) }, [showing])
+  return (
+    <HeadingButton icon={Ellipsis} label={`More for ${label}`} tip="More" data-split-more data-on={held || menued || undefined}
+      onClick={(e) => { setMenued(true); rightClickBelow(e) }}
+      // (a finger has no hover: always there)
+      className={cn("-ml-1 shrink-0 transition-opacity duration-(--motion-fast) focus-visible:opacity-100 data-on:opacity-100 data-on:text-foreground",
+        !coarse && "opacity-0 group-hover/row:opacity-100")} />
+  )
+}
+
+/** A split's map: no fade at its end (it would cut its frame; nothing is drawn over it, its … has a slot of its own). */
+const MAP_LABEL = "[mask-image:none]"
 
 /** A tab's row. A split tab's shows each pane, side by side: a click on one focuses it, and a pane dragged out of it
  *  becomes a tab of its own where it's let go (or goes into another tab, held on its row a moment: Rex's). */
@@ -161,6 +177,7 @@ function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Ta
         onClick={click}>
         <Marks id={`tab:${t.id}`} />
         {t.pinned && <span className="grid size-5 shrink-0 place-items-center text-muted-foreground" aria-label="Pinned"><Pin className="size-3.5" strokeWidth={2} /></span>}
+        {split && <SplitMore label={ps.map((p) => info(p).label).join(" | ")} held={!!dragging} />}
       </SidebarRow>
       {lists && <div data-pane-lists className={cn("flex flex-col gap-1 pt-px pb-1", line && "ml-3.5")}>{ps.map((p) => <PaneList key={p.id} t={t} p={p} info={info} hit={hit} />)}</div>}
     </div>

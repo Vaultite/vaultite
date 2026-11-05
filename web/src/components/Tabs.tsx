@@ -12,7 +12,7 @@ import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
 import { stem } from "@/core/files"
-import { activePane, askRename, barsHidden, closePane, closeTab, closeTabIds, closeTabs, closeWholePane, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, set, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
+import { activePane, askRename, barsHidden, closePane, closeTab, closeTabIds, closeTabs, closeWholePane, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, set, showActiveUnder, tabById, togglePinTab, useTabList, keepsTab } from "@/core/workspace"
 import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, keepShown, moveToSplit, paneIntoPane, paneToTab, replaceWithTab, splitOut, splitPane, zoomPane } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { floatGhost } from "@/core/desktop"
@@ -1027,7 +1027,9 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
   const buttons = <PaneButtons id={id} tab={tab.id} several={panesOf(tab).length > 1} only={only} float={float} zoomed={zoomed} label={() => i.label} />
   const menu = menuFor(() => barMenuOf(id))
   const own = paneWith(tab.root, id), places = own ? placesOf(own) : [pane]
-  if (tabBar && places.length > 1) return <PlaceStrip id={id} places={places} focused={focused} info={info} menu={menu}>{buttons}</PlaceStrip>
+  // (with the tab bar a pane has a bar only in a split: it always shows its own tabs, one or more, as Obsidian's panes;
+  // its + opens one among them, but where ⌘T's would go to the list: a pinned tab's, a terminal's)
+  if (tabBar) return <PlaceStrip id={id} places={places} focused={focused} info={info} menu={menu} adds={!tab.pinned && !keepsTab(pane.to)}>{buttons}</PlaceStrip>
   if (!paneTitles) {
     return (
       <div ref={strip} data-pane-bar={id} data-title-row data-bare data-merged={merged || undefined} onContextMenu={menu}
@@ -1051,20 +1053,30 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
   )
 }
 
-/** With the tab bar on, a split's pane with tabs of its own (Pane.stack) has them in a strip, its tab bar: a click shows
- *  one, its X closes it, a press drags it (along the strip, onto a pane, to the tab bar); dragged over, chips make way. */
-function PlaceStrip({ id, places, focused, info, menu, children }: { id: string; places: Pane[]; focused: boolean; info: (t: Tab | Pane) => TabInfo
-  menu: (e: React.MouseEvent) => void; children: React.ReactNode }) {
+/** With the tab bar on, a split's pane has its own tabs (Pane.stack) in a strip, its tab bar: a click shows one, its X
+ *  closes it, a press drags it (along the strip, onto a pane, to the tab bar); dragged over, chips make way. */
+function PlaceStrip({ id, places, focused, info, menu, adds, children }: { id: string; places: Pane[]; focused: boolean; info: (t: Tab | Pane) => TabInfo
+  menu: (e: React.MouseEvent) => void
+  /** Its + (a new tab among them). */
+  adds: boolean; children: React.ReactNode }) {
   const item = useDragItem(), hit = useDropHit<Drop>(PANES)
   const row = useRef<HTMLDivElement>(null)
   const moving = item?.pane ?? item?.tab ?? item?.to
   const order = moving && hit?.kind === "places" && hit.pane === id ? reorder(places.map((p) => p.id), [moving], hit.index).order : null
-  useSlide(row, order, "x")
+  useSlide(row, order && adds ? [...order, "new"] : order, "x")
   return (
     <div data-pane-bar={id} data-title-row data-place-strip={id} onContextMenu={menu}
       className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
       <div ref={row} data-place-chips className="relative flex min-w-0 flex-1 items-center gap-1 self-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {places.map((p) => <PlaceChip key={p.id} p={p} shown={p.id === id} focused={focused} info={info} />)}
+        {/* (right after its last tab, as the tab bar's) */}
+        {adds && (
+          <button type="button" data-place-new={id} data-no-drag data-slide="new" data-slide-fixed aria-label="New tab" data-tip={item ? undefined : "New tab"}
+            onClick={() => { selectPane(id); openNewTab() }}
+            className="grid size-7 shrink-0 cursor-pointer place-items-center self-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
+            <Plus className="size-4" strokeWidth={2} />
+          </button>
+        )}
         {order?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute left-0 h-7 w-28 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border" />}
       </div>
       {children}

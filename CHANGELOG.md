@@ -63,8 +63,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A split's panes have tabs of their own again**: in a split, a new tab (⌘T, a link opened in a new tab, a tab
   ⌥-clicked or dropped on a pane) opens in the focused pane, what it showed staying open behind it, and ⌘W closes just
   that one. The Tabs panel lists each pane's tabs under the split's row (click, close, drag between panes or out to the
-  list), and with the tab bar on a pane shows them in a strip. `vau tabs` lists and moves them (plugin API 7: a pane's
-  `stack`).
+  list), and with the tab bar on every pane of a split shows its tabs in a strip of its own, one tab too, with a + for
+  another there. `vau tabs` lists and moves them (plugin API 7: a pane's `stack`).
 - **A browser tab watched from your phone zooms**: pinch the picture in (sharper while zoomed), drag to move around it
   and on past its edge to scroll the page, and Zoom to fit to go back; a trackpad's pinch does the same on a Mac. A double
   tap double-clicks, a finger held still a moment presses and drags (to select text or move a slider), and trackpad mode
@@ -86,8 +86,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Always open this note's links in sets the note's `container:`, which takes its links there before a site's rule.
 - **Every pane of a split shows its close and drag buttons on hover**: notes and Browser pages at the window's top
   have the X and handle at their bar's end (a zoomed or floating one's unzoom or dock too), as terminals do, also when
-  the bar fades. In the sidebar's split rows each pane has its own X, its right-click is that pane's menu (the tab's
-  under Tab), and a pane dragged onto another there swaps them.
+  the bar fades. In the sidebar's split rows the pane under the pointer lights up, each pane has its own X, its
+  right-click is that pane's menu (the tab's under Tab), and a pane dragged onto another there swaps them; the … at the
+  row's end opens the split tab's menu, and dragging it moves the whole split, as a tab's row does.
 - **Agents' runs replay as a visual timeline**: runs by day with pictures and activity, then a run's steps over its
   time and as a filmstrip by page, repeats folded, pauses and failures shown; ← → and Space step and play it, and a
   run of thousands of steps opens at once.

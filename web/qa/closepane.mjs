@@ -1,7 +1,7 @@
 // Close pane (core/workspace.ts closePane) of a split tab with the tab bar and pane titles off (Close current tab, ⌘W,
 // too: the focused pane only; Close split the whole tab), and Reopen closed tab bringing it back where it sat; each pane's X and handle at its view's bar's end (components/Tabs.tsx PaneControls),
-// fading bars and cards too, and the sidebar's split row (plugins/core/tabs): a cell's X, menu and swap. WRITES the
-// vault's appearance.json (put back): throwaway server only.
+// fading bars and cards too, and the sidebar's split row (plugins/core/tabs): a cell's X, menu, hover and swap, and the
+// row's … (the tab's menu, a drag of the whole tab). WRITES the vault's appearance.json (put back): throwaway server only.
 //   node web/qa/closepane.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -160,6 +160,48 @@ try {
   await page.mouse.up()
   check("…and let go there, they swap", await until(async () => (await cellOrder()) === before3.split(",").reverse().join(), 3000), [before3, await cellOrder()])
   check("…in the panes too", await until(async () => (await panes()).length === 2, 2000))
+
+  // The split row's … (past the map's frame, its slot always kept): its tab's menu on a click, the whole tab on a drag.
+  const splitRow = page.locator("[data-tabs-panel] [data-split]").first(), more = splitRow.locator("[data-split-more]")
+  const frame = page.locator("[data-tabs-panel] [data-split-map] > span").first()
+  await page.mouse.move(700, 400); await wait(300)
+  const mapAway = await frame.boundingBox()
+  check("the split row has a …, hidden till hovered", (await more.count()) === 1 && (await opacity(more)) === 0)
+  check("…past the map's frame", (await more.boundingBox()).x >= mapAway.x + mapAway.width, [await more.boundingBox(), mapAway])
+  await cells.nth(0).hover(); await wait(300)
+  check("…shown on hover, the map not moving", (await opacity(more)) === 1 && same(await frame.boundingBox(), mapAway), [await frame.boundingBox(), mapAway])
+  check("the cell under the pointer is lit", await cells.nth(0).evaluate((e) => getComputedStyle(e).backgroundColor) !== await cells.nth(1).evaluate((e) => getComputedStyle(e).backgroundColor))
+  await page.locator("[data-tabs-panel]").screenshot({ path: `${OUT}closepane-splitrow-hover.png` })
+  await more.click(); await wait(200)
+  const tabItems = await page.locator("[role=menuitem]").allInnerTexts()
+  check("a click on it opens the split tab's menu", tabItems.some((t) => /Separate panes/.test(t)) && !tabItems.some((t) => /Close pane/.test(t)), tabItems)
+  const menuBox = await page.locator("[role=menu]").first().boundingBox(), moreBox = await more.boundingBox()
+  check("…under it", Math.abs(menuBox.x - moreBox.x) < 12 && menuBox.y >= moreBox.y + moreBox.height - 2, [menuBox, moreBox])
+  await page.mouse.move(700, 600); await wait(300)
+  check("…which stays shown while its menu is open", (await opacity(more)) === 1)
+  await page.keyboard.press("Escape"); await wait(300)
+  await more.focus(); await page.keyboard.press("Enter"); await wait(200)
+  check("Enter on it opens the menu too", (await page.locator("[role=menuitem]", { hasText: "Separate panes" }).count()) === 1)
+  await page.keyboard.press("Escape"); await wait(200)
+  // Pressed and dragged: the whole tab moves along the list (past a tab of the list's own), its panes with it.
+  const splitId = await splitRow.getAttribute("data-open-tab")
+  await page.locator("[data-tabs-panel] [data-new-tab-row]").click(); await hash(c); await until(async () => same(await files(), [c]))
+  const tabOrder = () => page.evaluate(() => JSON.parse(localStorage.getItem("vaultite.tabs")).tabs.map((t) => t.id))
+  check("(the split first, a tab after it)", (await tabOrder())[0] === splitId, await tabOrder())
+  await splitRow.hover(); await wait(200)
+  const mb = await more.boundingBox(), last = await page.locator("[data-tabs-panel] [data-open-tab]").last().boundingBox()
+  await page.mouse.move(mb.x + mb.width / 2, mb.y + mb.height / 2); await page.mouse.down()
+  for (let k = 1; k <= 10; k++) { await page.mouse.move(mb.x + mb.width / 2, mb.y + mb.height / 2 + (last.y + last.height - 2 - mb.y - mb.height / 2) * k / 10); await wait(30) }
+  check("…shown while it's dragged", (await opacity(more)) === 1)
+  await wait(150); await page.mouse.up(); await wait(400)
+  check("its … dragged down the list moves the whole split tab there", await until(async () => (await tabOrder()).at(-1) === splitId, 3000), await tabOrder())
+  check("…no menu opened by the drag", (await page.locator("[role=menu]").count()) === 0)
+  check("…its panes still together", await page.evaluate((id) => JSON.parse(localStorage.getItem("vaultite.tabs")).tabs.find((t) => t.id === id)?.root.kids?.length, splitId) === 2)
+  await command(page, "Close current tab"); await until(async () => (await tabOrder()).length === 1)
+  await splitRow.click({ position: { x: 20, y: 6 } }); await until(async () => (await panes()).length === 2)
+  await cells.nth(1).click({ button: "middle" })
+  check("a middle-click on the split's row closes the split", await until(async () => (await tabOrder()).length === 0 || !(await tabOrder()).includes(splitId), 3000), await tabOrder())
+  await command(page, "Reopen closed tab"); await until(async () => (await panes()).length === 2)
   await cells.nth(0).hover()
   const cx = cells.nth(0).locator("[data-cell-close]")
   check("a cell's X shows on hover", await until(async () => (await opacity(cx)) === 1, 2000))
