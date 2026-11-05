@@ -20,7 +20,6 @@ import type { HelperPrefs } from "./helper.ts"
 import { setTranslucent, translucentAt, translucentWindow } from "./translucency.ts"
 import { hideGhost, showGhost, type GhostLook } from "./dragghost.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
-import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, plainText, sentence } from "../core/plainerror.ts"
 import { inVault, otherAppScheme, runsCode } from "../core/opening.ts"
@@ -250,6 +249,9 @@ type Kept = { server: ChildProcess | null; link: Link | null; port: number }
 const kept = new Map<string, Kept>()
 /** The vault window focused last: the helper's home. */
 let lastFocused: string | null = null
+/** macOS's permissions (electron/permissions.ts and its native addon's build), loaded when Settings first asks: not at launch. */
+const macPermissions = () => import("./permissions.ts")
+
 /** The menu-bar helper (electron/helper.ts), loaded once the app is ready when it's wanted: not at launch's cost. */
 let helper: typeof import("./helper.ts") | null = null
 const helperOn = () => !!helper?.helperOn()
@@ -281,7 +283,7 @@ function serverFor(v: Known) {
 
 /** Its server's calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers), macOS's
  *  permissions (app.permissions: core/coreops/permissions.ts) and the app's updates (app.version). */
-const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions() : null)
+const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
   : m.name === "app:updates" ? appUpdates()
   : typeof m.name === "string" && m.name.startsWith("screen:") ? (helper ? helper.screenCall(m.name, Array.isArray(m.args) ? m.args : []) : null)
   : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
@@ -1072,7 +1074,7 @@ handle("print:pdf", async (w, name: string) => {
 // The audio recorder: macOS asks once whether Vaultite may use the microphone (the page's getUserMedia then works).
 handle("media:microphone", async () => !MAC || systemPreferences.askForMediaAccess("microphone"))
 // Settings > Permissions' buttons (electron/permissions.ts): macOS's prompt, the drag helper, a folder read, or a pane.
-handle("app:permission", (_w, id: string) => { if (MAC) return permissionAct(str(id)) })
+handle("app:permission", (_w, id: string) => { if (MAC) return macPermissions().then((p) => p.permissionAct(str(id))) })
 handle("print:reveal", (_w, p: string) => { if (str(p).endsWith(".pdf")) shell.showItemInFolder(p) })
 // The Mac's notification (the Inbox, window not in front): true once clicked, false when closed. Kept in `shown`
 // until then: one nothing refers to is collected, and its click lost.
