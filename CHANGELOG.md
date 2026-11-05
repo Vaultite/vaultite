@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A subdomain's own site style shows in Shields**: on docs.google.com the menu has "Style for docs.google.com" (its
+  own file, else its parent site's), and "Style this site…" makes the page's host's file, not one for all of Google.
 - **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page
   on the clipboard of the device you watch from, a login the app filled never in it; on a phone, while typing, a row
   over the keyboard has esc, tab, ⇧tab, the arrows and Paste. A double click from another Mac now double-clicks there.

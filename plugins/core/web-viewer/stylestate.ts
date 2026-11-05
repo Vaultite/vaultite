@@ -135,11 +135,10 @@ export function setStyled(site: string, on: boolean) {
   void settings.set({ unstyled: next.length ? next : null }).catch((e) => notifyError(e, "Couldn't change it"))
 }
 
-/** Edit `site`'s style beside its page: its file (made from the template the first time), on the right. With the page's
- *  id, its site as Shields name it (youtube.com for music.youtube.com), so both find the same file. */
-export async function editStyle(site: string, page?: number) {
-  const shields = page ? ((await Promise.resolve(webPages?.engine?.("adblock:page", page)).catch(() => null)) as { site?: string } | null)?.site : ""
-  const name = siteName(shields || site)
+/** Edit the style a page at `site` (its host: docs.google.com) gets beside it: the most specific there is (its own, else
+ *  its parent site's), else a file for the host from the template, on the right. */
+export async function editStyle(site: string) {
+  const name = siteName(site)
   if (!name) return
   const had = styleOf(getStore()?.siteStyles ?? [], name)
   const path = had?.path ?? styleFile(name)

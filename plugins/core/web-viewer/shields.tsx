@@ -93,10 +93,13 @@ function hiddenItems(id: number, site: string, note: ElementRule[], hide: string
   ]
 }
 
-/** The Shields menu's part for `site`'s style: on or off when it has one, and editing it beside the page. */
-function styleItems(site: string, styles: SiteStyle[], unstyled: string[]): MenuItem[] {
-  const style = styleOf(styles, site)
-  if (!style) return [{ label: "Style this site…", icon: Paintbrush, sep: true, run: () => void editStyle(site) }]
+/** The Shields menu's part for the style the page gets (its host's own, docs.google.com.css, else its parent site's,
+ *  as the desktop app picks it): on or off, and editing it beside the page; none, one made for the host. */
+function styleItems(url: string, styles: SiteStyle[], unstyled: string[]): MenuItem[] {
+  const host = siteName(url)
+  if (!host) return []
+  const style = styleOf(styles, host)
+  if (!style) return [{ label: "Style this site…", icon: Paintbrush, sep: true, run: () => void editStyle(host) }]
   const on = !unstyled.includes(style.site)
   return [
     { label: `Style for ${style.site}`, icon: Paintbrush, checked: on, sep: true, run: () => setStyled(style.site, !on) },
@@ -152,7 +155,7 @@ export function ShieldsButton({ id, url, loading }: { id: number; url: string; l
       : count ? `${numberText(count)} ${count === 1 ? "request" : "requests"} blocked on this page` : "Nothing blocked on this page", run: () => {} },
     on ? { label: `Shields for ${site}`, icon: Shield, checked: up, run: () => void setDown(up) } : { label: "Shields", icon: Shield, checked: false, run: () => void turnOn() },
     ...hiddenItems(id, site, note, s.hide ?? []),
-    ...styleItems(site, styles, s.unstyled ?? []),
+    ...styleItems(url, styles, s.unstyled ?? []),
     ...darkItems(url, styles, s.darkPagesOff ?? []),
     { label: "Browser settings…", icon: Settings2, sep: true, run: () => openPluginSettings("web-viewer", "shields") },
   ]

@@ -38,6 +38,7 @@ fs.writeFileSync(pluginsFile, JSON.stringify({ ...plugins, enabled: [...(plugins
   disabled: (plugins.disabled ?? []).filter((x) => x !== "web-viewer") }, null, 2) + "\n")
 const NOTE = path.join(VAULT, ".vaultite/plugins/web-viewer/blocked-elements.md")
 const STYLE = path.join(VAULT, ".vaultite/plugins/web-viewer/sites/127.0.0.1.css")
+const SETTINGS = path.join(VAULT, ".vaultite/plugins/web-viewer/data.json")
 const note = () => (fs.existsSync(NOTE) ? fs.readFileSync(NOTE, "utf8") : "")
 
 // ---------- the app ----------
@@ -186,6 +187,29 @@ await button.click()
 await menuItem("Style this site…").click()
 check("Style this site…: its file made from the template, opened beside the page", await until(() => fs.existsSync(STYLE) && fs.readFileSync(STYLE, "utf8").includes("--vault-background"), 10000)
   && await until(() => win.getByText("127.0.0.1.css").first().isVisible().catch(() => false), 10000), fs.existsSync(STYLE))
+
+// ---------- a subdomain's own style: the Shields menu names the style the page gets, and makes one for its host ----------
+const SUB = `http://docs.localhost:${server.address().port}/`
+const SUBSTYLE = path.join(VAULT, ".vaultite/plugins/web-viewer/sites/docs.localhost.css")
+const unstyled = () => JSON.parse(fs.existsSync(SETTINGS) ? fs.readFileSync(SETTINGS, "utf8") : "{}").unstyled ?? []
+fs.writeFileSync(SUBSTYLE, "#banner { color: rgb(4, 5, 6) }\n")
+await inPage(`location.href = ${JSON.stringify(SUB)}`)
+check("a subdomain with a style of its own opens, styled", await until(async () => (await inPage("location.href")) === SUB && (await looks())?.banner === "rgb(4, 5, 6)", 20000), await looks())
+await button.click()
+check("… the Shields menu has its style, by its host, on", await until(() => menuItem("Style for docs.localhost").count(), 5000)
+  && (await menuItem("Style for docs.localhost").getAttribute("aria-checked")) === "true", await win.locator("[role=menu]").allInnerTexts().catch(() => []))
+await menuItem("Style for docs.localhost").click()
+check("… turned off there: kept by its host", await until(async () => (await looks())?.banner !== "rgb(4, 5, 6)", 10000) && unstyled().includes("docs.localhost"), unstyled())
+fs.rmSync(SUBSTYLE)
+// (till the app has heard the file's gone: its menu offers to make one again)
+await until(async () => {
+  await button.click()
+  if (await until(() => menuItem("Style this site…").count(), 1000)) return true
+  await win.keyboard.press("Escape")
+}, 10000)
+await menuItem("Style this site…").click()
+check("Style this site… on a subdomain makes its host's file, not its parent site's", await until(() => fs.existsSync(SUBSTYLE), 10000)
+  && !fs.existsSync(path.join(VAULT, ".vaultite/plugins/web-viewer/sites/localhost.css")) && !unstyled().includes("docs.localhost"), [fs.existsSync(SUBSTYLE), unstyled()])
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()

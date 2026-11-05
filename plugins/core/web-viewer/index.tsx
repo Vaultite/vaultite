@@ -388,7 +388,7 @@ export default definePlugin({
     { id: "web:block-element", name: "Block an element on this page", when: () => !!webPages?.engine && /^https?:\/\//i.test(focusedPage()?.url() ?? ""),
       run: () => void pickElement(focusedPageId()), icon: MousePointerSquareDashed },
     { id: "web:edit-style", name: "Edit this site's style", when: () => !!webPages?.engine && !!hostOf(focusedPage()?.url() ?? ""),
-      run: () => void editStyle(hostOf(focusedPage()?.url() ?? ""), focusedPageId()), icon: Paintbrush },
+      run: () => void editStyle(focusedPage()?.url() ?? ""), icon: Paintbrush },
     { id: "web:player", name: "Open current web page as player", nameWhenOn: "Bring current web page back from player", keys: ["Mod+Alt+P"], icon: MonitorPlay,
       when: () => !!webPages?.player && /^https?:\/\//i.test(focusedPage()?.url() ?? ""), on: () => !!focusedPage()?.inPlayer(),
       run: () => setPlayer(focusedPageId(), !focusedPage()?.inPlayer()) },

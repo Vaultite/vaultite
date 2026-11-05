@@ -196,8 +196,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   `--vault-muted`, `--vault-muted-foreground`, `--vault-primary`, `--vault-accent`, `--vault-border` and the app's other
   colours, `--vault-font-ui`, `--vault-font-text`, `--vault-font-code`, `--vault-radius`, `--vault-color-scheme` (light
   or dark). Use them, not colours of your own, so a site follows the vault; on a site with its own colour tokens (YouTube's),
-  map those rather than restyling each part. The Shields menu has "Style for <site>" (off: setting `unstyled`) and "Edit
-  its style…" ("Style this site…" for one without: its file from a template, opened beside the page); the palette's "Edit
+  map those rather than restyling each part. The Shields menu has "Style for <site>" (the style the page gets: its host's
+  own, docs.google.com.css, else its parent site's; off: setting `unstyled`) and "Edit its style…" ("Style this site…"
+  for one without: its host's file from a template, opened beside the page); the palette's "Edit
   this site's style" too. Agents: `vau browser style [site]` (`--css`, `--remove`).
 - Dark pages (setting `darkPages`, on by default): while the app's look is dark, pages follow it from their first
   frame, never white while they load. A site with a style of its own (above) has only its style. A site with a dark look
