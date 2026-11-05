@@ -1,7 +1,7 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌥⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, memo, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RotateCw, Scan, Scissors, Search, Volume2, VolumeX, ZoomIn,
+import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RotateCw, Scan, Scissors, Search, Volume2, VolumeX, ZoomIn,
   ZoomOut } from "lucide-react"
 import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
@@ -24,6 +24,7 @@ import { Playing } from "./Playing"
 import { muteItem, pauseItems, pauseSound, watchSoundMarks } from "./soundmarks"
 import { barHidden, pageBarItem, setBarHidden } from "./pagebar"
 import { switcherSearch } from "./switcher"
+import { focusedReplay } from "./replaykeys"
 
 const WebPage = lazy(() => import("./WebPage"))
 // Pages opened on demand load with their first tab.
@@ -314,7 +315,7 @@ export default definePlugin({
         ]
       },
     },
-    "agent-runs": { icon: Bot, title: () => "Agents in the browser", render: () => <Suspense fallback={null}><ReplaysView /></Suspense> },
+    "agent-runs": { icon: Bot, title: () => "Agents in the browser", full: true, render: () => <Suspense fallback={null}><ReplaysView /></Suspense> },
     "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <Suspense fallback={null}><AgentPasskeys /></Suspense> },
     // (every machine's browser tabs, one watched live: `3`, or `3@m1` in another machine's browser)
     "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(arg) || "Browser tab" : "Browser tabs"), argState: true, full: true,
@@ -354,6 +355,13 @@ export default definePlugin({
     { id: "web:live", name: "Show browser tabs", icon: MonitorPlay, run: () => openView("web-live", { newTab: !isViewOpen("view:web-live") }) },
     { id: "web:agent-runs", name: "Show agents in the browser", desktop: true, when: () => !!webPages?.engine, icon: Bot,
       run: () => openView("agent-runs", { newTab: !isViewOpen("view:agent-runs") }) },
+    // (while a replay of an agent's run has the keyboard)
+    { id: "web:replay-previous", name: "Previous step of the replay", keys: ["ArrowLeft"], when: () => !!focusedReplay(), run: () => focusedReplay()?.step(-1), icon: ChevronLeft },
+    { id: "web:replay-next", name: "Next step of the replay", keys: ["ArrowRight"], when: () => !!focusedReplay(), run: () => focusedReplay()?.step(1), icon: ChevronRight },
+    { id: "web:replay-first", name: "First step of the replay", keys: ["Home"], when: () => !!focusedReplay(), run: () => focusedReplay()?.edge(false), icon: ChevronFirst },
+    { id: "web:replay-last", name: "Last step of the replay", keys: ["End"], when: () => !!focusedReplay(), run: () => focusedReplay()?.edge(true), icon: ChevronLast },
+    { id: "web:replay-play", name: "Play the replay", nameWhenOn: "Pause the replay", keys: ["Space"], when: () => !!focusedReplay(), on: () => !!focusedReplay()?.playing(),
+      run: () => focusedReplay()?.play(), icon: Play },
     { id: "web:agent-pages", name: "Show agents' pages", nameWhenOn: "Hide agents' pages", desktop: true, icon: MousePointer2,
       when: () => agentPages.get().length > 0, on: agentsCardShown, run: () => showAgentsCard(!agentsCardShown()) },
     // (Windows sets the default browser only in its Settings, among browsers it knows)

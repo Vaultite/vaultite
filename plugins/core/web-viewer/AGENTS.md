@@ -124,8 +124,13 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   back to the background) and as its pointer on the tab. A page an agent left a minute rests (draws nothing) till it's
   back. Tab numbers are never reused, a restart included. A failed agent call is kept with the run's steps.
   "Show agents in the browser": the tabs agents are at work in now, each a live picture with
-  Show tab and Pause, then past runs searched by agent, task or summary; each agent's steps are kept on the Mac for 14
-  days, with pictures, to replay (never what's typed into a password field).
+  Show tab and Pause, then past runs by day (each with its last picture, sites, length, steps, failures and how busy it
+  was), searched by agent, task, summary or site; each agent's steps are kept on the Mac for 14 days, with pictures, to
+  replay (never what's typed into a password field). A replay shows the page after the step picked, what it did, the
+  pause before it and how long the call took (a script's code, a failure's reason), over a strip of the run's time
+  (hover to preview a step, drag to scrub; pauses over a minute shortened) and a filmstrip of its steps by page, the
+  same step repeated on a page folded into one card ("Ran a script ×600", Show each); ← → step, Home and End go to its
+  ends, Space plays it.
 - Passwords for agents: agents log in without ever seeing a password. On the Mac whose browser agents use, an Agents
   container's menu has "Passwords for agents…": a KeePass file and its password, kept in that Mac's Keychain, never the
   vault. Make it with KeePassXC's KeeShare, exporting a group of the entries agents may use (Agents) to that file, with a

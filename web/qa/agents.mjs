@@ -124,10 +124,27 @@ check("resumed: it acts again", !(await op("act", { tab: opened.tab, action: "pr
 // ---------- replay ----------
 const runs = () => win.evaluate(() => window.vaultite.web.engine("agents:runs"))
 check("its steps are kept to replay", await until(async () => { const r = await runs(); return r.length === 1 && r[0].steps >= 6 }, 5000), await runs())
+const engine = (...a) => win.evaluate((a) => window.vaultite.web.engine(...a).then((v) => ({ v }), (e) => ({ error: String(e?.message ?? e) })), a)
+const runName = (await runs())[0]?.run
+const ran0 = (await engine("agents:run", runName)).v ?? []
+check("a run's steps come without their pictures, each naming its own; acts say how long they took", ran0.length >= 6 && ran0.every((s) => s.shot === null || /^\d+\.jpg$/.test(s.shot))
+  && ran0.some((s) => s.shot) && ran0.some((s) => s.action === "fill" && typeof s.ms === "number"), ran0.map((s) => [s.action, s.shot, s.ms]))
+const since = (await engine("agents:run", runName, ran0.length - 2)).v ?? []
+// (a step still being kept may land after the first read)
+check("… a live run's new ones only, from where the view is", since.length >= 2 && since[0].t === ran0.at(-2).t && since[1].t === ran0.at(-1).t, since.map((s) => s.t))
+const pic = ran0.find((s) => s.shot)?.shot
+const pics = (await engine("agents:shots", runName, [pic], true)).v ?? {}
+check("… its pictures one by one, small ones too", /^data:image\/jpeg;base64,/.test(pics[pic] ?? "") && /^data:image\/jpeg;base64,/.test((await engine("agents:shots", runName, [pic], false)).v?.[pic] ?? ""), Object.keys(pics))
+check("… never outside the runs' folder", !!(await engine("agents:run", "..")).error && !!(await engine("agents:shots", "../..", ["1.jpg"], true)).error
+  && (await engine("agents:shots", runName, ["../steps.jsonl"], true)).v?.["../steps.jsonl"] === undefined, null)
 await ui({ action: "command", id: "web:agent-runs" })
 await win.locator("[data-web-replay]").first().dispatchEvent("click")
-check("the replay shows its steps, with pictures", await until(async () => Number(await win.locator("[data-web-replay-steps]").getAttribute("data-web-replay-steps").catch(() => 0)) >= 6
-  && (await win.locator("[data-web-replay-steps] img").count()) === 1, 10000), null)
+check("the replay shows its steps, with pictures: the big one and the filmstrip's", await until(async () => Number(await win.locator("[data-web-replay-steps]").getAttribute("data-web-replay-steps").catch(() => 0)) >= 6
+  && (await win.locator("[data-web-replay-stage] img").count()) === 1 && (await win.locator("[data-web-replay-step] img").count()) >= 2, 10000), null)
+await win.locator("[data-web-replay-steps]").focus()
+await win.keyboard.press("Home")
+check("… Home goes to its first step, → to the next", await until(async () => /^1 of/.test(await win.locator("[data-web-replay-at]").textContent()), 3000)
+  && (await win.keyboard.press("ArrowRight"), await until(async () => /^2 of/.test(await win.locator("[data-web-replay-at]").textContent()), 3000)), await win.locator("[data-web-replay-at]").textContent())
 
 // ---------- act answers what changed; a whole form at once; a script in one call; the cockpit; a PDF ----------
 const o3 = await op("open", { url: `${SITE}/menu`, task: "cockpit", summary: "Checking the made-up menu" })
@@ -182,7 +199,7 @@ check("the cockpit's live list: the tab, its summary, last step and picture", l3
 check("… past runs say their task and summary", (await runs()).some((r) => r.task === "cockpit" && r.summary === "Checking the made-up menu"), await runs())
 await ui({ action: "command", id: "web:agent-runs" })
 // (still at the run replayed above: back to the list)
-await win.locator("[data-web-replay-steps] button", { hasText: "Runs" }).dispatchEvent("click")
+await win.locator("[data-web-replay-back]").dispatchEvent("click")
 check("… the view shows it live", await until(async () => (await win.locator(`[data-web-live="${t3}"] img`).count()) === 1, 5000), null)
 await win.locator(`[data-web-live="${t3}"] [data-web-live-pause]`).dispatchEvent("click")
 check("… Pause there pauses agents in it", await until(async () => /paused/.test(String((await op("act", { tab: t3, action: "press", key: "Tab" })).error)), 5000), null)

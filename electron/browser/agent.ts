@@ -6,6 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
+import { THUMB_WIDTH } from "./agentruns.ts"
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -490,6 +491,8 @@ export async function record(p: EnginePage, asked: By, step: Record<string, unkn
   const owner = owners.get(p.id)
   const by = { ...asked, task: asked.task || owner?.task, summary: asked.summary || (owner && sameAgent(owner, asked) ? owner.summary : undefined) }
   const run = runOf(by), t = Date.now()
+  // (how long the call took: since it said what it's doing, when it said so after the page's last step)
+  const d = doing.get(p.id), ms = d && d.at >= (latest.get(p.id)?.t ?? 0) && d.at <= t ? t - d.at : undefined
   latest.set(p.id, { by, run, t, step })
   changed(p.win)
   lastStep = t
@@ -505,10 +508,13 @@ export async function record(p: EnginePage, asked: By, step: Record<string, unkn
         shot = `${t}.jpg`
         const { width } = img.getSize()
         fs.writeFileSync(path.join(dir, shot), (width > 1200 ? img.resize({ width: 1200 }) : img).toJPEG(70))
+        // (the replay's filmstrip draws hundreds of these at once)
+        fs.mkdirSync(path.join(dir, "thumbs"), { recursive: true })
+        fs.writeFileSync(path.join(dir, "thumbs", shot), img.resize({ width: THUMB_WIDTH, quality: "good" }).toJPEG(72))
       }
     }
     fs.appendFileSync(path.join(dir, "steps.jsonl"), scrub(JSON.stringify({ t, tab: p.id, by: by.name ?? "", ...(by.task ? { task: by.task } : {}),
-      ...(by.summary ? { summary: by.summary } : {}), url: p.wc.getURL(), title: p.wc.getTitle(), ...step, ...(shot ? { shot } : {}) })) + "\n")
+      ...(by.summary ? { summary: by.summary } : {}), url: p.wc.getURL(), title: p.wc.getTitle(), ...(ms !== undefined ? { ms } : {}), ...step, ...(shot ? { shot } : {}) })) + "\n")
   } catch (e) { console.error("vaultite: an agent's step wasn't kept:", e) }
 }
 setTimeout(() => {
@@ -852,26 +858,6 @@ handle("agents:live", async () => {
       shot: shots.get(p.wc) ?? null,
     }
   }))
-})
-handle("agents:runs", () => {
-  try {
-    return fs.readdirSync(RUNS()).sort().reverse().slice(0, 200).flatMap((d) => {
-      try {
-        const steps = fs.readFileSync(path.join(RUNS(), d, "steps.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>)
-        const first = steps[0], last = steps[steps.length - 1]
-        const said = (k: string) => String(steps.findLast((s) => typeof s[k] === "string" && s[k])?.[k] ?? "")
-        return [{ run: d, by: first.by as string, task: said("task"), summary: said("summary"), steps: steps.length, start: first.t as number, end: last.t as number,
-          title: last.title as string, url: last.url as string }]
-      } catch { return [] }
-    })
-  } catch { return [] }
-})
-handle("agents:run", (_win, run) => {
-  const name = String(run)
-  if (!/^[\w.-]+$/.test(name)) throw new Error("no such run")
-  const dir = path.join(RUNS(), name)
-  const steps = fs.readFileSync(path.join(dir, "steps.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>)
-  return steps.map((s) => ({ ...s, shot: typeof s.shot === "string" && /^\d+\.jpg$/.test(s.shot) ? `data:image/jpeg;base64,${fs.readFileSync(path.join(dir, s.shot)).toString("base64")}` : null }))
 })
 
 // ---------- busy: an update's restart waits till agents are done ----------

@@ -19,6 +19,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   have the X and handle at their bar's end (a zoomed or floating one's unzoom or dock too), as terminals do, also when
   the bar fades. In the sidebar's split rows each pane has its own X, its right-click is that pane's menu (the tab's
   under Tab), and a pane dragged onto another there swaps them.
+- **Agents' runs replay as a visual timeline**: runs by day with pictures and activity, then a run's steps over its
+  time and as a filmstrip by page, repeats folded, pauses and failures shown; ← → and Space step and play it, and a
+  run of thousands of steps opens at once.
 - **Undo of a move to another workspace puts the tab back in its place**: in its spot in the bar and its tab group,
   not at the end.
 - **A plugin setting changed twice quickly keeps the last change**: hiding a graph group and showing it again at once
