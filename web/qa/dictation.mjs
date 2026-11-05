@@ -90,18 +90,12 @@ await until(async () => !(await listening()), 30000, 100)
 const vim = await text()
 check("in Vim's normal mode (the block cursor on the line's end) the words go after it", /List: @claude,? remember to buy milk/i.test(vim), vim)
 
-// ---------- nothing focused: the Ask box opens and the words go into its field
+// ---------- nothing focused: it says so and hears nothing (talking to the companion is its Talk keys')
 await win.evaluate(() => document.activeElement?.blur())
 await win.keyboard.press("Escape")
 await win.keyboard.press("Meta+J")
-const asked = await until(() => win.evaluate(() => document.activeElement?.matches("[data-ask-box] textarea")), 3000)
-if (asked) {
-  check("with nothing focused, the Ask box opens with dictation in its field", await until(listening, 3000))
-  check("the field's pending words show in the indicator", await until(() => win.evaluate(() => !!document.querySelector(".dictation-pending:not([hidden])")?.textContent), 15000, 30))
-  await until(async () => !(await listening()), 30000, 100)
-  const v = await win.evaluate(() => document.querySelector("[data-ask-box] textarea")?.value ?? "")
-  check("the words land in the Ask box, replaced as in a note", normal(v).includes("milk and bread") && v.includes("@claude"), v)
-} else console.log("  (no Ask box here: its agent isn't installed)")
+check("with nothing focused, it asks where the words should go", await until(() => win.evaluate(() => document.body.innerText.includes("Click where the words should go")), 3000))
+check("…and listens to nothing", !(await listening()))
 
 await app.close()
 await done()

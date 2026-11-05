@@ -12,7 +12,7 @@ import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, dockAt, dockOf, dockPoint, hunksOf, offsetIn, pointIn, prefsOf, type Dock, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
+import { atOffset, dockAt, dockOf, dockPoint, hunksOf, offsetIn, pointIn, prefsOf, spotIn, type Dock, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
 import { closePanel, onPanel, openPanel, overlayActs, panelData, panelFocused, panelMenuClosed, panelOpen, showOverlay, type PanelData } from "./overlay.ts"
 import { dictationAuto, dictationHotKey, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, regionShot as shootRegion, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 
@@ -143,7 +143,7 @@ function menu() {
     { label: "Dictate anywhere", icon: icon("mic"), sublabel: keysSaid(prefs.keys), type: "checkbox", checked: prefs.fn, enabled: !!home, click: setting("plugin/dictation", { fn: !prefs.fn }) },
     { type: "separator" },
     // (where its cursor waits while another app is in front; each icon draws the place)
-    { label: "Companion", type: "header" },
+    { label: "Companion", type: "header", sublabel: prefs.talk.length ? `${keysSaid(prefs.talk)} to talk to it` : undefined },
     place("Following the pointer", "trail", icon("mouse-pointer-2")),
     place("Docked at the screen's edge", "dock", dockOf(h.prefs().dock).side === "left" ? icon("panel-left") : icon("panel-right")),
     place("Only inside Vaultite", "app", icon("app-window")),
@@ -170,7 +170,7 @@ const manifest = (id: string) => {
 }
 const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("companion"), screen: manifest("screen") }
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
-let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], cursor: "dock", privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {} }
+let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], cursor: "trail", privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {} }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -245,7 +245,7 @@ let front: AppWindowInfo | null = null
 const hidden = (a: { bundle?: string; name?: string } | null) => !!a && privateApp(a, prefs.privateApps)
 
 function heard(m: Record<string, unknown>) {
-  if (m.event === "fn") return prefs.keys.includes("fn") ? fnHeard(m) : undefined
+  if (m.event === "fn") return prefs.talk.includes("fn") ? talkHeard(m) : prefs.keys.includes("fn") ? fnHeard(m) : undefined
   if (m.event === "mod") return modHeard(m)
   if (m.event === "moved") return windowMoved(m)
   if (m.event === "front") {
@@ -272,38 +272,62 @@ function notice(key: string, title: string, body: string, link?: string, once?: 
   if (once) host?.setPrefs({ [once]: true })
 }
 
-// ---------- fn: dictation anywhere
+// ---------- fn: dictation anywhere; the Talk keys: the companion
 
-const key = fnKey()
-/** The helper's own session: words into another app's field, or an ask about the window in front. */
-type Session = { sink: DictationSink; into: "field" | "ask" | "panel"; focus: Focus; finals: string[]; pending: string; level: number; ready: boolean
-  context: Promise<{ screen?: string; shot?: string | null }> | null; swap: [RegExp, string][]
-  /** Where the pointer was as they started: an ask leaves the cursor there, in the window they spoke about. */
-  at: Point }
+const key = fnKey(), talkKey = fnKey()
+/** The helper's own session: words into another app's field, or into a cursor's conversation (`talk`: a Talk key's,
+ *  sent when it stops). */
+type Session = { sink: DictationSink; into: "field" | "panel"; focus: Focus; finals: string[]; pending: string; level: number; ready: boolean
+  swap: [RegExp, string][]; talk?: boolean }
 let session: Session | null = null
-/** The window's page that has this press (fn there is its ⌘J), till it's let go. */
-let page: WebContents | null = null
+/** The window's page that has this press (fn there is its ⌘J; a Talk key its companion's), till it's let go. */
+let page: WebContents | null = null, talkPage: WebContents | null = null
 
-/** The screen helper's tap hears the picked keys only (none while Dictate anywhere is off). */
+/** The screen helper's tap hears the picked keys only: the dictation keys (none while Dictate anywhere is off) and the
+ *  Talk keys. */
 const heardKeys = () => (prefs.fn ? prefs.keys : [])
-const listen = () => screenAsk("fn", { keys: keyCodes(heardKeys()) })
-let mods = modKeys(heardKeys()), followed = heardKeys().join()
+const keysNow = () => `${heardKeys().join()}|${prefs.talk.join()}`
+const listen = () => screenAsk("fn", { keys: keyCodes([...heardKeys(), ...prefs.talk]) })
+let mods = modKeys(heardKeys()), talkMods = modKeys(prefs.talk), followed = keysNow()
 function followKeys() {
-  if (heardKeys().join() === followed) return
-  followed = heardKeys().join()
+  if (keysNow() === followed) return
+  followed = keysNow()
   mods = modKeys(heardKeys())
+  talkMods = modKeys(prefs.talk)
   void listen().catch(() => {})
 }
 
-let settling: ReturnType<typeof setTimeout> | null = null
+let settling: ReturnType<typeof setTimeout> | null = null, talkSettling: ReturnType<typeof setTimeout> | null = null
 const asFn = (events: FnEvent[]) => { for (const e of events) fnHeard(e, false) }
+const asTalk = (events: FnEvent[]) => { for (const e of events) talkHeard(e) }
+// (each set hears every key: one of the other's between two taps breaks a double Control, as any key does)
 function modHeard(m: Record<string, unknown>) {
-  const r = mods.heard(m as ModEvent)
+  const r = mods.heard(m as ModEvent), t = talkMods.heard(m as ModEvent)
   if (settling) clearTimeout(settling)
   settling = r.wait ? setTimeout(() => { settling = null; asFn(mods.settled()) }, ALONE_MS) : null
+  if (talkSettling) clearTimeout(talkSettling)
+  talkSettling = t.wait ? setTimeout(() => { talkSettling = null; asTalk(talkMods.settled()) }, ALONE_MS) : null
   asFn(r.fn)
-  if (r.twice) void firstTwice()
+  asTalk(t.fn)
+  if (r.twice || t.twice) void firstTwice()
 }
+
+/** A Talk key: in a Vaultite window, its page's (the companion there); elsewhere, the companion's conversation by the
+ *  pointer. A tap starts and the next stops; held, it listens till let go. */
+function talkHeard(m: Record<string, unknown>) {
+  if (!host?.home()) return
+  const to = talkPage && !talkPage.isDestroyed() ? talkPage : null
+  if (m.other === true) { if (to) to.send("vaultite:fn", { talk: true, other: true }); else act(talkKey.other(), true); return }
+  if (m.down === true) {
+    if (!talking()) talkPage = host.focusedPage()
+    if (talkPage && !talking()) return void talkPage.send("vaultite:fn", { talk: true, down: true })
+    talkPage = null
+    return act(talkKey.down(Date.now(), talking()), true)
+  }
+  if (to) { to.send("vaultite:fn", { talk: true, down: false }); return }
+  act(talkKey.up(Date.now()), true)
+}
+const talking = () => !!session?.talk || (starting && startingTalk)
 
 function fnHeard(m: Record<string, unknown>, byFn = true) {
   if (!prefs.fn || !host?.home()) return
@@ -332,19 +356,20 @@ async function firstUse() {
 let checkedControl = false
 /** The first double Control: macOS's own Control-twice shortcut would start its dictation too: say how to stop it, once. */
 async function firstTwice() {
-  if (checkedControl || !prefs.fn || !host?.home() || host.prefs().controlNotice) return
+  if (checkedControl || !host?.home() || host.prefs().controlNotice) return
   checkedControl = true
   if (controlActsToo(await dictationHotKey(), await dictationAuto())) notice("control-usage", "macOS dictates on double Control too", "In System Settings, Keyboard, Dictation, set Shortcut to Off.",
     "x-apple.systempreferences:com.apple.Keyboard-Settings.extension", "controlNotice")
 }
 
 /** A session on its way (the field asked for, the recognizer starting): a release meanwhile waits for it. */
-let starting = false, after: FnAction = null
-function act(a: FnAction) {
+let starting = false, startingTalk = false, after: FnAction = null
+function act(a: FnAction, talk = false) {
   if (a === "start") {
     starting = true
+    startingTalk = talk
     after = null
-    void begin().finally(() => { starting = false; const then = after; after = null; if (then) act(then) })
+    void (talk ? startTalk() : begin()).finally(() => { starting = false; startingTalk = false; const then = after; after = null; if (then) act(then) })
   } else if (starting && (a === "stop" || a === "cancel")) after = a
   else if (a === "stop" && session) stopFor(session.sink)
   else if (a === "cancel" && session) stopFor(session.sink, true)
@@ -366,20 +391,44 @@ const replacements = () => {
 
 async function begin() {
   // (a cursor's conversation open: the words go in its box)
-  if (panelFocused()) return listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, context: null })
+  if (panelFocused()) return listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true } })
   const focus = await screenAsk<Focus>("focus")
   if (focus.vaultite || dictating()) return
-  // (a password field gets nothing said)
+  // (a password field gets nothing said; with no field, nothing is heard: talking to the companion is its own keys')
   if (focus.field && focus.secure) return
-  const priv = hidden(focus), into = focus.field ? "field" : "ask", at = screen.getCursorScreenPoint()
-  // (what they're looking at as they start speaking: its text and one picture, never a private app's)
-  await listenFor({ into, focus, at, context: into === "ask" && !priv ? context(focus.window ?? 0, at) : null })
+  if (!focus.field) return hint(prefs.talk.length ? `No text field here: ${keysSaid(prefs.talk)} talks to ${live.state.name || "the companion"}` : "No text field here")
+  await listenFor({ into: "field", focus })
 }
 
-async function listenFor(o: Pick<Session, "into" | "focus" | "context"> & { at?: Point }) {
+/** Where the user asked by a Talk key (the pointer then, and the window under it): their ask is about that. */
+let talkAt: { p: Point; w: AppWindowInfo | null } | null = null
+/** A Talk key pressed outside Vaultite: the companion's conversation opens by the pointer, listening; what's said is
+ *  sent when it stops (typed words are sent with Enter). */
+async function startTalk() {
+  if (dictating()) return
+  const name = live.state.name
+  if (live.state.mode === "off") return notice("off", "The companion is off", "Turn it on in the companion's settings to talk to it.")
+  if (!name) return hint("The companion isn't ready yet: open Vaultite")
+  const p = screen.getCursorScreenPoint()
+  const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null)
+  openChat(name, p)
+  if (panelOpen() !== name) return
+  talkAt = { p, w }
+  await listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true })
+}
+
+/** A word in the dictation pill's place, a moment: a key pressed where it does nothing. */
+let hinted: { text: string; until: number } | null = null
+function hint(text: string) {
+  hinted = { text, until: Date.now() + 2200 }
+  draw()
+  setTimeout(draw, 2250)
+}
+
+async function listenFor(o: Pick<Session, "into" | "focus" | "talk">) {
   if (dictating()) return
   const s = prefs.dictation, lines = replacements()
-  const mine: Session = { sink: { tell: (e) => told(mine, e) }, ...o, at: o.at ?? screen.getCursorScreenPoint(), finals: [], pending: "", level: 0, ready: false, swap: replacer(lines) }
+  const mine: Session = { sink: { tell: (e) => told(mine, e) }, ...o, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines) }
   session = mine
   draw()
   chatChanged()
@@ -394,11 +443,13 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "context"> & { at?:
   else if (r.code === "model") notice("model", "Parakeet's model isn't on this Mac", "Handy or Hex downloads it, or pick Apple's recognizer in Dictation's settings.")
 }
 
-async function context(window: number, p: Point | null): Promise<{ screen?: string; shot?: string | null; under?: string; sx?: number; sy?: number }> {
+/** A window's text and picture, and what's at `p` in it: in words, and where in its picture (`frame`, the window's). */
+async function context(window: number, p: Point | null, frame?: Rect | null): Promise<{ screen?: string; shot?: string | null; under?: string; spot?: string; sx?: number; sy?: number }> {
   // (no window in front, as on the desktop: what's under the pointer, and the screen around it)
   if (!window) { const { app: _, ...c } = await pointerContext(p ?? screen.getCursorScreenPoint()); return c }
   const [t, shot, under] = await Promise.all([screenAsk<{ ok?: boolean; text?: string }>("text", { window, max: 20_000 }), windowShot(window, SHOTS()), p ? underAt(p) : null])
-  return { screen: t.ok ? t.text : undefined, shot, ...(under ? { under: under.text } : {}) }
+  const spot = p && frame ? spotIn(frame, p) : null
+  return { screen: t.ok ? t.text : undefined, shot, ...(under ? { under: under.text } : {}), ...(shot && spot ? { spot } : {}) }
 }
 
 type Under = { ok?: boolean; vaultite?: boolean; bundle?: string; name?: string; role?: string; label?: string; in?: string }
@@ -432,24 +483,23 @@ function told(s: Session, e: Record<string, unknown>) {
   if (s.into === "panel") chatChanged()
 }
 
-/** Its words: into the field (joined to what's before its caret), or an ask to the companion with what's on screen. */
+/** Its words: into the field (joined to what's before its caret), or into the conversation's box (a Talk key's: sent). */
 async function finish(s: Session, cancelled: boolean) {
   const text = s.finals.reduce((all, t) => all + joinText(all, t), "").trim()
-  if (s.into === "panel") return chatChanged(cancelled || !text ? undefined : { text, listening: false, done: true })
+  if (s.into === "panel") return chatChanged(cancelled || !text ? undefined : { text, listening: false, done: true, ...(s.talk ? { send: true } : {}) })
   if (cancelled || !text) return
-  if (s.into === "field") {
-    const r = await screenAsk<{ ok?: boolean; why?: string }>("insert", { text: joinText(s.focus.before ?? "", text) })
-    if (!r.ok && r.why === "no-field") notice("lost", "Couldn't put the words in", "The field lost the keyboard while you spoke.")
-    return
-  }
-  if (live.state.mode === "off") return notice("off", "The companion is off", "Turn it on in the companion's settings to ask it about your screen.")
-  const c = (await s.context) ?? {}
-  const priv = hidden(s.focus)
-  // (it stays where they pointed as they spoke, in that window)
-  const own = live.state.name, f = s.focus.frame
-  if (!priv && own && s.focus.window && f && s.at.x >= f.x && s.at.x <= f.x + f.width && s.at.y >= f.y && s.at.y <= f.y + f.height) park(own, s.focus.window, offsetIn(f, s.at))
-  // (a private app's ask is only what they said: not even which app)
-  live.say({ t: "moment", kind: "ask", agent: own || undefined, text, ...(priv ? { app: "private" } : { app: s.focus.bundle, window: s.focus.window, title: s.focus.title, ...c, shot: c.shot ?? undefined }) })
+  const r = await screenAsk<{ ok?: boolean; why?: string }>("insert", { text: joinText(s.focus.before ?? "", text) })
+  if (!r.ok && r.why === "no-field") notice("lost", "Couldn't put the words in", "The field lost the keyboard while you spoke.")
+}
+
+/** What's at a point the user asked about: its window (the cursor left on that spot of it), else what's under it. A
+ *  private app's ask is only what they said: not even which app. */
+async function pointedAt(name: string, p: Point, w: AppWindowInfo | null): Promise<Record<string, unknown>> {
+  if (!w?.window || w.vaultite) return pointerContext(p)
+  if (hidden(w)) return { app: "private" }
+  if (w.frame) park(name, w.window, offsetIn(w.frame, p))
+  const c = await context(w.window, p, w.frame)
+  return { app: w.bundle, window: w.window, title: w.title, ...c, shot: c.shot ?? undefined }
 }
 
 // ---------- a cursor clicked: its conversation, and a box to ask it (typed, or said into it)
@@ -461,19 +511,22 @@ let chatWords: PanelData["words"] = undefined
 let wordsId = 0
 
 function chatOf(name: string): PanelData | null {
-  const a = live.state.agents.get(name)
+  // (the companion not started yet: talking to it starts it, its box there meanwhile)
+  const a = live.state.agents.get(name) ?? (name === live.state.name ? { name, tint: "orange", state: "away" } as Agent : null)
   if (!a) return null
   const items = live.state.said.filter((n) => n.agent === name && (n.kind === "say" || n.kind === "ask") && n.text)
     .map((n) => ({ id: n.id, kind: n.kind, text: n.text, t: n.t, ...(n.question ? { question: true } : {}) }))
   const s = session?.into === "panel" ? session : null
   const words = s ? { text: [...s.finals, s.pending].reduce((all, t) => (t ? all + joinText(all, t) : all), "").trim(), listening: true } : chatWords
-  return { name, tint: a.tint, how: howWith(a, live.state.harnesses), items, ...(words ? { words } : {}) }
+  const busy = a.state === "thinking" || a.state === "reading" || a.state === "writing" || a.state === "starting"
+  return { name, tint: a.tint, how: howWith(a, live.state.harnesses), items, ...(words ? { words } : {}), ...(busy ? { busy } : {}) }
 }
 
 /** Its conversation open by its cursor (`at`, the screen's): its bubble goes into it, all of it seen. */
 function openChat(name: string, at: Point) {
   if (!based) return
   chatWords = undefined
+  talkAt = null
   const d = chatOf(name)
   if (!d) return
   chatFront = front && !front.vaultite ? front : null
@@ -499,6 +552,9 @@ function chatChanged(done?: PanelData["words"]) {
 /** An ask typed in a cursor's conversation: about where its cursor is (a window, a point), or, docked, the app that
  *  was in front. */
 async function askFrom(name: string, text: string) {
+  // (a Talk key's: about the point it was pressed at; what follows there, about where its cursor is then)
+  const t = talkAt
+  if (t) { talkAt = null; return void live.say({ t: "moment", kind: "ask", agent: name, text, ...(await pointedAt(name, t.p, t.w)) }) }
   const a = live.state.agents.get(name)
   const where = a && onScreen(a) ? drawnAt.get(keyOf(a)) ?? null : null
   const win = a && onScreen(a) ? a.window ?? 0 : chatFront?.window ?? 0
@@ -508,7 +564,7 @@ async function askFrom(name: string, text: string) {
     const w = await screenAsk<AppWindowInfo>("window", { window: win, bundle: a?.app ?? chatFront?.bundle ?? "" })
     if (hidden(w)) place = { app: "private" }
     else if (!w.window) place = await pointerContext(screen.getCursorScreenPoint())
-    else { const c = await context(w.window, where); place = { app: w.bundle, window: w.window, title: w.title, ...c, shot: c.shot ?? undefined } }
+    else { const c = await context(w.window, where, w.frame); place = { app: w.bundle, window: w.window, title: w.title, ...c, shot: c.shot ?? undefined } }
   } else place = await pointerContext(screen.getCursorScreenPoint())
   live.say({ t: "moment", kind: "ask", agent: name, text, ...place })
 }
@@ -718,20 +774,36 @@ function draw() {
   let idle: Scene["idle"] = null
   if (idleOn) {
     const ptr = screen.getCursorScreenPoint()
-    if (prefs.cursor === "trail") idle = { name: own!.name, tint: own!.tint, sx: ptr.x + 14, sy: ptr.y + 16, docked: false }
+    const unread = live.state.said.some((n) => n.agent === own!.name && n.kind === "say" && !n.seen)
+    if (prefs.cursor === "trail") idle = { name: own!.name, tint: own!.tint, sx: ptr.x + 14, sy: ptr.y + 16, docked: false, ...(unread ? { unread: true } : {}) }
     else {
       // (at its edge of the display with the window in front, where the user left it)
       const d = front?.frame ? screen.getDisplayMatching({ x: Math.round(front.frame.x), y: Math.round(front.frame.y), width: Math.max(1, Math.round(front.frame.width)), height: Math.max(1, Math.round(front.frame.height)) }) : screen.getDisplayNearestPoint(ptr)
       const dock = dockOf(host!.prefs().dock), p = dockPoint(d.workArea, dock)
-      const unread = live.state.said.some((n) => n.agent === own!.name && n.kind === "say" && !n.seen)
       idle = { name: own!.name, tint: own!.tint, sx: p.x, sy: p.y, docked: true, side: dock.side, ...(unread ? { unread: true } : {}) }
     }
   }
+  if (own && prefs.cursor === "trail") returnToPointer(own, says)
   watchWindows()
   const s = session
-  const pill: Scene["pill"] = s && s.into !== "panel" ? { level: s.level, text: s.pending || s.finals.at(-1) || "", ready: s.ready, ...(s.focus.frame ? { display: displayOf(s.focus.frame) } : {}) } : null
+  const hintNow = hinted && hinted.until > Date.now() ? hinted : null
+  const pill: Scene["pill"] = s && s.into !== "panel" ? { level: s.level, text: s.pending || s.finals.at(-1) || "", ready: s.ready, ...(s.focus.frame ? { display: displayOf(s.focus.frame) } : {}) }
+    : hintNow ? { level: 0, text: hintNow.text, ready: true, hint: true } : null
   lastScene = { ...handOff(agents, idle), pill }
   showOverlay(based || null, lastScene)
+}
+/** Following the pointer, the companion only goes off to point: once it's done there (idle a while, its words gone, its
+ *  conversation closed), it comes back to the pointer. One the user dropped on a window (it follows it) stays. */
+const RETURN_MS = 6000
+let returnTimer: ReturnType<typeof setTimeout> | undefined, returned = ""
+function returnToPointer(own: Agent, says: Note[]) {
+  if (!onScreen(own) || own.state !== "watching" || following?.name === own.name || panelOpen() === own.name || says.some((n) => n.agent === own.name)) return
+  const left = RETURN_MS - (Date.now() - (own.t ?? 0)), once = `${own.name}:${own.t ?? 0}`
+  clearTimeout(returnTimer)
+  if (left > 0) { returnTimer = setTimeout(draw, left + 50); return }
+  if (returned === once) return
+  returned = once
+  comeBack(own.name)
 }
 const displayOf = (r: Rect) => screen.getDisplayMatching({ x: Math.round(r.x), y: Math.round(r.y), width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)) }).id
 
@@ -759,8 +831,8 @@ export async function dropAt(name: string, x: number, y: number) {
   // (it stays where it was let go, on that spot of the window; what's there, in words, is what they point at)
   if (w.frame) park(name, w.window, offsetIn(w.frame, { x, y }))
   const [t, shot, under] = await Promise.all([screenAsk<{ ok?: boolean; text?: string }>("text", { window: w.window, max: 20_000 }), windowShot(w.window, SHOTS()), underAt({ x, y })])
-  const text = t.ok ? t.text ?? "" : ""
-  live.say({ t: "moment", kind: "point", agent: name, app: w.bundle, window: w.window, title: w.title, screen: text, ...(shot ? { shot } : {}), ...(under ? { under: under.text } : {}) })
+  const text = t.ok ? t.text ?? "" : "", spot = shot && w.frame ? spotIn(w.frame, { x, y }) : null
+  live.say({ t: "moment", kind: "point", agent: name, app: w.bundle, window: w.window, title: w.title, screen: text, ...(shot ? { shot } : {}), ...(under ? { under: under.text } : {}), ...(spot ? { spot } : {}) })
   const f: Follow = { name, info: w, text, changed: null, sent: Date.now(), until: Date.now() + FOLLOW_FOR, timer: setInterval(() => void watch(f), FOLLOW_MS) }
   following = f
 }

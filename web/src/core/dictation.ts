@@ -34,9 +34,9 @@ export type DictationSource = {
   stop: () => Promise<unknown>
   cancel: () => Promise<unknown>
   on: (fn: (e: DictationEvent) => void) => () => void
-  /** The fn key, as the desktop app's menu-bar helper hears it while this window has the keyboard (`other`: a key
-   *  pressed with it). Builds from before the helper don't have it. */
-  onKey?: (fn: (k: { down?: boolean; other?: boolean }) => void) => () => void
+  /** The fn key (or another dictation key), as the desktop app's menu-bar helper hears it while this window has the
+   *  keyboard (`other`: a key pressed with it; `talk`: a companion's Talk key). Builds from before the helper don't have it. */
+  onKey?: (fn: (k: { down?: boolean; other?: boolean; talk?: boolean }) => void) => () => void
 }
 
 /** Where the words go: a note's editor (it shows the pending words itself) or a field. */
@@ -240,9 +240,9 @@ export async function pressDictation(begin: (hold: boolean) => Promise<boolean>)
   decide()
 }
 
-/** The fn key (the menu-bar helper's) as the dictation command's key: a tap starts and the next stops, held it listens
- *  till let go; with another key it was fn+key, and what it started is dropped. Returns how to stop hearing it. */
-export function fnDictation(begin: (hold: boolean) => Promise<boolean>) {
+/** The fn key (the helper's; `talk`: the companion's Talk keys) as a dictation's key: a tap starts, the next stops, held
+ *  it listens till let go; with another key what it started is dropped. Returns how to stop hearing it. */
+export function fnDictation(begin: (hold: boolean) => Promise<boolean>, talk = false) {
   const key = fnKey()
   let starting: Promise<boolean> | null = null, after: "stop" | "cancel" | "tap" | null = null
   const end = (how: "stop" | "cancel" | "tap") => {
@@ -250,6 +250,7 @@ export function fnDictation(begin: (hold: boolean) => Promise<boolean>) {
     void stopDictation(how === "cancel")
   }
   return dictationSource?.onKey?.((k) => {
+    if (!!k.talk !== talk) return
     const a = k.other ? key.other() : k.down ? key.down(performance.now(), listening()) : key.up(performance.now())
     const how = a === "stop" || a === "cancel" ? a : a === null && k.down === false ? "tap" : null
     if (a === "start") {

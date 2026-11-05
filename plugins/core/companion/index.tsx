@@ -1,12 +1,12 @@
 import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal, Undo2 } from "lucide-react"
-import { cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
+import { cn, currentEditor, definePlugin, dictation, fnDictation, menuAbove, notify, op, runCommandById, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
 import { type Agent, bump, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, undoEdit, unread, viewOf } from "./live"
 import { presence } from "./look"
-import { Arrow, follow, Overlay, showSaid } from "./Overlay"
+import { Arrow, follow, Overlay, showSaid, talkAt, talkHeard } from "./Overlay"
 import { Presence } from "./Presence"
 import { followItems, modeItem, MODES, setMode, showSession } from "./session"
 import { watchPanes } from "./panes"
@@ -31,6 +31,42 @@ function ask(agent?: string) {
 }
 
 setGuest(share)
+
+// (where the pointer is in the window: a Talk key's ask is about what's under it)
+let pointer: { x: number; y: number } | null = null
+const frame = () => new Promise((r) => requestAnimationFrame(r))
+/** A Talk key in this window: the companion's cursor comes to the pointer with its box, listening; what's said is sent
+ *  as it stops. Its cursor not drawn (asleep, in another window): an ask by the caret's line instead. */
+async function talk(): Promise<boolean> {
+  const st = getState()
+  if (share) return false
+  if (st.mode === "off") { notify("The companion is off: turn it on to talk to it"); return false }
+  if (dictation()) return false
+  const p = pointer ?? { x: innerWidth / 2, y: innerHeight / 2 }
+  if (!talkAt(p.x, p.y)) ask()
+  // (its box takes the keyboard as it opens)
+  for (let i = 0; i < 30; i++) {
+    await frame()
+    const f = document.activeElement
+    if (f instanceof HTMLInputElement || f instanceof HTMLTextAreaElement) break
+  }
+  if (!runCommandById("dictation:start")) return false
+  for (let i = 0; i < 30 && !dictation(); i++) await frame()
+  talkHeard(!!dictation())
+  return !!dictation()
+}
+
+function TalkKeys() {
+  useEffect(() => {
+    const moved = (e: PointerEvent) => { pointer = { x: e.clientX, y: e.clientY } }
+    const left = () => { pointer = null }
+    addEventListener("pointermove", moved, { passive: true, capture: true })
+    document.documentElement.addEventListener("pointerleave", left)
+    const off = fnDictation(talk, true)
+    return () => { off(); removeEventListener("pointermove", moved, { capture: true }); document.documentElement.removeEventListener("pointerleave", left) }
+  }, [])
+  return null
+}
 
 // Its Claude Code session's tab is its timeline (Timeline.tsx, loaded with it), the chat a click away.
 const timeline = () => import("./Timeline")
@@ -109,7 +145,7 @@ function Background() {
   useEffect(() => watchCanvases(), [])
   useEffect(() => (share ? undefined : watchPanes()), [])
   useOffer()
-  return <Overlay />
+  return <><TalkKeys /><Overlay /></>
 }
 
 // (a shared folder's guest gets the threads and nothing of the agents)

@@ -3,15 +3,19 @@ import { diffLines } from "../core/linediff.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 type Decls = Record<string, { default?: unknown }>
-export type Prefs = { fn: boolean; keys: string[]; cursor: "dock" | "trail" | "app"; privateApps: string[]; dictation: Record<string, unknown> }
+/** `keys` dictate, `talk` talk to the companion (its own: a key in both talks). */
+export type Prefs = { fn: boolean; keys: string[]; talk: string[]; cursor: "dock" | "trail" | "app"; privateApps: string[]; dictation: Record<string, unknown> }
 /** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
  *  `settings` giving the defaults. */
 export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
   const def = (from: Record<string, { default?: unknown }>, k: string) => from[k]?.default
   const val = <T>(x: unknown, fallback: T) => (x === undefined || x === null ? fallback : x as T)
+  const list = (from: Record<string, unknown>, decls: Decls) => (Array.isArray(from.keys) ? from.keys.map(String) : (def(decls, "keys") as string[] | undefined) ?? [])
+  const talk = list(c, DEFAULTS.companion)
   return {
     fn: val(d.fn, def(DEFAULTS.dictation, "fn") ?? true) !== false,
-    keys: Array.isArray(d.keys) ? d.keys.map(String) : (def(DEFAULTS.dictation, "keys") as string[] | undefined) ?? [],
+    keys: list(d, DEFAULTS.dictation).filter((k) => !talk.includes(k)),
+    talk,
     cursor: ((x) => (x === "trail" || x === "app" ? x : "dock"))(val(c.screen_cursor, def(DEFAULTS.companion, "screen_cursor"))),
     privateApps: Array.isArray(s.private_apps) ? s.private_apps.map(String) : (def(DEFAULTS.screen, "private_apps") as string[] | undefined) ?? [],
     dictation: d,
@@ -41,7 +45,8 @@ export type Scene = {
   idle: { name: string; tint: string; sx: number; sy: number; docked: boolean; from?: Point; leaving?: boolean
     /** Docked: on which edge, and whether it said something not seen yet. */
     side?: Dock["side"]; unread?: boolean } | null
-  pill: { level: number; text: string; ready: boolean; display?: number } | null
+  /** `hint`: a word for a moment, nothing heard (a key pressed where it does nothing). */
+  pill: { level: number; text: string; ready: boolean; display?: number; hint?: boolean } | null
 }
 type Display = { id: number; bounds: Rect; workArea?: Rect }
 const inside = (d: Display, x: number, y: number) => x >= d.bounds.x && x < d.bounds.x + d.bounds.width && y >= d.bounds.y && y < d.bounds.y + d.bounds.height
@@ -103,6 +108,12 @@ export function panelAt(p: Point, size: { width: number; height: number }, area:
   const below = p.y + 42 + size.height <= area.y + area.height - 8
   const y = below ? p.y + 36 : p.y - 6 - size.height
   return { x: Math.round(Math.max(area.x + 8, Math.min(area.x + area.width - 8 - size.width, x))), y: Math.round(Math.max(area.y + 8, Math.min(area.y + area.height - 8 - size.height, y))) }
+}
+
+/** Where `p` is in a window's picture, in words ("40% across, 12% down"); null outside it. */
+export function spotIn(frame: Rect, p: Point) {
+  if (frame.width <= 0 || frame.height <= 0 || p.x < frame.x || p.y < frame.y || p.x > frame.x + frame.width || p.y > frame.y + frame.height) return null
+  return `${Math.round(((p.x - frame.x) / frame.width) * 100)}% across, ${Math.round(((p.y - frame.y) / frame.height) * 100)}% down`
 }
 
 /** A point kept inside a window as it moves: where in it (from its top left) the user left a cursor. */

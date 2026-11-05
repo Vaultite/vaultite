@@ -229,16 +229,23 @@ const answerAsk = (event: string, v: "approve" | "deny") => (event.startsWith("c
 /** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), as the place it points at;
  *  true on a pane or the app's UI; false on nothing it knows. */
 function dropAt(agent: string, x: number, y: number): Target | boolean {
+  const at = noteAt(x, y)
+  if (!at) return dropOnPane(agent, x, y)
+  const { selection, ...place } = at
+  pointAt(agent, at)
+  return place
+}
+
+/** A note's line at x, y (the word there, or the selection when it's on one); null off a note's text. */
+function noteAt(x: number, y: number): (Target & { path: string; line: number; selection?: string }) | null {
   const el = document.elementsFromPoint(x, y).find((e) => !e.closest(".companion-overlay") && e.closest(".cm-editor"))
   const v = el ? [...views.keys()].find((x) => x.dom === el.closest(".cm-editor")) : undefined
   const pos = v?.posAtCoords({ x, y })
-  if (!v || pos === null || pos === undefined) return dropOnPane(agent, x, y)
+  if (!v || pos === null || pos === undefined) return null
   const st = v.state, sel = st.selection.main, on = !sel.empty && pos >= sel.from && pos <= sel.to
   const word = on ? null : st.wordAt(pos), selection = on ? st.sliceDoc(sel.from, sel.to) : undefined
   const find = on ? selection!.split("\n")[0].slice(0, 200) : word ? st.sliceDoc(word.from, word.to) : undefined
-  const at = { path: views.get(v)!, line: st.doc.lineAt(on ? sel.from : pos).number, find: find || undefined }
-  pointAt(agent, { ...at, selection })
-  return at
+  return { path: views.get(v)!, line: st.doc.lineAt(on ? sel.from : pos).number, find: find || undefined, ...(selection ? { selection } : {}) }
 }
 
 /** A cursor dropped off a note's text: on a pane (a terminal's row, a point of a page, a view) or the app's UI (a tab,
@@ -274,20 +281,35 @@ function SayActions({ n, small }: { n: Note; small?: boolean }) {
   </>
 }
 
-/** Clicked: its last words (each can be put in the note or pinned into a comment) above a box to ask it something, there. */
+/** Clicked: its last words (each can be put in the note or pinned into a comment) above a box to ask it something, there.
+ *  Opened by a Talk key: about what was under the pointer, and what's said into it is sent as the dictation stops. */
 function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boolean; close: () => void; menu: (e: React.MouseEvent) => void }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [draft, setDraft] = useState("")
   const mine = s.said.filter((n) => n.agent === a.name)
   // (its history open: all of it seen)
   useEffect(() => { sawSays(mine.map((n) => n.id)) }, [mine.length])
-  const send = () => {
-    const text = draft.trim()
+  useEffect(() => () => { if (talked?.agent === a.name) talked = null }, [])
+  const send = (said?: string) => {
+    const text = (said ?? draft).trim()
     if (!text) return
+    const t = talked?.agent === a.name ? talked.at : null
+    talked = null
     const v = a.path ? viewOf(a.path) : null, pos = v ? posIn(v, a) : null
-    if (!sendMoment({ kind: "ask", agent: a.name, path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line, text })) return unsent()
+    const place = t ? { path: t.path, line: t.line, ...(t.find ? { find: t.find } : {}), ...(t.selection ? { selection: t.selection } : {}) }
+      : { path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line }
+    if (!sendMoment({ kind: "ask", agent: a.name, ...place, text })) return unsent()
     close()
   }
+  // (a Talk key's dictation stopped: what it typed in goes, as the input holds it now)
+  const listening = useDictation((d) => !!d), was = useRef(listening)
+  useEffect(() => {
+    const stopped = was.current && !listening
+    was.current = listening
+    if (!stopped || talked?.agent !== a.name || !talked.send) return
+    const box = document.querySelector<HTMLInputElement>(`[data-companion-popover="${CSS.escape(a.name)}"] input`)
+    setTimeout(() => send(box?.value ?? draft), 0)
+  }, [listening])
   return (
     <Chat name={a.name} tint={tintOf(a.name)} how={howText(a)} items={mine} draft={draft} setDraft={setDraft} send={send} close={close} more={(e) => { close(); menu(e) }}
       words={(n) => <Markdown text={n.text ?? ""} className="companion-md" />} time={(t) => fmtTime(new Date(t).toISOString())} actions={(n) => <SayActions n={n as Note} />}
@@ -864,6 +886,13 @@ function topOf(v: EditorView, pos: number) {
 /** Open agent `name`'s box by its cursor: what it said, and asking it (the status bar's menu, where its cursor rests). */
 let popOpen: ((name: string) => void) | null = null
 export const showSaid = (name: string) => popOpen?.(name)
+/** A Talk key's conversation: about what was under the pointer (`at`), sent as its dictation stops (`send`). */
+let talked: { agent: string; at: ReturnType<typeof noteAt>; send: boolean } | null = null
+let talkHere: ((x: number, y: number) => boolean) | null = null
+/** A Talk key pressed in the window: the companion's cursor comes to the pointer (x, y) and opens its box there; false
+ *  when its cursor isn't drawn. `heard`: the dictation that starts in it, once it does. */
+export const talkAt = (x: number, y: number) => talkHere?.(x, y) ?? false
+export const talkHeard = (on: boolean) => { if (talked) talked.send = on }
 
 export function Overlay() {
   const s = useSyncExternalStore(subscribe, getState)
@@ -876,6 +905,15 @@ export function Overlay() {
   const [, redraw] = useReducer((x: number) => x + 1, 0)
   const [popped, setPopped] = useState<string | null>(null)
   popOpen = setPopped
+  talkHere = (x, y) => {
+    const name = getState().name
+    if (!drawn.current.has(name)) return false
+    const at = noteAt(x, y)
+    hold(name, true, { x, y }, at ?? undefined)
+    talked = { agent: name, at, send: false }
+    setPopped(name)
+    return true
+  }
   const [hovered, setHovered] = useState<string | null>(null)
   const heights = useRef(new Map<string, number>())
   const rooms = useRef(new Map<EditorView, number>())

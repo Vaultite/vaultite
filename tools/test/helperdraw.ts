@@ -34,7 +34,12 @@ mock.module(at("dictation.ts"), { exports: { dictate: async () => ({ ok: true })
 // (the server: settings, and the companion's socket)
 let agent: Record<string, unknown> = { name: "Claude", tint: "orange", state: "watching", t: Date.now(), path: "Notes/A.md", line: 3 }
 let sock: WebSocket | null = null
-const srv = http.createServer((_q, res) => { res.setHeader("Content-Type", "application/json"); res.end("{}") })
+// (its cursor waits docked here: these are the dock's checks; following the pointer is the default)
+const srv = http.createServer((q, res) => {
+  let body = ""
+  q.on("data", (c) => { body += c })
+  q.on("end", () => { res.setHeader("Content-Type", "application/json"); res.end(body.includes('"plugin/companion"') ? JSON.stringify({ screen_cursor: "dock" }) : "{}") })
+})
 const wss = new WebSocketServer({ noServer: true })
 srv.on("upgrade", (req, s, h) => wss.handleUpgrade(req, s, h, (ws) => { sock = ws; ws.send(JSON.stringify({ t: "state", mode: "pair", name: "Claude", agents: [agent], notes: [] })) }))
 await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r))

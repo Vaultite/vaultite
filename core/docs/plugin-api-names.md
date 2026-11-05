@@ -233,7 +233,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `fmtMin(m)`
 - `fmtStamp(t, seconds?)`: A moment in full, for a tooltip: "Sat, Oct 10, 4:05 PM" (`seconds`: 4:05:09 PM).
 - `fmtTime(isoStr)`
-- `fnDictation(begin)`: The fn key (the menu-bar helper's) as the dictation command's key: a tap starts and the next stops, held it listens till let go; with another key it was fn+key, and what it started is dropped.
+- `fnDictation(begin, talk?)`: The fn key (the helper's; `talk`: the companion's Talk keys) as a dictation's key: a tap starts, the next stops, held it listens till let go; with another key what it started is dropped.
 - `FocusedFile`: The file in the focused pane or, while that shows something else (a view, like the links pane), the file focused last, and the pane it's in: what a view that follows the other panes shows (a…
 - `focusedPane(t)`: The pane a tab has focused.
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (its id) (the focused one by default): its editor or terminal, if it shows one.

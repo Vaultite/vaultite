@@ -15,6 +15,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   sign-in that goes on to Google asks there. A tab moved to another container mid sign-in starts it again there, so
   the sign-in no longer fails for a missing state.
 
+- **The companion has a key of its own**: a double Control (its Talk keys) brings its cursor to your pointer, in any
+  app or in Vaultite, with its conversation there listening: what you say is sent when you stop, about what's under
+  the pointer, and the answer comes into the same box, ready for the next. fn only dictates, into a text field (with
+  none, it says so). Outside Vaultite its cursor now follows your pointer by default, small and faint, going off only
+  to point and coming back after; the agent is told where your pointer is in the window's picture.
 - **Dark pages reach a styled site's other pages**: a site the vault styles only in part (Google Docs' editors) has
   its sign-in, access and error pages darkened too, judged page by page as they look with the style; going from one
   darkened site to another in a tab no longer shows a pale frame; site styles get `--vault-paper-filter` for canvases.

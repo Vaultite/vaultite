@@ -113,8 +113,10 @@ export function overlayActs(a: OverlayActs) {
 
 /** What it shows: the agent, what it runs, its last words and the user's asks, the words being dictated into its box. */
 export type PanelData = { name: string; tint: string; how: string; items: { id: string; kind: string; text?: string; t: number; question?: boolean }[]
-  /** `done` (with its `id`, to be taken once): said, for the box. */
-  words?: { text: string; listening: boolean; done?: boolean; id?: number } }
+  /** It's at work on what it was asked (its answer is on its way). */
+  busy?: boolean
+  /** `done` (with its `id`, to be taken once): said, for the box; `send`: sent as it is (a Talk key's). */
+  words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean } }
 const WIDTH = 300, PAD = 16
 let panel: { w: BrowserWindow; name: string; at: Point; data: PanelData; height: number; menu: boolean } | null = null
 let panelActs: PanelActs | null = null
@@ -171,7 +173,7 @@ const ofPanel = (e: IpcMainEvent) => (panel && !panel.w.isDestroyed() && panel.w
 export function onPanel(a: PanelActs) {
   panelActs = a
   ipcMain.on("panel:size", (e, h: unknown) => { const p = ofPanel(e); if (p && typeof h === "number" && h > 0 && Math.round(h) !== p.height) { p.height = Math.round(h); place() } })
-  ipcMain.on("panel:send", (e, text: unknown) => { const p = ofPanel(e); if (p && typeof text === "string" && text.trim()) { a.send(p.name, text.trim()); closePanel() } })
+  ipcMain.on("panel:send", (e, text: unknown) => { const p = ofPanel(e); if (p && typeof text === "string" && text.trim()) { a.send(p.name, text.trim()) } })
   ipcMain.on("panel:close", (e) => { if (ofPanel(e)) closePanel() })
   ipcMain.on("panel:mic", (e) => { if (ofPanel(e)) a.mic() })
   ipcMain.on("panel:more", (e, m: { x?: unknown; y?: unknown }) => {

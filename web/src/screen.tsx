@@ -20,10 +20,10 @@ type Say = { id: string; text: string; question?: boolean }
 type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; say?: Say }
 type Idle = { name: string; tint: string; sx: number; sy: number; docked: boolean; from?: Point; leaving?: boolean; side?: "left" | "right"; unread?: boolean }
 type Shown = { width: number; height: number; top: number; agents: Agent[]; idle: Idle | null
-  pill: { level: number; text: string; ready: boolean } | null }
+  pill: { level: number; text: string; ready: boolean; hint?: boolean } | null }
 /** Only the places changed (helperlogic.ts splitScene). */
 type At = { agents: Record<string, [number, number]>; idle: [number, number] | null }
-type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; words?: { text: string; listening: boolean; done?: boolean; id?: number } }
+type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean } }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
   drop: (name: string, x: number, y: number) => void; open: (name: string, x: number, y: number) => void; home: (name: string) => void
   menu: (name: string, x: number, y: number) => void; stop: () => void
@@ -277,7 +277,15 @@ function Cursor({ a, gone }: { a: Agent; gone?: boolean }) {
 function Waiting({ i, gone }: { i: Idle; gone?: boolean }) {
   const tint = `var(--${i.tint})`, { dragging, down } = useDrag(i.name, "idle", true), [hover, setHover] = useState(false)
   const fade = "screen-in transition-opacity duration-300 data-gone:pointer-events-none data-gone:opacity-0 data-leaving:delay-150", off = gone || i.leaving || undefined
-  if (!i.docked && !dragging) return <div ref={attach("idle", paintTrail)} data-gone={off} data-leaving={i.leaving || undefined} className={`pointer-events-none fixed top-0 left-0 origin-top-left opacity-80 ${fade}`}><Arrow tint={tint} /></div>
+  // (by the pointer it's small and faint, there all day: words unread show as a dot on it)
+  if (!i.docked && !dragging) return (
+    <div ref={attach("idle", paintTrail)} data-gone={off} data-leaving={i.leaving || undefined} className={`pointer-events-none fixed top-0 left-0 origin-top-left ${fade}`}>
+      <div className={cn("relative origin-top-left scale-[0.8] transition-opacity duration-300", i.unread ? "opacity-95" : "opacity-60")}>
+        <Arrow tint={tint} />
+        {i.unread && <span className="companion-unread absolute -top-0.5 left-3.5 size-2 rounded-full shadow-[0_0_0_1.5px_white]" style={{ background: tint, "--c": tint } as React.CSSProperties} />}
+      </div>
+    </div>
+  )
   return (
     <div ref={attach("idle", dragging ? paintCursor : paintDot)} data-gone={off} data-leaving={i.leaving || undefined} data-companion-dock={i.side} className={`fixed top-0 left-0 ${fade}`}>
       <Hold className={cn("grid size-5 place-items-center", dragging ? "cursor-grabbing" : "cursor-pointer")} onPointerDown={down} onHover={setHover}>
@@ -292,6 +300,11 @@ function Waiting({ i, gone }: { i: Idle; gone?: boolean }) {
       )}
     </div>
   )
+}
+
+/** A key pressed where it does nothing: a word where the pill shows, a moment. */
+function Hint({ text }: { text: string }) {
+  return <div className="screen-in pointer-events-none fixed bottom-14 left-1/2 -translate-x-1/2"><div className="dictation-pill" data-ready><span className="dictation-pending">{text}</span></div></div>
 }
 
 function Pill({ p }: { p: NonNullable<Shown["pill"]> }) {
@@ -323,7 +336,11 @@ function Panel() {
     setD(x)
     // (words said into its box, once each)
     const w = x.words
-    if (w?.done && w.id && w.id !== took.current) { took.current = w.id; setDraft((v) => (v + joinText(v, w.text)).trimStart()) }
+    if (w?.done && w.id && w.id !== took.current) {
+      took.current = w.id
+      // (a Talk key's words go as they stop, with what was typed before them)
+      setDraft((v) => { const all = (v + joinText(v, w.text)).trimStart(); if (!w.send || !all.trim()) return all; api?.panel.send(all); return "" })
+    }
   }), [])
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") api?.panel.close() }
@@ -346,7 +363,7 @@ function Panel() {
   return (
     <div ref={box} className="w-fit p-4">
       <Chat name={d.name} tint={tint} how={d.how} items={d.items} draft={text} setDraft={listening ? () => {} : setDraft} focus
-        send={() => { if (text.trim()) api?.panel.send(text) }} close={() => api?.panel.close()} more={(e) => api?.panel.more(e.clientX, e.clientY)}
+        send={() => { if (text.trim()) { api?.panel.send(text); setDraft("") } }} busy={d.busy} close={() => api?.panel.close()} more={(e) => api?.panel.more(e.clientX, e.clientY)}
         words={(n) => <div className="note-prose compact companion-md" dangerouslySetInnerHTML={{ __html: html(n.text ?? "") }} />}
         time={(t) => TIME.format(t)}
         tools={
@@ -370,7 +387,7 @@ function Screen() {
       {s.agents.map((a) => <Cursor key={a.name} a={a} />)}
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
       {(s.idle ?? idleGone) && <Waiting i={(s.idle ?? idleGone)!} gone={!s.idle} />}
-      {s.pill && <Pill p={s.pill} />}
+      {s.pill && (s.pill.hint ? <Hint text={s.pill.text} /> : <Pill p={s.pill} />)}
     </>
   )
 }

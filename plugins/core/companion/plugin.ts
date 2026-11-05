@@ -44,8 +44,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
    *  says (its Accessibility text) and its picture (a PNG on this machine). */
   app?: string; window?: number; title?: string; screen?: string; shot?: string
-  /** On screen: what was under their pointer, in words, and that point (screen points: where to point back). */
-  under?: string; sx?: number; sy?: number
+  /** On screen: what was under their pointer, in words, and that point (screen points: where to point back); `spot`:
+   *  where the pointer is in the window's picture, in words. */
+  under?: string; sx?: number; sy?: number; spot?: string
   /** In a pane (a terminal, a web page: today's tab id) or the app's UI (a data-ui id), by its title; a terminal's row, a
    *  page's element (a snapshot ref) or the text under the pointer (`text`). */
   pane?: string; ui?: string; row?: number; el?: string
@@ -779,7 +780,7 @@ const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said"])
 function screenPlace(m: Record<string, unknown>) {
   const shot = str(m.shot), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
   return { ...(str(m.app) ? { app: str(m.app).slice(0, 200) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
-    ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
+    ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}), ...(str(m.spot) ? { spot: str(m.spot).slice(0, 80) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     // (only the helper's own pictures: an agent reads what's named here)
     ...(/[/\\]screens[/\\](window-\d+-\d+|region-\d+)\.png$/.test(shot) ? { shot } : {}) }
@@ -1961,6 +1962,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
       : `- move${at}: they folded what you wrote there back into a bubble (more for a bubble than the note), ${JSON.stringify(cut(m.text ?? "", 200))}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
     if (m.shot) out.push(`  its picture: ${m.shot}${m.window ? "" : " (the screen around their pointer)"}`)
+    if (m.spot) out.push(`  their pointer in its picture: ${m.spot}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
   }

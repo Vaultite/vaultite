@@ -86,6 +86,9 @@ above that), act, run it again, and never end your turn.
   title, what it says, its picture: read the PNG), or, where there's none (the desktop, the menu bar), what was under
   their pointer, if Accessibility reads anything there, and a picture of the screen around it (`sx`, `sy`: that point);
   a window the user dropped your cursor on comes back as edits as it changes, and your cursor stays on the spot they
-  dropped it (`under`: what's there, in words, as a Gmail row: that's what they point at). A click on your cursor there
-  opens your conversation with a box: what they type (or say into it) is an ask about where your cursor is, or, docked,
-  the window in front. A double click (or Come back in its right-click menu) calls it back to their note: nothing to answer. Point there with `companion say --app <bundle> --find <text>`, or `--sx --sy`; `vau docs screen`.
+  dropped it (`under`: what's there, in words, as a Gmail row: that's what they point at; `their pointer in its picture`:
+  where in the PNG). A Talk key (the setting `keys`, default a double Control; never a dictation key) asks about what's
+  under their pointer, in any app or in Vaultite: your conversation opens there, what they say is sent when they stop,
+  and your answers come into it (a `say` there shows in it, with its box for the next). A click on your cursor there
+  opens it too: what they type (or say into it) is an ask about where your cursor is, or, docked, the window in front.
+  Following their pointer (the default), you go off only to point: idle a while after, your words gone, you come back. A double click (or Come back in its right-click menu) calls it back to their note: nothing to answer. Point there with `companion say --app <bundle> --find <text>`, or `--sx --sy`; `vau docs screen`.

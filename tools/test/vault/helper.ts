@@ -81,7 +81,7 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { atOffset, dockAt, hunksOf, panelAt, pointIn, prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
+    const { atOffset, dockAt, hunksOf, panelAt, pointIn, prefsOf, sceneFor, spotIn, splitScene } = await import("../../../electron/helperlogic.ts")
     const area = { x: 0, y: 25, width: 1600, height: 975 }, bounds = { x: 0, y: 0, width: 1600, height: 1000 }, size = { width: 300, height: 200 }
     check("helper: a cursor's conversation opens to its right and below its flag, else toward the room, always on screen",
       JSON.stringify(panelAt({ x: 100, y: 100 }, size, area)) === '{"x":94,"y":136}' && JSON.stringify(panelAt({ x: 1590, y: 100 }, size, area)) === '{"x":1292,"y":136}' &&
@@ -94,6 +94,12 @@ export default async ($: VaultTest) => {
     const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, { screen_cursor: "trail" }, { private_apps: [] }, defaults)
     check("helper: settings left out are the manifests' defaults; set ones win, an empty private list too",
       none.fn && none.keys.join() === "fn,double_control" && set.keys.join() === "right_option" && none.cursor === "dock" && none.privateApps.join() === "1Password" && !set.fn && set.cursor === "trail" && set.privateApps.length === 0, { none, set })
+    const talkDefaults = { ...defaults, companion: { ...defaults.companion, keys: { default: ["double_control"] } } }
+    const split = prefsOf({ keys: ["fn", "right_option", "double_control"] }, {}, {}, talkDefaults), mine = prefsOf({}, { keys: ["fn"] }, {}, talkDefaults)
+    check("helper: Talk keys are the companion's, and a key in both talks, never dictates",
+      split.talk.join() === "double_control" && split.keys.join() === "fn,right_option" && mine.talk.join() === "fn" && !mine.keys.includes("fn"), { split, mine })
+    check("helper: where the pointer is in a window's picture, in words; outside it, nothing",
+      spotIn({ x: 100, y: 100, width: 200, height: 100 }, { x: 150, y: 190 }) === "25% across, 90% down" && spotIn({ x: 100, y: 100, width: 200, height: 100 }, { x: 50, y: 150 }) === null)
     check("helper: only inside Vaultite is a place of its own, an unknown one the edge", prefsOf({}, { screen_cursor: "app" }, {}, defaults).cursor === "app" && prefsOf({}, { screen_cursor: "x" }, {}, defaults).cursor === "dock")
     check("helper: it points at an element by its left edge's middle, at a window by its title bar",
       JSON.stringify(pointIn({ x: 100, y: 200, width: 80, height: 20 }, true)) === '{"x":116,"y":210}' &&

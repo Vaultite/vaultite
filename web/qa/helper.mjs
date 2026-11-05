@@ -1,5 +1,5 @@
-// The menu-bar helper (electron/helper.ts) in the desktop app, unseen: fn with no field asks the companion about the app in
-// front (speech from a file), its cursor goes there over the screen, closing the window keeps the server and reopening
+// The menu-bar helper (electron/helper.ts) in the desktop app, unseen: fn with no field hears nothing, a double Control asks
+// the companion about the window under the pointer (speech from a file), its cursor goes there over the screen, closing the window keeps the server and reopening
 // takes it back. The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/helper.mjs <vault copy>
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
@@ -30,19 +30,28 @@ check("the helper runs with the app", await helper(() => true))
 const engines = await win.evaluate((l) => window.vaultite?.dictation?.engines(l), "en-US")
 if (!engines?.apple) { await app.close(); await skip(`Apple's recognizer doesn't dictate here (${JSON.stringify(engines)})`) }
 
-// ---------- fn with no field: dictation, the pill, then an ask about the app in front
+// ---------- fn with no field: nothing heard, a word where the pill shows
 const frame = { x: 100, y: 120, width: 800, height: 600 }
-await helper((h, f) => { h.stub("focus", { field: false, bundle: "com.example.notes", name: "Example Notes", pid: 1, window: 9, title: "Draft", frame: f }); h.stub("window", { window: 9, bundle: "com.example.notes", name: "Example Notes", title: "Draft", frame: f }) }, frame)
+const win9 = { window: 9, bundle: "com.example.notes", name: "Example Notes", title: "Draft", frame }
+await helper((h, w) => { h.stub("focus", { ...w, field: false, pid: 1 }); h.stub("window", w); h.stub("at", w) }, win9)
 await wait(1500) // (its settings and the companion's socket, read as it starts)
 await helper((h) => h.heard({ event: "fn", down: true }))
 await wait(100)
 await helper((h) => h.heard({ event: "fn", down: false }))
-check("a tap of fn shows the pill", await until(() => helper((h) => !!h.scene()?.pill), 5000), await helper((h) => h.scene()))
+check("fn with no field hears nothing: a word says so", await until(() => helper((h) => !!h.scene()?.pill?.hint), 5000), await helper((h) => h.scene()))
+await wait(1500)
+check("…and asks no one", !(await helper((h) => h.asked().some((m) => m.kind === "ask"))))
+
+// ---------- a double Control (a Talk key): the companion's box by the pointer, listening; what's said is sent
+const tap = (at) => [{ event: "mod", code: 59, on: true, alone: true, at }, { event: "mod", code: 59, on: false, at: at + 60 }]
+for (const m of [...tap(0), ...tap(200)]) await helper((h, x) => h.heard(x), m)
 const overlay = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html")), 10000)
-check("the screen's overlay draws it", !!overlay && await until(() => overlay.evaluate(() => !!document.querySelector(".dictation-pill")), 5000))
+const box = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html#panel")), 10000)
+check("a double Control opens its conversation", !!box)
+check("…listening", !!box && await until(() => box.evaluate(() => !!document.querySelector("[aria-pressed=true]")), 10000))
 const ask = await until(() => helper((h) => h.asked().find((m) => m.kind === "ask")), 30000, 200)
-check("let go of, what was said asks the companion about the app in front", !!ask && ask.app === "com.example.notes" && /milk/i.test(ask.text ?? ""), ask)
-check("the pill goes when it stops", await until(() => helper((h) => !h.scene()?.pill), 5000))
+check("what was said goes as it stops, about the window under the pointer", !!ask && ask.app === "com.example.notes" && ask.window === 9 && /milk/i.test(ask.text ?? ""), ask)
+check("its conversation stays open for the answer", !!box && !box.isClosed())
 
 // ---------- its cursor over the screen, at the window it was asked about
 const at = await until(() => helper((h) => h.scene()?.agents?.[0]), 10000, 200)
@@ -64,6 +73,19 @@ check("fn in the window dictates where its cursor is, as ⌘J", await until(() =
 await until(() => win.evaluate(() => !document.querySelector(".dictation-pill")), 30000, 100)
 const note = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
 check("its words land in the note", /Asked: what does this paragraph say about milk/i.test(note), note)
+
+// ---------- a Talk key while the window has the keyboard: the companion's box (by its cursor, or a thread), listening
+const line = await win.locator("[data-pane] .cm-line", { hasText: "Asked:" }).boundingBox()
+await win.mouse.move(line.x + 20, line.y + line.height / 2)
+await fnKey({ talk: true, down: true })
+await wait(100)
+await fnKey({ talk: true, down: false })
+const into = await until(() => win.evaluate(() => { const f = document.activeElement; return !!document.querySelector(".dictation-pill") && !!f?.closest("[data-companion-popover], [data-companion-note], [data-companion-add], .cm-companion-draft, [data-companion-thread]") && (f.tagName === "INPUT" || f.tagName === "TEXTAREA" || f.isContentEditable) }), 8000)
+check("a Talk key in the window opens the companion's box, listening in it", into, await win.evaluate(() => document.activeElement?.outerHTML.slice(0, 200)))
+const left = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
+await until(() => win.evaluate(() => !document.querySelector(".dictation-pill")), 30000, 100)
+const after = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
+check("…and nothing it hears goes in the note", after === left, { left, after })
 
 // ---------- closing the window keeps the server; the app clicked again opens it on the same one
 const alive = () => fetch(`http://127.0.0.1:${port}/api/ops/screen.front`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.ok, () => false)

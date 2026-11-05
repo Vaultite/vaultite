@@ -2,13 +2,12 @@
 // session, electron/dictation.ts the recognizer). A tap starts and the next stops; held, it listens until let go.
 import { useEffect } from "react"
 import { Mic } from "lucide-react"
-import { definePlugin, dictation, dictationSource, fnDictation, listening, notify, notifyError, offeredCommand, openPermissions, pluginSettings, pressDictation, runCommandById,
+import { definePlugin, dictation, dictationSource, fnDictation, listening, notify, notifyError, openPermissions, pluginSettings, pressDictation,
   startDictation, typingIn, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
 import { fieldTarget } from "./field"
 
-const frame = () => new Promise((r) => requestAnimationFrame(r))
-
-/** Where the words go: the editor or field with the keyboard; with neither, the Ask box, opened. */
+/** Where the words go: the editor or field with the keyboard; with neither, nowhere (talking to the companion is its
+ *  Talk keys'). */
 async function targetHere(): Promise<DictationTarget | null> {
   const el = document.activeElement
   const cm = el instanceof HTMLElement ? el.closest(".cm-editor") : null
@@ -17,13 +16,6 @@ async function targetHere(): Promise<DictationTarget | null> {
   if (view) return view.target ?? fieldTarget(view.dom)
   // (a terminal keeps its keys: what's said there would run)
   if (el instanceof HTMLElement && typingIn(el) && !el.closest("[data-keeps-keys], .xterm")) return fieldTarget(el)
-  if (!offeredCommand("terminal:ask") || !runCommandById("terminal:ask")) return null
-  // (its field takes the keyboard as it opens)
-  for (let i = 0; i < 30; i++) {
-    await frame()
-    const f = document.activeElement
-    if (f instanceof HTMLTextAreaElement || f instanceof HTMLInputElement) return fieldTarget(f)
-  }
   return null
 }
 
