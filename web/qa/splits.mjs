@@ -198,12 +198,12 @@ try {
   o = await drag(await handle(cNow.id), await barSpot(null))
   cs = await chips()
   check("a pane onto the tab bar: a tab of its own", o.line && cs.length === 2 && cs.some((c) => c.panes.join() === C) && cs.some((c) => c.panes.length === 2), { o, cs })
-  // That tab onto a pane's middle: it takes its place, what was there going back to the list.
+  // That tab onto a split pane's middle: it's one of that pane's own tabs, shown, what was there behind it.
   await chip(A).locator("[role=tab]").click(); await wait(400)
   ps = await panes()
   o = await drag(chip(C), await spot(ps.find((p) => p.label === Bn).id, "center"))
   cs = await chips()
-  check("a tab onto a pane's middle replaces it, the pane a tab of its own", o.zone === "center" && cs.length === 2 && cs.some((c) => [A, C].every((x) => c.panes.includes(x))) && cs.some((c) => c.panes.join() === Bn), { o, cs })
+  check("a tab onto a split pane's middle joins that pane's tabs, shown there", o.zone === "center" && cs.length === 1 && [A, C].every((x) => cs[0].panes.includes(x)) && !cs[0].panes.includes(Bn), { o, cs })
   await shot("after-drags")
 
   // ---------- the old layout (a main group and a right split) migrates ----------

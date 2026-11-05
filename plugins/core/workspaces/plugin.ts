@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, type OpCtx, OpError, type Param, pathAsSaid, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
 import { ConfigError, type Item } from "../../../core/vault.ts"
-import { allPanes, blankList, clean, mapPanes, newPaneId, newTabId, panesOf, tabWith, tabWithout, withoutPanes, withoutTabs, type Group, type Pane, type Tab, type TabList, type Workspace } from "../../../core/layout.ts"
+import { allPanes, blankList, clean, mapPlaces, newPaneId, newTabId, panesOf, placesIn, placesOf, tabWith, tabWithout, withoutPanes, withoutTabs, type Group, type Pane, type Tab, type TabList, type Workspace } from "../../../core/layout.ts"
 import { blankLayout, isBlank } from "./blank.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -129,7 +129,7 @@ const savedPlace = (to: string, self = selfNow) =>
   self && to.startsWith(TERM) && to.length > TERM.length && !to.includes("@") ? `${to}@${self}` : to
 /** A layout with each pane's place changed by f (its pop-outs' too). */
 const placesMapped = (l: Workspace, f: (to: string) => string): Workspace => {
-  const list = <L extends TabList>(x: L): L => ({ ...x, tabs: x.tabs.map((t) => ({ ...t, root: mapPanes(t.root, (p) => ({ ...p, to: f(p.to) })) })) })
+  const list = <L extends TabList>(x: L): L => ({ ...x, tabs: x.tabs.map((t) => ({ ...t, root: mapPlaces(t.root, (p) => ({ ...p, to: f(p.to) })) })) })
   return { ...list(l), ...(l.windows ? { windows: l.windows.map(list) } : {}) }
 }
 /** The slots as this machine's app has them (`localPlace`). */
@@ -284,10 +284,10 @@ function without(l: Workspace, tabs: Set<string>, panes = new Set<string>()): Wo
 
 /** Tabs coming into a layout, with new ids where theirs are taken there (ids are made per device). */
 function freshIds(l: Workspace | null, tabs: Tab[]): Tab[] {
-  const taken = new Set(l ? [l, ...(l.windows ?? [])].flatMap((x) => x.tabs.flatMap((t) => [t.id, ...panesOf(t).map((p) => p.id)])) : [])
+  const taken = new Set(l ? [l, ...(l.windows ?? [])].flatMap((x) => x.tabs.flatMap((t) => [t.id, ...placesIn(t).map((p) => p.id)])) : [])
   return tabs.map((t) => {
-    const ids = new Map(panesOf(t).map((p) => [p.id, taken.has(p.id) ? newPaneId() : p.id]))
-    const out = { ...t, id: taken.has(t.id) ? newTabId() : t.id, root: mapPanes(t.root, (p) => ({ ...p, id: ids.get(p.id)! })), focus: ids.get(t.focus) ?? t.focus }
+    const ids = new Map(placesIn(t).map((p) => [p.id, taken.has(p.id) ? newPaneId() : p.id]))
+    const out = { ...t, id: taken.has(t.id) ? newTabId() : t.id, root: mapPlaces(t.root, (p) => ({ ...p, id: ids.get(p.id)! })), focus: ids.get(t.focus) ?? t.focus }
     taken.add(out.id); ids.forEach((id) => taken.add(id))
     return out
   })
@@ -347,7 +347,7 @@ plugin.route("POST", "workspaces/move", (req) => {
     if (!l) return null
     for (const t of l.tabs) {
       if (id && t.id === id) return { tab: t }
-      const p = panesOf(t).find((x) => (pid ? x.id === pid : !id && localPlace(x.to) === target))
+      const p = placesIn(t).find((x) => (pid ? x.id === pid : !id && localPlace(x.to) === target))
       if (p) return { tab: t, pane: p }
     }
     return null
@@ -364,7 +364,8 @@ plugin.route("POST", "workspaces/move", (req) => {
   }
   if (from === to) throw new HTTPError(400, `${what} is already in workspace ${to + 1}`)
   const f = has(from)!
-  // A pane of a split goes alone, as a tab of its own; a tab (or a tab's only pane) goes whole, panes and all.
+  // A pane of a split (or one of a pane's own tabs) goes alone, as a tab of its own; a tab (or a tab's only pane) goes
+  // whole, panes and all.
   const alone = f.pane && panesOf(f.tab).length > 1 ? f.pane : null
   const moving: Tab = alone ? tabWith(alone, `t${alone.id}`) : f.tab
   list[from] = { ...list[from]!, layout: alone ? without(layoutOf(list[from])!, new Set(), new Set([alone.id])) : without(layoutOf(list[from])!, new Set([f.tab.id])) }
@@ -372,7 +373,7 @@ plugin.route("POST", "workspaces/move", (req) => {
   // here, and the one there stays as it is.
   const dl = layoutOf(dest)
   const there = new Set(dl ? allPanes(dl).map((p) => localPlace(p.to)) : [])
-  const going = panesOf(moving).filter((p) => p.to !== "new" && there.has(localPlace(p.to)))
+  const going = placesIn(moving).filter((p) => p.to !== "new" && there.has(localPlace(p.to)))
   const coming = going.length ? tabWithout(moving, new Set(going.map((p) => p.id))) : moving
   if (!coming) {
     save(list)
@@ -387,7 +388,7 @@ plugin.route("POST", "workspaces/move", (req) => {
   return { from: from + 1, to: to + 1, tabs, tab: tabs[0], workspaces: shown() }
 })
 /** A tab as this machine's app has it: its terminals without "@<this machine>". */
-const local = (t: Tab): Tab => ({ ...t, root: mapPanes(t.root, (p) => ({ ...p, to: localPlace(p.to) })) })
+const local = (t: Tab): Tab => ({ ...t, root: mapPlaces(t.root, (p) => ({ ...p, to: localPlace(p.to) })) })
 
 plugin.route("POST", "workspaces/close", async (req) => {
   const body = (req.body ?? {}) as Item
@@ -404,7 +405,7 @@ plugin.route("POST", "workspaces/close", async (req) => {
   const closing = list.map((w, i) => {
     const l = layoutOf(w)
     if (!l || (only !== null && i !== only)) return []
-    return l.tabs.flatMap((t) => (id === t.id ? panesOf(t) : panesOf(t).filter((p) => (id ? p.id === id : localPlace(p.to, self) === target))).map((p) => ({ id: p.id, tab: t.id, to: localPlace(p.to, self) })))
+    return l.tabs.flatMap((t) => (id === t.id ? placesIn(t) : placesIn(t).filter((p) => (id ? p.id === id : localPlace(p.to, self) === target))).map((p) => ({ id: p.id, tab: t.id, to: localPlace(p.to, self) })))
   })
   const where = closing.flatMap((tabs, i) => (tabs.length ? [i] : []))
   const what = id ? `tab ${id}` : target!.replace(/^file:/, "")
@@ -443,13 +444,15 @@ plugin.provide("context", ({ workspace: n }: { workspace: number | null }) => {
   return { data: { workspace: { n, label } }, text: `Workspace: ${n} (${label}), the one the user's window is on (vau workspace lists them)` }
 })
 
-type TabRow = { id: string; active?: boolean; pinned?: boolean; name?: string; group?: string; panes: { id: string; to: string; path?: string; focused?: boolean }[] }
+type TabRow = { id: string; active?: boolean; pinned?: boolean; name?: string; group?: string; panes: { id: string; to: string; path?: string; behind?: string; focused?: boolean }[] }
 
 /** A workspace's tabs in order, each with its panes, and its tab groups. */
 function workspaceTabs(w: Item, n: number) {
   const l = layoutOf(w)
   const tabs: TabRow[] = (l?.tabs ?? []).map((t) => ({ id: t.id, ...(t.pinned ? { pinned: true } : {}), ...(t.name ? { name: t.name } : {}), ...(t.group ? { group: t.group } : {}),
-    panes: panesOf(t).map((p) => ({ id: p.id, to: p.to, ...(p.to.startsWith("file:") ? { path: p.to.slice(5) } : {}), ...(p.id === t.focus && panesOf(t).length > 1 ? { focused: true } : {}) })) }))
+    // (a split's pane's own tabs after it, each `behind` it)
+    panes: panesOf(t).flatMap((x) => placesOf(x).map((p) => ({ id: p.id, to: p.to, ...(p.to.startsWith("file:") ? { path: p.to.slice(5) } : {}),
+      ...(p.id !== x.id ? { behind: x.id } : {}), ...(p.id === t.focus && panesOf(t).length > 1 ? { focused: true } : {}) }))) }))
   return { workspace: n, name: nameOf(w, n), tabs, groups: (l?.groups ?? []) as Group[], windows: (l?.windows ?? []).length }
 }
 const allTabs = () => shown().flatMap((w, i) => (w ? [workspaceTabs(w, i + 1)] : []))

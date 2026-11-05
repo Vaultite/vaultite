@@ -4,7 +4,7 @@ import { Box, CircleSlash, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Setting
 import {
   cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
-  allPanes, cleanTabLayout as clean, focusedPane, panesOf, shownTab, withMyTabs, withoutPanes, withoutTabs, type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
+  allPanes, cleanTabLayout as clean, focusedPane, placesIn as placesOfTab, shownTab, withMyTabs, withoutPanes, withoutTabs, type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
 import { blankLayout, isBlank } from "./blank"
 import { markIcon } from "./Mark"
@@ -330,7 +330,7 @@ export async function sendTo(n: number, what: Sent) {
     // every other move in the app; files opened there left nothing here to bring back.
     const back: Sent | null = "open" in what || !r.tabs.length ? null : { tab: r.tabs[0].id }
     // (back where it was: a pane out of a split, beside its tab)
-    const i = before.tabs.findIndex((t) => ("tab" in what ? t.id === what.tab : "pane" in what && panesOf(t).some((p) => p.id === what.pane)))
+    const i = before.tabs.findIndex((t) => ("tab" in what ? t.id === what.tab : "pane" in what && placesOfTab(t).some((p) => p.id === what.pane)))
     const place = i < 0 ? {} : "tab" in what ? { at: i, group: before.tabs[i].group } : { at: i + 1 }
     notify(r.tabs.length ? ("open" in what ? `Opened in ${named(n)}` : `Moved to ${named(n)}`) : `Already open in ${named(n)}`,
       back ? { action: { label: "Undo", run: () => void bringBack(n, from, back, place) } } : undefined)

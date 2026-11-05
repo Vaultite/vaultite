@@ -26,6 +26,9 @@ export type DragItem = {
   folder?: boolean
   /** A pane, by id (dragged by its bar, or a half of a split tab's row). */
   pane?: string
+  /** That pane's place alone, one of its own tabs (a row of its list in the Tabs panel, a chip of its strip): it moves
+   *  without the others stacked with it. */
+  place?: boolean
   /** A tab group, by id: its tabs go together. */
   group?: string
   /** A sidebar panel's key ("terminal:sessions"), and what the dragged item shows (its title). */

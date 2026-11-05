@@ -1,8 +1,8 @@
 // Splits: a tab's panes, moved, split, swapped and joined, tabs put into a split or taken out of one, focus and
 // dividers. The tree itself is core/layout.ts; the list of tabs, core/workspace.ts.
 import {
-  beside, evened, evenedAll, floated, groupAt, inGroup, isBlank, isBlankTab, layout, leaves, mapPanes, mapTab, moveOn, neighbourOf, newPaneId, nudged, panesOf,
-  replaced, resized, swapped, tabOf, tabOfPane, tabWith, tabWithout, withoutTabs, type Layout, type Pane, type Rect, type Side, type Tab, type TabList,
+  beside, bare, evened, evenedAll, floated, groupAt, inGroup, isBlank, isBlankTab, isSplit, isStacked, layout, leaves, mapPanes, mapPlaces, mapTab, moveOn, neighbourOf, newPaneId, nudged, panesOf,
+  paneWith, placesIn, placesOf, replaced, resized, swapped, tabOf, tabOfPane, tabWith, tabWithout, tabWithoutPanes, withoutTabs, withPlace, type Layout, type Pane, type Rect, type Side, type Tab, type TabList,
 } from "../../../core/layout.ts"
 import { focusPane } from "@/core/focus"
 import { activePane, activeTab, setFocusedPane, here, keepsTab, onWorkspaceChange, paneById, panes, paneTab, quietly, set, show, showActive, showActiveUnder, tabById, withTab } from "@/core/workspace"
@@ -62,11 +62,16 @@ export function canTabIntoPane(id: string, pane: string, zone: Zone) {
   const t = tabById(id), into = paneTab(pane)
   return !!t && !!into && t.id !== into.id && !isBlankTab(t) && zone !== undefined
 }
-/** Tab `id` dropped on pane `pane`: in its middle its panes take that one's place (which goes back to the list where the
- *  dropped tab was); on an edge, a split beside it. The dropped tab is gone, the other shown with them focused. */
+/** Tab `id` dropped on pane `pane`: in a split's pane's middle, one of its own tabs; else in its middle its panes take its
+ *  place (it goes back to the list); on an edge, a split beside it. The dropped tab is gone, the other shown, focused. */
 export function tabIntoPane(id: string, pane: string, zone: Zone) {
   if (!canTabIntoPane(id, pane, zone)) return
   const l = here(), { tab, at, rest } = pulled(l, id), into = tabOfPane(rest, pane)!
+  const one = tab.root
+  if (zone === "center" && isSplit(into.root) && !isSplit(one)) {
+    set({ ...mapTab(rest, into.id, (t) => ({ ...withPlace(t, pane, one), focus: one.id })), active: into.id })
+    return showActiveUnder()
+  }
   const root: Layout = zone === "center" ? graft(into.root, pane, tab.root) : beside(into.root, pane, tab.root, zone)
   let next = mapTab(rest, into.id, (t) => ({ ...t, root, focus: tab.focus, zoom: undefined }))
   // (a blank pane replaced isn't kept: blank tabs are never left behind)
@@ -90,22 +95,29 @@ export const canJoin = (id: string) => !!tabById(id) && id !== here().active && 
 
 // ---------- panes ----------
 
-/** Would moving pane `id` there change anything? Onto itself: no; beside itself as its tab's only pane: no. */
-export function canPaneIntoPane(id: string, target: string, zone: Zone) {
+/** Whether place `id` is one of a pane's tabs stacked behind what it shows (Pane.stack). */
+const stackedHere = (id: string) => { const t = paneTab(id); return !!t && isStacked(t.root, id) }
+/** Would moving pane `id` there change anything? Onto itself: no; beside itself as its tab's only pane: no. `asPlace`:
+ *  only the place it shows (one of a pane's tabs) moves; into its own pane's middle: no. */
+export function canPaneIntoPane(id: string, target: string, zone: Zone, asPlace = stackedHere(id)) {
   const from = paneTab(id), into = paneTab(target)
   if (!from || !into || id === target) return false
-  return from.id !== into.id || zone === "center" || panesOf(from).length > 1
+  if (!asPlace) return from.id !== into.id || zone === "center" || panesOf(from).length > 1
+  if (zone === "center") return !placesOf(paneWith(into.root, target)!).some((p) => p.id === id)
+  return from.id !== into.id || placesIn(from).length > 1
 }
-/** Pane `id` dropped on pane `target`: in its middle, the two swap places (across tabs too); on an edge, it moves
- *  beside it (the same pane, so nothing remounts). Its tab, left without panes, closes; the target's is shown. */
-export function paneIntoPane(id: string, target: string, zone: Zone) {
-  if (!canPaneIntoPane(id, target, zone)) return
-  const l = here(), from = paneTab(id)!, into = paneTab(target)!, p = paneById(id)!, q = paneById(target)!
+/** Pane `id` (with its own tabs) dropped on pane `target`: in its middle they swap (across tabs too); on an edge, it moves
+ *  beside it, nothing remounting. `asPlace`: only that place (a stacked one always), into the target's tabs or beside. */
+export function paneIntoPane(id: string, target: string, zone: Zone, asPlace = stackedHere(id)) {
+  if (!canPaneIntoPane(id, target, zone, asPlace)) return
+  if (asPlace) return placeIntoPane(id, target, zone)
+  // (the panes as the tree has them: with their own tabs)
+  const l = here(), from = paneTab(id)!, into = paneTab(target)!, p = paneWith(from.root, id)!, q = paneWith(into.root, target)!
   if (zone === "center") {
     if (from.id === into.id) set(withTab(from.id, (t) => ({ ...t, root: swapped(t.root, id, target), focus: id })))
     else if (isBlank(q)) {
       // (onto a blank pane: it takes its place, the blank one isn't kept)
-      const left = tabWithout(from, new Set([id]))
+      const left = tabWithoutPanes(from, new Set([id]))
       const base = left ? mapTab(l, from.id, () => left) : withoutTabs(l, new Set([from.id])) ?? l
       set({ ...mapTab(base, into.id, (t) => ({ ...t, root: replaced(t.root, target, p), focus: id })), active: into.id })
     } else {
@@ -114,13 +126,72 @@ export function paneIntoPane(id: string, target: string, zone: Zone) {
     }
   } else {
     const { float: _, ...moved } = p
-    const left = tabWithout(from, new Set([id]))
+    const left = tabWithoutPanes(from, new Set([id]))
     const base = left ? mapTab(l, from.id, () => left) : withoutTabs(l, new Set([from.id])) ?? l
     const t = base.tabs.find((x) => x.id === into.id)!
     set({ ...mapTab(base, into.id, () => ({ ...t, root: beside(t.root, target, moved, zone), focus: id })), active: into.id })
   }
   showActiveUnder()
 }
+/** Place `id` (one of a pane's tabs) dropped on pane `target`: in its middle, shown among that one's tabs; on an edge, a
+ *  pane of its own beside it. Where it was, its pane shows its next. */
+function placeIntoPane(id: string, target: string, zone: Zone) {
+  if (zone === "center") {
+    const own = paneWith(paneTab(target)!.root, target)!
+    return placeAmong(id, target, placesOf(own).findIndex((p) => p.id === target) + 1)
+  }
+  const from = paneTab(id)!, into = paneTab(target)!, { float: _, ...p } = bare(paneById(id)!)
+  const left = tabWithout(from, new Set([id]))
+  const base = left ? mapTab(here(), from.id, () => left) : withoutTabs(here(), new Set([from.id])) ?? here()
+  set({ ...mapTab(base, into.id, (t) => ({ ...t, root: beside(t.root, target, p, zone), focus: id })), active: into.id })
+  showActiveUnder()
+}
+
+// ---------- a pane's own tabs (Pane.stack): the Tabs panel's lists under a split, a pane's strip ----------
+
+/** Would moving place `id` to before the `index`th of the tabs of the pane that has place `at` (as they are now) change
+ *  anything? Within its own pane: not onto its own place. */
+export function canPlaceAmong(id: string, at: string, index: number) {
+  const into = paneTab(at), from = paneTab(id)
+  if (!into || !from || !isSplit(into.root)) return false
+  const i = placesOf(paneWith(into.root, at)!).findIndex((p) => p.id === id)
+  return i < 0 || (index !== i && index !== i + 1)
+}
+/** Place `id` (a pane's tab, a pane, a tab of one pane's) moved before the `index`th tab of the pane with place `at`:
+ *  within it, what it shows stays; from elsewhere, it's shown there (its old pane shows its next; an empty tab goes). */
+export function placeAmong(id: string, at: string, index: number) {
+  if (!canPlaceAmong(id, at, index)) return
+  const into = paneTab(at)!, from = paneTab(id)!, p = paneById(id)!, pane = paneWith(into.root, at)!
+  const i = placesOf(pane).findIndex((x) => x.id === id)
+  if (i >= 0) return set(withTab(into.id, (t) => withPlace(t, at, p, { show: pane.id === id, index: index > i ? index - 1 : index })))
+  const add = (t: Tab) => ({ ...withPlace(t, at, p, { index }), focus: id })
+  if (from.id === into.id) set(withTab(into.id, (t) => add(tabWithout(t, new Set([id]))!), { active: into.id }))
+  else {
+    const left = tabWithout(from, new Set([id]))
+    const base = left ? mapTab(here(), from.id, () => left) : withoutTabs(here(), new Set([from.id])) ?? here()
+    set({ ...mapTab(base, into.id, add), active: into.id })
+  }
+  showActiveUnder()
+}
+/** One of a pane's own tabs out into a pane of its own beside that pane, focused (its menu's Split right, Split down). */
+export function splitOut(id: string, side: Side) {
+  const t = paneTab(id), own = t && paneWith(t.root, id), p = paneById(id)
+  const other = own && placesOf(own).find((x) => x.id !== id)
+  if (!t || !p || !other) return
+  const { float: _, ...moved } = bare(p)
+  set(withTab(t.id, (x) => { const left = tabWithout(x, new Set([id]))!; return { ...left, root: beside(left.root, paneWith(left.root, other.id)!.id, moved, side), focus: id } }, { active: t.id }))
+  showActiveUnder()
+}
+/** `to` opened as one of the tabs of the pane that has place `at`, before its `index`th, shown and focused (a file dropped
+ *  on its list). */
+export function openAmong(to: string, at: string, index: number) {
+  const t = paneTab(at)
+  if (!t || !isSplit(t.root)) return
+  const p: Pane = { id: newPaneId(), to }
+  set(withTab(t.id, (x) => ({ ...withPlace(x, at, p, { index }), focus: p.id }), { active: t.id }))
+  show(to, true)
+}
+
 /** Pane `id` out of its split into a tab of its own, at index `at` (default: right after its tab), shown. */
 export function paneToTab(id: string, at?: number, group?: string | null) {
   const t = paneTab(id), p = paneById(id)
@@ -144,7 +215,9 @@ export function canOpenAt(to: string, pane: string, zone: Zone) {
 export function openAt(to: string, pane: string, zone: Zone) {
   if (!canOpenAt(to, pane, zone)) return
   const t = paneTab(pane)!
-  if (zone === "center") set(withTab(t.id, (x) => ({ ...x, root: mapPanes(x.root, (p) => (p.id === pane ? moveOn(p, to) : p)), focus: pane })))
+  // (in a split's pane, one of its own tabs: what it showed stays open behind)
+  if (zone === "center" && isSplit(t.root) && !isBlank(paneById(pane))) { const p: Pane = { id: newPaneId(), to }; set(withTab(t.id, (x) => ({ ...withPlace(x, pane, p), focus: p.id }))) }
+  else if (zone === "center") set(withTab(t.id, (x) => ({ ...x, root: mapPanes(x.root, (p) => (p.id === pane ? moveOn(p, to) : p)), focus: pane })))
   else { const p: Pane = { id: newPaneId(), to }; set(withTab(t.id, (x) => ({ ...x, root: beside(x.root, pane, p, zone), focus: p.id }))) }
   show(to, true)
 }
@@ -193,8 +266,8 @@ export function openAllAtIndex(tos: string[], at: number, group?: string | null,
 export function takeTabs(tabs: Tab[], active: string, place?: { index: number; group?: string | null } | { pane: string; zone: Zone }) {
   if (!tabs.length) return
   // A tab opened in a new window (not moved) is still here: the one coming back gets new ids.
-  const taken = new Set(here().tabs.flatMap((t) => [t.id, ...panesOf(t).map((p) => p.id)]))
-  const took = tabs.map((t) => (taken.has(t.id) || panesOf(t).some((p) => taken.has(p.id)) ? fresh(t) : t))
+  const taken = new Set(here().tabs.flatMap((t) => [t.id, ...placesIn(t).map((p) => p.id)]))
+  const took = tabs.map((t) => (taken.has(t.id) || placesIn(t).some((p) => taken.has(p.id)) ? fresh(t) : t))
   const i = tabs.findIndex((t) => t.id === active), shown = took[i < 0 ? took.length - 1 : i]
   const l = here(), at = place && "index" in place ? place.index : l.tabs.findIndex((t) => t.id === l.active) + 1
   const group = place && "index" in place ? place.group ?? undefined : undefined
@@ -204,8 +277,8 @@ export function takeTabs(tabs: Tab[], active: string, place?: { index: number; g
 }
 /** A copy of tab `t` with ids of its own. */
 function fresh(t: Tab): Tab {
-  const ids = new Map(panesOf(t).map((p) => [p.id, newPaneId()]))
-  return { ...t, id: `t${newPaneId().slice(1)}`, root: mapPanes(t.root, (p) => ({ ...p, id: ids.get(p.id)! })), focus: ids.get(t.focus) ?? [...ids.values()][0], zoom: undefined }
+  const ids = new Map(placesIn(t).map((p) => [p.id, newPaneId()]))
+  return { ...t, id: `t${newPaneId().slice(1)}`, root: mapPlaces(t.root, (p) => ({ ...p, id: ids.get(p.id)! })), focus: ids.get(t.focus) ?? [...ids.values()][0], zoom: undefined }
 }
 
 // ---------- a phone's tab list (components/TabSwitcher.tsx) ----------
@@ -239,7 +312,7 @@ export function splitPane(side: Side, id = activePane().id) {
   const t = paneTab(id), p = paneById(id)
   if (!t || !p) return
   dockFirst(id)
-  const { float: _, from: _f, ...rest } = p
+  const { float: _, from: _f, ...rest } = bare(p)
   const copy: Pane = p.to.startsWith("view:") ? { id: newPaneId(), to: "new" } : { ...rest, id: newPaneId() }
   const typing = document.activeElement?.closest("[data-pane]")
   set(withTab(t.id, (x) => ({ ...x, root: beside(x.root, id, copy, side), focus: copy.id }), { active: t.id }))

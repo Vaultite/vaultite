@@ -1122,7 +1122,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   put([T("a"), N], "tn"); ws.openTab("view:web/")
   check("new web page: from a blank tab, in it", tabs() === "a,view:web/*", tabs())
   put([S("tx", row("s0", [a, pane("w", "view:web/")]), "a")], "tx"); ws.openTab("view:web/")
-  check("new web page: a tab of its own, though the split has a blank page", tabs() === "[a|view:web/],view:web/*", tabs())
+  check("new web page: in a split, one of the focused pane's own tabs, though the split has a blank page", tabs() === "[view:web/|view:web/]*", tabs())
 
   // ---- what's opened goes to the focused pane; a split stays, and switches away whole ----
   put([S("tx", row("s0", [a, b]), "b"), T("c")], "tx"); ws.go("file:d.md")
@@ -1188,8 +1188,8 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   put([S("tx", row("s0", [a, b]), "b"), T("c")], "tc"); sp.tabIntoPane("tx", "c", "bottom")
   check("tab into pane: a split tab dropped brings all its panes, its focus kept", tabs() === "[c/[a|b]]*" && focus() === "b", tabs())
   put([S("tx", row("s0", [a, b]), "b"), T("c", undefined, { group: "G" }), T("d")], "tx", { groups: [{ id: "G", name: "G", color: "blue" }] }); sp.replaceWithTab("tc")
-  check("replace with tab (⌥-click): the tab takes the focused pane's place, that pane back in the list as a tab, in no group",
-    tabs() === "[a|c]*,b,d" && focus() === "c" && !ws.here().tabs[1].group && shares() === "0.50,0.50", tabs())
+  check("replace with tab (⌥-click): in a split, the tab is one of the focused pane's own, shown, what it showed behind it",
+    tabs() === "[a|c]*,d" && focus() === "c" && lay.placesOf(ws.activeTab().root.kids[1]).map((p: Any) => p.id).join() === "b,c" && shares() === "0.50,0.50", tabs())
   put([S("tx", row("s0", [a, b]), "b"), T("n", "new")], "tx")
   check("tab into pane: not onto its own panes, nor a blank tab", !sp.canTabIntoPane("tx", "a", "center") && !sp.canTabIntoPane("tn", "a", "left") && sp.canJoin("tn") === false)
   put([S("tx", row("s0", [a, b]), "a")], "tx"); sp.paneIntoPane("a", "b", "center")
@@ -1267,7 +1267,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("zoom: another pane focused, it's back", !sp.isZoomed())
   sp.zoomPane(); sp.splitPane("right")
   check("zoom: a split, it's back", !sp.isZoomed())
-  put([S("tx", row3(), "b")], "tx"); sp.zoomPane(); ws.openTab("file:z.md")
+  put([S("tx", row3(), "b")], "tx"); sp.zoomPane(); ws.newTabsAt("end", () => ws.openTab("file:z.md"))
   check("zoom: another tab shown, the zoomed one keeps its zoom", !sp.isZoomed() && ws.tabById("tx").zoom === "b" && (ws.selectTab("tx"), sp.isZoomed()))
   sp.openInSplit("file:y.md", "right", false)
   check("zoom: something opened in another pane behind leaves it be", sp.isZoomed() && desc(ws.activeTab().root) === "[a|b|y]", desc(ws.activeTab().root))
@@ -1633,6 +1633,95 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   mem.set("vaultite.tabs.archiving", String(Date.now() - 25 * H)); ws.setArchiveAfter(24 * H)
   check("archive: none due till it's been on as long as the setting", !dueNow && ws.archivingDue())
   ws.setArchiveAfter(0)
+
+  // ---- a split's panes with tabs of their own (Pane.stack): places stacked behind what a pane shows ----
+  {
+    while (ws.canReopenTab()) ws.reopenTab()
+    // Each pane of the tab on screen as its places in order, the shown one marked: "a ^x y|b".
+    const own = (t: Tb = ws.activeTab()) => lay.panesOf(t).map((p: Any) => lay.placesOf(p).map((x: Any, _: number, all: Any[]) => (x.id === p.id && all.length > 1 ? "^" : "") + short(x.to)).join(" ")).join("|")
+    const stk = (p: Any, stack: Any[], stackAt?: number) => ({ ...p, stack, ...(stackAt ? { stackAt } : {}) })
+    const x = pane("x"), y = pane("y")
+    check("stack: a pane's places in order, the shown one at stackAt; stacked() makes it back from them",
+      lay.placesOf(stk(a, [x, y], 1)).map((q: Any) => q.id).join() === "x,a,y" && same(lay.stacked([x, a, y], "a"), stk(a, [x, y], 1)) && same(lay.stacked([a], "a"), a))
+    const sx = S("tx", row("s0", [stk(a, [x, y]), b]), "a")
+    check("stack: every place of a tab, the pane that has one, whether it's stacked; the tab of a stacked place",
+      lay.placesIn(sx).map((q: Any) => q.id).join() === "a,x,y,b" && lay.paneWith(sx.root, "y")?.id === "a" && lay.isStacked(sx.root, "y") && !lay.isStacked(sx.root, "a")
+      && lay.tabOfPane({ tabs: [T("q"), sx], active: "tq" }, "x")?.id === "tx" && lay.allPanes({ tabs: [sx], active: "tx" }).length === 4)
+    const shownY = lay.showingPlace(sx, "y")
+    check("stack: showing a place, what the pane showed goes behind it in its place, the focus following",
+      own(shownY) === "a x ^y|b" && shownY.focus === "y" && lay.showingPlace(S("tx", row("s0", [stk(pane("n", "new"), [x]), b]), "n"), "x").root.kids[0].stack === undefined)
+    const added = lay.withPlace(sx, "a", pane("z")), behind = lay.withPlace(sx, "a", pane("z"), { show: false, index: 3 })
+    check("stack: a place added after one, shown and focused; or behind, at an index", own(added) === "a ^z x y|b" && added.focus === "z" && own(behind) === "^a x y z|b" && behind.focus === "a",
+      [own(added), own(behind)])
+    const gone1 = lay.tabWithout(sx, new Set(["a"])), gone2 = lay.tabWithout(S("tx", row("s0", [stk(a, [x], 1), b]), "a"), new Set(["a"]))
+    check("stack: the shown place closed, the one after it shows (else before), focused; a stacked one closed, nothing moves",
+      own(gone1) === "^x y|b" && gone1.focus === "x" && own(gone2) === "x|b" && own(lay.tabWithout(sx, new Set(["y"]))) === "^a x|b", [own(gone1), own(gone2)])
+    check("stack: a pane's places all closed, the pane goes", desc(lay.tabWithout(sx, new Set(["a", "x", "y"])).root) === "b")
+    const fl2 = { x: 0.5, y: 0.1, w: 0.4, h: 0.5 }
+    check("stack: a floating pane's float stays where it is, with what it shows", same(lay.showingPlace(S("tx", row("s0", [{ ...stk(a, [x]), float: fl2 }, b]), "a"), "x").root.kids[0].float, fl2))
+    const sp1 = lay.spilled({ tabs: [T("q"), { ...TP(stk(a, [x, y], 1)), group: "g" }], active: "ta" })
+    check("stack: a tab of one pane can't hold one: its places are tabs of their own beside it, in its group, the shown one keeping it",
+      sp1.tabs.map((t: Tb) => `${t.id}:${desc(t.root)}${t.group ? "@" + t.group : ""}`).join() === "tq:q,tx:x@g,ta:a@g,ty:y@g" && sp1.active === "ta", sp1)
+    const read = lay.clean({ tabs: [S("tx", row("s0", [stk(a, [x, { ...y, float: fl2, stack: [c] }, x], 9), b]), "a"), T("x")], active: "tx" })
+    check("stack: read back checked: no float or stack of its own, a place twice once, stackAt kept in range; a tab whose places are taken goes",
+      own(read.tabs[0]) === "x y ^a|b" && read.tabs.length === 1 && !read.tabs[0].root.kids[0].stack[1].float && !read.tabs[0].root.kids[0].stack[1].stack, read)
+    check("stack: a saved tab of one pane with a stack reads as tabs", lay.clean({ tabs: [TP(stk(a, [x]))], active: "ta" }).tabs.map((t: Tb) => desc(t.root)).join() === "a,x")
+
+    // In the app: a split's pane opens its new tabs among its own.
+    put([S("tx", row("s0", [a, pane("w", W)]), "a"), T("q")], "tx")
+    ws.go("view:links")
+    check("stack: in a split, what would open a new tab opens among the focused pane's tabs, shown; nothing new in the list",
+      tabs() === "[view:links|view:web/https://example.com/]*,q" && own() === `a ^view:links|${W}`, [tabs(), own()])
+    put([S("tx", row("s0", [a, b]), "a"), T("q")], "tx")
+    const bg = ws.openTab("file:z.md", { background: true, from: "a" }), bg2 = ws.openTab("file:v.md", { background: true, from: "a" })
+    check("stack: opened behind from a pane, it's stacked after it, the next after that one, as Chrome orders them; an agent's (no pane) is a tab in the list",
+      own() === "^a z v|b" && ws.paneById(bg).from === "a" && !!bg2 && (ws.openTab("file:m.md", { background: true }), tabs() === "[a|b]*,m,q"), [own(), tabs()])
+    ws.newTab()
+    const blankId = focus()
+    check("stack: ⌘T in a split, a blank tab of the focused pane; again, nothing more", own() === "a ^new z v|b" && (ws.newTab(), own() === "a ^new z v|b"), own())
+    ws.go("file:c.md")
+    check("stack: what's opened from it fills it", own() === "a ^c z v|b" && focus() === blankId, own())
+    ws.selectPane(bg)
+    check("stack: a stacked place selected shows in its pane, focused", own() === "a c ^z v|b" && focus() === bg, own())
+    ws.go("file:c.md")
+    check("stack: going to a place stacked in a pane shows it there", own() === "a ^c z v|b" && tabs() === "[c|b]*,m,q", [own(), tabs()])
+    ws.cycleTab(1); const c1 = own(); ws.cycleTab(1); const c2 = own(); ws.cycleTab(1)
+    check("stack: next tab goes through the focused pane's tabs, then on to the next tab", c1 === "a c ^z v|b" && c2 === "a c z ^v|b" && ws.activeTab().root.to === "file:m.md", [c1, c2, tabs()])
+    ws.selectTab("tx"); ws.selectPane(bg2); ws.closePane()
+    check("stack: closing the place shown, the pane's next shows (before it, at its end)", own() === "a c ^z|b" && focus() === bg, own())
+    ws.reopenTab()
+    check("stack: ⌘⇧T brings it back among them, where it was", own() === "a c z ^v|b" && focus() === bg2, own())
+    ws.closePane("a"); ws.closePane(blankId)
+    check("stack: a stacked one closed, the shown one stays", own() === "z ^v|b", own())
+    ws.closePane(bg2); ws.closePane(bg)
+    check("stack: its last place closed, the pane closes", tabs() === "b*,m,q", tabs())
+    heard.length = 0
+    ws.setTabCloser((_to: string, p: string, last: boolean) => { heard.push(`${p}${last ? " last" : ""}`); return false })
+    put([S("tx", row("s0", [stk(pane("w1", W), [pane("w2", "view:web/https://example.net/")]), b]), "b")], "tx"); ws.closeTab("tx", true)
+    check("stack: a split tab closed, the pages stacked in it hear it too", heard.join() === "w1 last,w2 last", heard)
+    ws.setTabCloser(() => false)
+    put([S("tx", row("s0", [stk(a, [x]), b]), "b")], "tx"); ws.closePane("b")
+    check("stack: a split closed down to one pane, its tabs become tabs of their own", tabs() === "a*,x", tabs())
+    put([S("tx", row("s0", [a, b]), "a"), T("q")], "tx"); sp.tabIntoPane("tq", "b", "center")
+    check("stack: a tab dropped on a split's pane (or ⌥-clicked) is one of its tabs, what it showed behind it", tabs() === "[a|q]*" && own() === "a|b ^q" && focus() === "q", [tabs(), own()])
+    put([S("tx", row("s0", [stk(a, [x, y]), b]), "a"), T("q")], "tx"); sp.openAt("file:k.md", "b", "center")
+    const k = focus()
+    check("stack: a file dropped on a split pane's middle opens among its tabs", own() === "^a x y|b ^k", own())
+    sp.placeAmong("y", "a", 0)
+    check("stack: a place dragged along its pane's list moves, what shows staying", own() === "y ^a x|b ^k", own())
+    sp.placeAmong("x", k, 0)
+    check("stack: dragged onto another pane's list, it's shown there, focused", own() === "y ^a|^x b k" && focus() === "x", own())
+    sp.placeAmong("q", k, 1)
+    check("stack: a tab of the list dragged onto a pane's list joins it", own() === "y ^a|x ^q b k" && tabs() === "[a|q]*", [own(), tabs()])
+    sp.paneToTab("y")
+    check("stack: a place dragged out to the list is a tab of its own, shown", tabs() === "[a|q],y*" && own(ws.tabById("tx")) === "a|x ^q b k", [tabs(), own(ws.tabById("tx"))])
+    ws.selectTab("tx"); sp.paneIntoPane("q", "a", "right", true)
+    check("stack: a place dragged onto a pane's edge is a pane of its own there, its pane showing its next", tabs() === "[a|q|b]*,y" && own() === "a|q|x ^b k", [tabs(), own()])
+    sp.paneIntoPane("b", "a", "left")
+    check("stack: a pane dragged by its bar moves with its tabs", own() === "x ^b k|a|q", own())
+    ws.retarget("k.md", "Done/k.md")
+    check("stack: a file moved, its stacked places follow", own() === "x ^b Done/k|a|q", own())
+  }
 
   // ---- Workspaces holding the tabs (a layout turning it on and off): this device's own come back as they were ----
   const stub = g.localStorage

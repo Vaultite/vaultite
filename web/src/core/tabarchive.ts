@@ -1,7 +1,7 @@
 // Archived tabs: unpinned tabs unseen a while, closed into a list kept with the tabs (the workspace's, or this device's
 // without Workspaces), to reopen or find again. Not history: the tabs the user had. The rest is Tabs' (archived.tsx).
 import { useSyncExternalStore } from "react"
-import { clean, focusedPane, newPaneId, newTabId, mapPanes, panesOf, tabOf, type Tab } from "../../../core/layout.ts"
+import { clean, focusedPane, newPaneId, newTabId, mapPlaces, placesIn, tabOf, type Tab } from "../../../core/layout.ts"
 import { scopedState, subscribeScoped } from "@/core/scope"
 import { archivesAfter, archivingDue, canReopenTab, closeToArchive, findOpen, lastClosedAt, paneById, reopenTab, restoreTab, selectPane, tabById, unseenTabs } from "@/core/workspace"
 
@@ -54,9 +54,9 @@ export function reopenArchived(id: string, shown = true) {
   const open = findOpen(e.to)
   if (open) { if (shown) selectPane(open.p.id); return }
   // (its ids taken meanwhile, on this device or another: new ones)
-  const taken = !!tabById(e.tab.id) || panesOf(e.tab).some((p) => paneById(p.id))
-  const ids = new Map(panesOf(e.tab).map((p) => [p.id, taken ? newPaneId() : p.id]))
-  const tab = taken ? { ...e.tab, id: newTabId(), root: mapPanes(e.tab.root, (p) => ({ ...p, id: ids.get(p.id)! })), focus: ids.get(e.tab.focus) ?? e.tab.focus } : e.tab
+  const taken = !!tabById(e.tab.id) || placesIn(e.tab).some((p) => paneById(p.id))
+  const ids = new Map(placesIn(e.tab).map((p) => [p.id, taken ? newPaneId() : p.id]))
+  const tab = taken ? { ...e.tab, id: newTabId(), root: mapPlaces(e.tab.root, (p) => ({ ...p, id: ids.get(p.id)! })), focus: ids.get(e.tab.focus) ?? e.tab.focus } : e.tab
   restoreTab({ tab, at: e.at }, shown)
 }
 
@@ -82,5 +82,5 @@ export function restoreArchived(entries: ArchivedTab[]) {
 export function retargetArchived(from: string, to: string) {
   const map = (t: string) => (t === `file:${from}` ? `file:${to}` : t.startsWith(`file:${from}/`) ? `file:${to}${t.slice(from.length + 5)}` : t)
   const cur = archivedTabs()
-  if (cur.some((e) => panesOf(e.tab).some((p) => map(p.to) !== p.to))) save(cur.map((e) => ({ ...e, to: map(e.to), tab: { ...e.tab, root: mapPanes(e.tab.root, (p) => ({ ...p, to: map(p.to) })) } })))
+  if (cur.some((e) => placesIn(e.tab).some((p) => map(p.to) !== p.to))) save(cur.map((e) => ({ ...e, to: map(e.to), tab: { ...e.tab, root: mapPlaces(e.tab.root, (p) => ({ ...p, to: map(p.to) })) } })))
 }

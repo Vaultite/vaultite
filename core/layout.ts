@@ -15,7 +15,10 @@ export type Pane = { id: string; to: string
   seen?: number
   /** Floating over the tab's other panes at this place (shares of the workspace), out of the tiling: its spot in the
    *  tree is kept, empty, so docking it puts it back where it came from. */
-  float?: Rect }
+  float?: Rect
+  /** A split's pane has tabs of its own: its other places, hidden, each a pane of its own (its id, its history; no stack
+   *  nor float), in their order with this one at `stackAt` (none: first). Never in a tab of one pane (`spilled`). */
+  stack?: Pane[]; stackAt?: number }
 /** Panes (or splits) side by side ("row": a vertical divider between them) or stacked ("col"); `sizes` are their
  *  shares, adding up to 1. */
 export type Split = { id: string; dir: "row" | "col"; kids: Layout[]; sizes: number[] }
@@ -51,16 +54,41 @@ export const newGroupId = () => `g${base()}`
 export const isSplit = (n: Layout): n is Split => "kids" in n
 /** Every pane, left to right and top to bottom. */
 export const leaves = (n: Layout): Pane[] => (isSplit(n) ? n.kids.flatMap(leaves) : [n])
-/** A tab's panes. */
+/** A tab's panes (what each shows: placesIn has the places stacked under them too). */
 export const panesOf = (t: Tab): Pane[] => leaves(t.root)
 /** The pane a tab has focused. */
 export const focusedPane = (t: Tab): Pane => panesOf(t).find((p) => p.id === t.focus) ?? panesOf(t)[0]
 /** The tab on screen in a list. */
 export const shownTab = (l: TabList): Tab | undefined => l.tabs.find((t) => t.id === l.active)
-/** The tab that has pane `id`. */
-export const tabOfPane = (l: TabList, id: string): Tab | undefined => l.tabs.find((t) => panesOf(t).some((p) => p.id === id))
-/** Every pane of every tab. */
-export const allPanes = (l: TabList): Pane[] => l.tabs.flatMap(panesOf)
+/** A place as a pane of its own: without the places stacked under it. */
+export const bare = (p: Pane): Pane => {
+  if (!p.stack && p.stackAt === undefined) return p
+  const { stack: _, stackAt: _a, ...rest } = p
+  return rest
+}
+/** Pane `p`'s places, its tabs, in their order: what it shows and what's stacked under it (each bare). */
+export function placesOf(p: Pane): Pane[] {
+  if (!p.stack?.length) return [bare(p)]
+  const at = Math.min(p.stackAt ?? 0, p.stack.length)
+  return [...p.stack.slice(0, at), bare(p), ...p.stack.slice(at)]
+}
+/** Every place open in a tab: each pane's, in their order. */
+export const placesIn = (t: Tab): Pane[] => leaves(t.root).flatMap(placesOf)
+/** The pane of tree `n` that has place `id`, shown or stacked under it. */
+export const paneWith = (n: Layout, id: string): Pane | undefined => leaves(n).find((p) => p.id === id || !!p.stack?.some((x) => x.id === id))
+/** Whether place `id` is stacked under a pane of `n` (open, not shown). */
+export const isStacked = (n: Layout, id: string) => leaves(n).some((p) => !!p.stack?.some((x) => x.id === id))
+/** The tab that has place `id` (a pane, or a place stacked under one). */
+export const tabOfPane = (l: TabList, id: string): Tab | undefined => l.tabs.find((t) => placesIn(t).some((p) => p.id === id))
+/** Every place open in a list: every pane of every tab, and what's stacked under them. */
+export const allPanes = (l: TabList): Pane[] => l.tabs.flatMap(placesIn)
+/** The pane showing `shown` of `places` (in that order, the rest stacked under it), where `at` was (its float). */
+export function stacked(places: Pane[], shown: string, at?: Pane): Pane {
+  const i = Math.max(0, places.findIndex((p) => p.id === shown))
+  const loose = (p: Pane) => { const { stack: _, stackAt: _a, float: _f, ...rest } = p; return rest }
+  const rest = places.filter((_, j) => j !== i).map(loose)
+  return { ...loose(places[i]), ...(at?.float ? { float: at.float } : {}), ...(rest.length ? { stack: rest, ...(i ? { stackAt: i } : {}) } : {}) }
+}
 /** The file a target shows ("file:<path>"; one from outside the vault is absolute, "file:/…"), else null. */
 export const tabPath = (to: string) => (to.startsWith("file:") ? to.slice(5) : null)
 /** The vault file a target shows: null for a view, a blank pane or a file from outside the vault. */
@@ -70,8 +98,8 @@ export const tabOf = (to: string, opts: { id?: string; pane?: string } & Partial
   const { id = newTabId(), pane = newPaneId(), ...rest } = opts
   return { id, root: { id: pane, to, ...rest }, focus: pane }
 }
-/** A tab of one pane `p`. */
-export const tabWith = (p: Pane, id = newTabId()): Tab => { const { float: _, ...rest } = p; return { id, root: rest, focus: p.id } }
+/** A tab of one pane `p` (its place alone: what was stacked under it isn't). */
+export const tabWith = (p: Pane, id = newTabId()): Tab => { const { float: _, ...rest } = bare(p); return { id, root: rest, focus: p.id } }
 /** A list of one blank tab. */
 export const blankList = (): TabList => { const t = tabOf("new"); return { tabs: [t], active: t.id } }
 
@@ -127,12 +155,14 @@ const strings = (a: unknown) => Array.isArray(a) && a.every((x) => typeof x === 
 const str = (s: unknown): s is string => typeof s === "string" && !!s
 type Obj = Record<string, unknown>
 /** A saved pane, checked; null if it isn't one. */
-function okPane(x: Obj): Pane | null {
+function okPane(x: Obj, top = true): Pane | null {
   if (!str(x.id) || !str(x.to)) return null
-  const float = okFloat(x.float)
+  const float = top ? okFloat(x.float) : null
+  const stack = top && Array.isArray(x.stack) ? (x.stack as Obj[]).flatMap((s) => { const p = s && typeof s === "object" ? okPane(s, false) : null; return p && p.id !== x.id ? [p] : [] }) : []
+  const at = typeof x.stackAt === "number" && Number.isInteger(x.stackAt) ? Math.min(Math.max(0, x.stackAt), stack.length) : 0
   return { id: x.id, to: x.to, ...(strings(x.back) ? { back: x.back as string[] } : {}), ...(strings(x.fwd) ? { fwd: x.fwd as string[] } : {}),
     ...(str(x.from) ? { from: x.from } : {}), ...(str(x.home) ? { home: x.home } : {}),
-    ...(typeof x.seen === "number" ? { seen: x.seen } : {}), ...(float ? { float } : {}) }
+    ...(typeof x.seen === "number" ? { seen: x.seen } : {}), ...(float ? { float } : {}), ...(stack.length ? { stack, ...(at ? { stackAt: at } : {}) } : {}) }
 }
 /** A saved tree of panes, checked: what isn't a pane is dropped. */
 export function cleanLayout(n: unknown): Layout | null {
@@ -161,17 +191,30 @@ function okTab(x: Obj): Tab | null {
   return settledTab({ id: x.id, root, focus: String(x.focus ?? ""), ...(str(x.zoom) ? { zoom: x.zoom } : {}),
     ...(str(x.name) ? { name: x.name.slice(0, 80) } : {}), ...(x.pinned === true ? { pinned: true } : {}), ...(str(x.group) ? { group: x.group } : {}) })
 }
+/** Tab `t` without the places seen already (in `taken`, or before in it): a place in two panes or tabs stays in the
+ *  first. Null: none is left. */
+function firstPlaces(t: Tab, taken: Set<string>): Tab | null {
+  const seen = new Set(taken), gone = new Set<string>()
+  const root = mapPanes(t.root, (p) => {
+    const ps = placesOf(p).filter((x) => !seen.has(x.id) && !!seen.add(x.id))
+    if (!ps.length) { const k = `\0${gone.size}`; gone.add(k); return { ...p, id: k } }
+    return ps.length === placesOf(p).length ? p : stacked(ps, ps.some((x) => x.id === p.id) ? p.id : ps[0].id, p)
+  })
+  const left = gone.size ? withoutPanesIn(root, gone) : root
+  return left && (left === t.root ? t : settledTab({ ...t, root: left }))
+}
 /** A saved list, checked: tabs with no pane dropped, ids made unique, groups as they must be (fixGroups). */
 function okList(x: Obj, taken = new Set<string>()): TabList | null {
   const tabs = (Array.isArray(x.tabs) ? x.tabs as Obj[] : []).flatMap((t) => {
     const ok = t && typeof t === "object" ? okTab(t) : null
-    if (!ok || taken.has(ok.id) || panesOf(ok).some((p) => taken.has(p.id))) return []
-    taken.add(ok.id); panesOf(ok).forEach((p) => taken.add(p.id))
-    return [ok]
+    const own = ok && !taken.has(ok.id) ? firstPlaces(ok, taken) : null
+    if (!own) return []
+    taken.add(own.id); placesIn(own).forEach((p) => taken.add(p.id))
+    return [own]
   })
   if (!tabs.length) return null
   const groups = (Array.isArray(x.groups) ? x.groups : []).filter(okGroup).map(groupOf)
-  return fixGroups({ tabs, ...(groups.length ? { groups } : {}), active: tabs.some((t) => t.id === x.active) ? x.active as string : tabs[0].id })
+  return fixGroups(spilled({ tabs, ...(groups.length ? { groups } : {}), active: tabs.some((t) => t.id === x.active) ? x.active as string : tabs[0].id }))
 }
 /** A saved workspace, checked; one saved before tabs held panes (`{root, focus, zoom}`) is migrated. Null: no tab. */
 export function clean(w: unknown): Workspace | null {
@@ -227,13 +270,19 @@ export function migrate(old: Obj): Workspace | null {
 
 // ---------- panes and their history ----------
 
-/** Every pane changed by `fn`. */
+/** Every pane changed by `fn` (what each shows, the places stacked under it with it: mapPlaces changes those too). */
 export const mapPanes = (n: Layout, fn: (p: Pane) => Pane): Layout => (isSplit(n) ? { ...n, kids: n.kids.map((k) => mapPanes(k, fn)) } : fn(n))
+/** Every place changed by `fn`, the shown and the stacked (each bare: its pane's stack stays as it was). */
+export const mapPlaces = (n: Layout, fn: (p: Pane) => Pane): Layout => mapPanes(n, (p) => {
+  if (!p.stack?.length) return fn(p)
+  const { stack, stackAt, ...shown } = p
+  return { ...fn(shown), stack: stack.map(fn), ...(stackAt ? { stackAt } : {}) }
+})
 /** Every tab of a list changed by `fn`. */
 export const mapTabs = <L extends TabList>(l: L, fn: (t: Tab) => Tab): L => ({ ...l, tabs: l.tabs.map(fn) })
-/** Pane `id`, wherever it is in the list, changed by `fn`. */
+/** Pane `id` (or a place stacked under one), wherever it is in the list, changed by `fn`. */
 export const mapPane = <L extends TabList>(l: L, id: string, fn: (p: Pane) => Pane): L =>
-  mapTabs(l, (t) => (panesOf(t).some((p) => p.id === id) ? { ...t, root: mapPanes(t.root, (p) => (p.id === id ? fn(p) : p)) } : t))
+  mapTabs(l, (t) => (placesIn(t).some((p) => p.id === id) ? { ...t, root: mapPlaces(t.root, (p) => (p.id === id ? fn(p) : p)) } : t))
 /** Tab `id` changed by `fn`. */
 export const mapTab = <L extends TabList>(l: L, id: string, fn: (t: Tab) => Tab): L => mapTabs(l, (t) => (t.id === id ? fn(t) : t))
 
@@ -271,11 +320,73 @@ export function focusAfter(was: Layout, root: Layout, focus: string): string {
   const i = Math.max(0, ids.indexOf(focus))
   return (ps.find((p) => p.id === ids[i + 1]) ?? ps.findLast((p) => ids.indexOf(p.id) < i) ?? ps[0]).id
 }
-/** Tab `t` without the panes `ids`; null when it has none left. */
+/** Tab `t` without the places `ids` (panes, or places stacked under them): a pane whose shown place goes shows the
+ *  next of its own (after it, else before), one left with none goes. Null when it has none left. */
 export function tabWithout(t: Tab, ids: Set<string>): Tab | null {
+  if (!placesIn(t).some((p) => ids.has(p.id))) return t
+  const gone = new Set<string>(), next = new Map<string, string>()
+  const kept = mapPanes(t.root, (p) => {
+    const ps = placesOf(p)
+    if (!ps.some((x) => ids.has(x.id))) return p
+    const left = ps.filter((x) => !ids.has(x.id))
+    if (!left.length) { gone.add(p.id); return p }
+    const i = ps.findIndex((x) => x.id === p.id)
+    const shown = ids.has(p.id) ? (ps.slice(i + 1).find((x) => !ids.has(x.id)) ?? ps.slice(0, i).findLast((x) => !ids.has(x.id)))!.id : p.id
+    next.set(p.id, shown)
+    return stacked(left, shown, p)
+  })
+  const root = gone.size ? withoutPanesIn(kept, gone) : kept
+  const focus = next.get(t.focus) ?? t.focus, zoom = t.zoom && (next.get(t.zoom) ?? t.zoom)
+  return root && settledTab({ ...t, root, focus: focusAfter(kept, root, focus), ...(zoom ? { zoom } : {}) })
+}
+/** Tab `t` without the panes `ids`, each with what's stacked under it (a pane moved elsewhere whole); null when none is
+ *  left. */
+export function tabWithoutPanes(t: Tab, ids: Set<string>): Tab | null {
   if (!panesOf(t).some((p) => ids.has(p.id))) return t
   const root = withoutPanesIn(t.root, ids)
   return root && settledTab({ ...t, root, focus: focusAfter(t.root, root, t.focus) })
+}
+
+// ---------- a pane's own tabs: places stacked under it (Pane.stack) ----------
+
+/** Tab `t` showing place `id` in its pane, what that showed going under it (a blank one goes). The focus and zoom on
+ *  that pane follow. */
+export function showingPlace(t: Tab, id: string): Tab {
+  const p = paneWith(t.root, id)
+  if (!p || p.id === id) return t
+  const places = placesOf(p).filter((x) => x.id !== p.id || !isBlank(x))
+  const root = mapPanes(t.root, (x) => (x.id === p.id ? stacked(places, id, p) : x))
+  return { ...t, root, focus: t.focus === p.id ? id : t.focus, ...(t.zoom === p.id ? { zoom: id } : {}) }
+}
+/** Tab `t` with place `p` among the places of the pane that has place `at`: after `at` (or at index `index` of them),
+ *  shown there (a blank one shown making way) or (`show` false) stacked under what it shows. */
+export function withPlace(t: Tab, at: string, p: Pane, { show = true, index }: { show?: boolean; index?: number } = {}): Tab {
+  const into = paneWith(t.root, at)
+  if (!into) return t
+  const was = placesOf(into).filter((x) => x.id !== p.id)
+  const i = Math.min(index ?? was.findIndex((x) => x.id === at) + 1, was.length)
+  const { float: _, ...place } = bare(p)
+  const places = [...was.slice(0, i), place, ...was.slice(i)].filter((x) => !(show && x.id === into.id && isBlank(x)))
+  const shown = show || !places.some((x) => x.id === into.id) ? p.id : into.id
+  const root = mapPanes(t.root, (x) => (x.id === into.id ? stacked(places, shown, into) : x))
+  return { ...t, root, focus: t.focus === into.id ? shown : t.focus, ...(t.zoom === into.id ? { zoom: shown } : {}) }
+}
+/** List `l` with no tab of one pane holding a stack: a split left with one pane (closed down to it, or the others moved
+ *  out) has its places as tabs of their own, in their order and its tab group, the one shown keeping the tab. */
+export function spilled<L extends TabList>(l: L): L {
+  if (!l.tabs.some((t) => !isSplit(t.root) && t.root.stack?.length)) return l
+  const ids = new Set(l.tabs.map((t) => t.id))
+  const tabs = l.tabs.flatMap((t) => {
+    if (isSplit(t.root) || !t.root.stack?.length) return [t]
+    const shown = t.root.id
+    return placesOf(t.root).map((p): Tab => {
+      if (p.id === shown) return { ...t, root: p, focus: p.id }
+      const id = ids.has(`t${p.id}`) ? newTabId() : `t${p.id}`
+      ids.add(id)
+      return { id, root: p, focus: p.id, ...(t.group ? { group: t.group } : {}) }
+    })
+  })
+  return { ...l, tabs }
 }
 /** List `l` without the panes `ids`: a tab left with none goes (withoutTabs). Null: no tab left. */
 export function withoutPanes<L extends TabList>(l: L, ids: Set<string>): L | null {

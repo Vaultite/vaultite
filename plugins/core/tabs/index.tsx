@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react"
 import { AppWindow, Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
   activePane, Badged, beforeStart, edgeScroller, canDropTab, closePane, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
-  groupsAsDrawn, HeadingButton, IconAction, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, paneMenuOf, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
+  groupsAsDrawn, HeadingButton, IconAction, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, paneMenuOf, panesOf, placeMenuOf, placesIn, placesOf, reorder, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
   selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabButtons, tabListDrop, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabSlotBeside, tabsMenu, useDrag, useDropHit,
   useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
   INCOMING, laidOut,
@@ -47,7 +47,9 @@ const stacks = (n: Part, room = MAX_LINES): number => !isSplit(n) ? 1
 
 /** A split tab's panes in the shape of its split, a mini-map (a narrow one just its icon; floating ones after it, as
  *  icons). Click focuses one, a press drags it (onto another: they swap), X closes it, right-click is its pane's menu. */
-function SplitMap({ t, active, info }: { t: Tab; active: boolean; info: (x: Tab | Pane) => TabInfo }) {
+function SplitMap({ t, active, info, folded }: { t: Tab; active: boolean; info: (x: Tab | Pane) => TabInfo
+  /** Its panes' own tabs aren't listed under it: each cell says how many more it has. */
+  folded: boolean }) {
   const floats = panesOf(t).filter((p) => p.float)
   // (the pane a dragged one would swap with)
   const into = useDrag((d) => {
@@ -58,7 +60,7 @@ function SplitMap({ t, active, info }: { t: Tab; active: boolean; info: (x: Tab 
   const cell = (p: Pane, size: number, icon = false) => {
     const pi = info(p), on = active && p.id === t.focus
     const mark = <Badged on={pi.badge}><pi.icon className={cn("size-4 shrink-0", pi.tint ? undefined : on ? "text-primary" : "text-muted-foreground", pi.iconClassName)} strokeWidth={2} style={pi.tint ? { color: pi.tint } : undefined} /></Badged>
-    const lit = into === p.id && "bg-primary/15"
+    const lit = into === p.id && "bg-primary/15", more = folded ? placesOf(p).length - 1 : 0
     // (its mark, as a tab's row has it: a page playing in it, its speaker a click from muting it)
     const sign = pi.mark && <IconAction action={pi.mark} className={icon ? undefined : "-ml-1 @max-[52px]:ml-0"}><pi.mark.icon className={cn("size-3.5 shrink-0", !pi.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={pi.mark.tint ? { color: pi.mark.tint } : undefined} /></IconAction>
     if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} className={cn("flex h-5.5 shrink-0 items-center gap-1 rounded-[5px] px-1 ring-1 ring-foreground/10 ring-inset", lit)}>{mark}
@@ -70,6 +72,7 @@ function SplitMap({ t, active, info }: { t: Tab; active: boolean; info: (x: Tab 
           {mark}
           {sign}
           <span className={cn("min-w-0 flex-1 overflow-hidden fade-end @max-[52px]:hidden", active && !on && "font-normal text-muted-foreground")}>{pi.label}</span>
+          {more > 0 && <span data-cell-more className="shrink-0 pr-0.5 text-[11px] font-normal text-tertiary tabular-nums @max-[72px]:hidden">+{more}</span>}
         </span>
         <button type="button" data-cell-close={p.id} data-no-drag aria-label={`Close ${pi.label}`} data-tip="Close pane"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); closePane(p.id) }}
@@ -108,9 +111,11 @@ const MAP_LABEL = "[mask-image:none] group-hover/row:[mask-image:linear-gradient
 
 /** A tab's row. A split tab's shows each pane, side by side: a click on one focuses it, and a pane dragged out of it
  *  becomes a tab of its own where it's let go (or goes into another tab, held on its row a moment: Rex's). */
-function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | Pane) => TabInfo; only: boolean
+function Row({ t, l, info, only, line, hit }: { t: Tab; l: TabList; info: (x: Tab | Pane) => TabInfo; only: boolean
   /** The tab group whose line runs down by it (core/tabline.ts): its own, or the one a drag's preview puts it in. */
-  line?: string }) {
+  line?: string
+  /** Where what's dragged over the list would land (a split's panes' lists make way in theirs). */
+  hit: TabDrop | null }) {
   const item = useDrag((d) => d?.item)
   const picked = useSelected(TABS, t.id)
   // (a dragged pane or tab held on it: lit, about to open)
@@ -135,7 +140,9 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
     const half = split ? halfOf(e) : undefined, p = half ? paneById(half) : undefined
     if (p) startDrag(e, { from: "pane", pane: p.id, to: p.to, label: info(p).label }); else dragTab(e, t)
   }
-  const map = split ? <SplitMap t={t} active={active} info={info} /> : null
+  // (on screen, a split whose panes have tabs of their own lists them under its row, a list a pane)
+  const lists = split && active && placesIn(t).length > ps.length
+  const map = split ? <SplitMap t={t} active={active} info={info} folded={!lists} /> : null
   const buttons = split || item ? [] : tabButtons(ps[0].to)
   const dragging = item?.tab === t.id || (picked && item?.tabs) || (!!t.group && item?.group === t.group)
   return (
@@ -155,6 +162,76 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
         <Marks id={`tab:${t.id}`} />
         {t.pinned && <span className="grid size-5 shrink-0 place-items-center text-muted-foreground" aria-label="Pinned"><Pin className="size-3.5" strokeWidth={2} /></span>}
       </SidebarRow>
+      {lists && <div data-pane-lists className={cn("flex flex-col gap-1 pt-px pb-1", line && "ml-3.5")}>{ps.map((p) => <PaneList key={p.id} t={t} p={p} info={info} hit={hit} />)}</div>}
+    </div>
+  )
+}
+
+/** Where pane `id` sits in tree `n`, named as a person would (Left, Top right, Middle); a floating one, Floating. */
+function whereIn(n: Part, id: string) {
+  let at: { x: number; y: number; w: number; h: number } | null = null
+  const walk = (x: Part, r: { x: number; y: number; w: number; h: number }) => {
+    if (!isSplit(x)) { if (x.id === id && !x.float) at = r; return }
+    const kids = tiledKids(x), total = kids.reduce((a, k) => a + k.size, 0) || 1
+    let off = 0
+    for (const { k, size } of kids) {
+      const s = size / total
+      walk(k, x.dir === "row" ? { ...r, x: r.x + off * r.w, w: s * r.w } : { ...r, y: r.y + off * r.h, h: s * r.h })
+      off += s
+    }
+  }
+  walk(n, { x: 0, y: 0, w: 1, h: 1 })
+  const r = at as { x: number; y: number; w: number; h: number } | null
+  if (!r) return "Floating"
+  const third = (c: number, lo: string, hi: string) => (c < 1 / 3 ? lo : c > 2 / 3 ? hi : "middle")
+  const across = r.w > 0.99 ? "" : third(r.x + r.w / 2, "left", "right"), down = r.h > 0.99 ? "" : third(r.y + r.h / 2, "top", "bottom")
+  const name = down && across && !(down === "middle" && across === "middle") ? `${down} ${across}` : down || across || "middle"
+  return name[0].toUpperCase() + name.slice(1)
+}
+
+/** The split's shape, tiny, pane `id`'s part lit (the accent while it's focused). */
+function PaneGlyph({ n, id, on }: { n: Part; id: string; on: boolean }) {
+  const draw = (x: Part, size: number): React.ReactNode => !isSplit(x)
+    ? <span key={x.id} style={{ flex: `${size} 1 0` }} className={cn("min-h-0 min-w-0 rounded-[1px]", x.id === id ? (on ? "bg-primary" : "bg-muted-foreground") : "bg-foreground/15")} />
+    : <span key={x.id} style={{ flex: `${size} 1 0` }} className={cn("flex min-h-0 min-w-0 gap-px", x.dir === "col" && "flex-col")}>{tiledKids(x).map(({ k, size: s }) => draw(k, s))}</span>
+  return <span aria-hidden className="flex h-2.5 w-3.5 shrink-0">{draw(n, 1)}</span>
+}
+
+/** A split's pane's own tabs (Pane.stack), under the split's row: headed by where the pane sits (lit while focused), its
+ *  places in their order. Dragged over, they make way for what would land among them. */
+function PaneList({ t, p, info, hit }: { t: Tab; p: Pane; info: (x: Tab | Pane) => TabInfo; hit: TabDrop | null }) {
+  const item = useDrag((d) => d?.item)
+  const box = useRef<HTMLDivElement>(null)
+  const places = placesOf(p), focused = t.focus === p.id
+  const moving = item?.pane ?? item?.tab ?? item?.to
+  const order = moving && hit?.kind === "places" && hit.pane === p.id ? reorder(places.map((x) => x.id), [moving], hit.index).order : null
+  useSlide(box, order, "y")
+  return (
+    <div ref={box} data-pane-places={p.id} className="relative flex flex-col gap-px pl-3.5">
+      <div data-pane-heading={p.id} className={cn("flex h-5 items-center gap-1.5 px-1.5 text-[11px] font-medium", focused ? "text-muted-foreground" : "text-tertiary")}>
+        <PaneGlyph n={t.root} id={p.id} on={focused} />{whereIn(t.root, p.id)}
+      </div>
+      {places.map((x) => <PlaceRow key={x.id} p={x} shown={x.id === p.id} focused={focused} info={info} />)}
+      {order?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute right-0 top-0 left-3.5 h-7 rounded-[5px] bg-foreground/[0.06]" />}
+    </div>
+  )
+}
+
+/** One of a pane's own tabs: a click shows it in its pane, its X closes it (the pane's last: the pane), a press drags it
+ *  (along its pane's list, into another's, out to the list as a tab of its own, or onto a pane: its edge splits). */
+function PlaceRow({ p, shown, focused, info }: { p: Pane; shown: boolean; focused: boolean; info: (x: Tab | Pane) => TabInfo }) {
+  const item = useDrag((d) => d?.item)
+  const i = info(p), on = shown && focused
+  return (
+    <div data-slide={p.id} data-place={p.id} data-ui={`pane:${p.id}`} className={cn("relative", item?.pane === p.id && item.place && "opacity-50")}
+      onPointerDown={(e) => { e.stopPropagation(); startDrag(e, { from: "pane", pane: p.id, to: p.to, label: i.label, place: true }) }}
+      onContextMenu={menuFor(() => placeMenuOf(p.id))}>
+      <SidebarRow data-place-row={p.id} data-shown={shown || undefined} icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} badge={i.badge} mark={i.mark} label={i.label} open active={on}
+        className={cn(shown && !on && "bg-foreground/[0.04]")}
+        swipe={() => [{ label: "Close", icon: X, danger: true, run: () => closePane(p.id), removes: true }]}
+        actions={[<HeadingButton key="close" icon={X} label={`Close ${i.label}`} tip="Close tab" data-no-drag
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); closePane(p.id) }} />]}
+        onClick={(e) => { if (e.button === 1) closePane(p.id); else selectPane(p.id) }} />
     </div>
   )
 }
@@ -204,6 +281,13 @@ function TabRows({ store }: { store: Store }) {
     // (held near the top or bottom of what scrolls the list, it scrolls: more tabs than the panel shows)
     edge.over(root, x, y)
     if (!(el && root.contains(el)) && !atEnds(root, x, y, el)) return null
+    // Over a split's pane's own tabs: among them, before the row it's above the middle of.
+    const among = el?.closest<HTMLElement>("[data-pane-places]")
+    if (among && root.contains(among)) {
+      const index = [...among.querySelectorAll<HTMLElement>("[data-place]")].filter((r) => { const b = laidOut(r); return (b.top + b.bottom) / 2 < y }).length
+      const d: TabDrop = { kind: "places", pane: among.dataset.panePlaces!, index }
+      return canDropTab(item, d) ? d : null
+    }
     // A split's pane over its own row: on another of its panes the two swap, on itself it stays (as laid out, not as
     // a preview slides it: the row holds still meanwhile).
     const own = item.pane ? l.tabs.find((x) => panesOf(x).some((p) => p.id === item.pane)) : undefined
@@ -242,7 +326,7 @@ function TabRows({ store }: { store: Store }) {
         const head = g && l.tabs[i - 1]?.group !== g.id
           ? <GroupRow key={`group:${g.id}`} g={g} n={shown.filter((x) => x.group === g.id).length} target={preview?.into === g.id} />
           : null
-        const row = g?.collapsed ? null : <Row key={t.id} t={t} l={l} info={info} only={only(t)} line={lineOf(t.id)} />
+        const row = g?.collapsed ? null : <Row key={t.id} t={t} l={l} info={info} only={only(t)} line={lineOf(t.id)} hit={hit} />
         return [head, row].filter(Boolean)
       })}
       {/* Where something from elsewhere would open. */}
@@ -266,7 +350,7 @@ function Report({ store }: { store: Store }) {
   useEffect(() => {
     if (!DEVICE) return
     const id = window.setTimeout(() => {
-      const tabs: DeviceTab[] = l.tabs.flatMap((t) => panesOf(t).filter((p) => p.to !== "new")
+      const tabs: DeviceTab[] = l.tabs.flatMap((t) => placesIn(t).filter((p) => p.to !== "new")
         .map((p) => ({ to: p.to, ...(p.to.startsWith("view:") ? { label: infoRef.current(p).label } : {}), ...(t.pinned ? { pinned: true } : {}) })))
       const key = JSON.stringify(tabs.map((t) => [t.to, !!t.pinned]))
       if (key === sent.current) return

@@ -2,7 +2,7 @@
 // moving and closing one; and what agents ask of the tabs (`vau tabs`). Each change is one `set`.
 import { COLORS, isColor, type Color } from "../../../core/colors.ts"
 import {
-  focusedPane, inGroup, isBlankTab, nextShown, newGroupId, outsideGroups, panesOf, runOf, tabOf, vaultPath, type Group, type Pane, type Tab, type TabList,
+  focusedPane, inGroup, isBlankTab, nextShown, newGroupId, outsideGroups, panesOf, placesIn, runOf, tabOf, vaultPath, type Group, type Pane, type Tab, type TabList,
 } from "../../../core/layout.ts"
 import { activePane, closeTabIds, closePane, getWorkspace, here, paneById, paneTab, popoutId, selectPane, selectTab, set, show, showActive, tabById } from "@/core/workspace"
 import { canPaneIntoPane, canTabIntoPane, openInSplit, paneIntoPane, paneToTab, placeTab, splitPane, tabIntoPane, type Zone } from "@/core/splits"
@@ -191,9 +191,11 @@ export function moveGroupTo(id: string, at: number) {
 
 // ---------- what agents ask (vau tabs: plugins/core/tabs/plugin.ts) ----------
 
-const paneLine = (p: Pane, t: Tab) => ({ id: p.id, to: p.to, ...(vaultPath(p.to) ? { path: vaultPath(p.to)! } : {}), ...(p.id === t.focus ? { focused: true } : {}), ...(p.float ? { floating: true } : {}), ...(t.zoom === p.id ? { zoomed: true } : {}) })
+// (a split's pane's own tabs follow it, each `behind` the pane it's stacked in)
+const paneLine = (p: Pane, t: Tab, behind?: string) => ({ id: p.id, to: p.to, ...(vaultPath(p.to) ? { path: vaultPath(p.to)! } : {}), ...(behind ? { behind } : {}),
+  ...(p.id === t.focus ? { focused: true } : {}), ...(p.float ? { floating: true } : {}), ...(t.zoom === p.id ? { zoomed: true } : {}) })
 const tabLine = (t: Tab, l: TabList) => ({ id: t.id, ...(t.id === l.active ? { active: true } : {}), ...(t.pinned ? { pinned: true } : {}), ...(t.name ? { name: t.name } : {}),
-  ...(t.group ? { group: t.group } : {}), panes: panesOf(t).map((p) => paneLine(p, t)) })
+  ...(t.group ? { group: t.group } : {}), panes: panesOf(t).flatMap((p) => [paneLine(p, t), ...(p.stack ?? []).map((x) => paneLine(x, t, p.id))]) })
 /** This window's tabs, each with its panes, and its tab groups; the main window's report has its pop-outs' too. */
 export function tabsReport() {
   const l = here(), w = getWorkspace()
@@ -209,7 +211,7 @@ function find(q: string): { tabs: Tab[]; panes: Pane[] } {
   const l = here(), t = tabById(q), p = paneById(q)
   if (t) return { tabs: [t], panes: [] }
   if (p) return { tabs: [], panes: [p] }
-  const low = q.toLowerCase().replace(/\.md$/, ""), ps = l.tabs.flatMap(panesOf)
+  const low = q.toLowerCase().replace(/\.md$/, ""), ps = l.tabs.flatMap(placesIn)
   const hit = ps.filter((x) => x.to === q || x.to === `file:${q}`)
   const found = hit.length ? hit : ps.filter((x) => { const f = vaultPath(x.to)?.toLowerCase().replace(/\.md$/, ""); return !!f && (f === low || f.split("/").pop() === low) })
   if (!found.length) throw new Error(`no open tab or pane is ${q} (vau tabs lists them)`)
@@ -313,8 +315,8 @@ answerUi("tabs", (m) => {
     // (another device closing this one's tabs: named as its list has them, a terminal with or without its machine)
     const bare = (to: string) => (to.startsWith("view:terminal/") ? to.replace(/@[a-z0-9-]+$/, "") : to)
     const want = Array.isArray(m.tabs) ? new Set(m.tabs.map((t) => bare(String(t)))) : null
-    const ps = here().tabs.flatMap(panesOf).filter((p) => p.to !== "new" && (!want || want.has(bare(p.to))))
-    const whole = here().tabs.filter((t) => panesOf(t).every((p) => ps.includes(p))).map((t) => t.id)
+    const ps = here().tabs.flatMap(placesIn).filter((p) => p.to !== "new" && (!want || want.has(bare(p.to))))
+    const whole = here().tabs.filter((t) => placesIn(t).every((p) => ps.includes(p))).map((t) => t.id)
     if (whole.length) closeTabIds(whole)
     for (const p of ps) if (paneById(p.id)) closePane(p.id)
     return { closed: ps.length }

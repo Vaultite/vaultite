@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, type RefObject } from "react"
 import { moves, timing } from "@/core/animation"
 import { stillCopy } from "@/core/snapshot"
 import { activeTab, floatOrder, layoutQuiet, onWorkspaceChange } from "@/core/workspace"
-import { layout, leaves, type Rect, type Tab } from "../../../core/layout.ts"
+import { layout, leaves, placesOf, type Rect, type Tab } from "../../../core/layout.ts"
 
 /** A pane as drawn: its place (shares of the workspace), whether it's a rounded card, and its layer (0: tiled;
  *  above: zoomed or floating, with a z-index of their own). */
@@ -81,6 +81,9 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, p
   const going = useRef<Animation[]>([])
   const drawn = useRef(key)
   const drawnArea = useRef(area)
+  /** Each place of the tab as drawn, and the pane it's in: one of a pane's own tabs shown in its stead takes its place
+   *  at once, as a browser's tab does (no pane closing, none popping in). */
+  const pane = useRef(new Map<string, string>())
   // A change that moves panes, before React draws it: where each is on screen now (mid-move too), copies of those going.
   useLayoutEffect(() => onWorkspaceChange(() => {
     const el = box.current
@@ -92,8 +95,15 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, p
     for (const p of el.querySelectorAll<HTMLElement>(":scope > [data-plate]")) rects.set(p.dataset.plate!, within(p.getBoundingClientRect(), b))
     let up: string | null = null
     for (const [id, r] of landing) if (ids.has(id)) { rects.set(id, within(r, b)); up ??= id }
+    const instead = new Set<string>()
+    for (const p of leaves(t.root)) {
+      if (rects.has(p.id)) continue
+      // (what it showed now behind it, or the pane it was behind: closed, or shown elsewhere)
+      const was = placesOf(p).find((x) => x.id !== p.id && rects.has(x.id) && !ids.has(x.id))?.id ?? pane.current.get(p.id)
+      if (was && was !== p.id && rects.has(was) && !ids.has(was)) { rects.set(p.id, rects.get(was)!); instead.add(was) }
+    }
     // (one leaving the tab on screen, closed or to another tab kept drawn hidden: a copy of it goes)
-    const gone = [...el.querySelectorAll<HTMLElement>(":scope > [data-pane-frame]:not([data-away])")].filter((s) => !ids.has(s.dataset.paneFrame!) && rects.has(s.dataset.paneFrame!))
+    const gone = [...el.querySelectorAll<HTMLElement>(":scope > [data-pane-frame]:not([data-away])")].filter((s) => !ids.has(s.dataset.paneFrame!) && rects.has(s.dataset.paneFrame!) && !instead.has(s.dataset.paneFrame!))
       .map((s) => ({ ...copyOf(s), at: rects.get(s.dataset.paneFrame!)! }))
     snap.current = { at: { x: b.left, y: b.top }, rects, up: up ?? el.querySelector<HTMLElement>(":scope > [data-zoomed]")?.dataset.paneFrame ?? null, gone }
   }), [box])
@@ -102,6 +112,8 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, tab: string, p
     let s = snap.current
     snap.current = null
     landing.clear()
+    const shown = activeTab()
+    pane.current = new Map(shown ? leaves(shown.root).flatMap((p) => placesOf(p).map((x) => [x.id, p.id] as const)) : [])
     drawnArea.current = area
     const moved = was.join("|") !== edges
     if (!el || (drawn.current === key && !moved)) return

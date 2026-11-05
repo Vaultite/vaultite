@@ -68,12 +68,12 @@ export { newPaneId, newTabId } from "../../core/layout.ts"
 export { canNavigate, navigate } from "@/core/workspace"
 // What the + buttons open: a blank tab, or the quick switcher picking it (newtab.json's `opens`).
 export { openNewTab } from "@/core/launcher"
-export { allPanes, clean as cleanTabLayout, focusedPane, panesOf, shownTab, tabOfPane, withoutPanes, withoutTabs, type Group as TabGroup, type Pane, type Tab, type TabList } from "../../core/layout.ts"
+export { allPanes, clean as cleanTabLayout, focusedPane, panesOf, paneWith, placesIn, placesOf, shownTab, tabOfPane, withoutPanes, withoutTabs, type Group as TabGroup, type Pane, type Tab, type TabList } from "../../core/layout.ts"
 // What changes in the window's tabs, as events (a pane focused, a tab opened, a pane moved): what the companion follows.
 export { onTabsEvent, type TabsEvent } from "@/core/tabevents"
 // Marks on the app's UI by data-ui id (a row's small button): the companion's eye on what it follows.
 export { setUiMarks, useUiMarks, type UiMark } from "@/core/uimarks"
-export { dragTab, paneMenuOf, springTabAt, TABS, tabLabel, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
+export { dragTab, paneMenuOf, placeMenuOf, springTabAt, TABS, tabLabel, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
 // Tab groups (named, coloured runs of tabs): their menu, names and folding, and drops on the tabs drawn as a list (the
 // Tabs panel), which join or leave them as the tab bar's do; a dragged pane or tab held on a row opens it (springOver).
 export { groupMenu, groupName, GroupLabel, PaneControls } from "@/components/Tabs"

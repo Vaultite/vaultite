@@ -7,6 +7,25 @@ focused pane, the tab with its last; Close split (⌥⇧⌘W, or the tab's menu)
 dragged out of a split's row) is a tab of its own; held a second over a row, that tab opens to drop into. Ids are
 stable: a tab's (`t…`) and a pane's (`p…`, or a `t…` one from before tabs held panes).
 
+**A split's panes have tabs of their own**, as a browser window's: in a split, what opens as a new tab (⌘T, a link
+⌘-clicked, a page's new window, a tab ⌥-clicked or dropped on a pane's middle, a file dropped there) opens among the
+focused (or that) pane's own tabs, shown, what it showed staying open behind it; a pane that keeps its view (a
+terminal) opens its new tabs in the list, as the list's New tab row and a tab bar's + always do, and agents' tabs go
+there too. ⌘W closes the place a pane shows, its next showing (the pane goes with its last); Close pane (the palette, a
+pane's menu) closes it with all of them. ⌃Tab and ⇧⌘] go through the focused pane's tabs, then on to the next tab. While
+the split is on screen and a pane has more than one, the Tabs panel lists each pane's under its row, headed by where it
+sits: a click shows one, its X closes it, a drag moves it along its pane's list, into another's, onto a pane (an edge
+splits it off) or out to the list as a tab of its own, and a list's tab dropped on a pane's list joins it; another tab
+on screen, the row is its map again, each cell saying how many more its pane has (+2). With the tab bar on, such a pane
+has a strip of its tabs on top. A split closed down to one pane has its tabs as tabs of the list. Kept as each pane's
+`stack` (its other places, each a pane of its own, in order) and `stackAt` (where the one it shows sits among them):
+```
+{"id": "t2", "focus": "p3", "root": {"id": "s1", "dir": "row", "sizes": [0.5, 0.5], "kids": [{"id": "p2", "to": "file:Notes/b.md"},
+  {"id": "p3", "to": "view:web/https://example.com/", "stack": [{"id": "p4", "to": "file:Notes/c.md"}], "stackAt": 1}]}}
+```
+`vau tabs` lists them after their pane (`behind` it); focus, move (`--into <pane> --side center` joins its tabs, `--at`
+takes one out to the list) and closing on a device act on them by id.
+
 The Tabs panel lists the open tabs (a split tab one row, its panes drawn in the shape of its split), so the tab bar can be off: vertical tabs. One switch moves the tabs
 between the two (the palette's Show tabs in the sidebar / Show tabs on top, or right-click the tab bar or the panel): in
 the sidebar, appearance `tabBar` is false and `tabs:tabs` is at the top of the left sidebar (sidebars.json, or the

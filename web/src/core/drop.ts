@@ -1,18 +1,21 @@
 // Dropping tabs, panes, tab groups and files (core/drag.ts): on the list of tabs (the tab bar, the Tabs panel) or on a
 // pane of the tab on screen. What's under the pointer and what a drop there does.
 import { laidOut, rehit, type DragItem } from "@/core/drag"
-import { outsideGroups, panesOf, runOf, type TabList } from "../../../core/layout.ts"
+import { isSplit, outsideGroups, panesOf, runOf, type TabList } from "../../../core/layout.ts"
 import {
-  canOpenAt, canOpenAtIndex, canPaneIntoPane, canPlaceTab, canTabIntoPane, openAllAt, openAllAtIndex, openAt, openAtIndex, paneIntoPane, paneToTab, placeTab, placeTabs,
+  canOpenAt, canOpenAtIndex, canPaneIntoPane, canPlaceAmong, canPlaceTab, canTabIntoPane, openAllAt, openAllAtIndex, openAmong, openAt, openAtIndex, paneIntoPane, paneToTab, placeAmong, placeTab, placeTabs,
   tabIntoPane, tabShowing, type Zone,
 } from "@/core/splits"
 import { canMoveGroup, moveGroupTo } from "@/core/tabgroups"
-import { here, paneById, paneTab, selectTab } from "@/core/workspace"
+import { here, paneById, paneTab, selectTab, tabById } from "@/core/workspace"
 import { INCOMING } from "@/core/slide"
 
-/** Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none;
- *  `home`: where what's dragged is already, so a drop there changes nothing), or a pane's edge or middle. */
+/** Where something dragged would land: a place in the list of tabs (`group` it joins, null none; `home`: where it is
+ *  already), a pane's edge or middle, or before the `index`th of a split pane's own tabs (`pane`: one of them). */
 export type Drop = { kind: "list"; index: number; group: string | null; home?: boolean } | { kind: "pane"; pane: string; zone: Zone }
+  | { kind: "places"; pane: string; index: number }
+/** The tab of one pane `id` is, which can go among a pane's own tabs (a split's, or a blank one's: no). */
+const loneTab = (id: string) => { const t = tabById(id); return t && !isSplit(t.root) && t.root.to !== "new" ? t.root : null }
 /** The workspace's drop target (useDropTarget): its tab bar and panes. */
 export const PANES = "panes"
 
@@ -35,7 +38,13 @@ export function canDropAt(item: DragItem, d: Drop): boolean {
     if (item.tab) return canPlaceTab(item.tab, d.index, d.group)
     return !!item.to && canOpenAtIndex(item.to, d.index, d.group)
   }
-  if (item.pane) return canPaneIntoPane(item.pane, d.pane, d.zone)
+  if (d.kind === "places") {
+    if (item.pane) return canPlaceAmong(item.pane, d.pane, d.index)
+    if (item.group || item.tabs?.length || item.tos?.length) return false
+    if (item.tab) { const p = loneTab(item.tab); return !!p && canPlaceAmong(p.id, d.pane, d.index) }
+    return !!item.to && !!paneTab(d.pane)
+  }
+  if (item.pane) return canPaneIntoPane(item.pane, d.pane, d.zone, item.place || undefined)
   if (item.group) return false
   if (item.tab) return canTabIntoPane(item.tab, d.pane, d.zone)
   return !!item.to && canOpenAt(item.to, d.pane, d.zone)
@@ -54,7 +63,13 @@ export function dropOn(item: DragItem, d: Drop) {
     else if (item.to) openAtIndex(item.to, d.index, d.group)
     return
   }
-  if (item.pane) paneIntoPane(item.pane, d.pane, d.zone)
+  if (d.kind === "places") {
+    if (item.pane) placeAmong(item.pane, d.pane, d.index)
+    else if (item.tab) { const p = loneTab(item.tab); if (p) placeAmong(p.id, d.pane, d.index) }
+    else if (item.to) openAmong(item.to, d.pane, d.index)
+    return
+  }
+  if (item.pane) paneIntoPane(item.pane, d.pane, d.zone, item.place || undefined)
   else if (item.tab) tabIntoPane(item.tab, d.pane, d.zone)
   else if (item.tos?.length) openAllAt(item.tos, d.pane, d.zone)
   // (A sidebar panel dragged by its heading opens as its view.)
@@ -134,6 +149,12 @@ export function placeAt(x: number, y: number, el: Element | null, files = false)
     const slots = [...strip.querySelectorAll<HTMLElement>("[data-tab-id], [data-group-chip]")].map((e) => ({ el: e, tab: e.dataset.tabId, group: e.dataset.groupChip }))
     const s = slotIn(here(), slots, x, "x")
     return { kind: "list", index: s.index, group: s.group }
+  }
+  // A pane's strip of its own tabs: among them, before the chip it's left of the middle of.
+  const chips = el?.closest<HTMLElement>("[data-place-strip]")
+  if (chips) {
+    const index = [...chips.querySelectorAll<HTMLElement>("[data-place]")].filter((c) => { const b = laidOut(c); return (b.left + b.right) / 2 < x }).length
+    return { kind: "places", pane: chips.dataset.placeStrip!, index }
   }
   // A pane's bar is its middle.
   const bar = el?.closest<HTMLElement>("[data-pane-bar]")

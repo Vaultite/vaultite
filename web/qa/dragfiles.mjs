@@ -71,7 +71,7 @@ await page.goto(`${B}#file/${encodeURIComponent("Qa drag/One.md")}`); await wait
 await row("Qa drag").click(); await row("Qa drag/Two.md").waitFor()
 let ps = await panes()
 check("starts with one pane showing One", ps.length === 1 && ps[0].shows === "One", ps)
-const g0 = ps[0].id
+let g0 = ps[0].id
 
 // A file onto its pane's middle: opens there (where the pane was goes into its history).
 let o = await drag(row("Qa drag/Two.md"), await spot(g0, "center"), { name: "tree-center" })
@@ -112,7 +112,10 @@ check("Escape cancels a tree drag", o.zone === "left" && JSON.stringify(await pa
 o = await drag(row("Qa drag/Sub"), await spot(g0, "center"))
 ps = await panes()
 check("a folder over a pane: its middle offered", o.zone === "center", o)
-check("...dropped: its page in that pane", ps.find((p) => p.id === g0)?.shows === "Sub", ps)
+// (in a split, one of that pane's own tabs: the pane where it was, under a new id)
+const left = [...ps].sort((a, b) => a.x + a.y - (b.x + b.y))[0]
+check("...dropped: its page in that pane, among its own tabs", left?.shows === "Sub" && left.id !== g0, ps)
+g0 = left?.id ?? g0
 
 // Within the tree it still moves.
 o = await drag(row("Qa drag/Three.md"), await center(row("Qa drag/Sub")))

@@ -1,7 +1,7 @@
 // A page playing where its tab can't be seen (in a folded tab group): a speaker on the group's row and chip (core/
 // uimarks.ts), a click from showing, pausing or muting it; and the sound items the tab's menus and the status bar share.
 import { AppWindow, Pause, Play, Volume2, VolumeX } from "lucide-react"
-import { getTabLayout, menuBelow, onTabLayoutChange, panesOf, selectPane, setUiMarks, webPages, type MenuItem, type UiMark } from "@vaultite"
+import { getTabLayout, menuBelow, onTabLayoutChange, placesIn, selectPane, setUiMarks, webPages, type MenuItem, type UiMark } from "@vaultite"
 import { hostOf } from "./address"
 import { splitArg } from "./containers"
 import { sounds, titleOf, type Sound } from "./state"
@@ -37,7 +37,7 @@ function mark() {
   for (const s of sounds.get()) {
     if (!s.tab || !(s.playing || s.paused)) continue
     for (const w of [l, ...(l.windows ?? [])]) {
-      const t = w.tabs.find((x) => panesOf(x).some((p) => p.id === s.tab)), g = t?.group ? w.groups?.find((x) => x.id === t.group) : undefined
+      const t = w.tabs.find((x) => placesIn(x).some((p) => p.id === s.tab)), g = t?.group ? w.groups?.find((x) => x.id === t.group) : undefined
       if (g?.collapsed) by.set(`group:${g.id}`, [...(by.get(`group:${g.id}`) ?? []), s])
     }
   }

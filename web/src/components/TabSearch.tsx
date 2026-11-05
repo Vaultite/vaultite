@@ -9,7 +9,7 @@ import { shortcutOf, sameKeys } from "@/core/commands"
 import { closedTabs, findOpen, reopenClosed, selectTab, tabsByRecent, useTabList, type ClosedEntry } from "@/core/workspace"
 import { reopenArchived, useArchivedTabs } from "@/core/tabarchive"
 import { closeTabMoving } from "@/core/tabfold"
-import { focusedPane, panesOf, tabOf, vaultPath, type Group, type Tab } from "../../../core/layout.ts"
+import { focusedPane, placesIn, tabOf, vaultPath, type Group, type Tab } from "../../../core/layout.ts"
 import { marked, NoMatches, Palette } from "@/components/Palette"
 import { GroupLabel, groupName, useTabLabels, type TabInfo } from "@/components/Tabs"
 import { Badged } from "@/components/kit"
@@ -57,7 +57,7 @@ export function TabSearch({ store, onClose }: { store: Store; onClose: () => voi
   const info = useTabLabels(store)
   const cur = l.active
   /** What else finds a tab: what each of its panes shows. */
-  const places = (t: Tab) => panesOf(t).map((p) => p.to)
+  const places = (t: Tab) => placesIn(t).map((p) => p.to)
   // (a file deleted since isn't offered back, nor what's open again)
   const there = (to: string) => { const p = vaultPath(to); return p === null || inVault(store, p) }
   const away = (to: string) => there(to) && !findOpen(to)

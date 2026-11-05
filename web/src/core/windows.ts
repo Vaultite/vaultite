@@ -72,7 +72,7 @@ if (typeof window !== "undefined") {
       const at = e.data.at
       const x = at ? at.x - screenX : -1, y = at ? at.y - screenY - (outerHeight - innerHeight) : -1
       const p = at ? placeAt(x, y, document.elementFromPoint(x, y)) : null
-      takeTabs(tabs, e.data.active, !p ? undefined : p.kind === "list" ? { index: p.index, group: p.group } : { pane: p.pane, zone: p.zone })
+      takeTabs(tabs, e.data.active, !p ? undefined : p.kind === "list" ? { index: p.index, group: p.group } : { pane: p.pane, zone: p.kind === "pane" ? p.zone : "center" })
     })
   }
 }

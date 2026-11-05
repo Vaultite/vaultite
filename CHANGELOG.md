@@ -9,6 +9,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Copy from a browser tab watched live, and the keys a phone lacks**: Copy (or ⌘C) puts what's selected in the page
   on the clipboard of the device you watch from, a login the app filled never in it; on a phone, while typing, a row
   over the keyboard has esc, tab, ⇧tab, the arrows and Paste. A double click from another Mac now double-clicks there.
+- **A split's panes have tabs of their own again**: in a split, a new tab (⌘T, a link opened in a new tab, a tab
+  ⌥-clicked or dropped on a pane) opens in the focused pane, what it showed staying open behind it, and ⌘W closes just
+  that one. The Tabs panel lists each pane's tabs under the split's row (click, close, drag between panes or out to the
+  list), and with the tab bar on a pane shows them in a strip. `vau tabs` lists and moves them (plugin API 7: a pane's
+  `stack`).
 - **A browser tab watched from your phone zooms**: pinch the picture in (sharper while zoomed), drag to move around it
   and on past its edge to scroll the page, and Zoom to fit to go back; a trackpad's pinch does the same on a Mac. A double
   tap double-clicks, a finger held still a moment presses and drags (to select text or move a slider), and trackpad mode

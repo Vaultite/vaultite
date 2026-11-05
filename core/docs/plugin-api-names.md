@@ -41,7 +41,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentUsageBlock({ src, options, fm })`: Its value estimated at list prices (or tokens) per day, today and the period (`days: 30`).
 - `AgentWindow`
 - `aiOn()`: Whether AI is on (the default).
-- `allPanes(l)`: Every pane of every tab.
+- `allPanes(l)`: Every place open in a list: every pane of every tab, and what's stacked under them.
 - `AmbientButton({ icon, text, tip, tint, onClick, className })`
 - `AmbientItem`: Drawn in the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click away from its page.
 - `announce(text, opts?)`: Say `text` to a screen reader: politely, after what it's reading, or `assertive` (an error) at once.
@@ -125,7 +125,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `cleanTabLayout(w)`: A saved workspace, checked; one saved before tabs held panes (`{root, focus, zoom}`) is migrated.
 - `clearSelection()`
 - `clickOpening()`: How the click under way asks to open (core/links.ts sets it): ⌘ or a middle click, a new tab behind (`front`: ⌘⇧); `item`: on an in-app item (a row, a link), whatever its handler opens goes there.
-- `closePane(id?, force?)`: Close a pane (the focused one): its tab keeps the others; its last pane closes the tab.
+- `closePane(id?, force?)`: Close a pane's place (the focused one): its pane's next tab shows (Pane.stack), else the pane closes, its tab keeping the others; its last pane closes the tab.
 - `closeTab(id, force?)`: Close a tab, every pane in it (`force`: without its views asking first, e.g.
 - `closeView(to)`: Close every pane showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudAccount`: A claude.ai organization whose sessions are read: its name (a personal one's: its login's email), and the logins (profiles) it's in.
@@ -458,9 +458,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `panelSide(key, s?)`: Which sidebar a panel is in (null: hidden).
 - `paneMenuOf(id)`: A pane's right-click menu, the one its bar has (a half of a split tab's row).
 - `PaneMotion`: A move of panes as it starts: the sections moving, and when they're all still.
-- `panesOf(t)`: A tab's panes.
+- `panesOf(t)`: A tab's panes (what each shows: placesIn has the places stacked under them too).
 - `panesShowing(...to)`: The panes showing any of these targets ("file:Inbox/A.md"), in every tab of this window.
 - `paneTab(id)`: The tab that has pane `id` (in this window).
+- `paneWith(n, id)`: The pane of tree `n` that has place `id`, shown or stacked under it.
 - `paragraphAt(doc, pos)`: The lines of the soft-wrapped paragraph around `pos`: up to a blank line or a line that starts another block (list item, quote, heading, fence, table, math, HTML, footnote definition, callout…
 - `parse(s)`
 - `parseCsv(text)`: Rows of fields.
@@ -487,8 +488,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pinnedFoldersOpen`: Pinned folders open in place (plugins/core/pages), and the folders open inside them: closed until opened.
 - `pinOfView(target, disabled?)`: What pinning a view's tab pins (its `pinAs`, else its arg): the pin's key ("view:web/https://example.com", "view:inbox", "view:terminal/resume-claude-<session>") and its name now, or null when it…
 - `Place`: A place to open a terminal or an agent: which machine ("": this one) and, for an agent with accounts, which one.
+- `placeMenuOf(id)`: Right-click on one of a split's pane's own tabs (the Tabs panel's list under the split, a pane's strip): closing it or the pane's others, taking it out of the pane (a tab of its own, or a pane…
 - `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end; itself: where it is) or unpinned…
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
+- `placesIn(t)`: Every place open in a tab: each pane's, in their order.
+- `placesOf(p)`: Pane `p`'s places, its tabs, in their order: what it shows and what's stacked under it (each bare).
 - `plain(s)`: Imported titles (Hevy etc.) carry emojis; the app shows plain text.
 - `plainError(e)`: An error, a rejection's reason or a message, as it should reach a person.
 - `plainText(md)`: Markdown to plain text, for previews and search snippets: no marks, code fences, display math, callouts' types, rules or table pipes.
@@ -653,7 +657,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Tab`: A tab: its panes in a tree of splits (one pane, mostly), the one `focus`ed, and the one filling it for now (`zoom`, tmux's).
 - `TabButton`: A button on a tab while the pointer is over it (the tab bar's and the Tabs panel's), before its Close: what's done with what it shows (an inbox item's Settle).
 - `tabButtons(to, disabled?)`: The buttons a tab showing `to` has on hover (`tabButtons`), from the plugins that are on, in their order.
-- `TabDrop`: Where something dragged would land: a place in the list of tabs (`group`: the tab group it joins there, null none; `home`: where what's dragged is already, so a drop there changes nothing), or a…
+- `TabDrop`: Where something dragged would land: a place in the list of tabs (`group` it joins, null none; `home`: where it is already), a pane's edge or middle, or before the `index`th of a split pane's own…
 - `TabGroup`: A tab group, as browsers have them: a named, coloured run of tabs side by side (those whose `group` is its id), folded to its name while `collapsed`.
 - `TabInfo`: `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting).
 - `tabLabel(t, store)`: The same outside a render (what the quick switcher finds).
@@ -661,7 +665,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `TabList`: A window's tabs, in order, their groups (in the order their tabs are) and the one on screen.
 - `tabListDrop(item, d)`: A place in a list of tabs as a drop target answers it: what a drop there does, or, where the tabs or group dragged already are, `home` (taken there and drawn so, as in a browser, not pulled off as…
 - `tabMenuOf(id)`: A tab's right-click menu, the one its chip has.
-- `tabOfPane(l, id)`: The tab that has pane `id`.
+- `tabOfPane(l, id)`: The tab that has place `id` (a pane, or a place stacked under one).
 - `tabPreview(l, item, d)`
 - `tabPreviewOrder(l, p)`: What the tabs show in that order (useSlide's keys): each tab group's name (`group:<id>`) before its tabs, which a folded one hides.
 - `TABS`: The tabs' selection (core/select.ts): by tab id, the bar's, the Tabs panel's and the phone's cards alike.

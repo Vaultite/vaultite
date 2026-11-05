@@ -9,7 +9,7 @@ import { activePane, activeTab, closedTabs, closePane, closeTab, closeTabIds, he
 import { closedMeta, closedName } from "@/components/TabSearch"
 import { addPane, keepShown, paneIntoPane, paneToTab, placeTabBy } from "@/core/splits"
 import { addToGroup, closeGroup, groupWith, leaveGroup, renameGroup } from "@/core/tabgroups"
-import { focusedPane, layout, panesOf, tabOf, tabPath, tabWith, type Group, type Pane, type Tab } from "../../../core/layout.ts"
+import { focusedPane, layout, panesOf, placesIn, tabOf, tabPath, tabWith, type Group, type Pane, type Tab } from "../../../core/layout.ts"
 import { edgeScroller, fingerHolding, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { workspaces, useWorkspaceVersion } from "@/core/scope"
 import type { WorkspaceInfo } from "@/core/define"
@@ -799,7 +799,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
   const pages = host?.list() ?? []
   const at = host ? pages.findIndex((w) => w.n === host.current()) : -1
   const q = query?.trim().toLowerCase() ?? ""
-  const found = q ? all.filter((t) => hasWords(q, `${info(t).label}\n${panesOf(t).map((p) => p.to).join("\n")}`)) : null
+  const found = q ? all.filter((t) => hasWords(q, `${info(t).label}\n${placesIn(t).map((p) => p.to).join("\n")}`)) : null
   // (Safari's recently closed tabs: what closed together comes back together, where it was)
   const recentlyClosed = (): MenuItem[] => closedTabs().slice(0, 10).map((e) =>
     ({ label: closedName(e, (t) => info(t).label), icon: info(e.tabs[0]).icon, hint: closedMeta(e), run: () => reopenClosed(e.id) }))
@@ -849,7 +849,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: Info }) {
         </>}>
         <div ref={box} data-tabs-grid className="relative @container">
           <div className={grid} data-select-list={TABS}>
-            {found ? found.map(card) : openSplit ? panesOf(openSplit).map((p) => paneCard(openSplit, p)) : open ? inOrder(open.tabs).map(card) : cards(inOrder(all))}
+            {found ? found.map(card) : openSplit ? placesIn(openSplit).map((p) => paneCard(openSplit, p)) : open ? inOrder(open.tabs).map(card) : cards(inOrder(all))}
           </div>
           {found && !found.length && <p className="py-10 text-center text-[17px] text-muted-foreground">No tabs match “{query?.trim()}”</p>}
         </div>

@@ -2,7 +2,7 @@
 // grow in (springing), closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
 import { useLayoutEffect, useRef, type RefObject } from "react"
 import { closeTab, here, layoutQuiet, mayClose, onWorkspaceChange, replacingWorkspace, tabById } from "@/core/workspace"
-import { panesOf, type TabList } from "../../../core/layout.ts"
+import { placesIn, type TabList } from "../../../core/layout.ts"
 import { foldGroup, groupById, handOverFrom } from "@/core/tabgroups"
 import { moves, timing, type Pace } from "@/core/animation"
 import { stir } from "@/core/tabline"
@@ -190,7 +190,7 @@ export function closeTabMoving(id: string, el: HTMLElement | null) {
   if (!t) return
   if (!el || still()) { closeTab(id); return }
   el.style.pointerEvents = "none"
-  const a = squeeze(el, true), ok = mayClose(panesOf(t))
+  const a = squeeze(el, true), ok = mayClose(placesIn(t))
   a.addEventListener("cancel", () => { el.style.pointerEvents = "" })
   // (closed once it has shrunk, so the list doesn't take it away mid-way; React takes it away whenever it draws)
   void Promise.resolve(ok).then((yes) => {

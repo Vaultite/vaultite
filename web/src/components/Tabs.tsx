@@ -12,10 +12,10 @@ import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
 import { stem } from "@/core/files"
-import { activePane, askRename, closePane, closeTab, closeTabIds, closeTabs, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
-import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, keepShown, moveToSplit, paneIntoPane, paneToTab, replaceWithTab, splitPane, zoomPane } from "@/core/splits"
+import { activePane, askRename, closePane, closeTab, closeTabIds, closeTabs, closeWholePane, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, set, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
+import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, keepShown, moveToSplit, paneIntoPane, paneToTab, replaceWithTab, splitOut, splitPane, zoomPane } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
-import { focusedPane, isBlankTab, layout, panesOf, shownTab, vaultPath, type Group, type Pane, type Rect, type Tab } from "../../../core/layout.ts"
+import { focusedPane, isBlankTab, layout, panesOf, paneWith, placesIn, placesOf, shownTab, tabWith, vaultPath, type Group, type Pane, type Rect, type Tab } from "../../../core/layout.ts"
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
 import { addToGroup, allGroups, closeGroup, colorGroup, groupById, leaveGroup, makeGroup, newTabInGroup, renameGroup, ungroup } from "@/core/tabgroups"
@@ -24,7 +24,7 @@ import { stir, useGroupLines } from "@/core/tabline"
 import { canRenameTab, renameTab } from "@/core/tabnames"
 import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, groupsAsDrawn, sprangOpen, springing, type Drop } from "@/core/drop"
-import { INCOMING, useSlide } from "@/core/slide"
+import { INCOMING, reorder, useSlide } from "@/core/slide"
 import { usePane, usePaneHasTopBar } from "@/core/pane"
 import { useUiMarks } from "@/core/uimarks"
 import { tabButtons, tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
@@ -87,13 +87,13 @@ function tabMenu(tab: Tab): MenuItem[] {
   ]
 }
 
-/** A split tab's panes each a tab of its own, in their order; the tab shown stays shown (this one's focused pane, if
- *  it was). */
+/** A split tab's panes each a tab of its own, and their own tabs too, in their order; the focused pane keeps the tab
+ *  (shown, if it was). */
 export function separatePanes(id: string) {
-  const tab = tabById(id), shown = here().active
-  if (!tab) return
-  for (const p of panesOf(tab).slice(1).reverse()) paneToTab(p.id)
-  keepShown(shown === id ? paneTab(tab.focus)?.id ?? shown : shown)
+  const tab = tabById(id), l = here(), at = l.tabs.findIndex((t) => t.id === id)
+  if (!tab || panesOf(tab).length < 2) return
+  const tabs = placesIn(tab).map((p): Tab => (p.id === tab.focus ? { ...tab, root: tabWith(p).root, focus: p.id, zoom: undefined } : { ...tabWith(p), ...(tab.group ? { group: tab.group } : {}) }))
+  set({ ...l, tabs: [...l.tabs.slice(0, at), ...tabs, ...l.tabs.slice(at + 1)] })
   showActiveUnder()
 }
 
@@ -110,7 +110,27 @@ function paneMenu(id: string): MenuItem[] {
     ...(p.float ? [{ label: "Dock pane", icon: PictureInPicture2, run: () => dockPane(id) }]
       : canFloat(id) ? [{ label: "Float pane", icon: PictureInPicture2, run: () => floatPane(id) }] : []),
     ...(zoomed || (canZoom(id) && !p.float) ? [{ label: zoomed ? "Unzoom pane" : "Zoom pane", icon: zoomed ? Minimize2 : Maximize2, run: () => zoomPane(id) }] : []),
-    several ? { label: "Close pane", icon: X, sep: true, run: () => closePane(id) } : { label: "Close tab", icon: X, sep: true, run: () => closeTab(t.id) },
+    // (a pane with tabs of its own: its X closes the one it shows, as a tab's would)
+    ...(stackOf(id) > 1 ? [{ label: "Close tab", icon: X, sep: true, run: () => closePane(id) }, { label: "Close pane", run: () => closeWholePane(id) }]
+      : [several ? { label: "Close pane", icon: X, sep: true, run: () => closePane(id) } : { label: "Close tab", icon: X, sep: true, run: () => closeTab(t.id) }]),
+    ...placeItems(p),
+  ]
+}
+/** How many tabs of its own pane `id`'s pane has (Pane.stack; 1: just what it shows). */
+const stackOf = (id: string) => { const t = paneTab(id), p = t && paneWith(t.root, id); return p ? placesOf(p).length : 0 }
+
+/** Right-click on one of a split's pane's own tabs (the Tabs panel's list under the split, a pane's strip): closing it or
+ *  the pane's others, taking it out of the pane (a tab of its own, or a pane beside it); then what it shows. */
+export function placeMenuOf(id: string): MenuItem[] {
+  const p = paneById(id), t = paneTab(id), own = t && paneWith(t.root, id)
+  if (!p || !t || !own) return []
+  const others = placesOf(own).filter((x) => x.id !== id)
+  return [
+    { label: "Close tab", icon: X, run: () => closePane(id) },
+    { label: "Close other tabs in pane", run: () => { for (const x of others) closePane(x.id) }, disabled: !others.length },
+    { label: "Move to new tab", icon: SquareArrowOutUpRight, sep: true, run: () => paneToTab(id) },
+    { label: "Split right", icon: Columns2, run: () => splitOut(id, "right"), disabled: !others.length },
+    { label: "Split down", icon: Rows2, run: () => splitOut(id, "bottom"), disabled: !others.length },
     ...placeItems(p),
   ]
 }
@@ -900,15 +920,17 @@ function PaneState({ id, float, zoomed }: { id: string; float: boolean; zoomed: 
 /** A pane's own buttons at its bar's end, the same on every kind of pane: its state (zoomed, floating), its X and its
  *  handle, the last two shown while the pointer is on the bar (`group/bar`; a fading file bar shown: `data-shown`). */
 function PaneButtons({ id, tab, several, only, float, zoomed, label }: { id: string; tab: string; several: boolean; only: boolean; float: boolean; zoomed: boolean; label: () => string }) {
-  const closeKeys = useCommandKeys("pane:close", true)
+  const tabKeys = useCommandKeys("tab:close", true), paneKeys = useCommandKeys("pane:close", true)
   const item = useDragItem()
   const hover = item?.pane === id ? "opacity-100" : "opacity-0 group-hover/bar:opacity-100 group-data-[shown]/bar:opacity-100"
+  // (a pane with tabs of its own closes the one it shows, as ⌘W does)
+  const stacked = stackOf(id) > 1, what = several && !stacked ? "Close pane" : "Close tab", closeKeys = stacked ? tabKeys : tabKeys || paneKeys
   return (
     <>
       <PaneState id={id} float={float} zoomed={zoomed} />
       {/* Closes the pane (its tab's last: the tab), pinned too (⌘⇧T brings it back). Not the window's only one. */}
       {!only && (
-        <button type="button" data-pane-close={id} aria-label={several ? "Close pane" : "Close tab"} data-tip={item ? undefined : `${several ? "Close pane" : "Close tab"}${closeKeys}`}
+        <button type="button" data-pane-close={id} aria-label={what} data-tip={item ? undefined : `${what}${closeKeys}`}
           onClick={() => (several ? closePane(id) : closeTab(tab))}
           className={cn("grid h-7 w-5 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground transition-opacity hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100", hover)}>
           <X className="size-4" strokeWidth={2} />
@@ -966,6 +988,8 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
   const i = info(pane)
   const buttons = <PaneButtons id={id} tab={tab.id} several={panesOf(tab).length > 1} only={only} float={float} zoomed={zoomed} label={() => i.label} />
   const menu = menuFor(() => barMenuOf(id))
+  const own = paneWith(tab.root, id), places = own ? placesOf(own) : [pane]
+  if (tabBar && places.length > 1) return <PlaceStrip id={id} places={places} focused={focused} info={info} menu={menu}>{buttons}</PlaceStrip>
   if (!paneTitles) {
     return (
       <div ref={strip} data-pane-bar={id} data-title-row data-bare data-merged={merged || undefined} onContextMenu={menu}
@@ -985,6 +1009,47 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
         <span className={cn("min-w-0 truncate font-medium", focused ? "text-foreground" : "text-muted-foreground")}>{i.label}</span>
       </div>
       {buttons}
+    </div>
+  )
+}
+
+/** With the tab bar on, a split's pane with tabs of its own (Pane.stack) has them in a strip, its tab bar: a click shows
+ *  one, its X closes it, a press drags it (along the strip, onto a pane, to the tab bar); dragged over, chips make way. */
+function PlaceStrip({ id, places, focused, info, menu, children }: { id: string; places: Pane[]; focused: boolean; info: (t: Tab | Pane) => TabInfo
+  menu: (e: React.MouseEvent) => void; children: React.ReactNode }) {
+  const item = useDragItem(), hit = useDropHit<Drop>(PANES)
+  const row = useRef<HTMLDivElement>(null)
+  const moving = item?.pane ?? item?.tab ?? item?.to
+  const order = moving && hit?.kind === "places" && hit.pane === id ? reorder(places.map((p) => p.id), [moving], hit.index).order : null
+  useSlide(row, order, "x")
+  return (
+    <div data-pane-bar={id} data-title-row data-place-strip={id} onContextMenu={menu}
+      className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
+      <div ref={row} data-place-chips className="relative flex min-w-0 flex-1 items-center gap-1 self-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {places.map((p) => <PlaceChip key={p.id} p={p} shown={p.id === id} focused={focused} info={info} />)}
+        {order?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute left-0 h-7 w-28 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border" />}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** One of a pane's own tabs in its strip. */
+function PlaceChip({ p, shown, focused, info }: { p: Pane; shown: boolean; focused: boolean; info: (t: Tab | Pane) => TabInfo }) {
+  const item = useDragItem()
+  const { fileIcons } = usePrefs()
+  const i = info(p)
+  return (
+    <div data-slide={p.id} data-place={p.id} data-ui={`pane:${p.id}`} role="presentation" onContextMenu={menuFor(() => placeMenuOf(p.id))}
+      onPointerDown={(e) => startDrag(e, { from: "pane", pane: p.id, to: p.to, label: i.label, place: true })} onClick={() => selectPane(p.id)}
+      onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); closePane(p.id) } }} data-tip={item ? undefined : i.label} data-tip-trunc
+      className={cn("group/tab @container/tab relative flex h-7 min-w-12 max-w-[200px] flex-1 basis-0 cursor-pointer items-center gap-1.5 rounded-[6px] pr-6 pl-2 text-[13px] transition-colors",
+        shown ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]", item?.pane === p.id && item.place && "opacity-40")}>
+      <ChipLabel i={i} icons={fileIcons} strong={shown && focused} muted={!shown} />
+      <button type="button" data-place-close={p.id} data-no-drag tabIndex={-1} aria-label={`Close ${i.label}`} onClick={(e) => { e.stopPropagation(); closePane(p.id) }}
+        className={cn("absolute right-1 grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground", shown ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100")}>
+        <X className="size-3.5" strokeWidth={2} />
+      </button>
     </div>
   )
 }

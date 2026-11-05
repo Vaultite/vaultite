@@ -10,7 +10,7 @@ import { dropAt, dropOn, PANES, springOver, type Drop } from "@/core/drop"
 import { evenOut, placeFloat, resize } from "@/core/splits"
 import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
 import { setGroupNamer } from "@/core/tabgroups"
-import { layout, panesOf, shownTab, tabOfPane, tabPath, type Divider as DividerAt, type Pane, type Rect, type Tab, type TabList } from "../../../core/layout.ts"
+import { layout, panesOf, placesIn, shownTab, tabOfPane, tabPath, type Divider as DividerAt, type Pane, type Rect, type Tab, type TabList } from "../../../core/layout.ts"
 import { PaneContext } from "@/core/pane"
 import { VaultLoading } from "@/components/VaultLoading"
 import { isPage } from "@/core/pages"
@@ -91,13 +91,13 @@ const tile = (r: Rect) => ({ left: along(r.x), top: along(r.y), width: span(r.w)
  *  fills its pane (a terminal, a canvas) is drawn only while shown. */
 const KEEP = 5
 
-/** The panes drawn (`slots`, in draw order) and the tabs shown, latest first. A pane coming or going never reorders the
- *  others: an element that moves reloads what's in it (an iframe). */
+/** The panes drawn (`slots`, in draw order; the tab on screen's panes' own tabs too) and the tabs shown, latest first.
+ *  A pane coming or going never reorders the others: an element that moves reloads what's in it (an iframe). */
 type Kept = { slots: string[]; recent: string[] }
 function keepPanes(k: Kept, l: TabList, shown: string): Kept {
   const has = new Map(l.tabs.map((t) => [t.id, t]))
   const recent = [shown, ...k.recent.filter((id) => id !== shown && has.has(id))].slice(0, KEEP)
-  const want = new Set(recent.flatMap((id) => panesOf(has.get(id)!).map((p) => p.id)))
+  const want = new Set(recent.flatMap((id) => (id === shown ? placesIn : panesOf)(has.get(id)!).map((p) => p.id)))
   const slots = [...k.slots.filter((id) => want.has(id)), ...[...want].filter((id) => !k.slots.includes(id))]
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i])
   return same(slots, k.slots) && same(recent, k.recent) ? k : { slots, recent }
@@ -143,7 +143,7 @@ export function Workspace(props: Props) {
       {bar && <TabStrip info={info} />}
       <div ref={box} data-pane-area data-split={shown.length > 1 ? "" : undefined} className="relative min-h-0 flex-1">
         {kept.slots.map((id) => {
-          const t = tabOfPane(l, id), p = t && panesOf(t).find((x) => x.id === id)
+          const t = tabOfPane(l, id), p = t && placesIn(t).find((x) => x.id === id)
           if (!t || !p) return null
           const b = t.id === tab.id ? z0.get(id) : undefined
           if (!b) return <Fragment key={id}>{null}<Frame pane={p} tab={t} {...props} info={info} />{null}</Fragment>

@@ -17,7 +17,7 @@ import { keepTypingInSight } from "@/core/sight"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
-import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, activePane, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
+import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, closeWholePane, currentFile, cycleTab, placesHere, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, activePane, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
 import { restTab, tabsInWorkspace } from "@/core/workspace"
 import { canNudge, evenOutAll, focusByOrder, focusLastPane, hasLastPane, hasNeighbour, severalPanes, movePane, moveTabBy, nudgePane, paneToTab, splitPane, splitToFit, canFloat, canZoom, isFloating, isZoomed, toggleFloat, zoomPane } from "@/core/splits"
 import { Maximize2, PictureInPicture2 } from "lucide-react"
@@ -406,8 +406,8 @@ export default function App() {
     // Off a Mac, ⌃⌥← switches workspaces (GNOME, Xfce): ⌥← there, as browsers have it.
     { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
     { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
-    // In a split, ⌘W closes the focused pane, as Arc's and Chrome's split views do (the split: Close split, its menu).
-    // A pinned tab stays: ⌘W rests it, as Arc does; it's closed from its menu, with its pane, or unpinned first.
+    // In a split, ⌘W closes the focused pane's place, as Arc's split view does (its own tabs: the next shows; the split:
+    // Close split). A pinned tab stays: ⌘W rests it, as Arc does; it's closed from its menu, or unpinned first.
     { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, label: "Close tab", icon: X, run: () => {
       const t = activeTab()
       if (t.pinned) restTab(t.id); else if (canClosePane()) closePane(); else closeTab(t.id)
@@ -421,7 +421,7 @@ export default function App() {
         requestAnimationFrame(() => bar?.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus())
       } },
     // (⇧⌘W closes the window: ⌥⇧⌘W, beside ⌥⌘W's Close all other tabs. The web has no ⌘W: there it's Close pane.)
-    { id: "pane:close", name: "Close pane", keys: desktopApp ? undefined : ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
+    { id: "pane:close", name: "Close pane", keys: desktopApp ? undefined : ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closeWholePane(activePane().id), icon: SquareX },
     { id: "split:close", name: "Close split", keys: desktopApp ? ["Mod+Alt+Shift+W"] : undefined, words: "whole tab all panes", when: () => isDesktop() && canClosePane(),
       run: () => { const t = activeTab(); if (t.pinned) restTab(t.id); else closeTab(t.id) }, icon: X },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
@@ -451,8 +451,8 @@ export default function App() {
     { id: "tab:move-left", name: "Move tab left", keys: desktopApp ? ["Ctrl+Shift+PageUp"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => moveTabBy(-1), icon: ArrowLeft },
     { id: "tab:move-right", name: "Move tab right", keys: desktopApp ? ["Ctrl+Shift+PageDown"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => moveTabBy(1), icon: ArrowRight },
     // (⌃Tab is the browser's: the desktop app has it, the web none by default.)
-    { id: "tab:next", name: "Go to next tab", keys: desktopApp ? ["Ctrl+Tab", ...(isMac ? ["Mod+Shift+]"] : [])] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(1), icon: ChevronRight },
-    { id: "tab:previous", name: "Go to previous tab", keys: desktopApp ? ["Ctrl+Shift+Tab", ...(isMac ? ["Mod+Shift+["] : [])] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(-1), icon: ChevronLeft },
+    { id: "tab:next", name: "Go to next tab", keys: desktopApp ? ["Ctrl+Tab", ...(isMac ? ["Mod+Shift+]"] : [])] : undefined, when: () => isDesktop() && (tabsHere() > 1 || placesHere() > 1), run: () => cycleTab(1), icon: ChevronRight },
+    { id: "tab:previous", name: "Go to previous tab", keys: desktopApp ? ["Ctrl+Shift+Tab", ...(isMac ? ["Mod+Shift+["] : [])] : undefined, when: () => isDesktop() && (tabsHere() > 1 || placesHere() > 1), run: () => cycleTab(-1), icon: ChevronLeft },
     // (Ctrl+. is IBus' emoji key on Linux: Alt+Enter there too, JetBrains' "show actions".)
     { id: "file:actions", name: "Show actions for current file", keys: isMac ? ["Mod+."] : ["Mod+.", "Alt+Enter"], when: () => !!actionTarget(), run: () => chooseAction(actionTarget()), icon: Zap },
     { id: "file:reveal", name: "Reveal current file in file tree", when: () => !!tabFile() && isEnabled("files", getPrefs().disabled),

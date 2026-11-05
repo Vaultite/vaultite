@@ -293,7 +293,7 @@ running terminal) asks on that device first.
 
 // ---------- the user's window's tabs, their panes and tab groups (vau tabs): asked of the window, which has them ----------
 
-type ReportPane = { id: string; to: string; path?: string; focused?: boolean; floating?: boolean; zoomed?: boolean }
+type ReportPane = { id: string; to: string; path?: string; behind?: string; focused?: boolean; floating?: boolean; zoomed?: boolean }
 type ReportTab = { id: string; active?: boolean; pinned?: boolean; name?: string; group?: string; panes: ReportPane[] }
 type ReportGroup = { id: string; name: string; color: string; collapsed?: boolean; tabs: number }
 type Report = { tabs: ReportTab[]; groups: ReportGroup[]; window?: string; windows?: { id: string; tabs: ReportTab[] }[] }
@@ -309,22 +309,24 @@ const groupLine = (g: ReportGroup) => `${g.name ? `"${g.name}"` : "(no name)"} $
 const SIDES = ["left", "right", "top", "bottom"]
 
 const HELP = `The user's window's tabs (the one they used last), in order: each tab holds one pane or several (a split tab),
-each pane one view with its own history. Tab groups, as a browser's: a named, coloured run of tabs side by side that
+each pane one view with its own history; a split's pane can have tabs of its own, places open behind what it shows. Tab groups, as a browser's: a named, coloured run of tabs side by side that
 folds to its name (collapsed). With Workspaces on they're the current workspace's (vau workspace tabs lists every
 workspace's, from what's kept).
 
 tabs: each tab's id (* the one on screen) and its panes: each pane's id and what it shows (file:<path>, view:<view>,
-new for a blank pane), > the focused pane of a split; a group's tabs are indented under it; pop-out windows' tabs after.
+new for a blank pane), > the focused pane of a split, a pane's own tabs under it (behind: the pane they're stacked in); a
+group's tabs are indented under it; pop-out windows' tabs after.
 
 Name a tab or pane by its id, by what a pane shows (file:Notes/a.md, view:terminal/x) or by a file's path or name; a
 tab named where a pane is wanted means its focused pane.
 
 split: splits a pane (--side right, default; left, top, bottom): it opens again beside itself, or --to <target> opens
 something else there. move: a tab or pane --into <pane> (--side: right, left, top, bottom split beside it; center
-takes its place: a tab's panes replace it and what it showed becomes a tab of its own; a pane swaps with it), or --at
-<n> (a place in the list, 0 first: a tab moves there, a pane of a split becomes a tab of its own there); a pane alone,
-out of its split into a tab of its own after it. swap: two panes trade places (across tabs too). focus: show a tab, or
-a pane (its tab shown, the pane focused). The user sees each at once.
+takes its place: in a split, a tab of one pane, or a pane's own tab, joins that pane's own tabs, shown; else a tab's
+panes replace it and what it showed becomes a tab of its own; a pane swaps with it), or --at <n> (a place in the list, 0
+first: a tab moves there, a pane of a split or a pane's own tab becomes a tab of its own there); a pane alone, out of its
+split into a tab of its own after it. swap: two panes trade places (across tabs too). focus: show a tab, or a pane or
+one of its own tabs (its tab shown, it focused). The user sees each at once.
 
 group: makes the tabs a new group where the first of them is, or with --group <id> adds them to that one; --name,
 --color (${COLORS.join(", ")}; default the first no group has) and --collapsed true/false name, colour or fold it (with
@@ -344,7 +346,7 @@ right after its group, as dragging it out would.
   vau tabs group --group g1k2x9a1 --collapsed true
   vau tabs ungroup --group g1k2x9a1`
 
-const paneLine = (p: ReportPane, split: boolean) => `${split ? (p.focused ? "  > " : "    ") : ""}${p.id}  ${p.to}${p.floating ? " (floating)" : ""}${p.zoomed ? " (zoomed)" : ""}`
+const paneLine = (p: ReportPane, split: boolean) => `${p.behind ? "      " : split ? (p.focused ? "  > " : "    ") : ""}${p.id}  ${p.to}${p.floating ? " (floating)" : ""}${p.zoomed ? " (zoomed)" : ""}${p.behind ? " (behind)" : ""}`
 function listText(r: Report) {
   const out: string[] = []
   const list = (tabs: ReportTab[], groups: ReportGroup[], pad = "") => {
@@ -353,7 +355,7 @@ function listText(r: Report) {
       if (t.group !== open) { open = t.group; const g = groups.find((x) => x.id === t.group); if (g) out.push(`${pad}group ${groupLine(g)}`) }
       const p = `${pad}${t.group ? "  " : ""}`, mark = `${t.active ? "* " : "  "}${t.id}${t.pinned ? " (pinned)" : ""}${t.name ? ` "${t.name}"` : ""}`
       if (t.panes.length === 1) out.push(`${p}${mark}  ${paneLine(t.panes[0], false)}`)
-      else { out.push(`${p}${mark}  split of ${t.panes.length}`); for (const x of t.panes) out.push(`${p}    ${paneLine(x, true)}`) }
+      else { out.push(`${p}${mark}  split of ${t.panes.filter((x) => !x.behind).length}`); for (const x of t.panes) out.push(`${p}    ${paneLine(x, true)}`) }
     }
   }
   list(r.tabs, r.groups)

@@ -47,7 +47,9 @@ try {
   check("one tab, split: a above b, b focused", same(before.map((p) => p.to), [a, b]) && before[1].focus, before)
 
   // A pinned tab beside it: Close current tab moves on and leaves it open, as Arc's.
-  await command(page, "Open new tab"); await hash(c); await until(async () => same(await files(), [c]))
+  // (a tab of the list's own: the Tabs panel's New tab row, as ⌘T in a split opens one of the pane's)
+  if (!(await page.locator("[data-tabs-panel]").count())) await command(page, "Show tabs in the sidebar").catch(() => {})
+  await page.locator("[data-tabs-panel] [data-new-tab-row]").click(); await hash(c); await until(async () => same(await files(), [c]))
   await command(page, "Pin tab")
   await command(page, "Close current tab")
   check("Close current tab on a pinned tab moves on, as Arc's", await until(async () => same(await files(), [a, b])), await panes())

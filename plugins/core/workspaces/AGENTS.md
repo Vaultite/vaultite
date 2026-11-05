@@ -29,7 +29,7 @@ hand, or by an older app) is taken in and leaves the file.
 - `state`: what the app and plugins keep per workspace (`files:open`, `core:recent`), merged key by key on PUT. Leave
   it to the app.
 - `layout`: `tabs` in order, each `{id, root, focus}`: `root` is a pane `{id, to}` or a split `{id, dir: row | col, kids,
-  sizes}` of panes (a split tab), `focus` its focused pane; tab groups are `groups` and each tab's `group`, a tab's
+  sizes}` of panes (a split tab; a split's pane's own tabs are its `stack` and `stackAt`: `vau docs tabs`), `focus` its focused pane; tab groups are `groups` and each tab's `group`, a tab's
   `name` is the user's (`vau docs tabs`); `windows`: pop-out windows, each `{id, tabs, groups, active}`. A pane's
   `to` is `file:<vault path>`, `view:folder/<vault path>` (a folder's page), `view:terminal/<session id>`, a panel as a
   tab (`view:files`, `view:terminals`, `view:pages`, `view:search/<query>`, `view:links`, `view:local-graph`) or `new`
