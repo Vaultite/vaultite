@@ -34,7 +34,6 @@ export type MenuContext = {
   /** Set up Vaultite (the first-run window, again). */
   setup: () => void
   pickOutside: () => void
-  zoom: (step: -1 | 0 | 1) => () => void
   /** Help: one of the app's own documents (README.md, CHANGELOG.md) in a tab. */
   openDoc: (name: string) => void
   /** Help: the repo's issues page, when the app knows its repo. */
@@ -92,12 +91,13 @@ function accelerator(keys: string): string | null {
   if (mods.has("shift")) out.push("Shift")
   return [...out, name].join("+")
 }
-/** The system's own items' keys (Edit's, the App menu's, zoom, full screen, reload, dev tools): never a command's. */
+/** The system's own items' keys (Edit's, the App menu's, zoom's hidden ones, full screen, reload, dev tools): never a
+ *  command's. */
 const SYSTEM_KEYS = new Set(MAC
   ? ["Cmd+Q", "Cmd+H", "Cmd+Alt+H", "Cmd+M", "Cmd+Z", "Cmd+Shift+Z", "Cmd+X", "Cmd+C", "Cmd+V", "Cmd+Alt+Shift+V", "Cmd+A",
-    "Cmd+0", "Cmd+=", "Cmd+Plus", "Cmd+-", "Cmd+Ctrl+F", "Cmd+R", "Cmd+Shift+R", "Cmd+Alt+I", "Cmd+Shift+W"]
-  : ["Ctrl+Q", "Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y", "Ctrl+X", "Ctrl+C", "Ctrl+V", "Ctrl+Shift+V", "Ctrl+A", "Ctrl+0", "Ctrl+=",
-    "Ctrl+Plus", "Ctrl+-", "F11", "Ctrl+R", "Ctrl+Shift+R", "Ctrl+Shift+I", "Ctrl+Shift+W"])
+    "Cmd+Plus", "Cmd+Ctrl+F", "Cmd+R", "Cmd+Shift+R", "Cmd+Alt+I", "Cmd+Shift+W"]
+  : ["Ctrl+Q", "Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y", "Ctrl+X", "Ctrl+C", "Ctrl+V", "Ctrl+Shift+V", "Ctrl+A",
+    "Ctrl+Plus", "F11", "Ctrl+R", "Ctrl+Shift+R", "Ctrl+Shift+I", "Ctrl+Shift+W"])
 
 // ---------- the menu ----------
 export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
@@ -251,14 +251,19 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
         cmd("setting:panel-dividers", "Lines between sidebar panels"),
       )),
       sub("Text size", "type", items(...all(/^text-size:/), sep, cmd("setting:quick-text-size", "Pinch to resize text"))),
+      sub("Interface size", "app-window", items(
+        cmd("interface-size:increase", "Bigger", "zoom-in", { key: "Mod+Alt+=", always: true }),
+        cmd("interface-size:decrease", "Smaller", "zoom-out", { key: "Mod+Alt+-", always: true }),
+        cmd("interface-size:reset", "Actual size", "scan", { key: "Mod+Alt+0", always: true }),
+      )),
       sep,
-      { label: "Actual size", icon: icon("scan"), accelerator: `${MOD}+0`, click: ctx.zoom(0) },
-      // ⌘= and ⌘+ (⇧⌘=, and the keypad's) both zoom in: Electron's zoomIn role only listens to ⌘+.
-      { label: "Zoom in", icon: icon("zoom-in"), accelerator: `${MOD}+=`, click: ctx.zoom(1) },
-      { label: "Zoom in", accelerator: `${MOD}+Plus`, click: ctx.zoom(1), visible: false, acceleratorWorksWhenHidden: true },
-      { label: "Zoom in", accelerator: `${MOD}+numadd`, click: ctx.zoom(1), visible: false, acceleratorWorksWhenHidden: true },
-      { label: "Zoom out", icon: icon("zoom-out"), accelerator: `${MOD}+-`, click: ctx.zoom(-1) },
-      { label: "Zoom out", accelerator: `${MOD}+numsub`, click: ctx.zoom(-1), visible: false, acceleratorWorksWhenHidden: true },
+      // What's focused (web/src/core/zoom.ts). ⌘= and ⌘+ (⇧⌘=, and the keypad's) both zoom in, as in Chrome.
+      cmd("zoom:reset", "Actual size", "scan", { key: "Mod+0", always: true }),
+      cmd("zoom:in", "Zoom in", "zoom-in", { key: "Mod+=", always: true }),
+      { label: "Zoom in", accelerator: `${MOD}+Plus`, click: ctx.run("zoom:in"), visible: false, acceleratorWorksWhenHidden: true },
+      { label: "Zoom in", accelerator: `${MOD}+numadd`, click: ctx.run("zoom:in"), visible: false, acceleratorWorksWhenHidden: true },
+      cmd("zoom:out", "Zoom out", "zoom-out", { key: "Mod+-", always: true }),
+      { label: "Zoom out", accelerator: `${MOD}+numsub`, click: ctx.run("zoom:out"), visible: false, acceleratorWorksWhenHidden: true },
       sep,
       { role: "togglefullscreen" },
       { label: "Developer", icon: icon("code"), submenu: items(
@@ -325,4 +330,5 @@ const CORE = new Set(["page:settings", "page:setup", "hotkeys:open", "file:new",
   "file:rename", "file:duplicate", "file:reveal-finder", "tab:close", "tab:close-others", "split:close", "tab:reopen", "find:open", "find:replace",
   "file:copy-link", "file:copy-path", "palette:open", "sidebar:toggle", "sidebar:toggle-right", "view:toggle",
   "setting:line-numbers", "split:right", "split:down", "vault:reload", "nav:back", "nav:forward", "tab:next", "tab:previous",
-  "tab:toggle-pin", "tab:search"])
+  "tab:toggle-pin", "tab:search", "zoom:in", "zoom:out", "zoom:reset", "interface-size:increase", "interface-size:decrease",
+  "interface-size:reset"])

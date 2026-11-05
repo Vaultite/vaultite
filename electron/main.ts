@@ -155,8 +155,8 @@ let known: Known[] = []
 /** Other machines' servers opened here (Set up Vaultite's "Another machine"), like the iPhone app's list. */
 type Remote = { url: string; name: string; open?: boolean; last?: number; bounds?: Rectangle }
 let remotes: Remote[] = []
-/** The windows' zoom (View > Zoom in/out, ⌘+ ⌘- ⌘0: the whole app; notes and terminals have text sizes of their own, web/src/core/textsize.ts), kept for the next launch. One for
- *  every window: Chromium zooms by host, and every vault's server is on 127.0.0.1. */
+/** The interface size, the windows' zoom (web/src/core/zoom.ts), kept for the next launch. One for every window:
+ *  Chromium zooms by host, and every vault's server is on 127.0.0.1. */
 let zoom = 1
 /** Chromium's DevTools protocol on 127.0.0.1:<port> for agents (VAULTITE_DEBUG_PORT, else vaults.json's `debugPort`).
  *  Off unless set: any process on this Mac that reaches the port controls the app. */
@@ -679,6 +679,7 @@ function openRemote(url: string) {
     wait = Math.min(wait * 2, 60_000)
   })
   win.webContents.on("did-stop-loading", () => { if (!failed) wait = 5000 })
+  win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(zoom))
   win.on("closed", () => { remoteWins.delete(url); if (retry) clearTimeout(retry); buildMenu() })
   revive(win.webContents, undefined, crashedFor(win, it.name))
   hangs(win, it.name)
@@ -1563,18 +1564,25 @@ function command(id: string) {
     if (w) w.win.webContents.send("vaultite", { type: "command", id })
     else if (f instanceof AppWindow && popouts.has(f.webContents)) f.webContents.send("vaultite", { type: "command", id })
     else if (id === "tab:close") f?.close()
+    else if (id in ZOOM_STEPS) zoomBy(ZOOM_STEPS[id])
   }
 }
 
-/** Zoom every vault window a step in (1) or out (-1), or back to actual size (0). */
+/** The interface size a step bigger (1), smaller (-1) or back to actual size (0), in every window; answers it. */
 function zoomBy(step: -1 | 0 | 1) {
-  return () => {
-    const i = ZOOMS.findIndex((z) => z >= zoom - 0.001)
-    zoom = step === 0 ? 1 : ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, (i < 0 ? ZOOMS.length - 1 : i) + step))]
-    for (const w of wins.values()) w.win.webContents.setZoomFactor(zoom)
-    save()
-  }
+  const i = ZOOMS.findIndex((z) => z >= zoom - 0.001)
+  const to = step === 0 ? 1 : ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, (i < 0 ? ZOOMS.length - 1 : i) + step))]
+  if (to === zoom) return zoom
+  zoom = to
+  const pages = [...[...wins.values()].map((w) => w.win.webContents), ...popouts.keys(), ...[...remoteWins.values()].map((w) => w.webContents)]
+  for (const wc of pages) if (!wc.isDestroyed()) { wc.setZoomFactor(zoom); wc.send("vaultite:zoom", zoom) }
+  save()
+  return zoom
 }
+handle("window:zoom", () => zoom)
+handle("window:zoom-step", (_w, step: unknown) => zoomBy(step === 1 || step === -1 ? step : 0))
+/** The menu's zoom items in a window with no page of ours to ask (another machine's): the interface size. */
+const ZOOM_STEPS: Record<string, -1 | 0 | 1> = { "zoom:in": 1, "zoom:out": -1, "zoom:reset": 0, "interface-size:increase": 1, "interface-size:decrease": -1, "interface-size:reset": 0 }
 
 /** Help's documents (README.md, CHANGELOG.md, shipped with the app) open in a tab of the focused vault's window, like
  *  a file from outside the vault. */
@@ -1613,7 +1621,6 @@ function buildMenu() {
     manageVaults: showManager,
     setup: () => showSetup(),
     pickOutside: () => { void pickOutside(null) },
-    zoom: zoomBy,
     openDoc: (name) => { void openDoc(name) },
     issues,
     openExternal: (url) => { void shell.openExternal(url) },

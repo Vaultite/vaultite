@@ -144,6 +144,7 @@ export { cell, type Cell } from "@/core/signal"
 /** Taps answered at once: rows taken off a list before the write is done, a button's slow action, a value just chosen. */
 export { removals, useBusy, useChosen } from "@/core/leaving"
 export { setTextSize, stepTextSize, textSize, useTextSize, useTextSizeWheel, type TextSizeKind } from "@/core/textsize"
+export { useZoomTarget, type Zoom, type Zoomed, type ZoomStep } from "@/core/zoom"
 export { addKeys, appShortcut, beginKeys, cancelKeys, commandKeys, keyCaps, keyHint, modifiedSteps, runShortcut, typingIn, useCommandKeys, useCommands, usePendingKeys } from "@/core/commands"
 export { isLinux, isMac, isWindows, keysText, modKey, revealLabel, showLabel } from "@/core/platform"
 export { checklist, commandItems, menuAbove, menuBelow, menuFor, menuShowing, openMenu, replaceMenu, useMenuShowing, rightClickBelow, type CheckItem, type MenuItem } from "@/components/ContextMenu"

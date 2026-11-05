@@ -9,7 +9,7 @@ Print, View page source (⌥⌘U: a view-source: tab, also in the page's right-c
 Extensions. Keys are Chrome's: Back and Forward (the bar's, ⌘[ ⌘], ⌥⌘← →, the mouse's buttons) walk the
 page's history, then the tab's; a right-click or a hold on Back or Forward lists its places. ⌘F finds in the page (a card
 at its top right, as Chrome's: Enter, ⌘G, ⇧⌘G, Esc), ⌘+ ⌘- ⌘0 zoom its site (kept per site on the Mac; the address says 110% till a
-click resets it), ⌘R and ⇧⌘R reload it (past the cache), ⌥⌘I opens its DevTools, Esc stops a load; a site that takes
+click resets it), a pinch magnifies it as Safari's does, ⌘R and ⇧⌘R reload it (past the cache), ⌥⌘I opens its DevTools, Esc stops a load; a site that takes
 ⌘F or the zoom keys itself (a doc's own find) keeps them. ⌘W on a pinned web tab unloads it, back where it was pinned. Right-click an image in a
 page: Save image to vault (into the attachments folder, like a pasted one), Download image, Copy image, Copy image
 address. Commands: "Open web page…", "Clip current web page", "Open web pages in a tab". Pages keep their own logins,

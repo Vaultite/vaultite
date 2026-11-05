@@ -2,7 +2,8 @@
 // core/workspace.ts navigate and restTab), in the desktop app (Electron) against pages this script serves on 127.0.0.1:
 // Back and Forward from the app's keys, the page's, the mouse's buttons (over the page and the app) and the bar (its list
 // on a right-click); find in page (⌘F from the page and the app, Enter, ⌘G, Esc, its words kept; a card over the page's
-// top right that leaves the page its size and its clicks; a site's own ⌘F left to it); a site's zoom (⌘= in the page and the app, kept per host, the bar's reset), never the app's; ⌘R, ⇧⌘R and ⌥⌘I the
+// top right that leaves the page its size and its clicks; a site's own ⌘F left to it); a site's zoom (⌘= in the page and the app, kept per host, said in a toast, the bar's reset), never the app's, and a pinch's
+// magnifying; ⌘R, ⇧⌘R and ⌥⌘I the
 // page's, never the app's menu; Esc stops a load; ⇧⌘[ ]; ⌘W on a pinned web tab rests it. WRITES: the throwaway vault.
 //   node web/qa/browserkeys.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -211,6 +212,7 @@ await pressInPage("=", ["meta"])
 check("⌘= in the page zooms the page", await until(async () => Math.abs((await shownPage())?.zoom - 1.1) < 0.01, 4000), await pages())
 check("… not the app", (await appZoom()) === 1, await appZoom())
 check("… and the bar says 110%", await until(async () => (await win.locator("[data-web-zoom='110']").count()) === 1, 3000))
+check("… and a toast: its site's 110%", await until(async () => (await win.locator("[data-sonner-toast]", { hasText: "127.0.0.1 110%" }).count()) === 1, 3000))
 const kept = () => { try { return JSON.parse(fs.readFileSync(path.join(USER, "web-zoom.json"), "utf8")) } catch { return {} } }
 check("… kept for its host, on this Mac", kept()["127.0.0.1"] === 1.1, kept())
 await clickInPage("#next")
@@ -222,6 +224,24 @@ check("⌘- from the app: 110%", await until(async () => Math.abs((await shownPa
 await win.locator("[data-web-zoom]").click()
 check("the bar's 110% clicked: back to 100%, forgotten", await until(async () => (await shownPage())?.zoom === 1 && !kept()["127.0.0.1"] && (await win.locator("[data-web-zoom]").count()) === 0, 4000),
   [await pages(), kept(), await win.locator("[data-web-zoom]").count()])
+
+// A pinch magnifies the page, as Safari's (the layout keeps its width); the app's own page never.
+const pinch = (scale, own = false) => app.evaluate(async ({ BaseWindow }, [scale, own]) => {
+  const w = BaseWindow.getAllWindows()[0]
+  const wc = own ? w.webContents : w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).webContents
+  // (the app's own debugger may be on it already: then that one)
+  const had = wc.debugger.isAttached()
+  if (!had) wc.debugger.attach("1.3")
+  try { await wc.debugger.sendCommand("Input.synthesizePinchGesture", { x: 300, y: 300, scaleFactor: scale }) } finally { if (!had) wc.debugger.detach() }
+  await new Promise((r) => setTimeout(r, 300))
+  return wc.executeJavaScript("[visualViewport.scale, innerWidth]")
+}, [scale, own])
+const width0 = await inPage("innerWidth")
+const pinched = await pinch(2)
+check("a pinch magnifies the page, not reflowing it", pinched[0] > 1.5 && pinched[1] === width0, [pinched, width0])
+const unpinched = await pinch(0.25)
+check("… and pinches back to its size, no smaller", Math.abs(unpinched[0] - 1) < 0.01, unpinched)
+check("the app's own page doesn't magnify", Math.abs((await pinch(2, true))[0] - 1) < 0.01)
 
 // ---------- reload, DevTools, Esc ----------
 await win.evaluate(() => { window.__alive = 1 })

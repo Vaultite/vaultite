@@ -524,7 +524,9 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) { p.cert = undefined; if (shows(d.url)) { p.target = d.url; flowTo(d.url) } } })
   wc.on("did-redirect-navigation", (d) => { if (d.isMainFrame && shows(d.url)) flowTo(d.url) })
   wc.on("did-stop-loading", changed)
-  wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.paused = false; p.typed.clear(); noteVisit(profile, to); if (!p.agent && !pageHeld(p.id)) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
+  // A pinch magnifies the page, as Safari's does (Electron turns it off); each new renderer is told again.
+  void wc.setVisualZoomLevelLimits(1, 3).catch(() => {})
+  wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.paused = false; p.typed.clear(); noteVisit(profile, to); if (!p.agent && !pageHeld(p.id)) zoomTo(p, zoomOf(hostOfUrl(to))); void wc.setVisualZoomLevelLimits(1, 3).catch(() => {}); changed(); keepPast(p) })
   wc.on("found-in-page", (_e, r) => tell(p.win, { type: "found", id: p.id, request: r.requestId, active: r.activeMatchOrdinal, matches: r.matches, final: r.finalUpdate }))
   // (loaded and still not told it painted, a page with no paint timing (an extension's): its canvas a moment later)
   wc.on("did-finish-load", () => {
@@ -917,7 +919,7 @@ function go(p: Page, action: string, url?: string): unknown {
   else if (action === "hard-reload") { reloaded.set(wc, Date.now()); wc.reloadIgnoringCache() }
   // (a page's DevTools are a window of their own: a view has nowhere to dock them)
   else if (action === "devtools") { if (wc.isDevToolsOpened()) wc.closeDevTools(); else wc.openDevTools({ mode: "detach" }) }
-  else if (action === "zoom-in" || action === "zoom-out" || action === "zoom-reset") zoomSite(p, action === "zoom-reset" ? 0 : action === "zoom-in" ? 1 : -1)
+  else if (action === "zoom-in" || action === "zoom-out" || action === "zoom-reset") return zoomSite(p, action === "zoom-reset" ? 0 : action === "zoom-in" ? 1 : -1)
   else if (action === "print") wc.print({}, () => {})
   // Back's and Forward's lists: each place it can go, by its index (`go-to` goes there), `at` the one it's on.
   else if (action === "history") return { at: h.getActiveIndex(), entries: h.getAllEntries().map((x, i) => ({ i, url: x.url, title: x.title })).filter((x) => shows(x.url)) }
@@ -973,15 +975,17 @@ function zoomsKept() {
 }
 const zoomOf = (host: string) => { const z = zoomsKept()[host]; return typeof z === "number" && z >= ZOOMS[0] && z <= ZOOMS[ZOOMS.length - 1] ? z : 1 }
 const zoomTo = (p: Page, z: number) => { const wc = p.view.webContents; if (!wc.isDestroyed() && Math.abs(wc.getZoomFactor() - z) > 0.001) wc.setZoomFactor(z) }
-/** Page `p`'s site a step in (1) or out (-1), or back to 100% (0): its other pages follow, in every container. */
+/** Page `p`'s site a step in (1) or out (-1), or back to 100% (0): its other pages follow, in every container. Answers
+ *  the site and its zoom now, for the app to say (null: no site). */
 function zoomSite(p: Page, step: -1 | 0 | 1) {
   const host = hostOfUrl(p.view.webContents.getURL()), now = p.view.webContents.getZoomFactor()
-  if (!host) return
+  if (!host) return null
   const to = step === 0 ? 1 : (step > 0 ? ZOOMS.find((z) => z > now + 0.001) : ZOOMS.findLast((z) => z < now - 0.001)) ?? now
   const k = zoomsKept()
   if (Math.abs(to - 1) < 0.001) delete k[host]; else k[host] = to
   try { writeAtomic(zoomFile(), JSON.stringify(k)) } catch { /* this session's only */ }
   for (const x of pages.values()) if (!x.agent && !pageHeld(x.id) && hostOfUrl(x.view.webContents.getURL()) === host) { zoomTo(x, to); sendState(x) }
+  return { host, zoom: to }
 }
 
 // ---------- players: a page in a window of its own, to watch or share (a call's window picker finds it by its title) ----------

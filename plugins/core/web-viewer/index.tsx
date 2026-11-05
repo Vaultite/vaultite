@@ -1,8 +1,7 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌥⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, memo, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RotateCw, Scan, Scissors, Search, Volume2, VolumeX, ZoomIn,
-  ZoomOut } from "lucide-react"
+import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RotateCw, Scissors, Search, Volume2, VolumeX } from "lucide-react"
 import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, chosenFor, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
@@ -400,16 +399,13 @@ export default definePlugin({
       run: () => setPlayer(focusedPageId(), !focusedPage()?.inPlayer()) },
     { id: "web:bookmark", name: "Bookmark current web page", on: () => { const u = focusedPage()?.url(); return !!u && !!getStore()?.bookmarks?.some((b) => b.url === u) }, nameWhenOn: "Edit bookmark of current web page", keys: ["Mod+D"], when: () => !!focusedPage(), run: bookmarkPage, icon: Bookmark },
     // The browser's keys, as Chrome's, wherever the keyboard is while a web tab is in front (a page takes ⌘F, ⌘G and zoom
-    // first: electron/web.ts BROWSER_KEYS); elsewhere they're the app's.
+    // first: electron/web.ts BROWSER_KEYS); elsewhere they're the app's. ⌘+ ⌘- ⌘0 are the app's (core/zoom.ts: WebPage.tsx).
     { id: "web:reload", name: "Reload current web page", keys: ["Mod+R"], when: onWebTab, run: () => onPage("reload"), icon: RotateCw },
     { id: "web:hard-reload", name: "Reload current web page without its cache", keys: ["Mod+Shift+R"], when: onWebTab, run: () => onPage("hard-reload"), icon: RotateCw },
     { id: "web:devtools", name: "Show developer tools for current web page", keys: [isMac ? "Mod+Alt+I" : "Mod+Shift+I"], when: onWebTab, run: () => onPage("devtools"), icon: Code },
     { id: "web:find", name: "Find in current web page", keys: ["Mod+F"], when: () => pageInFront() && !!webPages?.find, run: () => focusedPage()?.find("open"), icon: Search },
     { id: "web:find-next", name: "Find next in current web page", keys: ["Mod+G"], when: () => pageInFront() && !!webPages?.find, run: () => focusedPage()?.find("next"), icon: Search },
     { id: "web:find-previous", name: "Find previous in current web page", keys: ["Mod+Shift+G"], when: () => pageInFront() && !!webPages?.find, run: () => focusedPage()?.find("previous"), icon: Search },
-    { id: "web:zoom-in", name: "Zoom in on current web page", keys: ["Mod+=", "Mod+Shift+="], when: () => !!focusedPage(), run: () => onPage("zoom-in"), icon: ZoomIn },
-    { id: "web:zoom-out", name: "Zoom out on current web page", keys: ["Mod+-"], when: () => !!focusedPage(), run: () => onPage("zoom-out"), icon: ZoomOut },
-    { id: "web:zoom-reset", name: "Reset current web page's zoom", keys: ["Mod+0"], when: () => !!focusedPage(), run: () => onPage("zoom-reset"), icon: Scan },
     { id: "web:source", name: "View current web page's source", keys: [isMac ? "Mod+Alt+U" : "Mod+U"], icon: FileCode2,
       when: () => /^https?:\/\//i.test(focusedPage()?.url() ?? ""), run: () => { const p = focusedPage(); if (p) viewSource(p.url(), p.container, p.tab) } },
     { id: "web:print", name: "Print current web page", when: () => /^https?:\/\//i.test(focusedPage()?.url() ?? ""), run: () => onPage("print"), icon: Printer },

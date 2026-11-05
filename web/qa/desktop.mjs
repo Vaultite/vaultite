@@ -146,22 +146,34 @@ await win.keyboard.press("Escape")
   await menuClick("Close tab"); await wait(300)
 }
 
-// Zoom (there's no font size setting): View > Zoom in / out / Actual size, on ⌘= and ⌘+ (⇧⌘=) alike, kept for next time.
+// Zoom (web/src/core/zoom.ts): View > Zoom in / out / Actual size, on ⌘= and ⌘+ (⇧⌘=) alike, zoom what's focused; with
+// nothing of its own there (a blank tab), the interface size, kept for next time. View > Interface size has keys of its own.
 const zoomKeys = await app.evaluate(({ Menu }) => {
-  const all = []; const walk = (items) => { for (const i of items) { if (/^(Zoom in|Zoom out|Actual size)$/.test(i.label)) all.push(`${i.label}:${i.accelerator}`); if (i.submenu) walk(i.submenu.items) } }
-  walk(Menu.getApplicationMenu().items); return all
+  const all = []; const walk = (items, at) => { for (const i of items) { if (/^(Zoom in|Zoom out|Actual size|Bigger|Smaller)$/.test(i.label)) all.push(`${at}${i.label}:${i.accelerator}`); if (i.submenu) walk(i.submenu.items, i.label === "Interface size" ? "Interface size > " : at) } }
+  walk(Menu.getApplicationMenu().items, ""); return all
 })
 check("View menu: zoom in on ⌘= and ⌘+, out on ⌘-, actual size on ⌘0", [`Zoom in:${CMD}+=`, `Zoom in:${CMD}+Plus`, `Zoom out:${CMD}+-`, `Actual size:${CMD}+0`].every((k) => zoomKeys.includes(k)), zoomKeys)
+check("View > Interface size: bigger on ⌥⌘=, smaller on ⌥⌘-, actual size on ⌥⌘0",
+  [`Interface size > Bigger:${CMD}+Alt+=`, `Interface size > Smaller:${CMD}+Alt+-`, `Interface size > Actual size:${CMD}+Alt+0`].every((k) => zoomKeys.includes(k)), zoomKeys)
 const factor = () => app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].webContents.getZoomFactor())
 await menuClick("Zoom in")
-check("Zoom in zooms the page", await until(async () => Math.abs((await factor()) - 1.1) < 0.01, 10000), await factor())
+check("Zoom in on a blank tab: the interface size", await until(async () => Math.abs((await factor()) - 1.1) < 0.01, 10000), await factor())
+check("… and says so", await until(async () => (await win.locator("[data-sonner-toast]", { hasText: "Interface 110%" }).count()) > 0, 4000))
 check("the zoom is kept (vaults.json)", await until(() => JSON.parse(fs.readFileSync(path.join(TMP, "userData/vaults.json"), "utf8")).zoom === 1.1, 10000))
 await win.reload(); await win.waitForSelector("[role=tree]")
 check("a reload keeps the zoom", Math.abs((await factor()) - 1.1) < 0.01, await factor())
-await menuClick("Zoom out"); await menuClick("Zoom out")
-check("Zoom out", Math.abs((await factor()) - 0.9) < 0.01, await factor())
+await menuClick("Smaller"); await menuClick("Smaller")
+check("Interface size > Smaller", await until(async () => Math.abs((await factor()) - 0.9) < 0.01, 10000), await factor())
+check("Settings' row follows it", await win.evaluate(async () => { location.hash = "settings"; return true }) &&
+  await until(async () => { await win.locator('[data-settings-nav="appearance"]').click().catch(() => {}); return (await win.locator('[data-settings-row="interface-size"]', { hasText: "90%" }).count()) === 1 }, 8000))
+await win.locator("[data-interface-size]").getByRole("button", { name: "Increase interface size" }).click()
+check("… and sets it", await until(async () => Math.abs((await factor()) - 1) < 0.01, 4000), await factor())
+await menuClick("Zoom in")
+check("Zoom in from Settings (no pane content to zoom): the interface", await until(async () => Math.abs((await factor()) - 1.1) < 0.01, 4000), await factor())
 await menuClick("Actual size")
-check("Actual size", (await factor()) === 1, await factor())
+check("Actual size", await until(async () => (await factor()) === 1, 4000), await factor())
+await win.evaluate(() => { history.back() })
+await wait(500)
 
 // The menu bar is the window's commands (electron/menu.ts): its menus, their icons, the keys in effect (hotkeys.json's
 // too, live), the pinned pages.

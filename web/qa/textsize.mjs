@@ -1,4 +1,5 @@
-// Text sizes (web/src/core/textsize.ts): a note's and a terminal's own, apart from the app's zoom, per device.
+// Text sizes (web/src/core/textsize.ts): a note's and a terminal's own, apart from the interface size, per device;
+// ⌘= ⌘- ⌘0 step the focused one (core/zoom.ts), a dashboard's left to the browser.
 // WRITES "Qa text size/", appearance's quickTextSize (put back) and runs a shell: throwaway server only.
 //   node web/qa/textsize.mjs <base url> [out dir]
 import fs from "node:fs"
@@ -103,12 +104,30 @@ await page.keyboard.press("Enter")
 check("Increase note text size: 110%", await until(async () => (await pref("note")) === 110, 2000), await pref("note"))
 check("not in the vault", !JSON.stringify(await api("GET", "config/appearance")).includes("110"))
 
+// ⌘= ⌘- ⌘0 in a browser: the focused note's text, said in a toast (the browser's own zoom left alone)
+await page.locator(".file-view .cm-content").click()
+await page.keyboard.press("ControlOrMeta+Equal")
+check("⌘= in a note: its text 120%", await until(async () => (await pref("note")) === 120, 2000), await pref("note"))
+check("… said: Note text 120%", await until(async () => (await page.locator("[data-sonner-toast]", { hasText: "Note text 120%" }).count()) === 1, 2000))
+await page.keyboard.press("ControlOrMeta+Minus")
+check("⌘-: 110%, the same toast", await until(async () => (await pref("note")) === 110 && (await page.locator("[data-sonner-toast]", { hasText: "Note text" }).count()) === 1, 2000))
+await page.evaluate(() => document.activeElement?.blur())
+await page.keyboard.press("ControlOrMeta+Minus")
+check("⌘- with the keyboard out of the note: the focused pane's note, 100%", await until(async () => (await pref("note")) === 100, 2000), await pref("note"))
+await page.keyboard.press("ControlOrMeta+Equal")
+await page.locator("[data-sonner-toast]", { hasText: "Note text 110%" }).getByRole("button", { name: "Reset" }).click()
+check("its Reset: back to 100%", await until(async () => (await pref("note")) === 100, 2000), await pref("note"))
+await page.keyboard.press("ControlOrMeta+Equal")
+check("the page itself isn't zoomed", await page.evaluate(() => Math.abs(window.visualViewport.scale - 1) < 0.01 && Math.abs(window.devicePixelRatio - 2) < 0.01), await page.evaluate(() => window.devicePixelRatio))
+
 // A dashboard isn't a note: ⌘ + the wheel leaves the note size alone.
 await page.goto(`${B}#${fileHash("Dashboards/Today.md")}`)
 await until(async () => (await page.locator(".file-view").count()) > 0, 8000)
 await wait(800)
 await wheelOver(".file-view", -100)
 check("not over a dashboard", (await pref("note")) === 110, await pref("note"))
+const keyIn = (k) => page.evaluate((k) => { const e = new KeyboardEvent("keydown", { key: k, code: k === "=" ? "Equal" : "Minus", metaKey: true, ctrlKey: !navigator.platform.startsWith("Mac"), bubbles: true, cancelable: true }); document.querySelector(".file-view")?.dispatchEvent(e); return e.defaultPrevented }, k)
+check("nor ⌘= there: the browser's zoom", !(await keyIn("=")) && (await pref("note")) === 110, await pref("note"))
 
 // Settings > Appearance
 await page.goto(`${B}#settings`)
@@ -144,13 +163,16 @@ const c0 = await cols("before")
 const cell = () => page.evaluate(() => parseFloat(document.querySelector("[data-term-input]").style.lineHeight))
 const h0 = await cell()
 await wheelOver("[data-term]", -100, "Meta", 3)
-check("⌘ + wheel over a terminal: 130%", (await pref("terminal")) === 130, await pref("terminal"))
+check("⌘ + wheel over a terminal: a point a step, 16 pt (123%)", (await pref("terminal")) === 123, await pref("terminal"))
 check("the note's size didn't change", (await pref("note")) === 100)
+await page.locator("[data-term]").click()
+await page.keyboard.press("ControlOrMeta+Equal")
+check("⌘= in a terminal: 17 pt, said so", await until(async () => (await pref("terminal")) === 131 && (await page.locator("[data-sonner-toast]", { hasText: "Terminal text 17 pt" }).count()) === 1, 2000), await pref("terminal"))
 await wait(500)
 const c1 = await cols("after")
 check("the shell gets fewer columns", c0 > 0 && c1 > 0 && c1 < c0 * 0.85, [c0, c1])
 const h1 = await cell()
-check("the terminal's cells are 130% as tall (13px to 17px)", h0 > 0 && Math.abs(h1 / h0 - 17 / 13) < 0.08, [h0, h1])
+check("the terminal's cells are 17/13 as tall", h0 > 0 && Math.abs(h1 / h0 - 17 / 13) < 0.08, [h0, h1])
 await page.screenshot({ path: `${OUT}terminal-130.png` })
 await openPalette(page)
 await page.keyboard.type("Reset terminal text size")

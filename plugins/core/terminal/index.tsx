@@ -134,8 +134,9 @@ export default definePlugin({
     "terminal-instructions": { icon: FileText, title: () => "What agents are told", render: () => <Instructions /> },
   },
   settingsPanel: () => <AgentsTold />,
-  // Its text size, apart from the app's zoom (⌘+scroll over a terminal, the commands, Settings > Appearance).
-  textSizes: { terminal: { label: "Terminal", sub: "Terminals' text: more or fewer columns" } },
+  // Its text size, apart from the interface size (⌘+ or ⌘+scroll over a terminal, the commands, Settings > Appearance),
+  // a point at a time as in Ghostty: Terminal.tsx's FONT at 100%.
+  textSizes: { terminal: { label: "Terminal", sub: "Terminals' text: more or fewer columns", points: 13 } },
   background: () => <><SessionNames /><AskBox /></>,
   commands: [
     // New ones open where the workspace says (chooseDefaultPlace); ⌃` is always this machine, the way out when that one's away.

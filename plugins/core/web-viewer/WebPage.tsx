@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
   Search, ShieldAlert, Star, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
-  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, PaneControls, post, typingIn, useEnabled, usePane, usePaneTopBar, useStore, webPageActions, webPages,
+  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, PaneControls, post, typingIn, useEnabled, usePane, usePaneTopBar, useStore, useZoomTarget, webPageActions, webPages,
   type MenuItem, type PaneMotion, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
@@ -467,6 +467,12 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const inNewTab = (to: unknown) => { if (typeof to === "string" && to) openBehind(to, destination(to, { from: container, fresh: false, opened: true }).container, tab || undefined) }
 
   const onWeb = http(state.url)
+  // ⌘+ ⌘- ⌘0 in its pane: its site's zoom, said as Chrome's bubble would ("example.com 125%").
+  useZoomTarget(box, id > 0 && onWeb ? async (step) => {
+    const z = await web.go(id, step > 0 ? "zoom-in" : step < 0 ? "zoom-out" : "zoom-reset") as { host?: unknown; zoom?: unknown } | null | undefined
+    if (typeof z?.zoom !== "number" || typeof z.host !== "string") return null
+    return { text: `${z.host.replace(/^www\./, "")} ${Math.round(z.zoom * 100)}%`, actual: Math.abs(z.zoom - 1) < 0.001 }
+  } : null)
   const bookmarked = useStore().store?.bookmarks?.some((b) => b.url === state.url) ?? false
   const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []
   // Back and Forward walk the page's history, then the tab's (Back from a page opened from another tab goes back to it).

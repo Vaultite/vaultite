@@ -776,7 +776,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useTabList()`: This window's tabs, live.
 - `useTerminalAccount(id, a)`: The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the first (its bare name's).
 - `useTextSize(kind)`: A kind's size, redrawn when it changes (any pref change redraws; it's cheap).
-- `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` (Pinch to resize text) is on (off as in Obsidian: pinches set it off by accident).
+- `useTextSizeWheel(ref, kind, first?)`: ⌘+ ⌘- ⌘0 while it's focused (core/zoom.ts), and ⌘/⌃ + wheel or a pinch over `ref` while Pinch to resize text is on (off as in Obsidian: pinches set it off by accident), step `kind`'s size.
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.
 - `useUiMarks(id)`: The marks on the element of data-ui `id`, live.
 - `useVaultChange(fn, paths?)`: Run fn when these paths change, or a folder they're in (or anything, when paths is omitted); a folder's files need a predicate, `(p) => p.startsWith("dir/")`.
@@ -784,6 +784,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useVirtual(list, keys, { estimate, keep, overscan })`: Which of `keys` (a row each) `list` draws: each drawn row gets `data-vi={index}` (measured), `keep` are drawn wherever they are, `estimate` is a row's height until one is measured, `overscan` how…
 - `useVisibleArea(on)`: The part of the window the user sees (above the on-screen keyboard), followed while `on`.
 - `useWorkspaceVersion()`: Redraws when the current workspace or what's kept in it changes; answers a number that changes then.
+- `useZoomTarget(ref, zoom)`: ⌘+ ⌘- ⌘0 zoom what `ref` draws while the keyboard is in it or it's in the focused pane (null: they don't).
 - `vaultSidebars(prefs?)`: sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows).
 - `ViewCtx`
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
@@ -817,6 +818,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `workspaceList()`: The workspaces in use, and the current one ([] without workspaces).
 - `workspacePins()`: The current workspace's pinned pages, or null: no workspaces, or the current one has no list of its own (it shows the vault's, .vaultite/pages.json: Pinned's).
 - `workspaces()`: The plugin keeping workspaces, as the phone's tab list pages through them (null: none).
+- `Zoom`: A step in (1), out (-1) or back to actual size (0) of what an element draws.
+- `Zoomed`: What a zoom came to, for the line that says so ("Note text 120%"); `actual`: at its own size, so no Reset.
+- `ZoomStep`
 
 ### `@vaultite/core/plugins.ts` (plugin.ts)
 - `accessOf(code)`: A folder read's answer: "" read, else the error's code.

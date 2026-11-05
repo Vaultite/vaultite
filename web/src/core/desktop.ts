@@ -42,6 +42,9 @@ export type DesktopApi = {
   /** How this Mac takes updates (automatic, notify, off; `available`: this build updates at all), and, automatic, this
    *  page saying whether a restart would lose nothing now. Older builds don't have it. */
   updates?: { get: () => Promise<{ mode: UpdateMode; available: boolean }>; set: (mode: UpdateMode) => Promise<unknown>; safe: (safe: boolean) => Promise<unknown> }
+  /** The interface size (core/zoom.ts): the whole app's zoom, every window's, kept for this computer (vaults.json
+   *  `zoom`). `step` answers the size it came to; `on` hears every change. Older builds don't have it. */
+  interfaceSize?: { get: () => Promise<number>; step: (step: -1 | 0 | 1) => Promise<number>; on: (fn: (zoom: number) => void) => void }
   /** `spelling`: a right-click the page left to the system, with the misspelled word under it ("" none) and guesses. */
   on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; url?: string; version?: string; name?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
   /** Tell the menu bar this window's commands, pins and recent files (electron/menu.ts). Builds from before it don't
@@ -148,7 +151,7 @@ export type WebPages = {
    *  this vault's windows, which takes the page, live, as it shows it (older builds end it). */
   close: (tab: string, moved?: boolean) => Promise<unknown>
   /** `back-address`, `forward-address`: where Back or Forward would go. `history`: `{ at, entries: [{ i, url, title }] }`,
-   *  `go-to` entry `url` (its i). `allow-cert`: past its warning. `duplicate`: tab `url` gets its history. `pause`, `play`. */
+   *  `go-to` entry `url` (its i). `allow-cert`, `duplicate`, `pause`, `play`. `zoom-*`: answers `{ host, zoom }`. */
   go: (id: number, action: "back" | "forward" | "reload" | "hard-reload" | "devtools" | "back-address" | "forward-address" | "stop" | "load" | "focus" | "mute"
     | "unmute" | "pip" | "zoom-in" | "zoom-out" | "zoom-reset" | "print" | "history" | "go-to" | "allow-cert" | "source" | "duplicate" | "pause" | "play", url?: string) => Promise<unknown>
   /** Find `text` in the page, answered by `found` events: `next` goes on from the match it's at (`forward` false: back),

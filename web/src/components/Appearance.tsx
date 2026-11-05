@@ -10,7 +10,9 @@ import { getPrefs, setPrefs, usePrefs, type Animation, type Density, type FileBa
 import { ANIMATIONS, BAR_FADES, barFadeOf, coreChoice, DENSITIES, THEMES } from "@/core/choices"
 import { SCHEMES } from "@/themes/schemes"
 import { schemeName } from "@/components/SchemeChooser"
-import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
+import { stepTextSize, textSizeKinds, textSizeText, useTextSize } from "@/core/textsize"
+import { nextTextSize } from "@/core/textsteps"
+import { INTERFACE_MAX, INTERFACE_MIN, stepInterfaceSize, useInterfaceSize } from "@/core/zoom"
 import { coreSwitch, useSwitches } from "@/core/switches"
 import { SwitchRow } from "@/components/SwitchRow"
 import { cn, isDark } from "@/lib/utils"
@@ -168,27 +170,41 @@ export function FontsSheet() {
   )
 }
 
-/** A kind's text size (notes, terminals): a reset back to 100%, then smaller, its percentage, bigger. */
-function TextSizeRow({ kind, label, sub }: { kind: string; label: string; sub?: string }) {
-  const size = useTextSize(kind)
-  const name = `${label} text size`
+/** A size's row: a reset back to actual size, then smaller, how big it is, bigger (each off at its end). */
+function SizeRow({ id, name, sub, text, actual, step, canStep, mark }: { id: string; name: string; sub?: string; text: string; actual: boolean
+  step: (step: -1 | 0 | 1) => unknown; canStep: (step: -1 | 1) => boolean; mark: Record<`data-${string}`, string> }) {
   const btn = "flex size-8 cursor-pointer items-center justify-center rounded-[7px] text-foreground/80 hover:bg-card disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
   return (
-    <SettingRow label={name} sub={sub} data-settings-row={`text-size-${kind}`}>
+    <SettingRow label={name} sub={sub} data-settings-row={id}>
       <div className="flex shrink-0 items-center gap-1">
-        <ResetButton on={size !== 100} onClick={() => stepTextSize(kind, 0)} label={`Reset ${name.toLowerCase()}`} />
-        <div role="group" aria-label={name} className="flex shrink-0 items-center rounded-[9px] bg-muted p-[2px]" data-text-size-row={kind}>
-          <button type="button" className={btn} aria-label={`Decrease ${name.toLowerCase()}`} disabled={size <= STEPS[0]} onClick={() => stepTextSize(kind, -1)}>
+        <ResetButton on={!actual} onClick={() => step(0)} label={`Reset ${name.toLowerCase()}`} />
+        <div role="group" aria-label={name} className="flex shrink-0 items-center rounded-[9px] bg-muted p-[2px]" {...mark}>
+          <button type="button" className={btn} aria-label={`Decrease ${name.toLowerCase()}`} disabled={!canStep(-1)} onClick={() => step(-1)}>
             <Minus className="size-3.5" strokeWidth={2.5} />
           </button>
-          <span className="min-w-14 text-center text-[13px] font-medium tabular-nums">{size}%</span>
-          <button type="button" className={btn} aria-label={`Increase ${name.toLowerCase()}`} disabled={size >= STEPS[STEPS.length - 1]} onClick={() => stepTextSize(kind, 1)}>
+          <span className="min-w-14 text-center text-[13px] font-medium tabular-nums">{text}</span>
+          <button type="button" className={btn} aria-label={`Increase ${name.toLowerCase()}`} disabled={!canStep(1)} onClick={() => step(1)}>
             <Plus className="size-3.5" strokeWidth={2.5} />
           </button>
         </div>
       </div>
     </SettingRow>
   )
+}
+
+/** A kind's text size (notes, terminals), in percent or, for a kind in points, points. */
+function TextSizeRow({ kind, label, points, sub }: { kind: string; label: string; points?: number; sub?: string }) {
+  const size = useTextSize(kind)
+  return <SizeRow id={`text-size-${kind}`} name={`${label} text size`} sub={sub} text={textSizeText(kind, size)} actual={size === 100}
+    step={(step) => stepTextSize(kind, step)} canStep={(step) => nextTextSize(size, step, points) !== undefined} mark={{ "data-text-size-row": kind }} />
+}
+
+/** The desktop app's interface size (core/zoom.ts): every window's zoom, this computer's. */
+function InterfaceSizeRow() {
+  const size = useInterfaceSize()
+  if (size === null) return null
+  return <SizeRow id="interface-size" name="Interface size" sub="Every window, on this computer" text={`${Math.round(size * 100)}%`}
+    actual={Math.abs(size - 1) < 0.001} step={(step) => void stepInterfaceSize(step)} canStep={(step) => (step > 0 ? size < INTERFACE_MAX : size > INTERFACE_MIN)} mark={{ "data-interface-size": "" }} />
 }
 
 const themePicture = (t: Theme, scene: Scene = "note") => t === "system" ? <SystemPicture scene={scene} /> : <WindowPicture scene={scene} mode={t} />
@@ -234,6 +250,7 @@ export function AppearancePanel() {
             <PictureChoice<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })}
               options={DENSITIES.map((d) => ({ ...d, picture: <WindowPicture scene={d.value} /> }))} />
           </SettingRow>
+          <InterfaceSizeRow />
           <SettingRow stack label="Animations" data-settings-row="animation" preview={animationPreview(prefs.animation)}>
             <Segmented<Animation> label="Animations" value={prefs.animation} onChange={(animation) => setPrefs({ animation })} className="w-full shrink-0 sm:w-[220px]"
               options={ANIMATIONS} />
@@ -255,7 +272,7 @@ export function AppearancePanel() {
         <Group>
           <Fonts />
           {textSizeKinds(prefs.disabled).map(([kind, k]) => (
-            <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />
+            <TextSizeRow key={kind} kind={kind} label={k.label} points={k.points} sub="This device only" />
           ))}
           {["quick-text-size", "line-numbers"].map(row)}
         </Group>

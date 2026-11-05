@@ -205,7 +205,8 @@ const KEYS: { label: ReactNode; name: string; send: (t: XTerm) => string }[] = [
   { label: <ArrowRight className="size-[17px]" strokeWidth={2} />, name: "Right", send: (t) => arrow(t, "C") },
 ]
 
-/** The terminal's font size at 100% (its text size, Settings > Appearance, scales it: ⌘+scroll over it). */
+/** The terminal's font size at 100% (its text size, Settings > Appearance, scales it: ⌘+ or ⌘+scroll over it), its
+ *  `textSizes` points (index.tsx). */
 const FONT = 13
 const fontSize = (percent: number) => Math.max(6, Math.round(FONT * percent / 100))
 

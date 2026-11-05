@@ -34,6 +34,7 @@ import { canRenameTab, chooseTabGroup, renameTab, renameTabGroup } from "@/core/
 import { canReopen, reopenLatest } from "@/core/tabarchive"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
+import { zoomCommands } from "@/core/zoom"
 import { allSwitches, placeOf, switchCommand } from "@/core/switches"
 import { allChoices, choiceCommand } from "@/core/choices"
 import { loadVaultPlugins } from "@/core/vaultPlugins"
@@ -539,8 +540,10 @@ export default function App() {
   useCommands(() => pluginCommands(disabled), [disabled.join(), enabled.join(), pluginsVersion])
   // "Open <Name> settings": each plugin's settings sheet, while it's on and has some (core/pluginSettings.ts).
   useCommands(settingsCommands, [disabled.join(), enabled.join(), pluginsVersion])
-  // Text sizes: notes' and the plugins' kinds (the Terminal's), apart from the app's zoom (core/textsize.ts).
+  // Text sizes: notes' and the plugins' kinds (the Terminal's), apart from the interface size (core/textsize.ts).
   useCommands(() => textSizeCommands(disabled), [disabled.join(), enabled.join()])
+  // ⌘+ ⌘- ⌘0: what's focused, else the interface size (core/zoom.ts).
+  useCommands(zoomCommands, [])
   // Every setting, the app's and the plugins': on/off (core/switches.ts) and of a few values (core/choices.ts).
   useCommands(() => [...allSwitches(disabled).map(switchCommand), ...allChoices(disabled).map(choiceCommand)], [disabled.join(), enabled.join(), pluginsVersion])
   // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it; with its bars hidden, only what it shows.

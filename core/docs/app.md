@@ -136,7 +136,10 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   `pullActions`: the three commands a page pulled down past its top offers on a phone, by palette command id: left,
   straight down (what a plain pull runs), right (`["file:new", "switcher:open", "tab:close"]`, the default; one left
   out or empty keeps its default).
-  No font size: the user zooms with ⌘+ and ⌘- (Ctrl off a Mac), and notes' and terminals' text sizes are each device's.
+  No font size: ⌘+ ⌘- ⌘0 (Ctrl off a Mac) zoom what's focused: a note's or a terminal's text size (each device's, a
+  terminal's a point at a time), a web page's site (kept per site on the Mac), a canvas; with none of those, the desktop
+  app's interface size, the whole window's zoom (View > Interface size, ⌥⌘+ ⌥⌘- ⌥⌘0, Settings > Appearance), one for
+  every window on that computer (the app's own `vaults.json`, never the vault). In a browser the browser zooms the rest.
 - `snippets`: the CSS snippets on, by name (`["Wide lines"]` is `.vaultite/snippets/Wide lines.css`, else
   `.obsidian/snippets/`'s; the app never writes those). A snippet is
   CSS added after the app's; the colours are variables (`--background`, `--foreground`, `--card`, `--primary`,

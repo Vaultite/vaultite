@@ -264,6 +264,7 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     // (its rows show only at a phone's width, where pulling works)
     ...(isDesktop() ? [] : [{ ...row("pull-actions", "Pull-down actions", "Appearance", '[data-settings-row="pull-0"]'), words: "pull down gesture phone swipe new note search close tab" }]),
     { id: "fonts", label: "Fonts", sub: "Interface, text and code", where: "Appearance", words: "font typeface monospace", run: () => openDetail("fonts") },
+    ...(desktopApp?.interfaceSize ? [{ ...row("interface-size", "Interface size", "Appearance", '[data-settings-row="interface-size"]', "Every window, on this computer"), words: "zoom scale bigger smaller ui app window" }] : []),
     ...textSizeKinds(disabled).map(([kind, k]) =>
       ({ ...row(`text-size-${kind}`, `${k.label} text size`, "Appearance", `[data-settings-row="text-size-${kind}"]`, "This device only"), words: "font size zoom bigger smaller" })),
     { ...row("snippets", "CSS snippets", "Appearance", 'section[aria-label="CSS snippets"]'), words: "styles custom" },

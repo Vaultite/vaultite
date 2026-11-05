@@ -1,19 +1,19 @@
-// Text sizes per kind of content (notes, terminals, plugins' `textSizes`) apart from the app's zoom, like VS Code's
-// editor and terminal font sizes. Per device: a phone and a laptop want different sizes.
+// Text sizes per kind of content (notes, terminals, plugins' `textSizes`) apart from the interface size, like VS Code's
+// editor and terminal font sizes; ⌘+ ⌘- ⌘0 step the focused one (core/zoom.ts). Per device: a phone and a laptop differ.
 import { AArrowDown, AArrowUp, ALargeSmall } from "lucide-react"
 import { useEffect, type RefObject } from "react"
 import { devicePref, getPrefs, usePrefs } from "@/core/prefs"
 import { keyHint } from "@/core/commands"
 import { active } from "@/core/plugins"
+import { nextTextSize, STEPS } from "@/core/textsteps"
+import { useZoomTarget } from "@/core/zoom"
 
-/** A kind of content with a text size of its own. `label` names it in sentence case ("Terminal"). */
-export type TextSizeKind = { label: string; sub?: string }
+/** A kind of content with a text size of its own. `label` names it in sentence case ("Terminal"). `points`: its text's
+ *  size at 100%, for one that steps a point at a time and says its size in points, as terminals do. */
+export type TextSizeKind = { label: string; sub?: string; points?: number }
 
 /** The core's own kind: notes. */
 const CORE: Record<string, TextSizeKind> = { note: { label: "Note", sub: "Notes' text, title and properties" } }
-
-/** The sizes, in percent: 10% apart near 100%, wider further out. */
-export const STEPS = [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 170, 200, 250, 300]
 
 /** The kinds there are now: the core's, then the plugins' that are on, by id. */
 export function textSizeKinds(disabled: string[]): [string, TextSizeKind][] {
@@ -37,12 +37,19 @@ export function setTextSize(kind: string, percent: number) {
   pref(kind).set(Math.min(STEPS[STEPS.length - 1], Math.max(STEPS[0], Math.round(percent))))
 }
 
+const kindOf = (kind: string) => textSizeKinds(getPrefs().disabled).find(([k]) => k === kind)?.[1]
+
 /** One step bigger (1), smaller (-1), or back to 100% (0). */
 export function stepTextSize(kind: string, step: -1 | 0 | 1) {
   if (step === 0) return setTextSize(kind, 100)
-  const now = textSize(kind)
-  const next = step > 0 ? STEPS.find((s) => s > now) : [...STEPS].reverse().find((s) => s < now)
+  const next = nextTextSize(textSize(kind), step, kindOf(kind)?.points)
   if (next !== undefined) setTextSize(kind, next)
+}
+
+/** A kind's size as said: "14 pt" for one in points, else "120%". */
+export function textSizeText(kind: string, percent = textSize(kind)) {
+  const points = kindOf(kind)?.points
+  return points ? `${Math.round(points * percent / 100)} pt` : `${percent}%`
 }
 
 const WORDS = "font zoom bigger smaller"
@@ -69,9 +76,13 @@ export function textSizeCommands(disabled: string[]) {
 const NOTCH = 50
 let acc = 0, accKind = "", accAt = 0
 
-/** ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` (Pinch to resize text) is on (off as in Obsidian: pinches
- *  set it off by accident). Children using the wheel keep it unless `first`, which takes it before them (a terminal). */
+/** ⌘+ ⌘- ⌘0 while it's focused (core/zoom.ts), and ⌘/⌃ + wheel or a pinch over `ref` while Pinch to resize text is on (off as in
+ *  Obsidian: pinches set it off by accident), step `kind`'s size. Children's wheels come first unless `first` (a terminal). */
 export function useTextSizeWheel(ref: RefObject<HTMLElement | null>, kind: string | null, first = false) {
+  useZoomTarget(ref, kind ? (step) => {
+    stepTextSize(kind, step)
+    return { text: `${kindOf(kind)?.label ?? "Text"} text ${textSizeText(kind)}`, actual: textSize(kind) === 100 }
+  } : null)
   useEffect(() => {
     const el = ref.current
     if (!el || !kind) return

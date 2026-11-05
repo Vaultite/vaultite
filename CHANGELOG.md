@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Zoom follows what you're looking at**: ⌘+ ⌘- ⌘0 zoom the focused pane's content, not the whole app: a note's
+  text, a terminal's (a point at a time, as in Ghostty), a web page's site (kept per site, as before) or a canvas, with a
+  short line saying where it's at ("Terminal text 14 pt") and Reset; in a browser they do the same for a note or a
+  terminal. The old whole-window zoom is the interface size, kept as it was: View > Interface size (⌥⌘+ ⌥⌘- ⌥⌘0) or
+  Settings > Appearance, and what ⌘+ zooms where nothing else does. A pinch magnifies a web page, as in Safari.
 - **Closing several tabs offers them back**: Close others, Close all or closing a group shows a toast with Undo, naming
   the keys that reopen them in the desktop app (⌘⇧T, Ctrl+Shift+T elsewhere); it goes once they're back. Phones' key
   bars over the keyboard (terminal, web viewer) name Shift and Ctrl as non-Mac computers do.
