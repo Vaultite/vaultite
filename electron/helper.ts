@@ -1,6 +1,6 @@
 /** The menu-bar helper (a Mac's; one per Mac, a lock): the app and its home vault's server kept with no window. It has fn,
  *  the companion's cursor over the screen (overlay.ts), screen reading and what's in front. See electron/CLAUDE.md. */
-import { app, Menu, Notification, nativeImage, screen, shell, Tray, type WebContents } from "electron"
+import { app, Menu, Notification, nativeImage, screen, shell, Tray, type BrowserWindow, type WebContents } from "electron"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -75,7 +75,7 @@ export async function startHelper(h: HelperHost) {
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v),
     asked: () => [...asked], scene: () => lastScene } })
   onScreenEvent(heard)
-  overlayActs({ drop: (name, x, y) => void dropAt(name, x, y), dismiss: (id) => live.say({ t: "hide", id }), stop: () => { if (session) stopFor(session.sink) } })
+  overlayActs({ drop: (name, x, y) => void dropAt(name, x, y), home: comeBack, menu: cursorMenu, dismiss: (id) => live.say({ t: "hide", id }), stop: () => { if (session) stopFor(session.sink) } })
   if (!QUIET) await startScreen().catch((e) => console.error("vaultite: the screen helper didn't start:", e))
   // (a copy a script drives (web/qa/helper.mjs) shows nothing in the menu bar and never hears the user's fn)
   if (!QUIET) {
@@ -102,6 +102,23 @@ export function stopHelper() {
   tray = null
   lock?.close()
   lock = null
+}
+
+/** Its cursor called back (a double click on it, Come back): it stops following and waits by the pointer or the edge. */
+function comeBack(name: string) {
+  if (following?.name === name) unfollow()
+  live.say({ t: "home", agent: name })
+}
+
+/** Right-click on its cursor over the screen. */
+function cursorMenu(name: string, at: { window: BrowserWindow; x: number; y: number }) {
+  const mode = (m: string) => () => void op("settings.set", { name: "plugin/companion", values: { mode: m } })
+  Menu.buildFromTemplate([
+    { label: "Come back", click: () => comeBack(name) },
+    { type: "separator" },
+    { label: "Quiet", type: "radio", checked: live.state.mode === "quiet", click: mode("quiet") },
+    { label: "Pair", type: "radio", checked: live.state.mode === "pair", click: mode("pair") },
+  ]).popup(at)
 }
 
 // ---------- the menu bar
@@ -610,10 +627,11 @@ const FOLLOW_MS = 4000, FOLLOW_FOR = 30 * 60_000, FOLLOW_GAP = 20_000
 export async function dropAt(name: string, x: number, y: number) {
   const w = await screenAsk<AppWindowInfo>("at", { x, y })
   unfollow()
-  // (on no window, as the desktop's icons: a point at what's there, nothing to follow)
+  // (on no window, as the desktop's icons or the menu bar: a point at what's there, nothing to follow; with nothing
+  // Accessibility reads, its picture alone)
   if (!w.window && !w.vaultite) {
     const c = await pointerContext({ x, y })
-    if (c.app) live.say({ t: "moment", kind: "point", agent: name, ...c, shot: c.shot ?? undefined })
+    live.say({ t: "moment", kind: "point", agent: name, ...c, shot: c.shot ?? undefined })
     return
   }
   if (!w.window || w.vaultite || hidden(w)) return

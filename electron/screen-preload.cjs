@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
   },
   grab: (on) => ipcRenderer.send("screen:grab", !!on),
   drop: (name, x, y) => ipcRenderer.send("screen:drop", { name, x, y }),
+  home: (name) => ipcRenderer.send("screen:home", name),
+  menu: (name, x, y) => ipcRenderer.send("screen:menu", { name, x, y }),
   dismiss: (id) => ipcRenderer.send("screen:dismiss", id),
   stop: () => ipcRenderer.send("screen:stop"),
 })

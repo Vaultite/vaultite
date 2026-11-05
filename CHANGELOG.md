@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's cursor over the screen can go anywhere and come back**: dropped where nothing can be read, as the
+  menu bar, it stays there and looks at a picture of it instead of jumping back; double-click it, or right-click it for
+  Come back (and Quiet or Pair), to have it wait by your pointer or at the edge again.
 - **The companion's cursor is one cursor, in the app and over the screen**: both move on the same spring; coming back
   from another app it shows where it's going as the screen's cursor lands there, and over the screen it hides while a
   window in front covers what it points at.

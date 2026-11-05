@@ -20,7 +20,8 @@ type Shown = { width: number; height: number; agents: Agent[]; idle: Idle | null
 /** Only the places changed (helperlogic.ts splitScene). */
 type At = { agents: Record<string, [number, number]>; idle: [number, number] | null }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
-  drop: (name: string, x: number, y: number) => void; dismiss: (id: string) => void; stop: () => void }
+  drop: (name: string, x: number, y: number) => void; home: (name: string) => void; menu: (name: string, x: number, y: number) => void
+  dismiss: (id: string) => void; stop: () => void }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
 followSystemTheme()
@@ -138,10 +139,16 @@ function Arrow({ tint }: { tint: string }) {
   )
 }
 
-/** A cursor or the waiting dot: dragged, it's at the pointer (its spring let go); dropped, it tells where and stays there. */
+/** A click on a cursor, to tell a double one (a call back) by the time from the last. */
+let clicked = { key: "", at: 0 }
+const DOUBLE_MS = 400
+
+/** A cursor or the waiting dot: dragged, it's at the pointer (its spring let go); dropped, it tells where and stays there.
+ *  Double-clicked, it's called back; right-clicked, its menu. */
 function useDrag(name: string, key: string) {
   const [dragging, setDragging] = useState(false)
   const down = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button === 2) { e.preventDefault(); api?.menu(name, e.clientX, e.clientY); return }
     if (e.button !== 0) return
     e.preventDefault()
     const el = e.currentTarget, id = e.pointerId
@@ -162,6 +169,11 @@ function useDrag(name: string, key: string) {
       if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) > 6) {
         if (m) { Object.assign(m, { g: { x: ev.clientX, y: ev.clientY, vx: 0, vy: 0 }, left: { until: performance.now() + 1500, tx: m.tx, ty: m.ty } }); setTimeout(kick, 1550) }
         api?.drop(name, ev.clientX, ev.clientY)
+        clicked = { key: "", at: 0 }
+      } else {
+        const now = performance.now(), twice = clicked.key === key && now - clicked.at < DOUBLE_MS
+        clicked = twice ? { key: "", at: 0 } : { key, at: now }
+        if (twice) api?.home(name)
       }
       kick()
     }

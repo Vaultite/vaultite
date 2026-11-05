@@ -258,7 +258,7 @@ const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) 
 export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).find((w) => w.focus)?.focus ?? null
 
 /** Where a moment's agent looks: an app's window, its note's line, its pane's row, or the app's UI (a watch's, nowhere new). */
-const placeOf = (m: Partial<Moment>): Partial<Agent> => (m.app ? { app: m.app, ...(m.window ? { window: m.window } : m.sx !== undefined && m.sy !== undefined ? { sx: m.sx, sy: m.sy } : {}) } : m.path ? { path: m.path, line: m.line, find: m.find }
+const placeOf = (m: Partial<Moment>): Partial<Agent> => (m.app || m.sx !== undefined ? { ...(m.app ? { app: m.app } : {}), ...(m.window ? { window: m.window } : m.sx !== undefined && m.sy !== undefined ? { sx: m.sx, sy: m.sy } : {}) } : m.path ? { path: m.path, line: m.line, find: m.find }
   : m.pane ? { pane: m.pane, ...(m.row ? { row: m.row } : {}) } : m.ui ? { ui: m.ui } : {})
 
 /** Take in a moment from the app: kept (and logged), and given to the agents waiting. `from`: the window's request, which
@@ -778,11 +778,18 @@ const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said"])
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
 function screenPlace(m: Record<string, unknown>) {
   const shot = str(m.shot), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
-  return { app: str(m.app).slice(0, 200), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
+  return { ...(str(m.app) ? { app: str(m.app).slice(0, 200) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
     ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     // (only the helper's own pictures: an agent reads what's named here)
     ...(/[/\\]screens[/\\](window-\d+-\d+|region-\d+)\.png$/.test(shot) ? { shot } : {}) }
+}
+/** Its cursor called back from the screen (a double click, Come back): to the user's note, so outside the app it waits
+ *  by their pointer or at the edge again. */
+export function comeBack(name: string) {
+  if (!agents.has(key(name))) return
+  const f = focus()
+  setAgent(name, { ...Object.fromEntries(PLACE_KEYS.map((k) => [k, undefined])), ...(f?.path ? { path: f.path, line: f.line } : {}) })
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
@@ -792,9 +799,11 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     try { m = JSON.parse(String(data)) } catch { return }
     // (a bubble over the screen clicked away)
     if (m.t === "hide" && typeof m.id === "string") return void hide(m.id)
+    if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
     if (m.t !== "moment" || !["ask", "point", "edit"].includes(String(m.kind))) return
     const place = screenPlace(m)
-    if (!place.app) return
+    // (a point where nothing can be read, as the menu bar: still there, with its picture)
+    if (!place.app && place.sx === undefined) return
     addMoment({ kind: m.kind as Moment["kind"], for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place,
       ...(Array.isArray(m.hunks) ? { hunks: (m.hunks as Hunk[]).slice(0, 40) } : {}) }, req)
   })
@@ -1915,7 +1924,8 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
   const out = [head, ...(aware ? [aware] : [])]
   for (const m of ms) {
     const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : m.pane || m.ui ? ` ${m.title ? `"${m.title}" ` : ""}(${m.pane ? `pane ${m.pane}` : m.ui})${m.row ? `, row ${m.row}` : ""}`
-      : m.app ? ` on screen, ${m.title ? `${JSON.stringify(m.title)} in ` : ""}${m.app}${m.window ? ` (window ${m.window})` : ""}` : ""
+      : m.app ? ` on screen, ${m.title ? `${JSON.stringify(m.title)} in ` : ""}${m.app}${m.window ? ` (window ${m.window})` : ""}`
+      : m.sx !== undefined ? ` on screen, at sx ${m.sx}, sy ${m.sy} (no window there, nothing Accessibility reads: see its picture)` : ""
     if (m.kind === "change") {
       out.push(`- change in${at}: ${m.what ?? "it changed"}${m.url ? ` (${m.url})` : ""}`)
       for (const c of m.changes ?? []) out.push(`  ${c}`)

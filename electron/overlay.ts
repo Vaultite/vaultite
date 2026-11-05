@@ -4,8 +4,10 @@ import { BrowserWindow, ipcMain, screen, type Display, type IpcMainEvent } from 
 import path from "node:path"
 import { type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 
-/** What the user does to it: drags a cursor and drops it at a point, dismisses a bubble, stops dictating. */
-export type OverlayActs = { drop: (name: string, x: number, y: number) => void; dismiss: (id: string) => void; stop: () => void }
+/** What the user does to it: drags a cursor and drops it at a point, calls it back (a double click) or right-clicks it,
+ *  dismisses a bubble, stops dictating. */
+export type OverlayActs = { drop: (name: string, x: number, y: number) => void; home: (name: string) => void
+  menu: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; dismiss: (id: string) => void; stop: () => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
 const wins = new Map<number, BrowserWindow>()
@@ -88,6 +90,11 @@ export function overlayActs(a: OverlayActs) {
     if (!w || typeof m?.name !== "string" || typeof m.x !== "number" || typeof m.y !== "number") return
     const b = w.getBounds()
     acts?.drop(m.name, b.x + m.x, b.y + m.y)
+  })
+  ipcMain.on("screen:home", (e, name: unknown) => { if (mine(e) && typeof name === "string") acts?.home(name) })
+  ipcMain.on("screen:menu", (e, m: { name?: unknown; x?: unknown; y?: unknown }) => {
+    const w = mine(e)
+    if (w && typeof m?.name === "string" && typeof m.x === "number" && typeof m.y === "number") acts?.menu(m.name, { window: w, x: Math.round(m.x), y: Math.round(m.y) })
   })
   ipcMain.on("screen:dismiss", (e, id: unknown) => { if (mine(e) && typeof id === "string") acts?.dismiss(id) })
   ipcMain.on("screen:stop", (e) => { if (mine(e)) acts?.stop() })

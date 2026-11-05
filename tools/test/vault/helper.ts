@@ -157,6 +157,15 @@ export default async ($: VaultTest) => {
     check("companion: an ask from the desktop (no window) says what was under the pointer, its point, and the screen around it",
       deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/region-1.png (the screen around their pointer)") &&
       (deskSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 812), [deskText, deskSt])
+    const bar = c.addMoment({ kind: "point", sx: 1290, sy: 12, shot: "/tmp/x/screens/region-2.png" })
+    const barText = bar ? c.momentsText([bar], "quiet", null) : ""
+    const [, barSt] = await api("POST", "ops/companion.status", {})
+    check("companion: a cursor dropped where nothing reads (the menu bar) is still a point there, with its picture",
+      barText.includes("on screen, at sx 1290, sy 12 (no window there") && barText.includes("its picture: /tmp/x/screens/region-2.png") &&
+      (barSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 1290), [barText, barSt])
+    c.comeBack((barSt as { agents: { name: string; sx?: number }[] }).agents.find((a) => a.sx === 1290)!.name)
+    const [, homeSt] = await api("POST", "ops/companion.status", {})
+    check("companion: called back, its cursor leaves the screen", !(homeSt as { agents?: { sx?: number; app?: string }[] }).agents?.some((a) => a.sx !== undefined || a.app), homeSt)
     check("companion: a followed window's change reaches it in quiet; a note's doesn't", edit?.kind === "edit" && c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null)
     await api("PATCH", "config/plugin/companion", { mode: null })
   }
