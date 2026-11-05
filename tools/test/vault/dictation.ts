@@ -83,15 +83,17 @@ async function helper($: VaultTest, tmp: string) {
     wss.handleUpgrade(req, sock, head, (ws) => {
       const s: Seen = { config: null, auth: req.headers.authorization!, ctl: [], closed: false }
       seen.push(s)
-      let bytes = 0, segs = 0, dropping = false
+      let bytes = 0, segs = 0, gone = false
+      ws.on("error", () => {})
       ws.on("message", (d: Buffer, binary: boolean) => {
+        if (gone) return
         if (binary) {
           bytes += d.length
-          if (mode === "drop" && dropping) return ws.terminate()
           return ws.send(JSON.stringify({ tokens: [{ text: " pend", is_final: false }] }))
         }
         if (!s.config) {
           s.config = JSON.parse(d.toString())
+          if (mode === "drop-first") { gone = true; return (ws as Any)._socket.end() }
           if (mode === "error") ws.send(JSON.stringify({ tokens: [], error_code: 400, error_type: "invalid_request", error_message: "Invalid model" }))
           return
         }
@@ -101,7 +103,12 @@ async function helper($: VaultTest, tmp: string) {
         // (the final words for the audio so far, then <fin>)
         const ms = bytes / 32
         ws.send(JSON.stringify({ tokens: [{ text: " Seg", is_final: true, start_ms: ms - 20, end_ms: ms - 10 }, { text: `ment ${++segs}.`, is_final: true, start_ms: ms - 10, end_ms: ms },
-          { text: "<fin>", is_final: true }] }), () => { dropping = true })
+          { text: "<fin>", is_final: true }] }), () => {
+          // (dropped once its first words are out: no close frame, but what was sent arrives first; read on, so it's no reset)
+          if (mode !== "drop") return
+          gone = true
+          ;(ws as Any)._socket.end()
+        })
       })
       ws.on("close", () => { s.closed = true })
     })
@@ -132,6 +139,9 @@ async function helper($: VaultTest, tmp: string) {
     const fb = es.findIndex((e) => e.type === "fallback"), local = finals(es.slice(fb + 1)).join(" ")
     check("dictation helper: dropped mid-stream, what Soniox settled stays and this Mac hears the rest", fb > 0 && finals(es.slice(0, fb)).join() === "Segment 1." &&
       /dropped/.test(es[fb].message) && (/lighthouse/i.test(local) && !/milk/i.test(local) || es.some((e) => e.code === "cloud")) && es.at(-1).type === "end", es.filter((e) => e.type !== "pending"))
+    es = await run("drop-first")
+    check("dictation helper: dropped before any final word, this Mac hears it all", /dropped/.test(es.find((e) => e.type === "fallback")?.message) &&
+      (/milk/i.test(finals(es).join(" ")) && /lighthouse/i.test(finals(es).join(" ")) || es.some((e) => e.code === "cloud")) && es.at(-1).type === "end", es.filter((e) => e.type !== "pending"))
     es = await run("ok", "wrong-key")
     check("dictation helper: a refused key, this Mac hears it all", /refused the key/.test(es.find((e) => e.type === "fallback")?.message) &&
       (/milk/i.test(finals(es).join(" ")) && /lighthouse/i.test(finals(es).join(" ")) || es.some((e) => e.code === "cloud")) && es.at(-1).type === "end", es.filter((e) => e.type !== "pending"))

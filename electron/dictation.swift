@@ -374,10 +374,10 @@ final class Soniox: NSObject, Engine, URLSessionWebSocketDelegate, @unchecked Se
         for m in queued { send(m) }
         queued = []
     }
-    func urlSession(_ s: URLSession, task t: URLSessionTask, didCompleteWithError error: Error?) { dropped() }
-    func urlSession(_ s: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith code: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        fail("Soniox closed the connection")
-    }
+    // (the receive loop says it in turn, after what came before it: these only if it doesn't)
+    func urlSession(_ s: URLSession, task t: URLSessionTask, didCompleteWithError error: Error?) { droppedSoon() }
+    func urlSession(_ s: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith code: URLSessionWebSocketTask.CloseCode, reason: Data?) { droppedSoon() }
+    func droppedSoon() { q.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.dropped() } }
     /// The connection failed or went: why, as the handshake's answer tells.
     func dropped() {
         let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
@@ -388,7 +388,7 @@ final class Soniox: NSObject, Engine, URLSessionWebSocketDelegate, @unchecked Se
         guard !closed else { return }
         guard open else { queued.append(m); return }
         lastSent = Date()
-        task.send(m) { [weak self] e in if e != nil { self?.q.async { self?.dropped() } } }
+        task.send(m) { [weak self] e in if e != nil { self?.droppedSoon() } }
     }
     func receive() {
         task.receive { [weak self] r in
