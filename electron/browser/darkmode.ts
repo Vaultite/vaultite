@@ -1,5 +1,5 @@
-// Dark pages: while the app's look is dark, pages follow it (a styled site keeps its style, a dark one its own look):
-// Chromium's auto dark mode over the DevTools protocol, plus the theme's tint (darkcolors.ts) on light pages.
+// Dark pages: while the app's look is dark, pages follow it (a dark one, by its site or the vault's style for it, keeps
+// its own look): Chromium's auto dark mode over the DevTools protocol, plus the theme's tint (darkcolors.ts) on light pages.
 import { ipcMain, type Session } from "electron"
 import { fileURLToPath } from "node:url"
 import { AUTO_BG, tintFilter } from "./darkcolors.ts"
@@ -9,9 +9,9 @@ const PRELOAD = fileURLToPath(new URL("./darkmode-preload.cjs", import.meta.url)
 
 type Look = "theme" | "dark"
 /** What a window's app tells: whether pages go dark (its look is dark and the Browser's setting on), how, its colours, and
- *  the sites left as they are (turned off for, or styled by the vault). */
-type Choice = { on: boolean; look: Look; bg: string; fg: string; off: string[]; styled: string[] }
-const NONE: Choice = { on: false, look: "theme", bg: "#000000", fg: "#ffffff", off: [], styled: [] }
+ *  the sites turned off for. */
+type Choice = { on: boolean; look: Look; bg: string; fg: string; off: string[] }
+const NONE: Choice = { on: false, look: "theme", bg: "#000000", fg: "#ffffff", off: [] }
 const choices = new Map<number, Choice>()
 let lastChoice = NONE
 /** A window's; pages outside one (a sign-in popup) follow the last told. */
@@ -30,8 +30,9 @@ const hostOf = (url: string) => {
   } catch { return "" }
 }
 const onSite = (list: string[], host: string) => list.some((s) => host === s || host.endsWith(`.${s}`))
-/** Whether pages at `host` go dark: a web page, not turned off for, nor styled by the vault (its style wins alone). */
-const darkens = (c: Choice, host: string) => c.on && !!host && !onSite(c.off, host) && !onSite(c.styled, host)
+/** Whether pages at `host` go dark: a web page, not turned off for. (A site's style is judged page by page, as the page
+ *  looks with it: Docs' editor dark by its style, its sign-in and error pages light, darkened.) */
+const darkens = (c: Choice, host: string) => c.on && !!host && !onSite(c.off, host)
 
 // ---------- the sheet ----------
 
@@ -134,6 +135,8 @@ eachPage((p) => {
   // darkened a moment shows little, a light one not darkened would flash)
   const going = (url: string) => {
     if (!hostOf(url)) return
+    // (another site is another process, which the overrides told the last one don't reach: told again)
+    if (hostOf(s.url) !== hostOf(url) && s.applied) s.applied = "?"
     s.url = url
     s.native = false
     void apply(s)
@@ -173,7 +176,7 @@ const hex = (x: unknown, or: string) => (typeof x === "string" && /^#[0-9a-f]{6}
 handle("darkmode:set", (win, x) => {
   const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>
   const c: Choice = { on: o.on === true, look: o.look === "dark" ? "dark" : "theme", bg: hex(o.bg, NONE.bg), fg: hex(o.fg, NONE.fg),
-    off: sites(o.off), styled: sites(o.styled) }
+    off: sites(o.off) }
   const id = win.id, was = choices.get(id)
   if (was && JSON.stringify(was) === JSON.stringify(c)) return
   if (!was) win.once("closed", () => choices.delete(id))

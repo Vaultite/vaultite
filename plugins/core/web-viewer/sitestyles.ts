@@ -27,6 +27,7 @@ export const template = (site: string) => `/* ${site} in your vault's look: this
    The vault's look, kept up to date as it changes (light or dark, colour scheme, fonts):
    ${COLORS.map((c) => `--vault-${c}`).join(" ")}
    ${Object.keys(FONTS).map((f) => `--vault-${f}`).join(" ")} --vault-radius --vault-color-scheme (light or dark)
+   --vault-paper-filter (dark: a canvas' white paper onto the card, its text the foreground; light: none)
 
    For example:
    :root { color-scheme: var(--vault-color-scheme); }

@@ -738,7 +738,8 @@ plugin.op({
 saved; each declaration wins over the site's own, so no !important. The vault's look is there as variables, kept up to
 date as it changes: --vault-background, --vault-foreground, --vault-card, --vault-muted, --vault-muted-foreground,
 --vault-primary, --vault-accent, --vault-border (and the rest of the app's colours), --vault-font-ui, --vault-font-text,
---vault-font-code, --vault-radius, --vault-color-scheme (light or dark). Use them rather than colours of your own, so the
+--vault-font-code, --vault-radius, --vault-color-scheme (light or dark), --vault-paper-filter (a filter for what's drawn on
+a canvas, white paper and black text onto the card and foreground in the dark, none in the light). Use them rather than colours of your own, so the
 site follows the vault's scheme. Prefer selectors that last (a custom element's name, an id, a semantic attribute). The
 user turns a site's style off in the page's Shields menu (setting unstyled).
 

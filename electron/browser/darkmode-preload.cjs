@@ -61,6 +61,8 @@ if (/^https?:/.test(location.href)) {
   }
   try { take(ipcRenderer.sendSync("vaultite:darkmode:frame", location.href, main)) } catch { /* none */ }
   ipcRenderer.on("vaultite:darkmode:set", (_e, c) => { take(c); check() })
+  // (a site style arriving or changing after the page loaded can make it dark, or light again: judged as it now looks)
+  ipcRenderer.on("vaultite:sitestyles:css", () => requestAnimationFrame(check))
 
   if (main) {
     // (the first frame's animation callback runs before it paints: decided by then, no frame shows the other way)

@@ -108,10 +108,10 @@ function styleItems(url: string, styles: SiteStyle[], unstyled: string[]): MenuI
 }
 
 /** The Shields menu's dark pages switch for the page's host (docs.google.com: not every Google site), while they apply
- *  (the look dark, no style of the vault's for it). */
-function darkItems(url: string, styles: SiteStyle[], off: string[]): MenuItem[] {
+ *  (the look dark). */
+function darkItems(url: string, off: string[]): MenuItem[] {
   const host = siteName(url)
-  if (!host || !darkPagesOn(styleOf(styles, host))) return []
+  if (!host || !darkPagesOn()) return []
   const on = !off.some((s) => host === s || host.endsWith(`.${s}`))
   return [{ label: `Dark pages for ${host}`, icon: Moon, checked: on, run: () => setDark(host, !on) }]
 }
@@ -156,7 +156,7 @@ export function ShieldsButton({ id, url, loading }: { id: number; url: string; l
     on ? { label: `Shields for ${site}`, icon: Shield, checked: up, run: () => void setDown(up) } : { label: "Shields", icon: Shield, checked: false, run: () => void turnOn() },
     ...hiddenItems(id, site, note, s.hide ?? []),
     ...styleItems(url, styles, s.unstyled ?? []),
-    ...darkItems(url, styles, s.darkPagesOff ?? []),
+    ...darkItems(url, s.darkPagesOff ?? []),
     { label: "Browser settings…", icon: Settings2, sep: true, run: () => openPluginSettings("web-viewer", "shields") },
   ]
   const Icon = up ? Shield : ShieldOff

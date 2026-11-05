@@ -1,6 +1,7 @@
 // Dark pages in the desktop app, against made-up sites on this machine (no network): a light site darkened in the
 // theme's colours (pictures and video as they are, canvases with the page), a site dark of itself left alone, a site
-// the vault styles left to its style, no white first frame, the Shields menu's switch, and the look changing live.
+// the vault styles judged as it looks with its style (its styled page left to it, its other pages darkened, again as the
+// style changes), no white first frame, the Shields menu's switch, and the look changing live.
 // Pictures of each case go to web/qa/shots/darkpages-*.png. WRITES: the throwaway vault only.
 //   node web/qa/darkpages.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -29,6 +30,7 @@ const SLOW_HEAD = `<!doctype html><title>Slow</title><style>body { margin: 0; ba
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" })
   if (req.url.startsWith("/native")) return res.end(NATIVE)
+  if (req.url.startsWith("/editor")) return res.end(`<!doctype html><title>Editor</title><body class="editor" style="margin: 0"><main style="padding: 60px 20px; height: 2000px"><h1>Editor</h1></main>`)
   if (req.url.startsWith("/framed")) return res.end(`<!doctype html><style>body { margin: 0; background: #fff }</style><iframe id="fr" src="http://[::1]:${PORT}/inner" style="border: 0; width: 600px; height: 300px; margin: 60px 20px"></iframe>`)
   if (req.url.startsWith("/inner")) return res.end(`<!doctype html><style>body { margin: 0; background: #fff; color: #222 }</style><p>Another site's frame</p>`)
   if (req.url.startsWith("/slow")) { res.write(SLOW_HEAD); setTimeout(() => res.end(`<main style="padding: 60px 20px; height: 2000px"><h1>Slow</h1><p>Words.</p></main>`), 900); return }
@@ -51,7 +53,9 @@ const setLook = (l) => fs.writeFileSync(APPEARANCE, JSON.stringify({ ...look, ..
 setLook({ theme: "dark", scheme: "gruvbox" })
 const STYLE = path.join(VAULT, ".vaultite/plugins/web-viewer/sites/localhost.css")
 fs.mkdirSync(path.dirname(STYLE), { recursive: true })
-fs.writeFileSync(STYLE, "html, body { background: rgb(10, 80, 10) }\n")
+// (as docs.google.com.css: only its editor, its other pages as the site makes them)
+const EDITOR_ONLY = "body.editor { background: rgb(10, 80, 10) }\n"
+fs.writeFileSync(STYLE, EDITOR_ONLY)
 const SETTINGS = path.join(VAULT, ".vaultite/plugins/web-viewer/data.json")
 const settings = () => (fs.existsSync(SETTINGS) ? JSON.parse(fs.readFileSync(SETTINGS, "utf8")) : {})
 { const { darkPages, darkPagesLook, darkPagesOff, unstyled, ...rest } = settings(); fs.writeFileSync(SETTINGS, JSON.stringify(rest, null, 2) + "\n") }
@@ -140,11 +144,19 @@ check("… shows its own dark, untinted", await until(async () => near(await nat
 await nativeBg("native")
 check("… and takes no filter", (await filter()) === "none", await filter())
 
-// ---------- a site the vault styles ----------
-check("a styled site opens", await open(STYLED))
+// ---------- a site the vault styles, in part ----------
 const styledBg = async (shot) => (await pixels([[900, 300]], shot && shotOf(shot)))?.[0]
-check("… shows its style alone, no dark pages", await until(async () => near(await styledBg(), [10, 80, 10], 4), 10000) && (await filter()) === "none", [await styledBg(), await filter()])
+check("a styled site's styled page opens", await open(`${STYLED}editor`))
+check("… shows its style alone, no dark pages", await until(async () => near(await styledBg(), [10, 80, 10], 4) && (await filter()) === "none", 10000), [await styledBg(), await filter()])
 await styledBg("styled")
+check("its page the style leaves light opens", await open(STYLED))
+check("… darkened in the theme's colours", await until(async () => near(await styledBg(), GRUVBOX) && (await filter()) !== "none", 10000), [await styledBg(), await filter()])
+await inPage("window.__styledKept = 1")
+fs.writeFileSync(STYLE, "body { background: rgb(10, 80, 10) }\n")
+check("… a style now making it dark: its style alone, no reload", await until(async () => near(await styledBg(), [10, 80, 10], 4) && (await filter()) === "none", 10000)
+  && (await inPage("window.__styledKept ?? 0")) === 1, [await styledBg(), await filter()])
+fs.writeFileSync(STYLE, EDITOR_ONLY)
+check("… light again as the style goes: darkened again", await until(async () => near(await styledBg(), GRUVBOX) && (await filter()) !== "none", 10000), [await styledBg(), await filter()])
 
 // ---------- no white first frame: a site slow to send its body ----------
 const frames = []

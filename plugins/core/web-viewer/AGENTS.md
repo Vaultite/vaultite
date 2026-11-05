@@ -195,19 +195,21 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   light, dark, the colour scheme and fonts: `--vault-background`, `--vault-foreground`, `--vault-card`, `--vault-popover`,
   `--vault-muted`, `--vault-muted-foreground`, `--vault-primary`, `--vault-accent`, `--vault-border` and the app's other
   colours, `--vault-font-ui`, `--vault-font-text`, `--vault-font-code`, `--vault-radius`, `--vault-color-scheme` (light
-  or dark). Use them, not colours of your own, so a site follows the vault; on a site with its own colour tokens (YouTube's),
+  or dark), `--vault-paper-filter` (dark: a canvas' white paper onto the card, black text the foreground; light: none). Use them, not colours of your own, so a site follows the vault; on a site with its own colour tokens (YouTube's),
   map those rather than restyling each part. The Shields menu has "Style for <site>" (the style the page gets: its host's
   own, docs.google.com.css, else its parent site's; off: setting `unstyled`) and "Edit its style…" ("Style this site…"
   for one without: its host's file from a template, opened beside the page); the palette's "Edit
   this site's style" too. Agents: `vau browser style [site]` (`--css`, `--remove`).
 - Dark pages (setting `darkPages`, on by default): while the app's look is dark, pages follow it from their first
-  frame, never white while they load. A site with a style of its own (above) has only its style. A site with a dark look
-  of its own (pages are told the user prefers dark) shows it as it is. The rest are made dark by Chromium's auto dark
-  mode and, in `darkPagesLook: theme` (the default), tinted onto the colour scheme's background and text (accents a
-  little toward them, pictures and video toned to match, canvases with the page: Google Docs too); `dark` is Chromium's
-  plain dark, pictures as they are. A page's Shields menu has "Dark pages for <host>" (off: setting `darkPagesOff`, its
-  subdomains too). The look changing (light, a colour scheme) applies to open pages at once; while it's light, pages are
-  as their sites make them.
+  frame, never white while they load. A page with a dark look of its own, by its site (pages are told the user prefers
+  dark) or by a style of the vault's for it (above), shows it as it is: each page is judged as it looks with its style,
+  again as a style arrives or changes, so a site styled only in part (docs.google.com.css: the editors) has its other
+  pages (sign-in, errors) darkened. The rest are made dark by Chromium's auto dark mode and, in `darkPagesLook: theme`
+  (the default), tinted onto the colour scheme's background and text (accents a little toward them, pictures and video
+  toned to match, canvases with the page); `dark` is Chromium's plain dark, pictures as they are. A style that darkens a
+  canvas itself uses `--vault-paper-filter`. A page's Shields menu has "Dark pages for <host>" (off: setting
+  `darkPagesOff`, its subdomains too). The look changing (light, a colour scheme) applies to open pages at once; while
+  it's light, pages are as their sites make them.
 - Extensions (Chrome's, on the Mac running the desktop app; installed per Mac, never in the vault, since each is code
   run on every site): "Extensions" (a command, or a page's … menu) lists them with a switch each,
   Options, Pin to the bar and Remove, and adds one from a Chrome Web Store link or id, from a folder or `.crx` file, or
