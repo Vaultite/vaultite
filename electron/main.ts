@@ -1462,7 +1462,8 @@ function restartToUpdate() {
     // (Windows: the installer runs silently and opens the app again, rather than showing its window)
     return void afterFlush(() => releases!.quitAndInstall(WIN, WIN))
   }
-  if (!install(true)) return
+  // (already installing: an earlier restart whose quit didn't go through, its install still waiting for this one)
+  if (!installing && !install(true)) return
   restarting(ready!.slice(0, 7))
   afterFlush(() => app.quit())
 }
@@ -1487,7 +1488,9 @@ function afterFlush(quit: () => void) {
 /** Web pages unloaded before quitting, as closing their tabs would (sites save their sign-ins then): once, by whichever
  *  quit comes first. */
 let unloaded = false
-const unloadOnce = () => (unloaded ? Promise.resolve() : unloadPages().finally(() => { unloaded = true }))
+const unloadOnce = () => (unloaded ? Promise.resolve()
+  // (bounded: a page that never says it's gone must not keep the app from quitting)
+  : Promise.race([unloadPages(), new Promise((done) => setTimeout(done, 5000))]).finally(() => { unloaded = true }))
 
 /** electron-updater, once a release build first checks. */
 let releases: AppUpdater | null = null

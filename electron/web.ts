@@ -1033,8 +1033,9 @@ function fromPlayer(p: Page, user = false) {
   const w = p.player
   if (!w) return
   p.player = undefined
+  // (none once the page is gone: `end` from its destroyed, where a throw would skip `unload`'s listener and hang a quit)
   const wc = p.view.webContents
-  if (!wc.isDestroyed()) {
+  if (wc && !wc.isDestroyed()) {
     wc.setBackgroundThrottling(!p.drawn)
     if (kit) void wc.executeJavaScriptInIsolatedWorld(1004, [{ code: kit.UNFILL }]).catch(() => {})
     if (p.fillCss) void wc.removeInsertedCSS(p.fillCss).catch(() => {})
