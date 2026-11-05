@@ -17,14 +17,15 @@ function lookVars() {
   return `:root { ${vars.filter(([, x]) => x).map(([k, x]) => `--vault-${k}: ${x};`).join(" ")} }`
 }
 
-/** The app's background as #rrggbb (its token may be oklch()), read through a canvas. */
-function background() {
+/** One of the app's colours as #rrggbb (its token may be oklch()), read through a canvas. */
+function colorOf(token: string, or: string) {
   const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })
   if (!ctx) return ""
-  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--background").trim() || "#fff"
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue(token).trim() || or
   ctx.fillRect(0, 0, 1, 1)
   return `#${[...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((x) => x.toString(16).padStart(2, "0")).join("")}`
 }
+const background = () => colorOf("--background", "#fff")
 
 /** The desktop app hears the app's background now and as the look changes: a new page shows it till it paints. */
 export function useLookBackground() {
@@ -93,6 +94,35 @@ export function useSiteStyles() {
   const on = styles.filter((s) => !off.includes(s.site)).map((s) => ({ site: s.site, css: winning(s.css) }))
   const key = JSON.stringify([vars, on])
   useEffect(() => { if (webPages?.engine) void tell(vars, on) }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** Whether a style has any rule: the template, all comments, styles nothing. */
+const hasRules = (css: string) => /[{}]/.test(css.replace(/\/\*[\s\S]*?\*\//g, ""))
+/** The app's look, as dark pages need it: whether it's dark, its background and foreground. */
+const darkLook = () => ({ dark: document.documentElement.classList.contains("dark"), bg: background(), fg: colorOf("--foreground", "#000") })
+
+/** The desktop app hears how pages follow the app's look while it's dark (index.tsx's Background): on (the setting, a
+ *  dark look), how, the theme's colours, the sites turned off and those a style of the vault's leaves alone. */
+export function useDarkPages() {
+  const all = useStore().store?.siteStyles ?? NONE
+  const s = settings.use()
+  const [look, setLook] = useState(darkLook)
+  useEffect(() => onLook(() => setLook(darkLook())), [])
+  const unstyled = s.unstyled ?? NONE
+  const styled = all.filter((x) => !unstyled.includes(x.site) && hasRules(x.css)).map((x) => x.site)
+  const choice = { on: look.dark && s.darkPages !== false, look: s.darkPagesLook === "dark" ? "dark" : "theme", bg: look.bg, fg: look.fg,
+    off: s.darkPagesOff ?? NONE, styled }
+  const key = JSON.stringify(choice)
+  useEffect(() => { void Promise.resolve(webPages?.engine?.("darkmode:set", choice)).catch(() => {}) }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** Whether dark pages apply now (the setting on, the look dark), and whether `style` (a site's) leaves them out. */
+export const darkPagesOn = (style?: SiteStyle) => settings.get().darkPages !== false && document.documentElement.classList.contains("dark")
+  && !(style && hasRules(style.css) && !(settings.get().unstyled ?? []).includes(style.site))
+/** Turn dark pages on or off for a site (kept in `darkPagesOff`; on, its parent sites too: they'd cover it). */
+export function setDark(site: string, on: boolean) {
+  const next = (settings.get().darkPagesOff ?? []).filter((x) => x !== site && !(on && site.endsWith(`.${x}`))).concat(on ? [] : [site])
+  void settings.set({ darkPagesOff: next.length ? next : null }).catch((e) => notifyError(e, "Couldn't change it"))
 }
 
 /** The style for a page's site (`site` as Shields name it: example.co.uk), the most specific one there is. */

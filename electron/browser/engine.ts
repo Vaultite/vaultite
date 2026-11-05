@@ -233,6 +233,20 @@ export const engineOpens = (url: string) => openers.some((fn) => { try { return 
 /** Every open page. */
 export const allPages = () => [...pages.values()]
 
+const canvases: ((id: number) => string | null)[] = []
+/** `fn` says the colour under page `id` once it painted, what shows where the page paints nothing (null: no say). */
+export const canvasFrom = (fn: (id: number) => string | null) => { canvases.push(fn) }
+/** Page `id`'s canvas: a feature's, else white, what the web's pages expect. */
+export const canvasOf = (id: number) => {
+  for (const fn of canvases) { const c = fn(id); if (c) return c }
+  return "#ffffff"
+}
+let recanvas: (id: number) => void = () => {}
+/** How a painted page takes its canvas again (web.ts hands it). */
+export const setCanvasHandler = (fn: (id: number) => void) => { recanvas = fn }
+/** What a feature says of page `id`'s canvas changed. */
+export const canvasChanged = (id: number) => recanvas(id)
+
 let agentActing: (id: number) => boolean = () => false
 /** Whether what page `id` opens now is an agent's doing (its own page, or one it's acting in), so it opens as that
  *  agent's page in the background, never the user's tab: agent.ts says. */

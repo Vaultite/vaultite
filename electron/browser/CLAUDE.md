@@ -36,6 +36,11 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   are split (`apart`), so a typo hides only itself.
 - Site styles (sitestyles.ts) are author CSS, which Chromium orders before the page's: they win only as !important in
   a layer (`vaultite-style`), which web-viewer's stylestate.ts `winning` makes them.
+- Dark pages (darkmode.ts) are per page over the DevTools protocol (prefers-color-scheme, auto dark mode; frames of
+  other sites are targets of their own, auto-attached), never `nativeTheme.themeSource` (the app's own light or dark
+  follows the system through it) nor `--blink-settings` (every page, at launch only). Their sheet never sets
+  `color-scheme: dark`: Chromium's auto dark skips what has it. A filter on `html` misses the canvas (the root's
+  background) and the top layer (dialogs, popovers, full screen), so the sheet colours those itself.
 - The element picker (picker-page.js) is an overlay in an isolated world, styled only through the CSSOM, so no CSP or
   Trusted Types refuse it.
 - Managed extensions (extpolicy.ts) are named only in a policy file on this Mac: nothing in the app, a vault or the

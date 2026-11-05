@@ -1,12 +1,12 @@
-// Shields in the Browser: a page's count of blocked requests and its menu (the parts hidden, the site's style). The
+// Shields in the Browser: a page's count of blocked requests and its menu (hidden parts, site style, dark pages). The
 // desktop app blocks (electron/browser/adblock.ts); the settings here are handed to it, and the rules the user hid by.
 import { useEffect, useState } from "react"
-import { EyeOff, FileText, MousePointerSquareDashed, Paintbrush, Settings2, Shield, ShieldOff } from "lucide-react"
+import { EyeOff, FileText, Moon, MousePointerSquareDashed, Paintbrush, Settings2, Shield, ShieldOff } from "lucide-react"
 import { cell, cn, getStore, menuBelow, notify, notifyError, numberText, op, openFile, openPluginSettings, useStore, webPages, type MenuItem } from "@vaultite"
 import { BLOCKED, onSite, PRESETS, type ElementRule } from "./elements"
-import type { SiteStyle } from "./sitestyles"
+import { siteName, type SiteStyle } from "./sitestyles"
 import { settings } from "./state"
-import { editStyle, setStyled, styleOf } from "./stylestate"
+import { darkPagesOn, editStyle, setDark, setStyled, styleOf } from "./stylestate"
 
 /** Requests blocked on each page (by its id), as the desktop app tells them. */
 const counts = cell(new Map<number, number>())
@@ -104,6 +104,15 @@ function styleItems(site: string, styles: SiteStyle[], unstyled: string[]): Menu
   ]
 }
 
+/** The Shields menu's dark pages switch for the page's host (docs.google.com: not every Google site), while they apply
+ *  (the look dark, no style of the vault's for it). */
+function darkItems(url: string, styles: SiteStyle[], off: string[]): MenuItem[] {
+  const host = siteName(url)
+  if (!host || !darkPagesOn(styleOf(styles, host))) return []
+  const on = !off.some((s) => host === s || host.endsWith(`.${s}`))
+  return [{ label: `Dark pages for ${host}`, icon: Moon, checked: on, run: () => setDark(host, !on) }]
+}
+
 type PageShields = { site: string; count: number }
 
 /** Shields, at the address's right: what was blocked on the page, and a menu to take them down for its site. */
@@ -144,6 +153,7 @@ export function ShieldsButton({ id, url, loading }: { id: number; url: string; l
     on ? { label: `Shields for ${site}`, icon: Shield, checked: up, run: () => void setDown(up) } : { label: "Shields", icon: Shield, checked: false, run: () => void turnOn() },
     ...hiddenItems(id, site, note, s.hide ?? []),
     ...styleItems(site, styles, s.unstyled ?? []),
+    ...darkItems(url, styles, s.darkPagesOff ?? []),
     { label: "Browser settings…", icon: Settings2, sep: true, run: () => openPluginSettings("web-viewer", "shields") },
   ]
   const Icon = up ? Shield : ShieldOff

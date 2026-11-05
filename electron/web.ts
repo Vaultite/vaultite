@@ -3,7 +3,7 @@
 import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
-import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, mayPicture, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
+import { allPages, canvasOf, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, mayPicture, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setCanvasHandler, setEngineHost, setOpener } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
 import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
@@ -332,14 +332,15 @@ async function otherApp(p: Page, to: string) {
  *  first paints rather than white, which flashed in a dark app while the site answered. */
 const looks = new WeakMap<AppWindow, string>()
 const lookOf = (win: AppWindow) => looks.get(win) ?? win.getBackgroundColor()
-/** Its site painted: white from now on, what the web's pages expect under what they leave unpainted. Not at commit:
- *  the page shows its colour from then till its first paint. */
+/** Its site painted: its canvas from now on (white, what the web's pages expect under what they leave unpainted, unless
+ *  the engine says otherwise). Not at commit: the page shows its colour from then till its first paint. */
 function painted(p: Page) {
   if (!p.fresh || p.view.webContents.isDestroyed()) return
   p.fresh = false
-  p.view.setBackgroundColor("#ffffff")
+  p.view.setBackgroundColor(canvasOf(p.id))
   sendState(p)
 }
+setCanvasHandler((id) => { const p = pages.get(id); if (p && !p.fresh && !p.view.webContents.isDestroyed()) p.view.setBackgroundColor(canvasOf(id)) })
 ipcMain.on("vaultite:web:painted", (e) => { const p = pageOf(e.sender); if (p && shows(e.sender.getURL())) painted(p) })
 // One of the browser's keys a page left alone (BROWSER_KEYS), or the mouse's back or forward button in it: the app's,
 // as its other shortcuts are (Back walks the page's history first, then the tab's).
@@ -510,7 +511,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   wc.on("did-stop-loading", changed)
   wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.paused = false; p.typed.clear(); noteVisit(profile, to); if (!p.agent && !pageHeld(p.id)) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
   wc.on("found-in-page", (_e, r) => tell(p.win, { type: "found", id: p.id, request: r.requestId, active: r.activeMatchOrdinal, matches: r.matches, final: r.finalUpdate }))
-  // (loaded and still not told it painted, a page with no paint timing (an extension's): white a moment later)
+  // (loaded and still not told it painted, a page with no paint timing (an extension's): its canvas a moment later)
   wc.on("did-finish-load", () => {
     if (p.fresh && shows(wc.getURL())) setTimeout(() => painted(p), 1000).unref()
     if (p.status !== undefined && p.status >= 400) void emptyError(p, p.status)

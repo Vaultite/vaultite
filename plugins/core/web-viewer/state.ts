@@ -25,6 +25,12 @@ export type Settings = {
   hide?: string[]
   /** Sites whose style (sitestyles.ts) is off: shown as the site makes them. */
   unstyled?: string[]
+  /** Whether pages follow the app's look while it's dark (the default; stylestate.ts useDarkPages), and how: "theme"
+   *  (the default: in the theme's colours) or "dark" (Chromium's plain dark). */
+  darkPages?: boolean
+  darkPagesLook?: "theme" | "dark"
+  /** Sites dark pages leave as they are ("example.com"). */
+  darkPagesOff?: string[]
   /** Whether a page opened as a player goes full screen, on a Space of its own (the default), or is a window. */
   playerFullScreen?: boolean
   /** The bar above each page: "shown" (the default), or "hidden" till the pointer reaches the page's top (WebPage.tsx). */

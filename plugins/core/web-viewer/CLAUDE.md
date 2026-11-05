@@ -3,9 +3,10 @@
 - Desktop only: a `view:web/<url>` tab is an Electron WebContentsView over the pane (`electron/web.ts`), a session per
   profile, http(s) and installed extensions' own pages (chrome-extension://) only. Its preloads are the engine's
   (electron/browser/), registered on its session, and web.ts's web-preload.cjs, which only tells its first paint.
-- A new page shows the app's background (`web:look`) till its site first paints, then white, the web's default canvas
-  (which a view's colour also is: kept dark, unstyled sites go dark). Not white at commit: nothing holds the old frame
-  till the first paint, so that flashed. Not a hidden page till it paints either: a hidden or off-window view never paints.
+- A new page shows the app's background (`web:look`) till its site first paints, then its canvas (engine.ts
+  `canvasOf`): white, the web's default (which a view's colour also is: kept dark, unstyled sites go dark), unless dark
+  pages darken it (the theme's background). Not white at commit: nothing holds the old frame till the first paint, so
+  that flashed. Not a hidden page till it paints either: a hidden or off-window view never paints.
 - It's native, a view above the window's own page: while anything covers it, the window's page goes over it
   (`layers.ts`, electron/appwindow.ts), see-through behind it (only backgrounds are cut), so the page stays live. Only a
   popup (a menu, a dialog) or a drag takes every click over the page; anything else (the mini player, a sidebar

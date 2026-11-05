@@ -19,7 +19,7 @@ import { focusedPage, focusedPageId, keptTitles, linksInViewer, loadingIn, onScr
 import { agentPage, agentPageOfTab, agentPages, openAsTab, pauseAgents, setAgentPages, working, type AgentPage } from "./agentpages"
 import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
-import { editStyle, useLookBackground, useSiteStyles } from "./stylestate"
+import { editStyle, useDarkPages, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
 import { muteItem, pauseItems, pauseSound, watchSoundMarks } from "./soundmarks"
 import { SoundCard, watchSoundCard } from "./SoundCard"
@@ -151,6 +151,7 @@ function Background() {
   useEffect(watchShields, [])
   useHiddenParts()
   useSiteStyles()
+  useDarkPages()
   useLookBackground()
   // (the browsers there are to import from: their commands show)
   useEffect(() => { if (webPages?.engine) void findBrowsers() }, [])
