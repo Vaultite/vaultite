@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The menu bar's stone has all its facets**: a line from each corner of its face, as in the app's icon, each cut
+  clean to the edge.
 - **Mission Control leaves out the companion's screen layer**: the see-through window its cursor is drawn in, its
   conversation and a dragged card's ghost no longer show as Vaultite windows there.
 - **Drag the tab you're on to its own edge to split it off**: dropped on a side of its page (from the tab bar or the
