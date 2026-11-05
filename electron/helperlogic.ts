@@ -38,10 +38,12 @@ export type Point = { x: number; y: number }
  *  dictation pill, by its display's bottom centre (`display`: the one; else the pointer's). */
 export type Scene = {
   agents: ScreenAgent[]
-  idle: { name: string; tint: string; sx: number; sy: number; docked: boolean; from?: Point; leaving?: boolean } | null
+  idle: { name: string; tint: string; sx: number; sy: number; docked: boolean; from?: Point; leaving?: boolean
+    /** Docked: on which edge, and whether it said something not seen yet. */
+    side?: Dock["side"]; unread?: boolean } | null
   pill: { level: number; text: string; ready: boolean; display?: number } | null
 }
-type Display = { id: number; bounds: Rect }
+type Display = { id: number; bounds: Rect; workArea?: Rect }
 const inside = (d: Display, x: number, y: number) => x >= d.bounds.x && x < d.bounds.x + d.bounds.width && y >= d.bounds.y && y < d.bounds.y + d.bounds.height
 /** What one display shows, in its own coordinates: a cursor on its way from or to it too. */
 export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
@@ -52,6 +54,8 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
   const pillHere = !!s.pill && (s.pill.display !== undefined && all.some((x) => x.id === s.pill!.display) ? s.pill.display === d.id : on(pointer.x, pointer.y))
   return {
     width: d.bounds.width, height: d.bounds.height,
+    // (the menu bar's height: a bubble that wouldn't fit above its cursor under it opens below)
+    top: d.workArea ? Math.max(0, d.workArea.y - d.bounds.y) : 0,
     agents: s.agents.filter(here).map(local),
     idle: s.idle && here(s.idle) ? local(s.idle) : null,
     pill: pillHere ? s.pill : null,
@@ -66,3 +70,43 @@ export function splitScene(s: DisplayScene) {
   const at = { agents: Object.fromEntries(s.agents.map((a) => [a.name, [a.sx, a.sy]])), idle: s.idle ? [s.idle.sx, s.idle.sy] : null }
   return { shape, at }
 }
+
+/** Where the companion waits outside the app: an edge of the screen, and how far down it (0 the top, 1 the bottom of
+ *  the space windows get). The user's to move: dragged to an edge, it stays there. */
+export type Dock = { side: "left" | "right"; at: number }
+export const DOCK: Dock = { side: "right", at: 1 / 3 }
+/** How near an edge a drop docks (points): the menu bar's and the Dock's edges are for pointing at what's there. */
+const EDGE = 36
+const INSET = 14
+/** A drop at `p` on a display (its bounds, the space windows get): the dock there, by its left or right edge; else null. */
+export function dockAt(bounds: Rect, area: Rect, p: Point): Dock | null {
+  const side = p.x <= bounds.x + EDGE ? "left" : p.x >= bounds.x + bounds.width - EDGE ? "right" : null
+  if (!side || p.y < area.y || p.y > area.y + area.height) return null
+  return { side, at: Math.round(Math.max(0, Math.min(1, (p.y - area.y) / Math.max(1, area.height))) * 1000) / 1000 }
+}
+/** Where the docked companion sits on a display: by its edge, inset a little, kept clear of the space's ends. */
+export function dockPoint(area: Rect, d: Dock): Point {
+  const y = area.y + Math.max(INSET * 2, Math.min(area.height - INSET * 2, Math.round(area.height * d.at)))
+  return { x: d.side === "left" ? area.x + INSET : area.x + area.width - INSET, y }
+}
+/** A dock as saved (vaults.json), or the default. */
+export function dockOf(x: unknown): Dock {
+  const d = x as Partial<Dock> | null | undefined
+  return d && (d.side === "left" || d.side === "right") && typeof d.at === "number" && d.at >= 0 && d.at <= 1 ? { side: d.side, at: d.at } : DOCK
+}
+
+/** Where a cursor's conversation opens (its top left, points) for a cursor at `p`: to its right and below its flag
+ *  where there's room, else to the left or above, always inside the space windows get. */
+export function panelAt(p: Point, size: { width: number; height: number }, area: Rect): Point {
+  const right = p.x + size.width - 6 <= area.x + area.width - 8
+  const x = right ? p.x - 6 : p.x + 26 - size.width
+  const below = p.y + 42 + size.height <= area.y + area.height - 8
+  const y = below ? p.y + 36 : p.y - 6 - size.height
+  return { x: Math.round(Math.max(area.x + 8, Math.min(area.x + area.width - 8 - size.width, x))), y: Math.round(Math.max(area.y + 8, Math.min(area.y + area.height - 8 - size.height, y))) }
+}
+
+/** A point kept inside a window as it moves: where in it (from its top left) the user left a cursor. */
+export const offsetIn = (frame: Rect, p: Point) => ({ dx: Math.round(p.x - frame.x), dy: Math.round(p.y - frame.y) })
+/** That point now, the window at `frame`; one left past its size (it shrank) stays inside it. */
+export const atOffset = (frame: Rect, o: { dx: number; dy: number }) =>
+  ({ x: frame.x + Math.max(8, Math.min(frame.width - 8, o.dx)), y: frame.y + Math.max(8, Math.min(frame.height - 8, o.dy)) })

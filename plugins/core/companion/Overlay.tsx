@@ -8,6 +8,7 @@ import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { uiElement } from "./panes"
 import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, pointAtPane, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { Chat } from "./Chat"
 import { presence, STATUS } from "./look"
 import { agentMenu } from "./session"
 import { changeAt, nearest } from "./text"
@@ -277,9 +278,7 @@ function SayActions({ n, small }: { n: Note; small?: boolean }) {
 function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boolean; close: () => void; menu: (e: React.MouseEvent) => void }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [draft, setDraft] = useState("")
-  const list = useRef<HTMLDivElement>(null)
   const mine = s.said.filter((n) => n.agent === a.name)
-  useLayoutEffect(() => { list.current?.scrollTo({ top: list.current.scrollHeight }) }, [mine.length])
   // (its history open: all of it seen)
   useEffect(() => { sawSays(mine.map((n) => n.id)) }, [mine.length])
   const send = () => {
@@ -290,35 +289,9 @@ function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boo
     close()
   }
   return (
-    <div data-companion-popover={a.name} className={cn("companion-pop pointer-events-auto absolute flex w-[300px] max-w-[calc(100vw-8px)] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg", up ? "bottom-[26px]" : "top-[42px]")}
-      style={{ left, boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tintOf(a.name)} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)` }}>
-      <div className="flex items-center gap-1 pt-1 pr-1 pl-3">
-        <div data-companion-how className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-muted-foreground">{howText(a)}</div>
-        <button type="button" aria-label={`More for ${a.name}`} data-tip="More" className="grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-9"
-          onClick={(e) => { close(); menu(e) }}><Ellipsis className="size-3.5 max-sm:size-4.5" /></button>
-      </div>
-      {mine.length > 0 && (
-        <div ref={list} className="edge-fade-y max-h-[280px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:none] max-sm:max-h-[45vh] [&::-webkit-scrollbar]:hidden">
-          {mine.map((n) => n.kind === "ask" ? (
-            // (what the user asked it: theirs, on the right, as in any conversation)
-            <div key={n.id} data-asked={n.id} className="flex justify-end pb-2 pl-8">
-              <div className="min-w-0 rounded-[10px] rounded-br-[4px] bg-foreground/[0.07] px-2.5 py-1.5 break-words whitespace-pre-wrap">{n.text}</div>
-            </div>
-          ) : (
-            <div key={n.id} data-said={n.id} data-question={n.question || undefined} className="group flex items-start gap-0.5 pb-2">
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] text-muted-foreground">{fmtTime(new Date(n.t).toISOString())}</div>
-                <Markdown text={n.text ?? ""} className="companion-md" />
-              </div>
-              <div className="mt-2 flex shrink-0"><SayActions n={n} /></div>
-            </div>
-          ))}
-        </div>
-      )}
-      <input autoFocus={!coarse.matches} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`Ask ${a.name}`} enterKeyHint="send"
-        onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send() } else if (e.key === "Escape") { e.preventDefault(); close() } }}
-        className={cn("h-9 w-full bg-transparent px-3 text-[13.5px] outline-none max-sm:h-11 max-sm:text-[17px]", mine.length > 0 && "border-t border-border/60")} />
-    </div>
+    <Chat name={a.name} tint={tintOf(a.name)} how={howText(a)} items={mine} draft={draft} setDraft={setDraft} send={send} close={close} more={(e) => { close(); menu(e) }}
+      words={(n) => <Markdown text={n.text ?? ""} className="companion-md" />} time={(t) => fmtTime(new Date(t).toISOString())} actions={(n) => <SayActions n={n as Note} />}
+      focus={!coarse.matches} className={cn("pointer-events-auto absolute", up ? "bottom-[26px]" : "top-[42px]")} style={{ left }} />
   )
 }
 

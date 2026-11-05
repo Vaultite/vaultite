@@ -800,6 +800,8 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     // (a bubble over the screen clicked away)
     if (m.t === "hide" && typeof m.id === "string") return void hide(m.id)
     if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
+    // (a cursor's conversation opened over the screen: its says seen)
+    if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
     if (m.t !== "moment" || !["ask", "point", "edit"].includes(String(m.kind))) return
     const place = screenPlace(m)
     // (a point where nothing can be read, as the menu bar: still there, with its picture)

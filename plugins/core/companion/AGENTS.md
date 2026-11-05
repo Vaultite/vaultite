@@ -85,5 +85,7 @@ above that), act, run it again, and never end your turn.
 - On screen (the Mac's menu-bar helper): an ask or a point can be about another app's window (`app`, `window`, its
   title, what it says, its picture: read the PNG), or, where there's none (the desktop, the menu bar), what was under
   their pointer, if Accessibility reads anything there, and a picture of the screen around it (`sx`, `sy`: that point);
-  a window the user dropped your cursor on comes back as edits as it changes. A double click on your cursor there (or
-  Come back in its right-click menu) calls it back to their note: nothing to answer. Point there with `companion say --app <bundle> --find <text>`, or `--sx --sy`; `vau docs screen`.
+  a window the user dropped your cursor on comes back as edits as it changes, and your cursor stays on the spot they
+  dropped it (`under`: what's there, in words, as a Gmail row: that's what they point at). A click on your cursor there
+  opens your conversation with a box: what they type (or say into it) is an ask about where your cursor is, or, docked,
+  the window in front. A double click (or Come back in its right-click menu) calls it back to their note: nothing to answer. Point there with `companion say --app <bundle> --find <text>`, or `--sx --sy`; `vau docs screen`.

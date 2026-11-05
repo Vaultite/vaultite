@@ -1,5 +1,5 @@
 // What an agent's cursor shows, from what it's doing: one rule for every state, so none hides behind a hover. Node-free.
-import type { Agent } from "./live.ts"
+import type { Agent, Harness, How } from "./live.ts"
 
 /** Its flag's mark: dots while it works on something (or has words waiting), a wave while it listens, a tick when it let
  *  a moment pass. */
@@ -36,3 +36,13 @@ export function presence(a: Pick<Agent, "state" | "asks" | "seen" | "why">, o: {
     dim: s === "watching" && !o.bubble && !o.held && !o.typed && !a.asks && o.age >= 2 && !o.looked,
   }
 }
+
+/** What a session runs, in words (Claude Code · Opus · high), by the coding agents that can run: the cursor's header,
+ *  in the window and over the screen. */
+export function howWith(h: Partial<How> & { runs?: string }, harnesses: Harness[]) {
+  const id = (h.agent ?? h.runs ?? "").split("_")[0], harness = harnesses.find((x) => x.id === id)
+  const model = h.model && (harness?.models.find((m) => m.id === h.model)?.label ?? capitalize(h.model))
+  return [harness?.name ?? (id && capitalize(id)), model, h.effort && effortName(h.effort)].filter(Boolean).join(" · ")
+}
+export const effortName = (e: string) => (e === "xhigh" ? "extra high" : e)
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)

@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion over the screen works as in the app**: click its cursor (or its dot at the screen's edge) for its
+  conversation, its last words and what you asked, with a box to type an ask or say one into; drop it on a window and it
+  stays on that spot (an email's row), not the window's top, moving with the window; its bubbles open below it where
+  there's no room above, never under the menu bar; drag its dot to the left or right edge, anywhere along it, and it
+  waits there from then on. The menu bar's icon is Vaultite's stone.
 - **The companion's cursor over the screen can go anywhere and come back**: dropped where nothing can be read, as the
   menu bar, it stays there and looks at a picture of it instead of jumping back; double-click it, or right-click it for
   Come back (and Quiet or Pair), to have it wait by your pointer or at the edge again.

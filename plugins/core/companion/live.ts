@@ -1,6 +1,7 @@
 // The companion as this window knows it: the server's agents and notes (/api/companion/live), the editors showing
 // files, and what the user does in them, said back. No CodeMirror here: the editor is its own chunk (editor.ts).
 import type { EditorView } from "@codemirror/view"
+import { howWith } from "./look.ts"
 import { profileOf } from "./profiles.ts"
 import type { Change, Hunk } from "./text.ts"
 
@@ -351,12 +352,7 @@ export const mentionNames = () => (share ? [] : [...new Set(["companion", "claud
 /** What a new agent called `name` runs: its profile's (its name's first part), else the default. */
 export const howOf = (name: string): How => profileOf(name, state.profiles) ?? state.fresh
 /** What a session runs, as the user reads it: "Claude Code · Opus · high", "Codex · GPT-6.1 Sol · medium". */
-export function howText(h: Partial<How> & { runs?: string }) {
-  const id = (h.agent ?? h.runs ?? "").split("_")[0], harness = state.harnesses.find((x) => x.id === id)
-  const model = h.model && (harness?.models.find((m) => m.id === h.model)?.label ?? capitalize(h.model))
-  return [harness?.name ?? (id && capitalize(id)), model, h.effort && effortName(h.effort)].filter(Boolean).join(" · ")
-}
-export const effortName = (e: string) => (e === "xhigh" ? "extra high" : e)
+export const howText = (h: Partial<How> & { runs?: string }) => howWith(h, state.harnesses)
 /** A new agent's name as typed after @, as its agent calls itself when it's one (opencode: OpenCode). */
 export const nameAs = (name: string) => state.harnesses.find((x) => x.id === name.toLowerCase())?.name ?? capitalize(name)
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)

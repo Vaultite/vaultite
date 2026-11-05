@@ -1,27 +1,33 @@
-// The companion over the whole screen (electron/overlay.ts, a window a display): cursors in other apps, their bubbles, the
-// companion waiting, the dictation pill. The pointer goes through but over them: a cursor dragged onto a window points.
-import { StrictMode, useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
+// The companion over the screen (electron/overlay.ts): cursors in other apps, bubbles, the companion waiting, the pill; a
+// cursor dragged onto a window points, one clicked opens its conversation (#panel: a window that takes the keyboard).
+import { StrictMode, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createRoot } from "react-dom/client"
-import { Check } from "lucide-react"
+import { Check, Mic } from "lucide-react"
+import { Marked } from "marked"
 import "./index.css"
 import { makePill } from "@/core/pill"
 import { snippet } from "@/core/plaintext"
+import { sanitizeHtml } from "@/core/sanitize"
+import { joinText } from "../../core/dictationtext"
 import { CURSOR_SPRING, glide, stiffness, type Glide } from "@/core/spring"
 import { cn, followSystemTheme } from "@/lib/utils"
 // (what its flag shows, by the window's own rule: the two draw one cursor)
 import { presence, type Mark as MarkKind } from "../../plugins/core/companion/look"
+import { Chat, type ChatItem } from "../../plugins/core/companion/Chat"
 
 type Point = { x: number; y: number }
 type Say = { id: string; text: string; question?: boolean }
 type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; say?: Say }
-type Idle = { name: string; tint: string; sx: number; sy: number; docked: boolean; from?: Point; leaving?: boolean }
-type Shown = { width: number; height: number; agents: Agent[]; idle: Idle | null
+type Idle = { name: string; tint: string; sx: number; sy: number; docked: boolean; from?: Point; leaving?: boolean; side?: "left" | "right"; unread?: boolean }
+type Shown = { width: number; height: number; top: number; agents: Agent[]; idle: Idle | null
   pill: { level: number; text: string; ready: boolean } | null }
 /** Only the places changed (helperlogic.ts splitScene). */
 type At = { agents: Record<string, [number, number]>; idle: [number, number] | null }
+type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; words?: { text: string; listening: boolean; done?: boolean; id?: number } }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
-  drop: (name: string, x: number, y: number) => void; home: (name: string) => void; menu: (name: string, x: number, y: number) => void
-  dismiss: (id: string) => void; stop: () => void }
+  drop: (name: string, x: number, y: number) => void; open: (name: string, x: number, y: number) => void; home: (name: string) => void
+  menu: (name: string, x: number, y: number) => void; stop: () => void
+  panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: () => void; mic: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
 followSystemTheme()
@@ -79,14 +85,22 @@ function attach(key: string, paint: Paint) {
     if (el) paint(el, m.held?.x ?? m.g.x, m.held?.y ?? m.g.y)
   }
 }
-// (the arrow's tip at the point; what opens beside it opens toward the room, as in the window)
+// (the arrow's tip at the point; what opens beside it opens toward the room, as in the window: its bubble above it, or
+// below its flag where the menu bar or the screen's top leaves no room)
 const paintCursor: Paint = (el, x, y) => {
   el.style.transform = `translate(${x - 3}px, ${y - 2}px)`
-  const right = x > innerWidth - 320 && x > innerWidth / 2
+  const right = x > innerWidth - 320 && x > innerWidth / 2, low = y + 44 > innerHeight - 8
   el.toggleAttribute("data-right", right)
   el.toggleAttribute("data-flag-right", x > innerWidth - 140)
-  el.toggleAttribute("data-low", y + 44 > innerHeight - 8)
+  el.toggleAttribute("data-low", low)
+  const bubble = el.querySelector<HTMLElement>("[data-bubble-text]")?.parentElement
+  el.toggleAttribute("data-high", !!bubble && !low && y + 16 - bubble.offsetHeight < (view.s?.top ?? 0) + 6)
   el.style.setProperty("--room", `${Math.round(right ? x - 30 : innerWidth - x - 34)}px`)
+}
+/** Its element painted again where it is (its bubble came or changed: which way it opens). */
+function repaint(key: string) {
+  const m = movers.get(key)
+  if (m?.el) m.paint(m.el, m.held?.x ?? m.g.x, m.held?.y ?? m.g.y)
 }
 const paintDot: Paint = (el, x, y) => { el.style.transform = `translate(${x - 10}px, ${y - 10}px)` }
 const paintTrail: Paint = (el, x, y) => { el.style.transform = `translate(${x}px, ${y}px) scale(0.7)` }
@@ -140,12 +154,17 @@ function Arrow({ tint }: { tint: string }) {
 }
 
 /** A click on a cursor, to tell a double one (a call back) by the time from the last. */
-let clicked = { key: "", at: 0 }
-const DOUBLE_MS = 400
+let clicked = { key: "", at: 0 }, opening: ReturnType<typeof setTimeout> | undefined
+const DOUBLE_MS = 300
+/** Its conversation, by where it is now. */
+function open(name: string, key: string) {
+  const m = movers.get(key)
+  if (m) api?.open(name, Math.round(m.g.x), Math.round(m.g.y))
+}
 
 /** A cursor or the waiting dot: dragged, it's at the pointer (its spring let go); dropped, it tells where and stays there.
  *  Double-clicked, it's called back; right-clicked, its menu. */
-function useDrag(name: string, key: string) {
+function useDrag(name: string, key: string, opensAtOnce = false) {
   const [dragging, setDragging] = useState(false)
   const down = (e: React.PointerEvent<HTMLElement>) => {
     if (e.button === 2) { e.preventDefault(); api?.menu(name, e.clientX, e.clientY); return }
@@ -170,11 +189,14 @@ function useDrag(name: string, key: string) {
         if (m) { Object.assign(m, { g: { x: ev.clientX, y: ev.clientY, vx: 0, vy: 0 }, left: { until: performance.now() + 1500, tx: m.tx, ty: m.ty } }); setTimeout(kick, 1550) }
         api?.drop(name, ev.clientX, ev.clientY)
         clicked = { key: "", at: 0 }
-      } else {
+      } else if (!opensAtOnce) {
+        // (once: its conversation, once a second click is no longer coming; twice: called back)
         const now = performance.now(), twice = clicked.key === key && now - clicked.at < DOUBLE_MS
+        clearTimeout(opening)
         clicked = twice ? { key: "", at: 0 } : { key, at: now }
         if (twice) api?.home(name)
-      }
+        else opening = setTimeout(() => open(name, key), DOUBLE_MS)
+      } else open(name, key)
       kick()
     }
     el.addEventListener("pointermove", move)
@@ -222,6 +244,7 @@ function Cursor({ a, gone }: { a: Agent; gone?: boolean }) {
   const tint = `var(--${a.tint})`, key = `agent:${a.name}`, { dragging, down } = useDrag(a.name, key)
   const [hover, setHover] = useState(false), age = useAge(a.t)
   const shown = presence({ state: a.state as Parameters<typeof presence>[0]["state"], seen: a.seen, why: a.why }, { bubble: !!a.say, age, looked: hover || dragging })
+  useLayoutEffect(() => repaint(key), [key, a.say?.id, a.say?.text])
   return (
     <div ref={attach(key, paintCursor)} data-gone={gone || a.leaving || undefined} data-leaving={a.leaving || undefined}
       className={cn("screen-in group fixed top-0 left-0 transition-opacity duration-300 data-gone:pointer-events-none data-gone:opacity-0 data-leaving:delay-150", shown.dim && "opacity-55")}>
@@ -235,29 +258,38 @@ function Cursor({ a, gone }: { a: Agent; gone?: boolean }) {
         {shown.why && <span className="max-w-[220px] truncate font-medium opacity-90">{shown.why}</span>}
       </Hold>
       {a.say && (
-        <Hold onPointerDown={() => api?.dismiss(a.say!.id)}
-          className={cn("companion-pop absolute bottom-[2px] left-[24px] flex w-max cursor-default flex-col rounded-[12px] rounded-tl-[4px] border border-border/60 px-3 py-1.5 text-[13.5px] leading-snug text-foreground shadow-lg",
+        <Hold onPointerDown={(e) => { if (e.button === 0) open(a.name, key) }}
+          className={cn("companion-pop absolute bottom-[2px] left-[24px] flex w-max cursor-pointer flex-col rounded-[12px] rounded-tl-[4px] border border-border/60 px-3 py-1.5 text-[13.5px] leading-snug text-foreground shadow-lg",
             "group-data-[right]:right-[22px] group-data-[right]:left-auto group-data-[right]:rounded-tl-[12px] group-data-[right]:rounded-tr-[4px] group-data-[low]:bottom-[22px]",
+            "group-data-[high]:top-[40px] group-data-[high]:bottom-auto",
             a.say.question ? "bg-[color-mix(in_srgb,var(--c)_9%,var(--background))]" : "bg-background")}
           style={{ "--c": tint, maxWidth: "clamp(200px, var(--room, 320px), 320px)",
             boxShadow: `0 0 0 ${a.say.question ? 2 : 1.5}px color-mix(in srgb, ${tint} ${a.say.question ? 70 : 45}%, transparent), 0 8px 24px rgba(0,0,0,.12)` } as React.CSSProperties}>
-          <span className="line-clamp-[12]">{snippet(a.say.text)}</span>
+          <span data-bubble-text className="line-clamp-[12]">{snippet(a.say.text)}</span>
         </Hold>
       )}
     </div>
   )
 }
 
-/** The companion waiting: a dot at the screen's edge, or by the pointer (which it never takes: it's under it). */
+/** The companion waiting: a dot at the screen's edge (where the user docked it: dragged to an edge, it stays there), or by
+ *  the pointer (which it never takes: it's under it). Hovered, its name; clicked, its conversation; dragged out, it points. */
 function Waiting({ i, gone }: { i: Idle; gone?: boolean }) {
-  const tint = `var(--${i.tint})`, { dragging, down } = useDrag(i.name, "idle")
+  const tint = `var(--${i.tint})`, { dragging, down } = useDrag(i.name, "idle", true), [hover, setHover] = useState(false)
   const fade = "screen-in transition-opacity duration-300 data-gone:pointer-events-none data-gone:opacity-0 data-leaving:delay-150", off = gone || i.leaving || undefined
   if (!i.docked && !dragging) return <div ref={attach("idle", paintTrail)} data-gone={off} data-leaving={i.leaving || undefined} className={`pointer-events-none fixed top-0 left-0 origin-top-left opacity-80 ${fade}`}><Arrow tint={tint} /></div>
   return (
-    <div ref={attach("idle", dragging ? paintCursor : paintDot)} data-gone={off} data-leaving={i.leaving || undefined} className={`fixed top-0 left-0 ${fade}`}>
-      <Hold className="grid size-5 cursor-grab place-items-center" onPointerDown={down}>
-        {dragging ? <Arrow tint={tint} /> : <span className="size-3 rounded-full shadow-[0_0_0_2px_white,0_1px_4px_rgba(0,0,0,0.3)]" style={{ background: tint }} />}
+    <div ref={attach("idle", dragging ? paintCursor : paintDot)} data-gone={off} data-leaving={i.leaving || undefined} data-companion-dock={i.side} className={`fixed top-0 left-0 ${fade}`}>
+      <Hold className={cn("grid size-5 place-items-center", dragging ? "cursor-grabbing" : "cursor-pointer")} onPointerDown={down} onHover={setHover}>
+        {dragging ? <Arrow tint={tint} /> : <span data-unread={i.unread || undefined} className={cn("size-3 rounded-full shadow-[0_0_0_2px_white,0_1px_4px_rgba(0,0,0,0.3)] transition-transform duration-150", hover && "scale-125", i.unread && "companion-unread")}
+          style={{ background: tint, "--c": tint } as React.CSSProperties} />}
       </Hold>
+      {hover && !dragging && (
+        <span className={cn("companion-pop pointer-events-none absolute top-[1px] flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm",
+          i.side === "left" ? "left-[26px]" : "right-[26px]")} style={{ background: tint }}>
+          {i.name}{i.unread && <span className="font-medium opacity-85">new</span>}
+        </span>
+      )}
     </div>
   )
 }
@@ -273,6 +305,59 @@ function Pill({ p }: { p: NonNullable<Shown["pill"]> }) {
     return () => { cancelAnimationFrame(raf); pill.el.remove() }
   }, [])
   return <Hold className="fixed bottom-14 left-1/2 -translate-x-1/2 cursor-default" onPointerDown={() => api?.stop()}><div ref={box} /></Hold>
+}
+
+// ---------- a cursor's conversation (#panel): the window's own look (Chat.tsx), in a window that takes the keyboard
+
+const marked = new Marked({ gfm: true, breaks: true })
+// (its words as Markdown, made safe; links open in the browser: overlay.ts)
+const linkAttrs = (href: string) => (/^https?:/i.test(href) ? ` href="${href.replace(/"/g, "&quot;")}" target="_blank" rel="noreferrer"` : null)
+const html = (text: string) => sanitizeHtml(marked.parse(text, { async: false }) as string, { link: linkAttrs, image: () => null })
+const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" })
+
+function Panel() {
+  const [d, setD] = useState<PanelData | null>(null)
+  const [draft, setDraft] = useState("")
+  const took = useRef(0), box = useRef<HTMLDivElement>(null)
+  useEffect(() => api?.panel.on((x) => {
+    setD(x)
+    // (words said into its box, once each)
+    const w = x.words
+    if (w?.done && w.id && w.id !== took.current) { took.current = w.id; setDraft((v) => (v + joinText(v, w.text)).trimStart()) }
+  }), [])
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") api?.panel.close() }
+    addEventListener("keydown", esc)
+    return () => removeEventListener("keydown", esc)
+  }, [])
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    const tell = () => api?.panel.size(el.offsetHeight)
+    tell()
+    const ro = new ResizeObserver(tell)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [d === null])
+  if (!d) return null
+  const listening = !!d.words?.listening, heard = listening ? d.words!.text : ""
+  const text = heard ? (draft + joinText(draft, heard)).trimStart() : draft
+  const tint = `var(--${d.tint})`
+  return (
+    <div ref={box} className="w-fit p-4">
+      <Chat name={d.name} tint={tint} how={d.how} items={d.items} draft={text} setDraft={listening ? () => {} : setDraft} focus
+        send={() => { if (text.trim()) api?.panel.send(text) }} close={() => api?.panel.close()} more={(e) => api?.panel.more(e.clientX, e.clientY)}
+        words={(n) => <div className="note-prose compact companion-md" dangerouslySetInnerHTML={{ __html: html(n.text ?? "") }} />}
+        time={(t) => TIME.format(t)}
+        tools={
+          <button type="button" aria-label={listening ? "Stop dictating" : "Dictate"} aria-pressed={listening} data-tip={listening ? "Stop" : "Dictate"}
+            className="mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground aria-pressed:text-white aria-pressed:hover:bg-[var(--c)]"
+            style={{ "--c": tint, ...(listening ? { background: tint } : {}) } as React.CSSProperties} onClick={() => api?.panel.mic()}>
+            {listening ? <span className="companion-wave" aria-hidden><i /><i /><i /></span> : <Mic className="size-4" />}
+          </button>
+        } />
+    </div>
+  )
 }
 
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
@@ -308,8 +393,10 @@ const STYLE = `
 @keyframes companion-seen { from { opacity: 0; scale: .4; } }
 .companion-pop { animation: companion-pop .28s cubic-bezier(.2,.9,.3,1.25); transform-origin: top left; }
 @keyframes companion-pop { from { opacity: 0; scale: .9; } }
-@media (prefers-reduced-motion: reduce) { .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
+.companion-unread { animation: companion-unread 2s ease-out infinite; }
+@keyframes companion-unread { 0% { box-shadow: 0 0 0 2px white, 0 0 0 2px var(--c); } 70%, 100% { box-shadow: 0 0 0 2px white, 0 0 0 9px transparent; } }
+@media (prefers-reduced-motion: reduce) { .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen, .companion-unread { animation: none !important; } }
 `
 document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE }))
 document.documentElement.style.background = "transparent"
-createRoot(document.getElementById("root")!).render(<StrictMode><Screen /></StrictMode>)
+createRoot(document.getElementById("root")!).render(<StrictMode>{location.hash === "#panel" ? <Panel /> : <Screen />}</StrictMode>)

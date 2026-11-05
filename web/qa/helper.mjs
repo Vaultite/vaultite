@@ -32,7 +32,7 @@ if (!engines?.apple) { await app.close(); await skip(`Apple's recognizer doesn't
 
 // ---------- fn with no field: dictation, the pill, then an ask about the app in front
 const frame = { x: 100, y: 120, width: 800, height: 600 }
-await helper((h, f) => { h.stub("focus", { field: false, bundle: "com.example.notes", name: "Example Notes", pid: 1, window: 0, title: "Draft" }); h.stub("window", { window: 9, bundle: "com.example.notes", name: "Example Notes", title: "Draft", frame: f }) }, frame)
+await helper((h, f) => { h.stub("focus", { field: false, bundle: "com.example.notes", name: "Example Notes", pid: 1, window: 9, title: "Draft", frame: f }); h.stub("window", { window: 9, bundle: "com.example.notes", name: "Example Notes", title: "Draft", frame: f }) }, frame)
 await wait(1500) // (its settings and the companion's socket, read as it starts)
 await helper((h) => h.heard({ event: "fn", down: true }))
 await wait(100)
@@ -46,7 +46,8 @@ check("the pill goes when it stops", await until(() => helper((h) => !h.scene()?
 
 // ---------- its cursor over the screen, at the window it was asked about
 const at = await until(() => helper((h) => h.scene()?.agents?.[0]), 10000, 200)
-check("the companion's cursor goes to that window, by its title bar", !!at && at.sx === frame.x + frame.width / 2 && at.sy === frame.y + 12, at)
+// (where the pointer was as they spoke if it was in that window, else by its title bar: the user's own pointer, so only inside it)
+check("the companion's cursor goes to that window", !!at && at.sx >= frame.x && at.sx <= frame.x + frame.width && at.sy >= frame.y && at.sy <= frame.y + frame.height, at)
 check("the overlay draws its cursor and name", !!overlay && await until(() => overlay.evaluate((n) => document.body.textContent.includes(n), at?.name ?? "?"), 5000))
 check("the overlay paints nothing else: it's see-through", !!overlay && await overlay.evaluate(() => getComputedStyle(document.documentElement).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(document.body).backgroundColor === "rgba(0, 0, 0, 0)"))
 

@@ -37,7 +37,9 @@
   VAULTITE_QUIET unless VAULTITE_HELPER=1. With it, a closed window's server is kept (`kept` in main.ts) and the Dock
   icon shows only while a window is open. Native parts: screen.swift (the dictation keys' tap, fields, other apps' text), dictation.
 - The overlay (overlay.ts) is BrowserWindows, never `AppWindow`s: those count as the app's windows (the Dock, menus).
-  `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock.
+  `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock. It never takes the keyboard: a
+  cursor's conversation is a window of its own (`type: "panel"`, non-activating), so typing there leaves the app in
+  front in front, and closing it gives that app its keyboard back.
 - Every window is an `AppWindow` (appwindow.ts): a BaseWindow whose page is a view, so it can go over the Browser's
   pages (web.ts `raise`); a BrowserWindow's own page is always under its views. Pop-outs are adopted into one.
 - A page's sized popup (a sign-in, a call's video) is a window of its own (popup.ts), never its opener window's child:

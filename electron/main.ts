@@ -1922,7 +1922,7 @@ app.whenReady().then(async () => {
     focusedPage: () => AppWindow.getFocusedWindow()?.webContents ?? null,
     event: (name, data) => { for (const w of [...wins.values(), ...kept.values()]) { const m = { type: "desktop:event", name, data }; if (w.server?.connected) w.server.send(m); else w.link?.send(m) } },
     prefs: () => helperPrefs, setPrefs: (x) => { helperPrefs = { ...helperPrefs, ...x }; save() },
-    icon: path.join(ROOT, "electron", "menu-icons", "vault.png"),
+    icon: path.join(ROOT, "electron", "tray", "stoneTemplate.png"),
   })
   // (a Mac's Info.plist and Linux's desktop file name the scheme; the installer can't on Windows)
   if (WIN && app.isPackaged && !app.isDefaultProtocolClient("vaultite")) app.setAsDefaultProtocolClient("vaultite")

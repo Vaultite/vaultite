@@ -81,7 +81,15 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { hunksOf, pointIn, prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
+    const { atOffset, dockAt, hunksOf, panelAt, pointIn, prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
+    const area = { x: 0, y: 25, width: 1600, height: 975 }, bounds = { x: 0, y: 0, width: 1600, height: 1000 }, size = { width: 300, height: 200 }
+    check("helper: a cursor's conversation opens to its right and below its flag, else toward the room, always on screen",
+      JSON.stringify(panelAt({ x: 100, y: 100 }, size, area)) === '{"x":94,"y":136}' && JSON.stringify(panelAt({ x: 1590, y: 100 }, size, area)) === '{"x":1292,"y":136}' &&
+      JSON.stringify(panelAt({ x: 100, y: 990 }, size, area)) === '{"x":94,"y":784}' && panelAt({ x: 100, y: 0 }, { width: 300, height: 960 }, area).y === 33)
+    check("helper: a drop docks by the left or right edge only (the menu bar's and the Dock's are for pointing)",
+      dockAt(bounds, area, { x: 1590, y: 500 })?.side === "right" && dockAt(bounds, area, { x: 5, y: 25 })?.at === 0 && !dockAt(bounds, area, { x: 800, y: 5 }) && !dockAt(bounds, area, { x: 800, y: 995 }))
+    check("helper: a spot left in a window stays inside it as it shrinks", JSON.stringify(atOffset({ x: 10, y: 10, width: 100, height: 100 }, { dx: 500, dy: 50 })) === '{"x":102,"y":60}')
+    check("helper: a display's scene knows the menu bar's height", sceneFor({ id: 1, bounds, workArea: area }, { agents: [], idle: null, pill: null }, { x: 0, y: 0 }, []).top === 25)
     const defaults = { dictation: { fn: { default: true }, keys: { default: ["fn", "double_control"] } }, companion: { screen_cursor: { default: "dock" } }, screen: { private_apps: { default: ["1Password"] } } }
     const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, { screen_cursor: "trail" }, { private_apps: [] }, defaults)
     check("helper: settings left out are the manifests' defaults; set ones win, an empty private list too",
