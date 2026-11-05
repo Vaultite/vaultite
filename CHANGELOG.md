@@ -36,7 +36,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   list a split's card shows its panes (tap one to show it), its panes open as a page of cards (drag one onto another to
   swap, swipe or X to close, + for a new pane), and tab menus have Open in split, Swap panes, Separate panes and Move to
   new tab. Swiping between workspaces there settles the same way. The bottom bar swiped sideways goes to the tab either
-  side, as Safari's, and while either swipe goes the header's name and dots follow the finger.
+  side, as Safari's, and while either swipe goes the header's name and dots follow the finger. The dots sit at the
+  screen's centre, whatever the name or buttons, in the bar's middle until the name shows above them.
 - **Reopen closed tab brings back what closed, as it was**: what closed together comes back with one ⌘⇧T (Close
   others, a tab group with its name and colour, a pop-out window, all the tabs), each tab in its place; a split's pane
   goes back where it sat at its size, floating or zoomed as it was. Tabs a layout or another device takes away that

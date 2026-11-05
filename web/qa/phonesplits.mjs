@@ -106,6 +106,8 @@ try {
   const splitOf = async () => (await state()).tabs.find((t) => t.includes("+")) ?? ""
   check("New pane: a blank pane in the split, shown", !!(await until(async () => !(await list().count()) && /\+new$/.test(await splitOf()) && (await state()).shown === "new", 4000)), await state())
   check("...three dots in the header", (await P.locator("[data-pane-dots] button").count()) === 3)
+  const dots = await P.locator("[data-pane-dots]").boundingBox()
+  check("...centred on the screen, whatever the title and buttons", Math.abs(dots.x + dots.width / 2 - 195) < 1.5, dots)
   // The header's menu: the split's own items.
   await P.locator("[data-phone-header] button[aria-label=More]").tap(); await wait(300)
   const head = (await P.locator("[role=menu] [role=menuitem], [role=menu] button").allInnerTexts()).map((t) => t.trim())

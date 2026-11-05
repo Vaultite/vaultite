@@ -36,7 +36,9 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
   return (
     <header data-phone-header className="sight-top glass-strong fixed inset-x-0 top-0 z-30 pt-[env(safe-area-inset-top)] md:hidden">
       {/* Three columns, the outer two as wide as each other, so the name stays centred whatever buttons there are. */}
-      <div className="grid h-11 grid-cols-[1fr_minmax(0,auto)_1fr] items-center px-1">
+      <div className="relative grid h-11 grid-cols-[1fr_minmax(0,auto)_1fr] items-center px-1">
+        {/* (the screen's centre, not the title's: a long name or the buttons don't move them; first, so a button wins its taps) */}
+        {ps.length > 1 && <PaneDots ids={ps.map((p) => p.id)} at={at} tabs={swipe === "tabs"} alone={inSight} />}
         <div className="flex items-center">
           {left && (
             <button type="button" aria-label="Open sidebar" onClick={() => openDrawer("left")} className={button}>
@@ -44,7 +46,7 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
             </button>
           )}
         </div>
-        <div className={cn("relative flex min-w-0 flex-col items-center", ps.length > 1 && "self-stretch justify-center pb-2.5")} style={ps.length > 1 ? { minWidth: ps.length * 44 } : undefined}>
+        <div className={cn("relative flex min-w-0 flex-col items-center", ps.length > 1 && "self-stretch justify-center pb-2.5")}>
           <div className={cn("relative max-w-full transition-opacity duration-150", inSight && "opacity-0")}>
             <div data-phone-title className="truncate px-1 text-center text-[17px] font-semibold" style={NOW}>{name}</div>
             {near.map((b) => (
@@ -52,7 +54,6 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
                 className="pointer-events-none absolute top-0 left-1/2 w-max max-w-[calc(100vw-9rem)] truncate px-1 text-center text-[17px] font-semibold">{nameOf(b.tab, b.pane)}</div>
             ))}
           </div>
-          {ps.length > 1 && <PaneDots ids={ps.map((p) => p.id)} at={at} tabs={swipe === "tabs"} />}
         </div>
         <div className="flex items-center justify-end">
           <div id="phone-actions" className="flex items-center empty:hidden" />
@@ -79,13 +80,13 @@ const SIDE = {
   [-1]: { opacity: COME[-1], translate: "calc(-50% - (1 - var(--swipe-prev, 0)) * 40px) 0" },
 } as const
 
-/** A split tab's panes, a dot each under the title, the shown one darker (and, swiped, the one coming in darkening as it
- *  comes; swiped to another tab, they fade): each a button (the row's height, 44px wide) for who doesn't swipe. */
-function PaneDots({ ids, at, tabs }: { ids: string[]; at: number; tabs: boolean }) {
+/** A split tab's panes, a dot each under the title (in the bar's middle while it has none), the shown one darker (and,
+ *  swiped, the one coming in darkening as it comes; swiped to another tab, they fade): each a 44px-wide button. */
+function PaneDots({ ids, at, tabs, alone }: { ids: string[]; at: number; tabs: boolean; alone: boolean }) {
   const n = ids.length, k = Math.max(16 / 44, 1 - 19 / ((n - 1) * 22))
   const lit = (i: number) => (i === at ? `calc${COME[0]}` : i === at + 1 ? COME[1] : i === at - 1 ? COME[-1] : "0")
   return (
-    <div data-pane-dots role="group" aria-label="Panes" className="absolute inset-y-0 left-1/2 flex -translate-x-1/2" style={tabs ? { opacity: `calc${COME[0]}` } : undefined}>
+    <div data-pane-dots role="group" aria-label="Panes" className={cn("absolute inset-y-0 left-1/2 flex -translate-x-1/2 transition-transform duration-150", alone && "-translate-y-3")} style={tabs ? { opacity: `calc${COME[0]}` } : undefined}>
       {ids.map((id, i) => (
         <button key={id} type="button" aria-label={`Pane ${i + 1} of ${n}`} aria-current={i === at || undefined} onClick={() => selectPane(id)}
           className="relative w-11 cursor-pointer">
