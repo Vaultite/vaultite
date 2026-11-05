@@ -248,7 +248,7 @@ export function AppearancePanel() {
       <Section title="Tabs">
         <Group>
           <NewTabsRow />
-          {["tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"])].map(row)}
+          {["tab-bar", "pane-tab-bars"].map(row)}
         </Group>
       </Section>
       <Section title="Text">

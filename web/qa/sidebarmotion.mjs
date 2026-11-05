@@ -24,7 +24,7 @@ const server = http.createServer((_req, res) => {
 await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
 const SITE = `http://127.0.0.1:${server.address().port}`
 fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
-fs.writeFileSync(path.join(VAULT, ".vaultite/appearance.json"), JSON.stringify({ rails: false, animation: "natural", tabBar: false, paneTitles: false,
+fs.writeFileSync(path.join(VAULT, ".vaultite/appearance.json"), JSON.stringify({ rails: false, animation: "natural", tabBar: false, paneTabBars: false,
   peekShade: true, dimPanes: true, fileBarFade: "always", density: "compact" }))
 fs.writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "pages:pages", "tabs:tabs", "files:files"],
   right: ["terminal:sessions", "web-viewer:web-pages"], collapsed: [] }))

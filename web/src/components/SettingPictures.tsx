@@ -80,14 +80,23 @@ function Pointer({ ms, path, rest }: { ms: number; path: [number, number, number
 
 const tabBar = (on: boolean) => <Frame><Side w="22%" /><Pane>{on ? <TabBar /> : <div className="h-[4px]" />}<Note /></Pane></Frame>
 
-/** Two panes split; with `titles`, each says what it shows above it. */
-const paneTitles = (on: boolean) => (
+/** Two panes split; on, each has a strip of its own tabs above it (the left one two, the one it shows raised) and a +. */
+const paneTabBars = (on: boolean) => (
   <Frame>
     <Side w="20%" />
     {[0, 1].map((i) => (
       <Pane key={i} className={cn(i && "border-l-[0.5px] border-border")}>
         {on
-          ? <div className="flex h-[13px] shrink-0 items-center gap-[2px] border-b-[0.5px] border-border px-[5px]"><span className="size-[4px] shrink-0 rounded-[1px] bg-primary/80" />{line(i ? "40%" : "52%", "bg-foreground/55")}</div>
+          ? (
+            <div className="flex h-[13px] shrink-0 items-center gap-[2px] border-b-[0.5px] border-border px-[3px]">
+              {(i ? [true] : [true, false]).map((shown, k) => (
+                <span key={k} className={cn("flex h-[9px] w-[34%] items-center gap-[2px] rounded-[2px] px-[2px]", shown && "bg-card ring-[0.5px] ring-border")}>
+                  <span className="size-[3px] shrink-0 rounded-[1px] bg-primary/80" />{line("60%", shown ? "bg-foreground/55" : "bg-foreground/25")}
+                </span>
+              ))}
+              <span className="ml-[1px] text-[7px] leading-none text-muted-foreground">+</span>
+            </div>
+          )
           : <div className="h-[4px]" />}
         <Note className="px-[6px]" />
       </Pane>
@@ -360,7 +369,7 @@ function propertiesPicture(how: string) {
 type Pictures = { text: string; draw: (on: boolean) => ReactNode }
 const PICTURES: Record<string, Pictures> = {
   "tab-bar": { text: "On, the window's tabs show in one bar across its top; off, only what's open, without tabs.", draw: tabBar },
-  "pane-titles": { text: "Each pane of a split shows the name of what's open above it; with the tab bar off, every pane does.", draw: paneTitles },
+  "pane-tab-bars": { text: "Each pane of a split shows its own tabs above it, with a + for another; off, panes start with what they show.", draw: paneTabBars },
   "pane-cards": { text: "Each pane an inset, rounded card, with the window's colour around and between them.", draw: paneCards },
   "dim-panes": { text: "With the window split, the panes you're not in fade a little, following the focus.", draw: (on) => <DimPanes on={on} /> },
   "file-icons": { text: "Files show their icons in the sidebar and in tabs.", draw: fileIcons },

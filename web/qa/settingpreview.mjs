@@ -177,7 +177,7 @@ for (const dark of [false, true]) {
     await shot(page, k, `${k}-${dark ? "dark" : "light"}`)
   }
   await setLook({ theme: dark ? "dark" : "light", tabBar: false, translucent: true }); await wait(800)
-  for (const k of ["pane-titles", "translucent-pages"]) {
+  for (const k of ["pane-tab-bars", "translucent-pages"]) {
     await away(page); await wait(700); await hover(page, k); await wait(900); await shot(page, k, `${k}-${dark ? "dark" : "light"}`)
   }
   await setLook({ theme: dark ? "dark" : "light", rails: false }); await wait(500)

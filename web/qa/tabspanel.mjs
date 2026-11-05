@@ -1,4 +1,4 @@
-// The Tabs panel and the tab bar turned off (appearance `tabBar`, `paneTitles`): the panel lists, switches, closes and
+// The Tabs panel and the tab bar turned off (appearance `tabBar`, `paneTabBars`): the panel lists, switches, closes and
 // opens tabs. Writes sidebars, appearance, hotkeys, newtab and a few notes (put back): throwaway server only.
 //   node web/qa/tabspanel.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -15,7 +15,7 @@ const spare = [1, 2, 3, 4, 5].map((i) => `Notes/New tab row ${i}.md`)
 for (const p of spare) writeFileSync(path.join(VAULT, p), `# New tab row ${p.slice(-4, -3)}\n`)
 const lookNow = () => JSON.parse(look.was ?? "{}")
 writeFileSync(sidebars.p, JSON.stringify({ left: ["tabs:tabs", "pages:pages", "files:files"], right: [], collapsed: [] }) + "\n")
-writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: true, paneTitles: true }) + "\n")
+writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: true, paneTabBars: true }) + "\n")
 // Two made-up notes the served vault has (the sandbox's).
 const notes = ["Notes/Lisbon trip.md", "Notes/How this vault works.md", "Start here.md"].filter((p) => existsSync(path.join(VAULT, p)))
 if (notes.length < 3) { console.error("needs the sandbox vault (vau sandbox <folder>)"); process.exit(2) }
@@ -144,13 +144,13 @@ try {
   await phone.close()
 
   // The bar off, live.
-  writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTitles: true }) + "\n")
+  writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTabBars: true }) + "\n")
   const off = await until(async () => !(await page.$("[data-tab-strip]")), 8000)
   check("tabBar false: no tab bar, no tabs above the panes", !!off && (await page.$$("[role=tab]")).length === 0)
-  const title = () => page.$eval("[data-pane-area] > section:not([data-away]) [data-pane-title]", (e) => e.textContent.trim()).catch(() => null)
+  const title = () => page.$eval("[data-pane-area] > section:not([data-away])", (e) => e.getAttribute("aria-label")).catch(() => null)
   r = await rows()
-  check("its pane's bar names what it shows", (await title())?.startsWith(r.find((x) => x.on).label), [await title(), r])
-  check("the pane's bar is a title bar's height", (await page.$eval("[data-pane-area] > section:not([data-away]) [data-pane-bar]", (e) => e.getBoundingClientRect().height)) === 40)
+  check("its pane shows what its row says", (await title())?.startsWith(r.find((x) => x.on).label), [await title(), r])
+  check("a pane alone has no strip of tabs: its row is its handle", !(await page.$("[data-pane-area] > section:not([data-away]) [data-place-strip]")))
   const other = r.find((x) => !x.on)
   await page.click(`[data-open-tab="${other.id}"]`); await wait(300)
   check("the panel still switches tabs", (await title())?.startsWith(other.label), await title())
@@ -162,10 +162,11 @@ try {
   await page.click("[role=menu] >> text=Split right"); await wait(400)
   const halves = await page.$$eval(`[data-open-tab="${other.id}"] [data-ui^="pane:"]`, (els) => els.length)
   check("a split is one row with a half per pane", halves === 2, halves)
+  check("…each pane with the strip of its tabs on top", !!(await until(async () => (await page.$$("[data-pane-area] > section:not([data-away]) > [data-place-strip]")).length === 2, 4000)))
   await page.screenshot({ path: `${OUT}split.png` })
 
-  // Nor pane titles: a note's bar is its pane's title row.
-  writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTitles: false }) + "\n")
+  // Nor pane tab bars: a note's bar is its pane's title row.
+  writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTabBars: false }) + "\n")
   const bare = await until(async () => (await page.$$("[data-bare][data-merged]")).length === 2, 8000)
   // Both show notes, whose bar is then the pane's title row: no strip over it, clear of the sidebars' toggles.
   const tops = await page.$$eval("[data-pane-area] > section[data-pane-frame]:not([data-away])", (els) => {
@@ -177,7 +178,7 @@ try {
       return { strip: strip.height, top: bar ? Math.round(bar.top - s.getBoundingClientRect().top) : null, covered }
     })
   })
-  check("paneTitles false: a note's bar is its pane's title row, no strip or title", bare && tops.every((t) => t.strip === 0 && t.top === 0 && !t.covered) && !(await page.$("[data-pane-title]")), tops)
+  check("paneTabBars false: a note's bar is its pane's title row, no strip", bare && tops.every((t) => t.strip === 0 && t.top === 0 && !t.covered) && !(await page.$("[data-place-strip]")), tops)
   await page.screenshot({ path: `${OUT}bare.png` })
 
   // Back on.

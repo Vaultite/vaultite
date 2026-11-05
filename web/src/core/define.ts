@@ -282,7 +282,7 @@ export type ViewDef = {
    *  playing sound doesn't). Unset: yes, unless closing it ends something (keepsTab, onClose, confirmClose). */
   archives?: boolean | ((arg: string, tab: string) => boolean)
   /** How its pane shows (the Browser's Hide page bar): at the end of its pane's top's menu (the tab bar's empty space;
-   *  with the tab bar off, the pane's title or strip), with the tab bar's and the pane titles' rows. */
+   *  with the tab bar off, the pane's title or strip), with the tab bar's and the pane tab bars' rows. */
   paneMenu?: (arg: string, tab: string) => FileMenuItem[]
   /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session); `tab`: its pane's id. */
   tabMenu?: (arg: string, tab: string) => (FileMenuItem & { danger?: boolean })[]

@@ -103,7 +103,7 @@ check("a click at the page's top brings it", await until(async () => (await look
 check("… and it goes again", await away(), await look())
 
 // ---------- the tab bar off: the strip above the pane brings it ----------
-await appearance({ tabBar: false, paneTitles: false })
+await appearance({ tabBar: false, paneTabBars: false })
 const strip = win.locator("[data-pane-bar][data-bare]:visible").first()
 check("the tab bar off: a strip above the pane", await until(() => strip.isVisible(), 5000))
 let sb = await strip.boundingBox()

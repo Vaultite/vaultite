@@ -3,7 +3,7 @@
 export const LOOK = {
   theme: "system" as "system" | "light" | "dark", scheme: "gruvbox", density: "compact" as "compact" | "comfortable", animation: "natural" as "snappy" | "natural" | "off",
   sidebarScroll: "panels" as "panels" | "sidebar", panelDividers: false, quickTextSize: false, interfaceFont: "", textFont: "", monoFont: "",
-  snippets: [] as string[], fileIcons: true, tabBar: true, paneTitles: false, dimPanes: true, paneCards: false, rails: true, peekShade: false, sidebarButtons: false, lineNumbers: false,
+  snippets: [] as string[], fileIcons: true, tabBar: true, paneTabBars: true, dimPanes: true, paneCards: false, rails: true, peekShade: false, sidebarButtons: false, lineNumbers: false,
   fileBarFade: "off" as "off" | "typing" | "always", translucent: false, translucentPages: false, translucency: 50, pageTranslucency: 50,
   statusBar: null as string[] | null, statusBarMore: [] as string[], statusBarLeft: null as string[] | null, fileBar: null as string[] | null, sidebarHeader: null as string[] | null, pullActions: null as string[] | null,
 }

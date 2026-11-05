@@ -348,7 +348,7 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   return [...own, ...open, ...dock,
     { label: "Panels", icon: Layers, sep: !!(own.length || open.length || dock.length), run: () => {}, items: list },
     // Where it is, together: the tab list on top instead (the tab bar), in the other sidebar, nowhere.
-    ...(me.tabList ? commandItems("tab:sidebar").map((it, i) => ({ ...it, sep: i === 0 })) : []),
+    ...(me.tabList ? commandItems("tab:sidebar", "setting:pane-tab-bars").map((it, i) => ({ ...it, sep: i === 0 })) : []),
     { label: `Move to ${other} sidebar`, icon: other === "right" ? PanelRight : PanelLeft, sep: !me.tabList, run: () => dockAtEnd(key, other) },
     // (a top bar item's own menu has Move to top bar, which this would be)
     ...(isBarItem(key) ? [] : [{ label: `Hide ${me.title}`, icon: EyeOff, run: () => hidePanel(key) }]),

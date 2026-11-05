@@ -1,7 +1,7 @@
 // Clicks on a web page in the desktop app's Browser are the page's at every edge and corner: Electron drags the window
 // wherever any of its views has a drag region, even one under the page. So a site's own (ChatGPT's header) is off,
 // and the window's regions are cut where a page shows, in every layout: rails on or off, the left sidebar open or
-// hidden, the tab bar, pane titles, the page bar hidden, a split. The window's region is worked out as Electron does
+// hidden, the tab bar, pane tab bars, the page bar hidden, a split. The window's region is worked out as Electron does
 // (each element's box in document order, drag adds, no-drag cuts, clipping ignored), against the page's native bounds.
 // WRITES: the throwaway vault only.
 //   node web/qa/pageclicks.mjs <vault copy>
@@ -84,33 +84,33 @@ check("a site's drag header drags nothing (its regions are none)", site?.[0] ===
 
 // ---------- the window's regions never reach a page, in every layout ----------
 const layouts = []
-for (const rails of [false, true]) for (const left of [false, true]) for (const [tabBar, paneTitles] of [[true, true], [false, true], [false, false]])
-  for (const pageBar of [null, "hidden"]) layouts.push({ rails, left, tabBar, paneTitles, pageBar })
+for (const rails of [false, true]) for (const left of [false, true]) for (const [tabBar, paneTabBars] of [[true, true], [false, true], [false, false]])
+  for (const pageBar of [null, "hidden"]) layouts.push({ rails, left, tabBar, paneTabBars, pageBar })
 let strip = true
 /** The window has the layout's settings: they reach it from the vault a moment after they're written, and a sidebar
  *  hidden before would fold to its rail, then move again as rails go off. */
 const applied = (l) => win.evaluate((l) => {
   const p = JSON.parse(localStorage.getItem("vaultite.prefs") ?? "{}")
-  return p.rails === l.rails && p.tabBar === l.tabBar && p.paneTitles === l.paneTitles && !!document.querySelector("[data-web-bar-hidden]") === (l.pageBar === "hidden")
+  return p.rails === l.rails && p.tabBar === l.tabBar && p.paneTabBars === l.paneTabBars && !!document.querySelector("[data-web-bar-hidden]") === (l.pageBar === "hidden")
 }, l)
 /** No pane moves and the page is back: while its pane slides, a page is a picture of itself and waits off the window. */
 const settled = async () => !(await win.evaluate(() => !!document.querySelector("[data-moving]"))) && (await pages()).length > 0
 for (const l of layouts) {
-  await patch("appearance", { rails: l.rails, tabBar: l.tabBar, paneTitles: l.paneTitles })
+  await patch("appearance", { rails: l.rails, tabBar: l.tabBar, paneTabBars: l.paneTabBars })
   await patch("plugin/web-viewer", { pageBar: l.pageBar })
   await until(() => applied(l), 8000)
   await leftToggle(l.left)
   await wait(700)
   await until(settled, 8000)
   const shown = await pages(), bad = await dragsOver(shown)
-  const name = `rails ${l.rails ? "on" : "off"}, left ${l.left ? "open" : "hidden"}, tab bar ${l.tabBar ? "on" : "off"}${l.tabBar ? "" : `, titles ${l.paneTitles ? "on" : "off"}`}, page bar ${l.pageBar ?? "shown"}`
+  const name = `rails ${l.rails ? "on" : "off"}, left ${l.left ? "open" : "hidden"}, tab bar ${l.tabBar ? "on" : "off"}${l.tabBar ? "" : `, pane tab bars ${l.paneTabBars ? "on" : "off"}`}, page bar ${l.pageBar ?? "shown"}`
   check(`${name}: nothing of the window drags over the page`, shown.length > 0 && !bad.length, { shown, bad })
   strip &&= await dragsSomewhere()
 }
 check("… while the window still drags by its strip", strip)
 
 // ---------- a split: the page beside another pane ----------
-await patch("appearance", { rails: false, tabBar: false, paneTitles: false })
+await patch("appearance", { rails: false, tabBar: false, paneTabBars: false })
 await patch("plugin/web-viewer", { pageBar: null })
 await ui({ action: "open", path: `view:web/${SITE}/?2`, split: "right" })
 await until(async () => (await pages()).length > 1, 8000)

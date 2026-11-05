@@ -1137,7 +1137,7 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 /* With no right sidebar on screen (data-right-sidebar, App.tsx), its toggle (fixed in the window's top-right corner)
    sits at the end of the tab bar (without it, the top-right pane's bar): the bar keeps clear of it. */
 :root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [data-title-row] { padding-right: calc(var(--spacing) * 10); }
-/* Without pane titles, a corner the toggle sits in keeps a title bar's height, so it covers no page. */
+/* Without a pane tab bar, a corner the toggle sits in keeps a title bar's height, so it covers no page. */
 :root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
 /* Nor tabs, with a top bar (merged: a file's, the Browser's): a pane at the window's top has no strip, its bar is the title
    row, beside the sidebar's top row; it makes room for what sits in the corners itself (usePaneTopBar). */

@@ -35,8 +35,8 @@ export const launcherAt = () => launchAt
 export const launcherClosed = () => { launchAt = undefined }
 
 /** A new tab (or at the end of tab group `group`, a phone's open one): a blank one, or newtab.json's `opens`. Past the
- *  tab on screen and its group, in none (⌘T), or `at` the list's end (a tab bar's +, the Tabs panel's row). */
-export function openNewTab({ group, at: end }: { group?: string; at?: "end" } = {}) {
+ *  tab on screen and its group, in none (⌘T), or `at` the list's end (a tab bar's +) or among the pane's (its strip's). */
+export function openNewTab({ group, at: end }: { group?: string; at?: "end" | "pane" } = {}) {
   const { opens } = getPrefs().newTab, view = viewHere(opens), at: TabsAt = end ?? "new"
   if (group && !groupById(group)) group = undefined
   if (opens !== "switcher" && !view) return group ? newTabInGroup(group) : newTabsAt(at, () => newTab())

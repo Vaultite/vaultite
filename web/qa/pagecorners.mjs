@@ -62,7 +62,7 @@ const rounded = (l, on) => l.views.length === l.cards.length && l.views.length >
 const barOf = async (i = 0) => (await look()).cards[i]?.bar
 
 // ---------- cards, the bar shown: rounded, its foot at the card's ----------
-await appearance({ paneCards: true, tabBar: true, paneTitles: false })
+await appearance({ paneCards: true, tabBar: true, paneTabBars: true })
 await ui({ action: "open", path: `view:web/${SITE}/one`, newTab: true })
 check("cards, bar shown: the page rounded as its card", await until(async () => { const l = await look(); return rounded(l, true) && near(l.views[0].bottom, l.cards[0].bottom) }, 15000), await look())
 

@@ -1,4 +1,4 @@
-// Close pane (core/workspace.ts closePane) of a split tab with the tab bar and pane titles off (Close current tab, ⌘W,
+// Close pane (core/workspace.ts closePane) of a split tab with the tab bar and pane tab bars off (Close current tab, ⌘W,
 // too: the focused pane only; Close split the whole tab), and Reopen closed tab bringing it back where it sat; each pane's X and handle at its view's bar's end (components/Tabs.tsx PaneControls),
 // fading bars and cards too, and the sidebar's split row (plugins/core/tabs): a cell's X, menu, hover and swap, and the
 // row's … (the tab's menu, a drag of the whole tab). WRITES the vault's appearance.json (put back): throwaway server only.
@@ -13,7 +13,7 @@ const [a, b, c] = readdirSync(path.join(VAULT, "Notes")).filter((f) => f.endsWit
 const look = path.join(VAULT, ".vaultite", "appearance.json")
 const was = existsSync(look) ? readFileSync(look, "utf8") : null
 const lookAs = (o) => writeFileSync(look, JSON.stringify({ ...JSON.parse(was ?? "{}"), ...o }) + "\n")
-lookAs({ tabBar: false, paneTitles: false })
+lookAs({ tabBar: false, paneTabBars: false })
 
 try {
   const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))
@@ -102,18 +102,18 @@ try {
   check("…and a pinned tab alone stays", same(await files(), [a]) && same(await tabs(), ["*>"]), await tabs())
   await command(page, "Unpin tab")
 
-  // Pane titles on: the X beside each title row's handle. (c closed last, then b's pane: both back)
+  // Pane tab bars on: the X at each strip's end. (c closed last, then b's pane: both back)
   await command(page, "Reopen closed tab"); await command(page, "Reopen closed tab"); await until(async () => (await panes()).length === 2)
-  lookAs({ tabBar: false, paneTitles: true })
-  check("with titles, each title row has the X", await until(async () => (await page.locator("[data-pane-title] ~ [data-pane-close]").count()) === 2, 8000))
+  lookAs({ tabBar: false, paneTabBars: true })
+  check("with pane tab bars, each strip has the X", await until(async () => (await page.locator("[data-place-strip] [data-pane-close]").count()) === 2, 8000))
   await page.locator("[data-pane-close]").last().click()
   check("…which closes its pane", await until(async () => (await panes()).length === 1), await panes())
 
-  // As the user has it: no tab bar, titles nor rails, panes as cards, file bars fading always, tabs in the sidebar.
+  // As the user has it: no tab bar, pane tab bars nor rails, panes as cards, file bars fading always, tabs in the sidebar.
   mkdirSync(OUT, { recursive: true })
-  lookAs({ tabBar: false, paneTitles: false, rails: false, paneCards: true, fileBarFade: "always" })
+  lookAs({ tabBar: false, paneTabBars: false, rails: false, paneCards: true, fileBarFade: "always" })
   await command(page, "Reopen closed tab"); await until(async () => (await panes()).length === 2)
-  await until(async () => (await page.locator("[data-pane-title]").count()) === 0, 8000)
+  await until(async () => (await page.locator("[data-place-strip]").count()) === 0, 8000)
   const top = "[data-pane-area] > section[data-pane-frame][data-top]:not([data-away])"
   const topBar = page.locator(`${top} [data-view-bar]`).first(), topX = page.locator(`${top} [data-view-bar] [data-pane-close]`)
   const opacity = (l) => l.evaluate((e) => +getComputedStyle(e).opacity)

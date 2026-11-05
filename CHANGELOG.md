@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Pane tab bars, on their own**: the switch (was Pane titles) is each split pane's strip of its tabs, the same with
+  the tab bar on or in the sidebar; off, panes start with what they show, a tab dragged over one brings its strip back
+  to drop into, and the tab bar's cells say how many more tabs a pane has (+2, a click lists them). A terminal pane's
+  strip has its + too; right-clicking a split's cell in the tab bar is that pane's menu.
 - **Dark pages reach a styled site's other pages**: a site the vault styles only in part (Google Docs' editors) has
   its sign-in, access and error pages darkened too, judged page by page as they look with the style; going from one
   darkened site to another in a tab no longer shows a pale frame; site styles get `--vault-paper-filter` for canvases.

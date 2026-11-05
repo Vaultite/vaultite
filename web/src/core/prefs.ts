@@ -53,8 +53,9 @@ export type Prefs = {
   /** The tabs above each pane (desktop); off, each pane's bar shows only what's on screen, and the sidebar (the Tabs
    *  panel, Terminals, Pinned) or the keyboard switches tabs. */
   tabBar: boolean
-  /** With the tab bar off, a strip above each pane naming what's open; off, the pane starts at the window's top. */
-  paneTitles: boolean
+  /** Each pane of a split has a strip of its own tabs on top (tab bar on or off); off, a pane starts with what it shows
+   *  (a note's bar its title row), its tabs reached from the tab bar's cell or the Tabs panel. */
+  paneTabBars: boolean
   /** With more than one pane, those without the focus fade a little. */
   dimPanes: boolean
   /** Desktop panes as inset, rounded cards, the window's chrome showing between them; off, flat panes divided by hairlines. */

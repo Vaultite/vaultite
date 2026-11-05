@@ -106,7 +106,7 @@ const empty = async () => page.mouse.click(bar.x + bar.width - 60, bar.y + bar.h
 await empty(); await wait(200)
 check("the bar's empty space has Hide tab bar", await menuItem(page, "Hide tab bar"))
 check("…which hides it", await until(async () => (await page.locator("[data-tab-strip]").count()) === 0))
-// Hidden, with pane titles off, the note's bar is the window's title row: its empty part has the bar's menu.
+// Hidden, with pane tab bars off, the note's bar is the window's title row: its empty part has the bar's menu.
 const fill = await page.locator("[data-view-bar-fill]:visible").first().boundingBox()
 await page.mouse.click(fill.x + fill.width - 4, fill.y + fill.height / 2, { button: "right" }); await wait(200)
 check("…and Show tab bar brings it back", (await menuItem(page, "Show tab bar")) && await until(async () => (await page.locator("[data-tab-strip]").count()) === 1))

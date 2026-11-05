@@ -1,11 +1,12 @@
-// A split's panes with tabs of their own (core/layout.ts Pane.stack), as the user has the app: the tab bar, pane titles
+// A split's panes with tabs of their own (core/layout.ts Pane.stack), as the user has the app: the tab bar, pane tab bars
 // and rails off, panes as cards, file bars fading, the tabs in the sidebar. The Tabs panel lists each pane's tabs under
 // the split's row while it's on screen (plugins/core/tabs PaneList): a click shows one, its X closes it, a drag moves it
 // along its pane's list, into the other's or out to the list; a list's tab dragged onto a pane's list joins it; another
 // tab shown, the row folds to its map with +n per cell. ⌘W closes the place shown, the pane's next showing. The place a
 // pane shows dragged onto its own pane's edge splits off; the tab on screen too. With the tab bar on, every pane's strip
-// of its tabs (components/Tabs.tsx PlaceStrip), one tab too: its +, a tab dropped on it. WRITES the vault's
-// appearance.json (put back): throwaway server only.
+// of its tabs (components/Tabs.tsx PlaceStrip), one tab too: its +, a tab dropped on it. Pane tab bars off with the tab
+// bar on: no strips, a cell's +n lists its pane's tabs, a tab dragged over a pane brings its strip back to drop into.
+// WRITES the vault's appearance.json (put back): throwaway server only.
 //   node web/qa/panetabs.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -18,7 +19,7 @@ const [a, b, c, d, e, f6] = notes
 const look = path.join(VAULT, ".vaultite", "appearance.json")
 const was = existsSync(look) ? readFileSync(look, "utf8") : null
 const lookAs = (o) => writeFileSync(look, JSON.stringify({ ...JSON.parse(was ?? "{}"), ...o }) + "\n")
-const USER = { tabBar: false, paneTitles: false, rails: false, paneCards: true, fileBarFade: "always" }
+const USER = { tabBar: false, paneTabBars: false, rails: false, paneCards: true, fileBarFade: "always" }
 lookAs(USER)
 mkdirSync(OUT, { recursive: true })
 
@@ -155,7 +156,7 @@ try {
 
   // The tab bar on: each pane of the split has a strip of its own tabs, one or more, with its +.
   await page.locator(`[data-tabs-panel] [data-open-tab="${split}"]`).click(); await until(async () => (await state()).active === split)
-  lookAs({ ...USER, tabBar: true })
+  lookAs({ ...USER, tabBar: true, paneTabBars: true })
   const strip = page.locator("[data-pane-area] > section:not([data-away]) [data-place-strip]")
   const chips = () => strip.evaluateAll((es) => es.map((e) => e.querySelectorAll("[data-place]").length).sort().join())
   check("with the tab bar, every pane of the split has a strip of its tabs, one tab too", await until(async () => (await strip.count()) === 2 && (await chips()) === "1,2", 8000), await chips())
@@ -188,6 +189,38 @@ try {
   const from = await page.locator(`[data-tab-strip] [data-tab-id="${fresh}"]`).boundingBox(), onto = await page.locator(`[data-place-strip="${at}"]`).boundingBox()
   await drag(mid(from), { x: onto.x + onto.width * 0.6, y: onto.y + onto.height / 2 })
   check("a list's tab dropped on a pane's one-tab strip joins its tabs", await until(async () => (await state()).tabs.length === tabsNow && (await chips()) === "1,1,2", 3000), [await chips(), await state()])
+
+  // Pane tab bars off, the tab bar on: no strips; a cell whose pane has more tabs says how many, a click lists them.
+  lookAs({ ...USER, tabBar: true, paneTabBars: false })
+  check("pane tab bars off: no strips over the panes", await until(async () => (await strip.count()) === 0, 8000))
+  const more = page.locator("[data-tab-strip] [data-cell-more]")
+  check("…the tab bar's cell of a pane with two tabs says +1", await until(async () => (await more.count()) === 1 && (await more.innerText()).trim() === "+1", 3000), await more.count())
+  await page.mouse.move(700, 500); await wait(300)
+  await page.screenshot({ path: `${OUT}panetabs-cells.png`, clip: { x: 0, y: 0, width: 1280, height: 140 } })
+  await more.click(); await wait(200)
+  const listed = await page.locator("[role=menu] button").allInnerTexts()
+  check("…a click lists its pane's tabs", listed.length === 2, listed)
+  const stack = (await shown()).panes.find((x) => x.includes(" ")), hidden = stack.split(" ").find((n) => !n.startsWith("^"))
+  await page.locator("[role=menu] button", { hasText: hidden }).first().click()
+  check("…picking one shows it in its pane", await until(async () => (await shown()).panes.some((x) => x.includes(`^${hidden}`)), 3000), await shown())
+
+  // A tab dragged over a pane brings the pane's strip back over it; dropped on it, the tab joins that pane's tabs.
+  await page.locator("[data-tab-strip] [data-ui='button:tab:new']").click(); await hash("ME.md")
+  check("(another tab of the list's own)", await until(async () => (await state()).tabs.length === tabsNow + 1 && (await shown())?.panes.join().endsWith("ME"), 5000), await state())
+  const loose = (await state()).active
+  await page.locator(`[data-tab-strip] [data-tab-id="${split}"] [role=tab]`).first().click(); await until(async () => (await state()).active === split)
+  const one = (await shown()).ids.find((x) => x.length === 1)[0], body = await page.locator(`[data-pane-body="${one}"]`).boundingBox()
+  const grab = mid(await page.locator(`[data-tab-strip] [data-tab-id="${loose}"]`).boundingBox()), over = { x: body.x + body.width / 2, y: body.y + body.height / 2 }
+  await page.mouse.move(grab.x, grab.y); await page.mouse.down()
+  for (let k = 1; k <= 10; k++) { await page.mouse.move(grab.x + ((over.x - grab.x) * k) / 10, grab.y + ((over.y - grab.y) * k) / 10); await wait(30) }
+  const reveal = page.locator(`[data-drop-strip="${one}"]`)
+  check("…a tab dragged over a pane brings its strip over it", await until(async () => (await reveal.count()) === 1, 3000))
+  await wait(250); await page.screenshot({ path: `${OUT}panetabs-drop-strip.png` })
+  const rb = await reveal.boundingBox()
+  for (let k = 1; k <= 6; k++) { await page.mouse.move(over.x + ((rb.x + rb.width * 0.6 - over.x) * k) / 6, over.y + ((rb.y + rb.height / 2 - over.y) * k) / 6); await wait(30) }
+  await wait(150); await page.mouse.up(); await wait(400)
+  check("…dropped on it, the tab joins that pane's tabs", await until(async () => (await state()).tabs.length === tabsNow && (await shown()).ids.some((x) => x.includes(one) && x.length === 2), 3000), await state())
+  check("…and the strip goes again", (await reveal.count()) === 0)
 
   // The tab on screen dragged from the Tabs panel onto its own pane's edge: a split of it and the tab shown before it.
   lookAs(USER)

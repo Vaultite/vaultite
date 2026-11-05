@@ -11,9 +11,9 @@ const notes = readdirSync(`${VAULT}/Notes`).filter((f) => f.endsWith(".md")).sor
 if (notes.length < 3) { console.error("needs three notes in Notes/"); process.exit(2) }
 const stem = (f) => f.replace(/\.md$/, "")
 const fileHash = (f) => `#file/${encodeURIComponent(`Notes/${f}`)}`
-// (the tab bar on, pane titles off: the window's one bar of tabs, a thin strip on each pane of a split)
+// (the tab bar on, pane tab bars on: the window's one bar of tabs, a strip of its tabs on each pane of a split)
 const look = `${VAULT}/.vaultite/appearance.json`, was = existsSync(look) ? readFileSync(look, "utf8") : null
-writeFileSync(look, JSON.stringify({ ...JSON.parse(was ?? "{}"), tabBar: true, paneTitles: false }) + "\n")
+writeFileSync(look, JSON.stringify({ ...JSON.parse(was ?? "{}"), tabBar: true, paneTabBars: true }) + "\n")
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
@@ -133,6 +133,7 @@ try {
   await chip(stem(notes[0])).locator("[role=tab]").click({ button: "right" }); await wait(200)
   const items = await page.locator("[role=menu] button").allInnerTexts()
   check("tab menu has the split items", ["Split right", "Split down", "Separate panes"].every((x) => items.some((i) => i.startsWith(x))), items)
+  check("...the cell's pane's menu first, under Pane", items[0]?.startsWith("Pane"), items)
   await page.keyboard.press("Escape"); await wait(200)
   await page.locator(`[data-pane-bar="${ps2[1].id}"]`).click({ button: "right", position: { x: 40, y: 4 } }); await wait(200)
   const pitems = await page.locator("[role=menu] button").allInnerTexts()

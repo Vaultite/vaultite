@@ -390,11 +390,11 @@ export default async ($: VaultTest) => {
     check("bundles: Save changes to one of the app's makes \"My Zen\", now in use", code === 200 && r.bundle.name === "My Zen" && r.bundle.icon === "wind" && r.bundle.tint === "teal" &&
       (await entry(mineId))?.applied && (await entry(mineId)).modified === false && !(await entry("zen")).applied, r)
     write(`.vaultite/bundles/${mineId}/bundle.json`, JSON.stringify({ name: "My Zen", icon: "wind", tint: "teal", from: "alice/zen" }))
-    await api("PATCH", "config/appearance", { paneTitles: true, scheme: "dracula" })
+    await api("PATCH", "config/appearance", { paneTabBars: false, scheme: "dracula" })
     ;[code, r] = await api("POST", "bundles", { over: mineId })
     const savedOver = JSON.parse(read(`.vaultite/bundles/${mineId}/bundle.json`)), overLook = JSON.parse(read(`.vaultite/bundles/${mineId}/appearance.json`))
     check("bundles: Save changes to the user's own saves over it, its name and source kept (not the user's colours)", code === 200 && r.bundle.id === mineId && savedOver.from === "alice/zen" &&
-      overLook.paneTitles === true && !("scheme" in overLook) && (await entry(mineId)).modified === false, [r, savedOver])
+      overLook.paneTabBars === false && !("scheme" in overLook) && (await entry(mineId)).modified === false, [r, savedOver])
     await api("PATCH", "config/appearance", { scheme: "nord" })
 
     // A saved bundle, applied after any other, is the setup it was saved from: the whole look, the settings the app's

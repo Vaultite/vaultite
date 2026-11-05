@@ -9,14 +9,14 @@ export const usePane = () => useContext(PaneContext)
 const barred = new Map<string, number>()
 const subs = new Set<() => void>()
 const changed = () => { for (const f of subs) f() }
-/** Whether the pane's view draws a top bar (usePaneTopBar): without pane titles, it's the pane's title row. */
+/** Whether the pane's view draws a top bar (usePaneTopBar): without a pane tab bar, it's the pane's title row. */
 export const usePaneHasTopBar = (pane: string) =>
   useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => barred.has(pane))
 
 /** How far a top bar keeps from what's fixed over the window's corners. */
 const CLEAR = 8
 
-/** A view's top bar (ViewBar, the Browser's): without pane titles its pane's title row (Tabs.tsx; not with `title` false,
+/** A view's top bar (ViewBar, the Browser's): without a pane tab bar its pane's title row (Tabs.tsx; not with `title` false,
  *  one sliding over the view), clear of what's fixed over the window's corners (sidebar toggles, a Mac's lights). */
 export function usePaneTopBar(ref: RefObject<HTMLElement | null>, title = true) {
   const { pane, hidden } = usePane()

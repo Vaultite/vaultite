@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import {
-  AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, PictureInPicture2, Folder,
+  AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, PictureInPicture2, Folder,
   ArrowLeftRight, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, type LucideIcon, PencilLine,
 } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -12,7 +12,7 @@ import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
 import { stem } from "@/core/files"
-import { activePane, askRename, barsHidden, closePane, closeTab, closeTabIds, closeTabs, closeWholePane, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, set, showActiveUnder, tabById, togglePinTab, useTabList, keepsTab } from "@/core/workspace"
+import { activePane, askRename, barsHidden, closePane, closeTab, closeTabIds, closeTabs, closeWholePane, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, set, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
 import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, keepShown, moveToSplit, paneIntoPane, paneToTab, replaceWithTab, splitOut, splitPane, zoomPane } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { floatGhost } from "@/core/desktop"
@@ -30,7 +30,7 @@ import { usePane, usePaneHasTopBar } from "@/core/pane"
 import { useUiMarks } from "@/core/uimarks"
 import { tabButtons, tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
-import { commandItems, menuFor, openMenu, type MenuItem } from "@/components/ContextMenu"
+import { commandItems, menuBelow, menuFor, openMenu, type MenuItem } from "@/components/ContextMenu"
 import { useCommandKeys } from "@/core/commands"
 import { fileIcon } from "@/components/FileTree"
 import { copyText, copyToVaultItem, fileMenu, revealItem } from "@/components/FileActions"
@@ -152,17 +152,17 @@ function viewPaneItems(p: Pane): MenuItem[] {
   try { return v.def.paneMenu(v.arg, p.id) } catch { return [] }
 }
 
-/** How the tabs and panes show, outside in: in the sidebar or on top, the tab bar, pane titles, then how pane `p`'s
+/** How the tabs and panes show, outside in: in the sidebar or on top, the tab bar, pane tab bars, then how pane `p`'s
  *  view shows (the Browser's page bar), the same group in every menu that has it. */
 function shownItems(p?: Pane): MenuItem[] {
-  const { paneTitles } = getPrefs(), tabBar = tabBarOn()
+  const tabBar = tabBarOn()
   // With the tabs in the sidebar, the way back is to put them on top (the tab bar on, the list gone). (A pop-out's
   // bar is drawn for want of a sidebar: nothing to switch there.)
   const vertical = tabsInSidebar()
   return after([
     ...commandItems("tab:sidebar"),
     ...(vertical ? [] : [{ label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) }]),
-    { label: paneTitles ? "Hide pane titles" : "Show pane titles", icon: Heading1, run: () => setPrefs({ paneTitles: !paneTitles }) },
+    ...commandItems("setting:pane-tab-bars"),
     ...(p ? viewPaneItems(p).map((it) => ({ ...it, sep: false })) : []),
     // (a pop-out: all of them at once, the window only what it shows)
     ...commandItems("window:bars"),
@@ -672,6 +672,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
   only: boolean }) {
   const item = useDragItem()
   const picked = useSelected(TABS, tab.id)
+  const { paneTabBars } = usePrefs()
   // (a dragged pane or tab held on it: lit, about to open it, as Rex's rows)
   const lit = useDrag((d) => !!d && springing() === tab.id)
   const el = useRef<HTMLDivElement>(null)
@@ -692,7 +693,11 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
   }
   return (
     <div ref={el} data-tab-id={tab.id} data-ui={`tab:${tab.id}`} data-spring-tab={tab.id} data-in-group={tab.group} data-line-of={line} data-slide={tab.id} data-select-key={tab.id} data-split={split || undefined}
-      {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
+      {...selectedAttr(picked)} role="presentation" onContextMenu={(e) => {
+        // (a split's cell: the tab's menu, its pane's first, under Pane; several picked: theirs)
+        const half = (e.target as Element).closest<HTMLElement>("[data-pane-half]")?.dataset.paneHalf
+        menuFor(half && !picked ? () => cellMenu(half, menu) : rowMenu(TABS, tab.id, menu))(e)
+      }}
       onPointerDown={(e) => dragTab(e, tab)} onClick={click}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-control transition-colors",
         split ? "max-w-[320px]" : "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : lit ? "bg-foreground/[0.08] ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]",
@@ -704,6 +709,8 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
         {split && !(tab.name && own.label === tab.name) ? ps.map((p, k) => (
           <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} className={cn("flex h-full min-w-0 flex-1 basis-0 items-center gap-1.5", k && "ml-1.5 border-l-[0.5px] border-border pl-1.5")}>
             <ChipLabel i={info(p)} icons={icons} strong={active && p.id === tab.focus} muted={!active || p.id !== tab.focus} />
+            {/* (its pane's other tabs, where no strip shows them: a click lists them) */}
+            {(!paneTabBars || !active) && <CellMore tab={tab} pane={p} info={info} />}
           </span>
         )) : (
           <span className="flex h-full min-w-0 flex-1 items-center gap-1.5">
@@ -741,6 +748,33 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
       {/* (along the top: a tab group's line runs under) */}
       {own.color && !split && !(dragging && hole) && <span aria-hidden data-tab-color className="pointer-events-none absolute inset-x-2 top-0 h-[2px] rounded-b-full transition-colors duration-(--motion)" style={{ background: own.color }} />}
     </div>
+  )
+}
+
+/** Right-click on a split's cell in the tab bar: the tab's menu (`menu`), after its pane's, under Pane (its own bar's,
+ *  which with pane tab bars off is its view's bar). */
+const cellMenu = (pane: string, menu: () => MenuItem[]): MenuItem[] => {
+  const [first, ...rest] = menu()
+  return [{ label: "Pane", icon: Columns2, run: () => {}, items: paneMenuOf(pane) }, ...(first ? [{ ...first, sep: true }, ...rest] : [])]
+}
+
+/** How many more tabs a split's cell's pane has (+2): a click lists them, each shown by a click, its menu beside it. */
+function CellMore({ tab, pane, info }: { tab: Tab; pane: Pane; info: (t: Tab | Pane) => TabInfo }) {
+  const own = paneWith(tab.root, pane.id), places = own ? placesOf(own) : []
+  if (places.length < 2) return null
+  const list = (e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation()
+    menuBelow(e, places.map((p) => {
+      const i = info(p)
+      return { label: i.label, icon: i.icon, checked: p.id === pane.id, split: true, items: placeMenuOf(p.id), run: () => { selectTab(tab.id); selectPane(p.id) } }
+    }))
+  }
+  return (
+    <span role="button" tabIndex={-1} data-cell-more={pane.id} data-no-drag aria-label={`${places.length - 1} more in this pane`} data-tip="Tabs in this pane"
+      onClick={list} onPointerDown={(e) => e.stopPropagation()}
+      className="-mr-1 shrink-0 cursor-pointer rounded-[4px] px-1 text-[11px] text-tertiary tabular-nums hover:bg-foreground/[0.08] hover:text-foreground @max-[96px]/tab:hidden">
+      +{places.length - 1}
+    </span>
   )
 }
 
@@ -995,7 +1029,7 @@ export function PaneControls() {
   const { pane, tab, hidden } = usePane()
   const prefs = usePrefs(), barred = usePaneHasTopBar(pane)
   const state = useSyncExternalStore(onWorkspaceChange, () => (pane && !hidden ? splitState(pane) : ""))
-  if (!state || !barred || tabBarOn(prefs) || prefs.paneTitles) return null
+  if (!state || !barred || prefs.paneTabBars) return null
   return (
     <div data-pane-controls={pane} onContextMenu={menuFor(() => barMenuOf(pane))} className="flex shrink-0 items-center">
       <PaneButtons id={pane} tab={tab} several only={false} float={state === "float"} zoomed={state === "zoomed"} label={() => tabLabel(paneById(pane) ?? { id: pane, to: "new" }, null).label} />
@@ -1003,19 +1037,23 @@ export function PaneControls() {
   )
 }
 
-/** A pane's bar: what it shows (appearance `paneTitles`) or a thin strip, its handle, its X and its menu. Without the
- *  tab bar or titles, a view's top bar is its title row (index.css), with the pane's menu and buttons (PaneControls). */
+/** A pane's bar: in a split, its tabs' strip (`paneTabBars`); else a thin one, its view's top bar its title row with its
+ *  menu and buttons (PaneControls), the strip shown over it while a tab is dragged over the pane, to drop among them. */
 export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pane: Pane; tab: Tab; focused: boolean; info: (t: Tab | Pane) => TabInfo
   /** The window's only pane: nothing to close. */
   only: boolean
   /** Its state, a button at the bar's end, before its X. */
   float: boolean; zoomed: boolean }) {
-  const prefs = usePrefs(), { fileIcons, paneTitles } = prefs, tabBar = tabBarOn(prefs)
-  const hasTopBar = usePaneHasTopBar(pane.id), merged = !tabBar && !paneTitles && hasTopBar
-  const strip = useRef<HTMLDivElement>(null)
+  const { paneTabBars } = usePrefs()
+  const hasTopBar = usePaneHasTopBar(pane.id), split = panesOf(tab).length > 1, strip = paneTabBars && split
+  const merged = !strip && hasTopBar
+  const bare = useRef<HTMLDivElement>(null)
   const id = pane.id
+  // (dragged over it, the strip it would have: what's dragged can join its tabs)
+  const over = useDrag((d) => { const x = d?.hit?.target === PANES ? (d.hit.data as Drop) : null; return !!x && x.kind !== "list" && x.pane === id })
+  const dropping = split && !strip && over
   useEffect(() => {
-    const section = strip.current?.parentElement
+    const section = bare.current?.parentElement
     if (!merged || !section) return
     const menu = (e: globalThis.MouseEvent) => {
       if (!e.defaultPrevented && (e.target as Element).matches?.("[data-view-bar], [data-view-bar-fill], [data-web-bar]")) menuFor(() => barMenuOf(id))(e as never)
@@ -1024,31 +1062,23 @@ export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pan
     return () => section.removeEventListener("contextmenu", menu)
   }, [merged, id])
   const i = info(pane)
-  const buttons = <PaneButtons id={id} tab={tab.id} several={panesOf(tab).length > 1} only={only} float={float} zoomed={zoomed} label={() => i.label} />
+  const buttons = <PaneButtons id={id} tab={tab.id} several={split} only={only} float={float} zoomed={zoomed} label={() => i.label} />
   const menu = menuFor(() => barMenuOf(id))
   const own = paneWith(tab.root, id), places = own ? placesOf(own) : [pane]
-  // (with the tab bar a pane has a bar only in a split: it always shows its own tabs, one or more, as Obsidian's panes;
-  // its + opens one among them, but where ⌘T's would go to the list: a pinned tab's, a terminal's)
-  if (tabBar) return <PlaceStrip id={id} places={places} focused={focused} info={info} menu={menu} adds={!tab.pinned && !keepsTab(pane.to)}>{buttons}</PlaceStrip>
-  if (!paneTitles) {
-    return (
-      <div ref={strip} data-pane-bar={id} data-title-row data-bare data-merged={merged || undefined} onContextMenu={menu}
-        className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
-        {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
-        <div className="h-full min-w-0 flex-1" />
-        {/* (merged, they're the view's bar's: PaneControls) */}
-        {!merged && <div className="relative z-10 mt-0.5 flex self-start">{buttons}</div>}
-      </div>
-    )
-  }
+  // (its + opens one among them, a terminal's too: asked for here; a pinned tab's new tabs go to the list)
+  if (strip) return <PlaceStrip id={id} places={places} focused={focused} info={info} menu={menu} adds={!tab.pinned}>{buttons}</PlaceStrip>
   return (
-    <div ref={strip} data-pane-bar={id} data-title-row onContextMenu={menu}
-      className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
-      <div data-pane-title className="flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[13px]">
-        {fileIcons && <PaneIcon i={i} />}
-        <span className={cn("min-w-0 truncate font-medium", focused ? "text-foreground" : "text-muted-foreground")}>{i.label}</span>
-      </div>
-      {buttons}
+    <div ref={bare} data-pane-bar={id} data-title-row data-bare data-merged={merged || undefined} onContextMenu={menu}
+      className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
+      {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
+      <div className="h-full min-w-0 flex-1" />
+      {/* (merged, they're the view's bar's: PaneControls) */}
+      {!merged && <div className="relative z-10 mt-0.5 flex self-start">{buttons}</div>}
+      {dropping && (
+        <div data-drop-strip={id} className="absolute inset-x-0 top-0 z-30 shadow-sm animate-in fade-in slide-in-from-top-1 duration-150">
+          <PlaceStrip id={id} places={places} focused={focused} info={info} menu={menu} adds={false}>{null}</PlaceStrip>
+        </div>
+      )}
     </div>
   )
 }
@@ -1072,7 +1102,7 @@ function PlaceStrip({ id, places, focused, info, menu, adds, children }: { id: s
         {/* (right after its last tab, as the tab bar's) */}
         {adds && (
           <button type="button" data-place-new={id} data-no-drag data-slide="new" data-slide-fixed aria-label="New tab" data-tip={item ? undefined : "New tab"}
-            onClick={() => { selectPane(id); openNewTab() }}
+            onClick={() => { selectPane(id); openNewTab({ at: "pane" }) }}
             className="grid size-7 shrink-0 cursor-pointer place-items-center self-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
             <Plus className="size-4" strokeWidth={2} />
           </button>

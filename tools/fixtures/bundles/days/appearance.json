@@ -5,7 +5,7 @@
   "snippets": [],
   "fileIcons": true,
   "tabBar": true,
-  "paneTitles": false, "dimPanes": false, "paneCards": false,
+  "paneTabBars": true, "dimPanes": false, "paneCards": false,
   "rails": true, "peekShade": false, "sidebarButtons": false, "fileBarFade": "off",
   "lineNumbers": false,
   "statusBar": null,

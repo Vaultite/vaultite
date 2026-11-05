@@ -267,7 +267,6 @@ try {
   await page.keyboard.press("Escape"); await page.mouse.up(); await wait(300)
   const after = await page.$$eval("[data-tabs-panel] :is([data-open-tab], [data-group-row])", (els) => els.map((e) => (e.dataset.groupRow ? `[${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}]` : e.textContent.trim())).join(" "))
   check("  dropped, it joins that group's end", after.includes("[Reading] Garden planner Start here Lighthouse") && after.includes("[Lighthouse work] ME"), after)
-  check("no strip of titles above the panes (pane titles off)", !(await page.$("[data-pane-title]")))
   await page.mouse.move(900, 500); await page.screenshot({ path: `${OUT}vertical-light.png` })
   await page.click("[data-group-row]:has-text('Lighthouse work')")
   const panelRows = () => page.$$eval("[data-tabs-panel] [data-open-tab]", (els) => els.map((e) => e.textContent.trim()))

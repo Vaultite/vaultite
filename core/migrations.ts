@@ -290,6 +290,20 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
   },
   // Saved bundles' screenshots (preview.png, preview-dark.png): their pictures are drawn now.
   { id: "bundle-pictures-out-2026-11", run: bundlePicturesOut },
+  {
+    // appearance.json's `paneTitles` (a split's panes named above them, only with the tab bar off: on, they always had
+    // their tabs' strip), now `paneTabBars` with the tab bar on or off: each keeps what it showed. Its switch's keys follow.
+    id: "pane-tab-bars-2026-11",
+    run: (v) => eachSettings(v, (get, set) => {
+      const look = get("appearance")
+      if (look && "paneTitles" in look) {
+        const { paneTitles, ...rest } = look, strips = look.tabBar !== false || paneTitles === true
+        set("appearance", "paneTabBars" in look ? rest : { ...rest, ...(strips ? {} : { paneTabBars: false }) })
+      }
+      const keys = get("hotkeys"), hk = keys && renamedKey(keys, "setting:pane-titles", "setting:pane-tab-bars")
+      if (hk) set("hotkeys", hk)
+    }),
+  },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

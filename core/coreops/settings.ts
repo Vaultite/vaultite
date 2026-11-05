@@ -61,7 +61,7 @@ const APPEARANCE: Record<string, Setting> = {
     about: "CSS snippets turned on, by name (a JSON list, or names separated by commas)", parse: names },
   fileIcons: { about: "true or false: icons before file names: the tree, tabs, search and the quick switcher", parse: bool("fileIcons") },
   tabBar: { about: "true (default) or false: the window's tabs in a bar above its panes on desktop (a split tab is one chip); off, none (switch with the Tabs panel or the keyboard)", parse: bool("tabBar") },
-  paneTitles: { about: "false (default) or true: a strip above each pane naming what it shows (tells splits apart); off, nothing above the pane", parse: bool("paneTitles") },
+  paneTabBars: { about: "true (default) or false: each pane of a split has a strip of its own tabs on top, with the tab bar on or off; off, nothing above a pane (its tabs from the tab bar's cell or the Tabs panel)", parse: bool("paneTabBars") },
   dimPanes: { about: "true (default) or false: with the window split, the panes without the focus fade a little", parse: bool("dimPanes") },
   paneCards: { about: "false (default) or true: on desktop, each pane is an inset rounded card with room around it, the window showing between; off, flat panes divided by lines", parse: bool("paneCards") },
   rails: { about: "true (default) or false: a hidden sidebar folds to its icon rail on desktop; off, it's gone, sliding back over the page while the pointer is at that edge of the window", parse: bool("rails") },

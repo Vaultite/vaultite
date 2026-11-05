@@ -19,9 +19,13 @@ the split is on screen and a pane has more than one, the Tabs panel lists each p
 sits: a click shows one, its X closes it, a drag moves it along its pane's list, into another's, onto a pane (an edge
 splits it off, its own pane's too while that has others) or out to the list as a tab of its own, and a list's tab
 dropped on a pane's list joins it; another tab on screen, the row is its map again, each cell saying how many more its
-pane has (+2). With the tab bar on, every pane of a split has a strip of its tabs on top, one too, its + opening one
-among them (none for a pinned tab's pane or one that keeps its view, whose new tabs go to the list); a tab dropped on a
-strip joins it. A split closed down to one pane has its tabs as tabs of the list. Kept as each pane's `stack` (its
+pane has (+2). With Pane tab bars (appearance `paneTabBars`, on by default; the tab bar on or off), every pane of a
+split has a strip of its tabs on top, one too, its + opening one among them (a terminal's too: asked for there; none for
+a pinned tab's pane, whose new tabs go to the list); a tab dropped on a strip joins it. Off, a pane starts with what it
+shows (a note's bar its title row, with the pane's X and menu), and a tab dragged over a pane brings its strip back over
+it to drop into; in the tab bar, a split's cell says how many more tabs its pane has (+2: a click lists them, each shown
+by a click, its menu beside it; shown while no strip shows them), and right-clicking a cell is its pane's menu, the
+tab's under Tab, as the panel's map. A split closed down to one pane has its tabs as tabs of the list. Kept as each pane's `stack` (its
 other places, each a pane of its own, in order) and `stackAt` (where the one it shows sits among them):
 ```
 {"id": "t2", "focus": "p3", "root": {"id": "s1", "dir": "row", "sizes": [0.5, 0.5], "kids": [{"id": "p2", "to": "file:Notes/b.md"},

@@ -337,9 +337,9 @@ function switchTo(t: Tab, p: Pane, from?: string) {
   set(l)
 }
 
-/** Where the tabs made now go in the list (`newTabsAt`): beside the tab they're opened from, in its tab group (a link);
- *  a new tab's place ("new": past the tab on screen's group, in none, as ⌘T); or the list's end ("end"). */
-export type TabsAt = "new" | "end" | undefined
+/** Where the tabs made now go (`newTabsAt`): beside the tab they're opened from, in its group (a link); "new": past the
+ *  tab on screen's group, as ⌘T; "end": the list's end; "pane": the focused pane's own, a terminal's too (its strip's +). */
+export type TabsAt = "new" | "end" | "pane" | undefined
 let placing: TabsAt
 /** Runs `fn` with the tabs it makes put as a new tab is, in no tab group: beside the tab on screen, past its group
  *  (⌘T), or at the list's end (a tab bar's + and the Tabs panel's New tab row, whose place the new tab takes). */
@@ -411,8 +411,8 @@ export function go(to: string, newTab = false, push = true) {
 }
 
 /** Whether a new tab from pane `from` of tab `t` is one of that pane's own (Pane.stack): a split's, unpinned, not keeping
- *  its view (a terminal's go in the list), and not asked for at the list's end (its New tab row, a tab bar's +). */
-const intoPane = (t: Tab, from = focusedPane(t).id) => isSplit(t.root) && !t.pinned && placing !== "end" && !keeps(paneWith(t.root, from)?.to ?? "")
+ *  its view (a terminal's go in the list) unless asked for there, nor asked for at the list's end (a tab bar's +). */
+const intoPane = (t: Tab, from = focusedPane(t).id) => isSplit(t.root) && !t.pinned && placing !== "end" && (placing === "pane" || !keeps(paneWith(t.root, from)?.to ?? ""))
 /** This window's list with place `p` among the tabs of the pane that has place `at` (after it), shown and focused there
  *  (`show` false: stacked behind), its tab on screen. */
 function withNewPlace(tab: string, at: string, p: Pane, show = true): TabList {

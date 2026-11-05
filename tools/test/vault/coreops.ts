@@ -69,6 +69,15 @@ export default async ($: VaultTest) => {
       vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "file-bar-fade-2026-11") })
       await migrate(vault, false)
       check("typingFade on becomes fileBarFade typing, in its place", JSON.stringify(conf("appearance")) === JSON.stringify({ theme: "dark", fileBarFade: "typing", translucent: true }), conf("appearance"))
+      // (paneTitles, from before paneTabBars: with the tab bar on a split's panes had their strips, so they keep them)
+      const pane = async (was: Record<string, unknown>) => {
+        write(".vaultite/appearance.json", JSON.stringify(was) + "\n")
+        vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "pane-tab-bars-2026-11") })
+        await migrate(vault, false)
+        return JSON.stringify(conf("appearance"))
+      }
+      const kept = [await pane({ tabBar: true, paneTitles: false }), await pane({ tabBar: false, paneTitles: false }), await pane({ tabBar: false, paneTitles: true })]
+      check("paneTitles becomes paneTabBars, each look keeping its strips", kept.join() === [{ tabBar: true }, { tabBar: false, paneTabBars: false }, { tabBar: false }].map((x) => JSON.stringify(x)).join(), kept)
       write(".vaultite/appearance.json", JSON.stringify(look) + "\n")
     }
 
