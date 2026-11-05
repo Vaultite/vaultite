@@ -91,6 +91,8 @@ export type Prefs = {
   /** The plugins' items in a file's top bar, in order ("companion:presence"); null: by their `sort`. One docked in a
    *  sidebar is a panel there (sidebars.json) instead. */
   fileBar: string[] | null
+  /** Those of them hidden (Hide in their menu): in neither the top bar nor a sidebar till docked or moved back. */
+  fileBarHidden: string[]
   /** The plugins' items in the left sidebar's header, in order ("inbox:inbox"); null: every one, by their `sort`. */
   sidebarHeader: string[] | null
   /** The commands a page pulled down on a phone offers, left, straight down, right (components/PullActions.tsx); null:

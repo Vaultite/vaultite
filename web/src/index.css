@@ -1260,6 +1260,26 @@ html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(-
    over all. */
 :root { --z-page-float: 32; --z-peek-shade: 35; --z-peek-edge: 38; --z-peek: 40; --z-peek-rider: 50; }
 
+/* A sidebar's moves, every part on one spring: pinned and unpinned, folded to its rail, slid in over the page and out
+   (core/peek.ts useSideMotion). Coming from off the window it arrives pinned-shaped, only sliding; going off it slides
+   out pinned-shaped and takes the floating card's shape once out of sight, so neither jumps on the way. */
+aside[data-side] {
+  transition-property: width, translate, top, bottom, left, right, border-radius, box-shadow, outline-color;
+  transition-duration: var(--motion-spring); transition-timing-function: var(--spring);
+}
+/* (an outline to fade: the floating card's edge, core/peek.ts) */
+aside[data-side]:not([data-peek]) { outline: 0.5px solid transparent; outline-offset: -0.5px; }
+aside[data-side][data-motion=in] { transition-property: width, translate; }
+aside[data-side][data-motion=out] {
+  transition-duration: var(--motion-spring), var(--motion-spring), 0s, 0s, 0s, 0s, 0s, 0s, 0s;
+  transition-delay: 0s, 0s, var(--motion-spring), var(--motion-spring), var(--motion-spring), var(--motion-spring), var(--motion-spring), var(--motion-spring), var(--motion-spring);
+}
+/* Dragged shut, or out again, in one drag, it still slides (a drag stops every other transition: body[data-resizing]). */
+body[data-resizing] aside[data-side][data-motion=in] { transition: translate var(--motion-spring) var(--spring) !important; }
+body[data-resizing] aside[data-side][data-motion=out] {
+  transition: width var(--motion-spring) var(--spring), translate var(--motion-spring) var(--spring), top 0s var(--motion-spring), bottom 0s var(--motion-spring),
+    left 0s var(--motion-spring), right 0s var(--motion-spring), border-radius 0s var(--motion-spring), box-shadow 0s var(--motion-spring), outline-color 0s var(--motion-spring) !important;
+}
 /* Behind a hidden sidebar slid in (appearance `peekShade`): a soft dim that waits for the sidebar to be in, so brushing
    the window's edge never flashes the page, and lifts at once. Stronger in dark, where a dark page hardly darkens. */
 [data-peek-edge] { pointer-events: none; }

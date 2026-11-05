@@ -83,7 +83,7 @@ export { foldGroup, openInGroup } from "@/core/tabgroups"
 export { foldGroupMoving, useGrowIn, useReflow, useGroupIn, useShrinkOut } from "@/core/tabfold"
 export { useGroupLines } from "@/core/tabline"
 export { canDropAt as canDropTab, dropOn as dropTab, groupsAsDrawn, listDrop as tabListDrop, previewIn as tabPreview, previewOrder as tabPreviewOrder, slotBeside as tabSlotBeside, slotIn as tabSlot, springOver, springing, type Drop as TabDrop } from "@/core/drop"
-export { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
+export { INCOMING, reorder, slotAt, useRewrap, useSlide } from "@/core/slide"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.
 export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selectionFor, selectItem, startSelecting, useSelectable, useSelected, useSelectedKeys, useSelecting, type Selectable } from "@/core/select"
 export { SwipeRow, type SwipeAction } from "@/components/SwipeRow"

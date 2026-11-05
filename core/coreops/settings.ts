@@ -79,6 +79,8 @@ const APPEARANCE: Record<string, Setting> = {
     about: "those of statusBar's items drawn in the status bar's left corner, by the left sidebar (vim:mode, companion:status); the rest are in its right corner: a JSON list or names separated by commas; [] for none; unset: the items that ask for it", parse: names },
   fileBar: {
     about: "the plugins' items in a file's top bar, in order, as <plugin>:<name> (companion:presence, provenance:origin): a JSON list or names separated by commas; ones left out follow by their default place", parse: names },
+  fileBarHidden: {
+    about: "the plugins' top bar items hidden, as <plugin>:<name> (review:review): a JSON list or names separated by commas; one docked in a sidebar shows there whatever this says", parse: names },
   sidebarHeader: {
     about: "the plugins' items in the left sidebar's header, in order, as <plugin>:<name> (workspaces:numbers, inbox:inbox): a JSON list or names separated by commas; [] for none; unset: every one", parse: names },
   pullActions: {

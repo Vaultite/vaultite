@@ -130,6 +130,7 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   (`["companion:status", "vim:mode"]`; unset: the items that ask for it, Vim's mode and the companion); the rest are in
   its right corner, the file's. Drag one from corner to corner. `fileBar`: the plugins' items in a file's top bar, in order (`["dispatch:dispatch", "companion:presence"]`;
   unset: their default places); one dragged into a sidebar (or Move to sidebar) is a panel there, in `sidebars.json`.
+  `fileBarHidden`: those of them hidden (Hide in their menu, in the bar or a sidebar); docked again, or Move to top bar, shows one.
   `sidebarHeader`: the plugins' items in the left sidebar's header, in order (`["workspaces:numbers"]`; unset: every one;
   `[]`: none). Right-click the header to show or hide each.
   `pullActions`: the three commands a page pulled down past its top offers on a phone, by palette command id: left,

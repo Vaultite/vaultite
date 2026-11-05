@@ -30,6 +30,8 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
   }
   useLayoutEffect(place, [])
   const end = () => { unEscape.current?.(); unEscape.current = null; if (!resizing()) return; onEnd?.(); stopResizing(); requestAnimationFrame(place) }
+  // The drag is heard on the window, not the line: a drag that hides what the line is on (a sidebar dragged shut) takes
+  // the line away mid-drag, and its end, never heard, left the app resizing (the cursor stuck, terminals waiting).
   const down = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.preventDefault()
@@ -37,6 +39,8 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
     el.setPointerCapture(id)
     startResizing(horizontal ? "row" : "col")
     onStart?.(x, y)
+    const move = (m: globalThis.PointerEvent) => { if (m.pointerId === id) onDrag(m.clientX, m.clientY) }
+    const up = (m: globalThis.PointerEvent) => { if (m.pointerId === id) end() }
     // Escape puts it back where it was and ends the drag, as it does any other.
     const escape = (k: globalThis.KeyboardEvent) => {
       if (k.key !== "Escape") return
@@ -46,8 +50,15 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
       try { el.releasePointerCapture(id) } catch { /* already gone */ }
       end()
     }
+    addEventListener("pointermove", move)
+    addEventListener("pointerup", up)
+    addEventListener("pointercancel", up)
+    addEventListener("blur", end)
     addEventListener("keydown", escape, true)
-    unEscape.current = () => removeEventListener("keydown", escape, true)
+    unEscape.current = () => {
+      removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up)
+      removeEventListener("blur", end); removeEventListener("keydown", escape, true)
+    }
   }
   // A key is a whole drag, from the line's middle to a step along.
   const key = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -64,12 +75,11 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
     <div ref={self} role="separator" tabIndex={0} aria-orientation={horizontal ? "horizontal" : "vertical"} aria-label={label} onKeyDown={key}
       aria-valuemin={0} aria-valuemax={100} onFocus={place}
       data-tip={onReset ? `Drag to resize, double-click to ${resetTip}` : "Drag to resize"}
-      onPointerDown={down}
-      onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) onDrag(e.clientX, e.clientY) }}
-      onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
-      onDoubleClick={onReset} style={style}
+      onPointerDown={down} onDoubleClick={onReset} style={style}
       className={cn("group z-10 focus-visible:outline-none", horizontal ? "cursor-row-resize" : "cursor-col-resize", className)}>
-      <div className="absolute inset-0 transition-colors group-hover:bg-primary/40 group-focus-visible:bg-primary/60 group-active:bg-primary/60" />
+      {/* A slim bar in the middle of its wider grip; on hover a beat late, so brushing past doesn't flash it. */}
+      <div className={cn("absolute transition-colors duration-(--motion-fast) group-hover:bg-primary/45 group-hover:delay-100 group-focus-visible:bg-primary/60 group-active:bg-primary/60 group-active:delay-0",
+        horizontal ? "inset-x-0 top-1/2 h-[3px] -translate-y-1/2" : "inset-y-0 left-1/2 w-[3px] -translate-x-1/2")} />
     </div>
   )
 }

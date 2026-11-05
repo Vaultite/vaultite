@@ -2,6 +2,7 @@
 // what it leaves, useSlide slides the items there. Only transforms, so hits keep being worked out on the layout.
 import { useLayoutEffect, type RefObject } from "react"
 import { rehit } from "@/core/drag"
+import { timing } from "@/core/animation"
 
 /** Along a row, down a column, or in rows that wrap (tiles, a dock of icons). */
 export type Axis = "x" | "y" | "wrap"
@@ -63,6 +64,41 @@ export function useSlide(box: RefObject<HTMLElement | null>, order: string[] | n
     ro.observe(root)
     return () => ro.disconnect()
   }, [box, key, axis])
+}
+
+/** Rows that wrap (tiles) in a box resized (a sidebar's edge dragged): items changing rows glide there, and the panels
+ *  after its own by as much as it grew. Only as its width changes: a list's own changes move it their own ways. */
+export function useRewrap(box: RefObject<HTMLElement | null>, on: boolean) {
+  useLayoutEffect(() => {
+    const root = box.current
+    if (!on || !root) return
+    const kids = () => [...root.children].filter((e): e is HTMLElement => e instanceof HTMLElement && !!e.dataset.slide)
+    // (the panels after its own, in its sidebar)
+    const after = () => { const p = root.closest<HTMLElement>("[data-panel]"), out: HTMLElement[] = []; for (let e = p?.nextElementSibling; e; e = e.nextElementSibling) if (e instanceof HTMLElement && e.dataset.panel) out.push(e); return out }
+    const rowsOf = (els: HTMLElement[]) => els.map((e) => e.offsetTop).join()
+    let width = root.clientWidth, height = root.offsetHeight
+    let was = new Map(kids().map((e) => [e, { x: e.offsetLeft, y: e.offsetTop }])), rows = rowsOf(kids())
+    let below = new Map(after().map((e) => [e, e.offsetTop]))
+    const ro = new ResizeObserver(() => {
+      const els = kids(), now = rowsOf(els), w = root.clientWidth, h = root.offsetHeight
+      const t = timing("spring")
+      if (w !== width && now !== rows && t.duration) {
+        for (const e of els) {
+          const p = was.get(e), dx = p ? p.x - e.offsetLeft : 0, dy = p ? p.y - e.offsetTop : 0
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) e.animate([{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], { ...t, id: "rewrap", composite: "add" })
+        }
+        if (h !== height) for (const e of after()) {
+          const dy = (below.get(e) ?? e.offsetTop) - e.offsetTop
+          if (Math.abs(dy) > 0.5) e.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], { ...t, id: "rewrap", composite: "add" })
+        }
+      }
+      width = w; height = h; rows = now
+      was = new Map(els.map((e) => [e, { x: e.offsetLeft, y: e.offsetTop }]))
+      below = new Map(after().map((e) => [e, e.offsetTop]))
+    })
+    ro.observe(root)
+    return () => ro.disconnect()
+  }, [box, on])
 }
 
 /** Its items, those in a box drawn as its contents (the tab bar's tablist) too. */

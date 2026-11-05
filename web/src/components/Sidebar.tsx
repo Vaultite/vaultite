@@ -9,7 +9,7 @@ import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
 import { closeTab } from "@/core/workspace"
-import { dockAtEnd, dockPanel, drawerPanels, headerItems, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
+import { dockAtEnd, dockPanel, drawerPanels, headerItems, hideBarItem, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
@@ -350,8 +350,8 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
     // Where it is, together: the tab list on top instead (the tab bar), in the other sidebar, nowhere.
     ...(me.tabList ? commandItems("tab:sidebar", "setting:pane-tab-bars").map((it, i) => ({ ...it, sep: i === 0 })) : []),
     { label: `Move to ${other} sidebar`, icon: other === "right" ? PanelRight : PanelLeft, sep: !me.tabList, run: () => dockAtEnd(key, other) },
-    // (a top bar item's own menu has Move to top bar, which this would be)
-    ...(isBarItem(key) ? [] : [{ label: `Hide ${me.title}`, icon: EyeOff, run: () => hidePanel(key) }]),
+    // (a top bar item's own menu has Move to top bar; hidden, it leaves the top bar too)
+    { label: `Hide ${me.title}`, icon: EyeOff, run: () => (isBarItem(key) ? hideBarItem(key) : hidePanel(key)) },
   ]
 }
 

@@ -5,7 +5,7 @@ export const LOOK = {
   sidebarScroll: "panels" as "panels" | "sidebar", panelDividers: false, quickTextSize: false, interfaceFont: "", textFont: "", monoFont: "",
   snippets: [] as string[], fileIcons: true, tabBar: true, paneTabBars: true, dimPanes: true, paneCards: false, rails: true, peekShade: false, sidebarButtons: false, lineNumbers: false,
   fileBarFade: "off" as "off" | "typing" | "always", translucent: false, translucentPages: false, translucency: 50, pageTranslucency: 50,
-  statusBar: null as string[] | null, statusBarMore: [] as string[], statusBarLeft: null as string[] | null, fileBar: null as string[] | null, sidebarHeader: null as string[] | null, pullActions: null as string[] | null,
+  statusBar: null as string[] | null, statusBarMore: [] as string[], statusBarLeft: null as string[] | null, fileBar: null as string[] | null, fileBarHidden: [] as string[], sidebarHeader: null as string[] | null, pullActions: null as string[] | null,
 }
 export const LOOK_KEYS = Object.keys(LOOK) as (keyof typeof LOOK)[]
 /** The user's own of the look: a layout leaves them as they are (the app's say none; saving one leaves them out unless

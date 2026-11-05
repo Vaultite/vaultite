@@ -48,7 +48,8 @@ try {
     await page.screenshot({ path: `${OUT}${side}.png`, clip: { x: side === "left" ? 0 : W - 400, y: 0, width: 400, height: 160 } })
     // A click on its toggle pins it again.
     await page.click(side === "left" ? "[data-sidebar-toggle='']" : "[data-sidebar-toggle=right]")
-    const back = await until(async () => { const s = await at(side); return s.peek === null && s }, 2000)
+    // (the floating card settles into place: wait for its move to end)
+    const back = await until(async () => { const s = await at(side); return s.peek === null && Math.abs(s.dx - pinned.dx) < 0.01 && Math.abs(s.dy - pinned.dy) < 0.01 && s }, 2000)
     check(`${side}: its toggle pins it, the toggle back in place`, !!back && Math.abs(back.dx - pinned.dx) < 0.01 && Math.abs(back.dy - pinned.dy) < 0.01, back || await at(side))
     await page.mouse.move(W / 2, 450)
   }

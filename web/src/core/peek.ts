@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { getDrag } from "@/core/drag"
 import { hasLights, lightsFrame, showLights, webPages, type LightsFrame } from "@/core/desktop"
+import { resizing } from "@/core/resizing"
 import { space } from "@/lib/utils"
 
 export type Peek = "left" | "right" | null
@@ -25,6 +26,19 @@ export const peekPanel = (side: Side, shown: boolean): CSSProperties => ({
 export const peekRider = (side: Side, shown: boolean, width: number): CSSProperties => {
   const x = shown ? space(INSET) : `calc(${space(INSET)} - ${width + OUT}px)`
   return { translate: `calc(${side === "left" ? 1 : -1} * ${x}) ${space(INSET)}` }
+}
+
+/** How a sidebar moves (index.css' aside[data-motion]): "in" from off the window, pinned-shaped; "out" to off it,
+ *  floating once out of sight; else all together. `hidden`: hidden without a rail; `shown`: slid in. */
+export function useSideMotion(hidden: boolean, shown: boolean): "in" | "out" | undefined {
+  const was = useRef<{ hidden: boolean; shown: boolean; motion?: "in" | "out" }>({ hidden, shown })
+  const p = was.current
+  if (p.hidden !== hidden || p.shown !== shown) {
+    // (with the Mac's traffic lights it's still drawn slid in for a frame or two once hidden: "out" holds till it's gone)
+    const motion = !hidden ? (p.hidden && !p.shown ? "in" : undefined) : !p.hidden || (p.motion === "out" && !shown) ? "out" : undefined
+    was.current = { hidden, shown, motion }
+  }
+  return was.current.motion
 }
 
 /** Where the traffic lights go (CSS px): `x` the left sidebar's edge from the window's, `mid` the centre line of
@@ -151,6 +165,8 @@ export function usePeek(left: boolean, right: boolean): Peek {
       if (!summoned.current && !closing) closing = setTimeout(() => { closing = null; if (!held(aside())) setPeek(null) }, LINGER)
     }
     const at = (x: number) => {
+      // (a sidebar's edge dragged to the window's edge shuts it: no sliding it back in under the pointer)
+      if (resizing()) { stopOpening(); return }
       const side = left && x <= EDGE.left.px ? "left" : right && x >= innerWidth - 1 - EDGE.right.px ? "right" : null
       if (peek) {
         const box = aside()?.getBoundingClientRect()

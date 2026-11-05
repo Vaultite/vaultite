@@ -329,14 +329,19 @@ function create(id: string): Live {
     } catch { glLost = true /* no WebGL here */ }
     try { fit.fit() } catch { /* not laid out */ } // (their cells may differ by a fraction)
   }
+  // Its rows drawn now, not at the next frame (xterm.js's own render, not public: if it moves, this does nothing).
+  const drawNow = () => {
+    const rs = (t as unknown as { _core?: { _renderService?: { _renderRows?: (a: number, b: number) => void } } })._core?._renderService
+    if (!rs?._renderRows) return false
+    rs._renderRows(0, t.rows - 1)
+    return true
+  }
   // What it shows, for a closing pane's fade or a dragged card: WebGL's canvas reads back empty once shown, so it's
-  // drawn again now (xterm.js's own render, not public: if it moves, the copy shows the ground as before).
+  // drawn again now.
   const picture = (screen: HTMLElement) => {
     if (!gl) return null
-    const rs = (t as unknown as { _core?: { _renderService?: { _renderRows?: (a: number, b: number) => void } } })._core?._renderService
     const layers = [...screen.querySelectorAll("canvas")]
-    if (!rs?._renderRows || !layers[0]?.width) return null
-    rs._renderRows(0, t.rows - 1)
+    if (!layers[0]?.width || !drawNow()) return null
     const c = document.createElement("canvas")
     c.width = layers[0].width; c.height = layers[0].height
     const g = c.getContext("2d")
@@ -444,12 +449,15 @@ function create(id: string): Live {
   const send = (data: string | Uint8Array<ArrayBuffer>) => { if (ws?.readyState === WebSocket.OPEN) ws.send(data) }
   const onData = t.onData((d) => { if (!replaying) send(enc.encode(d)) })
   const onBinary = t.onBinary((d) => { if (!replaying) send(Uint8Array.from(d, (c) => c.charCodeAt(0) & 255)) })
-  // Drawn at each new size at once, but the shell hears it once the size settles: a program redraws its whole screen
-  // for every size it's given (an agent's, mid-drag, dozens of times into the history).
-  let resizing = 0
+  // Drawn at each new size at once; the shell hears a lone one (a sidebar shown) at once, a run of them (a window dragged)
+  // once it settles: a program redraws its whole screen for every size it's given (an agent's, dozens into the history).
+  let resizing = 0, lastResize = -Infinity
   const onResize = t.onResize(() => {
     clearTimeout(resizing)
-    resizing = window.setTimeout(() => send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows })), RESIZE_SETTLE)
+    const tell = () => send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows }))
+    const now = performance.now(), lone = now - lastResize > RESIZE_SETTLE
+    lastResize = now
+    if (lone) tell(); else resizing = window.setTimeout(tell, RESIZE_SETTLE)
   })
 
   // Files pasted or dropped (a screenshot) go to the server, since the shell there can't read this device's clipboard: a
@@ -527,7 +535,12 @@ function create(id: string): Live {
       opening.mark("xterm")
       connect()
     },
-    refit: () => { try { fit.fit() } catch { /* not laid out */ } },
+    // A new size clears WebGL's canvas and xterm.js draws it a frame later: drawn at once, no frame shows it blank.
+    refit: () => {
+      const { cols, rows } = t
+      try { fit.fit() } catch { return /* not laid out */ }
+      if (gl && (t.cols !== cols || t.rows !== rows)) drawNow()
+    },
     // Restart, Try again, Start a new one: the user asks for it, so it may start the session.
     restart: () => { clearTimeout(timer); attachOnly = false; t.reset(); setStatus({ kind: "connecting", tries: 0 }); connect(); t.focus() },
     dispose: () => {
@@ -597,13 +610,9 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       for (let y = all ? 0 : b.viewportY, end = all ? b.length : b.viewportY + t.rows; y < end; y++) lines.push(b.getLine(y)?.translateToString(true) ?? "")
       return lines.join("\n")
     } })
-    let frame = 0
-    // (once a frame at most: its shell redraws for every size it's given). Not while a sidebar or split is dragged: each
-    // size clears its canvas, so it blinked and its text rewrapped all along; it keeps its size, clipped, till the end.
-    const refit = () => {
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => { if (!resizing()) l.refit() })
-    }
+    // In the frame its box changed (a ResizeObserver's turn comes before the paint), so the new size and what it draws
+    // show together. Not while a sidebar or split is dragged: it keeps its size, clipped, till the end.
+    const refit = () => { if (!resizing()) l.refit() }
     const ro = new ResizeObserver(refit)
     ro.observe(el)
     const offResized = onResized(refit)
@@ -694,7 +703,6 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     scrolled()
 
     return () => {
-      cancelAnimationFrame(frame)
       ro.disconnect(); offResized(); unregister(); onScroll.dispose()
       el.removeEventListener("touchstart", onTouchStart, true)
       el.removeEventListener("touchmove", onTouchMove, true)

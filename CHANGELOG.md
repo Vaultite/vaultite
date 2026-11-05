@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Sidebars show and hide smoothly, terminals don't blink**: a sidebar slides in and out with the panes as one, keeping
+  its shape (a slid-in one settles into place when pinned); a terminal beside it no longer flashes blank as it resizes,
+  and its program redraws for the new size at once. A sidebar dragged shut no longer leaves the pointer stuck resizing;
+  the resize line is slimmer, in the middle of the gap; Pinned's tiles glide as they rewrap; and a top bar item docked
+  in a sidebar (Review) can be hidden like any panel (`fileBarHidden`).
 - **Sidebar panels hold still as a tab group opens or folds**: with each panel in its own box, the panels under Tabs
   no longer bounce a row up and down while the group's tabs grow in or fold away (or as a row folds off any list);
   they stay put while Tabs is full, and otherwise move one way with it, without a jump at the start or end.

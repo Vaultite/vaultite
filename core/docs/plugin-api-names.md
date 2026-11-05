@@ -756,6 +756,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
 - `useReflow(box, l)`: The window's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not opened or closed (grouped, ungrouped, moved by a menu or a drop) slide from where…
+- `useRewrap(box, on)`: Rows that wrap (tiles) in a box resized (a sidebar's edge dragged): items changing rows glide there, and the panels after its own by as much as it grew.
 - `useRowsNear(total, step?)`: How many of `total` rows to draw: a first `step`, then `step` more whenever the mark (`ref` it: an element after the last row drawn) comes within a few screens of what scrolls it.
 - `useScopedState(key, fallback, scope?)`: The same as a hook: [value, set], redrawn when it changes (here, another device on the workspace, a switch).
 - `useSelectable(list, def)`: Make a list's rows selectable while mounted: its container says `data-select-list={list}`, each row `data-select-key`; their order on screen is the order a ⇧-click takes.

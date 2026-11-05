@@ -6,7 +6,7 @@ import {
   coarse, edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, folderTarget, getStore, HeadingButton, iconAt, isFolder, isListedPage, menuFor, notifyError, offPlugin, openAt, openFile, openFolder,
   openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings,
   INCOMING, openItem, openView, pastEnd, PIN_SEARCH, reorder, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, slotAt, startDrag, stem, useDrag,
-  useDropHit, useDropTarget, useEnabled, useSelectable, useSelectedKeys, useSlide, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem,
+  useDropHit, useDropTarget, useEnabled, useRewrap, useSelectable, useSelectedKeys, useSlide, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem,
   type SidebarCtx,
 } from "@vaultite"
 import { SquareArrowOutUpRight } from "lucide-react"
@@ -154,6 +154,8 @@ export function PinnedPages({ store, open, file, tab, panel, pane, flyout, tiles
   // Dragged over, the pages make way for what's dragged (one leaving to be unpinned: the rest close up).
   const order = dragging && hit ? hit.order : null
   useSlide(box, order, tiles ? "wrap" : "y")
+  // (the sidebar's edge dragged: tiles changing rows glide there)
+  useRewrap(box, tiles)
   const picks = useSelectedKeys(SELECT)
   useSelectable(SELECT, { noun: ["page", "pages"], menu: (keys) => {
     const shown = shownEntries(store).filter((e) => keys.includes(e.key) && e.kind !== "folder")

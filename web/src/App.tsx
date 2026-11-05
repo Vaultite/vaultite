@@ -12,7 +12,7 @@ import { currentEditor, keysInEditor } from "@/core/editors"
 import { bareWindow, desktop as desktopApp, hasLights } from "@/core/desktop"
 import { canKeepOnTop, keepOnTop, onTop } from "@/core/ontop"
 import { otherVaults } from "@/core/desktopapp"
-import { peekPanel, peekRider, usePeek, usePeekLights } from "@/core/peek"
+import { peekPanel, peekRider, usePeek, usePeekLights, useSideMotion } from "@/core/peek"
 import { useBarFade } from "@/core/barfade"
 import { keepTypingInSight } from "@/core/sight"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
@@ -559,6 +559,7 @@ export default function App() {
   // The traffic lights go with the sidebar they sit in; it slides out once they're gone, inert only then (an inert one
   // isn't hit, so a web page it's still over would be raised over it meanwhile).
   const leftIn = usePeekLights(hideLeft, peek)
+  const leftMotion = useSideMotion(hideLeft, leftIn), rightMotion = useSideMotion(hideRight, peek === "right")
   useBarFade(desktop && fileBarFade)
   useEffect(() => keepTypingInSight(), [])
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
@@ -598,11 +599,10 @@ export default function App() {
       {hideLeft && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 left-0 z-(--z-peek-edge) w-[6px]" />}
       {hideRight && hasRight && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 right-0 z-(--z-peek-edge) w-[3px]" />}
       {!popout && <>
-      <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && !leftIn} onContextMenu={menuFor(panelMenu)}
+      <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} data-motion={leftMotion} inert={hideLeft && !leftIn} onContextMenu={menuFor(panelMenu)}
         className={cn(
-          "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-[calc(--spacing(2)+env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] pb-[max(--spacing(2),env(safe-area-inset-bottom))]",
-          "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
-          hideLeft && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
+          "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-[calc(--spacing(2)+env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] pb-[max(--spacing(2),env(safe-area-inset-bottom))] md:flex",
+          hideLeft && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)]",
         )} style={hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }}>
         {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
             an item fits itself to the room the traffic lights leave. */}
@@ -645,17 +645,16 @@ export default function App() {
             out again it opens, in one drag. */}
         {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth); dragOpen = getPrefs().sidebar }} onDrag={(x) => dragSidebar(false, x)}
           onCancel={() => setPrefs({ sidebar: dragOpen, sidebarWidth: dragFrom })} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
-          className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />}
+          className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} + var(--pane-gap) / 2 - 3.5px)` }} />}
       </aside>
       </>}
 
       {showRight && (
-        <aside data-side="right" data-collapsed={!(rightOpen || hideRight) || undefined} data-peek={hideRight ? peek === "right" : undefined} inert={hideRight && peek !== "right"}
+        <aside data-side="right" data-collapsed={!(rightOpen || hideRight) || undefined} data-peek={hideRight ? peek === "right" : undefined} data-motion={rightMotion} inert={hideRight && peek !== "right"}
           onContextMenu={menuFor(() => panelMenu(undefined, "right"))}
           className={cn(
-            "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)+env(safe-area-inset-right))] pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2",
-            "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
-            hideRight && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
+            "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)+env(safe-area-inset-right))] pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2 md:flex",
+            hideRight && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)]",
           )} style={hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }}>
           {/* As tall as the tab bar, with the toggle (fixed, below) at its right end. */}
           <div data-titlebar className="h-10 shrink-0" />
@@ -666,7 +665,7 @@ export default function App() {
             <Resizer label="Resize the right sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().rightSidebarWidth); dragOpen = getPrefs().rightSidebar }} onDrag={(x) => dragSidebar(true, x)}
               onCancel={() => setPrefs({ rightSidebar: dragOpen, rightSidebarWidth: dragFrom })}
               onReset={() => setPrefs({ rightSidebar: true, rightSidebarWidth: 280 })}
-              className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ right: `calc(${rside} - 4px)` }} />
+              className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ right: `calc(${rside} + var(--pane-gap) / 2 - 3.5px)` }} />
           )}
         </aside>
       )}
@@ -697,13 +696,13 @@ export default function App() {
       {/* (the left one: hidden without a rail, it slides in and out with the sidebar; a click there keeps the sidebar open) */}
       {!popout && (
         <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
-          className={hideLeft ? cn("z-(--z-peek-rider) transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "left" && "pointer-events-none") : undefined}
+          className={hideLeft ? cn("z-(--z-peek-rider) transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "left" && "pointer-events-none") : !rails ? "transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)" : undefined}
           style={hideLeft ? peekRider("left", leftIn, sidebarPx(sidebarWidth)) : undefined} />
       )}
       {desktop && !popout && (
         <SidebarToggle side="right" open={rightOpen} empty={!hasRight}
           onClick={() => (hasRight ? setPrefs({ rightSidebar: !rightSidebar }) : setEmptyRight(!emptyRight))}
-          className={!rails && !rightOpen ? cn("z-(--z-peek-rider) transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "right" && "pointer-events-none") : undefined}
+          className={!rails && !rightOpen ? cn("z-(--z-peek-rider) transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "right" && "pointer-events-none") : !rails ? "transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)" : undefined}
           style={!rails && !rightOpen ? peekRider("right", peek === "right", sidebarPx(rightSidebarWidth)) : undefined} />
       )}
 

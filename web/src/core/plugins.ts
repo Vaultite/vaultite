@@ -438,8 +438,14 @@ function barPanel(key: string, p: Plugin, item: FileBarItem): SidebarPanel {
 export const isBarItem = (key: string) => { const { disabled } = getPrefs(); return fileBarItems(disabled).some((x) => x.key === key) }
 /** A top bar item put before `before` in the bar (null: last), out of a sidebar if it was docked in one. */
 export function moveBarItem(key: string, before: string | null) {
-  const { disabled } = getPrefs()
-  void setPrefs({ fileBar: placeKey(fileBarItems(disabled).map((x) => x.key), key, before) })
+  const { disabled, fileBarHidden } = getPrefs()
+  void setPrefs({ fileBar: placeKey(fileBarItems(disabled).map((x) => x.key), key, before), ...(fileBarHidden.includes(key) ? { fileBarHidden: fileBarHidden.filter((k) => k !== key) } : {}) })
+  if (sideIn(sidebars(), key)) hidePanel(key)
+}
+/** A top bar item hidden: out of the bar and of a sidebar it was docked in. */
+export function hideBarItem(key: string) {
+  const { fileBarHidden } = getPrefs()
+  if (!fileBarHidden.includes(key)) void setPrefs({ fileBarHidden: [...fileBarHidden, key] })
   if (sideIn(sidebars(), key)) hidePanel(key)
 }
 
@@ -513,10 +519,16 @@ export function panelOfView(to: string | undefined) {
 }
 
 /** Put a panel somewhere (moved, or shown if it was hidden): see Place. */
-export const dockPanel = (key: string, to: Place) => changeSidebars((s) => placePanel(s, key, to))
+export const dockPanel = (key: string, to: Place) => { unhideBarItem(key); changeSidebars((s) => placePanel(s, key, to)) }
+/** A hidden top bar item docked again isn't hidden any more: taken out of the sidebar later, it's back in the bar. */
+function unhideBarItem(key: string) {
+  const { fileBarHidden } = getPrefs()
+  if (fileBarHidden.includes(key)) void setPrefs({ fileBarHidden: fileBarHidden.filter((k) => k !== key) })
+}
 /** Put a panel at the end of a sidebar, open, and that sidebar open: what every move without a drop does (a sidebar's
  *  toggle, Move to the other sidebar, ticking it in the Panels menu), so where it went is in sight. */
 export function dockAtEnd(key: string, side: Side) {
+  unhideBarItem(key)
   changeSidebars((s) => setCollapsed(placePanel(s, key, { side, before: null }), key, false))
   if (side === "left" ? !getPrefs().sidebar : !getPrefs().rightSidebar) void setPrefs(side === "left" ? { sidebar: true } : { rightSidebar: true })
 }
