@@ -22,6 +22,7 @@ import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { editStyle, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
 import { muteItem, pauseItems, pauseSound, watchSoundMarks } from "./soundmarks"
+import { SoundCard, watchSoundCard } from "./SoundCard"
 import { barHidden, pageBarItem, setBarHidden } from "./pagebar"
 import { switcherSearch } from "./switcher"
 import { focusedReplay } from "./replaykeys"
@@ -138,11 +139,12 @@ function pageNotified(m: Extract<WebEvent, { type: "notify" | "session" }>) {
   })
 }
 
-/** The agents' card, not drawn again with Background (each store change): it listens to what it shows itself. */
-const Card = memo(AgentsCard)
+/** The agents' card and pages playing out of sight's, not drawn again with Background (each store change): each
+ *  listens to what it shows itself. */
+const Card = memo(AgentsCard), Sounds = memo(SoundCard)
 
-/** The plugin's work in the app: its settings, the app's shortcuts told to the desktop app, and its events; the agents'
- *  card. */
+/** The plugin's work in the app: its settings, the app's shortcuts told to the desktop app, and its events; the corner
+ *  cards (agents' pages, pages playing out of sight). */
 function Background() {
   useEffect(() => void settings.ready(), [])
   useEffect(() => { if (hasExtensions()) extensionsChanged() }, [])
@@ -166,6 +168,7 @@ function Background() {
   useEffect(() => { void webPages?.engine?.("lock:set", locks ? locks.split(" ") : []).catch(() => {}) }, [locks])
   // (a page playing in a folded tab group: a speaker on the group)
   useEffect(() => watchSoundMarks(), [])
+  useEffect(() => watchSoundCard(), [])
   // Which pages play sound, shown or in the background: read again as pages change.
   useEffect(() => {
     const web = webPages
@@ -173,7 +176,7 @@ function Background() {
     let timer = 0
     const read = () => void web.list!().then((list) => {
       setSounds(list.flatMap((p) => p.muted || p.playing || p.paused
-        ? [{ playing: !!p.playing, muted: !!p.muted, paused: !!p.paused, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title }] : []))
+        ? [{ playing: !!p.playing, muted: !!p.muted, paused: !!p.paused, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title, player: !!p.player }] : []))
       const of = (on: (p: (typeof list)[number]) => boolean | undefined) => new Set(list.flatMap((p) => (p.tab && on(p) ? [p.tab] : [])))
       setPageFlags(of((p) => p.loading && !p.error), of((p) => p.typed))
     }, () => {})
@@ -235,7 +238,7 @@ function Background() {
       else notify(`Couldn't download ${m.name}`, { kind: "error" })
     }
   }), [])
-  return <Card />
+  return <><Card /><Sounds /></>
 }
 
 function Preview() {

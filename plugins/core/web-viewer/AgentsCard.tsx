@@ -1,9 +1,9 @@
 // Agents' pages, out of the user's tabs: while agents browse, a card in a corner (as the mini player), the picked page live
 // with the agent's pointer moving in it, Open as tab and Pause. A float (layers.ts): pages under it stay live.
-import { useEffect, useLayoutEffect, useState, type MouseEvent } from "react"
+import { useEffect, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { AppWindow, Check, ChevronDown, ChevronUp, Ellipsis, Globe, MousePointer2, Pause, Play, X } from "lucide-react"
-import { Button, cell, cn, CORNERS, menuBelow, openView, useCornerDrag, useDesktop, useScopedState, webPages, type Corner } from "@vaultite"
+import { Button, cell, cn, CORNERS, menuBelow, openView, useCornerDrag, useCornerStack, useDesktop, useScopedState, webPages, type Corner } from "@vaultite"
 import { hostOf } from "./address"
 import { onScreen, pictured } from "./state"
 import { useFrame, useShown } from "./liveframe"
@@ -32,17 +32,8 @@ export function AgentsCard() {
   const desktop = useDesktop()
   const on = desktop && shows(pages, gone)
   useEffect(() => { if (!all.length && gone) dismissed.set(null) }, [all.length, gone])
-  if (!on) { return <Room px={0} /> }
+  if (!on) return null
   return createPortal(<Card pages={pages} />, document.body)
-}
-
-/** What's drawn at the bottom (toasts) keeps clear of the card in a bottom corner. */
-function Room({ px }: { px: number }) {
-  useEffect(() => {
-    document.documentElement.style.setProperty("--agents-card", `${px}px`)
-    return () => { document.documentElement.style.setProperty("--agents-card", "0px") }
-  }, [px])
-  return null
 }
 
 /** The page shown first: one asking, else the latest at work. */
@@ -57,21 +48,14 @@ function Card({ pages }: { pages: AgentPage[] }) {
   const shots = useShots(pages.map((p) => p.id).join(" "))
   const drag = useCornerDrag(corner, setCorner)
   const at = CORNERS[corner] ? corner : "br"
-  const [height, setHeight] = useState(0)
-  useLayoutEffect(() => {
-    const el = drag.ref.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setHeight(el.offsetHeight))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [drag.ref])
+  // (above the mini player sharing its corner; toasts keep clear of both)
+  const place = useCornerStack("agents", at, 1, drag.ref)
   return (
     <div role="region" aria-label="Agents in the browser" data-agents-card={open ? "open" : "closed"} {...drag}
       onKeyDown={(e) => { if (e.key === "Escape") showAgentsCard(false) }}
       className={cn("glass-strong fixed z-[19] w-[340px] max-w-[calc(100vw-2rem)] touch-none overflow-hidden rounded-[12px] shadow-lg select-none",
-        "transition-[left,right] duration-200 ease-out data-dragging:cursor-grabbing data-dragging:shadow-2xl data-dragging:transition-none", CORNERS[at])}
-      style={at[0] === "b" ? { bottom: "calc(2.5rem + var(--mini-player))" } : undefined}>
-      <Room px={at[0] === "b" ? height + 8 : 0} />
+        "transition-[left,right,margin] duration-200 ease-out data-dragging:cursor-grabbing data-dragging:shadow-2xl data-dragging:transition-none", CORNERS[at])}
+      style={place}>
       {open && <Live page={page} />}
       <Bar page={page} shot={open ? null : shots[page.id]} more={others.length} open={open} setOpen={setOpen} />
       {page.asking && (

@@ -29,6 +29,8 @@ export type Settings = {
   playerFullScreen?: boolean
   /** The bar above each page: "shown" (the default), or "hidden" till the pointer reaches the page's top (WebPage.tsx). */
   pageBar?: "shown" | "hidden"
+  /** Whether a card in a corner shows pages playing in tabs out of sight (the default), to pause, mute or show them. */
+  soundCard?: boolean
 }
 
 /** Its settings (data.json), live. */
@@ -61,8 +63,8 @@ export function keptTitles(kept: Record<string, string>) {
 }
 
 /** A page playing sound (through quiet scenes, till its media pauses), muted, or paused from the app: its tab's mark
- *  says so. `tab`: its tab's id ("" from builds before tabs owned their pages), `arg` that tab's. */
-export type Sound = { playing: boolean; muted: boolean; paused: boolean; id: number; tab: string; arg: string; title: string }
+ *  says so. `tab`: its tab's id ("" from builds before tabs owned their pages), `arg` that tab's; `player`: in its player. */
+export type Sound = { playing: boolean; muted: boolean; paused: boolean; id: number; tab: string; arg: string; title: string; player?: boolean }
 /** Every page's, for the status bar's "playing". */
 export const sounds = cell<Sound[]>([])
 /** Tab `tab`'s page's sound; without a tab (a pin), a page's at that address. */
@@ -71,7 +73,7 @@ export const soundOf = (arg: string, tab?: string) => {
   return tab ? all.find((s) => s.tab === tab) ?? all.find((s) => !s.tab && s.arg === arg) : all.find((s) => s.arg === arg)
 }
 export function setSounds(next: Sound[]) {
-  const key = (l: Sound[]) => l.map((s) => `${s.tab} ${s.arg} ${s.playing} ${s.muted} ${s.paused} ${s.title}`).sort().join("\n")
+  const key = (l: Sound[]) => l.map((s) => `${s.tab} ${s.arg} ${s.playing} ${s.muted} ${s.paused} ${s.title} ${!!s.player}`).sort().join("\n")
   if (key(next) === key(sounds.get())) return
   const icons = (l: Sound[]) => l.map((s) => `${s.tab} ${s.arg} ${s.muted} ${s.paused && !s.playing}`).sort().join("\n")
   const redraw = icons(next) !== icons(sounds.get())

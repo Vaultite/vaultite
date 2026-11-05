@@ -78,7 +78,7 @@ const system = matchMedia("(prefers-color-scheme: dark)")
 const LOOK = "vaultite.look"
 // What <html>'s style says about where things sit, not how they look (the visual viewport's, written as it moves).
 const ROOM = new Set(["--vvh", "--vvtop", "--tab-aspect", "--mto", "--mfrom", "--scrollbar-room", "--window-controls", "--mini-player",
-  "--agents-card", "--trial-bar"])
+  "--corner-cards", "--trial-bar"])
 
 // What follows the look outside CSS (a terminal's palette, a canvas, a frame): told once it's in place, including
 // after a theme's or snippet's stylesheet has loaded, which a watch on <html>'s attributes misses.

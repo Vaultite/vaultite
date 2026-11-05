@@ -1,7 +1,8 @@
 // A card floating in a corner of the room between the sidebars, like picture in picture (the mini player, agents'
-// pages): where each corner is, and dragging it to another.
-import { useLayoutEffect, useRef, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react"
+// pages, pages playing out of sight): where each corner is, dragging it to another, and cards sharing one stacked.
+import { useLayoutEffect, useRef, type CSSProperties, type MouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react"
 import { moves } from "@/core/animation"
+import { cell } from "@/core/signal"
 
 export type Corner = "tl" | "tr" | "bl" | "br"
 // Top corners sit under the pane's tab bar and file bar (back, forward), bottom ones over the status bar; vau-room
@@ -79,3 +80,38 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
   return { ref: card, onPointerDown, onClickCapture, "data-floats": "" }
 }
 
+
+/** The cards drawn now, by id: their corner, height and place in its stack. */
+const stacked = cell(new Map<string, { corner: Corner; height: number; rank: number }>())
+const GAP = 8
+/** The room the cards in the bottom right corner take, for what's drawn there too (toasts: --corner-cards). */
+function roomChanged() {
+  let px = 0
+  for (const c of stacked.get().values()) if (c.corner === "br") px += c.height + GAP
+  document.documentElement.style.setProperty("--corner-cards", `${px}px`)
+}
+stacked.subscribe(roomChanged)
+
+/** Cards in one corner stack, the lower `rank` nearest it (the mini player 0, agents' pages 1, pages playing 2): this
+ *  card's place in it, as a margin from its corner (CORNERS' top or bottom stays; the drag's transform is its own). */
+export function useCornerStack(id: string, corner: Corner, rank: number, ref: RefObject<HTMLElement | null>): CSSProperties {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const put = () => stacked.update((m) => {
+      const was = m.get(id), height = el.offsetHeight
+      if (was && was.corner === corner && was.height === height && was.rank === rank) return m
+      return new Map(m).set(id, { corner, height, rank })
+    })
+    put()
+    const ro = new ResizeObserver(put)
+    ro.observe(el)
+    return () => { ro.disconnect(); stacked.update((m) => { const next = new Map(m); next.delete(id); return next }) }
+  }, [id, corner, rank, ref])
+  const px = stacked.use((m) => {
+    let sum = 0
+    for (const [other, c] of m) if (other !== id && c.corner === corner && (c.rank < rank || (c.rank === rank && other < id))) sum += c.height + GAP
+    return sum
+  })
+  return px ? (corner[0] === "t" ? { marginTop: px } : { marginBottom: px }) : {}
+}

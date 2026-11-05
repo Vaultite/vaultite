@@ -2,7 +2,7 @@
 // sidebars (dragged to another, like picture in picture). A video plays in it; a tap opens the full player.
 import { useEffect, useLayoutEffect, useRef } from "react"
 import { Pause, Play, X } from "lucide-react"
-import { CORNERS, cn, kindIcon, openFile, useCornerDrag, useDesktop, useScopedState, type Corner } from "@vaultite"
+import { CORNERS, cn, kindIcon, openFile, useCornerDrag, useCornerStack, useDesktop, useScopedState, type Corner } from "@vaultite"
 import { sendOfflinePlaces } from "./phone"
 import { artOf, BACK, chapterAt, clock, FORWARD, homeOf, loadPlaces, labelOf, presenting, shown, stop, useMeta, useNow, useTick, useVersion, watchAway } from "./now"
 
@@ -37,6 +37,9 @@ function Bar({ desktop, corner, setCorner }: { desktop: boolean; corner: Corner;
     }
   })
   const drag = useCornerDrag(corner, setCorner)
+  const none = useRef<HTMLDivElement>(null)
+  // (first in its corner: the agents' card and pages playing stack above it)
+  const place = useCornerStack("player", corner, 0, desktop ? drag.ref : none)
   const pic = artOf(path)
   const Icon = kindIcon(path)
   const label = labelOf(now)
@@ -49,9 +52,9 @@ function Bar({ desktop, corner, setCorner }: { desktop: boolean; corner: Corner;
   const inMini = video && !homeOf(el)
   return (
     <div data-mini-player role="region" aria-label="Now playing" {...(desktop ? drag : {})}
-      className={cn("glass-strong fixed z-[19] overflow-hidden", desktop ? cn("w-[340px] touch-none rounded-[12px] select-none transition-[left,right] duration-200 ease-out data-dragging:cursor-grabbing data-dragging:shadow-2xl data-dragging:transition-none", CORNERS[corner])
+      className={cn("glass-strong fixed z-[19] overflow-hidden", desktop ? cn("w-[340px] touch-none rounded-[12px] select-none transition-[left,right,margin] duration-200 ease-out data-dragging:cursor-grabbing data-dragging:shadow-2xl data-dragging:transition-none", CORNERS[corner])
         : "inset-x-2 rounded-[14px]")}
-      style={desktop ? undefined : { bottom: "calc(var(--phone-bar) + 0.5rem)" }}>
+      style={desktop ? place : { bottom: "calc(var(--phone-bar) + 0.5rem)" }}>
       {desktop && inMini && <div ref={box} onClick={open} className="aspect-video w-full cursor-pointer bg-black [&>video]:size-full [&>video]:object-contain [&>video]:pointer-events-none" />}
       <div className={cn("flex items-center gap-2", desktop ? "h-11 px-2" : "h-[60px] px-2")}>
         {!desktop && inMini ? <div ref={box} onClick={open} className="h-11 w-[78px] shrink-0 cursor-pointer overflow-hidden rounded-[8px] bg-black [&>video]:size-full [&>video]:object-cover [&>video]:pointer-events-none" />

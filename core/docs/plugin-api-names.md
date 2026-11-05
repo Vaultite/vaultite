@@ -714,6 +714,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useCommandList()`
 - `useCommands(make, deps)`: Register commands while a component is mounted (again whenever `deps` change).
 - `useCornerDrag(corner, setCorner)`: Dragging a corner card anywhere (a click still clicks), and where it lands: the corner it was thrown towards, as iOS's and browsers' picture in picture do.
+- `useCornerStack(id, corner, rank, ref)`: Cards in one corner stack, the lower `rank` nearest it (the mini player 0, agents' pages 1, pages playing 2): this card's place in it, as a margin from its corner (CORNERS' top or bottom stays;…
 - `useDefaultPlace()`
 - `useDesktop()`: isDesktop that follows the window: a phone's width and a computer's swap as it's resized.
 - `useDictation(pick?)`: The session in React (`pick`: the part drawn from, so the voice's level doesn't redraw what doesn't show it).
