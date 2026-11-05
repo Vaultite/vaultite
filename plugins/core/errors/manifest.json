@@ -8,7 +8,7 @@
   "tint": "red",
   "settings": {
     "keep_days": { "type": "number", "default": 30, "min": 1, "max": 365, "label": "Days to keep", "description": "how long errors are kept on this machine" },
-    "notify": { "type": "boolean", "default": true, "label": "Tell me about new errors", "description": "a toast, kept in the inbox, for the first new error in the app and in the server since the server started; the others are only listed here" }
+    "notify": { "type": "boolean", "default": true, "label": "Tell me about new errors", "description": "a toast for the first new error since the server started; the rest are only listed here" }
   },
   "blocks": {
     "errors": {

@@ -54,7 +54,7 @@ const rows = await page.locator("[data-ai-agent]").evaluateAll((els) => els.map(
 check("...coding agents found here: no path in a row, the path as its tooltip", rows.every((r) => !r.text.includes("/") && !!r.tip), rows)
 check("...one plain line on what they are", (await page.locator("[data-ai-agents]").innerText()).includes("Agents run in Vaultite's terminals. Your companion is the one you talk to."))
 check("...no install instructions", !(await page.locator("[data-ai-agents] code").count()) && !(await page.locator("[data-ai-agents]").innerText()).includes("npm i"))
-check("...Connect the Claude or ChatGPT app, with its one line", (await page.locator('[data-ai-part="mcp:apps"]').innerText()).includes("They can read and write your notes."))
+check("...Connect an AI app, with its one line", (await page.locator('[data-ai-part="mcp:apps"]').innerText()).includes("They can read and write your notes."))
 check("...and no AI apps item of its own in the menu", !(await page.locator('[data-settings-nav="mcp:apps"]').count()))
 await page.screenshot({ path: `${OUT}aiswitch-on-light.png` })
 const search = page.locator("[data-settings-search] input")

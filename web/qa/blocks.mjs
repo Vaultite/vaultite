@@ -81,10 +81,10 @@ check("a block from the slash menu comes with its required options, the cursor a
 
 // The Plugins page: listed by category, not by where a plugin came from.
 await page.goto(`${B}#plugins`); await wait(1500)
-const heads = await page.locator("[data-plugin-category] h2").allInnerTexts()
-check(`sections are categories (${heads.join(", ")})`, heads[0] === "Navigation" && !heads.some((h) => /built-in|core|vault|community/i.test(h)))
+const heads = await page.locator("[data-plugin-category]").evaluateAll((els) => els.map((e) => e.dataset.pluginCategory))
+check(`sections are categories (${heads.join(", ")})`, heads[0] === "navigation" && !heads.some((h) => /built-in|core|vault|community/i.test(h)))
 await page.screenshot({ path: `${OUT}blocks-plugins.png` })
-await page.locator('[data-plugin-category=navigation] [data-plugin-row]').first().click(); await wait(800)
-check("a plugin's sheet says its category", (await page.locator("dialog[open]").getByText("Navigation", { exact: true }).count()) > 0)
+await page.locator('[data-plugin-category=navigation] [data-plugin-row]').first().click({ force: true }); await wait(800)
+check("a plugin's page, in Settings, a way back to Plugins", (await page.locator('[data-settings-section^="plugin:"]').count()) === 1 && (await page.locator("[data-settings-crumb=plugins]").count()) === 1)
 
 await done()

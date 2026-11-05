@@ -69,8 +69,8 @@ const tileOf = (icon: LucideIcon, tint: string): LucideIcon => {
 }
 
 /** The menu's rows, at the sidebar's sizes: the rail where wide, Settings' page where narrow. `tiles`: each icon on a
- *  tile of its colour, as System Settings' menu. */
-export function RailMenu({ label, items, active, pick, tiles: tiled, ...rest }: { label: string; items: RailItem[]; active: string | null; pick: (id: string) => void; tiles?: boolean } & Attrs) {
+ *  tile of its colour, as System Settings' menu. `chevrons`: each row goes somewhere else (a sheet, a page). */
+export function RailMenu({ label, items, active, pick, tiles: tiled, chevrons, ...rest }: { label: string; items: RailItem[]; active: string | null; pick: (id: string) => void; tiles?: boolean; chevrons?: boolean } & Attrs) {
   let folded = false
   return (
     <nav aria-label={label} className={cn("flex flex-col gap-px", tiled && "[&_[data-keyrow]]:h-8")} {...rest}>
@@ -87,6 +87,7 @@ export function RailMenu({ label, items, active, pick, tiles: tiled, ...rest }: 
             {!folded && (
               <SidebarRow icon={icon} tint={tiled ? undefined : it.tint} label={it.label} open active={active === it.id} aria-current={active === it.id ? "page" : undefined} onClick={() => pick(it.id)} {...it.attrs}>
                 {it.count !== undefined && <span className="pr-0.5 text-[12px] text-muted-foreground tabular-nums">{it.count}</span>}
+                {chevrons && <ChevronRight aria-hidden className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
               </SidebarRow>
             )}
           </Fragment>
@@ -153,7 +154,8 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
           <Scroller className="min-h-0 flex-1 pb-6">{side}</Scroller>
         </div>
         <Scroller page={page} className="min-w-0 flex-1 [scrollbar-gutter:stable]" data-rail-pane="">
-          <div className="mx-auto max-w-[760px] px-8 pb-6">{children}</div>
+          {/* (beside the menu, not centred away from it: one block with it, the room left over on the right) */}
+          <div className="max-w-[800px] pr-8 pb-6 pl-6">{children}</div>
         </Scroller>
       </div>
     )

@@ -35,7 +35,7 @@ export type SwitchDef = {
 }
 
 /** The app's Settings sections that have switches, by id, as their list names them. */
-const SECTIONS: Record<string, string> = { appearance: "Appearance", editor: "Editor", files: "Files", sidebars: "Sidebars", ai: "AI", general: "General" }
+const SECTIONS: Record<string, string> = { appearance: "Appearance", editor: "Editor", files: "Files", sidebars: "Sidebars", ai: "AI", terminal: "Terminal", plugins: "Plugins", general: "General" }
 
 type Flag = { [K in keyof Prefs]: Prefs[K] extends boolean ? K : never }[keyof Prefs]
 const pref = (k: Flag) => ({ get: () => getPrefs()[k], set: (on: boolean) => setPrefs({ [k]: on }) })

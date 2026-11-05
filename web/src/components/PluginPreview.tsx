@@ -1,11 +1,11 @@
 // A plugin's detail sheet: what it does, its switch and settings, a vault plugin's approval on this machine (what changed,
 // what it says it does, Allow), and an inert live preview of its dashboards with made-up data (core/mock.ts).
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { ChevronRight, Folder, Laptop, RefreshCw, Server, Settings2, ShieldAlert } from "lucide-react"
+import { Folder, Laptop, RefreshCw, Server, ShieldAlert } from "lucide-react"
 import { dateText, PreviewLive, reload, type Store } from "@/core/data"
 import { mockStore } from "@/core/mock"
 import { noteParts } from "@/core/frontmatter"
-import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, pluginById, PLUGINS, rollbackPlugin, setAutoUpdate, setSwitch, switchedOn, templatesOf, tintOfPlugin,
+import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, pluginById, PLUGINS, rollbackPlugin, setAutoUpdate, setSwitch, switchedOn, templatesOf, tileTint, tintOfPlugin,
   updatePlugin, usePluginsVersion, type Plugin } from "@/core/plugins"
 import { op } from "@/core/http"
 import { updatable } from "../../../core/updates.ts"
@@ -13,15 +13,15 @@ import { categoryOf } from "../../../core/categories.ts"
 import { openWebLink } from "@/core/links"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { usePrefs } from "@/core/prefs"
-import { hasSettings, openPluginSettings, settingsFile } from "@/core/pluginSettings"
+import { hasSettings, settingsFile } from "@/core/pluginSettings"
 import { openFile } from "@/core/files"
 import { showInTree } from "@/components/FileTree"
-import { Where } from "@/components/PluginSettings"
+import { PluginSettings, Where } from "@/components/PluginSettings"
 import { Catch } from "@/components/Guard"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { notify, notifyError } from "@/core/notify"
 import { closeDetail } from "@/core/nav"
-import { ErrorDetails, List, Row, Section, SheetHead, Switch } from "@/components/kit"
+import { ErrorDetails, Group, List, Row, Section, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { plainError } from "../../../core/plainerror.ts"
 import { TITLE, TitleRow } from "@/components/FileTitle"
 import { capitalize, cn } from "@/lib/utils"
@@ -287,7 +287,8 @@ function Problems({ plugin }: { plugin: Plugin }) {
 // (what it is, not where it came from: its Author row says who made a vault plugin)
 const kickerOf = (p: Plugin) => categoryOf(p.category).label
 
-export function PluginPreview({ store, plugin: given }: { store: Store; plugin: Plugin }) {
+/** `kicker`: its category over its name, as a sheet's head; off, Settings' head (its page beside Settings' menu). */
+export function PluginPreview({ store, plugin: given, kicker = true }: { store: Store; plugin: Plugin; kicker?: boolean }) {
   usePluginsVersion()
   // (as it is now: a vault plugin changes while its sheet is open, allowed or edited)
   const plugin = pluginById(given.id) ?? given
@@ -302,9 +303,14 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
   const toggle = (v: boolean) => setSwitch(plugin, v)
   return (
     <>
-      <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} kicker={plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin)}
+      <SheetHead icon={plugin.icon} tint={kicker ? tintOfPlugin(plugin.id) : tileTint(plugin.id)} kicker={!kicker ? undefined : plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin)}
         title={plugin.name} sub={plugin.description} />
-      {waiting ? <Approval plugin={plugin} /> : !plugin.alwaysOn && (
+      {waiting ? <Approval plugin={plugin} /> : !plugin.alwaysOn && !kicker ? (
+        // (on its page in Settings: a row as Settings' others are)
+        <div className="mb-5"><Group><SettingRow label={switched && !blocked.length ? "On" : "Off"} sub="Off keeps its files and settings" data-plugin-switch>
+          <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
+        </SettingRow></Group></div>
+      ) : !plugin.alwaysOn && (
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2" data-plugin-switch>
           <span className="min-w-0 flex-1">
             <span className="block text-[15px]">{switched && !blocked.length ? "On" : "Off"}</span>
@@ -324,13 +330,15 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
           <Switch on={!!plugin.meta?.edits} onChange={(v) => void allowPlugin(plugin, v)} label={`Run ${plugin.name}'s edits without asking`} />
         </div>
       )}
+      {/* Its settings right here, under its switch: not a sheet away. */}
       {on && !blocked.length && hasSettings(plugin, store.pluginSettings ?? []) && (
-        <button type="button" onClick={() => openPluginSettings(plugin.id)} data-plugin-settings-open
-          className="-mt-3 mb-5 flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-[10px] bg-muted px-3.5 text-left hover:bg-foreground/[0.07]">
-          <Settings2 className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} />
-          <span className="flex-1 text-[15px]">Settings</span>
-          <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
-        </button>
+        <section aria-label={`${plugin.name} settings`} className="mb-6" data-plugin-settings-inline={plugin.id}>
+          <Section title="Settings">
+            <Catch fallback={() => <p className="text-[13px] text-muted-foreground">Its settings couldn't be drawn.</p>}>
+              <PluginSettings store={store} plugin={plugin} embedded />
+            </Catch>
+          </Section>
+        </section>
       )}
       {plugin.meta?.source && <Updates plugin={plugin} />}
       {plugin.meta && <About plugin={plugin} />}

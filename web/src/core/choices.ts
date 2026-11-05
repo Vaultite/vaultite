@@ -56,7 +56,7 @@ const CORE: ChoiceDef[] = [
   { id: "setting:properties-in-document", name: "Properties in document", icon: Tags, words: "frontmatter yaml metadata show hide", options: list(PROPERTIES_SHOWN), ...editorValue("propertiesInDocument") },
   { id: "setting:indent", name: "Indent", section: "editor", icon: IndentIncrease, words: "tabs spaces tab size", options: list(INDENTS),
     get: () => indentOf(editorSettings()), set: (v) => setEditor(v === "tab" ? { useTab: true } : { useTab: false, tabSize: Number(v) }) },
-  { id: "setting:plugin-updates", name: "Plugin updates", section: "general", icon: RefreshCw, words: "update automatically plugins", options: list(PLUGIN_UPDATE_POLICIES),
+  { id: "setting:plugin-updates", name: "Plugin updates", section: "plugins", icon: RefreshCw, words: "update automatically plugins", options: list(PLUGIN_UPDATE_POLICIES),
     sub: () => "Which plugins update on their own", get: () => getPrefs().updates, set: (v) => setPrefs({ updates: v as UpdatePolicy }) },
   // File explorer's, kept in files.json (its sheet: components/FilesSettings.tsx).
   { id: "setting:file-sort", name: "Sort order", plugin: { id: "files", key: "fileSort" }, icon: ArrowDownWideNarrow, words: "file explorer tree sort by name modified created",

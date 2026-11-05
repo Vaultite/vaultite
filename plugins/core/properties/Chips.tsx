@@ -91,7 +91,7 @@ export function ChipsSettings({ store }: { store: Store }) {
   return (
     <div className="space-y-5">
       <Group>
-        <SettingRow label="Every property" sub="Its files, and renamed or retyped everywhere at once"
+        <SettingRow label="Every property" sub="See them all, and rename or retype one everywhere at once"
           value={all.length ? plural(all.length, "property", "properties") : ""} onClick={() => openView("properties")} data-properties-all />
       </Group>
       <Section title="In files' headers">
@@ -134,7 +134,7 @@ function AddChip({ pinned }: { pinned: string[] }) {
   const add = (p: (typeof can)[number]) => { pin({ key: p.key, count: p.count, type: "text", types: {} }).catch((e) => notifyError(e, "Couldn't add it")) }
   return (
     <Group>
-      <div className="pt-2 pb-1 text-[12px] font-medium text-muted-foreground" data-chips-add>{pinned.length ? "Add another" : "Add one"}</div>
+      <div className="pt-2 pb-1 text-[12px] font-medium text-muted-foreground" data-chips-add>{pinned.length ? "Add another to headers" : "Add one to headers"}</div>
       {shown.map((p) => (
         <SettingRow key={p.key} data-chip-add={p.key} onClick={() => add(p)} chevron={Plus} label={p.key} sub={`${plural(p.values, "value")}, in ${plural(p.count, "file")}`} />
       ))}

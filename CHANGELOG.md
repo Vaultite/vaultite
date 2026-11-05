@@ -14,6 +14,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Scrollbars like a Mac's**: where the system overlays them (a Mac with a trackpad, phones) they're its own, shown while
   scrolling and following System Settings; where they'd always show (Windows, Linux, a Mac with a mouse), the app's own
   rounded thumb shows only while a list scrolls or under the pointer, in room kept for it so nothing shifts.
+- **Plugins live in Settings**: on a computer, Plugins and Get plugins are sections of Settings beside its menu (no more
+  jumping to another page); a plugin's row opens its page there, with its switch and its settings on it, and a way
+  back. Terminal has its own section, Plugin updates moved to Plugins, each section says what it holds, and rows that
+  go somewhere show a chevron.
 - **Sidebar panels hold still as a tab group opens or folds**: with each panel in its own box, the panels under Tabs
   no longer bounce a row up and down while the group's tabs grow in or fold away (or as a row folds off any list);
   they stay put while Tabs is full, and otherwise move one way with it, without a jump at the start or end.

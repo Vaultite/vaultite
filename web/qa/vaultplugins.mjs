@@ -126,13 +126,13 @@ check("its shortcut says it waits to be allowed", await until(async () => {
   return (await toast("Lighthouse waits for you to allow it on this machine").count()) > 0
 }, 8000))
 await page.locator('[data-plugin-review="lighthouse"]').click()
-const approval = page.locator('dialog[open] [data-plugin-approval="lighthouse"]')
-check("its sheet names the file that changed", await until(async () => (await approval.count()) && (await approval.locator("[data-plugin-changed]").innerText()).includes("label.ts"), 8000))
+const approval = page.locator('[data-settings-section="plugin:lighthouse"] [data-plugin-approval="lighthouse"]')
+check("its page (in Settings) names the file that changed", await until(async () => (await approval.count()) && (await approval.locator("[data-plugin-changed]").innerText()).includes("label.ts"), 8000))
 await shot("approval")
 await approval.locator('[data-plugin-allow="lighthouse"]').click()
 check("allowed, it loads again", await until(async () => { const p = await listed(); return p?.loaded && p?.bundle && !p.approval }, 8000))
-// While it's written here its edits may run without asking (the sheet's switch).
-await page.locator('dialog[open] [data-plugin-edits="lighthouse"] [role=switch]').click()
+// While it's written here its edits may run without asking (its page's switch).
+await page.locator('[data-settings-section="plugin:lighthouse"] [data-plugin-edits="lighthouse"] [role=switch]').click()
 check("its edits let run (the sheet's switch)", await until(async () => (await listed())?.edits === true, 8000))
 await page.keyboard.press("Escape")
 check("allowed, its shortcut runs its command", await until(async () => { await page.keyboard.press("ControlOrMeta+Shift+KeyY"); return (await toast("The beam is on").count()) > 0 }, 8000))
@@ -184,7 +184,7 @@ await problems.getByRole("button", { name: "Show details" }).click()
 check("Show details shows what it threw", (await problems.innerText()).includes("Class extends value"), await problems.innerText())
 await shot("threw")
 check("and Errors keeps it", await until(async () => ((await api("errors?source=app"))[1].groups ?? []).some((g) => g.kind === "plugin" && /Lighthouse: Class extends/.test(g.message)), 8000))
-await page.keyboard.press("Escape")
+await page.locator("[data-settings-crumb=plugins]").click() // (back to the list, from its page)
 cpSync(`${FIXTURE}label.ts`, abs(`${DIR}/label.ts`))
 check("fixed, it starts again", await until(async () => (await row.innerText()).includes("Couldn't start") === false, 12000), await row.innerText().catch(() => ""))
 

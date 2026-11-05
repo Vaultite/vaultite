@@ -1,5 +1,5 @@
 // The app's own pages, at the left sidebar's foot (a phone's: its drawer's, and its bar's menu): Plugins and Settings.
-// Every other page is a file. Plugins' tabs (pages/Setup.tsx, id "setup") are each an address: #plugins, #get.
+// Plugins' tabs (pages/Setup.tsx) are addresses, #plugins and #get: on a computer, sections of Settings.
 import { Puzzle, Settings, type LucideIcon } from "lucide-react"
 import { isDesktop } from "@/core/platform"
 import { share } from "@/core/share"
@@ -37,9 +37,10 @@ export function openAppPage(p: AppPage, newTab = false) {
   else goTo(hrefOf(p).slice(1), newTab)
 }
 
-/** Open Plugins on `tab`, else as a tab already showing it is (Your plugins if none does). It stays one tab: the one
- *  open switches to `tab`. */
+/** Open Plugins on `tab`: on a computer, Settings' section (pages/Setup.tsx); on a phone its page, else as a tab already
+ *  showing it is (Your plugins if none does). It stays one tab: the one open switches to `tab`. */
 export function openSetup(tab?: SetupTab) {
+  if (isDesktop()) return openSettings(tab ?? "plugins")
   const open = findOpen(...SETUP_TABS)
   const to = tab ?? (open?.p.to as SetupTab | undefined) ?? "plugins"
   if (open && open.p.to !== to) replaceTabTarget(open.p.id, to)

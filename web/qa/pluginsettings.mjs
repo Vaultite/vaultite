@@ -27,6 +27,15 @@ async function open(w, h, mobile = false) {
   return { ctx, page: watch(await ctx.newPage(), { label: w }) }
 }
 const sheet = (page, id) => page.locator(`dialog[open] [data-plugin-settings-sheet="${id}"]`)
+/** A plugin's page in Settings, beside the menu (a computer's), and its settings drawn on it. */
+const pluginPage = (page, id) => page.locator(`[data-settings-section="plugin:${id}"]`)
+const onPage = (page, id) => pluginPage(page, id).locator(`[data-plugin-settings-sheet="${id}"]`)
+/** Plugins, in Settings: a plugin's row opens its page there. */
+async function openPage(page, id) {
+  await go(page, "plugins"); await until(() => page.locator(`[data-plugin-row="${id}"]`).count(), 4000)
+  await page.locator(`[data-plugin-row="${id}"]`).click({ force: true })
+  await until(() => pluginPage(page, id).count(), 4000)
+}
 const shot = async (page, name) => { await wait(500); await page.screenshot({ path: `${OUT}${name}.png` }) } // (once a sheet's animation is over)
 /** Escape, then wait for the sheet to be gone and its history entries popped (a hash set meanwhile would be undone). */
 async function closeSheet(page) {
@@ -74,8 +83,9 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     const text = await page.locator("main").innerText()
     const nav = await page.locator("[data-settings-nav]").evaluateAll((els) => els.map((e) => e.dataset.settingsNav))
-    check("Settings: its sections (Appearance first), General, then Plugins last; no Features, no Bundles", (await page.locator("[data-settings-setup]").count()) === 1 &&
-      ["appearance", "editor", "files", "hotkeys"].every((id, i) => nav[i] === id) && nav.includes("general") && nav.at(-1) === "plugins" && !nav.includes("bundles") &&
+    check("Settings: General, its sections, AI, then Plugins and Get; no Features, no Bundles", (await page.locator("[data-settings-setup]").count()) === 2 &&
+      ["general", "appearance", "editor", "files", "hotkeys", "terminal"].every((id, i) => nav[i] === id) && nav.indexOf("plugins") === nav.indexOf("get") - 1 &&
+      nav.indexOf("ai") < nav.indexOf("plugins") && !nav.includes("bundles") &&
       !(await page.locator('[data-rail-fold="Features"]').count()) && !nav.some((n) => n.startsWith("plugin:")), nav)
     check("Settings: opens on Appearance", await page.locator('[data-settings-section="appearance"]').count() === 1)
     check("Settings: nothing a plugin adds", !["This workspace", "Pinned pages", "Show hidden files", "Connect an AI", "Vim's keys"].some((t) => text.includes(t)) &&
@@ -91,13 +101,23 @@ try {
     check("...a long form a row to its sheet (Graph view)", (await page.locator('[data-settings-section="files"] button[data-settings-member="graph"]').count()) === 1)
     await page.locator('[data-settings-nav="general"]').click()
     const general = await members("general")
-    check("General: File history and Errors", general.includes("history") && general.includes("errors"), general)
+    check("General: File history and Errors, not Terminal (its own)", general.includes("history") && general.includes("errors") && !general.includes("terminal"), general)
+    await page.locator('[data-settings-nav="terminal"]').click()
+    check("Terminal: its settings, no title again", (await members("terminal")).includes("terminal") &&
+      !(await page.locator('[data-settings-section="terminal"] [data-settings-member="terminal"]').innerText()).startsWith("Terminal"))
     await page.locator('[data-settings-nav="appearance"]').click()
 
-    // Setup: Setup's page, in Settings' tab (one path to Plugins and Get).
-    await page.locator("[data-settings-setup]").click()
-    check("Setup: Setup's page on Your plugins", !!(await until(() => page.locator("main [data-setup=plugins] [data-plugin-row]").count(), 4000)) &&
-      (await page.evaluate(() => location.hash)) === "#plugins" && !(await page.locator("main [data-settings]").count()))
+    // Plugins and Get: sections of Settings, beside its menu (nothing in the menu leaves Settings).
+    await page.locator('[data-settings-nav="plugins"]').click()
+    check("Plugins: a section of Settings, lit in its menu", !!(await until(() => page.locator('main [data-settings-section="plugins"] [data-setup=plugins] [data-plugin-row]').count(), 4000)) &&
+      (await page.evaluate(() => location.hash)) === "#settings" && (await page.locator('[data-settings-nav="plugins"]').getAttribute("aria-current")) === "page")
+    check("...Plugin updates under the list, not in General", await page.locator('[data-settings-section="plugins"] [data-settings-row="plugin-updates"]').count() === 1)
+    await page.locator('[data-settings-nav="get"]').click()
+    check("Get: a section too, its categories as chips", !!(await until(() => page.locator('main [data-settings-section="get"] [data-setup=get]').count(), 4000)) &&
+      (await page.evaluate(() => location.hash)) === "#settings")
+    await go(page, "plugins")
+    check("...#plugins (an old tab, a link) is Settings on Plugins", !!(await until(async () => (await page.evaluate(() => location.hash)) === "#settings" &&
+      await page.locator('main [data-settings-section="plugins"]').count(), 4000)), await page.evaluate(() => location.hash))
     await shot(page, "1a-your-setup")
     await go(page, "settings")
     await until(() => page.locator("[data-settings-list]").count(), 4000)
@@ -106,8 +126,7 @@ try {
     await until(() => page.locator('[data-settings-result="plugins"]').count(), 4000)
     check("search: Plugins, on Plugins", (await page.locator('[data-settings-result="plugins"]').innerText()).includes("Plugins"))
     await page.locator('[data-settings-result="plugins"] button').first().click()
-    check("...goes to Setup's Plugins tab", !!(await until(() => page.locator("main [data-setup=plugins] [data-plugin-row]").count(), 4000)) &&
-      (await page.evaluate(() => location.hash)) === "#plugins")
+    check("...goes to Settings' Plugins", !!(await until(() => page.locator('main [data-settings-section="plugins"] [data-plugin-row]').count(), 4000)))
     await go(page, "settings")
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     await page.locator('[data-settings-nav="appearance"]').click()
@@ -156,22 +175,19 @@ try {
     await find.fill("")
     check("...cleared, the menu is back", !!(await until(() => page.locator("[data-settings-list]").count(), 4000)))
 
-    // Plugins: gears.
+    // Plugins: a row goes to the plugin's page, its settings on it.
     await go(page, "plugins")
-    await until(() => page.locator("[data-plugin-gear]").count(), 4000)
-    check("Plugins: a gear on a plugin with settings", await page.locator("[data-plugin-gear=web-viewer]").count() === 1 && await page.locator("[data-plugin-gear=logs]").count() === 1)
-    check("...none on one that's off", await page.locator("[data-plugin-row=ai-import]").count() === 1 && await page.locator("[data-plugin-gear=ai-import]").count() === 0)
-    check("...nor Vim, whose switch is in Editor", await page.locator("[data-plugin-row=vim]").count() === 0)
-    await page.locator('[data-plugin-group="coding-agents"]').click()
-    check("...the coding agents' sheet: none on one with nothing to set", !!(await until(() => page.locator("dialog[open] [data-plugin-row=claude-code]").count(), 4000)) &&
-      await page.locator("dialog[open] [data-plugin-gear=claude-code]").count() === 0)
-    await closeSheet(page)
-    check("...a vault plugin with declared settings has one", await page.locator("[data-plugin-gear=qa-tracker]").count() === 1)
+    await until(() => page.locator("[data-plugin-row]").count(), 4000)
+    check("Plugins: no gears, Vim's not here (its switch is in Editor)", await page.locator("main [data-settings-section=plugins] [data-plugin-gear]").count() === 0 && await page.locator("[data-plugin-row=vim]").count() === 0)
     await page.locator("[data-plugin-row=web-viewer]").scrollIntoViewIfNeeded()
-    await shot(page, "2-plugins-gears")
-    await page.locator("[data-plugin-gear=web-viewer]").click()
-    check("...its gear opens the sheet", !!(await until(() => sheet(page, "web-viewer").count(), 4000)))
-    await closeSheet(page)
+    await shot(page, "2-plugins")
+    await openPage(page, "web-viewer")
+    check("...a row opens its page in Settings, its settings on it, Plugins still lit", !!(await until(() => onPage(page, "web-viewer").count(), 4000)) &&
+      !(await page.locator("dialog[open]").count()) && (await page.locator('[data-settings-nav="plugins"]').getAttribute("aria-current")) === "page")
+    await page.locator("[data-settings-crumb=plugins]").click()
+    check("...its crumb goes back to Plugins", !!(await until(() => page.locator('main [data-settings-section="plugins"]').count(), 4000)))
+    await openPage(page, "ai-import")
+    check("...one that's off: its switch, no settings", await pluginPage(page, "ai-import").locator("[data-plugin-switch]").count() === 1 && !(await onPage(page, "ai-import").count()))
 
     // A generated form: Page preview's sheet (a plugin that can be turned off: a gear away on Plugins).
     await go(page, "settings/plugin-settings/page-preview")
@@ -227,20 +243,17 @@ try {
     check("...off again: the key goes", !!(await until(() => !json(".vaultite/files.json")?.showHidden, 4000)), json(".vaultite/files.json"))
 
     // No form: the file itself (Logs).
-    await go(page, "plugins"); await until(() => page.locator("[data-plugin-gear=logs]").count(), 4000)
-    await page.locator("[data-plugin-gear=logs]").click()
-    await until(() => sheet(page, "logs").count(), 4000)
-    check("no form: its data.json, drawn", !!(await until(async () => await sheet(page, "logs").locator("[data-settings-json] .json-view").count() >= 1 &&
-      (await sheet(page, "logs").innerText()).includes(json(".vaultite/plugins/logs/data.json").areas[0].name), 4000)), await sheet(page, "logs").innerText())
+    await openPage(page, "logs")
+    check("no form: its data.json, drawn", !!(await until(async () => await onPage(page, "logs").locator("[data-settings-json] .json-view").count() >= 1 &&
+      (await onPage(page, "logs").innerText()).includes(json(".vaultite/plugins/logs/data.json").areas[0].name), 4000)), await pluginPage(page, "logs").innerText())
     await shot(page, "6-json-logs-desktop")
-    await sheet(page, "logs").locator("[data-settings-open]").click()
-    check("...Open: the file in a tab, the sheet closed", !!(await until(async () => !(await page.locator("dialog[open]").count()) &&
+    await pluginPage(page, "logs").locator("[data-settings-where] [data-settings-open]").click()
+    check("...Open: the file in a tab", !!(await until(async () =>
       decodeURIComponent(await page.evaluate(() => location.hash)).includes(".vaultite/plugins/logs/data.json"), 4000)), await page.evaluate(() => location.hash))
 
     // A vault plugin's declared settings.
-    await go(page, "plugins"); await until(() => page.locator("[data-plugin-gear=qa-tracker]").count(), 4000)
-    await page.locator("[data-plugin-gear=qa-tracker]").click()
-    const vs = sheet(page, "qa-tracker")
+    await openPage(page, "qa-tracker")
+    const vs = onPage(page, "qa-tracker")
     await until(() => vs.count(), 4000)
     await vs.locator("[data-setting=tags] input").fill("Run, Outdoors"); await vs.locator("[data-setting=tags] input").press("Enter")
     check("vault plugin: its declared settings as a form", !!(await until(() => JSON.stringify(json(`${VP}/data.json`)?.tags) === '["Run","Outdoors"]', 4000)), json(`${VP}/data.json`))
@@ -268,27 +281,24 @@ try {
     await vs.locator("[data-setting=where] button[aria-label^=Clear]").click()
     check("...removed and cleared", !!(await until(() => { const d = json(`${VP}/data.json`) ?? {}; return d.where === undefined && !d.dirs }, 4000)), json(`${VP}/data.json`))
     rmSync(file("QA made"), { recursive: true, force: true })
-    await closeSheet(page)
 
-    // The plugin's own sheet says where it's kept: a vault plugin's folder (Open shows it in the tree), an app plugin's data.json.
-    await page.locator("[data-plugin-row=qa-tracker]").click(); await wait(500)
-    const vw = page.locator("dialog[open] [data-settings-where]")
-    check("plugin sheet: a vault plugin's folder", (await vw.innerText()).includes(VP), await vw.innerText())
+    // The plugin's page says where it's kept: a vault plugin's folder (Open shows it in the tree), an app plugin's data.json.
+    const vw = pluginPage(page, "qa-tracker").locator("[data-settings-where]").last()
+    check("plugin page: a vault plugin's folder", (await vw.innerText()).includes(VP), await vw.innerText())
     await vw.locator("[data-settings-open]").click()
-    check("...Open: the folder in the tree, the sheet closed", !!(await until(async () => !(await page.locator("dialog[open]").count()) &&
-      await page.locator(`[data-tree-path="${VP}"]`).count(), 4000)))
-    await go(page, "plugins"); await until(() => page.locator("[data-plugin-row=logs]").count(), 4000)
-    await page.locator("[data-plugin-row=logs]").click(); await wait(500)
-    check("plugin sheet: an app plugin's settings file", (await page.locator("dialog[open] [data-settings-where]").innerText()).includes(".vaultite/plugins/logs/data.json"))
-    await closeSheet(page)
+    check("...Open: the folder in the tree", !!(await until(() => page.locator(`[data-tree-path="${VP}"]`).count(), 4000)))
+    await openPage(page, "logs")
+    check("plugin page: an app plugin's settings file", (await pluginPage(page, "logs").locator("[data-settings-where]").innerText()).includes(".vaultite/plugins/logs/data.json"))
 
-    // The plugin's own sheet has a Settings row; Workspaces' menu has Settings….
-    await page.locator("[data-plugin-row=workspaces]").click(); await wait(500)
-    await page.locator("dialog[open] [data-plugin-settings-open]").click()
-    check("plugin sheet: Settings opens its settings, stacked", !!(await until(() => sheet(page, "workspaces").count(), 4000)) &&
-      await page.locator("dialog[open] button[aria-label^='Back']").count() === 1)
-    await sheet(page, "workspaces").locator("input[aria-label^='Name of workspace']").fill("Writing")
-    await sheet(page, "workspaces").locator("input[aria-label^='Name of workspace']").press("Enter")
+    // Workspaces' page has its settings right there (its own panel); its menu has Settings….
+    await go(page, "plugins"); await until(() => page.locator("[data-plugin-row=workspaces]").count(), 4000)
+    await page.locator("[data-plugin-row=workspaces]").click({ force: true })
+    await until(() => pluginPage(page, "workspaces").count(), 4000)
+    const wsSwitch = pluginPage(page, "workspaces").locator("[data-plugin-switch] [role=switch]")
+    if ((await wsSwitch.getAttribute("aria-checked")) !== "true") await wsSwitch.click()
+    check("plugin page: on, its settings on the page", !!(await until(() => onPage(page, "workspaces").locator("input[aria-label^='Name of workspace']").count(), 4000)))
+    await onPage(page, "workspaces").locator("input[aria-label^='Name of workspace']").fill("Writing")
+    await onPage(page, "workspaces").locator("input[aria-label^='Name of workspace']").press("Enter")
     check("Workspaces: naming the current one", !!(await until(() => workspaces(B)[0]?.name === "Writing", 4000)))
     await shot(page, "7-panel-workspaces-desktop")
     await closeSheet(page)
@@ -311,8 +321,8 @@ try {
     await page.screenshot({ path: `${OUT}8-settings-phone.png`, fullPage: true })
     const navRow = await page.$eval("[data-settings-nav=appearance]", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), text: Math.round(parseFloat(getComputedStyle(e).fontSize) * (parseFloat(getComputedStyle(e.closest("[data-size-up]") ?? e).zoom) || 1)) } })
     check("phone: Settings' rows a finger tall, 16px, as the sidebar's lists", navRow.h >= 40 && navRow.text === 16, navRow)
-    await page.locator("[data-settings-setup]").click()
-    check("phone: Setup goes to Setup's page, on Plugins", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
+    await page.locator('[data-settings-setup][data-settings-nav="plugins"]').click()
+    check("phone: Plugins goes to its own page", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
     await until(() => page.locator("[data-setup-tab=plugins]").count(), 4000)
     const tabH = await page.locator("[data-setup-tab=plugins]").evaluate((e) => e.getBoundingClientRect().height)
     check("phone: Setup's tabs are a finger tall", tabH >= 40, tabH)

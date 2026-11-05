@@ -1,7 +1,7 @@
 // Setup's Plugins and Get: Your plugins (by category, never the `alwaysOn` parts) or Get's plugins (PluginBrowse.tsx),
-// each narrowed by Filter, the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
-import { ChevronRight, ListFilter, Search, Settings2, X } from "lucide-react"
+// each narrowed by Filter, the search above the list it looks in. A row not built in says where it's from; tap for its page.
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
+import { ChevronRight, ListFilter, Search, X } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, offWithAi, pluginById, setSwitch, standInOf, switchedOn, tileTint, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
@@ -9,10 +9,9 @@ import { official } from "../../../core/updates.ts"
 import { capitalize, cn, plural } from "@/lib/utils"
 import { usePrefs } from "@/core/prefs"
 import type { Store } from "@/core/data"
-import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSettings"
 import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
-import { FilterField, IconTile, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
+import { FilterField, IconTile, Panel, Section, Segmented, SheetHead, Switch } from "@/components/kit"
 import { Button } from "@/components/Button"
 import { categoriesIn, DirectoryMatches, GET_NONE, getCategory, getSources, passesGet, PluginBrowse, SHOWS, sortOf, sortsOf, type GetFilters, type GetShow, type Listed } from "@/components/PluginBrowse"
 import { Certified } from "@/components/Certified"
@@ -68,9 +67,13 @@ function pulse(id: string) {
 }
 
 
+/** Where a plugin's row goes: its sheet, or (in Settings, where there's room) its page beside the menu. */
+export const OpenPlugin = createContext<(id: string) => void>((id) => openDetail(`plugin/${id}`))
+
 /** `original`: the other app's plugin it stands in for, installed too (Obsidian's Excalidraw): one row for both, its
- *  switch and sheet the one that runs, and a line to swap them. `openSettings`: where its gear goes (else a sheet). */
-export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original, openSettings }: { p: Plugin; on: boolean; blocked: string[]; files: string[]; original?: Plugin; openSettings?: (id: string) => void }) {
+ *  switch and page the one that runs, and a line to swap them. Its settings are on its page. */
+export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, original }: { p: Plugin; on: boolean; blocked: string[]; original?: Plugin }) {
+  const open = useContext(OpenPlugin)
   const theirs = !!original && !ownOn && switchedOn(original)
   const p = theirs ? original : own, on = ownOn || theirs, blocked = theirs ? [] : ownBlocked
   // Its own switch is kept: turn People back on and People map comes back as you left it.
@@ -87,12 +90,12 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, origi
   const line = "text-[13px] leading-[18px] max-md:line-clamp-2 md:truncate md:text-[12px] md:leading-[16px]"
   return (
     <div className="group/prow relative isolate flex min-h-15 items-center gap-3 py-2 md:min-h-12 md:py-1.5">
-      <button type="button" onClick={() => openDetail(`plugin/${p.id}`)} aria-label={`${p.name}: details and preview`} data-plugin-row={own.id}
+      <button type="button" onClick={() => open(p.id)} aria-label={`${p.name}: details and settings`} data-plugin-row={own.id}
         className="absolute inset-y-0 -inset-x-2 -z-10 cursor-pointer rounded-[8px] transition-colors group-hover/prow:bg-foreground/[0.04] active:bg-foreground/[0.07]" />
       {/* Off (by its switch, or because something it needs is off): greyed out. */}
-      <IconTile icon={p.icon} tint={tileTint(p.id)} className={cn("pointer-events-none size-9 rounded-[9px] transition-opacity md:size-8 md:rounded-[8px]", !live && "opacity-40 grayscale")}
+      <IconTile icon={p.icon} tint={tileTint(p.id)} className={cn("pointer-events-none size-9 rounded-[9px] transition-opacity md:size-8 md:rounded-[8px]", !live && "opacity-50 grayscale")}
         iconClassName="size-[20px] md:size-[18px]" />
-      <div className={cn("pointer-events-none min-w-0 flex-1 transition-opacity", !live && "opacity-55")}>
+      <div className="pointer-events-none min-w-0 flex-1">
         <div className="text-[15px] leading-[20px] font-medium max-md:line-clamp-2 md:truncate md:text-[14px]">
           {p.name}
           {/* (the mark only where it tells something: installed, and from Vaultite) */}
@@ -120,17 +123,11 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, origi
           ) : p.description && <div className={cn(line, "text-muted-foreground")} data-plugin-blurb>{blurb(p.description)}</div>}
       </div>
       {waiting && (
-        <button type="button" onClick={() => openDetail(`plugin/${p.id}`)} data-plugin-review={p.id}
+        <button type="button" onClick={() => open(p.id)} data-plugin-review={p.id}
           className="h-8 shrink-0 cursor-pointer rounded-[8px] bg-foreground/[0.06] px-3 text-[13px] font-medium hover:bg-foreground/[0.1] max-md:h-9 max-md:text-[15px]">Review</button>
       )}
-      {live && hasSettings(p, files) && (
-        <button type="button" onClick={() => (openSettings ?? openPluginSettings)(p.id)} aria-label={settingsTitle(p.name)} data-tip="Settings" data-plugin-gear={p.id}
-          className="-mr-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100 active:opacity-60 md:size-7 md:rounded-[6px] md:opacity-0 md:group-hover/prow:opacity-100">
-          <Settings2 className="size-[18px] md:size-4" strokeWidth={2} />
-        </button>
-      )}
       <Switch on={on && !blocked.length} onChange={toggle} label={`${p.name} plugin`} disabled={!!blocked.length} />
-      <ChevronRight className="pointer-events-none -ml-1 size-4 shrink-0 text-tertiary md:hidden" strokeWidth={2.5} />
+      <ChevronRight className="pointer-events-none -ml-1 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
     </div>
   )
 }
@@ -175,13 +172,13 @@ function Waiting({ list }: { list: Plugin[] }) {
 }
 
 /** A card of rows, hairlines between them; a group's plugins one row, where the first of them is (`grouped`). */
-export function Rows({ list, files, originals, openSettings, grouped = true }: { list: Plugin[]; files: string[]; originals: Map<string, Plugin>; openSettings?: (id: string) => void; grouped?: boolean }) {
+export function Rows({ list, originals, grouped = true }: { list: Plugin[]; originals: Map<string, Plugin>; grouped?: boolean }) {
   const prefs = usePrefs(), { disabled } = prefs
   return (
     <Panel className="py-1">
       <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
         {list.map((p, i) => grouped && p.group ? list.findIndex((q) => q.group === p.group) === i && <GroupRow key={`group:${p.group}`} id={p.group} /> : (
-          <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={(p.requires ?? []).filter((r) => !isEnabled(r, disabled))} files={files} original={originals.get(p.id)} openSettings={openSettings} />
+          <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={(p.requires ?? []).filter((r) => !isEnabled(r, disabled))} original={originals.get(p.id)} />
         ))}
       </div>
     </Panel>
@@ -218,8 +215,7 @@ export type PluginsView = Tab
 
 /** The Plugins page's list (pages/Setup.tsx). `view`: yours or to get, chosen in Plugins' menu (no tabs of its own).
  *  `above`: what Get shows over its plugins, by the same search and filters (the store's layouts and packs). */
-export function Plugins({ store, view, onView, above }: { store: Store; view?: Tab; onView?: (v: Tab) => void; above?: (query: string, filters: GetFilters) => ReactNode }) {
-  const files = store.pluginSettings ?? []
+export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onView?: (v: Tab) => void; above?: (query: string, filters: GetFilters) => ReactNode }) {
   const all = usePlugins()
   const prefs = usePrefs()
   const [query, setQuery] = useState("")
@@ -364,12 +360,11 @@ export function Plugins({ store, view, onView, above }: { store: Store; view?: T
         // No category picked: a section per category, headings only (nothing folds; Filter picks one).
         byCategory(shown).filter((s) => s.plugins.length).map((s) => (
           <section key={s.id} className="mb-5" data-plugin-category={s.id}>
-            <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-muted-foreground md:text-[12px]">{s.label}</h2>
-            <Rows list={s.plugins} files={files} originals={originals} />
+            <Section title={s.label}><Rows list={s.plugins} originals={originals} /></Section>
           </section>
         ))
       ) : (
-        <section data-plugin-category={cat?.id ?? "all"}><Rows list={shown} files={files} originals={originals} /></section>
+        <section data-plugin-category={cat?.id ?? "all"}><Rows list={shown} originals={originals} /></section>
       )}
       {/* A search also looks where more plugins are: the directory's that aren't here, then Get plugins' other sources. */}
       {q && <DirectoryMatches query={query} showInstalled={reveal} />}
@@ -413,12 +408,12 @@ export function Plugins({ store, view, onView, above }: { store: Store; view?: T
 }
 
 /** A group's sheet (`plugin-group/<id>`, from its row): each of its plugins with its own switch and gear. */
-export function PluginGroupSheet({ store, id }: { store: Store; id: string }) {
+export function PluginGroupSheet({ id }: { store: Store; id: string }) {
   const members = groupMembers(id, usePlugins())
   return (
     <>
       <SheetHead icon={groupIcon(id)} tint="var(--primary)" title={groupOf(id)?.label ?? id} sub="Each one on or off on its own" />
-      <Rows list={members} files={store.pluginSettings ?? []} originals={new Map()} grouped={false} />
+      <Rows list={members} originals={new Map()} grouped={false} />
     </>
   )
 }

@@ -129,8 +129,8 @@ try {
   const sw = page.getByRole("switch", { name: "Harbor plugin" })
   check("its switch on Your plugins is on", await until(async () => (await sw.getAttribute("aria-checked")) === "true", 8000))
   await page.locator('[data-plugin-row="harbor"]').click()
-  const sheet = page.locator("dialog[open]")
-  check("its sheet: version, author, repository, where it came from, what it says it does", await until(async () => {
+  const sheet = page.locator('[data-settings-section="plugin:harbor"]') // (its page, in Settings)
+  check("its page: version, author, repository, where it came from, what it says it does", await until(async () => {
     const t = await sheet.innerText()
     return t.includes("1.0.0") && t.includes("Alice Park") && t.includes("alicepark/harbor") && t.includes("Installed from") && t.includes("Talks to tides.example.com")
   }, 8000), await sheet.innerText().catch(() => ""))
@@ -153,13 +153,13 @@ try {
     // (what its row says, and what the server says: the app not following it shows here)
     { row: await page.locator('[data-plugin-row="harbor"]').locator("xpath=..").innerText({ timeout: 500 }).catch(() => ""), server: (await listed("harbor"))?.approval?.state })
   await page.locator('[data-plugin-review="harbor"]').click()
-  const approval = page.locator('dialog[open] [data-plugin-approval="harbor"]')
-  check("update: its sheet shows what changed and what it says it does now", await until(async () => (await approval.locator("[data-plugin-changed]").innerText()).includes("plugin.ts") &&
+  const approval = page.locator('[data-settings-section="plugin:harbor"] [data-plugin-approval="harbor"]')
+  check("update: its page shows what changed and what it says it does now", await until(async () => (await approval.locator("[data-plugin-changed]").innerText()).includes("plugin.ts") &&
     (await approval.locator("[data-plugin-discloses]").innerText()).includes("runs programs on this machine"), 8000), await approval.innerText().catch(() => ""))
   await shot("approval")
   await approval.locator('[data-plugin-allow="harbor"]').click()
   check("update: allowed, the new version runs", await until(async () => (await api("harbor"))[1]?.tide === "low", 8000))
-  await page.keyboard.press("Escape")
+  await page.locator("[data-settings-crumb=plugins]").click() // (back to the list)
   await wait(400)
 
   // ---------- turned on by plugins.json alone (a sync, a shared vault): waits
@@ -170,8 +170,8 @@ try {
   check("synced on: nothing of it runs", (await api("lighthouse"))[0] === 404 && !(await listed("lighthouse"))?.loaded)
   check("synced on: a toast says so, with Review", await until(async () => (await page.getByText("it waits for you to allow it on this machine").count()) > 0, 8000))
   await page.locator('[data-plugin-review="lighthouse"]').click()
-  const la = page.locator('dialog[open] [data-plugin-approval="lighthouse"]')
-  check("synced on: its sheet says it came from elsewhere", await until(async () => (await la.innerText()).includes("this machine hasn't run it"), 8000), await la.innerText().catch(() => ""))
+  const la = page.locator('[data-settings-section="plugin:lighthouse"] [data-plugin-approval="lighthouse"]')
+  check("synced on: its page says it came from elsewhere", await until(async () => (await la.innerText()).includes("this machine hasn't run it"), 8000), await la.innerText().catch(() => ""))
   await la.locator('[data-plugin-allow="lighthouse"]').click()
   check("synced on: allowed, it runs", await until(async () => (await api("lighthouse"))[0] === 200, 8000))
   await page.keyboard.press("Escape")
