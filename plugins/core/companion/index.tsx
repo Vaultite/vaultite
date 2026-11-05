@@ -1,12 +1,12 @@
 import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal, Undo2 } from "lucide-react"
-import { cn, currentEditor, definePlugin, dictation, fnDictation, menuAbove, notify, op, runCommandById, share, useFocusedFile, type MenuItem } from "@vaultite"
+import { cn, currentEditor, definePlugin, dictation, menuAbove, notify, onTalkKey, op, runCommandById, share, stopDictation, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
 import { type Agent, bump, canUndoEdit, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, undoEdit, unread, viewOf } from "./live"
 import { presence } from "./look"
-import { Arrow, follow, Overlay, showSaid, talkAt, talkHeard } from "./Overlay"
+import { Arrow, follow, Overlay, showSaid, talkAt, talkDone, talkHeard } from "./Overlay"
 import { Presence } from "./Presence"
 import { followItems, modeItem, MODES, setMode, showSession } from "./session"
 import { watchPanes } from "./panes"
@@ -35,8 +35,8 @@ setGuest(share)
 // (where the pointer is in the window: a Talk key's ask is about what's under it)
 let pointer: { x: number; y: number } | null = null
 const frame = () => new Promise((r) => requestAnimationFrame(r))
-/** A Talk key in this window: the companion's cursor comes to the pointer with its box, listening; what's said is sent
- *  as it stops. Its cursor not drawn (asleep, in another window): an ask by the caret's line instead. */
+/** A Talk key held in this window: the companion's cursor comes to the pointer with its box, listening; what's said is
+ *  sent as it's let go. Its cursor not drawn (asleep, in another window): an ask by the caret's line instead. */
 async function talk(): Promise<boolean> {
   const st = getState()
   if (share) return false
@@ -44,7 +44,10 @@ async function talk(): Promise<boolean> {
   if (dictation()) return false
   const p = pointer ?? { x: innerWidth / 2, y: innerHeight / 2 }
   if (!talkAt(p.x, p.y)) ask()
-  // (its box takes the keyboard as it opens)
+  return listenInBox()
+}
+/** Dictation into the box that just opened (it takes the keyboard as it opens), sent as it stops. */
+async function listenInBox() {
   for (let i = 0; i < 30; i++) {
     await frame()
     const f = document.activeElement
@@ -56,13 +59,25 @@ async function talk(): Promise<boolean> {
   return !!dictation()
 }
 
+/** The Talk keys' gesture here (the helper's, core/fnkey.ts): held, it listens and sends when let go; a tap leaves its
+ *  box to type in; a double tap listens in it hands-free, till the next double tap sends. */
+function talkKey(a: "listen" | "send" | "type" | "free" | "cancel") {
+  if (a === "listen") return void talk()
+  if (a === "send") return void stopDictation()
+  talkHeard(false)
+  // (the tap's dictation may still be stopping)
+  if (a === "free") return void (async () => { for (let i = 0; i < 60 && dictation(); i++) await frame(); if (!dictation()) await listenInBox() })()
+  void stopDictation(true)
+  if (a === "cancel") talkDone()
+}
+
 function TalkKeys() {
   useEffect(() => {
     const moved = (e: PointerEvent) => { pointer = { x: e.clientX, y: e.clientY } }
     const left = () => { pointer = null }
     addEventListener("pointermove", moved, { passive: true, capture: true })
     document.documentElement.addEventListener("pointerleave", left)
-    const off = fnDictation(talk, true)
+    const off = onTalkKey(talkKey)
     return () => { off(); removeEventListener("pointermove", moved, { capture: true }); document.documentElement.removeEventListener("pointerleave", left) }
   }, [])
   return null

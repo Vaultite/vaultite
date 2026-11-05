@@ -1,4 +1,4 @@
-// What the companion follows this session (dropped on, or asked): a terminal at a command's end or its agent's state, a
+// What the companion follows this session (only when asked: companion follow): a terminal at a command's end or its agent's state, a
 // page at a navigation, a selection or a settled change, a tab group's panes. In memory; a watch is the kept kind.
 import type { Plugin } from "../../../core/plugins.ts"
 import { type Pane, paneSource } from "./places.ts"

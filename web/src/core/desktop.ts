@@ -68,9 +68,6 @@ export type DesktopApi = {
   apps?: AppWindows
   /** Dictation from this Mac's microphone (electron/dictation.ts). Builds from before it don't have it. */
   dictation?: DictationSource
-  /** The companion's cursor dropped outside the window at a point of the screen (the helper's): the app window there is
-   *  what to look at. A Mac's; builds from before the helper don't have it. */
-  screen?: { drop: (x: number, y: number, agent: string) => Promise<unknown> }
   /** macOS's Look up (the dictionary's popover) for the page's selection. Builds from before it don't have it. */
   lookUp?: () => Promise<unknown>
   /** Add a word to the spell checker's dictionary. With it come `spelling` messages (below). */
@@ -371,10 +368,6 @@ export const askMicrophone = async () => (desktop?.microphone ? desktop.micropho
 /** Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older
  *  build). The terminal's way there when macOS keeps an agent from the vault. */
 export const openPermissions = desktop?.permission ? () => openDetail("settings-section/permissions") : null
-
-/** A cursor dropped at a point of the screen outside the window (screen points): the desktop app's helper looks at the
- *  app window there for `agent`, and follows it; null in a browser, or a build without the helper. */
-export const screenDrop = desktop?.screen ? (x: number, y: number, agent: string) => desktop!.screen!.drop(x, y, agent) : null
 
 /** In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the
  *  window then comes to the front), false when it's dismissed; null in a browser, or an app build without it. */

@@ -302,6 +302,17 @@ export default async ($: VaultTest) => {
     $.vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "companion-notice-pair-2026-11") })
     await migrate($.vault, false)
     check("companion: a vault's notice mode becomes pair", $.vault.readConfig("plugins/companion/data")?.mode === "pair", $.vault.readConfig("plugins/companion/data"))
+    // Summoned: no resting cursor's setting, and double Control a key of neither (the companion's is ⌃⌥ for it).
+    const comp = $.vault.readConfig("plugins/companion/data") ?? {}, dict = $.vault.readConfig("plugins/dictation/data") ?? {}
+    $.vault.setConfig("plugins/companion/data", { ...comp, screen_cursor: "dock", keys: ["double_control", "fn"] })
+    $.vault.setConfig("plugins/dictation/data", { ...dict, keys: ["double_control"] })
+    $.vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "summoned-keys-2026-11") })
+    await migrate($.vault, false)
+    const c2 = $.vault.readConfig("plugins/companion/data"), d2 = $.vault.readConfig("plugins/dictation/data")
+    check("companion: a vault's double Control becomes ⌃⌥ to talk, goes from dictation, and the resting cursor's setting goes",
+      JSON.stringify(c2?.keys) === '["control_option","fn"]' && !("screen_cursor" in (c2 ?? {})) && !("keys" in (d2 ?? {})), { c2, d2 })
+    $.vault.setConfig("plugins/companion/data", comp)
+    $.vault.setConfig("plugins/dictation/data", dict)
   }
   {
     // A drawing's moments: what changed, the scene as its window saw it (the last one), the user's pointer.
@@ -709,6 +720,9 @@ export default async ($: VaultTest) => {
     check("companion: a follow's change, a watch's hit and a point on the app read as moments", t.includes(`- change in "zsh" (pane t3): a command ended\n    ok`) &&
       t.includes(`- watch Watches/Order "Order": it changed`) && t.includes(`they asked: "tell me when it ships"`) && t.includes("- point (panel:files:files): they pointed you here") &&
       t.split("\n")[1].startsWith("They're looking at"), t)
+    const onPane = c.momentsText([{ seq: 4, t: 0, kind: "ask", pane: "t3", title: "zsh", row: 4, text: "what's this?", under: "error: no such file" }], "quiet", null)
+    check("companion: a Talk key's ask on a pane says the pane, its row and what was under the pointer, never a note's line",
+      onPane.includes(`- ask "zsh" (pane t3), row 4: "what's this?"`) && onPane.includes("under their pointer: error: no such file") && !onPane.includes("follow"), onPane)
     const back = (await import("../../../plugins/core/companion/moments.ts")).readMoments(t)
     check("companion: and read back for its timeline", back?.moments.map((m) => m.kind).join() === "change,watch,point" && back.moments[0].changes?.[0] === "  ok", back)
     const me = () => api("POST", "ops/companion.status", {}).then(([, r]) => r.agents.find((a: Any) => a.name === "Claude"))

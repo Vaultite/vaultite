@@ -1,5 +1,5 @@
-// The companion's cursor dropped on a sidebar tab row (a split tab: all its panes) or a tab group's row: a point and a
-// follow; the row shows an eye, whose click stops it (plugins/core/companion/panes.ts, plugins/core/tabs/index.tsx).
+// The companion following a sidebar tab row (a split tab: all its panes) or a tab group's row, as it's asked to: the row
+// shows an eye, whose click stops it (plugins/core/companion/panes.ts, plugins/core/tabs/index.tsx).
 // WRITES the companion's data.json, plugins.json, sidebars and appearance: throwaway server only.
 //   node web/qa/companion-rows.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -40,18 +40,11 @@ try {
   await until(async () => !(await op("companion.look", { pane: split.panes[0].id })).error, 6000)
   await wait(900)
 
-  // Dropped on the split tab's row (past its halves' text: its end), a point and a follow of the tab.
-  const drag = async (sel) => {
-    const g = await page.locator('.companion-cursor[data-agent="Claude"] [data-companion-grip]').boundingBox()
-    const row = await page.locator(sel).first().boundingBox()
-    await page.mouse.move(g.x + 5, g.y + 5); await page.mouse.down()
-    await page.mouse.move(g.x + 40, g.y + 40, { steps: 4 }); await page.mouse.move(row.x + row.width - 30, row.y + row.height / 2, { steps: 8 }); await page.mouse.up()
-  }
-  await drag(`[data-ui="tab:${split.id}"]`)
-  r = await op("companion.next", { timeout: 4 })
+  // Asked to follow the split tab: its row shows it.
+  await op("companion.follow", { tab: split.id, as: "Claude" })
   const st = await op("companion.status")
   const f = st.follows?.find((x) => x.tab === split.id || split.panes.some((p) => p.id === x.pane))
-  check("dropped on a tab's row: a point and a follow of it", r.moments?.some((m) => m.kind === "point") && !!f, [r.moments, st.follows])
+  check("following a tab: listed", !!f, st.follows)
   const eye = page.locator(`[data-ui="tab:${split.id}"] button[aria-label^="Stop Claude following"]`)
   check("the row shows an eye", await until(async () => (await eye.count()) === 1, 4000))
   await page.screenshot({ path: `${OUT}eye.png` })
@@ -63,10 +56,8 @@ try {
   const g = await op("tabs.group", { tabs: [notes[2]], name: "Lighthouse" })
   const gid = g.group?.id
   await page.waitForSelector(`[data-ui="group:${gid}"]`)
-  await op("companion.look", { pane: split.panes[0].id }); await wait(900)
-  await drag(`[data-ui="group:${gid}"]`)
-  await op("companion.next", { timeout: 4 })
-  check("dropped on a group's row: it follows the group", await until(async () => (await op("companion.status")).follows?.some((x) => x.group === gid), 4000))
+  await op("companion.follow", { group: gid, as: "Claude" })
+  check("following a group: listed", await until(async () => (await op("companion.status")).follows?.some((x) => x.group === gid), 4000))
   check("the group's row shows the eye", await until(async () => (await page.locator(`[data-ui="group:${gid}"] button[aria-label^="Stop Claude following"]`).count()) === 1, 4000))
   await op("companion.unfollow", { as: "Claude" })
   await ctx.close()

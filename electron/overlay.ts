@@ -1,24 +1,22 @@
-/** The companion's cursor over the whole screen: a see-through window a display, every Space and full screen app too,
- *  the pointer going through but over the cursor (to drag it); it draws web/screen.html as helper.ts says. */
+/** The companion over the whole screen: a see-through window a display, every Space and full screen app too, the pointer
+ *  going through but over a bubble or the pill (to click them); it draws web/screen.html as helper.ts says. */
 import { BrowserWindow, ipcMain, screen, shell, type Display, type IpcMainEvent } from "electron"
 import path from "node:path"
 import { panelAt, type Point, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 
-/** What the user does to it: drags a cursor and drops it at a point, clicks it or its bubble (its conversation opens),
- *  calls it back (a double click) or right-clicks it, stops dictating. Points are the screen's. */
-export type OverlayActs = { drop: (name: string, x: number, y: number) => void; open: (name: string, at: Point) => void; home: (name: string) => void
-  menu: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; stop: () => void }
+/** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
+export type OverlayActs = { open: (name: string, at: Point) => void; stop: () => void }
 /** What the user does in a cursor's conversation: asks (typed), the microphone, More (its menu), and it closed. */
 export type PanelActs = { send: (name: string, text: string) => void; mic: () => void; more: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; closed: (name: string) => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
 const wins = new Map<number, BrowserWindow>()
 let url = ""
-let scene: Scene = { agents: [], idle: null, pill: null }
+let scene: Scene = { agents: [], summon: null, ink: null, pill: null }
 let acts: OverlayActs | null = null
 let watching = false
 
-const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.idle && !x.pill
+const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.ink && !x.pill
 /** What each window was sent last (its scene's shape and places), and its hiding once it's had nothing to draw a while. */
 const sent = new Map<BrowserWindow, { shape: string; at: string }>()
 const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()
@@ -87,19 +85,8 @@ export function showOverlay(base: string | null, s?: Scene) {
 const mine = (e: IpcMainEvent) => [...wins.values()].find((w) => w.webContents === e.sender)
 export function overlayActs(a: OverlayActs) {
   acts = a
-  // (over the cursor or its bubble the window takes the pointer, so it can be dragged or clicked; elsewhere it goes through)
+  // (over a bubble or the pill the window takes the pointer, so it can be clicked; elsewhere it goes through)
   ipcMain.on("screen:grab", (e, on: unknown) => { const w = mine(e); if (w) w.setIgnoreMouseEvents(!on, { forward: true }) })
-  ipcMain.on("screen:drop", (e, m: { name?: unknown; x?: unknown; y?: unknown }) => {
-    const w = mine(e)
-    if (!w || typeof m?.name !== "string" || typeof m.x !== "number" || typeof m.y !== "number") return
-    const b = w.getBounds()
-    acts?.drop(m.name, b.x + m.x, b.y + m.y)
-  })
-  ipcMain.on("screen:home", (e, name: unknown) => { if (mine(e) && typeof name === "string") acts?.home(name) })
-  ipcMain.on("screen:menu", (e, m: { name?: unknown; x?: unknown; y?: unknown }) => {
-    const w = mine(e)
-    if (w && typeof m?.name === "string" && typeof m.x === "number" && typeof m.y === "number") acts?.menu(m.name, { window: w, x: Math.round(m.x), y: Math.round(m.y) })
-  })
   ipcMain.on("screen:open", (e, m: { name?: unknown; x?: unknown; y?: unknown }) => {
     const w = mine(e)
     if (!w || typeof m?.name !== "string" || typeof m.x !== "number" || typeof m.y !== "number") return
@@ -118,16 +105,17 @@ export type PanelData = { name: string; tint: string; how: string; items: { id: 
   /** `done` (with its `id`, to be taken once): said, for the box; `send`: sent as it is (a Talk key's). */
   words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean } }
 const WIDTH = 300, PAD = 16
-let panel: { w: BrowserWindow; name: string; at: Point; data: PanelData; height: number; menu: boolean } | null = null
+let panel: { w: BrowserWindow; name: string; at: Point; data: PanelData; height: number; menu: boolean; focus: boolean } | null = null
 let panelActs: PanelActs | null = null
 
-/** Open agent `name`'s conversation by its cursor at `at` (the screen's points); already open: it moves there. */
-export function openPanel(base: string, at: Point, data: PanelData) {
+/** Open agent `name`'s conversation by its cursor at `at` (the screen's points); already open: it moves there. Unfocused
+ *  (an answer's box), it takes the keyboard only once clicked. */
+export function openPanel(base: string, at: Point, data: PanelData, focus = true) {
   if (panel && !panel.w.isDestroyed()) {
-    Object.assign(panel, { at, name: data.name, data })
+    Object.assign(panel, { at, name: data.name, data, focus })
     place()
     panel.w.webContents.send("vaultite:panel", data)
-    panel.w.focus()
+    if (focus) panel.w.focus()
     return
   }
   // (a panel: on a Mac one that takes the keyboard without bringing the app forward, so the app in front stays so)
@@ -137,7 +125,7 @@ export function openPanel(base: string, at: Point, data: PanelData) {
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   w.setHiddenInMissionControl(true)
   w.setAlwaysOnTop(true, "screen-saver", 1)
-  const mine = { w, name: data.name, at, data, height: 0, menu: false }
+  const mine = { w, name: data.name, at, data, height: 0, menu: false, focus }
   panel = mine
   // (a link in its words opens in the browser, never in this window)
   w.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) void shell.openExternal(url); return { action: "deny" } })
@@ -155,18 +143,25 @@ export function panelData(data: PanelData) {
   panel.w.webContents.send("vaultite:panel", data)
 }
 export const panelOpen = () => (panel && !panel.w.isDestroyed() ? panel.name : null)
+/** Where it is on screen (its words' box, not the room around it), or null. */
+export const panelBounds = () => { if (!panel || panel.w.isDestroyed() || !panel.w.isVisible()) return null; const b = panel.w.getBounds(); return { x: b.x + PAD, y: b.y + PAD, width: b.width - PAD * 2, height: b.height - PAD * 2 } }
+/** The windows that are ours on screen (the overlay's, the conversation): a display's picture leaves them out. */
+export const ownWindows = () => [...wins.values(), ...(panel && !panel.w.isDestroyed() ? [panel.w] : [])]
+  .map((w) => Number(/^window:(\d+)/.exec(w.getMediaSourceId())?.[1] ?? 0)).filter((n) => n > 0)
 export const panelFocused = () => !!panel && !panel.w.isDestroyed() && panel.w.isFocused()
 export function closePanel() {
   if (panel && !panel.w.isDestroyed()) panel.w.close()
 }
 
-/** By its cursor, toward the room, inside the screen; shown once its page knows its height. */
+/** By its cursor, clear of its arrow and name, inside the screen; shown once its page knows its height. */
 function place() {
   if (!panel || !panel.height) return
   const area = screen.getDisplayNearestPoint(panel.at).workArea
-  const at = panelAt(panel.at, { width: WIDTH, height: panel.height }, area)
+  // (its flag in the overlay: its name and what it does, about this wide)
+  const at = panelAt(panel.at, { width: WIDTH, height: panel.height }, area, panel.name.length * 7 + 70)
   panel.w.setBounds({ x: at.x - PAD, y: at.y - PAD, width: WIDTH + PAD * 2, height: panel.height + PAD * 2 })
-  if (!panel.w.isVisible()) { panel.w.show(); panel.w.focus() }
+  if (panel.w.isVisible()) return
+  if (panel.focus) { panel.w.show(); panel.w.focus() } else panel.w.showInactive()
 }
 
 const ofPanel = (e: IpcMainEvent) => (panel && !panel.w.isDestroyed() && panel.w.webContents === e.sender ? panel : null)

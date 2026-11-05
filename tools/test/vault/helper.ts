@@ -7,7 +7,7 @@ export default async ($: VaultTest) => {
   // The menu-bar helper (electron/helper.ts): fn as ⌘J, the overlay's scene, the screen plugin and the companion's
   // screen moments. Its native part (screen.swift) only answers here: no key is tapped, no app's tree is woken.
   {
-    const { fnKey, fnActsToo, controlActsToo, keyCodes, modKeys } = await import("../../../core/fnkey.ts")
+    const { fnKey, fnActsToo, isChord, keyCodes, modKeys, talkGesture } = await import("../../../core/fnkey.ts")
     const k = fnKey(450)
     const tap = [k.down(0, false), k.up(100)], again = [k.down(1000, true), k.up(1100)], held = [k.down(2000, false), k.up(2600)]
     check("fn: a tap starts and leaves it listening, the next press stops; held, it stops when let go",
@@ -16,28 +16,8 @@ export default async ($: VaultTest) => {
     check("fn: a key pressed with it (fn+arrow) cancels what its press started, and nothing else", combo.join() === "start,cancel," && fnKey().other() === null, combo)
     check("fn: macOS's globe key acts too unless it's set to Do nothing", fnActsToo(null) && fnActsToo("2") && !fnActsToo("0\n"))
 
-    const ALL = ["fn", "right_option", "right_command", "double_control"]
-    const CTRL = 59, ROPT = 61, RCMD = 54, LOPT = 58
-    type Step = { code?: number; on?: boolean; alone?: boolean; at?: number; other?: boolean }
-    const run = (steps: Step[], keys = ALL) => { const m = modKeys(keys); return steps.map((s) => m.heard(s)) }
-    const fired = (steps: Step[], keys = ALL) => run(steps, keys).filter((r) => r.twice).length
-    const press = (at: number, code = CTRL, long = 50): Step[] => [{ code, on: true, alone: true, at }, { code, on: false, alone: false, at: at + long }]
-    const two = [...press(0), ...press(150)]
-    const double = run(two).at(-1)!
-    check("double Control: two quick taps are one tap of fn, on the second's release",
-      double.twice === true && JSON.stringify(double.fn) === '[{"down":true},{"down":false}]' && run(two).slice(0, 3).every((r) => !r.fn.length), double)
-    check("double Control: either side, the two sides mixed too", fired([...press(0, 62), ...press(150, 62)]) === 1 && fired([...press(0, 59), ...press(150, 62)]) === 1)
-    check("double Control: a slow press isn't a tap, nor is a gap too long", fired([...press(0, CTRL, 500), ...press(600)]) === 0 && fired([...press(0), ...press(150, CTRL, 500)]) === 0 && fired([...press(0), ...press(1000)]) === 0)
-    check("double Control: a shortcut between isn't one, a key or another modifier", fired([...press(0), { other: true }, ...press(100)]) === 0 &&
-      fired([...press(0), { code: LOPT, on: true, alone: true, at: 70 }, { code: LOPT, on: false, at: 80 }, ...press(100)]) === 0 &&
-      fired([{ code: CTRL, on: true, alone: true, at: 0 }, { other: true }, { code: CTRL, on: false, at: 40 }, ...press(100)]) === 0)
-    check("double Control: with another modifier held, or both sides at once, it isn't one",
-      fired([{ code: CTRL, on: true, alone: false, at: 0 }, { code: CTRL, on: false, at: 40 }, ...press(100)]) === 0 &&
-      fired([{ code: 59, on: true, alone: true, at: 0 }, { code: 62, on: true, alone: false, at: 10 }, { code: 62, on: false, at: 20 }, { code: 59, on: false, at: 30 }, ...press(100)]) === 0)
-    check("double Control: a third tap does nothing, a fourth neither; after a pause it works again",
-      fired([...two, ...press(350)]) === 1 && fired([...two, ...press(350), ...press(600)]) === 1 && fired([...two, ...press(350), ...press(1500), ...press(1650)]) === 2)
-    check("double Control: held isn't a tap", fired([...press(0), { code: CTRL, on: true, alone: true, at: 150 }, { code: CTRL, on: false, at: 2000 }]) === 0)
-
+    const ALL = ["fn", "right_option", "right_command"]
+    const ROPT = 61, RCMD = 54, LOPT = 58, CTRL = 59
     const solo = (code: number) => { const m = modKeys(ALL); return { m, down: m.heard({ code, on: true, alone: true, at: 0 }), up: () => m.heard({ code, on: false, at: 100 }).fn } }
     const quick = solo(ROPT), quickUp = quick.up()
     check("right Option: it waits to see it's alone; let go first, it's a tap of fn", quick.down.wait === true && !quick.down.fn.length && JSON.stringify(quickUp) === '[{"down":true},{"down":false}]', quickUp)
@@ -48,22 +28,27 @@ export default async ($: VaultTest) => {
     const slow = solo(ROPT), slowDown = slow.m.settled(), slowKey = slow.m.heard({ other: true }).fn, slowUp = slow.up()
     check("right Option + a key after it counted: that press is cancelled, as fn+key is", JSON.stringify(slowDown) === '[{"down":true}]' && JSON.stringify(slowKey) === '[{"other":true}]' && !slowUp.length, { slowKey, slowUp })
     const left = modKeys(ALL), leftDown = left.heard({ code: LOPT, on: true, alone: true, at: 0 })
-    check("left Option: not a trigger", !leftDown.wait && !leftDown.fn.length && !left.settled().length && !left.heard({ code: LOPT, on: false, at: 100 }).fn.length)
+    check("left Option: not a trigger, nor Control alone (double Control is no key now)", !leftDown.wait && !leftDown.fn.length && !left.settled().length && !left.heard({ code: LOPT, on: false, at: 100 }).fn.length &&
+      !modKeys([...ALL, "double_control"]).heard({ code: CTRL, on: true, alone: true, at: 0 }).wait)
     const withShift = modKeys(ALL), shifted = withShift.heard({ code: RCMD, on: true, alone: false, at: 0 })
     check("right Command with another modifier held: not a trigger", !shifted.wait && !withShift.settled().length && !withShift.heard({ code: RCMD, on: false, at: 100 }).fn.length)
     const both = modKeys(ALL)
     both.heard({ code: ROPT, on: true, alone: true, at: 0 })
     const second = both.heard({ code: RCMD, on: true, alone: false, at: 20 })
     check("right Option and Command together: neither", !second.wait && !both.settled().length && !both.heard({ code: ROPT, on: false, at: 50 }).fn.length && !both.heard({ code: RCMD, on: false, at: 60 }).fn.length)
-    const defaults = ["fn", "double_control"], off = modKeys(defaults), offDown = off.heard({ code: ROPT, on: true, alone: true, at: 0 })
-    check("a key not picked: not a trigger; double Control, unpicked, neither", !offDown.wait && !off.settled().length && !off.heard({ code: ROPT, on: false, at: 100 }).fn.length && fired(two, ["fn", "right_option"]) === 0 && fired(two, defaults) === 1)
-    check("the tap hears the picked keys' codes", keyCodes(ALL).join() === "63,61,54,59,62" && keyCodes(["nope"]).length === 0 && keyCodes([]).length === 0)
+    const off = modKeys(["fn"]), offDown = off.heard({ code: ROPT, on: true, alone: true, at: 0 })
+    check("a key not picked: not a trigger", !offDown.wait && !off.settled().length && !off.heard({ code: ROPT, on: false, at: 100 }).fn.length)
+    check("the tap hears the picked keys' codes; chords go by name", keyCodes([...ALL, "control_option", "fn_control"]).join() === "63,61,54" && keyCodes(["nope"]).length === 0 &&
+      isChord("control_option") && isChord("fn_control") && !isChord("fn"))
 
-    const hotKey = (type: string, modifiers: number, enabled = true) => JSON.stringify({ enabled, value: { type, parameters: [modifiers, modifiers] } })
-    check("macOS's dictation shortcut as Control twice: it acts too; anything else doesn't",
-      controlActsToo(hotKey("modifier", 0x40000), "1") && controlActsToo(hotKey("modifier", 0x40000), null) &&
-      !controlActsToo(hotKey("modifier", 0x100008), "1") && !controlActsToo(hotKey("standard", 0x140000), "1") && !controlActsToo(hotKey("modifier", 0x40000, false), "1") &&
-      !controlActsToo(hotKey("modifier", 0x40000), "0\n") && !controlActsToo(null, "1") && !controlActsToo("not json", "1"))
+    // The Talk keys' gesture (HeyClicky's): hold, tap, double tap.
+    const run = (steps: [string, number][]) => { const g = talkGesture(250, 350); return steps.map(([e, t]) => (e === "d" ? g.down(t) : e === "u" ? g.up(t) : g.other())).filter(Boolean).join() }
+    check("talk: held, it listens and sends when let go", run([["d", 0], ["u", 900]]) === "listen,send")
+    check("talk: a tap opens its box to type in, nothing heard", run([["d", 0], ["u", 120]]) === "listen,type")
+    check("talk: a double tap listens hands-free, and the next double tap sends", run([["d", 0], ["u", 100], ["d", 250], ["u", 330], ["d", 5000], ["u", 5080], ["d", 5200], ["u", 5280]]) === "listen,type,free,send")
+    check("talk: hands-free, a single tap or a hold doesn't send", run([["d", 0], ["u", 100], ["d", 250], ["u", 330], ["d", 5000], ["u", 5080], ["d", 9000], ["u", 9900]]) === "listen,type,free")
+    check("talk: a key with it (⌃⌥→, a shortcut) cancels, and its release does nothing", run([["d", 0], ["o", 50], ["u", 900]]) === "listen,cancel")
+    check("talk: two taps far apart are two boxes, not hands-free", run([["d", 0], ["u", 100], ["d", 2000], ["u", 2100]]) === "listen,type,listen,type")
   }
   {
     const { joinText, replacer } = await import("../../../core/dictationtext.ts")
@@ -81,37 +66,47 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { atOffset, dockAt, hunksOf, panelAt, pointIn, prefsOf, sceneFor, spotIn, splitScene } = await import("../../../electron/helperlogic.ts")
+    const { atOffset, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
     const area = { x: 0, y: 25, width: 1600, height: 975 }, bounds = { x: 0, y: 0, width: 1600, height: 1000 }, size = { width: 300, height: 200 }
-    check("helper: a cursor's conversation opens to its right and below its flag, else toward the room, always on screen",
-      JSON.stringify(panelAt({ x: 100, y: 100 }, size, area)) === '{"x":94,"y":136}' && JSON.stringify(panelAt({ x: 1590, y: 100 }, size, area)) === '{"x":1292,"y":136}' &&
-      JSON.stringify(panelAt({ x: 100, y: 990 }, size, area)) === '{"x":94,"y":784}' && panelAt({ x: 100, y: 0 }, { width: 300, height: 960 }, area).y === 33)
-    check("helper: a drop docks by the left or right edge only (the menu bar's and the Dock's are for pointing)",
-      dockAt(bounds, area, { x: 1590, y: 500 })?.side === "right" && dockAt(bounds, area, { x: 5, y: 25 })?.at === 0 && !dockAt(bounds, area, { x: 800, y: 5 }) && !dockAt(bounds, area, { x: 800, y: 995 }))
+    const { arrowBox, boxAt, flagBox } = await import("../../../plugins/core/companion/boxes.ts")
+    const meets = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+    type Rect = { x: number; y: number; width: number; height: number }
+    const covers: unknown[] = []
+    // (every corner and edge of the screen, the flag under its arrow or over it, a target or none)
+    for (const x of [10, 400, 1200, 1590]) for (const y of [30, 300, 700, 990]) for (const target of [null, { x: x - 16, y: y - 10, width: 160, height: 22 }]) {
+      const tip = { x, y }, f = flagBox(tip, 130, area), clear = [arrowBox(tip), f, ...(target ? [target] : [])]
+      for (const sz of [{ width: 220, height: 60 }, size]) {
+        const b = { ...boxAt(tip, sz, area, clear), ...sz }
+        if (clear.some((c) => meets(b, c)) || b.x < area.x || b.y < area.y || b.x + b.width > area.x + area.width || b.y + b.height > area.y + area.height) covers.push({ tip, target, b, f })
+      }
+    }
+    check("boxes: a cursor's words never cover its arrow, its name or what it points at, and stay on screen, in every corner", !covers.length, covers.slice(0, 3))
+    const low = flagBox({ x: 100, y: 990 }, 130, area), lowBox = boxAt({ x: 100, y: 990 }, { width: 220, height: 60 }, area, [arrowBox({ x: 100, y: 990 }), low])
+    check("boxes: near the foot its name goes over its arrow, and its words go above it, not on it (the bug)", low.low && !meets({ ...lowBox, width: 220, height: 60 }, low) && lowBox.y + 60 <= low.y, { low, lowBox })
+    check("boxes: beside its arrow, rising from its tip, by default", JSON.stringify(boxAt({ x: 100, y: 100 }, { width: 220, height: 60 }, area, [arrowBox({ x: 100, y: 100 }), flagBox({ x: 100, y: 100 }, 130, area)])) === '{"x":121,"y":56,"side":"right","up":true}')
+    check("helper: a cursor's conversation opens clear of its arrow and name, always on screen",
+      !meets({ ...panelAt({ x: 100, y: 990 }, size, area, 130), ...size }, flagBox({ x: 100, y: 990 }, 130, area)) && panelAt({ x: 100, y: 0 }, { width: 300, height: 960 }, area).y >= 25)
     check("helper: a spot left in a window stays inside it as it shrinks", JSON.stringify(atOffset({ x: 10, y: 10, width: 100, height: 100 }, { dx: 500, dy: 50 })) === '{"x":102,"y":60}')
-    check("helper: a display's scene knows the menu bar's height", sceneFor({ id: 1, bounds, workArea: area }, { agents: [], idle: null, pill: null }, { x: 0, y: 0 }, []).top === 25)
-    const defaults = { dictation: { fn: { default: true }, keys: { default: ["fn", "double_control"] } }, companion: { screen_cursor: { default: "dock" } }, screen: { private_apps: { default: ["1Password"] } } }
-    const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, { screen_cursor: "trail" }, { private_apps: [] }, defaults)
-    check("helper: settings left out are the manifests' defaults; set ones win, an empty private list too",
-      none.fn && none.keys.join() === "fn,double_control" && set.keys.join() === "right_option" && none.cursor === "dock" && none.privateApps.join() === "1Password" && !set.fn && set.cursor === "trail" && set.privateApps.length === 0, { none, set })
-    const talkDefaults = { ...defaults, companion: { ...defaults.companion, keys: { default: ["double_control"] } } }
-    const split = prefsOf({ keys: ["fn", "right_option", "double_control"] }, {}, {}, talkDefaults), mine = prefsOf({}, { keys: ["fn"] }, {}, talkDefaults)
+    const blank = { agents: [], summon: null, ink: null, pill: null }
+    check("helper: a display's scene knows the menu bar's height", sceneFor({ id: 1, bounds, workArea: area }, blank, { x: 0, y: 0 }, []).top === 25)
+    const defaults = { dictation: { fn: { default: true }, keys: { default: ["fn_control"] } }, companion: { keys: { default: ["control_option"] } }, screen: { private_apps: { default: ["1Password"] } } }
+    const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, {}, { private_apps: [] }, defaults)
+    check("helper: settings left out are the manifests' defaults (fn⌃ dictates, ⌃⌥ talks); set ones win, an empty private list too",
+      none.fn && none.keys.join() === "fn_control" && none.talk.join() === "control_option" && set.keys.join() === "right_option" && none.privateApps.join() === "1Password" && !set.fn && set.privateApps.length === 0, { none, set })
+    const split = prefsOf({ keys: ["fn", "right_option", "control_option"] }, {}, {}, defaults), mine = prefsOf({}, { keys: ["fn"] }, {}, defaults)
     check("helper: Talk keys are the companion's, and a key in both talks, never dictates",
-      split.talk.join() === "double_control" && split.keys.join() === "fn,right_option" && mine.talk.join() === "fn" && !mine.keys.includes("fn"), { split, mine })
-    check("helper: where the pointer is in a window's picture, in words; outside it, nothing",
-      spotIn({ x: 100, y: 100, width: 200, height: 100 }, { x: 150, y: 190 }) === "25% across, 90% down" && spotIn({ x: 100, y: 100, width: 200, height: 100 }, { x: 50, y: 150 }) === null)
-    check("helper: only inside Vaultite is a place of its own, an unknown one the edge", prefsOf({}, { screen_cursor: "app" }, {}, defaults).cursor === "app" && prefsOf({}, { screen_cursor: "x" }, {}, defaults).cursor === "dock")
+      split.talk.join() === "control_option" && split.keys.join() === "fn,right_option" && mine.talk.join() === "fn" && !mine.keys.includes("fn"), { split, mine })
     check("helper: it points at an element by its left edge's middle, at a window by its title bar",
       JSON.stringify(pointIn({ x: 100, y: 200, width: 80, height: 20 }, true)) === '{"x":116,"y":210}' &&
       JSON.stringify(pointIn({ x: 0, y: 30, width: 800, height: 600 }, false)) === '{"x":400,"y":42}')
-    const h = hunksOf(["a", "b", "c"], ["a", "B", "c", "d"])
-    check("helper: a followed window's change reads as hunks", h.length === 2 && h[0].line === 2 && h[0].removed[0] === "b" && h[0].added[0] === "B" && h[1].added[0] === "d", h)
     const left = { id: 1, bounds: { x: 0, y: 0, width: 1000, height: 800 } }, right = { id: 2, bounds: { x: 1000, y: 0, width: 1000, height: 800 } }
-    const scene = { agents: [{ name: "Claude", tint: "orange", state: "thinking", sx: 1500, sy: 100 }], idle: { name: "Claude", tint: "orange", sx: 978, sy: 266, docked: true },
+    const scene = { agents: [{ name: "Claude", tint: "orange", state: "thinking", sx: 1500, sy: 100, target: { x: 1480, y: 90, width: 100, height: 20 } }],
+      summon: { name: "Claude", tint: "orange", state: "listening" as const, sx: 978, sy: 266, words: "what's" }, ink: { tint: "orange", strokes: [[{ x: 900, y: 200 }, { x: 950, y: 210 }], [{ x: 1200, y: 300 }]] },
       pill: { level: 0.5, text: "hello", ready: true, display: 2 } }
     const l = sceneFor(left, scene, { x: 10, y: 10 }, [left, right]), r = sceneFor(right, scene, { x: 10, y: 10 }, [left, right])
-    check("helper: each display draws what's on it, in its own points; the pill on its field's display",
-      !l.agents.length && l.idle?.sx === 978 && !l.pill && r.agents[0]?.sx === 500 && !r.idle && r.pill?.text === "hello", { l, r })
+    check("helper: each display draws what's on it, in its own points (a target's frame, ink too); the pill on its field's display",
+      !l.agents.length && l.summon?.sx === 978 && l.ink?.strokes.length === 1 && !l.pill && r.agents[0]?.sx === 500 && r.agents[0]?.target?.x === 480 && !r.summon &&
+      r.ink?.strokes[0][0].x === 200 && r.pill?.text === "hello", { l, r })
     const noField = sceneFor(left, { ...scene, pill: { ...scene.pill, display: 9 } }, { x: 10, y: 10 }, [left, right])
     check("helper: with no field's display, the pill is on the pointer's", !!noField.pill)
     const crossing = { ...scene, agents: [{ ...scene.agents[0], from: { x: 900, y: 100 } }] }
@@ -119,8 +114,13 @@ export default async ($: VaultTest) => {
     check("helper: a cursor on its way from one display to another is drawn on both, each in its own points",
       cl.agents[0]?.sx === 1500 && cl.agents[0]?.from?.x === 900 && cr.agents[0]?.sx === 500 && cr.agents[0]?.from?.x === -100, { cl, cr })
     const a = splitScene(r), moved = splitScene({ ...r, agents: [{ ...r.agents[0], sx: 510, from: { x: 1, y: 2 } }] }), said = splitScene({ ...r, agents: [{ ...r.agents[0], say: { id: "s1", text: "hi" } }] })
-    check("helper: a cursor that only moved sends only its place; one that says something, the whole scene",
-      a.shape === moved.shape && JSON.stringify(moved.at.agents) === '{"Claude":[510,100]}' && a.shape !== said.shape, { a, moved })
+    check("helper: a cursor that only moved sends only its place (and its target's); one that says something, the whole scene",
+      a.shape === moved.shape && JSON.stringify(moved.at.agents) === '{"Claude":[510,100,480,90,100,20]}' && a.shape !== said.shape, { a, moved })
+    const ring = Array.from({ length: 40 }, (_, i) => ({ x: 500 + 60 * Math.cos((i / 39) * Math.PI * 2), y: 300 + 40 * Math.sin((i / 39) * Math.PI * 2) }))
+    const under = Array.from({ length: 30 }, (_, i) => ({ x: 400 + i * 8, y: 520 + (i % 2) }))
+    const ink = inkOf([ring, under, [{ x: 1, y: 1 }]])
+    check("helper: ink reads as shapes with their box and a few points: a ring round something, an underline",
+      ink.length === 2 && ink[0].shape === "ring" && ink[0].box.x === 440 && ink[0].box.width === 120 && ink[0].points.length <= 40 && ink[1].shape === "underline" && ink[1].points.length < 10, ink)
   }
   {
     // The helper's cursor between the window and the screen (electron/helper.ts draw), in a Node of its own with Electron
@@ -157,31 +157,45 @@ export default async ($: VaultTest) => {
     check("spring: one long frame lands where many short ones do", Math.abs(big.x - steps.x) < 1e-6, { big, steps })
   }
   {
-    // The companion hears the user on screen: an ask or a point with the window's text and picture, a change of a window
-    // it follows (in quiet too: they dropped its cursor there).
+    // The companion hears the user on screen: an ask or a point with the window's text, the display's picture, what's near
+    // the pointer and what they drew.
     const c = await import("../../../plugins/core/companion/plugin.ts")
     await api("PATCH", "config/plugin/companion", { mode: "quiet" })
     const ask = c.addMoment({ kind: "ask", text: "what does this error mean?", app: "com.apple.Terminal", window: 42, title: "zsh", screen: "error: no such file\nline two", shot: "/tmp/x/screens/window-42-1.png" })
-    const edit = c.addMoment({ kind: "edit", app: "com.apple.Terminal", window: 42, hunks: [{ line: 3, removed: [], added: ["ok"] }] })
     const text = ask ? c.momentsText([ask], "quiet", null) : ""
     check("companion: an ask on screen names the app and window, its picture and its text", !!ask && text.includes('on screen, "zsh" in com.apple.Terminal (window 42)') &&
       text.includes("its picture: /tmp/x/screens/window-42-1.png") && text.includes("    error: no such file"), text)
-    const desk = c.addMoment({ kind: "ask", text: "what is this folder?", app: "com.apple.finder", sx: 812, sy: 440, under: 'Finder: folder "Taxes", in "Desktop"', shot: "/tmp/x/screens/region-1.png" })
+    const desk = c.addMoment({ kind: "ask", text: "what is this folder?", app: "com.apple.finder", sx: 812, sy: 440, under: 'Finder: folder "Taxes", in "Desktop"', shot: "/tmp/x/screens/display-812-1.png", shotAt: { x: 0, y: 0, width: 1600, height: 1000 } })
     const deskText = desk ? c.momentsText([desk], "quiet", null) : ""
     const [, deskSt] = await api("POST", "ops/companion.status", {})
-    check("companion: an ask from the desktop (no window) says what was under the pointer, its point, and the screen around it",
-      deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/region-1.png (the screen around their pointer)") &&
+    check("companion: an ask from the desktop (no window) says what was under the pointer, its point, and the display's picture",
+      deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/display-812-1.png (the display") &&
       (deskSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 812), [deskText, deskSt])
     const bar = c.addMoment({ kind: "point", sx: 1290, sy: 12, shot: "/tmp/x/screens/region-2.png" })
     const barText = bar ? c.momentsText([bar], "quiet", null) : ""
     const [, barSt] = await api("POST", "ops/companion.status", {})
-    check("companion: a cursor dropped where nothing reads (the menu bar) is still a point there, with its picture",
+    check("companion: a point where nothing reads (the menu bar) is still a point there, with its picture",
       barText.includes("on screen, at sx 1290, sy 12 (no window there") && barText.includes("its picture: /tmp/x/screens/region-2.png") &&
       (barSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 1290), [barText, barSt])
-    c.comeBack((barSt as { agents: { name: string; sx?: number }[] }).agents.find((a) => a.sx === 1290)!.name)
+    // (the summoned companion's ask: the display's picture, what's near the pointer by id, what they drew)
+    const held = c.screenMoment({ kind: "ask", text: "what's this button?", app: "com.example.mail", window: 9, title: "Inbox", sx: 812, sy: 440, shot: "/tmp/x/screens/display-812-1.png",
+      shotAt: { x: 0, y: 0, width: 1600, height: 1000 }, near: [{ id: "a1", role: "button", label: "Send", frame: { x: 790, y: 430, width: 60, height: 24 } }],
+      ink: [{ shape: "ring", box: { x: 770, y: 410, width: 100, height: 60 }, points: [[770, 440], [820, 410], [870, 440]] }] })
+    const heldText = held ? c.momentsText([held], "quiet", null) : ""
+    check("companion: a summoned ask says the display's picture and their pointer in it, what they drew and what's near, by id",
+      heldText.includes("its picture: /tmp/x/screens/display-812-1.png (the display, a pixel a point: its top left is sx 0, sy 0; their pointer at 812, 440 in it)") &&
+      heldText.includes("they drew a ring round sx 770-870, sy 410-470") && heldText.includes('a1 button "Send" at 790,430 60×24'), heldText)
+    const name = (barSt as { agents: { name: string; sx?: number }[] }).agents.find((a) => a.sx === 1290)!.name
+    const [axSt] = await api("POST", "ops/companion.look", { ax: "a1", as: name })
+    const [, axIs] = await api("POST", "ops/companion.status", {})
+    const pointed = (axIs as { agents: { name: string; sx?: number; sy?: number; frame?: { x: number } }[] }).agents.find((a) => a.name === name)
+    check("companion: --ax points at an element of the ask's list, snapped to its frame; an id not listed is a 404",
+      axSt === 200 && pointed?.sx === 806 && pointed?.sy === 442 && pointed?.frame?.x === 790 && (await api("POST", "ops/companion.look", { ax: "a9" }))[0] === 404, [axSt, pointed])
+    c.comeBack(name)
     const [, homeSt] = await api("POST", "ops/companion.status", {})
-    check("companion: called back, its cursor leaves the screen", !(homeSt as { agents?: { sx?: number; app?: string }[] }).agents?.some((a) => a.sx !== undefined || a.app), homeSt)
-    check("companion: a followed window's change reaches it in quiet; a note's doesn't", edit?.kind === "edit" && c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null)
+    check("companion: done there, its cursor leaves the screen", !(homeSt as { agents?: { sx?: number; app?: string }[] }).agents?.some((a) => a.sx !== undefined || a.app), homeSt)
+    check("companion: in quiet no edit reaches it, nor does the helper send one (it follows nothing on screen)", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
+      c.screenMoment({ kind: "edit", app: "com.apple.Terminal", window: 42, hunks: [{ line: 3, removed: [], added: ["ok"] }] }) === null)
     await api("PATCH", "config/plugin/companion", { mode: null })
   }
   {

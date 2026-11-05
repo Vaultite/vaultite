@@ -1,9 +1,8 @@
-/** The screen helper (screen.swift), run while the menu-bar helper is: fn, the app in front, fields and other apps'
- *  text; and window screenshots (macOS's screencapture). Its events go to `onScreenEvent`'s listener. */
+/** The screen helper (screen.swift), run while the menu-bar helper is: the keys and ink, the app in front, fields and other
+ *  apps' text; window pictures (macOS's screencapture), a display's (ScreenCaptureKit). Its events go to `onScreenEvent`'s listener. */
 import { app } from "electron"
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import { buildScreen, screenHelperName } from "./screen-build.ts"
 
@@ -91,20 +90,17 @@ function prune(dir: string) {
   const old = fs.readdirSync(dir).filter((f) => f.endsWith(".png")).sort((a, b) => when(b) - when(a))
   for (const f of old.slice(20)) fs.rmSync(path.join(dir, f), { force: true })
 }
-/** A part of the screen's picture (screen points, top-left origin), as a PNG file in `dir`: what's around the pointer
- *  where there's no window (the desktop); null when macOS gave none. */
-export async function regionShot(r: { x: number; y: number; width: number; height: number }, dir: string): Promise<string | null> {
+/** The whole display under `p` as a PNG file in `dir` (the last few kept), at a pixel a point, without windows `exclude`
+ *  (ours, a private app's): where it is on screen too. Null when macOS gave none (no screen recording, before macOS 14). */
+export async function displayShot(p: { x: number; y: number }, exclude: number[], dir: string): Promise<{ file: string; frame: Rect } | null> {
   fs.mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, `region-${Date.now()}.png`), R = [r.x, r.y, r.width, r.height].map(Math.round).join(",")
-  const ok = await new Promise<boolean>((done) => execFile("/usr/sbin/screencapture", ["-x", `-R${R}`, "-t", "png", file], { timeout: 10_000 }, (e) => done(!e)))
+  const file = path.join(dir, `display-${Math.round(p.x)}-${Date.now()}.png`)
+  const r = await screenAsk<{ ok?: boolean; file?: string; frame?: Rect }>("display", { x: p.x, y: p.y, exclude, file }, 8000)
   prune(dir)
-  return ok && fs.existsSync(file) && fs.statSync(file).size > 0 ? file : null
+  return r.ok && r.frame && fs.existsSync(file) && fs.statSync(file).size > 0 ? { file, frame: r.frame } : null
 }
 
 /** "Press 🌐 key to", as macOS has it (null: never set). */
 const reading = (program: string, args: string[]) => new Promise<string | null>((done) =>
   execFile(program, args, { timeout: 5000 }, (e, out) => done(e ? null : String(out).trim())))
 export const fnUsage = () => reading("/usr/bin/defaults", ["read", "com.apple.HIToolbox", "AppleFnUsageType"])
-/** macOS's dictation shortcut and whether dictation's on: core/fnkey.ts controlActsToo reads them. */
-export const dictationAuto = () => reading("/usr/bin/defaults", ["read", "com.apple.HIToolbox", "AppleDictationAutoEnable"])
-export const dictationHotKey = () => reading("/usr/bin/plutil", ["-extract", "AppleSymbolicHotKeys.164", "json", "-o", "-", path.join(os.homedir(), "Library/Preferences/com.apple.symbolichotkeys.plist")])

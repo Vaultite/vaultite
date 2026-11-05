@@ -3,11 +3,12 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, screenDrop, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { uiElement } from "./panes"
-import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, pointAtPane, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin,  type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { arrowBox, boxAt } from "./boxes"
 import { Chat } from "./Chat"
 import { presence, STATUS } from "./look"
 import { agentMenu } from "./session"
@@ -23,7 +24,9 @@ type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boo
   /** Out on the screen (another app's window): the desktop helper draws it there, so here it hides at once, where it was. */
   away?: boolean
   /** Over a web page: drawn over it (the window rises over the page for it, layers.ts' floats). */
-  over?: boolean }
+  over?: boolean
+  /** What it points at (an element of the app, a terminal's row, a page's element): its words never cover it. */
+  target?: { x: number; y: number; width: number; height: number } }
 /** A cursor's place as drawn: what it looked at, its place among them, its step in a stack; held, it stays there (dx, dy
  *  from it, or `screen`: a point of the window); `left`: the user put it there, until its agent looks elsewhere. */
 type Place = { at: Target & Pick<Agent, "box">; i: number; shift: number; dx: number; dy: number; screen?: { x: number; y: number; over: boolean }; left?: Left }
@@ -104,6 +107,8 @@ function home(a: Agent, i: number): Spot {
   if (r?.width) return { x: r.left, y: r.top, parked: true, low: true, docked: true }
   return { x: window.innerWidth - 150 - i * 90, y: window.innerHeight - 70, parked: true, low: true }
 }
+/** How long an agent's cursor stays where it last acted, idle, before it goes home. */
+const IDLE_MS = 8000
 /** The status bar's arrows' size to the cursor's (Arrow: the same shape, 16px of 20). */
 export const DOCK_SCALE = 0.8
 
@@ -138,6 +143,7 @@ function spotOf(a: Agent, i: number, held = false): Spot | null {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+const rectOf = (r: { left: number; top: number; width: number; height: number }) => ({ x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) })
 /** A cursor the user left off the text: that point of the window, kept inside it. */
 const screenSpot = (p: { x: number; y: number; over: boolean }): Spot => {
   const x = clamp(p.x, 4, innerWidth - 24), y = clamp(p.y, 4, innerHeight - 24)
@@ -146,7 +152,7 @@ const screenSpot = (p: { x: number; y: number; over: boolean }): Spot => {
 /** Pointing at the app's own UI: the arrow's tip on the element, a little in from its left. */
 function atElement(el: HTMLElement): Spot {
   const r = el.getBoundingClientRect(), x = r.left + Math.min(r.width * 0.6, Math.max(4, r.width - 6)), y = r.top + r.height * 0.6
-  return { x, y, low: y + FLAG > innerHeight - 40, rides: !!el.closest("aside[data-peek]") || undefined }
+  return { x, y, low: y + FLAG > innerHeight - 40, rides: !!el.closest("aside[data-peek]") || undefined, target: rectOf(r) }
 }
 const uiSpot = (id: string) => { const el = uiElement(id); return el ? atElement(el) : null }
 
@@ -191,7 +197,7 @@ function paneSpot(a: Agent): Spot | null {
   if (!b) return null
   const whole = b.width === r.width && b.height === r.height && !b.row
   const x = whole || (b.over && !a.box) ? r.left + 40 : b.right + (b.row ? 10 : 6), y = whole || (b.over && !a.box) ? r.top + 48 : b.top
-  return { x: clamp(x, r.left + 4, r.right - 40), y: clamp(y, r.top + 2, r.bottom - 30), low: y + FLAG > r.bottom, over: b.over }
+  return { x: clamp(x, r.left + 4, r.right - 40), y: clamp(y, r.top + 2, r.bottom - 30), low: y + FLAG > r.bottom, over: b.over, ...(whole ? {} : { target: rectOf(b) }) }
 }
 
 /** An agent's arrow: its cursor (20px), and smaller its place in the status bar. */
@@ -226,16 +232,6 @@ export function follow(a: Target & { name: string }) {
 const answerAsk = (event: string, v: "approve" | "deny") => (event.startsWith("chat:")
   ? op("claude-code.chat-answer", { id: event.slice(5), allow: v === "approve" }) : op("inbox.answer", { id: event, answer: v }))
 
-/** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), as the place it points at;
- *  true on a pane or the app's UI; false on nothing it knows. */
-function dropAt(agent: string, x: number, y: number): Target | boolean {
-  const at = noteAt(x, y)
-  if (!at) return dropOnPane(agent, x, y)
-  const { selection, ...place } = at
-  pointAt(agent, at)
-  return place
-}
-
 /** A note's line at x, y (the word there, or the selection when it's on one); null off a note's text. */
 function noteAt(x: number, y: number): (Target & { path: string; line: number; selection?: string }) | null {
   const el = document.elementsFromPoint(x, y).find((e) => !e.closest(".companion-overlay") && e.closest(".cm-editor"))
@@ -248,23 +244,23 @@ function noteAt(x: number, y: number): (Target & { path: string; line: number; s
   return { path: views.get(v)!, line: st.doc.lineAt(on ? sel.from : pos).number, find: find || undefined, ...(selection ? { selection } : {}) }
 }
 
-/** A cursor dropped off a note's text: on a pane (a terminal's row, a point of a page, a view) or the app's UI (a tab,
- *  a tab group, a panel, a button): "look at this", and it follows it. False on nothing it knows. */
-function dropOnPane(agent: string, x: number, y: number) {
+/** What's at x, y off a note's text: a pane (a terminal's row, a point of a page, a view) or the app's UI (a tab, a tab
+ *  group, a panel, a button), with its words; null on nothing it knows. */
+type PanePlace = { pane?: string; ui?: string; row?: number; x?: number; y?: number; text?: string; title?: string }
+function paneAt(x: number, y: number): PanePlace | null {
   const hit = document.elementsFromPoint(x, y).filter((e) => !e.closest(".companion-overlay")).map((e) => e.closest<HTMLElement>("[data-ui]")).find(Boolean)
   // (a half of a split tab's row or chip: the whole tab)
   const el = hit?.dataset.ui?.startsWith("pane:") ? hit.parentElement?.closest<HTMLElement>('[data-ui^="tab:"]') ?? hit : hit
   const id = el?.dataset.ui
-  if (!el || !id) return false
+  if (!el || !id) return null
   const words = (e: HTMLElement) => (e.innerText || "").trim().slice(0, 1200) || undefined
-  if (!id.startsWith("pane:")) return pointAtPane(agent, { ui: id, text: words(el), title: el.getAttribute("aria-label") ?? el.dataset.heading ?? undefined })
+  if (!id.startsWith("pane:")) return { ui: id, text: words(el), title: el.getAttribute("aria-label") ?? el.dataset.heading ?? undefined }
   const pane = id.slice(5), scr = screenOf(el)
-  if (scr) { const row = clamp(Math.floor((y - scr.r.top) / scr.rowH) + 1, 1, scr.lines.length); return pointAtPane(agent, { pane, row, text: scr.lines[row - 1]?.trim() || undefined }) }
+  if (scr) { const row = clamp(Math.floor((y - scr.r.top) / scr.rowH) + 1, 1, scr.lines.length); return { pane, row, text: scr.lines[row - 1]?.trim() || undefined } }
   const page = el.querySelector<HTMLElement>("[data-web-box]")?.getBoundingClientRect()
-  if (page) return pointAtPane(agent, { pane, x: Math.round(x - page.left), y: Math.round(y - page.top) })
-  return pointAtPane(agent, { pane, text: words(el) })
+  if (page) return { pane, x: Math.round(x - page.left), y: Math.round(y - page.top) }
+  return { pane, text: words(el) }
 }
-
 /** Put a bubble in the note, as its agent's words; it goes from the screen once it's there. */
 const placeSay = (id: string) => op("companion.place", { id }).catch((e) => notifyError(e, "Couldn't put it in the note"))
 
@@ -281,9 +277,9 @@ function SayActions({ n, small }: { n: Note; small?: boolean }) {
   </>
 }
 
-/** Clicked: its last words (each can be put in the note or pinned into a comment) above a box to ask it something, there.
- *  Opened by a Talk key: about what was under the pointer, and what's said into it is sent as the dictation stops. */
-function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boolean; close: () => void; menu: (e: React.MouseEvent) => void }) {
+/** Its last words (each can be put in the note or pinned into a comment) above a box to ask it something, there. Opened
+ *  by a Talk key: about what was under the pointer, sent as its dictation stops, and open for the answer. */
+function Popover({ a, close, menu }: { a: Agent; close: () => void; menu: (e: React.MouseEvent) => void }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [draft, setDraft] = useState("")
   const mine = s.said.filter((n) => n.agent === a.name)
@@ -293,13 +289,16 @@ function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boo
   const send = (said?: string) => {
     const text = (said ?? draft).trim()
     if (!text) return
-    const t = talked?.agent === a.name ? talked.at : null
+    const t = talked?.agent === a.name ? talked : null
     talked = null
     const v = a.path ? viewOf(a.path) : null, pos = v ? posIn(v, a) : null
-    const place = t ? { path: t.path, line: t.line, ...(t.find ? { find: t.find } : {}), ...(t.selection ? { selection: t.selection } : {}) }
-      : { path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line }
+    // (a Talk key's: what was under the pointer, a note's line, a pane or the app's UI; else where its cursor is)
+    const place = t ? talkPlace(t.at) : { path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line }
     if (!sendMoment({ kind: "ask", agent: a.name, ...place, text })) return unsent()
-    close()
+    // (a Talk key's stays open: its answer comes into it, and what's typed next is about the same place)
+    if (!t) return close()
+    talked = { ...t, send: false }
+    setDraft("")
   }
   // (a Talk key's dictation stopped: what it typed in goes, as the input holds it now)
   const listening = useDictation((d) => !!d), was = useRef(listening)
@@ -313,17 +312,29 @@ function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boo
   return (
     <Chat name={a.name} tint={tintOf(a.name)} how={howText(a)} items={mine} draft={draft} setDraft={setDraft} send={send} close={close} more={(e) => { close(); menu(e) }}
       words={(n) => <Markdown text={n.text ?? ""} className="companion-md" />} time={(t) => fmtTime(new Date(t).toISOString())} actions={(n) => <SayActions n={n as Note} />}
-      focus={!coarse.matches} className={cn("pointer-events-auto absolute", up ? "bottom-[26px]" : "top-[42px]")} style={{ left }} />
+      busy={a.state === "thinking" || a.state === "reading"} focus={!coarse.matches} className="pointer-events-auto absolute top-0 left-0" />
   )
 }
+
+/** A Talk key's place as its ask says it: a note's line (its word or selection), a pane's row or point (the words under
+ *  the pointer as `under`), the app's UI; nothing under the pointer, no place. */
+function talkPlace(at: ReturnType<typeof noteAt> | PanePlace | null) {
+  if (!at) return {}
+  if ("path" in at && at.path) return { path: at.path, line: at.line, ...(at.find ? { find: at.find } : {}), ...(at.selection ? { selection: at.selection } : {}) }
+  const { text, ...p } = at as PanePlace
+  return { ...p, ...(text ? { under: text } : {}) }
+}
+
+/** A box's corner nearest its cursor's tip, sharper (`data-side`, `data-up`: where boxes.ts put it). */
+const CORNER = "data-[side=right]:data-up:rounded-bl-[4px] data-[side=left]:data-up:rounded-br-[4px] data-[side=right]:not-data-up:rounded-tl-[4px] data-[side=left]:not-data-up:rounded-tr-[4px]"
 
 /** How long a bubble takes to read (ms): shown this long with the window in front, it's seen. */
 const readMs = (text: string) => 1500 + text.split(/\s+/).length * 220
 
 /** Its words by its cursor: a click (a tap) opens a box to reply in, Enter sends it; a question shows its box from the
  *  start. Put in note, Pin and Close by it; held still (past its time) while the pointer or the focus is in it. */
-function Bubble({ n, tint, right, low, maxWidth, room, drawn, hold, floats }: { n: Note; tint: string; right: boolean; low: boolean; maxWidth: number; drawn: boolean
-  /** How tall its words may grow, up from its cursor, inside the window. */
+function Bubble({ n, tint, maxWidth, room, drawn, hold, floats }: { n: Note; tint: string; maxWidth: number; drawn: boolean
+  /** How tall its words may grow, inside the window. */
   room: number
   hold: (on: boolean) => void
   /** Over a web page: the window rises over it for the bubble. */
@@ -360,9 +371,8 @@ function Bubble({ n, tint, right, low, maxWidth, room, drawn, hold, floats }: { 
       onPointerEnter={(e) => { if (e.pointerType !== "touch") setInside(true) }} onPointerLeave={(e) => { if (e.pointerType !== "touch") setInside(false) }}
       onFocus={() => setInside(true)} onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node | null)) setInside(false) }}
       onClick={(e) => { if (!drawn && !replying && !(e.target as Element).closest("button, a")) open() }}
-      className={cn("group/bubble companion-pop pointer-events-auto absolute flex w-max min-w-[104px] flex-col rounded-[12px] border border-border/60 text-[13.5px] leading-snug text-foreground shadow-lg",
-        n.question ? "bg-[color-mix(in_srgb,var(--c)_9%,var(--background))]" : "bg-background", !replying && !drawn && "cursor-text",
-        right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]", low ? "bottom-[22px]" : "bottom-[2px]")}
+      className={cn("group/bubble companion-pop pointer-events-auto absolute top-0 left-0 flex w-max min-w-[104px] flex-col rounded-[12px] border border-border/60 text-[13.5px] leading-snug text-foreground shadow-lg",
+        n.question ? "bg-[color-mix(in_srgb,var(--c)_9%,var(--background))]" : "bg-background", !replying && !drawn && "cursor-text", CORNER)}
       style={{ "--c": tint, maxWidth, boxShadow: `0 0 0 ${n.question ? 2 : 1.5}px color-mix(in srgb, ${tint} ${n.question ? 70 : 45}%, transparent), 0 8px 24px rgba(0,0,0,.12)` } as React.CSSProperties}>
       {/* (a long one scrolls with no bar: its edges fade where there's more, as the sidebar's) */}
       <div style={{ maxHeight: `min(50vh, 360px, ${room}px)` }} className="edge-fade-y min-w-0 overflow-y-auto overscroll-contain px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -370,7 +380,7 @@ function Bubble({ n, tint, right, low, maxWidth, room, drawn, hold, floats }: { 
       </div>
       {/* (its buttons float on its far corner, away from the cursor, taking no room from its words; by touch, a row under them) */}
       {!drawn && (
-        <div className={cn("absolute -top-[22px] z-[1] flex rounded-[8px] border border-border/60 bg-background shadow-sm transition-opacity", right ? "left-2" : "right-2",
+        <div className={cn("absolute -top-[22px] right-2 z-[1] flex rounded-[8px] border border-border/60 bg-background shadow-sm transition-opacity group-data-[side=left]/bubble:right-auto group-data-[side=left]/bubble:left-2",
           "[@media(pointer:coarse)]:static [@media(pointer:coarse)]:-mt-1 [@media(pointer:coarse)]:justify-end [@media(pointer:coarse)]:border-0 [@media(pointer:coarse)]:bg-transparent [@media(pointer:coarse)]:px-1 [@media(pointer:coarse)]:shadow-none",
           inside || replying ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100 [@media(pointer:coarse)]:opacity-100")}>
           <SayActions n={n} small />
@@ -470,11 +480,10 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   /** It's typing an edit in. */
   typed: boolean
   open: boolean; setOpen: (open: boolean) => void; pop: (name: string) => void
-  /** It's under the pointer, open or dragged: it holds still (`at`: dropped there, on `on`'s text or off it). */
+  /** It's under the pointer or open: it holds still (`at`: a Talk key's point, on `on`'s text or off it). */
   hold: (on: boolean, at?: { x: number; y: number }, text?: Target) => void }) {
   const tint = `var(--${a.tint})`
   const [hover, setHover] = useState(false)
-  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
   const [fan, setFan] = useState(false)
   // (its menu showing: it stays by it)
   const menuOn = useMenuShowing(), [menued, setMenued] = useState(false)
@@ -484,7 +493,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   const [keep, setKeep] = useState(false), last = useRef<Note | null>(null)
   if (said) last.current = said
   const bubble = said ?? (keep ? last.current : null)
-  const still = hover || open || !!drag || fan || menued || keep
+  const still = hover || open || fan || menued || keep
   useEffect(() => {
     if (!still) return
     hold(true)
@@ -493,7 +502,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   const shut = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const flagRef = useRef<HTMLButtonElement>(null)
   const box = useRef<HTMLDivElement>(null)
-  const at = drag ?? { ...spot, x: spot.x + shift * 4 }
+  const at = { ...spot, x: spot.x + shift * 4 }
   const many = others.length > 0
   const keepFan = () => { clearTimeout(shut.current); if (many) setFan(true) }
   // (a moment to reach it: the chips sit a little away from the flag)
@@ -508,12 +517,12 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
     const t = setTimeout(() => dismissNotice(`inbox-${asked}`), 1500)
     return () => clearTimeout(t)
   }, [asked])
-  // (what opens beside it opens toward the room: its flag needs a little, its words more)
-  const right = at.x > innerWidth - 320 && at.x > innerWidth / 2, flagRight = at.x > innerWidth - 140
+  // (its flag goes toward the room; its words go where boxes.ts finds room)
+  const flagRight = at.x > innerWidth - 140
   // (its name and its mark show while it does anything, then it fades to the bare arrow, as in a shared doc; hovered, again)
-  const shown = presence(a, { bubble: !!bubble, held: waiting, typed, age, looked: hover || open || !!drag || fan })
+  const shown = presence(a, { bubble: !!bubble, held: waiting, typed, age, looked: hover || open || fan })
   const seen = shown.mark === "tick", why = shown.why
-  const low = !drag && !!spot.low, tag = shown.flag && (!under || hover || open)
+  const low = !!spot.low, tag = shown.flag && (!under || hover || open)
   useEffect(() => {
     if (!open && !fan) return
     const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) { setOpen(false); setFan(false) } }
@@ -521,82 +530,41 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
     return () => removeEventListener("pointerdown", down, true)
   }, [open, fan, setOpen])
   // (resting at home, it's its arrow in the status bar: it fades as it lands there, and shows again as it leaves)
-  const docked = !!spot.docked && !drag && !open && !fan && !bubble && !a.asks && !typed && !menued
-  const away = !!spot.away && !drag && !open
+  const docked = !!spot.docked && !open && !fan && !bubble && !a.asks && !typed && !menued
+  const away = !!spot.away && !open
   // (back from the screen: it's where it's going at once, showing as the screen's cursor lands there)
   const wasAway = useRef(false), arriveBy = useRef(0)
   if (wasAway.current && !away) arriveBy.current = Date.now() + 700
   wasAway.current = away
   const arriving = Date.now() < arriveBy.current
   const tx = docked ? at.x : at.x - 3, ty = docked ? at.y : at.y - 2
-  useGlide(box, tx, ty, !!drag || away || arriving, a.state === "writing" || typed ? stiffness(WRITING_MS) : CURSOR_SPRING)
+  useGlide(box, tx, ty, away || arriving, a.state === "writing" || typed ? stiffness(WRITING_MS) : CURSOR_SPRING)
+  // (its words, its box or its question placed by one rule (boxes.ts): never over its arrow, its name or what it points at)
+  useLayoutEffect(() => {
+    const el = box.current, words = el?.querySelector<HTMLElement>(":scope > [data-companion-bubble], :scope > [data-companion-popover], :scope > [data-companion-ask]")
+    if (!el || !words || docked) return
+    const o = { x: at.x - 3, y: at.y - 2 }, f = flagRef.current
+    const clear = [arrowBox(at), ...(f && f.offsetWidth ? [{ x: o.x + f.offsetLeft, y: o.y + f.offsetTop, width: f.offsetWidth, height: f.offsetHeight }] : []), ...(spot.target ? [spot.target] : [])]
+    const b = boxAt(at, { width: words.offsetWidth, height: words.offsetHeight }, { x: 4, y: 4, width: innerWidth - 8, height: innerHeight - 8 }, clear)
+    words.style.left = `${b.x - o.x}px`
+    words.style.top = `${b.y - o.y}px`
+    words.dataset.side = b.side
+    words.toggleAttribute("data-up", b.up)
+  })
   if (spot.drawn && !bubble && !a.asks) return null
   const enter = (e: React.PointerEvent) => { if (e.pointerType !== "touch") setHover(true) }
-  // Click: the popover. Drag (a finger: hold first), then drop on text: "look at this".
-  const down = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return
-    e.preventDefault()
-    const el = e.currentTarget, id = e.pointerId, x0 = e.clientX, y0 = e.clientY, touch = e.pointerType === "touch"
-    el.setPointerCapture(id)
-    // (a finger hides what's under it: the arrow's tip goes above it)
-    const tip = (x: number, y: number) => ({ x, y: touch ? y - 40 : y })
-    let dragging = false, dead = false
-    // (dragged, the window rises over web pages, so it can be dropped on one: as any drag, core/drag.ts)
-    const root = document.documentElement, mine = !("dragging" in root.dataset)
-    const lift = () => { if (mine) root.dataset.dragging = "" }
-    const timer = touch ? setTimeout(() => { dragging = true; lift(); haptic(); setOpen(false); setDrag(tip(x0, y0)) }, 350) : null
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== id) return
-      if (!dragging) {
-        const d = Math.hypot(ev.clientX - x0, ev.clientY - y0)
-        if (touch) { if (d > 10) { dead = true; end() } return }
-        if (d < 4) return
-        dragging = true
-        lift()
-        setOpen(false)
-      }
-      setDrag(tip(ev.clientX, ev.clientY))
-    }
-    const end = () => {
-      if (timer) clearTimeout(timer)
-      if (mine) delete root.dataset.dragging
-      el.removeEventListener("pointermove", move)
-      el.removeEventListener("pointerup", up)
-      el.removeEventListener("pointercancel", cancel)
-    }
-    const up = (ev: PointerEvent) => {
-      if (ev.pointerId !== id) return
-      end()
-      if (dragging) {
-        const p = tip(ev.clientX, ev.clientY)
-        // (out of the window, onto another app's: look at that window, and follow it: the desktop app's helper)
-        if (p.x < 0 || p.y < 0 || p.x > innerWidth || p.y > innerHeight) void screenDrop?.(ev.screenX, ev.screenY, a.name)
-        // (else it stays where it was let go: on the text it points at, or that point of the window; on a pane or a row
-        // it follows, it goes to sit on that, as it moves)
-        else { const on = dropAt(a.name, p.x, p.y); if (on !== true) hold(true, p, on || undefined) }
-        setDrag(null)
-      } else if (!dead) setOpen(!open)
-    }
-    const cancel = () => { end(); setDrag(null) }
-    el.addEventListener("pointermove", move)
-    el.addEventListener("pointerup", up)
-    el.addEventListener("pointercancel", cancel)
-  }
   return (
     <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-floats={spot.over && !docked ? "" : undefined} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
       data-docked={docked || undefined} data-away={away || undefined} data-to={`${Math.round(tx)},${Math.round(ty)}`}
       style={{ scale: docked ? String(DOCK_SCALE) : "1", transformOrigin: "0 0",
-        transition: drag ? "opacity .3s" : away ? "none" : `scale 380ms cubic-bezier(.2,.85,.25,1), ${arriving ? "opacity .2s .35s" : docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
-        opacity: docked || away ? 0 : shown.dim ? 0.55 : 1, visibility: docked || away ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || drag || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
+        transition: away ? "none" : `scale 380ms cubic-bezier(.2,.85,.25,1), ${arriving ? "opacity .2s .35s" : docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
+        opacity: docked || away ? 0 : shown.dim ? 0.55 : 1, visibility: docked || away ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
       {!spot.drawn && <>
-      <div className={cn("relative", shown.bob && !drag && "companion-bob")}>
+      <div className={cn("relative", shown.bob && "companion-bob")}>
         <Arrow tint={tint} />
         {dot && !open && <span data-companion-unread aria-label="Unread" className="absolute top-[-1px] left-[12px] size-[7px] rounded-full ring-2 ring-background" style={{ background: tint }} />}
       </div>
-      <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip data-under-pages={spot.over ? undefined : ""} data-own-hold onPointerDown={down} onContextMenu={menu}
-        className={cn("pointer-events-auto absolute top-0 left-0 z-[1] size-5 touch-none select-none [-webkit-touch-callout:none] [@media(pointer:coarse)]:-top-3 [@media(pointer:coarse)]:-left-3 [@media(pointer:coarse)]:size-11",
-          drag ? "cursor-grabbing" : "cursor-pointer")} />
       <button ref={flagRef} type="button" tabIndex={tag || many ? 0 : -1} aria-label={many ? `${[a, ...others].map((x) => x.name).join(", ")} here` : `Go to ${a.name}`} aria-haspopup={many ? "menu" : undefined} aria-expanded={many ? fan : undefined}
         data-companion-flag data-under-pages={spot.over ? undefined : ""} data-tip={many || !(a.path || a.pane) ? undefined : "Go to where it is"}
         onPointerEnter={(e) => { if (e.pointerType !== "touch") keepFan() }} onPointerLeave={(e) => { if (e.pointerType !== "touch") closeFan() }}
@@ -614,13 +582,12 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
       </button>
       {fan && many && !open && <Fan agents={[a, ...others]} up={low} right={flagRight} keep={keepFan} close={closeFan} pop={(name) => { setFan(false); pop(name) }} />}
       {/* (kept inside the window) */}
-      {open && <Popover a={a} up={low || at.y > innerHeight - 360} left={Math.max(4, Math.min(innerWidth - 284, right ? at.x + 23 - 280 : at.x - 1)) - (at.x - 3)} close={() => setOpen(false)} menu={(e) => menu(e, true)} />}
+      {open && <Popover a={a} close={() => setOpen(false)} menu={(e) => menu(e, true)} />}
       </>}
-      {a.asks && !open && !drag ? (
+      {a.asks && !open ? (
         <div key={a.asks.event} data-companion-ask={a.asks.event} role="group" aria-label={`${a.name} asks`}
-          className={cn("companion-pop pointer-events-auto absolute flex w-max flex-col gap-1.5 rounded-[12px] border border-border/60 bg-background px-3 py-2 text-[13.5px] leading-snug text-foreground shadow-lg",
-            right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]", low ? "bottom-[22px]" : "bottom-[2px]")}
-          style={{ maxWidth: Math.max(200, Math.min(300, right ? at.x - 30 : innerWidth - at.x - 34)), boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
+          className={cn("companion-pop pointer-events-auto absolute top-0 left-0 flex w-max flex-col gap-1.5 rounded-[12px] border border-border/60 bg-background px-3 py-2 text-[13.5px] leading-snug text-foreground shadow-lg", CORNER)}
+          style={{ maxWidth: Math.min(300, innerWidth - 16), boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
           <span>{a.asks.text}</span>
           <span className="flex justify-end gap-1">
             {(["deny", "approve"] as const).map((v) => (
@@ -632,9 +599,9 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
             ))}
           </span>
         </div>
-      ) : bubble && !open && !drag && (
-        <Bubble n={bubble} tint={tint} right={right} low={low} drawn={!!spot.drawn} hold={setKeep} floats={!!spot.over}
-          maxWidth={Math.max(200, Math.min(320, right ? at.x - 30 : innerWidth - at.x - 34))} room={Math.max(80, at.y + (low ? -2 : 18) - 56)} />
+      ) : bubble && !open && (
+        <Bubble n={bubble} tint={tint} drawn={!!spot.drawn} hold={setKeep} floats={!!spot.over}
+          maxWidth={Math.min(320, innerWidth - 16)} room={Math.min(360, innerHeight - 24)} />
       )}
     </div>
   )
@@ -884,15 +851,17 @@ function topOf(v: EditorView, pos: number) {
 }
 
 /** Open agent `name`'s box by its cursor: what it said, and asking it (the status bar's menu, where its cursor rests). */
-let popOpen: ((name: string) => void) | null = null
+let popOpen: ((name: string | null) => void) | null = null
 export const showSaid = (name: string) => popOpen?.(name)
 /** A Talk key's conversation: about what was under the pointer (`at`), sent as its dictation stops (`send`). */
-let talked: { agent: string; at: ReturnType<typeof noteAt>; send: boolean } | null = null
+let talked: { agent: string; at: ReturnType<typeof noteAt> | PanePlace | null; send: boolean } | null = null
 let talkHere: ((x: number, y: number) => boolean) | null = null
 /** A Talk key pressed in the window: the companion's cursor comes to the pointer (x, y) and opens its box there; false
  *  when its cursor isn't drawn. `heard`: the dictation that starts in it, once it does. */
 export const talkAt = (x: number, y: number) => talkHere?.(x, y) ?? false
 export const talkHeard = (on: boolean) => { if (talked) talked.send = on }
+/** A Talk key's press that was a shortcut: its box closes. */
+export const talkDone = () => { if (talked) { popOpen?.(null); talked = null } }
 
 export function Overlay() {
   const s = useSyncExternalStore(subscribe, getState)
@@ -908,16 +877,16 @@ export function Overlay() {
   talkHere = (x, y) => {
     const name = getState().name
     if (!drawn.current.has(name)) return false
-    const at = noteAt(x, y)
-    hold(name, true, { x, y }, at ?? undefined)
-    talked = { agent: name, at, send: false }
+    const note = noteAt(x, y)
+    hold(name, true, { x, y }, note ?? undefined)
+    talked = { agent: name, at: note ?? paneAt(x, y), send: false }
     setPopped(name)
     return true
   }
   const [hovered, setHovered] = useState<string | null>(null)
   const heights = useRef(new Map<string, number>())
   const rooms = useRef(new Map<EditorView, number>())
-  // (a cursor under the pointer, open or dragged stays where it is: nothing moves under the user's pointer)
+  // (a cursor under the pointer or open stays where it is: nothing moves under the user's pointer)
   const holds = useRef(new Map<string, Place>()), drawn = useRef(new Map<string, Place>()), lastSpots = useRef(new Map<string, Spot>())
   const hold = (name: string, on: boolean, at?: { x: number; y: number }, text?: Target) => {
     // (one the user left somewhere stays when the pointer goes)
@@ -925,7 +894,7 @@ export function Overlay() {
     const d = drawn.current.get(name)
     if (!d) return
     if (!at) { if (!holds.current.has(name)) holds.current.set(name, d); return }
-    // (dropped: it stays where it was let go, on the line it points at (scrolling with it), else on that point of the window)
+    // (a Talk key's: it stays at the pointer, on the line it points at (scrolling with it), else on that point of the window)
     const a = getState().agents.find((x) => x.name === name)
     if (!a) return
     const left: Left = { last: placeKey(a), echo: Date.now() + 3000 }
@@ -997,14 +966,16 @@ export function Overlay() {
   const cursors = (off ? [] : s.agents).map((a, i) => {
     // (on another app's window, with the desktop helper drawing it and its bubbles there: here, hidden where it was, for
     // that one to glide out from)
-    if (screenDrop && !a.path && (a.app || a.sx !== undefined)) {
+    if (dictationSource && !a.path && (a.app || a.sx !== undefined)) {
       const was = lastSpots.current.get(a.name)
       return { a, i, spot: was ? { ...was, away: true } : null, said: null, waiting: false, with: [] as Agent[], under: false, shift: 0, held: undefined }
     }
     const mine = says(a), said = mine.findLast((n) => !heldBack(n)) ?? null, waiting = mine.some(heldBack)
     let h = holds.current.get(a.name)
     if (h?.left && !stays(a, h.left)) { holds.current.delete(a.name); h = undefined }
-    const at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : spotOf(a, i)
+    // (only while it works, writes, speaks or points, as a collaborator in a shared doc: idle a while, it rests at home)
+    const idle = !h && !said && !waiting && !a.asks && typing?.agent !== a.name && a.state === "watching" && Date.now() - a.t > IDLE_MS
+    const at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : idle ? home(a, i) : spotOf(a, i)
     // (left on a line of a note not on screen now: where that note is, as it would be)
     const off = !!h?.left && !h.screen && !(h.at.path && viewOf(h.at.path))
     return { a, i, spot: at && h && !h.screen && !off ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, waiting, with: [] as Agent[], under: false, shift: 0, held: h }

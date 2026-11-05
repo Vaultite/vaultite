@@ -170,8 +170,6 @@ contextBridge.exposeInMainWorld("vaultite", {
       return () => { ipcRenderer.removeListener("vaultite:fn", h) }
     },
   } : undefined,
-  // The companion's cursor dropped outside the window, at a point of the screen: "look at this" app window (helper.ts).
-  screen: MAC ? { drop: call("screen:drop-at") } : undefined,
   // Other apps' windows in tabs (electron/apps.ts).
   apps: MAC ? {
     list: call("apps:list"),

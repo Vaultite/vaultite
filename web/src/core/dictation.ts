@@ -3,7 +3,7 @@
 import type { EditorView } from "@codemirror/view"
 import { cell } from "@/core/signal"
 import { parseReplacement, replacer } from "../../../core/dictationtext.ts"
-import { fnKey } from "../../../core/fnkey.ts"
+import { fnKey, type TalkAction } from "../../../core/fnkey.ts"
 import { makePill } from "@/core/pill"
 
 export type DictationEvent =
@@ -38,8 +38,8 @@ export type DictationSource = {
   cancel: () => Promise<unknown>
   on: (fn: (e: DictationEvent) => void) => () => void
   /** The fn key (or another dictation key), as the desktop app's menu-bar helper hears it while this window has the
-   *  keyboard (`other`: a key pressed with it; `talk`: a companion's Talk key). Builds from before the helper don't have it. */
-  onKey?: (fn: (k: { down?: boolean; other?: boolean; talk?: boolean }) => void) => () => void
+   *  keyboard (`other`: a key pressed with it); `talk`: what a companion's Talk key does (its gesture, the helper's). */
+  onKey?: (fn: (k: { down?: boolean; other?: boolean; talk?: TalkAction }) => void) => () => void
 }
 
 /** Where the words go: a note's editor (it shows the pending words itself) or a field. */
@@ -244,9 +244,9 @@ export async function pressDictation(begin: (hold: boolean) => Promise<boolean>)
   decide()
 }
 
-/** The fn key (the helper's; `talk`: the companion's Talk keys) as a dictation's key: a tap starts, the next stops, held
- *  it listens till let go; with another key what it started is dropped. Returns how to stop hearing it. */
-export function fnDictation(begin: (hold: boolean) => Promise<boolean>, talk = false) {
+/** The fn key (the helper's dictation keys) as a dictation's key: a tap starts, the next stops, held it listens till let
+ *  go; with another key what it started is dropped. Returns how to stop hearing it. */
+export function fnDictation(begin: (hold: boolean) => Promise<boolean>) {
   const key = fnKey()
   let starting: Promise<boolean> | null = null, after: "stop" | "cancel" | "tap" | null = null
   const end = (how: "stop" | "cancel" | "tap") => {
@@ -254,7 +254,7 @@ export function fnDictation(begin: (hold: boolean) => Promise<boolean>, talk = f
     void stopDictation(how === "cancel")
   }
   return dictationSource?.onKey?.((k) => {
-    if (!!k.talk !== talk) return
+    if (k.talk) return
     const a = k.other ? key.other() : k.down ? key.down(performance.now(), listening()) : key.up(performance.now())
     const how = a === "stop" || a === "cancel" ? a : a === null && k.down === false ? "tap" : null
     if (a === "start") {
@@ -265,3 +265,7 @@ export function fnDictation(begin: (hold: boolean) => Promise<boolean>, talk = f
     else if (how) end(how)
   }) ?? (() => {})
 }
+
+/** A companion's Talk key while this window has the keyboard, as its gesture (core/fnkey.ts talkGesture): listen (held),
+ *  send (let go), type (a tap), free (a double tap), cancel. Returns how to stop hearing it. */
+export const onTalkKey = (fn: (a: NonNullable<TalkAction>) => void) => dictationSource?.onKey?.((k) => { if (k.talk) fn(k.talk) }) ?? (() => {})

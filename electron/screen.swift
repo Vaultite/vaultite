@@ -1,7 +1,8 @@
-// The screen helper (electron/screen.ts): the dictation keys, the app in front, and other apps' fields and text, through the
-// Accessibility API. JSON lines in and out; stdin closing ends it.
+// The screen helper (electron/screen.ts): the dictation and Talk keys (ink while one is held), the app in front, other
+// apps' fields and text (Accessibility), and the display's picture. JSON lines in and out; stdin closing ends it.
 import AppKit
 import ApplicationServices
+import ScreenCaptureKit
 
 /** A window's number (CGWindowID), as appwindows.swift gets it. */
 @_silgen_name("_AXUIElementGetWindow") func axWindowID(_ el: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
@@ -65,6 +66,7 @@ func tappedMod(_ type: CGEventType, _ e: CGEvent) {
 var fnDown = false, fnOther = false
 func tapped(_ type: CGEventType, _ e: CGEvent) {
   tappedMod(type, e)
+  tappedChord(type, e)
   if type == .flagsChanged {
     let on = e.flags.contains(.maskSecondaryFn)
     if e.getIntegerValueField(.keyboardEventKeycode) == 63 {
@@ -73,21 +75,76 @@ func tapped(_ type: CGEventType, _ e: CGEvent) {
     } else if fnDown && !fnOther { fnOther = true; send(["event": "fn", "other": true]) }
   } else if type == .keyDown && fnDown && !fnOther { fnOther = true; send(["event": "fn", "other": true]) }
 }
+
+/** Chords: two modifiers held together and nothing else, by name (core/fnkey.ts CHORDS). Let go of one, it's up; another
+ *  key or modifier with them, `other` (a shortcut). */
+let CHORD_FLAGS: [String: CGEventFlags] = ["control_option": [.maskControl, .maskAlternate], "fn_control": [.maskSecondaryFn, .maskControl]]
+var chords: [String] = [], chordOn: [String: Bool] = [:]
+func tappedChord(_ type: CGEventType, _ e: CGEvent) {
+  keysLock.lock(); let names = chords; keysLock.unlock()
+  if type == .keyDown {
+    for n in names where chordOn[n] == true { chordOn[n] = false; send(["event": "chord", "name": n, "other": true]) }
+    return
+  }
+  guard type == .flagsChanged else { return }
+  let mods = e.flags.intersection(ANY_MOD)
+  for n in names {
+    guard let f = CHORD_FLAGS[n] else { continue }
+    let on = mods == f, was = chordOn[n] ?? false
+    if on == was { continue }
+    chordOn[n] = on
+    if on { send(["event": "chord", "name": n, "on": true]) }
+    else { send(mods.isSuperset(of: f) ? ["event": "chord", "name": n, "other": true] : ["event": "chord", "name": n, "on": false]) }
+  }
+}
+
+/** Ink: while the helper says (a Talk key held, outside Vaultite), drags are drawn, never reaching the app below; a drag
+ *  begun then is the helper's to its release. */
+var inkOn = false, inking = false, inkSent = 0.0
+/** What the exchange watches meanwhile (its answer showing): a click elsewhere, Esc. Told, never taken. */
+var exchange = false
+var filtering = false
+func mouse(_ type: CGEventType, _ e: CGEvent) -> Bool {
+  let p = e.location
+  if type == .leftMouseDown && inkOn && filtering {
+    inking = true
+    send(["event": "ink", "phase": "down", "x": p.x, "y": p.y])
+    return true
+  }
+  if type == .leftMouseDragged && inking {
+    // (at most a point every 8 ms: smooth enough, and the pipe stays light)
+    let now = Date().timeIntervalSince1970
+    if now - inkSent >= 0.008 { inkSent = now; send(["event": "ink", "phase": "move", "x": p.x, "y": p.y]) }
+    return true
+  }
+  if type == .leftMouseUp && inking {
+    inking = false
+    send(["event": "ink", "phase": "up", "x": p.x, "y": p.y])
+    return true
+  }
+  if type == .leftMouseDown && exchange { send(["event": "click", "x": p.x, "y": p.y]) }
+  return false
+}
 var tap: CFMachPort?
 /** Started once asked (`fn`): only the menu-bar helper's app hears the key. */
 let tapThread = Thread {
-  // (a click too: Option-click or Control-click isn't a key alone)
-  let mask = [CGEventType.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown].reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) }
+  // (a click too: Option-click or Control-click isn't a key alone; drags for ink)
+  let mask = [CGEventType.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .leftMouseDragged, .leftMouseUp].reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) }
   let cb: CGEventTapCallBack = { _, type, e, _ in
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput { if let t = tap { CGEvent.tapEnable(tap: t, enable: true) } }
-    else { tapped(type, e) }
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput { if let t = tap { CGEvent.tapEnable(tap: t, enable: true) }; return Unmanaged.passUnretained(e) }
+    if type == .leftMouseDragged || type == .leftMouseUp { return mouse(type, e) ? nil : Unmanaged.passUnretained(e) }
+    if type == .leftMouseDown && mouse(type, e) { return nil }
+    if type == .keyDown && exchange && e.getIntegerValueField(.keyboardEventKeycode) == 53 { send(["event": "esc"]) }
+    tapped(type, e)
     return Unmanaged.passUnretained(e)
   }
-  // (Accessibility lets a filtering tap in, Input Monitoring a listening one; asked again till one is granted)
+  // (Accessibility lets a filtering tap in, Input Monitoring a listening one, which can't keep ink from the app below;
+  // asked again till one is granted)
   while tap == nil {
     tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask, callback: cb, userInfo: nil)
-      ?? CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, eventsOfInterest: mask, callback: cb, userInfo: nil)
-    send(["event": "tap", "ok": tap != nil])
+    filtering = tap != nil
+    if tap == nil { tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, eventsOfInterest: mask, callback: cb, userInfo: nil) }
+    send(["event": "tap", "ok": tap != nil, "ink": filtering])
     if tap == nil { Thread.sleep(forTimeInterval: 5) }
   }
   let src = CFMachPortCreateRunLoopSource(nil, tap, 0)
@@ -351,6 +408,62 @@ func walk(_ root: AXUIElement, max: Int, find: String?) -> (text: String, found:
   return (String(text.prefix(max)), nil)
 }
 
+/** What Accessibility finds near a point of the window there (not ours): buttons, links, text, rows..., each with its
+ *  words and frame, nearest first; whole subtrees off the area are skipped. Bounded in elements and time. */
+let NEAR_ROLES: Set<String> = ["AXButton", "AXLink", "AXStaticText", "AXTextField", "AXTextArea", "AXHeading", "AXCell", "AXRow", "AXImage", "AXMenuItem",
+  "AXMenuBarItem", "AXCheckBox", "AXRadioButton", "AXTab", "AXPopUpButton", "AXComboBox", "AXSearchField", "AXSlider", "AXDisclosureTriangle"]
+func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int) -> [String: Any] {
+  let p = CGPoint(x: x, y: y), area = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
+  guard let w = windowList().first(where: { boundsOf($0)?.contains(p) == true && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0 }),
+        let pid = (w[kCGWindowOwnerPID as String] as? Int).map({ pid_t($0) }), pid != vaultitePid,
+        let ax = axWindow(pid, w[kCGWindowNumber as String] as? Int ?? 0) else { return ["ok": false, "elements": []] }
+  var found: [(Double, [String: Any])] = [], seen = 0
+  let deadline = Date().addingTimeInterval(0.8)
+  var stack: [(AXUIElement, Int)] = [(ax, 0)]
+  while let (el, depth) = stack.popLast() {
+    seen += 1
+    if seen > 5000 || Date() > deadline { break }
+    if secure(el) { continue }
+    let f = frame(el)
+    if let f, f.width > 0, f.height > 0, !f.intersects(area) { continue }
+    let role: String = attr(el, kAXRoleAttribute) ?? ""
+    if let f, f.width > 0, NEAR_ROLES.contains(role) {
+      var label = ""
+      for k in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute] {
+        if let v: String = attr(el, k), !v.trimmingCharacters(in: .whitespaces).isEmpty { label = String(v.prefix(120)); break }
+      }
+      if !label.isEmpty {
+        let dx = max(f.minX - x, 0, x - f.maxX), dy = max(f.minY - y, 0, y - f.maxY)
+        found.append((dx * dx + dy * dy, ["role": attr(el, kAXRoleDescriptionAttribute) as String? ?? role, "label": label, "frame": rectJSON(f)]))
+      }
+    }
+    if depth < 60, let kids: [AXUIElement] = attr(el, kAXChildrenAttribute) { for k in kids.reversed() { stack.append((k, depth + 1)) } }
+  }
+  return ["ok": true, "elements": found.sorted { $0.0 < $1.0 }.prefix(most).map { $0.1 }]
+}
+
+/** The whole display under a point, as a PNG at a pixel a point, without the windows asked (ours: the overlay, the
+ *  conversation); ScreenCaptureKit's, macOS 14 on. Answers when it's written. */
+func shootDisplay(_ x: Double, _ y: Double, _ exclude: [Int], _ file: String, _ done: @escaping ([String: Any]) -> Void) {
+  guard #available(macOS 14.0, *) else { return done(["ok": false, "why": "macos"]) }
+  SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, err in
+    guard let content else { return done(["ok": false, "why": err?.localizedDescription ?? "no screen recording"]) }
+    let p = CGPoint(x: x, y: y)
+    guard let d = content.displays.first(where: { CGDisplayBounds($0.displayID).contains(p) }) ?? content.displays.first else { return done(["ok": false, "why": "no-display"]) }
+    let b = CGDisplayBounds(d.displayID)
+    let filter = SCContentFilter(display: d, excludingWindows: content.windows.filter { exclude.contains(Int($0.windowID)) })
+    let conf = SCStreamConfiguration()
+    conf.width = Int(b.width); conf.height = Int(b.height); conf.showsCursor = false
+    SCScreenshotManager.captureImage(contentFilter: filter, configuration: conf) { img, err in
+      guard let img else { return done(["ok": false, "why": err?.localizedDescription ?? "no-image"]) }
+      let url = URL(fileURLWithPath: file) as CFURL
+      guard let dest = CGImageDestinationCreateWithURL(url, "public.png" as CFString, 1, nil) else { return done(["ok": false, "why": "write"]) }
+      CGImageDestinationAddImage(dest, img, nil)
+      done(CGImageDestinationFinalize(dest) ? ["ok": true, "file": file, "frame": rectJSON(b)] : ["ok": false, "why": "write"])
+    }
+  }
+}
+
 func handle(_ req: [String: Any]) -> [String: Any] {
   let id = req["window"] as? Int ?? 0
   switch req["op"] as? String {
@@ -358,9 +471,16 @@ func handle(_ req: [String: Any]) -> [String: Any] {
     let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: req["prompt"] as? Bool ?? false] as CFDictionary
     return ["trusted": AXIsProcessTrustedWithOptions(opts)]
   case "fn":
-    keysLock.lock(); watching = Set((req["keys"] as? [Int] ?? []).map { Int64($0) }); keysLock.unlock()
+    keysLock.lock(); watching = Set((req["keys"] as? [Int] ?? []).map { Int64($0) }); chords = req["chords"] as? [String] ?? []; keysLock.unlock()
     if !tapThread.isExecuting && !tapThread.isFinished { tapThread.start() }
     return ["ok": true]
+  case "ink": inkOn = req["on"] as? Bool ?? false; if !inkOn { inking = false }; return ["ok": true, "ink": filtering]
+  case "exchange": exchange = req["on"] as? Bool ?? false; return ["ok": true]
+  case "windows":
+    // (on screen, every layer: what a display's picture would show, by whose; metadata only)
+    let all = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    return ["windows": all.map { w -> [String: Any] in var m = appInfo(pid_t(w[kCGWindowOwnerPID as String] as? Int ?? 0)); m["window"] = w[kCGWindowNumber as String] as? Int ?? 0; return m }]
+  case "near": return near(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["radius"] as? Double ?? 260, req["max"] as? Int ?? 30)
   case "focus": return focus()
   case "insert": return insert(req["text"] as? String ?? "")
   case "front": lastFront = ""; sayFront(); return ["ok": true]
@@ -396,6 +516,11 @@ DispatchQueue.main.async { sayFront() }
 Thread {
   while let line = readLine() {
     guard let data = line.data(using: .utf8), let req = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
+    // (the display's picture comes when it's written: its answer goes then)
+    if req["op"] as? String == "display" {
+      shootDisplay(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["exclude"] as? [Int] ?? [], req["file"] as? String ?? "") { r in var res = r; res["id"] = req["id"]; send(res) }
+      continue
+    }
     DispatchQueue.main.sync {
       var res = handle(req)
       res["id"] = req["id"]

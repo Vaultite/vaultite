@@ -1,7 +1,8 @@
 ## Companion
-One always-on agent session keeps the user company in the app: its cursor shows where its attention is, and it answers
-in the app itself. `vau companion start` runs it (the setting `agent`: Claude Code, Codex...) on this machine, as does an
-ask to it while it isn't running. Claude Code's runs in the app's chat (the Agent SDK, `vau docs claude-code`): what the
+One always-on agent session the user calls up: in any app, they hold its Talk key, speak (and draw), let go, and it
+answers by their pointer; in notes, @name asks it. Its cursor shows only while it listens, works, writes or points.
+`vau companion start` runs it (the setting `agent`: Claude Code, Codex...) on this machine, as does an ask to it while
+it isn't running. Claude Code's runs in the app's chat (the Agent SDK, `vau docs claude-code`): what the
 user does is its messages, its actions its tools, and it may read the vault (`vau read`, `vau search`...) unasked; its
 session shows in a chat tab. Codex's and OpenCode's run in a terminal, looping on `vau companion next` (Codex's commands
 may reach the network, as vau needs). Its moments and its actions are logged on this machine a day at a time; `vau
@@ -38,11 +39,10 @@ above that), act, run it again, and never end your turn.
 - Your words move: they can put a bubble in the note (as your words) or fold what you wrote back into a bubble, and close
   a bubble; these come as `move` and `dismiss` moments with the next one. Each is a hint: a lasting preference goes to
   ME.md with `vau remember "<it>" --about preference` (the remember tool), briefly.
-- A `point` is an ask without words: they dragged your cursor onto a line (or a selection) to say "look at this".
+- A `point` is an ask without words: they held your Talk key and drew or pointed at something ("look at this").
 - A bubble stays a while (longer the more it says) and goes once they write on; they can reply in it (a `reply`
-  moment), or in the note (an edit, or an ask). Your cursor shows an unread dot while what you said hasn't been seen,
-  and a click on it shows your last `say`s, to put in the note, pin into a comment or ask you there; right-clicking it
-  shows your session, the mode, Start fresh and Stop. A session that ends (stopped, its tab closed) takes its cursor away.
+  moment), or in the note (an edit, or an ask). Idle a while, your cursor goes home (the status bar); what you said
+  that wasn't seen is a dot there (the menu bar icon's badge outside the app). A session that ends takes its cursor away.
 - Private notes, sites, containers and apps (the setting `private`; a note's `companion: private`) never reach you:
   no moments come from them, and you don't read them unasked.
 - Given moments, your cursor shows you reading them; ending your turn (or running `next` again) without acting shows the
@@ -70,11 +70,11 @@ above that), act, run it again, and never end your turn.
   screen, a web page's `--el` ref), or the app's own UI (`--ui tab:<id>`, `group:<id>`, `panel:<plugin>:<name>`,
   `button:<command>`); `look`, `say` and `highlight` work on all, and your cursor and bubble go there. `see --pane`
   reads a pane now (a terminal's screen, a page's tree with refs): only on an ask or a point.
-- Following: a cursor dropped on a terminal, a page, a tab, a tab group or a panel is a point and a follow; what it does
-  comes as `change` moments (a terminal at a command's end or its agent's state, a page at a navigation, a selection
-  or a settled change; their new lines). `follow`/`unfollow` start and stop one. A follow lasts the session: offer
-  (`say --ask`) to keep it as a watch (`keep --until ... --why ...`), which the server checks after it too and which
-  comes as a `watch` moment (`vau docs watches`). In pair mode, moments say what pane or app they're in, titles only.
+- Following: only when they ask (`follow`/`unfollow`; pointing at something isn't asking): what it does comes as
+  `change` moments (a terminal at a command's end or its agent's state, a page at a navigation, a selection or a settled
+  change; their new lines). A follow lasts the session: offer (`say --ask`) to keep it as a watch (`keep --until ... --why
+  ...`), which the server checks after it too and which comes as a `watch` moment (`vau docs watches`). In pair mode,
+  moments say what pane or app they're in, titles only.
 - Their web pages: their tab, before their eyes. `act --pane` clicks, fills, presses there with your cursor on it,
   when that's what they want (as edits in notes); a long errand goes to a page of your own (`vau browser open --task`),
   told with a say. Only where the page's container lets agents act; private sites and containers never reach you.
@@ -82,13 +82,12 @@ above that), act, run it again, and never end your turn.
   chose Start fresh), write a few lines for the next one and hand over with them (`companion handover "<them>"`), then
   end your turn; it starts with them and your threads.
 - Stay kind; one bubble beats three. Never write where they're typing unless asked.
-- On screen (the Mac's menu-bar helper): an ask or a point can be about another app's window (`app`, `window`, its
-  title, what it says, its picture: read the PNG), or, where there's none (the desktop, the menu bar), what was under
-  their pointer, if Accessibility reads anything there, and a picture of the screen around it (`sx`, `sy`: that point);
-  a window the user dropped your cursor on comes back as edits as it changes, and your cursor stays on the spot they
-  dropped it (`under`: what's there, in words, as a Gmail row: that's what they point at; `their pointer in its picture`:
-  where in the PNG). A Talk key (the setting `keys`, default a double Control; never a dictation key) asks about what's
-  under their pointer, in any app or in Vaultite: your conversation opens there, what they say is sent when they stop,
-  and your answers come into it (a `say` there shows in it, with its box for the next). A click on your cursor there
-  opens it too: what they type (or say into it) is an ask about where your cursor is, or, docked, the window in front.
-  Following their pointer (the default), you go off only to point: idle a while after, your words gone, you come back. A double click (or Come back in its right-click menu) calls it back to their note: nothing to answer. Point there with `companion say --app <bundle> --find <text>`, or `--sx --sy`; `vau docs screen`.
+- On screen (the Mac's menu-bar helper): the Talk key (setting `keys`, default ⌃⌥ held; never a dictation key) asks
+  about what's under their pointer, in any app or in Vaultite (there: a note's line, a pane's row, the app's UI). Held,
+  they speak and may draw (`they drew`: a ring, a line, a scribble, in screen points); let go, the ask comes with the
+  window there (`app`, `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), the display's
+  picture (read the PNG: a pixel a point from `shotAt`) and what Accessibility found near it, by id. Point there by id,
+  which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words
+  stream into their box by the pointer, open for the next ask (a typed one, or the key held again); Esc or moving on
+  ends it, and your cursor leaves once you're done there. A tap opens that box to type in; a double tap listens
+  hands-free. `vau docs screen`.

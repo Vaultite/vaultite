@@ -21,8 +21,8 @@ export { nearest } // (its tests reach it through the plugin)
 export const plugin = new Plugin(import.meta.url)
 
 export type Mode = "off" | "quiet" | "pair"
-/** What the user did, as an agent sees it. ask: they addressed it; point: they dropped its cursor on a line ("look at
- *  this"); edit and open only in pair; reply, accept, reject, dismiss: their answer to one of its items. */
+/** What the user did, as an agent sees it. ask: they addressed it; point: an ask without words (its Talk key held, they
+ *  drew or pointed); edit and open only in pair; reply, accept, reject, dismiss: their answer to one of its items. */
 export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss" | "move" | "change" | "watch"
   path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string
   /** A point's word or selection, where its cursor stays. */
@@ -44,9 +44,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
    *  says (its Accessibility text) and its picture (a PNG on this machine). */
   app?: string; window?: number; title?: string; screen?: string; shot?: string
-  /** On screen: what was under their pointer, in words, and that point (screen points: where to point back); `spot`:
-   *  where the pointer is in the window's picture, in words. */
-  under?: string; sx?: number; sy?: number; spot?: string
+  /** What was under their pointer, in words; on screen, that point (sx, sy), the picture's frame (`shotAt`: a pixel a
+   *  point), what Accessibility found near it (`near`, ids for --ax) and what they drew (`ink`). */
+  under?: string; sx?: number; sy?: number; shotAt?: Rect; near?: Near[]; ink?: Ink[]
   /** In a pane (a terminal, a web page: today's tab id) or the app's UI (a data-ui id), by its title; a terminal's row, a
    *  page's element (a snapshot ref) or the text under the pointer (`text`). */
   pane?: string; ui?: string; row?: number; el?: string
@@ -54,6 +54,11 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
    *  watch's hit (`item` the watch, `text` what to do). A page's address. */
   what?: string; url?: string }
 export type { Target } from "./places.ts"
+type Rect = { x: number; y: number; width: number; height: number }
+/** An element near the pointer (the helper's Accessibility): its id to point by, its role, its words, its frame. */
+type Near = { id: string; role: string; label: string; frame: Rect }
+/** A stroke of ink: what it looks like (a ring round something, a line, an underline, a scribble), its box, its points. */
+type Ink = { shape: string; box: Rect; points: [number, number][] }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass (why: its words on it);
  *  starting: its session boots (asks wait for its first `next`); runs (claude, codex), model, effort; asks: a permission. */
 export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean; why?: string
@@ -269,8 +274,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   if (md === "off") return null
   // (a line a shared folder's guest wrote is never the user's ask, whoever's window sends it)
   if (m.kind === "ask" && m.path && m.line && plugin.service("provenance:by-guest")?.(m.path, m.line) === true) return null
-  // (a window they dropped its cursor on is followed in quiet too: they asked for it)
-  if (((m.kind === "edit" && !m.app) || m.kind === "open") && md === "quiet") return null
+  if ((m.kind === "edit" || m.kind === "open") && md === "quiet") return null
   // (a private note: nothing of it reaches any agent)
   if (m.path && hidden(m.path)) return null
   // (spaces alone changed, as a trailing one: nothing to see, and an agent woken for it isn't free for what is)
@@ -779,18 +783,34 @@ const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said"])
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
 function screenPlace(m: Record<string, unknown>) {
   const shot = str(m.shot), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
+  const rect = (r: unknown): Rect | null => { const o = (r ?? {}) as Record<string, unknown>, v = [o.x, o.y, o.width, o.height].map(Number); return v.every(Number.isFinite) ? { x: Math.round(v[0]), y: Math.round(v[1]), width: Math.round(v[2]), height: Math.round(v[3]) } : null }
+  const near = Array.isArray(m.near) ? m.near.slice(0, 40).flatMap((e: Record<string, unknown>) => { const f = rect(e?.frame); return f && str(e.id) ? [{ id: str(e.id).slice(0, 8), role: str(e.role).slice(0, 40), label: str(e.label).slice(0, 120), frame: f }] : [] }) : []
+  const ink = Array.isArray(m.ink) ? m.ink.slice(0, 12).flatMap((k: Record<string, unknown>) => { const b = rect(k?.box); return b ? [{ shape: str(k.shape).slice(0, 20), box: b,
+    points: (Array.isArray(k.points) ? k.points : []).slice(0, 40).map((p: unknown) => (Array.isArray(p) ? [Math.round(Number(p[0])), Math.round(Number(p[1]))] : [0, 0]) as [number, number]) }] : [] }) : []
+  const at = rect(m.shotAt)
   return { ...(str(m.app) ? { app: str(m.app).slice(0, 200) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
-    ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}), ...(str(m.spot) ? { spot: str(m.spot).slice(0, 80) } : {}),
+    ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     // (only the helper's own pictures: an agent reads what's named here)
-    ...(/[/\\]screens[/\\](window-\d+-\d+|region-\d+)\.png$/.test(shot) ? { shot } : {}) }
+    ...(/[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+)\.png$/.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
+    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}) }
 }
-/** Its cursor called back from the screen (a double click, Come back): to the user's note, so outside the app it waits
- *  by their pointer or at the edge again. */
+/** What the last ask on screen found near the pointer, by agent: what `--ax` points at. */
+const nearBy = new Map<string, Near[]>()
+/** Its cursor off the screen, done there (the helper's: its exchange over, idle a while): back to the user's note. */
 export function comeBack(name: string) {
   if (!agents.has(key(name))) return
   const f = focus()
   setAgent(name, { ...Object.fromEntries(PLACE_KEYS.map((k) => [k, undefined])), ...(f?.path ? { path: f.path, line: f.line } : {}) })
+}
+/** What the user did on screen, as the helper says it: an ask, or a point (no words). */
+export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) {
+  if (m.kind !== "ask" && m.kind !== "point") return null
+  const place = screenPlace(m)
+  // (a point where nothing can be read, as the menu bar: still there, with its picture)
+  if (!place.app && place.sx === undefined) return null
+  if (place.near) nearBy.set(key(str(m.agent) || ownName()), place.near)
+  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place }, req)
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
@@ -803,12 +823,7 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
     // (a cursor's conversation opened over the screen: its says seen)
     if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
-    if (m.t !== "moment" || !["ask", "point", "edit"].includes(String(m.kind))) return
-    const place = screenPlace(m)
-    // (a point where nothing can be read, as the menu bar: still there, with its picture)
-    if (!place.app && place.sx === undefined) return
-    addMoment({ kind: m.kind as Moment["kind"], for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place,
-      ...(Array.isArray(m.hunks) ? { hunks: (m.hunks as Hunk[]).slice(0, 40) } : {}) }, req)
+    if (m.t === "moment") screenMoment(m, req)
   })
   ws.on("close", () => screens.delete(ws))
 }
@@ -855,8 +870,8 @@ plugin.socket("companion/live", (ws, req, { query }) => {
       const pn = w.panes.find((x) => x.id === w.pane), kind = pn && paneSource(pn.to).kind
       if (pn && m.active && pn.id !== w.told && kind !== "note" && !privatePane(pn)) { w.told = pn.id; addMoment({ kind: "open", pane: pn.id, title: pn.title, ...(kind === "site" ? { url: paneSource(pn.to).url } : {}) }) }
       else if (kind === "note") w.told = pn!.id
-    } else if (m.t === "moment" && (m.kind === "point" || m.kind === "change") && (str(m.pane) || str(m.ui)) && !str(m.path)) {
-      // (a point on a pane or the app's UI, or a change in UI it follows: the window says what's there)
+    } else if (m.t === "moment" && (m.kind === "ask" || m.kind === "point" || m.kind === "change") && (str(m.pane) || str(m.ui)) && !str(m.path)) {
+      // (an ask or a point on a pane or the app's UI, or a change in UI it follows: the window says what's there)
       w.at = Date.now()
       void paneMoment(w, m, req)
     } else if (m.t === "moment" && typeof m.kind === "string" && ["ask", "point", "edit"].includes(m.kind)) {
@@ -957,37 +972,34 @@ async function resolve(t: Target, name: string): Promise<Target & Boxed> {
   return t
 }
 
-/** A point on a pane or the app's UI (the window says what's there), or a change in UI it follows: a moment, and a
- *  point starts following what it was dropped on. */
+/** An ask or a point on a pane or the app's UI (the window says what's there), or a change in UI it follows: a moment.
+ *  Never a follow: that's only asked for (companion follow). */
 async function paneMoment(_w: Win, m: Record<string, unknown>, req: IncomingMessage) {
-  const ui = str(m.ui).slice(0, 120) || undefined, group = /^group:(.+)$/.exec(ui ?? "")?.[1]
-  // (a tab of one pane is that pane; a split tab is its panes, followed as one)
+  const ui = str(m.ui).slice(0, 120) || undefined
+  // (a tab of one pane is that pane; a split tab is its panes)
   const tabId = /^tab:(.+)$/.exec(ui ?? "")?.[1], inTab = tabId ? allPanes().filter((x) => x.tab === tabId) : []
   const pane = str(m.pane) || /^pane:(.+)$/.exec(ui ?? "")?.[1] || (inTab.length === 1 ? inTab[0].id : undefined), p = paneById(pane)
   const tab = !pane && inTab.length > 1 ? tabId : undefined
   if (p && privatePane(p)) return
   if (tab && inTab.every(privatePane)) return
   const agent = str(m.agent) || undefined, title = (p?.title || (tab ? inTab.filter((x) => !privatePane(x)).map((x) => x.title).join(" · ") : "") || str(m.title)).slice(0, 200) || undefined
-  const text = str(m.text).slice(0, 4000) || undefined
+  const asked = m.kind === "ask" ? str(m.text).slice(0, 4000) || undefined : undefined
+  const text = (m.kind === "ask" ? str(m.under) : str(m.text)).slice(0, 4000) || undefined
   const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}) }
   if (m.kind === "change") {
     if (!followed.list().some((f) => f.ui === ui)) return
     return void addMoment({ kind: "change", for: agent, ...where, what: "it changed", changes: Array.isArray(m.changes) ? m.changes.map(String).slice(0, 30) : [] })
   }
   const x = p && paneSource(p.to)
-  if (x?.kind === "note") {
-    const pt = addMoment({ kind: "point", for: agent, path: x.path, line: 1 }, req)
-    if (pt?.for && tabId) followed.add({ agent: pt.for, pane: pane!, title: title ?? "" })
-    return
-  }
+  if (x?.kind === "note") return void addMoment({ kind: m.kind as "ask", for: agent, path: x.path, line: 1, ...(asked ? { text: asked } : {}) }, req)
   let under = text
   if (x?.kind === "site" && m.x !== undefined) {
     const t = await pageOf(p!.id).catch(() => null)
     if (t && !privatePage(t.url, t.container) && t.access !== "none") under = String((await plugin.desktop("agent:at", t.tab, Number(m.x), Number(m.y)).catch(() => ({})) as { text?: string }).text ?? "") || under
   }
-  const full = addMoment({ kind: "point", for: agent, ...where, ...(Number(m.row) > 0 ? { row: Number(m.row) } : {}), ...(under ? { text: under.slice(0, 1200) } : {}), ...(x?.kind === "site" ? { url: x.url } : {}) }, req)
-  // (dropped on it: it follows it too; a panel by the window's word, a tab or a group with all its panes, a tab's row)
-  if (full?.for && (x?.kind === "terminal" || x?.kind === "site" || tabId || group || (ui && !pane))) followed.add({ agent: full.for, ...(pane ? { pane } : tab ? { tab } : group ? { group } : { ui }), title: title ?? ui ?? "" })
+  const said = under?.slice(0, 1200)
+  addMoment({ kind: m.kind as "ask", for: agent, ...where, ...(Number(m.row) > 0 ? { row: Number(m.row) } : {}), ...(x?.kind === "site" ? { url: x.url } : {}),
+    ...(m.kind === "ask" ? { ...(asked ? { text: asked } : {}), ...(said ? { under: said } : {}) } : said ? { text: said } : {}) }, req)
 }
 
 /** What the companion follows now (follows.ts): a change in one is a moment for it. */
@@ -1718,15 +1730,22 @@ const PLACE = { path: PATH, line: LINE, find: FIND, x: X, y: Y, pane: PANE, ui: 
   window: { type: "integer", description: "outside the app: a window of it (its CGWindowID)" } as const,
   sx: { type: "number", description: "outside the app: a point on the screen, with sy (points)" } as const,
   sy: { type: "number", description: "outside the app: a point on the screen, with sx" } as const,
-  display: { type: "integer", description: "outside the app: the display sx and sy are on" } as const }
+  display: { type: "integer", description: "outside the app: the display sx and sy are on" } as const,
+  ax: { type: "string", description: "outside the app: an element the user's last ask listed near their pointer (a3), instead of sx and sy: your cursor snaps to it" } as const }
 
 /** A target from params: the user's file when none is given; a pane, the app's UI or the screen (`elsewhere`: the ops
  *  that point) without one. */
 function target(p: Record<string, unknown>, elsewhere = false): Target {
   const out: Target = {}
+  if (str(p.ax)) {
+    const e = nearBy.get(key(who(p)))?.find((x) => x.id === str(p.ax))
+    if (!e) throw new OpError(`no element ${str(p.ax)} near their pointer: the ids are the last ask's (its near list)`, 404)
+    Object.assign(out, { sx: e.frame.x + Math.min(16, e.frame.width / 2), sy: e.frame.y + e.frame.height / 2, frame: e.frame })
+  }
   for (const k of ["pane", "ui", "el", "app"] as const) if (str(p[k])) out[k] = str(p[k])
   for (const k of ["row", "window", "sx", "sy", "display"] as const) if (p[k] !== undefined && p[k] !== null && Number.isFinite(Number(p[k]))) out[k] = Number(p[k])
   const away = !!(out.pane || out.ui || out.app || out.sx !== undefined)
+  if (out.frame) { out.sx = Math.round(out.sx!); out.sy = Math.round(out.sy!) }
   if (away && !elsewhere) throw new OpError("this is for notes: give `path` (in a pane or the app's UI: companion look, say or highlight)")
   const path = str(p.path) || (away ? "" : focus()?.path)
   if (!path && !away) throw new OpError("the user has no file open: give `path` (or `pane`, `ui`)")
@@ -1746,8 +1765,8 @@ plugin.op({
   help: `Answers the moments since you last asked, or waits for one (up to timeout seconds; none by then: an empty list).
 ask: they addressed you, a line with your @name (it stays in their note), @claude in a comment of theirs or Ask
 companion (answer in that thread, companion comment --id). Always answer. edit: lines they changed after a pause (pair
-mode): answer what's meant for you, @name or not; writing to themselves, pass. point: they dropped your cursor on a line
-(and a selection): look there and answer, as for an ask. open: the note they went to, with the next moment. reply,
+mode): answer what's meant for you, @name or not; writing to themselves, pass. point: an ask without words (they held
+your Talk key and drew or pointed): look there and answer, as for an ask. open: the note they went to, with the next moment. reply,
 accept, reject, dismiss: their answer to your comment, suggestion or bubble. move: they moved your words, a bubble into
 the note or what you wrote back into a bubble: a hint for next time. Lines count from 1 with the frontmatter. Asks,
 replies and edits come with the note's text around them, numbered: no need to read it again. While you wait your cursor
@@ -1853,7 +1872,7 @@ export async function excerpts(ctx: OpCtx, ms: Moment[]) {
   const by = new Map<string, Moment[]>()
   const out: Excerpt[] = []
   // (a pane pointed at: what it shows now, the look; never for a change, which has its lines)
-  for (const m of ms) if (m.kind === "point" && m.pane && !out.some((e) => e.pane === m.pane)) {
+  for (const m of ms) if ((m.kind === "point" || m.kind === "ask") && m.pane && !out.some((e) => e.pane === m.pane)) {
     const pn = paneById(m.pane), x = pn && paneSource(pn.to)
     try {
       if (x?.kind === "terminal") out.push({ path: "", from: 0, to: 0, of: 0, lines: [], pane: m.pane, title: m.title ?? pn!.title, text: await plugin.ask<string>("terminal:screen", "", x.terminal, 60) })
@@ -1928,7 +1947,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
   for (const m of ms) {
     const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : m.pane || m.ui ? ` ${m.title ? `"${m.title}" ` : ""}(${m.pane ? `pane ${m.pane}` : m.ui})${m.row ? `, row ${m.row}` : ""}`
       : m.app ? ` on screen, ${m.title ? `${JSON.stringify(m.title)} in ` : ""}${m.app}${m.window ? ` (window ${m.window})` : ""}`
-      : m.sx !== undefined ? ` on screen, at sx ${m.sx}, sy ${m.sy} (no window there, nothing Accessibility reads: see its picture)` : ""
+      : m.sx !== undefined ? ` on screen, at sx ${m.sx}, sy ${m.sy} (no window there${m.under ? "" : ", nothing Accessibility reads: see its picture"})` : ""
     if (m.kind === "change") {
       out.push(`- change in${at}: ${m.what ?? "it changed"}${m.url ? ` (${m.url})` : ""}`)
       for (const c of m.changes ?? []) out.push(`  ${c}`)
@@ -1940,7 +1959,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
       continue
     }
     if (m.kind === "point" && !m.path && (m.pane || m.ui)) {
-      out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.text ? `\n  under the pointer: ${JSON.stringify(cut(m.text, 600))}` : ""}${m.pane || /^(group|tab):/.test(m.ui ?? "") ? "\n  you follow it now: what it does comes to you as change moments (companion unfollow to stop; companion keep to keep it as a watch)" : ""}`)
+      out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.text ? `\n  under the pointer: ${JSON.stringify(cut(m.text, 600))}` : ""}`)
       continue
     }
     const thread = m.item && (m.kind === "ask" || m.kind === "reply") && personThread(m.item) ? ` (in their comment thread ${m.item}, by the line: answer in it, companion comment --id ${m.item})` : ""
@@ -1961,9 +1980,11 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     else if (m.kind === "move") out.push(m.into === "note" ? `- move${at}: they put your bubble in the note there (more for the note than a bubble), ${JSON.stringify(cut(m.text ?? "", 200))}`
       : `- move${at}: they folded what you wrote there back into a bubble (more for a bubble than the note), ${JSON.stringify(cut(m.text ?? "", 200))}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
-    if (m.shot) out.push(`  its picture: ${m.shot}${m.window ? "" : " (the screen around their pointer)"}`)
-    if (m.spot) out.push(`  their pointer in its picture: ${m.spot}`)
+    if (m.shot) out.push(`  its picture: ${m.shot}${m.shotAt ? ` (the display, a pixel a point: its top left is sx ${m.shotAt.x}, sy ${m.shotAt.y}${m.sx !== undefined ? `; their pointer at ${m.sx - m.shotAt.x}, ${m.sy! - m.shotAt.y} in it` : ""})` : ""}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
+    else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
+    for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height}: ${k.points.map((p) => p.join(",")).join(" ")}`)
+    if (m.near?.length) out.push("  near their pointer (point at one: --ax <id>):", ...m.near.map((e) => `    ${e.id} ${e.role} ${JSON.stringify(e.label)} at ${e.frame.x},${e.frame.y} ${e.frame.width}×${e.frame.height}`))
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
   }
   for (const e of notes) {
@@ -2499,7 +2520,7 @@ plugin.op({
   id: "companion.follow",
   cli: "companion follow",
   summary: "Follow a pane, a tab, a tab group or a part of the app for this session: what it does comes to you as change moments (a terminal at a command's end or its agent's state, a page at a navigation, a selection or a settled change).",
-  help: `The user starts one by dropping your cursor on it; you may when they ask you to keep an eye on something now. For
+  help: `Only when they ask you to keep an eye on something now (pointing at it isn't asking). For
 longer than this session, offer to keep it as a watch (companion keep). Without a pane, the list.
 
   vau companion follow --pane t3k2

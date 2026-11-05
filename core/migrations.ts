@@ -304,6 +304,24 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       if (hk) set("hotkeys", hk)
     }),
   },
+  {
+    // The companion summoned (hold ⌃⌥): no cursor waits at rest (`screen_cursor` out), and double Control is no key: the
+    // companion's becomes ⌃⌥, dictation's goes (its default, fn⌃, if none is left).
+    id: "summoned-keys-2026-11",
+    run: (v) => eachSettings(v, (get, set) => {
+      const keys = (x: unknown, to: string | null) => [...new Set(strs(x).flatMap((k) => (k === "double_control" ? (to ? [to] : []) : [k])))]
+      const c = get("plugins/companion/data")
+      if (c && ("screen_cursor" in c || strs(c.keys).includes("double_control"))) {
+        const { screen_cursor: _, ...rest } = c
+        set("plugins/companion/data", Array.isArray(c.keys) ? { ...rest, keys: keys(c.keys, "control_option") } : rest)
+      }
+      const d = get("plugins/dictation/data")
+      if (d && strs(d.keys).includes("double_control")) {
+        const { keys: was, ...rest } = d, left = keys(was, null)
+        set("plugins/dictation/data", left.length ? { ...rest, keys: left } : rest)
+      }
+    }),
+  },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

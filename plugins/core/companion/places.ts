@@ -2,13 +2,13 @@
 // in it, the app's own UI, or (the helper's) an app window and a point on the screen.
 
 /** A place: a note's line or text (`find`) or a drawing's point; a pane's terminal `row` or page element (`el`, a ref);
- *  the app's UI by data-ui id (`ui`); the helper's app, window and screen point (sx, sy on `display`). */
+ *  the app's UI (`ui`); the helper's app, window, screen point (sx, sy on `display`; `frame`: an `--ax` element's). */
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number
   pane?: string; ui?: string; row?: number; el?: string
-  app?: string; window?: number; sx?: number; sy?: number; display?: number }
+  app?: string; window?: number; sx?: number; sy?: number; display?: number; frame?: { x: number; y: number; width: number; height: number } }
 
 /** The keys of a place: an agent's place is all of them, each set or cleared together. */
-export const PLACE_KEYS = ["path", "line", "find", "x", "y", "pane", "ui", "row", "el", "app", "window", "sx", "sy", "display"] as const
+export const PLACE_KEYS = ["path", "line", "find", "x", "y", "pane", "ui", "row", "el", "app", "window", "sx", "sy", "display", "frame"] as const
 
 /** What a pane shows, as the window says (a tab's target): a note, a drawing, a terminal, a web page, another view. */
 export type PaneKind = "note" | "terminal" | "site" | "view"

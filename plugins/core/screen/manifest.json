@@ -5,7 +5,7 @@
   "essential": true,
   "desktopApp": true,
   "name": "Screen",
-  "description": "On a Mac, agents can see what you're working on outside Vaultite: the app and window in front, a window's text (read with macOS's Accessibility) and its picture, and the companion's cursor can point there. It reads only when asked: you pressed fn with no text field, dropped the companion's cursor on a window, or an agent asked. Never a private app.",
+  "description": "On a Mac, agents can see what you're working on outside Vaultite: the app and window in front, a window's text (read with macOS's Accessibility) and its picture, and the companion's cursor can point there. It reads only when asked: you held a Talk key (⌃⌥) to ask the companion, or an agent asked. Never a private app.",
   "runsOnServer": true,
   "settings": {
     "private_apps": {

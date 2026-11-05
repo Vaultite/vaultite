@@ -233,7 +233,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `fmtMin(m)`
 - `fmtStamp(t, seconds?)`: A moment in full, for a tooltip: "Sat, Oct 10, 4:05 PM" (`seconds`: 4:05:09 PM).
 - `fmtTime(isoStr)`
-- `fnDictation(begin, talk?)`: The fn key (the helper's; `talk`: the companion's Talk keys) as a dictation's key: a tap starts, the next stops, held it listens till let go; with another key what it started is dropped.
+- `fnDictation(begin)`: The fn key (the helper's dictation keys) as a dictation's key: a tap starts, the next stops, held it listens till let go; with another key what it started is dropped.
 - `FocusedFile`: The file in the focused pane or, while that shows something else (a view, like the links pane), the file focused last, and the pane it's in: what a view that follows the other panes shows (a…
 - `focusedPane(t)`: The pane a tab has focused.
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (its id) (the focused one by default): its editor or terminal, if it shows one.
@@ -414,6 +414,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onResized(f)`: Run `f` each time a resize drag ends; returns its undo.
 - `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
 - `onTabsEvent(fn)`: Hear every change of this window's tabs as events; returns the unsubscribe.
+- `onTalkKey(fn)`: A companion's Talk key while this window has the keyboard, as its gesture (core/fnkey.ts talkGesture): listen (held), send (let go), type (a tap), free (a double tap), cancel.
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`
 - `op(id, params?)`: Run an operation of the API (core/ops.ts: `POST /api/ops/<id>`): its result.
@@ -566,7 +567,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `savePdf(name)`: In the desktop app: the window, as it prints, saved as a PDF where the user picks (Export to PDF).
 - `Scope`
 - `scopedState(key, fallback, scope?)`: A value kept at a level by key ("<plugin id>:<name>"): `get` answers `fallback` while nothing's kept, `set(undefined)` removes it.
-- `screenDrop`: A cursor dropped at a point of the screen outside the window (screen points): the desktop app's helper looks at the app window there for `agent`, and follows it; null in a browser, or a build…
 - `scrollPage(top, smooth?)`: Scroll the page: on desktop the main area scrolls by itself (#main-scroll, below the tab bar), on phones the window.
 - `SearchDoc`
 - `SearchPage({ store, query, setQuery })`

@@ -35,7 +35,7 @@
   is one install with one signature and the grants the app already has (microphone, Accessibility, screen recording).
   One per Mac (a lock socket in the temp folder: Vaultite, Main and Dev may all run); off in Vaultite Dev and under
   VAULTITE_QUIET unless VAULTITE_HELPER=1. With it, a closed window's server is kept (`kept` in main.ts) and the Dock
-  icon shows only while a window is open. Native parts: screen.swift (the dictation keys' tap, fields, other apps' text), dictation.
+  icon shows only while a window is open. Native parts: screen.swift (the keys' tap and ink, fields, other apps' text, the display's picture), dictation.
 - The overlay (overlay.ts) is BrowserWindows, never `AppWindow`s: those count as the app's windows (the Dock, menus).
   `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock. It never takes the keyboard: a
   cursor's conversation is a window of its own (`type: "panel"`, non-activating), so typing there leaves the app in

@@ -1109,11 +1109,6 @@ handle("dock:pick", async (w) => {
   const type = file && IMAGE_TYPES[path.extname(file).slice(1).toLowerCase()]
   return file && type ? `data:${type};base64,${fs.readFileSync(file).toString("base64")}` : null
 })
-// The companion's cursor dragged out of a window and dropped on another app's (electron/helper.ts).
-ipcMain.handle("screen:drop-at", (e, x: unknown, y: unknown, name: unknown) => {
-  who(e)
-  if (helper && helperOn() && typeof x === "number" && typeof y === "number") return helper.dropAt(str(name), x, y)
-})
 // ---------- the editor's menu ----------
 // The asking page's own window (a pop-out's too, which `handle` answers as its vault's).
 ipcMain.handle("text:look-up", (e) => { who(e); e.sender.showDefinitionForSelection() })

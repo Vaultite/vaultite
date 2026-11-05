@@ -287,12 +287,12 @@ export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 // The Mac's notifications (the desktop app; null in a browser): the Inbox shows one while the window isn't in front.
 export { systemNotify } from "@/core/desktop"
 // Settings > Permissions (the desktop app on a Mac; null elsewhere): the terminal's way there when macOS blocks the vault.
-export { openPermissions, screenDrop } from "@/core/desktop"
+export { openPermissions } from "@/core/desktop"
 /** The companion's cursor's spring (the in-app one and the one over the screen move alike). */
 export { CURSOR_SPRING, glide as springStep, stiffness, type Glide } from "@/core/spring"
 /** Dictation: the session (into a note's editor or a field), its events for plugins (`onDictation`) and its source. */
 export { joinText } from "../../core/dictationtext.ts"
-export { dictation, dictationSource, fnDictation, listening, onDictation, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"
+export { dictation, dictationSource, fnDictation, listening, onDictation, onTalkKey, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"
 // The Dock's icon (the desktop app; null in a browser): the Dock icon plugin.
 export { dockIcon } from "@/core/desktop"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.

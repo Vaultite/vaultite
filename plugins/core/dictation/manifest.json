@@ -60,11 +60,11 @@
     },
     "keys": {
       "type": "list",
-      "values": ["fn", "right_option", "right_command", "double_control"],
-      "labels": { "fn": "fn", "right_option": "Right Option", "right_command": "Right Command", "double_control": "Double Control" },
-      "default": ["fn"],
+      "values": ["fn_control", "fn", "right_option", "right_command"],
+      "labels": { "fn_control": "fn⌃ (fn and Control)", "fn": "fn", "right_option": "Right Option", "right_command": "Right Command" },
+      "default": ["fn_control"],
       "label": "Dictation keys",
-      "description": "the keys that dictate, each alone, with no other key: fn and the right modifiers, a tap starts and the next stops, or hold while you speak; a double Control starts and the next stops. A key the companion talks with (its Talk keys) isn't one"
+      "description": "the keys that dictate: fn⌃ held together, or fn or a right modifier alone; a tap starts and the next stops, or hold while you speak. A key the companion talks with (its Talk keys) isn't one"
     },
     "keep_audio": {
       "local": true,

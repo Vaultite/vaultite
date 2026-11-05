@@ -1,6 +1,6 @@
 // Companion beyond notes: its cursor points at the app's UI (look --ui) and at a terminal pane's row (look --pane --find),
-// and lights it; dropped on a terminal it's a point (with that row's text) and a follow, whose command's end comes as a
-// change moment; a watch of a note tells it once what it waits for is there.
+// and lights it; following a terminal (asked), its command's end comes as a change moment; a watch of a note tells it
+// once what it waits for is there.
 // WRITES "QA companion panes/", the companion's data.json, folders.json: throwaway server only.
 //   node web/qa/companion-panes.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -67,20 +67,12 @@ await op("companion.say", { text: "That's the line.", pane, find: "needle-17" })
 check("say in a pane: its bubble there", await until(async () => (await page.locator("[data-companion-bubble]").count()) > 0, 3000))
 await page.screenshot({ path: `${OUT}terminal.png` })
 
-// Dropped on the terminal: a point with that row's words, and a follow.
+// Asked to follow the terminal (pointing at it never is).
 await op("companion.next", { timeout: 0 })
-await op("companion.look", { pane })
-await wait(900)
-const grip = page.locator('.companion-cursor[data-agent="Claude"] [data-companion-grip]')
-const g = await grip.boundingBox()
-await page.mouse.move(g.x + 5, g.y + 5); await page.mouse.down()
-await page.mouse.move(g.x + 40, g.y + 40, { steps: 4 }); await page.mouse.move(row.top ? 300 : 300, (row.top + row.bottom) / 2, { steps: 6 }); await page.mouse.up()
-r = await op("companion.next", { timeout: 4 })
-const point = r.moments?.find((m) => m.kind === "point")
-check("dropped on a terminal: a point at its row, with what's there", point?.pane === pane && point.row > 0 && /needle-17/.test(point.text ?? ""), r.moments)
+await op("companion.follow", { pane, as: "Claude" })
 const st = await op("companion.status")
-check("and it follows that pane", st.follows?.some((f) => f.pane === pane), st.follows)
-check("the point comes with what the terminal shows now (the look)", (r.notes ?? []).some((e) => e.pane === pane && /needle-17/.test(e.text ?? "")), r.notes)
+check("it follows that pane", st.follows?.some((f) => f.pane === pane), st.follows)
+await wait(2500)
 
 // The follow: a command's end, its new output.
 await page.locator(".xterm").click()

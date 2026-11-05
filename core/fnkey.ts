@@ -32,80 +32,44 @@ export function fnKey(hold = HOLD_MS) {
  *  its dictation). Unset reads as macOS's default, which acts. */
 export const fnActsToo = (usage: string | null) => usage?.trim() !== "0"
 
-/** macOS's dictation shortcut (AppleSymbolicHotKeys 164, its Control twice: a `modifier` entry with Control's flag), and
- *  AppleDictationAutoEnable, without which it's off: it would start Apple's dictation on a double Control too. */
-export function controlActsToo(hotKey: string | null, autoEnable: string | null) {
-  if (autoEnable?.trim() === "0") return false
-  try {
-    const k = JSON.parse(hotKey ?? "null") as { enabled?: boolean | number; value?: { type?: string; parameters?: number[] } } | null
-    return !!k?.enabled && k.value?.type === "modifier" && !!k.value.parameters?.some((p) => (p & 0x40000) !== 0)
-  } catch { return false }
-}
-
-// The dictation keys the user picks (plugins/core/dictation's `keys`), as the screen helper's tap knows them.
-const CODES: Record<string, number[]> = { fn: [63], right_option: [61], right_command: [54], double_control: [59, 62] }
+// The keys the user picks (dictation's and the companion's `keys`), as the screen helper's tap knows them: a key alone
+// by its code, a chord (two modifiers held together, nothing else) by its name.
+const CODES: Record<string, number[]> = { fn: [63], right_option: [61], right_command: [54] }
+export const CHORDS = ["control_option", "fn_control"] as const
+export const isChord = (k: string) => (CHORDS as readonly string[]).includes(k)
 export const keyCodes = (keys: readonly string[]) => keys.flatMap((k) => CODES[k] ?? [])
 
 /** How long right Option or Command must be alone before it counts: a chord's key comes sooner, and starts nothing. */
 export const ALONE_MS = 200
-/** Double Control: each press at most TAP_MS, and at most GAP_MS from one's release to the next press. */
-export const TAP_MS = 300, GAP_MS = 400
 
 export type FnEvent = { down: boolean } | { other: true }
 /** What the tap says: a watched key's press or release (`alone`: nothing else held), or that something else came. */
 export type ModEvent = { code?: number; on?: boolean; alone?: boolean; at?: number; other?: boolean }
-/** `fn`: what it means as fn's events; `wait`: call `settled` in ALONE_MS; `twice`: it was a double Control. */
-export type ModHeard = { fn: FnEvent[]; wait?: boolean; twice?: boolean }
+/** `fn`: what it means as fn's events; `wait`: call `settled` in ALONE_MS. */
+export type ModHeard = { fn: FnEvent[]; wait?: boolean }
 
-/** The keys but fn, as fn's events. Right Option or Command alone is fn itself; with another key it's what it always
- *  was. A double Control is a tap of fn, once: a third tap right after does nothing. */
+/** The right modifiers, as fn's events: alone, it's fn itself; with another key it's what it always was. */
 export function modKeys(keys: readonly string[]) {
   const codes = new Set(keyCodes(keys.filter((k) => k !== "fn")))
   let solo: { code: number; state: "waiting" | "down" | "dropped" } | null = null
-  let clean = false, ignored = false, pressed = 0, released = 0, taps = 0, quiet = -1
   const dropSolo = (): FnEvent[] => {
     if (!solo) return []
     const was = solo.state
     solo.state = "dropped"
     return was === "down" ? [{ other: true }] : []
   }
-  const dropControl = () => { clean = false; taps = 0 }
-  const control = (m: ModEvent, now: number): ModHeard => {
-    const fn = dropSolo()
-    if (m.on) {
-      if (now <= quiet) { ignored = true; clean = false; return { fn } }
-      if (!m.alone) { dropControl(); return { fn } }
-      if (taps && now - released > GAP_MS) taps = 0
-      pressed = now
-      clean = true
-      return { fn }
-    }
-    if (ignored) { ignored = false; quiet = now + GAP_MS; return { fn } }
-    if (!clean) return { fn }
-    clean = false
-    if (now - pressed > TAP_MS) { taps = 0; return { fn } }
-    released = now
-    if (++taps < 2) return { fn }
-    taps = 0
-    quiet = now + GAP_MS
-    return { fn: [...fn, { down: true }, { down: false }], twice: true }
-  }
-  const alone = (m: ModEvent, code: number): ModHeard => {
-    dropControl()
-    if (solo && solo.code !== code) return { fn: dropSolo() }
-    if (m.on) {
-      solo = { code, state: m.alone ? "waiting" : "dropped" }
-      return { fn: [], wait: !!m.alone }
-    }
-    const was = solo?.state
-    solo = null
-    return { fn: was === "waiting" ? [{ down: true }, { down: false }] : was === "down" ? [{ down: false }] : [] }
-  }
   return {
     heard(m: ModEvent): ModHeard {
       const code = m.code ?? -1
-      if (m.other || !codes.has(code)) { dropControl(); return { fn: dropSolo() } }
-      return code === 59 || code === 62 ? control(m, m.at ?? 0) : alone(m, code)
+      if (m.other || !codes.has(code)) return { fn: dropSolo() }
+      if (solo && solo.code !== code) return { fn: dropSolo() }
+      if (m.on) {
+        solo = { code, state: m.alone ? "waiting" : "dropped" }
+        return { fn: [], wait: !!m.alone }
+      }
+      const was = solo?.state
+      solo = null
+      return { fn: was === "waiting" ? [{ down: true }, { down: false }] : was === "down" ? [{ down: false }] : [] }
     },
     /** ALONE_MS after a `wait`, still alone: its press counts now. */
     settled(): FnEvent[] {
@@ -113,5 +77,51 @@ export function modKeys(keys: readonly string[]) {
       solo.state = "down"
       return [{ down: true }]
     },
+  }
+}
+
+// The Talk keys' gesture (HeyClicky's): held, it listens and sends when let go; a tap opens a box to type in; a double
+// tap listens hands-free until the next double tap. A key pressed with it (a shortcut) cancels what its press started.
+export const TAP_MS = 250, DOUBLE_MS = 350
+/** listen: its cursor at the pointer, hearing; send: what was said (and drawn) goes; type: a box to type in, nothing
+ *  heard; free: hands-free, into that box; cancel: nothing goes. */
+export type TalkAction = "listen" | "send" | "type" | "free" | "cancel" | null
+
+export function talkGesture(tap = TAP_MS, gap = DOUBLE_MS) {
+  let s: "idle" | "held" | "typed" | "freeing" | "free" | "freeDown" = "idle", at = 0, lastTap = -Infinity, quick = false
+  return {
+    get state() { return s },
+    down(now: number): TalkAction {
+      if (s === "typed" && now - lastTap <= gap) { s = "freeing"; return "free" }
+      if (s === "free") { s = "freeDown"; at = now; quick = now - lastTap <= gap; return null }
+      if (s !== "idle" && s !== "typed") return null
+      s = "held"
+      at = now
+      return "listen"
+    },
+    up(now: number): TalkAction {
+      if (s === "held") {
+        if (now - at >= tap) { s = "idle"; return "send" }
+        s = "typed"
+        lastTap = now
+        return "type"
+      }
+      if (s === "freeing") { s = "free"; lastTap = -Infinity; return null }
+      if (s === "freeDown") {
+        const short = now - at < tap
+        if (short && quick) { s = "idle"; return "send" }
+        s = "free"
+        lastTap = short ? now : -Infinity
+      }
+      return null
+    },
+    /** Another key with it: a shortcut, not for the companion. */
+    other(): TalkAction {
+      if (s !== "held") return null
+      s = "idle"
+      return "cancel"
+    },
+    /** The exchange ended elsewhere (sent from its box, Esc, closed): the next press starts anew. */
+    reset() { s = "idle"; lastTap = -Infinity },
   }
 }
