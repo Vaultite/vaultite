@@ -17,6 +17,15 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
   grab: (on) => ipcRenderer.send("screen:grab", !!on),
   open: (name, x, y) => ipcRenderer.send("screen:open", { name, x, y }),
   stop: () => ipcRenderer.send("screen:stop"),
+  // (the companion's drawings: this display's, and what the user presses on them)
+  draw: {
+    on(fn) {
+      const h = (_e, m) => fn(m)
+      ipcRenderer.on("vaultite:draw", h)
+      return () => { ipcRenderer.removeListener("vaultite:draw", h) }
+    },
+    act: (a) => ipcRenderer.send("screen:draw-act", a),
+  },
   // (a cursor's conversation, its own window: screen.html#panel)
   panel: {
     on(fn) {

@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import type { Any, VaultTest } from "./harness.ts"
 import { fileURLToPath } from "node:url"
+import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { api, check, exists, read, write } = $
@@ -742,6 +743,69 @@ export default async ($: VaultTest) => {
       (await api("POST", "ops/companion.unfollow", { id: f.id }))[1]?.stopped === 1, [st2, r2])
     ;[st2] = await api("POST", "ops/companion.follow", { tab: "tnope", as: "Claude" })
     check("companion: a tab no window has can't be followed", st2 === 404)
+  }
+  {
+    // Drawings over the screen (companion draw --marks): to the helper's socket, the app's places found by the window,
+    // gone at the next ask, Clear or companion clear; Keep saves an .excalidraw. web/qa/screendraw.mjs draws them.
+    const { EventEmitter } = await import("node:events")
+    const live = c.plugin.sockets.find((x: Any) => x.pattern.join("/") === "companion/live")!
+    const fake = (answer?: (m: Any, ws: Any) => void) => {
+      const ws: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], close() {}, send(t: string) { const m = JSON.parse(t); ws.got.push(m); answer?.(m, ws) } })
+      return ws
+    }
+    const req: Any = { headers: {}, socket: { remoteAddress: "127.0.0.1" } }
+    const helper = fake(), last = () => helper.got.filter((m: Any) => m.t === "drawing").at(-1)
+    live.fn(helper, req, { query: { screen: "1" }, wild: [] })
+    const rects: Any = { "ui:tab:t1": { x: 40, y: 60, w: 120, h: 28 } }
+    const win = fake((m, ws) => { if (m.t === "locate") setImmediate(() => ws.emit("message", JSON.stringify({ t: "done", rid: m.rid, ok: true, rects: Object.fromEntries(m.places.filter((p: string) => rects[p]).map((p: string) => [p, rects[p]])) }))) })
+    live.fn(win, req, { query: {}, wild: [] })
+    let [st3, r3] = await api("POST", "ops/companion.draw", { say: "Share is here. Then pick who.", marks: [{ type: "ring", at: [900, 40, 96, 32], label: "Share" }, { type: "connect", from: [900, 40, 96, 32], to: { ui: "tab:t1" }, beat: 1 },
+      { type: "paper", title: "Login flow", items: [{ type: "rect", x: 10, y: 10, w: 100, h: 40, label: "Log in" }] }] })
+    const d1 = last()?.drawing
+    const said = (await api("POST", "ops/companion.status", {}))[1]
+    check("companion: draw --marks sends the drawing to the helper: checked, in its colour, timed with its words, the app's places found by the window",
+      st3 === 200 && d1?.id === r3.screen && d1.agent === "Claude" && d1.tint === "orange" && d1.caption === "Share is here. Then pick who." && d1.marks[0].at.w === 96 &&
+      JSON.stringify(d1.places["ui:tab:t1"]) === JSON.stringify(rects["ui:tab:t1"]), [st3, r3, d1])
+    check("companion: its words are said, its cursor at its first mark", said.notes.some((n: Any) => n.kind === "say" && n.text === "Share is here. Then pick who." && n.sx === 948 && n.sy === 56), said.notes.filter((n: Any) => n.kind === "say"))
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "check", at: [5, 5] }] })
+    check("companion: another draw adds to the drawing up", st3 === 200 && last()?.drawing.id === d1.id && last()?.drawing.marks.length === 4, last())
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "blob", at: [1, 2] }] })
+    check("companion: a wrong mark says which and how it's written", st3 === 400 && r3.error.startsWith("marks[0] (blob): type is one of"), r3)
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "frame", at: { pane: "tnope" } }] })
+    check("companion: a pane the window doesn't show is refused", st3 === 409 && /pane:tnope/.test(r3.error), r3)
+    ;[st3, r3] = await api("POST", "ops/companion.draw", {})
+    check("companion: draw takes marks or actions", st3 === 400, r3)
+    // (Keep, pressed on the screen: an .excalidraw by its pad's title; the helper told where)
+    helper.emit("message", JSON.stringify({ t: "drawing-act", id: d1.id, kind: "keep", places: {} }))
+    await waitFor(() => exists("Drawings/Login flow.excalidraw"), 5000, 20)
+    const kept = JSON.parse(read("Drawings/Login flow.excalidraw"))
+    check("companion: Keep saves the scratch pad as Excalidraw's JSON in Drawings/, by its title, and the overlay hears where",
+      kept.type === "excalidraw" && kept.elements.some((e: Any) => e.type === "text" && e.text === "Log in" && e.containerId) && last()?.drawing.kept === "Drawings/Login flow.excalidraw", last())
+    ;[st3, r3] = await api("POST", "ops/companion.save-drawing", { path: "Drawings/Marks", all: true })
+    const all = st3 === 200 ? JSON.parse(read("Drawings/Marks.excalidraw")) : null
+    check("companion: save-drawing keeps it where asked, its marks too with all", r3.path === "Drawings/Marks.excalidraw" && all?.elements.some((e: Any) => e.type === "ellipse") && all.elements.some((e: Any) => e.type === "arrow"), [st3, r3])
+    // (a new drawing after Keep; gone at companion clear, at the next ask, at Clear)
+    await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
+    const d2 = last()?.drawing
+    check("companion: a kept drawing isn't added to: the next is a new one", !!d2 && d2.id !== d1.id && d2.marks.length === 1, d2)
+    ;[st3, r3] = await api("POST", "ops/companion.clear", {})
+    check("companion: companion clear takes its drawing down", st3 === 200 && last()?.drawing === null, last())
+    await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
+    c.addMoment({ kind: "ask", text: "and this?", app: "com.example.mail", sx: 5, sy: 5 })
+    check("companion: the next ask takes the last answer's drawing down", last()?.drawing === null, last())
+    await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
+    helper.emit("message", JSON.stringify({ t: "drawing-act", id: last()?.drawing.id, kind: "clear" }))
+    check("companion: Clear on the screen takes it down", last()?.drawing === null, last())
+    ;[st3] = await api("POST", "ops/companion.save-drawing", {})
+    check("companion: nothing up, nothing to keep", st3 === 404)
+    // (the elements a summoned ask came with: {el} spots snap to them on the server too)
+    c.screenMoment({ kind: "ask", text: "what's this?", app: "com.example.mail", sx: 5, sy: 5, near: [{ id: "a1", role: "AXButton", label: "Share", frame: { x: 100, y: 200, width: 80, height: 30 } }] })
+    ;[st3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { el: "a1" } }] })
+    const els = last()?.drawing?.places?.["el:a1"], me3 = (await api("POST", "ops/companion.status", {}))[1].agents.find((a: Any) => a.name === "Claude")
+    check("companion: an ask's elements are the drawing's places, its cursor at the one ringed", st3 === 200 && els?.w === 80 && els.label === "Share" && me3?.sx === 140 && me3.sy === 215, [els, me3])
+    await api("POST", "ops/companion.clear", {})
+    helper.emit("close"); win.emit("close")
+    fs.rmSync($.vault.abs("Drawings"), { recursive: true, force: true })
   }
   await api("PATCH", "config/plugin/companion", { mode: "off" })
   check("companion: off hears nothing", c.addMoment({ kind: "ask", text: "hello?" }) === null)

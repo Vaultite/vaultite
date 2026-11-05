@@ -7,6 +7,7 @@ import type { Change, Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "pair"
 import type { Target } from "./places.ts"
+import { locate } from "./locate.ts"
 export type { Target } from "./places.ts"
 /** listening: this window's own, the user dictating where it is (`hear`) while it's free; the server never says it. */
 /** Where a page's element is in its page (CSS px, at its zoom): the server's word for a place's `el`. */
@@ -233,6 +234,8 @@ function open() {
     else if (m.t === "stream-end") streamer?.(null, { t: "end", rid: String(m.rid), text: String(m.text ?? "") })
     else if (m.t === "y-state" || m.t === "y" || m.t === "aw" || m.t === "y-reject" || m.t === "y-peers" || m.t === "y-clash" || m.t === "y-gone") rooms?.heard(m)
     else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
+    // (where its places are on the screen, for a drawing over it)
+    else if (m.t === "locate") say({ t: "done", rid: m.rid, ok: true, rects: locate(m.places) })
   }
 }
 

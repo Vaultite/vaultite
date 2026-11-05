@@ -13,8 +13,9 @@ import { dictate, dictating, stopFor, dictationEngines, type DictationSink } fro
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
 import { atOffset, inkOf, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
-import { closePanel, onPanel, openPanel, overlayActs, ownWindows, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showOverlay, type PanelData } from "./overlay.ts"
+import { closePanel, drawingActs, endDrawing, onPanel, openPanel, overlayActs, ownWindows, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
+import { elementPlaces } from "./drawing.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
@@ -78,6 +79,7 @@ export async function startHelper(h: HelperHost) {
     asked: () => [...asked], scene: () => lastScene, badge: () => badged } })
   onScreenEvent(heard)
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) } })
+  drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu,
     closed: () => { if (session?.into === "panel") stopFor(session.sink, true); endExchange(); draw() } })
   if (!QUIET) await startScreen().catch((e) => console.error("vaultite: the screen helper didn't start:", e))
@@ -208,6 +210,8 @@ const live = (() => {
     s.on("message", (d) => {
       let m: Record<string, unknown>
       try { m = JSON.parse(String(d)) } catch { return }
+      // (the companion's drawing over the screen: the server's, its places found there)
+      if (m.t === "drawing") return showDrawing((m.drawing as Parameters<typeof showDrawing>[0]) ?? null, elementPlaces(lastNear))
       if (m.t === "state") {
         state.mode = String(m.mode); state.name = String(m.name)
         state.agents = new Map((m.agents as Agent[]).map((a) => [a.name, a]))
@@ -228,7 +232,7 @@ const live = (() => {
   return {
     state,
     open(p: number | null) { this.close(); port = p; if (p !== null) connect() },
-    close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = [] },
+    close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = []; showDrawing(null) },
     say(m: object) { if (QUIET) asked.push(m); if (ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(m)); return true } return false },
   }
 })()
@@ -469,6 +473,7 @@ function endExchange() {
   if (!exchange && !summon) return
   exchange = null
   summon = null
+  endDrawing()
   gesture.reset()
   void screenAsk("exchange", { on: false }).catch(() => {})
   if (panelOpen()) closePanel()

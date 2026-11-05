@@ -1,8 +1,9 @@
 /** The companion over the whole screen: a see-through window a display, every Space and full screen app too, the pointer
  *  going through but over a bubble or the pill (to click them); it draws web/screen.html as helper.ts says. */
-import { BrowserWindow, ipcMain, screen, shell, type Display, type IpcMainEvent } from "electron"
+import { BrowserWindow, clipboard, ipcMain, screen, shell, type Display, type IpcMainEvent } from "electron"
 import path from "node:path"
 import { panelAt, type Point, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
+import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
 export type OverlayActs = { open: (name: string, at: Point) => void; stop: () => void }
@@ -16,7 +17,7 @@ let scene: Scene = { agents: [], summon: null, ink: null, pill: null }
 let acts: OverlayActs | null = null
 let watching = false
 
-const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.ink && !x.pill
+const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.ink && !x.pill && !drawing
 /** What each window was sent last (its scene's shape and places), and its hiding once it's had nothing to draw a while. */
 const sent = new Map<BrowserWindow, { shape: string; at: string }>()
 const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()
@@ -33,7 +34,7 @@ function make(d: Display) {
   // (not a window to the user: Mission Control leaves it out)
   w.setHiddenInMissionControl(true)
   w.setAlwaysOnTop(true, "screen-saver")
-  w.webContents.on("did-finish-load", () => { sent.delete(w); push() })
+  w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (drawing) sendDrawing() })
   if (url) void w.loadURL(url).catch(() => {})
   wins.set(d.id, w)
   return w
@@ -82,6 +83,29 @@ export function showOverlay(base: string | null, s?: Scene) {
   if (wins.size !== screen.getAllDisplays().length) fit(); else push()
 }
 
+// ---------- the companion's drawing (drawing.ts): each display its part, in its own points
+
+let drawing: Drawing | null = null, onDrawAct: ((a: DrawAct) => void) | null = null
+/** Draw `d` over the screens (null: take it down); `found` the places the helper knows (its asks' elements, "el:<id>"). */
+export function showDrawing(d: Drawing | null, found?: Drawing["places"]) {
+  drawing = d && { ...d, places: { ...found, ...d.places } }
+  sendDrawing()
+  push()
+}
+function sendDrawing() {
+  const ds = screen.getAllDisplays(), p = screen.getCursorScreenPoint()
+  for (const d of ds) { const w = wins.get(d.id); if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:draw", drawing && drawingFor(drawing, d, ds, p)) }
+}
+/** The exchange is over: its drawing goes, and the server hears it. */
+export function endDrawing() {
+  if (!drawing) return
+  const id = drawing.id
+  showDrawing(null)
+  onDrawAct?.({ id, kind: "clear" })
+}
+/** What the user presses on a drawing: Clear, Keep and its next step go to `fn`; copy and open are done here. */
+export function drawingActs(fn: (a: DrawAct) => void) { onDrawAct = fn }
+
 const mine = (e: IpcMainEvent) => [...wins.values()].find((w) => w.webContents === e.sender)
 export function overlayActs(a: OverlayActs) {
   acts = a
@@ -94,6 +118,16 @@ export function overlayActs(a: OverlayActs) {
     acts?.open(m.name, { x: b.x + m.x, y: b.y + m.y })
   })
   ipcMain.on("screen:stop", (e) => { if (mine(e)) acts?.stop() })
+  ipcMain.on("screen:draw-act", (e, a: DrawAct) => {
+    if (!mine(e) || !drawing || !a || typeof a !== "object") return
+    const d = drawing, act = { ...a, id: d.id }
+    if ((a.kind === "copy" || a.kind === "open" || a.kind === "ask") && !offered(d, act)) return
+    if (a.kind === "copy") return clipboard.writeText(a.text!)
+    if (a.kind === "open") return void shell.openExternal(a.url!)
+    // (gone at once; the server hears it after)
+    if (a.kind === "clear") showDrawing(null)
+    if (a.kind === "clear" || a.kind === "keep" || a.kind === "ask") onDrawAct?.(act)
+  })
 }
 
 // ---------- a cursor's conversation: its own small window, the one that takes the keyboard (the overlay never does)

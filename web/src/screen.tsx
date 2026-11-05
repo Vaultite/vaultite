@@ -15,6 +15,7 @@ import { cn, followSystemTheme } from "@/lib/utils"
 import { presence, type Mark as MarkKind } from "../../plugins/core/companion/look"
 import { arrowBox, boxAt, flagBox } from "../../plugins/core/companion/boxes"
 import { Chat, type ChatItem } from "../../plugins/core/companion/Chat"
+import { type DrawBridge, ScreenDrawings } from "./screendraw"
 
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; width: number; height: number }
@@ -27,7 +28,7 @@ type Shown = { width: number; height: number; top: number; agents: Agent[]; summ
 type At = { agents: Record<string, number[]>; summon: [number, number] | null }
 type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean } }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
-  open: (name: string, x: number, y: number) => void; stop: () => void
+  open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
   panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: () => void; mic: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
@@ -344,8 +345,8 @@ function Screen() {
   return (
     <>
       {s.ink && <Ink ink={s.ink} />}
-      {/* (the agents' drawings mount here, under their cursors) */}
-      <div data-drawings className="pointer-events-none fixed inset-0" />
+      {/* (the agents' drawings, under their cursors) */}
+      <ScreenDrawings grab={grab} />
       {s.agents.map((a) => <Cursor key={a.name} a={a} />)}
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
       {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} />}

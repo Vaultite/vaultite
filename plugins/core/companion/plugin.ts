@@ -16,6 +16,8 @@ import { partialArgs } from "./partial.ts"
 import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
 import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from "./text.ts"
 import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
+import { screenDrawings } from "./drawings.ts"
+import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
@@ -310,6 +312,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
     for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
     for (const s of sessions()) if (isChat(s.id) && meantFor(full, s.name)) void pump(s.name)
   }
+  // (a new ask: the last answer's drawing goes)
+  if (full.for && (m.kind === "ask" || m.kind === "point")) screenDrawing.clear({ agent: full.for })
   // (one starting shows that until its first `next` takes it)
   if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(full.for))?.state !== "starting") {
     setAgent(full.for, { state: "thinking", ...placeOf(m) })
@@ -779,6 +783,22 @@ const roomMessage = (m: Record<string, unknown>) => typeof m.t === "string" && (
 /** The desktop app's helper (electron/helper.ts): it draws the agents outside the window, and says what the user asks or
  *  points at on screen; it opens no notes. */
 const screens = new Set<WebSocket>()
+/** The companion's drawing over the screen (drawings.ts). */
+const screenDrawing = screenDrawings(plugin, {
+  send: (m) => { for (const ws of screens) send(ws, m) },
+  locate: async (places) => {
+    const ws = [...windows.entries()].sort((a, b) => b[1].at - a[1].at)[0]?.[0], reply: { rects?: Record<string, ScreenRect> } = {}
+    if (!ws) return {}
+    await askWindow(ws, { t: "locate", places }, 3000, reply).catch(() => false)
+    return reply.rects ?? {}
+  },
+  tint: (a) => agentOf(a).tint,
+  elements: (a) => Object.fromEntries((nearBy.get(key(a)) ?? []).map((e) => [`el:${e.id}`, { x: e.frame.x, y: e.frame.y, w: e.frame.width, h: e.frame.height, label: e.label }])),
+  words: (a) => {
+    const asked = moments.findLast((m) => m.for === a && (m.kind === "ask" || m.kind === "point"))?.t ?? 0
+    return [...notes.values()].findLast((n) => n.kind === "say" && n.agent === a && n.t >= asked)?.text
+  },
+})
 const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said"])
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
 function screenPlace(m: Record<string, unknown>) {
@@ -815,6 +835,7 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
   send(ws, snapshot())
+  if (screenDrawing.current()) send(ws, screenDrawing.message())
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
@@ -823,9 +844,21 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
     // (a cursor's conversation opened over the screen: its says seen)
     if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
+    if (m.t === "drawing-act") return void drawingAct(m, req)
     if (m.t === "moment") screenMoment(m, req)
   })
   ws.on("close", () => screens.delete(ws))
+}
+
+/** What the user pressed on the drawing over the screen: Clear, Keep, a button's next step (an ask by where it is). */
+function drawingAct(m: Record<string, unknown>, req: IncomingMessage) {
+  const d = screenDrawing.current()
+  if (!d || m.id !== d.id) return
+  if (m.kind === "clear") return void screenDrawing.clear({ id: d.id })
+  if (m.kind === "keep") return void plugin.runOp("companion.save-drawing", { id: d.id, places: m.places ?? {} }, YOU, req).catch((e) => console.error(`companion: keep: ${(e as Error).message}`))
+  const a = agents.get(key(d.agent)), r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
+  if (m.kind === "ask" && str(m.text)) addMoment({ kind: "ask", for: d.agent, text: str(m.text).slice(0, 2000), ...(a?.app ? { app: a.app } : {}),
+    ...(r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : a?.sx !== undefined ? { sx: a.sx, sy: a.sy } : {}) }, req)
 }
 
 plugin.socket("companion/live", (ws, req, { query }) => {
@@ -2599,8 +2632,16 @@ plugin.op({
 plugin.op({
   id: "companion.draw",
   cli: "companion draw",
-  summary: "Change a drawing: add, move, change or delete its elements, drawn before the user's eyes when it's open (they can undo it), else saved to the file.",
-  help: `actions: a JSON list, all checked before any is made (\`vau docs excalidraw\` has every field). Ids are in the
+  summary: "Draw on the screen (marks: ring, point, connect, a scratch pad..., hand-drawn in your colour with your words), or change a drawing's elements (actions, on an .excalidraw).",
+  help: `marks: what to draw over the user's screen, in beats with your words (say), taken down at their next ask or Clear;
+each call adds to what's up (companion clear takes it down). The user can Keep it (companion save-drawing).
+${VOCABULARY}
+
+  vau companion draw --say "Click Share. Then pick who." --marks '[{"type":"ring","at":{"el":"e12"},"label":"Share"},
+    {"type":"connect","from":{"el":"e12"},"to":[900,420,120,30],"beat":1}, {"type":"num","at":[900,420],"n":2,"beat":1}]'
+  vau companion draw --marks '[{"type":"paper","title":"Sales","grid":true,"items":[{"type":"chart","kind":"bar","values":[3,5,8],"labels":["Q1","Q2","Q3"]}]}]'
+
+actions: a drawing's changes, all checked before any is made (\`vau docs excalidraw\` has every field). Ids are in the
 drawing's text (next, vau render). Only in pair mode or when they asked you to.
 
   vau companion draw --path Drawings/Plan.excalidraw --actions '[{"op":"add","type":"rectangle","id":"login","x":0,"y":0,"label":"Log in","fill":"blue"},
@@ -2608,9 +2649,13 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
     {"op":"change","id":"home","label":"Start"}, {"op":"delete","id":"old"}]'`,
   kind: "write",
   lock: false,
-  params: { actions: { type: "array", required: true, items: { type: "object" }, description: "what to do, in order: {\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...}" },
+  params: { marks: { type: "array", items: { type: "object" }, description: "marks to draw on the screen: {\"type\": \"ring\" | \"point\" | \"frame\" | \"connect\" | \"paper\" | ..., ...} (see help)" },
+    say: { type: "string", description: "with marks: your words, said with them; each mark's beat is a sentence of them" },
+    actions: { type: "array", items: { type: "object" }, description: "on a drawing (path): what to do, in order: {\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...}" },
     path: PATH, as: AS },
   run: async (p, ctx) => {
+    if (p.marks !== undefined) return drawOnScreen(p, ctx)
+    if (p.actions === undefined) throw new OpError("marks (on the screen) or actions (on a drawing, with path)")
     const name = who(p), t = target(p), apply = drawer(t.path!)
     if (!apply) throw new OpError(`${t.path} isn't a drawing (a .excalidraw file, its plugin on): companion edit writes in notes`)
     did(name, "draw")
@@ -2629,14 +2674,39 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
       })
     } finally { setAgent(name, { state: acting(name) }) }
   },
-  text: (r) => `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`,
-  did: (p) => edited(p),
+  text: (r) => (r.screen ? `Drew ${r.marks} on the screen (${r.screen}).` : `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`),
+  did: (p) => (p.marks !== undefined ? { action: "ui", text: "Drew on the screen", paths: [], by: who(p) } : edited(p)),
+})
+
+/** Marks over the screen, its cursor at the first and its words said with them. */
+async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
+  const name = who(p)
+  did(name, "draw")
+  const d = await screenDrawing.draw(name, p.marks, str(p.say) || undefined)
+  const r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
+  const at = r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : {}
+  if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...at, ...(p.as ? { as: p.as } : {}) })
+  else if (r) setAgent(name, { ...at, state: acting(name) })
+  return { screen: d.id, marks: (p.marks as unknown[]).length }
+}
+
+plugin.op({
+  id: "companion.save-drawing",
+  cli: "companion save-drawing",
+  summary: "Keep the drawing on the screen as an .excalidraw in the vault: its scratch pads, cards and words (all: its marks too).",
+  help: "What Keep does on the screen. Default path: Drawings/<its title>.excalidraw.",
+  kind: "write",
+  params: { id: { type: "string", description: "the drawing (default: the one up)" }, path: { ...PATH, description: "where (default Drawings/<its title>.excalidraw)" },
+    all: { type: "boolean", description: "the marks on the screen too, as they were placed" }, places: { type: "object", description: "where the overlay found its places (Keep's)" } },
+  run: async (p, ctx) => ({ path: await screenDrawing.keep(ctx, { id: str(p.id) || undefined, path: str(p.path) || undefined, all: p.all === true, places: (p.places ?? {}) as Record<string, ScreenRect> }) }),
+  text: (r) => `Kept ${r.path}.`,
+  did: () => ({ action: "create", text: "Kept the companion's drawing", paths: [] }),
 })
 
 plugin.op({
   id: "companion.clear",
   cli: "companion clear",
-  summary: "Take back your comments and suggestions (one by id, or all of yours).",
+  summary: "Take back your comments and suggestions (one by id, or all of yours, and your drawing on the screen).",
   kind: "write",
   lock: false,
   params: { id: { type: "string", description: "the item (n12); default: all of yours" }, as: AS },
@@ -2644,7 +2714,8 @@ plugin.op({
     // (an agent's own: never a person's thread)
     const name = who(p), gone = [...notes.values()].filter((n) => !n.by && (p.id ? n.id === p.id : n.agent === name))
     for (const n of gone) dropNote(n.id)
-    return { cleared: gone.length }
+    const drew = !p.id && screenDrawing.clear({ agent: name })
+    return { cleared: gone.length + (drew ? 1 : 0) }
   },
   text: (r) => `Cleared ${r.cleared}.`,
   did: (p) => ({ action: "ui", text: p.id ? `Took back ${str(p.id)}` : "Took back its comments and suggestions", paths: [], by: who(p) }),

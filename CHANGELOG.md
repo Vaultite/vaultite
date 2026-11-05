@@ -12,6 +12,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Dictation in the cloud**: with a Soniox key (`vau secret "Soniox API key" | vau dictation key`) dictation streams
   to Soniox, English and Portuguese and others switching on their own, the final words a moment after you stop; offline
   or if it drops, this Mac's recognizer finishes.
+- **The companion draws its answers on the screen**: rings, arrows, numbered steps, ticks, a spotlight, words and a
+  scratch pad with charts, hand-drawn in its colour as it speaks, with buttons to copy, open or ask the next step; Clear
+  takes them down (so does your next ask), Keep saves the pad as a drawing in Drawings/.
 - **Pane tab bars, on their own**: the switch (was Pane titles) is each split pane's strip of its tabs, the same with
   the tab bar on or in the sidebar; off, panes start with what they show, a tab dragged over one brings its strip back
   to drop into, and the tab bar's cells say how many more tabs a pane has (+2, a click lists them). A terminal pane's

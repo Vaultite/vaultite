@@ -3091,4 +3091,89 @@ await section("pagers", async () => {
   check("pagers: a spring started at a flick's speed is further along early, and still lands without overshooting", fast.at(0.05) > rest.at(0.05) && Array.from({ length: 60 }, (_, i) => fast.at(i / 100)).every((x) => x <= 1.0001), [rest.at(0.05), fast.at(0.05)])
 })
 
+await section("screen drawings", async () => {
+  const sm: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/screenmarks.ts")).href)
+  const lay: Any = await web("screendraw/layout.ts")
+  const dr: Any = await import(pathToFileURL(path.join(ROOT, "electron/drawing.ts")).href)
+  const err = (marks: unknown) => { try { sm.checkMarks(marks); return "" } catch (e) { return (e as Error).message } }
+  // ---- the vocabulary, checked
+  const ok = sm.checkMarks([{ type: "ring", at: [10, 20, 30, 40], label: "Share", beat: 1 }, { type: "point", at: [5, 6] }, { type: "connect", from: { el: "e12" }, to: { x: 1, y: 2, width: 3, height: 4 } },
+    { type: "paper", title: "Plan", grid: true, items: [{ type: "chart", kind: "bar", values: [1, 2] }, { type: "arrow", from: [0, 0], to: [100, 50], label: "then" }] },
+    { type: "button", label: "Next", do: { ask: "Go on" } }, { type: "scroll", at: { ui: "tab:t3" } }])
+  check("screen drawings: spots read as boxes, el/pane/ui kept; defaults filled (scroll down, a pad's size, a chart's box)",
+    JSON.stringify(ok[0].at) === '{"x":10,"y":20,"w":30,"h":40}' && JSON.stringify(ok[1].at) === '{"x":5,"y":6,"w":0,"h":0}' && ok[2].from.el === "e12" && ok[2].to.w === 3 &&
+    ok[3].w === 360 && ok[3].items[0].w === 328 && ok[5].dir === "down" && ok[0].beat === 1, ok)
+  const bad = {
+    type: err([{ type: "circle", at: [1, 2] }]), spot: err([{ type: "ring", at: [1, 2, 3] }]), el: err([{ type: "ring", at: { el: "a b" } }]), url: err([{ type: "open", url: "javascript:alert(1)" }]),
+    outside: err([{ type: "paper", items: [{ type: "rect", x: 300, y: 10, w: 100, h: 20 }] }]), labels: err([{ type: "paper", items: [{ type: "chart", kind: "bar", values: [1, 2], labels: ["a"] }] }]),
+    action: err([{ type: "button", label: "x", do: { run: "rm" } }]), many: err(Array.from({ length: 41 }, () => ({ type: "check", at: [0, 0] }))), list: err({ type: "ring" }),
+  }
+  check("screen drawings: what's wrong says which mark and how it's written (no unknown types, scripts, links but http, items off the pad)",
+    bad.type.startsWith("marks[0] (circle): type is one of") && bad.spot.includes("[x, y], [x, y, w, h]") && bad.el.includes("at.el: an id") && bad.url.includes("http(s)") &&
+    bad.outside.includes("items[0]: x, y, w, h: inside the paper") && bad.labels.includes("one per value") && bad.action.includes("do:") && bad.many.includes("at most 40") && bad.list.includes("a JSON list"), bad)
+  check("screen drawings: the app's places a drawing names, to find on screen", sm.appPlaces(ok).join() === "ui:tab:t3")
+  // ---- beats, with the words' sentences
+  check("screen drawings: words read as sentences (a line's end too)", sm.sentences("Click Share. Then pick who!\nDone").join("|") === "Click Share.|Then pick who!|Done")
+  const times = sm.beatTimes("Click Share up here. Then pick who you want in the list.", 2)
+  check("screen drawings: each beat starts when the sentence before is read, longer ones later; past the words, a steady pace", times[0] === 0 && times[1] >= 700 && times[2] - times[1] > times[1] && times[2] - times[1] <= 3500, times)
+  // ---- labels: never over what they name, always on screen
+  const rnd = (() => { let a = 7; return () => { a = (a * 16807) % 2147483647; return a / 2147483647 } })(), screen = { x: 0, y: 25, w: 1280, h: 775 }
+  const bads: unknown[] = []
+  for (let i = 0; i < 400; i++) {
+    const w = 10 + rnd() * 400, h = 10 + rnd() * 200, t = { x: rnd() * (1280 - w), y: 25 + rnd() * (775 - h), w, h }, size = { w: 40 + rnd() * 120, h: 22 }
+    const taken = [{ x: t.x + t.w + 10, y: t.y - 30, w: 80, h: 22 }], l = lay.labelAt(t, size, screen, taken)
+    if (!lay.inside(l, screen) || lay.overlaps(l, t)) bads.push({ t, l })
+  }
+  check("screen drawings: a label never covers its target and stays on screen (400 random targets, edges and corners)", !bads.length, bads.slice(0, 3))
+  const huge = lay.labelAt({ x: 0, y: 25, w: 1280, h: 775 }, { w: 60, h: 22 }, screen)
+  check("screen drawings: a target as big as the screen: its label still on screen", lay.inside(huge, screen), huge)
+  const corner = lay.labelAt({ x: 1240, y: 26, w: 40, h: 20 }, { w: 90, h: 22 }, screen)
+  check("screen drawings: in the top right corner it goes below or left, never off screen", lay.inside(corner, screen) && !lay.overlaps(corner, { x: 1240, y: 26, w: 40, h: 20 }), corner)
+  // ---- calm space, a whole drawing placed
+  const avoid = [{ x: 100, y: 100, w: 600, h: 300 }], spot = lay.calmSpot({ w: 300, h: 200 }, screen, avoid, { x: 400, y: 250 })
+  check("screen drawings: a card goes on calm space nearest where it's wanted, clear of what's marked", lay.inside(spot, screen) && !lay.overlaps(spot, lay.inflate(avoid[0], 24)), spot)
+  const d = { id: "d1", agent: "Claude", tint: "orange", t: 0, places: { "el:e1": { x: 1500, y: 300, w: 80, h: 30 } }, marks: sm.checkMarks([
+    { type: "ring", at: { el: "e1" }, label: "This one" }, { type: "connect", from: { el: "e1" }, to: [200, 300, 100, 40], label: "goes here" }, { type: "frame", at: [180, 280, 140, 80], label: "Area" },
+    { type: "point", at: [1700, 700], label: "There" }, { type: "write", text: "A note on calm space" }, { type: "sticky", text: "Remember" }, { type: "check", at: [600, 600, 40, 20] }]) }
+  const one = { width: 1280, height: 800, origin: { x: 0, y: 0 }, home: true, top: 25 }, two = { width: 1280, height: 800, origin: { x: 1280, y: 0 }, home: false, top: 25 }
+  const size = (m: Any) => (m.label ? { w: m.label.length * 7 + 18, h: 22 } : null)
+  const a = lay.place(d, one, size), b = lay.place(d, two, size)
+  const types = (ps: Any[]) => ps.map((p) => p.mark.type).join()
+  check("screen drawings: each display draws its marks (a connect on both its ends'), the home one the cards", types(a) === "connect,frame,write,sticky,check" && types(b) === "ring,connect,point", [types(a), types(b)])
+  const ring = b.find((p: Any) => p.mark.type === "ring")
+  check("screen drawings: a display's marks in its own points", ring.box.x === 220 && ring.box.y === 300, ring.box)
+  const all = [...a, ...b], marks = all.filter((p: Any) => p.box && !sm.CARDS.has(p.mark.type)).map((p: Any) => p.box)
+  const labelsBad = all.filter((p: Any) => p.label && (!lay.inside(p.label, { x: 0, y: 25, w: 1280, h: 775 }) || (p.mark.type !== "connect" && lay.overlaps(p.label, p.box))))
+  check("screen drawings: placed labels stay on screen, off their targets", all.filter((p: Any) => p.label).length === 5 && !labelsBad.length, labelsBad)
+  const cards = a.filter((p: Any) => p.card)
+  check("screen drawings: placed cards apart, on screen, clear of every mark", cards.length === 2 && !lay.overlaps(cards[0].card, cards[1].card) && cards.every((c: Any) => lay.inside(c.card, { x: 0, y: 25, w: 1280, h: 775 }) && !marks.some((m: Any) => lay.overlaps(c.card, m))), cards.map((c: Any) => c.card))
+  const busy = [{ x: 0, y: 25, w: 1280, h: 300 }], roomy = lay.calmSpot({ w: 200, h: 100 }, screen, busy, { x: 600, y: 200 })
+  check("screen drawings: a card goes to the emptiest room, not just next to what's on screen", roomy.y >= 325 + 24 + 120, roomy)
+  const own = { ...d, places: { "el:b": { x: 600, y: 300, w: 80, h: 30, label: "Share" } }, marks: sm.checkMarks([{ type: "ring", at: { el: "b" }, label: "share" }, { type: "ring", at: { el: "b" }, label: "Send it here" }]) }
+  const ownLabels = lay.place(own, one, size).map((p: Any) => !!p.label).join()
+  check("screen drawings: a label that only repeats its element's own word is left out", ownLabels === "false,true", ownLabels)
+  // ---- the electron side: which display has the cards; only what the drawing offers runs
+  const displays = [{ id: 1, bounds: { x: 0, y: 0, width: 1280, height: 800 } }, { id: 2, bounds: { x: 1280, y: 0, width: 1280, height: 800 } }]
+  check("screen drawings: the home display is where its first place is, else the pointer's", dr.homeOf(d, displays, { x: 10, y: 10 }) === 2 && dr.homeOf({ ...d, marks: [{ type: "write", text: "x" }] }, displays, { x: 1300, y: 10 }) === 2, dr.homeOf(d, displays, { x: 10, y: 10 }))
+  check("screen drawings: an ask's elements become its places, by id", JSON.stringify(dr.elementPlaces([{ id: "a3", role: "AXButton", label: "Share", frame: { x: 1, y: 2, width: 3, height: 4 } }])) === '{"el:a3":{"x":1,"y":2,"w":3,"h":4,"label":"Share"}}')
+  const offer = { ...d, marks: sm.checkMarks([{ type: "copy", text: "abc" }, { type: "button", label: "Go", do: { open: "https://lighthouse.test" } }]) }
+  check("screen drawings: a copy or an open runs only when the drawing offers it", dr.offered(offer, { id: "d1", kind: "copy", text: "abc" }) && dr.offered(offer, { id: "d1", kind: "open", url: "https://lighthouse.test" }) &&
+    !dr.offered(offer, { id: "d1", kind: "open", url: "https://evil.test" }) && !dr.offered(offer, { id: "d1", kind: "copy", text: "other" }))
+  // ---- kept: an .excalidraw scene
+  const scene = sm.toExcalidraw(sm.checkMarks([{ type: "paper", title: "Plan", items: [{ type: "rect", x: 10, y: 10, w: 100, h: 50, label: "Idea" }, { type: "arrow", from: [110, 35], to: [200, 35] },
+    { type: "chart", kind: "bar", x: 10, y: 100, w: 200, h: 100, values: [1, -2, 3], labels: ["a", "b", "c"] }, { type: "path", points: [[0, 0], [10, 10], [20, 5]] }] },
+    { type: "sticky", text: "Remember" }, { type: "ring", at: [10, 10, 20, 20] }]), { tint: "blue" })
+  const els = scene.elements, ids = new Set(els.map((e: Any) => e.id))
+  const box = els.find((e: Any) => e.type === "rectangle" && e.boundElements), label = box && els.find((e: Any) => e.id === box.boundElements[0].id)
+  check("screen drawings: kept as Excalidraw's JSON: unique ids, a shape's label bound both ways, arrows' points relative, its tint as Excalidraw's blue",
+    scene.type === "excalidraw" && scene.version === 2 && ids.size === els.length && label?.containerId === box.id && label.text === "Idea" &&
+    els.some((e: Any) => e.type === "arrow" && e.endArrowhead === "arrow" && e.points[0][0] === 0 && e.points[1][0] === 90) && els.some((e: Any) => e.strokeColor === "#1971c2") &&
+    els.every((e: Any) => Number.isFinite(e.x) && Number.isFinite(e.y) && Number.isFinite(e.width) && e.width >= 0 && e.height >= 0), els.slice(0, 4))
+  check("screen drawings: a chart's bars (a negative one below its axis) and labels; the sticky beside the pad; screen marks only with all",
+    els.filter((e: Any) => e.type === "rectangle" && e.fillStyle === "hachure").length === 3 && els.filter((e: Any) => e.type === "text" && ["a", "b", "c"].includes(e.text)).length === 3 &&
+    els.some((e: Any) => e.type === "rectangle" && e.backgroundColor === "#ffec99" && e.x >= 400) && !els.some((e: Any) => e.type === "ellipse" && e.width === 40), els.length)
+  const withMarks = sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: { el: "e1" } }]), { all: true, places: { "el:e1": { x: 10, y: 10, w: 20, h: 20 } } })
+  check("screen drawings: with all, the marks too, where the overlay found them; nothing worth keeping, none", withMarks?.elements.some((e: Any) => e.type === "ellipse") && sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: [1, 1] }])) === null)
+})
+
 process.exit(summary("web", t0))
