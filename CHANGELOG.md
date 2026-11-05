@@ -18,6 +18,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   jumping to another page); a plugin's row opens its page there, with its switch and its settings on it, and a way
   back. Terminal has its own section, Plugin updates moved to Plugins, each section says what it holds, and rows that
   go somewhere show a chevron.
+- **Menus and sidebars stay over a page after full screen**: once a site left full screen, a peeking sidebar, the
+  palette, menus, the find bar and toasts no longer draw under it, and a sidebar shown beside a page no longer
+  slides in under it for a moment.
 - **Sidebar panels hold still as a tab group opens or folds**: with each panel in its own box, the panels under Tabs
   no longer bounce a row up and down while the group's tabs grow in or fold away (or as a row folds off any list);
   they stay put while Tabs is full, and otherwise move one way with it, without a jump at the start or end.

@@ -253,7 +253,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   useEffect(() => {
     const el = box.current
     if (!id || !el || away) return
-    let raf = 0, covered = false, gone = false, busy = false, again = false, hits: Cover = null
+    let raf = 0, covered = false, gone = false, busy = false, again = false, hits: Cover = null, coverNow: Cover = null
     /** Where the page is now (null: hidden), and its corners. Not known till this places it: `web:open` showed it where
      *  the box was. */
     let at: DOMRect | null = null, known = false, radius = -1
@@ -282,7 +282,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       if (dirty === "hits" || !sameRect(at, r)) hits = show ? hitCover(el, r) : null
       dirty = null
       const cover = show ? hits ?? floatCover(r) : null
-      setCover(id, cover)
+      setCover(id, coverNow = cover)
       // In the focused pane with the keyboard nowhere in particular: the page has it (back from under a menu, or shown again
       // with it, or it had it when it was hidden and nothing else took it meanwhile).
       const free = !document.activeElement || document.activeElement === document.body
@@ -342,6 +342,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       void finished.then(() => { if (still === mine) void thaw() })
       // (moving again before it stopped: its picture is up already)
       if (picture) return
+      // (the window over the live page till its picture's up: a sidebar coming in slides over it, not under)
+      if (!coverNow) setCover(id, coverNow = "through")
       const was = at!
       return (async () => {
         const shot = await web.shot!(id).catch(() => null)
@@ -354,9 +356,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         Object.assign(img.style, { width: `${was.width}px`, height: `${was.height}px` })
         el.append(img)
         picture = img
-        // (drawn under the page, and the window solid there again, before the page goes: nothing shows the change)
-        setCover(id, null)
-        covered = false
+        // (the window, still over the page, solid there again: its picture shows in its place before it goes)
         setHole(id, el, null)
         // (a frame later it's drawn: the pane may start moving as the page is told to go, it's gone within a frame)
         await new Promise(requestAnimationFrame)
@@ -366,6 +366,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         const to = pageArea(new DOMRect(r.left - m.m41, r.top - m.m42, el.offsetWidth, el.offsetHeight))
         void web.place(id, { x: -40000, y: 0, width: Math.max(2, to.width), height: Math.max(2, to.height) }).catch(() => undefined)
         at = null
+        // (then nothing of it is under what the app draws: the window may drop)
+        setCover(id, coverNow = null)
+        covered = false
       })()
     }
     const unmotion = onPaneMotion(freeze)

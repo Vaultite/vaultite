@@ -559,7 +559,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     const w = p.player
     if (w) { if (!w.isDestroyed() && !w.isFullScreen()) w.setFullScreen(true) }
     else {
-      p.win.contentView.addChildView(p.view) // (again: over every other page and the window's own, raised or not)
+      restack(p.win)
       if (!p.win.isFullScreen()) { p.win.setFullScreen(true); p.madeFull = true }
     }
     fit(p)
@@ -569,6 +569,8 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     if (p.madeFull) { p.madeFull = false; if (!p.win.isDestroyed() && p.win.isFullScreen()) p.win.setFullScreen(false) }
     const w = p.player
     if (w && !w.isDestroyed() && w.isFullScreen()) w.setFullScreen(false)
+    // (back in its place among the window's pages: under the window's own while that's raised)
+    if (!w) restack(p.win)
     fit(p)
   })
   wc.on("page-favicon-updated", (_e, urls) => void iconFrom(p, urls))
@@ -1800,25 +1802,36 @@ async function iconFrom(p: Page, urls: unknown) {
 type Raise = "app" | "through" | null
 const raised = new WeakMap<AppWindow, Raise>()
 
-/** A page into the window: over the others, under the window's page while that's raised. */
+/** Every view that was a page's (one ending stays a while, hidden, its last frame taken). */
+const pageViews = new WeakSet<WebContentsView>()
+
+/** A page into the window, over its other pages (`restack`). */
 function addPage(win: AppWindow, view: WebContentsView) {
-  const kids = win.contentView.children, at = raised.get(win) ? kids.indexOf(win.view) : -1
-  if (at < 0) return win.contentView.addChildView(view)
-  // (one already in it, from parking, moves to that index counted without it: from below the window's page, one less,
-  // else it went over the window's page and took the clicks meant for what's drawn there)
-  const was = kids.indexOf(view)
-  win.contentView.addChildView(view, was >= 0 && was < at ? at - 1 : at)
+  pageViews.add(view)
+  restack(win, view)
+}
+
+/** The window's views in the order its state makes, whatever came before: its pages (`top` over the others), its own
+ *  page while raised, pages in full screen, then what's meant to be on top (an extension's popup, a top strip). */
+function restack(win: AppWindow, top?: WebContentsView) {
+  if (win.isDestroyed()) return
+  const kids = win.contentView.children, full = new Set<WebContentsView>()
+  for (const p of pages.values()) if (p.win === win && p.full && !p.player) full.add(p.view)
+  const page = (v: unknown): v is WebContentsView => v instanceof WebContentsView && v !== win.view && pageViews.has(v)
+  const group = (inFull: boolean) => {
+    const vs = kids.filter((v) => page(v) && v !== top && full.has(v) === inFull)
+    if (top && full.has(top) === inFull) vs.push(top)
+    return vs
+  }
+  const below = group(false), rest = kids.filter((v) => v !== win.view && !page(v) && v !== top)
+  const want = [...(raised.get(win) ? [...below, win.view] : [win.view, ...below]), ...group(true), ...rest]
+  for (const [i, v] of want.entries()) if (win.contentView.children[i] !== v) win.contentView.addChildView(v, i)
 }
 
 function raise(win: AppWindow, how: Raise) {
-  if (win.isDestroyed() || (raised.get(win) ?? null) === how) return
-  const was = raised.get(win) ?? null
+  if (win.isDestroyed()) return
   raised.set(win, how)
-  if (!!was === !!how) return
-  if (!how) return win.contentView.addChildView(win.view, 0)
-  win.contentView.addChildView(win.view)
-  // (a page full screen stays over it)
-  for (const p of pages.values()) if (p.win === win && p.full && !p.player) win.contentView.addChildView(p.view)
+  restack(win)
 }
 
 /** The pointer over a page while the window's page lets it through, at the page's own CSS pixels from its corner. */
