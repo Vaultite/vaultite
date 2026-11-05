@@ -1,5 +1,5 @@
-// The menus' icons: every lucide icon electron/menu.ts and helper.ts name, as template PNGs (16px, @2x) in electron/menu-icons/.
-// node tools/menu_icons.ts after adding one (needs ImageMagick's magick); icons no longer named are removed.
+// The menus' icons: each one electron/menu.ts and helper.ts name, lucide's or ours (electron/tray/<name>.svg), as template
+// PNGs (16px, @2x) in electron/menu-icons/: node tools/menu_icons.ts after adding one (needs ImageMagick's magick).
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -19,6 +19,14 @@ const attrs = (a: Record<string, string>) => Object.entries(a).filter(([k]) => k
 
 fs.mkdirSync(OUT, { recursive: true })
 for (const name of names) {
+  if (name === "vault") throw new Error("lucide's vault (a safe) isn't Vaultite's: a vault is icon(\"stone\")")
+  const own = path.join(ROOT, "electron", "tray", `${name}.svg`)
+  if (fs.existsSync(own)) {
+    const box = Number(/viewBox="[^ ]+ [^ ]+ ([0-9.]+)/.exec(fs.readFileSync(own, "utf8"))?.[1] ?? 24)
+    for (const [px, suffix] of [[16, ""], [32, "@2x"]] as const)
+      execFileSync("magick", ["-background", "none", "-density", String(96 * px / box * 4), own, "-resize", `${px}x${px}`, "-strip", path.join(OUT, `${name}${suffix}.png`)])
+    continue
+  }
   let file = path.join(LUCIDE, `${name}.mjs`)
   if (!fs.existsSync(file)) throw new Error(`no lucide icon '${name}'`)
   const alias = /export \{ default \} from '\.\/([a-z0-9-]+\.mjs)'/.exec(fs.readFileSync(file, "utf8")) // an old name

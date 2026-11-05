@@ -138,7 +138,7 @@ function menu() {
   const place = (label: string, at: Prefs["cursor"], glyph: ReturnType<typeof icon>) => ({ label, icon: glyph, type: "radio" as const, checked: prefs.cursor === at, enabled: !!home,
     click: setting("plugin/companion", { screen_cursor: at === "dock" ? null : at }) })
   return Menu.buildFromTemplate([
-    { label: home ? `Open ${home.name}` : `Open ${app.getName()}`, icon: icon("vault"), click: () => h.openHome() },
+    { label: home ? `Open ${home.name}` : `Open ${app.getName()}`, icon: icon("stone"), click: () => h.openHome() },
     { type: "separator" },
     { label: "Dictate anywhere", icon: icon("mic"), sublabel: keysSaid(prefs.keys), type: "checkbox", checked: prefs.fn, enabled: !!home, click: setting("plugin/dictation", { fn: !prefs.fn }) },
     { type: "separator" },

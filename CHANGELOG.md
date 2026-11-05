@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A vault's icon is Vaultite's stone**: Open in the menu bar's menu, Open vault in the File menu and a vault among
+  the folders in Manage vaults show the gem, not a safe.
 - **A cleaner menu bar menu**: icons on its rows (a mic for Dictate anywhere, with its keys under it), and where the
   companion's cursor waits in another app picked right there, each place drawn: by the pointer, at the screen's edge, or
   only inside Vaultite (new: no cursor over other apps).

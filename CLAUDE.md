@@ -32,6 +32,8 @@ the main writers. Served on a private network (a tailnet), no accounts.
 
 ## UI
 Read `web/CLAUDE.md` first. UI text: sentence case, no emojis, no all caps.
+A vault's icon is Vaultite's stone (the gem: kit's `Stone`, a menu's `icon("stone")`), never lucide's `Vault` (a safe),
+anywhere: the user dislikes it (a check in tools/test_web.ts and tools/menu_icons.ts refuse it).
 Agents never take the user's focus: what an op opens for one (not `byUser`) goes behind their tab
 (`openTab(to, { background: true })`), with a toast to show it. `vau open` is the exception: showing the user something
 is its point.

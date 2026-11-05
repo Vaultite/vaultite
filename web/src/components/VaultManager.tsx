@@ -1,13 +1,13 @@
 // Manage vaults: known vaults, create one, open a folder, or (desktop) connect to another machine's server. The desktop app
 // shows it in its own window with the native picker; the web in a sheet, switching which vault the server serves.
 import { useEffect, useState, type ReactNode } from "react"
-import { ChevronLeft, ChevronRight, Ellipsis, FlaskConical, Folder, FolderOpen, FolderPlus, Server, Vault } from "lucide-react"
+import { ChevronLeft, ChevronRight, Ellipsis, FlaskConical, Folder, FolderOpen, FolderPlus, Server, type LucideIcon } from "lucide-react"
 import { menuBelow } from "@/components/ContextMenu"
 import { api } from "@/core/http"
 import { revealLabel } from "@/core/platform"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
-import { Bar } from "@/components/kit"
+import { Bar, Stone } from "@/components/kit"
 import { useKeptCount } from "@/core/heights"
 import { plainText } from "../../../core/plainerror.ts"
 
@@ -195,7 +195,7 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
   )
 }
 
-function Setting({ icon: Icon, title, sub, children }: { icon?: typeof Vault; title: string; sub: string; children: ReactNode }) {
+function Setting({ icon: Icon, title, sub, children }: { icon?: LucideIcon; title: string; sub: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3 border-t-[0.5px] border-border pt-4">
       {Icon && <Icon className="size-5 shrink-0 text-muted-foreground" strokeWidth={2} />}
@@ -239,7 +239,7 @@ function FolderBrowser({ backend, label, onPick, onCancel, onHome }: { backend: 
           <li key={f.name}>
             <button type="button" onClick={() => go(`${at.path}/${f.name}`)}
               className="flex h-8 w-full cursor-pointer items-center gap-2 px-2.5 text-left text-[13px] hover:bg-foreground/[0.04]">
-              {f.vault ? <Vault className="size-4 shrink-0 text-primary" strokeWidth={2} /> : <Folder className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />}
+              {f.vault ? <Stone className="size-4 shrink-0 text-primary" /> : <Folder className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />}
               <span className="min-w-0 flex-1 truncate">{f.name}</span>
               <ChevronRight className="size-3.5 shrink-0 text-tertiary" strokeWidth={2.25} />
             </button>

@@ -172,7 +172,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       sep,
       cmd("switcher:open", "Open quick switcher", "search", { key: "Mod+O", always: true }),
       { label: "Open file from outside the vault…", icon: icon("folder-open"), click: ctx.pickOutside },
-      { label: "Open vault", icon: icon("vault"), submenu: ctx.vaults.length ? ctx.vaults : [{ label: "No vaults yet", enabled: false }] },
+      { label: "Open vault", icon: icon("stone"), submenu: ctx.vaults.length ? ctx.vaults : [{ label: "No vaults yet", enabled: false }] },
       { label: "Manage vaults", icon: icon("library"), click: ctx.manageVaults },
       sep,
       cmd("file:rename", "Rename", "pencil", { always: true }),

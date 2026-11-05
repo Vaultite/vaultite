@@ -1,5 +1,5 @@
 // Small building blocks shared by every page.
-import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react"
+import { createContext, useContext, useEffect, useId, useRef, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react"
 import { ChevronRight, RotateCcw, Search, X, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ink } from "@/lib/ink"
@@ -76,6 +76,25 @@ export function Badged({ on, tag, children }: { on?: Dot; tag?: string; children
 }
 
 export const Logo = ({ className }: { className?: string; strokeWidth?: number }) => <img src="icon.svg" alt="" className={className} />
+
+/** A vault's icon: Vaultite's gem in the text's colour (electron/tray/stone.svg's shape). Never lucide's Vault, a safe. */
+export function Stone({ className }: { className?: string; strokeWidth?: number }) {
+  // (React's ids carry : or «», which a url(#…) may not take)
+  const id = `stone${useId().replace(/[^\w-]/g, "")}`
+  return (
+    <svg viewBox="115.6 100.5 320 320" aria-hidden className={className}>
+      <mask id={id}>
+        <polygon points="121.7,190.2 133.4,167.2 177.3,124.7 185.7,121.5 241.7,126.1 382.9,144.0 422.1,192.3 429.5,235.9 393.0,324.1 357.5,355.7 205.7,399.5 149.2,373.0 145.9,369.4 135.2,342.1" fill="#fff" />
+        <g fill="none" stroke="#000" strokeWidth="19">
+          <polygon points="142.9,181.1 231.7,157.7 340.1,253.1 329.1,324.6 321.7,328.0 182.5,346.1 167.3,330.5" strokeLinejoin="round" />
+          <polyline points="231.7,157.7 253.8,88.0" /><polyline points="340.1,253.1 454.2,168.5" /><polyline points="329.1,324.6 433.0,323.8" />
+          <polyline points="182.5,346.1 222.8,434.5" /><polyline points="142.9,181.1 120.0,147.6" />
+        </g>
+      </mask>
+      <rect x="100" y="90" width="350" height="350" fill="currentColor" mask={`url(#${id})`} />
+    </svg>
+  )
+}
 
 /** Rows at the size of the desktop's own settings windows (13px), from md up: Settings' pages beside its menu. */
 export const DenseRows = createContext(false)
