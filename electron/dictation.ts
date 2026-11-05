@@ -1,5 +1,5 @@
 /** Dictation: dictation.swift hears the microphone for a window (`vaultite:dictation`) or the menu-bar helper (helper.ts),
- *  one session at a time; it stays a while after, Parakeet loaded, then goes. */
+ *  one session at a time, through Soniox or this Mac's engine; it stays a while after, Parakeet loaded, then goes. */
 import { app, systemPreferences } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
@@ -98,24 +98,53 @@ async function engines(language: string) {
   return { apple: !!r.apple, locale: r.locale, parakeet: !!model, ...(r.parakeet && !model ? { why: "no-model" } : {}) }
 }
 
+/** The port of the server a sink's vault is on (main.ts sets it): no window, the home vault's. */
+let serverOf: (win?: AppWindow) => number | null = () => null
+export const setDictationServer = (f: typeof serverOf) => { serverOf = f }
+
+type Cloud = { url: string; key: string; model?: string; languages: string[] }
+/** Soniox's key and settings, when the vault's server says it hears this one (plugins/core/dictation/plugin.ts), or
+ *  why it doesn't though asked to. Unanswered, this Mac's engine. */
+async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?: Cloud; why?: string }> {
+  const port = serverOf(sink.win)
+  if (!port) return {}
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/api/dictation/cloud`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
+    const c = (r.ok ? await r.json() : {}) as Partial<Cloud> & { why?: string }
+    if (!c.url || !c.key) return { why: c.why }
+    // (no languages set: the one asked for and the Mac's, as hints; Soniox switches between them on its own)
+    const said = c.languages?.length ? c.languages : [language, ...app.getPreferredSystemLanguages()]
+    const languages = [...new Set(said.map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2,3}$/.test(l)))].slice(0, 6)
+    return { cloud: { url: c.url, key: c.key, model: c.model, languages } }
+  } catch { return {} }
+}
+
 export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; words?: unknown; keep?: unknown }
-/** Listen for `sink` (another's session ends, "elsewhere"). */
+/** Listen for `sink` (another's session ends, "elsewhere"): through Soniox when its key is set, this Mac's engine
+ *  (`engine`) taking over should it fail. */
 export async function dictate(sink: DictationSink, opts: DictateOptions) {
-  const engine = opts.engine === "parakeet" ? "parakeet" : "apple"
-  if (!process.env.VAULTITE_DICTATION_FILE && !(await systemPreferences.askForMediaAccess("microphone"))) return { ok: false, code: "permission" }
-  const model = engine === "parakeet" ? parakeetModel() : null
-  if (engine === "parakeet" && !model) return { ok: false, code: "model" }
+  let engine = opts.engine === "parakeet" ? "parakeet" : "apple"
+  const language = typeof opts.language === "string" ? opts.language : ""
+  const [allowed, { cloud, why }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
+  if (!allowed) return { ok: false, code: "permission" }
+  let model = engine === "parakeet" ? parakeetModel() : null
+  if (engine === "parakeet" && !model) {
+    if (!cloud) return { ok: false, code: "model" }
+    engine = "apple"
+    model = null
+  }
   try { await start() } catch (e) { return { ok: false, code: "helper", message: (e as Error).message } }
   if (idle) { clearTimeout(idle); idle = null }
   if (owner && owner !== sink) tell({ type: "end", reason: "elsewhere" })
   owner = sink
   const silence = Number(opts.silence)
-  send({ cmd: "start", id: ++sid, engine, language: typeof opts.language === "string" ? opts.language : "", model: model ?? "", silence: Number.isFinite(silence) ? silence : 0,
+  send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: Number.isFinite(silence) ? silence : 0, ...(cloud ? { cloud } : {}),
     words: Array.isArray(opts.words) ? opts.words.filter((w) => typeof w === "string").slice(0, 100).map((w) => w.slice(0, 100)) : [],
     // (Keep the last dictation's audio: in the app's logs, to replay through tools/dictation_bench.ts)
     ...(opts.keep === true ? { record: path.join(app.getPath("logs"), "dictation-last.wav") } : {}),
     // (a script driving the app hears a file instead: web/qa/dictation.mjs)
     ...(process.env.VAULTITE_QUIET && process.env.VAULTITE_DICTATION_FILE ? { file: process.env.VAULTITE_DICTATION_FILE } : {}) })
+  if (why) tell({ type: "fallback", message: why })
   return { ok: true }
 }
 /** Stop (what was heard turns final) or cancel `sink`'s session; another's is left alone. */

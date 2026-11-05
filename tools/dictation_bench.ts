@@ -1,5 +1,5 @@
-// Dictation's recognizers on speech files, as the app runs them: how soon words show, the final text, its WER when the
-// words said are known.   node tools/dictation_bench.ts [--engine apple|parakeet|both] [--last] [<audio>[=<said>]...]
+// Dictation's recognizers on speech files, as the app runs them: how soon words show, the final text, its WER when known.
+// node tools/dictation_bench.ts [--engine apple|parakeet|soniox|both] [--last] [<audio>[=<said>]...]   (soniox: its key here)
 import { execFile, execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -46,7 +46,7 @@ function wer(ref: string, hyp: string): [number, number] {
   return [d[r.length][h.length], r.length]
 }
 
-type Event = { type: string; at: number; text?: string; message?: string }
+type Event = { type: string; at: number; text?: string; message?: string; settled?: number }
 const hear = (bin: string, args: string[]) => new Promise<{ events: Event[]; code: number | null; err: string }>((done) =>
   execFile(bin, args, { timeout: 300_000, maxBuffer: 64 << 20 }, (e, out, err) => done({
     events: String(out).split("\n").filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as Event] } catch { return [] } }),
@@ -60,22 +60,31 @@ const engines = engineArg === "both" ? ["apple", "parakeet"] : [engineArg]
 const files = inputs()
 for (const engine of engines) {
   if (engine === "parakeet" && !model) { console.log("parakeet: no model on this Mac (Handy's or Hex's)"); continue }
+  // (Soniox's key from this machine's data/config.json: vau dictation key)
+  let cloud: string[] = []
+  if (engine === "soniox") {
+    const config = path.join(process.env.VAULTITE_LOCAL || path.join(import.meta.dirname, "..", "data"), "config.json")
+    const key = fs.existsSync(config) ? JSON.parse(fs.readFileSync(config, "utf8")).dictation?.soniox : null
+    if (!key) { console.log(`soniox: no key in ${config} (vau secret "Soniox API key" | vau dictation key)`); continue }
+    cloud = ["--cloud", JSON.stringify({ url: "wss://stt-rt.soniox.com/transcribe-websocket", key, languages: ["en"] })]
+  }
   let errors = 0, total = 0
   const firsts: number[] = []
   for (const { file, said } of files) {
-    const args = ["--file", file, "--engine", engine, "--language", "en-US", "--warm", "--words", "at Claude", ...(engine === "parakeet" ? ["--model", model!] : [])]
+    const args = ["--file", file, "--engine", engine === "soniox" ? "apple" : engine, "--language", "en-US", "--warm", "--words", "at Claude", ...(engine === "parakeet" ? ["--model", model!] : []), ...cloud]
     const { events, code, err } = await hear(bin, args)
     const speech = events.find((e) => e.type === "speech")?.at
     const first = events.find((e) => (e.type === "pending" || e.type === "final") && e.text?.trim())?.at
     const finals = events.filter((e) => e.type === "final").map((e) => e.text ?? "")
     const text = finals.reduce((all, t) => (all && !/^\s/.test(t) ? `${all} ${t}` : all + t), "").trim()
-    const failed = events.filter((e) => e.type === "error")
+    const failed = events.filter((e) => e.type === "error" || e.type === "fallback")
+    const settled = events.find((e) => e.type === "end")?.settled
     if (!events.length || failed.length) console.log(`  ${path.basename(file)}: the helper exited ${code}; ${failed.map((e) => e.message).join("; ")} ${err.slice(-800)}`)
     const lat = speech !== undefined && first !== undefined ? first - speech : null
     if (lat !== null) firsts.push(lat)
     let score = ""
     if (said) { const [e, n] = wer(said, text); errors += e; total += n; score = `, ${e}/${n} words wrong` }
-    console.log(`${engine} ${path.basename(file)}: first words ${lat ?? "-"} ms after speech${score}\n  ${JSON.stringify(text)}`)
+    console.log(`${engine} ${path.basename(file)}: first words ${lat ?? "-"} ms after speech, final ${settled ?? "-"} ms after the stop${score}\n  ${JSON.stringify(text)}`)
   }
   firsts.sort((a, b) => a - b)
   console.log(`${engine}: first words ${firsts.length ? firsts[firsts.length >> 1] : "-"} ms (median)${total ? `, WER ${(100 * errors / total).toFixed(1)}% (${errors}/${total})` : ""}\n`)

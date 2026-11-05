@@ -37,6 +37,7 @@ async function engineFor(engine: unknown, language: string): Promise<DictationEn
 
 function failed(code: string, message?: string) {
   if (code === "permission") return notify("Vaultite isn't allowed to use the microphone", { kind: "error", action: openPermissions ? { label: "Open settings", run: openPermissions } : undefined })
+  if (code === "fallback") return notify(message ?? "Dictating on this Mac")
   if (code === "model") return notify("Parakeet's model isn't on this Mac: Handy or Hex downloads it, or pick Apple's recognizer", { kind: "error" })
   notifyError(new Error(message || "the recognizer stopped"), "Couldn't dictate")
 }

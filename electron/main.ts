@@ -15,7 +15,7 @@ import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
-import { dictationHandlers, stopDictation } from "./dictation.ts"
+import { dictationHandlers, setDictationServer, stopDictation } from "./dictation.ts"
 import type { HelperPrefs } from "./helper.ts"
 import { setTranslucent, translucentAt, translucentWindow } from "./translucency.ts"
 import { hideGhost, showGhost, type GhostLook } from "./dragghost.ts"
@@ -1907,6 +1907,10 @@ app.whenReady().then(async () => {
   // (a Mac's, but for a copy a script drives or Vaultite Dev, unless VAULTITE_HELPER=1)
   if (process.env.VAULTITE_HELPER === "1" || (MAC && !driven && !DEV && process.env.VAULTITE_HELPER !== "0")) helper = await import("./helper.ts")
   const homePath = () => lastFocused && (wins.has(lastFocused) || kept.has(lastFocused)) ? lastFocused : [...wins.keys()][0] ?? [...kept.keys()][0]
+  setDictationServer((win) => {
+    const p = win ? [...wins.values()].find((w) => w.win === win)?.vault.path : homePath()
+    return (p ? wins.get(p)?.port ?? kept.get(p)?.port : null) ?? null
+  })
   if (helper) await helper.startHelper({
     home: () => {
       const p = homePath()

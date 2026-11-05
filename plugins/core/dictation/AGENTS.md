@@ -8,10 +8,13 @@ double Control only toggles (macOS's own Keyboard, Dictation, Shortcut as Contro
 Words not settled yet show dimmed by the cursor, never in the file; at each pause they settle and are typed in as the
 user's own input (`userEvent` `input.dictation`), so the note only ever holds final text. Browsers and phones don't have
 it.
-- Settings (`.vaultite/plugins/dictation/data.json`): `engine` `auto` | `apple` | `parakeet`; `language` (Apple's,
-  `pt-BR`; the Mac's when left out); `silence` (seconds without speech before a tapped dictation stops; 0, the default,
+- Settings (`.vaultite/plugins/dictation/data.json`): `engine` `auto` | `soniox` | `apple` | `parakeet`; `language` (Apple's,
+  `pt-BR`; the Mac's when left out); `languages` (Soniox's hints, `[en, pt]`; the language and the Mac's when left out); `silence` (seconds without speech before a tapped dictation stops; 0, the default,
   never); `replacements`, lines of "said: written" (`at Claude: @claude`), whose said words the recognizer listens for;
   `keep_audio` (this Mac's), the last dictation's audio kept in the app's logs folder as `dictation-last.wav`.
+- Soniox (cloud, real time, any language, switching on its own) is `auto`'s pick once this machine has its key:
+  `vau secret "Soniox API key" | vau dictation key` (kept in data/config.json, never the vault). The socket is open only
+  while listening; offline, refused or dropped, this Mac's recognizer finishes from the last settled word.
 - Apple's is macOS 26's on-device recognizer. Parakeet (English) is parakeet-unified-en-0.6b run by transcribe.cpp, from
   the GGUF Handy or Hex downloaded (Hex's `~/Library/Application Support/hex/models/`, Hugging Face's cache, Handy's),
   used where it is, in two passes: streaming for the dimmed words, then the utterance whole for the final ones. `auto`

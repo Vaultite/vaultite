@@ -9,6 +9,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Sidebar panels hold still as a tab group opens or folds**: with each panel in its own box, the panels under Tabs
   no longer bounce a row up and down while the group's tabs grow in or fold away (or as a row folds off any list);
   they stay put while Tabs is full, and otherwise move one way with it, without a jump at the start or end.
+- **Dictation in the cloud**: with a Soniox key (`vau secret "Soniox API key" | vau dictation key`) dictation streams
+  to Soniox, English and Portuguese and others switching on their own, the final words a moment after you stop; offline
+  or if it drops, this Mac's recognizer finishes.
 - **Pane tab bars, on their own**: the switch (was Pane titles) is each split pane's strip of its tabs, the same with
   the tab bar on or in the sidebar; off, panes start with what they show, a tab dragged over one brings its strip back
   to drop into, and the tab bar's cells say how many more tabs a pane has (+2, a click lists them). A terminal pane's

@@ -1,5 +1,5 @@
-// Live dictation (electron/dictation.ts): the microphone through Apple's recognizer or Parakeet (transcribe.cpp), told
-// as JSON lines (web/src/core/dictation.ts' DictationEvent); commands on stdin. Tests: --file <audio> --engine <e>.
+// Live dictation (electron/dictation.ts): the microphone through Apple's recognizer, Parakeet (transcribe.cpp)
+// or Soniox's cloud one when a start brings its key, told as JSON lines (web/src/core/dictation.ts' DictationEvent).
 import AVFoundation
 import Foundation
 import Speech
@@ -123,7 +123,10 @@ protocol Engine: AnyObject {
     func pause()
     /// The end: everything heard becomes final, then `done`.
     func finish(_ done: @escaping () -> Void)
+    /// Dropped unfinished (cancelled): let go of what it holds.
+    func cancel()
 }
+extension Engine { func cancel() {} }
 
 /// Apple's DictationTranscriber (macOS 26): volatile results are the pending words, final ones the text.
 @available(macOS 26.0, *)
@@ -316,6 +319,216 @@ final class Parakeet: Engine {
 }
 #endif
 
+/// Soniox's real-time recognizer over a WebSocket (its key from electron/dictation.ts): the audio streams as it's heard,
+/// a pause or the stop asks it to finalize. Failing, this Mac's engine (`local`) hears again what it hadn't settled.
+final class Soniox: NSObject, Engine, URLSessionWebSocketDelegate, @unchecked Sendable {
+    let q = DispatchQueue(label: "dictation.soniox")
+    let local: () async throws -> Engine
+    let config: String
+    var session: URLSession!
+    var task: URLSessionWebSocketTask!
+    var open = false, closed = false, dead = false
+    var queued: [URLSessionWebSocketTask.Message] = []
+    /// The audio sent from the last final word on (sample `keptAt` of the stream first): what a fallback hears again.
+    var kept: [Float] = [], keptAt = 0, sent = 0, unasked = 0
+    var finals = "", shown = "", paused = false
+    /// Finalizes asked for, and their <fin>s back.
+    var asked = 0, fins = 0
+    var finishing: (() -> Void)?
+    var fallback: Engine?, falling = false
+    var timer: DispatchSourceTimer?, lastSent = Date()
+
+    init(url: URL, key: String, model: String, languages: [String], words: [String], local: @escaping () async throws -> Engine) {
+        var start: [String: Any] = ["model": model, "audio_format": "pcm_s16le", "sample_rate": Int(RATE), "num_channels": 1]
+        if !languages.isEmpty { start["language_hints"] = languages }
+        if !words.isEmpty { start["context"] = ["terms": words] }
+        config = (try? JSONSerialization.data(withJSONObject: start)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        self.local = local
+        super.init()
+        var req = URLRequest(url: url, timeoutInterval: 5)
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        let ops = OperationQueue()
+        ops.underlyingQueue = q
+        ops.maxConcurrentOperationCount = 1
+        session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: ops)
+        task = session.webSocketTask(with: req)
+        q.async { [self] in
+            task.resume()
+            receive()
+            // (no audio for a while, in a long quiet: Soniox drops a stream that says nothing)
+            let t = DispatchSource.makeTimerSource(queue: q)
+            t.schedule(deadline: .now() + 10, repeating: 10)
+            t.setEventHandler { [weak self] in
+                guard let self, self.open, !self.closed, Date().timeIntervalSince(self.lastSent) >= 10 else { return }
+                self.send(.string("{\"type\":\"keepalive\"}"))
+            }
+            t.resume()
+            timer = t
+        }
+    }
+
+    func urlSession(_ s: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol p: String?) {
+        guard !closed else { return }
+        open = true
+        send(.string(config))
+        for m in queued { send(m) }
+        queued = []
+    }
+    func urlSession(_ s: URLSession, task t: URLSessionTask, didCompleteWithError error: Error?) { dropped() }
+    func urlSession(_ s: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith code: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        fail("Soniox closed the connection")
+    }
+    /// The connection failed or went: why, as the handshake's answer tells.
+    func dropped() {
+        let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+        fail(status == 401 || status == 403 ? "Soniox refused the key" : open ? "Soniox's connection dropped" : status > 0 ? "Soniox answered \(status)" : "Soniox can't be reached")
+    }
+
+    func send(_ m: URLSessionWebSocketTask.Message) {
+        guard !closed else { return }
+        guard open else { queued.append(m); return }
+        lastSent = Date()
+        task.send(m) { [weak self] e in if e != nil { self?.q.async { self?.dropped() } } }
+    }
+    func receive() {
+        task.receive { [weak self] r in
+            guard let self else { return }
+            self.q.async {
+                guard !self.closed else { return }
+                switch r {
+                case .success(.string(let text)): self.heard(text); self.receive()
+                case .success: self.receive()
+                case .failure: self.dropped()
+                }
+            }
+        }
+    }
+
+    /// A response: final tokens wait for their <fin> (a pause's, the stop's) and settle whole, the rest show pending.
+    func heard(_ text: String) {
+        guard let d = text.data(using: .utf8), let m = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return }
+        if let code = m["error_code"] {
+            return fail("Soniox: \(m["error_message"] as? String ?? "error \(code)")")
+        }
+        var tail = ""
+        for t in m["tokens"] as? [[String: Any]] ?? [] {
+            let s = t["text"] as? String ?? ""
+            if s == "<fin>" || s == "<end>" {
+                if s == "<fin>" { fins += 1 }
+                settle()
+            } else if t["is_final"] as? Bool == true {
+                finals += s
+                if let end = (t["end_ms"] as? NSNumber)?.intValue { forget(through: end * Int(RATE) / 1000) }
+            } else {
+                tail += s
+            }
+        }
+        show((finals + tail).trimmingCharacters(in: .whitespaces))
+        if let done = finishing, fins >= asked || m["finished"] as? Bool == true {
+            settle()
+            finishing = nil
+            close()
+            done()
+        }
+    }
+    func show(_ text: String) { if text != shown { shown = text; emit("pending", ["text": text]) } }
+    func settle() {
+        let t = finals.trimmingCharacters(in: .whitespaces)
+        finals = ""
+        if !t.isEmpty { emit("final", ["text": t]) }
+        show("")
+    }
+    /// The audio up to sample `n` is in final words: a fallback needn't hear it.
+    func forget(through n: Int) {
+        let drop = min(n - keptAt, kept.count)
+        if drop > 0 { kept.removeFirst(drop); keptAt += drop }
+    }
+    func askFinal() {
+        guard unasked > 0 else { return }
+        unasked = 0
+        asked += 1
+        send(.string("{\"type\":\"finalize\"}"))
+    }
+
+    func feed(_ pcm: [Float]) {
+        q.async { [self] in
+            if let f = fallback { return f.feed(pcm) }
+            guard !dead else { return }
+            kept.append(contentsOf: pcm)
+            if falling { return }
+            sent += pcm.count
+            unasked += pcm.count
+            var d = Data(count: pcm.count * 2)
+            d.withUnsafeMutableBytes { (b: UnsafeMutableRawBufferPointer) in
+                let o = b.bindMemory(to: Int16.self)
+                for (i, x) in pcm.enumerated() { o[i] = Int16(max(-1, min(1, x)) * 32767).littleEndian }
+            }
+            send(.data(d))
+        }
+    }
+    func speech() { q.async { [self] in paused = false; fallback?.speech() } }
+    func pause() {
+        q.async { [self] in
+            paused = true
+            if let f = fallback { return f.pause() }
+            if !falling { askFinal() }
+        }
+    }
+    func finish(_ done: @escaping () -> Void) {
+        q.async { [self] in
+            if let f = fallback { return f.finish(done) }
+            if dead { return done() }
+            finishing = done
+            if falling { return }
+            askFinal()
+            if fins >= asked { settle(); finishing = nil; close(); return done() }
+            // (Soniox answers a finalize in a few hundred ms; much later, this Mac finishes instead)
+            q.asyncAfter(deadline: .now() + 4) { [weak self] in if self?.finishing != nil { self?.fail("Soniox didn't answer in time") } }
+        }
+    }
+    func cancel() { q.async { [self] in close(); fallback?.cancel() } }
+
+    func close() {
+        guard !closed else { return }
+        closed = true
+        timer?.cancel()
+        task.cancel(with: .normalClosure, reason: nil)
+        session.invalidateAndCancel()
+    }
+
+    /// The cloud is gone: what it settled stays, this Mac's engine hears the rest again and goes on.
+    func fail(_ why: String) {
+        guard !closed, fallback == nil, !falling else { return }
+        close()
+        settle()
+        falling = true
+        emit("fallback", ["message": "\(why): dictating on this Mac"])
+        Task {
+            do {
+                let e = try await local()
+                q.async { [self] in
+                    falling = false
+                    fallback = e
+                    e.speech()
+                    e.feed(kept)
+                    kept = []
+                    if paused { e.pause() }
+                    if let done = finishing { finishing = nil; e.finish(done) }
+                }
+            } catch {
+                let f = error as? Failure
+                q.async { [self] in
+                    falling = false
+                    dead = true
+                    kept = []
+                    emit("error", ["code": "cloud", "message": "\(why), and this Mac's recognizer couldn't take over: \(f?.message ?? error.localizedDescription)"])
+                    if let done = finishing { finishing = nil; done() }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - A session: a source, its pause detector and an engine
 
 final class Session: @unchecked Sendable {
@@ -464,13 +677,16 @@ final class Session: @unchecked Sendable {
         source.stop()
         let finish = { [self] in
             recording = nil
-            emit("end", ["reason": reason])
+            // (`settled`: ms from the stop to the last words, the wait the user feels)
+            emit("end", ["reason": reason].merging(stopped.map { ["settled": Int(Date().timeIntervalSince($0) * 1000)] } ?? [:]) { a, _ in a })
             onEnd?()
         }
-        if flush, let e = engine { e.finish { self.work.async(execute: finish) } } else { finish() }
+        if flush, let e = engine { e.finish { self.work.async(execute: finish) } } else { engine?.cancel(); finish() }
     }
+    var stopped: Date?
     /// The microphone off at once (the engine may still be catching up), then the end in turn: the last words, `end`.
     func stop(_ reason: String) {
+        if stopped == nil { stopped = Date() }
         source.stop()
         work.async { self.end(reason, flush: reason != "cancel") }
     }
@@ -483,6 +699,16 @@ func makeEngine(_ cmd: [String: Any]) -> () async throws -> Engine {
     let language = cmd["language"] as? String ?? ""
     let model = cmd["model"] as? String ?? ""
     let words = cmd["words"] as? [String] ?? []
+    let here = makeLocal(engine: engine, language: language, model: model, words: words)
+    // (the cloud first when its key came: this Mac's engine takes over should it fail)
+    if let c = cmd["cloud"] as? [String: Any], let u = (c["url"] as? String).flatMap(URL.init(string:)), let key = c["key"] as? String, !key.isEmpty {
+        let languages = c["languages"] as? [String] ?? [], model = c["model"] as? String ?? "stt-rt-v6"
+        return { Soniox(url: u, key: key, model: model, languages: languages, words: words, local: here) }
+    }
+    return here
+}
+
+func makeLocal(engine: String, language: String, model: String, words: [String]) -> () async throws -> Engine {
     return {
         if engine == "parakeet" {
             #if PARAKEET
@@ -555,6 +781,8 @@ if let file = arg("--file") {
     var cmd: [String: Any] = ["engine": arg("--engine") ?? "apple", "language": arg("--language") ?? "", "model": arg("--model") ?? "",
                               "words": (arg("--words") ?? "").split(separator: ",").map(String.init)]
     cmd["cmd"] = "start"
+    // (`--cloud '{"url":…,"key":…}'`: Soniox's, or a stand-in for it)
+    if let c = arg("--cloud"), let d = c.data(using: .utf8) { cmd["cloud"] = try? JSONSerialization.jsonObject(with: d) }
     var session: Session!
     let src = FileSource(URL(fileURLWithPath: file), fast: args.contains("--fast")) { session.stop("stop") }
     session = Session(source: src, silence: 0)

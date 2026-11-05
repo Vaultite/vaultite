@@ -5,28 +5,35 @@
   "essential": true,
   "desktopApp": true,
   "name": "Dictation",
-  "description": "Speak where the cursor is (a note, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. With nothing to type into, it says so and listens to nothing.",
+  "description": "Speak where the cursor is (a note, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized by Soniox in the cloud with its key, else on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. With nothing to type into, it says so and listens to nothing.",
   "settings": {
     "engine": {
       "type": "enum",
       "values": [
         "auto",
+        "soniox",
         "apple",
         "parakeet"
       ],
       "labels": {
         "auto": "Automatic",
+        "soniox": "Soniox (cloud)",
         "apple": "Apple's",
         "parakeet": "Parakeet"
       },
       "default": "auto",
       "label": "Recognizer",
-      "description": "automatic: Parakeet when its model is on this Mac and the language is English, else Apple's (macOS 26). Parakeet is English only and uses the model Handy or Hex downloaded"
+      "description": "automatic: Soniox when its key is set (vau secret \"Soniox API key\" | vau dictation key), else Parakeet when its model is on this Mac and the language is English, else Apple's (macOS 26). Soniox streams to the cloud, any language; when it can't, this Mac's finishes. Parakeet is English only and uses the model Handy or Hex downloaded"
     },
     "language": {
       "type": "string",
       "label": "Language",
       "description": "a language's code, like en or pt-BR, for Apple's recognizer; left out, the Mac's"
+    },
+    "languages": {
+      "type": "list",
+      "label": "Languages you speak",
+      "description": "codes like en and pt: what Soniox listens for, switching between them on its own; left out, the language above and the Mac's"
     },
     "silence": {
       "type": "number",

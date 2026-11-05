@@ -21,7 +21,10 @@ export type DictationEvent =
   | { type: "final"; text: string }
   /** Quiet for `ms` after speech: 700 ends a clause (what was heard turns final), 2000 a thought. */
   | { type: "pause"; ms: number }
-  | { type: "end"; reason: "stop" | "silence" | "cancel" | "error" | "elsewhere" }
+  /** The cloud recognizer couldn't (no key, no network, it dropped): this Mac's goes on, `message` says why. */
+  | { type: "fallback"; message: string }
+  /** `settled`: ms from the stop to the last words. */
+  | { type: "end"; reason: "stop" | "silence" | "cancel" | "error" | "elsewhere"; settled?: number }
   | { type: "error"; code: "permission" | "mic" | "model" | "language" | "unsupported" | "engine" | "helper" | string; message: string }
 
 export type DictationEngine = "apple" | "parakeet"
@@ -145,6 +148,7 @@ function heard(e: DictationEvent, mine: number, failed: (code: string, message?:
     case "final": d.target.final(e.text); break
     case "pause": set({ speaking: false, spokeAt: 0 }); break
     case "error": failed(e.code, e.message); break
+    case "fallback": failed("fallback", e.message); break
     case "end": tell(e); finish(); return
   }
   tell(e)
