@@ -53,6 +53,17 @@ function pageArea(r: DOMRect) {
   return new DOMRect(r.left, r.top, r.width, Math.max(0, Math.min(...over.map((bar) => bar.top)) - r.top))
 }
 
+/** The page's corners (Electron rounds all four alike): its card's curve where it meets the card's top or foot (panes
+ *  as cards, a tiled one), else square. Under a bar its top corners round too: a view can't go under the window's page. */
+function corners(box: HTMLElement, r: DOMRect) {
+  const card = box.closest<HTMLElement>("[data-pane-frame]")
+  if (!card || card.hasAttribute("data-floating")) return 0
+  const radius = parseFloat(getComputedStyle(card).borderBottomLeftRadius) || 0
+  const c = card.getBoundingClientRect(), at = (a: number, b: number) => Math.abs(a - b) < 1
+  return radius && at(r.left, c.left) && at(r.right, c.right) && (at(r.top, c.top) || at(r.bottom, c.bottom)) ? radius : 0
+}
+const spot = (r: DOMRect, radius: number) => ({ x: r.left, y: r.top, width: r.width, height: r.height, radius })
+
 const http = (u: string) => /^https?:\/\//i.test(u)
 /** What a tab may follow and name: the web, an extension's own pages (its options) and a page's source. */
 const ownPage = (u: string) => http(u) || /^(chrome-extension:\/\/|(view-source|blob):https?:\/\/)/i.test(u)
@@ -125,7 +136,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       if (into) { live.current.setTabArg(argOf(arg, into)); return Promise.reject(null) }
       // (where its box is now: shown at once, not after this tab draws again; not under something of the app's)
       const el = box.current, r = el && !popupOpen() ? pageArea(el.getBoundingClientRect()) : null
-      return web.open(arg, r && r.width >= 2 && r.height >= 2 ? { x: r.left, y: r.top, width: r.width, height: r.height } : null, profileIn(container), tab)
+      return web.open(arg, el && r && r.width >= 2 && r.height >= 2 ? spot(r, corners(el, r)) : null, profileIn(container), tab)
     }).then((r) => {
       if (gone) { leave(r.id); return }
       mine = r.id
@@ -233,29 +244,31 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const el = box.current
     if (!id || !el || away) return
     let raf = 0, covered = false, gone = false, busy = false, again = false, hits: Cover = null
-    /** Where the page is now (null: hidden). Not known till this places it: `web:open` showed it where the box was. */
-    let at: DOMRect | null = null, known = false
+    /** Where the page is now (null: hidden), and its corners. Not known till this places it: `web:open` showed it where
+     *  the box was. */
+    let at: DOMRect | null = null, known = false, radius = -1
     /** What to look at again (null: only where it is). */
     let dirty: Change = "hits"
     // The window is see-through only where the page is, in every frame (App windows make it transparent): the hole
     // shrinks and is painted before the page moves or hides, and grows only once the page is there.
-    const move = async (to: DOMRect | null) => {
+    const move = async (to: DOMRect | null, round = 0) => {
       const both = at && to ? overlap(at, to) : null
-      if (!sameRect(both, at)) { setHole(id, el, both); await painted() }
+      if (!sameRect(both, at)) { setHole(id, el, both, radius); await painted() }
       if (gone) return undefined
-      const placed = await web.place(id, to && { x: to.left, y: to.top, width: to.width, height: to.height }).catch(() => undefined)
+      const placed = await web.place(id, to && spot(to, round)).catch(() => undefined)
       at = placed?.shown === false ? null : to
+      radius = round
       known = true
       setOnScreen(id, !!at)
-      if (!gone) setHole(id, el, at)
+      if (!gone) setHole(id, el, at, radius)
       return placed
     }
     const step = async () => {
       if (still) return
-      const r = pageArea(el.getBoundingClientRect())
+      const r = pageArea(el.getBoundingClientRect()), round = corners(el, r)
       const show = !live.current.error && !live.current.passkey && !live.current.held && r.width >= 2 && r.height >= 2
       // (where it was, and nothing changed since: nor did what covers it)
-      if (!dirty && show && at && sameRect(at, r)) return
+      if (!dirty && show && at && sameRect(at, r) && round === radius) return
       if (dirty === "hits" || !sameRect(at, r)) hits = show ? hitCover(el, r) : null
       dirty = null
       const cover = show ? hits ?? floatCover(r) : null
@@ -268,9 +281,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       covered = cover === "app"
       // (an error that came before its first step: the page web:open showed is hidden under it)
       if (!show) { if (at || (!known && live.current.error)) await move(null); return }
-      if (sameRect(at, r)) return
+      if (sameRect(at, r) && round === radius) return
       const wasHidden = !at
-      const placed = await move(r)
+      const placed = await move(r, round)
       if (wasHidden && free && (placed?.focused || shownFocused.current || mine)) void web.go(id, "focus")
       shownFocused.current = false
     }
@@ -301,10 +314,12 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       still = null
       const r = pageArea(el.getBoundingClientRect())
       if (picture && !live.current.error && !live.current.passkey && r.width >= 2 && r.height >= 2) {
-        await web.place(id, { x: r.left, y: r.top, width: r.width, height: r.height }).catch(() => undefined)
+        const round = corners(el, r)
+        await web.place(id, spot(r, round)).catch(() => undefined)
         if (gone) return
         at = r
-        setHole(id, el, at)
+        radius = round
+        setHole(id, el, at, radius)
         await painted()
       }
       unpicture()

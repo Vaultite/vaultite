@@ -128,8 +128,9 @@ export type WebPageState = { url: string; title: string; back: boolean; forward:
   unsafe?: boolean; crashed?: boolean; typed?: boolean
   /** Its page has painted since it was made (older builds don't say). */
   painted?: boolean }
-/** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's). */
-type WebRect = { x: number; y: number; width: number; height: number }
+/** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's); `radius`, a page's corners' (Electron
+ *  rounds all four). */
+type WebRect = { x: number; y: number; width: number; height: number; radius?: number }
 /** Web pages in the desktop app: native views over this window in sessions of their own (logins apart from the app's),
  *  known by number, each a tab's: hidden while it's in the background, ended with it. Older builds ignore tabs. */
 export type WebPages = {
@@ -218,9 +219,9 @@ export type WebEvent =
   | { type: "close"; tab: string }
   /** The pointer moved over a page near the window's left or right edge, or just left there (window CSS px). */
   | { type: "pointer"; x: number; y: number }
-  /** The pointer is at page `id`'s top edge (`at`; told again while it stays, `now`: it clicked there), or left it: a
-   *  hidden page bar slides in. */
-  | { type: "top"; id: number; at: boolean; now?: boolean }
+  /** The pointer is at page `id`'s top edge (`at`; told again while it stays, `now`: it clicked there), or not (`left`:
+   *  it left the page there): a hidden page bar slides in. */
+  | { type: "top"; id: number; at: boolean; now?: boolean; left?: boolean }
   | { type: "focus"; id: number }
   /** Page `id`'s cursor changed (Electron's name: "pointer", "text"...), shown over it while the window lets the pointer
    *  through. Older builds don't tell it. */

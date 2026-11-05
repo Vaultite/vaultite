@@ -61,5 +61,9 @@
 - The page bar hidden (`pageBar`, pagebar.ts) lies over the box, slid out: out, it covers the page's top, so the window
   is raised over the page (layers.ts) and hears the pointer leave it. The window never hears the pointer over a page:
   electron/web.ts tells when it's at the page's top (`top`, again while it stays: the page hears nothing while the bar's
-  over it), as it tells the window's edges for the sidebars. The pane's top above it (Tabs.tsx's `data-tabs-hidden`
-  strip or title, the window's to hear) brings it too, and its menu ends with the bar's switch (the view's `paneMenu`), with the tab bar's and pane titles': every menu that has it puts it last.
+  over it), as it tells the window's edges for the sidebars. The pane's top above it (Tabs.tsx's `data-pane-bar`
+  strip, title or tabs, and as cards the gap above the card, Workspace.tsx's `data-pane-gap`: the window's to hear) brings
+  it too, one band with the page's top, and its menu ends with the bar's switch (the view's `paneMenu`), with the tab bar's and pane titles': every menu that has it puts it last.
+- As cards, a page's corners follow its card's where it meets them (WebPage's `corners`, `setBorderRadius`). Electron
+  rounds all four alike, and on a Mac a parent View clips no page (tried), nor can a view go under the window's page
+  short of raising it: under a bar its top corners round too. Raised, the hole keeps what's outside them painted.

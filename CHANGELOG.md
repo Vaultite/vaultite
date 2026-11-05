@@ -9,6 +9,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Dark pages reach a styled site's other pages**: a site the vault styles only in part (Google Docs' editors) has
   its sign-in, access and error pages darkened too, judged page by page as they look with the style; going from one
   darkened site to another in a tab no longer shows a pale frame; site styles get `--vault-paper-filter` for canvases.
+- **Web pages round with their card**: with panes as cards, a page's corners follow its card's curve instead of poking
+  past it; with the page bar hidden, the gap above a card brings the bar too, and its right-click has the bar's switch.
 - **A vault's icon is Vaultite's stone**: Open in the menu bar's menu, Open vault in the File menu and a vault among
   the folders in Manage vaults show the gem, not a safe.
 - **A cleaner menu bar menu**: icons on its rows (a mic for Dictate anywhere, with its keys under it), and where the

@@ -19,7 +19,7 @@ import { fillsPane, offText, openElsewhere, switchedOn, usePluginsVersion, viewF
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { FileView } from "@/components/FileView"
 import { Drawn, Guard } from "@/components/Guard"
-import { DragGhost, PaneBar, springTabAt, tabBarOn, TabStrip, tabLabel, useTabInfo, type TabInfo } from "@/components/Tabs"
+import { barMenuOf, DragGhost, PaneBar, springTabAt, tabBarOn, TabStrip, tabLabel, useTabInfo, type TabInfo } from "@/components/Tabs"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { useDrag, useDropTarget, type DragItem } from "@/core/drag"
 import { Resizer } from "@/components/Resizer"
@@ -27,6 +27,7 @@ import { resizing, startResizing, stopResizing } from "@/core/resizing"
 import { ViewBar } from "@/components/ViewBar"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
+import { menuFor } from "@/components/ContextMenu"
 import { unsavedIn } from "@/core/unsaved"
 
 setTabCloser((to, pane, last, moved) => {
@@ -161,6 +162,10 @@ export function Workspace(props: Props) {
               <div aria-hidden data-plate={id} style={{ ...at, zIndex: z }}
                 className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-[10px] shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")} />
               <Frame pane={p} tab={t} {...props} info={info} on={{ at, z, rect, float, zoomed, focused, under, top, lifted: lifted === id, bar: bars, only, box }} />
+              {/* The gap above a card at the area's top is its pane's top (a hidden page bar comes there, pagebar.ts):
+                  as wide as the card, never the tab bar's nor a divider's. */}
+              {!float && !under && rect.y < 1e-6 && <div data-pane-gap={id} onContextMenu={menuFor(() => barMenuOf(id))}
+                style={{ left: at.left, width: at.width, top: 0, height: G, zIndex: z }} className="absolute" />}
               {float ? <CardEdges id={id} rect={rect} box={box} z={z! + 1} /> : null}
             </Fragment>
           )

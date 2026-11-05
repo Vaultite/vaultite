@@ -1,5 +1,5 @@
 // The page bar hidden (setting `pageBar`, as Zen's compact mode): the page fills its tab; the bar slides over it while
-// the pointer's at the page's top, the pane's top or the bar, on a click at those tops, the keyboard in it, a new tab.
+// the pointer's at the page's top, its pane's (`paneTopOf`) or the bar, on a click at those tops, the keyboard in it, a new tab.
 import { useEffect, useState, type RefObject } from "react"
 import { PanelTopClose, PanelTopOpen } from "lucide-react"
 import { useBarsHidden, type MenuItem, type WebPages } from "@vaultite"
@@ -17,8 +17,14 @@ export const pageBarItem = (sep = false): MenuItem => (barHidden()
   ? { label: "Always show page bar", icon: PanelTopOpen, sep, run: () => void setBarHidden(false) }
   : { label: "Hide page bar", icon: PanelTopClose, sep, run: () => void setBarHidden(true) })
 
+/** The pane whose top `el` is in: its bar (Tabs.tsx's strip, title or tabs) or the gap above its card (Workspace.tsx). */
+const paneTopOf = (el: Element | null) => {
+  const top = el?.closest<HTMLElement>("[data-pane-bar], [data-pane-gap]")
+  return top ? top.dataset.paneBar ?? top.dataset.paneGap : undefined
+}
+
 /** Whether the bar is hidden (setting), and whether it's out now (always, when it isn't hidden; `keep`: kept out).
- *  `group`: its pane, whose top (Tabs.tsx's `data-tabs-hidden` bar: a strip, or the title) brings it too. */
+ *  `group`: its pane, whose top brings it too (`paneTopOf`). */
 export function usePageBar(web: WebPages, id: number, group: string | undefined, bar: RefObject<HTMLElement | null>, keep: boolean) {
   // (a pop-out with its bars hidden: hidden too, and only the keyboard brings it, ⌘L; the pointer at its top is the
   // window's, to move it)
@@ -28,21 +34,25 @@ export function usePageBar(web: WebPages, id: number, group: string | undefined,
   const [typing, setTyping] = useState(false)
 
   // Coming: the desktop app tells when the pointer is at the page's top (the window hears nothing over a page), and
-  // the window hears it on the pane's top. A click on either brings it at once.
+  // the window hears it on the pane's top, the two one band. A click on either brings it at once.
   useEffect(() => {
     if (!hidden || bare) return
-    let t = 0
+    let t = 0, atPage = false, atPane = false
     const come = (now: boolean) => {
       if (now) { clearTimeout(t); t = 0; setPointer(true) }
       else if (!t) t = window.setTimeout(() => { t = 0; setPointer(true) }, REST_MS)
     }
     const stay = () => { clearTimeout(t); t = 0 }
-    const off = id ? web.on((m) => { if (m.type === "top" && m.id === id) { if (m.at) come(!!m.now); else stay() } }) : () => {}
-    const top = (e: Event) => {
-      const el = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-pane-bar]") : null
-      return !!el && !!group && el.dataset.paneBar === group
-    }
-    const over = (e: PointerEvent) => { if (top(e)) come(false); else stay() }
+    const ask = (now = false) => { if (atPage || atPane) come(now); else stay() }
+    // (the page told it left after the window heard it over the pane's top: that still counts; moved lower in the page, not)
+    const off = id ? web.on((m) => {
+      if (m.type !== "top" || m.id !== id) return
+      atPage = !!m.at
+      if (!m.at && !m.left) atPane = false
+      ask(!!m.at && !!m.now)
+    }) : () => {}
+    const top = (e: Event) => !!group && paneTopOf(e.target instanceof Element ? e.target : null) === group
+    const over = (e: PointerEvent) => { atPane = top(e); if (atPane) atPage = false; ask() }
     // (its own buttons, the pane's handle and X, do what they do)
     const down = (e: PointerEvent) => { if (e.button === 0 && top(e) && !(e.target as Element).closest("button")) come(true) }
     addEventListener("pointerover", over, { passive: true })
@@ -58,8 +68,7 @@ export function usePageBar(web: WebPages, id: number, group: string | undefined,
     const onIt = (e: Event) => {
       const el = e.target instanceof Element ? e.target : null
       if (!el) return false
-      const top = el.closest<HTMLElement>("[data-pane-bar]")
-      return !!bar.current?.contains(el) || !!el.closest("[role=menu]") || (!!top && top.dataset.paneBar === group)
+      return !!bar.current?.contains(el) || !!el.closest("[role=menu]") || (!!group && paneTopOf(el) === group)
     }
     const move = (e: PointerEvent) => {
       if (onIt(e)) { clearTimeout(t); t = 0; return }

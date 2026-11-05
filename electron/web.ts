@@ -20,7 +20,8 @@ import { fileURLToPath } from "node:url"
 
 setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl })
 
-export type WebRect = { x: number; y: number; width: number; height: number }
+/** `radius`: its corners' (CSS px), where it meets its pane's rounded card's (one radius: Electron rounds all four). */
+export type WebRect = { x: number; y: number; width: number; height: number; radius?: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
   paused?: boolean; player?: boolean; zoom?: number; unsafe?: boolean; crashed?: boolean; typed?: boolean; painted?: boolean }
 type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
@@ -48,6 +49,8 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   icons?: string
   /** It had the keyboard when it was last hidden. */
   hadFocus?: boolean
+  /** Its corners' radius now (window px). */
+  radius?: number
   /** Whether it plays sound, as its tab shows it (webpages.ts), and the timer that ends a quiet stretch's. */
   sound: Playback; hush?: NodeJS.Timeout
   /** The app paused its media (`pause`): `play` starts those again, till it plays or loads another page. */
@@ -599,11 +602,11 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     drain()
   })
 
-  // The window doesn't hear the pointer over the page: near its edges and top it's told (peek.ts, pagebar.ts; the top
-  // again while it stays, and on a click), and as it leaves; never from a page out of sight (an agent's, at -40000).
-  let atEdge = false, atTop = false, toldTop = 0
+  // The window doesn't hear the pointer over the page: near its edges and top it's told (peek.ts, pagebar.ts; the top as
+  // it comes in, again while it stays, on a click), and as it leaves; never from a page out of sight (an agent's).
+  let atEdge = false, atTop: boolean | null = null, toldTop = 0
   wc.on("before-mouse-event", (_e, m) => {
-    if (m.type === "mouseLeave" && atTop) { atTop = false; tell(p.win, { type: "top", id: p.id, at: false }) }
+    if (m.type === "mouseLeave") { if (atTop) tell(p.win, { type: "top", id: p.id, at: false, left: true }); atTop = null }
     if (p.player) { if (m.type === "mouseMove") strips?.pointerAt(p.player, m.y); return }
     if ((m.type !== "mouseMove" && m.type !== "mouseDown") || p.full || p.win.isDestroyed() || !shownNow(p)) return
     const z = p.win.webContents.getZoomFactor(), b = p.view.getBounds(), [w] = p.win.getContentSize()
@@ -852,6 +855,7 @@ function fit(p: Page) {
     if (fill.isDestroyed()) return
     const [width, height] = fill.getContentSize()
     p.parked = p.resting = false
+    round(p, 0)
     p.view.setBounds({ x: 0, y: 0, width, height })
     p.view.setVisible(true)
     return
@@ -874,9 +878,11 @@ function fit(p: Page) {
   if (p.parked) { p.parked = p.resting = false; p.view.setVisible(false); addPage(p.win, p.view) }
   // The window's page may be zoomed (⌘+): its CSS pixels are that many of the window's.
   const z = p.win.webContents.getZoomFactor()
+  round(p, Math.round((rect.radius ?? 0) * z))
   p.view.setBounds({ x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) })
   p.view.setVisible(true)
 }
+const round = (p: Page, r: number) => { if ((p.radius ?? 0) !== r) { p.radius = r; p.view.setBorderRadius(r) } }
 
 function go(p: Page, action: string, url?: string): unknown {
   const wc = p.view.webContents
@@ -1061,7 +1067,9 @@ const tabOf = (x: unknown) => (typeof x === "string" && /^[\w-]{1,64}$/.test(x) 
 const rectOf = (r: unknown): WebRect | null => {
   if (!r || typeof r !== "object") return null
   const o = r as Record<string, unknown>
-  return ["x", "y", "width", "height"].every((k) => typeof o[k] === "number" && Number.isFinite(o[k])) ? o as WebRect : null
+  if (!["x", "y", "width", "height"].every((k) => typeof o[k] === "number" && Number.isFinite(o[k]))) return null
+  const radius = typeof o.radius === "number" && Number.isFinite(o.radius) ? Math.max(0, Math.min(40, o.radius)) : 0
+  return { x: o.x as number, y: o.y as number, width: o.width as number, height: o.height as number, radius }
 }
 /** A page of this window. */
 function mine(win: AppWindow, id: unknown) {

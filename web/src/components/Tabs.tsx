@@ -138,7 +138,7 @@ export function placeMenuOf(id: string): MenuItem[] {
 
 /** Right-click on a pane's bar (or the view's top bar that's its title row): a split's pane's own menu; a tab's only
  *  pane's is the tab's, as its chip has it (with the tab bar off, nothing else is the tab's). Then how they show. */
-function barMenuOf(id: string): MenuItem[] {
+export function barMenuOf(id: string): MenuItem[] {
   const t = paneTab(id), p = paneById(id)
   if (!t || panesOf(t).length > 1) return [...paneMenu(id), ...shownItems(p)]
   return [...tabMenu(t),

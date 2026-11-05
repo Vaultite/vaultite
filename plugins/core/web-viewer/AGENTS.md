@@ -1,7 +1,8 @@
 ## Browser
 A web browser in tabs of the desktop app, next to your notes. A tab `view:web/<address>` shows
 that page (`vau open "view:web/https://example.com"`); its bar has back, forward, reload, the address (an address or
-words to search for; the tab's container at its left, Shields at its right), pinned extensions, Save and a … menu. Save
+words to search for; the tab's container at its left, Shields at its right), pinned extensions, Save and a … menu; `pageBar: hidden` (Shown on hover) has the page fill its tab, the bar sliding
+over it while the pointer rests at the page's top, its pane's or the gap above its card (panes as cards). Save
 clips the page as it's shown (the Web clipper's `POST /api/clip` with its HTML, so a page you're logged in to works
 too) into `Clippings/`; its menu has plugins' other ways to save (Save video). The … menu: Bookmark, Find in page,
 Print, View page source (⌥⌘U: a view-source: tab, also in the page's right-click), Block an element, Open in another browser, Open as player, Picture in picture, plugins' other actions and

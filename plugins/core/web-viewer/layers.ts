@@ -159,17 +159,17 @@ export function passPointer(box: HTMLElement, id: () => number | null, area: () 
 
 // ---------- the hole: only backgrounds are cut, never what's drawn over the page ----------
 
-const holes = new Map<number, { box: HTMLElement; r: DOMRect }>()
+const holes = new Map<number, { box: HTMLElement; r: DOMRect; radius: number }>()
 /** The elements whose backgrounds are cut, with the CSS they were given. */
 let cut = new Map<HTMLElement, string>()
 let soon = 0
 
-/** Page `id` shows at `r` of `box` (null: it doesn't): what's behind it is cut away. */
-export function setHole(id: number, box: HTMLElement, r: DOMRect | null) {
+/** Page `id` shows at `r` of `box` (null: it doesn't), its corners rounded by `radius`: what's behind it is cut away. */
+export function setHole(id: number, box: HTMLElement, r: DOMRect | null, radius = 0) {
   const had = holes.get(id)
   if (!r) { if (!had) return; holes.delete(id) }
-  else if (had && had.box === box && same(had.r, r)) return
-  else holes.set(id, { box, r })
+  else if (had && had.box === box && same(had.r, r) && had.radius === radius) return
+  else holes.set(id, { box, r, radius })
   schedule()
 }
 const same = (a: DOMRect, b: DOMRect) => a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
@@ -201,9 +201,9 @@ function apply() {
   }
   // Every element painting behind a page: its colour as four (or more) strips around the holes in it.
   const next = new Map<HTMLElement, string>()
-  const under = new Map<HTMLElement, DOMRect[]>()
-  for (const { box, r } of holes.values()) {
-    for (let el: HTMLElement | null = box; el; el = el.parentElement) under.set(el, [...(under.get(el) ?? []), r])
+  const under = new Map<HTMLElement, { r: DOMRect; radius: number }[]>()
+  for (const { box, r, radius } of holes.values()) {
+    for (let el: HTMLElement | null = box; el; el = el.parentElement) under.set(el, [...(under.get(el) ?? []), { r, radius }])
   }
   for (const [el, rs] of under) {
     // (its own colour: read with the cut off, which restyles without painting)
@@ -213,9 +213,10 @@ function apply() {
     const paints = st.backgroundImage === "none" && !/^(transparent|rgba\(.*,\s*0\))$/.test(color)
     if (!paints) continue
     const b = el.getBoundingClientRect()
-    const strips = rs.reduce((left, h) => left.flatMap((x) => minus(x, h)), [new DOMRect(b.left, b.top, b.width, b.height)])
-    const css = strips.length
-      ? `--web-hole-image: ${strips.map(() => `linear-gradient(${color}, ${color})`).join(", ")}; --web-hole-size: ${strips.map((s) => `${s.width}px ${s.height}px`).join(", ")}; --web-hole-position: ${strips.map((s) => `${s.left - b.left}px ${s.top - b.top}px`).join(", ")}`
+    const strips = rs.reduce((left, { r: h }) => left.flatMap((x) => minus(x, h)), [new DOMRect(b.left, b.top, b.width, b.height)])
+    const parts = [...strips.map((s) => ({ image: `linear-gradient(${color}, ${color})`, s })), ...rs.flatMap((h) => corners(h.r, h.radius, color))]
+    const css = parts.length
+      ? `--web-hole-image: ${parts.map((p) => p.image).join(", ")}; --web-hole-size: ${parts.map(({ s }) => `${s.width}px ${s.height}px`).join(", ")}; --web-hole-position: ${parts.map(({ s }) => `${s.left - b.left}px ${s.top - b.top}px`).join(", ")}`
       : "--web-hole-image: none; --web-hole-size: auto; --web-hole-position: 0 0"
     next.set(el, css)
     if (cut.get(el) !== css) { for (const d of css.split("; ")) { const [k, v] = d.split(": "); el.style.setProperty(k, v) } }
@@ -223,6 +224,15 @@ function apply() {
   }
   for (const el of cut.keys()) if (!next.has(el)) { el.removeAttribute("data-web-hole"); for (const k of ["--web-hole-image", "--web-hole-size", "--web-hole-position"]) el.style.removeProperty(k) }
   cut = next
+}
+
+/** A rounded page's hole keeps what's outside its corners' curves painted: the page shows only inside them. */
+function corners(h: DOMRect, radius: number, color: string) {
+  if (radius <= 0) return []
+  const at = (x: number, y: number, centre: string) => ({ image: `radial-gradient(circle at ${centre}, transparent ${radius - 0.5}px, ${color} ${radius + 0.5}px)`,
+    s: new DOMRect(x, y, radius, radius) })
+  const R = h.right - radius, B = h.bottom - radius
+  return [at(h.left, h.top, "100% 100%"), at(R, h.top, "0 100%"), at(h.left, B, "100% 0"), at(R, B, "0 0")]
 }
 
 /** `a` without `h`: up to four rects. */
