@@ -328,6 +328,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `kindFolder(folder, disabled?)`: Whether a plain Markdown file in `folder` would be a kind's (People/, Logs/Gym/): such a folder holds only that kind, so another sort of note goes where new notes go instead.
 - `kindIcon(path)`: The icon for a file that isn't a note (notes take their plugin's).
 - `KV({ label, children })`: A label and its value, in a Group.
+- `laidOut(el)`: Where an element is laid out, without the slide a drag's preview gives it (core/slide.ts): hits are worked out on that, so what makes way doesn't move what's under the pointer.
 - `Layout`: A block's place on a dashboard's grid: COMMON's `wide` and `stack`.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
 - `Link`: A link as drawn Markdown names it: a [[link]]'s target, a Markdown link's address, or a #tag.
@@ -449,10 +450,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PaletteFrame({ label, onClose, onKeyDown, children })`: The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held still under it; Escape or a click outside closes it, and the keyboard goes back.
 - `Pane`: One view with its own history: what a tab shows, or one part of a split tab.
 - `paneById(id)`
+- `PaneControls()`: A pane's buttons at its view's top bar's end (ViewBar, the Browser's) while that bar is its title row (no tab bar nor titles: its strip folds away) and the tab on screen is split.
 - `Panel({ title, icon, tint, action, className, children })`: A card, headed like the Health app: small symbol and title in the category colour.
 - `PanelFold`
 - `panelMenu(key?, side?)`: Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`).
 - `panelSide(key, s?)`: Which sidebar a panel is in (null: hidden).
+- `paneMenuOf(id)`: A pane's right-click menu, the one its bar has (a half of a split tab's row).
 - `PaneMotion`: A move of panes as it starts: the sections moving, and when they're all still.
 - `panesOf(t)`: A tab's panes.
 - `panesShowing(...to)`: The panes showing any of these targets ("file:Inbox/A.md"), in every tab of this window.

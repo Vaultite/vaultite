@@ -1,16 +1,14 @@
 // Desktop: the window's tab bar over the shown tab's panes. Every pane is drawn in one flat list, the last few tabs' kept
 // hidden, so switching tabs, splitting or moving a pane between tabs never remounts the others (an editor keeps its cursor).
 import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { Minimize2, PictureInPicture2 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
 import { closePane, paneById, quietly, replaceTabTarget, setArchivable, setCloseGuard, setFocusedPane, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, setWorkspaceOf, useTabList } from "@/core/workspace"
 import { dropAt, dropOn, PANES, springOver, type Drop } from "@/core/drop"
-import { dockPane, evenOut, placeFloat, resize, zoomPane } from "@/core/splits"
+import { evenOut, placeFloat, resize } from "@/core/splits"
 import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
-import { useCommandKeys } from "@/core/commands"
 import { setGroupNamer } from "@/core/tabgroups"
 import { layout, panesOf, shownTab, tabOfPane, tabPath, type Divider as DividerAt, type Pane, type Rect, type Tab, type TabList } from "../../../core/layout.ts"
 import { PaneContext } from "@/core/pane"
@@ -192,23 +190,9 @@ function Frame({ pane, tab, on, info, ...p }: Props & { pane: Pane; tab: Tab; on
       onPointerDownCapture={on ? () => setFocusedPane(id) : undefined} onPointerDown={on?.float ? (e) => moveCard(e, id, on.box) : undefined}
       style={on ? { ...on.at, zIndex: on.z && on.z + 2 } : { display: "none" }}
       className={cn("absolute flex min-h-0 min-w-0 flex-col border-border", on?.float ? "overflow-hidden rounded-[10px]" : on && !on.zoomed && cn(r!.x > 1e-6 && "border-l", r!.y > 1e-6 && "border-t"))}>
-      {on?.bar ? <PaneBar pane={pane} tab={tab} focused={on.focused} info={info} only={on.only} extra={<PaneState id={id} float={on.float} zoomed={on.zoomed} />} /> : null}
+      {on?.bar ? <PaneBar pane={pane} tab={tab} focused={on.focused} info={info} only={on.only} float={on.float} zoomed={on.zoomed} /> : null}
       <PaneBody pane={pane} tab={tab} shown={!!on} focused={!!on?.focused} {...p} />
     </section>
-  )
-}
-
-/** At a bar's end, accent-tinted as Rex's: a zoomed pane's unzoom, a floating pane's dock (each a click away). */
-function PaneState({ id, float, zoomed }: { id: string; float: boolean; zoomed: boolean }) {
-  const zoomKeys = useCommandKeys("pane:zoom", true), floatKeys = useCommandKeys("pane:float", true)
-  if (!zoomed && !float) return null
-  const Icon = zoomed ? Minimize2 : PictureInPicture2, label = zoomed ? "Unzoom pane" : "Dock pane"
-  return (
-    <button type="button" {...{ [zoomed ? "data-pane-unzoom" : "data-pane-dock"]: id }} aria-label={label} data-tip={`${label}${zoomed ? zoomKeys : floatKeys}`}
-      onClick={() => (zoomed ? zoomPane(id) : dockPane(id))}
-      className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-full bg-primary/15 text-primary hover:bg-primary/25">
-      <Icon className="size-3.5" strokeWidth={2.25} />
-    </button>
   )
 }
 

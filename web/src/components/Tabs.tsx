@@ -1,6 +1,6 @@
 // Tabs (desktop): one bar of the window's tabs above its panes, a split tab one chip of its panes; drag a tab to
 // reorder, onto a pane (an edge splits, the middle replaces it), or let go outside the window. A pane drags by its bar.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import {
   AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, PictureInPicture2, Folder,
@@ -12,10 +12,10 @@ import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
 import { stem } from "@/core/files"
-import { activePane, askRename, closePane, closeTab, closeTabIds, closeTabs, here, isPopout, paneById, paneTab, popOut, selectPane, selectTab, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
+import { activePane, askRename, closePane, closeTab, closeTabIds, closeTabs, here, isPopout, onWorkspaceChange, paneById, paneTab, popOut, selectPane, selectTab, showActiveUnder, tabById, togglePinTab, useTabList } from "@/core/workspace"
 import { canFloat, canJoin, canPaneToTab, canTabIntoPane, canZoom, dockPane, floatPane, keepShown, moveToSplit, paneIntoPane, paneToTab, replaceWithTab, splitPane, zoomPane } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
-import { focusedPane, isBlankTab, layout, panesOf, vaultPath, type Group, type Pane, type Rect, type Tab } from "../../../core/layout.ts"
+import { focusedPane, isBlankTab, layout, panesOf, shownTab, vaultPath, type Group, type Pane, type Rect, type Tab } from "../../../core/layout.ts"
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
 import { addToGroup, allGroups, closeGroup, colorGroup, groupById, leaveGroup, makeGroup, newTabInGroup, renameGroup, ungroup } from "@/core/tabgroups"
@@ -25,7 +25,7 @@ import { canRenameTab, renameTab } from "@/core/tabnames"
 import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, groupsAsDrawn, sprangOpen, springing, type Drop } from "@/core/drop"
 import { INCOMING, useSlide } from "@/core/slide"
-import { usePaneHasTopBar } from "@/core/pane"
+import { usePane, usePaneHasTopBar } from "@/core/pane"
 import { tabButtons, tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { commandItems, menuFor, openMenu, type MenuItem } from "@/components/ContextMenu"
@@ -873,17 +873,75 @@ export function TabStrip({ info }: { info: (t: Tab | Pane) => TabInfo }) {
   )
 }
 
+/** A zoomed pane's unzoom or a floating pane's dock, accent-tinted as Rex's, each a click away. */
+function PaneState({ id, float, zoomed }: { id: string; float: boolean; zoomed: boolean }) {
+  const zoomKeys = useCommandKeys("pane:zoom", true), floatKeys = useCommandKeys("pane:float", true)
+  if (!zoomed && !float) return null
+  const Icon = zoomed ? Minimize2 : PictureInPicture2, label = zoomed ? "Unzoom pane" : "Dock pane"
+  return (
+    <button type="button" {...{ [zoomed ? "data-pane-unzoom" : "data-pane-dock"]: id }} aria-label={label} data-tip={`${label}${zoomed ? zoomKeys : floatKeys}`}
+      onClick={() => (zoomed ? zoomPane(id) : dockPane(id))}
+      className="grid size-6 shrink-0 cursor-pointer place-items-center self-center rounded-full bg-primary/15 text-primary hover:bg-primary/25">
+      <Icon className="size-3.5" strokeWidth={2.25} />
+    </button>
+  )
+}
+
+/** A pane's own buttons at its bar's end, the same on every kind of pane: its state (zoomed, floating), its X and its
+ *  handle, the last two shown while the pointer is on the bar (`group/bar`; a fading file bar shown: `data-shown`). */
+function PaneButtons({ id, tab, several, only, float, zoomed, label }: { id: string; tab: string; several: boolean; only: boolean; float: boolean; zoomed: boolean; label: () => string }) {
+  const closeKeys = useCommandKeys("pane:close", true)
+  const item = useDragItem()
+  const hover = item?.pane === id ? "opacity-100" : "opacity-0 group-hover/bar:opacity-100 group-data-[shown]/bar:opacity-100"
+  return (
+    <>
+      <PaneState id={id} float={float} zoomed={zoomed} />
+      {/* Closes the pane (its tab's last: the tab), pinned too (⌘⇧T brings it back). Not the window's only one. */}
+      {!only && (
+        <button type="button" data-pane-close={id} aria-label={several ? "Close pane" : "Close tab"} data-tip={item ? undefined : `${several ? "Close pane" : "Close tab"}${closeKeys}`}
+          onClick={() => (several ? closePane(id) : closeTab(tab))}
+          className={cn("grid h-7 w-5 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground transition-opacity hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100", hover)}>
+          <X className="size-4" strokeWidth={2} />
+        </button>
+      )}
+      <button type="button" data-pane-handle={id} aria-label="Move this pane" data-tip={item ? undefined : "Drag to move this pane"}
+        onPointerDown={(e) => dragPane(e, id, label())}
+        className={cn("grid h-7 w-5 shrink-0 cursor-grab place-items-center rounded-[5px] text-muted-foreground transition-opacity hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100", hover)}>
+        <GripVertical className="size-4" strokeWidth={2} />
+      </button>
+    </>
+  )
+}
+
+/** How pane `id` is drawn now: in the tab on screen beside others ("split", "zoomed", "float"), else "". */
+const splitState = (id: string) => {
+  const t = shownTab(here()), ps = t ? panesOf(t) : [], p = ps.find((x) => x.id === id)
+  return !t || !p || ps.length < 2 ? "" : t.zoom === id ? "zoomed" : p.float ? "float" : "split"
+}
+
+/** A pane's buttons at its view's top bar's end (ViewBar, the Browser's) while that bar is its title row (no tab bar nor
+ *  titles: its strip folds away) and the tab on screen is split. In the bar's no-drag children, as the window drags it. */
+export function PaneControls() {
+  const { pane, tab, hidden } = usePane()
+  const prefs = usePrefs(), barred = usePaneHasTopBar(pane)
+  const state = useSyncExternalStore(onWorkspaceChange, () => (pane && !hidden ? splitState(pane) : ""))
+  if (!state || !barred || tabBarOn(prefs) || prefs.paneTitles) return null
+  return (
+    <div data-pane-controls={pane} onContextMenu={menuFor(() => barMenuOf(pane))} className="flex shrink-0 items-center">
+      <PaneButtons id={pane} tab={tab} several only={false} float={state === "float"} zoomed={state === "zoomed"} label={() => tabLabel(paneById(pane) ?? { id: pane, to: "new" }, null).label} />
+    </div>
+  )
+}
+
 /** A pane's bar: what it shows (appearance `paneTitles`) or a thin strip, its handle, its X and its menu. Without the
- *  tab bar or titles, a view's top bar (a file's, the Browser's) is its title row (index.css), with the pane's menu. */
-export function PaneBar({ pane, tab, focused, info, only, extra }: { pane: Pane; tab: Tab; focused: boolean; info: (t: Tab | Pane) => TabInfo
+ *  tab bar or titles, a view's top bar is its title row (index.css), with the pane's menu and buttons (PaneControls). */
+export function PaneBar({ pane, tab, focused, info, only, float, zoomed }: { pane: Pane; tab: Tab; focused: boolean; info: (t: Tab | Pane) => TabInfo
   /** The window's only pane: nothing to close. */
   only: boolean
-  /** What the pane's state adds at the bar's end, before its handle (zoomed, floating). */
-  extra?: ReactNode }) {
+  /** Its state, a button at the bar's end, before its X. */
+  float: boolean; zoomed: boolean }) {
   const prefs = usePrefs(), { fileIcons, paneTitles } = prefs, tabBar = tabBarOn(prefs)
-  const closeKeys = useCommandKeys("pane:close", true)
   const hasTopBar = usePaneHasTopBar(pane.id), merged = !tabBar && !paneTitles && hasTopBar
-  const item = useDragItem()
   const strip = useRef<HTMLDivElement>(null)
   const id = pane.id
   useEffect(() => {
@@ -895,23 +953,8 @@ export function PaneBar({ pane, tab, focused, info, only, extra }: { pane: Pane;
     section.addEventListener("contextmenu", menu)
     return () => section.removeEventListener("contextmenu", menu)
   }, [merged, id])
-  const i = info(pane), several = panesOf(tab).length > 1
-  const handle = (
-    <button type="button" data-pane-handle={id} aria-label="Move this pane" data-tip={item ? undefined : "Drag to move this pane"}
-      onPointerDown={(e) => dragPane(e, id, i.label)}
-      className={cn("grid h-7 w-5 shrink-0 cursor-grab place-items-center rounded-[5px] text-muted-foreground transition-opacity hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100",
-        item?.pane === id ? "opacity-100" : "opacity-0 group-hover/bar:opacity-100")}>
-      <GripVertical className="size-4" strokeWidth={2} />
-    </button>
-  )
-  // Closes the pane (its tab's last: the tab), pinned too (⌘⇧T brings it back). Not the window's only one.
-  const closer = !only && (
-    <button type="button" data-pane-close={id} aria-label={several ? "Close pane" : "Close tab"} data-tip={item ? undefined : `${several ? "Close pane" : "Close tab"}${closeKeys}`}
-      onClick={() => (several ? closePane(id) : closeTab(tab.id))}
-      className="grid h-7 w-5 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground opacity-0 transition-opacity group-hover/bar:opacity-100 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100">
-      <X className="size-4" strokeWidth={2} />
-    </button>
-  )
+  const i = info(pane)
+  const buttons = <PaneButtons id={id} tab={tab.id} several={panesOf(tab).length > 1} only={only} float={float} zoomed={zoomed} label={() => i.label} />
   const menu = menuFor(() => barMenuOf(id))
   if (!paneTitles) {
     return (
@@ -919,7 +962,8 @@ export function PaneBar({ pane, tab, focused, info, only, extra }: { pane: Pane;
         className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
         {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
         <div className="h-full min-w-0 flex-1" />
-        <div className="relative z-10 mt-0.5 flex self-start">{extra}{closer}{handle}</div>
+        {/* (merged, they're the view's bar's: PaneControls) */}
+        {!merged && <div className="relative z-10 mt-0.5 flex self-start">{buttons}</div>}
       </div>
     )
   }
@@ -930,9 +974,7 @@ export function PaneBar({ pane, tab, focused, info, only, extra }: { pane: Pane;
         {fileIcons && <PaneIcon i={i} />}
         <span className={cn("min-w-0 truncate font-medium", focused ? "text-foreground" : "text-muted-foreground")}>{i.label}</span>
       </div>
-      {extra}
-      {closer}
-      {handle}
+      {buttons}
     </div>
   )
 }

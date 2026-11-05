@@ -2,7 +2,7 @@
 // each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done. A tab is `3` or `3@m1`.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Bot, ChevronLeft, Globe, Keyboard, Pause, Play } from "lucide-react"
-import { Button, closePane, cn, dateText, errorText, get, LoadingSidebarRows, onMachine, openInSplit, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, webPages } from "@vaultite"
+import { Button, closePane, cn, dateText, errorText, get, LoadingSidebarRows, onMachine, openInSplit, PaneControls, post, selectPane, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, webPages } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
@@ -288,7 +288,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
   const shown = status === "gone" ? "This tab was closed in the desktop app." : status === "error" ? error || "Couldn't show this tab." : !framed ? "Connecting…" : ""
   return (
     <div className="@container flex h-full min-h-0 flex-col" data-web-live={id} data-web-live-status={status}>
-      <div ref={bar} className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b-[0.5px] border-border px-2 py-1">
+      <div ref={bar} className="group/bar flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b-[0.5px] border-border px-2 py-1">
         <button type="button" onClick={back} className="flex h-11 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] px-2 text-[15px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:h-7 md:text-[13px]">
           <ChevronLeft className="size-4" strokeWidth={2} />Tabs
         </button>
@@ -307,6 +307,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
         <Button look={paused ? "primary" : "secondary"} size="small" onClick={pause} data-web-live-pause={paused ? "resume" : "pause"} className="max-md:h-11">
           {paused ? <Play className="size-3.5" strokeWidth={2.25} /> : <Pause className="size-3.5" strokeWidth={2.25} />}{paused ? "Resume agents" : "Stop agents"}
         </Button>
+        <PaneControls />
         </span>
       </div>
       {asking && (

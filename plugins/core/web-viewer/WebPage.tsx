@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
   Search, ShieldAlert, Star, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
-  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, post, typingIn, useEnabled, usePane, usePaneTopBar, useStore, webPageActions, webPages,
+  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, onPaneMotion, openInSplit, openMenu, openView, allPanes, PaneControls, post, typingIn, useEnabled, usePane, usePaneTopBar, useStore, webPageActions, webPages,
   type MenuItem, type PaneMotion, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
@@ -463,7 +463,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     <div className={cn("relative flex h-full min-h-0 flex-col", barHid && "overflow-hidden")} data-web-page={id || ""}>
       {/* (a container: as it narrows, the address gives way first, then labels, pinned extensions and Forward go) */}
       <div ref={bar} onContextMenu={barMenu} data-web-bar data-web-bar-hidden={barHid ? (barOut ? "out" : "in") : undefined}
-        className={cn("@container/bar relative flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5",
+        className={cn("group/bar @container/bar relative flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5",
           barHid && "absolute inset-x-0 top-0 z-20 bg-background shadow-[0_8px_20px_-12px_rgb(0_0_0/0.45)] [transition:translate_var(--motion)_var(--ease-out)]",
           barHid && !barOut && "-translate-y-full")}>
         <BarButton icon={ArrowLeft} label="Back" disabled={!back} onClick={() => walk(-1)} onNewTab={() => void web.go(id, "back-address").then(inNewTab)}
@@ -498,6 +498,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           ...withSep(extensionItems(ext, at)),
           pageBarItem(true),
         ]} />
+        <PaneControls />
         <Progress loading={id > 0 && state.loading && !state.error} />
       </div>
       {/* (over the page's top right, under its bar: the bar hidden, it slides out over it) */}

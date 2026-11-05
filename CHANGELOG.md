@@ -8,6 +8,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **A note's links can open in a chosen container**: a web link's menu in a note has Open link in container, and
   Always open this note's links in sets the note's `container:`, which takes its links there before a site's rule.
+- **Every pane of a split shows its close and drag buttons on hover**: notes and Browser pages at the window's top
+  have the X and handle at their bar's end (a zoomed or floating one's unzoom or dock too), as terminals do, also when
+  the bar fades. In the sidebar's split rows each pane has its own X, its right-click is that pane's menu (the tab's
+  under Tab), and a pane dragged onto another there swaps them.
 - **Undo of a move to another workspace puts the tab back in its place**: in its spot in the bar and its tab group,
   not at the end.
 - **A plugin setting changed twice quickly keeps the last change**: hiding a graph group and showing it again at once

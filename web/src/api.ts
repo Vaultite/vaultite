@@ -73,10 +73,10 @@ export { allPanes, clean as cleanTabLayout, focusedPane, panesOf, shownTab, tabO
 export { onTabsEvent, type TabsEvent } from "@/core/tabevents"
 // Marks on the app's UI by data-ui id (a row's small button): the companion's eye on what it follows.
 export { setUiMarks, useUiMarks, type UiMark } from "@/core/uimarks"
-export { dragTab, springTabAt, TABS, tabLabel, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
+export { dragTab, paneMenuOf, springTabAt, TABS, tabLabel, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
 // Tab groups (named, coloured runs of tabs): their menu, names and folding, and drops on the tabs drawn as a list (the
 // Tabs panel), which join or leave them as the tab bar's do; a dragged pane or tab held on a row opens it (springOver).
-export { groupMenu, groupName, GroupLabel } from "@/components/Tabs"
+export { groupMenu, groupName, GroupLabel, PaneControls } from "@/components/Tabs"
 export { foldGroup, openInGroup } from "@/core/tabgroups"
 export { foldGroupMoving, useGrowIn, useReflow, useGroupIn, useShrinkOut } from "@/core/tabfold"
 export { useGroupLines } from "@/core/tabline"
@@ -91,7 +91,7 @@ export { diffLines } from "@/core/diff"
 export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"
 // The one drag primitive: plugins' drop targets (Workspaces' switcher rows take a dragged tab) and things they drag (a
 // database view's cards).
-export { beforeStart, edgeScroller, pastEnd, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+export { beforeStart, edgeScroller, laidOut, pastEnd, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 export { confirmDialog, type ConfirmOptions, secretDialog } from "@/components/ConfirmDialog"
 export { copyText, fileMenu, filesMenu, folderMenu, grouped, linkTo, openItem, pluginFileGroups, rowFileMenu } from "@/components/FileActions"
 export { deleteFile, restoreFile } from "@/core/files"

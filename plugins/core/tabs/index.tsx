@@ -1,11 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react"
-import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
+import { AppWindow, Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
-  activePane, Badged, beforeStart, edgeScroller, canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
-  groupsAsDrawn, HeadingButton, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
+  activePane, Badged, beforeStart, edgeScroller, canDropTab, closePane, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldGroupMoving, groupMenu, groupName, GroupLabel,
+  groupsAsDrawn, HeadingButton, isPopout, menuFor, openNewTab, isViewOpen, notifyError, openView, paneById, paneMenuOf, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick,
   selectedAttr, selectPane, selectTab, SidebarHeading, SidebarRow, springing, springTabAt, startDrag, tabButtons, tabListDrop, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabSlotBeside, tabsMenu, useDrag, useDropHit,
   useDropTarget, useGroupIn, useGroupLines, useGrowIn, useReflow, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabList, useUiMarks,
-  INCOMING,
+  INCOMING, laidOut,
   type DragItem, type Pane, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabList,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
@@ -45,21 +45,33 @@ const MAX_LINES = 3
 const stacks = (n: Part, room = MAX_LINES): number => !isSplit(n) ? 1
   : n.dir === "col" && linesOf(n) <= room ? linesOf(n) : Math.max(1, ...tiledKids(n).map(({ k }) => stacks(k, room)))
 
-/** A split tab's panes in the shape of its split, a mini-map: a row's side by side, a column's stacked, each its share
- *  of the room (a narrow one just its icon); floating ones after it, as icons. A click on one focuses it, a press drags it. */
+/** A split tab's panes in the shape of its split, a mini-map (a narrow one just its icon; floating ones after it, as
+ *  icons). Click focuses one, a press drags it (onto another: they swap), X closes it, right-click is its pane's menu. */
 function SplitMap({ t, active, info }: { t: Tab; active: boolean; info: (x: Tab | Pane) => TabInfo }) {
   const floats = panesOf(t).filter((p) => p.float)
+  // (the pane a dragged one would swap with)
+  const into = useDrag((d) => {
+    const h = d?.hit, at = h?.data as TabDrop | undefined
+    return h && h.target.startsWith(LIST) && at?.kind === "pane" ? at.pane : null
+  })
+  const menu = (p: Pane) => menuFor(() => [...paneMenuOf(p.id), { label: "Tab", icon: AppWindow, sep: true, run: () => {}, items: tabMenuOf(t.id) }])
   const cell = (p: Pane, size: number, icon = false) => {
     const pi = info(p), on = active && p.id === t.focus
     const mark = <Badged on={pi.badge}><pi.icon className={cn("size-4 shrink-0", pi.tint ? undefined : on ? "text-primary" : "text-muted-foreground", pi.iconClassName)} strokeWidth={2} style={pi.tint ? { color: pi.tint } : undefined} /></Badged>
-    if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} className="flex h-5.5 shrink-0 items-center rounded-[5px] px-1 ring-1 ring-foreground/10 ring-inset">{mark}</span>
-    // (too narrow for its name: its icon alone, in the middle)
+    const lit = into === p.id && "bg-primary/15"
+    if (icon) return <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} className={cn("flex h-5.5 shrink-0 items-center rounded-[5px] px-1 ring-1 ring-foreground/10 ring-inset", lit)}>{mark}</span>
+    // (too narrow for its name: its icon alone, in the middle; its X over its end, where its name fades)
     return (
-      <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} style={{ flex: `${size} 1 0` }} className="@container flex h-5.5 min-w-0">
+      <span key={p.id} data-pane-half={p.id} data-ui={`pane:${p.id}`} onContextMenu={menu(p)} style={{ flex: `${size} 1 0` }} className={cn("group/cell @container relative flex h-5.5 min-w-0", lit)}>
         <span className="flex w-full min-w-0 items-center gap-2 px-1 @max-[52px]:justify-center">
           {mark}
           <span className={cn("min-w-0 flex-1 overflow-hidden fade-end @max-[52px]:hidden", active && !on && "font-normal text-muted-foreground")}>{pi.label}</span>
         </span>
+        <button type="button" data-cell-close={p.id} data-no-drag aria-label={`Close ${pi.label}`} data-tip="Close pane"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); closePane(p.id) }}
+          className="absolute inset-y-0 right-0.5 my-auto grid size-4.5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground opacity-0 transition-opacity group-hover/cell:opacity-100 hover:bg-foreground/[0.08] hover:text-foreground focus-visible:opacity-100 @max-[40px]:hidden">
+          <X className="size-3" strokeWidth={2.25} />
+        </button>
       </span>
     )
   }
@@ -129,11 +141,11 @@ function Row({ t, l, info, only, line }: { t: Tab; l: TabList; info: (x: Tab | P
       className={cn("relative", dragging && "opacity-50")}
       onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
       <SidebarRow data-open-tab={t.id} data-select-key={t.id} data-split={split ? "" : undefined} {...selectedAttr(picked)} icon={split ? undefined : i.icon} iconClassName={i.iconClassName} tint={i.tint}
-        badge={split ? undefined : i.badge} mark={split ? undefined : i.mark} label={map ?? i.label} labelClassName={map ? MAP_LABEL : undefined} tip={split ? ps.map((p) => info(p).label).join(" | ") : undefined} open active={active} more
+        badge={split ? undefined : i.badge} mark={split ? undefined : i.mark} label={map ?? i.label} labelClassName={map ? MAP_LABEL : undefined} tip={split ? ps.map((p) => info(p).label).join(" | ") : undefined} open active={active} more={!split}
         className={cn(line && "ml-3.5", lit && !active && "bg-foreground/[0.08]", map && stacks(t.root) > 1 && "h-auto min-h-7 py-[3px]")}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
         actions={[...buttons.map((b) => <HeadingButton key={b.label} icon={b.icon} label={b.label} data-no-drag onClick={(e) => { e.preventDefault(); e.stopPropagation(); b.run(e) }} />),
-          ...(!t.pinned && !only ? [<HeadingButton key="close" icon={X} label={`Close ${i.label}`} tip="Close tab" data-no-drag
+          ...(!t.pinned && !only && !split ? [<HeadingButton key="close" icon={X} label={`Close ${i.label}`} tip="Close tab" data-no-drag
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); close() }} />] : [])]}
         onClick={click}>
         <Marks id={`tab:${t.id}`} />
@@ -188,6 +200,15 @@ function TabRows({ store }: { store: Store }) {
     // (held near the top or bottom of what scrolls the list, it scrolls: more tabs than the panel shows)
     edge.over(root, x, y)
     if (!(el && root.contains(el)) && !atEnds(root, x, y, el)) return null
+    // A split's pane over its own row: on another of its panes the two swap, on itself it stays (as laid out, not as
+    // a preview slides it: the row holds still meanwhile).
+    const own = item.pane ? l.tabs.find((x) => panesOf(x).some((p) => p.id === item.pane)) : undefined
+    const cells = own && panesOf(own).length > 1 ? [...root.querySelectorAll<HTMLElement>(`[data-open-tab="${CSS.escape(own.id)}"] [data-pane-half]`)] : []
+    const cell = cells.find((c) => { const r = laidOut(c); return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom })?.dataset.paneHalf
+    if (cell) {
+      const d: TabDrop = { kind: "pane", pane: cell, zone: "center" }
+      return cell !== item.pane && canDropTab(item, d) ? d : null
+    }
     // (a pane or tab held on a row's middle opens its tab after a moment: that row holds still meanwhile)
     const held = springTabAt(item, x, y)
     const slots = [...root.querySelectorAll<HTMLElement>("[data-open-tab], [data-group-row]")].map((e) => ({ el: e, tab: e.dataset.openTab, group: e.dataset.groupRow }))
