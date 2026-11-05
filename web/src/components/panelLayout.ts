@@ -3,18 +3,52 @@
 import { useLayoutEffect, useState, type RefObject } from "react"
 import { dragPanels, fitPanels, heightIn, heightsAfterDrag, type PanelFit, type Sidebars } from "../../../core/sidebars.ts"
 import { setPanelHeights, type PanelOf } from "@/core/plugins"
+import { MOTION } from "@/core/tabline"
 
-/** A sidebar measured: its panels (keys, in order), each one's fit, the room its gaps take outside its box,
- *  its box; the room for them all, and the sidebar's height (what saved heights are in proportion to: heightIn). */
-type Laid = { keys: string[]; ps: PanelFit[]; chrome: number[]; boxes: HTMLElement[]; room: number; at: number }
+/** A sidebar measured: its panels (keys, in order), each one's fit, chrome (gaps outside its box), box, what moves in it
+ *  and its height once that settles; the room for them all, the sidebar's height (saved heights' scale: heightIn). */
+type Laid = { keys: string[]; ps: PanelFit[]; chrome: number[]; boxes: HTMLElement[]; moving: Settling[][]; rest: number[]; room: number; at: number }
+type Settling = { el: Element; by: number }
 
-/** Where a panel's rows end, from the top of what it draws: its headings' and rows' bottoms. */
-function rowEnds(box: HTMLElement): number[] {
-  const inner = box.firstElementChild
+/** The gap after `el` in the list it's in (through `display: contents` wrappers). */
+function gapAfter(el: Element) {
+  let p = el.parentElement
+  while (p && getComputedStyle(p).display === "contents") p = p.parentElement
+  return p ? parseFloat(getComputedStyle(p).rowGap) || 0 : 0
+}
+
+/** Elements in `box` whose height is moving (a tab group's rows growing in, a row folding away), each with how much
+ *  taller it will be at rest, the outermost only. */
+function settling(box: HTMLElement): Settling[] {
+  const out: Settling[] = []
+  for (const a of box.getAnimations({ subtree: true })) {
+    const fx = a.effect as KeyframeEffect | null, el = fx?.target, end = fx?.getKeyframes().at(-1)
+    if (!el || !end || end.height == null || a.playState === "finished") continue
+    // (in px as layout keeps them, 1/64ths toward zero: computed margins mid-way are finer, a row's error a pixel in ten)
+    const css = getComputedStyle(el), px = (v: unknown, now: string) => Math.trunc((parseFloat(String(v ?? now)) || 0) * 64) / 64
+    // (one going to nothing is going: taken out, with the gap after it in its list)
+    const rest = px(end.height, "0") === 0 ? -gapAfter(el)
+      : px(end.height, "0") + px(end.marginTop ?? end.marginBlockStart ?? end.marginBlock, css.marginTop) + px(end.marginBottom ?? end.marginBlockEnd ?? end.marginBlock, css.marginBottom)
+    const by = rest - (el.getBoundingClientRect().height + px(null, css.marginTop) + px(null, css.marginBottom))
+    if (Math.abs(by) > 0.01) out.push({ el, by })
+  }
+  return out.filter((x) => !out.some((y) => y !== x && y.el.contains(x.el)))
+}
+
+/** Where a panel's rows end once what moves in it has settled, from the top of what it draws: its headings' and rows'
+ *  bottoms (where they are mid-way, the panel's snapped end jumped a row each frame, and the panels under it). */
+function rowEnds(l: Laid, i: number): number[] {
+  const inner = l.boxes[i].firstElementChild, moving = l.moving[i]
   if (!inner) return []
   const top = inner.getBoundingClientRect().top
-  return [...inner.querySelectorAll<HTMLElement>("[data-panel-handle], [data-keyrow]")].map((r) => r.getBoundingClientRect().bottom - top)
+  const rows = [...inner.querySelectorAll<HTMLElement>("[data-panel-handle], [data-keyrow]")]
+  return rows.filter((r) => !moving.some((m) => m.el.contains(r) && m.by < -(m.el.getBoundingClientRect().height - 0.5)))
+    .map((r) => r.getBoundingClientRect().bottom - top + moving.reduce((n, m) => (!m.el.contains(r) && m.el.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING ? n + m.by : n), 0))
 }
+
+/** How far apart a row's end and a panel's may be and still meet: mid-motion the ends are projected (`rowEnds`), a hair
+ *  off where they'll be at rest, and a hair rounded the other way put the panel's end a pixel off for a frame. */
+const SLACK = 0.25
 
 /** A scrolling panel ends between two rows, not a sliver into the next (above, or below to keep its least); the greedy
  *  one (the tree) takes the difference, then with `tree` ends between two rows too, the rest left empty. */
@@ -24,13 +58,13 @@ function snapToRows(l: Laid, hs: number[], tree = true): number[] {
   let freed = 0
   l.ps.forEach((p, i) => {
     if (p.greedy || p.fixed || out[i] >= p.content) return
-    const room = out[i] - l.chrome[i], ends = rowEnds(l.boxes[i])
+    const room = out[i] - l.chrome[i], ends = rowEnds(l, i)
     const down = Math.max(0, ...ends.filter((e) => e <= room + 0.5))
-    const up = Math.min(Infinity, ...ends.filter((e) => e > room + 0.5 && l.chrome[i] + e <= p.content))
-    const lift = Math.ceil(up - room)
+    const up = Math.min(Infinity, ...ends.filter((e) => e > room + 0.5 && l.chrome[i] + e <= l.rest[i]))
+    const lift = Math.ceil(up - room - SLACK)
     const end = (!down || l.chrome[i] + down < p.min) && g >= 0 && out[g] - lift >= l.ps[g].min ? up : down
     if (!end || end === Infinity) return
-    const d = end === up ? -lift : Math.floor(room - end)
+    const d = end === up ? -lift : Math.floor(room - end + SLACK)
     out[i] -= d
     freed += d
   })
@@ -39,8 +73,8 @@ function snapToRows(l: Laid, hs: number[], tree = true): number[] {
   out[g] = Math.min(tree ? out[g] + freed : l.room - out.reduce((n, h, i) => (i === g ? n : n + h), 0), l.ps[g].content)
   if (tree && out[g] < l.ps[g].content) {
     const room = out[g] - l.chrome[g]
-    const end = Math.max(0, ...rowEnds(l.boxes[g]).filter((e) => e <= room + 0.5))
-    if (end) out[g] -= Math.floor(room - end)
+    const end = Math.max(0, ...rowEnds(l, g).filter((e) => e <= room + 0.5))
+    if (end) out[g] -= Math.floor(room - end + SLACK)
   }
   return out
 }
@@ -54,7 +88,7 @@ function measure(body: HTMLElement, s: Sidebars, greedy: Set<string>): Laid {
   // The room from the body's real height: clientHeight is rounded (838.5px reads 839), and half a pixel too many puts
   // the panels past the bottom, so the sidebar scrolls by it.
   const room = Math.floor(body.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom))
-  const l: Laid = { keys: [], ps: [], chrome: [], boxes: [], room, at }
+  const l: Laid = { keys: [], ps: [], chrome: [], boxes: [], moving: [], rest: [], room, at }
   for (const w of body.children) {
     if (!(w instanceof HTMLElement) || !w.dataset.panel) continue
     const box = w.querySelector<HTMLElement>(":scope > [data-panel-scroll]"), inner = box?.firstElementChild
@@ -63,8 +97,10 @@ function measure(body: HTMLElement, s: Sidebars, greedy: Set<string>): Laid {
     // A row is as tall as a heading (both follow density).
     const row = inner.querySelector<HTMLElement>("[data-panel-handle]:not([data-sidebar-search])")?.offsetHeight || 28
     const key = w.dataset.panel
-    l.keys.push(key); l.chrome.push(chrome); l.boxes.push(box)
-    l.ps.push({ content: Math.ceil(chrome + inner.getBoundingClientRect().height), min: Math.ceil(chrome + row * LEAST_ROWS),
+    const drawn = chrome + inner.getBoundingClientRect().height, content = Math.ceil(drawn), moving = settling(box)
+    l.keys.push(key); l.chrome.push(chrome); l.boxes.push(box); l.moving.push(moving)
+    l.rest.push(moving.length ? Math.ceil(drawn + moving.reduce((n, m) => n + m.by, 0) - 0.01) : content)
+    l.ps.push({ content, min: Math.ceil(chrome + row * LEAST_ROWS),
       height: heightIn(s, key, at), greedy: greedy.has(key), fixed: "collapsed" in w.dataset })
   }
   return l
@@ -115,9 +151,28 @@ class PanelLayout {
     const h = this.held
     const held = h && h.setup === this.setup && Date.now() < h.until && h.hs.length === l.keys.length ? h.hs : null
     if (!held) this.held = null
-    const hs = held ?? snapToRows(l, fitPanels(l.ps, l.room))
+    const hs = held ?? this.fit(l)
     draw(body, l, hs)
     this.last = { keys: l.keys, hs }
+  }
+
+  /** Each panel's height as it'll be once what moves in it settles; one in motion follows what it draws from its last
+   *  height, never past where it's going (fitted to it mid-way, it snapped to its end and jumped back). */
+  fit(l: Laid): number[] {
+    const atRest = l.ps.map((p, i) => ({ ...p, content: l.rest[i] }))
+    const to = snapToRows({ ...l, ps: atRest }, fitPanels(atRest, l.room))
+    const last = this.last?.keys.join() === l.keys.join() ? this.last.hs : null
+    const moving = (i: number) => l.rest[i] !== l.ps[i].content && !l.ps[i].fixed && !l.ps[i].greedy
+    if (!last || !l.ps.some((_, i) => moving(i))) return to
+    const hs = to.map((t, i) => {
+      if (!moving(i)) return t
+      const c = l.ps[i].content
+      return t >= last[i] ? Math.min(c, t) : Math.max(t, Math.min(c, last[i]))
+    })
+    // (the greedy one, the tree, takes what's left as they move)
+    const g = l.ps.findIndex((p) => p.greedy && !p.fixed)
+    if (g >= 0) hs[g] = l.room - hs.reduce((n, h, i) => (i === g ? n : n + h), 0)
+    return snapToRows({ ...l, ps: l.ps.map((p, i) => (moving(i) ? { ...p, fixed: true } : p)) }, hs)
   }
 
   /** A divider's drag begins: the one under panel `key`, the pointer at `y`. */
@@ -170,7 +225,12 @@ export function usePanelLayout(box: RefObject<HTMLDivElement | null>, on: boolea
     const ro = new ResizeObserver(() => fit.layout())
     ro.observe(body)
     for (const el of body.querySelectorAll(":scope > [data-panel] > [data-panel-scroll] > [data-panel-content]")) ro.observe(el)
-    return () => ro.disconnect()
+    // And as tabs start moving (a group's rows growing in, after its render was laid out with them at full height: the
+    // size the observer saw last may be the same, so it wouldn't say), once they all have.
+    let soon = false
+    const moved = () => { if (!soon) { soon = true; queueMicrotask(() => { soon = false; fit.layout() }) } }
+    body.addEventListener(MOTION, moved)
+    return () => { ro.disconnect(); body.removeEventListener(MOTION, moved) }
   }, [on, shape, box, fit])
   return fit
 }

@@ -4,7 +4,7 @@ import { useLayoutEffect, type RefObject } from "react"
 import { moves, timing } from "@/core/animation"
 import { replacingWorkspace } from "@/core/workspace"
 
-const MOTION = "tab-motion"
+export const MOTION = "tab-motion"
 /** Something in a list of tabs starts moving outside a render (a fold, a close): its groups' lines follow it. */
 export const stir = (el: Element | null | undefined) => { el?.dispatchEvent(new Event(MOTION, { bubbles: true })) }
 

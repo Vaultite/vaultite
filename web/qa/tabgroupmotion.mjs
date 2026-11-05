@@ -4,7 +4,7 @@
 // tab going once (not back for a moment when its view asks first), and which tab shows after a close or a fold. Writes the vault's appearance and sidebars
 // (put back): throwaway server only.
 //   node web/qa/tabgroupmotion.mjs <base url> <vault path> [out dir]
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B0, VAULT, OUT = "/tmp/tabgroupmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url)
@@ -273,6 +273,30 @@ try {
     appearance({ theme: "dark" }); await until(() => page.evaluate(() => document.documentElement.classList.contains("dark")), 5000); await wait(400)
     await page.screenshot({ path: `${OUT}panel-dark.png`, clip: { x: 0, y: 0, width: 300, height: 380 } })
     await ctx.close()
+  }
+  // A big group opened and folded in the Tabs panel over others: the panels under it hold still while the Tabs panel is
+  // full (it used to snap to its rows mid-way, a row up or down each frame), and otherwise move one way only, ending where
+  // they started (folding, it used to drop to its end at once and jump back).
+  writeFileSync(sidebars.p, JSON.stringify({ left: ["tabs:tabs", "inbox:inbox", "files:files"], right: [], collapsed: [] }) + "\n")
+  await wait(800)
+  {
+    const notes = readdirSync(VAULT, { recursive: true }).filter((f) => f.endsWith(".md") && !f.startsWith(".")).slice(0, 10)
+    const big = { groups: [{ id: "sP", name: "Big", color: "yellow", collapsed: true }, { id: "sO", name: "Other", color: "orange" }],
+      tabs: [t("p0", f("Start here.md")), ...notes.map((n, i) => t(`g${i}`, f(n), "sP")), t("o1", "view:search", "sO"), t("o2", "view:graph", "sO")], active: "p0" }
+    const below = () => document.querySelector("[data-panel='inbox:inbox']").getBoundingClientRect().top
+    for (const height of [600, 900]) {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height }, deviceScaleFactor: 2 })
+      await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(big))
+      const page = watch(await ctx.newPage())
+      await page.goto(B); await page.waitForSelector("[data-group-row='sP']"); await wait(1200); await page.mouse.move(900, 400)
+      const opening = await frames(page, below, "sP", () => clickIn(page, "[data-group-row='sP']"))
+      const fold = await frames(page, below, "sP", () => clickIn(page, "[data-group-row='sP']"))
+      const ys = [...opening, ...fold], at = ys[0]
+      if (height === 600) check("a big group in a full Tabs panel: the panel under it holds still as it opens and folds", ys.every((y) => Math.abs(y - at) < 0.5), ys.map(Math.round))
+      else check("a big group filling the Tabs panel as it opens: the panel under it moves down then back, one way at a time, no jump",
+        opening.at(-1) > at + 20 && rising(opening, 0.5) && falling(fold, 0.5) && Math.abs(fold.at(-1) - at) < 0.5, ys.map(Math.round))
+      await ctx.close()
+    }
   }
   // A phone's drawer, its lists zoomed (data-size-up): a group opened, its tabs grow straight to their size, never past it
   // to snap back at the end (they used to grow to their on-screen size times the zoom: a bounce).
