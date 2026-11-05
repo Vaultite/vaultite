@@ -26,8 +26,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   split), as a drag inside it does; let go, it lands there.
 - **A window that's only its page, kept on top**: in a window of its own (Move current tab to new window), Hide window
   bars (the palette, or the tab bar's menu) leaves only what it shows: no tab, page or status bar, and on a Mac the
-  traffic lights show, with a strip that drags it, only with the pointer at its top. Right-click the page or use the
-  palette to bring the bars back; the window keeps it. Keep window on top (the palette, Window menu, the strip's pin)
+  traffic lights show, with a strip that drags it, only with the pointer at its top. Right-click the page or that strip,
+  or use the palette, to bring the bars back; the window keeps it. A tab moved back to the main window keeps its web
+  page live (a video goes on where it was), not loaded again. Keep window on top (the palette, Window menu, the strip's pin)
   floats any window over other apps' and on every Space. A page's popup (a sign-in, a call's video popped out) is now a
   window of its own at the size it asked, staying put as the window it came from moves or minimizes; its right-click
   hides its title bar and keeps it on top.

@@ -103,18 +103,22 @@ function popupWindow(page: WebContents, webPreferences: WebPreferences | undefin
     if (title && !title.webContents.isDestroyed()) title.webContents.close()
   })
   page.once("destroyed", () => { if (!win.isDestroyed()) win.close() })
+  const setBare = (on: boolean) => {
+    if (!MAC || on === bare || win.isDestroyed()) return
+    bare = on
+    if (on) topStrip(win, lights, { page, pin: () => setOnTop(win, !isOnTop(win)), menu: () => [
+      { label: "Show title bar", click: () => setBare(false) },
+      { label: "Keep window on top", type: "checkbox", checked: isOnTop(win), click: () => setOnTop(win, !isOnTop(win)) },
+    ] }); else noStrip(win)
+    lay()
+    lights()
+  }
   watchFocus(win)
   win.show()
   return {
     win, page,
     setTitle: (t) => { named = t; if (!win.isDestroyed()) win.setTitle(t); said() },
     bare: () => bare,
-    setBare: (on) => {
-      if (!MAC || on === bare || win.isDestroyed()) return
-      bare = on
-      if (on) topStrip(win, lights, { page, pin: () => setOnTop(win, !isOnTop(win)) }); else noStrip(win)
-      lay()
-      lights()
-    },
+    setBare,
   }
 }

@@ -1159,7 +1159,12 @@ ipcMain.handle("window:bare", async (e, on: unknown) => {
   if (!MAC || !w || !popouts.has(e.sender)) return false
   const k = await stripKit()
   if (on !== true) { k.noStrip(w); bare.delete(w) }
-  else if (!k.hasStrip(w)) { bare.set(w, k); k.topStrip(w, () => applyLights(w), { page: w.webContents, pin: () => w.webContents.send("vaultite", { type: "command", id: "window:on-top" }) }) }
+  else if (!k.hasStrip(w)) {
+    bare.set(w, k)
+    const run = (id: string) => () => { if (!w.isDestroyed()) w.webContents.send("vaultite", { type: "command", id }) }
+    k.topStrip(w, () => applyLights(w), { page: w.webContents, pin: run("window:on-top"),
+      menu: () => [{ label: "Show window bars", click: run("window:bars") }, { label: "Keep window on top", type: "checkbox", checked: w.isAlwaysOnTop(), click: run("window:on-top") }] })
+  }
   applyLights(w)
   return on === true
 })

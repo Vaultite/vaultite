@@ -127,6 +127,15 @@ try {
   check("the pointer at its top: a strip across it over the page, which drags the window", shown && shown.strip.top && shown.strip.bounds.y === 0
     && shown.strip.bounds.width === shown.content.width && shown.strip.bounds.height === 40 && shown.strip.drag === "drag", shown?.strip)
   check("… and the traffic lights", (await lights()) === true)
+  // (its right-click: the window's own, as a title bar's)
+  await app.evaluate(({ BaseWindow }) => {
+    globalThis.__menu = null
+    const wc = BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout=")).contentView.children.find((x) => x.webContents?.getURL().startsWith("data:")).webContents
+    for (const type of ["mouseDown", "mouseUp"]) wc.sendInputEvent({ type, x: 300, y: 12, button: "right", clickCount: 1 })
+  })
+  const stripMenu = await until(() => app.evaluate(() => globalThis.__menu?.items.map((i) => i.label) ?? null), 3000)
+  check("the strip's right-click offers Show window bars and Keep window on top", stripMenu?.[0] === "Show window bars" && stripMenu.includes("Keep window on top"), stripMenu)
+  await app.evaluate(() => { globalThis.__menu = null })
   await shot("3-top")
   if (OUT) fs.writeFileSync(path.join(OUT, "3-strip.png"), Buffer.from(await app.evaluate(async ({ BaseWindow }) => (await BaseWindow.getAllWindows().find((x) => x.webContents?.getURL().includes("?popout="))
     .contentView.children.find((x) => x.webContents?.getURL().startsWith("data:")).webContents.capturePage()).toPNG().toString("base64")), "base64"))
@@ -249,6 +258,26 @@ try {
   check("… the traffic lights hidden", (await app.evaluate(() => globalThis.__camLights.at(-1))) === false, await app.evaluate(() => globalThis.__camLights))
   if (OUT) fs.writeFileSync(path.join(OUT, "5-cam.png"), Buffer.from(await app.evaluate(async ({ webContents }, src) => (await webContents.getAllWebContents().find((w) => w.getURL().startsWith(src)).capturePage()).toPNG().toString("base64"), CAM_URL), "base64"))
   await camWin((w) => w.close())
+
+  // ---------- back to the main window, its page live ----------
+  // (its only tab: the pop-out closes as it goes, which mustn't take the page with it)
+  await palette(pop, "Hide window bars")
+  await until(async () => (await where())?.page?.y === 0, 5000)
+  const pageJs = (code) => app.evaluate(({ webContents }, [code, src]) => {
+    const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(src) && !w.getURL().includes("/cam"))
+    return wc ? wc.executeJavaScript(code).then((v) => ({ id: wc.id, v })) : null
+  }, [code, SITE])
+  const marked = await pageJs("window.__alive = 'still'")
+  const closed = pop.waitForEvent("close", { timeout: 10000 }).catch(() => null)
+  await palette(pop, "Move current tab to main window")
+  check("moved back to the main window, the pop-out closes", await closed !== null)
+  const live = await until(async () => {
+    const r = await pageJs("window.__alive ?? 'reloaded'")
+    const shown = await app.evaluate(({ BaseWindow }, [id, src]) => BaseWindow.getAllWindows().find((x) => !x.webContents?.getURL().includes("?popout=") && x.webContents?.getURL().startsWith("http"))
+      ?.contentView.children.some((v) => v.webContents?.id === id && v.getVisible() && v.webContents.getURL().startsWith(src)), [r?.id, SITE])
+    return r && shown ? r : null
+  }, 10000)
+  check("… its page shown there is the same, live: not loaded again", live?.id === marked?.id && live?.v === "still", { marked, live })
 
   check("no page errors", !errs.filter((e) => !/favicon|ERR_/i.test(e)).length, errs.slice(0, 5))
 } finally {

@@ -39,9 +39,10 @@ function tabOf(p: EnginePage) {
   const wc = p.wc, s = wc.session
   const same = pagesIn(s).filter((x) => x.win === p.win)
   const active = frontOf(p.win, s) === wc.id
-  const [width, height] = p.win.getContentSize()
+  // (its window may have closed under it: a page on its way to another window, web.ts moveTo)
+  const gone = p.win.isDestroyed(), [width, height] = gone ? [0, 0] : p.win.getContentSize()
   return {
-    id: wc.id, index: same.indexOf(p), windowId: p.win.id, active, highlighted: active, selected: active, pinned: false, incognito: false,
+    id: wc.id, index: same.indexOf(p), windowId: gone ? -1 : p.win.id, active, highlighted: active, selected: active, pinned: false, incognito: false,
     url: wc.getURL(), title: wc.getTitle(), ...(icons.get(wc.id) ? { favIconUrl: icons.get(wc.id) } : {}),
     status: wc.isLoading() ? "loading" : "complete", audible: wc.isCurrentlyAudible(), mutedInfo: { muted: wc.isAudioMuted() },
     discarded: false, autoDiscardable: true, frozen: false, groupId: -1, splitViewId: -1, width, height, lastAccessed: Date.now(),

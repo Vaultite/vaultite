@@ -1,6 +1,6 @@
 // Players (web.ts's): the scripts filling a page's video in its window, and that window: no title bar, its controls
 // shown with the pointer at its top, which drags it (topstrip.ts).
-import { app, BaseWindow, type Rectangle, screen, WebContentsView } from "electron"
+import { app, BaseWindow, type MenuItemConstructorOptions, type Rectangle, screen, WebContentsView } from "electron"
 import fs from "node:fs"
 import path from "node:path"
 import { quiet } from "./quiet.ts"
@@ -146,13 +146,13 @@ export function placeFor(aspect: number, near: Rectangle): Rectangle {
   return { x: clamp(cx - width / 2, area.x, area.x + area.width - width), y: clamp(cy - height / 2, area.y, area.y + area.height - height), width, height }
 }
 
-/** A player window at `bounds` (its content), hidden till shown. */
-export function playerWindow(bounds: Rectangle): BaseWindow {
+/** A player window at `bounds` (its content), hidden till shown; `menu`: its page's items for its top's right-click. */
+export function playerWindow(bounds: Rectangle, menu: () => MenuItemConstructorOptions[] = () => []): BaseWindow {
   const w = new BaseWindow({ title: PLAYER_TITLE, ...bounds, useContentSize: true, minWidth: 320, minHeight: 180, backgroundColor: "#000000", show: false,
     ...(MAC ? { titleBarStyle: "hidden", trafficLightPosition: LIGHTS } : { frame: false, autoHideMenuBar: true }) })
   quiet(w)
   const { bar } = topStrip(w, () => { if (MAC && !w.isDestroyed()) { w.setWindowButtonPosition(LIGHTS); w.setWindowButtonVisibility(lightsShown(w)) } },
-    { pin: () => setOnTop(w, !isOnTop(w)) })
+    { pin: () => setOnTop(w, !isOnTop(w)), menu: () => [...menu(), { label: "Keep window on top", type: "checkbox", checked: isOnTop(w), click: () => setOnTop(w, !isOnTop(w)) }] })
   watchFocus(w)
   // A player is its page's: one left with no live page (its page gone without taking it along) closes, not a black
   // window with nothing to close it by. (A moment's grace: a page leaving its player closes it the turn after.)

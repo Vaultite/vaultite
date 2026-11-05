@@ -305,9 +305,13 @@ export default definePlugin({
       },
       // (a page playing sound or holding what was typed and not sent is in use, seen or not)
       archives: (arg, tab) => !soundOf(arg, tab)?.playing && !typedIn(tab),
-      // (a tab's page is its own, whatever else shows the address; moved to another window, it goes along)
-      // (once the window paints behind it again, as WebPage lets go of one; not if it's back by then: ⌘⇧T)
-      onTabClose: (_arg, tab, moved) => void painted().then(() => { if (!allPanes(getTabLayout()).some((p) => p.id === tab)) void webPages?.close(tab, moved) }),
+      // (a tab's page is its own, whatever else shows the address; moved to another window, it goes along: told at
+      // once, before that window asks for it or the pop-out it emptied closes and ends it)
+      onTabClose: (_arg, tab, moved) => {
+        if (moved) { void webPages?.close(tab, true); return }
+        // (once the window paints behind it again, as WebPage lets go of one; not if it's back by then: ⌘⇧T)
+        void painted().then(() => { if (!allPanes(getTabLayout()).some((p) => p.id === tab)) void webPages?.close(tab, false) })
+      },
       // (its pane's top: the strip or title over a hidden page bar, the tab bar's empty space)
       paneMenu: () => (webPages ? [pageBarItem()] : []),
       tabMenu: (arg, tab) => {

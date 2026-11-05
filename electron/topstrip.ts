@@ -1,6 +1,6 @@
 // A window with nothing over its page (a player, a pop-out with its bars hidden): its controls (the Mac's lights, ours
 // elsewhere: player-bar.cjs) show with a shade that drags it only while the pointer is at its top, or in full screen.
-import { type BaseWindow, screen, type WebContents, WebContentsView } from "electron"
+import { type BaseWindow, Menu, type MenuItemConstructorOptions, screen, type WebContents, WebContentsView } from "electron"
 import { fileURLToPath } from "node:url"
 import { isOnTop, onTopChanged } from "./ontop.ts"
 
@@ -28,8 +28,8 @@ type Strip = { reveal: (on: boolean) => void; shown: () => boolean; bar: WebCont
 const strips = new WeakMap<BaseWindow, Strip>()
 
 /** Window `w`'s top strip, hidden till the pointer is there (`pointerAt`, or over `page`); `lights` lays the Mac's lights
- *  out again as it shows or hides (`lightsShown`); `pin`: Keep on top's button (ontop.ts). */
-export function topStrip(w: BaseWindow, lights: () => void, { page, pin }: { page?: WebContents; pin?: () => void } = {}) {
+ *  out again as it shows or hides (`lightsShown`); `pin`: Keep on top's button (ontop.ts); `menu`: its right-click's. */
+export function topStrip(w: BaseWindow, lights: () => void, { page, pin, menu }: { page?: WebContents; pin?: () => void; menu?: () => MenuItemConstructorOptions[] } = {}) {
   const bar = new WebContentsView({ webPreferences: { partition: "vaultite-player-bar", sandbox: true, contextIsolation: true, spellcheck: false, ...(MAC && !pin ? {} : { preload: PRELOAD }) } })
   bar.setBackgroundColor("#00000000")
   bar.setVisible(false)
@@ -42,6 +42,8 @@ export function topStrip(w: BaseWindow, lights: () => void, { page, pin }: { pag
     else if (what === "close") w.close()
     else if (what === "on-top") pin?.()
   })
+  // (the top of a window is where a right-click looks for the window's own commands, as on a title bar)
+  bar.webContents.on("context-menu", () => { const items = menu?.() ?? []; if (items.length && !w.isDestroyed()) Menu.buildFromTemplate(items).popup({ window: w }) })
   const unpinned = onTopChanged(pinned)
   w.contentView.addChildView(bar)
 

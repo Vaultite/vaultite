@@ -996,7 +996,7 @@ async function toPlayer(p: Page, fullScreen: boolean) {
     wc.executeJavaScriptInIsolatedWorld(1004, [{ code: k.FILL }], true).catch(() => null), wc.executeJavaScript(k.FULL_GUARD).catch(() => {})])
   const aspect = typeof found === "number" && found > 0.2 && found < 5 ? found : null
   if (p.player || wc.isDestroyed() || p.win.isDestroyed() || !pages.has(p.id)) { if (css && !p.player) void wc.removeInsertedCSS(css).catch(() => {}); return }
-  const w = k.playerWindow(k.placeFor(aspect ?? 16 / 9, p.win.getBounds()))
+  const w = k.playerWindow(k.placeFor(aspect ?? 16 / 9, p.win.getBounds()), () => [{ label: "Back to its tab", click: () => fromPlayer(p, true) }])
   p.player = w
   p.fillCss = css
   if (aspect) w.setAspectRatio(aspect)
