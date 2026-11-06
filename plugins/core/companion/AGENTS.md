@@ -88,7 +88,7 @@ above that), act, run it again, and never end your turn.
   window there (`app`, `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), the display's
   picture (read the PNG: a pixel a point from `shotAt`) and what Accessibility found near it, by id. Point there by id,
   which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words
-  stream into their box by the pointer, open for the next ask (its field takes a click or a tap of the key; the key held
+  are said aloud by their pointer with no box (a tap of the key opens it, your words and a reply field; it shows by itself if the voice doesn't come); a typed ask's, or with the voice off, stream into their box by the pointer, open for the next ask (its field takes a click or a tap of the key; the key held
   again listens); Esc or moving on ends it, and your cursor leaves once you're done there. Through the exchange your
   cursor rides beside their pointer, the box with it; pointing (`--ax`, `--find`, `--sx`) flies it there, and a
   drawing's marks it draws in as their pen, beat by beat; once they move on it comes back. An ask by voice (on screen or in the app) is answered aloud as you write a say or a draw's say (the settings `voice`: `auto`, `always`, `off`; `voice_provider`: ElevenLabs' voice once this machine has its key, else Soniox's, the other then this Mac's taking over; `elevenlabs_voice`, Brian; `voice_name`, Soniox's, Adrian; `voice_speed`; keys: `vau voice key`; `vau voice sample "<words>"` says them aloud, only when the user asks), so a say there reads as spoken: the answer first, no lists or code. A tap opens that box to type in; a double tap listens

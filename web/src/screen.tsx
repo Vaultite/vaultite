@@ -12,6 +12,7 @@ import { joinText } from "../../core/dictationtext"
 import { CURSOR_SPRING, glide, type Glide } from "@/core/spring"
 import { makePilot, type PenScript, type Pilot } from "@/core/pilot"
 import { type Sample, TRAIL, trailPieces } from "@/core/trail"
+import { type Cue, playCue } from "@/core/cues"
 import { cn, followSystemTheme } from "@/lib/utils"
 // (what its flag shows, by the window's own rule: the two draw one cursor)
 import { presence, type Mark as MarkKind } from "../../plugins/core/companion/look"
@@ -36,6 +37,7 @@ type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; b
   hint?: string }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
+  onCue?: (fn: (name: Cue) => void) => () => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
   panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: () => void; mic: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
@@ -73,9 +75,10 @@ const kick = () => { if (!raf) { clockOff = Date.now() - performance.now(); raf 
 // ---------- the summoned companion in its exchange: its pilot (core/pilot.ts) rides it beside the pointer, flies it to
 // what it points at and draws its marks with it; every display runs the same one and draws it while it's there
 
-const flying: { pilot: Pilot | null; el: HTMLElement | null; to: string; reduced: boolean } = { pilot: null, el: null, to: "", reduced: matchMedia("(prefers-reduced-motion: reduce)").matches }
+const flying: { pilot: Pilot | null; el: HTMLElement | null; to: string; reduced: boolean; at: Point | null } = { pilot: null, el: null, to: "", reduced: matchMedia("(prefers-reduced-motion: reduce)").matches, at: null }
 function flyPose(now: number) {
   const pilot = flying.pilot!, pose = pilot.pose(now), el = flying.el
+  flying.at = { x: pose.x, y: pose.y }
   if (el) {
     paintCursor(el, pose.x, pose.y)
     el.style.setProperty("--pilot-scale", pose.scale.toFixed(3))
@@ -84,6 +87,8 @@ function flyPose(now: number) {
     el.style.visibility = on ? "" : "hidden"
     // (resting where it points, it floats a little)
     el.toggleAttribute("data-parked", pose.mode === "parked")
+    // (on its way somewhere: its thinking glow gives way to the flight)
+    el.toggleAttribute("data-moving", pose.mode === "fly" || pose.mode === "pen" || pose.mode === "back")
     const to = pose.to ? `${Math.round(pose.to.x)},${Math.round(pose.to.y)}` : ""
     if (on && to !== flying.to) { flying.to = to; api?.pilot?.(pose.to ? [Math.round(pose.to.x), Math.round(pose.to.y)] : null) }
   }
@@ -100,6 +105,13 @@ function startFlying(c: Summoned) {
   flying.pilot.aim(c.state === "listening" ? null : c.aim ?? null, now)
   kick()
 }
+/** A soft cue the helper asks for (it follows the setting `sounds`): its audio made as it plays (core/cues.ts). */
+let audio: AudioContext | null = null
+function cueNow(name: Cue) {
+  audio ??= new AudioContext()
+  if (audio.state === "suspended") void audio.resume()
+  playCue(audio, name)
+}
 function pointerMoved(p: [number, number, number, number]) {
   // (held, the pointer leaves its trail)
   if (view.s?.summon?.state === "listening") {
@@ -114,7 +126,11 @@ function pointerMoved(p: [number, number, number, number]) {
 // ---------- the trail: while the Talk key is held the pointer leaves a thick stroke in the companion's colour, smooth
 // through its samples, the newest part solid and older parts fading (core/trail.ts); let go, the rest fades
 
-const trail: { pts: Sample[]; tint: string; colour: string; el: HTMLCanvasElement | null; mask: HTMLCanvasElement | null } = { pts: [], tint: "", colour: "#e8590c", el: null, mask: null }
+const trail: { pts: Sample[]; tint: string; colour: string; el: HTMLCanvasElement | null; mask: HTMLCanvasElement | null
+  /** Let go: since when what's left of it draws into the cursor. */
+  into: number } = { pts: [], tint: "", colour: "#e8590c", el: null, mask: null, into: 0 }
+/** How long what's left of the trail takes to draw into the cursor once let go (ms). */
+const INTO_MS = 380
 // (its fade as a mask: each piece's opacity drawn as a grey, the lightest kept where pieces meet (no seams, no beads),
 // then that grey made the alpha of its colour)
 const ALPHA = "vaultite-trail-alpha"
@@ -122,7 +138,15 @@ function drawTrail(now: number) {
   const held = view.s?.summon?.state === "listening"
   // (reduced motion: no fading, gone once let go)
   if (flying.reduced && !held) trail.pts = []
-  const pieces = trailPieces(trail.pts, now, { still: flying.reduced })
+  // (let go: what's left of it is drawn into the cursor, the newest part first, and gone)
+  const gone = trail.into && !held ? Math.min(1, (now - trail.into) / INTO_MS) : 0, to = flying.at
+  if (gone >= 1) trail.pts = []
+  const pull = (p: Sample, i: number, all: Sample[]) => {
+    if (!gone || !to) return p
+    const f = Math.min(1, gone * (1.6 - (0.6 * (all.length - 1 - i)) / Math.max(1, all.length - 1))), e = f * f * (3 - 2 * f)
+    return { ...p, x: p.x + (to.x - p.x) * e, y: p.y + (to.y - p.y) * e }
+  }
+  const pieces = trailPieces(trail.pts.map(pull), now, { still: flying.reduced })
   if (!pieces.length && !held) trail.pts = []
   else if (trail.pts.length > 600) trail.pts = trail.pts.filter((p) => now - p.t < TRAIL.fade)
   const c = trail.el ??= Object.assign(document.createElement("canvas"), { className: "pointer-events-none fixed inset-0", ariaHidden: "true" })
@@ -246,6 +270,9 @@ const speakAt = (v: number) => document.documentElement.style.setProperty("--spe
 const hearAt = (v: number) => document.documentElement.style.setProperty("--hear", String(v))
 function onScene(s: Shown) {
   const was = view.s
+  // (let go: the trail draws into the cursor)
+  if (was?.summon?.state === "listening" && s.summon?.state !== "listening" && trail.pts.length) { trail.into = clock(); kick() }
+  if (s.summon?.state === "listening") trail.into = 0
   speakAt(s.speaking?.level ?? 0)
   hearAt(s.summon?.level ?? 0)
   for (const a of s.agents) { back(`agent:${a.name}`); aim(`agent:${a.name}`, a.sx, a.sy, AGENT, a.from) }
@@ -373,7 +400,10 @@ function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?:
   // (riding with the pointer, its pilot places it each frame; else it glides as the others do)
   const ref = c.follow ? (el: HTMLElement | null) => { flying.el = el; if (el && flying.pilot) flyPose(clock()) } : attach("summon", paintCursor)
   return (
-    <div ref={ref} data-gone={gone || c.leaving || undefined} data-companion-summoned={c.state} data-follow={c.follow || undefined} className={cn(FADES, "pointer-events-none")}>
+    <div ref={ref} data-gone={gone || c.leaving || undefined} data-companion-summoned={c.state} data-follow={c.follow || undefined} data-speaking={speaking || undefined}
+      className={cn(FADES, "pointer-events-none")} style={{ "--c": tint } as React.CSSProperties}>
+      {/* (thinking: a soft glow breathing at its tip, its own, not a spinner; it gives way to its voice or a flight) */}
+      <span aria-hidden className="companion-glow" />
       <div className="pilot-arrow relative origin-[3px_2px] [scale:var(--pilot-scale,1)]"><div className={cn(c.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div></div>
       <div data-flag style={{ background: tint }} className={FLAG}>
         {c.name}
@@ -467,7 +497,7 @@ function Panel() {
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 function Screen() {
   const { s, gone, summonGone } = useSyncExternalStore(subscribe, () => view)
-  useEffect(() => { const a = api?.on(onScene), b = api?.onAt(onAt), c = api?.onPointer?.(pointerMoved); return () => { a?.(); b?.(); c?.() } }, [])
+  useEffect(() => { const a = api?.on(onScene), b = api?.onAt(onAt), c = api?.onPointer?.(pointerMoved), d = api?.onCue?.(cueNow); return () => { a?.(); b?.(); c?.(); d?.() } }, [])
   if (!s) return null
   return (
     <>
@@ -506,8 +536,12 @@ const STYLE = `
 .companion-pop { animation: companion-pop .28s cubic-bezier(.2,.9,.3,1.25); transform-origin: top left; }
 @keyframes companion-pop { from { opacity: 0; scale: .9; } }
 [data-parked] .pilot-arrow { animation: pilot-float 2.6s ease-in-out infinite; }
+.companion-glow { position: absolute; left: -14px; top: -15px; width: 34px; height: 34px; border-radius: 99px; pointer-events: none; opacity: 0; scale: .6;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 55%, transparent) 0%, color-mix(in srgb, var(--c) 18%, transparent) 45%, transparent 70%); transition: opacity .3s ease-out, scale .3s ease-out; }
+[data-companion-summoned="thinking"]:not([data-speaking]):not([data-moving]) .companion-glow { opacity: 1; scale: 1; animation: companion-glow 1.4s ease-in-out infinite; }
+@keyframes companion-glow { 0%, 100% { scale: .8; opacity: .55; } 50% { scale: 1.15; opacity: 1; } }
 @keyframes pilot-float { 50% { translate: 0 -3px; } }
-@media (prefers-reduced-motion: reduce) { .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .companion-glow, .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
 `
 document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE }))
 document.documentElement.style.background = "transparent"

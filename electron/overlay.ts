@@ -28,7 +28,8 @@ const LINGER = 4000
 function make(d: Display) {
   const w = new BrowserWindow({ ...d.bounds, transparent: true, frame: false, hasShadow: false, resizable: false, movable: false, minimizable: false,
     maximizable: false, fullscreenable: false, focusable: false, skipTaskbar: true, show: false, type: "panel", enableLargerThanScreen: true,
-    backgroundColor: "#00000000", webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false } })
+    // (its soft cues play with no click on it: nothing ever clicks the overlay to allow them)
+    backgroundColor: "#00000000", webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" } })
   w.setIgnoreMouseEvents(true, { forward: true })
   // (skipTransformProcessType: else macOS takes the app out of the Dock for it)
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
@@ -120,6 +121,12 @@ function feedPointer(again = false) {
     }
   }
   travel(p, now)
+}
+
+/** A soft cue (web/src/core/cues.ts), played by the window of the display the pointer is on. */
+export function cue(name: string) {
+  const id = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).id, w = wins.get(id)
+  if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:cue", name)
 }
 
 // ---------- the companion's drawing (drawing.ts): each display its part, in its own points
@@ -253,7 +260,15 @@ const marked = (): Rect[] => (drawing ? spots(drawing.marks).flatMap((s) => { co
 function place() {
   if (!panel || !panel.height) return
   const p = panel.travels ? screen.getCursorScreenPoint() : undefined, at = spotFor(panel.at, p)
-  if (panel.travels && panel.w.isVisible() && panel.pos) { panel.goal = at; panel.w.setSize(WIDTH + PAD * 2, panel.height + PAD * 2); return }
+  if (panel.travels && panel.w.isVisible() && panel.pos) {
+    // (grown as its words stream in: it keeps the edge by its cursor (its foot, when it's above it) and grows away from
+    // it, in one move; resized by its top it pushed down over the pointer, then slid back, each new line)
+    const was = panel.w.getBounds().height - PAD * 2, above = panel.pos.y + was <= panel.at.y + 6
+    if (above) panel.pos = { x: panel.pos.x, y: panel.pos.y - (panel.height - was) }
+    panel.goal = at
+    panel.w.setBounds({ x: Math.round(panel.pos.x - PAD), y: Math.round(panel.pos.y - PAD), width: WIDTH + PAD * 2, height: panel.height + PAD * 2 })
+    return
+  }
   panel.pos = at; panel.goal = at
   panel.w.setBounds({ x: at.x - PAD, y: at.y - PAD, width: WIDTH + PAD * 2, height: panel.height + PAD * 2 })
   if (panel.w.isVisible()) return

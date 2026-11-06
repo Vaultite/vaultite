@@ -32,7 +32,7 @@ mock.module(at("overlay.ts"), { exports: { showOverlay: (_b: string, s?: Scene) 
   onPanel: (a: PanelActs) => { panelActs = a }, openPanel: (_b: string, at: Pt, d: { name: string; items: []; how: string }, focus = true) => { panelShown = true; panels.push({ ...d, at, focus }) }, panelData() {},
   panelOpen: () => (panelShown ? panels.at(-1)?.name ?? null : null), panelFocused: () => false, panelMenuClosed() {}, closePanel() { if (panelShown) { panelShown = false; closed++; panelActs?.closed("Claude") } },
   ownWindows: () => [], panelBounds: () => (panelShown ? { x: 600, y: 300, width: 300, height: 160 } : null),
-  showDrawing() {}, drawingActs() {}, endDrawing() {}, followPointer: (on: boolean, moved?: (p: Pt, t: number) => void) => { following = on; fed = on ? moved ?? null : null }, panelAvoid() {} } })
+  showDrawing() {}, drawingActs() {}, endDrawing() {}, cue() {}, followPointer: (on: boolean, moved?: (p: Pt, t: number) => void) => { following = on; fed = on ? moved ?? null : null }, panelAvoid() {} } })
 mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async () => ({}), startScreen: async () => {}, stopScreen() {}, windowShot: async () => null, displayShot: async () => null,
   fnUsage: async () => null } })
 // (the recognizer: what it heard, given when it's stopped)
@@ -156,8 +156,17 @@ const ask = await until(() => asks().length > 0) ? asks()[0] : null
 check("summoned: what was said goes, about the point let go at: the window there, what's under and near it, what was drawn",
   ask?.kind === "ask" && ask.text === "what's this?" && ask.window === 9 && ask.sx === 530 && ask.sy === 471 && (ask.near as { id: string }[])?.[0]?.id === "a1" &&
   (ask.ink as { shape: string }[])?.[0]?.shape === "underline" && /Send/.test(String(ask.under)), ask)
-const box = panels.at(-1) as { focus: boolean; at: Pt; hint?: string } | undefined
-check("summoned: its answer's box opens by it, its field saying how to reply, not taking the keyboard", box?.focus === false && box.at.x === 554 && /tap ⌃⌥ to type, hold to talk/.test(box.hint ?? ""), box)
+const cues = () => H.asked().flatMap((m) => ("cue" in m ? [m.cue] : []))
+check("summoned: soft cues as it came and as it was let go with words (a scripted copy plays none)", cues().join() === "listen,sent", cues())
+const panelsBefore = panels.length
+check("summoned: an ask by voice gets no box: its answer is spoken by its cursor", !panelShown && panels.length === panelsBefore, panels.at(-1))
+sock!.send(JSON.stringify({ t: "note", note: { id: "s0", kind: "say", agent: "Claude", text: "That's the Send button.", t: Date.now() } }))
+check("summoned: its answer coming, a soft cue", await until(() => cues().join() === "listen,sent,answer"), cues())
+await wait(1000)
+check("summoned: its voice still to start, still no box", !panelShown)
+const box = await until(() => panelShown, 4000) ? panels.at(-1) as { focus: boolean; at: Pt; hint?: string } : undefined
+check("summoned: its voice never came: its box opens by it after all, its field saying how to reply, not taking the keyboard",
+  box?.focus === false && /tap ⌃⌥ to type, hold to talk/.test(box.hint ?? ""), box)
 scenes.length = 0
 setAgent({ path: undefined, line: undefined, app: "com.example.mail", window: 9, state: "thinking" })
 await wait(80)
@@ -261,6 +270,22 @@ for (const [name, steps] of orders) {
   H.heard({ event: "esc" })
   await wait(300)
 }
+// (spoken, no box; a tap of the key opens it: its last words and the reply field)
+heardWords = "what's the time zone here?"
+chord(true)
+await wait(400)
+chord(false)
+await until(() => asks().some((m) => m.text === "what's the time zone here?"))
+const tapBefore = panels.length
+sock!.send(JSON.stringify({ t: "said", said: [{ id: "s9", kind: "say", agent: "Claude", text: "It's Lisbon time.", t: Date.now() }] }))
+await wait(300)
+chord(true)
+await wait(60)
+chord(false)
+const tapped = await until(() => panels.length > tapBefore && panelShown) ? panels.at(-1)! : null
+check("spoken, a tap of the key opens its box after all: its last words and the field, to type in", !!tapped && tapped.focus && tapped.items.some((n) => n.id === "s9"), tapped)
+H.heard({ event: "esc" })
+await wait(300)
 focused = null
 heardWords = "and this?"
 

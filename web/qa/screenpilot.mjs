@@ -121,10 +121,30 @@ const dips = await page.evaluate(() => {
   return Math.max(...out.slice(1).map((v, i) => out[i] - v))
 })
 check("…smooth, with no seams or beads where its pieces meet", dips < 12, dips)
+/** How much of the canvas the trail covers, and how far its ink is from the cursor's tip on average. */
+const inkNow = () => page.evaluate(() => {
+  const c = document.querySelector("canvas"), el = document.querySelector("[data-companion-summoned]"), m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(el.style.transform)
+  if (!c || !c.width) return { n: 0 }
+  const tip = { x: +m[1] + 3, y: +m[2] + 2 }, d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data, dpr = devicePixelRatio
+  let n = 0, far = 0
+  for (let y = 0; y < c.height; y += 4) for (let x = 0; x < c.width; x += 4) if (d[(y * c.width + x) * 4 + 3] > 40) { n++; far += Math.hypot(x / dpr - tip.x, y / dpr - tip.y) }
+  return { n, far: n ? far / n : 0 }
+})
+const held0 = await inkNow()
 await summon(page, { state: "thinking" })
-await page.waitForTimeout(2000)
+await page.waitForTimeout(190)
+const drawing0 = await inkNow()
+await page.waitForTimeout(400)
 const after = await page.evaluate(() => document.querySelector("canvas")?.width)
-check("let go, the rest of the trail fades away, its canvas gone to nothing", after === 0, after)
+check("let go, what's left of the trail draws into the cursor (nearer it, less of it), then it's gone, all in under half a second",
+  held0.n > 0 && drawing0.far < held0.far * 0.75 && drawing0.n < held0.n && after === 0, { held0, drawing0, after })
+const glow = (sel = "") => page.evaluate((sel) => +getComputedStyle(document.querySelector(`[data-companion-summoned]${sel} .companion-glow`)).opacity, sel)
+await page.waitForTimeout(400)
+const thinking = await glow()
+await page.evaluate(() => window.__scene({ width: 1200, height: 800, top: 25, agents: [], summon: { name: "Claude", tint: "orange", state: "thinking", sx: 124, sy: 120, follow: true }, pill: null, speaking: { name: "Claude", level: 0.5 } }))
+await page.waitForTimeout(450)
+const talking = await glow()
+check("thinking, a soft glow breathes at its tip; speaking, it gives way to its voice's bars", thinking > 0.3 && talking < 0.05 && await page.evaluate(() => !!document.querySelector("[data-companion-summoned] .companion-speak")), { thinking, talking })
 const f1 = await page.evaluate(() => window.__frames)
 await page.waitForTimeout(300)
 check("…and nothing runs after", (await page.evaluate(() => window.__frames)) === f1)

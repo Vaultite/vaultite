@@ -13,7 +13,7 @@ import { dictate, dictating, stopFor, dictationEngines, onDictating, type Dictat
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
 import { atOffset, badgeOf, besidePointer, drawnShapes, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, shotCrop, trailStrokes } from "./helperlogic.ts"
-import { closePanel, drawingActs, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
+import { closePanel, cue as playCue, drawingActs, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
 import { companionVoice } from "./voice.ts"
@@ -196,7 +196,7 @@ const manifest = (id: string) => {
 const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("companion"), screen: manifest("screen") }
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
 let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {},
-  voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 } }
+  voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 }, sounds: true }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -247,7 +247,7 @@ const live = (() => {
       let m: Record<string, unknown>
       try { m = JSON.parse(String(d)) } catch { return }
       // (the companion's drawing over the screen: the server's, its places found there)
-      if (m.t === "drawing") return showDrawing((m.drawing as Parameters<typeof showDrawing>[0]) ?? null, elementPlaces(lastNear))
+      if (m.t === "drawing") { if (m.drawing) answerArrived(); return showDrawing((m.drawing as Parameters<typeof showDrawing>[0]) ?? null, elementPlaces(lastNear)) }
       if (m.t === "state") {
         state.mode = String(m.mode); state.name = String(m.name)
         state.agents = new Map((m.agents as Agent[]).map((a) => [a.name, a]))
@@ -256,7 +256,7 @@ const live = (() => {
         state.harnesses = (m.harnesses as typeof state.harnesses | undefined) ?? []
       } else if (m.t === "said") state.said = (m.said as Note[] | undefined) ?? []
       else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a); voiceHeardAgent(a) }
-      else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n); voiceHeard(n) }
+      else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n); voiceHeard(n); if (n.kind === "say" && n.agent === exchange?.name && n.t >= exchange.since) answerArrived() }
       else if (m.t === "drop") state.notes.delete(String(m.id))
       // (its answer stopped in the app: Esc, its box closed)
       else if (m.t === "hush") return stopVoice()
@@ -410,10 +410,16 @@ const gesture = talkGesture()
 type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; state: "listening" | "thinking" | "watching"; trail: (Point & { t: number })[]; released?: number
   at: number; was: string; typing?: boolean
   /** Its turn on the ask seen at work (from then on its state is the agent's). */
-  busySeen?: boolean }
+  busySeen?: boolean
+  /** Its coming was cued. */
+  cued?: boolean }
 let summon: Summon | null = null
 /** The exchange its answer is in: its box open by the point asked about (and the window there), since `since`. */
-let exchange: { name: string; p: Point; w: AppWindowInfo | null; since: number } | null = null
+let exchange: { name: string; p: Point; w: AppWindowInfo | null; since: number
+  /** Its answer is spoken: no box (its cursor, its voice and its marks say it), unless the voice doesn't come. */
+  spoken?: boolean
+  /** Its answer began coming (its first words, a drawing); its voice was heard. */
+  arrived?: boolean; heard?: boolean } | null = null
 
 /** A Talk key (alone, or a chord), as its gesture: in a Vaultite window with the keyboard, its page's companion; else
  *  the companion summoned here. */
@@ -444,7 +450,12 @@ function talkAct(a: NonNullable<TalkAction>) {
   if (a === "cancel") { void inkOff(); return act("cancel", true) }
   if (a === "send") {
     // (hands-free in its box: what's in it goes; held: let go here, it thinks here)
-    if (session?.into === "summon" || (starting && startingTalk)) { if (summon) Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking", released: Date.now() }); void inkOff(); draw() }
+    if (session?.into === "summon" || (starting && startingTalk)) {
+      if (summon) Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking", released: Date.now() })
+      // (something to send, said or drawn: it's heard as it's let go)
+      if (summon && ((session && (session.finals.length || session.pending.trim())) || trailStrokes(summon.trail, Date.now()).length)) cue("sent")
+      void inkOff(); draw()
+    }
     else if (!session && summon?.state === "listening") { summon = null; void inkOff(); return draw() }
     return act("stop", true)
   }
@@ -521,14 +532,37 @@ async function freeTalk() {
  *  a click elsewhere or another app ends it. */
 function openAnswer(name: string, p: Point, w: AppWindowInfo | null, since: number) {
   if (!based) return
-  exchange = { name, p, w, since }
-  const d = chatOf(name)
+  // (an answer said aloud needs no box: the box comes by a tap of the key, or if the voice doesn't)
+  const spoken = prefs.voice.mode !== "off"
+  exchange = { name, p, w, since, ...(spoken ? { spoken } : {}) }
+  void screenAsk("exchange", { on: true })
+  if (spoken) return draw()
+  answerBox()
+}
+/** The exchange's box, beside the pointer, unfocused: its words and its reply field. */
+function answerBox() {
+  if (!based || !exchange) return
+  const d = chatOf(exchange.name)
   if (!d) return
   // (it travels with the companion beside the pointer; its field is there, the keyboard left with their app)
   const now = screen.getCursorScreenPoint()
   openPanel(based, besidePointer(now, screen.getDisplayNearestPoint(now).bounds), d, false, true)
-  void screenAsk("exchange", { on: true })
   draw()
+}
+/** The exchange's answer began coming: a soft cue; spoken, the box shows after all if its voice hasn't started soon. */
+function answerArrived() {
+  const x = exchange
+  if (!x || x.arrived) return
+  x.arrived = true
+  cue("answer")
+  if (x.spoken) setTimeout(() => { if (exchange === x && !x.heard && panelOpen() !== x.name) answerBox() }, VOICE_WAIT)
+}
+/** How long a spoken answer's first words wait for its voice before its box shows them. */
+const VOICE_WAIT = 3500
+/** A soft cue (the companion's `sounds`; a scripted copy only notes it). */
+function cue(name: "listen" | "sent" | "answer") {
+  if (QUIET) return void asked.push({ cue: name })
+  if (prefs.sounds) playCue(name)
 }
 /** The exchange over: its box closed, its cursor gone (at once when it's done; else once it is). */
 function endExchange() {
@@ -786,6 +820,7 @@ function voiceLevel(on: boolean, v: number) {
   const name = voiced?.name ?? speakingNow?.name
   const was = speakingNow
   speakingNow = on && name ? { name, level: Math.round(v * 20) / 20 } : null
+  if (on && exchange) exchange.heard = true
   if (!!was !== !!speakingNow || was?.name !== speakingNow?.name) return draw()
   if (lastScene && speakingNow && was?.level !== speakingNow.level) { lastScene = { ...lastScene, speaking: speakingNow }; showOverlay(based || null, lastScene) }
 }
@@ -1014,6 +1049,8 @@ function draw() {
   const called: Scene["summon"] = s && home && (!listening || Date.now() - s.at > 120)
     ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
   followPointer(!!called, trailed)
+  // (it came: a soft cue, once a press)
+  if (called && s && !s.cued) { s.cued = true; if (listening) cue("listen") }
   panelAvoid(aimed?.frame ? [aimed.frame] : [])
   for (const a of live.state.agents.values()) if (a.state !== "away") leaveWhenDone(a, says)
   watchWindows()

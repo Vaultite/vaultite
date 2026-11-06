@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A spoken answer needs no box**: asked by voice, the companion answers with its cursor, its voice and its marks;
+  its box (its words and a reply field) shows when you tap the Talk key, for a typed ask, or if the voice doesn't
+  come. Waiting feels alive: let go and your trail draws into its cursor, which glows softly while it thinks, then
+  speaks or flies; soft short sounds as you summon it, let go and its answer comes (Sounds setting, on by default). A
+  box that does show no longer jumps as its words stream in.
 - **⌃⌥ in a terminal talks to the companion again**: in a Vaultite window, holding the Talk key where the companion's
   box can't take the keyboard (a terminal's pane) dictated into the terminal; now the companion comes at the pointer
   over the screen, as in any other app, and its words only ever go to it. Dictation keys still work alone.

@@ -2118,6 +2118,25 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("dictation: a line without its colon is ignored; $ written as is", swap("at Claude", ["nonsense"]) === "at Claude" && swap("five dollars", ["five dollars: $5"]) === "$5")
 }
 
+// ---------- The companion's soft cues (web/src/core/cues.ts): an audio context stood in, nothing plays ----------
+{
+  const { playCue, cueLength, CUE_PEAK } = await import("../web/src/core/cues.ts")
+  type Ev = [string, number, number]
+  const param = (log: Ev[], name: string) => ({ setValueAtTime: (v: number, t: number) => log.push([`${name}=`, v, t]), linearRampToValueAtTime: (v: number, t: number) => log.push([`${name}~`, v, t]),
+    exponentialRampToValueAtTime: (v: number, t: number) => log.push([`${name}^`, v, t]) })
+  const fake = () => {
+    const log: Ev[] = [], stops: number[] = []
+    return { log, stops, currentTime: 10, destination: {}, createOscillator: () => ({ type: "", frequency: param(log, "f"), connect() {}, start() {}, stop: (t: number) => stops.push(t) }), createGain: () => ({ gain: param(log, "g"), connect() {} }) }
+  }
+  for (const name of ["listen", "sent", "answer"] as const) {
+    const c = fake()
+    playCue(c, name)
+    const gains = c.log.filter((e) => e[0].startsWith("g")), peak = Math.max(...gains.map((e) => e[1])), end = Math.max(...c.stops) - 10
+    check(`cues: ${name} is soft and short, rising from silence and fading out (no click)`, peak <= CUE_PEAK && peak > 0 && end <= 0.4 && Math.abs(end - cueLength(name) - 0.02) < 0.001 &&
+      gains.filter((e) => e[0] === "g=").every((e) => e[1] === 0) && gains.filter((e) => e[0] === "g^").every((e) => e[1] <= 0.001), { peak, end, gains })
+  }
+}
+
 // ---------- A Talk key's words go only into the companion's own box (plugins/core/companion/talkbox.ts) ----------
 {
   const { inCompanionBox } = await plugin("companion/talkbox.ts")

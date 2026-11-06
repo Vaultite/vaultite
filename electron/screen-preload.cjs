@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
     ipcRenderer.on("vaultite:pointer", h)
     return () => { ipcRenderer.removeListener("vaultite:pointer", h) }
   },
+  // (a soft cue to play: listen, sent, answer)
+  onCue(fn) {
+    const h = (_e, m) => fn(m)
+    ipcRenderer.on("vaultite:cue", h)
+    return () => { ipcRenderer.removeListener("vaultite:cue", h) }
+  },
   // (where the companion is headed or rests while it points, [x, y] here; null: beside the pointer)
   pilot: (to) => ipcRenderer.send("screen:pilot", to),
   grab: (on) => ipcRenderer.send("screen:grab", !!on),
