@@ -733,6 +733,9 @@ export default async ($: VaultTest) => {
           [worked, r, row, logged])
         await $.api("DELETE", `terminals/${id}`)
       }
+      const endedFile = path.join(term.plugin.localDir(), "ended.json")
+      const kept = await waitFor(() => { try { return JSON.parse(fs.readFileSync(endedFile, "utf8")).includes("standin-leftosc") } catch { return false } }, 5000, 100)
+      check("terminal: one ended for good is kept on this machine, so its tab put back after a restart closes rather than starting it again", !!kept)
     } finally {
       console.log = log
       delete svc["agent:standin"]

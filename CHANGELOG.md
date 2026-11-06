@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A finished agent's tab never starts it again after a restart**: a session you ended stays ended when its tab comes
+  back after Vaultite restarts (a deploy), rather than resuming the conversation by itself.
 - **A reply to a handed-off agent is never cut off**: replying from the Inbox before its turn ended no longer lets that
   turn's end close the terminal under your reply.
 - **An agent never clicks the wrong row**: in lists that reuse their rows (Gmail, Slack), a control it saw that now

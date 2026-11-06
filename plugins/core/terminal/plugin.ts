@@ -859,7 +859,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     }
   })
   sessions.set(id, s)
-  endedOnPurpose.delete(id)
+  if (endedOnPurpose().delete(id)) keepEnded()
   listChanged()
   // An agent whose folder macOS keeps from the keeper stops with its own vague error ("Unexpected"): its tabs say why.
   if (cwd && backend === keeper && process.platform === "darwin") {
@@ -872,12 +872,23 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   return { s, fresh }
 }
 
-/** The sessions ended for good here (End session, x, vau terminal end, a shell's clean exit), lately: their tabs close,
- *  the ones open now (the exit says `ended`) and the ones put back later (they hear "gone", `ended`), on any device. */
-const endedOnPurpose = new Set<string>()
+/** Sessions ended for good here (End session, x, a clean exit), lately: their tabs close, now or when put back (even
+ *  after a restart: kept on this machine, or a finished agent's would start again), on any device. */
+const endedFile = () => path.join(plugin.localDir(), "ended.json")
+let endedSet: Set<string> | null = null
+/** Read from its file the first time (the plugin's folder is known once it's loaded). */
+function endedOnPurpose() {
+  if (!endedSet) { try { const v = JSON.parse(fs.readFileSync(endedFile(), "utf8")); endedSet = new Set(Array.isArray(v) ? v.filter((x) => typeof x === "string") : []) } catch { endedSet = new Set() } }
+  return endedSet
+}
+let endedWrite: ReturnType<typeof setTimeout> | null = null
+const keepEnded = () => { endedWrite ??= setTimeout(() => { endedWrite = null; try { fs.mkdirSync(plugin.localDir(), { recursive: true }); fs.writeFileSync(endedFile(), JSON.stringify([...endedOnPurpose()])) } catch { /* next time */ } }, 1000) }
 function markEnded(id: string) {
-  endedOnPurpose.add(id)
-  if (endedOnPurpose.size > 500) endedOnPurpose.delete(endedOnPurpose.values().next().value!)
+  const all = endedOnPurpose()
+  all.delete(id)
+  all.add(id)
+  if (all.size > 500) all.delete(all.values().next().value!)
+  keepEnded()
 }
 
 /** The terminals ended on purpose (End session, x, vau terminal end) whose end isn't told yet; `keep`: their tabs stay,
@@ -1114,7 +1125,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   }
   // A tab put back asks only to attach: an agent's new session that ended (or was lost) isn't started again, nor
   // a session ended for good (its tab closes).
-  const agent = agentOf(id), ended = endedOnPurpose.has(id)
+  const agent = agentOf(id), ended = endedOnPurpose().has(id)
   if (query.attach && (ended || (agent && !agent.resume)) && !starting.has(id) && !(await runsHere(id))) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "gone", ...(ended ? { ended: true } : {}) }))
     return ws.close(GONE, "gone")
