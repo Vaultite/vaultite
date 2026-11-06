@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents browse faster**: a click answers about 300 ms sooner (it watches the page settle while it waits for a
+  navigation the click may set off, not after), page loads and closes answer as they end (10 to 100 ms sooner), and a
+  site's open stream (a live channel, a long poll) no longer holds an answer for 4 seconds.
 - **The companion's take-over offer waits for your answer**: it stays by your pointer until you click Do it or Not now,
   say yes or no, press Esc, click elsewhere or ask something else, instead of going after 30 seconds, even mid-sentence.
 - **The Talk key's companion answers every ask**: one it handled with a tool alone (closing a job, following a pane)

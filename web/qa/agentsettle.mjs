@@ -1,6 +1,6 @@
 // An agent's act answers what it did (electron/browser/agent.ts act, settle, quiet): a page that goes elsewhere a moment
 // after the click, a web component's shadow DOM changing, a fetch still running while an iframe navigates, and the first
-// act in a page seeing its requests. Never "nothing changed" when something did.
+// act in a page seeing its requests. Never "nothing changed" when something did, nor an open stream waited out.
 // WRITES: the throwaway vault only.
 //   node web/qa/agentsettle.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -37,6 +37,10 @@ const site = http.createServer((q, res) => {
   const send = (body) => { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(body) }
   if (q.url === "/order") return send("<!doctype html><title>Order 1042</title><h1>Order 1042</h1><p>Ships Tuesday from the Lisbon depot.</p>")
   if (q.url.startsWith("/frame")) return send("<!doctype html><p>frame</p>")
+  // (a page's open channel: its answer begins and never ends)
+  if (q.url === "/live") return send(`<!doctype html><title>Live</title><h1>Live orders</h1><p id="n"></p><script>
+    fetch("/stream").then(() => { n.textContent = "Channel open" })</script>`)
+  if (q.url === "/stream") { res.writeHead(200, { "Content-Type": "application/json" }); res.write("{"); return }
   if (q.url === "/slow") return setTimeout(() => { res.writeHead(200, { "Content-Type": "text/plain" }); res.end("Gate code 4417") }, 900)
   send(PAGE)
 })
@@ -76,8 +80,12 @@ try {
   // A navigation its script starts 300 ms after the click.
   const late = await op("act", { tab: T, action: "click", ref: await refOf("Open order 1042") })
   check("a navigation set off after the click is waited for", late?.navigated === true && /order/.test(late?.url ?? ""), late)
+
+  // An open stream (its answer begun, never ended) isn't waited out: the page is answered once it's drawn.
+  const t0 = Date.now(), live = await op("navigate", { tab: T, to: `${SITE}live` }), took = Date.now() - t0
+  check("a page's open stream isn't waited for", took < 2500 && /Channel open/.test(text(live)), { took, live })
 } finally {
   await app.close().catch(() => {})
-  site.close()
+  site.closeAllConnections(); site.close()
   await done()
 }
