@@ -26,7 +26,7 @@ function Passwords() {
   if (status === undefined) return null
   if (!status) return <Setup />
   if (status.locked || status.error || !entries) return <div className="h-full overflow-y-auto"><LockScreen status={status} /></div>
-  return <Vault status={status} groups={groups} entries={entries} />
+  return <Unlocked status={status} groups={groups} entries={entries} />
 }
 
 function Centered({ icon: Icon, title, children }: { icon: typeof Lock; title: string; children: ReactNode }) {
@@ -129,7 +129,7 @@ function within(groups: Group[], id: string) {
   return set
 }
 
-function Vault({ status, groups, entries }: { status: NonNullable<Status>; groups: Group[]; entries: Row[] }) {
+function Unlocked({ status, groups, entries }: { status: NonNullable<Status>; groups: Group[]; entries: Row[] }) {
   const [q, setQ] = useState("")
   const [picked, setWhere] = useState(ALL)
   const uses = useUses()
