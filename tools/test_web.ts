@@ -3138,6 +3138,27 @@ await section("your passwords", async () => {
   check("your passwords: a deleted entry leaves the export", !after.entries.some((e) => e.id === inSub))
 })
 
+// ---------- Browser: the Passwords page's generator (plugins/core/web-viewer/generate.ts) ----------
+await section("password generator", async () => {
+  const { generatePassword, GEN_DEFAULTS } = await import("../plugins/core/web-viewer/generate.ts")
+  const many = Array.from({ length: 200 }, () => generatePassword(GEN_DEFAULTS))
+  check("password generator: 20 characters by default, each with a letter, a digit and a symbol",
+    many.every((p) => p.length === 20 && /[a-z]/i.test(p) && /\d/.test(p) && /[^a-z\d]/i.test(p)), many.slice(0, 3))
+  check("password generator: no two alike", new Set(many).size === many.length)
+  const digits = generatePassword({ length: 12, letters: false, digits: true, symbols: false })
+  check("password generator: only the kinds asked for", /^\d{12}$/.test(digits), digits)
+  check("password generator: the length kept within 8 to 64", generatePassword({ ...GEN_DEFAULTS, length: 3 }).length === 8 && generatePassword({ ...GEN_DEFAULTS, length: 500 }).length === 64)
+  check("password generator: none asked for is letters", /^[a-z]+$/i.test(generatePassword({ length: 10, letters: false, digits: false, symbols: false })))
+  // (a draw past the last whole multiple of the alphabet is thrown away: 10 digits, 2^32 - 1 is past it)
+  const draws = [0xffff_ffff, 7, 0xffff_ffff, 3, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
+  const fixed = generatePassword({ length: 8, letters: false, digits: true, symbols: false }, (a) => { a[0] = draws.shift()! })
+  check("password generator: unbiased, a draw past the last whole multiple is drawn again", fixed === "73123456", fixed)
+  const counts = new Map<string, number>()
+  for (let i = 0; i < 400; i++) for (const c of generatePassword({ length: 64, letters: false, digits: true, symbols: false })) counts.set(c, (counts.get(c) ?? 0) + 1)
+  const n = [...counts.values()]
+  check("password generator: every digit about as often", counts.size === 10 && Math.min(...n) / Math.max(...n) > 0.85, Object.fromEntries(counts))
+})
+
 // ---------- Browser: a login sealed for another Mac's app (electron/browser/sealed.ts) ----------
 await section("sealed logins", async () => {
   const sl = await import("../electron/browser/sealed.ts")

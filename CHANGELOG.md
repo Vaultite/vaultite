@@ -6,8 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
-- **Your passwords in Vaultite**: the desktop app opens your own KeePass file (the one KeePassXC and Strongbox open),
-  unlocked with Touch ID or its password. The browser fills your logins from it (a key in the address bar, or Fill
+- **Your passwords in Vaultite**: your own KeePass file (the one KeePassXC and Strongbox open) in a tab of the desktop
+  app (Show passwords), unlocked with Touch ID or its password: entries searched and listed by group, their username,
+  password, one-time code and websites to copy or open, edited or made with a generator, deleted to the recycle bin
+  with Undo, which agents used each one, and a switch to let agents use an entry without asking. The browser fills your logins from it (a key in the address bar, or Fill
   login) and offers to save a new sign-in or update a password; each change is written into the file (its old copy
   kept) and into the group KeePassXC shares with agents, so they use it at once. `vau secret` can be answered from
   your passwords (with Touch ID) or kept there. Agents never see what's filled.

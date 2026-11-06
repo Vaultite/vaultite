@@ -1,7 +1,7 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌥⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, memo, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RotateCw, Scissors, Search, Volume2, VolumeX } from "lucide-react"
+import { Bookmark, Bot, Box, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Play, Printer, Puzzle, RectangleEllipsis, RotateCw, Scissors, Search, Volume2, VolumeX } from "lucide-react"
 import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, allPanes, focusedPane, shownTab, post, runCommandById, runShortcut, typingIn, saveAttachments, selectPane, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, chosenFor, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
@@ -11,6 +11,7 @@ import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView 
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
 import { liveTitle } from "./livetitles"
 import { askClear, HistoryView } from "./HistoryView"
+import { EDIT_DETAIL, ENTRY_DETAIL, entryTitle, NEW_DETAIL, PasswordsSetting } from "./passwordstore"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
 import { openBookmark, starOf } from "./Star"
@@ -33,6 +34,9 @@ const WebPage = lazy(() => import("./WebPage"))
 // Pages opened on demand load with their first tab.
 const ReplaysView = lazy(() => import("./Replays").then((m) => ({ default: m.ReplaysView })))
 const AgentPasskeys = lazy(() => import("./AgentPasskeys").then((m) => ({ default: m.AgentPasskeys })))
+const PasswordsView = lazy(() => import("./Passwords").then((m) => ({ default: m.PasswordsView })))
+const EntrySheet = lazy(() => import("./PasswordSheets").then((m) => ({ default: m.EntrySheet })))
+const EditSheet = lazy(() => import("./PasswordSheets").then((m) => ({ default: m.EditSheet })))
 const LiveView = lazy(() => import("./LiveView").then((m) => ({ default: m.LiveView })))
 const ExtensionsView = lazy(() => import("./Extensions").then((m) => ({ default: m.ExtensionsView })))
 
@@ -328,6 +332,7 @@ export default definePlugin({
       },
     },
     "agent-runs": { icon: Bot, title: () => "Agents in the browser", full: true, render: () => <Suspense fallback={null}><ReplaysView /></Suspense> },
+    passwords: { icon: RectangleEllipsis, title: () => "Passwords", full: true, render: () => <Suspense fallback={null}><PasswordsView /></Suspense> },
     "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <Suspense fallback={null}><AgentPasskeys /></Suspense> },
     // (every machine's browser tabs, one watched live: `3`, or `3@m1` in another machine's browser)
     "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(arg) || "Browser tab" : "Browser tabs"), argState: true, full: true,
@@ -338,6 +343,11 @@ export default definePlugin({
     "web-pages": { icon: Globe, title: () => "Sites", render: () => <SitesView openPage={openPage} /> },
     "web-extensions": { icon: Puzzle, title: () => "Extensions", render: () => <Suspense fallback={null}><ExtensionsView openPage={openPage} /></Suspense> },
     "web-history": { icon: History, title: () => "History", render: () => <HistoryView openPage={(url) => openPage(url)} onImport={() => void askImport()} /> },
+  },
+  details: {
+    [ENTRY_DETAIL]: { title: (_s, [id]) => entryTitle(id), render: (_s, [id]) => <Suspense fallback={null}><EntrySheet id={id} /></Suspense> },
+    [EDIT_DETAIL]: { title: (_s, [id]) => `Edit ${entryTitle(id)}`, render: (_s, [id]) => <Suspense fallback={null}><EditSheet id={id} /></Suspense> },
+    [NEW_DETAIL]: { title: () => "New password", render: (_s, [group]) => <Suspense fallback={null}><EditSheet group={group} /></Suspense> },
   },
   files: { types: ["bookmarks"], icon: Bookmark },
   // Its tabs, bookmarks, history and the web in the quick switcher, the browser's command bar (⌘T's, with newtab.json `opens`).
@@ -393,6 +403,8 @@ export default definePlugin({
     { id: "web:search-selection", name: "Search the web for selected text", desktop: true, when: () => !!webPages && !!selectedText().trim(), run: () => openWebLink(searchUrl(selectedText().replace(/\s+/g, " "), settings.get().search)), icon: Search },
     { id: "web:extensions", name: "Extensions", desktop: true, when: hasExtensions, run: openExtensions, icon: Puzzle },
     { id: "web:sites-tab", name: "Show sites and logins", desktop: true, when: () => !!webPages?.sites, icon: Globe, run: manageContainers },
+    { id: "web:passwords", name: "Show passwords", desktop: true, when: () => !!webPages?.engine, icon: RectangleEllipsis,
+      run: () => openView("passwords", { newTab: !isViewOpen("view:passwords") }) },
     { id: "web:history", name: "Show history", keys: isMac ? ["Mod+Y"] : ["Mod+H"], desktop: true, when: () => !!webPages?.engine, run: () => openView("web-history", { newTab: !isViewOpen("view:web-history") }), icon: History },
     { id: "web:clear-history", name: "Clear browsing history…", desktop: true, when: () => !!webPages?.engine, run: askClear, icon: Eraser },
     { id: "web:block-element", name: "Block an element on this page", when: () => !!webPages?.engine && /^https?:\/\//i.test(focusedPage()?.url() ?? ""),
@@ -418,8 +430,9 @@ export default definePlugin({
     { id: "web:import-chrome", name: "Import from Chrome…", desktop: true, when: () => browsersHere().some((s) => s.browser === "chrome"), run: () => void askImport("chrome"), icon: Download },
   ],
   ambient: { playing: { title: "Web pages playing", sort: 55, render: () => <Playing /> } },
-  settingsPanel: () => <SitesSettings />,
-  settingsSearch: [{ key: "sites", label: "Sites and logins", description: "the sites signed in to in each container's and workspace's logins: sign out, clear trackers" }],
+  settingsPanel: () => <><SitesSettings /><PasswordsSetting /></>,
+  settingsSearch: [{ key: "sites", label: "Sites and logins", description: "the sites signed in to in each container's and workspace's logins: sign out, clear trackers" },
+    { key: "passwords", label: "Passwords", description: "your KeePass file (KeePassXC's, Strongbox's), its passwords listed, edited and filled in pages" }],
   background: Background,
   preview: () => <Preview />,
 })
