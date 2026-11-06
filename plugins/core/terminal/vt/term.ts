@@ -82,6 +82,8 @@ export class Term {
   private wantGl: boolean
   private glLost = false
   private disposed = false
+  /** Output came while it was parked (out of the page, its tab hidden): drawn at once when it's back. */
+  private unseen = false
 
   constructor(o: TermOptions & { cols?: number; rows?: number; webgl: boolean }) {
     if (!wasm) throw new Error("libghostty-vt isn't loaded")
@@ -172,8 +174,8 @@ export class Term {
     this.r?.resize(w, h, m)
     if (cols !== this.cols || rows !== this.rows) this.resize(cols, rows)
     this.allRows = true; this.stale = true
-    // (a new size clears the canvas: drawn again at once, so no frame shows it blank)
-    if (cleared) this.renderNow(); else this.requestRender()
+    // (a new size clears the canvas, and one back from parking shows what it missed: drawn at once, never blank or old)
+    if (cleared || this.unseen) this.renderNow(); else this.requestRender()
     return true
   }
   resize(cols: number, rows: number) {
@@ -255,6 +257,8 @@ export class Term {
   requestRender(force = false) {
     if (force) this.stale = true
     if (this.frame || this.disposed) return
+    // (parked: no frames woken for a page that can't show it)
+    if (this.element && !this.element.isConnected) { this.stale = true; this.unseen = true; return }
     this.frame = requestAnimationFrame(() => { this.frame = 0; this.render() })
   }
   /** Drawn now, not at the next frame (a picture of it, a new size). */
@@ -280,6 +284,7 @@ export class Term {
   private render() {
     if (this.disposed || !this.r || !this.element?.isConnected) return
     if (!this.stale) return
+    this.unseen = false
     if (!this.sync()) return
     this.stale = false
     this.r.draw(this.frameOf())
