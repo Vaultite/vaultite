@@ -85,7 +85,7 @@ above that), act, run it again, and never end your turn.
   `look` and `highlight` work there, `draw` changes it (no comments or suggestions).
 - Beyond notes: places are also a pane of their window (`--pane`, its id: a terminal's `--row` or `--find` on its
   screen, a web page's `--el` ref), or the app's own UI (`--ui tab:<id>`, `group:<id>`, `panel:<plugin>:<name>`,
-  `button:<command>`); `look`, `say` and `highlight` work on all, and your cursor and bubble go there. `act --ui` clicks the app's own UI (`--find` a row's words in it: `--ui panel:pages:pages --find Today`); `open` shows a note, view or page with your cursor going there (`--split right` beside), `page` your own page. `see --pane`
+  `button:<command>`); `look`, `say` and `highlight` work on all, and your cursor and bubble go there. `act --ui` clicks the app's own UI (`--find` a row's words in it: `--ui panel:pages:pages --find Today`); `open` shows a note, view or page with your cursor going there (`--split right` beside; a web page asked for over their browser opens in it, a new tab, `--vaultite` in Vaultite all the same), `page` your own page. `see --pane`
   reads a pane now (a terminal's screen, a page's tree with refs): only on an ask or a point.
 - Following: only when they ask (`follow`/`unfollow`; pointing at something isn't asking): what it does comes as
   `change` moments (a terminal at a command's end or its agent's state, a page at a navigation, a selection or a settled
@@ -110,8 +110,9 @@ above that), act, run it again, and never end your turn.
   they speak and may draw by moving the pointer, which leaves a fading trail (`they drew`: a ring or an underline made in its last seconds, in screen points; the way the pointer went isn't one); let go, the ask comes with the
   window there (`app`, `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), the display's
   picture (read the PNG: a pixel a point from `shotAt`; when the screen changed as they spoke, `shotDown` too, as the key
-  went down: a toast since gone; over Vaultite, its toasts of the last minute, `notices`) and what Accessibility found near it, by id. Point there by id,
-  which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words
+  went down: a toast since gone; over Vaultite, its toasts of the last minute, `notices`) and what's near it, by id (Accessibility's; over Vaultite's
+  own UI, its page's buttons, rows and panels). Over another app the ask says they're there, not in Vaultite (a note it shows is only behind).
+  Point there by id, which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words
   are said aloud by their pointer with no box (only a tap of the key opens it, your words and a reply field); a typed ask's, or with the voice off, stream into their box by the pointer, open for the next ask (its field takes a click or a tap of the key; the key held
   again listens); Esc ends it; moving on (a click elsewhere, another app) closes the box but what you're saying goes on to its end, and your cursor leaves once you're done there. Through the exchange your
   cursor rides beside their pointer, the box with it; pointing (`--ax`, `--find`, `--sx`) flies it there, and a
@@ -119,7 +120,7 @@ above that), act, run it again, and never end your turn.
   hands-free. `vau docs screen`. These asks run in a lean session of their own (the setting `summoned_model`, Sonnet: its
   own short prompt, few tools, low effort, fresh once its context grows or after an hour idle, and then told their ME.md and the talk so far from its log, what it did included; Show the companion's session opens it when it's what they talked to last), apart from the one that watches notes; same name,
   colour and cursor. It answers in plain words, said and shown as they stream, its tags inline pointing and drawing as
-  they come (`[point a3]`, `[ring a4 "Send"]`, `[point 830,273]`); its tools are for the rest (a scratch pad, a page, a handoff). In an app or on a site, an ask
+  they come (`[point a3]`, `[ring a4 "Send"]`, `[ring "Send"]`: the thing on screen saying it; a pixel, `[point 830,273]`, only for what has neither); its tools are for the rest (a scratch pad, a page, a handoff). In an app or on a site, an ask
   carries the user's guide to it (`vau docs guides`); with none it says so, and you may offer once to write one.
 - The realtime voice (the setting `voice_front`: realtime, once this machine has an OpenAI key, `vau voice key --provider
   openai`; `realtime_model`, `realtime_voice`): a Talk key's spoken ask on screen streams to OpenAI's speech-to-speech model,
@@ -135,4 +136,4 @@ above that), act, run it again, and never end your turn.
   menu bar lists them, and opening one opens its terminal, where the user can type. Nothing ships, deploys or goes out
   unless they say so. `companion jobs` lists them, `companion job <id>` says how one goes, `handoff --job <id>` tells it
   more (typed into its terminal), `companion job-stop <id>` stops it.
-- Drawing on screen (helper): `draw --marks` with your words (`--say`), each mark in a beat (`beat`: the sentence it comes with); it stays till the exchange ends (Esc, moving on, their next ask) or Clear, and each call adds to it. Marks: point, ring, frame, underline, strike, check, cross, spotlight, num, scroll, connect (from, to) at `[x, y]` or `[x, y, w, h]` (screen points), `{"el": "a3"}` (an element the ask found, by id: it snaps to its frame; a label saying only its own word is left out) or `{"pane"}`/`{"ui"}` in the app; on calm space, write, paper (a scratch pad with lines, rects, ellipses, arrows, paths, text, a bar or line chart), sticky, list; copy, open, and a button whose `do` copies, opens or asks the next step. Short labels; one ring beats five. `vau companion draw --help` has every field; Keep (or `companion save-drawing`) saves it as an .excalidraw.
+- Drawing on screen (helper): `draw --marks` with your words (`--say`), each mark in a beat (`beat`: the sentence it comes with); it stays till the exchange ends (Esc, moving on, their next ask) or Clear, and each call adds to it. Marks: point, ring, frame, underline, strike, check, cross, spotlight, num, scroll, connect (from, to) at `[x, y]` or `[x, y, w, h]` (screen points), `{"el": "a3"}` (an element the ask found, by id: it snaps to its frame; a label saying only its own word is left out), `{"find": "<words>"}` (the element or text on their screen saying them) or `{"pane"}`/`{"ui"}` in the app; a ring or frame at a bare point (a guess) goes round what they drew there, else the element it's on; on calm space, write, paper (a scratch pad with lines, rects, ellipses, arrows, paths, text, a bar or line chart), sticky, list; copy, open, and a button whose `do` copies, opens or asks the next step. Short labels; one ring beats five. `vau companion draw --help` has every field; Keep (or `companion save-drawing`) saves it as an .excalidraw.

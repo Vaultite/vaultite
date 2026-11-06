@@ -34,6 +34,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   last few lines of the last ten minutes. Small talk the realtime voice answered shows on the Companion page too.
 - **Agents at work in terminals no longer keep the app busy**: the whole window no longer draws again every 2 s while
   one prints, and a terminal tab not shown wakes no frames; switching tabs and opening menus do less work too.
+- **The companion acts where you are**: asked over another app, it's told you're there, not in the note Vaultite shows
+  behind it, and a web page you ask for from your browser opens there, in a new tab, rather than in a Vaultite pane.
+- **The companion's marks land on what it means**: it rings a button, a row or a panel by name, in any app and in
+  Vaultite's own sidebars, or by the words on screen; a ring at a guessed spot goes round what you circled there, or
+  the thing it's on, rather than a small circle in between. They also land right with Vaultite's interface size changed.
 - **A foldable callout opened stays open, with no empty gap**: scrolled away and back, or its note left and opened
   again, a section you opened is still open, and one shut is drawn at its shut height instead of held at its open one
   for a few seconds, so the page no longer jumps under you.

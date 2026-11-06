@@ -398,17 +398,17 @@ export default async ($: VaultTest) => {
     check("companion: a summoned ask says the display's picture and their pointer in it, what they drew and what's near, by id",
       heldText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer, a pixel a point: its top left is sx 0, sy 0, so its pixel x, y is sx 0 + x, sy 0 + y; their pointer at 812, 440 in it)") &&
       heldText.includes("they drew a ring round sx 770-870, sy 410-470") && heldText.includes('a1 button "Send" at 790,430 60×24'), heldText)
-    // (over Vaultite's own window: the page's place there, a note's line, as asked there, with the display's picture)
-    const there = c.screenMoment({ kind: "ask", text: "what's this line?", path: "Notes/A.md", line: 3, selection: "the plan", sx: 400, sy: 300, shot: "/tmp/x/screens/display-400-1.png",
-      shotAt: { x: 0, y: 0, width: 1600, height: 1000 } })
-    check("companion: a summoned ask over Vaultite's window is about the note's line under the pointer, its picture too",
-      there?.path === "Notes/A.md" && there.line === 3 && there.selection === "the plan" && there.summoned === true && there.shot === "/tmp/x/screens/display-400-1.png" && !there.app, there)
     const name = (barSt as { agents: { name: string; sx?: number }[] }).agents.find((a) => a.sx === 1290)!.name
     const [axSt] = await api("POST", "ops/companion.look", { ax: "a1", as: name })
     const [, axIs] = await api("POST", "ops/companion.status", {})
     const pointed = (axIs as { agents: { name: string; sx?: number; sy?: number; frame?: { x: number } }[] }).agents.find((a) => a.name === name)
     check("companion: --ax points at an element of the ask's list, snapped to its frame; an id not listed is a 404",
       axSt === 200 && pointed?.sx === 806 && pointed?.sy === 442 && pointed?.frame?.x === 790 && (await api("POST", "ops/companion.look", { ax: "a9" }))[0] === 404, [axSt, pointed])
+    // (over Vaultite's own window: the page's place there, a note's line, as asked there, with the display's picture)
+    const there = c.screenMoment({ kind: "ask", text: "what's this line?", path: "Notes/A.md", line: 3, selection: "the plan", sx: 400, sy: 300, shot: "/tmp/x/screens/display-400-1.png",
+      shotAt: { x: 0, y: 0, width: 1600, height: 1000 } })
+    check("companion: a summoned ask over Vaultite's window is about the note's line under the pointer, its picture too",
+      there?.path === "Notes/A.md" && there.line === 3 && there.selection === "the plan" && there.summoned === true && there.shot === "/tmp/x/screens/display-400-1.png" && !there.app, there)
     c.comeBack(name)
     const [, homeSt] = await api("POST", "ops/companion.status", {})
     check("companion: done there, its cursor leaves the screen", !(homeSt as { agents?: { sx?: number; app?: string }[] }).agents?.some((a) => a.sx !== undefined || a.app), homeSt)

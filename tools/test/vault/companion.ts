@@ -230,6 +230,14 @@ export default async ($: VaultTest) => {
       m.moments[3].kind === "accept" && m.moments[3].item === "n7" && m.moments[3].to === "Call Ben" && m.moments[4].kind === "point" && m.moments[4].line === 2 &&
       m.moments[5].text === "no note" && !m.moments[5].path && m.moments[6].kind === "open" && JSON.stringify(m.notes) === JSON.stringify([{ path: "Notes/My plans.md", from: 1, to: 2, of: 9, lines: ["a", "  b"] }]), m)
     check("companion: a message that isn't moments isn't read as them", readMoments("Time for a fresh session: this one has grown long.") === null)
+    // (asked over another app with a note open in Vaultite: they're in that app, the note only behind it)
+    const chrome = { seq: 3, t: 0, kind: "ask" as const, for: "Claude", text: "It's internal.example.com", app: "com.google.Chrome", window: 7, title: "New Tab", sx: 5, sy: 5, summoned: true }
+    const away = c.momentsText([chrome], "pair", { path: "Notes/My plans.md", line: 7 }), awayRead = readMoments(away)
+    check("companion: an ask over another app says they're there, not in Vaultite (its note only behind), read back as such",
+      away.startsWith("Mode: pair. The user is in com.google.Chrome, not Vaultite (Vaultite shows Notes/My plans.md at line 7).") && !/^Mode: pair\. The user is in Notes/.test(away) &&
+      awayRead?.away === "com.google.Chrome" && awayRead.focus?.path === "Notes/My plans.md" && awayRead.focus.line === 7 && awayRead.moments[0]?.text === "It's internal.example.com" &&
+      c.momentsText([{ ...chrome, app: "private" }], "quiet", null).startsWith("Mode: quiet. The user is in a private app, not Vaultite.") &&
+      readMoments(c.momentsText([{ ...chrome, app: undefined, path: "Notes/A.md", line: 2 }], "pair", { path: "Notes/A.md", line: 2 }))?.away === undefined, [away, awayRead])
     const moved = readMoments(c.momentsText([{ seq: 1, t: 0, kind: "reply", bubble: true, item: "n3", path: "Notes/A.md", line: 2, text: "yes" },
       { seq: 2, t: 0, kind: "dismiss", bubble: true, item: "n4", path: "Notes/A.md", line: 3, text: "Hi: there" },
       { seq: 3, t: 0, kind: "move", into: "note", item: "n5", path: "Notes/A.md", line: 6, text: "Kept" }, { seq: 4, t: 0, kind: "move", into: "bubble", path: "Notes/A.md", line: 9, text: "Back" }] as Any[], "pair", null))

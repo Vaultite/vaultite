@@ -3306,7 +3306,7 @@ await section("screen drawings", async () => {
     action: err([{ type: "button", label: "x", do: { run: "rm" } }]), many: err(Array.from({ length: 41 }, () => ({ type: "check", at: [0, 0] }))), list: err({ type: "ring" }),
   }
   check("screen drawings: what's wrong says which mark and how it's written (no unknown types, scripts, links but http, items off the pad)",
-    bad.type.startsWith("marks[0] (circle): type is one of") && bad.spot.includes("[x, y], [x, y, w, h]") && bad.el.includes("at.el: an id") && bad.url.includes("http(s)") &&
+    bad.type.startsWith("marks[0] (circle): type is one of") && bad.spot.includes("[x, y, w, h] or [x, y]") && bad.spot.includes("{\"find\"") && bad.el.includes("at.el: an id") && bad.url.includes("http(s)") &&
     bad.outside.includes("items[0]: x, y, w, h: inside the paper") && bad.labels.includes("one per value") && bad.action.includes("do:") && bad.many.includes("at most 40") && bad.list.includes("a JSON list"), bad)
   check("screen drawings: the app's places a drawing names, to find on screen", sm.appPlaces(ok).join() === "ui:tab:t3")
   // ---- beats, with the words' sentences
@@ -3380,6 +3380,27 @@ await section("screen drawings", async () => {
     els.some((e: Any) => e.type === "rectangle" && e.backgroundColor === "#ffec99" && e.x >= 400) && !els.some((e: Any) => e.type === "ellipse" && e.width === 40), els.length)
   const withMarks = sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: { el: "e1" } }]), { all: true, places: { "el:e1": { x: 10, y: 10, w: 20, h: 20 } } })
   check("screen drawings: with all, the marks too, where the overlay found them; nothing worth keeping, none", withMarks?.elements.some((e: Any) => e.type === "ellipse") && sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: [1, 1] }])) === null)
+  // ---- marks anchor to what's meant: words to find, and a guessed pixel snapped to what's there
+  const found = sm.checkMarks([{ type: "ring", at: { find: "Morning report" } }, { type: "connect", from: { find: "A" }, to: { el: "a1" } }])
+  check("screen drawings: a spot can be words to find; they're the places the screen must find, read back from them",
+    found[0].at.find === "Morning report" && sm.findsOf(found).join() === "Morning report,A" && sm.rectOf({ find: "A" }, { "find:A": { x: 1, y: 2, w: 3, h: 4 } })?.w === 3 &&
+    /find/.test(err([{ type: "ring", at: { find: "" } }])), found)
+  // (the pinned icons: a section 0,120 270x100, an icon in it; they drew a ring round the section)
+  const places = { "el:a1": { x: 140, y: 150, w: 30, h: 30 }, "el:a2": { x: 0, y: 120, w: 270, h: 100 }, "el:a3": { x: 400, y: 400, w: 60, h: 20 } }
+  const at = (marks: unknown[], drawn: unknown[] = []) => sm.snapMarks(sm.checkMarks(marks), places, drawn).map((m: Any) => m.at)
+  const [inRing, onIcon, byButton, alone, likeSection, pointed] = at([{ type: "ring", at: [100, 200] }, { type: "ring", at: [155, 165] }, { type: "frame", at: [395, 410] },
+    { type: "ring", at: [900, 900] }, { type: "frame", at: [8, 125, 260, 92] }, { type: "point", at: [150, 170] }], [{ x: 0, y: 101, w: 293, h: 146 }, { x: 145, y: 155, w: 20, h: 20 }])
+  check("screen drawings: a ring at a guessed pixel goes round what they drew there (the smallest), the element it's on or by, else stays; a box like an element's is it; a point is a point",
+    JSON.stringify(inRing) === '{"x":0,"y":101,"w":293,"h":146}' && JSON.stringify(onIcon) === '{"x":145,"y":155,"w":20,"h":20}' && byButton.el === "a3" &&
+    alone.x === 900 && alone.w === 0 && likeSection.el === "a2" && pointed.x === 150 && at([{ type: "ring", at: [155, 165] }])[0].el === "a1", [inRing, onIcon, byButton, alone, likeSection, pointed])
+  const near = [{ id: "a1", label: "Address and search bar" }, { id: "a2", label: "Send" }, { id: "a3", label: "Send later" }, { id: "a4", label: "New tab" }]
+  check("screen drawings: words name the element saying them: the same words first, then the most like them",
+    sm.byLabel(near, "send")?.id === "a2" && sm.byLabel(near, "Send later")?.id === "a3" && sm.byLabel(near, "address bar") === null && sm.byLabel(near, "the New tab button")?.id === "a4" && sm.byLabel(near, "") === null)
+  const tg: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/tags.ts")).href)
+  const { said, tags } = tg.parseTags('Here [ring "Morning report"] and there [arrow a1 "Send"], with [ring a2 "Share"].')
+  check("screen drawings: a mark tag with words alone marks the thing saying them (no label repeating them); an arrow's end can be words",
+    said === "Here and there, with." && tags.length === 3 && JSON.stringify(tg.markOf(tags[0])) === '{"type":"ring","at":{"find":"Morning report"}}' &&
+      JSON.stringify(tg.markOf(tags[1]).to) === '{"find":"Send"}' && tg.markOf(tags[2]).label === "Share" && tg.markOf(tags[2]).at.el === "a2", [said, tags])
 })
 
 // ---------- Autosave (web/src/core/autosave.ts): on a made-up server that merges as core/files.ts PUT does ----------

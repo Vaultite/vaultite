@@ -2,7 +2,7 @@
 // when the exchange ends (the next ask, Clear, a while idle); Keep saves it as an .excalidraw file.
 import fs from "node:fs"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
-import { appPlaces, checkMarks, type Drawing, type Mark, type Rect, sentences, toExcalidraw } from "./screenmarks.ts"
+import { appPlaces, checkMarks, type Drawing, findsOf, type Mark, type Rect, sentences, snapMarks, toExcalidraw } from "./screenmarks.ts"
 
 /** A drawing left up this long with nothing new goes by itself. */
 const IDLE_MS = 5 * 60_000
@@ -16,6 +16,10 @@ export function screenDrawings(plugin: Plugin, o: {
   tint: (agent: string) => string
   /** The elements the agent's last ask came with, as places ("el:a3"). */
   elements: (agent: string) => Record<string, Rect>
+  /** Where words show on the screen of the agent's last ask (screen points), or null. */
+  find: (agent: string, text: string) => Promise<Rect | null>
+  /** What the user drew round things with that ask (rings' boxes). */
+  drawn: (agent: string) => Rect[]
   /** The agent's words of this exchange, for the beats (its last say since its last ask). */
   words: (agent: string) => string | undefined
 }) {
@@ -35,9 +39,14 @@ export function screenDrawings(plugin: Plugin, o: {
   async function draw(agent: string, marks: unknown, say?: string) {
     let ms: Mark[]
     try { ms = checkMarks(marks) } catch (e) { throw new OpError((e as Error).message) }
-    const want = appPlaces(ms), places = { ...o.elements(agent), ...(want.length ? await o.locate(want) : {}) }
+    const want = appPlaces(ms), places: Record<string, Rect> = { ...o.elements(agent), ...(want.length ? await o.locate(want) : {}) }
     const missing = want.filter((p) => !places[p])
     if (missing.length) throw new OpError(`not on the user's screen: ${missing.join(", ")} (vau tabs lists the panes)`, 409)
+    for (const text of findsOf(ms)) { const r = await o.find(agent, text); if (r) places[`find:${text}`] = r }
+    const unfound = findsOf(ms).filter((t) => !places[`find:${t}`])
+    if (unfound.length) throw new OpError(`nothing on the user's screen says ${unfound.map((t) => JSON.stringify(t)).join(", ")}: mark an element by id, or a point`, 409)
+    // (a guessed pixel: round what they drew there, or the element it's on)
+    ms = snapMarks(ms, places, o.drawn(agent))
     const caption = say ?? o.words(agent)
     if (now && now.agent === agent && !now.kept) now = { ...now, marks: [...now.marks, ...ms].slice(-40), places: { ...now.places, ...places }, ...(caption ? { caption } : {}) }
     else now = { id: `d${Date.now().toString(36)}${++n}`, agent, tint: o.tint(agent), t: Date.now(), marks: ms, places, ...(caption ? { caption } : {}) }

@@ -6,7 +6,9 @@ type Rect = { x: number; y: number; width: number; height: number }
 export type Near = { id: string; role: string; label: string; frame: Rect }
 /** What act was told, on the screen. */
 export type ScreenAct = { action: string; ax?: string; sx?: number; sy?: number; value?: string; key?: string; direction?: string; ask?: string }
-export type Done = { ok: boolean; why?: string; text?: string; how?: string; near?: Near[]; app?: string; title?: string }
+export type Done = { ok: boolean; why?: string; text?: string; how?: string; near?: Near[]; app?: string; title?: string
+  /** A find's: the element saying the words, in the window asked about. */
+  found?: Near }
 
 /** Their spoken answer to an offer: no at any no word in it ("please stop", "sure, not that one"), yes only when it's
  *  yes words alone, else neither (an ask of its own). */
@@ -80,18 +82,29 @@ export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent:
     },
     /** Do a step where the last ask came from; answers once it's done, refused, declined or stopped. */
     async act(step: ReturnType<typeof stepOf>, who: { agent: string; tint: string; ask?: string }): Promise<Done> {
-      const ws = from
       // (the companion's private apps and sites: the helper checks what's there against them before each step)
       const { apps, sites } = (await import("./plugin.ts")).privates()
-      if (!ws || ws.readyState !== ws.OPEN) return Promise.resolve({ ok: false, why: "none", text: "no Mac's helper asked: acting on the screen works only on an ask made there (the Talk key)" })
-      const id = `to${++n}`
-      return new Promise((done) => {
-        let late: ReturnType<typeof setTimeout> | undefined
-        const wait = (ms: number) => { clearTimeout(late); late = setTimeout(() => { if (waiting.delete(id)) done({ ok: false, why: "timeout", text: "the helper didn't answer in time" }) }, ms) }
-        wait(STEP_MS)
-        waiting.set(id, { ws, done: (r) => { clearTimeout(late); done(r) }, wait })
-        send(ws, { t: "takeover", id, agent: who.agent, tint: who.tint, step, apps, sites, ...(who.ask ? { ask: who.ask } : {}) })
-      })
+      return request((id) => ({ t: "takeover", id, agent: who.agent, tint: who.tint, step, apps, sites, ...(who.ask ? { ask: who.ask } : {}) }), STEP_MS)
     },
+    /** Open web page `url` in `app` (their browser, where they asked) on the Mac whose helper asked: a tab there. */
+    open: (url: string, app: string) => request((id) => ({ t: "open-url", id, url, app }), 15_000),
+    /** The element saying `text` in the window the last ask was over (its Accessibility, whole), by its helper. */
+    find: (text: string) => request((id) => ({ t: "find", id, text }), 3000),
+  }
+  function request(m: (id: string) => object, ms: number): Promise<Done> {
+    const ws = from
+    if (!ws || ws.readyState !== ws.OPEN) return Promise.resolve({ ok: false, why: "none", text: "no Mac's helper asked: acting on the screen works only on an ask made there (the Talk key)" })
+    const id = `to${++n}`
+    return new Promise((done) => {
+      let late: ReturnType<typeof setTimeout> | undefined
+      const wait = (t: number) => { clearTimeout(late); late = setTimeout(() => { if (waiting.delete(id)) done({ ok: false, why: "timeout", text: "the helper didn't answer in time" }) }, t) }
+      wait(ms)
+      waiting.set(id, { ws, done: (r) => { clearTimeout(late); done(r) }, wait })
+      send(ws, m(id))
+    })
   }
 }
+
+/** Browsers by bundle id: a web page asked for while they're in one opens there, not in Vaultite. */
+const BROWSERS = /^(com\.google\.Chrome(\.\w+)?|com\.apple\.Safari(TechnologyPreview)?|org\.mozilla\.\w+|company\.thebrowser\.\w+|com\.brave\.Browser(\.\w+)?|com\.microsoft\.edgemac(\.\w+)?|com\.operasoftware\.Opera\w*|com\.vivaldi\.Vivaldi|app\.zen-browser\.zen|org\.chromium\.Chromium|com\.kagi\.kagimacOS|ai\.perplexity\.comet)$/
+export const isBrowser = (bundle: string) => BROWSERS.test(bundle)

@@ -17,7 +17,7 @@ import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
 import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from "./text.ts"
 import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
 import { screenDrawings } from "./drawings.ts"
-import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
+import { byLabel, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { anchorsOf, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
@@ -25,7 +25,7 @@ import { type JobState, jobSpoken, jobTimingsText } from "./jobs.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
-import { doneText, stepOf, takeovers } from "./takeover.ts"
+import { doneText, isBrowser, stepOf, takeovers } from "./takeover.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
@@ -837,12 +837,28 @@ const screenDrawing = screenDrawings(plugin, {
     return reply.rects ?? {}
   },
   tint: (a) => agentOf(a).tint,
-  elements: (a) => Object.fromEntries((nearBy.get(key(a)) ?? []).map((e) => [`el:${e.id}`, { x: e.frame.x, y: e.frame.y, w: e.frame.width, h: e.frame.height, label: e.label }])),
+  elements: (a) => Object.fromEntries((nearBy.get(key(a)) ?? []).map((e) => [`el:${e.id}`, rectOfNear(e)])),
+  find: (a, text) => screenFind(a, text),
+  drawn: (a) => (askOf(a)?.ink ?? []).map((k) => ({ x: k.box.x, y: k.box.y, w: k.box.width, h: k.box.height })),
   words: (a) => {
     const asked = moments.findLast((m) => m.for === a && (m.kind === "ask" || m.kind === "point"))?.t ?? 0
     return [...notes.values()].findLast((n) => n.kind === "say" && n.agent === a && n.t >= asked)?.text
   },
 })
+const rectOfNear = (e: Near): ScreenRect => ({ x: e.frame.x, y: e.frame.y, w: e.frame.width, h: e.frame.height, label: e.label })
+/** Where words show on the screen agent `a`'s last ask was over (screen points): an element it came with saying them,
+ *  else one the window has (Vaultite's page, or another app's Accessibility through its helper); null, nowhere. */
+async function screenFind(a: string, text: string): Promise<ScreenRect | null> {
+  const el = byLabel(nearBy.get(key(a)) ?? [], text)
+  if (el) return rectOfNear(el)
+  if (awayIn([askOf(a)].filter((m) => !!m))) {
+    const r = await takeover.find(text)
+    return r.ok && r.found ? rectOfNear(r.found) : null
+  }
+  const ws = [...windows.entries()].sort((x, y) => y[1].at - x[1].at)[0]?.[0], reply: { rects?: Record<string, ScreenRect> } = {}
+  if (ws) await askWindow(ws, { t: "locate", places: [`find:${text}`] }, 3000, reply).catch(() => false)
+  return reply.rects?.[`find:${text}`] ?? null
+}
 const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush"])
 const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
@@ -878,7 +894,8 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
   const place = screenPlace(m)
   // (a point where nothing can be read, as the menu bar: still there, with its picture)
   if (!place.app && place.sx === undefined) return null
-  if (place.near) nearBy.set(key(str(m.agent) || ownName()), place.near)
+  // (none this time: the last ask's ids are gone too, never pointed at on another screen)
+  nearBy.set(key(str(m.agent) || ownName()), place.near ?? [])
   // (the Talk key let go `keyUp`: its words finished and what's there gathered since, as its pause)
   const up = Number(m.keyUp), waited = Number.isFinite(up) ? Date.now() - up : NaN
   const talk = Array.isArray(m.talk) ? m.talk.slice(-8).map((x) => str(x).slice(0, 300)).filter(Boolean) : []
@@ -1735,6 +1752,11 @@ const lane = (): Lane => {
       builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, mode: "dontAsk", allowed: SUMMONED_ALLOWED, denied: ["Bash(vau companion:*)"],
       tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
     acts: () => { const [say, look, draw] = toolsFor(ownName(), SUMMONED_ACTS, () => lane().busy()); return { say, look, draw } },
+    found: async (text) => {
+      if (askOf(ownName())?.path) return null
+      const r = await screenFind(ownName(), text).catch(() => null)
+      return r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : null
+    },
     caption: (name, text) => screenDrawing.recaption(name, text),
     text: async (ms) => {
       const slim = ms.map((m) => (m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
@@ -1744,7 +1766,7 @@ const lane = (): Lane => {
       // (its picture attached, not a path: given one, it spent a turn reading it before its first word)
       const images = shotsOf(ms), named = images.reduce((t, f) => t.split(`its picture: ${f}`).join("its picture, attached to this message")
         .split(`as the key went down: ${f}`).join("as the key went down, attached before it"), text)
-      return { text: named.replace(/\(point at one: --ax <id>\)/g, "(point at one: [point a1])"), images }
+      return { text: named.replace(/\(point at one: --ax <id>\)/g, "(tag one by id: [point a1], [ring a1])"), images }
     },
     agent: (name) => agents.get(key(name)), setAgent, did,
     talk: (t) => talkBefore(t),
@@ -2187,10 +2209,18 @@ function uncut(lines: string[], ms: Moment[]) {
 /** A bubble's words, as a moment about it quotes them. */
 const saidText = (id?: string) => { const n = said.find((x) => x.id === id); return n?.text ? `\n  you said: ${JSON.stringify(cut(n.text, 160))}` : "" }
 
+/** The app the latest ask or point of `ms` was made in, when that's another app than Vaultite (on screen); else "". */
+export function awayIn(ms: Moment[]) {
+  const m = ms.findLast((x) => x.kind === "ask" || x.kind === "point")
+  return m?.app && !m.path && !m.pane && !m.ui ? (m.app === "private" ? "a private app" : m.app) : ""
+}
+
 /** Moments as an agent reads them. */
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = [], aware = "") {
   const guided = new Set<string>()
-  const head = `Mode: ${md}.${f?.path ? ` The user is in ${f.path}${f.x !== undefined ? ` at ${f.x},${f.y}` : ` at line ${f.line ?? 1}`}.` : ""}`
+  const note = f?.path ? `${f.path}${f.x !== undefined ? ` at ${f.x},${f.y}` : ` at line ${f.line ?? 1}`}` : "", away = awayIn(ms)
+  // (asked over another app: they're there, Vaultite's note only behind it; said as the note, it acted in Vaultite)
+  const head = `Mode: ${md}.${away ? ` The user is in ${away}, not Vaultite${note ? ` (Vaultite shows ${note})` : ""}.` : note ? ` The user is in ${note}.` : ""}`
   if (!ms.length) return `${head}${aware ? `\n${aware}` : ""}\nNothing yet: run vau companion next again.`
   const out = [head, ...(aware ? [aware] : [])]
   for (const m of ms) {
@@ -2235,7 +2265,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
-    for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height}: ${k.points.map((p) => p.join(",")).join(" ")}`)
+    for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height} (its box ${k.box.x},${k.box.y},${k.box.width},${k.box.height}): ${k.points.map((p) => p.join(",")).join(" ")}`)
     if (m.near?.length) out.push("  near their pointer (point at one: --ax <id>):", ...m.near.map((e) => `    ${e.id} ${e.role} ${JSON.stringify(e.label)} at ${e.frame.x},${e.frame.y} ${e.frame.width}×${e.frame.height}`))
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
     // (its Talk key's, in an app or on a site: the user's guide to it, once a message)
@@ -2323,8 +2353,10 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
 })
 
 // Its jobs (workers.ts): long work handed to a worker in a terminal, through one lifecycle (jobs.ts).
+/** The ask agent `name` is answering: its summoned session's turn's, else its last. */
+const askOf = (name: string) => (inSummoned.getStore() ? lane().last() : moments).findLast((m) => (m.kind === "ask" || m.kind === "point") && (m.for ? key(m.for) === key(name) : isMain(name)))
 const jobs = jobOps(plugin, {
-  askOf: (name) => (inSummoned.getStore() ? lane().last() : moments).findLast((m) => (m.kind === "ask" || m.kind === "point") && key(m.for ?? "") === key(name)),
+  askOf,
   say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
   moved: (j, from) => void jobNews(j.title, j.state, from).catch(() => {}),
@@ -2988,16 +3020,23 @@ work there).
   kind: "write",
   lock: false,
   params: { path: { type: "string", required: true, description: "a vault path (or as they say it: Today), a folder, a view (view:graph) or a web address" },
-    split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down)" }, newTab: { type: "boolean", description: "in a new tab" }, as: AS },
+    split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down)" }, newTab: { type: "boolean", description: "in a new tab" },
+    vaultite: { type: "boolean", description: "a web page in Vaultite even when they asked from their browser (where it opens, a new tab, by default)" }, as: AS },
   args: ["path"],
   run: async (p, ctx) => {
-    const name = who(p), path = str(p.path)
+    const name = who(p), path = str(p.path), m = askOf(name)
     did(name, "open")
+    // (asked from their browser: a page opens there, where they are, not in a pane of Vaultite's behind it)
+    if (/^https?:\/\/\S+$/i.test(path) && p.vaultite !== true && m?.summoned && m.app && isBrowser(m.app)) {
+      const r = await takeover.open(path, m.app)
+      if (!r.ok) throw new OpError(`it didn't open in ${m.app}: ${r.text ?? r.why ?? "no answer"} (vaultite: true opens it in Vaultite)`, 409)
+      return { path, pane: null, in: m.app }
+    }
     const r = await openSeen(name, path, () => ctx.op("ui.open", { path, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}) }))
     return { path, pane: r.pane ?? null }
   },
-  text: (r) => `Opened ${r.path}${r.pane ? ` (pane ${r.pane})` : ""}.`,
-  did: (p) => ({ action: "ui", text: `Opened ${String(p.path)} in the app`, paths: [], by: who(p) }),
+  text: (r) => (r.in ? `Opened ${r.path} in ${r.in}, a new tab there in front of them.` : `Opened ${r.path}${r.pane ? ` (pane ${r.pane})` : ""}.`),
+  did: (p) => ({ action: "ui", text: `Opened ${String(p.path)}`, paths: [], by: who(p) }),
 })
 
 const followText = (f: Follow) => `${f.id}: ${f.pane ? `pane ${f.pane}` : f.tab ? `tab ${f.tab}` : f.group ? `tab group ${f.group}` : f.ui}${f.title ? ` "${f.title}"` : ""}`

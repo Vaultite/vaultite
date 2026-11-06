@@ -335,8 +335,35 @@ export function placeAt(x: number, y: number): Record<string, unknown> | null {
   const at = noteAt(x, y) ?? paneAt(x, y)
   if (!at) return told ? notices : null
   if ("path" in at && at.path) return { path: at.path, line: at.line, ...(at.find ? { find: at.find } : {}), ...(at.selection ? { selection: at.selection } : {}), ...notices }
-  const { text, ...p } = at as PanePlace
-  return { ...p, ...(text ? { under: text } : {}), ...notices }
+  const { text, ...p } = at as PanePlace, near = elementsNear(x, y)
+  return { ...p, ...(text ? { under: text } : {}), ...(near.length ? { near } : {}), ...notices }
+}
+
+/** What the window draws near x, y that a mark can name (buttons, tabs, rows, fields, headings, the app's UI by its
+ *  data-ui id), nearest first, with its frame (CSS px): the ids an ask over Vaultite's UI points at. */
+const NAMED = "button, a[href], input, select, textarea, h1, h2, h3, h4, [role], [data-ui], [aria-label], [data-tip]"
+export function elementsNear(x: number, y: number, radius = 260, most = 30) {
+  const seen = new Set<string>(), out: { role: string; label: string; frame: { x: number; y: number; width: number; height: number }; d: number }[] = []
+  for (const el of document.querySelectorAll<HTMLElement>(NAMED)) {
+    if (el.closest(".companion-overlay")) continue
+    const r = el.getBoundingClientRect()
+    // (a whole pane or column holds everything: no help naming one thing)
+    if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth || r.width * r.height > innerWidth * innerHeight * 0.3) continue
+    const d = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom))
+    if (d > radius) continue
+    const ui = el.dataset.ui, line = (el.innerText || "").trim().split("\n")[0], aria = el.getAttribute("role")
+    if (aria === "none" || aria === "presentation") continue
+    const label = (el.getAttribute("aria-label") || el.dataset.tip || el.dataset.heading || line || el.getAttribute("placeholder") || "").trim().slice(0, 120)
+    const kind = /^H\d$/.test(el.tagName) ? "heading" : el.tagName === "A" ? "link" : el.tagName === "BUTTON" ? "button" : /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) ? "field" : "area"
+    const role = `${aria || (ui ? ui.split(":")[0] : kind)}${ui ? ` ui:${ui}` : ""}`
+    const frame = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }, k = `${frame.x},${frame.y},${frame.width},${frame.height}`
+    if (!label || seen.has(k)) continue
+    seen.add(k)
+    out.push({ role, label, frame, d })
+  }
+  // (nearest first; of those it's on, the smallest: the one thing, before what holds it)
+  const area = (e: { frame: { width: number; height: number } }) => e.frame.width * e.frame.height
+  return out.sort((a, b) => a.d - b.d || area(a) - area(b)).slice(0, most).map(({ d: _, ...e }) => e)
 }
 /** The window's toasts of the last minute, newest last, as words: "Claude isn't running" (an error, 12 s ago). */
 export function noticesText(now = Date.now()) {

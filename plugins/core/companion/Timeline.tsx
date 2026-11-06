@@ -430,7 +430,7 @@ function MomentsOf({ m }: { m: Message }) {
         </div>
       ))}
       {m.notes.map((l, n) => <NoteLines key={n} l={l} />)}
-      <p className="text-[12px] text-tertiary">{[m.mode && `${m.mode[0].toUpperCase()}${m.mode.slice(1)} mode`, m.focus && `in ${base(m.focus.path)}${m.focus.line ? `:${m.focus.line}` : ""}`].filter(Boolean).join(", ")}</p>
+      <p className="text-[12px] text-tertiary">{[m.mode && `${m.mode[0].toUpperCase()}${m.mode.slice(1)} mode`, m.away ? `in ${m.away}` : m.focus && `in ${base(m.focus.path)}${m.focus.line ? `:${m.focus.line}` : ""}`].filter(Boolean).join(", ")}</p>
     </div>
   )
 }

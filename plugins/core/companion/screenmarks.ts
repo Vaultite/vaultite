@@ -4,8 +4,9 @@ import { sayable, speakable } from "./spoken.ts"
 
 /** A rectangle in screen points (a point: w and h 0); an element's, with what it says. */
 export type Rect = { x: number; y: number; w: number; h: number; label?: string }
-/** Where a mark goes: a point or a box (screen points), an element of the ask (`el`, its id), a pane or the app's UI. */
-export type Spot = Rect | { el: string } | { pane: string } | { ui: string }
+/** Where a mark goes: a point or a box (screen points), an element of the ask (`el`, its id), a pane or the app's UI, or
+ *  words to find on the screen (`find`: an element saying them, else where the window shows them). */
+export type Spot = Rect | { el: string } | { pane: string } | { ui: string } | { find: string }
 export type Action = { copy: string } | { open: string } | { ask: string }
 type Base = { beat?: number }
 export type PaperItem =
@@ -44,7 +45,7 @@ export const MOST = { marks: 40, items: 60, points: 200, values: 24, list: 12, l
 export const PAPER = { w: 360, h: 240 }
 
 /** The vocabulary in a few lines, for the op's help and the docs. */
-export const VOCABULARY = `Spots: [x, y] or [x, y, w, h] in screen points, {"el": "<id>"} (an element of the ask: snaps to its frame), {"pane": "<id>"} or {"ui": "tab:<id>"} in the app.
+export const VOCABULARY = `Spots: {"el": "<id>"} (an element of the ask: snaps to its frame; the best), {"find": "<words>"} (the thing on the screen saying them), {"pane": "<id>"} or {"ui": "tab:<id>"} in the app; [x, y, w, h] or [x, y] in screen points only for what has none (a bare point snaps to what they drew round it, else to the element there).
 On the screen: point, ring, frame (an area, faint tint), underline, strike, check, cross, spotlight {at, label?}; num {at, n}; scroll {at, dir}; connect {from, to, label?}.
 On calm space (at optional): write {text, size: s|m|l}; paper {w, h, title?, grid?, items}: its items in its own units (0,0 its top left): line|arrow {from: [x,y], to}, rect|ellipse {x,y,w,h,label?}, path {points}, text {x,y,text}, chart {kind: bar|line, x,y,w,h, values, labels?}; sticky {text, title?}; list {items, title?, numbered?}.
 Actions: copy {text}, open {url}, button {label, do: {copy}|{open}|{ask: "<follow-up>"}}.
@@ -124,7 +125,7 @@ function action(v: unknown): Action {
 const ID = /^[\w.:/-]{1,120}$/
 /** A spot as given: [x, y], [x, y, w, h], {x, y, w?, h?}, {el}, {pane}, {ui}. */
 function spot(v: unknown, what: string): Spot {
-  const how = `${what}: [x, y], [x, y, w, h] (screen points), {"el": "<id>"}, {"pane": "<id>"} or {"ui": "<id>"}`
+  const how = `${what}: {"el": "<id>"}, {"find": "<words>"}, {"pane": "<id>"}, {"ui": "<id>"}, [x, y, w, h] or [x, y] (screen points)`
   if (Array.isArray(v)) {
     if ((v.length !== 2 && v.length !== 4) || !v.every((n) => num(n) && Math.abs(n) < COORD)) throw new Error(how)
     if (v.length === 4 && (v[2] < 0 || v[3] < 0)) throw new Error(`${what}: w and h aren't negative`)
@@ -132,6 +133,7 @@ function spot(v: unknown, what: string): Spot {
   }
   if (!isObj(v)) throw new Error(how)
   for (const k of ["el", "pane", "ui"] as const) if (v[k] !== undefined) { if (typeof v[k] !== "string" || !ID.test(v[k])) throw new Error(`${what}.${k}: an id`); return { [k]: v[k] } as Spot }
+  if (v.find !== undefined) return { find: words(v.find, `${what}.find`, 120) }
   if (num(v.x) && num(v.y)) {
     const w = v.w ?? v.width ?? 0, h = v.h ?? v.height ?? 0
     if (!num(w) || !num(h) || (w as number) < 0 || (h as number) < 0) throw new Error(how)
@@ -181,6 +183,8 @@ export function appPlaces(marks: Mark[]) {
   for (const s of spots(marks)) { if ("pane" in s) out.add(`pane:${s.pane}`); else if ("ui" in s) out.add(`ui:${s.ui}`) }
   return [...out]
 }
+/** The words `marks` name to find on the screen ("find:<words>" places). */
+export const findsOf = (marks: Mark[]) => [...new Set(spots(marks).flatMap((s) => ("find" in s ? [s.find] : [])))]
 /** Every spot of `marks`, in order. */
 export function spots(marks: Mark[]): Spot[] {
   return marks.flatMap((m) => ("from" in m ? [m.from, m.to] : "at" in m && m.at ? [m.at] : []))
@@ -190,7 +194,47 @@ export function rectOf(s: Spot, places: Record<string, Rect> = {}): Rect | null 
   if ("el" in s) return places[`el:${s.el}`] ?? null
   if ("pane" in s) return places[`pane:${s.pane}`] ?? null
   if ("ui" in s) return places[`ui:${s.ui}`] ?? null
+  if ("find" in s) return places[`find:${s.find}`] ?? null
   return s
+}
+
+const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+/** The element of `els` saying `text`: the same words, else the most like them (its label in them, or them in it). */
+export function byLabel<T extends { label: string }>(els: T[], text: string): T | null {
+  const want = norm(text)
+  if (!want) return null
+  return els.find((e) => norm(e.label) === want) ?? els.find((e) => norm(e.label).startsWith(want)) ?? els.find((e) => norm(e.label).includes(want))
+    ?? els.find((e) => norm(e.label).length >= 3 && want.includes(norm(e.label))) ?? null
+}
+
+/** Marks whose size is what they mean (a ring, a frame, a line under or through, a spotlight). */
+const SIZED = new Set<MarkType>(["ring", "frame", "underline", "strike", "spotlight"])
+const contains = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
+const iou = (a: Rect, b: Rect) => {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
+  const i = w > 0 && h > 0 ? w * h : 0
+  return i ? i / (a.w * a.h + b.w * b.h - i) : 0
+}
+/** `marks` at what's there: a sized mark at a bare point (a guessed pixel) goes round what the user drew there (`drawn`),
+ *  else the element it's on or by (`places`' "el:a3"); a box much like an element's, that element. */
+export function snapMarks(marks: Mark[], places: Record<string, Rect> = {}, drawn: Rect[] = []): Mark[] {
+  const els = Object.entries(places).filter(([k, r]) => k.startsWith("el:") && r.w > 0 && r.h > 0).map(([k, r]) => ({ id: k.slice(3), r }))
+  const area = (r: Rect) => r.w * r.h
+  const snap = (s: Spot): Spot => {
+    if (!("x" in s)) return s
+    if (s.w || s.h) {
+      const like = els.filter((e) => iou(e.r, s) >= 0.6).sort((a, b) => iou(b.r, s) - iou(a.r, s))[0]
+      return like ? { el: like.id } : s
+    }
+    const ring = drawn.filter((r) => contains(r, s.x, s.y)).sort((a, b) => area(a) - area(b))[0]
+    if (ring) return { x: ring.x, y: ring.y, w: ring.w, h: ring.h }
+    const on = els.filter((e) => contains(e.r, s.x, s.y)).sort((a, b) => area(a.r) - area(b.r))[0]
+    if (on) return { el: on.id }
+    const gap = (r: Rect) => Math.hypot(Math.max(r.x - s.x, 0, s.x - r.x - r.w), Math.max(r.y - s.y, 0, s.y - r.y - r.h))
+    const by = els.filter((e) => gap(e.r) <= 12).sort((a, b) => gap(a.r) - gap(b.r))[0]
+    return by ? { el: by.id } : s
+  }
+  return marks.map((m) => (SIZED.has(m.type) && "at" in m && m.at ? { ...m, at: snap(m.at) } as Mark : m))
 }
 
 // ---------- timing: marks come in beats, each with a sentence of the words

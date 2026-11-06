@@ -108,6 +108,36 @@ export default async ($: VaultTest) => {
   check("takeover: their next ask while an offer waits moves on from it (withdrawn, act told why) and is kept as an ask",
     st === 200 && r.ok === false && helper.got.findLast((m: Any) => m.t === "takeover-answer")?.asked === true && ask()?.seq === seqOther + 2 && /asked something else/.test(L.declined.asked),
     [r, helper.got.filter((m: Any) => m.t === "takeover-answer"), seqOther])
+  // (asked from their browser: a web page opens there, by the helper, not in a pane of Vaultite's behind it)
+  const bar = { id: "a1", role: "text field", label: "Address and search bar", frame: { x: 266, y: 44, width: 929, height: 24 } }
+  c.screenMoment({ kind: "ask", text: "open internal.example.com here", app: "com.google.Chrome", window: 5, title: "New Tab - Google Chrome", sx: 598, sy: 189, near: [bar],
+    ink: [{ shape: "ring", box: { x: 0, y: 101, width: 293, height: 146 }, points: [[0, 101], [293, 247]] }] })
+  const found = { role: "button", label: "Bookmarks", frame: { x: 1200, y: 44, width: 30, height: 24 } }
+  answer = (m) => {
+    if (m.t === "open-url") setImmediate(() => from({ t: "takeover-done", id: m.id, ok: true, how: "open" }))
+    if (m.t === "find") setImmediate(() => from({ t: "takeover-done", id: m.id, ...(m.text === "Bookmarks" ? { ok: true, found: { id: "", ...found } } : { ok: false, why: "none" }) }))
+  }
+  ;[st, r] = await api("POST", "ops/companion.open", { path: "https://internal.example.com" })
+  const opened = helper.got.filter((m: Any) => m.t === "open-url").at(-1)
+  check("takeover: a web page asked for from their browser opens there (the helper), said so",
+    st === 200 && opened?.url === "https://internal.example.com" && opened.app === "com.google.Chrome" && r.in === "com.google.Chrome", [st, r, opened])
+  // (marks name what's there: an element of the ask by its words, else the window's own, found by the helper)
+  const drawn = () => helper.got.filter((m: Any) => m.t === "drawing" && m.drawing).at(-1)?.drawing
+  ;[st, r] = await api("POST", "ops/companion.draw", { marks: [{ type: "frame", at: { find: "Address and search" } }, { type: "ring", at: { find: "Bookmarks" } }] })
+  const d = drawn()
+  check("takeover: a mark's words find the ask's element saying them, else the window's (asked of the helper), its place in the drawing",
+    st === 200 && d?.places?.["find:Address and search"]?.w === 929 && d.places["find:Bookmarks"]?.x === 1200 && !helper.got.some((m: Any) => m.t === "find" && m.text === "Address and search") &&
+    helper.got.some((m: Any) => m.t === "find" && m.text === "Bookmarks"), [st, r, d?.places])
+  ;[st, r] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "Nowhere" } }] })
+  check("takeover: words nothing on the screen says aren't drawn anywhere: it says so", st === 409 && /nothing on the user's screen says "Nowhere"/.test(r.error), [st, r])
+  await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [100, 200] }, { type: "ring", at: [700, 50] }] })
+  const snapped = drawn()?.marks.slice(-2).map((m: Any) => m.at)
+  check("takeover: a ring at a guessed pixel goes round what they drew there, or the element it's on",
+    JSON.stringify(snapped?.[0]) === '{"x":0,"y":101,"w":293,"h":146}' && snapped?.[1].el === "a1", snapped)
+  await api("POST", "ops/companion.clear", {})
+  c.screenMoment({ kind: "ask", text: "and this?", app: "com.example.mail", sx: 1, sy: 1 })
+  ;[st, r] = await api("POST", "ops/companion.act", { action: "click", ax: "a1" })
+  check("takeover: a later ask with no elements takes the last ask's ids away (never pointed at on another screen)", st === 404 && /no element a1/.test(r.error), [st, r])
   // (no helper: says so; the pane path untouched)
   helper.emit("close")
   ;[st, r] = await api("POST", "ops/companion.act", { action: "click", sx: 1, sy: 1 })

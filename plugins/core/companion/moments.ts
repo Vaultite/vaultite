@@ -17,8 +17,9 @@ export type Read = { kind: Kind; path?: string; line?: number; text?: string; it
   where?: string; what?: string }
 /** A note's lines sent with the moments (`lines`), or a drawing's scene (`scene`). */
 export type Lines = { path: string; from: number; to: number; of: number; lines: string[] } | { path: string; scene: string[] }
-/** A message of moments: what came before them (the first's "Read ME.md…"), the mode, where the user was, and them. */
-export type Message = { before: string; mode: string; focus: { path: string; line?: number } | null; moments: Read[]; notes: Lines[] }
+/** A message of moments: what came before them (the first's "Read ME.md…"), the mode, where the user was (`away`: in
+ *  another app, `focus` then Vaultite's note behind it), and them. */
+export type Message = { before: string; mode: string; focus: { path: string; line?: number } | null; away?: string; moments: Read[]; notes: Lines[] }
 
 const json = (s: string) => { try { const v = JSON.parse(s); return typeof v === "string" ? v : s } catch { return s } }
 /** "Notes/A.md:12" or "Notes/A.md": a path with spaces in it too. */
@@ -27,7 +28,8 @@ function place(s: string) {
   return m ? { path: m[1], line: Number(m[2]) } : s ? { path: s } : {}
 }
 
-const HEAD = /^Mode: (\w+)\.(?: The user is in (.+?)(?: at line (\d+)| at -?[\d.]+,-?[\d.]+)\.)?$/
+const AT = String.raw`(?: at line (\d+)| at -?[\d.]+,-?[\d.]+)`
+const HEAD = new RegExp(String.raw`^Mode: (\w+)\.(?: The user is in (?:(.+?), not Vaultite(?: \(Vaultite shows (.+?)${AT}\))?|(.+?)${AT})\.)?$`)
 const ASK = /^- ask(?: (.+?))?( \(in their comment thread (\S+), by the line: [^)]*\))?(?: \(in [^)]*\))?( \(they went on writing it: the whole line now\))?: (".*")$/
 const REPLY = /^- reply to (\S+)(?: (.+?))?( \(in their comment thread (\S+), by the line: [^)]*\))?: (".*")$/
 const POINT = /^- point(?: (.+?))?: they pointed you here/
@@ -47,7 +49,8 @@ export function readMoments(text: string): Message | null {
   const h = lines.findIndex((l) => HEAD.test(l))
   if (h < 0) return null
   const head = HEAD.exec(lines[h])!
-  const out: Message = { before: lines.slice(0, h).join("\n").trim(), mode: head[1], focus: head[2] ? { path: head[2], ...(head[3] ? { line: Number(head[3]) } : {}) } : null, moments: [], notes: [] }
+  const path = head[3] ?? head[5], line = head[4] ?? head[6]
+  const out: Message = { before: lines.slice(0, h).join("\n").trim(), mode: head[1], focus: path ? { path, ...(line ? { line: Number(line) } : {}) } : null, ...(head[2] ? { away: head[2] } : {}), moments: [], notes: [] }
   let m: Read | undefined, hunk: Hunk | undefined, note: Lines | undefined
   for (const l of lines.slice(h + 1)) {
     let x: RegExpExecArray | null

@@ -1,6 +1,7 @@
 /** The menu-bar helper (a Mac's; one per Mac, a lock): the app and its home vault's server kept with no window: the keys
  *  (dictation's; the companion summoned over the screen, overlay.ts), screen reading, what's in front. electron/CLAUDE.md. */
 import { app, clipboard, ipcMain, Menu, Notification, nativeImage, screen, shell, Tray, type BrowserWindow, type WebContents } from "electron"
+import { execFile } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -19,7 +20,7 @@ import { atOffset, badgeOf, besidePointer, bitmapsDiffer, drawnShapes, type Help
 import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
-import { type Heard, heardBeats } from "../plugins/core/companion/screenmarks.ts"
+import { byLabel, type Heard, heardBeats } from "../plugins/core/companion/screenmarks.ts"
 import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { companionVoice } from "./voice.ts"
@@ -297,6 +298,10 @@ const live = (() => {
       else if (m.t === "hush") return stopVoice()
       // (a step in another app, or their spoken answer to its offer: takeover.ts')
       else if (m.t === "takeover" || m.t === "takeover-answer") return takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt })
+      // (a web page asked for in their browser: opened there)
+      else if (m.t === "open-url") return openIn(m)
+      // (words a mark names, found in the window asked about)
+      else if (m.t === "find") return void findIn(m)
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
         for (const j of jobNews(state.jobs, jobs)) jobNotice(j)
@@ -875,6 +880,23 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   else if (r.code === "model") notice("model", "Parakeet's model isn't on this Mac", "Handy or Hex downloads it, or pick Apple's recognizer in Dictation's settings.")
 }
 
+/** A web page the companion opens in the app the user asked from (their browser): a new tab there, in front. */
+function openIn(m: Record<string, unknown>) {
+  const url = String(m.url ?? ""), bundle = String(m.app ?? ""), reply = (r: object) => live.say({ t: "takeover-done", id: m.id, ...r })
+  if (!/^https?:\/\/\S+$/i.test(url) || !/^[\w.-]+$/.test(bundle)) return void reply({ ok: false, why: "failed", text: "that isn't a web address and an app" })
+  if (QUIET) return void reply({ ok: true, how: "open" })
+  execFile("/usr/bin/open", ["-b", bundle, url], { timeout: 10_000 }, (e) => reply(e ? { ok: false, why: "failed", text: `${bundle} couldn't open it` } : { ok: true, how: "open" }))
+}
+
+/** The element saying a mark's words in the window the last ask was over: its whole Accessibility tree, not only by
+ *  the pointer. Answered as a step is. */
+async function findIn(m: Record<string, unknown>) {
+  const p = nearPoint ?? screen.getCursorScreenPoint()
+  const r = await screenAsk<{ elements?: Near[] }>("near", { x: p.x, y: p.y, radius: 5000, max: 400 }).catch(() => null)
+  const el = byLabel(r?.elements ?? [], String(m.text ?? ""))
+  live.say({ t: "takeover-done", id: m.id, ...(el ? { ok: true, found: { id: "", ...el } } : { ok: false, why: "none" }) })
+}
+
 type Under = { ok?: boolean; vaultite?: boolean; bundle?: string; name?: string; role?: string; label?: string; in?: string }
 /** What's under a point of the screen, in words (`Finder: folder "Taxes", in "Desktop"`); null on Vaultite, nothing, or a
  *  private app's. */
@@ -894,8 +916,11 @@ async function shotAt(p: Point) {
 type Near = { role: string; label: string; frame: Rect }
 /** The last ask's elements near the pointer, by id (global screen points): what `--ax` and drawings point at. */
 let lastNear: (Near & { id: string })[] = []
+/** Where the last ask's elements were looked for: the window a find searches. */
+let nearPoint: Point | null = null
 /** What Accessibility finds near `p`, nearest first, each with an id the agent points by (companion say --ax a3). */
 async function nearAt(p: Point) {
+  nearPoint = p
   const r = await screenAsk<{ elements?: Near[] }>("near", { x: p.x, y: p.y, radius: 260, max: 30 }).catch(() => null)
   lastNear = (r?.elements ?? []).map((e, i) => ({ id: `a${i + 1}`, role: e.role, label: e.label, frame: e.frame }))
   return lastNear
@@ -907,9 +932,11 @@ async function pointedAt(name: string, p: Point, w: AppWindowInfo | null, parks 
   const win = w?.window && !w.vaultite ? w : null
   if (win && hidden(win)) return { app: "private" }
   if (parks && win?.frame) park(name, win.window, offsetIn(win.frame, p))
-  const [text, shot, under, near, there] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 20_000 }) : null, shotAt(p), underAt(p), nearAt(p),
+  const [text, shot, under, axNear, inApp] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 20_000 }) : null, shotAt(p), underAt(p), nearAt(p),
     w?.vaultite ? inAppAt(p) : null])
-  return { ...(there ?? {}), ...(win ? { app: win.bundle, window: win.window, title: win.title } : under ? { app: under.bundle } : {}), sx: Math.round(p.x), sy: Math.round(p.y),
+  // (over Vaultite's window, Accessibility reads nothing of it: its page names what's near, by the same ids)
+  const { near: appNear, ...there } = inApp ?? {}, near = Array.isArray(appNear) && appNear.length ? pageNear(appNear) : axNear
+  return { ...there, ...(win ? { app: win.bundle, window: win.window, title: win.title } : under ? { app: under.bundle } : {}), sx: Math.round(p.x), sy: Math.round(p.y),
     ...(text?.ok && text.text ? { screen: text.text } : {}), ...(shot ? { shot: shot.file, shotAt: shot.frame } : {}), ...(under ? { under: under.text } : {}), ...(near.length ? { near } : {}) }
 }
 
@@ -928,10 +955,26 @@ function inAppAt(p: Point): Promise<Record<string, unknown> | null> {
   })
 }
 const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "row", "x", "y", "under", "title", "notices"])
-/** The home window's page answering inAppAt: only what a place has. */
+/** The page's elements near the point (CSS px of its window) as an ask's, in screen points, by id: what `--ax` and a
+ *  drawing's `el` point at, as in another app. */
+function pageNear(els: unknown[]): (Near & { id: string })[] {
+  const w = host?.homeWindow(), b = w?.bounds
+  if (!w || !b) return lastNear
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN)
+  lastNear = els.slice(0, 40).flatMap((e) => {
+    const o = (e ?? {}) as { role?: unknown; label?: unknown; frame?: Record<string, unknown> }, f = o.frame ?? {}, r = [n(f.x), n(f.y), n(f.width), n(f.height)]
+    if (typeof o.label !== "string" || !o.label || r.some(Number.isNaN)) return []
+    return [{ role: String(o.role ?? "").slice(0, 80), label: o.label.slice(0, 120),
+      frame: { x: Math.round(b.x + r[0] * w.zoom), y: Math.round(b.y + r[1] * w.zoom), width: Math.round(r[2] * w.zoom), height: Math.round(r[3] * w.zoom) } }]
+  }).map((e, i) => ({ id: `a${i + 1}`, ...e }))
+  return lastNear
+}
+/** The home window's page answering inAppAt: only what a place has (its elements near, as they are). */
 function placeTold(from: WebContents, m: { id?: unknown; place?: unknown }) {
   if (from !== host?.homeWindow()?.page || typeof m?.id !== "number") return
-  const place = m.place && typeof m.place === "object" ? Object.fromEntries(Object.entries(m.place).filter(([k, v]) => PLACE_KEYS.has(k) && (typeof v === "string" || typeof v === "number"))) : null
+  const got = m.place && typeof m.place === "object" ? m.place as Record<string, unknown> : null
+  const place = got ? { ...Object.fromEntries(Object.entries(got).filter(([k, v]) => PLACE_KEYS.has(k) && (typeof v === "string" || typeof v === "number"))),
+    ...(Array.isArray(got.near) ? { near: got.near } : {}) } : null
   placeAsked.get(m.id)?.(place && Object.keys(place).length ? place : null)
 }
 

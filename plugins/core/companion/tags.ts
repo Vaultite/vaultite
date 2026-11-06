@@ -46,12 +46,16 @@ function tagOf(kind: string, args: string): Omit<Tag, "offset"> | null {
     const at = spots[0] ?? (label ? { find: label } : null)
     return at ? { kind, at, ...(spots[0] && label ? { label } : {}) } : null
   }
-  const at = spots[0]
-  if (!at || "find" in at) return null
-  if (kind === "arrow" || kind === "connect") return spots[1] ? { kind, at, to: spots[1], ...(label ? { label } : {}) } : null
+  // (a mark with words alone, [ring "Send"]: at the thing on the screen saying them)
+  const at = spots[0] ?? (label ? { find: label } : null)
+  if (!at) return null
+  if (kind === "arrow" || kind === "connect") {
+    const ends = [...spots, ...quoted.map((q) => q.trim()).filter(Boolean).map((q) => ({ find: q }))]
+    return ends[1] ? { kind, at: ends[0], to: ends[1], ...(spots.length >= 2 && label ? { label } : {}) } : null
+  }
   if (kind === "num") { const n = words.map(Number).find((x) => Number.isInteger(x) && x > 0 && x < 100); return { kind, at, n: n ?? 1 } }
   if (kind === "scroll") return { kind, at, dir: words.find((w) => /^(up|down|left|right)$/i.test(w))?.toLowerCase() ?? "down" }
-  return { kind: kind as Tag["kind"], at, ...(label && (kind === "ring" || kind === "frame") ? { label } : {}) }
+  return { kind: kind as Tag["kind"], at, ...(spots[0] && label && (kind === "ring" || kind === "frame") ? { label } : {}) }
 }
 
 function spotOf(w: string): Spot | null {
@@ -77,9 +81,9 @@ export function beatOf(said: string, offset: number) {
   return !n ? 0 : /[.!?…:]\s*$/.test(before) ? n : n - 1
 }
 
-/** A mark tag as draw's marks have it (screenmarks.ts), with its beat; null: one it can't draw (words to find). */
+/** A mark tag as draw's marks have it (screenmarks.ts), with its beat; null for a point (its cursor flies there). */
 export function markOf(t: Tag, beat?: number): Record<string, unknown> | null {
-  const spot = (s: Spot) => ("ax" in s ? { el: s.ax } : "sx" in s ? (s.w ? [s.sx, s.sy, s.w, s.h] : [s.sx, s.sy]) : "find" in s ? null : s)
+  const spot = (s: Spot) => ("ax" in s ? { el: s.ax } : "sx" in s ? (s.w ? [s.sx, s.sy, s.w, s.h] : [s.sx, s.sy]) : s)
   if (t.kind === "point") return null
   const at = spot(t.at)
   if (!at) return null
