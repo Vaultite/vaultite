@@ -27,6 +27,7 @@ import { switcherSearch } from "./switcher"
 import { focusedReplay } from "./replaykeys"
 import { openFromApp } from "./linklogins"
 import { fillLoginIn, hasLoginForm, watchLogins } from "./LoginFill"
+import { useSecretKeeper } from "./secretkeeper"
 
 const WebPage = lazy(() => import("./WebPage"))
 // Pages opened on demand load with their first tab.
@@ -155,6 +156,7 @@ function Background() {
   useSiteStyles()
   useDarkPages()
   useLookBackground()
+  useSecretKeeper()
   // (the browsers there are to import from: their commands show)
   useEffect(() => { if (webPages?.engine) void findBrowsers() }, [])
   useEffect(() => { void webPages?.titles?.().then(keptTitles, () => {}) }, [])

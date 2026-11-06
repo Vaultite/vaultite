@@ -139,6 +139,34 @@ export async function saveLogin(l: { url: string; username: string; password: st
   })
 }
 
+/** A secret the user gave an agent (`vau secret`), kept in a Secrets group under its prompt: the same prompt again
+ *  changes it, its old value kept in its history. Writing shows nothing, so it needs no unlock. */
+handle("passwords:keep-secret", async (_win, title, value) => {
+  const name = String(title ?? "").trim().slice(0, 200)
+  if (!name || typeof value !== "string" || !value) throw new Error("nothing to keep")
+  return { id: await write((db, k) => {
+    const root = db.getDefaultGroup()
+    const group = root.groups.find((g) => g.name === "Secrets") ?? db.createGroup(root, "Secrets")
+    const was = group.entries.find((e) => k.fieldsOf(e).Title === name)
+    const f = was ? k.fieldsOf(was) : {}
+    return k.applyChange(db, { id: was?.uuid.id, group: group.uuid.id, title: name, username: f.UserName ?? "", password: value, urls: k.urlsOf(f), tags: was ? [...was.tags] : [], notes: f.Notes ?? "" })
+  }) }
+})
+
+// (handing one to an agent always takes the user's finger, unlocked or not: computer use could click the dialog)
+handle("passwords:give", async (_win, id) => {
+  need()
+  const { k, db } = await load()
+  const e = k.entryById(db, String(id))
+  if (!e) throw new Error("that entry is gone from the file")
+  const f = k.fieldsOf(e)
+  if (!(!app.isPackaged && process.env.VAULTITE_TEST_TOUCHID === "yes")) {
+    if (!touchId()) throw new Error("Touch ID confirms giving a password to an agent, and it can't be used now: type it instead")
+    if (!await systemPreferences.promptTouchID(`give ${f.Title || "a password"} to an agent`).then(() => true, () => false)) throw new Error("Touch ID didn't confirm it")
+  }
+  return f.Password ?? ""
+})
+
 // ---------- the page's calls (the app's windows only) ----------
 
 handle("passwords:status", async () => {
