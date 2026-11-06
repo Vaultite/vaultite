@@ -20,6 +20,16 @@ const STUBS: Record<string, string> = {
   "@/core/live": "export const answerUi = (kind, fn) => { (globalThis.__answerUi ??= {})[kind] = fn }",
   "@/core/pagelock": "export const relockScroll = () => {}",
 }
+// Autosave's server, reads, toasts and connection: the made-up ones its section sets on globalThis.__autosave.
+const AUTOSAVE_STUBS: Record<string, string> = {
+  "@/core/http": "const f = () => globalThis.__autosave; export const request = (...a) => f().request(...a); export const get = (p) => f().get(p); export const post = async () => ({}); export const put = (p, b) => f().putJson(p, b)",
+  "@/core/files": `export const deletedHere = () => false; export const gone = (e) => /^Error: no file /.test(String(e)); export const moveMark = () => 0; export const whereNow = (p) => p
+    export const readFile = (p) => globalThis.__autosave.readFile(p); export const stem = (p) => p.replace(/^.*\\//, "").replace(/\\.md$/, "")
+    export const splitFm = (t) => { const m = /^---\\n[\\s\\S]*?\\n---\\n/.exec(t); return m ? { fm: m[0], body: t.slice(m[0].length) } : { fm: "", body: t } }`,
+  "@/core/live": "export const useVaultChange = () => {}; export const onReconnect = (fn) => { globalThis.__autosave.back.add(fn); return () => globalThis.__autosave.back.delete(fn) }",
+  "@/core/notify": "export const errorReason = (e) => e?.message ?? null; export const notify = (text) => { globalThis.__autosave.toasts.push(text) }",
+  "@/core/drafts": "export const keepDraft = () => {}; export const dropDraft = () => {}",
+}
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
 const shim = path.join(tempDir("vau-shim-"), "vaultite.ts")
 fs.writeFileSync(shim, `export { blockPieces, paragraphAt } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}
@@ -27,6 +37,7 @@ export { joinText } from ${JSON.stringify(pathToFileURL(path.join(ROOT, "core", 
 registerHooks({
   resolve(spec, context, next) {
     if (spec === "@vaultite") return { url: pathToFileURL(shim).href, shortCircuit: true }
+    if (spec in AUTOSAVE_STUBS && context.parentURL?.endsWith("/web/src/core/autosave.ts")) return { url: `data:text/javascript,${encodeURIComponent(AUTOSAVE_STUBS[spec])}`, shortCircuit: true }
     if (spec in STUBS) return { url: `data:text/javascript,${encodeURIComponent(STUBS[spec])}`, shortCircuit: true }
     if (spec.startsWith("@/")) {
       const base = path.join(WEB, spec.slice(2))
@@ -3356,6 +3367,153 @@ await section("screen drawings", async () => {
     els.some((e: Any) => e.type === "rectangle" && e.backgroundColor === "#ffec99" && e.x >= 400) && !els.some((e: Any) => e.type === "ellipse" && e.width === 40), els.length)
   const withMarks = sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: { el: "e1" } }]), { all: true, places: { "el:e1": { x: 10, y: 10, w: 20, h: 20 } } })
   check("screen drawings: with all, the marks too, where the overlay found them; nothing worth keeping, none", withMarks?.elements.some((e: Any) => e.type === "ellipse") && sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: [1, 1] }])) === null)
+})
+
+// ---------- Autosave (web/src/core/autosave.ts): on a made-up server that merges as core/files.ts PUT does ----------
+await section("autosave", async () => {
+  const { textHash, applyEdit, editOf } = await import("../core/texthash.ts")
+  const P = "Notes/Lighthouse.md"
+  // The server: the file, its time, whether it answers, and a gate holding answers (a save on its way)
+  const srv = { text: "", mtime: 1, down: false, gate: null as Promise<void> | null, puts: 0 }
+  const file = () => ({ path: P, text: srv.text, mtime: srv.mtime, kind: null, problems: [] })
+  const res = (status: number, body: unknown) => ({ status, ok: status < 300, statusText: "", json: async () => body })
+  const handle = (b: Any) => {
+    const cur = srv.text
+    let text = b.text
+    if (b.edit !== undefined) {
+      if (textHash(cur) !== b.baseHash) return res(412, { error: "the file changed on disk: send its base to merge" })
+      text = applyEdit(cur, b.edit)
+    }
+    const sent = text
+    if (b.base != null && cur !== b.base && cur !== text) {
+      const m = merge.merge3(b.base, text, cur)
+      if (m === null) return res(409, { error: "the file changed on disk in the same place", ...file() })
+      text = m
+    }
+    srv.puts++
+    // (as Note dates does: a save stamps updated)
+    srv.mtime++
+    srv.text = text.replace(/^updated: \d+$/m, `updated: ${srv.mtime}`)
+    const { text: _, ...rest } = file()
+    return res(200, b.lean ? (srv.text === sent ? { ...rest, same: true } : { ...rest, edit: editOf(sent, srv.text) }) : file())
+  }
+  const fake: Any = (globalThis as Any).__autosave = {
+    back: new Set<() => void>(), toasts: [] as string[],
+    async request(_m: string, _p: string, body: Any) {
+      if (srv.down) throw new TypeError("Failed to fetch")
+      const r = handle(body)
+      if (srv.gate) await srv.gate
+      return r
+    },
+    async readFile() { return file() },
+    async get() { return { mtime: srv.mtime, size: srv.text.length } },
+    async putJson(_p: string, b: Any) { srv.text = b.text; srv.mtime++; return file() },
+  }
+  // (the page's events, which the module listens to as a browser's)
+  const win = new EventTarget(), doc = Object.assign(new EventTarget(), { visibilityState: "visible" })
+  const g = globalThis as Any
+  g.addEventListener = win.addEventListener.bind(win); g.removeEventListener = win.removeEventListener.bind(win); g.document = doc
+  const as: Any = await web("core/autosave.ts")
+  const ticks = async (n = 30) => { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)) }
+  /** An editor on the file as it is now: its text, what autosave said, and how to close it. */
+  const open = () => {
+    let typed = srv.text
+    const said: Any[] = []
+    const saver = as.makeAutosave(P, srv.text, { text: () => typed, apply: (t: string) => { typed = t }, onStatus: (s: Any) => said.push(s), onGone: () => {} })
+    const close = saver.mount()
+    return { saver, close, said, get text() { return typed }, type(t: string) { typed = t; saver.changed() } }
+  }
+
+  {
+    srv.text = "---\nupdated: 1\n---\na\nb\n"
+    const ed = open()
+    ed.type("---\nupdated: 1\n---\na\nb\nc\n")
+    srv.text = "---\nupdated: 1\n---\nagent\na\nb\n" // (an agent's line, written as the save goes)
+    let open_ = () => {}
+    srv.gate = new Promise((r) => { open_ = r })
+    void ed.saver.save()
+    await ticks()
+    ed.close() // (closed before the save's answer, which merged the agent's line in)
+    srv.gate = null
+    open_()
+    await ticks()
+    check("autosave: a note closed mid-save keeps the line an agent wrote, and what was typed", srv.text.includes("agent\n") && srv.text.includes("c\n"), srv.text)
+    const puts = srv.puts
+    ed.saver.changed(); ed.saver.save(); await ticks()
+    check("autosave: closed, typing and saving do nothing", srv.puts === puts, srv.puts - puts)
+  }
+  {
+    srv.text = "one\n"
+    const ed = open()
+    srv.down = true
+    ed.type("one\ntwo\n")
+    await ed.saver.save()
+    check("autosave: a save that can't reach the server says so", ed.said.at(-1)?.kind === "error", ed.said.at(-1))
+    srv.down = false
+    for (const fn of fake.back) fn()
+    await ticks()
+    check("autosave: a failed save is sent again when the connection is back, with no keystroke", srv.text === "one\ntwo\n" && ed.said.at(-1)?.kind === "ok", { text: srv.text, said: ed.said.at(-1) })
+    srv.down = true
+    ed.type("one\ntwo\nthree\n")
+    await ed.saver.save()
+    srv.down = false
+    doc.dispatchEvent(new Event("visibilitychange"))
+    await ticks()
+    check("autosave: and when the page is shown again", srv.text === "one\ntwo\nthree\n" && ed.said.at(-1)?.kind === "ok", srv.text)
+    ed.close()
+  }
+  {
+    srv.text = "v1\n"
+    const stale = file()
+    const ed = open()
+    ed.type("v2\n")
+    await ed.saver.save()
+    await ed.saver.check(stale) // (the read made as it opened, landing after the save)
+    await ticks()
+    check("autosave: a read older than the last save doesn't take the note back", ed.text === "v2\n" && srv.text === "v2\n", { text: ed.text, disk: srv.text })
+    ed.close()
+  }
+  {
+    srv.text = "a\n"
+    const ed = open()
+    ed.type("a\nx\n")
+    srv.text = "a\nagent\n"
+    void ed.saver.check() // (heard while a save is pending: it waits for it)
+    ed.type("a\n") // (typed away again: nothing left to save)
+    await ed.saver.save()
+    await ticks()
+    check("autosave: a change heard while a save was pending is merged in even when there was nothing to save", ed.text === "a\nagent\n", ed.text)
+    ed.close()
+  }
+  {
+    srv.text = "a\nb\n"
+    const ed = open()
+    ed.type("a\nb\nc\n")
+    srv.text = "agent\na\nb\n"
+    let open_ = () => {}
+    srv.gate = new Promise((r) => { open_ = r })
+    void ed.saver.save()
+    await ticks()
+    ed.type("a\nb\nc\nd\n") // (typed on as it saved, then closed)
+    ed.close()
+    srv.gate = null
+    open_()
+    await ticks()
+    check("autosave: closed mid-save after typing on, the agent's line, what was sent and what came after are all kept", srv.text === "agent\na\nb\nc\nd\n", srv.text)
+  }
+  {
+    const step = as.step ?? (() => ({ to: null, do: [] }))
+    const gone = step({ kind: "gone" }, { type: "typed" }, () => false), later = step({ kind: "error", tries: 2, retry: true }, { type: "retry" }, () => false)
+    const closing = step({ kind: "saving", typed: false, again: false, recheck: false, tries: 0 }, { type: "close" }, () => false)
+    const answered = step(closing.to ?? { kind: "idle" }, { type: "saved" }, () => false)
+    check("autosave: gone stays gone; an error retried is a save; a close mid-save waits for its answer, then sends the rest",
+      gone.to?.kind === "gone" && !gone.do.length && later.to?.kind === "saving" && later.to.tries === 2 && closing.to?.kind === "closing" && !closing.do.length
+      && answered.to.kind === "gone" && answered.do.join() === "flush", { gone, later, closing, answered })
+    const heard = step({ kind: "saving", typed: false, again: false, recheck: true, tries: 0 }, { type: "failed", retry: false }, () => false)
+    check("autosave: a save failing with a change on disk heard meanwhile reads it (the file moved: its edits offered back)",
+      heard.to.kind === "checking" && heard.do.join() === "read", heard)
+  }
+  delete g.addEventListener; delete g.removeEventListener; delete g.document; delete g.__autosave
 })
 
 await exit(summary("web", t0))

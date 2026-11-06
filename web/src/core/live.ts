@@ -83,6 +83,13 @@ function heardKept(names: string[] | null, kept: unknown, state: unknown) {
   if (names ? names.length : moved) emitKept(names, stateMoved)
 }
 
+const backSubs = new Set<() => void>()
+/** The connection to the server is up (again): what failed for want of it may be sent now (autosave). */
+export function onReconnect(fn: () => void) {
+  backSubs.add(fn)
+  return () => { backSubs.delete(fn) }
+}
+
 /** Does this change touch `path` (the file itself, or a folder it's in)? */
 export const touches = (paths: Paths, path: string) => paths === null || paths.some((p) => p === path || path.startsWith(p + "/"))
 
@@ -181,6 +188,7 @@ function connect() {
       seen = m.v ?? null
       heard = m.at ?? null
       heardKept(null, m.kept, m.state)
+      for (const fn of [...backSubs]) { try { fn() } catch (e) { console.error(e) } }
       // (a shared folder's guest whose access changed: the app draws what they may do from its page)
       if (share && m.role && m.role !== share.role)
         notify(m.role === "read" ? "You can now only view this folder" : m.role === "edit" ? "You can now edit this folder" : "You can now comment in this folder", { id: "share-role", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })

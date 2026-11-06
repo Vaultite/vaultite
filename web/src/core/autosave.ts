@@ -1,15 +1,16 @@
 // A file's autosave (the file view, a canvas's note cards): saved 600 ms after typing stops, on top of a save on its
-// way; changes on disk merged in (3-way); what's pending sent when the view goes, and kept on the device until saved.
+// way, a failed one sent again; changes on disk merged in (3-way); what's left sent when the view goes, kept on the device.
 import { useEffect, useLayoutEffect, useState } from "react"
 import { get, post, put as putJson, request } from "@/core/http"
 import { deletedHere, gone, moveMark, readFile, splitFm, stem, whereNow, type FileText } from "@/core/files"
-import { useVaultChange } from "@/core/live"
+import { onReconnect, useVaultChange } from "@/core/live"
 import { merge3, mergeClashes, type Clash } from "@/core/merge"
 import { errorReason, notify } from "@/core/notify"
 import { dropDraft, keepDraft } from "@/core/drafts"
 import { trackUnsaved } from "@/core/unsaved"
 import { applyEdit, editOf, LEAN_PAST, textHash } from "../../../core/texthash.ts"
 import { keptLive } from "@/core/cosync"
+import { trace } from "@/core/trace"
 
 /** A conflict: `base` the text both sides started from, `lines` where they clash (the file's, 1-based), `who` the agent
  *  that wrote theirs when known, `inline` when the editor shows it in place (undefined while that's found out). */
@@ -76,13 +77,131 @@ function withTheirs(text: string, clashes: Clash[]) {
   return lines.join("\n")
 }
 
-function makeAutosave(path: string, initial: string, options: Options) {
+/** Where saving is; every change of it is a `step`. */
+export type Phase =
+  | { kind: "idle" }
+  /** Typed: saved once typing pauses (the timer). `recheck`: a change on disk was heard meanwhile, read after. */
+  | { kind: "pending"; recheck: boolean }
+  /** Reading the file to merge a change on disk; `again`, another was heard meanwhile. */
+  | { kind: "checking"; again: boolean }
+  /** A save on its way: typed since (`typed`, the timer runs), asked again (`again`), the tries a failure counts on. */
+  | { kind: "saving"; typed: boolean; again: boolean; recheck: boolean; tries: number }
+  /** Every save held until it's settled (in the editor, or `keep`). */
+  | { kind: "conflict"; recheck: boolean }
+  /** The last save failed: sent again with backoff, on reconnecting and when shown (`retry`: worth trying again). */
+  | { kind: "error"; tries: number; retry: boolean }
+  /** The view went while a save was on its way: the answer is merged into what was typed, then what's left is sent. */
+  | { kind: "closing"; was: Extract<Phase, { kind: "saving" }> }
+  /** The view went and what it had was sent: nothing more. */
+  | { kind: "gone" }
+
+export type SaveEvent =
+  | { type: "typed" } | { type: "due" } | { type: "save"; force?: boolean } | { type: "check"; known?: FileText }
+  /** The read the check made is done (merged or not). */
+  | { type: "read" }
+  /** The save's answer is in (`again`: what's on disk was a save of ours whose answer was lost: save on top of it). */
+  | { type: "saved"; again?: boolean } | { type: "failed"; retry: boolean }
+  | { type: "clash" } | { type: "resolve" } | { type: "retry" } | { type: "close" } | { type: "mount" }
+
+/** What a step starts: the typing timer, a save, a read, the last send without the view, the status said again, the
+ *  device's draft dropped, an error said no more (all saved). */
+type Effect = "arm" | "send" | "read" | "flush" | "tell" | "drop" | "calm"
+
+/** The next phase on `e`, and what it starts. `nothing`: nothing to send now (the text is the server's, or a live
+ *  session keeps the file), asked only when it matters (it compares the whole text). */
+export function step(p: Phase, e: SaveEvent, nothing: () => boolean): { to: Phase; do: Effect[] } {
+  const go = (to: Phase, ...d: Effect[]) => ({ to, do: d })
+  // Quiet again: a change heard meanwhile is read now, else anything still unsent saved after the pause.
+  const rest = (recheck: boolean, ...d: Effect[]) => (recheck ? go({ kind: "checking", again: false }, "read", ...d)
+    : nothing() ? go({ kind: "idle" }, "calm", ...d) : go({ kind: "pending", recheck: false }, "arm", ...d))
+  const send = (recheck: boolean, tries = 0) => go({ kind: "saving", typed: false, again: false, recheck, tries }, "send")
+  switch (e.type) {
+    case "typed":
+      if (p.kind === "idle" || p.kind === "error") return go({ kind: "pending", recheck: false }, "arm")
+      if (p.kind === "pending") return go(p, "arm")
+      if (p.kind === "checking") return go({ kind: "pending", recheck: true }, "arm") // (its read is old when it lands)
+      if (p.kind === "saving") return go({ ...p, typed: true }, "arm")
+      if (p.kind === "conflict") return go(p, "tell")
+      return go(p)
+    case "due":
+      if (p.kind === "pending") return nothing() ? rest(p.recheck, "drop") : send(p.recheck)
+      if (p.kind === "saving" && p.typed) return go({ ...p, typed: false, again: true })
+      return go(p)
+    case "save":
+      if (p.kind === "idle" || p.kind === "pending" || p.kind === "error" || p.kind === "checking") {
+        const recheck = p.kind === "checking" || (p.kind === "pending" && p.recheck)
+        if (nothing()) return p.kind === "checking" ? go(p) : rest(recheck, "drop")
+        return send(recheck, p.kind === "error" ? p.tries : 0)
+      }
+      if (p.kind === "saving") return go({ ...p, typed: false, again: true })
+      if (p.kind === "conflict" && e.force) return nothing() ? rest(p.recheck) : send(p.recheck)
+      return go(p)
+    case "check":
+      if (p.kind === "idle") return go({ kind: "checking", again: false }, "read")
+      if (p.kind === "pending" || p.kind === "saving" || p.kind === "conflict") return go({ ...p, recheck: true })
+      if (p.kind === "checking") return go({ ...p, again: true })
+      // (heard from the server: it's there again, and a save merges the change)
+      if (p.kind === "error") return p.retry && !nothing() ? send(false, p.tries) : go({ kind: "checking", again: false }, "read")
+      return go(p)
+    case "read":
+      if (p.kind !== "checking") return go(p)
+      return p.again ? go({ kind: "checking", again: false }, "read") : rest(false)
+    case "saved":
+      if (p.kind === "closing") return go({ kind: "gone" }, "flush")
+      if (p.kind !== "saving") return go(p)
+      if ((p.again || e.again) && !nothing()) return go({ ...p, again: false, tries: 0 }, "send")
+      return p.typed ? go({ kind: "pending", recheck: p.recheck }) : rest(p.recheck)
+    case "failed":
+      if (p.kind === "closing") return go({ kind: "gone" }, "flush")
+      if (p.kind !== "saving") return go(p)
+      if (p.typed) return go({ kind: "pending", recheck: p.recheck })
+      // (a change heard meanwhile is read now: it may be why it failed, the file moved or deleted)
+      if (p.recheck) return go({ kind: "checking", again: false }, "read")
+      return go({ kind: "error", tries: p.tries + 1, retry: e.retry })
+    case "clash":
+      if (p.kind === "closing") return go({ kind: "gone" }, "flush")
+      if (p.kind === "saving" || p.kind === "pending") return go({ kind: "conflict", recheck: p.recheck })
+      if (p.kind === "checking") return go({ kind: "conflict", recheck: true }) // (a read on its way, dropped)
+      if (p.kind === "idle" || p.kind === "error") return go({ kind: "conflict", recheck: false })
+      return go(p)
+    case "resolve":
+      return p.kind === "conflict" ? rest(p.recheck) : go(p)
+    case "retry":
+      if (p.kind !== "error") return go(p)
+      return nothing() ? rest(false) : p.retry ? send(false, p.tries) : go(p)
+    case "close":
+      if (p.kind === "saving") return go({ kind: "closing", was: p })
+      return p.kind === "closing" || p.kind === "gone" ? go(p) : go({ kind: "gone" }, "flush")
+    case "mount":
+      // (React's strict mode closes and draws a view again at once)
+      if (p.kind === "closing") return go(p.was)
+      return p.kind === "gone" ? rest(false) : go(p)
+  }
+}
+
+/** How long a failed save waits before it's sent again (tries: 1 and up). */
+const backoff = (tries: number) => Math.min(30_000, 1000 * 2 ** tries)
+/** How long a save may take: one left hanging (a phone's stuck tunnel) holds every save after it. */
+const SAVE_WAIT = 60_000
+
+export function makeAutosave(path: string, initial: string, options: Options) {
   const o = { current: options }
   const opened = moveMark()
   const where = () => whereNow(path, opened)
+  let phase: Phase = { kind: "idle" }
   let timer: ReturnType<typeof setTimeout> | null = null, drafting: ReturnType<typeof setTimeout> | null = null
-  let saving = false, again = false, recheck = false
+  let retrying: ReturnType<typeof setTimeout> | null = null
   let status: SaveStatus = { kind: "ok" }
+  /** When what's on disk was written, once known (a save's or a read's). */
+  let mtime = 0
+  /** The save on its way, so a later save or the last flush builds on it. */
+  let inflight: { text: string; done: Promise<void> } | null = null
+  /** The read whose answer counts: a later one makes it old. */
+  let reading = 0
+  /** What was typed when the view went: the text from then on, the server's answers merged into it. */
+  let ghost: string | null = null
+  const now = () => ghost ?? o.current.text()
+  const show = (text: string) => { if (ghost === null) o.current.apply(text); else ghost = text }
   /** The last conflict, to go back to (Undo); and what's left of it when its editor went (a switch to source mode). */
   let last: Conflict | null = null
   let parked: Clash[] | null = null
@@ -98,10 +217,10 @@ function makeAutosave(path: string, initial: string, options: Options) {
   }
   /** Take `disk`, our own save (`own`) as the server wrote it: what it set merged into the text as typed now. */
   const adopt = (own: string, disk: string) => {
-    const now = o.current.text(), merged = own === disk ? now : merge3(own, now, disk) ?? now
-    if (merged !== now && s.alive) o.current.apply(merged)
+    const typed = now(), merged = own === disk ? typed : merge3(own, typed, disk) ?? typed
+    if (merged !== typed) show(merged)
   }
-  const tell = (s: SaveStatus) => { status = s; o.current.onStatus(s) }
+  const tell = (st: SaveStatus) => { status = st; o.current.onStatus(st) }
   /** A save: its edit of the base and the base's fingerprint, the whole text and base only if the server asks (it
    *  changed on disk); it gets back how the file differs from what it sent. (keepalive takes 64 KB at most) */
   const put = async (text: string, base: string | null, init?: RequestInit) => {
@@ -117,239 +236,286 @@ function makeAutosave(path: string, initial: string, options: Options) {
     return j.same ? { ...j, text: sent } : j.edit ? { ...j, text: applyEdit(sent, j.edit) ?? sent } : j
   }
 
+  /** The one way the phase changes: `step`, then what it starts; the timers run only in the phases they belong to. */
+  const go = (e: SaveEvent) => {
+    const was = phase
+    const { to, do: effects } = step(phase, e, () => keptLive(where()) || (!(e.type === "save" && e.force) && now() === s.disk))
+    phase = to
+    if (to.kind !== was.kind) trace("autosave", { path, from: was.kind, to: to.kind, on: e.type })
+    if (timer && to.kind !== "pending" && !(to.kind === "saving" && to.typed)) { clearTimeout(timer); timer = null }
+    if (retrying && to.kind !== "error") { clearTimeout(retrying); retrying = null }
+    if (to.kind === "error" && was.kind !== "error" && to.retry) retrying = setTimeout(() => { retrying = null; go({ type: "retry" }) }, backoff(to.tries))
+    for (const d of effects) {
+      if (d === "arm") arm()
+      else if (d === "send") void send()
+      else if (d === "read") void read(e.type === "check" ? e.known : undefined)
+      else if (d === "flush") flush(s.disk, true)
+      else if (d === "tell") tell(status)
+      else if (d === "drop") dropDraft(path)
+      else if (d === "calm" && status.kind === "error") tell({ kind: "ok" })
+    }
+  }
+
+  /** Saved 600 ms after the last change; kept on the device as typing pauses. */
+  const arm = () => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => { timer = null; go({ type: "due" }) }, 600)
+    // (not only as it saves: what a window closed before then wrote at pagehide doesn't get to IndexedDB)
+    if (drafting) clearTimeout(drafting)
+    drafting = setTimeout(() => { drafting = null; const text = now(); if (text !== s.disk) keepDraft(path, text, s.disk) }, 100)
+  }
+
+  /** The text as typed now, on top of what the server has; its answer merged in, then one settled exit. */
+  const send = async () => {
+    if (drafting) { clearTimeout(drafting); drafting = null }
+    const sent = now(), base = s.disk, retried = phase.kind === "saving" && phase.tries > 0
+    keepDraft(path, sent, base)
+    let finish = () => {}
+    inflight = { text: sent, done: new Promise<void>((r) => { finish = r }) }
+    // (an answer that comes once the phase moved on, a conflict brought back meanwhile, says nothing)
+    const ours = () => phase.kind === "saving" || phase.kind === "closing"
+    let r: Response | null = null, next: SaveEvent
+    try {
+      r = await put(sent, base, { signal: AbortSignal.timeout?.(SAVE_WAIT) })
+      const j = await answer(r, sent)
+      if (r.status === 409) {
+        // On disk is a save of ours whose answer was lost: that's the base, and saving again merges onto it.
+        const own = ownSave(j.text, base)
+        if (own !== undefined) { s.disk = j.text; mtime = j.mtime; unconfirmed = []; adopt(own, j.text); next = { type: "saved", again: true } }
+        else next = clash(base, j) ? { type: "clash" } : { type: "saved" }
+      } else {
+        if (!r.ok) throw new Error(j.error || r.statusText)
+        o.current.onDisk?.(j)
+        mtime = j.mtime
+        const typed = now()
+        if (j.text === sent || typed === sent) {
+          s.disk = j.text
+          if (j.text !== sent) show(j.text) // the server filled something in, or merged a change from disk
+        } else {
+          // Typed more while it saved, and the server's differs: keep both, or the next save gets the 409.
+          const merged = merge3(sent, typed, j.text)
+          if (merged !== null) { s.disk = j.text; show(merged) } else s.disk = sent
+          s.changed()
+        }
+        if (now() === s.disk) dropDraft(path)
+        unconfirmed = []
+        if (ours()) tell({ kind: "ok" })
+        next = { type: "saved" }
+      }
+    } catch (e) {
+      if (!r) sentMaybe(sent)
+      const err = e instanceof DOMException && e.name === "TimeoutError" ? new Error("The server didn't answer") : e
+      const message = errorReason(err) ?? ""
+      // (a retry failing as the last one did isn't said again: the phone's toast would come back every time)
+      if (ours() && !(retried && status.kind === "error" && status.message === message)) tell({ kind: "error", message })
+      next = { type: "failed", retry: !r || r.status >= 500 || r.status === 408 || r.status === 429 }
+    }
+    inflight = null
+    finish()
+    go(next)
+  }
+
+  /** What's on disk read (`known`: just read) and merged into the text. */
+  const read = async (known?: FileText) => {
+    const id = ++reading, before = s.disk
+    // (only the last read counts, and only while it's what the phase waits on: a save since brought newer text)
+    const mine = () => id === reading && phase.kind === "checking"
+    try {
+      // (typed in together, core/cosync.ts: the session brings in what changes)
+      if (keptLive(where())) return void go({ type: "read" })
+      // (a long text is read again only when its file changed since: the change is often this view's own save)
+      if (!known && mtime && before.length > LEAN_PAST) {
+        const info = await get<{ mtime: number; size: number }>(`file/info?path=${encodeURIComponent(where())}`)
+        if (info.mtime === mtime && info.size === new TextEncoder().encode(before).length) return void (mine() && go({ type: "read" }))
+      }
+      const r = known ?? await readFile(where())
+      if (!mine()) return
+      if (r.text === before) return void go({ type: "read" })
+      const typed = now(), own = ownSave(r.text, before)
+      if (own !== undefined) unconfirmed = []
+      const merged = own !== undefined ? (own === r.text ? typed : merge3(own, typed, r.text) ?? typed) : typed === before ? r.text : merge3(before, typed, r.text)
+      go({ type: "read" })
+      if (merged === null) { if (clash(before, r)) go({ type: "clash" }); return }
+      s.disk = r.text
+      mtime = r.mtime
+      o.current.onDisk?.(r)
+      show(merged)
+      if (merged !== r.text) s.changed()
+    } catch (e) {
+      if (!mine()) return
+      go({ type: "read" })
+      if (ghost === null && gone(e) && where() === path) o.current.onGone()
+    }
+  }
+
+  /** The file changed elsewhere in lines typed here: both sides kept as versions in File history, the rest merged,
+   *  and the clashing lines shown to settle (in the editor when it can, else `keep`). False: no clash after all. */
+  const clash = (base: string, theirs: FileText): boolean => {
+    // (both sides made the same edit, which merge3 refuses: the merge taken, as a check takes one)
+    const take = (text: string) => {
+      s.disk = theirs.text
+      mtime = theirs.mtime
+      o.current.onDisk?.(theirs)
+      tell({ kind: "ok" })
+      show(text)
+      if (text !== theirs.text) s.changed()
+      else dropDraft(path)
+    }
+    const first = mergeClashes(base, now(), theirs.text)
+    if (!first.clashes.length) { take(first.text); return false }
+    const lines = (cs: Clash[]) => cs.map((k) => k.at + 1)
+    tell({ kind: "conflict", base, theirs, lines: lines(first.clashes) })
+    void post("history/keep", { path: where() }).catch(() => {})
+    void post("history/keep", { path: where(), text: now() }).catch(() => {})
+    void whoWrote(where(), theirs.mtime).then((who) => {
+      if (ghost !== null || status.kind !== "conflict" || status.theirs !== theirs) return
+      // (typed on meanwhile: merged again)
+      const { text, clashes } = mergeClashes(base, now(), theirs.text)
+      if (!clashes.length) { go({ type: "resolve" }); return take(text) } // typed away meanwhile
+      const inline = !!o.current.conflict?.(text, clashes, who, s.left)
+      if (inline) { s.disk = theirs.text; mtime = theirs.mtime; o.current.onDisk?.(theirs) }
+      last = { kind: "conflict", base, theirs, lines: lines(clashes), who, inline }
+      tell(last)
+    })
+    return true
+  }
+
+  /** Send what's pending without the view (it's going); a failure is a toast holding the edits. */
+  const flush = (base: string, say: boolean) => {
+    const text = now()
+    if (text === base || o.current.readOnly || keptLive(where())) return
+    // (kept here first: a save too big for keepalive is a plain one, which a closed window may cut short)
+    keepDraft(path, text, base)
+    const send = async (base: string | null) => {
+      sentMaybe(text)
+      const r = await put(text, base, { keepalive: true })
+      if (r.status === 409) throw Object.assign(new Error(changedText()), { conflict: true })
+      if (!r.ok) throw Object.assign(new Error((await r.json().catch(() => ({}))).error ?? r.statusText), { gone: r.status === 404 })
+      dropDraft(path)
+    }
+    const changedText = () => (status.kind === "conflict" ? conflictText(status).replace(/\.$/, "") : "it changed elsewhere in the same lines")
+    const id = `unsaved:${path}`, saved = () => notify(`Saved ${stem(path)}`, { id })
+    const unsaved = (e: unknown) => {
+      const mine = !!(e as { conflict?: boolean }).conflict, why = mine ? null : errorReason(e)
+      notify(mine ? `Your edits to ${stem(path)} aren't saved: ${lower((e as Error).message)}` : `Couldn't save ${stem(path)}${why ? `: ${why}` : ""}`, { kind: "error", duration: 15_000, id,
+        action: { label: mine ? "Keep yours" : "Try again", run: async () => {
+          // (theirs is kept in File history first: nothing is lost)
+          if (mine) await post("history/keep", { path: where() }).catch(() => {})
+          await send(mine ? null : base)
+          notify(mine ? `Saved yours; ${theirName(status.kind === "conflict" ? status.who : undefined)} version is in the note's history` : `Saved ${stem(path)}`, { id })
+        } } })
+    }
+    if (status.kind === "conflict") { if (say) unsaved({ message: changedText(), conflict: true }); return }
+    send(base).catch((e) => {
+      if (!say) return
+      if (!(e as { gone?: boolean }).gone) unsaved(e)
+      // (deleted in the app meanwhile: that's what the user did; elsewhere: the edits are offered back)
+      else if (deletedHere(path)) dropDraft(path)
+      else notify(`${stem(path)} was moved or deleted before your last edits were saved`, {
+        kind: "error", duration: 15_000, id, action: { label: "Save them", run: async () => { await send(null); saved() } },
+      })
+    })
+  }
+
   const s = {
-    /** What the server has: the base for merges; and when it was written, once known. */
+    /** What the server has: the base for merges. */
     disk: initial,
-    mtime: 0,
-    /** The save on its way, so a later save or the last flush builds on it. */
-    inflight: null as { text: string; done: Promise<void> } | null,
-    alive: true,
     use(options: Options) { o.current = options },
-    /** Drawn: going, what's pending is saved at once, after a save on its way (on its text if the page itself goes). */
+    /** Drawn: going, what's pending is sent at once, after a save on its way and merged with its answer (on the save's
+     *  text if the page itself goes). A failed save is sent again on reconnecting and when the page is shown. */
     mount() {
-      s.alive = true
-      const leave = () => s.flush(s.inflight?.text ?? s.disk, false)
+      ghost = null
+      go({ type: "mount" })
+      const leave = () => flush(inflight?.text ?? s.disk, false)
+      const back = () => go({ type: "retry" })
+      const shown = () => { if (document.visibilityState === "visible") back() }
       addEventListener("pagehide", leave)
-      const untrack = trackUnsaved(() => !o.current.readOnly && !keptLive(where()) && (!!timer || saving || status.kind !== "ok" || o.current.text() !== s.disk), where)
+      addEventListener("online", back)
+      document.addEventListener("visibilitychange", shown)
+      const unback = onReconnect(back)
+      const untrack = trackUnsaved(() => !o.current.readOnly && !keptLive(where()) && (phase.kind === "pending" || phase.kind === "saving" || status.kind !== "ok" || now() !== s.disk), where)
       return () => {
-        s.alive = false
+        ghost = o.current.text()
         untrack()
+        unback()
         removeEventListener("pagehide", leave)
-        s.stopTimer()
-        if (s.inflight) s.inflight.done.then(() => s.flush(s.disk, true))
-        else s.flush(s.disk, true)
+        removeEventListener("online", back)
+        document.removeEventListener("visibilitychange", shown)
+        if (drafting) { clearTimeout(drafting); drafting = null }
+        go({ type: "close" })
       }
     },
-    get conflict() { return status.kind === "conflict" },
-    stopTimer() {
-      if (timer) { clearTimeout(timer); timer = null }
-      if (drafting) { clearTimeout(drafting); drafting = null }
-    },
+    get conflict() { return phase.kind === "conflict" },
 
     /** Typed: saved 600 ms after the last change (during a conflict, only said again). */
     changed() {
       // (typed in together, core/cosync.ts: the server saves it; this one only once it's alone again)
       if (keptLive(where())) return
-      if (s.conflict) return tell(status)
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => s.save(), 600)
-      // (kept on the device as typing pauses, not only as it saves: what a window closed before then wrote at pagehide
-      // doesn't get to IndexedDB)
-      if (drafting) clearTimeout(drafting)
-      drafting = setTimeout(() => { drafting = null; const text = o.current.text(); if (text !== s.disk) keepDraft(path, text, s.disk) }, 100)
+      go({ type: "typed" })
     },
 
-    async save(force = false): Promise<void> {
-      s.stopTimer()
-      if (keptLive(where())) return // (typed in together: the server saves it)
-      if (s.conflict && !force) return
-      if (saving) { again = true; return s.inflight?.done }
-      const sent = o.current.text(), base = s.disk
-      if (sent === base && !force) { dropDraft(path); return }
-      keepDraft(path, sent, base)
-      saving = true
-      let finish = () => {}
-      s.inflight = { text: sent, done: new Promise<void>((r) => { finish = r }) }
-      let r: Response | null = null
-      try {
-        r = await put(sent, base)
-        const j = await answer(r, sent)
-        if (r.status === 409) {
-          // On disk is a save of ours whose answer was lost: that's the base, and saving again merges onto it.
-          const own = ownSave(j.text, base)
-          if (own !== undefined) { s.disk = j.text; s.mtime = j.mtime; unconfirmed = []; adopt(own, j.text); again = true; return }
-          return void s.clash(base, j)
-        }
-        if (!r.ok) throw new Error(j.error || r.statusText)
-        o.current.onDisk?.(j)
-        s.mtime = j.mtime
-        const now = o.current.text()
-        if (j.text === sent || now === sent) {
-          s.disk = j.text
-          if (j.text !== sent && s.alive) o.current.apply(j.text) // the server filled something in, or merged a change from disk
-        } else {
-          // Typed more while it saved, and the server's differs: keep both, or the next save gets the 409.
-          const merged = merge3(sent, now, j.text)
-          if (merged !== null) { s.disk = j.text; if (s.alive) o.current.apply(merged) } else s.disk = sent
-          s.changed()
-        }
-        if (o.current.text() === s.disk) dropDraft(path)
-        unconfirmed = []
-        tell({ kind: "ok" })
-      } catch (e) {
-        if (!r) sentMaybe(sent)
-        tell({ kind: "error", message: errorReason(e) ?? "" })
-      } finally {
-        saving = false
-        s.inflight = null
-        finish()
-        if (again) { again = false; void s.save() }
-        else if (recheck && !timer) void s.check()
-      }
+    /** Saved now (`force`: even as it is on disk, or during a conflict, to settle it); after a save on its way. */
+    save(force = false): Promise<void> {
+      go({ type: "save", force })
+      return inflight?.done ?? Promise.resolve()
     },
 
     /** Everything saved, waited for (before a rename). */
     async settle() {
-      if (timer) await s.save()
-      while (s.inflight) await s.inflight.done
-      if (o.current.text() !== s.disk && !s.conflict) await s.save()
+      if (phase.kind === "pending") await s.save()
+      while (inflight) await inflight.done
+      if (now() !== s.disk && phase.kind !== "conflict") await s.save()
     },
 
     /** Merge in what's on disk (`known`: just read). While a save is pending or on its way, it runs after it. */
-    async check(known?: FileText) {
+    check(known?: FileText) {
       if (keptLive(where())) return
-      if (saving || timer || s.conflict) { recheck = !s.conflict; return }
-      recheck = false
-      const before = s.disk
-      try {
-        // (a long text is read again only when its file changed since: the change is often this view's own save)
-        if (!known && s.mtime && before.length > LEAN_PAST) {
-          const info = await get<{ mtime: number; size: number }>(`file/info?path=${encodeURIComponent(where())}`)
-          if (info.mtime === s.mtime && info.size === new TextEncoder().encode(before).length) return
-        }
-        const r = known ?? await readFile(where())
-        // Anything saved meanwhile makes this answer old: the save brought the new text.
-        if (!s.alive || s.disk !== before || saving || timer || s.conflict || r.text === before) return
-        const now = o.current.text()
-        const own = ownSave(r.text, before)
-        if (own !== undefined) unconfirmed = []
-        const merged = own !== undefined ? (own === r.text ? now : merge3(own, now, r.text) ?? now) : now === before ? r.text : merge3(before, now, r.text)
-        if (merged === null) return void s.clash(before, r)
-        s.disk = r.text
-        s.mtime = r.mtime
-        o.current.onDisk?.(r)
-        o.current.apply(merged)
-        if (merged !== r.text) s.changed()
-      } catch (e) {
-        if (s.alive && gone(e) && where() === path) o.current.onGone()
-      }
+      // (a read older than the last save, the one made as the view opened: the save brought newer text)
+      if (known && known.mtime < mtime) return
+      go({ type: "check", known })
     },
 
-    /** The file changed elsewhere in lines typed here: both sides kept as versions in File history, the rest merged,
-     *  and the clashing lines shown to settle (in the editor when it can, else `keep`). Saving waits till then. */
-    async clash(base: string, theirs: FileText) {
-      // No clash after all (both sides made the same edit, which merge3 refuses): the merge taken, as a check takes one.
-      const merged = (text: string) => {
-        s.disk = theirs.text
-        s.mtime = theirs.mtime
-        o.current.onDisk?.(theirs)
-        tell({ kind: "ok" })
-        if (s.alive) o.current.apply(text)
-        if (text !== theirs.text) s.changed()
-        else dropDraft(path)
-      }
-      const first = mergeClashes(base, o.current.text(), theirs.text)
-      if (!first.clashes.length) return merged(first.text)
-      const lines = (cs: Clash[]) => cs.map((k) => k.at + 1)
-      tell({ kind: "conflict", base, theirs, lines: lines(first.clashes) })
-      void post("history/keep", { path: where() }).catch(() => {})
-      void post("history/keep", { path: where(), text: o.current.text() }).catch(() => {})
-      const who = await whoWrote(where(), theirs.mtime)
-      if (!s.alive || status.kind !== "conflict" || status.theirs !== theirs) return
-      // (typed on meanwhile: merged again)
-      const { text, clashes } = mergeClashes(base, o.current.text(), theirs.text)
-      if (!clashes.length) return merged(text) // typed away meanwhile
-      const inline = !!o.current.conflict?.(text, clashes, who, s.left)
-      if (inline) { s.disk = theirs.text; s.mtime = theirs.mtime; o.current.onDisk?.(theirs) }
-      last = { kind: "conflict", base, theirs, lines: lines(clashes), who, inline }
-      tell(last)
-    },
     /** Conflicts left in the editor: none, saved; one back (undone), held again; `rest`, its editor went with them. */
     left(n: number, rest?: Clash[]) {
       if (rest) { if (s.conflict) parked = rest; return }
-      if (!n && s.conflict) { parked = null; tell({ kind: "ok" }); void s.save() }
-      else if (n && !s.conflict && last) tell(last)
+      if (!n && s.conflict) { parked = null; tell({ kind: "ok" }); go({ type: "resolve" }); void s.save() }
+      else if (n && !s.conflict && last) { tell(last); go({ type: "clash" }) }
     },
     /** A new editor drawn: the conflicts its last one left, shown again (else settled with `keep`). */
     reshow() {
       const c = status, rest = parked
       if (c.kind !== "conflict" || !c.inline || !rest) return
       parked = null
-      if (!o.current.conflict?.(o.current.text(), rest, c.who, s.left)) tell({ ...c, inline: false })
+      if (!o.current.conflict?.(now(), rest, c.who, s.left)) tell({ ...c, inline: false })
     },
     /** Settle a conflict not shown in place: the clashing lines as typed here (`mine`) or as on disk, the rest merged;
      *  a toast says where the other side is, and Undo brings the choice back. */
     keep(side: "mine" | "theirs") {
       if (status.kind !== "conflict") return
-      const c = status, typed = o.current.text()
+      const c = status, typed = now()
       const { text: merged, clashes } = mergeClashes(c.base, typed, c.theirs.text)
       const text = side === "mine" ? merged : withTheirs(merged, clashes)
       s.disk = c.theirs.text
-      s.mtime = c.theirs.mtime
-      o.current.apply(text)
+      mtime = c.theirs.mtime
+      show(text)
       tell({ kind: "ok" })
+      go({ type: "resolve" })
       const saved = text === c.theirs.text ? Promise.resolve() : s.save(true)
       if (text === c.theirs.text) dropDraft(path)
       // (the file as this choice saved it: anything typed after it, saved or not, would be lost to an undo)
       const kept = saved.then(() => s.disk)
       const undo = async () => {
         const disk = await kept
-        if (s.disk !== disk || o.current.text() !== disk) throw new Error("Couldn't undo: the text changed since. Both versions are in the note's history.")
+        if (s.disk !== disk || now() !== disk) throw new Error("Couldn't undo: the text changed since. Both versions are in the note's history.")
         // (the file back as it was, the text as typed, and the choice again)
         if (side === "mine" && s.disk !== c.theirs.text) await putJson("file", { path: where(), text: c.theirs.text, base: s.disk })
         s.disk = c.base
-        o.current.apply(typed)
+        show(typed)
         tell(c)
+        go({ type: "clash" })
       }
       notify(side === "mine" ? `Kept yours; ${theirName(c.who)} version is in the note's history` : `Kept ${theirName(c.who)} version; yours is in the note's history`,
         { id: `unsaved:${path}`, action: { label: "Undo", run: undo } })
-    },
-
-    /** Send what's pending without the view (it's going); a failure is a toast holding the edits. */
-    flush(base: string, say: boolean) {
-      const text = o.current.text()
-      if (text === base || o.current.readOnly || keptLive(where())) return
-      // (kept here first: a save too big for keepalive is a plain one, which a closed window may cut short)
-      keepDraft(path, text, base)
-      const send = async (base: string | null) => {
-        sentMaybe(text)
-        const r = await put(text, base, { keepalive: true })
-        if (r.status === 409) throw Object.assign(new Error(changedText()), { conflict: true })
-        if (!r.ok) throw Object.assign(new Error((await r.json().catch(() => ({}))).error ?? r.statusText), { gone: r.status === 404 })
-        dropDraft(path)
-      }
-      const changedText = () => (status.kind === "conflict" ? conflictText(status).replace(/\.$/, "") : "it changed elsewhere in the same lines")
-      const id = `unsaved:${path}`, saved = () => notify(`Saved ${stem(path)}`, { id })
-      const unsaved = (e: unknown) => {
-        const mine = !!(e as { conflict?: boolean }).conflict, why = mine ? null : errorReason(e)
-        notify(mine ? `Your edits to ${stem(path)} aren't saved: ${lower((e as Error).message)}` : `Couldn't save ${stem(path)}${why ? `: ${why}` : ""}`, { kind: "error", duration: 15_000, id,
-          action: { label: mine ? "Keep yours" : "Try again", run: async () => {
-            // (theirs is kept in File history first: nothing is lost)
-            if (mine) await post("history/keep", { path: where() }).catch(() => {})
-            await send(mine ? null : base)
-            notify(mine ? `Saved yours; ${theirName(status.kind === "conflict" ? status.who : undefined)} version is in the note's history` : `Saved ${stem(path)}`, { id })
-          } } })
-      }
-      if (s.conflict) { if (say) unsaved({ message: changedText(), conflict: true }); return }
-      send(base).catch((e) => {
-        if (!say) return
-        if (!(e as { gone?: boolean }).gone) unsaved(e)
-        // (deleted in the app meanwhile: that's what the user did; elsewhere: the edits are offered back)
-        else if (deletedHere(path)) dropDraft(path)
-        else notify(`${stem(path)} was moved or deleted before your last edits were saved`, {
-          kind: "error", duration: 15_000, id, action: { label: "Save them", run: async () => { await send(null); saved() } },
-        })
-      })
     },
   }
   return s

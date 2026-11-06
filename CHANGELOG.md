@@ -45,6 +45,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **An agent that stops no longer shows as working**: one that quits, crashes or is interrupted back to its shell is
   idle at once, even with no app open (the phone asleep), so its Inbox row, `vau terminal wait` and a delegated task's
   parent all hear its turn ended; a terminal server that dies says its terminals were lost, not that they exited cleanly.
+- **Autosave loses nothing in the gaps**: closing a note while it saves keeps what an agent's write merged in (and its
+  `updated:` date), a save that failed is sent again on its own (with backoff, on reconnecting and when the app is shown
+  again), a change on disk heard while a save waited is still merged in, and an old read no longer takes a note back.
 - **Mini-apps go anywhere**: any file can be drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right
   Apps/Weather.html`), so one .html page or note with a genui or mcp-app block is an embed, a tab or a panel.
 - **The Talk key's companion is never left halfway**: each press runs one state machine (held, sending, thinking,

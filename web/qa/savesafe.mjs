@@ -36,11 +36,15 @@ else {
   // (its folder read-only: a route that aborts the saves lets go of the one a closing page sends)
   chmodSync(`${VAULT}/Qa safe`, 0o555)
   await typeAtEnd(page, " Typed offline.")
-  // (kept on the device within a moment of typing, IndexedDB's write done: a window closed before then can't keep it)
+  // (kept on the device within a moment of typing, IndexedDB's write done: a window closed before then can't keep it.
+  // All of it: on a loaded machine a draft of the first keys is there before the last ones are)
   const kept = (p = page) => p.evaluate(() => new Promise((ok) => {
     const r = indexedDB.open("vaultite-drafts", 1)
     r.onupgradeneeded = () => r.result.createObjectStore("drafts") // (as the app makes it, if it hasn't yet)
-    r.onsuccess = () => { const q = r.result.transaction("drafts").objectStore("drafts").getAllKeys(); q.onsuccess = () => { r.result.close(); ok(q.result.some((k) => k.endsWith(":Qa safe/Big.md"))) } }
+    r.onsuccess = () => {
+      const q = r.result.transaction("drafts").objectStore("drafts").openCursor(), found = []
+      q.onsuccess = () => { const c = q.result; if (c) { if (String(c.key).endsWith(":Qa safe/Big.md")) found.push(c.value?.text ?? ""); c.continue() } else { r.result.close(); ok(found.some((t) => t.includes("Typed offline."))) } }
+    }
     r.onerror = () => ok(false)
   }))
   check("unsaved: kept on the device", !!(await until(() => kept(), 10_000)))
