@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion tells you a job's news aloud**: when one needs you, is ready for review, done or failed, its voice says
+  so in a line while you're at the Mac (you held its Talk key in the last 15 minutes) and not in a focus block; else the
+  menu bar's notification waits for you. Off with the setting Say a job's news.
 - **A server following a branch keeps up with a busy one**: when the newest commit hasn't passed CI yet (pushes coming
   faster than CI runs), `vau service`'s updates take the newest one that has, rather than waiting for a quiet moment.
 - **A finished agent's tab never starts it again after a restart**: a session you ended stays ended when its tab comes

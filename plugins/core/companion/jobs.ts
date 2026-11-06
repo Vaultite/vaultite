@@ -45,6 +45,18 @@ export type Job = {
 }
 
 /** Job `j` after event `ev` (at `t`): the move, logged with it, or null when it doesn't move. */
+/** What its voice says when job `j` moves to news (needs you, ready for review, done, failed), else "". */
+export function jobSpoken(j: Pick<Job, "title" | "state">, from: string) {
+  if (from === j.state) return ""
+  // (its first words, not ending on "on the": said aloud, it reads as cut)
+  const words = j.title.replace(/\s+/g, " ").trim().split(" ").slice(0, 6)
+  while (words.length > 1 && /^(the|a|an|on|of|to|in|for|and|with|at|by)$/i.test(words.at(-1)!)) words.pop()
+  const what = words.join(" ").replace(/[.:,;]+$/, "")
+  const job = what ? `The job "${what}"` : "A job"
+  return j.state === "needs you" ? `${job} needs you.` : j.state === "ready for review" ? `${job} is ready for review.`
+    : j.state === "done" && from !== "ready for review" ? `${job} is done.` : j.state === "failed" ? `${job} failed.` : ""
+}
+
 export function step(j: Job, ev: JobEvent, t = Date.now()): Transition | null {
   const to = JOB_NEXT[j.state][ev]
   if (!to || to === j.state) return null

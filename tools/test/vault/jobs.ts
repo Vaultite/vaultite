@@ -25,6 +25,10 @@ export default async ($: VaultTest) => {
       run(["working", "ended"]).state === "failed" && run(["working", "changed", "ended"]).state === "done" && run(["ended"]).state === "failed")
     check("jobs: every state is in the table, and each one reached is one of them", J.JOB_STATES.every((s) => s in J.JOB_NEXT) &&
       Object.values(J.JOB_NEXT).every((m) => Object.values(m).every((s) => (J.JOB_STATES as readonly string[]).includes(s!))))
+    check("jobs: its news in a line said aloud: needs you, ready for review, done, failed; a reviewed job done isn't news again",
+      J.jobSpoken({ title: "Make the header blue on the about page please", state: "ready for review" }, "working") === 'The job "Make the header blue" is ready for review.' &&
+      J.jobSpoken({ title: "x", state: "needs you" }, "working") === 'The job "x" needs you.' && J.jobSpoken({ title: "", state: "failed" }, "working") === "A job failed." &&
+      J.jobSpoken({ title: "x", state: "done" }, "ready for review") === "" && J.jobSpoken({ title: "x", state: "working" }, "starting") === "")
     check("jobs: a PR and a preview's link from the worker's last message", JSON.stringify(J.linksIn("Done. PR: https://github.com/lighthouse/site/pull/12, try http://localhost:5173/about.")) ===
       JSON.stringify({ pr: "https://github.com/lighthouse/site/pull/12", link: "http://localhost:5173/about" }) && J.linksIn("nothing", "https://m1.tail1.ts.net:8450").link === "https://m1.tail1.ts.net:8450")
   }

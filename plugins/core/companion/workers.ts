@@ -15,6 +15,8 @@ export type JobDeps = {
   did: (name: string, op: string) => void
   who: (p: Record<string, unknown>) => string
   cards: (cards: JobCard[]) => void
+  /** Job `j` moved on from `from` (its news told aloud, where the user is). */
+  moved?: (j: Job, from: string) => void
   as: object
 }
 /** A worker's terminal as read where it runs (the op companion.worker). */
@@ -62,6 +64,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (!x) return false
     log.append(x.t, [{ t: x.t, job: j.id, ev, from: x.from, to: x.to }])
     log.prune(30)
+    d.moved?.(j, x.from)
     return true
   }
 

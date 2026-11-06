@@ -21,7 +21,7 @@ import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmark
 import { anchorsOf, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
-import { jobTimingsText } from "./jobs.ts"
+import { type JobState, jobSpoken, jobTimingsText } from "./jobs.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
@@ -2302,7 +2302,19 @@ const jobs = jobOps(plugin, {
   askOf: (name) => (inSummoned.getStore() ? lane().last() : moments).findLast((m) => (m.kind === "ask" || m.kind === "point") && key(m.for ?? "") === key(name)),
   say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
+  moved: (j, from) => void jobNews(j.title, j.state, from).catch(() => {}),
 })
+/** How recent their last Talk key ask must be for a job's news to be said aloud. */
+const AROUND_MS = 15 * 60_000
+/** A job's news said in its voice, one line, only while they're at this Mac (a Talk key ask to its helper lately: never
+ *  aloud at home from a phone's ask) and not in a focus block; else the menu bar's notification waits for them, silent. */
+async function jobNews(title: string, state: string, from: string) {
+  const text = jobSpoken({ title, state: state as JobState }, from), last = moments.findLast((m) => m.summoned)?.t ?? 0
+  if (!text || mode() === "off" || setting("voice") === "off" || plugin.settings().job_voice === false || Date.now() - last > AROUND_MS) return
+  const block = await plugin.host.call("block.status", {}).then((r) => r.result as { now?: unknown } | null).catch(() => null)
+  if (block?.now) return
+  await plugin.desktop("voice:sample", { text })
+}
 
 /** The open task line `line` (1-based) of `src`, or the only one with `text`: its index, or -1. */
 export function openTaskLine(src: string, line: number, text: string) {
