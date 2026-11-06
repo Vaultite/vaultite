@@ -78,6 +78,11 @@ export default async ($: VaultTest) => {
       }
       const kept = [await pane({ tabBar: true, paneTitles: false }), await pane({ tabBar: false, paneTitles: false }), await pane({ tabBar: false, paneTitles: true })]
       check("paneTitles becomes paneTabBars, each look keeping its strips", kept.join() === [{ tabBar: true }, { tabBar: false, paneTabBars: false }, { tabBar: false }].map((x) => JSON.stringify(x)).join(), kept)
+      // (Zen's old "Floating panes" snippet: the app's pane cards instead, the user's own snippets kept)
+      write(".vaultite/appearance.json", JSON.stringify({ snippets: ["Floating panes", "Wide lines"], paneCards: false }) + "\n")
+      vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "zen-pane-cards-2026-11") })
+      await migrate(vault, false)
+      check("Zen's Floating panes snippet becomes pane cards, other snippets kept", JSON.stringify(conf("appearance")) === JSON.stringify({ snippets: ["Wide lines"], paneCards: true }), conf("appearance"))
       write(".vaultite/appearance.json", JSON.stringify(look) + "\n")
     }
 

@@ -29,11 +29,13 @@ import { siteIcon } from "./icons"
 import { pageBarItem, usePageBar } from "./pagebar"
 import { agentPages, doneAsk, pauseAgents, takeOver, toBackground, working, WORKING_MS } from "./agentpages"
 import { AgentWatch } from "./AgentWatch"
+import { framing } from "./framed"
+import FramedPage from "./FramedPage"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
 export default function WebPage(props: Props) {
-  return webPages ? <Page web={webPages} {...props} /> : <Elsewhere url={splitArg(props.arg).url} />
+  return webPages ? <Page web={webPages} {...props} /> : framing() ? <FramedPage {...props} /> : <Elsewhere url={splitArg(props.arg).url} />
 }
 
 /** On the web and phones: pages open outside (most sites refuse to be shown inside another page). */

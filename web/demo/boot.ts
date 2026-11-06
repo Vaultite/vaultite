@@ -2,6 +2,14 @@
 // through a service worker (sw.ts) for what the page fetches and a port for the live socket; then the app starts.
 import { SHOWN } from "./machine.ts"
 import { NEEDS_APP } from "./node/stub.ts"
+import { SITES } from "./sites.ts"
+import { frameSites } from "../../plugins/core/web-viewer/framed.ts"
+import neodisk from "./sites/neodisk.png?inline"
+import olimpicos from "./sites/olimpicos.png?inline"
+
+// The sites the Browser's tabs show live, with their icons (no page here can fetch another site's).
+const ICONS: Record<string, string> = { "https://neodisk.app/": neodisk, "https://olimpicos.net/": olimpicos }
+frameSites(SITES.map(({ url, title }) => ({ url, title, icon: ICONS[url] ?? "" })))
 
 // A translucent window's desktop (core/appearance.ts stands in for the app's): the demo's own wallpaper, or, with
 // ?desk=page (vaultite.com's bundle pages), the page's around it, which hears when the window is see-through (and dark).
@@ -224,13 +232,29 @@ async function bundles() {
     return false
   }
   const asked = new URLSearchParams(location.search).get("bundle")
+  const was = on
   if (asked && asked !== on) await openBundle(asked).catch((e) => fail(asked, String(e?.message ?? e)))
   post({ type: "vaultite-demo:bundle", bundle: on })
+  if (on === BROWSER) void liveSites(true, was !== BROWSER)
   addEventListener("message", async (e) => {
     if (e.origin !== location.origin || e.data?.type !== "vaultite-demo:apply" || typeof e.data.bundle !== "string") return
+    const was = on
     try { await openBundle(e.data.bundle, true) } catch (err) { fail(e.data.bundle, String((err as Error)?.message ?? err)) } finally { post({ type: "vaultite-demo:bundle", bundle: on }) }
+    if (on !== was && (on === BROWSER || was === BROWSER)) void liveSites(on === BROWSER, true)
   })
+
+  /** The Browser's live sites (sites.ts): its favourites while it's on, and open in tabs, the first in front, whenever
+   *  it's on and no web page is (the demo keeps no tabs between visits). */
+  async function liveSites(browser: boolean, changed: boolean) {
+    if (changed) for (const site of SITES) await api("pins", { path: `view:web/${site.url}`, pinned: browser }).catch(() => {})
+    if (!browser) return
+    await appUp()
+    const [{ getWorkspace, openTab }, { allPanes }] = await Promise.all([import("@/core/workspace"), import("../../core/layout.ts")])
+    if (allPanes(getWorkspace()).some((p) => p.to.startsWith("view:web/"))) return
+    SITES.forEach((site, i) => openTab(`view:web/${site.url}`, { background: i > 0 }))
+  }
 }
+const BROWSER = "browser"
 
 /** What the demo leaves out of a bundle, said plainly rather than looking broken: plugins needing a machine (terminals,
  *  agents) and those it installs from elsewhere (they run code: the app asks first). */
@@ -243,9 +267,32 @@ function leftOut(info: { needsApp: string[]; notInDemo: string[]; madeUp?: strin
   else if (parts.length) void toast(`Off in the demo: ${parts.join("; ")}. The rest is here to try`)
 }
 
-/** A toast, once the app is there to show it (it starts after the demo's server). `quiet`: shorter, no button. */
-async function toast(text: string, error = false, quiet = false) {
+/** Once the app is there (it starts after the demo's server), or 10 seconds on. */
+/** The site's look and its visitor's answer about AI (vaultite.com: ?theme=light|dark and ?ai=on|off, then its
+ *  vaultite-demo:theme and vaultite-demo:ai messages as they change there), followed once the app is up. */
+async function siteLook() {
+  const theme = (t: unknown) => (t === "light" || t === "dark" ? t : null)
+  const q = new URLSearchParams(location.search), ai = q.get("ai")
+  await appUp()
+  const { setPrefs } = await import("@/core/prefs")
+  const t = theme(q.get("theme"))
+  if (t) setPrefs({ theme: t })
+  if (ai === "on" || ai === "off") setPrefs({ ai: ai === "on" })
+  addEventListener("message", (e) => {
+    if (e.origin !== location.origin) return
+    const t = theme(e.data?.theme)
+    if (e.data?.type === "vaultite-demo:theme" && t) setPrefs({ theme: t })
+    if (e.data?.type === "vaultite-demo:ai" && typeof e.data.on === "boolean") setPrefs({ ai: e.data.on })
+  })
+}
+
+async function appUp() {
   for (let i = 0; i < 100 && !document.querySelector("[data-pane], [data-sonner-toaster], section[aria-label^='Notifications']"); i++) await new Promise((ok) => setTimeout(ok, 100))
+}
+
+/** A toast, once the app is there to show it. `quiet`: shorter, no button. */
+async function toast(text: string, error = false, quiet = false) {
+  await appUp()
   const { notify } = await import("@/core/notify")
   notify(text, { kind: error ? "error" : undefined, duration: quiet ? 5_000 : 10_000,
     action: error || quiet ? undefined : { label: "Get the app", run: () => { window.open("https://vaultite.com/download", "_blank", "noopener") } } })
@@ -255,4 +302,5 @@ await navigator.serviceWorker.register("sw.js", { scope: "./" })
 if (!navigator.serviceWorker.controller) await new Promise((ok) => navigator.serviceWorker.addEventListener("controllerchange", ok, { once: true }))
 await ready
 await bundles().catch(() => {}) // (the demo opens either way)
+void siteLook().catch(() => {})
 badge()
