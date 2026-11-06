@@ -22,7 +22,7 @@ export default async ($: VaultTest) => {
   }
 
   // ---------- the stand-in: OpenAI Realtime's events for small talk, and for a screen question (a tool call)
-  let refuse = false, mute = false, broke = false, connections = 0
+  let refuse = false, mute = false, broke = false, connections = 0, long = false // (long: its next answer is a story)
   const server = http.createServer(), wss = new WebSocketServer({ server, verifyClient: (_i, done) => done(!refuse, 401) })
   const got: Any[] = [], auths: string[] = []
   wss.on("connection", (ws: WebSocket, req) => {
@@ -52,7 +52,7 @@ export default async ($: VaultTest) => {
           return
         }
         // (no word of where they are: a long one, faster than it plays, till it's cancelled)
-        if (!m.response && !got.some((x) => x.type === "conversation.item.create")) { storyId = id; story = setInterval(() => audio(200), 50); return }
+        if (long || (!m.response && !got.some((x) => x.type === "conversation.item.create"))) { long = false; storyId = id; story = setInterval(() => audio(200), 50); return }
         send({ type: "response.output_audio_transcript.delta", response_id: id, delta: m.response ? "(as told)" : `I'm good, thanks! (${bytes} bytes)` })
         audio(200); audio(200)
         send({ type: "response.done", response: { id, status: "completed", usage, output: [] } })
@@ -134,6 +134,7 @@ export default async ($: VaultTest) => {
     // (barge-in: pressed while it speaks, it stops at once and the model hears how much was said; the old press hears nothing more)
     got.length = 0; ev.length = 0
     const p4 = { id: 4 }, p5 = { id: 5 }
+    long = true // (still speaking when pressed again, however late the press: the turn before's last words can't end it)
     f.press(p4)
     speak(f)
     f.release()
