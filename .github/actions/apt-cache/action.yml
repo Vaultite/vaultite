@@ -1,0 +1,38 @@
+# The Linux packages a job installs (Playwright's --with-deps, ours), kept in GitHub's cache: the runners' Ubuntu
+# mirror sometimes sends them at 50 kB/s, 20 to 30 minutes of a 45-minute job (2026-11-06). Run it before the installs
+# (restore), then with save: "true" after them. A new key each week, so updated packages are kept too.
+name: apt cache
+description: Keeps the Linux packages a job installs in GitHub's cache
+inputs:
+  name:
+    description: which job's packages
+    required: true
+  save:
+    description: "true: save what was downloaded"
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      run: |
+        echo "key=apt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.name }}-$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+        if [ "${{ inputs.save }}" != "true" ]; then
+          mkdir -p "$HOME/apt-cache/partial"
+          printf 'Dir::Cache::Archives "%s/apt-cache/";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' "$HOME" | sudo tee /etc/apt/apt.conf.d/99vaultite-cache > /dev/null
+        fi
+    - if: ${{ inputs.save != 'true' }}
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/apt-cache/*.deb
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: apt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.name }}-
+    - if: ${{ inputs.save == 'true' }}
+      id: has
+      shell: bash
+      run: echo "debs=$(ls "$HOME"/apt-cache/*.deb 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
+    - if: ${{ inputs.save == 'true' && steps.has.outputs.debs != '0' }}
+      uses: actions/cache/save@v4
+      with:
+        path: ~/apt-cache/*.deb
+        key: ${{ steps.key.outputs.key }}

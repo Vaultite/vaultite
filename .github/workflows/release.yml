@@ -120,7 +120,14 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
+      - uses: ./.github/actions/apt-cache
+        with:
+          name: release
       - run: npx playwright-core install --with-deps chromium
+      - uses: ./.github/actions/apt-cache
+        with:
+          name: release
+          save: "true"
       - if: env.STABLE != 'true'
         run: npm pkg set version=${{ needs.plan.outputs.version }}
       - run: npm run ${{ env.STABLE == 'true' && 'release:linux' || 'release:linux:nightly' }}

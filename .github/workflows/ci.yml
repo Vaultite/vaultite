@@ -50,12 +50,21 @@ jobs:
             ~/Library/Caches/ms-playwright
             ~/AppData/Local/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
+        uses: ./.github/actions/apt-cache
+        with:
+          name: test
       # (its system libraries only on Linux: on Windows Server --with-deps adds Media Foundation, minutes the tests never use)
       - if: ${{ !cancelled() }}
         run: npx playwright-core install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
       # (Linux's thumbnails are what's on PATH: core/thumbs.ts' converters, tested only where they're installed)
       - if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: sudo apt-get install -y --no-install-recommends imagemagick poppler-utils ffmpeg
+      - if: ${{ !cancelled() && runner.os == 'Linux' }}
+        uses: ./.github/actions/apt-cache
+        with:
+          name: test
+          save: "true"
       - if: ${{ !cancelled() }}
         run: npm run build
       - if: ${{ !cancelled() }}
@@ -91,7 +100,14 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vaultite/node_modules/playwright-core/package.json') }}
+      - uses: ./vaultite/.github/actions/apt-cache
+        with:
+          name: demo
       - run: npx playwright-core install --with-deps chromium webkit
+      - uses: ./vaultite/.github/actions/apt-cache
+        with:
+          name: demo
+          save: "true"
       # (tools/qa.ts builds the demo, then runs web/qa/demo.mjs on it)
       - run: npm run qa -- demo
   qa:
@@ -110,8 +126,15 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
       # (WebKit: what only iOS's engine draws, in paneswipe and textselect)
+      - uses: ./.github/actions/apt-cache
+        with:
+          name: qa
       - run: npx playwright-core install --with-deps chromium webkit
       - run: sudo apt-get install -y xvfb ffmpeg
+      - uses: ./.github/actions/apt-cache
+        with:
+          name: qa
+          save: "true"
       - run: npm run build
       - run: node tools/qa.ts --lint
       # The desktop scripts run Electron, which needs a display
