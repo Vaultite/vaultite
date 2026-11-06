@@ -1186,6 +1186,8 @@ async function sessionRow(k: Who, patch: Partial<InboxEvent>, news: boolean, cwd
   return put(e, old, es, news)
 }
 
+/** Handed terminals about to end (endHanded), by id: a reply typed meanwhile keeps it (keepHanded). */
+const endingSoon = new Map<string, ReturnType<typeof setTimeout>>()
 /** A handed terminal whose turn reported: it ends, once the agent has written it down. */
 function endHanded(terminal: string) {
   const at = terminal ? ending.get(terminal) : undefined
@@ -1193,7 +1195,15 @@ function endHanded(terminal: string) {
   ending.delete(terminal)
   if (Date.now() - at >= ENDING) return
   hand(terminal, false)
-  setTimeout(() => void plugin.runOp("terminal.end", { id: terminal, keepTabs: true }).catch(() => {}), 2000)
+  clearTimeout(endingSoon.get(terminal))
+  endingSoon.set(terminal, setTimeout(() => { endingSoon.delete(terminal); void plugin.runOp("terminal.end", { id: terminal, keepTabs: true }).catch(() => {}) }, 2000))
+}
+/** A reply goes to `terminal`: the end its last report set off (with that turn's end, or about to) is called off; still
+ *  handed, it ends once it reports again. */
+function keepHanded(terminal: string) {
+  ending.delete(terminal)
+  const t = endingSoon.get(terminal)
+  if (t) { clearTimeout(t); endingSoon.delete(terminal) }
 }
 
 /** A coding agent's name ("Claude Code") by its name in a terminal: one Vaultite knows, else its plugin's name. */
@@ -1620,8 +1630,10 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
     moveOn(list().filter((x) => x.id === e.id), "working")
     return { how: "host", terminal: e.terminal ?? null }
   }
+  if (e.terminal) keepHanded(e.terminal)
   const plan = await replyPlan(sessionOfRow(e), typable(sessions), how)
   if (!plan) throw new OpError(`its terminal ${e.terminal} has ended and it names no session to resume`, 409)
+  keepHanded(plan.to)
   if (plan.how === "type" && asks && (e.questions || e.ask === "question")) {
     // (its questions put away, as Esc does in its terminal, so the reply is a message, not keys in its choices)
     await ctx.api("POST", `terminals/${encodeURIComponent(plan.to)}/send`, { text: "\x1b", enter: false })
@@ -1744,6 +1756,7 @@ same way. A session on another of the Machines gets it through the app there.
     if (!r) throw new OpError(`no report ${to} in the inbox`, 404)
     const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || agentOfTerminal(terminal)
     if (!terminal && !(session && agent)) throw new OpError("this result doesn't say which session wrote it (only inbox.report's do)", 409)
+    if (terminal) keepHanded(terminal)
     const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
     const alive = (id: string) => !!id && sessions.some((s) => s.id === id)
     const at = await elsewhere(r, alive)

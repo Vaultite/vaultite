@@ -602,6 +602,12 @@ export default async ($: VaultTest) => {
       await api("POST", "ops/inbox.report", { title: "Not handed", work: "fix", tldr: "Did it.", summary: "Did it.", terminal: "claude-mine1", agent: "claude" })
       await api("POST", "inbox/hook?agent=claude&terminal=claude-mine1", { hook_event_name: "Stop" })
       check("handed: a terminal nobody handed a task stays", !handedOf().includes("claude-mine1"))
+      // (replied to before the turn that reported ended: never ended under the reply)
+      ;(service(app.plugins, "inbox:handed") as (t: string) => void)("claude-handed2")
+      ;[st, b] = await api("POST", "ops/inbox.report", { title: "Handed, then replied", work: "fix", tldr: "Did it.", summary: "Did it.", terminal: "claude-handed2", agent: "claude" })
+      await api("POST", "ops/inbox.reply", { to: "Inbox/Fix done · Handed, then replied.md", text: "Also the footer" })
+      await api("POST", "inbox/hook?agent=claude&terminal=claude-handed2", { hook_event_name: "Stop" })
+      check("handed: replied to before its turn ended, that turn's end doesn't end it (its next report will)", handedOf().includes("claude-handed2"), handedOf())
       // The same session's next report goes on in its file (after the reply, which archived it): one file per exchange.
       await api("POST", "ops/inbox.report", { title: "Thread start", work: "fix", tldr: "Ship it?", summary: "First round.", questions: ["Ship it?"], terminal: "claude-thread1", agent: "claude" })
       await api("POST", "ops/inbox.done", { item: "Inbox/Fix needs you · Thread start.md" })
