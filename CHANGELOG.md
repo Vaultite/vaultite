@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals come back clean after a restart**: output still being drawn when the connection dropped no longer lands
+  on top of the replay (a garbled screen), keys you type while it replays reach the program, and closing a terminal's
+  last tab while the server is slow to answer never ends what runs in it.
 - **Your passwords in Vaultite**: your own KeePass file (the one KeePassXC and Strongbox open) in a tab of the desktop
   app (Show passwords), unlocked with Touch ID or its password: entries searched and listed by group, their username,
   password, one-time code and websites to copy or open, edited or made with a generator, deleted to the recycle bin

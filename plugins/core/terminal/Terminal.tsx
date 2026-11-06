@@ -345,7 +345,7 @@ function create(id: string): Live {
   /** Its shell exited cleanly or was ended for good (End session, its tab closed): its tab closes, shown or not. */
   const closeIt = () => { l.ended = true; if (l.view) return l.view.close(); closeView(`terminal/${id}`); over() }
   // The replay after a reattach holds programs' old questions to the terminal; answered again, the answers would reach
-  // the shell as typing and swallow keys until Enter, so replies aren't sent while it's drawn.
+  // the shell as typing and swallow keys until Enter, so its replies (not what's typed) aren't sent while it's drawn.
   let replayNext = false, replaying = false
   // The shell's size, as the server last said: another device (the phone) may have made it its own.
   let shell = { cols: 0, rows: 0 }
@@ -369,11 +369,13 @@ function create(id: string): Live {
       drawn = 0
     }
     sock.onmessage = (e) => {
+      // (a socket being replaced: its last bytes would land on the new one's replay)
+      if (ws !== sock) return
       if (typeof e.data !== "string") {
         const bytes = new Uint8Array(e.data as ArrayBuffer), done = parsed(bytes.length)
         if (!replayNext) return t.write(bytes, shown ? done : () => { firstOutput(); done() })
         replayNext = false; replaying = true
-        return t.write(bytes, () => { replaying = false; firstOutput(); done() })
+        return t.write(bytes, () => { if (ws === sock) replaying = false; firstOutput(); done() })
       }
       let msg: { t?: string; fresh?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; backend?: string; cols?: number; rows?: number; ended?: boolean; lost?: boolean
         scrollback?: number }
@@ -391,6 +393,7 @@ function create(id: string): Live {
         // (as many lines as its shell keeps, the setting on the machine it runs on: the replay is all of them)
         if (msg.scrollback && msg.scrollback !== t.o.scrollback) t.setScrollback(msg.scrollback)
         t.reset() // what the shell printed comes again (the replay), or it's a new shell
+        replaying = false
         replayNext = !msg.fresh
         setStatus({ kind: "live" })
       } else if (msg.t === "blocked") {
@@ -433,7 +436,7 @@ function create(id: string): Live {
   }
 
   const send = (data: string | Uint8Array<ArrayBuffer>) => { if (ws?.readyState === WebSocket.OPEN) ws.send(data) }
-  const onBytes = t.onBytes((d) => { if (!replaying) send(typeof d === "string" ? enc.encode(d) : d as Uint8Array<ArrayBuffer>) })
+  const onBytes = t.onBytes((d, reply) => { if (!replaying || !reply) send(typeof d === "string" ? enc.encode(d) : d as Uint8Array<ArrayBuffer>) })
   // Drawn at each new size at once; the shell hears a lone one (a sidebar shown) at once, a run of them (a window dragged)
   // once it settles: a program redraws its whole screen for every size it's given (an agent's, dozens into the history).
   let resizing = 0, lastResize = -Infinity

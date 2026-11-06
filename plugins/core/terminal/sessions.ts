@@ -99,11 +99,11 @@ function fetchSessions(ms = 1500): Promise<Session[] | null> {
   })
 }
 
-/** The ones among `ids` with something running (what ending them would kill). Server unreachable: agents' terminals,
- *  to be safe; another machine's not in the list are `unknown`, so nothing ends them. */
+/** The ones among `ids` with something running (what ending them would kill). The server not answering in time (slow
+ *  isn't gone): all `unknown`, so nothing ends them; nor another machine's not in the list. */
 async function running(ids: string[]) {
   const list = await fetchSessions()
-  const unknown = list ? ids.filter((id) => id.includes("@") && !list.some((s) => s.id === id)) : []
+  const unknown = list ? ids.filter((id) => id.includes("@") && !list.some((s) => s.id === id)) : [...ids]
   const keep = list
     ? list.filter((s) => ids.includes(s.id) && busy(s)).map((s) => ({ id: s.id, label: labelOf(s) }))
     : ids.flatMap((id) => { const a = agentOfTerminal(id); return a ? [{ id, label: a.label }] : [] })
@@ -115,7 +115,9 @@ async function running(ids: string[]) {
 async function confirmEnd(ids: string[]) {
   const seen = ws?.readyState === WebSocket.OPEN ? ids.map(sessionById) : []
   const known = seen.length > 0 && seen.every((s) => s && busy(s))
-  const busyOnes = known ? seen.map((s) => labelOf(s!)) : (await running(ids)).map((r) => r.label)
+  const r = known ? null : await running(ids)
+  // (what runs there couldn't be checked: asked all the same, as ending kills it)
+  const busyOnes = known ? seen.map((s) => labelOf(s!)) : [...r!.map((x) => x.label), ...r!.unknown.filter((id) => !r!.some((x) => x.id === id)).map((id) => { const s = sessionById(id); return s ? labelOf(s) : "this terminal" })]
   if (!busyOnes.length) return null
   const one = busyOnes.length === 1
   return {

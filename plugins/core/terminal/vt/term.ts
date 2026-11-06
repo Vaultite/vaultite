@@ -70,7 +70,7 @@ export class Term {
   private blinkOn = true
   private blinkTimer = 0
   private lastOffset = -1
-  private handlers = { render: new Set<Listener<void>>(), bytes: new Set<Listener<string | Uint8Array>>(), resize: new Set<Listener<{ cols: number; rows: number }>>(), scroll: new Set<Listener<number>>() }
+  private handlers = { render: new Set<Listener<void>>(), bytes: new Set<(v: string | Uint8Array, reply: boolean) => void>(), resize: new Set<Listener<{ cols: number; rows: number }>>(), scroll: new Set<Listener<number>>() }
   private keyHook: ((e: KeyboardEvent) => boolean) | null = null
   providers = new Set<LinkProvider>()
   /** The link under the pointer, underlined. */
@@ -88,7 +88,7 @@ export class Term {
     this.o = o
     this.cols = o.cols ?? 80; this.rows = o.rows ?? 24
     this.wantGl = o.webgl
-    this.s = new Screen(wasm, { cols: this.cols, rows: this.rows, scrollback: o.scrollback, onReply: (r) => this.emit(r) })
+    this.s = new Screen(wasm, { cols: this.cols, rows: this.rows, scrollback: o.scrollback, onReply: (r) => this.emit(r, true) })
     this.s.onClipboard = (t) => o.onCopy(t)
     this.applyTheme()
   }
@@ -240,7 +240,9 @@ export class Term {
     if (this.finding) this.refind()
     if (this.queue.length) this.pumping = window.setTimeout(this.pump, 0)
   }
+  /** A blank screen; output still queued from before is dropped (a reconnect replays it, or it was the old shell's). */
   reset() {
+    this.queue.length = 0
     this.s.reset()
     this.s.clearSelection()
     this.allRows = true; this.stale = true
@@ -332,12 +334,13 @@ export class Term {
 
   // ---------- input
 
-  onBytes(fn: Listener<string | Uint8Array>): Disposable { this.handlers.bytes.add(fn); return { dispose: () => this.handlers.bytes.delete(fn) } }
+  /** Bytes for the program: typed, pasted, the mouse; `reply`, the terminal's own answer to what it was sent. */
+  onBytes(fn: (v: string | Uint8Array, reply: boolean) => void): Disposable { this.handlers.bytes.add(fn); return { dispose: () => this.handlers.bytes.delete(fn) } }
   /** After each frame drawn (what sits over the screen follows it: dictation's words). */
   onRender(fn: Listener<void>): Disposable { this.handlers.render.add(fn); return { dispose: () => this.handlers.render.delete(fn) } }
   onResize(fn: Listener<{ cols: number; rows: number }>): Disposable { this.handlers.resize.add(fn); return { dispose: () => this.handlers.resize.delete(fn) } }
   onScroll(fn: Listener<number>): Disposable { this.handlers.scroll.add(fn); return { dispose: () => this.handlers.scroll.delete(fn) } }
-  emit(data: string | Uint8Array) { if (data.length) for (const fn of this.handlers.bytes) fn(data) }
+  emit(data: string | Uint8Array, reply = false) { if (data.length) for (const fn of this.handlers.bytes) fn(data, reply) }
   /** Bytes as if typed (the phone's key row); the view goes to the end, as typing does. */
   input(data: string) { this.toBottom(); this.emit(data) }
   /** Text pasted: bracketed when the program asked, unsafe control characters dropped. */
