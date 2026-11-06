@@ -83,6 +83,12 @@ check("the card shows the page live", await until(async () => /^data:image\/jpeg
 await op("act", { tab: T, action: "hover", ref })
 await wait(900)
 await shot("1-panel")
+// (a list that reuses its rows puts another item in the same element: the old ref no longer acts there)
+const swap = (from, to) => op("evaluate", { tab: T, expression: `(() => { const b = [...document.querySelectorAll("button")].find((x) => x.textContent === ${JSON.stringify(from)}); if (b) b.textContent = ${JSON.stringify(to)}; return !!b })()` })
+await swap("Track order", "Cancel order")
+const stale = await op("act", { tab: T, action: "click", ref })
+check("a ref whose element now says something else isn't acted on: take a new snapshot", /now button "Cancel order".*new snapshot/.test(stale?.error ?? "") && (await tabOf(T))?.title === "clicks=1", stale)
+await swap("Cancel order", "Track order")
 
 // ---------- a cross-site load: it still draws ----------
 await op("navigate", { tab: T, to: OTHER })

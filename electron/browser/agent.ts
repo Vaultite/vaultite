@@ -107,11 +107,14 @@ const INTERACTIVE = new Set(["button", "link", "textbox", "searchbox", "combobox
 const SKIP = new Set(["none", "generic", "InlineTextBox", "LineBreak", "presentation", "LayoutTable", "LayoutTableRow", "LayoutTableCell", "MenuListPopup"])
 /** Each page's refs: an element keeps its ref while its document lasts, so refs stay good from one snapshot to the next
  *  and a diff shows only what changed. Never reused in a page: a new document's go on from the last one's. */
-type Refs = { byRef: Map<string, number>; byNode: Map<number, string>; n: number }
+type Refs = { byRef: Map<string, number>; byNode: Map<number, string>; n: number
+  /** What each ref was in the last snapshot (its role and name): a list that reuses its rows (Gmail, Slack) can put
+   *  another item in the same element, and an act by the old ref would land on it. */
+  what: Map<string, { role: string; name: string }> }
 const refs = new WeakMap<WebContents, Refs>()
 const refsOf = (wc: WebContents) => {
   let r = refs.get(wc)
-  if (!r) refs.set(wc, (r = { byRef: new Map(), byNode: new Map(), n: 0 }))
+  if (!r) refs.set(wc, (r = { byRef: new Map(), byNode: new Map(), n: 0, what: new Map() }))
   return r
 }
 /** Each page's tree as an agent last saw it, and which document it was (docOf): what act's diff is against. */
@@ -120,15 +123,19 @@ eachPage((p) => p.wc.on("did-navigate", () => {
   const r = refs.get(p.wc)
   r?.byRef.clear()
   r?.byNode.clear()
+  r?.what.clear()
 }))
 const MAX_SNAPSHOT = 60_000
 const MAX_TREE = 1_000_000
 
 /** The page's accessibility tree, a line per node shown, its controls with refs; short, as each line costs agents tokens
  *  (no text a name already says, no empty wrappers, a row of simple parts on one line, a long list's first options). */
-async function tree(p: EnginePage) {
+async function tree(p: EnginePage, again = true): Promise<string[]> {
+  const doc = docOf(p.wc)
   await cdp(p.wc, "Accessibility.enable")
   const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getFullAXTree")
+  // (it went to another page as it was read: the old page's controls would take the new one's refs)
+  if (docOf(p.wc) !== doc) { if (again) return tree(p, false); throw new Error("the page kept changing as it was read: take a snapshot again in a moment") }
   const byId = new Map(nodes.map((n) => [n.nodeId, n]))
   const kids = new Set(nodes.flatMap((n) => n.childIds ?? []))
   const root = nodes.find((n) => !kids.has(n.nodeId)) ?? nodes[0]
@@ -159,6 +166,7 @@ async function tree(p: EnginePage) {
     if ((INTERACTIVE.has(role) || (props.focusable === true && !!name)) && id) {
       let ref = r.byNode.get(id)
       if (!ref) { ref = `e${++r.n}`; r.byNode.set(id, ref); r.byRef.set(ref, id) }
+      r.what.set(ref, { role, name })
       line += ` [ref=${ref}]`
       info = true
     }
@@ -304,8 +312,15 @@ function uploadFiles(files: unknown): string[] {
 // ---------- acting, with real input ----------
 
 async function nodeOf(p: EnginePage, ref: unknown) {
-  const id = refsOf(p.wc).byRef.get(String(ref))
+  const r = refsOf(p.wc), id = r.byRef.get(String(ref))
   if (!id) throw new Error(`no ref ${String(ref)} on this tab's page: take a snapshot (\`vau browser snapshot ${p.id}\`)`)
+  const was = r.what.get(String(ref))
+  if (was) {
+    const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false }).catch(() => ({ nodes: [] as AXNode[] }))
+    const n = nodes.find((x) => x.backendDOMNodeId === id) ?? nodes[0]
+    const name = String(n?.name?.value ?? "").replace(/\s+/g, " ").trim().slice(0, 200), role = String(n?.role?.value ?? "")
+    if (n && (role !== was.role || name !== was.name)) throw new Error(`ref ${String(ref)} is now ${role} "${scrub(name)}", not the ${was.role} "${scrub(was.name)}" it was: take a new snapshot`)
+  }
   try { await cdp(p.wc, "DOM.scrollIntoViewIfNeeded", { backendNodeId: id }) } catch { throw new Error(`ref ${String(ref)} is gone from the page: take a new snapshot`) }
   const { model } = await cdp<{ model: { content: number[] } }>(p.wc, "DOM.getBoxModel", { backendNodeId: id })
   const q = model.content
