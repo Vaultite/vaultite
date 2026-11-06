@@ -13,6 +13,8 @@ export { appDevice, del, get, op, patch, post, put } from "@/core/http"
 export { guestEdits, share, type Share } from "@/core/share"
 /** A note typed in together now (a plugin's live session): its editors' autosave stands down while the server keeps it. */
 export { keepLive, keptLive } from "@/core/cosync"
+/** A note whose saving a conflict holds (the user hasn't chosen what to keep): what's typed in it isn't saved yet. */
+export { heldByConflict } from "@/core/autosave"
 export type { Store } from "@/core/data"
 
 /** What plugins keep in the store, declared by each in a module of its own: `declare

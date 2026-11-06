@@ -285,6 +285,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Heading`
 - `HeadingButton({ icon, label, tip, strokeWidth, className, … })`: An icon button in a panel's heading or a row: its label is its tooltip unless `tip` says otherwise.
 - `headingsOf(text)`: Every `# heading` of a text (ATX), in order, with its line (0-based).
+- `heldByConflict(path)`
 - `hidePanel(key)`: Hide a panel (out of both sidebars; its plugin stays on).
 - `HIGHLIGHT_COLORS`: The six colours, in Obsidian's order: each one's name (drawn as `hl-<name>`) and emoji.
 - `HIGHLIGHT_EMOJI`: A colour emoji (with the variation selector some keyboards add after it).
@@ -613,7 +614,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SettingRow({ label, sub, stack, below, value, onClick, chevron, preview, children, className, … })`: A setting: name and line on the left, control on the right (`stack`: under it on phones; `below`: always, a chip list); `onClick`: a button with `value` and a chevron; `preview`: pictures of what…
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
-- `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent): the text the server has then, as the first editor knows it (undefined: none open; a…
+- `settleFile(path)`: Save what's typed in `path`'s open editors, once a conflict there is settled, before typing in it together: the text the server has then, as the first editor knows it (undefined: none open; a…
 - `setUiMarks(owner, marks)`: `owner`'s marks now, by data-ui id (an empty map takes them all down).
 - `severalMachines()`: Whether this vault runs on another machine too (a command about machines is offered only then): false until known, asked once in the background.
 - `share`

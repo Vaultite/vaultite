@@ -87,7 +87,8 @@ type Props = {
   docPath?: string
   /** What the slash menu offers (Markdown only). */
   slash?: () => SlashItem[]
-  onReady?: (api: EditorApi) => void
+  /** Drawn; what it returns runs as the editor goes (after its conflicts are handed back). */
+  onReady?: (api: EditorApi) => void | (() => void)
   placeholderText?: string
   label?: string
   /** Source mode: the whole file, frontmatter included, as plain text. */
@@ -448,7 +449,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         v.focus()
       },
     }
-    onReady?.(api)
+    const unready = onReady?.(api)
     // A Markdown file: others find its headings and blocks here (links to them, the Outline panel).
     const unregister = docPath && language === undefined && !code ? registerDoc({
       path: docPath,
@@ -468,7 +469,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     const unlist = registerEditor({ view: v, kind: language !== undefined ? "code" : code ? "text" : "markdown", path: docPath ?? (language || undefined), source: !!source,
       start: (s) => s.field(frontmatter, false) ?? 0, undo: () => undo(v), redo: () => redo(v), findable, blocks: () => drawnBlocks(v) })
     trace("editor", { ev: "mount", path: docPath ?? label, head: v.state.selection.main.head, editable, source: !!source })
-    return () => { trace("editor", { ev: "destroy", path: docPath ?? label, head: v.state.selection.main.head }); leaveConflicts(v); unregister?.(); unlist(); if (keepAs) keepState(keepAs, v.state, !!source); v.destroy(); view.current = null }
+    return () => { trace("editor", { ev: "destroy", path: docPath ?? label, head: v.state.selection.main.head }); leaveConflicts(v); unready?.(); unregister?.(); unlist(); if (keepAs) keepState(keepAs, v.state, !!source); v.destroy(); view.current = null }
     // One editor per file: the parent keys this component by path.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

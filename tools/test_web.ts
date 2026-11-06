@@ -3429,13 +3429,15 @@ await section("autosave", async () => {
   g.addEventListener = win.addEventListener.bind(win); g.removeEventListener = win.removeEventListener.bind(win); g.document = doc
   const as: Any = await web("core/autosave.ts")
   const ticks = async (n = 30) => { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)) }
-  /** An editor on the file as it is now: its text, what autosave said, and how to close it. */
-  const open = () => {
-    let typed = srv.text
+  /** An editor on the file as it is now: its text, what autosave said, and how to close it; `inPlace`, it shows a
+   *  conflict's clashes in its text (`shown`: them, and how it says how many are left), as editor/conflicts.ts does. */
+  const open = (inPlace = false) => {
+    let typed = srv.text, shown: Any = null
     const said: Any[] = []
-    const saver = as.makeAutosave(P, srv.text, { text: () => typed, apply: (t: string) => { typed = t }, onStatus: (s: Any) => said.push(s), onGone: () => {} })
+    const conflict = inPlace ? (text: string, clashes: Any[], _who: unknown, left: Any) => { typed = text; shown = { clashes, left }; return true } : undefined
+    const saver = as.makeAutosave(P, srv.text, { text: () => typed, apply: (t: string) => { typed = t }, onStatus: (s: Any) => said.push(s), onGone: () => {}, conflict })
     const close = saver.mount()
-    return { saver, close, said, get text() { return typed }, type(t: string) { typed = t; saver.changed() }, set(t: string) { typed = t } }
+    return { saver, close, said, get text() { return typed }, get shown() { return shown }, type(t: string) { typed = t; saver.changed() }, set(t: string) { typed = t } }
   }
 
   {
@@ -3516,6 +3518,31 @@ await section("autosave", async () => {
     check("autosave: closed mid-save after typing on, the agent's line, what was sent and what came after are all kept", srv.text === "agent\na\nb\nc\nd\n", srv.text)
   }
   {
+    // A conflict shown in place, then its editor goes (a plugin's page view): settled from the banner, with what was
+    // done in that view (a task ticked) saved too, and no agent's edit taken meanwhile.
+    srv.text = "a\nb\n- [ ] t\n"
+    const ed = open(true)
+    ed.type("a\nmine\n- [ ] t\n")
+    srv.text = "a\ntheirs\n- [ ] t\n"
+    await ed.saver.save()
+    await ticks()
+    const shown = ed.said.at(-1)
+    check("autosave: a conflict in place holds the note against agents' edits", shown?.kind === "conflict" && shown.inline === true && !!as.heldByConflict?.(P), { said: shown, held: as.heldByConflict?.(P) })
+    ed.shown.left(1, ed.shown.clashes) // (its editor went, handing back what's left)
+    check("autosave: a conflict whose editor went is settled from the banner, not shown in place", ed.said.at(-1)?.kind === "conflict" && ed.said.at(-1).inline === false, ed.said.at(-1))
+    ed.saver.reshow() // (an editor drawn again: in place again)
+    const again = ed.said.at(-1)?.inline === true
+    ed.shown.left(1, ed.shown.clashes)
+    ed.type("a\nmine\n- [x] t\n")
+    await ticks()
+    const held = srv.text
+    ed.saver.keep("theirs")
+    await ticks()
+    check("autosave: shown again by the next editor; without one, Keep theirs saves theirs and what was done meanwhile",
+      again && held === "a\ntheirs\n- [ ] t\n" && srv.text === "a\ntheirs\n- [x] t\n" && ed.said.at(-1)?.kind === "ok" && !as.heldByConflict(P), { again, held, disk: srv.text })
+    ed.close()
+  }
+  {
     const step = as.step ?? (() => ({ to: null, do: [] }))
     const gone = step({ kind: "gone" }, { type: "typed" }, () => false), later = step({ kind: "error", tries: 2, retry: true }, { type: "retry" }, () => false)
     const closing = step({ kind: "saving", typed: false, again: false, recheck: false, tries: 0 }, { type: "close" }, () => false)
@@ -3591,11 +3618,31 @@ await section("autosave", async () => {
     Object.assign(room, { others: 0, remote: false })
     fake.wrote = () => room.reread()
     const ed = open(), v = view(ed), plug = cotype(P)[1].create(v)
-    co.settleFile = async () => { await ed.saver.settle(); return ed.saver.disk }
+    co.settleFile = async () => { await ed.saver.calm(); return ed.saver.disk }
     await ticks()
     return { ed, v, close: () => { plug.destroy(); ed.close() } }
   }
 
+  {
+    // Someone comes during a conflict: typed in together only once it's settled, on the text kept. (First: a room
+    // closed hands its note back only a while later.)
+    const { ed, close } = await together("a\nb\n")
+    ed.type("a\nmine\n")
+    srv.text = "a\ntheirs\n"
+    await ed.saver.save()
+    await ticks()
+    room.peers(1)
+    await ticks()
+    const during = ed.text
+    ed.saver.keep("mine")
+    await ticks()
+    room.write()
+    check("cotype: someone joining during a conflict waits for it: the text isn't taken over, then what was kept is typed in together",
+      during === "a\nmine\n" && ed.text === "a\nmine\n" && srv.text === "a\nmine\n", { during, editor: ed.text, disk: srv.text })
+    room.peers(0)
+    await ticks()
+    close()
+  }
   {
     const { ed, v, close } = await together("a\n")
     room.peers(1)

@@ -4,7 +4,7 @@ import { closeCompletion, type Completion, type CompletionContext, completionSta
 import { isolateHistory } from "@codemirror/commands"
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
-import { capitalize, dictation, keyHint, type MenuItem, notify, notifyError, onDictation, op, pluginSettings, share, speakingIn, type EditorCtx } from "@vaultite"
+import { capitalize, dictation, heldByConflict, keyHint, type MenuItem, notify, notifyError, onDictation, op, pluginSettings, share, speakingIn, type EditorCtx } from "@vaultite"
 import { MessageCircle } from "lucide-react"
 import { authorAt } from "@plugins/provenance/gutter"
 import { cotype } from "./cotype"
@@ -91,8 +91,13 @@ const typingNow = (view: EditorView) => Date.now() - (userTyped.get(view) ?? 0) 
 /** Editors whose agent's typing the user stopped (Esc): the rest shows at once. */
 const halted = new WeakSet<EditorView>()
 
+/** An agent's edit can't go in while a conflict holds the note's saving: it would say typed, and not be saved. */
+const HELD = "the note has a conflict the user hasn't settled: nothing typed in it is saved until they choose what to keep, so try again after"
+
 /** Type edit `e` into `view`: find replaced (or new lines after the line with after, after line, or at the end). */
 async function type(view: EditorView, e: EditAsk) {
+  // (an agent's ask; a suggestion the user takes is their own typing, saved once it's settled)
+  if (e.rid && e.path && heldByConflict(e.path)) throw new Error(HELD)
   const p = placeIn(view.state.doc, e), { from, to } = p
   const text = p.lead + wordsFor(e.text, p) + p.tail, removed = view.state.sliceDoc(from, to)
   const animate = e.animate !== false && document.visibilityState === "visible" && !matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -162,6 +167,7 @@ function place(L: Live) {
   const view = L.view, e = L.ask!
   if (!view.dom.isConnected) { live.delete(L.rid); return say({ t: "done", rid: L.rid, ok: false }) }
   if (typingNow(view)) return whenStill(L, () => place(L))
+  if (e.path && heldByConflict(e.path)) { live.delete(L.rid); return say({ t: "done", rid: e.rid, ok: false, error: HELD }) }
   let p: ReturnType<typeof placeIn>
   try { p = placeIn(view.state.doc, e) } catch (err) { live.delete(L.rid); return say({ t: "done", rid: e.rid, ok: false, error: (err as Error).message }) }
   Object.assign(L, { lead: p.lead, tail: p.tail, removed: view.state.sliceDoc(p.from, p.to), ask: undefined })

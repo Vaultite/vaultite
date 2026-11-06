@@ -710,7 +710,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     if (block !== f) editAround(joinFm(block, b))
   }, [editAround])
 
-  useEffect(() => onSettle(path, settle, () => saver.disk), [path, settle, saver])
+  useEffect(() => onSettle(path, saver.calm, () => saver.disk), [path, saver])
 
   const [badJson, setBadJson] = useState<string | null>(null)
   const jsonCheck = useRef(0)
@@ -855,8 +855,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const fmText = propsIn === "source" && shown === "live"
   // (a dashboard being read is its blocks: no Properties)
   const showProps = !source && !json && !notebook && !format && !(dash && shown === "read") && (shown === "read" ? propsIn !== "hidden" : propsIn === "visible")
-  // Drawn JSON isn't an editor: merges from disk only update the text it's drawn from.
-  useEffect(() => { if ((json || notebook || format) && !source) editor.current = null }, [json, notebook, format, source])
 
   // On desktop the bar shows where the file is, so nothing is above the title; phones have no path bar, so a file in a
   // tab says where it is, like in the sheet.
@@ -968,7 +966,12 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
                 {...(source ? { editable: !ro, source: true, numbered: true, code: strict ? "json" : format?.code, language: code ? path : format?.source ? `source.${format.source}` : undefined }
                   : { frontmatter: !fmText, editable: shown === "live" && !ro, placeholderText: shown === "read" ? "" : "Start writing", numbered: shown !== "read",
                     onUndoFrontmatter: () => revealProps(article.current) })}
-                onReady={(api) => { editor.current = { api, source }; ready(api, source); saver.reshow(); if (kept?.write) toText() }}
+                onReady={(api) => {
+                  const me = { api, source }
+                  editor.current = me
+                  ready(api, source); saver.reshow(); if (kept?.write) toText()
+                  return () => { if (editor.current === me) editor.current = null }
+                }}
                 onChange={(text, start) => typed(text, source || fmText ? null : start)} />
             )}
           </Suspense>}

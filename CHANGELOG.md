@@ -10,6 +10,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   which only bash, zsh and fish know, so the agent never started there (Linux with `/bin/sh` as the terminal's shell).
 - **A quick tap of the Talk key on a busy Mac stays a tap**: the key's press and release carry when they happened, so a
   Mac slow to hear them no longer reads a tap (its box) as a hold (listening).
+- **A conflict you haven't settled holds up nothing else**: leaving the editor for a page view (a plugin's) during one
+  shows Keep yours and Keep theirs, which save what you did there too; someone joining to type with you waits until
+  it's settled instead of taking over the text; and an agent's edit is refused with a reason rather than said to be
+  done and left unsaved.
 - **A window left open across an update no longer breaks on a plugin updated meanwhile**: a vault plugin written for a
   newer plugin API waits instead of drawing names the window lacks (Next actions failed to draw with Dataview's new Do
   it), and the window reloads once into the new build when nothing would be lost.

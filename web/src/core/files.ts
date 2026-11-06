@@ -236,8 +236,8 @@ function prefetchFile(path: string) {
   ahead.set(path, { p, at: now })
 }
 
-/** Each open editor's way to save what's typed now and wait for it (FileView's `settle`), and the text the server has
- *  from it (`disk`), by its file. */
+/** Each open editor's way to save what's typed now and wait for it (autosave's `calm`: a conflict settled first), and
+ *  the text the server has from it (`disk`), by its file. */
 type Settler = { settle: () => Promise<void>; disk: () => string }
 const settlers = new Map<string, Set<Settler>>()
 export function onSettle(path: string, settle: () => Promise<void>, disk: () => string) {
@@ -245,7 +245,7 @@ export function onSettle(path: string, settle: () => Promise<void>, disk: () => 
   settlers.set(path, set.add(me))
   return () => { set.delete(me); if (!set.size && settlers.get(path) === set) settlers.delete(path) }
 }
-/** Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent): the text
+/** Save what's typed in `path`'s open editors, once a conflict there is settled, before typing in it together: the text
  *  the server has then, as the first editor knows it (undefined: none open; a failed save leaves it behind the typing). */
 export async function settleFile(path: string): Promise<string | undefined> {
   const open = [...(settlers.get(path) ?? [])]

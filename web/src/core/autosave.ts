@@ -188,6 +188,10 @@ export function step(p: Phase, e: SaveEvent, nothing: () => boolean): { to: Phas
   }
 }
 
+/** The files a conflict holds now (each saver's `where`): what's typed in them isn't saved till it's settled. */
+const holding = new Set<() => string>()
+export const heldByConflict = (path: string) => [...holding].some((w) => w() === path)
+
 /** How long a failed save waits before it's sent again (tries: 1 and up). */
 const backoff = (tries: number) => Math.min(30_000, 1000 * 2 ** tries)
 /** How long a save may take: one left hanging (a phone's stuck tunnel) holds every save after it. */
@@ -211,9 +215,12 @@ export function makeAutosave(path: string, initial: string, options: Options) {
   let ghost: string | null = null
   const now = () => ghost ?? o.current.text()
   const show = (text: string) => { if (ghost === null) o.current.apply(text); else ghost = text }
-  /** The last conflict, to go back to (Undo); and what's left of it when its editor went (a switch to source mode). */
+  /** The last conflict, to go back to (Undo); and what's left of it when its editor went (a switch to source mode, a
+   *  plugin's page): its clashes in the text as it was then, settled with `keep` or shown again by the next editor. */
   let last: Conflict | null = null
-  let parked: Clash[] | null = null
+  let parked: { text: string; clashes: Clash[] } | null = null
+  /** Waiting for the conflict to be settled (`calm`). */
+  let calmed: (() => void)[] = []
   /** Texts sent whose answer never came (the network dropped, the page went): the server may have them, so finding
    *  one on disk is this editor's own save, not a change elsewhere. */
   let unconfirmed: string[] = []
@@ -251,6 +258,8 @@ export function makeAutosave(path: string, initial: string, options: Options) {
     const { to, do: effects } = step(phase, e, () => keptLive(where()) || (!(e.type === "save" && e.force) && now() === s.disk))
     phase = to
     if (to.kind !== was.kind) trace("autosave", { path, from: was.kind, to: to.kind, on: e.type })
+    if (to.kind === "conflict") holding.add(where)
+    else if (was.kind === "conflict") { holding.delete(where); parked = null; for (const f of calmed.splice(0)) f() }
     if (timer && to.kind !== "pending" && !(to.kind === "saving" && to.typed)) { clearTimeout(timer); timer = null }
     if (retrying && to.kind !== "error") { clearTimeout(retrying); retrying = null }
     if (to.kind === "error" && was.kind !== "error" && to.retry) retrying = setTimeout(() => { retrying = null; go({ type: "retry" }) }, backoff(to.tries))
@@ -482,6 +491,12 @@ export function makeAutosave(path: string, initial: string, options: Options) {
       while (inflight) await inflight.done
       if (now() !== s.disk && phase.kind !== "conflict") await s.save()
     },
+    /** `settle` once a conflict is settled (before typing in together: a doc shared then would take the clashing text
+     *  as typed, and the conflict's lines would cover the whole note). */
+    async calm() {
+      while (phase.kind === "conflict") await new Promise<void>((r) => calmed.push(r))
+      await s.settle()
+    },
 
     /** Merge in what's on disk (`known`: just read). While a save is pending or on its way, it runs after it. */
     check(known?: FileText) {
@@ -491,26 +506,31 @@ export function makeAutosave(path: string, initial: string, options: Options) {
       go({ type: "check", known })
     },
 
-    /** Conflicts left in the editor: none, saved; one back (undone), held again; `rest`, its editor went with them. */
+    /** Conflicts left in the editor: none, saved; one back (undone), held again; `rest`, its editor went with them (no
+     *  longer in place: settled with `keep` till another editor shows them). */
     left(n: number, rest?: Clash[]) {
-      if (rest) { if (s.conflict) parked = rest; return }
-      if (!n && s.conflict) { parked = null; tell({ kind: "ok" }); go({ type: "resolve" }); void s.save() }
+      if (rest) {
+        if (s.conflict && status.kind === "conflict") { parked = { text: now(), clashes: rest }; tell({ ...status, inline: false }) }
+        return
+      }
+      if (!n && s.conflict) { tell({ kind: "ok" }); go({ type: "resolve" }); void s.save() }
       else if (n && !s.conflict && last) { tell(last); go({ type: "clash" }) }
     },
-    /** A new editor drawn: the conflicts its last one left, shown again (else settled with `keep`). */
+    /** A new editor drawn: the conflicts its last one left, shown again (if the text is as they left it). */
     reshow() {
-      const c = status, rest = parked
-      if (c.kind !== "conflict" || !c.inline || !rest) return
+      const c = status, p = parked
+      if (c.kind !== "conflict" || !p || now() !== p.text || !o.current.conflict?.(p.text, p.clashes, c.who, s.left)) return
       parked = null
-      if (!o.current.conflict?.(now(), rest, c.who, s.left)) tell({ ...c, inline: false })
+      tell({ ...c, inline: true })
     },
     /** Settle a conflict not shown in place: the clashing lines as typed here (`mine`) or as on disk, the rest merged;
      *  a toast says where the other side is, and Undo brings the choice back. */
     keep(side: "mine" | "theirs") {
       if (status.kind !== "conflict") return
-      const c = status, typed = now()
-      const { text: merged, clashes } = mergeClashes(c.base, typed, c.theirs.text)
-      const text = side === "mine" ? merged : withTheirs(merged, clashes)
+      const c = status, typed = now(), p = parked, was = s.disk
+      // (left by its editor: theirs is merged in already, mine in the clashes, perhaps typed over since)
+      const { text: merged, clashes } = p ? mergeClashes(p.text, typed, withTheirs(p.text, p.clashes)) : mergeClashes(c.base, typed, c.theirs.text)
+      const text = side === "mine" ? (p ? typed : merged) : withTheirs(merged, clashes)
       s.disk = c.theirs.text
       mtime = c.theirs.mtime
       show(text)
@@ -525,10 +545,12 @@ export function makeAutosave(path: string, initial: string, options: Options) {
         if (s.disk !== disk || now() !== disk) throw new Error("Couldn't undo: the text changed since. Both versions are in the note's history.")
         // (the file back as it was, the text as typed, and the choice again)
         if (side === "mine" && s.disk !== c.theirs.text) await putJson("file", { path: where(), text: c.theirs.text, base: s.disk })
-        s.disk = c.base
+        s.disk = was
         show(typed)
         tell(c)
         go({ type: "clash" })
+        parked = p
+        s.reshow()
       }
       notify(side === "mine" ? `Kept yours; ${theirName(c.who)} version is in the note's history` : `Kept ${theirName(c.who)} version; yours is in the note's history`,
         { id: `unsaved:${path}`, action: { label: "Undo", run: undo } })
