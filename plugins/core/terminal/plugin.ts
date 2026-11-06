@@ -862,6 +862,9 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   })
   sessions.set(id, s)
   if (endedOnPurpose().delete(id)) keepEnded()
+  // (its agent may have written its state file before it was ours: the watcher let that one go)
+  const hooks = hooksText(id)
+  if (hooks) apply(id, { type: "hooks", text: hooks })
   listChanged()
   // An agent whose folder macOS keeps from the keeper stops with its own vague error ("Unexpected"): its tabs say why.
   if (cwd && backend === keeper && process.platform === "darwin") {

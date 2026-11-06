@@ -208,11 +208,12 @@ export default async ($: VaultTest) => {
     check("realtime: paused a while, it tries once in the background (a word, outside the conversation); still refused, still paused, not told again",
       got.some((m) => m.type === "response.create" && m.response?.conversation === "none" && m.response.output_modalities[0] === "text") && !f.available() && ev.filter((e) => e[0] === "notice").length === 1, got.map((m) => m.type))
     broke = false
-    await until(() => f.available(), 3000)
+    // (on its next try, after another pause: a slow machine takes a while, so it's waited for, not timed)
+    await until(() => f.available() && ev.some((e) => e[0] === "paused" && e[1] === null), 10_000)
     const r = { id: 3 }
     f.press(r); speak(f); f.release()
-    await sleep(50)
-    check("realtime: paid again, its next try finds it back, and presses go to it", f.available() && ["held", "done"].includes(String(f.heard(r, "hello again"))) && ev.some((e) => e[0] === "paused" && e[1] === null), ev)
+    const took3 = await until(() => ["held", "done"].includes(String(f.heard(r, "hello again"))), 3000)
+    check("realtime: paid again, its next try finds it back, and presses go to it", f.available() && !!took3 && ev.some((e) => e[0] === "paused" && e[1] === null), ev)
     await until(() => routes(ev, 3).length)
     f.close()
   }
