@@ -8,7 +8,7 @@ import { allPages, eachPage, eachSession, handle, openedByAgent, tell, webSessio
 import { filledLately, fillLogin } from "./fill.ts"
 import { saveOffer } from "./loginform.ts"
 import { ranNear, siteOf } from "./pagesecrets.ts"
-import { configured, entriesForUrl, isUnlocked, saveLogin, secretsOf } from "./passwords.ts"
+import { configured, entriesForUrl, samePassword, saveLogin, secretsOf } from "./passwords.ts"
 
 const PRELOAD = fileURLToPath(new URL("./userlogins-preload.cjs", import.meta.url))
 eachSession((s) => { s.registerPreloadScript({ type: "frame", filePath: PRELOAD }) })
@@ -137,12 +137,7 @@ async function offer(p: EnginePage, h: Heard) {
   if (weighed.has(key)) return
   weighed.set(key, now)
   const rows = await entriesForUrl(h.url)
-  // (unlocked, each entry's password is compared here; locked, an entry of that username may have it: none offered)
-  let same: Set<string> | null = null
-  if (isUnlocked()) {
-    same = new Set()
-    for (const r of rows) if ((await secretsOf(r.id).catch(() => null))?.password === h.password) same.add(r.id)
-  }
+  const same = await samePassword(rows.map((r) => r.id), h.password)
   const kind = saveOffer(rows, h.username, same)
   if (!kind || p.wc.isDestroyed()) return
   const id = crypto.randomBytes(12).toString("base64url")

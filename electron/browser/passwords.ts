@@ -123,6 +123,16 @@ export async function secretsOf(id: string): Promise<{ username: string; passwor
   return { username: f.UserName ?? "", password: f.Password ?? "", otp: k.otpOf(f) }
 }
 
+/** Which of these entries have this password: compared here, so it needs no unlock and shows nothing. */
+export async function samePassword(ids: string[], password: string): Promise<Set<string>> {
+  const { k, db } = await load()
+  const given = crypto.createHash("sha256").update(password).digest()
+  return new Set(ids.filter((id) => {
+    const e = k.entryById(db, id)
+    return !!e && crypto.timingSafeEqual(crypto.createHash("sha256").update(k.fieldsOf(e).Password ?? "").digest(), given)
+  }))
+}
+
 /** A login the user just signed in with: a new entry named after its site, or `id`'s password changed. */
 export async function saveLogin(l: { url: string; username: string; password: string; id?: string }): Promise<{ id: string }> {
   const site = (() => { try { return new URL(l.url) } catch { return null } })()
