@@ -263,8 +263,8 @@ export default async ($: VaultTest) => {
       waits(id, "question")
       const blocked = state(id)
       waits(id, null)
-      check("terminal: its agent's word that it waits blocks it, and no longer once it doesn't", before === null && blocked?.state === "blocked" &&
-        blocked.kind === "question" && blocked.from === "agent" && blocked.agent === "claude" && state(id) === null, [before, blocked, state(id)])
+      check("terminal: its agent's word that it waits blocks it, and no longer once it doesn't (at rest then)", before === null && blocked?.state === "blocked" &&
+        blocked.kind === "question" && blocked.from === "agent" && blocked.agent === "claude" && state(id)?.state === "idle", [before, blocked, state(id)])
     }
     // Keys by name, as a terminal sends them (keys.ts).
     const { keyBytes, keysBytes } = await import("../../../plugins/core/terminal/keys.ts")
@@ -683,6 +683,61 @@ export default async ($: VaultTest) => {
     execFileSync("/bin/sh", ["-c", set("working")])
     check("osc7501: an agent's state hooks mark what it asks, and do nothing once it speaks OSC 7501", before === "waiting:permission" && fs.readFileSync(file, "utf8") === "waiting:permission", before)
     })()
+  }
+
+  // A terminal's agent state (state.ts): every source an event, one step saying what it is. Its program gone back to its
+  // shell (quit, crashed, interrupted) ends what it said it worked on, unless it spoke after it was seen gone.
+  {
+    const { fresh, step, nowOf } = await import("../../../plugins/core/terminal/state.ts")
+    const run = (evs: Parameters<typeof step>[1][]) => evs.reduce((t, ev, i) => step(t, ev, 1000 + i * 1000), fresh("claude"))
+    const gone = run([{ type: "hooks", text: "working" }, { type: "front", program: true, seen: 1500 }, { type: "front", program: false, seen: 2500 }])
+    const spoke = run([{ type: "front", program: true, seen: 500 }, { type: "hooks", text: "working" }, { type: "front", program: false, seen: 1500 }])
+    check("terminal state: its program gone back to its shell is idle, whatever its hooks said; seen before it last spoke, it still works",
+      nowOf(gone)?.state === "idle" && nowOf(gone)?.from === "shell" && nowOf(spoke)?.state === "working", [nowOf(gone), nowOf(spoke)])
+    const starting = run([{ type: "start" }, { type: "front", program: false, seen: 1500 }])
+    const spoken = step(starting, { type: "hooks", text: "working" }, 5000), back = step(spoken, { type: "front", program: false, seen: 6000 }, 6000)
+    check("terminal state: while its agent starts, its shell's prompt is its own; once it spoke, its program gone ends it",
+      starting.starting && nowOf(starting) === null && !spoken.starting && nowOf(back)?.state === "idle", [starting, back])
+    const asked = run([{ type: "osc", said: { seen: true, status: { state: "working" } } }, { type: "waits", kind: "question" }])
+    const answered = step(asked, { type: "waits", kind: null }, 9000)
+    check("terminal state: its agent's word that it waits blocks it over OSC 7501; no longer, its OSC 7501 says again",
+      nowOf(asked)?.state === "blocked" && nowOf(asked)?.from === "agent" && nowOf(answered)?.state === "working", [nowOf(asked), nowOf(answered)])
+    const ended = step(gone, { type: "exit", code: 0, signal: 0, lost: true }, 9000)
+    check("terminal state: an end is final, its state none", ended.phase.state === "ended" && nowOf(ended) === null && step(ended, { type: "hooks", text: "working" }, 9500) === ended, ended.phase)
+  }
+
+  // An agent's terminal no page lists (the phone asleep): its program going back to its shell is seen by the server
+  // itself, so its state is idle and a wait for idle ends, whether OSC 7501 or its hooks' file said it worked.
+  if (process.platform !== "win32") {
+    const { waitFor } = await import("../lib.ts")
+    const term = await import("../../../plugins/core/terminal/plugin.ts")
+    const svc = term.plugin.services as Record<string, Any>
+    const dir = fs.mkdtempSync(path.join(tmp, "agent-left-")), script = path.join(dir, "agent.sh")
+    // (it says it works in OSC 7501 or not at all, then runs till its file is there)
+    fs.writeFileSync(script, "[ \"$1\" = osc ] && printf '\\033]7501;state=working:app=standin\\033\\\\'\nwhile [ ! -e \"$2\" ]; do sleep 0.1; done\n")
+    svc["agent:standin"] = async (a: Any) => ({ command: `${a.prompt === "hooks" ? `${a.state("working")}; ` : ""}sh ${script} ${a.prompt} ${path.join(dir, a.prompt)}` })
+    await $.api("PATCH", "config/plugin/terminal", { shell: "/bin/sh" })
+    const logged: string[] = [], log = console.log
+    console.log = (...a: unknown[]) => { if (String(a[0]).startsWith("terminal: standin-")) logged.push(String(a[0])); else log(...a) }
+    try {
+      for (const how of ["osc", "hooks"]) {
+        const id = `standin-left${how}`
+        await $.api("POST", `terminals/${id}`, { prompt: how })
+        const worked = await waitFor(() => svc["terminal:state"](id)?.state === "working", 15_000, 100)
+        fs.writeFileSync(path.join(dir, how), "")
+        const r = await svc["terminal:wait"](id, { for: ["idle"], timeout: 20 })
+        const [, list] = await $.api("GET", "terminals/sessions")
+        const row = list.sessions?.find((s: Any) => s.id === id)
+        check(`terminal: an agent whose program went back to its shell, no page listing it, is idle and a wait for idle ends (${how === "osc" ? "OSC 7501" : "its hooks' file"} said it worked)`,
+          !!worked && r.met === "idle" && row?.state === "idle" && row.busy === false && logged.filter((l) => l.includes(`${id} working`) && l.endsWith("-> idle (shell)")).length === 1,
+          [worked, r, row, logged])
+        await $.api("DELETE", `terminals/${id}`)
+      }
+    } finally {
+      console.log = log
+      delete svc["agent:standin"]
+      await $.api("PATCH", "config/plugin/terminal", { shell: null })
+    }
   }
 
   if (process.platform === "win32") await (await import("./terminal-windows.ts")).default($)

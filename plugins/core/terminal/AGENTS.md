@@ -34,7 +34,8 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
   `open` does it in a tab; `get` tells one's state, folder, command, size and what was sent into it lately (no id: the
   one you run in, `VAULTITE_TERMINAL`); `capture` reads its screen and history (`--lines`, `--all`; `--format vt` or
   `html` with colors; `--json`: the cursor's line, a grey suggested reply apart from typed text); `wait` waits for it to
-  end (vau exits with its code), for its agent's turn to end (idle held a moment), a pattern on its screen (`--match`)
+  end (vau exits with its code), for its agent's turn to end (idle held a moment; an agent that quit, crashed or was interrupted back to its shell is
+  idle), a pattern on its screen (`--match`)
   or its output to go quiet; `send` types into it and says whether an agent took it (`--wait`: and its turn), `key`
   presses keys (C-c, Enter, Up); `rename`, `resume` (a Claude Code session by its title too) and `end`; `vau terminal attach <terminal>` shows one in the terminal you run it in (⌃\
   detaches, leaving it running). `vau terminal tidy` closes the tabs of agents' sessions that are gone. Its events:

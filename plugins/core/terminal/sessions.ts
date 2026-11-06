@@ -37,6 +37,8 @@ export type Session = { id: string; agent: string | null; process: string; busy?
   /** What its program is doing (OSC 7501, else its agent's hooks or a question on its screen): blocked is waiting on
    *  the user (`kind`: for a permission, an answer or a login), `msg` its words (the program's). */
   state?: "idle" | "working" | "blocked" | "done" | "error"; kind?: "permission" | "question" | "auth"; msg?: string
+  /** Its agent's command was typed into its shell and its program isn't in front yet. */
+  starting?: boolean
   /** The Inbox has a row for it that needs the user, unread: an answer to read, a question. */
   needs?: boolean
   /** The note it was started on (Dispatch, terminal.run): its tab opens beside that note's. */
@@ -55,14 +57,13 @@ export type Meter = { context?: { tokens: number; window: number; as: "bar" | "p
 
 /** A shell running a program shows it ("vim"); a shell at its prompt, or an agent, just its kind. */
 export const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", "pwsh", "powershell", "cmd", "wsl"])
-const STARTING = 10_000
 /** The coding agent a session runs: opened as one (while it runs, not the shell it leaves after), or its program run in
  *  a plain terminal (`claude`, `codex`); null for anything else. From the agents of the plugins that are on. */
 export function agentIn(s: Session, agents: Agent[] = agentsOn()): Agent | null {
   const own = s.agent ? agents.find((a) => a.name === s.agent) : undefined
   // Something runs in front of its shell: the agent (whatever its binary's called). At the shell's prompt: only while it
-  // starts (the shell runs a moment before the agent does), not once the agent has quit. An older server says no `busy`.
-  if (own && s.busy !== undefined) return s.busy || Date.now() - s.started < STARTING ? own : null
+  // starts (the server says: the shell runs a moment before the agent does), not once the agent has quit.
+  if (own && s.busy !== undefined) return s.busy || s.starting ? own : null
   if (own && (!s.process || s.process === "node" || SHELLS.has(s.process) || own.process?.includes(s.process))) return own
   return agents.find((a) => a.process?.includes(s.process)) ?? null
 }

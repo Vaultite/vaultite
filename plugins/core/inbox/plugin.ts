@@ -965,9 +965,10 @@ plugin.route("POST", "inbox/push", async (req) => {
 // ---------- agents' sessions (Terminal's stream, a hook, or a host: inbox:session), one thread each: open when it needs
 // the user (it asks, or a turn ended with something for them: needs.ts), working once they answer, done when settled
 
-/** A change of an app terminal's state, as Terminal tells it (the service "inbox:state"; Terminal's StateChange). */
+/** A change of an app terminal's state, as Terminal tells it (the service "inbox:state"; Terminal's StateChange): `was`
+ *  the state it told before, `from` "shell" its program gone back to its shell (quit, crashed, interrupted). */
 export type StateChange = { terminal: string; agent: string; state: "idle" | "working" | "blocked" | "done" | "error"
-  kind?: string; msg?: string; from: "osc7501" | "hooks" | "screen" | "agent"; at: number }
+  kind?: string; msg?: string; from: "osc7501" | "hooks" | "screen" | "agent" | "backend" | "shell"; was?: string; at: number }
 /** A change as the inbox hears it: an agent's own hook says its session, folder and last message; one outside the
  *  app's terminals has only its session. */
 export type Heard = Omit<StateChange, "terminal" | "at"> & { terminal?: string; session?: string; cwd?: string; text?: string; prompt?: string
@@ -1017,8 +1018,9 @@ export async function heard(h: Heard) {
   const key = h.terminal || (h.session ? `session:${h.session}` : "")
   if (!key || !h.agent) return
   const was = states.get(key)
-  // (the same said twice: once; an agent's own hook says only that a turn ended or that it asks, each news)
-  const prev = was?.state
+  // (the same said twice: once; an agent's own hook says only that a turn ended or that it asks, each news; after a
+  // restart, what its terminal told before)
+  const prev = was?.state ?? h.was
   const own = !!h.own
   if (!own && h.terminal && was && was.state === h.state && was.kind === h.kind && was.msg === h.msg) return
   const now = Date.now()

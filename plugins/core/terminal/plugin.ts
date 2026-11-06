@@ -16,7 +16,8 @@ import {
   shellArgs, shellFiles, termdBackend, unmarked, wslPath, type AgentRun, type Backend, type Link, type Listed as Shell, type Made, type Spec,
 } from "./backend.ts"
 import { defaultShell, gitBash, kindOf, progName, shellsHere, type ShellKind } from "./shells.ts"
-import { shown, type Kind, type Said, type SessionState } from "./osc7501.ts"
+import type { Kind, Said, SessionState } from "./osc7501.ts"
+import { fresh, label, moved, nowOf, step, type Event, type From as Source, type Now, type Term } from "./state.ts"
 import { runOps } from "./run.ts"
 import type { Job } from "./starter.ts"
 import { terminalOps } from "./ops.ts"
@@ -384,60 +385,55 @@ export function agentOf(id: string): { name: string; resume: string | null; prof
  *  backend; `<file>.osc` once its program spoke OSC 7501 (the hooks then say nothing: stateCommand). */
 const stateFile = (id: string) => path.join(STATES, id)
 const oscMark = (id: string) => `${stateFile(id)}.osc`
-function stateOf(id: string) {
-  try { return fs.readFileSync(stateFile(id), "utf8").trim() || undefined } catch { return undefined }
+function hooksText(id: string) {
+  try { return fs.readFileSync(stateFile(id), "utf8").trim() || null } catch { return null }
 }
 
-// --- a terminal's state, for the list and the Inbox ("inbox:state"): OSC 7501 when its program speaks it (osc7501.ts),
-// else its agent's hooks (the state file), else its screen (watchAsks); blocked while its agent says it waits (waits).
+// --- a terminal's state (state.ts): one Term each, every source an event (OSC 7501, hooks, its screen, its agent, its
+// backend, its program in front or gone: lookAtBusy, its end). The list, terminal.wait and the Inbox read only it.
 
-/** A change of a terminal's state, as the service "inbox:state" hears it. `msg` is the program's text: untrusted. */
-export type StateChange = { terminal: string; agent: string; state: SessionState; kind?: Kind; msg?: string; from: "osc7501" | "hooks" | "screen" | "agent"; at: number }
-type Now = Omit<StateChange, "terminal" | "at">
+/** A change of a terminal's state, as the service "inbox:state" hears it (`was`: the state told before). `msg` is the
+ *  program's text: untrusted. */
+export type StateChange = { terminal: string; agent: string; state: SessionState; kind?: Kind; msg?: string; from: Source; was?: SessionState; at: number }
 
-/** What each terminal's program said in OSC 7501, by terminal. */
-const osc = new Map<string, Said>()
-/** The question each agent terminal shows that its hooks can't tell (they don't run yet): it waits on the user. */
-const asking = new Map<string, AgentAsk>()
-/** An OSC 7501 program's own name, as the agent whose service runs it. */
-const AGENT_APPS: Record<string, string> = { "claude-code": "claude" }
-
-/** What agent terminals' agents say of themselves outside the terminal (Claude Code's session file): it waits on the
- *  user, for a permission or a question. The service "terminal:agent-waits". */
-const waits = new Map<string, Kind>()
-
-/** Terminal `id`'s state now, or null when nothing says. */
-function stateNow(id: string): Now | null {
-  const now = ownState(id), kind = waits.get(id)
-  // (a dialog neither its hooks nor its OSC 7501 reports tell, as Claude Code's one-time notices: it still works there)
-  if (!kind || now?.state === "blocked") return now
-  const ask = asking.get(id)
-  return { agent: now?.agent || agentOf(id)?.name || "", state: "blocked", kind, ...(ask ? { msg: ask.says } : {}), from: "agent" }
+const terms = new Map<string, Term>()
+/** The terminals this server has seen listed or started: one listed first is from before it (`seen`). */
+const sighted = new Set<string>()
+/** Terminal `id`'s state now (null: nothing says, or it ended). */
+const current = (id: string) => { const t = terms.get(id); return t ? nowOf(t) : null }
+/** How terminal `id` ended, as told here, while it's kept. */
+function endOf(id: string) {
+  const t = terms.get(id), p = t?.phase
+  return p?.state === "ended" ? { code: p.code, signal: p.signal, ...(p.lost ? { lost: true } : {}), at: t!.at } : null
 }
 
-/** What the terminal's own sources say (stateNow's, before its agent's word). */
-function ownState(id: string): Now | null {
-  const agent = agentOf(id)?.name ?? ""
-  const o = osc.get(id), st = o?.status
-  if (st) {
-    // (blocked without saying why, as Codex says it: the question its agent declares on its screen does)
-    const ask = st.state === "blocked" && !st.kind ? asking.get(id) : undefined
-    const kind = st.kind ?? (ask ? "permission" : undefined), msg = shown(st.msg) ?? ask?.says
-    return { agent: agent || AGENT_APPS[st.app ?? ""] || st.app || "", state: st.state, ...(kind ? { kind } : {}), ...(msg ? { msg } : {}), from: "osc7501" }
+/** Feeds terminal `id`'s state an event (state.ts' step): a transition is logged once, heard by terminal.wait at once,
+ *  and told (tellState). `quiet`: taken as it is (a terminal from before this server), not told. */
+function apply(id: string, ev: Event, o: { quiet?: boolean } = {}) {
+  if (!TERMINAL_ID.test(id) || id.startsWith(SPARE)) return
+  const was = terms.get(id) ?? fresh(agentOf(id)?.name ?? ""), t = step(was, ev, Date.now())
+  if (t === was) return
+  terms.set(id, t)
+  if (terms.size > 500) {
+    const old = [...terms].find(([, x]) => x.phase.state === "ended")?.[0] ?? terms.keys().next().value!
+    terms.delete(old)
   }
-  // (a program that speaks it says nothing before its session starts: Claude Code's folder trust is only on its screen)
-  const [hook, kind] = o?.seen ? [] : (stateOf(id) ?? "").split(":")
-  if (hook === "working" || hook === "idle") return { agent, state: hook, from: "hooks" }
-  if (hook === "waiting") return { agent, state: "blocked", ...(kind === "permission" || kind === "question" ? { kind } : {}), from: "hooks" }
-  const ask = asking.get(id)
-  if (ask) return { agent, state: "blocked", kind: "permission", msg: ask.says, from: "screen" }
-  return null
+  if (t.phase === was.phase) { if (t.starting !== was.starting) listChanged(); return }
+  listChanged()
+  if (o.quiet) {
+    const now = nowOf(t)
+    if (now) told.set(id, { now, at: Date.now() })
+    return
+  }
+  if (moved(was.phase, t.phase)) console.log(`terminal: ${id} ${label(was.phase)} -> ${label(t.phase)}`)
+  for (const fn of stateHeard) fn(id)
+  tellState(id)
 }
 
-/** What was said last about each terminal (`state` null: nothing after something), and a change waiting its turn. */
+/** What was told last about each terminal, and a change waiting its turn. */
 const told = new Map<string, { now: Now; at: number; timer?: ReturnType<typeof setTimeout> }>()
-/** What hears each state as it's told (terminal.wait). */
-const stateHeard = new Set<(id: string, now: Now) => void>()
+/** What hears each change of a terminal's state at once (terminal.wait). */
+const stateHeard = new Set<(id: string) => void>()
 /** How soon after the last a change is told: a program can change state as fast as it writes, and what it causes
  *  outside the terminal is rate-limited (a new state at most 4 times a second, a new message every 2 s). */
 const STATE_GAP = 250, MSG_GAP = 2000
@@ -468,70 +464,71 @@ function oldMeta(b: Backend, x: Shell) {
   void b.setMeta(x.id, patch).then(() => { for (const f of Object.values(files)) fs.rmSync(f, { force: true }) }, () => {})
 }
 
-/** Terminal `id`'s state may have changed: the list hears it, and the Inbox ("inbox:state") does once it has. */
-function stateChanged(id: string) {
-  listChanged()
+/** Terminal `id`'s state changed: the Inbox ("inbox:state") and `vau events` hear it, at the pace STATE_GAP sets. */
+function tellState(id: string) {
   const last = told.get(id)
   if (last?.timer) return
-  // (nothing says any more after something did: it's at rest, as a program cleared or gone says)
-  const now = stateNow(id) ?? (last ? { ...last.now, state: "idle" as const, kind: undefined, msg: undefined } : null)
+  const now = current(id)
   if (!now) return
   const gap = !last ? 0 : now.state !== last.now.state || now.kind !== last.now.kind ? STATE_GAP : now.msg !== last.now.msg ? MSG_GAP : -1
   if (gap < 0) return
   const wait = last ? last.at + gap - Date.now() : 0
   if (wait > 0) {
-    told.set(id, { ...last!, timer: setTimeout(() => { told.set(id, { ...last!, timer: undefined }); stateChanged(id) }, wait) })
+    told.set(id, { ...last!, timer: setTimeout(() => { told.set(id, { ...last!, timer: undefined }); tellState(id) }, wait) })
     return
   }
   told.set(id, { now, at: Date.now() })
-  const change: StateChange = { terminal: id, ...now, at: Date.now() }
-  for (const k of ["kind", "msg"] as const) if (change[k] === undefined) delete change[k]
+  const change: StateChange = { terminal: id, ...now, ...(last ? { was: last.now.state } : {}), at: Date.now() }
   // (terminal.wait and `vau events --type terminal` hear it too)
   tell("terminal.state", { id, agent: now.agent, state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}), from: now.from })
-  for (const fn of stateHeard) fn(id, now)
   try { void Promise.resolve(plugin.service("inbox:state")?.(change)).catch((e) => console.error("terminal: inbox:state:", e)) } catch (e) { console.error("terminal: inbox:state:", e) }
 }
 
+/** A blocked OSC 7501 report that doesn't say why, held while its question is looked for on its screen. */
+const held = new Map<string, Said>()
 /** A backend heard terminal `id`'s program in OSC 7501. The first time, its hooks stop saying anything (`oscMark`). */
 function oscSaid(id: string, said: Said) {
   if (!TERMINAL_ID.test(id) || id.startsWith(SPARE)) return
-  const was = osc.get(id)
-  osc.set(id, said)
-  if (said.seen && !was?.seen) try { fs.mkdirSync(STATES, { recursive: true }); fs.writeFileSync(oscMark(id), "") } catch { /* hooks go on */ }
-  if (JSON.stringify(was) === JSON.stringify(said)) return
+  if (said.seen && !terms.get(id)?.osc?.seen) try { fs.mkdirSync(STATES, { recursive: true }); fs.writeFileSync(oscMark(id), "") } catch { /* hooks go on */ }
   const st = said.status, agent = agentOf(id)?.name
-  if (st?.state !== "blocked" || st.kind || !agent) { asking.delete(id); return stateChanged(id) }
+  held.delete(id)
+  if (st?.state !== "blocked" || st.kind || !agent) return apply(id, { type: "osc", said })
   // Blocked, not saying why: told once its screen shows the question (Approve and Deny need it), or soon without.
-  void askShown(id, agent).finally(() => stateChanged(id))
+  held.set(id, said)
+  void askShown(id, agent, said).finally(() => { if (held.get(id) !== said) return; held.delete(id); apply(id, { type: "osc", said }) })
 }
 
-/** The question agent terminal `id` shows (its agent declares it), looked for while its screen draws it: kept in
- *  `asking` while it's still blocked. */
-async function askShown(id: string, agent: string) {
+/** The question agent terminal `id` shows (its agent declares it), looked for while its screen draws it, while `said` is
+ *  still its program's last word. */
+async function askShown(id: string, agent: string, said: Said) {
   const asks = await asksOf(agent), b = await backendOf(id)
   if (!asks.length || !b) return
-  for (let i = 0; i < 8 && osc.get(id)?.status?.state === "blocked"; i++) {
+  for (let i = 0; i < 8 && held.get(id) === said; i++) {
     const hit = await askOn(b, id, asks)
-    if (hit) { if (osc.get(id)?.status?.state === "blocked") asking.set(id, hit); return }
+    if (hit) { if (held.get(id) === said) apply(id, { type: "ask", ask: { id: hit.id, says: hit.says } }); return }
     await new Promise((r) => setTimeout(r, 200))
   }
 }
 
-/** A terminal ended: what was kept of its state goes (the Inbox hears "terminal.ended"). */
-function forgetState(id: string) {
+/** Terminal `id` starts anew (its agent's command about to run): what was kept of its state goes. */
+function resetState(id: string) {
   for (const f of [stateFile(id), oscMark(id), ...Object.values(oldMetaFiles(id))]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
-  osc.delete(id); asking.delete(id); metas.delete(id); waits.delete(id)
+  terms.delete(id); held.delete(id); metas.delete(id)
   clearTimeout(told.get(id)?.timer)
   told.delete(id)
+  sighted.add(id)
 }
 
 /** Times agent terminal `id` from its start to its agent's first word (a hook, or OSC 7501), a minute at most: the
  *  span "agent.ready". Its shell finding no such program instead (MISSING) is told to the user. */
 function agentReady(id: string, agent: string) {
   const timing = span("agent.ready", { agent }), until = Date.now() + 60_000
+  apply(id, { type: "start" })
+  // (an agent that never comes up: its shell's prompt is its end again)
+  setTimeout(() => apply(id, { type: "late" }), 60_000).unref?.()
   const look = () => {
-    if (stateOf(id) === MISSING) return void agentMissing(id, agent)
-    if (fs.existsSync(stateFile(id)) || osc.get(id)?.seen) return void timing.end()
+    if (hooksText(id) === MISSING) return void agentMissing(id, agent)
+    if (fs.existsSync(stateFile(id)) || terms.get(id)?.osc?.seen) return void timing.end()
     if (Date.now() < until) setTimeout(look, 50).unref?.()
   }
   look()
@@ -558,17 +555,13 @@ const watching = new Set<string>()
 async function watchFor(id: string, agent: string) {
   const asks = await asksOf(agent)
   if (!asks.length) return
-  const said = () => fs.existsSync(stateFile(id)) || !!osc.get(id)?.status
+  const said = () => { const t = terms.get(id); return !!t && (!!t.hooks || !!t.osc?.status) }
   for (let b = await backendOf(id); b && !said(); b = await backendOf(id)) {
     const hit = await askOn(b, id, asks)
-    if (hit?.id !== asking.get(id)?.id) {
-      if (hit) asking.set(id, hit)
-      else asking.delete(id)
-      stateChanged(id)
-    }
+    if (hit?.id !== terms.get(id)?.ask?.id) apply(id, { type: "ask", ask: hit ? { id: hit.id, says: hit.says } : null })
     await new Promise((r) => setTimeout(r, 1000))
   }
-  if (asking.delete(id)) stateChanged(id)
+  if (terms.get(id)?.ask) apply(id, { type: "ask", ask: null })
 }
 
 /** The question terminal `id` shows (its agent's, or `agent`'s for one run by hand in a plain shell), or null. */
@@ -578,15 +571,13 @@ async function askIn(id: string, agent = "") {
 }
 
 /** Whether terminal `id` waits on the user now: a question on its screen, or its state says so. */
-plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || stateNow(id)?.state === "blocked")
+plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || current(id)?.state === "blocked")
 /** Terminal `id`'s state now (StateChange without its time), or null when nothing says. */
-plugin.provide("terminal:state", (id: string) => (TERMINAL_ID.test(id) ? stateNow(id) : null))
+plugin.provide("terminal:state", (id: string) => (TERMINAL_ID.test(id) ? current(id) : null))
 /** Agent terminal `id`'s agent says it waits on the user (`kind`: a permission or a question), or no longer (null). */
 plugin.provide("terminal:agent-waits", (id: string, kind: Kind | null) => {
-  if (!TERMINAL_ID.test(id) || (kind !== null && kind !== "permission" && kind !== "question") || (waits.get(id) ?? null) === kind) return
-  if (kind) waits.set(id, kind)
-  else waits.delete(id)
-  stateChanged(id)
+  if (!TERMINAL_ID.test(id) || (kind !== null && kind !== "permission" && kind !== "question") || (terms.get(id)?.waits ?? null) === kind) return
+  apply(id, { type: "waits", kind })
 })
 /** A terminal's last `lines` lines as text ("" when it can't be read). */
 const screenOf = (b: Pick<Backend, "capture">, id: string, lines: number) => b.capture(id, { format: "text", lines }).then((c) => c.text, () => "")
@@ -601,10 +592,59 @@ let hooksWatch: fs.FSWatcher | null = null
 try {
   fs.mkdirSync(STATES, { recursive: true })
   // (the folder is every server's on this machine: only this one's terminals)
-  hooksWatch = fs.watch(STATES, (_e, name) => { if (name && TERMINAL_ID.test(String(name))) void runsHere(String(name)).then((here) => here && stateChanged(String(name))) })
+  hooksWatch = fs.watch(STATES, (_e, name) => {
+    const id = String(name ?? "")
+    if (TERMINAL_ID.test(id)) void runsHere(id).then((here) => here && apply(id, { type: "hooks", text: hooksText(id) }))
+  })
   hooksWatch.on("error", () => {})
 } catch (e) { console.error("terminal: can't watch the agents' state files:", e) }
 plugin.onUnload(() => hooksWatch?.close())
+
+/** How old a program's place in front may be as read (processTable's cache): what its program said since stands. */
+const FRONT_AGE = 1000
+/** Terminal `id`'s program is in front of its shell, or its shell at its prompt (`program` false), as read at `seen`. Gone,
+ *  its terminal server's OSC 7501 records of its work go too, so they don't come back with a restart. */
+function frontSeen(b: Backend, id: string, program: boolean, seen: number) {
+  const had = terms.get(id)?.osc?.status
+  apply(id, { type: "front", program, seen })
+  if (had && !terms.get(id)?.osc?.status) void b.dropStatus?.(id)
+}
+/** Terminal `x` as its backend lists it: one first seen here is from before this server (its sources' word then), and
+ *  its backend's own word on its agent. */
+function sight(x: Shell) {
+  const p = terms.get(x.id)?.phase
+  if (p?.state === "ended" && p.lost) { terms.delete(x.id); toldEnded.delete(x.id) } // (running after all: lost wrongly)
+  if (!sighted.has(x.id)) {
+    sighted.add(x.id)
+    if (sighted.size > 2000) sighted.delete(sighted.values().next().value!)
+    apply(x.id, { type: "seen", osc: x.said ?? null, hooks: hooksText(x.id) }, { quiet: true })
+  }
+  if (x.state !== undefined) apply(x.id, { type: "backend", state: x.state })
+}
+
+/** How often the server looks at the terminals whose agent works or waits on the user, page or no page: its program
+ *  gone from in front of its shell (it quit, crashed or was interrupted) is its turn over. Once at the start for all. */
+const LOOK = 2000
+let looked = false, looking = false
+async function lookAtBusy() {
+  const busy = (id: string) => { const s = terms.get(id)?.phase.state; return s === "working" || s === "blocked" }
+  if (looking || (looked && ![...terms.keys()].some(busy))) return
+  looking = true
+  try {
+    const seen = Date.now() - FRONT_AGE
+    for (const b of backends()) {
+      for (const x of (await b.list().catch(() => [] as Shell[])).map(byName)) {
+        if (x.spare || x.id.startsWith(SPARE)) continue
+        sight(x)
+        if (busy(x.id)) frontSeen(b, x.id, (await inFront(x)) !== null, seen)
+      }
+    }
+    looked = true
+  } finally { looking = false }
+}
+const looker = setInterval(() => void lookAtBusy(), LOOK)
+looker.unref?.()
+plugin.onUnload(() => clearInterval(looker))
 
 /** What an agent's state file says when its shell had no such command (exit 127): it isn't installed here. */
 const MISSING = "missing"
@@ -640,7 +680,7 @@ const curlPost = (url: string) => [path.join(process.env.SystemRoot || "C:\\Wind
 async function agentRun(id: string, prompt: string | null, dark: boolean | null, how: AgentHow, sh: string): Promise<AgentRun | null> {
   const a = agentOf(id)
   if (!a) return null
-  try { fs.mkdirSync(STATES, { recursive: true }); forgetState(id) } catch { /* unmarked */ }
+  try { fs.mkdirSync(STATES, { recursive: true }); resetState(id) } catch { /* unmarked */ }
   const kind = kindOf(sh), native = kind === "pwsh" || kind === "cmd"
   // (paths in a POSIX line as its shell reads them: WSL's own, Git Bash's C:/x)
   const there = kind === "wsl" ? wslPath : WIN ? (p: string) => p.replace(/\\/g, "/") : (p: string) => p
@@ -796,15 +836,22 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     flush(s)
     if (sessions.get(id) === s) sessions.delete(id)
     listChanged()
-    // Only our hold on it ended (a plugin backend's attach client was killed): the clients reconnect, which reattaches.
-    if (!exit && !s.ended && (await backend.list().catch(() => [] as Shell[])).some((x) => x.id === id && !x.exit)) {
-      for (const ws of s.clients) ws.close(1012, "reattach")
-      return
+    let gone = exit
+    if (!exit && !s.ended) {
+      const x = (await backend.list({ ended: true }).catch(() => [] as Shell[])).find((y) => y.id === id)
+      // Only our hold on it ended (a plugin backend's attach client was killed): the clients reconnect, which reattaches.
+      if (x && !x.exit) {
+        for (const ws of s.clients) ws.close(1012, "reattach")
+        return
+      }
+      // (our terminal server gone with it, which tells nothing now: how it ended is unknown)
+      if (x?.exit) gone = { code: x.exit.code, signal: x.exit.signal, lost: !!x.exit.lost }
+      else if (ours(backend)) gone = { code: 0, signal: 0, lost: true }
     }
     // Ended by us: a SIGHUP, as when a shell is killed directly.
-    const { code, signal, lost } = s.ended ? { code: 0, signal: 1, lost: false } : exit ?? { code: 0, signal: 0, lost: false }
-    // (a backend that tells its terminals' ends tells this one: onEvent)
-    if (!backend.events) exited(id, { code, signal, lost })
+    const { code, signal, lost } = s.ended ? { code: 0, signal: 1, lost: false } : gone ?? { code: 0, signal: 0, lost: false }
+    // (a backend that tells its terminals' ends tells this one, onEvent, unless it's gone)
+    if (!backend.events || (!exit && !s.ended)) exited(id, { code, signal, lost })
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
       ws.send(JSON.stringify({ t: "exit", code, signal, ...(lost ? { lost: true } : {}), ...(s.ended && !s.kept ? { ended: true } : {}) }))
@@ -852,11 +899,14 @@ function exited(id: string, exit: { code: number; signal: number; lost?: boolean
   // A clean exit (an agent's too: the shell after it) closes its tabs, the ones away now once they're put back; an
   // agent's session that died, or one lost with its terminal server, keeps its tabs, saying so, with Restart.
   if (!code && !signal && !lost) markEnded(id)
-  forgetState(id)
+  // (what was kept of its state goes; how it ended stays, for a wait that comes after)
+  for (const f of [stateFile(id), oscMark(id), ...Object.values(oldMetaFiles(id))]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
+  metas.delete(id); held.delete(id)
+  clearTimeout(told.get(id)?.timer)
+  told.delete(id)
+  apply(id, { type: "exit", code, signal, lost })
   // (onPurpose: the user ended it, End session or vau terminal end: the Inbox takes its row as dealt with)
   tell("terminal.ended", { id, code, signal, ...(lost ? { lost: true } : {}), ...(p && !p.keep ? { onPurpose: true } : {}) })
-  exits.set(id, { ...exit, at: Date.now() })
-  if (exits.size > 200) exits.delete(exits.keys().next().value!)
   for (const fn of exitHeard) fn(id)
   listChanged()
 }
@@ -886,7 +936,8 @@ function onEvent(b: Backend, ev: BackendEvent) {
   if (ev.type === "title") return
   if (ev.type === "started") {
     toldEnded.delete(ev.id)
-    exits.delete(ev.id)
+    sighted.add(ev.id)
+    if (terms.get(ev.id)?.phase.state === "ended") terms.delete(ev.id)
     const meta = ev.info?.meta ?? {}
     tell("terminal.started", { id: ev.id, agent: agentOf(ev.id)?.name ?? null, ...(ev.info?.command ? { command: ev.info.command } : {}), ...(meta.name ? { name: meta.name } : {}) })
   }
@@ -1104,8 +1155,10 @@ let poll: ReturnType<typeof setInterval> | null = null
 let follow: ReturnType<typeof setInterval> | null = null
 
 type Listed = { id: string; agent: string | null; process: string; busy: boolean; clients: number; started: number; title?: string
-  /** What its program is doing (stateNow), while something runs in it; `kind` and `msg` (untrusted) as it said. */
+  /** What its program is doing (state.ts); `kind` and `msg` (untrusted) as it said. */
   state?: SessionState; kind?: Kind; msg?: string
+  /** Its agent's command was typed into its shell, its program not in front yet: the shell's prompt is the agent's. */
+  starting?: true
   /** The Inbox has a row for it that needs the user, unread (its service "inbox:needs"): an answer to read, a question. */
   needs?: true
   /** The note it was started on (terminal.run). */
@@ -1146,7 +1199,7 @@ let lastLocal: { at: number; list: Promise<Listed[]> } | null = null
 const LIST_FRESH = 1900 // (under the poll's 2 s, so each poll reads it again)
 
 async function readList(): Promise<Listed[]> {
-  const out = new Map<string, Listed>(), timing = span("terminal.list")
+  const out = new Map<string, Listed>(), timing = span("terminal.list"), seen = Date.now() - FRONT_AGE
   // (all at once: a plugin's list may start a process, and so does the process table inFront reads)
   if (readsTable) void processTable()
   readsTable = false
@@ -1162,30 +1215,22 @@ async function readList(): Promise<Listed[]> {
       // Who's watching: the app's sockets plus holds besides this server's own (another server's), so a session
       // no tab shows reads as detached.
       const clients = s ? s.clients.size + Math.max(0, x.attached - 1) : x.attached
-      // (a backend's word on what its program said, kept till it tells a change: after a restart, its first)
-      if (x.said && !osc.has(x.id)) {
-        osc.set(x.id, x.said)
-        const now = stateNow(x.id)
-        if (now) told.set(x.id, { now, at: Date.now() })
-      }
+      sight(x)
       const front = await inFront(x)
+      frontSeen(b, x.id, front !== null, seen)
+      const t = terms.get(x.id), now = t ? nowOf(t) : null
       // (an agent's terminal from before this server started: its questions are watched for again)
       const agent = agentOf(x.id)?.name
-      if (agent && front !== null && !watching.has(x.id) && !osc.get(x.id)?.status && !fs.existsSync(stateFile(x.id))) void watchAsks(x.id, agent)
-      // Its program ended (the shell is at its prompt again): what it was working on or blocked on is over.
-      const said = osc.get(x.id)?.status?.state
-      if (front === null && (said === "working" || said === "blocked")) void b.dropStatus?.(x.id)
-      // (Windows' backends name only the shell: what runs in front says)
-      const now = stateNow(x.id), shows = WIN ? front !== null : !SHELLS.has(x.process)
-      const state = stateOf(x.id) === MISSING ? null : now?.state ?? (x.state === "working" || x.state === "idle" ? x.state : x.state === "waiting" ? "blocked" : null)
+      if (agent && front !== null && !watching.has(x.id) && !t?.osc?.status && !t?.hooks) void watchAsks(x.id, agent)
       out.set(x.id, { id: x.id, agent: agentOf(x.id)?.name ?? null, process: front ?? x.process, busy: front !== null, clients, started: x.created || s?.started || 0,
         // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
         title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
         ...(x.cwd ? { cwd: x.cwd } : {}), ...(x.command ? { command: x.command } : {}), ...(x.cols ? { cols: x.cols, rows: x.rows } : {}), ...(x.activity ? { activity: x.activity } : {}),
-        ...(state && shows ? { state, ...(now?.kind ? { kind: now.kind } : {}), ...(now?.msg ? { msg: now.msg } : {}) } : {}),
+        ...(now ? { state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}),
+        ...(t?.starting ? { starting: true as const } : {}),
         ...(noteOf(x.id) ? { note: noteOf(x.id) } : {}),
         ...(nameOf(x.id) ? { name: nameOf(x.id) } : {}),
-        ...(stateOf(x.id) === MISSING ? { missing: true as const } : {}),
+        ...(t?.phase.state === "missing" ? { missing: true as const } : {}),
         ...(x.external ? { external: true } : {}), ...(x.pid ? { pid: x.pid } : {}), ...(x.via ? { via: x.via } : {}) })
     }
   }
@@ -1340,9 +1385,6 @@ async function sendText(b: Backend, id: string, text: string, enter: boolean, by
 const WAITS = new Set(["exit", "idle", "working", "blocked", "done", "error", "quiet"])
 const MAX_WAIT = 3600
 
-/** How the terminals that ended lately ended, as told here (exited), for a wait that comes after. */
-const exits = new Map<string, { code: number; signal: number; lost?: boolean; at: number }>()
-
 /** The terminals that ended lately, as their backends keep them (the terminal server: an hour), newest last. */
 async function endedList() {
   const all = await Promise.all(backends().map(async (b) => (await b.list({ ended: true }).catch(() => [] as Shell[])).filter((x) => x.exit).map((x) => ({ b, x }))))
@@ -1355,33 +1397,32 @@ async function endedOf(id: string): Promise<{ b: Backend; exit: Ended } | null> 
     const x = (await b.list({ ended: true }).catch(() => [] as Shell[])).find((y) => y.id === id && y.exit)
     if (x) return { b, exit: x.exit! }
   }
-  const e = exits.get(id)
+  const e = endOf(id)
   return e ? { b: fallback, exit: e } : null
 }
 
 /** The wait itself (see the route): what it met (null: the time ran out), the state now, and how it ended if it did. */
 async function waitFor(id: string, wants: string[], o: { ms: number; quiet: number; abort: AbortSignal; match?: RegExp; hold?: number }) {
   // (left out: an agent's turn over, as herdr has it, else its end; a pattern alone: only it)
-  const want = new Set(wants.length ? wants : o.match ? [] : agentOf(id) || stateNow(id) ? ["idle", "blocked", "done", "error"] : ["exit"])
+  const want = new Set(wants.length ? wants : o.match ? [] : agentOf(id) || current(id) ? ["idle", "blocked", "done", "error"] : ["exit"])
   if (o.match) want.add("match")
   // An agent at rest for a moment between steps of one turn isn't done: idle and done count once they've held.
   const hold = o.hold ?? 1500
   const since = Date.now()
   const result = (met: string | null, exit?: { code: number; signal: number; lost?: boolean } | null, matched?: string) => {
-    const now = stateNow(id)
+    const now = current(id)
     return { met, ...(matched !== undefined ? { matched } : {}), timedOut: met === null && !o.abort.aborted, waited: Math.round((Date.now() - since) / 100) / 10, for: [...want],
       ...(now ? { state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}), ...(exit ? { exit } : {}) }
   }
   const gone = async () => {
     // (told here first: its session here may still be letting go of it)
-    const told = exits.get(id)
+    const told = endOf(id)
     if (!told && (await backendOf(id))) return null
     const e = told ?? (await endedOf(id))?.exit
     return e ? { code: e.code, signal: e.signal, ...(e.lost ? { lost: true } : {}) } : { code: -1, signal: 0 }
   }
   const stateMet = () => {
-    // (nothing saying any more after something did was told as idle: stateChanged)
-    const now = stateNow(id) ?? told.get(id)?.now, at = told.get(id)?.at ?? 0
+    const t = terms.get(id), now = t ? nowOf(t) : null, at = t?.at ?? 0
     if (!now || !want.has(now.state) || at < (lastInput.get(id) ?? 0)) return null
     return (now.state === "idle" || now.state === "done") && Date.now() - at < hold ? null : now.state
   }
@@ -1569,7 +1610,7 @@ plugin.route("POST", "terminals/*/send", async (req) => {
   const text = typeof req.body?.text === "string" ? unmarked(req.body.text) : ""
   const enter = req.body?.enter !== false
   if (!text && !enter) throw new HTTPError(400, "send needs a text (or enter)")
-  const before = stateNow(id), since = Date.now()
+  const before = current(id), since = Date.now()
   await sendText(b, id, text, enter, by)
   // (`confirm`: say whether an agent took it, as terminal.send does; the Inbox's reply checks in its own way)
   return { id, sent: text.length, enter, ...(req.body?.confirm && enter && text && (agentOf(id) || before) ? await submitted(b, id, text, before, since) : {}) }
@@ -1580,8 +1621,8 @@ plugin.route("POST", "terminals/*/send", async (req) => {
 async function submitted(b: Backend, id: string, text: string, before: Now | null, since: number): Promise<{ submitted: boolean | null; why?: string }> {
   if (before?.state === "blocked") return { submitted: false, why: `it was waiting on the user${before.kind ? ` (${before.kind}${before.msg ? `: ${before.msg}` : ""})` : ""}: what you typed went to that` }
   for (const until = Date.now() + 6000; Date.now() < until; await new Promise((r) => setTimeout(r, 200))) {
-    const now = stateNow(id), at = told.get(id)?.at ?? 0
-    if (now && at >= since && now.state !== "idle") return { submitted: true }
+    const t = terms.get(id), now = t ? nowOf(t) : null
+    if (now && t!.at >= since && now.state !== "idle") return { submitted: true }
   }
   const c = await b.capture(id, { format: "text", lines: 8 }).catch(() => null)
   const squash = (s: string) => s.replace(/\s+/g, "")

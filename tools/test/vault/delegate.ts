@@ -165,9 +165,10 @@ export default async ($: VaultTest) => {
   // on a timer, and its answer typed into its parent's terminal.
   {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "delegate-term-")), done = path.join(tmp, "done"), got = path.join(tmp, "got")
-    // (the child prints a while, as Codex's spinner does, then rests; the parent, Claude Code's stand-in, keeps what it's sent)
+    // (the child prints a while, as Codex's spinner does, then rests; the parent, Claude Code's stand-in, keeps what it's
+    // sent: a program, as an agent is, not its shell at its prompt)
     const child = `i=0; while [ $i -lt 8 ]; do printf 'working %s\\n' $i; i=$((i+1)); sleep 0.5; done; touch '${done}'; sleep 600`
-    const parentCmd = `stty -echo; while IFS= read -r l; do printf '%s\\n' "$l" >> '${got}'; done`
+    const parentCmd = `sh -c 'stty -echo; while IFS= read -r l; do printf "%s\\n" "$l" >> "$0"; done' '${got}'`
     const svc = (id: string) => app.plugins.find((p) => p.id === id)!.services
     const cx = svc("codex"), cc = svc("claude-code"), was = { ...cx }, wasCc = { ...cc }
     let reads = 0, early = 0

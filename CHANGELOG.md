@@ -42,6 +42,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The Companion page**: your talk with the companion a day at a time (what you asked, what it said and did, its jobs
   as cards), each press's details (its steps, timings, cost, picture and audio) and what its services used this week
   with what's left. Its menu in the status bar, or `vau companion page`.
+- **An agent that stops no longer shows as working**: one that quits, crashes or is interrupted back to its shell is
+  idle at once, even with no app open (the phone asleep), so its Inbox row, `vau terminal wait` and a delegated task's
+  parent all hear its turn ended; a terminal server that dies says its terminals were lost, not that they exited cleanly.
 - **Mini-apps go anywhere**: any file can be drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right
   Apps/Weather.html`), so one .html page or note with a genui or mcp-app block is an embed, a tab or a panel.
 - **The Talk key's companion is never left halfway**: each press runs one state machine (held, sending, thinking,
