@@ -1,69 +1,64 @@
-/** The summoned companion's realtime voice (helper.ts'; plugins/core/companion/AGENTS.md): it hears the Talk key's audio
- *  and answers at once; the screen it asks the summoned session about (look_at_screen), else the pipeline answers. */
-import { type Heard, sentences } from "../plugins/core/companion/screenmarks.ts"
-import { chunker, speakable } from "../plugins/core/companion/spoken.ts"
+/** The realtime voice's first sound for a Talk key's ask (helper.ts'; plugins/core/companion/AGENTS.md): small talk it
+ *  answers alone; for the screen two words, the summoned answer (asked at once, as the pipeline asks) said after them. */
 import { realtimeSession, type RealtimeSession } from "./realtime.ts"
-import { costOf, instructions, LOOK_TOOL, msOf, resampler, type Usage, verbatim } from "./realtimelogic.ts"
+import { costOf, instructions, LOOK_TOOL, msOf, resampler, type Usage } from "./realtimelogic.ts"
 
 export type FrontConfig = { url: string; key: string; model: string; voice: string }
-/** Where its audio plays (voice.ts' companionVoice): a stream per response, in order; stop silences all. */
-export type Player = { stream: () => { pcm: (b: Buffer) => void; end: () => void }; stop: () => void }
-/** A turn's numbers: ms from the key let go to its first audio (`firstMs`) and, a screen question's, to the answer's. */
-export type TurnLog = { kind: "talk" | "look"; firstMs?: number; answerMs?: number; cost: number; model: string; usage: Usage[]; failed?: string }
+/** Where its audio plays (voice.ts' companionVoice): a stream per response, in order; `yield`, an answer said after it
+ *  cuts it short (at a pause, past `grace` s of it); stop silences all. */
+export type Player = { stream: () => { pcm: (b: Buffer) => void; end: () => void; yield?: (grace?: number) => void }; stop: () => void }
+/** A turn's numbers: ms from the key let go to its first audio, what its part cost. */
+export type TurnLog = { kind: "talk" | "look"; firstMs?: number; said?: string; cost: number; model: string; usage: Usage[]; failed?: string }
+/** Whose a press's answer is: `talk`, it answered alone (what it said); `look`, two words, the summoned answer after
+ *  them; `pipeline`, it couldn't (its socket failed, no word in time): the summoned answer alone. */
+export type Route = { to: "talk"; heard: string; said: string } | { to: "look" } | { to: "pipeline"; why: string }
 
-type State = "listening" | "answering" | "looking" | "done" | "pipeline" | "failed" | "stopped"
-type Turn = { pressed: number; released?: number; speech: boolean; loud: number; bytes: number; buf: Buffer[]; live: RealtimeSession | null; rs: (b: Buffer) => Buffer
-  state: State; heard?: string; first?: number; answerFirst?: number; said: string; asks: Set<number>; answerAsks: Set<number>; rids: Set<string>; answerRids: Set<string>
-  pieces: Map<number, string>; spoken: Map<string, { text: string; item?: string }>
-  call?: { id: string; question?: string; looked: boolean; answered: boolean; timer?: ReturnType<typeof setTimeout> }
-  lookedAt?: number; hold: string[]; chunks: Map<string, ReturnType<typeof chunker>>; quiet?: ReturnType<typeof setTimeout>; busy?: boolean
-  ended: boolean; open: number; cost: number; usage: Usage[]; waiting?: ReturnType<typeof setTimeout> }
+type State = "listening" | "answering" | "done" | "pipeline" | "stopped"
+type Turn<O> = { owner: O; pressed: number; released?: number; speech: boolean; loud: number; bytes: number; buf: Buffer[]; live: RealtimeSession | null; rs: (b: Buffer) => Buffer
+  state: State; heard?: string; first?: number; said: string; rid?: string; routed?: Route["to"]; call?: string
+  /** It answered alone, its words waiting for dictation's (their side of the box) before it says so. */
+  talked?: boolean
+  stream?: ReturnType<Player["stream"]>; cost: number; usage: Usage[]; waiting?: ReturnType<typeof setTimeout> }
 
-export function realtimeFront(o: {
+/** How much of its few words may still play once the answer after them is ready, before they're cut at a pause (s). */
+const GRACE = 0.25
+
+export function realtimeFront<O>(o: {
   /** The session's key and settings; null: the pipeline answers (no key, or voice_front is pipeline). */
   config: () => Promise<FrontConfig | null>
   name: () => string
   /** The languages the user speaks (two letters, likeliest first). */
   languages?: () => string[]
   player: Player
-  /** The screen round: the helper sends the ask (the user's words, the talk so far) to the summoned session. */
-  look: (q: { question: string; talk: string[] }) => void
-  /** A turn it answered alone: what they said and it said, for their box. */
-  answered: (r: { heard: string; said: string }) => void
-  /** This turn goes the pipeline's way after all (its socket failed): the ask with dictation's words. */
-  fallback: (heard: string) => void
-  /** Its cursor: thinking while the screen round runs; done when the turn is over. */
-  state: (s: "thinking" | "done") => void
-  log?: (t: TurnLog) => void
+  /** A press's route, told once (see Route), to the press it's for. */
+  route: (owner: O, r: Route) => void
+  log?: (owner: O, t: TurnLog) => void
   /** Said once when it pauses (the account can't pay, or its key is refused: the pipeline answers meanwhile); `paused`
    *  told each change of it, null when it's back. */
   notice?: (account: "quota" | "auth", why: string) => void
   paused?: (p: { account: "quota" | "auth"; why: string; until: number } | null) => void
   /** How long it pauses then, before it tries again (in the background, once). */
   pauseMs?: number
-  /** Each sentence of the higher model's answer as it's heard (its marks keep to it: helper.ts voiceHeardLine). */
-  heard?: (h: Heard) => void
-  /** How long the session stays open unused; how long a screen round may take; how long a tool call waits for the
-   *  user's words from dictation. */
-  idleMs?: number; lookMs?: number; heardMs?: number
-  /** How long after the key is let go its first words may take before the pipeline answers instead. */
-  firstMs?: number
+  /** How long the session stays open unused. */
+  idleMs?: number
+  /** How long after the key is let go its first words, and its route, may take before the pipeline answers instead. */
+  firstMs?: number; routeMs?: number
 }) {
   const now = () => Date.now()
-  const IDLE = o.idleMs ?? 10 * 60_000, LOOK = o.lookMs ?? 30_000, HEARD = o.heardMs ?? 1200, FIRST = o.firstMs ?? 4000
+  const IDLE = o.idleMs ?? 10 * 60_000, FIRST = o.firstMs ?? 4000, ROUTE = o.routeMs ?? 8000
   let cfg: FrontConfig | null | undefined, cfgAt = 0, cfgLoading: Promise<void> | null = null
   let s: RealtimeSession | null = null, sKey = "", turns = 0
-  let turn: Turn | null = null, idle: ReturnType<typeof setTimeout> | null = null
+  let turn: Turn<O> | null = null, idle: ReturnType<typeof setTimeout> | null = null
   /** Paused till then: the account can't pay, so no press tries it (told once); then one try in the background. */
   let pausedUntil = 0, toldPause = false, retry: ReturnType<typeof setTimeout> | null = null
   const paused = () => now() < pausedUntil
   const PAUSE = o.pauseMs ?? 10 * 60_000
+  /** The talk so far, theirs and its (the summoned session's answers too), for the summoned session's asks. */
   const talk: string[] = []
+  const said = (who: "they" | "you", x: string) => { if (x.trim()) talk.push(`${who}: ${x.trim()}`); talk.splice(0, Math.max(0, talk.length - 8)) }
   /** What's queued to the player, by item: when it starts and how long it is (for a truncate at barge-in). */
   let playEnd = 0
   const items = new Map<string, { start: number; ms: number }>()
-  const streams = new Map<string, ReturnType<Player["stream"]>>()
-  const owner = new Map<string, Turn>()
 
   function refresh() {
     if (cfg !== undefined && now() - cfgAt < 60_000) return Promise.resolve()
@@ -80,33 +75,32 @@ export function realtimeFront(o: {
     turns = 0
     sKey = k
     const me: RealtimeSession = realtimeSession({ ...cfg, instructions: instructions(o.name(), o.languages?.() ?? []), tools: [LOOK_TOOL] }, {
-      began: (rid, n) => {
-        const t = turn
-        if (!t || !t.asks.has(n)) return
-        t.rids.add(rid); owner.set(rid, t)
-        if (t.answerAsks.has(n)) { t.answerRids.add(rid); t.spoken.set(rid, { text: t.pieces.get(n) ?? "" }) }
-      },
+      began: (rid) => { const t = turn; if (t?.state === "answering" && !t.rid) t.rid = rid },
       audio: (b, rid, item) => heardAudio(b, rid, item),
-      said: (d, rid) => { const t = owner.get(rid); if (t && !t.answerRids.has(rid)) t.said += d },
+      said: (d, rid) => { const t = turn; if (t?.rid === rid) t.said += d },
       call: (c) => called(c),
       done: (d) => { if (d.account) pause(d.account, d.error ?? "refused"); responded(d) },
-      error: (e) => { if (me !== s) return; if (e.account) pause(e.account, e.message); if (e.fatal) s = null; errored(e.message, e.fatal) },
+      error: (e) => { if (me !== s) return; if (e.account) pause(e.account, e.message); if (e.fatal) s = null; errored(e.message) },
     })
     s = me
     return me
   }
 
+  /** The press's route, once; its few words give way to the answer after them. */
+  function routeTo(t: Turn<O>, r: Route) {
+    if (t.routed || t !== turn) return
+    t.routed = r.to
+    if (r.to === "look") t.stream?.yield?.(GRACE)
+    o.route(t.owner, r)
+  }
+
   function heardAudio(b: Buffer, rid: string, item: string) {
-    const t = owner.get(rid)
-    if (!t || t !== turn || t.state === "stopped" || t.state === "failed") return
+    const t = turn
+    if (!t || t.rid !== rid || t.state !== "answering") return
     const at = now()
     if (!t.first) { t.first = at; clearTimeout(t.waiting) }
-    if (t.answerRids.has(rid)) t.answerFirst ??= at
-    let st = streams.get(rid)
-    if (!st) { st = o.player.stream(); streams.set(rid, st) }
-    st.pcm(b)
-    const sp = t.spoken.get(rid)
-    if (sp) sp.item ??= item
+    if (!t.stream) { t.stream = o.player.stream(); if (t.routed === "look") t.stream.yield?.(GRACE) }
+    t.stream.pcm(b)
     const ms = msOf(b.length)
     let it = items.get(item)
     if (!it) { it = { start: Math.max(at, playEnd), ms: 0 }; items.set(item, it) }
@@ -114,70 +108,36 @@ export function realtimeFront(o: {
     playEnd = Math.max(playEnd, at) + ms
   }
 
+  /** It looks at the screen: what it said is the few words, the answer the summoned session's. */
   function called(c: { id: string; name: string; args: string; rid: string }) {
-    const t = owner.get(c.rid)
-    if (!t || t !== turn || c.name !== LOOK_TOOL.name || (t.state !== "answering" && t.state !== "looking")) return
-    if (!t.call) {
-      t.call = { id: c.id, looked: false, answered: false }
-      t.state = "looking"
-      o.state("thinking")
-      // (dictation's words are the question; they're a moment behind at most)
-      t.call.timer = setTimeout(() => look(t, true), HEARD)
-    }
-    if (c.args) { try { t.call.question = String(JSON.parse(c.args).question ?? "") } catch { /* as heard */ } }
-    look(t)
-  }
-  /** The screen round sent, once the user's words are here (or waited for long enough). */
-  function look(t: Turn, late = false) {
-    const c = t.call
-    if (!c || c.looked || t !== turn || t.state !== "looking") return
-    // (dictation's words first, else the tool's question, else either once waited for)
-    if (!late && (t.heard === undefined || (!t.heard.trim() && c.question === undefined))) return
-    const question = t.heard?.trim() || c.question?.trim() || "(not heard: what they said last)"
-    clearTimeout(c.timer)
-    c.looked = true
-    t.lookedAt = now()
-    o.look({ question, talk: [...talk] })
-    c.timer = setTimeout(() => {
-      if (turn !== t || c.answered || t.state !== "looking") return
-      c.answered = true
-      t.ended = true
-      s?.output(c.id, JSON.stringify({ error: "the look took too long" }))
-      ask(t, null)
-    }, LOOK)
-  }
-
-  /** A response made by the turn (null: its own words, after a tool's output; else to say `text` as it is). */
-  function ask(t: Turn, text: string | null) {
-    const live = s
-    if (!live) return
-    const n = live.respond(text === null ? {} : { instructions: verbatim(text), tool_choice: "none" })
-    if (text) t.pieces.set(n, text)
-    t.asks.add(n)
-    t.answerAsks.add(n)
-    t.open++
+    const t = turn
+    if (!t || t.rid !== c.rid || c.name !== LOOK_TOOL.name || t.state !== "answering") return
+    t.call = c.id
+    routeTo(t, { to: "look" })
   }
 
   function responded(d: { id: string; status: string; usage?: Usage; error?: string }) {
-    const t = owner.get(d.id)
-    streams.get(d.id)?.end()
-    streams.delete(d.id)
-    if (!t) return
+    const t = turn
+    if (!t || t.rid !== d.id) return
     if (d.usage) { t.usage.push(d.usage); t.cost += costOf(cfg?.model ?? "", d.usage) }
-    if (t.answerRids.has(d.id)) { t.open--; told(t, d.id) }
-    if (t !== turn) return
-    if (d.status === "failed" || d.status === "incomplete") { if (!t.first) return fail(t, d.error ?? d.status) }
-    if (t.state === "answering" && d.status === "completed") return finish(t)
-    if (t.state === "looking" && t.ended && t.open <= 0 && t.call?.answered) finish(t)
+    t.stream?.end()
+    if (t.state !== "answering") return
+    if (d.status !== "completed" && !t.first) return fail(t, d.error ?? d.status)
+    // (its call answered at once: the summoned session's words are said in the pipeline's voice, and told it after)
+    if (t.call) s?.output(t.call, JSON.stringify({ answer: "(you're looking: the answer is said for you)" }))
+    if (!t.routed && d.status !== "completed") routeTo(t, { to: "pipeline", why: d.error ?? d.status })
+    else if (!t.routed) {
+      t.talked = true
+      if (t.heard !== undefined) talked(t)
+      // (dictation's words never came: its side of the box is empty)
+      else setTimeout(() => { if (turn === t && !t.routed) { t.heard = ""; talked(t) } }, 1500).unref?.()
+    }
+    finish(t)
   }
-
-  /** An answer's piece made whole: its sentences, when they're heard and for how long (its audio's place in the queue). */
-  function told(t: Turn, rid: string) {
-    const sp = t.spoken.get(rid), it = sp?.item ? items.get(sp.item) : undefined
-    if (!sp?.text || !it || t !== turn || t.state === "stopped") return
-    const parts = sentences(sp.text), chars = parts.reduce((n, x) => n + x.length, 0) || 1
-    let at = it.start
-    for (const x of parts) { const dur = (it.ms * x.length) / chars; o.heard?.({ text: x, at: Math.round(at), dur: Math.round(dur) }); at += dur }
+  function talked(t: Turn<O>) {
+    said("they", t.heard ?? "")
+    said("you", t.said)
+    routeTo(t, { to: "talk", heard: t.heard ?? "", said: t.said.trim() })
   }
 
   /** The account can't pay: no try for a while, said once, then one try in the background. */
@@ -185,7 +145,7 @@ export function realtimeFront(o: {
     pausedUntil = now() + PAUSE
     // (a turn waiting on it hands its ask back now, not at its timeout)
     const t = turn
-    if (t && !t.first && (t.state === "answering" || t.state === "looking" || (t.state === "listening" && t.released))) fail(t, why)
+    if (t && !t.first && (t.state === "answering" || (t.state === "listening" && t.released))) fail(t, why)
     if (!toldPause) { toldPause = true; o.notice?.(account, why) }
     o.paused?.({ account, why, until: pausedUntil })
     const was = s
@@ -214,110 +174,52 @@ export function realtimeFront(o: {
     p.respond({ output_modalities: ["text"], conversation: "none", max_output_tokens: 16, instructions: "Say OK." })
   }
 
-  function errored(message: string, fatal: boolean) {
+  /** Its socket or response failed: before its route, the pipeline's voice has the answer; after, what it said stands. */
+  function errored(message: string) {
     const t = turn
-    if (!t) return
-    // (before it said anything: the pipeline has the turn; after, what's left of it is the pipeline's voice)
-    if ((t.state === "answering" || (t.state === "listening" && t.released)) && !t.first) return fail(t, message)
-    if (t.state === "looking" && (fatal || !t.call?.answered)) fail(t, message)
+    if (t && (t.state === "answering" || (t.state === "listening" && t.released))) fail(t, message)
   }
 
-  function fail(t: Turn, why: string) {
-    if (t.state === "failed" || t.state === "pipeline" || t.state === "stopped") return
-    const looked = !!t.call?.looked
-    t.state = "failed"
+  function fail(t: Turn<O>, why: string) {
+    if (t.state === "pipeline" || t.state === "stopped" || t.state === "done") return
+    t.state = "pipeline"
     clearTimeout(t.waiting)
-    if (t.call) clearTimeout(t.call.timer)
-    s?.cancel()
+    if (!t.routed) s?.cancel()
     // (what it began saying ends where it is: an open stream would hold up what plays after it)
-    for (const rid of t.rids) { streams.get(rid)?.end(); streams.delete(rid) }
+    t.stream?.end()
     rest()
-    console.warn(`realtime: ${why}; the pipeline answers`)
-    o.log?.({ kind: t.call ? "look" : "talk", cost: t.cost, model: cfg?.model ?? "", usage: t.usage, failed: why })
-    // (the screen round already went: its answer is said by the pipeline's voice, as `owns` now says no)
-    if (!looked && t.heard !== undefined) o.fallback(t.heard)
+    console.warn(`realtime: ${why}${t.routed ? "" : "; the pipeline answers"}`)
+    o.log?.(t.owner, { kind: t.routed === "look" ? "look" : "talk", cost: t.cost, model: cfg?.model ?? "", usage: t.usage, failed: why })
+    routeTo(t, { to: "pipeline", why })
   }
 
-  function finish(t: Turn) {
+  function finish(t: Turn<O>) {
     t.state = "done"
-    if (t.call) clearTimeout(t.call.timer)
-    if (t.heard?.trim()) talk.push(`they: ${t.heard.trim()}`)
-    if (t.said.trim()) talk.push(`you: ${t.said.trim()}`)
-    talk.splice(0, Math.max(0, talk.length - 8))
-    if (!t.call) o.answered({ heard: t.heard ?? "", said: t.said.trim() })
-    o.state("done")
+    clearTimeout(t.waiting)
+    if (t.routed === "look" && t.heard) said("they", t.heard)
     const r = t.released ?? t.pressed
-    o.log?.({ kind: t.call ? "look" : "talk", ...(t.first ? { firstMs: t.first - r } : {}), ...(t.answerFirst ? { answerMs: t.answerFirst - r } : {}), cost: t.cost, model: cfg?.model ?? "", usage: t.usage })
+    o.log?.(t.owner, { kind: t.routed === "look" ? "look" : "talk", ...(t.first ? { firstMs: t.first - r } : {}), said: t.said.trim(), cost: t.cost, model: cfg?.model ?? "", usage: t.usage })
     rest()
   }
   function rest() {
     if (idle) clearTimeout(idle)
-    idle = setTimeout(() => { if (!turn || !["listening", "answering", "looking"].includes(turn.state)) { s?.close(); s = null } }, IDLE)
+    idle = setTimeout(() => { if (!turn || !["listening", "answering"].includes(turn.state)) { s?.close(); s = null } }, IDLE)
     idle.unref?.()
   }
 
   /** What's playing and to come stops; the model told how much of it was heard. */
-  function hush(why: string) {
+  function hush() {
     const t = turn
     if (s) {
       s.cancel()
       const at = now()
       for (const [item, it] of items) if (at - it.start < it.ms) s.truncate(item, Math.max(0, at - it.start))
     }
-    // (each stream ended, so none left open holds up what plays after it)
-    for (const st of streams.values()) st.end()
-    items.clear(); streams.clear(); playEnd = 0
+    t?.stream?.end()
+    items.clear(); playEnd = 0
     o.player.stop()
-    if (t && (t.state === "answering" || t.state === "looking")) {
-      if (t.call && !t.call.answered) { clearTimeout(t.call.timer); t.call.answered = true; s?.output(t.call.id, JSON.stringify({ error: why })) }
-      t.state = "stopped"
-    }
+    if (t && (t.state === "answering" || t.state === "listening")) { clearTimeout(t.waiting); t.state = "stopped" }
     if (s) rest()
-  }
-
-  /** The higher model's say `id` as written so far: said in pieces, the first once it has a few words. */
-  function sayText(id: string, whole: string) {
-    const t = turn
-    if (!t || t.state !== "looking" || !t.call?.looked || t.ended) return
-    let c = t.chunks.get(id)
-    if (!c) {
-      // (a new say: the one before is whole)
-      for (const k of t.chunks.keys()) sayEnd(k)
-      c = chunker()
-      t.chunks.set(id, c)
-    }
-    t.hold.push(...c.feed(speakable(whole)))
-    give(t, false)
-    // (its words stopped coming a while: that say is whole)
-    clearTimeout(t.quiet)
-    t.quiet = setTimeout(() => { if (turn === t) sayEnd(id) }, 1500)
-  }
-  /** Say `id` whole (none: the higher model's turn is over). */
-  function sayEnd(id?: string) {
-    const t = turn
-    if (!t || t.state !== "looking" || !t.call?.looked || t.ended) return
-    for (const [k, c] of t.chunks) if (id === undefined || k === id) { const rest = c.flush(); if (rest) t.hold.push(rest) }
-    if (id !== undefined) return give(t, true)
-    clearTimeout(t.quiet)
-    t.ended = true
-    give(t, true)
-    // (it only drew, or said nothing: the call closed without words)
-    if (!t.call.answered) { t.call.answered = true; clearTimeout(t.call.timer); s?.output(t.call.id, JSON.stringify({ answer: "", shown: "on screen" })) }
-    if (t.open <= 0) finish(t)
-  }
-  function give(t: Turn, final: boolean) {
-    const c = t.call
-    if (!c || !s) return
-    if (!c.answered) {
-      const words = t.hold.join(" ").trim()
-      if (!words || (!final && words.split(/\s+/).length < 4)) return
-      t.hold = []
-      clearTimeout(c.timer)
-      c.answered = true
-      s.output(c.id, JSON.stringify({ answer: words }))
-      return ask(t, words)
-    }
-    for (const p of t.hold.splice(0)) if (p.trim()) ask(t, p)
   }
 
   return {
@@ -325,12 +227,11 @@ export function realtimeFront(o: {
     available: () => cfg !== null && !paused(),
     /** The Talk key pressed: the key read, the session opened while they speak. */
     warm() { void refresh().then(() => { if (cfg) session() }) },
-    /** A turn begins (the Talk key held over the screen): what was playing stops (barge-in). */
-    press() {
-      hush("they spoke again")
+    /** A turn begins (the Talk key held over the screen), for `owner` (the press): what was playing stops (barge-in). */
+    press(owner: O) {
+      hush()
       if (idle) clearTimeout(idle)
-      const t: Turn = { pressed: now(), speech: false, loud: 0, bytes: 0, buf: [], live: null, rs: resampler(), state: "listening", said: "", asks: new Set(), answerAsks: new Set(),
-        rids: new Set(), answerRids: new Set(), pieces: new Map(), spoken: new Map(), hold: [], chunks: new Map(), ended: false, open: 0, cost: 0, usage: [] }
+      const t: Turn<O> = { owner, pressed: now(), speech: false, loud: 0, bytes: 0, buf: [], live: null, rs: resampler(), state: "listening", said: "", cost: 0, usage: [] }
       turn = t
       void refresh().then(() => {
         if (turn !== t || t.state !== "listening") return
@@ -365,40 +266,43 @@ export function realtimeFront(o: {
       void refresh().then(() => {
         if (turn !== t || t.state !== "listening") return
         const live = t.live?.alive() && !paused() ? t.live : cfg ? session() : null
-        if (!live) { t.state = "pipeline"; rest(); if (t.heard !== undefined) o.fallback(t.heard); return }
+        if (!live) return fail(t, "no session")
         if (t.live !== live) { live.clear(); for (const b of t.buf.splice(0)) live.append(b); t.live = live }
         t.state = "answering"
         turns++
         if (where) live.note(where)
         live.commit()
-        t.asks.add(live.respond())
-        t.waiting = setTimeout(() => { if (turn === t && !t.first) errored(`no answer in ${FIRST / 1000} s`, false) }, FIRST)
+        live.respond()
+        t.waiting = setTimeout(() => { if (turn === t && !t.first) errored(`no answer in ${FIRST / 1000} s`) }, FIRST)
+        setTimeout(() => { if (turn === t && !t.routed) errored(`no route in ${ROUTE / 1000} s`) }, ROUTE).unref?.()
       })
     },
-    /** Dictation's words for the turn, once settled: whether this front has the turn (else the pipeline does). */
-    heard(text: string) {
+    /** Dictation's words for `owner`'s press: `false`, the pipeline's alone; `held`, its first sound is this front's, the
+     *  summoned answer waiting for its route; `through`, routed `look` already; `done`, it answered alone (told now). */
+    heard(owner: O, text: string): false | "held" | "through" | "done" {
       const t = turn
-      if (!t || t.state === "pipeline" || t.state === "failed" || (t.state === "listening" && !t.released)) return false
+      if (!t || t.owner !== owner || t.state === "stopped" || t.routed === "pipeline" || (t.state === "listening" && !t.released)) return false
+      if (t.talked && !t.routed) { t.heard = text; talked(t); return "done" }
+      if (t.routed === "talk") return "done"
+      if (!text.trim() || t.state === "pipeline") return false
       t.heard = text
-      look(t)
-      return true
+      if (t.state === "done" && t.routed === "look") said("they", text)
+      return t.routed === "look" ? "through" : "held"
     },
-    /** Whether a say answering an ask made at `t` (its `answers.t`) is this front's to speak. */
-    owns: (t: number) => !!turn && turn.state === "looking" && !!turn.lookedAt && t >= turn.lookedAt - 50,
-    /** The higher model's say as it's written. */
-    text: sayText,
-    /** The companion's state (the server's): busy on the screen round, then done with it, which ends its answer. */
-    agent(state: string) {
+    /** The summoned session's answer to `owner`'s look, whole: told to its conversation, so what follows knows it. */
+    answer(owner: O, text: string) {
       const t = turn
-      if (!t || t.state !== "looking" || !t.call?.looked) return
-      if (state === "thinking" || state === "reading" || state === "writing" || state === "starting") t.busy = true
-      else if ((state === "watching" || state === "away") && (t.busy || t.chunks.size)) sayEnd()
+      if (!t || t.owner !== owner || t.routed !== "look" || !text.trim()) return
+      said("you", text)
+      s?.note(`(What you answered after looking at the screen: ${JSON.stringify(text.trim().slice(0, 600))})`)
     },
-    /** Silence (Esc, moving on, a new ask): what it says stops, the turn over. */
-    stop: () => hush("they stopped you"),
+    /** The talk so far (theirs and its), for the summoned session's ask. */
+    talk: () => [...talk],
+    /** Silence (Esc, a new ask): what it says stops, the turn over. */
+    stop: () => hush(),
     /** Whether it's speaking or about to (its cursor shows it speaking). */
-    speaking: () => !!turn && (turn.state === "answering" || turn.state === "looking" || turn.state === "done") && playEnd > now(),
-    close() { hush("closed"); s?.close(); s = null; turn = null; if (idle) clearTimeout(idle); if (retry) clearTimeout(retry) },
+    speaking: () => !!turn && (turn.state === "answering" || turn.state === "done") && playEnd > now(),
+    close() { hush(); s?.close(); s = null; turn = null; if (idle) clearTimeout(idle); if (retry) clearTimeout(retry) },
   }
 }
-export type RealtimeFront = ReturnType<typeof realtimeFront>
+export type RealtimeFront<O = unknown> = ReturnType<typeof realtimeFront<O>>

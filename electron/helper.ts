@@ -534,7 +534,7 @@ async function startSummon() {
   void screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).then((w) => { s.w = w.window ? w : null }, () => {})
   draw()
   // (its realtime turn begins now: a let-go while the last press's words finish is this one's)
-  voiceFront.press()
+  voiceFront.press(s)
   // (pressed again as its last words are still being finished (or it speaks): those go first, then this one listens)
   for (let i = 0; i < 60 && session?.into === "summon"; i++) await new Promise((r) => setTimeout(r, 25))
   if (session?.into === "summon") s.press?.step("took over a press still finishing")
@@ -558,13 +558,13 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
   const { w, place } = await (s.place ?? gather(s))
   const win = w?.window && !w.vaultite && place.app !== "private" ? w : null
   if (win?.frame) park(s.name, win.window, offsetIn(win.frame, s.p))
-  // (the realtime voice's screen round: its few words meanwhile go on)
+  // (the realtime voice's press: its few words go on, this answer said after them)
   if (!how.front) stopVoice()
   const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true, ...(s.released ? { keyUp: s.released } : {}),
     ...(how.front ? { front: how.front, ...(how.talk?.length ? { talk: how.talk } : {}) } : {}) })
   if (!sent) return missed(s, "Vaultite's server isn't connected", "Can't reach Vaultite")
   s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot, ...(how.front ? { front: how.front } : {}) })
-  if (s.press && !how.front) lastAsk = { press: s.press, up: s.released ?? Date.now() }
+  if (s.press) lastAsk = { press: s.press, up: s.released ?? Date.now() }
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
@@ -843,9 +843,15 @@ async function finish(s: Session, cancelled: boolean) {
     const m = s.of ?? summon
     if (!m || m.typing) return
     if (cancelled) { m.press?.end("cancelled"); if (summon === m) summon = null; return draw() }
-    // (the realtime voice has it: dictation's words are its question, and its fallback)
-    if (m === summon && voiceFront.heard(text)) { m.press?.step("realtime"); return }
-    return sendSummon(m, text)
+    // (the realtime voice gives its first sound: the summoned session is asked at once all the same, its answer said
+    // after the realtime voice's few words, or dropped if it answered alone)
+    const front = voiceFront.heard(m, text)
+    if (front === "done") { m.press?.end("realtime", { front: "talk" }); return }
+    if (!front) return sendSummon(m, text)
+    m.press?.step("realtime", { route: front === "held" ? "waiting" : "look" })
+    fronted = { s: m }
+    if (front === "held") speaker.hold()
+    return sendSummon(m, text, { front: "realtime", talk: voiceFront.talk() })
   }
   if (cancelled || !text) return
   const r = await screenAsk<{ ok?: boolean; why?: string }>("insert", { text: joinText(s.focus.before ?? "", text) })
@@ -944,39 +950,37 @@ const speaker = companionVoice({
   },
   ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
 })
-/** The realtime voice (realtimefront.ts): a spoken ask over the screen heard as it's said and answered at once, in its
- *  own voice; what's on screen it asks the summoned session (sendSummon), saying a few words meanwhile. */
-const voiceFront = realtimeFront({
+/** The realtime voice (realtimefront.ts): a spoken ask over the screen, its first sound at once: small talk it answers
+ *  alone; for the screen two words, the summoned answer (asked at once) said after them. Callbacks are each press's. */
+const voiceFront = realtimeFront<Summon>({
   config: realtimeConfig,
   name: () => live.state.name,
   languages: hints,
   player: speaker,
-  look: ({ question, talk }) => { const s = summon; if (s) void sendSummon(s, question, { front: "realtime", talk }) },
-  answered: ({ heard, said }) => {
-    const s = summon
-    if (said) live.say({ t: "answered", agent: s?.name ?? live.state.name, heard, said })
-    if (!s) return
+  route: (s, r) => {
+    const mine = fronted?.s === s
+    if (r.to !== "talk") { if (mine) speaker.through(); return }
+    // (it answered alone: the summoned session's answer, asked meanwhile, goes unsaid and unkept)
+    if (mine) { fronted = null; hushed = Date.now(); if (voiced?.quiet) clearTimeout(voiced.quiet); voiced = null; speaker.drop() }
+    if (r.said) live.say({ t: "answered", agent: s.name, heard: r.heard, said: r.said, ...(mine ? { withdraw: true } : {}) })
+    if (summon !== s) return
     s.state = "watching"
     const x = exchange?.name === s.name ? exchange : null
     openAnswer(s.name, s.p, s.w, x ? x.since : s.at)
     // (heard already: no cue for it)
     if (exchange) exchange.arrived = true
   },
-  fallback: (heard) => { const s = summon; if (s) void sendSummon(s, heard) },
-  state: (st) => { if (summon && st === "thinking") { summon.state = "thinking"; draw() } },
-  heard: (h) => voiceHeardLine(h),
   notice: (account) => notice("realtime-paused", `Realtime voice paused: ${account === "quota" ? "OpenAI account has no credits" : "OpenAI refused its key"}`,
     "The companion answers through dictation and its cloud voice meanwhile, and tries again every 10 minutes.",
     account === "quota" ? "https://platform.openai.com/settings/organization/billing" : "https://platform.openai.com/api-keys"),
   // (the server's status says so: vau companion status)
   paused: (p) => { realtimePaused = p; live.say({ t: "realtime", paused: p }) },
-  // (in the press's log: a talk turn ends there; a screen round's was sent, and the pipeline's fallback goes on)
-  log: (t) => {
-    const p = summon?.press, d = { kind: t.kind, model: t.model, cost: Number(t.cost.toFixed(5)), ...(t.firstMs !== undefined ? { firstMs: t.firstMs } : {}), ...(t.answerMs !== undefined ? { answerMs: t.answerMs } : {}), ...(t.failed ? { failed: t.failed } : {}) }
-    if (p && !p.ended() && t.kind === "talk" && !t.failed) p.end("realtime", d)
-    else p?.step("realtime", d)
-  },
+  // (in the press's log: what its part did, and cost)
+  log: (s, t) => s.press?.after("realtime", { kind: t.kind, model: t.model, cost: Number(t.cost.toFixed(5)), ...(t.firstMs !== undefined ? { firstMs: t.firstMs } : {}), ...(t.failed ? { failed: t.failed } : {}) }),
 })
+/** The press the realtime voice gives the first sound for, its summoned answer said after it (held till its route);
+ *  `begun`, that answer's voice begun. */
+let fronted: { s: Summon; begun?: boolean } | null = null
 let realtimePaused: { account: string; why: string; until: number } | null = null
 /** The realtime voice's key and settings: none when it's off (voice_front pipeline, the voice off, no OpenAI key). */
 async function realtimeConfig() {
@@ -989,7 +993,9 @@ async function realtimeConfig() {
 
 /** The answer being said: the ask it answers (when it came), its says (the last still growing). Answers to asks before
  *  `hushed` are silent: stopped (the Talk key, Esc), or a newer ask came. */
-let voiced: { name: string; asked: number; notes: string[]; quiet: ReturnType<typeof setTimeout> | null } | null = null
+let voiced: { name: string; asked: number; notes: string[]; quiet: ReturnType<typeof setTimeout> | null; texts?: Map<string, string>
+  /** The press the realtime voice spoke first for: told this answer once it's whole. */
+  fronted?: Summon } | null = null
 let hushed = 0
 /** When words were last said into a cursor's box: the ask they make is a spoken one. */
 let saidInBox = 0
@@ -999,27 +1005,30 @@ let speakingNow: Scene["speaking"] = null
  *  by voice); its last words when the next say begins, or after a pause. */
 function voiceHeard(n: Note) {
   const a = n.answers, mode = prefs.voice.mode
-  // (the realtime voice's screen round: it says this answer itself)
-  if (n.kind === "say" && a && n.text && !n.dismissed && voiceFront.owns(a.t)) return voiceFront.text(n.id, n.text)
   if (n.kind !== "say" || !a || !n.text || n.dismissed || a.t < hushed || (voiced && a.t < voiced.asked)) return
   if (!voiced || voiced.asked !== a.t) {
-    // (a newer ask's answer: the last one stops, said or not)
-    stopVoice(a.t)
+    // (a newer ask's answer: the last one stops, said or not; the realtime voice's few words before it go on)
+    const after = !!fronted && !fronted.begun && a.t >= (lastAsk?.up ?? Infinity)
+    if (after) { fronted!.begun = true; hushed = Math.max(hushed, a.t); if (voiced?.quiet) clearTimeout(voiced.quiet); voiced = null } else stopVoice(a.t)
     if (mode === "off" || (mode === "auto" && !a.voice)) return
-    speaker.begin("", a.lang)
+    speaker.begin("", a.lang, after)
     heardLines = []
-    voiced = { name: n.agent, asked: a.t, notes: [], quiet: null }
+    voiced = { name: n.agent, asked: a.t, notes: [], quiet: null, ...(after ? { fronted: fronted!.s } : {}) }
   }
   const v = voiced
   if (!v.notes.includes(n.id)) { const was = v.notes.at(-1); if (was) speaker.end(was); v.notes.push(n.id) }
+  if (v.fronted) (v.texts ??= new Map()).set(n.id, n.text)
   speaker.text(n.id, n.text)
   if (v.quiet) clearTimeout(v.quiet)
   v.quiet = setTimeout(() => { if (voiced === v) speaker.end(n.id) }, 1500)
 }
 /** Its turn over: what it wrote last is said to its end. */
 function voiceHeardAgent(a: Agent) {
-  if (a.name === live.state.name) voiceFront.agent(a.state)
-  if (voiced?.name === a.name && voiced.notes.length && (a.state === "watching" || a.state === "away")) speaker.end()
+  const v = voiced
+  if (v?.name !== a.name || !v.notes.length || (a.state !== "watching" && a.state !== "away")) return
+  speaker.end()
+  // (the realtime voice's conversation told what was said after its few words, so a follow-up knows)
+  if (v.fronted) { voiceFront.answer(v.fronted, [...v.texts?.values() ?? []].join(" ")); v.fronted = undefined }
 }
 /** The drawing up, as the server sent it; the sentences of the answer said aloud so far, as heard (any voice's). */
 let drawn: Drawing | null = null, heardLines: Heard[] = []
@@ -1036,6 +1045,7 @@ function paceDrawing() {
 /** Silence, at once: what's said now, and what's still to come of answers asked before `until` (now). */
 function stopVoice(until = Date.now()) {
   hushed = Math.max(hushed, until)
+  fronted = null
   if (voiced?.quiet) clearTimeout(voiced.quiet)
   voiced = null
   speaker.stop()

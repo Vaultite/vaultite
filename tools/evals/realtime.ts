@@ -1,12 +1,12 @@
-// The realtime voice on the real APIs, key let go to first audio, vs the pipeline (--pipeline alone: no OpenAI key needed).
-//   node tools/evals/realtime.ts [--config <file>] [--openai-key <file>] [--models a,b] [--claude] [--summoned sonnet] [--pipeline]
+// The realtime voice on the real APIs (the first sound its, the summoned answer after it), key let go to first audio and
+// to the real answer, vs the pipeline. Flags: --config, --openai-key, --models, --claude, --summoned, --pipeline (no key), --out
 import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
 import { freePort, stopTerminals, testServer, waitFor } from "../test/lib.ts"
-import { realtimeFront, type TurnLog } from "../../electron/realtimefront.ts"
+import { realtimeFront, type Route, type TurnLog } from "../../electron/realtimefront.ts"
 import { cloudVoice } from "../../electron/tts.ts"
 import { chunker, speakable } from "../../plugins/core/companion/spoken.ts"
 
@@ -122,46 +122,60 @@ try {
   if (CLAUDE) await startClaude()
   eleven?.warm?.()
   for (const model of MODELS) {
-    const logs: (TurnLog & { id: string })[] = []
-    let out: Buffer[] = [], current: Case | null = null
-    const front = realtimeFront({
+    type Owner = { id: string }
+    const logs: (TurnLog & { id: string })[] = [], routed = new Map<string, Route>()
+    let out: Buffer[] = []
+    const front = realtimeFront<Owner>({
       config: async () => ({ url: "wss://api.openai.com/v1/realtime", key: KEY, model, voice: "cedar" }),
       name: () => "Claude",
-      player: { stream: () => ({ pcm: (b) => out.push(b), end: () => {} }), stop: () => {} },
-      look: ({ question, talk }) => {
-        const c = current!
-        if (!CLAUDE) {
-          // (a canned answer, written as a model would: a word at a time)
-          const text = c.id === "finder-pt" ? "Essa é a pasta Impostos, no seu Desktop. Quer que eu abra?" : "That's your tab groups. Each one keeps a set of tabs together, like Work. Want me to open one?"
-          let i = 0
-          const words = text.split(" "), tick = setInterval(() => { i++; front.text("canned", words.slice(0, i).join(" ")); if (i >= words.length) { clearInterval(tick); front.agent("thinking"); front.agent("watching") } }, 40)
-          return
-        }
-        void moment({ ...c.at, text: question }, { front: "realtime", ...(talk.length ? { talk } : {}) }, (id, text, t) => { if (front.owns(t)) front.text(id, text) }, (st) => front.agent(st))
-      },
-      answered: () => {}, fallback: (h) => console.log(`  ${current?.id}: fell back to the pipeline (${h})`), state: () => {},
-      log: (t) => logs.push({ ...t, id: current!.id }),
+      player: { stream: () => ({ pcm: (b) => out.push(b), end: () => {}, yield: () => {} }), stop: () => {} },
+      route: (owner, r) => routed.set(owner.id, r),
+      log: (owner, t) => logs.push({ ...t, id: owner.id }),
     })
+    const hybrid: Record<string, { first: number; answer: number; cost: number }[]> = { talk: [], look: [] }
     for (const c of CASES) {
-      current = c; out = []
-      const pcm = speech(c)
+      out = []
+      const owner = { id: c.id }, pcm = speech(c)
       front.warm()
-      front.press()
+      front.press(owner)
       for (let i = 0; i < pcm.length; i += 3200) { front.audio(pcm.subarray(i, i + 3200)); if (i === 3200 * 3) front.speech(); await sleep(100) }
       const app = c.at ? (c.at.title as string).split(" - ").at(-2) ?? c.at.app : "Notes"
       front.release(`(Where they are: ${app}, its window "${(c.at?.title ?? "Groceries").slice(0, 120)}".)`)
       // (dictation's words settle a moment after the stop: Soniox's, about 100 ms by tools/dictation_bench.ts)
       await sleep(SETTLE)
-      front.heard(c.said)
-      const done = await waitFor(() => logs.find((l) => l.id === c.id) ?? null, 60_000, 50)
-      await sleep(400)
+      const h = front.heard(owner, c.said)
+      // (the summoned session asked at once, as the helper asks it: its answer said after the few words, or withdrawn)
+      const asked = CLAUDE && h && h !== "done" ? moment(c.at ? { ...c.at, text: c.said } : { text: c.said, sx: 700, sy: 500, app: "com.apple.Notes", title: "Groceries" }, { front: "realtime", talk: front.talk() }) : null
+      const r = await waitFor(() => routed.get(c.id) ?? null, 30_000, 20)
+      if (r?.to === "talk" && asked) ws!.send(JSON.stringify({ t: "answered", agent: "Claude", heard: c.said, said: r.said, withdraw: true }))
+      const claude = asked ? await Promise.race([asked, sleep(20_000).then(() => null)]) : null
+      const done = await waitFor(() => logs.find((l) => l.id === c.id) ?? null, 30_000, 50)
+      await sleep(300)
       fs.writeFileSync(path.join(OUT, `${model}-${c.id}.wav`), wav(Buffer.concat(out)))
-      if (!done) { rows.push(`${model} ${c.id}: no answer`); continue }
-      rows.push(`${model.padEnd(22)} ${c.kind.padEnd(5)} ${c.id.padEnd(14)} first ${ms(done.firstMs).padStart(5)} ms  answer ${ms(done.answerMs).padStart(5)} ms  $${done.cost.toFixed(4)}  in ${done.usage.reduce((n, u) => n + (u.input_tokens ?? 0), 0)} out ${done.usage.reduce((n, u) => n + (u.output_tokens ?? 0), 0)} tokens${done.failed ? `  failed: ${done.failed}` : ""}`)
+      if (!done || !r) { rows.push(`${model} ${c.id}: no answer`); continue }
+      // (the answer ready as the pipeline's is; then as voice.swift has it: after the two words when they end within 0.25 s,
+      // their silence left out (a 40 ms fade, an 80 ms breath), else cut at their next pause within 0.2 s)
+      const ack = Buffer.concat(out), ackMs = ack.length / 48
+      let last = ack.length / 2 - 1
+      while (last >= 0 && Math.abs(ack.readInt16LE(last * 2)) < 328) last--
+      const words = (done.firstMs ?? 0) + (last + 1) / 24
+      let answer = NaN, said = ""
+      if (r.to === "look" && claude) {
+        said = claude.text
+        const ready = SETTLE + claude.sentence + await ttsFirst(chunker().feed(speakable(claude.text + " x"))[0] ?? claude.text)
+        answer = ready >= words + 120 ? ready : words - ready <= 250 ? words + 120 : ready + 200
+        said = `ready ${ms(ready)} ms (+${ms(answer - ready)}): ${said}`
+      }
+      const kind = r.to === "talk" ? "talk" : "look"
+      hybrid[kind].push({ first: done.firstMs ?? NaN, answer: kind === "talk" ? done.firstMs ?? NaN : answer, cost: done.cost })
+      const withdrawn = r.to === "talk" && asked ? `  (summoned answer withdrawn${claude?.text ? `, it had: ${JSON.stringify(claude.text.slice(0, 40))}` : ""})` : ""
+      rows.push(`${model.padEnd(22)} ${c.kind.padEnd(5)} ${c.id.padEnd(14)} route ${r.to.padEnd(8)} first ${ms(done.firstMs).padStart(5)} ms  few words ${ms(ackMs).padStart(5)} ms ${JSON.stringify(done.said ?? "").slice(0, 50).padEnd(30)} answer ${ms(kind === "talk" ? done.firstMs : answer).padStart(5)} ms  $${done.cost.toFixed(4)}${done.failed ? `  failed: ${done.failed}` : ""}${said ? `  ${JSON.stringify(said.slice(0, 80))}` : ""}${withdrawn}`)
     }
     front.close()
-    const talk = logs.filter((l) => l.kind === "talk"), look = logs.filter((l) => l.kind === "look")
-    rows.push(`${model}: talk first audio median ${ms(med(talk.map((l) => l.firstMs!)))} ms, $${(talk.reduce((n, l) => n + l.cost, 0) / Math.max(1, talk.length)).toFixed(4)} an ask; look first audio ${ms(med(look.map((l) => l.firstMs!)))} ms, answer ${ms(med(look.map((l) => l.answerMs!)))} ms, $${(look.reduce((n, l) => n + l.cost, 0) / Math.max(1, look.length)).toFixed(4)} an ask (the realtime part)`)
+    for (const k of ["talk", "look"] as const) {
+      const xs = hybrid[k]
+      if (xs.length) rows.push(`${model} hybrid ${k}: first sound median ${ms(med(xs.map((x) => x.first)))} ms, real answer ${ms(med(xs.map((x) => x.answer)))} ms, $${(xs.reduce((n, x) => n + x.cost, 0) / xs.length).toFixed(4)} an ask (realtime)`)
+    }
   }
   // ---------- the pipeline, the same asks: the summoned session's first sentence, then ElevenLabs' first audio for it
   if (CLAUDE) {

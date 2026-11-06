@@ -34,8 +34,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   longer take your Talk key or microphone. Each press is logged, so one that went nowhere can be traced.
 - **The companion talks back at once**: hold ⌃⌥ over the screen and speak, and on letting go a realtime voice
   (OpenAI's, with your own key: `vau secret "OpenAI API key" | vau voice key --provider openai`) answers right away.
-  Small talk it answers itself; for anything on screen it says a few words while the summoned model looks, then says
-  that answer, its marks drawn as before. Press again while it speaks to cut in. Without the key, or if it fails, the
+  Small talk it answers itself; for anything on screen it says "Let me look" and the summoned model's answer, asked at
+  once, follows in the companion's own voice as soon as it's ready, its marks drawn as before: no slower than without
+  it, at about a sixth of a cent an ask. Press again while it speaks to cut in. Without the key, or if it fails, the
   dictation and voice pipeline answers as before (setting Voice front; Realtime model and voice). An OpenAI account
   with no credits, or a key it refuses, pauses it (one notice; companion status says why) and it tries again every ten
   minutes, so presses don't keep trying it. A key limited to the Realtime API is taken (it's checked by a free

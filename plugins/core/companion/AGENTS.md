@@ -20,7 +20,8 @@ what its voice runs on here.
 - Speaking: ElevenLabs with its key (Flash: about $0.04 per 1,000 characters past the free plan's 20,000 a month; a
   spoken answer is 100 to 200), else Soniox's voice (about a third of that), else this Mac's, free. A voice that fails or
   runs out hands on to the next.
-- The realtime voice, only with an OpenAI key: gpt-realtime-2.1-mini bills audio tokens, about half a cent an exchange
+- The realtime voice, only with an OpenAI key: gpt-realtime-2.1-mini bills audio tokens, about a third of a cent for small
+  talk it answers, a sixth for the few words before a screen answer (the answer itself is the speaking voice's)
   (the press log, userData/talk, has each turn's cost); an account with no credits pauses it.
 - Idle costs nothing: sockets close unused (the voices' after 90 s, the realtime one after 10 minutes, and an open one
   bills nothing), and warming one up as the key goes down sends no words.
@@ -116,9 +117,11 @@ above that), act, run it again, and never end your turn.
   carries the user's guide to it (`vau docs guides`); with none it says so, and you may offer once to write one.
 - The realtime voice (the setting `voice_front`: realtime, once this machine has an OpenAI key, `vau voice key --provider
   openai`; `realtime_model`, `realtime_voice`): a Talk key's spoken ask on screen streams to OpenAI's speech-to-speech model,
-  which answers at once. Small talk it answers alone (kept in their box as an ask and a say); anything about the screen it
-  hands you as the ask, saying a few words meanwhile, and your say is what it speaks: so its moment says `asked through
-  the realtime voice`, and your say answers at once, with no "let me look". Its socket failing, the pipeline answers; an account with no credits or a refused key pauses it (one notice, why in `companion status`), retried every ten minutes.
+  whose sound comes first. You're asked at once all the same (its moment says `asked through the realtime voice`): for
+  the screen it says two words ("Let me look") and your say follows them in your voice, so answer at once, with no "let
+  me look"; small talk it answers alone (kept in their box as an ask and a say), and your answer to it is withdrawn: your
+  turn stops, nothing of it said or kept. Its socket failing, your say is spoken as on the pipeline; an account with no
+  credits or a refused key pauses it (one notice, why in `companion status`), retried every ten minutes.
 - Long work (research, a document, code, writing in their notes): `handoff` starts a background agent (Opus, or Codex)
   with the ask's context and your few words; it's a job in the menu bar (running, done, needs you), the user told when it
   ends. `companion jobs` lists them; `handoff --job <id>` follows one up in its session.

@@ -21,18 +21,34 @@ final class Piece {
   var starts: [AVAudioFramePosition] = []
   var scheduled = 0, played = 0
   var ended = false, making = 0
+  /** It gives way to what follows (a realtime voice's few words before the answer): once the next piece has audio, it
+   *  plays out if it ends within this many seconds, else it ends at its next pause. */
+  var yields: Double?
   init(_ n: Int) { self.n = n }
   var complete: Bool { ended && making == 0 }
+  /** Where each of its buffers begins, the unscheduled ones following on from the last scheduled. */
+  func positions(from start: AVAudioFramePosition) -> [AVAudioFramePosition] {
+    var at = starts.first ?? start
+    return buffers.enumerated().map { i, b in
+      if i < starts.count { at = starts[i] }
+      defer { at += AVAudioFramePosition(b.frameLength) }
+      return at
+    }
+  }
 }
 
 /** How far back it says again after its output went away (what the device had but never played), at most and at least:
  *  from the quietest moment between, a gap between words. */
 let REWIND_MAX = 0.9, REWIND_MIN = 0.25
+/** A piece giving way ends at its quietest moment this soon (s), fading out, then a breath before the next. */
+let GIVE_MIN = 0.04, GIVE_MAX = 0.2, FADE = 0.04, BREATH = 0.08
 
 final class Voice: NSObject, AVSpeechSynthesizerDelegate {
   var engine = AVAudioEngine()
   var node = AVAudioPlayerNode()
   var pieces: [Piece] = []
+  /** Pieces played to their end, or cut: what still comes of one is dropped. */
+  var gone = Set<Int>()
   /** Bumped by a stop: what a buffer stopped then says when it's let go is dropped. */
   var gen = 0
   var running = false, started = Set<Int>()
@@ -118,20 +134,98 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
     guard let p = pieces.first(where: { !$0.starts.isEmpty }) else { return }
     // (said again from a gap between words a little before it went: the next pieces start over as they are)
     let from = quiet(p, before: at)
-    var said = 0.0
+    emit(["type": "rerouted", "why": why, "again": (Double(max(0, at - from)) / RATE * 100).rounded() / 100])
+    resume(from: from)
+  }
+
+  /** Its pieces scheduled again from `from` (in the samples they were scheduled at): what's before it is played, the
+   *  piece it falls in goes on from there, the rest start over; `trim`, a piece that ends at a point instead (fading
+   *  out, then a breath), what it had or still gets after it dropped. */
+  func resume(from: AVAudioFramePosition, trim: (Piece, AVAudioFramePosition)? = nil) {
+    if let (y, end) = trim { cut(y, at: end) }
     for q in pieces {
       var k = 0
-      if q === p {
-        while k < q.starts.count, q.starts[k] + AVAudioFramePosition(q.buffers[k].frameLength) <= from { k += 1 }
-        if k < q.starts.count, q.starts[k] < from, let tail = slice(q.buffers[k], from: AVAudioFrameCount(from - q.starts[k])) { q.buffers[k] = tail }
-        said = Double(max(0, at - from)) / RATE
-      }
-      q.starts.removeSubrange(k...)
+      while k < q.starts.count, q.starts[k] + AVAudioFramePosition(q.buffers[k].frameLength) <= from { k += 1 }
+      if k < q.starts.count, q.starts[k] < from, let tail = slice(q.buffers[k], from: AVAudioFrameCount(from - q.starts[k])) { q.buffers[k] = tail }
+      q.starts.removeSubrange(min(k, q.starts.count)...)
       q.scheduled = k
       q.played = k
     }
-    emit(["type": "rerouted", "why": why, "again": (said * 100).rounded() / 100])
     pump()
+  }
+
+  /** `y`'s audio up to `end` alone, its last moment faded, a breath after it; it takes no more. */
+  func cut(_ y: Piece, at end: AVAudioFramePosition) {
+    let at = y.positions(from: queueEnd)
+    var kept: [AVAudioPCMBuffer] = [], starts: [AVAudioFramePosition] = []
+    for (i, b) in y.buffers.enumerated() where at[i] < end {
+      let keep = min(AVAudioFramePosition(b.frameLength), end - at[i])
+      guard let part = keep < AVAudioFramePosition(b.frameLength) ? head(b, AVAudioFrameCount(keep)) : b else { continue }
+      kept.append(part)
+      if i < y.starts.count { starts.append(y.starts[i]) }
+    }
+    if let last = kept.last, let d = last.floatChannelData?[0] {
+      let n = min(Int(last.frameLength), Int(FADE * RATE))
+      for i in 0..<n { d[Int(last.frameLength) - n + i] *= Float(n - i) / Float(n) }
+    }
+    if !kept.isEmpty, let gap = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(BREATH * RATE)) {
+      gap.frameLength = gap.frameCapacity
+      memset(gap.floatChannelData![0], 0, Int(gap.frameLength) * MemoryLayout<Float>.size)
+      kept.append(gap)
+    }
+    y.buffers = kept
+    y.starts = starts
+    y.ended = true
+    y.yields = nil
+    gone.insert(y.n)
+  }
+
+  /** The piece giving way, now that what follows has audio: it ends with its words when they end soon (the silence
+   *  after them left out), else at its next pause. */
+  func give(_ y: Piece) {
+    let grace = y.yields ?? 0
+    y.yields = nil
+    let pos = y.positions(from: queueEnd)
+    guard let lastAt = pos.last, let last = y.buffers.last else { y.ended = true; gone.insert(y.n); return pump() }
+    let end = lastAt + AVAudioFramePosition(last.frameLength)
+    // (a file has written all it got: it only takes no more)
+    if file != nil || !running { cut(y, at: file != nil ? end : (y.starts.first ?? 0)); return pump() }
+    let now = position(), words = spokenEnd(y, positions: pos) ?? now
+    let at = words - now <= AVAudioFramePosition(grace * RATE) ? max(now, words + AVAudioFramePosition(FADE * RATE))
+      : quietest(y, from: min(end, now + AVAudioFramePosition(GIVE_MIN * RATE)), to: min(end, now + AVAudioFramePosition(GIVE_MAX * RATE)), positions: pos)
+    if at >= end && y.ended { gone.insert(y.n); return pump() }
+    gen += 1
+    node.stop()
+    queueEnd = 0
+    resume(from: now, trim: (y, at))
+  }
+
+  /** Where `p`'s last sound ends (its samples), past it only silence; nil if it's all silence. */
+  func spokenEnd(_ p: Piece, positions at: [AVAudioFramePosition]) -> AVAudioFramePosition? {
+    for (i, b) in p.buffers.enumerated().reversed() {
+      guard let d = b.floatChannelData?[0] else { continue }
+      var f = Int(b.frameLength) - 1
+      while f >= 0, abs(d[f]) < 0.01 { f -= 1 }
+      if f >= 0 { return at[i] + AVAudioFramePosition(f + 1) }
+    }
+    return nil
+  }
+
+  /** The quietest 10 ms of `p`'s audio between two points (its samples), the first one found from `from` on. */
+  func quietest(_ p: Piece, from: AVAudioFramePosition, to: AVAudioFramePosition, positions at: [AVAudioFramePosition]) -> AVAudioFramePosition {
+    let win = AVAudioFramePosition(RATE / 100)
+    var best = from, low = Float.infinity, t = from
+    while t <= to {
+      var sum: Float = 0, count = 0
+      for (i, b) in p.buffers.enumerated() {
+        let s = at[i], e = s + AVAudioFramePosition(b.frameLength)
+        guard e > t, s < t + win, let d = b.floatChannelData?[0] else { continue }
+        for f in max(t, s)..<min(t + win, e) { let v = d[Int(f - s)]; sum += v * v; count += 1 }
+      }
+      if count > 0, sum / Float(count) < low { low = sum / Float(count); best = t }
+      t += win
+    }
+    return best
   }
 
   /** The quietest moment of `p`'s audio between REWIND_MAX and REWIND_MIN before `at` (10 ms windows). */
@@ -162,6 +256,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
 
   /** 16-bit PCM at RATE into the piece's buffers. */
   func pcm(_ n: Int, _ data: Data) {
+    if gone.contains(n) { return }
     let frames = data.count / 2
     guard frames > 0, let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)) else { return }
     buf.frameLength = AVAudioFrameCount(frames)
@@ -176,6 +271,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
 
   /** The piece's words said by this Mac's voice for `language`: its buffers as the synthesizer writes them. */
   func say(_ n: Int, _ text: String, _ language: String, _ speed: Double) {
+    if gone.contains(n) { return }
     let p = piece(n)
     p.making += 1
     let u = AVSpeechUtterance(string: text)
@@ -202,7 +298,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
     }
   }
 
-  func end(_ n: Int) { piece(n).ended = true; pump() }
+  func end(_ n: Int) { if gone.contains(n) { return }; piece(n).ended = true; pump() }
 
   /** All at once: nothing more plays, nothing queued stays. */
   func stop() {
@@ -212,6 +308,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
     synths.removeAll()
     pieces.removeAll()
     started.removeAll()
+    gone.removeAll()
     if running { node.stop() }
     queueEnd = file == nil ? 0 : queueEnd
     level = 0
@@ -221,6 +318,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
 
   /** What's come is scheduled in order: a piece's buffers once every piece before it has all of its own. */
   func pump() {
+    if let y = pieces.first(where: { $0.yields != nil }), pieces.contains(where: { $0.n > y.n && !$0.buffers.isEmpty }) { return give(y) }
     for p in pieces {
       while p.scheduled < p.buffers.count {
         let b = p.buffers[p.scheduled]
@@ -270,6 +368,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
     while let p = pieces.first, p.complete, p.played >= p.buffers.count, p.scheduled >= p.buffers.count {
       pieces.removeFirst()
       started.remove(p.n)
+      gone.insert(p.n)
       emit(["type": "done", "n": p.n])
     }
     if pieces.isEmpty {
@@ -319,6 +418,14 @@ func convert(_ b: AVAudioPCMBuffer, _ c: AVAudioConverter) -> AVAudioPCMBuffer? 
   return err == nil && out.frameLength > 0 ? out : nil
 }
 
+/** `b`'s first `n` frames, a buffer of its own. */
+func head(_ b: AVAudioPCMBuffer, _ n: AVAudioFrameCount) -> AVAudioPCMBuffer? {
+  guard n > 0, let out = AVAudioPCMBuffer(pcmFormat: b.format, frameCapacity: n), let src = b.floatChannelData?[0], let dst = out.floatChannelData?[0] else { return nil }
+  out.frameLength = min(n, b.frameLength)
+  for i in 0..<Int(out.frameLength) { dst[i] = src[i] }
+  return out
+}
+
 /** `b` from frame `from` on, a buffer of its own. */
 func slice(_ b: AVAudioPCMBuffer, from: AVAudioFrameCount) -> AVAudioPCMBuffer? {
   guard from < b.frameLength, let out = AVAudioPCMBuffer(pcmFormat: b.format, frameCapacity: b.frameLength - from), let src = b.floatChannelData?[0], let dst = out.floatChannelData?[0] else { return nil }
@@ -355,6 +462,7 @@ Thread {
       case "pcm": if let b = m["data"] as? String, let data = Data(base64Encoded: b) { voice.pcm(n, data) }
       case "say": voice.say(n, m["text"] as? String ?? "", m["language"] as? String ?? "en", m["speed"] as? Double ?? speed)
       case "end": voice.end(n)
+      case "yield": if !voice.gone.contains(n) { voice.piece(n).yields = m["grace"] as? Double ?? 0.4; voice.pump() }
       case "stop": voice.stop()
       // (as its output device changing does: tests)
       case "reroute": voice.outputChanged("asked")

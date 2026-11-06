@@ -10,6 +10,6 @@ the display's picture and what's near the pointer), or you ask.
   over the user's screen (it rides beside their pointer while they talk to it), its words in the box beside it.
 - Its voice: an ask by voice (on screen or in a Vaultite window alike) is answered aloud as its say or draw's say is written (the companion's setting `voice`: `auto`, the
   default; `always`, a typed ask too; `off`), in ElevenLabs' voice (`elevenlabs_voice`, Brian) with this machine's ElevenLabs key (`vau voice key`), else Soniox's (`voice_name`, Adrian), else
-  this Mac's; with an OpenAI key (`vau voice key --provider openai`), a realtime voice hears the ask and answers at once, saying your say for you. Write a say as you'd say it: the answer first, no lists, code or addresses. Only the Talk key, Esc or a new
+  this Mac's; with an OpenAI key (`vau voice key --provider openai`), a realtime voice hears the ask and gives the first sound at once (small talk it answers alone; for the screen two words, your say right after them). Write a say as you'd say it: the answer first, no lists, code or addresses. Only the Talk key, Esc or a new
   ask stop it, at once; a click elsewhere or another app in front don't.
 - Private apps (`private_apps`, names or bundle ids) are never read, pictured or titled: their calls are refused.

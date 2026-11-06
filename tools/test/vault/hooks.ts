@@ -64,13 +64,13 @@ export default async ($: VaultTest) => {
     check("hooks: startup ran once it was on", fs.existsSync(path.join(state, "started.json")) && JSON.parse(fs.readFileSync(path.join(state, "started.json"), "utf8")).url.startsWith("http://"))
     eventsOf(vault).emit("file.changed", { paths: ["People/Alice Park.md"] })
     eventsOf(vault).emit("file.changed", { paths: ["Notes/Count me.md", "People/Alice Park.md"] })
-    const changed = () => { try { return fs.readFileSync(path.join(state, "changed.txt"), "utf8") } catch { return null } }
-    for (let i = 0; i < 100 && changed() !== "Notes/Count me.md\n"; i++) await sleep(20)
+    // (other areas share this vault and may write in Notes/ meanwhile: only this test's paths are looked at)
+    const changed = () => { try { return fs.readFileSync(path.join(state, "changed.txt"), "utf8").split("\n").filter((l) => /Count me|Alice Park/.test(l)) } catch { return null } }
+    for (let i = 0; i < 100 && changed()?.join() !== "Notes/Count me.md"; i++) await sleep(20)
     await sleep(50) // (time for a wrong second run to show)
-    check("hooks: an event hook gets the matching event (its paths narrowed) on stdin", fs.existsSync(path.join(state, "changed.txt")) && fs.readFileSync(path.join(state, "changed.txt"), "utf8") === "Notes/Count me.md\n",
-      fs.existsSync(path.join(state, "changed.txt")) && fs.readFileSync(path.join(state, "changed.txt"), "utf8"))
+    check("hooks: an event hook gets the matching event (its paths narrowed) on stdin", changed()?.join() === "Notes/Count me.md", changed())
     ;[st, body] = await api("POST", "ops/wordcount.changed?as=text", {})
-    check("hooks: what it kept, through its op", body === "- Notes/Count me.md", body)
+    check("hooks: what it kept, through its op", String(body).split("\n").filter((l: string) => /Count me|Alice Park/.test(l)).join() === "- Notes/Count me.md", body)
     ;[st, body] = await api("POST", "ops/vault-plugin.log?as=text", { id: "wordcount" })
     check("hooks: every run is logged (vault-plugin.log)", st === 200 && body.includes("startup: `node started.mjs` exit 0") && body.includes("event file.changed: `node note-changed.mjs` exit 0") &&
       body.includes("wordcount.fail") && body.includes("the reason") && body.includes("timed out after 0.3 s"), body)

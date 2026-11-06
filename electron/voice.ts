@@ -30,9 +30,8 @@ export function companionVoice(o: {
   level: (speaking: boolean, v: number) => void
   /** Each sentence as it's heard: when it began (ms, the clock's) and how long it takes (a drawing's pen keeps to it). */
   heard?: (h: Heard & { say: string }) => void
-  /** What happened to an answer, for the press log: its first sound heard (`at`, the clock's ms) and whose voice it
-   *  was, a cloud voice failing and the next taking over, or its output device changing as it played (Bluetooth
-   *  headphones leaving their call profile once the microphone closes): said again from `again` s before. */
+  /** What happened to an answer, for the press log: its first sound (`at`, the clock's ms) and whose voice, a cloud
+   *  voice failing over, or its output device changing as it played (said again from `again` s before). */
   told?: (e: { t: "sound"; at: number; by: string } | { t: "fallback"; why: string; to: string } | { t: "reroute"; why: string; again: number }) => void
   /** A scripted copy's (VAULTITE_QUIET): what it would play goes here, and nothing plays. */
   record?: (m: Record<string, unknown>) => void
@@ -42,13 +41,20 @@ export function companionVoice(o: {
   const clouds = new Map<string, CloudVoice>()
   /** A sample's provider, for that answer alone. */
   let only: Provider | null = null
-  /** Pieces sent to it and not played to their end yet. */
+  /** Pieces sent to it and not played to their end yet (the player's numbers). */
   const playing = new Set<number>()
   let speaking = false
   /** Each answer's number: what an older one still sends is dropped; `waiting`: its words given, not yet past `ready`. */
   let gen = 0, ready: Promise<void> = Promise.resolve(), waiting = 0
-  /** The realtime voice's pieces, numbered far from voicelogic's. */
-  let streamed = 1_000_000
+  /** The player plays pieces in the order of their numbers, so each gets one as it first goes there: the realtime
+   *  voice's few words, then the answer said after them. `v3` is voicelogic's piece 3, `s2` a stream. */
+  let numbered = 0, streamed = 0
+  const toPlayer = new Map<string, number>(), ofPlayer = new Map<number, string>()
+  const pn = (k: string) => { let n = toPlayer.get(k); if (n === undefined) { n = ++numbered; toPlayer.set(k, n); ofPlayer.set(n, k) } return n }
+  const forget = (n: number) => { const k = ofPlayer.get(n); if (k) toPlayer.delete(k); ofPlayer.delete(n) }
+  /** An answer held back (its words made, not played) till the realtime voice says whose turn it is: what it would
+   *  send the player, in order. */
+  let held: (() => void)[] | null = null
   /** The answer whose first sound was told (its gen); a scripted copy's pieces heard so far. */
   let sounded = -1
   const recorded = new Set<number>()
@@ -79,12 +85,13 @@ export function companionVoice(o: {
     return starting
   }
   function heard(m: { type?: string; n?: number; v?: number; at?: number; why?: string; again?: number }) {
+    const k = typeof m.n === "number" ? ofPlayer.get(m.n) : undefined, mine = k?.startsWith("v") ? Number(k.slice(1)) : null
     if (m.type === "start" && typeof m.n === "number" && typeof m.at === "number") {
-      v.played(m.n, m.at)
-      if (sounded !== gen && m.n < 1_000_000) { sounded = gen; o.told?.({ t: "sound", at: m.at, by: whose(v.tier()) }) }
+      if (mine !== null) v.played(mine, m.at)
+      if (sounded !== gen && mine !== null) { sounded = gen; o.told?.({ t: "sound", at: m.at, by: whose(v.tier()) }) }
     }
     else if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, Number(m.v) || 0) }
-    else if (m.type === "done" && typeof m.n === "number") { playing.delete(m.n); if (!playing.size) tell(false, 0) }
+    else if (m.type === "done" && typeof m.n === "number") { playing.delete(m.n); forget(m.n); if (!playing.size) tell(false, 0) }
     else if (m.type === "stopped") { playing.clear(); tell(false, 0) }
     else if (m.type === "rerouted") o.told?.({ t: "reroute", why: String(m.why ?? ""), again: Number(m.again) || 0 })
   }
@@ -150,16 +157,19 @@ export function companionVoice(o: {
     told: (e) => { if (e.t === "fallback") o.told?.({ t: "fallback", why: e.why, to: whose(e.to) }) },
     hints: o.hints,
     out: {
-      pcm: (n, pcm) => { playing.add(n); send({ cmd: "pcm", n, data: pcm.toString("base64") }) },
-      say: (n, text, language) => { playing.add(n); send({ cmd: "say", n, text, language, speed: o.prefs().speed || 1 }) },
-      end: (n) => { playing.add(n); send({ cmd: "end", n }) },
-      stop: () => hush(),
+      pcm: (n, pcm) => out(() => { const p = pn(`v${n}`); playing.add(p); send({ cmd: "pcm", n: p, data: pcm.toString("base64") }) }),
+      say: (n, text, language) => out(() => { const p = pn(`v${n}`); playing.add(p); send({ cmd: "say", n: p, text, language, speed: o.prefs().speed || 1 }) }),
+      end: (n) => out(() => { const p = pn(`v${n}`); playing.add(p); send({ cmd: "end", n: p }) }),
+      // (held, nothing of it reached the player: the realtime voice's words there go on)
+      stop: () => { if (held) held = []; else hush() },
     },
   })
+  const out = (f: () => void) => { if (held) held.push(f); else f() }
 
   /** Its helper silenced, what's queued there dropped (voicelogic's pieces and the realtime voice's streams alike). */
   function hush() {
     playing.clear()
+    toPlayer.clear(); ofPlayer.clear()
     if (child || o.record) send({ cmd: "stop" })
     tell(false, 0)
   }
@@ -180,12 +190,12 @@ export function companionVoice(o: {
       void fetchKeys().then(() => cloudsNow()[0]?.warm())
       if (!o.record) void start()
     },
-    /** A new answer to `asked` (the ask's words) is to be spoken: what was speaking stops. Its words wait for the
-     *  key's answer (asked once a minute), so its first piece knows whether the cloud speaks. */
-    begin(asked: string, lang?: string) {
+    /** A new answer to `asked` (the ask's words): what was speaking stops (`after`: the realtime voice's words go on).
+     *  Its words wait for the keys (asked once a minute), so its first piece knows whether the cloud speaks. */
+    begin(asked: string, lang?: string, after = false) {
       const g = ++gen
       only = null
-      v.start(asked, lang)
+      if (after) { const h = held; held = []; v.start(asked, lang); held = h } else v.start(asked, lang)
       ready = fetchKeys().then(() => {}, () => {})
       return g
     },
@@ -204,15 +214,22 @@ export function companionVoice(o: {
     text: (id: string, whole: string) => { const g = gen; waiting++; void ready.then(() => { waiting--; if (g === gen) v.text(id, whole) }) },
     end: (id?: string) => { const g = gen; waiting++; void ready.then(() => { waiting--; if (g === gen) v.end(id) }) },
     /** Audio made elsewhere (the realtime voice: 24 kHz pcm16), played in order after what's playing, as its own
-     *  piece; stop() silences it too. */
+     *  piece; stop() silences it too. `yield`: an answer said after it cuts it short (at a pause, past `grace` s). */
     stream() {
-      const n = ++streamed
-      return { pcm: (b: Buffer) => { playing.add(n); send({ cmd: "pcm", n, data: b.toString("base64") }) }, end: () => { playing.add(n); send({ cmd: "end", n }) } }
+      const n = pn(`s${++streamed}`)
+      return { pcm: (b: Buffer) => { playing.add(n); send({ cmd: "pcm", n, data: b.toString("base64") }) }, end: () => { playing.add(n); send({ cmd: "end", n }) },
+        yield: (grace = 0.4) => send({ cmd: "yield", n, grace }) }
     },
+    /** The next answer is held back as it's made: its words wait for whose turn it is (the realtime voice's). */
+    hold() { held ??= [] },
+    /** It's this answer's turn: what was held goes to the player, after what plays there. */
+    through() { const h = held; held = null; for (const f of h ?? []) f() },
+    /** Not its turn (the realtime voice answered alone): what was held, and what's still to come of it, goes. */
+    drop() { if (!held) return; gen++; v.stop(); held = null },
     /** Silence, at once: an answer's pieces, and audio streamed from elsewhere (voicelogic knows only its own). */
-    stop: () => { gen++; const had = playing.size > 0; v.stop(); if (had) hush() },
-    /** Whether any of its words are still to be said: playing, made or being made, or on their way to it. */
-    saying: () => playing.size > 0 || waiting > 0 || v.ahead(),
+    stop: () => { gen++; held = null; const had = playing.size > 0; v.stop(); if (had) hush() },
+    /** Whether any of its words are still to be said: playing, made or being made, held, or on their way to it. */
+    saying: () => playing.size > 0 || waiting > 0 || v.ahead() || !!held?.length,
     quit,
   }
 }

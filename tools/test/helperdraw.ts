@@ -438,6 +438,28 @@ check("jobs: one that comes to need them isn't news unless it was at work before
   cv.stream().pcm(Buffer.alloc(480))
   cv.stop()
   check("voice: a stop silences the realtime voice's streamed audio too, and nothing is left to say (its cursor isn't held)", rec.some((m) => m.cmd === "stop") && !cv.saying(), rec)
+  // (the realtime voice's few words, then the answer, held till its route: it goes after them, which give way to it)
+  rec.length = 0
+  const ack = cv.stream()
+  ack.pcm(Buffer.alloc(480)); ack.yield(0.4)
+  cv.hold(); cv.begin("", "en", true); cv.text("n1", "Sure. That's the Send button."); cv.end("n1")
+  await wait(30)
+  const heldBack = !rec.some((m) => m.cmd === "say") && cv.saying()
+  cv.through()
+  await wait(30)
+  const acked = rec.find((m) => m.cmd === "pcm")?.n as number, says = rec.filter((m) => m.cmd === "say")
+  check("voice: an answer held for the realtime voice's route waits, then plays after its few words (numbered after them), which give way, none of it stopped",
+    heldBack && says.length === 2 && says.every((m) => (m.n as number) > acked) && rec.some((m) => m.cmd === "yield" && m.n === acked && m.grace === 0.4) && !rec.some((m) => m.cmd === "stop"), rec)
+  // (the realtime voice answered alone: the answer held goes unsaid, its words go on)
+  cv.stop(); rec.length = 0
+  const alone = cv.stream()
+  alone.pcm(Buffer.alloc(480))
+  cv.hold(); cv.begin("", "en", true); cv.text("n2", "Hello there, how can I help."); cv.end("n2")
+  await wait(30)
+  cv.drop()
+  alone.end()
+  await wait(30)
+  check("voice: dropped, the answer held is never said, and the realtime voice's words aren't stopped", !rec.some((m) => m.cmd === "say" || m.cmd === "stop") && !cv.saying(), rec)
 }
 
 helper.stopHelper()

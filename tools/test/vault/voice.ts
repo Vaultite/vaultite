@@ -322,7 +322,16 @@ export default async ($: VaultTest) => {
     const again = lines.find((l) => l.type === "rerouted")?.again
     check("voice player: its output changing mid-piece, it plays on from the pause before where it went, to the piece's end", Math.abs(again - 0.41) < 0.02 &&
       lines.some((l) => l.type === "done" && l.n === 3), lines.filter((l) => l.type === "rerouted" || (l.type === "done" && l.n === 3)))
+    // (the realtime voice's few words give way to the answer after them: what more comes of them is dropped, a breath between)
     send({ cmd: "pcm", n: 4, data: tone.toString("base64") })
+    send({ cmd: "yield", n: 4, grace: 0.4 })
+    send({ cmd: "pcm", n: 5, data: tone.toString("base64") })
+    send({ cmd: "pcm", n: 4, data: tone.toString("base64") })
+    send({ cmd: "end", n: 4 }); send({ cmd: "end", n: 5 })
+    for (let i = 0; i < 100 && !lines.some((l) => l.type === "done" && l.n === 5); i++) await sleep(20)
+    const gave = lines.filter((l) => (l.type === "start" || l.type === "done") && l.n >= 4).map((l) => `${l.type}${l.n}`).join()
+    check("voice player: a piece giving way ends once the next has audio (what more comes of it dropped), the next played after it", gave === "start4,start5,done4,done5", gave)
+    send({ cmd: "pcm", n: 6, data: tone.toString("base64") })
     send({ cmd: "stop" })
     for (let i = 0; i < 100 && !lines.some((l) => l.type === "stopped"); i++) await sleep(20)
     child.stdin.end()
@@ -333,6 +342,6 @@ export default async ($: VaultTest) => {
     let peak = 0
     // (the words this Mac's voice said, between the two tones)
     for (let i = 44 + 48_000; i < data.length - 48_000; i += 2) peak = Math.max(peak, Math.abs(data.readInt16LE(i)))
-    check("voice player: what it played is the tone and the words said after it, not silence", secs > 2 && secs < 8 && peak > 300 && lines.some((l) => l.type === "stopped"), { secs, peak })
+    check("voice player: what it played is the tone and the words said after it, not silence", secs > 2 && secs < 10 && peak > 300 && lines.some((l) => l.type === "stopped"), { secs, peak })
   }
 }

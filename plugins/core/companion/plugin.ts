@@ -896,13 +896,20 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
 /** Each helper's realtime voice, paused (the account can't pay, or its key is refused) and why. */
 const realtimePaused = new Map<WebSocket, { account: string; why: string; until: number } | null>()
 const pausedNow = () => [...realtimePaused.values()].find((p) => p && p.until > Date.now()) ?? null
-/** What the realtime voice answered alone (small talk): their words and its, kept as an ask and a say, no turn. */
+/** What the realtime voice answered alone (small talk): their words and its, kept as an ask and a say. `withdraw`: the
+ *  summoned session was asked it too (as the realtime voice listened): its turn stops, and what it said goes. */
 function screenAnswered(m: Record<string, unknown>) {
-  const name = str(m.agent) || ownName(), heard = str(m.heard).trim().slice(0, 2000), said = str(m.said).trim().slice(0, 2000)
-  if (!said || mode() === "off") return
+  const name = str(m.agent) || ownName(), heard = str(m.heard).trim().slice(0, 2000), words = str(m.said).trim().slice(0, 2000)
+  if (!words || mode() === "off") return
   const t = Date.now()
-  if (heard) keepSaid({ id: `ask-rt-${t}`, kind: "ask", by: "user", agent: name, text: heard, t, seen: true })
-  keepSaid(putNote({ kind: "say", agent: name, text: said, seen: true }, sayMs(said)))
+  const asks = m.withdraw === true && isMain(name) ? lane().withdraw(words) : []
+  if (asks.length) {
+    // (their ask stays, as it came; what the summoned session said of it goes)
+    const ts = new Set(asks.map((x) => x.t)), theirs = (n: Note) => n.kind === "say" && key(n.agent) === key(name) && !!n.answers && ts.has(n.answers.t)
+    for (const n of [...notes.values()].filter(theirs)) dropNote(n.id)
+    if (said.some(theirs)) { said = said.filter((n) => !theirs(n)); broadcast({ t: "said", said }) }
+  } else if (heard) keepSaid({ id: `ask-rt-${t}`, kind: "ask", by: "user", agent: name, text: heard, t, seen: true })
+  keepSaid(putNote({ kind: "say", agent: name, text: words, seen: true }, sayMs(words)))
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
@@ -2193,7 +2200,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.shot) out.push(`  its picture: ${m.shot}${m.shotAt ? ` (the screen around their pointer, a pixel a point: its top left is sx ${m.shotAt.x}, sy ${m.shotAt.y}, so its pixel x, y is sx ${m.shotAt.x} + x, sy ${m.shotAt.y} + y${m.sx !== undefined ? `; their pointer at ${m.sx - m.shotAt.x}, ${m.sy! - m.shotAt.y} in it` : ""})` : ""}`)
     if (m.shotDown) out.push(`  its picture as the key went down: ${m.shotDown} (the screen changed while they spoke: what they meant may be only in this one${m.shotDownAt ? `; its top left is sx ${m.shotDownAt.x}, sy ${m.shotDownAt.y}` : ""})`)
     if (m.notices) out.push(`  Vaultite's toasts of the last minute (gone from the picture, maybe): ${m.notices}`)
-    if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, and it says your words for you, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
+    if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
     for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height}: ${k.points.map((p) => p.join(",")).join(" ")}`)

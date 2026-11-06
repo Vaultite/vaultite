@@ -48,8 +48,11 @@
   that went shows its answer's first sound (`sound`: whose voice, ms after let-go) and a voice failing over; `stt` names
   the recognizer that heard it (`soniox`, else this Mac's with `why`), `stt-fallback` one failing mid-press.
 - The realtime voice (realtimefront.ts over realtime.ts, OpenAI's WebSocket): dictation's session taps the mic for it
-  (`tap`, 16 kHz, made 24 kHz), voice.ts' `stream()` plays its audio. Dictation still runs: its words are the screen
-  round's question and the fallback's, and the box's. Its tests are a stand-in socket; tools/evals/realtime.ts the real one.
+  (`tap`, 16 kHz, made 24 kHz), voice.ts' `stream()` plays its audio. It only gives the first sound: dictation still runs,
+  and its words go to the summoned session at once, as on the pipeline (a screen answer is never slower for it); that
+  answer is held (voice.ts `hold`) till the realtime voice routes the press (`look`: played after its two words, which
+  give way, voice.swift `yield`; `talk`: it answered alone, the summoned answer withdrawn). Its tests are a stand-in
+  socket; tools/evals/realtime.ts the real one.
 - voice.swift follows its output device: Bluetooth headphones leave their call profile about 2 s after the microphone
   closes, and an engine started before that plays into nothing. It rebuilds its engine and says again from the pause
   before (the press log's `voice-reroute`).

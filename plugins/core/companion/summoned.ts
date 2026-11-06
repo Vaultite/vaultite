@@ -63,7 +63,8 @@ export function summonedLane(o: {
     const from = Math.min(...ms.map((m) => m.t)), before = talk.filter((x) => x.t < from - 50 && from - x.t < FRESH_AFTER_MS)
     return before.length ? `(A fresh session of the same talk; said before, oldest first:\n${before.map((x) => `  ${x.who}: ${x.text}`).join("\n")})\n` : ""
   }
-  let turning = false, starting: Promise<unknown> | null = null, handed = false, acted = false, asking = false, unhear: (() => void) | null = null
+  /** `withdrawn`: its turn's answer isn't wanted (the realtime voice answered alone): nothing more of it is said or kept. */
+  let turning = false, starting: Promise<unknown> | null = null, handed = false, acted = false, asking = false, withdrawn = false, unhear: (() => void) | null = null
   const newsOf = new Map<string, number>()
 
   const on = () => !!o.model() && !!o.chat()
@@ -81,6 +82,7 @@ export function summonedLane(o: {
   let queue: Promise<unknown> = Promise.resolve()
   const then = (f: () => Promise<unknown>) => { queue = queue.then(() => inSummoned.run(true, f)).catch(() => {}) }
   function words(use: string, text: string, end?: "done" | "stop") {
+    if (withdrawn) return
     const { said, tags } = parseTags(text), a = o.acts()
     for (const t of tags.slice(blocks.get(use) ?? 0)) then(() => tagged(t, said))
     blocks.set(use, tags.length)
@@ -116,13 +118,13 @@ export function summonedLane(o: {
     const was = turning
     turning = false
     // (its words not heard as they came, a keeper of older code: said whole now, its tags acted on)
-    const turn = handed && !acted && s.state === "idle" ? parseTags(s.turn?.text?.trim() ?? "") : null
+    const turn = handed && !acted && !withdrawn && s.state === "idle" ? parseTags(s.turn?.text?.trim() ?? "") : null
     if (turn?.tags.length) for (const t of turn.tags) then(() => tagged(t, turn.said))
     if (turn?.said) { acted = true; told("you", turn.said); inSummoned.run(true, () => o.did(name, "say")); o.say(name, turn.said) }
     if (handed) o.setAgent(name, acted ? { state: "watching" } : { state: "watching", seen: true })
     if (was && handed) inSummoned.run(true, () => o.did(name, "done"))
     handed = false; asking = false
-    if (s.state === "error" && s.error) o.say(name, `I stopped: ${s.error.slice(0, 300)}`)
+    if (s.state === "error" && s.error && !withdrawn) o.say(name, `I stopped: ${s.error.slice(0, 300)}`)
     void pump()
   }
 
@@ -145,7 +147,7 @@ export function summonedLane(o: {
 
   /** Asks handed to it: its cursor thinking there till it acts. */
   function give(ms: Moment[]) {
-    handed = true; acted = false; asking = true; given = ms
+    handed = true; acted = false; asking = true; withdrawn = false; given = ms
     for (const m of ms) if (m.text) told("they", m.text)
     inSummoned.run(true, () => o.did(o.name(), "handed", ms.map((m) => m.seq)))
   }
@@ -209,6 +211,17 @@ export function summonedLane(o: {
     /** Its act logged under its own name, for timings. */
     as: (name: string) => `${name} (summoned)`,
     async interrupt() { return !!(turning && kept && await o.chat()?.interrupt(kept.id).catch(() => false)) },
+    /** Its answer to the last asks isn't wanted: the realtime voice answered them alone (`said`). Those still waiting
+     *  go; its turn on them stops, nothing more of it said; the talk has the realtime voice's words. Answers: those asks. */
+    withdraw(said: string) {
+      let ms: Moment[] = pending.length ? pending.splice(-1) : given
+      if (!ms.length) return ms
+      if (ms === given && handed) { withdrawn = true; if (turning && kept) void o.chat()?.interrupt(kept.id).catch(() => false) }
+      const from = Math.min(...ms.map((m) => m.t))
+      talk.splice(0, talk.length, ...talk.filter((x) => x.who === "they" || x.t < from))
+      told("you", said)
+      return ms
+    },
     async stop() {
       pending.length = 0
       if (kept) { const id = kept.id; keep(null); await o.chat()?.stop(id).catch(() => {}) }

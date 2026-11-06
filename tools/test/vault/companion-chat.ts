@@ -400,6 +400,19 @@ export default async ($: VaultTest) => {
       check("summoned: the Talk key pressed again (or Esc) mid-answer stops its turn at once, never the long session's",
         !!(await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "idle", 500, 20)) &&
         (await said(longId)).length === longBefore)
+      // (the realtime voice answered alone: the summoned answer asked meanwhile stops, unsaid and unkept; their ask stays once)
+      await idle(warmed!)
+      const box: Any[] = []
+      Object.assign(sc, { send: (t: string) => box.push(JSON.parse(t)) })
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "slow: how's it going", voice: true, front: "realtime", app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "working", 5000, 20)
+      sc.emit("message", Buffer.from(JSON.stringify({ t: "answered", agent: "Claude", heard: "slow: how's it going", said: "Good, thanks!", withdraw: true })))
+      const stopped = await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "idle", 2000, 20)
+      await $.sleep(200)
+      const kept = (box.filter((m) => m.t === "said").at(-1)?.said ?? []) as Any[]
+      check("summoned: the realtime voice answering alone withdraws the summoned answer: its turn stops, nothing of it said or kept, their ask once, its words the realtime voice's",
+        !!stopped && kept.filter((n) => n.kind === "ask" && /how's it going/.test(n.text)).length === 1 && kept.some((n) => n.kind === "say" && n.text === "Good, thanks!") &&
+        !(await status()).notes.some((n: Any) => n.kind === "say" && /I stopped/.test(n.text)), { stopped, kept: kept.slice(-4).map((n) => `${n.kind}: ${n.text}`) })
       sc.emit("close")
       await api("POST", "ops/companion.stop", {})
       check("summoned: the companion stopped, its summoned session ends too", !!(await waitFor(async () => !(await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.length, 5000, 100)) &&
