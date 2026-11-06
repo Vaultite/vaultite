@@ -138,11 +138,13 @@ export default async ($: VaultTest) => {
     f.release()
     f.heard(p4, "tell me a story")
     await until(() => ev.some((e) => e[0] === "pcm"))
+    // (what the press brings, from it on: the turn before can still be closing as it comes)
+    const evAt = ev.length, gotAt = got.length
     f.press(p5)
-    await until(() => got.some((m) => m.type === "conversation.item.truncate"))
+    await until(() => got.slice(gotAt).some((m) => m.type === "conversation.item.truncate"))
     await sleep(100)
-    check("realtime: the Talk key while it speaks stops its voice and response at once, the model told how much was heard; that press gets no route", ev.some((e) => e[0] === "stop") &&
-      got.some((m) => m.type === "conversation.item.truncate" && m.audio_end_ms >= 0) && !routes(ev, 4).length, got.map((m) => m.type))
+    check("realtime: the Talk key while it speaks stops its voice and response at once, the model told how much was heard; that press gets no route", ev.slice(evAt).some((e) => e[0] === "stop") &&
+      got.slice(gotAt).some((m) => m.type === "conversation.item.truncate" && m.audio_end_ms >= 0) && !routes(ev, 4).length, got.map((m) => m.type))
     // (a press again right after let-go: the first press's words are the pipeline's alone, answered once)
     got.length = 0; ev.length = 0
     const p6 = { id: 6 }, p7 = { id: 7 }
