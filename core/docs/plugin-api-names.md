@@ -575,6 +575,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SearchDoc`
 - `SearchPage({ store, query, setQuery })`
 - `secretDialog(opts, ended?)`: Ask for a secret (opts.field: hidden text, or a file); null when cancelled or `ended` (the asker stopped waiting).
+- `SecretKeeper`: The user's passwords (the desktop app's, web-viewer's passwords.ts), for an agent's ask: what's set up there.
 - `Section({ title, children, className })`
 - `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it), clear of a fading edge.
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
@@ -597,6 +598,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
 - `setFocusedPane(id)`: Clicking in a pane gives it the focus (the address shows it; commands act on it).
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
+- `setSecretKeeper(k)`
 - `setSidebarMode(key)`: Show panel `key` alone in the left sidebar, the sidebar open (null: its panels again).
 - `setTabLayout(next, opts?)`: Put a whole other workspace in place (Workspaces switching): what it takes away is reopenable as closed unless `kept` elsewhere (a switch, a move).
 - `setTextSize(kind, percent)`: Set a kind's size, in percent (kept within STEPS' range).

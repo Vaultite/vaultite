@@ -18,7 +18,18 @@ export type ConfirmOptions = {
   danger?: boolean
   /** A secret to give before confirming: hidden text, or a file's contents. Never shown, never kept. */
   field?: "secret" | "file"
+  /** An agent's ask: the user may give one from their passwords, or keep what they give there (`setSecretKeeper`). */
+  keepable?: boolean
 }
+/** The user's passwords (the desktop app's, web-viewer's passwords.ts), for an agent's ask: what's set up there. */
+export type SecretKeeper = {
+  /** Entries to pick from; null while locked and nothing unlocked them (Touch ID declined). */
+  entries: () => Promise<{ id: string; title: string; username: string }[] | null>
+  value: (id: string) => Promise<string>
+  keep: (title: string, value: string) => Promise<void>
+}
+let keeper: SecretKeeper | null = null
+export const setSecretKeeper = (k: SecretKeeper | null) => { keeper = k }
 /** A secret given: text, or a file's contents (base64 when it isn't text). */
 export type Given = { value: string; base64: boolean }
 type Ask = ConfirmOptions & { done: (ok: boolean, given?: Given) => void }
@@ -46,7 +57,7 @@ export function secretDialog(opts: ConfirmOptions & { field: "secret" | "file" }
 
 // An agent's `vau secret` (core/coreops/secret.ts): the value given, or null.
 answerUi("secret", (m, ended) => secretDialog({
-  title: typeof m.prompt === "string" ? m.prompt : "A secret", confirm: "Send", field: m.file ? "file" : "secret",
+  title: typeof m.prompt === "string" ? m.prompt : "A secret", confirm: "Send", field: m.file ? "file" : "secret", keepable: true,
   body: `${typeof m.from === "string" && m.from ? m.from : "An agent"} asks for this. It goes to that machine only, never into the vault.`,
 }, ended))
 
@@ -70,11 +81,33 @@ function Dialog({ a }: { a: Ask }) {
   const input = useRef<HTMLInputElement>(null)
   const [given, setGiven] = useState<Given | null>(null)
   const [file, setFile] = useState("")
+  const kept = a.keepable && a.field === "secret" ? keeper : null
+  const [keepIt, setKeepIt] = useState(false)
+  const [picking, setPicking] = useState<{ id: string; title: string; username: string }[] | null>(null)
+  const [query, setQuery] = useState("")
+  const [unpicked, setUnpicked] = useState("")
   const finish = (v: boolean) => {
     if (v && a.field && !given) return
     if (asking === a) set(null)
+    if (v && given && kept && keepIt) void kept.keep(a.title, given.value).catch(() => {})
     a.done(v, given ?? undefined)
   }
+  const pick = async () => {
+    const list = await kept?.entries().catch(() => null)
+    if (list) setPicking(list)
+    else setUnpicked("Your passwords are locked: unlock them in Passwords, or type it")
+  }
+  const chosen = async (id: string) => {
+    const v = await kept?.value(id).catch(() => "")
+    if (!v) { setPicking(null); setUnpicked("Not given: Touch ID on this Mac confirms it. Type it instead"); return }
+    if (!input.current) return
+    input.current.value = v
+    setGiven({ value: v, base64: false })
+    setKeepIt(false)
+    setPicking(null)
+  }
+  const q = query.trim().toLowerCase()
+  const shown = picking?.filter((e) => !q || e.title.toLowerCase().includes(q) || e.username.toLowerCase().includes(q)).slice(0, 6)
   usePageLock()
   useEffect(() => {
     const d = ref.current
@@ -115,6 +148,31 @@ function Dialog({ a }: { a: Ask }) {
           <input ref={input} type="password" autoComplete="off" autoCapitalize="off" spellCheck={false} aria-label={a.title}
             onChange={(e) => setGiven(e.target.value ? { value: e.target.value, base64: false } : null)}
             className="mt-3 h-9 w-full rounded-[8px] border-[0.5px] border-border bg-background px-3 text-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-7 md:text-[13px]" />
+        )}
+        {kept && !picking && (
+          <div className="mt-2 flex items-center justify-between gap-2 text-[15px] md:text-[13px]">
+            <label className="flex cursor-pointer items-center gap-1.5 text-muted-foreground">
+              <input type="checkbox" checked={keepIt} onChange={(e) => setKeepIt(e.target.checked)} data-secret-keep />Keep in your passwords
+            </label>
+            <button type="button" onClick={() => void pick()} className="cursor-pointer text-primary hover:underline" data-secret-pick>From your passwords…</button>
+          </div>
+        )}
+        {kept && unpicked && !picking && <p className="mt-1.5 text-[15px] text-muted-foreground md:text-[13px]" data-secret-unpicked>{unpicked}</p>}
+        {picking && (
+          <div className="mt-2 text-left" data-secret-picking>
+            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your passwords" aria-label="Search your passwords"
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (shown?.[0]) void chosen(shown[0].id) } }}
+              className="h-9 w-full rounded-[8px] border-[0.5px] border-border bg-background px-3 text-[16px] outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-7 md:text-[13px]" />
+            <div className="mt-1 flex flex-col">
+              {shown?.map((e) => (
+                <button key={e.id} type="button" onClick={() => void chosen(e.id)} data-secret-entry={e.title}
+                  className="flex h-9 cursor-pointer items-baseline gap-2 rounded-[6px] px-2 text-left text-[15px] hover:bg-foreground/[0.06] md:h-7 md:text-[13px]">
+                  <span className="truncate">{e.title || "(untitled)"}</span><span className="truncate text-muted-foreground">{e.username}</span>
+                </button>
+              ))}
+              {shown && !shown.length && <p className="px-2 py-1.5 text-[15px] text-muted-foreground md:text-[13px]">None found</p>}
+            </div>
+          </div>
         )}
         {a.field === "file" && (
           <label className="mt-3 flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-[8px] bg-foreground/[0.06] px-3 text-[15px] font-medium hover:bg-foreground/[0.1] md:h-7 md:text-[13px]">
