@@ -605,6 +605,8 @@ const FRONT_AGE = 1000
 /** Terminal `id`'s program is in front of its shell, or its shell at its prompt (`program` false), as read at `seen`. Gone,
  *  its terminal server's OSC 7501 records of its work go too, so they don't come back with a restart. */
 function frontSeen(b: Backend, id: string, program: boolean, seen: number) {
+  // (Windows has no foreground groups, only a guess by the newest child: seeing none there never ends an agent's turn)
+  if (WIN && !program) return
   const had = terms.get(id)?.osc?.status
   apply(id, { type: "front", program, seen })
   if (had && !terms.get(id)?.osc?.status) void b.dropStatus?.(id)
