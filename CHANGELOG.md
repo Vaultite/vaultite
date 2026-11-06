@@ -17,6 +17,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   asks), and a fresh one (after that, a restart, or once its context grows) is told who you are (ME.md) and the talk
   so far from its log, with what it did (what it opened, the jobs it started), instead of the last few lines of the
   last ten minutes. Small talk the realtime voice answered shows on the Companion page too.
+- **The Conversations panel shows your talk with the companion**: Talk, beside a note's Comments, is today's asks and
+  its answers as a chat, newest at the bottom and coming in live, with the jobs it started, a line to ask it, and its
+  page a click away. A note with comments opens on them, any other on the talk.
+- **The companion remembers the talk**: a fresh session of its Talk key (after a pause, a restart, or once its context
+  grows) is told the talk so far from its log, with what it did (what it opened, the jobs it started), instead of the
+  last few lines of the last ten minutes. Small talk the realtime voice answered shows on the Companion page too.
 - **A foldable callout opened stays open, with no empty gap**: scrolled away and back, or its note left and opened
   again, a section you opened is still open, and one shut is drawn at its shut height instead of held at its open one
   for a few seconds, so the page no longer jumps under you.

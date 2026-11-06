@@ -361,9 +361,10 @@ export function SettingRow({ label, sub, stack, below, value, onClick, chevron =
     : <div ref={ref as Ref<HTMLDivElement>} {...pv?.props} {...rest} className={cls}>{body}</div>
 }
 
-/** A choice of a few, side by side. `big`: a page's tabs, as tall as a finger on phones. */
+/** A choice of a few, side by side. `big`: a page's tabs, as tall as a finger on phones. An option's `count`: how many it
+ *  has, after its label (none at 0). */
 export function Segmented<T extends string>({ value, options, onChange, label, big, className }: {
-  value: T; options: { value: T; label: string; icon?: LucideIcon; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; big?: boolean; className?: string
+  value: T; options: { value: T; label: string; icon?: LucideIcon; count?: number; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; big?: boolean; className?: string
 }) {
   return (
     <div role="radiogroup" aria-label={label} aria-describedby={useContext(Described)} className={cn("flex rounded-[9px] bg-muted p-[2px]", className)}>
@@ -377,6 +378,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, b
               on ? "bg-card font-semibold shadow-[0_3px_8px_rgb(0_0_0/0.12),0_3px_1px_rgb(0_0_0/0.04)] dark:bg-[var(--segment-on)]" : "font-medium text-foreground/80",
             )}>
             {o.icon && <o.icon aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />}{o.label}
+            {!!o.count && <span className="-ml-0.5 font-medium tabular-nums opacity-60">{o.count}</span>}
           </button>
         )
       })}

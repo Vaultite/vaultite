@@ -3385,8 +3385,8 @@ plugin.op({
   id: "companion.conversation",
   cli: "companion conversation",
   summary: "The user's talk with the companion on a day: each ask (a Talk key's press, an @name), its answer and what it did, its timings and press; and what its services used.",
-  help: `What the Companion page shows. Each exchange's press has its steps (mic, recognizer, the key's up and down, its
-end), as the menu-bar helper logged them on this machine.
+  help: `What the Companion page and the Conversations panel's Talk show. Each exchange's press has its steps (mic,
+recognizer, the key's up and down, its end), as the menu-bar helper logged them on this machine.
 
   vau companion conversation
   vau companion conversation --day 2026-11-05`,

@@ -1,15 +1,18 @@
-// The Conversations panel (the right sidebar by default, a phone's right drawer; where threads show with `comments: sidebar`): the focused note's threads in its
-// order, open or resolved, who's around atop them. One clicked lights its line; replying and resolving are here.
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
-import { Check, MessagesSquare, RotateCcw, X } from "lucide-react"
-import { cn, fmtAgo, ink, keyHint, Loading, Markdown, op, plural, snippet, useFocusedFile, useKeptCount, type SidebarCtx } from "@vaultite"
+// The Conversations panel (right sidebar, a phone's right drawer): Talk, the day's talk with the companion as a chat,
+// and Comments, the focused note's threads in its order (who's around atop them; replying and resolving here).
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react"
+import { Check, Maximize2, MessagesSquare, RotateCcw, X } from "lucide-react"
+import { cn, fmtAgo, HeadingButton, ink, keyHint, Loading, Markdown, notifyError, op, plural, Segmented, share, snippet, today, useFocusedFile, useKeptCount, type SidebarCtx } from "@vaultite"
+import { AskLine } from "./AskLine"
+import type { Exchange } from "./conversation"
 import { accept, answer, getState, type Note, pick, reopen, review, subscribe, tintOf } from "./live"
 import { cut, follow, unsent } from "./Overlay"
+import { type Day, JobRow, talkOf, Turn, useOp } from "./Page"
 import { Faces } from "./Presence"
 import { threadsOf } from "./threads"
 
 type Filter = "open" | "resolved"
-/** A tint as text: mixed toward the text colour, so a yellow reads on light and a blue on dark. */
+type Tab = "talk" | "note"
 
 /** The note's dismissed comments (kept on the server), asked again as its open ones change; null until a note's first
  *  answer (another note's aren't shown meanwhile). */
@@ -38,35 +41,94 @@ export function ConversationsView() {
   return (
     <div className="pb-10" data-conversations-view>
       <h1 className="mb-4 truncate text-[22px] leading-[28px] font-bold max-md:hidden">Conversations</h1>
-      <div data-size-up className="size-up-bleed"><Conversations path={path} /></div>
+      <div data-size-up className="size-up-bleed"><Conversations path={path} page /></div>
     </div>
   )
 }
 
-function Conversations({ path, big }: { path: string; big?: boolean }) {
+/** `page`: drawn in its tab, where the pane scrolls the talk (in a sidebar, the talk scrolls in a box of its own). */
+function Conversations({ path, big, page }: { path: string; big?: boolean; page?: boolean }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [filter, setFilter] = useState<Filter>("open")
+  const [chosen, setChosen] = useState<{ path: string; tab: Tab } | null>(null)
   const md = /\.md$/i.test(path)
   const threads = useMemo(() => (md ? threadsOf(s.notes, path) : []), [s.notes, path, md])
   const past = usePast(path, threads)
   // (the Resolved count as last time while it's asked, so it doesn't come in from nothing)
   const resolved = useKeptCount(md ? `companion:resolved:${path}` : null, past?.length, 0)
   // (a thread picked from a dot or the margin's history is an open one: shown)
-  useEffect(() => { if (s.picked && threads.some((n) => n.id === s.picked)) setFilter("open") }, [s.picked, threads])
+  useEffect(() => { if (s.picked && threads.some((n) => n.id === s.picked)) { setFilter("open"); setChosen({ path, tab: "note" }) } }, [s.picked, threads, path])
+  // (a note's threads, once shown, stay when the last is resolved, not swapped for the talk)
+  useEffect(() => { if (threads.length && chosen?.path !== path) setChosen({ path, tab: "note" }) }, [threads.length, chosen, path])
   if (s.mode === "off") return <p className="px-1.5 py-1 text-[13px] text-tertiary">The companion is off.</p>
+  // (a note with threads shows them, else the talk; one picked stays for that note. A guest has no companion to talk to)
+  const tab: Tab = share ? "note" : chosen?.path === path ? chosen.tab : threads.length ? "note" : "talk"
   const list = filter === "open" ? threads : past ?? []
   return (
-    <div data-companion-panel className="flex flex-col gap-1.5 pb-1">
-      <div className="flex min-h-7 items-center gap-2 pl-1">
-        <div className="min-w-0 flex-1"><Faces path={path} big={big} fit /></div>
-        {md && <Filters filter={filter} setFilter={setFilter} open={threads.length} resolved={resolved} />}
-      </div>
-      {!md ? <p className="px-1.5 text-[13px] text-tertiary">Open a note to see its conversations.</p>
-        : filter === "resolved" && !past ? <Loading className="px-1.5 text-[13px] leading-[18px]" />
-        : !list.length ? <p className="px-1.5 text-[13px] text-tertiary">{filter === "open" ? "No comments in this note." : "Nothing resolved yet."}</p>
-        : list.map((n) => <Thread key={n.id} n={n} picked={s.picked === n.id} resolved={filter === "resolved"} />)}
+    <div data-companion-panel data-tab={tab} className="flex flex-col gap-1.5 pb-1">
+      {!share && (
+        <Segmented label="Conversation" value={tab} onChange={(t) => setChosen({ path, tab: t })} className="mx-0.5 mb-0.5"
+          options={[{ value: "talk", label: "Talk" }, { value: "note", label: "Comments", count: threads.length }]} />
+      )}
+      {tab === "talk" ? <Talk page={page} /> : <>
+        <div className="flex min-h-7 items-center gap-2 pl-1">
+          <div className="min-w-0 flex-1"><Faces path={path} big={big} fit /></div>
+          {md && <Filters filter={filter} setFilter={setFilter} open={threads.length} resolved={resolved} />}
+        </div>
+        {!md ? <p className="px-1.5 text-[13px] text-tertiary">Open a note to see its comments.</p>
+          : filter === "resolved" && !past ? <Loading className="px-1.5 text-[13px] leading-[18px]" />
+          : !list.length ? <p className="px-1.5 text-[13px] text-tertiary">{filter === "open" ? "No comments in this note." : "Nothing resolved yet."}</p>
+          : list.map((n) => <Thread key={n.id} n={n} picked={s.picked === n.id} resolved={filter === "resolved"} />)}
+      </>}
     </div>
   )
+}
+
+/** The day's talk with the companion, oldest first like a chat, kept at its end as new asks come; a line to ask it. */
+function Talk({ page }: { page?: boolean }) {
+  const day = today()
+  const { data, error, again } = useOp<Day>("companion.conversation", { day })
+  const name = useSyncExternalStore(subscribe, () => getState().name)
+  const tint = useSyncExternalStore(subscribe, () => tintOf(getState().name))
+  const shown = data?.day === day ? data : null
+  const items = talkOf(shown, day)
+  // (an ask sent here shows at once, until its log has it)
+  const [sent, setSent] = useState<{ t: number; text: string }[]>([])
+  const pending = sent.filter((x) => Date.now() - x.t < 60_000 && !shown?.exchanges.some((e) => e.t >= x.t - 5000 && e.text.trim() === x.text))
+  const box = useRef<HTMLDivElement>(null)
+  useAtEnd(box, `${items.length}:${items.at(-1)?.e?.said.length ?? 0}:${pending.length}`, page)
+  const asked = (text: string): Exchange => ({ t: Date.now(), seq: -1, kind: "ask", text, where: "", voice: false, summoned: false, said: [], did: [] })
+  return (
+    <div data-companion-talk className="flex flex-col gap-1.5">
+      <div className="flex min-h-6 items-center gap-1 pr-0.5 pl-1.5">
+        <span className="flex-1 text-[12px] font-semibold text-muted-foreground">Today</span>
+        <HeadingButton icon={Maximize2} label="Open the Companion page" className="max-sm:size-8" data-companion-open-page
+          onClick={() => void op("companion.page").catch((e) => notifyError(e, "Couldn't open its page"))} />
+      </div>
+      <div ref={box} className={cn("flex flex-col gap-3 px-1", !page && "max-h-[min(62vh,560px)] overflow-y-auto max-sm:max-h-[46vh] overscroll-contain")}>
+        {!shown ? <Loading className="px-0.5 text-[13px] leading-[18px]" error={error ? "Couldn't read the companion's talk." : undefined} />
+          : !items.length && !pending.length ? <p className="px-0.5 text-[13px] text-tertiary">Nothing yet today.</p>
+          : items.map((x) => (x.e ? <Turn key={`e${x.e.seq}-${x.e.t}`} e={x.e} name={name} tint={tint} compact /> : <JobRow key={`j${x.j.id}`} j={x.j} />))}
+        {pending.map((x) => <Turn key={`p${x.t}`} e={{ ...asked(x.text), t: x.t }} name={name} tint={tint} compact />)}
+      </div>
+      <AskLine name={name} compact className={cn("px-0.5 pt-1", page && "sticky bottom-0 bg-background pb-2")}
+        onSent={(text) => { setSent((s) => [...s.slice(-4), { t: Date.now(), text }]); again() }} />
+    </div>
+  )
+}
+
+/** Keeps a chat's scroller at its end as `key` moves, unless the user scrolled up to read. `page`: the pane scrolls it. */
+function useAtEnd(ref: RefObject<HTMLDivElement | null>, key: string, page?: boolean) {
+  const end = useRef(true)
+  const scroller = () => { let el: HTMLElement | null = ref.current; if (!page) return el; while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement; return el }
+  useEffect(() => {
+    const el = scroller()
+    if (!el) return
+    const on = () => { end.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48 }
+    el.addEventListener("scroll", on, { passive: true })
+    return () => el.removeEventListener("scroll", on)
+  }, [page])
+  useLayoutEffect(() => { const el = scroller(); if (el && end.current) el.scrollTop = el.scrollHeight }, [key])
 }
 
 /** Open / Resolved, as a small segmented control. */

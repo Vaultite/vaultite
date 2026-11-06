@@ -139,7 +139,7 @@ export default definePlugin({
   ambient: share ? undefined : { status: { title: "Companion", sort: 25, left: true, render: () => <Status /> } },
   fileBar: { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
   // (its key is threads.ts' PANEL)
-  sidebar: { conversations: { title: "Conversations", sort: 20, side: "right", view: "conversations", names: ["comments", "threads"], flyout: { icon: ConversationsIcon, width: 320 },
+  sidebar: { conversations: { title: "Conversations", sort: 20, side: "right", view: "conversations", names: ["comments", "threads", "talk"], flyout: { icon: ConversationsIcon, width: 320 },
     render: (ctx) => <ConversationsPanel {...ctx} /> } },
   views: { conversations: { icon: MessagesSquare, title: () => "Conversations", render: () => <ConversationsView /> } },
   commands: share ? (comments() ? [COMMENT] : []) : [

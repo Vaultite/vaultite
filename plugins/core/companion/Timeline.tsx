@@ -1,14 +1,15 @@
 // The companion's session tab: a timeline of what it did and what it saw, grouped by note, newest first; its state live
 // at the top, its chat a click away, and a line to ask it something not tied to a note. timeline.ts reads the session.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react"
-import { ArrowUp, Bot, Check, ChevronRight, CircleAlert, Crosshair, Ellipsis, Eraser, Eye, FilePen, FileText, Highlighter, History, MessageCircle, MessageSquare,
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react"
+import { Bot, Check, ChevronRight, CircleAlert, Crosshair, Ellipsis, Eraser, Eye, FilePen, FileText, Highlighter, History, MessageCircle, MessageSquare,
   MessageSquareText, MousePointerClick, Pencil, Replace, RotateCcw, Search, Shapes, ShieldQuestion, SquareTerminal, User, X } from "lucide-react"
 import { Button, cn, fmtStamp, fmtTime, getTabLayout, isDesktop, isViewOpen, Markdown, menuBelow, notifyError, op, openFile, openView, allPanes, panesOf, plural, tabOfPane, usePane } from "@vaultite"
 import type { ChatLive } from "@plugins/claude-code/driven"
-import { getState, sendMoment, subscribe, type Agent } from "./live"
+import { getState, subscribe, type Agent } from "./live"
 import type { Lines, Message, Read } from "./moments"
 import { readMoments } from "./moments"
-import { Arrow, follow, unsent } from "./Overlay"
+import { AskLine } from "./AskLine"
+import { Arrow, follow } from "./Overlay"
 import { agentMenu, MODES } from "./session"
 import { type Act, contextOf, noteOf, type Outcome, type Place, type Turn, turnsOf } from "./turns"
 
@@ -398,33 +399,6 @@ export function DiffBlock({ removed, added, at }: { removed: string[]; added: st
 const Hunks = ({ hunks }: { hunks: NonNullable<Read["hunks"]> }) => (
   <div className="space-y-1.5">{hunks.map((h, n) => <DiffBlock key={n} removed={h.removed} added={h.added} at={hunks.length > 1 ? h.line : undefined} />)}</div>
 )
-
-// ---------- a line to ask it, not tied to a note
-
-function AskLine({ name }: { name: string }) {
-  const [text, setText] = useState("")
-  const field = useRef<HTMLTextAreaElement>(null)
-  useLayoutEffect(() => { const f = field.current; if (f) { f.style.height = "auto"; f.style.height = `${f.scrollHeight}px` } }, [text])
-  const send = () => {
-    const said = text.trim()
-    if (!said) return
-    if (!sendMoment({ kind: "ask", agent: name, text: said })) return unsent()
-    setText("")
-  }
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send() } }
-  return (
-    <div className="shrink-0 px-4 pb-[max(12px,env(safe-area-inset-bottom))] max-md:px-3" data-ask-line>
-      <div className="mx-auto flex w-full max-w-[40rem] items-end gap-1 rounded-[14px] border-[0.5px] border-border bg-card py-1 pr-1 pl-3.5 shadow-[0_2px_10px_rgb(0_0_0/0.05)] focus-within:border-foreground/25">
-        <textarea ref={field} value={text} rows={1} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} enterKeyHint="send" placeholder={`Ask ${name}…`} aria-label={`Ask ${name}`}
-          className="max-h-[30dvh] min-h-8 flex-1 resize-none overflow-y-auto bg-transparent py-1.5 text-[14px] leading-[20px] outline-none placeholder:text-muted-foreground max-md:min-h-11 max-md:py-2.5 max-md:text-[17px] max-md:leading-[24px]" />
-        <button type="button" aria-label="Send" disabled={!text.trim()} onClick={send} data-send
-          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full bg-primary text-primary-foreground disabled:cursor-default disabled:opacity-40 max-md:size-11">
-          <ArrowUp className="size-4 max-md:size-5" strokeWidth={2.5} />
-        </button>
-      </div>
-    </div>
-  )
-}
 
 // ---------- a message of moments, in its chat
 

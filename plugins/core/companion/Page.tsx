@@ -1,6 +1,6 @@
-// The Companion page's blocks (pages/Companion.md): its conversation a day at a time (what you asked, what it said and
-// did, jobs as cards, a press's Details) and what its services used. Data: companion conversation, usage, press-media.
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
+// The Companion page's blocks (pages/Companion.md): its talk a day at a time (asks, answers, jobs, a press's Details;
+// compact in the Conversations panel) and what its services used. Data: companion conversation, usage, press-media.
+import { useEffect, useState, useSyncExternalStore } from "react"
 import { AudioLines, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleDashed, CircleDot, CirclePause, CircleStop, ExternalLink, Image, Mic } from "lucide-react"
 import { addDays, Button, cn, Empty, HeadingButton, fmtLongDay, fmtStamp, Loading, notifyError, op, openTab, Panel, today, useTick } from "@vaultite"
 import type { Exchange, PressLine, Spent } from "./conversation"
@@ -8,15 +8,17 @@ import { getState, subscribe } from "./live"
 import { Arrow } from "./Overlay"
 
 /** jobs.ts' JobCard, `at` its start (companion conversation). */
-type JobCard = { id: string; title: string; state: string; link: string | null; at: number; result?: string; where?: string; now?: string; ended?: number }
-type Day = { day: string; exchanges: Exchange[]; spent: Spent[]; jobs: JobCard[] }
+export type JobCard = { id: string; title: string; state: string; link: string | null; at: number; result?: string; where?: string; now?: string; ended?: number }
+export type Day = { day: string; exchanges: Exchange[]; spent: Spent[]; jobs: JobCard[] }
 type UsageRow = { service: string; today: Spent; week: Spent; left?: { used: number; limit: number; resets?: number; unit: string }; billing?: string }
 
 /** How often a shown page asks again (ms): new asks come as they're made. */
 const EVERY = 5000
-/** An op's answer, asked again every `every` ms while the window is seen and when the companion's state moves. */
-function useOp<T>(id: string, params: Record<string, unknown>, every = EVERY) {
+/** An op's answer, asked again every `every` ms while the window is seen, when the companion's state moves, and at
+ *  `again()` (an ask just sent). */
+export function useOp<T>(id: string, params: Record<string, unknown>, every = EVERY) {
   const [data, setData] = useState<T | null>(null), [error, setError] = useState<unknown>(null)
+  const [asked, setAsked] = useState(0)
   const key = JSON.stringify(params)
   // (its live state: a new say or ask moves this)
   const said = useSyncExternalStore(subscribe, () => getState().said.length)
@@ -26,8 +28,15 @@ function useOp<T>(id: string, params: Record<string, unknown>, every = EVERY) {
     ask()
     const t = setInterval(ask, every)
     return () => { on = false; clearInterval(t) }
-  }, [id, key, said, every])
-  return { data, error }
+  }, [id, key, said, every, asked])
+  return { data, error, again: () => setAsked((n) => n + 1) }
+}
+
+/** A day's talk in order: its exchanges and the jobs started that day, oldest first. */
+export function talkOf(d: Day | null, day: string) {
+  const on = new Date(`${day}T12:00`).toDateString()
+  return [...(d?.exchanges ?? []).map((e) => ({ t: e.t, e })), ...(d?.jobs ?? []).filter((j) => j.at && new Date(j.at).toDateString() === on).map((j) => ({ t: j.at, j }))]
+    .sort((a, b) => a.t - b.t) as ({ t: number; e: Exchange; j?: undefined } | { t: number; j: JobCard; e?: undefined })[]
 }
 
 const time = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
@@ -53,10 +62,7 @@ export function ConversationBlock() {
   const name = useSyncExternalStore(subscribe, () => getState().name)
   const shown = data?.day === day ? data : null
   const isToday = day === today()
-  const items: { t: number; node: ReactNode }[] = [
-    ...(shown?.exchanges ?? []).map((e) => ({ t: e.t, node: <Turn key={`e${e.seq}-${e.t}`} e={e} name={name} /> })),
-    ...(shown?.jobs ?? []).filter((j) => j.at && new Date(j.at).toDateString() === new Date(`${day}T12:00`).toDateString()).map((j) => ({ t: j.at, node: <Job key={`j${j.id}`} j={j} /> })),
-  ].sort((a, b) => a.t - b.t)
+  const items = talkOf(shown, day).map((x) => (x.e ? <Turn key={`e${x.e.seq}-${x.e.t}`} e={x.e} name={name} /> : <Job key={`j${x.j.id}`} j={x.j} />))
   const nav = (
     <div className="flex items-center gap-0.5">
       <HeadingButton icon={ChevronLeft} label="Day before" onClick={() => setDay((d) => addDays(d, -1))} />
@@ -69,33 +75,37 @@ export function ConversationBlock() {
       <Panel title={isToday ? "Today" : fmtLongDay(day)} action={nav}>
         {!shown ? <Loading error={error ? "Couldn't read the companion's talk." : undefined} />
           : !items.length ? <Empty>{isToday ? `Nothing yet today. Hold ⌃⌥ anywhere and ask ${name}.` : "Nothing that day."}</Empty>
-          : <div className="flex flex-col gap-4">{items.map((x) => x.node)}</div>}
+          : <div className="flex flex-col gap-4">{items}</div>}
       </Panel>
     </div>
   )
 }
 
-/** One exchange: their words on the right, its answer on the left, Details under it. */
-function Turn({ e, name }: { e: Exchange; name: string }) {
+/** One exchange: their words on the right, its answer on the left, Details under it. `compact`: a sidebar's, at its
+ *  sizes, where they asked cut to a line and no Details (the page has them). */
+export function Turn({ e, name, tint = "var(--orange)", compact }: { e: Exchange; name: string; tint?: string; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   const did = e.did.filter((d) => d !== "pointed")
+  // (its answer still to come: asked under 2 min ago, nothing said, done or done to it)
+  const waiting = !e.said.length && !did.length && e.total === undefined && Date.now() - e.t < 120_000
+  const words = compact ? "text-[13px] leading-[18px]" : "text-[15px] leading-[20px]", meta = compact ? "text-[11.5px] leading-[15px]" : "text-[12px]"
   return (
-    <div className="flex flex-col gap-1.5" data-companion-turn>
+    <div className={cn("flex flex-col", compact ? "gap-1" : "gap-1.5")} data-companion-turn>
       <div className="flex flex-col items-end gap-0.5">
-        <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-foreground/[0.06] px-3 py-2 text-[15px] leading-[20px] whitespace-pre-wrap select-text">{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
-        <div className="flex items-center gap-1 text-[12px] text-muted-foreground" data-tip={fmtStamp(e.t)}>
-          {e.voice && <Mic className="size-3" aria-label="Said" />}{time(e.t)}{e.where ? ` · ${e.where}` : ""}
+        <div className={cn("bg-foreground/[0.06] whitespace-pre-wrap select-text", words, compact ? "max-w-[88%] rounded-[12px] rounded-br-[4px] px-2.5 py-1.5" : "max-w-[85%] rounded-[14px] rounded-br-[4px] px-3 py-2")}>{e.text || (e.kind === "point" ? "Look at this" : "")}</div>
+        <div className={cn("flex max-w-full min-w-0 items-center gap-1 text-muted-foreground", meta)} data-tip={fmtStamp(e.t)}>
+          {e.voice && <Mic className="size-3 shrink-0" aria-label="Said" />}<span className={cn(compact && "truncate")}>{time(e.t)}{e.where ? ` · ${e.where}` : ""}</span>
         </div>
       </div>
-      <div className="flex max-w-[85%] gap-2">
-        <Arrow tint="var(--orange)" size={16} className="mt-[3px] shrink-0" aria-label={name} />
+      <div className={cn("flex gap-2", compact ? "max-w-[92%]" : "max-w-[85%]")}>
+        <Arrow tint={tint} size={compact ? 14 : 16} className={cn("shrink-0", compact ? "mt-[2px]" : "mt-[3px]")} aria-label={name} />
         <div className="min-w-0 flex-1">
-          {e.said.length ? <div className="text-[15px] leading-[20px] whitespace-pre-wrap select-text">{e.said.join("\n\n")}</div>
-            : <div className="text-[15px] leading-[20px] text-muted-foreground">{did.length ? "" : "No words kept for this answer."}</div>}
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12px] text-muted-foreground">
+          {e.said.length ? <div className={cn("whitespace-pre-wrap select-text", words)}>{e.said.join("\n\n")}</div>
+            : <div className={cn("text-muted-foreground", words, waiting && "animate-pulse")}>{did.length ? "" : waiting ? "Thinking…" : "No words kept for this answer."}</div>}
+          <div className={cn("mt-0.5 flex flex-wrap items-center gap-x-1.5 text-muted-foreground", meta)}>
             {did.length > 0 && <span>{did.join(", ")}</span>}
-            {e.word !== undefined && <span>{did.length ? "· " : ""}first word in {secs(e.word)}</span>}
-            {(e.press || e.shot) && (
+            {!compact && e.word !== undefined && <span>{did.length ? "· " : ""}first word in {secs(e.word)}</span>}
+            {!compact && (e.press || e.shot) && (
               <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="-mx-1 flex cursor-pointer items-center gap-0.5 rounded-[5px] px-1 hover:bg-foreground/[0.05] hover:text-foreground">
                 Details<ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
               </button>
@@ -144,7 +154,7 @@ function Details({ e }: { e: Exchange }) {
 const stepText = (s: PressLine) => Object.entries(s).filter(([k]) => !["t", "press", "kind", "ev", "ms"].includes(k)).map(([k, v]) => `${k} ${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join(" · ")
 
 /** A job as a card in the talk: its state, where it runs, what it's doing, and its session a click away. */
-function Job({ j }: { j: JobCard }) {
+export function Job({ j }: { j: JobCard }) {
   useTick(30_000)
   const st = STATES[j.state] ?? STATES.working, Icon = st.icon
   const long = Math.max(0, ((j.ended ?? Date.now()) - j.at) / 60_000)
@@ -161,6 +171,20 @@ function Job({ j }: { j: JobCard }) {
       {(j.now || j.result) && <div className="line-clamp-3 text-[13px] leading-[18px] select-text">{j.now && !/done|failed|stopped|review/.test(j.state) ? j.now : j.result}</div>}
     </div>
   )
+}
+
+/** A job as a row in a sidebar's talk: its state's mark, its title and state; a click opens its session. */
+export function JobRow({ j }: { j: JobCard }) {
+  const st = STATES[j.state] ?? STATES.working, Icon = st.icon
+  const body = <>
+    <Icon className="size-3.5 shrink-0" style={{ color: st.tint }} strokeWidth={2.25} />
+    <span className="line-clamp-2 min-w-0 flex-1 leading-[17px] font-medium">{j.title || "A job"}</span>
+    <span className="shrink-0 text-[11.5px] text-muted-foreground">{st.word}</span>
+  </>
+  const cls = "flex min-h-7 w-full items-center gap-1.5 rounded-[7px] border border-border/60 px-2 py-1 text-left text-[13px]"
+  return j.link
+    ? <button type="button" className={cn(cls, "cursor-pointer hover:border-border hover:bg-foreground/[0.03]")} onClick={() => openTab(j.link!)} data-companion-job={j.id} data-state={j.state}>{body}</button>
+    : <div className={cls} data-companion-job={j.id} data-state={j.state}>{body}</div>
 }
 
 /** ```block-companion-usage: what each service the companion uses used today and this week, and what's left. */
