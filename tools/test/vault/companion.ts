@@ -788,7 +788,8 @@ export default async ($: VaultTest) => {
     check("companion: draw takes marks or actions", st3 === 400, r3)
     // (Keep, pressed on the screen: an .excalidraw by its pad's title; the helper told where)
     helper.emit("message", JSON.stringify({ t: "drawing-act", id: d1.id, kind: "keep", places: {} }))
-    await waitFor(() => exists("Drawings/Login flow.excalidraw"), 5000, 20)
+    // (the overlay's word of where can come a moment after the file: both waited for)
+    await waitFor(() => (exists("Drawings/Login flow.excalidraw") && last()?.drawing.kept) || null, 5000, 20)
     const kept = JSON.parse(read("Drawings/Login flow.excalidraw"))
     check("companion: Keep saves the scratch pad as Excalidraw's JSON in Drawings/, by its title, and the overlay hears where",
       kept.type === "excalidraw" && kept.elements.some((e: Any) => e.type === "text" && e.text === "Log in" && e.containerId) && last()?.drawing.kept === "Drawings/Login flow.excalidraw", last())
