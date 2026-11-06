@@ -396,6 +396,15 @@ export default async ($: VaultTest) => {
       check("summoned: every command its prompt names runs without asking, and every tool it names is served (its own page with a split too)",
         named.length >= 5 && !refused.length && tools.every((t) => served.includes(t)) && served.includes("page"), { refused, tools, served, allow })
       await idle(quick!)
+      // (a tool that ends its turn before a word: its turn goes on, told to say what it did, so no ask ends in silence)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: 'call follow {"done":true}', app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      const nudged = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && /^Called: Following nothing\./.test(n.text ?? "")), 15_000, 50)
+      check("summoned: a tool ending its turn with nothing said yet goes on, told to tell them what it did: an ask always gets words",
+        /heard nothing from you on this ask/.test(nudged?.text ?? ""), nudged)
+      await idle(quick!)
+      const { quietly } = await import("../../../plugins/core/companion/summoned.ts")
+      check("summoned: a turn still ending silent says what its last tool did (no ids), else that it got nowhere",
+        quietly('Closed "Fix the page" (jzzed4g2): done.') === 'Closed "Fix the page": done.' && /^I didn't get to an answer/.test(quietly("")) && quietly("I couldn't: no job zz") === "I couldn't: no job zz")
       const rows = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((x: Any) => x.as === "Claude (summoned)")
       check("summoned: timings tell its asks apart, with their first word", rows.some((x: Any) => x.word !== undefined), rows)
       c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "call pass {\"reason\":\"not for me\"}" })

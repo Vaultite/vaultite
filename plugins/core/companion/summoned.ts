@@ -66,6 +66,8 @@ export function summonedLane(o: {
   }
   /** `withdrawn`: its turn's answer isn't wanted (the realtime voice answered alone): nothing more of it is said or kept. */
   let turning = false, starting: Promise<unknown> | null = null, handed = false, acted = false, asking = false, withdrawn = false, unhear: (() => void) | null = null
+  /** Of the asks handed: whether its words reached them (`spoke`), its turn was stopped (Esc), and its last tool's answer. */
+  let spoke = false, stopped = false, lastDid = ""
   const newsOf = new Map<string, number>()
 
   const on = () => !!o.model() && !!o.chat()
@@ -73,9 +75,18 @@ export function summonedLane(o: {
   /** Whether the next ask goes to a fresh session: none, another model or prompt, past its asks, or after a pause. */
   const due = () => !kept || kept.model !== o.model() || kept.v !== VERSION || kept.handed >= FRESH_ASKS || Date.now() - (kept.last ?? kept.t) > FRESH_AFTER_MS
   /** Its session's tools, each call (and its words as they stream) run as its own. */
-  const tools = (ts: Tool[]) => ts.map((t) => ({ ...t, run: (args: unknown, use?: string) => inSummoned.run(true, () => t.run(args, use)),
+  const tools = (ts: Tool[]) => ts.map((t) => ({ ...t, run: (args: unknown, use?: string) => inSummoned.run(true, () => t.run(args, use)).then(unsaid),
     ...(t.stream ? { stream: (use: string, json: string, end?: "done" | "stop") => inSummoned.run(true, () => t.stream!(use, json, end)) } : {}) }))
   const options = (model: string) => { const x = o.options(model); return { ...x, tools: tools(x.tools ?? []), onText: words } }
+
+  /** A tool's answer: one that would end an ask's turn before a word was said goes on, told to say what it did. */
+  function unsaid(r: unknown) {
+    const x = r as { endsTurn?: boolean; isError?: boolean; content?: { text?: string }[] } | null
+    if (x && typeof x === "object") { const t = x.content?.map((c) => c.text ?? "").join(" ").trim() ?? ""; lastDid = t && x.isError ? `I couldn't: ${t}` : t }
+    if (!x?.endsTurn || !handed || spoke || withdrawn) return r
+    const { endsTurn: _e, ...rest } = x
+    return { ...rest, content: [...(x.content ?? []), { type: "text", text: "They've heard nothing from you on this ask yet: tell them in a few words what you did, then stop." }] }
+  }
 
   // ---------- its words: each text block, said as it grows, its tags acted on as each one closes
   const blocks = new Map<string, number>()
@@ -122,6 +133,11 @@ export function summonedLane(o: {
     const turn = handed && !acted && !withdrawn && s.state === "idle" ? parseTags(s.turn?.text?.trim() ?? "") : null
     if (turn?.tags.length) for (const t of turn.tags) then(() => tagged(t, turn.said))
     if (turn?.said) { acted = true; told("you", turn.said); inSummoned.run(true, () => o.did(name, "say", undefined, turn.said)); o.say(name, turn.said) }
+    // (an ask never ends in silence: what its last tool did, else that it got nowhere; Esc's stop and the realtime voice's are theirs)
+    if (handed && !acted && !withdrawn && !stopped && !(s.state === "error" && s.error)) {
+      const x = quietly(lastDid)
+      acted = true; told("you", x); inSummoned.run(true, () => o.did(name, "say", undefined, x)); o.say(name, x)
+    }
     if (handed) o.setAgent(name, acted ? { state: "watching" } : { state: "watching", seen: true })
     if (was && handed) inSummoned.run(true, () => o.did(name, "done"))
     handed = false; asking = false
@@ -148,7 +164,7 @@ export function summonedLane(o: {
 
   /** Asks handed to it: its cursor thinking there till it acts. */
   function give(ms: Moment[]) {
-    handed = true; acted = false; asking = true; withdrawn = false; given = ms
+    handed = true; acted = false; asking = true; withdrawn = false; given = ms; spoke = false; stopped = false; lastDid = ""
     for (const m of ms) if (m.text) told("they", m.text)
     inSummoned.run(true, () => o.did(o.name(), "handed", ms.map((m) => m.seq)))
   }
@@ -161,7 +177,9 @@ export function summonedLane(o: {
 
   /** What's waiting goes once its turn isn't running: a fresh session started with it if one is due. */
   async function pump() {
-    if (turning || starting || !on()) return
+    if (turning || starting) return
+    // (its session turned off meanwhile: what waits is told so, not left unanswered)
+    if (!on()) { if (pending.length) lost(pending.splice(0), new Error("the Talk key's session is off")); return }
     const c = o.chat()!, model = o.model()
     if (!pending.length) return
     const ms = pending.splice(0)
@@ -205,13 +223,14 @@ export function summonedLane(o: {
     /** Whether its session is busy on an ask (its cursor thinking after a say that isn't its last). */
     busy: () => turning,
     asking: () => asking,
-    acted() { acted = true },
+    /** It did `op` on an ask: its words (a say, their first word) are an answer. */
+    acted(op?: string) { acted = true; if (op === "say" || op === "word") spoke = true },
     id: () => kept?.id ?? null,
     /** The asks its turn was handed last (a handoff's context). */
     last: () => given,
     /** Its act logged under its own name, for timings. */
     as: (name: string) => `${name} (summoned)`,
-    async interrupt() { return !!(turning && kept && await o.chat()?.interrupt(kept.id).catch(() => false)) },
+    async interrupt() { if (turning) stopped = true; return !!(turning && kept && await o.chat()?.interrupt(kept.id).catch(() => false)) },
     /** Its answer to the last asks isn't wanted: the realtime voice answered them alone (`said`). Those still waiting
      *  go; its turn on them stops, nothing more of it said; the talk has the realtime voice's words. Answers: those asks. */
     withdraw(said: string) {
@@ -229,6 +248,12 @@ export function summonedLane(o: {
       turning = false; handed = false; asking = false
     },
   }
+}
+
+/** Its words for an ask its turn left unanswered: what its last tool did (no ids), else that it got nowhere. */
+export function quietly(did: string) {
+  const x = (/^.*?(?:[.!?](?=\s|$)|$)/.exec(did.split("\n")[0].replace(/\s*\([^)]*\)/g, ""))?.[0] ?? "").replace(/\s+/g, " ").trim()
+  return x && x.length <= 200 ? x : "I didn't get to an answer on that one. Ask me again?"
 }
 
 // ---------- an ask's window text, slimmed: the lines by what's at their pointer, within a budget

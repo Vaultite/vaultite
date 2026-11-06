@@ -237,7 +237,7 @@ const did = (as: string, op: string, seqs?: number[], text?: string) => {
   const t = Date.now(), quick = inSummoned.getStore() === true
   acts.append(t, [{ t, as: quick ? lane().as(as) : as, op, ...(seqs ? { seqs } : {}), ...(text ? { text: text.slice(0, 2000) } : {}) }])
   if (BOOKKEEPING.has(op)) return
-  if (quick) lane().acted()
+  if (quick) lane().acted(op)
   else handed.delete(key(as))
 }
 /** An agent's state once it acted: still thinking while busy on an ask (until its next `next`), else watching. */
