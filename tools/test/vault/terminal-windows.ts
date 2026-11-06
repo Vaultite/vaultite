@@ -195,7 +195,9 @@ setTimeout(() => process.exit(0), 120000)
     try {
       ;[, started] = await api("POST", "terminals/codex-winmiss01")
       missing = await waitFor(async () => { const [, r] = await api("GET", "terminals/sessions"); return (r.sessions as Any[]).find((x) => x.id === "codex-winmiss01" && x.missing) ?? null }, 60_000, 500)
-      shown = await screenOf("codex-winmiss01")
+      // (the console draws the starter's words on its own time, through ConPTY to the terminal server: not yet on screen
+      // when the state file is)
+      await waitFor(async () => /codex: not found/.test(shown = await screenOf("codex-winmiss01")), 15_000, 200)
       await api("DELETE", "terminals/codex-winmiss01")
     } finally { process.env.PATH = had }
     check("windows: an agent that isn't installed is marked missing, its terminal saying why", !!missing && /codex: not found/.test(shown), [missing, shown])

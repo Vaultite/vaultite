@@ -38,9 +38,12 @@ async function main() {
     if (fresh) { env.Path = `${env.Path ?? env.PATH ?? ""};${fresh}`; delete env.PATH; how = winCommand(job.argv, env) }
   }
   if (!how) {
-    if (job.state) try { fs.writeFileSync(job.state, "missing") } catch { /* told on screen anyway */ }
-    process.stderr.write(`${job.argv[0]}: not found (it isn't installed, or isn't on Path)\r\n`)
-    process.exit(127)
+    // (said before it is marked: the server then tells the user, who comes here to read why)
+    process.stderr.write(`${job.argv[0]}: not found (it isn't installed, or isn't on Path)\r\n`, () => {
+      if (job.state) try { fs.writeFileSync(job.state, "missing") } catch { /* told on screen anyway */ }
+      process.exit(127)
+    })
+    return
   }
   // Ctrl+C reaches the whole console: the agent's to answer, never this one's.
   process.on("SIGINT", () => {})
