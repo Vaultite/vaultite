@@ -1,5 +1,5 @@
 // The realtime voice on the real APIs, key let go to first audio, vs the pipeline; speech by `say -o`, its words to WAVs.
-//   node tools/evals/realtime.ts --openai-key <file> [--voice-keys <config.json>] [--models a,b] [--claude: Haiku, else canned]
+//   node tools/evals/realtime.ts [--config <data/config.json>] [--openai-key <file>] [--models a,b] [--claude: Haiku, else canned]
 import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -12,7 +12,13 @@ import { chunker, speakable } from "../../plugins/core/companion/spoken.ts"
 
 const argv = process.argv.slice(2)
 const opt = (f: string) => { const i = argv.indexOf(f); return i >= 0 ? argv.splice(i, 2)[1] : undefined }
-const KEY = fs.readFileSync(opt("--openai-key") ?? "", "utf8").trim(), VOICE_KEYS = opt("--voice-keys")
+// (the keys this machine keeps (vau voice key): its app's data/config.json, Vaultite Main's, or the one named)
+const CONFIG = [opt("--config") ?? opt("--voice-keys"), process.env.VAULTITE_LOCAL && path.join(process.env.VAULTITE_LOCAL, "config.json"),
+  path.join(os.homedir(), "Library", "Application Support", "Vaultite Main", "local", "config.json"), path.join(import.meta.dirname, "..", "..", "data", "config.json")]
+  .filter((f): f is string => !!f && fs.existsSync(f)).find((f) => { try { return !!JSON.parse(fs.readFileSync(f, "utf8")).companion } catch { return false } })
+const stored = CONFIG ? JSON.parse(fs.readFileSync(CONFIG, "utf8")) : {}, keyFile = opt("--openai-key")
+const KEY = keyFile ? fs.readFileSync(keyFile, "utf8").trim() : String(stored.companion?.openai ?? "")
+if (!KEY) { console.error(`no OpenAI key: none in ${CONFIG ?? "this machine's config"} (vau secret "OpenAI API key" | vau voice key --provider openai), nor --openai-key`); process.exit(2) }
 const MODELS = (opt("--models") ?? "gpt-realtime-2.1-mini").split(","), CLAUDE = argv.includes("--claude")
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-realtime-eval-")), OUT = opt("--out") ?? path.join(tmp, "out")
 fs.mkdirSync(OUT, { recursive: true })
@@ -97,7 +103,7 @@ function moment(a: Any, extra: Any = {}, onSay?: (id: string, text: string, t: n
 }
 
 // ---------- the pipeline's voice: ElevenLabs, its first audio for a sentence
-const voiceKeys = VOICE_KEYS ? JSON.parse(fs.readFileSync(VOICE_KEYS, "utf8")) : {}
+const voiceKeys = stored
 const eleven = voiceKeys.companion?.elevenlabs ? cloudVoice({ provider: "elevenlabs", url: "wss://api.elevenlabs.io", key: voiceKeys.companion.elevenlabs, model: "eleven_flash_v2_5", voice: "nPczCjzI2devNBz1zQrb", speed: 1 }) : null
 let pieces = 0
 function ttsFirst(text: string) {

@@ -876,6 +876,9 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
   return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, summoned: true, ...(m.voice === true ? { voice: true } : {}),
     ...(waited >= 0 && waited < 60_000 ? { waited: Math.round(waited) } : {}), ...(m.front === "realtime" ? { front: "realtime" as const, ...(talk.length ? { talk } : {}) } : {}) }, req)
 }
+/** Each helper's realtime voice, paused (the account can't pay, or its key is refused) and why. */
+const realtimePaused = new Map<WebSocket, { account: string; why: string; until: number } | null>()
+const pausedNow = () => [...realtimePaused.values()].find((p) => p && p.until > Date.now()) ?? null
 /** What the realtime voice answered alone (small talk): their words and its, kept as an ask and a say, no turn. */
 function screenAnswered(m: Record<string, unknown>) {
   const name = str(m.agent) || ownName(), heard = str(m.heard).trim().slice(0, 2000), said = str(m.said).trim().slice(0, 2000)
@@ -904,8 +907,10 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "drawing-act") return void drawingAct(m, req)
     if (m.t === "moment") screenMoment(m, req)
     if (m.t === "answered") screenAnswered(m)
+    // (its realtime voice paused, and why, or back: for its status)
+    if (m.t === "realtime") { const p = m.paused as Record<string, unknown> | null; realtimePaused.set(ws, p && typeof p === "object" ? { account: str(p.account), why: str(p.why).slice(0, 300), until: Number(p.until) || 0 } : null) }
   })
-  ws.on("close", () => screens.delete(ws))
+  ws.on("close", () => { screens.delete(ws); realtimePaused.delete(ws) })
 }
 
 /** What the user pressed on the drawing over the screen: Clear, Keep, a button's next step (an ask by where it is). */
@@ -2922,9 +2927,11 @@ plugin.op({
     return { mode: mode(), name: ownName(), session: (await running(id)) ? id : null, windows: windows.size, focus: focus(),
       sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel() } : null,
       agents: [...agents.values()].map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
-      notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list() }
+      notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list(),
+      realtime: pausedNow() ? { state: "paused", ...pausedNow()! } : realtimePaused.size ? { state: "on" } : null }
   },
   text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}.${r.summoned ? ` Summoned asks: ${r.summoned.model}${r.summoned.id ? `, session ${r.summoned.id}` : ""}.` : ""} Windows: ${r.windows}.`,
+    ...(r.realtime?.state === "paused" ? [`Realtime voice: paused, ${r.realtime.account === "quota" ? "the OpenAI account has no credits" : "OpenAI refused its key"} (${cut(r.realtime.why, 120)}); tries again at ${new Date(r.realtime.until).toTimeString().slice(0, 5)}.`] : []),
     ...r.agents.map((a: Agent & { live: boolean }) => {
       const s = r.sessions.find((x: { name: string }) => key(x.name) === key(a.name))
       return `- ${a.name} (${a.tint})${isMain(a.name) ? ", the companion" : ""}: ${a.live || isMain(a.name) ? a.state : "away"}${a.path ? ` at ${a.path}${a.line ? `:${a.line}` : ""}` : ""}${s ? `, session ${s.id}` : ""}`

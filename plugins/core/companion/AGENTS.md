@@ -103,7 +103,7 @@ above that), act, run it again, and never end your turn.
   openai`; `realtime_model`, `realtime_voice`): a Talk key's spoken ask on screen streams to OpenAI's speech-to-speech model,
   which answers at once. Small talk it answers alone (kept in their box as an ask and a say); anything about the screen it
   hands you as the ask, saying a few words meanwhile, and your say is what it speaks: so its moment says `asked through
-  the realtime voice`, and your say answers at once, with no "let me look". Its socket failing, the pipeline answers; an account with no credits pauses it ten minutes (one notice), then it tries once.
+  the realtime voice`, and your say answers at once, with no "let me look". Its socket failing, the pipeline answers; an account with no credits or a refused key pauses it (one notice, why in `companion status`), retried every ten minutes.
 - Long work (research, a document, code, writing in their notes): `handoff` starts a background agent (Opus, or Codex)
   with the ask's context and your few words; it's a job in the menu bar (running, done, needs you), the user told when it
   ends. `companion jobs` lists them; `handoff --job <id>` follows one up in its session.

@@ -33,8 +33,10 @@ export function realtimeFront(o: {
   /** Its cursor: thinking while the screen round runs; done when the turn is over. */
   state: (s: "thinking" | "done") => void
   log?: (t: TurnLog) => void
-  /** Said once when it pauses, the account's credits gone (the pipeline answers meanwhile). */
-  notice?: (why: string) => void
+  /** Said once when it pauses (the account can't pay, or its key is refused: the pipeline answers meanwhile); `paused`
+   *  told each change of it, null when it's back. */
+  notice?: (account: "quota" | "auth", why: string) => void
+  paused?: (p: { account: "quota" | "auth"; why: string; until: number } | null) => void
   /** How long it pauses then, before it tries again (in the background, once). */
   pauseMs?: number
   /** Each sentence of the higher model's answer as it's heard (its marks keep to it: helper.ts voiceHeardLine). */
@@ -85,8 +87,8 @@ export function realtimeFront(o: {
       audio: (b, rid, item) => heardAudio(b, rid, item),
       said: (d, rid) => { const t = owner.get(rid); if (t && !t.answerRids.has(rid)) t.said += d },
       call: (c) => called(c),
-      done: (d) => { if (d.quota) pause(d.error ?? "no credits"); responded(d) },
-      error: (e) => { if (me !== s) return; if (e.quota) pause(e.message); if (e.fatal) s = null; errored(e.message, e.fatal) },
+      done: (d) => { if (d.account) pause(d.account, d.error ?? "refused"); responded(d) },
+      error: (e) => { if (me !== s) return; if (e.account) pause(e.account, e.message); if (e.fatal) s = null; errored(e.message, e.fatal) },
     })
     s = me
     return me
@@ -177,9 +179,13 @@ export function realtimeFront(o: {
   }
 
   /** The account can't pay: no try for a while, said once, then one try in the background. */
-  function pause(why: string) {
+  function pause(account: "quota" | "auth", why: string) {
     pausedUntil = now() + PAUSE
-    if (!toldPause) { toldPause = true; o.notice?.(why) }
+    // (a turn waiting on it hands its ask back now, not at its timeout)
+    const t = turn
+    if (t && !t.first && (t.state === "answering" || t.state === "looking" || (t.state === "listening" && t.released))) fail(t, why)
+    if (!toldPause) { toldPause = true; o.notice?.(account, why) }
+    o.paused?.({ account, why, until: pausedUntil })
     const was = s
     s = null
     queueMicrotask(() => was?.close())
@@ -192,15 +198,16 @@ export function realtimeFront(o: {
     retry = null
     if (!cfg) return
     let over = false
-    const end = (quota: boolean, why = "") => {
+    const end = (account: "quota" | "auth" | undefined, why = "") => {
       if (over) return
       over = true
       p.close()
-      if (quota) return pause(why)
+      if (account) return pause(account, why)
       pausedUntil = 0; toldPause = false
+      o.paused?.(null)
     }
     const p = realtimeSession({ ...cfg, instructions: "Answer with one word.", tools: [] }, {
-      done: (d) => end(!!d.quota, d.error), error: (e) => end(!!e.quota, e.message),
+      done: (d) => end(d.account, d.error), error: (e) => end(e.account, e.message),
     })
     p.respond({ output_modalities: ["text"], conversation: "none", max_output_tokens: 16, instructions: "Say OK." })
   }

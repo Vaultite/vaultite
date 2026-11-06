@@ -76,7 +76,8 @@ export default async ($: VaultTest) => {
       log: (t) => ev.push(["log", t]),
       heard: (h) => ev.push(["heard", h]),
       heardMs: 300, lookMs: 3000, firstMs: 1000, pauseMs: o.pauseMs,
-      notice: (why) => ev.push(["notice", why]),
+      notice: (account, why) => ev.push(["notice", why, account]),
+      paused: (p) => ev.push(["paused", p]),
     })
     return { f, ev }
   }
@@ -161,11 +162,14 @@ export default async ($: VaultTest) => {
     const took = f.heard("what time is it")
     await until(() => ev.some((e) => e[0] === "fallback"))
     check("realtime: its socket refused, the pipeline answers the same ask with dictation's words", took ? ev.some((e) => e[0] === "fallback" && e[1] === "what time is it") : true, ev)
+    check("realtime: its key refused, it pauses (told once, why in its status) rather than trying each press", !f.available() && ev.filter((e) => e[0] === "notice").length === 1 &&
+      ev.find((e) => e[0] === "notice")[2] === "auth" && ev.find((e) => e[0] === "paused")?.[1]?.account === "auth" && /401/.test(ev.find((e) => e[0] === "paused")[1].why), ev)
     refuse = false
     mute = true
     const quiet = rig()
     quiet.f.press(); speak(quiet.f); quiet.f.release(); quiet.f.heard("still there?")
-    check("realtime: an answer that doesn't come in time goes to the pipeline", await until(() => quiet.ev.some((e) => e[0] === "fallback" && e[1] === "still there?"), 6000), quiet.ev)
+    check("realtime: an answer that doesn't come in time goes to the pipeline, and a slip like that pauses nothing", await until(() => quiet.ev.some((e) => e[0] === "fallback" && e[1] === "still there?"), 6000) &&
+      quiet.f.available() && !quiet.ev.some((e) => e[0] === "notice" || e[0] === "paused"), quiet.ev)
     mute = false
     f.close(); off.f.close(); quiet.f.close()
   }
@@ -194,7 +198,7 @@ export default async ($: VaultTest) => {
     await until(() => f.available(), 3000)
     f.press(); speak(f); f.release()
     await sleep(50)
-    check("realtime: paid again, its next try finds it back, and presses go to it", f.available() && f.heard("hello again") === true, ev)
+    check("realtime: paid again, its next try finds it back, and presses go to it", f.available() && f.heard("hello again") === true && ev.some((e) => e[0] === "paused" && e[1] === null), ev)
     await until(() => ev.some((e) => e[0] === "answered"))
     f.close()
   }
@@ -237,6 +241,10 @@ export default async ($: VaultTest) => {
     const said = ws.got.filter((m: Any) => m.t === "said").at(-1)?.said ?? []
     check("realtime: what it answered alone is kept as their ask and its say (their box), never said again by the pipeline's voice", said.some((n: Any) => n.kind === "ask" && n.text === "how are you") &&
       said.some((n: Any) => n.kind === "say" && n.text === "I'm good, thanks!" && !n.answers), said)
+    // (its realtime voice paused, as the helper tells: in companion status, with why)
+    ws.emit("message", JSON.stringify({ t: "realtime", paused: { account: "quota", why: "You have no credits remaining.", until: Date.now() + 600_000 } }))
+    const st = await vau("companion", "status")
+    check("realtime: companion status says it's paused, and why", /Realtime voice: paused, the OpenAI account has no credits \(You have no credits remaining\.\)/.test(st.out), st.out)
     ws.emit("close")
     await api("PATCH", "config/plugin/companion", { mode: mode ?? "quiet" })
   }

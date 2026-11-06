@@ -248,7 +248,7 @@ const live = (() => {
     if (port === null) return
     const s = new WebSocket(`ws://127.0.0.1:${port}/api/companion/live?screen=1`)
     ws = s
-    s.on("open", () => { wait = 1000 })
+    s.on("open", () => { wait = 1000; if (realtimePaused) s.send(JSON.stringify({ t: "realtime", paused: realtimePaused })) })
     s.on("message", (d) => {
       let m: Record<string, unknown>
       try { m = JSON.parse(String(d)) } catch { return }
@@ -890,8 +890,11 @@ const voiceFront = realtimeFront({
   fallback: (heard) => { const s = summon; if (s) void sendSummon(s, heard) },
   state: (st) => { if (summon && st === "thinking") { summon.state = "thinking"; draw() } },
   heard: (h) => voiceHeardLine(h),
-  notice: () => notice("realtime-paused", "Realtime voice paused: OpenAI account has no credits", "The companion answers through dictation and its cloud voice meanwhile, and tries again in 10 minutes.",
-    "https://platform.openai.com/settings/organization/billing"),
+  notice: (account) => notice("realtime-paused", `Realtime voice paused: ${account === "quota" ? "OpenAI account has no credits" : "OpenAI refused its key"}`,
+    "The companion answers through dictation and its cloud voice meanwhile, and tries again every 10 minutes.",
+    account === "quota" ? "https://platform.openai.com/settings/organization/billing" : "https://platform.openai.com/api-keys"),
+  // (the server's status says so: vau companion status)
+  paused: (p) => { realtimePaused = p; live.say({ t: "realtime", paused: p }) },
   // (in the press's log: a talk turn ends there; a screen round's was sent, and the pipeline's fallback goes on)
   log: (t) => {
     const p = summon?.press, d = { kind: t.kind, model: t.model, cost: Number(t.cost.toFixed(5)), ...(t.firstMs !== undefined ? { firstMs: t.firstMs } : {}), ...(t.answerMs !== undefined ? { answerMs: t.answerMs } : {}), ...(t.failed ? { failed: t.failed } : {}) }
@@ -899,6 +902,7 @@ const voiceFront = realtimeFront({
     else p?.step("realtime", d)
   },
 })
+let realtimePaused: { account: string; why: string; until: number } | null = null
 /** The realtime voice's key and settings: none when it's off (voice_front pipeline, the voice off, no OpenAI key). */
 async function realtimeConfig() {
   const r = prefs.realtime, port = host?.home()?.port

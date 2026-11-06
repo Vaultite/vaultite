@@ -4,10 +4,14 @@ import { WebSocket } from "ws"
 import type { Usage } from "./realtimelogic.ts"
 
 export type RealtimeConfig = { url: string; key: string; model: string; voice: string; instructions: string; tools: object[] }
-export type Done = { id: string; status: string; usage?: Usage; error?: string; quota?: boolean; calls: { id: string; name: string; args: string }[] }
-/** Whether an error is the account's (no credits, over its quota): every try fails alike till someone pays. */
-export const quotaError = (e: { code?: unknown; type?: unknown; message?: unknown }) =>
-  /insufficient_quota|billing|quota_exceeded/i.test(`${e.code ?? ""} ${e.type ?? ""}`) || /no credits|exceeded your current quota|billing/i.test(String(e.message ?? ""))
+export type Done = { id: string; status: string; usage?: Usage; error?: string; account?: "quota" | "auth"; calls: { id: string; name: string; args: string }[] }
+/** Why every try would fail alike till the user acts: the account can't pay (`quota`), or its key is refused (`auth`). */
+export function accountError(e: { code?: unknown; type?: unknown; message?: unknown }): "quota" | "auth" | null {
+  const k = `${e.code ?? ""} ${e.type ?? ""}`, m = String(e.message ?? "")
+  if (/insufficient_quota|billing|quota_exceeded/i.test(k) || /no credits|exceeded your current quota|billing/i.test(m)) return "quota"
+  if (/invalid_api_key|authentication|unauthorized|^auth\b/i.test(k) || /incorrect api key|invalid api key/i.test(m)) return "auth"
+  return null
+}
 export type RealtimeEvents = {
   /** The session is set up (its first `session.updated`). */
   ready: () => void
@@ -21,7 +25,7 @@ export type RealtimeEvents = {
   began: (rid: string, ask: number) => void
   done: (d: Done) => void
   /** Something went wrong: `fatal`, the session is gone. */
-  error: (e: { code?: string; message: string; fatal: boolean; quota?: boolean }) => void
+  error: (e: { code?: string; message: string; fatal: boolean; account?: "quota" | "auth" }) => void
 }
 
 export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) {
@@ -37,10 +41,10 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
     const s = JSON.stringify(e)
     if (open) ws.send(s); else early.push(s)
   }
-  const fail = (message: string, code?: string, quota = false) => {
+  const fail = (message: string, code?: string, account: "quota" | "auth" | null = null) => {
     if (closed) return
     closed = true
-    on.error?.({ message, fatal: true, ...(code ? { code } : {}), ...(quota ? { quota } : {}) })
+    on.error?.({ message, fatal: true, ...(code ? { code } : {}), ...(account ? { account } : {}) })
     try { ws.terminate() } catch { /* gone */ }
   }
 
@@ -52,7 +56,8 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
     } }))
     for (const s of early.splice(0)) ws.send(s)
   })
-  ws.on("unexpected-response", (_req, res) => fail(`OpenAI answered ${res.statusCode}`, res.statusCode === 401 ? "auth" : String(res.statusCode), res.statusCode === 429))
+  ws.on("unexpected-response", (_req, res) => fail(`OpenAI answered ${res.statusCode}`, res.statusCode === 401 ? "auth" : String(res.statusCode),
+    res.statusCode === 401 || res.statusCode === 403 ? "auth" : res.statusCode === 429 ? "quota" : null))
   ws.on("error", (e) => fail(e.message))
   ws.on("close", () => fail("its socket closed"))
   let readied = false
@@ -73,7 +78,7 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
         if (active === r.id || active === "?") active = null
         const calls = (r.output ?? []).filter((x: { type?: string }) => x.type === "function_call").map((x: { call_id: string; name: string; arguments?: string }) => ({ id: x.call_id, name: x.name, args: x.arguments ?? "" }))
         const err = r.status_details?.error
-        on.done?.({ id: r.id, status: r.status ?? "completed", usage: r.usage, calls, ...(err?.message ? { error: err.message } : {}), ...(err && quotaError(err) ? { quota: true } : {}) })
+        on.done?.({ id: r.id, status: r.status ?? "completed", usage: r.usage, calls, ...(err?.message ? { error: err.message } : {}), ...(err && accountError(err) ? { account: accountError(err)! } : {}) })
         next()
         break
       }
@@ -83,7 +88,8 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
         if (e.code === "response_cancel_not_active" || /truncat/i.test(String(e.message))) break
         // (the response asked for refused: the next may go)
         if (active === "?") { active = null; queueMicrotask(next) }
-        on.error?.({ message: String(e.message ?? "error"), code: e.code, fatal: false, ...(quotaError(e) ? { quota: true } : {}) })
+        const account = accountError(e)
+        on.error?.({ message: String(e.message ?? "error"), code: e.code, fatal: false, ...(account ? { account } : {}) })
         break
       }
     }
