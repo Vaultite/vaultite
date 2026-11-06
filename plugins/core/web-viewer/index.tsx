@@ -26,6 +26,7 @@ import { barHidden, pageBarItem, setBarHidden } from "./pagebar"
 import { switcherSearch } from "./switcher"
 import { focusedReplay } from "./replaykeys"
 import { openFromApp } from "./linklogins"
+import { fillLoginIn, hasLoginForm, watchLogins } from "./LoginFill"
 import { useSecretKeeper } from "./secretkeeper"
 
 const WebPage = lazy(() => import("./WebPage"))
@@ -150,6 +151,7 @@ function Background() {
   useEffect(() => void settings.ready(), [])
   useEffect(() => { if (hasExtensions()) extensionsChanged() }, [])
   useEffect(watchShields, [])
+  useEffect(watchLogins, [])
   useHiddenParts()
   useSiteStyles()
   useDarkPages()
@@ -382,6 +384,7 @@ export default definePlugin({
     { id: "web:page-bar", name: "Hide page bar", nameWhenOn: "Always show page bar", desktop: true, when: () => !!webPages, on: barHidden,
       run: () => void setBarHidden(!barHidden()), icon: PanelTopClose },
     { id: "web:open-container", name: "New tab in container…", desktop: true, when: () => !!webPages, run: askContainer, icon: Box },
+    { id: "web:fill-login", name: "Fill login", desktop: true, when: () => !!webPages?.engine && hasLoginForm(focusedPageId()), run: () => void fillLoginIn(focusedPageId()), icon: KeyRound },
     { id: "web:clip", name: "Clip current web page", when: () => !!focusedPage(), run: () => focusedPage()?.clip(), icon: Scissors },
     { id: "web:browser", name: "Open current web page in another browser", when: () => !!focusedPage(), run: () => { const p = focusedPage(); if (p) void webPages?.external(p.url()) }, icon: ExternalLink },
     // (⌘L with a web tab in front, wherever the keyboard is but another field: the editor's ⌘L is a note's)

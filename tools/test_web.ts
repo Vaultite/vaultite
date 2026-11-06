@@ -3063,6 +3063,17 @@ await section("agent logins", async () => {
   check("agent logins: a code split in a box per digit", f5.kind === "otp" && f5.otp.length === 6, f5)
   check("agent logins: a page with no login form has none", loginForm([search, input({ type: "checkbox" })]).kind === "none")
 
+  // Your own sign-ins (electron/browser/userlogins.ts): what one offers to save.
+  const { saveOffer } = await import("../electron/browser/loginform.ts")
+  const saved = [{ id: "a", username: "alice@example.com", modified: 1 }, { id: "b", username: "Alice@example.com", modified: 5 }, { id: "c", username: "bob", modified: 3 }]
+  check("your logins: a sign-in a site has no entry for offers a new one", JSON.stringify(saveOffer([], "alice", null)) === '{"kind":"new"}' && saveOffer(saved, "carol", new Set())?.kind === "new")
+  check("your logins: one whose password an entry of that username has offers nothing", saveOffer(saved, "bob", new Set(["c"])) === null)
+  check("your logins: a new password for a username offers to update its newest entry (any case)", JSON.stringify(saveOffer(saved, "alice@EXAMPLE.com", new Set())) === '{"kind":"update","id":"b"}')
+  check("your logins: another username's password doesn't count", saveOffer(saved, "bob", new Set(["a"]))?.kind === "update")
+  check("your logins: locked, an entry of that username might have it: nothing offered", saveOffer(saved, "bob", null) === null && saveOffer(saved, "dan", null)?.kind === "new")
+  check("your logins: no username heard: the site's only entry is the one updated, unless it has it", saveOffer([saved[2]], "", new Set())?.kind === "update"
+    && saveOffer([saved[2]], "", new Set(["c"])) === null && saveOffer(saved, "", new Set())?.kind === "new" && saveOffer(saved, "", new Set(["a"])) === null)
+
   // What agents see of a page that holds a filled secret: never the secret, as is or as an address encodes it.
   const s = "p@ss wörd&1!"
   const encoded = [s, encodeURIComponent(s), encodeURIComponent(s).toLowerCase(), new URLSearchParams([["pw", s]]).toString().slice(3), encodeURI(s)]

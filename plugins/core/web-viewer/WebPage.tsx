@@ -19,6 +19,7 @@ import { argOf, containerById, containers, destination, keepOutside, keptOutside
 import { fallbackFor, fallsBack, guessedFor, openWebTab, useDraft } from "./drafts"
 import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
+import { LoginButton } from "./LoginFill"
 import { Start } from "./Start"
 import { openBookmark, StarButton, starOf } from "./Star"
 import { Passkey } from "./Passkey"
@@ -509,7 +510,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         <AddressBar url={state.url} tab={tab} more={() => [pageBarItem()]} blank={blank} draft={draft} setDraft={setDraft} inputRef={address} onGo={go} onTurn={turn} onTarget={setTarget}
           onLeave={() => { if (id) void web.go(id, "focus") }}
           lead={<ContainerButton container={into.container} url={drafting ? target ?? "" : state.url || arg} why={into.why} pick={pickContainer} manage={manageContainers} />}
-          trail={id > 0 && onWeb ? <>{state.zoom && <ZoomButton zoom={state.zoom} reset={() => void web.go(id, "zoom-reset")} />}<ShieldsButton id={id} url={state.url} loading={state.loading} /><StarButton url={state.url} title={state.title} /></> : null} />
+          trail={id > 0 && onWeb ? <>{state.zoom && <ZoomButton zoom={state.zoom} reset={() => void web.go(id, "zoom-reset")} />}<LoginButton id={id} url={state.url} /><ShieldsButton id={id} url={state.url} loading={state.loading} /><StarButton url={state.url} title={state.title} /></> : null} />
         {id > 0 && <AgentChip id={id} />}
         {(state.playing || state.muted) && (
           <BarButton icon={state.muted ? VolumeX : Volume2} label={state.muted ? "Unmute tab" : "Mute tab"} onClick={() => void web.go(id, state.muted ? "unmute" : "mute")} />
