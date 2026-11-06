@@ -112,6 +112,18 @@ export function media(p: Playback, playing: boolean, audible: boolean) {
   p.heard = playing && (p.heard || audible)
 }
 
+/** How long after a pause to look again: Chromium's audible holds 2s past the last sound. */
+export const LINGER_MS = 2500
+
+/** Still audible past the linger after a pause: another media plays on (YouTube's next video or ad, a preview paused
+ *  beside it), and as audible never dropped no audio-state-changed will come. Returns whether that brought it back. */
+export function outlasted(p: Playback, audible: boolean) {
+  if (!audible || p.heard) return false
+  p.heard = p.media = true
+  p.quiet = undefined
+  return true
+}
+
 /** When its quiet stretch ends it, if it's in one (ms). */
 export const quietEnds = (p: Playback) => (p.quiet === undefined ? undefined : p.quiet + (p.media ? MEDIA_QUIET_MS : QUIET_MS))
 

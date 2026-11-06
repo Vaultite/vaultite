@@ -10,7 +10,7 @@ import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
 import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
 import { otherAppScheme } from "../core/opening.ts"
-import { claim, discardable, flowOn, hear, letGo, media, MOVE_MS, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Flow, type Owned, type Playback } from "./webpages.ts"
+import { claim, discardable, flowOn, hear, letGo, LINGER_MS, media, MOVE_MS, outlasted, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Flow, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -51,8 +51,9 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   hadFocus?: boolean
   /** Its corners' radius now (window px). */
   radius?: number
-  /** Whether it plays sound, as its tab shows it (webpages.ts), and the timer that ends a quiet stretch's. */
-  sound: Playback; hush?: NodeJS.Timeout
+  /** Whether it plays sound, as its tab shows it (webpages.ts), the timer that ends a quiet stretch's, and the one that
+   *  looks again after a pause. */
+  sound: Playback; hush?: NodeJS.Timeout; linger?: NodeJS.Timeout
   /** The app paused its media (`pause`): `play` starts those again, till it plays or loads another page. */
   paused?: boolean
   /** Its first load was a download, before a tab had it: the tab it's handed to closes. */
@@ -547,7 +548,13 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   }
   wc.on("audio-state-changed", (e) => { hear(p.sound, e.audible, Date.now()); sounded() })
   wc.on("media-started-playing", () => { p.paused = false; media(p.sound, true, wc.isCurrentlyAudible()); sounded() })
-  wc.on("media-paused", () => { media(p.sound, false, wc.isCurrentlyAudible()); sounded() })
+  wc.on("media-paused", () => {
+    const audible = wc.isCurrentlyAudible()
+    media(p.sound, false, audible)
+    sounded()
+    clearTimeout(p.linger)
+    if (audible) p.linger = setTimeout(() => { if (!wc.isDestroyed() && outlasted(p.sound, wc.isCurrentlyAudible())) sounded() }, LINGER_MS).unref()
+  })
   wc.on("did-fail-load", (_e, code, desc, _u, main) => {
     if (!main || code === -3) return // -3: stopped, or another load took over
     p.error = desc || `error ${code}`
@@ -785,6 +792,7 @@ function own(p: Page, tab: string) {
 function end(p: Page) {
   pages.delete(p.id)
   clearTimeout(p.hush)
+  clearTimeout(p.linger)
   fromPlayer(p)
   pagesChanged(p.win)
   // (kept for its tab to come back with: ⌘⇧T, shown again after a discard)
