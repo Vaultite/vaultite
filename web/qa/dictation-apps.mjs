@@ -111,6 +111,8 @@ try {
 
   // ---------- begun in a note in Vaultite's own window, its words inline; another app, the same session in the box; stopped
   // there, they land in that app's field
+  mail.p.kill()
+  const reply = await open("Reply", W - 620, 170, 560, 220)
   fs.writeFileSync(path.join(VAULT, "Trip.md"), "# Trip\n\nTo pack:\n")
   await win.evaluate(() => { location.hash = `#file/${encodeURIComponent("Trip.md")}` })
   await win.waitForSelector("[data-pane] .cm-content")
@@ -122,7 +124,7 @@ try {
     // (a scripted copy's window is see-through and never focused: this one is shown, for real)
     delete b.focus; delete b.show
     b.setOpacity(1); b.setIgnoreMouseEvents(false); b.setBounds({ x, y, width: w, height: h }); b.show(); b.focus(); b.webContents.focus()
-  }, [110, 90, 640, 520])
+  }, [20, 90, 560, 520])
   check("the window has the keyboard", await until(() => win.evaluate(() => document.hasFocus()), 5000))
   await win.locator("[data-pane] .cm-line", { hasText: "To pack:" }).click()
   await win.keyboard.press("End")
@@ -134,12 +136,11 @@ try {
   check("in a note: its own session, inline, no box", await until(inPage, 8000) && !(await pill()))
   check("…the words dimmed at the cursor", await until(() => win.evaluate(() => !!document.querySelector(".cm-dictation-pending")?.textContent), 15000, 50))
   await wait(1000)
-  const mailWas = mail.read().length
-  toFront(mail.p)
+  toFront(reply.p)
   check("another app, its real blur: the same session, in the box", await until(async () => !!(await pill()) && !(await inPage()), 5000), await pill())
   await seen()
   await landed()
-  check("…landing in that app's field", await until(() => mail.read().length > mailWas, 5000), mail.read().length - mailWas)
+  check("…landing in that app's field", await until(() => reply.read().split(" ").length > 3, 5000), reply.read().length)
   check("…what settled before it left stayed in the note", !/undefined/.test(await noteText()))
   await wait(2800)
   await cut(v)

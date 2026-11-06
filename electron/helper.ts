@@ -373,6 +373,8 @@ type Session = { sink: DictationSink; into: "field" | "panel" | "summon"; focus:
   free?: boolean
   /** It began in a window of ours (a note, a terminal, a field): that page keeps where. */
   origin?: WebContents
+  /** Why it stopped by itself: said once it's over. */
+  failed?: string
   log?: Press }
 let session: Session | null = null
 /** The window's page that has this press (fn there is its ⌘J), till it's let go. */
@@ -944,6 +946,9 @@ function told(s: Session, e: Record<string, unknown>) {
     s.bluetooth = e.bluetooth === true
     if ((e.why || e.missing) && s.into === "summon") s.of?.press?.step("mic-change", { name: String(e.name ?? ""), why: String(e.why ?? "not there at the start"), ...(e.bluetooth ? { bluetooth: true } : {}) })
     if (e.why || e.missing) micTold({ name: String(e.name ?? ""), why: `${e.why ?? "the one picked wasn't there"}: went on with it` })
+  } else if (e.type === "error" && s.into === "field") {
+    s.failed = String(e.message ?? "the recognizer stopped")
+    s.log?.step("error", { code: String(e.code ?? ""), message: s.failed.slice(0, 200) })
   } else if (e.type === "start") s.ready = true
   else if (e.type === "level") s.level = Number(e.v) || 0
   else if (e.type === "speech" && s.into === "summon") voiceFront.speech()
@@ -987,6 +992,7 @@ async function finish(s: Session, cancelled: boolean) {
   }
   if (cancelled || !text) {
     s.log?.end(cancelled ? "cancelled" : "nothing said")
+    if (s.failed) hint(`Dictation stopped: ${s.failed}`)
     return dropOrigin(s)
   }
   const to = await land(text, {
@@ -1002,7 +1008,8 @@ async function finish(s: Session, cancelled: boolean) {
   s.log?.end("landed", { to: to.to, chars: text.length, ...(to.how ? { how: to.how } : {}), ...(to.to === "clipboard" ? { kept: !!to.kept } : {}) })
   dropOrigin(s)
   const said = landedSaid(to, s.focus.name)
-  if (said) hint(said)
+  if (s.failed) hint(`Dictation stopped: ${s.failed}`)
+  else if (said) hint(said)
 }
 const dropOrigin = (s: Session) => { if (s.origin) void askPage(s.origin, "drop") }
 

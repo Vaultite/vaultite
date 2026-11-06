@@ -171,19 +171,25 @@ final class Microphone: Source {
     func begin(why: String?) throws {
         let inputs = audioDevices().filter(\.input)
         let inId = defaultDevice(kAudioHardwarePropertyDefaultInputDevice)
-        let wanted = want.lazy.compactMap { u in inputs.first { $0.uid == u } }.first
-        guard let pick = wanted ?? inputs.first(where: { $0.id == inId }) else {
-            throw Failure(code: "mic", message: "There's no microphone to listen to")
+        let wanted = want.compactMap { u in inputs.first { $0.uid == u } }
+        // (those asked for in order, then the system's input; one that won't open, the next)
+        let order = wanted + inputs.filter { d in d.id == inId && !wanted.contains { $0.id == d.id } }
+        guard !order.isEmpty else { throw Failure(code: "mic", message: "There's no microphone to listen to") }
+        var refused: [String] = []
+        var failure: Error?
+        for pick in order {
+            do { try open(pick) } catch { teardown(); failure = error; refused.append(pick.name); continue }
+            following = !wanted.contains { $0.id == pick.id }
+            running = true
+            if !Microphone.open.contains(where: { $0 === self }) { Microphone.open.append(self) }
+            device = pick
+            var o: [String: Any] = pick.json.merging(["bluetooth": pick.bluetooth]) { a, _ in a }
+            if let w = why ?? refused.last.map({ "\($0) wouldn't open" }) { o["why"] = w }
+            if let first = want.first, !first.isEmpty, pick.uid != first { o["missing"] = first }
+            emit("mic", o)
+            return
         }
-        following = wanted == nil
-        do { try open(pick) } catch { teardown(); throw error }
-        running = true
-        if !Microphone.open.contains(where: { $0 === self }) { Microphone.open.append(self) }
-        device = pick
-        var o: [String: Any] = pick.json.merging(["bluetooth": pick.bluetooth]) { a, _ in a }
-        if let why { o["why"] = why }
-        if let first = want.first, !first.isEmpty, pick.uid != first { o["missing"] = first }
-        emit("mic", o)
+        throw failure ?? Failure(code: "mic", message: "There's no microphone to listen to")
     }
 
     /// The input unit on `d`, its samples as floats at the device's rate, each buffer to the sink off the audio thread.
