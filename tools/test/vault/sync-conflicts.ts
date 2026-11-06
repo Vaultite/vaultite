@@ -11,7 +11,7 @@ export default async ($: VaultTest) => {
   const P = "Synced/Two Macs.md", BASE = "---\ntype: note\n---\n\nOne.\n\nTwo.\n"
 
   {
-    const [, r] = await api("POST", "ops/sync-conflicts.list", {})
+    const [, r] = await api("POST", "ops/sync-conflicts.list", { scan: true })
     check("sync conflicts: a vault outside iCloud Drive has none to look for", r.on === false && !r.files.length, r)
   }
 

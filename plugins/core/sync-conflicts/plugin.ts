@@ -104,18 +104,22 @@ const root = () => { try { return fs.realpathSync(plugin.vault.path) } catch { r
 const relOf = (abs: string, from: string) => path.relative(from, abs).split(path.sep).join("/")
 const skipped = (rel: string) => !rel || rel.startsWith("..") || rel.split("/").some((p) => p === ".git" || p === "node_modules")
 
-let scanning: Promise<void> | null = null, lastScan = 0
-/** Look at the whole vault again. */
-function scanAll(): Promise<void> {
-  return scanning ??= (async () => {
+let scanning: Promise<void> | null = null, again: Promise<void> | null = null, lastScan = 0
+/** Look at the whole vault again; `fresh`: one that starts now or after the one under way, never that one's answer. */
+function scanAll(fresh = false): Promise<void> {
+  if (scanning) return fresh ? (again ??= scanning.then(() => { again = null; return scanAll() })) : scanning
+  // (cleared once settled, not inside: a scan that ends without waiting would clear it before it's set)
+  const s = scanning = (async () => {
     try {
       if (!store.on(plugin.vault.path)) { if (Object.keys(found()).length) plugin.keep("found", null); return }
       const from = root(), next: Found = {}
       for (const [abs, vs] of await store.scan([from])) { const rel = relOf(abs, from); if (!skipped(rel)) next[rel] = vs }
       plugin.keep("found", Object.keys(next).length ? next : null)
       lastScan = Date.now()
-    } catch (e) { console.warn(`sync-conflicts: ${(e as Error).message}`) } finally { scanning = null }
+    } catch (e) { console.warn(`sync-conflicts: ${(e as Error).message}`) }
   })()
+  void s.finally(() => { if (scanning === s) scanning = null })
+  return s
 }
 /** Look at these files again (they changed, or a version of one was resolved). */
 async function recheck(rels: string[]) {
@@ -247,7 +251,7 @@ text: sync-conflicts.read. Nothing here changes them.
   kind: "read",
   params: { scan: { type: "boolean", description: "look at the whole vault again first (a few seconds)" } },
   run: async ({ scan }) => {
-    if (scan) { lastScan = 0; await scanAll() }
+    if (scan) { lastScan = 0; await scanAll(true) }
     const all = found()
     return { on: store.on(plugin.vault.path), files: Object.entries(all).sort(([a], [b]) => a.localeCompare(b)).map(([p, versions]) => ({ path: p, versions })) }
   },
