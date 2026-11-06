@@ -44,3 +44,15 @@ export function loginForm(all: Input[]): LoginForm {
   const username = texts.find((i) => /username|email/.test(i.autocomplete)) ?? texts.find((i) => i.type === "email" || USER.test(i.hint))
   return username ? { kind: "username", username } : { kind: "none" }
 }
+
+/** An entry of the site's, as a sign-in is weighed against it. */
+export type Saved = { id: string; username: string; modified: number }
+/** What a sign-in offers to save, given the site's entries and those that have its password (`same`, null: locked):
+ *  nothing when one has it or might; else the username's newest entry gets it; else a new entry. */
+export function saveOffer(saved: Saved[], username: string, same: Set<string> | null): { kind: "new" } | { kind: "update"; id: string } | null {
+  const user = username.trim().toLowerCase()
+  const mine = user ? saved.filter((e) => e.username.trim().toLowerCase() === user) : saved.length === 1 ? saved : []
+  if (same ? (user ? mine : saved).some((e) => same.has(e.id)) : mine.length > 0) return null
+  if (!mine.length) return { kind: "new" }
+  return { kind: "update", id: [...mine].sort((a, b) => b.modified - a.modified)[0].id }
+}
