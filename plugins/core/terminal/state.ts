@@ -133,7 +133,8 @@ export function step(t: Term, ev: Event, now: number): Term {
   // (its agent heard: it runs; a state file removed as it starts isn't a word)
   if (ev.type === "osc" || (ev.type === "hooks" && hooksOf(ev.text)) || (ev.type === "ask" && ev.ask) || (ev.type === "waits" && ev.kind)) n.starting = false
   switch (ev.type) {
-    case "start": n.starting = true; break
+    // (its agent heard before its start was told (a quick shell, a busy server): it already runs)
+    case "start": n.starting = !n.hooks && !n.osc?.status && !n.osc?.seen; break
     case "late": n.starting = false; break
     case "seen":
       // (what was said before, at a time unknown: what came since stands)

@@ -698,6 +698,8 @@ export default async ($: VaultTest) => {
     const spoken = step(starting, { type: "hooks", text: "working" }, 5000), back = step(spoken, { type: "front", program: false, seen: 6000 }, 6000)
     check("terminal state: while its agent starts, its shell's prompt is its own; once it spoke, its program gone ends it",
       starting.starting && nowOf(starting) === null && !spoken.starting && nowOf(back)?.state === "idle", [starting, back])
+    const early = run([{ type: "hooks", text: "working" }, { type: "start" }])
+    check("terminal state: its agent heard before its start is told, it isn't starting again", !early.starting && nowOf(early)?.state === "working", early)
     const asked = run([{ type: "osc", said: { seen: true, status: { state: "working" } } }, { type: "waits", kind: "question" }])
     const answered = step(asked, { type: "waits", kind: null }, 9000)
     check("terminal state: its agent's word that it waits blocks it over OSC 7501; no longer, its OSC 7501 says again",
