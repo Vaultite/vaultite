@@ -1,6 +1,6 @@
 // The menu-bar helper (electron/helper.ts) in the desktop app, unseen: fn⌃ with no field hears nothing; ⌃⌥ held summons
 // the companion at the pointer, listening (speech from a file), and let go asks it about the window there, its answer's
-// box open by it and its cursor there over the screen; closing the window keeps the server and reopening takes it back.
+// box open by it (said aloud) and its cursor there over the screen; closing the window keeps the server and reopening takes it back.
 // The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/helper.mjs <vault copy>
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
@@ -54,6 +54,12 @@ const ask = await until(() => helper((h) => h.asked().find((m) => m.kind === "as
 check("let go, what was said goes, about the window under the pointer", !!ask && ask.app === "com.example.notes" && ask.window === 9 && /milk/i.test(ask.text ?? ""), ask)
 const box = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html#panel")), 10000)
 check("its answer's box opens by it", !!box && !box.isClosed())
+
+// ---------- its answer to an ask by voice, said aloud as it's written (a scripted copy plays nothing: it tells what it'd say)
+const said = (text) => fetch(`http://127.0.0.1:${port}/api/ops/companion.say`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: JSON.stringify({ text }) })
+await said("It says milk keeps a week. Then it goes **sour**")
+const spoken = () => helper((h) => h.spoken().filter((m) => m.cmd === "say").map((m) => m.text).join(" "))
+check("its answer to an ask by voice is said aloud, in plain words, its last words after a pause", await until(async () => (await spoken()).endsWith("It says milk keeps a week. Then it goes sour"), 8000, 200), await helper((h) => h.spoken()))
 
 // ---------- its cursor over the screen, at the window it was asked about
 const at = await until(() => helper((h) => h.scene()?.agents?.[0]), 10000, 200)

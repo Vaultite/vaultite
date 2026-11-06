@@ -4,7 +4,9 @@ import { arrowBox, boxAt, flagBox } from "../plugins/core/companion/boxes.ts"
 export type Rect = { x: number; y: number; width: number; height: number }
 type Decls = Record<string, { default?: unknown }>
 /** `keys` dictate, `talk` talk to the companion (its own: a key in both talks). */
-export type Prefs = { fn: boolean; keys: string[]; talk: string[]; privateApps: string[]; dictation: Record<string, unknown> }
+export type Prefs = { fn: boolean; keys: string[]; talk: string[]; privateApps: string[]; dictation: Record<string, unknown>
+  /** Whether its answers are spoken (`auto`: an ask by voice), in which Soniox voice, how fast. */
+  voice: { mode: "auto" | "always" | "off"; name: string; speed: number } }
 /** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
  *  `settings` giving the defaults. */
 export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
@@ -18,6 +20,11 @@ export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, 
     talk,
     privateApps: Array.isArray(s.private_apps) ? s.private_apps.map(String) : (def(DEFAULTS.screen, "private_apps") as string[] | undefined) ?? [],
     dictation: d,
+    voice: {
+      mode: (["auto", "always", "off"] as const).find((m) => m === val(c.voice, def(DEFAULTS.companion, "voice"))) ?? "auto",
+      name: String(val(c.voice_name, def(DEFAULTS.companion, "voice_name") ?? "") || ""),
+      speed: Math.min(1.3, Math.max(0.7, Number(val(c.voice_speed, def(DEFAULTS.companion, "voice_speed") ?? 1)) || 1)),
+    },
   }
 }
 
@@ -41,6 +48,8 @@ export type Scene = {
   ink: { tint: string; strokes: Point[][] } | null
   /** `hint`: a word for a moment, nothing heard (a key pressed where it does nothing). */
   pill: { level: number; text: string; ready: boolean; display?: number; hint?: boolean } | null
+  /** The cursor whose answer is being said aloud (its name), and how loud it is now (0 to 1). */
+  speaking?: { name: string; level: number } | null
 }
 type Display = { id: number; bounds: Rect; workArea?: Rect }
 const inside = (d: Display, x: number, y: number) => x >= d.bounds.x && x < d.bounds.x + d.bounds.width && y >= d.bounds.y && y < d.bounds.y + d.bounds.height
@@ -61,6 +70,7 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
     summon: s.summon && here(s.summon) ? local(s.summon) : null,
     ink: s.ink && strokes.length ? { tint: s.ink.tint, strokes } : null,
     pill: pillHere ? s.pill : null,
+    speaking: s.speaking ?? null,
   }
 }
 export type DisplayScene = ReturnType<typeof sceneFor>
@@ -68,8 +78,10 @@ export type DisplayScene = ReturnType<typeof sceneFor>
 /** A display's scene as what it draws (`shape`, compared as text) and where (`at`): while only places change (the
  *  pointer, a window moved), only `at` goes to the window. */
 export function splitScene(s: DisplayScene) {
-  const shape = JSON.stringify({ ...s, agents: s.agents.map(({ sx: _x, sy: _y, from: _f, target: _t, ...a }) => a), summon: s.summon && { ...s.summon, sx: 0, sy: 0, from: undefined } })
-  const at = { agents: Object.fromEntries(s.agents.map((a) => [a.name, [a.sx, a.sy, ...(a.target ? [a.target.x, a.target.y, a.target.width, a.target.height] : [])]])), summon: s.summon ? [s.summon.sx, s.summon.sy] : null }
+  // (its voice's level changes many times a second: a place, not a shape)
+  const shape = JSON.stringify({ ...s, speaking: s.speaking ? { name: s.speaking.name } : null, agents: s.agents.map(({ sx: _x, sy: _y, from: _f, target: _t, ...a }) => a), summon: s.summon && { ...s.summon, sx: 0, sy: 0, from: undefined } })
+  const at = { agents: Object.fromEntries(s.agents.map((a) => [a.name, [a.sx, a.sy, ...(a.target ? [a.target.x, a.target.y, a.target.width, a.target.height] : [])]])), summon: s.summon ? [s.summon.sx, s.summon.sy] : null,
+    ...(s.speaking ? { level: s.speaking.level } : {}) }
   return { shape, at }
 }
 

@@ -15,7 +15,7 @@ it.
   never); `replacements`, lines of "said: written" (`at Claude: @claude`), whose said words the recognizer listens for;
   `keep_audio` (this Mac's), the last dictation's audio kept in the app's logs folder as `dictation-last.wav`.
 - Soniox (cloud, real time, any language, switching on its own) is `auto`'s pick once this machine has its key:
-  `vau secret "Soniox API key" | vau dictation key` (kept in data/config.json, never the vault). The socket is open only
+  `vau secret "Soniox API key" | vau dictation key` (kept in data/config.json, never the vault). The same key gives the companion its voice (Soniox's TTS). The socket is open only
   while listening; offline, refused or dropped, this Mac's recognizer finishes from the last settled word.
 - Apple's is macOS 26's on-device recognizer. Parakeet (English) is parakeet-unified-en-0.6b run by transcribe.cpp, from
   the GGUF Handy or Hex downloaded (Hex's `~/Library/Application Support/hex/models/`, Hugging Face's cache, Handy's),

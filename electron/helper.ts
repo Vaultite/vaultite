@@ -16,6 +16,7 @@ import { atOffset, badgeOf, type HelperJob, inkOf, jobNews, jobsShown, offsetIn,
 import { closePanel, drawingActs, endDrawing, onPanel, openPanel, overlayActs, ownWindows, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
+import { companionVoice } from "./voice.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
@@ -76,7 +77,7 @@ export async function startHelper(h: HelperHost) {
   host = h
   app.on("will-quit", stopHelper)
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v),
-    asked: () => [...asked], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
+    asked: () => [...asked], spoken: () => [...spoken], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
   onScreenEvent(heard)
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) } })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
@@ -101,6 +102,7 @@ export async function startHelper(h: HelperHost) {
 export function stopHelper() {
   if (!host) return
   host = null
+  speaker.quit()
   live.close()
   closePanel()
   showOverlay(null)
@@ -190,7 +192,8 @@ const manifest = (id: string) => {
 }
 const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("companion"), screen: manifest("screen") }
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
-let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {} }
+let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {},
+  voice: { mode: "auto", name: "", speed: 1 } }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -247,8 +250,8 @@ const live = (() => {
         state.said = (m.said as Note[] | undefined) ?? []
         state.harnesses = (m.harnesses as typeof state.harnesses | undefined) ?? []
       } else if (m.t === "said") state.said = (m.said as Note[] | undefined) ?? []
-      else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a) }
-      else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n) }
+      else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a); voiceHeardAgent(a) }
+      else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n); voiceHeard(n) }
       else if (m.t === "drop") state.notes.delete(String(m.id))
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
@@ -405,6 +408,8 @@ let exchange: { name: string; p: Point; w: AppWindowInfo | null; since: number }
  *  the companion summoned here. */
 function talkHeard(m: FnEvent) {
   if (!host?.home()) return
+  // (pressed again: its voice stops at once, and gets ready for the next answer)
+  if ("down" in m && m.down) { stopVoice(); speaker.warm() }
   const now = Date.now(), a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
   if (!a) return
   if (a === "listen") talkPage = host.focusedPage()
@@ -470,6 +475,7 @@ async function sendSummon(s: Summon, text: string) {
   const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
   const place = await pointedAt(s.name, s.p, w?.window ? w : null)
   live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink: inkOf(ink) } : {}) })
+  voiceFor(s.name, text, true)
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
@@ -504,6 +510,7 @@ function openAnswer(name: string, p: Point, w: AppWindowInfo | null, since: numb
 }
 /** The exchange over: its box closed, its cursor gone once it's done there. */
 function endExchange() {
+  stopVoice()
   if (!exchange && !summon) return
   exchange = null
   summon = null
@@ -551,6 +558,7 @@ function hint(text: string) {
 
 async function listenFor(o: Pick<Session, "into" | "focus" | "talk">) {
   if (dictating()) return
+  stopVoice()
   const s = prefs.dictation, lines = replacements()
   const mine: Session = { sink: { tell: (e) => told(mine, e) }, ...o, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines) }
   session = mine
@@ -621,7 +629,10 @@ function told(s: Session, e: Record<string, unknown>) {
  *  the summoned companion's ask. */
 async function finish(s: Session, cancelled: boolean) {
   const text = s.finals.reduce((all, t) => all + joinText(all, t), "").trim()
-  if (s.into === "panel") return chatChanged(cancelled || !text ? undefined : { text, listening: false, done: true, ...(s.talk ? { send: true } : {}) })
+  if (s.into === "panel") {
+    if (!cancelled && text) saidInBox = Date.now()
+    return chatChanged(cancelled || !text ? undefined : { text, listening: false, done: true, ...(s.talk ? { send: true } : {}) })
+  }
   if (s.into === "summon") {
     const m = summon
     if (!m || m.typing) return
@@ -684,8 +695,65 @@ async function askFrom(name: string, text: string) {
   const a = live.state.agents.get(name), x = exchange?.name === name ? exchange : null
   const p = x?.p ?? (a && onScreen(a) ? drawnAt.get(keyOf(a)) : undefined) ?? screen.getCursorScreenPoint()
   const w = x ? x.w : await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null)
+  // (said into its box a moment ago: spoken; typed, its answer stays silent unless its voice is always on)
+  const said = Date.now() - saidInBox < 60_000
+  saidInBox = 0
+  voiceFor(name, text, said)
   live.say({ t: "moment", kind: "ask", agent: name, text, ...(await pointedAt(name, p, w?.window ? w : null)) })
   if (!x) { exchange = { name, p, w: w?.window ? w : null, since: Date.now() }; void screenAsk("exchange", { on: true }) }
+}
+
+// ---------- its voice: an answer to an ask by voice said aloud as it's written (voice.ts), stopped at once
+
+/** What a scripted copy would have said aloud (it plays nothing). */
+const spoken: Record<string, unknown>[] = []
+const speaker = companionVoice({
+  port: () => host?.home()?.port ?? null,
+  prefs: () => prefs.voice,
+  hints: () => [...new Set([...(Array.isArray(prefs.dictation.languages) ? prefs.dictation.languages.map(String) : []), ...app.getPreferredSystemLanguages()]
+    .map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2}$/.test(l)))],
+  level: (on, v) => voiceLevel(on, v),
+  ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
+})
+/** The answer being said: its agent's says since its ask; `notes`, those it has said, the last still growing. */
+let voiced: { name: string; since: number; notes: string[]; quiet: ReturnType<typeof setTimeout> | null } | null = null
+/** When words were last said into a cursor's box: the ask they make is a spoken one. */
+let saidInBox = 0
+let speakingNow: Scene["speaking"] = null
+
+/** An ask to `name` went: its answer is said aloud when the setting says so (`spoken`: asked by voice). */
+function voiceFor(name: string, text: string, spokenAsk: boolean) {
+  stopVoice()
+  const mode = prefs.voice.mode
+  if (mode === "off" || (mode === "auto" && !spokenAsk)) return
+  speaker.begin(text)
+  voiced = { name, since: Date.now(), notes: [], quiet: null }
+}
+/** One of its says, as its words come: said as they're ready; its last words when the next begins, or after a pause. */
+function voiceHeard(n: Note) {
+  const v = voiced
+  if (!v || n.kind !== "say" || n.agent !== v.name || !n.text || n.t < v.since - 1000 || n.dismissed) return
+  if (!v.notes.includes(n.id)) { const was = v.notes.at(-1); if (was) speaker.end(was); v.notes.push(n.id) }
+  speaker.text(n.id, n.text)
+  if (v.quiet) clearTimeout(v.quiet)
+  v.quiet = setTimeout(() => { if (voiced === v) speaker.end(n.id) }, 1500)
+}
+/** Its turn over: what it wrote last is said to its end. */
+function voiceHeardAgent(a: Agent) {
+  if (voiced?.name === a.name && voiced.notes.length && (a.state === "watching" || a.state === "away")) speaker.end()
+}
+function stopVoice() {
+  if (voiced?.quiet) clearTimeout(voiced.quiet)
+  voiced = null
+  speaker.stop()
+}
+/** Its cursor shows it speaking, its level as it goes: only the level changed, the overlay is told that alone. */
+function voiceLevel(on: boolean, v: number) {
+  const name = voiced?.name ?? speakingNow?.name
+  const was = speakingNow
+  speakingNow = on && name ? { name, level: Math.round(v * 20) / 20 } : null
+  if (!!was !== !!speakingNow || was?.name !== speakingNow?.name) return draw()
+  if (lastScene && speakingNow && was?.level !== speakingNow.level) { lastScene = { ...lastScene, speaking: speakingNow }; showOverlay(based || null, lastScene) }
 }
 
 // ---------- the cursor over the screen
@@ -910,7 +978,7 @@ function draw() {
   const pill: Scene["pill"] = d && d.into === "field" ? { level: d.level, text: d.pending || d.finals.at(-1) || "", ready: d.ready, ...(d.focus.frame ? { display: displayOf(d.focus.frame) } : {}) }
     : hintNow ? { level: 0, text: hintNow.text, ready: true, hint: true } : null
   const ink = s && s.ink.length && (exchange || s.state !== "watching") ? { tint: s.tint, strokes: s.ink } : null
-  lastScene = { ...handOff(agents, called), ink, pill }
+  lastScene = { ...handOff(agents, called), ink, pill, speaking: speakingNow }
   showOverlay(based || null, lastScene)
   badge()
 }

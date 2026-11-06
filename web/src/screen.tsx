@@ -23,9 +23,11 @@ type Say = { id: string; text: string; question?: boolean }
 type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; target?: Rect; say?: Say }
 type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean }
 type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null; ink: { tint: string; strokes: Point[][] } | null
-  pill: { level: number; text: string; ready: boolean; hint?: boolean } | null }
+  pill: { level: number; text: string; ready: boolean; hint?: boolean } | null
+  /** The cursor saying its answer aloud: its level comes with the places (`At.level`). */
+  speaking?: { name: string; level?: number } | null }
 /** Only the places changed (helperlogic.ts splitScene): x, y and a target's frame. */
-type At = { agents: Record<string, number[]>; summon: [number, number] | null }
+type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number }
 type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean } }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
@@ -121,8 +123,11 @@ function leave(key: string, done: () => void) {
 function back(key: string) { clearTimeout(fading.get(key)); fading.delete(key) }
 const targetOf = (a: Agent) => (a.target ? [a.target.x, a.target.y, a.target.width, a.target.height].join() : undefined)
 
+/** Its voice's level, as bars by its name: a style, not a render. */
+const speakAt = (v: number) => document.documentElement.style.setProperty("--speak", String(v))
 function onScene(s: Shown) {
   const was = view.s
+  speakAt(s.speaking?.level ?? 0)
   for (const a of s.agents) { back(`agent:${a.name}`); aim(`agent:${a.name}`, a.sx, a.sy, AGENT, a.from) }
   if (s.summon) { back("summon"); aim("summon", s.summon.sx, s.summon.sy, AGENT, undefined, s.summon.state === "listening") }
   const names = new Set(s.agents.map((a) => a.name))
@@ -137,6 +142,7 @@ function onScene(s: Shown) {
   set({ s, gone, summonGone })
 }
 function onAt(at: At) {
+  speakAt(at.level ?? 0)
   for (const a of view.s?.agents ?? []) {
     const p = at.agents[a.name]
     if (!p) continue
@@ -191,7 +197,8 @@ function useAge(t?: number): 0 | 1 | 2 | 3 {
 }
 
 /** A flag's mark, as the window draws it: dots working, a wave listening, a tick for a moment let pass. */
-function Mark({ mark, at }: { mark: MarkKind; at?: number }) {
+function Mark({ mark, at }: { mark: MarkKind | "speak"; at?: number }) {
+  if (mark === "speak") return <span className="companion-speak" aria-label="speaking"><i /><i /><i /></span>
   if (mark === "dots") return <span className="companion-dots" aria-hidden><i /><i /><i /></span>
   if (mark === "wave") return <span className="companion-wave" aria-hidden><i /><i /><i /></span>
   if (mark === "tick") return <Check key={at} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />
@@ -206,7 +213,7 @@ const FADES = "screen-in group fixed top-0 left-0 transition-opacity duration-30
 
 /** An agent's cursor as the window draws it (plugins/core/companion/Overlay.tsx): the arrow, its flag (its name, what it
  *  does, its mark), its bubble beside; going into the window, it fades as it lands where the window draws it. */
-function Cursor({ a, gone }: { a: Agent; gone?: boolean }) {
+function Cursor({ a, gone, speaking }: { a: Agent; gone?: boolean; speaking?: boolean }) {
   const tint = `var(--${a.tint})`, key = `agent:${a.name}`
   const [hover, setHover] = useState(false), age = useAge(a.t)
   const shown = presence({ state: a.state as Parameters<typeof presence>[0]["state"], seen: a.seen, why: a.why }, { bubble: !!a.say, age, looked: hover })
@@ -215,10 +222,10 @@ function Cursor({ a, gone }: { a: Agent; gone?: boolean }) {
     <div ref={attach(key, paintCursor)} data-gone={gone || a.leaving || undefined} data-leaving={a.leaving || undefined} data-target={targetOf(a)}
       className={cn(FADES, "pointer-events-none", shown.dim && "opacity-55")}>
       <div className={cn("relative", shown.bob && "companion-bob")}><Arrow tint={tint} /></div>
-      <div data-flag style={{ background: tint }} className={cn(FLAG, !shown.flag && "opacity-0")}>
+      <div data-flag style={{ background: tint }} className={cn(FLAG, !shown.flag && !speaking && "opacity-0")}>
         {a.name}
-        {shown.words && <span className="font-medium opacity-85">{shown.words}</span>}
-        <Mark mark={shown.mark} at={a.t} />
+        {shown.words && !speaking && <span className="font-medium opacity-85">{shown.words}</span>}
+        <Mark mark={speaking ? "speak" : shown.mark} at={a.t} />
         {shown.why && <span className="max-w-[220px] truncate font-medium opacity-90">{shown.why}</span>}
       </div>
       {a.say && (
@@ -235,7 +242,7 @@ function Cursor({ a, gone }: { a: Agent; gone?: boolean }) {
 
 /** The companion summoned by a Talk key: at the pointer, listening (a wave, its words as they come) or thinking (dots),
  *  till its own cursor takes over where it was asked. */
-function Summon({ c, gone }: { c: Summoned; gone?: boolean }) {
+function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?: boolean }) {
   const tint = `var(--${c.tint})`
   useLayoutEffect(() => repaint("summon"), [c.words, c.state])
   return (
@@ -243,7 +250,7 @@ function Summon({ c, gone }: { c: Summoned; gone?: boolean }) {
       <div className={cn("relative", c.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div>
       <div data-flag style={{ background: tint }} className={FLAG}>
         {c.name}
-        <Mark mark={c.state === "listening" ? "wave" : c.state === "thinking" ? "dots" : null} />
+        <Mark mark={speaking && c.state !== "listening" ? "speak" : c.state === "listening" ? "wave" : c.state === "thinking" ? "dots" : null} />
       </div>
       {c.words && <div data-bubble className={cn(WORDS, "bg-background")} style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
         <span className="line-clamp-[8] text-foreground/80">{c.words}</span>
@@ -347,9 +354,9 @@ function Screen() {
       {s.ink && <Ink ink={s.ink} />}
       {/* (the agents' drawings, under their cursors) */}
       <ScreenDrawings grab={grab} />
-      {s.agents.map((a) => <Cursor key={a.name} a={a} />)}
+      {s.agents.map((a) => <Cursor key={a.name} a={a} speaking={s.speaking?.name === a.name} />)}
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
-      {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} />}
+      {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} speaking={!!s.summon && s.speaking?.name === s.summon.name} />}
       {s.pill && (s.pill.hint ? <Hint text={s.pill.text} /> : <Pill p={s.pill} />)}
     </>
   )
@@ -368,6 +375,9 @@ const STYLE = `
 .companion-wave { display: inline-flex; align-items: center; gap: 1.5px; height: 9px; }
 .companion-wave i { width: 2px; height: 100%; border-radius: 9px; background: currentColor; transform-origin: center; animation: companion-wave 1s infinite ease-in-out; }
 .companion-wave i:nth-child(2) { animation-delay: .2s } .companion-wave i:nth-child(3) { animation-delay: .4s }
+.companion-speak { display: inline-flex; align-items: center; gap: 1.5px; height: 10px; }
+.companion-speak i { width: 2px; height: 100%; border-radius: 9px; background: currentColor; transform: scaleY(min(1, calc(.3 + var(--speak, 0) * .6))); transition: transform 90ms ease-out; }
+.companion-speak i:nth-child(2) { transform: scaleY(min(1, calc(.3 + var(--speak, 0) * .9))); }
 @keyframes companion-wave { 0%, 100% { transform: scaleY(.35) } 50% { transform: scaleY(1) } }
 .companion-seen { animation: companion-seen .5s ease-out; }
 @keyframes companion-seen { from { opacity: 0; scale: .4; } }

@@ -1,0 +1,115 @@
+// The companion's words as they're spoken (electron/voice.ts): Markdown made plain words, cut at sentence and clause
+// ends as they stream in, so its voice starts with its first sentence. No Node here: the app may speak one day too.
+
+/** What a bubble's Markdown sounds like: its plain words, no code, ids or addresses ("this link" for one). */
+export function speakable(md: string): string {
+  return md
+    .replace(/```[\s\S]*?(```|$)/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (_m, note: string, alias?: string) => alias ?? note.split("/").pop()!)
+    .replace(/\[([^\]]+)\]\((?:[^()]|\([^)]*\))*\)/g, (_m, t: string) => (/^(https?:\/\/|www\.)/i.test(t) ? "this link" : t))
+    .replace(/<?\b(?:https?:\/\/|www\.)[^\s<>)]*[^\s<>).,;:!?'"]>?/gi, "this link")
+    // (a short code span is a word to say, a name or a key; a long one isn't)
+    .replace(/`([^`\n]*)`/g, (_m, c: string) => (c.length <= 24 && !/[{}()[\]<>=;$\\|]/.test(c) ? c : "this"))
+    .replace(/\{[^{}]*"el"[^{}]*\}/g, " ")
+    .replace(/\(\s*(?:id\s+)?[ae]\d{1,3}\s*\)/gi, " ")
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/gm, "")
+    .replace(/(\*\*|__|~~|==)(.+?)\1/g, "$2")
+    .replace(/(^|[\s(])[*_]([^*_\n]+)[*_](?=[\s).,;:!?]|$)/g, "$1$2")
+    .replace(/<\/?[a-z][^>]*>/gi, " ")
+    // (a line, a heading or an item, ends with a breath)
+    .replace(/([^\s.,;:!?…])[ \t]*\n/g, "$1.\n")
+    .replace(/\s+(?:->|→|=>)\s+/g, " to ")
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "")
+    .replace(/[|*#~^]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim()
+}
+
+/** Words that end in a dot without ending a sentence. */
+const ABBREV = /(?:^|\s)(?:e\.g|i\.e|etc|vs|cf|approx|no|dr|mr|mrs|ms|sr|sra|st|av|nº|p\.ex|ex)\.$/i
+
+/** Where `s` may be cut for its voice past `from`: after a sentence's end or a line's, or (`clause`) a clause's too;
+ *  never inside code or a link. */
+function cuts(s: string, from: number, clause: boolean): number[] {
+  const at: number[] = []
+  let fence = false, tick = false, bracket = 0
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (s.startsWith("```", i)) { fence = !fence; i += 2; continue }
+    if (fence) continue
+    if (c === "`") { tick = !tick; continue }
+    if (tick) continue
+    if (c === "[" || c === "(") bracket++
+    else if ((c === "]" || c === ")") && bracket) bracket--
+    if (i < from || bracket) continue
+    const next = s[i + 1]
+    if (c === "\n") { at.push(i + 1); continue }
+    if (next === undefined || !/\s/.test(next)) continue
+    if (/[.!?…]/.test(c)) { if (c !== "." || !ABBREV.test(s.slice(Math.max(0, i - 6), i + 1))) at.push(i + 1) }
+    else if (clause && /[,;:—–]/.test(c)) at.push(i + 1)
+  }
+  return at
+}
+
+/** A long sentence is cut at a clause past this many characters, and past `HARD` at a space; later pieces gather what
+ *  sentences are ready, up to `BATCH`. */
+const CLAUSE = 90, HARD = 240, BATCH = 360
+
+/** One say's words as they stream (its whole text each time): what's ready to speak comes out in pieces, the first as
+ *  soon as its first sentence ends, the next ones whole sentences gathered (a few at once sound better than one by one). */
+export function chunker() {
+  let text = "", used = 0
+  const take = (end: number) => { const piece = speakable(text.slice(used, end)); used = end; return piece }
+  /** The next cut, or -1 for none yet. */
+  const next = () => {
+    const rest = text.length - used, ready = cuts(text, used, false)
+    if (ready.length) return used === 0 ? ready[0] : ready.filter((c) => c - used <= BATCH).at(-1) ?? ready[0]
+    if (rest <= CLAUSE) return -1
+    const clause = cuts(text, used + CLAUSE / 2, true).filter((c) => c - used <= HARD).at(-1)
+    if (clause) return clause
+    if (rest <= HARD) return -1
+    const sp = text.lastIndexOf(" ", used + HARD)
+    return sp > used ? sp + 1 : used + HARD
+  }
+  return {
+    /** The say's text so far: the pieces it now has ready, plain words. */
+    feed(whole: string): string[] {
+      // (written again a little differently as its call has it, shorter: what was spoken stays, on from there)
+      if (whole.length >= used) text = whole
+      const out: string[] = []
+      for (let end = next(); end > used; end = next()) { const piece = take(end); if (piece) out.push(piece) }
+      return out
+    },
+    /** Its last words, those after the last cut (its call ended). */
+    flush(): string | null { const piece = text.length > used ? take(text.length) : ""; return piece || null },
+  }
+}
+
+// ---------- the language its words are in: its voice speaks that one
+
+const WORDS: Record<string, string[]> = {
+  en: ["the", "and", "is", "you", "that", "it", "to", "of", "this", "for", "with", "your", "are", "on", "here", "click", "what", "can", "there"],
+  pt: ["o", "a", "os", "as", "é", "não", "que", "de", "do", "da", "você", "para", "com", "um", "uma", "isso", "esse", "essa", "aqui", "clique", "em", "no", "na", "mais"],
+  es: ["el", "la", "los", "las", "es", "no", "que", "de", "del", "usted", "tú", "para", "con", "un", "una", "esto", "ese", "aquí", "haz", "en", "más", "y"],
+  fr: ["le", "la", "les", "est", "pas", "que", "de", "du", "vous", "pour", "avec", "un", "une", "ce", "cette", "ici", "cliquez", "et", "dans", "plus"],
+  de: ["der", "die", "das", "ist", "nicht", "und", "zu", "von", "sie", "du", "für", "mit", "ein", "eine", "hier", "klicken", "auf", "im", "mehr"],
+  it: ["il", "la", "è", "non", "che", "di", "del", "della", "per", "con", "un", "una", "questo", "qui", "clicca", "e", "nel", "più"],
+}
+const MARKS: Record<string, RegExp> = { pt: /[ãõç]|ção|ões/g, es: /[ñ¿¡]|ción/g, fr: /[èêëàùç]|eau/g, de: /[äöüß]/g, it: /zion[ei]\b/g }
+
+/** The language `text` is in, of `hints` (two letters each; none: any it knows), by its common words; `fallback` when it
+ *  can't tell. */
+export function languageOf(text: string, hints: string[] = [], fallback = hints[0] ?? "en"): string {
+  const known = (hints.length ? hints : Object.keys(WORDS)).map((h) => h.slice(0, 2).toLowerCase()).filter((h) => WORDS[h])
+  if (known.length < 2) return known[0] ?? fallback
+  const words = text.toLowerCase().match(/\p{L}+/gu) ?? []
+  let best = fallback, top = 0
+  for (const l of known) {
+    const set = new Set(WORDS[l])
+    const n = words.filter((w) => set.has(w)).length + 2 * (text.toLowerCase().match(MARKS[l] ?? /$^/g)?.length ?? 0)
+    if (n > top) { top = n; best = l }
+  }
+  return best
+}

@@ -1,5 +1,5 @@
-// Dictation's cloud recognizer: Soniox's key is this machine's (data/config.json, `dictation.soniox`), never the vault's;
-// the desktop app asks for it as a dictation starts (electron/dictation.ts) and streams to Soniox itself.
+// Soniox's key is this machine's (data/config.json, `dictation.soniox`), never the vault's: the desktop app asks for it
+// to dictate (electron/dictation.ts) and for the companion's voice (electron/voice.ts), and streams to Soniox itself.
 import { OpError, Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -8,6 +8,8 @@ export const plugin = new Plugin(import.meta.url)
 const WS = () => process.env.VAULTITE_SONIOX_URL || "wss://stt-rt.soniox.com/transcribe-websocket"
 const API = () => process.env.VAULTITE_SONIOX_API || "https://api.soniox.com"
 const MODEL = "stt-rt-v6"
+const TTS = () => process.env.VAULTITE_SONIOX_TTS_URL || "wss://tts-rt.soniox.com/tts-websocket"
+const TTS_MODEL = "tts-rt-v2"
 export const SET_KEY = `vau secret "Soniox API key" | vau dictation key`
 
 const stored = () => (plugin.secrets()[plugin.id] ?? {}) as { soniox?: unknown }
@@ -25,12 +27,20 @@ plugin.route("GET", "dictation/cloud", async (req) => {
   return { url: WS(), key, model: MODEL, languages }
 }, { lock: false, sync: false })
 
+/** Soniox's voice, for the companion's spoken answers (the desktop app's): with this machine's key, else nothing (this
+ *  Mac's own voice speaks). */
+plugin.route("GET", "dictation/speech", async (req) => {
+  await plugin.ownerOnly(req, "Dictation's key")
+  const key = keyHere()
+  return key ? { url: TTS(), key, model: TTS_MODEL } : {}
+}, { lock: false, sync: false })
+
 plugin.op({
   id: "dictation.key",
   cli: "dictation key",
   mcp: false,
   owner: "Dictation's key",
-  summary: "Set this machine's Soniox key: dictation then goes through Soniox's cloud recognizer, this Mac's when it can't.",
+  summary: "Set this machine's Soniox key: dictation then goes through Soniox's cloud recognizer (this Mac's when it can't), and the companion speaks with Soniox's voice.",
   help: `Kept in this machine's data/config.json, never in the vault; checked with Soniox first. Pipe it in from vau secret, so
 it never lands in a transcript. With nothing piped, says whether one is set.
 
