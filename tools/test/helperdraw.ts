@@ -42,13 +42,16 @@ type Sink = { tell: (e: Record<string, unknown>) => void }
 let heardWords = "what's this?"
 // (`sttDrops`: the recognizer's socket drops mid-press; `finishMs`: how long its last words take once stopped)
 let sttDrops = false, finishMs = 5
-mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink) => {
+let released = 0, lingered = false
+mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink, o: { linger?: boolean }) => {
+  lingered = !!o.linger
+  sink.tell({ type: "mic", name: "Built-in Microphone", transport: "built-in", why: "the Mac's input is Bluetooth (Bob's headset): the built-in one keeps its sound" })
   sink.tell({ type: "start" })
   if (sttDrops) setTimeout(() => { sink.tell({ type: "error", code: "socket", message: "the connection closed" }); sink.tell({ type: "end", reason: "error" }) }, 60)
   return { ok: true }
 }, dictating: () => false,
   stopFor: (sink: Sink, cancel = false) => { const words = heardWords; setTimeout(() => { if (!cancel && words) sink.tell({ type: "final", text: words }); sink.tell({ type: "end", reason: cancel ? "cancel" : "stop" }) }, finishMs) },
-  dictationEngines: async () => ({}), onDictating: () => () => {} } })
+  dictationEngines: async () => ({}), onDictating: () => () => {}, releaseMic: () => { released++ } } })
 
 // (the server: settings, and the companion's socket)
 let agent: Record<string, unknown> = { name: "Claude", tint: "orange", state: "watching", t: Date.now(), path: "Notes/A.md", line: 3 }
@@ -329,12 +332,16 @@ setAgent({ state: "watching", t: Date.now() })
 chord(true)
 await wait(300)
 chord(false)
+const releasedBefore = released
 await until(() => H.scene()!.summon?.state === "thinking")
 setAgent({ state: "thinking", t: Date.now() })
-await wait(50)
+await wait(100)
+const heldThinking = released === releasedBefore
 voiced("v4", "Yes, it's done.")
 setAgent({ state: "watching", t: Date.now() })
 check("voice: said to its end and its turn over, its cursor stays a moment, then leaves", !!H.scene()!.summon && await until(() => !H.scene()!.summon, 4000), H.scene()!.summon)
+check("mic: a Talk key's press says which microphone heard it and why, and keeps a Bluetooth one open till its answer is said, then lets it go",
+  lingered && heldThinking && released > releasedBefore && H.presses().some((l) => l.ev === "mic" && l.transport === "built-in" && /Bluetooth/.test(String(l.why))), [released, H.presses().filter((l) => l.ev === "mic").at(-1)])
 heardWords = "and this?"
 // (⌃⌥ in every order, either Option, let go either way, as the screen helper's tap tells it: right Option is a dictation
 // key, Control and left Option aren't watched; a chord is told as such)

@@ -66,6 +66,13 @@
       "label": "Dictation keys",
       "description": "the keys that dictate: fn⌃ held together, or fn or a right modifier alone; a tap starts and the next stops, or hold while you speak. A key the companion talks with (its Talk keys) isn't one"
     },
+    "microphone": {
+      "local": true,
+      "type": "string",
+      "default": "auto",
+      "label": "Microphone",
+      "description": "on a Mac, what dictation and the companion's Talk key hear with: auto (the built-in microphone when the Mac's input is a Bluetooth headset: a headset's own microphone drops its sound to a call's, and cut the companion's voice), built-in, default (the Mac's input as Sound settings has it), or a microphone's name"
+    },
     "keep_audio": {
       "local": true,
       "type": "boolean",

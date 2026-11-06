@@ -9,7 +9,7 @@ import { WebSocket } from "ws"
 import { ALONE_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
 import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
-import { dictate, dictating, stopFor, dictationEngines, onDictating, type DictationSink } from "./dictation.ts"
+import { dictate, dictating, stopFor, dictationEngines, onDictating, releaseMic, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
 import { atOffset, badgeOf, besidePointer, bitmapsDiffer, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
@@ -427,6 +427,7 @@ const MISSED_MS = 2400
 function missed(s: Summon | null, why: string, words = "Didn't catch that") {
   const kept = s?.press && !s.press.ended() ? keepAudio(s.press.id) : null
   s?.press?.end("missed", { why, ...(kept ? { audio: kept } : {}) })
+  releaseMic()
   if (!s || summon !== s) return draw()
   Object.assign(s, { state: "missed", missed: words })
   cue("missed")
@@ -655,6 +656,7 @@ function endExchange(stop = true) {
   // (Esc: its words and its turn on them stop)
   if (stop) { stopVoice(); live.say({ t: "interrupt" }) }
   if (settleTimer) { clearTimeout(settleTimer); settleTimer = null }
+  setTimeout(micDone, 50)
   if (!exchange && !summon) return
   const name = exchange?.name ?? summon?.name
   exchange = null
@@ -742,7 +744,7 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   chatChanged()
   const how = await engineFor(s)
   // (a Talk key's audio is kept a while: a press that went nowhere can be heard again)
-  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]), ...(tap ? { tap } : {}) })
+  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", linger: mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]), ...(tap ? { tap } : {}) })
   // (the recognizer that hears it: Soniox, or this Mac's and why not Soniox; one failing later logs stt-fallback)
   if (mine.into === "summon") mine.of?.press?.step("stt", { engine: r.engine ?? how.engine, ...(r.why ? { why: r.why } : {}), ...(r.ok ? {} : { failed: r.code ?? "?" }) })
   if (r.ok || session !== mine) return
@@ -821,6 +823,8 @@ function told(s: Session, e: Record<string, unknown>) {
   if (s.into === "summon" && (e.type === "start" || e.type === "error" || e.type === "end" || e.type === "fallback"))
     s.of?.press?.step(`stt-${e.type}`, { ...(e.reason ? { reason: e.reason } : {}), ...(e.code ? { code: e.code } : {}), ...(e.message ? { message: String(e.message).slice(0, 200) } : {}),
       ...(e.type === "end" ? { chars: s.finals.join(" ").length } : {}) })
+  // (which microphone hears it, and why: a Bluetooth headset's own drops its sound to a call's)
+  if (s.into === "summon" && e.type === "mic") s.of?.press?.step("mic", { name: e.name, transport: e.transport, why: e.why })
   if (e.type === "start") s.ready = true
   else if (e.type === "level") s.level = Number(e.v) || 0
   else if (e.type === "speech" && s.into === "summon") voiceFront.speech()
@@ -946,7 +950,7 @@ const speaker = companionVoice({
     if (e.t === "reroute") return x.press.after("voice-reroute", { why: e.why, again: e.again })
     if (x.sounded) return
     x.sounded = true
-    x.press.after("sound", { by: e.by, afterUp: Math.round(e.at - x.up) })
+    x.press.after("sound", { by: e.by, afterUp: Math.round(e.at - x.up), ...(e.out ? { out: e.out } : {}) })
   },
   ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
 })
@@ -1024,6 +1028,7 @@ function voiceHeard(n: Note) {
 }
 /** Its turn over: what it wrote last is said to its end. */
 function voiceHeardAgent(a: Agent) {
+  if (a.state === "watching" || a.state === "away") setTimeout(micDone, 50)
   const v = voiced
   if (v?.name !== a.name || !v.notes.length || (a.state !== "watching" && a.state !== "away")) return
   speaker.end()
@@ -1051,13 +1056,20 @@ function stopVoice(until = Date.now()) {
   speaker.stop()
   voiceFront.stop()
 }
+/** A Bluetooth microphone kept open after a Talk key's press (its headset's sound kept as is) goes once nothing more of
+ *  its answer is to be said: its turn over, its voice quiet. */
+function micDone() {
+  const s = summon, a = s ? live.state.agents.get(s.name) : undefined
+  if (session?.into === "summon" || speaker.saying() || voiceFront.speaking() || speakingNow || (s?.state === "thinking" && !s.busySeen) || (a && BUSY.has(a.state))) return
+  releaseMic()
+}
 /** Its cursor shows it speaking, its level as it goes: only the level changed, the overlay is told that alone. */
 function voiceLevel(on: boolean, v: number) {
   const name = voiced?.name ?? speakingNow?.name ?? (voiceFront.speaking() ? live.state.name : undefined)
   const was = speakingNow
   speakingNow = on && name ? { name, level: Math.round(v * 20) / 20 } : null
   // (quiet now: said to its end, maybe, its exchange over, once the voice has moved on)
-  if (!on) setTimeout(settle, 50)
+  if (!on) setTimeout(() => { settle(); micDone() }, 50)
   if (!!was !== !!speakingNow || was?.name !== speakingNow?.name) return draw()
   if (lastScene && speakingNow && was?.level !== speakingNow.level) { lastScene = { ...lastScene, speaking: speakingNow }; showOverlay(based || null, lastScene) }
 }

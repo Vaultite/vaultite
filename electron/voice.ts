@@ -32,7 +32,7 @@ export function companionVoice(o: {
   heard?: (h: Heard & { say: string }) => void
   /** What happened to an answer, for the press log: its first sound (`at`, the clock's ms) and whose voice, a cloud
    *  voice failing over, or its output device changing as it played (said again from `again` s before). */
-  told?: (e: { t: "sound"; at: number; by: string } | { t: "fallback"; why: string; to: string } | { t: "reroute"; why: string; again: number }) => void
+  told?: (e: { t: "sound"; at: number; by: string; out?: string } | { t: "fallback"; why: string; to: string } | { t: "reroute"; why: string; again: number }) => void
   /** A scripted copy's (VAULTITE_QUIET): what it would play goes here, and nothing plays. */
   record?: (m: Record<string, unknown>) => void
 }) {
@@ -57,6 +57,8 @@ export function companionVoice(o: {
   let held: (() => void)[] | null = null
   /** The answer whose first sound was told (its gen); a scripted copy's pieces heard so far. */
   let sounded = -1
+  /** Where it plays now, as its helper last said (a Bluetooth headset at 24 kHz is in its call profile). */
+  let output = ""
   const recorded = new Set<number>()
 
   async function binary() {
@@ -84,15 +86,16 @@ export function companionVoice(o: {
     }, (e) => { console.warn(`voice: its helper isn't here (${(e as Error).message})`); return null }).finally(() => { starting = null })
     return starting
   }
-  function heard(m: { type?: string; n?: number; v?: number; at?: number; why?: string; again?: number }) {
+  function heard(m: { type?: string; n?: number; v?: number; at?: number; why?: string; again?: number; name?: string; transport?: string; rate?: number }) {
     const k = typeof m.n === "number" ? ofPlayer.get(m.n) : undefined, mine = k?.startsWith("v") ? Number(k.slice(1)) : null
     if (m.type === "start" && typeof m.n === "number" && typeof m.at === "number") {
       if (mine !== null) v.played(mine, m.at)
-      if (sounded !== gen && mine !== null) { sounded = gen; o.told?.({ t: "sound", at: m.at, by: whose(v.tier()) }) }
+      if (sounded !== gen && mine !== null) { sounded = gen; o.told?.({ t: "sound", at: m.at, by: whose(v.tier()), ...(output ? { out: output } : {}) }) }
     }
     else if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, Number(m.v) || 0) }
     else if (m.type === "done" && typeof m.n === "number") { playing.delete(m.n); forget(m.n); if (!playing.size) tell(false, 0) }
     else if (m.type === "stopped") { playing.clear(); tell(false, 0) }
+    else if (m.type === "output") output = `${m.name} (${m.transport}${m.rate ? `, ${Math.round(Number(m.rate) / 1000)} kHz` : ""})`
     else if (m.type === "rerouted") o.told?.({ t: "reroute", why: String(m.why ?? ""), again: Number(m.again) || 0 })
   }
   function tell(on: boolean, v: number) { speaking = on; o.level(on, on ? v : 0) }

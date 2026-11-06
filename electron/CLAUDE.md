@@ -53,9 +53,11 @@
   answer is held (voice.ts `hold`) till the realtime voice routes the press (`look`: played after its two words, which
   give way, voice.swift `yield`; `talk`: it answered alone, the summoned answer withdrawn). Its tests are a stand-in
   socket; tools/evals/realtime.ts the real one.
-- voice.swift follows its output device: Bluetooth headphones leave their call profile about 2 s after the microphone
-  closes, and an engine started before that plays into nothing. It rebuilds its engine and says again from the pause
-  before (the press log's `voice-reroute`).
+- Bluetooth headsets drop to a call's sound while their microphone is open, and leave it about 2 s after it closes.
+  So dictation.swift hears with the built-in microphone when the Mac's input is a headset (the setting Microphone,
+  `auto`; the press log's `mic`); one used anyway is held open after a Talk key's press till its answer is said
+  (`releaseMic`, at most 30 s). voice.swift follows its output device all the same (an engine started before a switch
+  plays into nothing): a new engine, said again from the pause before (`voice-reroute`; `sound` says where it plays).
 - The overlay (overlay.ts) is BrowserWindows, never `AppWindow`s: those count as the app's windows (the Dock, menus).
   `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock. It never takes the keyboard: a
   cursor's conversation is a window of its own (`type: "panel"`, non-activating), so typing there leaves the app in

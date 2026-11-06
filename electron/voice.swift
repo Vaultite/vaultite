@@ -349,6 +349,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
     }
     if !running {
       do { try engine.start(); running = true } catch { emit(["type": "error", "message": "\(error)"]); return }
+      emit(["type": "output"].merging(outputNow()) { a, _ in a })
     }
     idle?.invalidate(); idle = nil
     if !node.isPlaying { node.play() }
@@ -399,6 +400,26 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
 
   /** The file closed (written as it goes: its header once it is let go). */
   func finish() { file = nil }
+}
+
+/** The output device it plays to: its name and how it's connected (a Bluetooth headset, built-in...). */
+func outputNow() -> [String: Any] {
+  let sys = AudioObjectID(kAudioObjectSystemObject)
+  var id = AudioObjectID(0), size = UInt32(MemoryLayout<AudioObjectID>.size)
+  var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &id) == noErr else { return [:] }
+  var name: Unmanaged<CFString>?, t: UInt32 = 0, rate: Float64 = 0
+  size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+  addr.mSelector = kAudioObjectPropertyName
+  _ = AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &name)
+  size = UInt32(MemoryLayout<UInt32>.size)
+  addr.mSelector = kAudioDevicePropertyTransportType
+  _ = AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &t)
+  size = UInt32(MemoryLayout<Float64>.size)
+  addr.mSelector = kAudioDevicePropertyNominalSampleRate
+  _ = AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &rate)
+  let how = t == kAudioDeviceTransportTypeBuiltIn ? "built-in" : t == kAudioDeviceTransportTypeBluetooth || t == kAudioDeviceTransportTypeBluetoothLE ? "bluetooth" : t == kAudioDeviceTransportTypeUSB ? "usb" : "other"
+  return ["name": (name?.takeRetainedValue() as String?) ?? "", "transport": how, "rate": rate]
 }
 
 /** A level the eye reads: speech's RMS (about 0.02 to 0.3) spread over 0 to 1. */

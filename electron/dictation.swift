@@ -1,6 +1,7 @@
 // Live dictation (electron/dictation.ts): the microphone through Apple's recognizer, Parakeet (transcribe.cpp)
 // or Soniox's cloud one when a start brings its key, told as JSON lines (web/src/core/dictation.ts' DictationEvent).
 import AVFoundation
+import CoreAudio
 import Foundation
 import Speech
 #if PARAKEET
@@ -63,23 +64,110 @@ protocol Source: AnyObject {
     func stop()
 }
 
+// MARK: - Which microphone: Bluetooth headsets drop to a call's sound while theirs is open (and the companion's voice
+// with them), so on its own it hears with the Mac's built-in one instead (the setting Microphone)
+
+struct InputDevice { let id: AudioDeviceID; let uid: String; let name: String; let transport: String }
+
+func property<T>(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector, empty: T) -> T {
+    var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var v = empty, size = UInt32(MemoryLayout<T>.size)
+    return AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &v) == noErr ? v : empty
+}
+func text(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> String {
+    var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var v: Unmanaged<CFString>?, size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+    guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &v) == noErr, let s = v?.takeRetainedValue() else { return "" }
+    return s as String
+}
+func transportOf(_ t: UInt32) -> String {
+    switch t {
+    case kAudioDeviceTransportTypeBuiltIn: return "built-in"
+    case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE: return "bluetooth"
+    case kAudioDeviceTransportTypeUSB: return "usb"
+    case kAudioDeviceTransportTypeVirtual: return "virtual"
+    case kAudioDeviceTransportTypeAggregate: return "aggregate"
+    case kAudioDeviceTransportTypeContinuityCaptureWired, kAudioDeviceTransportTypeContinuityCaptureWireless: return "iphone"
+    default: return "other"
+    }
+}
+/** Every device with an input, and the one the Mac listens with. */
+func inputs() -> (all: [InputDevice], current: AudioDeviceID) {
+    let sys = AudioObjectID(kAudioObjectSystemObject)
+    var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr else { return ([], 0) }
+    var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+    guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else { return ([], 0) }
+    let all = ids.compactMap { id -> InputDevice? in
+        var a = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+        var n: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &a, 0, nil, &n) == noErr, n > 0 else { return nil }
+        return InputDevice(id: id, uid: text(id, kAudioDevicePropertyDeviceUID), name: text(id, kAudioObjectPropertyName), transport: transportOf(property(id, kAudioDevicePropertyTransportType, empty: UInt32(0))))
+    }
+    return (all, property(sys, kAudioHardwarePropertyDefaultInputDevice, empty: AudioDeviceID(0)))
+}
+/** The microphone `pref` names (auto, built-in, default, or a device's name or id), and why that one. */
+func pickInput(_ pref: String) -> (InputDevice?, String) {
+    let (all, current) = inputs()
+    let mac = all.first { $0.id == current }, builtIn = all.first { $0.transport == "built-in" }
+    switch pref.lowercased().trimmingCharacters(in: .whitespaces) {
+    case "default": return (mac, "the Mac's input")
+    case "built-in", "builtin": return builtIn.map { ($0, "built-in, as set") } ?? (mac, "no built-in microphone: the Mac's input")
+    case "", "auto":
+        if let m = mac, m.transport == "bluetooth", let b = builtIn { return (b, "the Mac's input is Bluetooth (\(m.name)): the built-in one keeps its sound") }
+        return (mac, "the Mac's input")
+    default:
+        let want = pref.lowercased()
+        if let d = all.first(where: { $0.uid.lowercased() == want || $0.name.lowercased() == want }) ?? all.first(where: { $0.name.lowercased().contains(want) }) { return (d, "as set") }
+        return (mac, "no microphone named \(pref): the Mac's input")
+    }
+}
+
+/** A Bluetooth microphone kept open after its session (a Talk key's, `linger`): the headset stays in the sound it has
+ *  while the answer is said, then it's let go (`release`, a new start, or at most a while later). */
+var lingering: Microphone?
+let LINGER_S = 30.0
+
 final class Microphone: Source {
     let engine = AVAudioEngine()
+    let pref: String, linger: Bool
+    var device: InputDevice?
+    var off = false
+    var cap: DispatchWorkItem?
+    init(pref: String = "auto", linger: Bool = false) { self.pref = pref; self.linger = linger }
     func start(_ sink: @escaping ([Float]) -> Void) throws {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .denied, .restricted: throw Failure(code: "permission", message: "Vaultite isn't allowed to use the microphone")
         default: break
         }
+        lingering?.release()
         let input = engine.inputNode
+        let (d, why) = pickInput(pref)
+        if var id = d?.id, let au = input.audioUnit {
+            AudioUnitSetProperty(au, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id, UInt32(MemoryLayout<AudioDeviceID>.size))
+        }
+        device = d
+        emit("mic", ["name": d?.name ?? "", "transport": d?.transport ?? "", "why": why])
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0, let r = Resampler(from: format) else {
             throw Failure(code: "mic", message: "There's no microphone to listen to")
         }
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { b, _ in sink(r.samples(b)) }
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] b, _ in if self?.off == false { sink(r.samples(b)) } }
         engine.prepare()
         do { try engine.start() } catch { throw Failure(code: "mic", message: "The microphone didn't start: \(error.localizedDescription)") }
     }
     func stop() {
+        off = true
+        guard linger, device?.transport == "bluetooth", engine.isRunning, lingering !== self else { return lingering === self ? () : release() }
+        lingering = self
+        let w = DispatchWorkItem { [weak self] in self?.release() }
+        cap = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + LINGER_S, execute: w)
+    }
+    func release() {
+        cap?.cancel(); cap = nil
+        if lingering === self { lingering = nil }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
     }
@@ -759,7 +847,8 @@ func handle(_ cmd: [String: Any]) {
             started = Date()
             // (a file instead of the microphone: a test of the app, heard as if said, then stopped as if by the user)
             var s: Session!
-            let source: Source = (cmd["file"] as? String).map { f in FileSource(URL(fileURLWithPath: f), fast: false) { s.stop("stop") } } ?? Microphone()
+            let source: Source = (cmd["file"] as? String).map { f in FileSource(URL(fileURLWithPath: f), fast: false) { s.stop("stop") } }
+                ?? Microphone(pref: cmd["mic"] as? String ?? "auto", linger: cmd["linger"] as? Bool ?? false)
             s = Session(source: source, silence: cmd["silence"] as? Double ?? 0)
             s.tap = cmd["tap"] as? Bool ?? false
             if let path = cmd["record"] as? String, !path.isEmpty {
@@ -777,6 +866,8 @@ func handle(_ cmd: [String: Any]) {
         old.stop("cancel")
     case "stop": current?.stop("stop")
     case "cancel": current?.stop("cancel")
+    // (its answer said: a Bluetooth microphone kept open is let go)
+    case "release": lingering?.release()
     case "check":
         let language = cmd["language"] as? String ?? ""
         Task { emit("engines", await check(language)) }
