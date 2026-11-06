@@ -193,9 +193,6 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `companion:guest` (companion): A guest's app's socket (the share's gateway checked who and what): their threads, and what they say in them.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
 - `delegate:lineage` (delegate)
-- `delegate:job` (delegate): A job for the user, by plugin `by`: no ceiling but the agent's own mode, its thread in their inbox. `job`: a follow-up to that one (the same session).
-- `delegate:jobs` (delegate): The jobs plugin `by` started, newest first.
-- `delegate:seen` (delegate): Jobs the user saw (opened) once they ended: no longer news.
 - `dictation:terms` (companion): Its names, for dictation to expect (@claude, "ask Ada").
 - `fence:<…>` (genui, chart, base): genui; query
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.

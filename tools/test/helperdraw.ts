@@ -443,22 +443,26 @@ await until(() => asks().some((m) => m.text === "and this row?"))
 const typed = asks().find((m) => m.text === "and this row?")
 check("an ask typed there is about where it was opened, to it", typed?.agent === "Claude" && typed?.window === 9 && typed?.app === "com.example.mail", typed)
 
-// ---------- jobs: what it handed off, in the menu bar (running, done, needs you), a notification as one ends
-const job = (state: string, unseen = false) => ({ id: "d1", title: "Compare the flights", state, link: "view:claude-session/abc", unseen, at: Date.now() })
+// ---------- jobs: what it handed off, in the menu bar (working, ready for review, needs you), a notification as one ends
+const job = (state: string, unseen = false) => ({ id: "j1", title: "Compare the flights", state, link: "view:terminal/claude-abc", unseen, at: Date.now(), where: "M4, site, Personal, Claude Code",
+  now: "Reading the fares", took: "2 min", result: "1 file changed, +3 -0" })
 const jobItem = () => H.menu().find((i) => i.label === "Compare the flights")
 const notices = () => H.asked().filter((m) => m.notice === "job")
-sock!.send(JSON.stringify({ t: "jobs", jobs: [job("running")] }))
-check("jobs: one at work is in the menu bar's Jobs, saying so; the list as first heard tells nothing", await until(() => jobItem()?.sublabel === "Working") && !notices().length && H.badge() === "1", [jobItem(), notices()])
-sock!.send(JSON.stringify({ t: "jobs", jobs: [job("done", true)] }))
-check("jobs: once it's done, a notification, and the badge counts it till it's opened", await until(() => notices().length === 1 && H.badge() === "2") && notices()[0].state === "done" &&
-  /, new$/.test(jobItem()?.sublabel ?? ""), [notices(), H.badge(), jobItem()])
+sock!.send(JSON.stringify({ t: "jobs", jobs: [job("working")] }))
+check("jobs: one at work is in the menu bar's Jobs, saying so, where and what it does now; the list as first heard tells nothing",
+  await until(() => jobItem()?.sublabel === "Working · 2 min\nM4, site, Personal, Claude Code\nReading the fares") && !notices().length && H.badge() === "1" &&
+  H.menu().some((i) => i.label === "Jobs (1 working)"), [jobItem(), notices()])
+sock!.send(JSON.stringify({ t: "jobs", jobs: [job("ready for review", true)] }))
+check("jobs: once it's ready for review, a notification, and the badge counts it till it's opened; its diff shown", await until(() => notices().length === 1 && H.badge() === "2") &&
+  notices()[0].state === "ready for review" && /^Ready for review, new · 2 min\n.*\n1 file changed/.test(jobItem()?.sublabel ?? ""), [notices(), H.badge(), jobItem()])
 jobItem()!.click!()
-check("jobs: clicked, it opens in Vaultite, its tab, and it's no longer news", await until(() => posted.some((p) => p.url === "/api/ops/ui.open" && JSON.parse(p.body).path === "view:claude-session/abc")) &&
-  H.asked().some((m) => m.t === "job-seen" && JSON.stringify(m.ids) === '["d1"]'), posted.slice(-2))
-sock!.send(JSON.stringify({ t: "jobs", jobs: [{ ...job("needs you"), id: "d2", title: "Book it" }, job("done")] }))
+check("jobs: clicked, it opens its terminal in Vaultite, and it's no longer news", await until(() => posted.some((p) => p.url === "/api/ops/ui.open" && JSON.parse(p.body).path === "view:terminal/claude-abc")) &&
+  H.asked().some((m) => m.t === "job-seen" && JSON.stringify(m.ids) === '["j1"]'), posted.slice(-2))
+sock!.send(JSON.stringify({ t: "jobs", jobs: [{ ...job("needs you"), id: "j2", title: "Book it" }, job("done")] }))
 await wait(50)
-check("jobs: one that comes to need them isn't news unless it was at work before; needing them, it goes first", notices().length === 1 && H.menu().find((i) => i.label === "Book it")?.sublabel === "Needs you" &&
-  H.menu().findIndex((i) => i.label === "Book it") < H.menu().findIndex((i) => i.label === "Compare the flights") && H.badge() === "1", [notices(), H.menu().map((i) => i.label)])
+check("jobs: one that comes to need them isn't news unless it was at work before; needing them, it goes first", notices().length === 1 && /^Needs you/.test(H.menu().find((i) => i.label === "Book it")?.sublabel ?? "") &&
+  H.menu().findIndex((i) => i.label === "Book it") < H.menu().findIndex((i) => i.label === "Compare the flights") && H.badge() === "1" &&
+  H.menu().some((i) => i.label === "Jobs (1 needs you)"), [notices(), H.menu().map((i) => i.label)])
 
 // ---------- its voice: a stop silences audio streamed from elsewhere too (the realtime voice's), nothing left saying
 {

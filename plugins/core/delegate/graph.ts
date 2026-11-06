@@ -24,8 +24,6 @@ export type Task = {
   started: number; at: number
   /** When its current turn began (a follow-up's too). */
   turn: number
-  /** A job a plugin started for the user (the companion's handoff), by its id; once it ended, whether they saw it. */
-  by?: string; seen?: boolean
 }
 
 /** Whether two parties are the same session: its terminal, else its session id. */

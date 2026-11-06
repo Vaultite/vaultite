@@ -13,7 +13,7 @@ import { dictate, dictating, stopFor, dictationEngines, onAudioDevices, onDictat
 import { micSaid, pickMic } from "./miclogic.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, besidePointer, bitmapsDiffer, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
+import { atOffset, badgeOf, besidePointer, bitmapsDiffer, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
@@ -163,16 +163,19 @@ function menuItems(): Electron.MenuItemConstructorOptions[] {
     { label: unread ? `What it said (${unread} new)` : "What it said", icon: icon("message-circle"), enabled: !!name && live.state.said.some((n) => n.agent === name && n.kind === "say"),
       click: () => openChat(name, screen.getCursorScreenPoint()) },
     // (what it handed off: a click opens its tab in Vaultite)
-    ...(jobs.length ? [{ type: "separator" as const }, { label: "Jobs", type: "header" as const },
-      ...jobs.map((j) => ({ label: j.title || "A job", sublabel: `${JOB_SAID[j.state] ?? j.state}${j.unseen ? ", new" : ""}`, icon: jobIcon(j.state), enabled: !!j.link, click: () => void openJob(j) }))] : []),
+    ...(jobs.length ? [{ type: "separator" as const }, { label: jobsHeader(jobs), type: "header" as const },
+      ...jobs.map((j) => ({ label: j.title || "A job", sublabel: jobSublabel(j), icon: jobIcon(j.state), enabled: !!j.link, click: () => void openJob(j) }))] : []),
     { type: "separator" },
     { label: "Open at login", icon: icon("power"), type: "checkbox", checked: app.getLoginItemSettings().openAtLogin, click: (i) => { login(i.checked); h.setPrefs({ login: i.checked }) } },
     { label: `Quit ${app.getName()}`, accelerator: "Command+Q", click: () => h.quit() },
   ]
 }
 
-const JOB_SAID: Record<string, string> = { running: "Working", "needs you": "Needs you", done: "Done", failed: "Failed" }
-const jobIcon = (state: string) => (state === "running" ? icon("clock") : state === "needs you" ? icon("circle-alert") : state === "failed" ? icon("circle-x") : icon("circle-check"))
+const jobIcon = (state: string) => (state === "starting" || state === "working" ? icon("clock") : state === "needs you" ? icon("circle-alert") : state === "ready for review" ? icon("eye")
+  : state === "failed" || state === "stopped" ? icon("circle-x") : icon("circle-check"))
+/** The Jobs header: how many work, and how many need the user. */
+const jobsHeader = (jobs: HelperJob[]) => { const n = (s: string[]) => jobs.filter((j) => s.includes(j.state)).length, w = n(["starting", "working"]), y = n(["needs you"])
+  return `Jobs${w || y ? ` (${[w ? `${w} working` : "", y ? `${y} need${y > 1 ? "" : "s"} you` : ""].filter(Boolean).join(", ")})` : ""}` }
 /** A job opened: its tab in the home vault's window (opened first if need be), and it's no longer news. */
 async function openJob(j: HelperJob) {
   live.say({ t: "job-seen", ids: [j.id] })
@@ -188,7 +191,8 @@ async function openJob(j: HelperJob) {
 function jobNotice(j: HelperJob) {
   if (QUIET) return void asked.push({ notice: "job", id: j.id, state: j.state })
   if (!Notification.isSupported()) return
-  const n = new Notification({ title: j.state === "needs you" ? "A job needs you" : j.state === "failed" ? "A job stopped" : "A job is done", body: j.title, silent: true })
+  const n = new Notification({ title: j.state === "needs you" ? "A job needs you" : j.state === "failed" ? "A job failed" : j.state === "ready for review" ? "A job is ready for review" : "A job is done",
+    body: [j.title, j.result].filter(Boolean).join("\n"), silent: true })
   n.on("click", () => void openJob(j))
   n.show()
 }

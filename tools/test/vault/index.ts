@@ -59,6 +59,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "inbox", deps: ["pages","cli"] },
   { name: "claude-chat", deps: ["pages","cli"] },
   { name: "delegate", deps: ["pages","cli"] },
+  { name: "jobs", deps: ["pages","cli"] },
   { name: "ai-import", deps: ["settings","pages","ops"] },
   { name: "day-planner", deps: ["pages"] },
   { name: "linter", deps: ["pages"] },

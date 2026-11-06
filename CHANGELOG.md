@@ -51,6 +51,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The companion clicks Vaultite's own buttons, tabs and sidebar rows, and you see what it does**: its cursor flies to
   what it opens or clicks first (even when it acts through the CLI), it hands work off again from the Talk key, and with
   nowhere to be it fades where it is rather than flying to the window's corner.
+- **The companion's jobs are real terminals you can open and type in**: a handoff starts Claude Code (Opus, high; Codex
+  when asked) in a terminal of the app, where the ask was over (a preview's address leads to the repo serving it, on its
+  machine; a GitHub page to its checkout; a note to the vault), and a folder you rule out is refused. Each job goes
+  starting, working, needs you, ready for review (its diff and preview link), done, failed or stopped, the same in the
+  menu bar (with where it runs and what it does now), `vau companion jobs` and by voice: tell it more, stop it, or ask
+  how it's going. `vau companion timings` shows how soon each job's card was up and its worker took its first step.
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
 - **The companion sees what was there as you pressed**: a toast or menu that's gone by the time you let go of ⌃⌥ still

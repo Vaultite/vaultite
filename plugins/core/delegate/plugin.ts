@@ -44,11 +44,8 @@ plugin.onUnload(() => { if (saving) { clearTimeout(saving); saving = null } })
 const waiting = new Map<string, Set<() => void>>()
 function changed(t: Task) {
   t.at = Date.now()
-  if (t.by && !ended(t)) delete t.seen
   save()
   for (const f of [...waiting.get(t.id) ?? []]) f()
-  // (a plugin's job: its plugin hears it, the companion's menu bar)
-  if (t.by) plugin.emit("delegate.job", { id: t.id, by: t.by, state: t.state })
 }
 /** Whether a waiter is done waiting: its turn ended, or it asks a question its parent may answer. */
 const settledFor = (t: Task) => ended(t) || (answers() && t.state === "waiting" && t.ask === "question")
@@ -241,7 +238,7 @@ function view(t: Task, extra: { timedOut?: boolean; clamped?: boolean } = {}) {
     ...(t.result !== undefined ? { result: t.result } : {}), ...(t.files?.length ? { files: t.files } : {}), ...(t.error ? { error: t.error } : {}),
     mode: t.mode, ...(t.model ? { model: t.model } : {}), ...(t.effort ? { effort: t.effort } : {}), cwd: t.cwd,
     ...(t.child.terminal ? { terminal: t.child.terminal } : {}), ...(t.child.session ? { session: t.child.session } : {}), link,
-    byUser: t.parent === null, started: t.started, at: t.at, ...(t.by ? { by: t.by, seen: !!t.seen } : {}), ...extra }
+    byUser: t.parent === null, started: t.started, at: t.at, ...extra }
 }
 
 const questionsText = (v: View) => (v.questions ?? []).map((q) => `${q.question}${q.multi ? " (any of them)" : ""}\n${q.options.map((o, i) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ""}`).join("\n")}`).join("\n\n")
@@ -281,10 +278,10 @@ const promptFor = (t: Task) => (t.parent
   : t.task)
 
 /** Task `o` started: kept, then its session (Claude Code's chat, else a terminal of the app). */
-async function launch(ctx: OpCtx, o: { parent: Party | null; agent: string; task: string; title?: string; cwd: string; model?: string; effort?: string; mode: PermissionMode | null; by?: string }) {
+async function launch(ctx: OpCtx, o: { parent: Party | null; agent: string; task: string; title?: string; cwd: string; model?: string; effort?: string; mode: PermissionMode | null }) {
   const now = Date.now()
   const t: Task = { id: newId(), parent: o.parent, child: { agent: o.agent }, task: o.task, title: o.title?.trim() || titleOf(o.task), cwd: o.cwd,
-    ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode, state: "working", started: now, at: now, turn: now, ...(o.by ? { by: o.by } : {}) }
+    ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode, state: "working", started: now, at: now, turn: now }
   // (kept before it starts: what it says first finds it)
   all().unshift(t)
   try {
@@ -301,7 +298,6 @@ async function launch(ctx: OpCtx, o: { parent: Party | null; agent: string; task
     throw e
   }
   save()
-  if (t.by) changed(t)
   return t
 }
 
@@ -315,30 +311,6 @@ async function tellMore(ctx: OpCtx, t: Task, text: string) {
   Object.assign(t, { state: "working", ask: undefined, questions: undefined, result: undefined, files: undefined, error: undefined, turn: Date.now() })
   changed(t)
 }
-
-// ---------- jobs: tasks a plugin starts for the user (the companion's handoff), theirs as if they'd delegated them
-
-/** A job for the user, by plugin `by`: no ceiling but the agent's own mode, its thread in their inbox. `job`: a follow-up
- *  to that one (the same session). */
-plugin.provide("delegate:job", async (ctx: OpCtx, o: { by: string; agent?: string; task: string; title?: string; model?: string; effort?: string; cwd?: string; job?: string }) => {
-  const said = str(o.task).trim()
-  if (!said) throw new OpError("task: what to do")
-  if (o.job) {
-    const t = all().find((x) => x.id === o.job && x.by === o.by)
-    if (!t) throw new OpError(`no job ${o.job} (companion jobs lists them)`, 404)
-    await tellMore(ctx, t, said)
-    return view(t)
-  }
-  const agent = TARGETS.includes(str(o.agent)) ? str(o.agent) : "claude"
-  if (!(await plugin.ask<AgentModels | null>(`agent-models:${agent}`, null))) throw new OpError(`${nameOf(agent)} isn't here: its plugin is off`, 409)
-  return view(await launch(ctx, { parent: null, agent, task: said, title: o.title, cwd: folderOf(o.cwd), model: o.model, effort: o.effort, mode: null, by: o.by }))
-})
-/** The jobs plugin `by` started, newest first. */
-plugin.provide("delegate:jobs", (by: string) => all().filter((t) => t.by === by).slice(0, 30).map((t) => view(t)))
-/** Jobs the user saw (opened) once they ended: no longer news. */
-plugin.provide("delegate:seen", (by: string, ids: string[]) => {
-  for (const t of all()) if (t.by === by && ids.includes(t.id) && ended(t) && !t.seen) { t.seen = true; changed(t) }
-})
 
 plugin.op({
   id: "delegate.start", cli: "delegate", mcp: "delegate", owner: "coding agents on this machine", kind: "write", lock: false,

@@ -21,7 +21,8 @@ import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmark
 import { anchorsOf, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
-import { type Job, jobOf, jobsLine, jobsText, jobTask } from "./jobs.ts"
+import { jobTimingsText } from "./jobs.ts"
+import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
 import { doneText, stepOf, takeovers } from "./takeover.ts"
@@ -843,11 +844,7 @@ const screenDrawing = screenDrawings(plugin, {
   },
 })
 const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush"])
-/** Its jobs (jobs.ts): delegate's tasks it started for the user; [] while Delegation is off. */
-const jobsNow = (): Job[] => ((plugin.service("delegate:jobs") as ((by: string) => Record<string, unknown>[]) | null)?.("companion") ?? []).map(jobOf)
-const jobsSeen = (ids: string[]) => (plugin.service("delegate:seen") as ((by: string, ids: string[]) => void) | null)?.("companion", ids)
 const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
-plugin.onEvent({ types: ["delegate.job"] }, (ev) => { if (ev.by === "companion") toScreens({ t: "jobs", jobs: jobsNow() }) })
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
 /** Only the helper's own pictures: an agent reads what's named here. */
 const OWN_SHOT = /[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+)\.png$/
@@ -922,7 +919,7 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
   send(ws, snapshot())
   if (screenDrawing.current()) send(ws, screenDrawing.message())
-  send(ws, { t: "jobs", jobs: jobsNow() })
+  send(ws, { t: "jobs", jobs: jobs.cards() })
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
@@ -938,7 +935,7 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     // (who rides with their pointer: the windows draw no cursor of its meanwhile)
     if (m.t === "riding") return void ride(ws, str(m.agent).slice(0, 80))
     // (a job opened from the menu bar: no longer news)
-    if (m.t === "job-seen" && Array.isArray(m.ids)) return void jobsSeen(m.ids.filter((x): x is string => typeof x === "string").slice(0, 30))
+    if (m.t === "job-seen" && Array.isArray(m.ids)) return void jobs.seen(m.ids.filter((x): x is string => typeof x === "string").slice(0, 30))
     // (a cursor's conversation opened over the screen: its says seen)
     if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
     if (m.t === "drawing-act") return void drawingAct(m, req)
@@ -1015,8 +1012,8 @@ plugin.socket("companion/live", (ws, req, { query }) => {
       if (w.focus && m.active && w.focus.path !== w.was) { w.was = w.focus.path; addMoment({ kind: "open", ...w.focus }) }
       if (Array.isArray(m.panes)) w.panes = panesFrom(m.panes)
       // (a job's tab on screen: seen)
-      const shownJobs = m.active && w.panes.length ? jobsNow().filter((j) => j.unseen && w.panes.some((x) => x.to === j.link)) : []
-      if (shownJobs.length) jobsSeen(shownJobs.map((j) => j.id))
+      const shownJobs = m.active && w.panes.length ? jobs.cards().filter((j) => j.unseen && w.panes.some((x) => x.to === j.link)) : []
+      if (shownJobs.length) jobs.seen(shownJobs.map((j) => j.id))
       w.pane = str(m.pane) || undefined
       // (awareness, in pair: the pane they went to that isn't a note, by its title; a private page's never)
       const pn = w.panes.find((x) => x.id === w.pane), kind = pn && paneSource(pn.to).kind
@@ -1644,11 +1641,11 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "job", "job-stop"]
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "job", "job-stop"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1701,7 +1698,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["open", "draw", "see", "act", "follow", "clear", "handoff"]
+const SUMMONED_TOOLS = ["open", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-stop"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -1729,7 +1726,7 @@ const lane = (): Lane => {
     caption: (name, text) => screenDrawing.recaption(name, text),
     text: async (ms) => {
       const slim = ms.map((m) => (m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
-      const text = [momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobsLine(jobsNow())].filter(Boolean).join("\n")
+      const text = [momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobs.line()].filter(Boolean).join("\n")
       // (its picture attached, not a path: given one, it spent a turn reading it before its first word)
       const images = shotsOf(ms), named = images.reduce((t, f) => t.split(`its picture: ${f}`).join("its picture, attached to this message")
         .split(`as the key went down: ${f}`).join("as the key went down, attached before it"), text)
@@ -2300,39 +2297,11 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
   text: () => "Said.",
 })
 
-plugin.op({
-  id: "companion.handoff",
-  cli: "companion handoff",
-  summary: "Hand long work to a background agent (Opus in Claude Code, or Codex), with the ask's context: it starts at once, and the user is told when it's done.",
-  help: `For what takes more than a minute or two: research, a document, code, a long errand, writing in their notes.
-Your say shows by your cursor as it starts; then end your turn. Its job is in the menu bar's Jobs (running, done, needs
-you) and its tab in the app; the user is told when it ends. job: a follow-up to one of yours (companion jobs), in its
-same session. Needs Delegation on.
-
-  vau companion handoff "Compare the flights in this tab; write the best two in Notes/Trip.md" --say "On it: comparing them."
-  vau companion handoff "Add the trains too" --job d3k2h1g0 --say "Adding the trains."`,
-  kind: "write",
-  lock: false,
-  params: { task: { type: "string", required: true, description: "what to do, standing alone: the goal, where, what to end with (the ask's words, place and picture go with it)" },
-    say: { type: "string", required: true, description: "what you tell the user now, a few words (On it: ...)" },
-    agent: { type: "string", enum: ["claude", "codex"], default: "claude", description: "who does it: Claude Code (on Opus unless model says), or Codex" },
-    model: { type: "string", description: "its model (default: Opus for Claude Code, Codex's own)" },
-    title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words)" },
-    job: { type: "string", description: "a follow-up to this job of yours (its id): the same session goes on" }, as: AS },
-  args: ["task"],
-  run: async (p, ctx) => {
-    const name = who(p), start = plugin.service("delegate:job") as ((ctx: OpCtx, o: Record<string, unknown>) => Promise<Record<string, unknown>>) | null
-    if (!start) throw new OpError("background jobs run through Delegation, which is off: say so, and offer to do what you can now", 409)
-    const ask = (inSummoned.getStore() ? lane().last() : moments).findLast((m) => (m.kind === "ask" || m.kind === "point") && key(m.for ?? "") === key(name))
-    const agent = str(p.agent) || "claude", model = str(p.model) || (agent === "claude" ? "opus" : "")
-    const v = jobOf(await start(ctx, { by: "companion", agent, task: p.job ? str(p.task) : jobTask(str(p.task), ask), ...(model ? { model } : {}),
-      ...(str(p.title) ? { title: str(p.title) } : {}), ...(str(p.job) ? { job: str(p.job) } : {}) }))
-    did(name, "handoff")
-    await plugin.host.call("companion.say", { text: str(p.say), ...(isMain(name) ? {} : { as: name }) }, ctx.who)
-    return v
-  },
-  text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}. The user hears when it's done: end your turn.`,
-  did: (p) => ({ action: "run", text: `Handed off ${JSON.stringify(cut(str(p.task), 60))}`, by: who(p) }),
+// Its jobs (workers.ts): long work handed to a worker in a terminal, through one lifecycle (jobs.ts).
+const jobs = jobOps(plugin, {
+  askOf: (name) => (inSummoned.getStore() ? lane().last() : moments).findLast((m) => (m.kind === "ask" || m.kind === "point") && key(m.for ?? "") === key(name)),
+  say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
+  did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
 })
 
 /** The open task line `line` (1-based) of `src`, or the only one with `text`: its index, or -1. */
@@ -2378,20 +2347,6 @@ starts at once through companion handoff.
   },
   text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}.`,
   did: (p) => ({ action: "run", text: `Do it: ${JSON.stringify(cut(str(p.text) || `${str(p.path)}:${p.line}`, 60))}` }),
-})
-
-plugin.op({
-  id: "companion.jobs",
-  cli: "companion jobs",
-  summary: "The jobs the companion handed off (background agents): running, done, needs you, and what each ended with.",
-  help: `  vau companion jobs`,
-  kind: "read",
-  params: { seen: { type: "array", items: { type: "string" }, description: "jobs the user saw: no longer counted new (the menu bar's badge)" } },
-  run: async (p) => {
-    if (Array.isArray(p.seen) && p.seen.length) jobsSeen(p.seen.map(String))
-    return { jobs: jobsNow() }
-  },
-  text: (r) => jobsText(r.jobs),
 })
 
 plugin.op({
@@ -3346,16 +3301,16 @@ export function timingsText(day: string, rows: Timing[]) {
 plugin.op({
   id: "companion.timings",
   cli: "companion timings",
-  summary: "How fast the companion answered on a day: per moment, its wait to be handed, the think to its first action, to its first word shown, total.",
+  summary: "How fast the companion answered on a day: per moment, its wait to be handed, the think to its first action, to its first word shown, total; per job, to its card and its worker's first step.",
   help: `  vau companion timings
   vau companion timings --day 2026-10-16`,
   kind: "read",
   params: { day: { type: "string", description: "a day (YYYY-MM-DD); default: today" } },
   run: async (p) => {
     const day = str(p.day) || localDate(Date.now())
-    return { day, rows: timings(log.read(day), acts.read(day)) }
+    return { day, rows: timings(log.read(day), acts.read(day)), jobs: jobs.timings(day, localDate) }
   },
-  text: (r) => timingsText(r.day, r.rows),
+  text: (r) => [timingsText(r.day, r.rows), jobTimingsText(r.jobs)].filter(Boolean).join("\n\n"),
 })
 
 plugin.op({
@@ -3372,7 +3327,7 @@ end), as the menu-bar helper logged them on this machine.
   run: async (p) => {
     const day = str(p.day) || localDate(Date.now())
     const got = await plugin.desktop("talk:presses", { day }).catch(() => []), presses = (Array.isArray(got) ? got : []) as PressLine[]
-    return { day, exchanges: exchanges(log.read(day), acts.read(day), presses), spent: spent(presses), jobs: jobsNow() }
+    return { day, exchanges: exchanges(log.read(day), acts.read(day), presses), spent: spent(presses), jobs: jobs.cards().map((j) => ({ ...j, at: j.started, ...(j.ended ? { ended: j.ended } : {}) })) }
   },
   text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "ask" : "asks"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${e.voice ? "said" : "asked"}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
     ...(r.spent.length ? [`Used: ${r.spent.map((x: Spent) => `${x.service} ${x.uses}${x.seconds ? `, ${Math.round(x.seconds)} s` : ""}${x.cost ? `, $${x.cost.toFixed(3)}` : ""}`).join("; ")}`] : [])].join("\n"),

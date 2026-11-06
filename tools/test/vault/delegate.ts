@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -8,7 +7,7 @@ import { waitFor } from "../lib.ts"
 import { fakeSdk } from "./claude-chat.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, app, check, read, write } = $
+  const { VAULT, api, app, check } = $
   const { cascade, childrenOf, clampMode, taskOf } = await import("../../../plugins/core/delegate/graph.ts")
   const { changedFiles, HOME, newTerminalId, PERMISSION_MODES } = await import("../../../core/agents.ts")
   const { modeOf } = await import("../../../plugins/core/codex/plugin.ts")
@@ -153,50 +152,6 @@ export default async ($: VaultTest) => {
     ;[st, b] = await api("POST", "ops/delegate.start", { agent: "claude", task: "Tell me the date", mode: "async", ...as(parent) }, agent)
     const told = await waitFor(() => runOf(parent).said.slice(before).find((x: Any) => /^\[Vaultite\] Claude Code finished "Tell me the date"/.test(x.text)), 5000, 50)
     check("delegate async: its answer comes to its parent as a message when it's done", !!told && told.text.includes("Done: Tell me the date"), runOf(parent).said.slice(before))
-
-    // The companion's handoff: a job for the user (no parent), with the ask's context, on Opus; listed, told as it ends.
-    const c = await import("../../../plugins/core/companion/plugin.ts")
-    const { matchSocket } = await import("../../../core/plugins.ts")
-    const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
-    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
-    await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion" })
-    c.screenMoment({ kind: "ask", agent: "Claude", text: "find me a cheaper flight than this one", app: "com.example.browser", title: "Flights to Lisbon", sx: 10, sy: 20 })
-    ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Find a cheaper flight to Lisbon than the one on their screen", say: "On it: looking for cheaper flights." }, agent)
-    const job = b, jrun = runOf(job.link?.split("/").pop())
-    check("handoff: a job for the user, its task with the ask's words and place, on Opus, its tab linked, and the companion says so",
-      st === 200 && job.state === "running" && /^view:claude-session\//.test(job.link) && jrun?.model === "opus" &&
-      /Find a cheaper flight[^]*They said: "find me a cheaper flight than this one"[^]*Flights to Lisbon/.test(jrun?.said[0]?.text ?? "") &&
-      (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "On it: looking for cheaper flights."), [st, b, jrun?.said[0]?.text])
-    const [, d] = await api("POST", "ops/delegate.status", { id: job.id }, asApp)
-    const ended = await waitFor(() => heard.findLast((m) => m.t === "jobs" && m.jobs.some((j: Any) => j.id === job.id && j.state === "done")), 5000, 50)
-    check("handoff: the user's own task (no parent, no ceiling), and the menu bar hears it end, new till opened",
-      d.byUser === true && !!ended && ended.jobs.find((j: Any) => j.id === job.id).unseen === true, [d, heard.at(-1)])
-    ;[st, b] = await api("POST", "ops/companion.jobs", {})
-    check("companion jobs: its jobs, with what each ended with", st === 200 && b.jobs[0]?.id === job.id && /Done: Find a cheaper flight/.test(b.jobs[0]?.result ?? ""), b)
-    sc.emit("message", Buffer.from(JSON.stringify({ t: "job-seen", ids: [job.id] })))
-    check("handoff: opened from the menu bar, it's no longer new", !!(await waitFor(async () => (await api("POST", "ops/companion.jobs", {}))[1].jobs[0]?.unseen === false, 3000, 50)))
-    ;[st, b] = await api("POST", "ops/companion.handoff", { task: "And trains too", say: "Adding trains.", job: job.id }, agent)
-    await waitFor(() => (runOf(job.link.split("/").pop())?.said.length ?? 0) >= 2, 3000, 50)
-    check("handoff: a follow-up to a job goes on in its same session", st === 200 && b.id === job.id && runOf(job.link.split("/").pop())?.said.at(-1)?.text === "And trains too", [st, b])
-    // Do it: a task line handed over, in progress; a suggestion's words; a line that isn't an open task.
-    write("Notes/Errands.md", "# Errands\n\n- [ ] Compare the two flights 📅 2026-12-01\n- [x] Book the car\n")
-    ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 3, text: "Compare the two flights" }, asApp)
-    const doRun = runOf(b.link?.split("/").pop())
-    check("Do it: a task line's worker is told its note and line, on Opus, and it goes in progress", st === 200 && b.state === "running" && doRun?.model === "opus" &&
-      /Notes\/Errands\.md \(line 3\): Compare the two flights/.test(doRun?.said[0]?.text ?? "") && read("Notes/Errands.md").includes("- [/] Compare the two flights 📅 2026-12-01"), [st, b, read("Notes/Errands.md")])
-    ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 4 }, asApp)
-    check("Do it: a line that's no open task is refused", st === 404, [st, b])
-    write("Notes/Errands.md", "# Moved down\n\n\n- [ ] Call Lighthouse\n")
-    ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 2, text: "Call Lighthouse" }, asApp)
-    check("Do it: a line that moved is found by its words", st === 200 && read("Notes/Errands.md").includes("- [/] Call Lighthouse"), [st, b])
-    ;[st, b] = await api("POST", "ops/companion.do", { text: "Tidy the trip note" }, asApp)
-    check("Do it: only words is a job too", st === 200 && /Tidy the trip note/.test(runOf(b.link?.split("/").pop())?.said[0]?.text ?? ""), [st, b])
-    ;[st, b] = await api("POST", "ops/inbox.add", { title: "Tidy the trip note", do: "Tidy the trip note", from: "Dream" })
-    check("inbox add --do: the item keeps its task", st === 200 && /^do: Tidy the trip note$/m.test(read(b.path)), [st, b])
-    sc.emit("close")
-    // (the ask taken, so no later area's companion finds it waiting)
-    await api("POST", "ops/companion.next", { timeout: 0 })
-    await api("PATCH", "config/plugin/companion", { mode: "off", summoned_model: "haiku" })
 
     for (const s of host.list()) host.stop(s.id)
     await waitFor(() => !host.list().length, 3000, 50)

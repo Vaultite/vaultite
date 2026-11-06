@@ -208,21 +208,26 @@ export const offsetIn = (frame: Rect, p: Point) => ({ dx: Math.round(p.x - frame
 export const atOffset = (frame: Rect, o: { dx: number; dy: number }) =>
   ({ x: frame.x + Math.max(8, Math.min(frame.width - 8, o.dx)), y: frame.y + Math.max(8, Math.min(frame.height - 8, o.dy)) })
 
-/** A job the companion handed off (plugins/core/companion/jobs.ts), as the menu bar lists it. */
-export type HelperJob = { id: string; title: string; state: string; link: string | null; unseen: boolean; at: number }
-const ACTIVE = new Set(["running", "needs you"])
-/** The Jobs in the menu: those needing the user or at work first, then the latest ended ones of the last day; a few. */
+/** A job the companion handed off, as the menu bar lists it (plugins/core/companion/jobs.ts' JobCard: its states). */
+export type HelperJob = { id: string; title: string; state: string; link: string | null; unseen: boolean; at: number; where?: string; now?: string; took?: string; result?: string }
+const ACTIVE = new Set(["starting", "working", "needs you"])
+const RANK: Record<string, number> = { "needs you": 0, "ready for review": 1, working: 2, starting: 2 }
+/** The Jobs in the menu: those needing the user, to review or at work first, then the latest ended ones of the last day; a few. */
 export function jobsShown(jobs: HelperJob[], now = Date.now()) {
-  const rank = (j: HelperJob) => (j.state === "needs you" ? 0 : j.state === "running" ? 1 : 2)
-  return jobs.filter((j) => ACTIVE.has(j.state) || (j.state !== "cancelled" && (j.unseen || now - j.at < 86_400_000)))
-    .sort((a, b) => rank(a) - rank(b) || b.at - a.at).slice(0, 6)
+  return jobs.filter((j) => ACTIVE.has(j.state) || (j.state !== "stopped" && (j.unseen || now - j.at < 86_400_000)))
+    .sort((a, b) => (RANK[a.state] ?? 3) - (RANK[b.state] ?? 3) || b.at - a.at).slice(0, 6)
 }
-/** Jobs that ended or came to need the user since `before` (null: the first list heard, no news): a notification each. */
+/** Jobs that came to need the user, or ended (ready for review, done, failed), since `before` (null: the first list
+ *  heard, no news): a notification each. */
 export function jobNews(before: HelperJob[] | null, after: HelperJob[]) {
   if (!before) return []
   const was = new Map(before.map((j) => [j.id, j.state]))
-  return after.filter((j) => was.has(j.id) && was.get(j.id) !== j.state && (j.state === "needs you" || ((j.state === "done" || j.state === "failed") && j.unseen)))
+  return after.filter((j) => was.has(j.id) && was.get(j.id) !== j.state && (j.state === "needs you" || (["ready for review", "done", "failed"].includes(j.state) && j.unseen)))
 }
+/** A job's line under its title in the menu: its state, where, and what it does now or ended with. */
+export const jobSublabel = (j: HelperJob) => [`${JOB_SAID[j.state] ?? j.state}${j.unseen ? ", new" : ""}${j.took ? ` · ${j.took}` : ""}`, j.where, ACTIVE.has(j.state) ? j.now : j.result]
+  .filter(Boolean).join("\n")
+export const JOB_SAID: Record<string, string> = { starting: "Starting", working: "Working", "needs you": "Needs you", "ready for review": "Ready for review", done: "Done", failed: "Failed", stopped: "Stopped" }
 /** The menu bar icon's badge: its words not seen, and jobs ended that weren't opened. */
 export const badgeOf = (unread: number, jobs: HelperJob[]) => { const n = unread + jobs.filter((j) => j.unseen).length; return n ? String(n) : "" }
 
