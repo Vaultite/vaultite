@@ -83,6 +83,8 @@ const pluginsChanged = signal()
 const signature = (ps: Plugin[]) => ps.map((p) => `${p.id}@${p.version ?? ""}:${(p.problems ?? []).join()}:${JSON.stringify(p.meta ?? null)}`).join("\n")
 
 const bump = pluginsChanged.notify
+// (each change to the list, told or not: what's cached from it, by id and what's on, is made again)
+let generation = 0
 let vaultIn = false
 /** Whether the vault's plugins came yet: before, what they draw is still to come, not gone. */
 export const vaultPluginsIn = () => vaultIn
@@ -91,6 +93,7 @@ export const vaultPluginsIn = () => vaultIn
 export function setVaultPlugins(list: Plugin[]) {
   const app = PLUGINS.filter((p) => p.tier === "core"), hosted = PLUGINS.filter((p) => p.tier === "hosted")
   const was = signature(PLUGINS.filter((p) => p.tier === "vault"))
+  generation++
   PLUGINS.splice(0, PLUGINS.length, ...app, ...(isMac ? list : list.map((p) => ({ ...p, description: p.description && keysText(p.description), settingsDecls: keyedDecls(p.settingsDecls) }))), ...hosted)
   setMarks(PLUGINS as unknown as Record<string, unknown>[])
   writeTints()
@@ -117,6 +120,7 @@ export function hostPlugins(host: string, info: PluginHost | null, list: HostedP
         approval: waiting ? { state: waiting === "changed" ? "changed" : "new", since: null, changed: [] } : null, blocked: null, hash: "", edits: false } }
   }) : []
   const rest = PLUGINS.filter((p) => p.host !== host || p.tier !== "hosted")
+  generation++
   PLUGINS.splice(0, PLUGINS.length, ...rest, ...mine.filter((p) => !rest.some((q) => q.id === p.id)))
   bump()
 }
@@ -124,7 +128,11 @@ export function hostPlugins(host: string, info: PluginHost | null, list: HostedP
 /** Re-render when the plugin list changes (the vault's plugins came, went or changed); returns a counter. */
 export const usePluginsVersion = () => pluginsChanged.use()
 
-export const pluginById = (id: string) => PLUGINS.find((x) => x.id === id)
+let byId: { generation: number; map: Map<string, Plugin> } | null = null
+export const pluginById = (id: string) => {
+  if (byId?.generation !== generation) byId = { generation, map: new Map(PLUGINS.map((p) => [p.id, p])) }
+  return byId.map.get(id)
+}
 
 /** Hand a question about a file to the AI chat a plugin that's on brings (its `ask`); false when there's none. */
 export function askAbout(question: string, file?: string) {
@@ -320,9 +328,13 @@ export function usePlugins() {
   return listed.list
 }
 
-/** The enabled plugins, in order. */
+/** The enabled plugins, in order (the same list until the plugins or what turns them on change: don't change it). */
+let on: { generation: number; disabled: string[]; enabled: string[]; ai: boolean; list: Plugin[] } | null = null
 export function active(disabled: string[]) {
-  return PLUGINS.filter((p) => isEnabled(p.id, disabled))
+  const { enabled, ai } = getPrefs()
+  if (on?.generation === generation && on.disabled === disabled && on.enabled === enabled && on.ai === ai) return on.list
+  on = { generation, disabled, enabled, ai, list: PLUGINS.filter((p) => isEnabled(p.id, disabled)) }
+  return on.list
 }
 
 /** The buttons a tab showing `to` has on hover (`tabButtons`), from the plugins that are on, in their order. */
