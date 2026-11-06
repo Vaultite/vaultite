@@ -138,7 +138,8 @@ current tab. On a phone it opens in the sheet. For something the user should loo
     cli: "command",
     summary: "Run a command from the app's palette in the user's window (by id).",
     help: `Runs a palette command in the window the user was in last, as if they picked it. Ids: vau commands. A
-command that isn't available right then (it needs an open file) runs nothing, and says so.
+command that isn't available right then (it needs an open file) runs nothing, and says so. Once it has run, its answer
+has the toasts it showed (notices): one saying it couldn't means it didn't do it.
 
   vau command sidebar:toggle
   vau command terminal:open
@@ -148,7 +149,8 @@ command that isn't available right then (it needs an open file) runs nothing, an
     params: { id: { type: "string", required: true, description: "the command's id (sidebar:toggle)" } },
     args: ["id"],
     run: ({ id }, ctx) => ctx.ui({ action: "command", id }).catch(noWindow),
-    text: (_r, p) => `Sent ${p.id}.`,
+    // (what it showed is how an agent knows it didn't work: "Claude isn't running")
+    text: (r: Any, p) => !r?.ran ? `Sent ${p.id}.` : `Ran ${p.id}.${r.notices?.length ? ` The app then showed: ${r.notices.map((n: Any) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}`,
     did: ({ id }) => ({ action: "ui", text: `Ran the command ${id} in the app` }),
   }, {
     id: "ui.commands",

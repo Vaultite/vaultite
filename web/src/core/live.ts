@@ -111,7 +111,7 @@ function release() {
 }
 
 /** Something an agent asked this window to do (server.ts /api/ui): open a path, run a command or notify. The handler
- *  answers false for a command it couldn't run. */
+ *  answers false for a command it couldn't run, else once it settled, with the toasts it showed. */
 export type UiAction = { action: string; path?: string; split?: "right" | "down" | null; newTab?: boolean; background?: boolean; id?: string; rid?: string
   text?: string; kind?: "error" | null; button?: { label: string; open: string } | null }
 let uiHandler: ((m: UiAction) => unknown) | null = null
@@ -210,9 +210,13 @@ function connect() {
       Promise.resolve().then(() => askerOf(m.action!)!(m as Record<string, unknown>, ended.signal))
         .then((result) => reply({ ran: true, result }), (e) => reply({ ran: false, error: e instanceof Error ? e.message : String(e) }))
     } else if (m.type === "ui" && m.action) {
-      let ran = true
-      try { ran = uiHandler?.(m as UiAction) !== false } catch (e) { console.error(e) }
-      if (m.rid) s.send(JSON.stringify({ type: "ui-done", rid: m.rid, ran }))
+      let r: unknown = true
+      try { r = uiHandler?.(m as UiAction) } catch (e) { console.error(e) }
+      // (a command's answer waits for it to settle: whether it ran, and the toasts it showed)
+      if (m.rid) void Promise.resolve(r).catch((e) => { console.error(e) }).then((v) => {
+        const notices = v && typeof v === "object" && Array.isArray((v as { notices?: unknown }).notices) ? (v as { notices: unknown[] }).notices : undefined
+        s.send(JSON.stringify({ type: "ui-done", rid: m.rid, ran: v !== false, ...(notices?.length ? { notices } : {}) }))
+      })
     }
   }
   s.onopen = () => {

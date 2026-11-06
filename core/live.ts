@@ -15,7 +15,7 @@ const QUIET = 20, GAP = 100, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, A
  *  only through ops, never POST /api/ui: the dev ones are the owner's. Seconds an ask may wait (a person's are longer). */
 const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30]])
 const isAsk = (action: string) => ASKS.has(action) || /^[a-z0-9-]+:[a-z0-9-]+$/.test(action)
-type Answer = { ran?: boolean; result?: unknown; error?: unknown }
+type Answer = { ran?: boolean; result?: unknown; error?: unknown; notices?: unknown[] }
 
 /** Changes nobody needs to hear about. */
 export function ignored(rel: string) {
@@ -321,12 +321,16 @@ export class Live {
     // A command says whether the window could run it (one that needs an open note may not); an older app never says.
     const to = this.last()
     const rid = message?.action === "command" && to && this.answering.has(to) ? crypto.randomUUID() : null
-    const ran = rid ? new Promise<boolean | null>((done) => { this.answers.set(rid, (a) => done(a.ran !== false)); setTimeout(() => done(null), UI_ANSWER_MS) }) : null
+    // (its answer: whether it ran, once it settled, and the toasts it showed meanwhile: "isn't running" means it didn't)
+    const ran = rid ? new Promise<Answer | null>((done) => { this.answers.set(rid, (a) => done(a)); setTimeout(() => done(null), UI_ANSWER_MS) }) : null
     try {
       const [out, status] = this.handle(message ? "POST" : "GET", rid ? { ...message, rid } : message)
       if (status >= 400) throw new OpError(String((out as { error?: unknown }).error ?? status), status)
-      if (ran && (await ran) === false) throw new OpError(`the command ${String(message!.id)} isn't available in the user's window right now (it may need a note open there): nothing ran`, 422)
-      return out
+      const a = ran ? await ran : null
+      if (a && a.ran === false) throw new OpError(`the command ${String(message!.id)} isn't available in the user's window right now (it may need a note open there): nothing ran`, 422)
+      if (!a) return out
+      const notices = Array.isArray(a.notices) ? a.notices.slice(-5).flatMap((n) => { const x = n as { text?: unknown; kind?: unknown }; return typeof x?.text === "string" ? [{ text: x.text.slice(0, 300), ...(x.kind === "error" ? { kind: "error" } : {}) }] : [] }) : []
+      return { ...(out as object), ran: true, ...(notices.length ? { notices } : {}) }
     } finally {
       if (rid) this.answers.delete(rid)
     }

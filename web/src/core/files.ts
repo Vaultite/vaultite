@@ -4,7 +4,7 @@ import { getStore, reload, type Store } from "@/core/data"
 import { del, get, post } from "@/core/http"
 import { isEmbeddable, pageExt } from "@/core/formats"
 import { afterSheets, closeDetailOf, retargetDetail, route, setFileOpener } from "@/core/nav"
-import { runCommandId } from "@/core/commands"
+import { runCommandAsked } from "@/core/commands"
 import { onUiAction, onVaultChange, onVaultMove, touches } from "@/core/live"
 import { isMedia, kindOf } from "@/core/filekinds"
 import { movePlaces } from "@/core/viewstate"
@@ -172,7 +172,7 @@ function besideKept() {
   if (other) setFocusedPane(other.id)
 }
 onUiAction((m) => {
-  if (m.action === "command" && m.id) return runCommandId(m.id)
+  if (m.action === "command" && m.id) return runCommandAsked(m.id)
   if (m.action === "notify" && m.text) {
     const b = m.button
     return void notice(m.text, { kind: m.kind === "error" ? "error" : undefined, action: b ? { label: b.label, run: () => openAsked(b.open) } : undefined })

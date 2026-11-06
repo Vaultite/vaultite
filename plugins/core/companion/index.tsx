@@ -134,7 +134,7 @@ export default definePlugin({
     { id: "companion:ask", name: "Ask the companion", label: "Ask", keys: ["Mod+Shift+K"], run: () => ask(), icon: MessageCirclePlus },
     COMMENT,
     ...MODES.map((m) => ({ id: `companion:${m.mode}`, name: `Companion: ${m.label}`, when: () => getState().mode !== m.mode, run: () => void setMode(m.mode) })),
-    { id: "companion:session", name: "Show the companion's session", run: () => void showSession(), icon: SquareTerminal },
+    { id: "companion:session", name: "Show the companion's session", run: () => showSession(), icon: SquareTerminal },
     { id: "companion:undo-edit", name: "Undo the companion's last edit", when: () => canUndoEdit(), run: () => void undoEdit(), icon: Undo2 },
   ],
   editorMenu: ({ view, path }) => [

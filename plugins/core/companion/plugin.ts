@@ -1076,7 +1076,9 @@ async function pageOf(id: string, name = ownName()): Promise<BrowserTab | null> 
 /** A pane's page as the companion may use it: there, not private, its container letting agents `need` (read, act). */
 async function pageFor(id: string, need: "read" | "act", name?: string) {
   const t = await pageOf(id, name)
-  if (!t) throw new OpError(`pane ${id} shows no web page in the desktop app (vau tabs lists the panes)`, 404)
+  // (a terminal's says what works there: it took a guess at typing into one)
+  if (!t) throw new OpError(paneById(id) && paneSource(paneById(id)!.to).kind === "terminal" ? `pane ${id} is a terminal: nothing types in it (see reads it, follow watches it)`
+    : `pane ${id} shows no web page in the desktop app (vau tabs lists the panes)`, 404)
   if (privatePage(t.url, t.container)) throw new OpError("that page is private: the companion never sees it (the setting private)", 403)
   if (t.access === "none" || (need === "act" && t.access !== "act")) throw new OpError(`its container lets agents ${t.access === "none" ? "do nothing" : "only read"} there (Agents, in the container menu of the page's bar)`, 403)
   return t

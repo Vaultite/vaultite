@@ -153,12 +153,12 @@ export default async ($: VaultTest) => {
     ignored(".vaultite/artifacts/x.html.json") && !ignored(".vaultite/cache/github.json") && !ignored("Notes/a.md"))
   // The user's window: a command it couldn't run says so; a window from before answers is sent it and not waited on.
   {
-    const win = (answers: boolean, ran: boolean | null) => {
+    const win = (answers: boolean, ran: boolean | null, notices?: Any[]) => {
       const on: Record<string, (d: unknown) => void> = {}
       const ws: Any = { readyState: 1, OPEN: 1, close() {}, on: (k: string, f: (d: unknown) => void) => { on[k] = f }, sent: [] as Any[],
         send(t: string) {
           const m = JSON.parse(t); ws.sent.push(m)
-          if (m.rid && ran !== null) setTimeout(() => on.message(JSON.stringify({ type: "ui-done", rid: m.rid, ran })), 5)
+          if (m.rid && ran !== null) setTimeout(() => on.message(JSON.stringify({ type: "ui-done", rid: m.rid, ran, ...(notices ? { notices } : {}) })), 5)
         } }
       live.client(ws)
       on.message(JSON.stringify({ type: "active", ...(answers ? { answers: true } : {}) }))
@@ -169,6 +169,14 @@ export default async ($: VaultTest) => {
     check("ui: a command the window couldn't run is an error saying so", refused?.status === 422 && /isn't available/.test(refused.message), refused)
     win(true, true)
     check("ui: one it ran is sent", ((await live.drive({ action: "command", id: "theme:dark" })) as Any)?.ok === true)
+    const textOf = (id: string) => $.app.ops().find((o: Any) => o.op.id === id)!.op.text as (r: Any, p: Any) => string
+    win(true, true, [{ text: "Claude isn't running", at: 1 }, { text: "x".repeat(900), kind: "error" }])
+    const told = await live.drive({ action: "command", id: "companion:session" }) as Any
+    const said = textOf("ui.command")(told, { id: "companion:session" })
+    check("ui: one that showed a toast as it ran says so, so an agent doesn't take it as done", told.ran === true && told.notices?.length === 2 && told.notices[1].text.length === 300 &&
+      told.notices[1].kind === "error" && /^Ran companion:session\. The app then showed: "Claude isn't running", "x+" \(an error\)\.$/.test(said), [told, said])
+    win(true, true, [])
+    check("ui: one that showed nothing says it ran", textOf("ui.command")(await live.drive({ action: "command", id: "theme:dark" }), { id: "theme:dark" }) === "Ran theme:dark.")
     const old = win(false, null), t0 = Date.now()
     await live.drive({ action: "command", id: "theme:dark" })
     check("ui: a window that never answers isn't waited on", Date.now() - t0 < 500 && old.sent.at(-1)?.id === "theme:dark" && !old.sent.at(-1)?.rid)

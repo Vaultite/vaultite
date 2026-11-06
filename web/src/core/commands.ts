@@ -4,7 +4,7 @@ import { useEffect, type ComponentType } from "react"
 import { patch } from "@/core/http"
 import { noteActivity } from "@/core/activity"
 import { isDesktop, isMac as MAC } from "@/core/platform"
-import { notifyError } from "@/core/notify"
+import { noticesSince, notifyError, type Notice } from "@/core/notify"
 import { signal } from "@/core/signal"
 import { guestCommand } from "@/core/share"
 import { confirmDialog } from "@/components/ConfirmDialog"
@@ -94,12 +94,13 @@ export function runCommandNamed(text: string) {
 
 /** Run what a command or a menu item does, at once (it may need the click's user activation): one that throws or
  *  rejects says so in a toast rather than doing nothing (its error still reaches Errors through the console). */
-export function runOrSay(run: () => unknown, name: string) {
+export function runOrSay(run: () => unknown, name: string): Promise<void> {
   const failed = (e: unknown) => { console.error(e); notifyError(e, `Couldn't ${name.replace(/…$/, "").replace(/^\w/, (c) => c.toLowerCase())}`) }
   try {
     const r = run()
-    if (r && typeof (r as Promise<unknown>).then === "function") (r as Promise<unknown>).then(undefined, failed)
+    if (r && typeof (r as Promise<unknown>).then === "function") return (r as Promise<unknown>).then(() => {}, failed)
   } catch (e) { failed(e) }
+  return Promise.resolve()
 }
 
 /** Run a registered command by its id ("switcher:open"), if it's there and available now (`when`: editor:undo only
@@ -428,6 +429,18 @@ export function runCommand(c: Command) {
   try { localStorage.setItem(RECENT, JSON.stringify([c.id, ...recentCommands().filter((x) => x !== c.id)].slice(0, 5))) } catch { /* private mode */ }
   ran(c)
   runOrSay(c.run, commandName(c))
+}
+
+/** A command an agent runs (`vau command`): false when it isn't available now, else once its run settles (at most
+ *  `ms`), the toasts it showed meanwhile, so the agent knows whether it did what it should. */
+export async function runCommandAsked(id: string, ms = 1500): Promise<false | { notices: Notice[] }> {
+  const c = available(list).find((x) => x.id === id)
+  if (!c) return false
+  const from = Date.now()
+  await Promise.race([runOrSay(c.run, commandName(c)), new Promise((done) => setTimeout(done, ms))])
+  // (a toast it shows as it ends comes a moment after)
+  await new Promise((done) => setTimeout(done, 150))
+  return { notices: noticesSince(from) }
 }
 
 /** Run a command by id, if it's offered now (the desktop app's menu sends these). */

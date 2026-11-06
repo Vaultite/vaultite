@@ -24,9 +24,20 @@ const short = (text: string) => text.length > MAX ? `${text.slice(0, MAX - 1).tr
 /** What takes the keyboard to the newest toast's button (sonner's own key, components/Toast.tsx). */
 export const TOAST_KEYS = "Alt+T"
 
+/** The toasts shown lately, newest last: what an agent asks after its command (`vau command`), and the companion when
+ *  the user points at one that's gone. */
+export type Notice = { text: string; kind?: "error"; at: number }
+const shown: Notice[] = []
+const KEPT_MS = 120_000
+/** Toasts shown since `t` (ms), newest last. */
+export const noticesSince = (t: number) => shown.filter((n) => n.at >= t)
+
 /** Show a toast. Returns its id (dismissNotice closes it early). */
 export function notify(text: string, opts: NotifyOptions = {}) {
   const { action, kind, id } = opts
+  const now = Date.now()
+  shown.push({ text: short(text), ...(kind === "error" ? { kind } : {}), at: now })
+  while (shown.length > 12 || (shown.length && now - shown[0].at > KEPT_MS)) shown.shift()
   const duration = opts.duration ?? (action ? 8000 : kind === "error" ? 6000 : 4000)
   const data = {
     id, duration,

@@ -8,6 +8,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
+- **The companion checks before it says it's done**: asked over the screen to show its session, open a note or show a
+  pane, it does it (rather than telling you how), and only says it worked when the app says so: `vau command` now
+  answers once the command has run, with the toasts it showed ("Claude isn't running"). It knows a terminal pane can
+  be read and followed but not typed in.
 - **The Talk key's companion never waits on a permission check**: it runs its few safe commands (reading the vault,
   opening things in your window, showing its own session) without asking, and anything else is refused at once, so it
   tells you in a few words that it needs your OK instead of going quiet for seconds.
