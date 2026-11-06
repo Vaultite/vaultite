@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Talk key's companion opens its own page where you say**: asked to show your talk with it, it opens the
+  Companion page itself, in a split beside or below when you ask (`vau companion page --split right`), instead of
+  having its command refused and handing the job to a worker.
 - **A foldable callout opened stays open, with no empty gap**: scrolled away and back, or its note left and opened
   again, a section you opened is still open, and one shut is drawn at its shut height instead of held at its open one
   for a few seconds, so the page no longer jumps under you.

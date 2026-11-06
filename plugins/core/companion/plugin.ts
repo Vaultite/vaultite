@@ -1641,11 +1641,11 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "job", "job-stop"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-stop"]
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "job", "job-stop"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-stop"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1698,7 +1698,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["open", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-stop"]
+const SUMMONED_TOOLS = ["open", "page", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-stop"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -3423,17 +3423,20 @@ plugin.op({
   help: `Written into the pages folder first when the vault doesn't have it yet (its blocks: companion-conversation,
 companion-usage).
 
-  vau companion page`,
+  vau companion page
+  vau companion page --split right`,
   kind: "write",
   lock: false,
-  run: async (_p, ctx) => {
+  params: { split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down)" }, newTab: { type: "boolean", description: "in a new tab" }, as: AS },
+  run: async (p, ctx) => {
     const home = plugin.vault.pagesHome(), at = home ? `${home}/Companion.md` : "Companion.md"
     // (a vault that had it on before its page came: written now, as turning it on would have)
     if (!fs.existsSync(plugin.vault.abs(at))) writeNew(plugin.vault.abs(at), readText(path.join(plugin.dir, "pages", "Companion.md")))
-    await ctx.op("ui.open", { path: at }).catch(() => {})
-    return { path: at }
+    // (no window to show it in: said, never "opened")
+    const shown = await ctx.op("ui.open", { path: at, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}) }).then(() => true, () => false)
+    return { path: at, shown, split: str(p.split) }
   },
-  text: (r) => `Opened ${r.path}.`,
+  text: (r) => (r.shown ? `Opened ${r.path}${r.split ? ` in a split ${r.split}` : ""}.` : `${r.path} is ready, but no window of the app is open to show it in.`),
 })
 
 // (the Companion page's blocks as text: what /api/render shows)

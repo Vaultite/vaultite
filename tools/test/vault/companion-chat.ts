@@ -386,6 +386,15 @@ export default async ($: VaultTest) => {
         /\bhandoff\b/.test(qtools ?? "") && /\bdraw\b/.test(qtools ?? "") && !/\bsay\b|\bedit\b|\bcomment\b|\bhandover\b/.test((qtools ?? "").split(".")[0]) && (await said(longId)).length === before, [qtools, sent])
       check("summoned: a lean session: its own prompt, only Bash of Claude Code's tools, none of the user's settings, low effort",
         /Prompt: its own\. Builtins: Bash\. Settings: none\. Effort: low/.test(qtools ?? ""), qtools)
+      // (dontAsk refuses at once what isn't listed: a command or tool its prompt names must be one it may run)
+      const { SUMMONED_PROMPT } = await import("../../../plugins/core/companion/summoned.ts")
+      const rules = (k: string) => (new RegExp(`${k}: (.*?)\\. [A-Z]`).exec(qtools ?? "")?.[1] ?? "").split(",").flatMap((x) => /^Bash\((.*?)(:\*)?\)$/.exec(x)?.slice(1, 3) ?? [])
+      const allow = rules("Allowed"), deny = rules("Denied")
+      const runs = (cmd: string, rs: (string | undefined)[]) => rs.some((r, i) => i % 2 === 0 && !!r && (cmd === r || (rs[i + 1] !== undefined && cmd.startsWith(`${r} `))))
+      const named = [...SUMMONED_PROMPT.matchAll(/\bvau(?: [a-z][\w:-]*){1,2}/g)].map((x) => x[0]), refused = named.filter((x) => !runs(x, allow) || runs(x, deny))
+      const served = (qtools ?? "").split(".")[0].replace(/^Tools: /, "").split(","), tools = [...SUMMONED_PROMPT.matchAll(/mcp__vaultite-app__([\w-]+)|the ([\w-]+) tool\b/g)].map((x) => x[1] ?? x[2])
+      check("summoned: every command its prompt names runs without asking, and every tool it names is served (its own page with a split too)",
+        named.length >= 5 && !refused.length && tools.every((t) => served.includes(t)) && served.includes("page"), { refused, tools, served, allow })
       await idle(quick!)
       const rows = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((x: Any) => x.as === "Claude (summoned)")
       check("summoned: timings tell its asks apart, with their first word", rows.some((x: Any) => x.word !== undefined), rows)
