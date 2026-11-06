@@ -1,6 +1,7 @@
-// The Agent SDK in a test's chat keeper, answering with no model: "call|stream|cut <tool> <json>" calls a tool (streamed;
-// cut off), "words <text>" streams it as its answer, "slow" waits (an interrupt ends it), "list" says how it started.
+// The Agent SDK in a test's chat keeper, with no model: "call|stream|cut|hold <tool> <json>" calls a tool (streamed; cut
+// off; held half way till $CHATD_TEST_RELEASE's file is there), "words <text>" streams it, "slow" waits, "list" says how.
 import crypto from "node:crypto"
+import fs from "node:fs"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import type { Any } from "../../lib.ts"
@@ -13,7 +14,7 @@ const linesOf = (text: string) => text.split("\n").map((l) => {
 })
 /** What a message asks it to call. */
 const callsIn = (text: string) => linesOf(text).flatMap((t) => {
-  const m = /^(call|stream|cut) (\w+) (\{.*\})$/.exec(t)
+  const m = /^(call|stream|cut|hold) (\w+) (\{.*\})$/.exec(t)
   try { return m ? [{ how: m[1], name: m[2], args: JSON.parse(m[3]), json: m[3] }] : [] } catch { return [] }
 })
 
@@ -37,15 +38,25 @@ export function query({ prompt, options }: Any) {
   }
   let interrupted: (() => void) | null = null
   const pause = (ms: number) => new Promise<boolean>((r) => { const t = setTimeout(() => { interrupted = null; r(false) }, ms); interrupted = () => { clearTimeout(t); interrupted = null; r(true) } })
-  /** A tool call's input streamed: its block opened, its JSON in pieces of `n`, closed (`whole`: else cut off half way). */
-  const streamIn = async (name: string, json: string, use: string, whole: boolean) => {
+  /** Its test's release file, waited for and taken (true: an interrupt came first). */
+  const released = async () => {
+    const file = process.env.CHATD_TEST_RELEASE!
+    for (;;) {
+      try { fs.rmSync(file); return false } catch { /* not yet */ }
+      if (await pause(10)) return true
+    }
+  }
+  /** A tool call's input streamed: its block opened, its JSON in pieces of `n`, closed (`whole`: else cut off half way;
+   *  `held`: it waits half way, until released). */
+  const streamIn = async (name: string, json: string, use: string, whole: boolean, held = false) => {
     const mid = `msg_${crypto.randomUUID().slice(0, 8)}`, ev = (event: Any) => push({ type: "stream_event", event, uuid: crypto.randomUUID(), ...base })
     ev({ type: "message_start", message: { id: mid } })
     ev({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: use, name: `mcp__vaultite-app__${name}`, input: {} } })
-    const upTo = whole ? json.length : Math.floor(json.length / 2)
+    const half = Math.floor(json.length / 2), upTo = whole ? json.length : half
     for (let i = 0; i < upTo; i += 6) {
       ev({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json.slice(i, Math.min(upTo, i + 6)) } })
       if (await pause(15)) return false
+      if (held && i < half && i + 6 >= half && await released()) return false
     }
     if (whole) ev({ type: "content_block_stop", index: 0 })
     return whole
@@ -83,7 +94,7 @@ export function query({ prompt, options }: Any) {
       for (const c of calls) {
         const use = `toolu_${crypto.randomUUID().slice(0, 8)}`
         // (cut off, or interrupted, as it wrote it: its turn ends there)
-        if (c.how !== "call" && !(await streamIn(c.name, c.json, use, c.how === "stream"))) { stopped = true; break }
+        if (c.how !== "call" && !(await streamIn(c.name, c.json, use, c.how !== "cut", c.how === "hold"))) { stopped = true; break }
         const r = await (await mcp()).callTool({ name: c.name, arguments: c.args, _meta: { "claudecode/toolUseId": use } }) as Any
         said.push(`${r.isError ? "error: " : ""}${r.content?.map((x: Any) => x.text).join(" ")}`)
         // (its hooks after the call, as Claude Code runs them: one may end the turn there)
