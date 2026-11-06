@@ -164,7 +164,11 @@ let linked = "", applied = ""
 
 // ---------- translucent (appearance `translucent`): the window's chrome over the system's blur, in the desktop app
 
-const native = (window as { vaultite?: DesktopApi }).vaultite?.translucent
+declare const __DEMO_OFFICIAL__: unknown
+/** The web demo (vite.demo.config.ts) has no desktop under its window, so it stands in for one (web/demo/boot.ts and
+ *  index.css's data-demo-desk): a glass bundle there looks as it does in the app. */
+const demoGlass: DesktopApi["translucent"] = typeof __DEMO_OFFICIAL__ === "undefined" ? undefined : { set: async (on) => ({ on }), on: () => {} }
+const native = (window as { vaultite?: DesktopApi }).vaultite?.translucent ?? demoGlass
 const reduced = matchMedia("(prefers-reduced-transparency: reduce)")
 let translucency: Translucency = { on: document.documentElement.hasAttribute("data-translucent") }
 let asked: boolean | null = null

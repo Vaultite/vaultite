@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Glass bundles look like glass in the web demo**: the demo has no desktop under its window, so Full glass and
+  Glass now show a soft wallpaper (on vaultite.com's bundle pages, the page's own) through blurred, see-through bars.
+  Asking for a bundle the demo already has replaces its copy, so switching back and forth works.
 - **Clicks in agents' pages land again**: a page an agent opened while no spare was ready never drew on a Mac, so
   every click there was dropped (an Allow in a Claude Code session "changed nothing"). Each now starts from a ready
   view, and one that stopped drawing (its window out of sight a while) is shown again before an agent acts in it or
