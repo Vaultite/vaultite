@@ -472,9 +472,11 @@ html[data-classic-scrollbars] ::-webkit-scrollbar-corner { background: transpare
 [data-scroll=panels] > [data-panel]:has([data-panel-handle]:not([data-sidebar-search])) { padding-top: calc(var(--spacing) * 2); }
 /* A sidebar's scrollers keep their scrollbar's room whether one shows or not, so nothing reflows as it comes and goes (a
    drag making a panel taller took a column off Pinned's tiles); the room comes out of the sidebar's padding first. */
-[data-panel-scroll][class*="overflow-y-auto"], [data-scroll=sidebar] {
-  scrollbar-gutter: stable; margin-right: calc(-1 * min(var(--scrollbar-room, 0px), calc(var(--spacing) * 2 - 0.5px)));
-}
+[data-scroll] { --bar-room: min(var(--scrollbar-room, 0px), calc(var(--spacing) * 2 - 0.5px)); }
+[data-panel-scroll][class*="overflow-y-auto"], [data-scroll=sidebar] { scrollbar-gutter: stable; margin-right: calc(-1 * var(--bar-room)); }
+/* Each panel in its own box: the body reaches into that padding too (its own padding keeps the panels in place), or it
+   cuts off the right of their scrollbars. */
+[data-sidebar-body][data-scroll=panels] { margin-right: calc(-1 * var(--bar-room)); padding-right: var(--bar-room); }
 /* The sidebar itself scrolls only when its panels, all at their least, don't fit (panelLayout.ts marks it
    `data-overflow`); otherwise each panel scrolls in its own box and a stray pixel never brings a second scrollbar. */
 [data-scroll=panels]:not([data-overflow]) { overflow-y: hidden; }

@@ -4,6 +4,7 @@ import { useLayoutEffect, useState, type RefObject } from "react"
 import { dragPanels, fitPanels, heightIn, heightsAfterDrag, type PanelFit, type Sidebars } from "../../../core/sidebars.ts"
 import { setPanelHeights, type PanelOf } from "@/core/plugins"
 import { MOTION } from "@/core/tabline"
+import { rowOffsets } from "@/core/virtual"
 
 /** A sidebar measured: its panels (keys, in order), each one's fit, chrome (gaps outside its box), box, what moves in it
  *  and its height once that settles; the room for them all, the sidebar's height (saved heights' scale: heightIn). */
@@ -35,15 +36,30 @@ function settling(box: HTMLElement): Settling[] {
   return out.filter((x) => !out.some((y) => y !== x && y.el.contains(x.el)))
 }
 
-/** Where a panel's rows end once what moves in it has settled, from the top of what it draws: its headings' and rows'
- *  bottoms (where they are mid-way, the panel's snapped end jumped a row each frame, and the panels under it). */
+/** Where a panel's rows end at rest, from the top of what it draws however scrolled (mid-way, its snapped end jumped a
+ *  row each frame): headings' and rows' bottoms, a long list's from where it puts them, drawn or not (core/virtual.ts). */
 function rowEnds(l: Laid, i: number): number[] {
-  const inner = l.boxes[i].firstElementChild, moving = l.moving[i]
+  const box = l.boxes[i], inner = box.firstElementChild, moving = l.moving[i]
   if (!inner) return []
   const top = inner.getBoundingClientRect().top
-  const rows = [...inner.querySelectorAll<HTMLElement>("[data-panel-handle], [data-keyrow]")]
-  return rows.filter((r) => !moving.some((m) => m.el.contains(r) && m.by < -(m.el.getBoundingClientRect().height - 0.5)))
-    .map((r) => r.getBoundingClientRect().bottom - top + moving.reduce((n, m) => (!m.el.contains(r) && m.el.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING ? n + m.by : n), 0))
+  const by = (r: Element) => moving.reduce((n, m) => (!m.el.contains(r) && m.el.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING ? n + m.by : n), 0)
+  const ends: number[] = [], lists = new Set<HTMLElement>()
+  for (const r of inner.querySelectorAll<HTMLElement>("[data-panel-handle], [data-keyrow]")) {
+    const list = r.closest("[data-vi]")?.parentElement
+    if (list && rowOffsets(list)) { lists.add(list); continue }
+    if (moving.some((m) => m.el.contains(r) && m.by < -(m.el.getBoundingClientRect().height - 0.5))) continue
+    // (a heading sticks at the box's top as it scrolls: from there, where it is unscrolled, a panel's heading being first)
+    const from = r.hasAttribute("data-panel-handle") && getComputedStyle(r).position === "sticky" ? box.getBoundingClientRect().top : top
+    ends.push(r.getBoundingClientRect().bottom - from + by(r))
+  }
+  for (const list of lists) {
+    const o = rowOffsets(list)!, at = list.getBoundingClientRect().top - top + by(list)
+    // (a row ends where its button does, above the gap its item keeps under it; none past the first beyond the room)
+    const row = list.querySelector(":scope > [data-vi]"), button = row?.querySelector("[data-keyrow]")
+    const gap = row && button ? row.getBoundingClientRect().bottom - button.getBoundingClientRect().bottom : 0
+    for (let k = 1; k < o.length; k++) { ends.push(at + o[k] - gap); if (at + o[k] - gap > l.room) break }
+  }
+  return ends
 }
 
 /** How far apart a row's end and a panel's may be and still meet: mid-motion the ends are projected (`rowEnds`), a hair

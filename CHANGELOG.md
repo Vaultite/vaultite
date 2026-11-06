@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Files keeps its rows, however fast it scrolls**: with each panel in its own box, a long file tree scrolled far down
+  no longer shrinks to a row or two (or a lone "Show more") with empty room under it once a panel above it grows or
+  shrinks, nor stops short after Expand all; its rows are drawn in the frame it scrolls, and a panel's scrollbar is
+  no longer cut in half where the app draws its own (a Mac with a mouse, Windows, Linux).
 - **Dictate into terminals**: ⌘J or fn in a terminal (a shell, Claude Code) dims the words not settled at its cursor
   and pastes each settled chunk there, on one line and never with Enter, so nothing runs until you press it. With
   nowhere to dictate, the hint shows in the pill's place where you look, not as a toast in the corner.
