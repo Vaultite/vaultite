@@ -107,8 +107,11 @@ const cards = await rects(light, "[data-mark=write], .sd-chip")
 const marked = [SCREEN.share, SCREEN.row1, SCREEN.row2, SCREEN.row3, { x: 16, y: 104, w: 216, h: 126 }, SCREEN.sent]
 const things = Object.values(ELEMENTS)
 check("cards go on calm space: clear of everything on screen, marked or not, on screen", cards.length === 3 && cards.every((c) => onScreen(c) && ![...marked, ...things].some((m) => hit(c, m))), cards)
-const ink = await light.evaluate(() => ({ ink: document.querySelectorAll(".sd-ink").length, sketch: document.querySelectorAll(".sd-line").length, pen: [...document.querySelectorAll(".sd-pen")].every((p) => getComputedStyle(p).animationName === "sd-pen") }))
-check("strokes are ink (perfect-freehand) and sketches (rough.js), drawn as by a pen", ink.ink >= 12 && ink.sketch >= 1 && ink.pen, ink)
+const ink = await light.evaluate(() => ({ ink: document.querySelectorAll(".sd-ink").length, pen: [...document.querySelectorAll(".sd-pen")].every((p) => getComputedStyle(p).animationName === "sd-pen"),
+  focus: [...document.querySelectorAll("[data-focus]")].map((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, anim: getComputedStyle(e).animationName } }) }))
+check("strokes are ink (perfect-freehand), drawn as by a pen", ink.ink >= 12 && ink.pen, ink)
+const fr = ink.focus[0]
+check("a frame is a box round its area, opened by the pen, a glow as it lands", ink.focus.length === 1 && fr.x === 10 && fr.y === 98 && fr.w === 228 && fr.h === 138 && fr.anim === "sd-open, sd-land", ink.focus)
 const done1 = await light.evaluate(() => [...document.querySelectorAll(".sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01))
 check("…and every stroke ends fully drawn", done1)
 await light.screenshot({ path: path.join(SHOTS, "screendraw-marks.png") })

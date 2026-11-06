@@ -42,7 +42,11 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 .sd-line { fill: none; stroke: var(--tint); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .sd-hatch { stroke-width: 1.3; opacity: .75; }
 .sd-dot { fill: var(--tint); }
-.sd-tintfill { fill: color-mix(in srgb, var(--tint) 11%, transparent); }
+.sd-focus { box-sizing: border-box; border: 2px solid var(--tint); background: color-mix(in srgb, var(--tint) 9%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, white 40%, transparent), 0 0 14px color-mix(in srgb, var(--tint) 35%, transparent);
+  animation: sd-open var(--dur, 640ms) cubic-bezier(.5,0,.12,1) var(--delay, 0ms) both, sd-land 1s ease-out calc(var(--delay, 0ms) + var(--dur, 640ms) * .75) both; }
+@keyframes sd-open { from { width: 12px; height: 12px; opacity: 0; } 10% { opacity: 1; } }
+@keyframes sd-land { from { box-shadow: 0 0 0 1px color-mix(in srgb, white 40%, transparent), 0 0 0 5px color-mix(in srgb, var(--tint) 28%, transparent), 0 0 30px color-mix(in srgb, var(--tint) 65%, transparent); } }
 .sd-dim { fill: rgba(0,0,0,.42); }
 .sd-pen { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: sd-pen var(--dur, 500ms) cubic-bezier(.35,.1,.35,1) var(--delay, 0ms) forwards; }
 @keyframes sd-pen { to { stroke-dashoffset: 0; } }
@@ -53,8 +57,10 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 .sd-bob-down { animation: sd-bob-y 1.2s ease-in-out infinite; } .sd-bob-up { animation: sd-bob-y 1.2s ease-in-out infinite reverse; }
 .sd-bob-right { animation: sd-bob-x 1.2s ease-in-out infinite; } .sd-bob-left { animation: sd-bob-x 1.2s ease-in-out infinite reverse; }
 @keyframes sd-bob-y { 50% { translate: 0 6px; } } @keyframes sd-bob-x { 50% { translate: 6px 0; } }
-.sd-pill { height: 22px; padding: 0 9px; border-radius: 999px; background: var(--tint); color: white; font-size: 12.5px; font-weight: 600; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, white 70%, transparent), 0 2px 8px rgba(0,0,0,.25); transform-origin: center; }
+.sd-pill { height: 24px; padding: 0 11px; border-radius: 8px; background: var(--tint); color: white; font-size: 13px; font-weight: 600; line-height: 24px; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 0 0 1px color-mix(in srgb, white 55%, transparent), 0 4px 14px color-mix(in srgb, var(--tint) 30%, rgba(0,0,0,.22)); transform-origin: center; }
+.sd-tag { opacity: 0; animation: sd-tag .42s cubic-bezier(.3,1.45,.55,1) var(--delay, 0ms) forwards; }
+@keyframes sd-tag { from { opacity: 0; scale: .55; translate: var(--dx, 0) var(--dy, 0); } 40% { opacity: 1; } to { opacity: 1; scale: 1; translate: 0 0; } }
 .sd-badge { width: 24px; height: 24px; border-radius: 999px; background: var(--tint); color: white; font-size: 13px; font-weight: 700; display: grid; place-items: center;
   box-shadow: 0 0 0 2px white, 0 2px 8px rgba(0,0,0,.3); }
 .sd-card { padding: 12px 14px; border-radius: 12px; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.4;
@@ -76,5 +82,5 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 .sd-tools { padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent), 0 6px 20px rgba(0,0,0,.2); transform-origin: bottom center; }
 .sd-tool { height: 26px; display: inline-flex; align-items: center; gap: 4px; padding: 0 10px; border-radius: 999px; color: var(--foreground); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 button.sd-tool:hover { background: color-mix(in srgb, var(--foreground) 8%, transparent); }
-@media (prefers-reduced-motion: reduce) { .sd-pen, .sd-pop, .sd-fade, [class*="sd-bob"] { animation: none !important; opacity: 1; stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .sd-pen, .sd-pop, .sd-fade, .sd-tag, .sd-focus, [class*="sd-bob"] { animation: none !important; opacity: 1; stroke-dashoffset: 0; } }
 ` }))

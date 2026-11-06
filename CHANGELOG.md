@@ -10,6 +10,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   every click there was dropped (an Allow in a Claude Code session "changed nothing"). Each now starts from a ready
   view, and one that stopped drawing (its window out of sight a while) is shown again before an agent acts in it or
   you come back to its tab.
+- **The companion's marks feel placed, not scribbled**: asked what something is, it frames the whole of it with a clean
+  box its cursor drags open, which glows as it lands; its label springs out beside it, to the right where there's room,
+  and types in. Its spoken answers end on the answer, with no "want me to…?" tails, and say what went wrong plainly.
 - **Agents browse faster**: a click answers about 300 ms sooner (it watches the page settle while it waits for a
   navigation the click may set off, not after), page loads and closes answer as they end (10 to 100 ms sooner), and a
   site's open stream (a live channel, a long poll) no longer holds an answer for 4 seconds.

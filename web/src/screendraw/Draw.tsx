@@ -9,7 +9,7 @@ import { hash, headLines, inkPath, type Line, linePath, sketch } from "./ink"
 import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER } from "./pen"
 import type { Act, Shown } from "./index"
 
-const PILL_H = 22
+const PILL_H = 24, PILL_PX = 13
 
 let ctx: CanvasRenderingContext2D | null = null
 /** How wide `text` is in the overlay's font. */
@@ -20,7 +20,7 @@ export function measure(text: string, px: number, bold = false) {
   return ctx.measureText(text).width
 }
 const labelOf = (m: Mark) => ("label" in m && m.label && m.type !== "button" && m.type !== "copy" && m.type !== "open" ? m.label : m.type === "scroll" ? "Scroll" : null)
-const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return l ? { w: Math.ceil(measure(l, 12.5, true)) + 18, h: PILL_H } : null }
+const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return l ? { w: Math.ceil(measure(l, PILL_PX, true)) + 22, h: PILL_H } : null }
 
 /** When each drawing was first seen (`t0`: its first beat, after the pen's lead), and when each mark first showed: every
  *  part's delay counts from the drawing's clock, whatever comes again (kept, a new place, more marks). */
@@ -66,7 +66,7 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
     b.committed = true
     let tries = 0, id = 0
     const align = () => {
-      const el = root.current?.querySelector<SVGElement>("[data-mark-i] .sd-pen"), a = el?.getAnimations()[0], i = Number(el?.closest<SVGElement>("[data-mark-i]")?.dataset.markI)
+      const el = root.current?.querySelector<SVGElement | HTMLElement>("[data-mark-i] .sd-pen, .sd-focus[data-mark-i]"), a = el?.getAnimations()[0], i = Number(el?.closest<SVGElement | HTMLElement>("[data-mark-i]")?.dataset.markI)
       if ((!a || a.startTime === null) && ++tries < 6) { id = requestAnimationFrame(align); return }
       const was = b.shown.get(i)
       if (!a || a.startTime === null || was === undefined) return
@@ -85,6 +85,7 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
   return (
     <div ref={root} data-screendraw={d.id} data-beat={beat} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
       {shown.filter((p) => p.mark.type === "spotlight" && p.box).map((p) => <Spotlight key={p.i} r={p.box!} W={W} H={H} delay={order.get(p.i)!} />)}
+      {shown.filter((p) => p.mark.type === "frame" && p.box).map((p) => <Focus key={p.i} p={p} delay={order.get(p.i)!} />)}
       <svg className="sd-glow absolute inset-0 overflow-visible" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         {shown.map((p) => <Strokes key={p.i} p={p} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} W={W} H={H} />)}
       </svg>
@@ -124,18 +125,18 @@ function Sketch({ paths, delay, dur = 520, hatch = false }: { paths: { d: string
 function Strokes({ p, id, seed, delay, W, H }: { p: Placed; id: string; seed: number; delay: number; W: number; H: number }) {
   const m = p.mark, r = p.box
   if (!r) return null
-  if (m.type === "frame") return (
-    <g data-mark-i={p.i}>
-      <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={8} className="sd-tintfill sd-fade" style={{ "--delay": ms(delay + 250) } as React.CSSProperties} />
-      <Sketch paths={sketch("rect", inflate(r, 6), seed, { roughness: 0.9 })} delay={delay} dur={FRAME_MS} />
-    </g>
-  )
   const ink = markInk(p, seed)
   if (!ink) return null
   const lines = <Ink id={id} lines={ink.lines} size={ink.size} delay={delay} W={W} H={H} />
   return <g data-mark-i={p.i} className={m.type === "scroll" ? `sd-bob-${m.dir}` : undefined}>{lines}</g>
 }
 const pt = (p: [number, number]): Pt => ({ x: p[0], y: p[1] })
+
+/** A thing or an area, boxed: drawn open from its top left as the pen drags its far corner, glowing as it lands. */
+function Focus({ p, delay }: { p: Placed; delay: number }) {
+  const r = inflate(p.box!, 6)
+  return <div data-mark-i={p.i} data-focus className="sd-focus absolute" style={{ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(10, r.w / 2, r.h / 2), "--delay": ms(delay), "--dur": ms(FRAME_MS) } as React.CSSProperties} />
+}
 
 /** Everything around the screen dimmed but `r`. */
 function Spotlight({ r, W, H, delay }: { r: Rect; W: number; H: number; delay: number }) {
@@ -154,7 +155,26 @@ function Parts({ p, delay, act, grab, seed, id }: { p: Placed; delay: number; ac
   }
   if (p.card) return <Card p={p} delay={delay} act={act} grab={grab} seed={seed} id={id} />
   if (!label || !p.label) return null
-  return <div data-mark-label={m.type} className="sd-pill sd-pop absolute" style={{ left: p.label.x, top: p.label.y, width: p.label.w, ...pop(m.type === "connect" || m.type === "ring" ? 420 : 300) }}>{label}</div>
+  // (once its mark is drawn: out of the side facing it, its words typed in)
+  const after = m.type === "frame" ? FRAME_MS * 0.8 : m.type === "connect" || m.type === "ring" ? 420 : 300, t = p.ink ?? p.box!, l = p.label
+  const from = l.x >= t.x + t.w - 1 ? { o: "left center", dx: -10, dy: 0 } : l.x + l.w <= t.x + 1 ? { o: "right center", dx: 10, dy: 0 } : l.y >= t.y + t.h - 1 ? { o: "center top", dx: 0, dy: -6 } : { o: "center bottom", dx: 0, dy: 6 }
+  return (
+    <div data-mark-label={m.type} aria-label={label} className="sd-pill sd-tag absolute"
+      style={{ left: l.x, top: l.y, width: l.w, transformOrigin: from.o, "--dx": `${from.dx}px`, "--dy": `${from.dy}px`, ...pop(after) } as React.CSSProperties}>
+      <Typed text={label} delay={delay + after + 60} />
+    </div>
+  )
+}
+/** `text` typed in from `delay` (ms), quick as a glance: a long one no slower in all. */
+function Typed({ text, delay }: { text: string; delay: number }) {
+  const [n, setN] = useState(() => (delay <= 0 || still() ? text.length : 0))
+  useEffect(() => {
+    if (n >= text.length) return
+    const id = setTimeout(() => setN((k) => k + 1), n === 0 ? delay : Math.min(30, 480 / text.length))
+    return () => clearTimeout(id)
+  }, [n, text, delay])
+  // (the rest held invisible: the pill keeps its size as the words come)
+  return <><span>{text.slice(0, n)}</span><span aria-hidden className="invisible">{text.slice(n)}</span></>
 }
 
 /** Chrome a person can press: it takes the pointer while it's under it (the overlay lets it through elsewhere). */

@@ -16,19 +16,24 @@ export function clampInto(r: Rect, b: Rect): Rect {
   return { x: Math.min(Math.max(r.x, b.x), b.x + b.w - w), y: Math.min(Math.max(r.y, b.y), b.y + b.h - h), w, h }
 }
 
-/** A label of `size` by `target`: above it, else below, right, left (each on screen and clear of it and of `taken`); none
- *  fits, the one covering least, kept on screen. */
-export function labelAt(target: Rect, size: Size, bounds: Rect, taken: Rect[] = [], gap = 8): Rect {
-  const t = inflate(target, gap), { w, h } = size, cx = target.x + target.w / 2 - w / 2, cy = target.y + target.h / 2 - h / 2
-  const tries: Rect[] = [
-    { x: cx, y: t.y - h, w, h }, { x: cx, y: t.y + t.h, w, h }, { x: t.x + t.w, y: cy, w, h }, { x: t.x - w, y: cy, w, h },
-    { x: target.x, y: t.y - h, w, h }, { x: target.x + target.w - w, y: t.y - h, w, h }, { x: target.x, y: t.y + t.h, w, h }, { x: target.x + target.w - w, y: t.y + t.h, w, h },
-    { x: t.x + t.w, y: t.y - h, w, h }, { x: t.x - w, y: t.y - h, w, h }, { x: t.x + t.w, y: t.y + t.h, w, h }, { x: t.x - w, y: t.y + t.h, w, h },
+/** A label of `size` by `target`: right of it (by a tall one's top), else left, below, above, on screen and clear of it
+ *  and `taken`; none fits, the one covering least. `away`: a direction to prefer (an arrow's label, off its shaft). */
+export function labelAt(target: Rect, size: Size, bounds: Rect, taken: Rect[] = [], gap = 8, away?: Pt): Rect {
+  const t = inflate(target, gap), { w, h } = size, cx = target.x + target.w / 2 - w / 2, cy = target.y + target.h / 2 - h / 2, ry = target.h > 90 ? target.y : cy
+  let tries: Rect[] = [
+    { x: t.x + t.w, y: ry, w, h }, { x: t.x - w, y: ry, w, h }, { x: t.x + t.w, y: cy, w, h }, { x: t.x - w, y: cy, w, h },
+    { x: cx, y: t.y + t.h, w, h }, { x: cx, y: t.y - h, w, h },
+    { x: target.x, y: t.y + t.h, w, h }, { x: target.x + target.w - w, y: t.y + t.h, w, h }, { x: target.x, y: t.y - h, w, h }, { x: target.x + target.w - w, y: t.y - h, w, h },
+    { x: t.x + t.w, y: t.y + t.h, w, h }, { x: t.x - w, y: t.y + t.h, w, h }, { x: t.x + t.w, y: t.y - h, w, h }, { x: t.x - w, y: t.y - h, w, h },
   ]
   // (none fits close by: the same a little farther out)
   const far = inflate(target, gap + 26)
-  tries.push({ x: cx, y: far.y - h, w, h }, { x: cx, y: far.y + far.h, w, h }, { x: far.x + far.w, y: cy, w, h }, { x: far.x - w, y: cy, w, h },
-    { x: far.x + far.w, y: far.y - h, w, h }, { x: far.x - w, y: far.y - h, w, h }, { x: far.x + far.w, y: far.y + far.h, w, h }, { x: far.x - w, y: far.y + far.h, w, h })
+  tries.push({ x: far.x + far.w, y: cy, w, h }, { x: far.x - w, y: cy, w, h }, { x: cx, y: far.y + far.h, w, h }, { x: cx, y: far.y - h, w, h },
+    { x: far.x + far.w, y: far.y + far.h, w, h }, { x: far.x - w, y: far.y + far.h, w, h }, { x: far.x + far.w, y: far.y - h, w, h }, { x: far.x - w, y: far.y - h, w, h })
+  if (away) {
+    const c = centre(target), toward = (r: Rect) => { const d = centre(r), dx = d.x - c.x, dy = d.y - c.y; return (dx * away.x + dy * away.y) / (Math.hypot(dx, dy) || 1) }
+    tries = tries.map((r, i) => ({ r, k: Math.round(toward(r) * 4) / 4, i })).sort((a, b) => b.k - a.k || a.i - b.i).map((x) => x.r)
+  }
   const clear = (r: Rect) => inside(r, bounds) && !overlaps(r, target) && !taken.some((x) => overlaps(r, x))
   const fit = tries.find(clear)
   if (fit) return fit
@@ -165,7 +170,7 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
     // (clear of every other mark's thing and ink, the cards and the labels placed)
     const others = [...avoid.filter((x) => x !== p.box && x !== p.ink && x !== p.to), ...taken]
     if (p.curve) p.label = labelAt({ x: p.curve.mid.x - 2, y: p.curve.mid.y - 2, w: 4, h: 4 }, s, bounds, [...others, p.box, p.to!], 6)
-    else if (p.arrow) p.label = labelAt({ x: p.arrow.tail.x - 3, y: p.arrow.tail.y - 3, w: 6, h: 6 }, s, bounds, [...others, p.box], 4)
+    else if (p.arrow) p.label = labelAt({ x: p.arrow.tail.x - 3, y: p.arrow.tail.y - 3, w: 6, h: 6 }, s, bounds, [...others, p.box], 4, { x: p.arrow.tail.x - p.arrow.tip.x, y: p.arrow.tail.y - p.arrow.tip.y })
     else p.label = labelAt(p.ink!, s, bounds, others)
     taken.push(p.label)
   }

@@ -181,6 +181,37 @@ await page.evaluate(() => window.__draw(null))
 const gone = (await sample(page, 1000)).filter(Boolean)
 check("the drawing gone, it flies back beside the pointer", gone.at(-1).x === 924 && gone.at(-1).y === 320, gone.at(-1))
 
+// a frame: it flies to the area's top left, then drags its box open by the far corner, its label typed in to the right
+await page.evaluate(() => {
+  const bg = Object.assign(document.createElement("div"), { id: "fake-screen" })
+  bg.style.cssText = "position:fixed;inset:0;z-index:-1;font:600 13px system-ui;background:#1f1f22"
+  bg.innerHTML = [["Personal 11", "#a3a33a"], ["Work 5", "#6b6b70"], ["Other 4", "#d9822b"], ["Movie 2", "#5f8f7a"]].map(([t, c], i) =>
+    `<div style="position:absolute;left:300px;top:${300 + i * 30}px;padding:3px 7px;border-radius:5px;background:${c};color:#111">${t}</div>`).join("")
+  document.body.append(bg)
+})
+await page.evaluate(() => window.__draw({ id: "d2", agent: "Claude", tint: "orange", t: Date.now(), caption: "These are your tab groups.", marks: [{ type: "frame", at: { x: 296, y: 296, w: 110, h: 112 }, label: "Tab groups" }],
+  here: { width: innerWidth, height: innerHeight, origin: { x: 0, y: 0 }, home: true, top: 25 } }))
+const opening = await page.evaluate(() => new Promise((done) => {
+  const out = [], t0 = performance.now()
+  const f = () => {
+    const el = document.querySelector("[data-companion-summoned]"), m = el && /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(el.style.transform), b = document.querySelector("[data-focus]")?.getBoundingClientRect()
+    if (m && b) out.push({ x: +m[1] + 3, y: +m[2] + 2, right: b.right, bottom: b.bottom, w: b.width, op: +getComputedStyle(document.querySelector("[data-focus]")).opacity })
+    if (performance.now() - t0 < 1500) requestAnimationFrame(() => setTimeout(f, 0)); else done(out)
+  }
+  requestAnimationFrame(() => setTimeout(f, 0))
+}))
+const dragging = opening.filter((p) => p.op > 0.5 && p.w > 20 && p.w < 115), gap = dragging.map((p) => Math.hypot(p.x - p.right, p.y - p.bottom))
+check("a frame: its box opens as the pen drags its far corner, the tip on the corner frame after frame", dragging.length > 8 && Math.max(...gap) < 6, { n: dragging.length, worst: Math.max(...gap), sample: dragging.slice(0, 3) })
+const settled = opening.at(-1)
+check("…and it rests on the box's corner once open", Math.abs(settled.x - 412) < 2 && Math.abs(settled.y - 414) < 2 && settled.w === 122, settled)
+await page.waitForTimeout(400)
+const tag = await page.evaluate(() => { const l = document.querySelector("[data-mark-label]"), r = l.getBoundingClientRect(); return { text: l.textContent, x: r.x, y: r.y, h: r.height } })
+check("…its label to the right of it, by its top (a tall area: clear of the cursor at its foot), typed in whole", tag.text === "Tab groups" && tag.x >= 418 && tag.x < 440 && tag.y === 290, tag)
+await page.screenshot({ path: path.join(ROOT, "web/qa/shots/screenpilot-frame.png"), clip: { x: 240, y: 250, width: 420, height: 220 } })
+await page.evaluate(() => { window.__draw(null); document.getElementById("fake-screen")?.remove() })
+await pointer(page, 900, 300)
+await page.waitForTimeout(1000)
+
 // another display's part: off this one, this window doesn't draw it
 await pointer(page, 1500, 300)
 const away = (await sample(page, 800)).filter(Boolean).at(-1)

@@ -1,13 +1,15 @@
 // A mark's strokes as the ink draws them (Draw.tsx) and as the companion's cursor traces them, its pen (web/src/core/
 // pilot.ts): one geometry and one timing for both, so the cursor keeps to the ink's front. No DOM.
-import type { Stroke } from "../core/pilot"
+import { OPEN_EASE, type Stroke } from "../core/pilot"
 import { centre, inflate, markSpot, ringBox, type Placed, type Pt } from "./layout"
 import { bowLine, checkLines, crossLines, curveLine, headLines, type Line, ringLine, seeded } from "./ink"
 
 /** How far apart marks of one beat start (ms). */
 export const STAGGER = 170
-/** A frame's sketch takes this long. */
-export const FRAME_MS = 700
+/** A frame's box takes this long to open, dragged from its top left to its bottom right (the pen at that corner). */
+export const FRAME_MS = 640
+/** Its box's size as it starts opening (px). */
+export const FOCUS_FROM = 12
 
 const lenOf = (l: Line) => l.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - l[i - 1][0], p[1] - l[i - 1][1]) : 0), 0)
 /** How long a line's ink takes to draw. */
@@ -48,7 +50,7 @@ export function markInk(p: Placed, seed: number): { lines: Line[]; size?: number
 }
 
 /** The pen's strokes for marks placed here, each mark starting at `startOf(i)` (wall-clock ms): ink lines as drawn, a
- *  frame round its box, a step's badge tapped. Cards and spotlights have none. */
+ *  frame's box dragged open by its far corner, a step's badge tapped. Cards and spotlights have none. */
 export function penStrokes(placed: Placed[], seedOf: (i: number) => number, startOf: (i: number) => number): Stroke[] {
   const out: Stroke[] = []
   for (const p of placed) {
@@ -56,7 +58,8 @@ export function penStrokes(placed: Placed[], seedOf: (i: number) => number, star
     if (ink) { const starts = lineStarts(ink.lines); ink.lines.forEach((l, j) => out.push({ start: at + starts[j], dur: durOf(l), pts: l })); continue }
     if (p.mark.type === "frame" && p.box) {
       const r = inflate(p.box, 6)
-      out.push({ start: at, dur: FRAME_MS, pts: [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h], [r.x, r.y + 2]] })
+      // (from where the box starts, its corner a little out: .sd-focus' first size)
+      out.push({ start: at, dur: FRAME_MS, pts: [[r.x + Math.min(FOCUS_FROM, r.w), r.y + Math.min(FOCUS_FROM, r.h)], [r.x + r.w, r.y + r.h]], ease: OPEN_EASE })
     } else if (p.mark.type === "num" && p.box) {
       const r = p.box, c = r.w || r.h ? { x: r.x + 1, y: r.y + 1 } : { x: r.x, y: r.y }
       out.push({ start: at, dur: 220, pts: [[c.x - 2, c.y - 2], [c.x, c.y]] })

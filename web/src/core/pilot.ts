@@ -5,8 +5,10 @@ import { glide, type Glide, stiffness } from "./spring.ts"
 export type Pt = { x: number; y: number }
 /** What it points at: its tip goes there; a new `id` is a new one. */
 export type Aim = { id: string; x: number; y: number }
-/** A stroke of a mark as its ink reveals it: from `start` (wall-clock ms) for `dur` ms, eased as the reveal is. */
-export type Stroke = { start: number; dur: number; pts: [number, number][] }
+/** A stroke of a mark as its ink reveals it: from `start` (wall-clock ms) for `dur` ms, eased as the reveal is (`ease`:
+ *  another curve than the ink's, as a frame's box opens). */
+export type Stroke = { start: number; dur: number; pts: [number, number][]; ease?: Ease }
+export type Ease = readonly [number, number, number, number]
 /** A drawing's strokes in the order they're drawn (`id`: the drawing's). */
 export type PenScript = { id: string; strokes: Stroke[] }
 export type Mode = "follow" | "fly" | "pen" | "parked" | "back"
@@ -24,6 +26,8 @@ export const MOVE_ON = 110
 export const PEN_LEAD = 520
 /** The ink's reveal (web/src/screendraw/index.tsx .sd-pen): the pen keeps to its front. */
 export const PEN_EASE = [0.35, 0.1, 0.35, 1] as const
+/** A frame's box opening (web/src/screendraw/index.tsx .sd-focus), the pen at its far corner: quick out, a long settle. */
+export const OPEN_EASE = [0.5, 0, 0.12, 1] as const
 
 /** A CSS cubic-bezier easing, solved for x (Newton, then bisection). */
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
@@ -40,7 +44,8 @@ export function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
     return sy(t)
   }
 }
-const penEase = cubicBezier(...PEN_EASE)
+const penEase = cubicBezier(...PEN_EASE), eases = new Map<Ease, (x: number) => number>()
+const easeOf = (s: Stroke) => { if (!s.ease) return penEase; let f = eases.get(s.ease); if (!f) eases.set(s.ease, f = cubicBezier(...s.ease)); return f }
 const smooth = (k: number) => k * k * (3 - 2 * k)
 const clamp01 = (k: number) => Math.max(0, Math.min(1, k))
 const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
@@ -89,7 +94,7 @@ export function penAt(script: PenScript, t: number, from: Pt, t0: number): { p: 
   while (i < ss.length - 1 && t >= end(ss[i]) && t >= ss[i + 1].start) i++
   const s = ss[i]
   if (t < end(s)) {
-    const p = alongLine(s.pts, penEase(clamp01((t - s.start) / s.dur)))
+    const p = alongLine(s.pts, easeOf(s)(clamp01((t - s.start) / s.dur)))
     // (it came onto this one late, its front ahead: a moment to catch up rather than a jump)
     const prev = ss[i - 1], late = prev && end(prev) > s.start ? end(prev) : 0
     if (late && t - late < 70) {

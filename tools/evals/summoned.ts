@@ -89,16 +89,17 @@ try {
       // (each ask's answer as heard: its says and a drawing's words, in the turn that ask began)
       // (in the order they happened: the history and the live entries come merged, not in order)
       const entries = (await Promise.all(sessions.map(async (s) => (await call("claude-code.chat-read", { id: s, limit: 1000 })).entries as Any[]))).flat()
-        .sort((a, b) => String(a.at).localeCompare(String(b.at))), turns: { words: string[]; pointed: boolean }[] = []
+        .sort((a, b) => String(a.at).localeCompare(String(b.at))), turns: { words: string[]; pointed: boolean; tags: string[] }[] = []
       for (const e of entries) {
-        if (e.k === "user") { turns.push({ words: [], pointed: false }); continue }
+        if (e.k === "user") { turns.push({ words: [], pointed: false, tags: [] }); continue }
         // (its words, spoken as written: their tags point and draw)
-        if (e.k === "text" && turns.length) { const p = parseTags(String(e.text ?? "")); if (p.said) turns.at(-1)!.words.push(p.said); if (p.tags.length) turns.at(-1)!.pointed = true; continue }
+        if (e.k === "text" && turns.length) { const p = parseTags(String(e.text ?? "")); if (p.said) turns.at(-1)!.words.push(p.said); if (p.tags.length) { turns.at(-1)!.pointed = true; turns.at(-1)!.tags.push(...p.tags.map((t) => `${t.kind}${t.label ? ` "${t.label}"` : ""}`)) } continue }
         const input = (typeof e.input === "string" ? JSON.parse(e.input) : e.input) as Any, turn = turns.at(-1)
         if (!turn || e.k !== "tool" || !input) continue
         if (/__say$/.test(e.name) && input.text) turn.words.push(String(input.text))
         if (/__draw$/.test(e.name) && input.say) turn.words.push(String(input.say))
         if (/__(say|look|draw)$/.test(e.name) && (input.ax || input.sx !== undefined || input.marks)) turn.pointed = true
+        if (/__draw$/.test(e.name) && Array.isArray(input.marks)) turn.tags.push(...input.marks.map((m: Any) => `${m.type}${m.label ? ` "${m.label}"` : ""}`))
       }
       if (process.env.DEBUG) console.log(JSON.stringify({ sessions, n: entries.length, turns: turns.map((t) => t.words.length), kinds: entries.map((e) => `${e.k}${e.name ? `:${String(e.name).split("__").pop()}` : ""}@${String(e.at).slice(11, 23)}`) }))
       const heard = turns.slice(-ASKS.length)
@@ -106,7 +107,7 @@ try {
       const sc = spokenScore(heard.map((t) => t.words.join(" ")))
       out.push(`${model}: as speech, ${sc.clean}/${sc.of} clean, ${sc.short}/${sc.of} in 30 words or fewer; words median ${sc.words.median}, mean ${sc.words.mean}, most ${sc.words.most}; pointed in ${heard.filter((t) => t.pointed).length}/${sc.of}`,
         `${model}: faults ${Object.entries(sc.tally).sort((a, b) => b[1] - a[1]).map(([f, k]) => `${f} ${k}`).join(", ") || "none"}`)
-      heard.forEach((t, i) => out.push(`  ${(ASKS[i].id ?? String(i + 1)).padEnd(16)} ${sc.rows[i].faults.length ? `[${sc.rows[i].faults.join(", ")}]` : "[clean]"} ${t.words.join(" ").replace(/\s+/g, " ")}`))
+      heard.forEach((t, i) => out.push(`  ${(ASKS[i].id ?? String(i + 1)).padEnd(16)} ${sc.rows[i].faults.length ? `[${sc.rows[i].faults.join(", ")}]` : "[clean]"} ${t.tags.length ? `{${t.tags.join(", ")}} ` : ""}${t.words.join(" ").replace(/\s+/g, " ")}`))
       console.log(out.slice(from).join("\n"))
     }
     if (process.env.DEBUG) console.log(((await call("claude-code.chat-read", { id: await quick(), limit: 40 })).entries as Any[]).map((e) => `${e.k}${e.name ? `:${e.name}` : ""}${e.at ? ` ${e.at}` : ""} ${JSON.stringify(e.input ?? "").slice(0, 200)}`).join("\n"))

@@ -46,7 +46,7 @@ export const PAPER = { w: 360, h: 240 }
 
 /** The vocabulary in a few lines, for the op's help and the docs. */
 export const VOCABULARY = `Spots: {"el": "<id>"} (an element of the ask: snaps to its frame; the best), {"find": "<words>"} (the thing on the screen saying them), {"pane": "<id>"} or {"ui": "tab:<id>"} in the app; [x, y, w, h] or [x, y] in screen points only for what has none (a bare point snaps to what they drew round it, else to the element there).
-On the screen: point, ring, frame (an area, faint tint), underline, strike, check, cross, spotlight {at, label?}; num {at, n}; scroll {at, dir}; connect {from, to, label?}.
+On the screen: point, ring, frame (a thing or an area boxed, the whole of it: what it is), underline, strike, check, cross, spotlight {at, label?}; num {at, n}; scroll {at, dir}; connect {from, to, label?}.
 On calm space (at optional): write {text, size: s|m|l}; paper {w, h, title?, grid?, items}: its items in its own units (0,0 its top left): line|arrow {from: [x,y], to}, rect|ellipse {x,y,w,h,label?}, path {points}, text {x,y,text}, chart {kind: bar|line, x,y,w,h, values, labels?}; sticky {text, title?}; list {items, title?, numbered?}.
 Actions: copy {text}, open {url}, button {label, do: {copy}|{open}|{ask: "<follow-up>"}}.
 Every mark may say beat: the sentence of your words (0 the first) it appears with.`
