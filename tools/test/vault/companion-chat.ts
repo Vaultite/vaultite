@@ -322,6 +322,8 @@ export default async ($: VaultTest) => {
       check("summoned: started with the companion, a session of its own on its model, up with no turn (its short prompt needs none)", !!quick && quick !== longId &&
         !(await said(quick!)).some((e) => e.k === "user") && /haiku/.test(listed.find((s) => s.id === quick)?.model ?? "") &&
         !/haiku/.test(listed.find((s) => s.id === longId)?.model ?? ""), listed)
+      check("summoned: it never waits on a permission check while they talk (dontAsk: what it may run is listed, the rest refused at once)",
+        listed.find((s) => s.id === quick)?.mode === "dontAsk" && listed.find((s) => s.id === longId)?.mode !== "dontAsk", listed.map((s) => [s.id === quick ? "quick" : "long", s.mode]))
       const shot = path.join($.tmp, "screens", "display-1-1.png")
       fs.mkdirSync(path.dirname(shot), { recursive: true })
       fs.writeFileSync(shot, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"))

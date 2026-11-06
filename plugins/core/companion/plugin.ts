@@ -1597,6 +1597,8 @@ plugin.onEvent({ types: ["terminal.agent-missing"] }, (ev) => {
 export type ChatTool = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; run: (args: unknown, use?: string) => Promise<unknown>
   streams?: boolean; ends?: boolean; stream?: (use: string, json: string, end?: "done" | "stop") => void }
 export type ChatHow = { cwd?: string; account?: string; model?: string; effort?: string; append?: string; title?: string; by?: string; inbox?: boolean; allowed?: string[]; denied?: string[]; tools?: ChatTool[]
+  /** Its permission mode (Claude Code's): the summoned session's is dontAsk, what isn't allowed refused at once. */
+  mode?: "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
   /** Pictures sent with its message (an ask's screenshot); `quick`: no thinking first. */
   images?: string[]; quick?: boolean
   /** A lean session's whole system prompt and the few Claude Code tools it has; its words as written (`onText`). */
@@ -1679,6 +1681,9 @@ const SUMMONED_TOOLS = ["draw", "see", "act", "follow", "clear", "handoff"]
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
 const SUMMONED_BUILTINS = ["Bash"]
+/** What it runs, never asked (dontAsk: anything else is refused at once, never a check that keeps them waiting
+ *  while they talk): the long session's commands, and showing things in their window. */
+const SUMMONED_ALLOWED = [...ALLOWED, "Bash(vau --help)", "Bash(vau open:*)", "Bash(vau commands:*)", "Bash(vau command companion:session:*)", "Bash(vau screen:*)"]
 /** An ask's window text it's given at most (chars), the lines by what's at their pointer first: the rest is in its
  *  picture, and every ask's text stays in its history. */
 const SCREEN_CHARS = 4000
@@ -1693,7 +1698,7 @@ const lane = (): Lane => {
     file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel,
     // (low effort: its thinking, which can't be turned off, took 1 to 2 s of each answer at the account's high)
     options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, effort: "low", quick: true, system: SUMMONED_PROMPT,
-      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, allowed: [...ALLOWED, "Bash(vau command companion:session)"], denied: ["Bash(vau companion:*)"],
+      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, mode: "dontAsk", allowed: SUMMONED_ALLOWED, denied: ["Bash(vau companion:*)"],
       tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
     acts: () => { const [say, look, draw] = toolsFor(ownName(), SUMMONED_ACTS, () => lane().busy()); return { say, look, draw } },
     caption: (name, text) => screenDrawing.recaption(name, text),

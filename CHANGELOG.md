@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
+- **The Talk key's companion never waits on a permission check**: it runs its few safe commands (reading the vault,
+  opening things in your window, showing its own session) without asking, and anything else is refused at once, so it
+  tells you in a few words that it needs your OK instead of going quiet for seconds.
 - **Dictation knows Vaultite's words**: the recognizer (Soniox or this Mac's) is told to expect Vaultite, vau, Claude,
   Codex, the companion's names and your newest notes' names, so "Vaultite" no longer comes out as "Voltite". The Talk
   key's press log says which recognizer heard each press, and why when it wasn't Soniox.
