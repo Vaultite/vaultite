@@ -23,10 +23,15 @@ export default async ($: VaultTest) => {
   check("live: a file written on disk is heard", await wait(() => touched("Notes/Live one.md")), heard)
   check("live: and indexed before the event goes out", vault.entries.has("Notes/Live one.md"))
   heard.length = 0
+  const began = Date.now()
   for (let i = 0; i < 20; i++) write(`Notes/Burst ${i}.md`, `burst ${i}\n`)
+  const writing = Date.now() - began
   await wait(() => touched("Notes/Burst 19.md"))
   await new Promise((r) => setTimeout(r, 300))
-  check("live: a burst of writes is one or two events", heard.length >= 1 && heard.length <= 2, heard.length)
+  // (a change goes out at most 100 ms after the last: a burst slower to write (Windows CI) is one more event each
+  // 100 ms; a late echo of the write before isn't the burst's)
+  const burst = heard.filter((c) => c.paths === null || c.paths.some((p: string) => p.startsWith("Notes/Burst "))).length
+  check("live: a burst of writes is one or two events", burst >= 1 && burst <= 2 + Math.floor(writing / 100), { burst, writing })
   heard.length = 0
   fs.renameSync(path.join(VAULT, "Notes/Live one.md"), path.join(VAULT, "Notes/Live two.md"))
   check("live: a rename is heard as both names", await wait(() => touched("Notes/Live one.md") && touched("Notes/Live two.md")), heard)
