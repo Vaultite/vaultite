@@ -3118,8 +3118,8 @@ await section("your passwords", async () => {
   let file = new Uint8Array(await db.save())
 
   let main = await kp.loadKdbx(file, MAIN)
-  const shares = ed.sharesOf(main, "/made/up/Main.kdbx")
-  check("your passwords: KeePassXC's KeeShare export is found, its path against the file's folder", shares.length === 1 && shares[0].path === "/made/up/agents.kdbx" && shares[0].password === SHARE && shares[0].keepGroups, shares.map((s) => s.path))
+  const shares = ed.sharesOf(main, path.resolve("/made/up/Main.kdbx"))
+  check("your passwords: KeePassXC's KeeShare export is found, its path against the file's folder", shares.length === 1 && shares[0].path === path.resolve("/made/up/agents.kdbx") && shares[0].password === SHARE && shares[0].keepGroups, shares.map((s) => s.path))
   const agentsId = shares[0].group, projects = ed.listOf(main, "/f").groups.find((g) => g.name === "Projects")!.id
   const id = ed.applyChange(main, { group: agentsId, title: "Lighthouse", username: "alice", password: "pw-1", urls: ["https://lighthouse.example.com", "https://auth.lighthouse.example.com"], tags: ["agent-free"], notes: "n" })
   const inSub = ed.applyChange(main, { group: projects, title: "Harbor", username: "bob", password: "pw-h", urls: ["harbor.example.org"], tags: [], notes: "" })
