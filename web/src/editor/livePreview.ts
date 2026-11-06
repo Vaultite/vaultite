@@ -479,8 +479,9 @@ class Block extends WidgetType {
     // there, a timeline's Add; a table's cells are edited in place, so its </> is how its Markdown shows)
     el.append(body, ...(this.view || this.key === "table" ? [bar.el] : []))
     // At the height it had last time while it comes in (a block's data, a picture), so the text below stays put.
-    holds.set(el, holdHeight(el, this.held, true))
+    holds.set(el, holdHeight(el, () => this.heldNow, true))
     drawn.set(el, this.draw(body, this.text, view, bar.edit))
+    if (this.draw === drawHtml) keepFolds(body, this.held)
     painted.set(el, this)
     el.addEventListener("mousedown", (e) => { if (pressed(view, el, e) && !this.view) bar.edit.source!() })
     // (a link's press followed it: its click mustn't again, nor go to its address)
@@ -504,8 +505,10 @@ class Block extends WidgetType {
   }
   destroy(el: HTMLElement) { drawn.get(el)?.destroy(); drawn.delete(el); holds.get(el)?.(); holds.delete(el) }
   ignoreEvent() { return true }
+  /** Its height's key as it'll draw now: a callout or <details> is as tall as its folds are open, so each way is kept. */
+  get heldNow() { return this.draw === drawHtml ? `${this.held}:${folds.get(this.held)?.map((o) => (o ? 1 : 0)).join("") ?? "as-written"}` : this.held }
   /** Off screen, the editor places it at the height it had last time (a guess for one never drawn). */
-  get estimatedHeight() { return heightOf(this.held) ?? (this.guess ? heightOf(this.guess) : undefined) ?? 120 }
+  get estimatedHeight() { return heightOf(this.heldNow) ?? (this.guess ? heightOf(this.guess) : undefined) ?? 120 }
 }
 type Draw = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) => Drawn
 
@@ -788,6 +791,20 @@ class Foot extends WidgetType {
 
 const drawn = new WeakMap<HTMLElement, Drawn>()
 const holds = new WeakMap<HTMLElement, () => void>()
+/** Which <details> of a drawn block (by its Block.held) are open, as last toggled: scrolled off and back, or the note
+ *  opened again, a section opened stays open (and its kept height is that of the open one). */
+const folds = new Map<string, boolean[]>()
+function keepFolds(body: HTMLElement, key: string) {
+  const all = () => [...body.querySelectorAll("details")]
+  const kept = folds.get(key)
+  if (kept) all().forEach((d, i) => { if (i < kept.length) d.open = kept[i] })
+  // (toggle doesn't bubble: heard on the way down)
+  body.addEventListener("toggle", () => {
+    folds.delete(key)
+    folds.set(key, all().map((d) => d.open))
+    while (folds.size > 500) folds.delete(folds.keys().next().value!)
+  }, true)
+}
 /** What each block's element shows now (its text and version). */
 const painted = new WeakMap<HTMLElement, Block>()
 

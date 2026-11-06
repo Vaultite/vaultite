@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A foldable callout opened stays open, with no empty gap**: scrolled away and back, or its note left and opened
+  again, a section you opened is still open, and one shut is drawn at its shut height instead of held at its open one
+  for a few seconds, so the page no longer jumps under you.
 - **The Companion page's plan limits put its accounts first**: the Claude Code accounts its chat and its jobs run in,
   as its settings say now, come first, tinted and labelled Companion chat and Jobs, the others after them
   (`block-agent-limits` with `for: companion`).

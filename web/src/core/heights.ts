@@ -104,8 +104,9 @@ function batched(read: () => number, write: (n: number) => void) {
 }
 
 /** Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then
- *  remember its height as it changes (`shrinks`: see Held). Returns a stop. */
-export function holdHeight(el: HTMLElement, key: string, anyWidth = false, shrinks = false): () => void {
+ *  remember its height as it changes (`shrinks`: see Held; a function `key`: read at each, a height per fold). */
+export function holdHeight(el: HTMLElement, key: string | (() => string), anyWidth = false, shrinks = false): () => void {
+  const at = typeof key === "string" ? () => key : key, first = at()
   let stopped = false
   let note: ReturnType<typeof setTimeout> | null = null
   let h: Held | null = null
@@ -115,7 +116,7 @@ export function holdHeight(el: HTMLElement, key: string, anyWidth = false, shrin
     note = null
     // (a hidden tab measures nothing: not a height to come back to; a block that draws nothing is 0 tall, and is one)
     if (h || !size || size.w <= 0 || !el.isConnected || busy(el)) return
-    remember(key, size.w, size.h)
+    remember(at(), size.w, size.h)
   }
   const hold = (held: number | undefined) => {
     if (stopped || held === undefined) return
@@ -127,23 +128,23 @@ export function holdHeight(el: HTMLElement, key: string, anyWidth = false, shrin
     const changes = new MutationObserver((rs) => { if (h && rs.some((r) => r.target !== el)) h.changed = true })
     changes.observe(el, { childList: true, subtree: true, characterData: true, attributes: true })
     h = {
-      el, key, held, since: now, changed: true, shrinks,
+      el, key: first, held, since: now, changed: true, shrinks,
       // (its new size comes to the ResizeObserver, which remembers it)
       release: (why, natural) => {
         if (!h) return
-        trace("heights", { key, held, why, natural: natural === undefined ? undefined : Math.round(natural), after: Math.round(performance.now() - h.since) })
+        trace("heights", { key: first, held, why, natural: natural === undefined ? undefined : Math.round(natural), after: Math.round(performance.now() - h.since) })
         holding.delete(h)
         h = null
         changes.disconnect()
         el.style.height = el.style.overflow = ""
       },
     }
-    trace("heights", { key, held, why: "hold" })
+    trace("heights", { key: first, held, why: "hold" })
     holding.add(h)
     ticking ??= setInterval(tick, 150)
   }
-  if (anyWidth) hold(heightOf(key))
-  else batched(() => el.getBoundingClientRect().width, (w) => hold(heightOf(key, w)))
+  if (anyWidth) hold(heightOf(first))
+  else batched(() => el.getBoundingClientRect().width, (w) => hold(heightOf(first, w)))
   const sizes = new ResizeObserver((entries) => {
     const e = entries[entries.length - 1]
     const box = e.borderBoxSize?.[0]
@@ -153,10 +154,15 @@ export function holdHeight(el: HTMLElement, key: string, anyWidth = false, shrin
     note = setTimeout(record, 300)
   })
   sizes.observe(el)
+  // (a fold the user opens or shuts inside: what it holds now is its height, not what came in last time; a click,
+  // the keyboard's too, since a fold opened by code also says toggle)
+  const toggled = (e: Event) => { if ((e.target as Element).closest?.("summary")) h?.release("toggle") }
+  el.addEventListener("click", toggled, true)
   return () => {
     stopped = true
     h?.release("gone")
     sizes.disconnect()
+    el.removeEventListener("click", toggled, true)
     if (note) { clearTimeout(note); record() }
   }
 }
