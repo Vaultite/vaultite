@@ -17,6 +17,8 @@ export type Follow = { id: string; agent: string; pane?: string; tab?: string; g
 export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away" | "listening"; t: number; seen?: boolean
   /** Why it let what it saw pass, in its few words (by the seen tick). */
   why?: string
+  /** When it last pointed at its place (look, highlight, a say given one): a phone shows it there a moment. */
+  pointed?: number
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
 /** What a session runs: its coding agent (claude, codex, claude_work), model and effort ("": its own). */
 export type How = { agent: string; model: string; effort: string }
@@ -72,8 +74,23 @@ const showAgents = () => set({ agents: told.map((a) => {
 }) })
 function heard(agents: Agent[], name?: string) {
   told = agents
+  for (const [k, x] of askedHere) {
+    if (!askedFromHere(k)) continue
+    const a = agents.find((y) => y.name === k)
+    if (a && a.state !== "watching" && a.state !== "away") Object.assign(x, { taken: true, idle: 0 })
+    else if (x.taken) x.idle ||= Date.now()
+  }
   for (const [k, x] of ahead) if (name === undefined || k === name) { clearTimeout(x.timer); ahead.delete(k) }
   showAgents()
+}
+/** The agents at work on an ask sent from this window (a phone shows only those thinking), until they're done with it. */
+const askedHere = new Map<string, { at: number; taken: boolean; idle: number }>()
+/** Whether agent `name` is on an ask from here: over once it's been idle a moment since taking it up (between two of
+ *  its moments it's idle for less), or when it never took it up. */
+export function askedFromHere(name: string) {
+  const x = askedHere.get(name)
+  if (x && ((x.idle && Date.now() - x.idle > 1500) || (!x.taken && Date.now() - x.at > 15_000))) askedHere.delete(name)
+  return askedHere.has(name)
 }
 /** Show agent `name` as `a` now, before the server says so (for `ms` at most). */
 function expect(name: string, a: Partial<Agent>, ms: number) {
@@ -264,6 +281,7 @@ export function sendMoment(m: { kind: "ask" | "point" | "edit" | "change"; agent
   if (share) return true // (no agent works for a guest)
   if (!say({ t: "moment", ...m })) return false
   const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
+  if (a) askedHere.set(a.name, { at: Date.now(), taken: false, idle: 0 })
   if (a && a.state !== "away" && a.state !== "starting") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : m.pane || m.ui ? { path: undefined, line: undefined, find: undefined, pane: m.pane, ui: m.ui, row: m.row } : {}) }, 10_000)
   return true
 }

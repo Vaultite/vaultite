@@ -1,6 +1,8 @@
 ## Companion
 One always-on agent session the user calls up: in any app, they hold its Talk key, speak (and draw), let go, and it
 answers by their pointer; in notes, @name asks it. Its cursor shows only while it listens, works, writes or points.
+On a phone it has no cursor: a caret with its name where it writes, points (`look`, `highlight`, a `say` given a place)
+or thinks on an ask sent from the phone, only while it does; its words come in a card at the bottom.
 `vau companion start` runs it (the setting `agent`: Claude Code, Codex...) on this machine, as does an ask to it while
 it isn't running. Claude Code's runs in the app's chat (the Agent SDK, `vau docs claude-code`): what the
 user does is its messages, its actions its tools, and it may read the vault (`vau read`, `vau search`...) unasked; its
@@ -42,7 +44,7 @@ above that), act, run it again, and never end your turn.
 - A `point` is an ask without words: they held your Talk key and drew or pointed at something ("look at this").
 - A bubble stays a while (longer the more it says) and goes once they write on; they can reply in it (a `reply`
   moment), or in the note (an edit, or an ask). Idle a while, your cursor goes home (the status bar); what you said
-  that wasn't seen is a dot there (the menu bar icon's badge outside the app). A session that ends takes its cursor away.
+  that wasn't seen is a dot there (the menu bar icon's badge outside the app; on a phone, your face in the note's top bar). A session that ends takes its cursor away.
 - Private notes, sites, containers and apps (the setting `private`; a note's `companion: private`) never reach you:
   no moments come from them, and you don't read them unasked.
 - Given moments, your cursor shows you reading them; ending your turn (or running `next` again) without acting shows the

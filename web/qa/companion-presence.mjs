@@ -1,4 +1,5 @@
-// Companion, its cursor's states: each shows by itself, unhovered and long after it began, on a desktop and a phone:
+// Companion, its cursor's states: each shows by itself, unhovered and long after it began, on a desktop (a phone has no
+// cursor: companion-phone.mjs):
 // reading and thinking its dots (thinking bobs), starting its dots and word, writing its name, a question its word,
 // listening a wave, words waiting for the user's pause its dots, idle it goes home; a bubble never shows without words.
 // On a Mac, dictation end to end in the app (its helper's events played): it listens where they speak, what it says
@@ -39,16 +40,16 @@ const cursorOf = (page) => page.evaluate(() => {
 /** Its flag shows, on screen, with `sign` (null: none), without the pointer on it. */
 const shows = (c, sign) => !!c && !c.docked && c.cursor > 0.9 && c.flag > 0.9 && c.onScreen && c.sign === sign && (sign === null || c.signShown)
 
-// ---------- a browser, a desktop's window and a phone's: the server's states as an agent's ops make them, then each
+// ---------- a desktop's window: the server's states as an agent's ops make them, then each
 // state played to the window's socket (as the server would say it)
 
 await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
-for (const phone of [false, true]) {
-  const L = phone ? "phone" : "desktop", NOTE = `QA presence/${L}.md`
+{
+  const L = "desktop", NOTE = `QA presence/${L}.md`
   await api("PUT", "file", { path: NOTE, text: "# Garden\n\nTomatoes along the fence.\n\nBasil between them.\n" })
   await op("companion.next", { timeout: 0 }) // (what came before: and it's around, so an ask wakes no session)
   await op("companion.clear")
-  const ctx = await browser.newContext(phone ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: 1300, height: 850 } })
+  const ctx = await browser.newContext({ viewport: { width: 1300, height: 850 } })
   await ctx.addInitScript(() => {
     const W = window.WebSocket
     window.WebSocket = class extends W {
@@ -62,10 +63,8 @@ for (const phone of [false, true]) {
   await editor.waitFor({ timeout: 15000 })
   await until(() => page.evaluate(() => window.__companion?.readyState === 1), 10000)
   await wait(1000)
-  const away = () => (phone ? Promise.resolve() : page.mouse.move(2, 2))
-  // (a finger taps: no pointer rests on anything; a phone opens a note to read, Edit to write)
-  const at = (text) => editor.locator(".cm-line", { hasText: text })[phone ? "tap" : "click"]({ position: { x: 2, y: 4 } })
-  if (phone) await page.getByRole("button", { name: "Edit", exact: true }).tap()
+  const away = () => page.mouse.move(2, 2)
+  const at = (text) => editor.locator(".cm-line", { hasText: text }).click({ position: { x: 2, y: 4 } })
   await op("companion.look", { path: NOTE, find: "Basil" })
   await until(async () => (await cursorOf(page))?.onScreen, 5000)
 

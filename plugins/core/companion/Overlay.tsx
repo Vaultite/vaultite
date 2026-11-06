@@ -1,5 +1,5 @@
 // The agents over the whole app: each one's cursor gliding to where its attention is (docked in its arrow in the status
-// bar when it's nowhere, Status in index.tsx), its words in a bubble by it (on a drawing, only those: canvas.ts), its comments in the note's margin.
+// bar when it's nowhere, Status in index.tsx), its words in a bubble by it (on a drawing: canvas.ts; a phone: Phone.tsx), its comments in the margin.
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
@@ -14,6 +14,7 @@ import { presence, STATUS } from "./look"
 import { agentMenu } from "./session"
 import { changeAt, nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
+import { PhoneLayer, usePhone } from "./Phone"
 
 /** What the user wrote to an agent couldn't go (no connection): it stays where they wrote it, and this says so. */
 export const unsent = () => { notify("Couldn't send it: not connected to the server. Try again in a moment", { kind: "error", id: "companion-unsent" }) }
@@ -42,7 +43,7 @@ export const cut = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}â
 const DRAFT = "draft"
 
 /** A target's position in its editor, or null when the text is gone. */
-function posIn(v: EditorView, t: { line?: number; find?: string }) {
+export function posIn(v: EditorView, t: { line?: number; find?: string }) {
   const doc = v.state.doc
   if (t.find) { const i = nearest(doc.toString(), t.find, t.line); if (i >= 0) return i }
   return t.line ? doc.line(Math.max(1, Math.min(t.line, doc.lines))).from : null
@@ -65,7 +66,7 @@ const proposes = (n: Note) => ((n.changes ?? []).some((c) => !c.intent) ? "propo
 
 /** Where on screen `pos` of `v` is, kept inside its scroller (a cursor at an edge says "up there"); `side` -1: at a
  *  wrapped line's break, the end of the row before. */
-function coords(v: EditorView, pos: number, side: -1 | 1 = 1) {
+export function coords(v: EditorView, pos: number, side: -1 | 1 = 1) {
   const r = (v.dom.closest("[data-pane]") ?? v.scrollDOM).getBoundingClientRect()
   // (what of it shows: above the status bar or a phone's bar, drawn over its foot)
   const bars = [...document.querySelectorAll("[data-status-bar], [data-phone-bar]")].map((el) => el.getBoundingClientRect()).filter((b) => b.height && b.left < r.right && b.right > r.left)
@@ -210,7 +211,7 @@ export function Arrow({ tint, size = 20, className, ...rest }: { tint?: string; 
 }
 
 // (CodeMirror's own scrolling, through the view's class: no CodeMirror in this chunk)
-const scroller = (v: EditorView, pos: number) => v.dispatch({ effects: (v.constructor as typeof EditorView).scrollIntoView(pos, { y: "center" }) })
+export const scroller = (v: EditorView, pos: number) => v.dispatch({ effects: (v.constructor as typeof EditorView).scrollIntoView(pos, { y: "center" }) })
 /** Go where an agent is (its flag, its face in the status bar): its note opened, scrolled to its line. */
 export function follow(a: Target & { name: string }) {
   if (!a.path && a.pane) return void selectTab(a.pane)
@@ -229,7 +230,7 @@ export function follow(a: Target & { name: string }) {
 }
 
 /** Approve or Deny what its session asks: a chat session's in the chat (`chat:<id>`), a terminal's through its inbox event. */
-const answerAsk = (event: string, v: "approve" | "deny") => (event.startsWith("chat:")
+export const answerAsk = (event: string, v: "approve" | "deny") => (event.startsWith("chat:")
   ? op("claude-code.chat-answer", { id: event.slice(5), allow: v === "approve" }) : op("inbox.answer", { id: event, answer: v }))
 
 /** A note's line at x, y (the word there, or the selection when it's on one); null off a note's text. */
@@ -267,7 +268,7 @@ const placeSay = (id: string) => op("companion.place", { id }).catch((e) => noti
 const ICON = "grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground [@media(pointer:coarse)]:size-9"
 
 /** A bubble's or a past say's buttons: Put in note, Pin as a comment (once each). */
-function SayActions({ n, small }: { n: Note; small?: boolean }) {
+export function SayActions({ n, small }: { n: Note; small?: boolean }) {
   const icon = small ? "size-3" : "size-3.5"
   return <>
     {n.placed ? <TextCursorInput className={cn(icon, "m-1.5 shrink-0 text-muted-foreground")} aria-label="In the note" />
@@ -279,7 +280,9 @@ function SayActions({ n, small }: { n: Note; small?: boolean }) {
 
 /** Its last words (each can be put in the note or pinned into a comment) above a box to ask it something, there. Opened
  *  by a Talk key: about what was under the pointer, sent as its dictation stops, and open for the answer. */
-function Popover({ a, close, menu }: { a: Agent; close: () => void; menu: (e: React.MouseEvent) => void }) {
+export function Popover({ a, close, menu, phone }: { a: Agent; close: () => void; menu: (e: React.MouseEvent) => void
+  /** A phone's: a card across the bottom, its box not taking the keyboard till tapped. */
+  phone?: boolean }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [draft, setDraft] = useState("")
   const mine = s.said.filter((n) => n.agent === a.name)
@@ -316,7 +319,8 @@ function Popover({ a, close, menu }: { a: Agent; close: () => void; menu: (e: Re
   return (
     <Chat name={a.name} tint={tintOf(a.name)} how={howText(a)} items={mine} draft={draft} setDraft={setDraft} send={send} close={close} more={(e) => { close(); menu(e) }}
       words={(n) => <Markdown text={n.text ?? ""} className="companion-md" />} time={(t) => fmtTime(new Date(t).toISOString())} actions={(n) => <SayActions n={n as Note} />}
-      busy={a.state === "thinking" || a.state === "reading"} focus={!coarse.matches} className="pointer-events-auto absolute top-0 left-0" />
+      busy={a.state === "thinking" || a.state === "reading"} focus={!phone && !coarse.matches} phone={phone} className={phone ? "pointer-events-auto" : "pointer-events-auto absolute top-0 left-0"}
+      style={phone ? { width: "100%", maxWidth: "none" } : undefined} />
   )
 }
 
@@ -333,7 +337,7 @@ function talkPlace(at: ReturnType<typeof noteAt> | PanePlace | null) {
 const CORNER = "data-[side=right]:data-up:rounded-bl-[4px] data-[side=left]:data-up:rounded-br-[4px] data-[side=right]:not-data-up:rounded-tl-[4px] data-[side=left]:not-data-up:rounded-tr-[4px]"
 
 /** How long a bubble takes to read (ms): shown this long with the window in front, it's seen. */
-const readMs = (text: string) => 1500 + text.split(/\s+/).length * 220
+export const readMs = (text: string) => 1500 + text.split(/\s+/).length * 220
 
 /** Its words by its cursor: a click (a tap) opens a box to reply in, Enter sends it; a question shows its box from the
  *  start. Put in note, Pin and Close by it; held still (past its time) while the pointer or the focus is in it. */
@@ -436,7 +440,7 @@ const shallow = (x: unknown, y: unknown) => !!x && !!y && typeof x === "object" 
 const sameProps = <P extends object>(a: P, b: P) => Object.entries(b).every(([k, v]) => typeof v === "function" || Object.is((a as Record<string, unknown>)[k], v) || shallow((a as Record<string, unknown>)[k], v))
 
 /** A flag's mark (look.ts): dots working, a wave listening, a tick for a moment let pass (`at`: when, to play it anew). */
-function Mark({ mark, label, at }: { mark: ReturnType<typeof presence>["mark"]; label?: string; at?: number }) {
+export function Mark({ mark, label, at }: { mark: ReturnType<typeof presence>["mark"]; label?: string; at?: number }) {
   if (mark === "dots") return <span className="companion-dots" data-companion-sign="dots" aria-label={label} aria-hidden={!label || undefined}><i /><i /><i /></span>
   if (mark === "wave") return <span className="companion-wave" data-companion-sign="wave" aria-label={label} aria-hidden={!label || undefined}><i /><i /><i /></span>
   if (mark === "tick") return <Check key={at} data-companion-sign="tick" className="companion-seen size-3" strokeWidth={3} aria-label="seen" />
@@ -878,9 +882,11 @@ export function Overlay() {
   const [, redraw] = useReducer((x: number) => x + 1, 0)
   const [popped, setPopped] = useState<string | null>(null)
   popOpen = setPopped
+  // (a phone: no cursor, but a caret where it works and a card by the thumb, Phone.tsx)
+  const phone = usePhone()
   talkHere = (x, y) => {
     const name = getState().name
-    if (!drawn.current.has(name)) return false
+    if (phone || !drawn.current.has(name)) return false
     const note = noteAt(x, y)
     hold(name, true, { x, y }, note ?? undefined)
     talked = { agent: name, at: note ?? paneAt(x, y), send: false }
@@ -1083,7 +1089,9 @@ export function Overlay() {
         </div>
       ))}
       {!off && notes.filter((n) => n.kind === "highlight" && !n.path && (n.pane || n.ui)).map((n) => <PaneMark key={n.id} n={n} />)}
-      {cursors.map(({ a, spot, said, waiting, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} waiting={waiting} others={others} under={under} shift={shift}
+      {phone && <PhoneLayer agents={off ? [] : s.agents} popped={popped} setPopped={setPopped}
+        sayOf={(a) => { const mine = says(a); return { said: mine.findLast((n) => !heldBack(n)) ?? null, waiting: mine.some(heldBack) } }} />}
+      {!phone && cursors.map(({ a, spot, said, waiting, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} waiting={waiting} others={others} under={under} shift={shift}
         dot={unread(a.name).some((n) => n.id !== said?.id)}
         age={Date.now() - a.t < 3000 ? 0 : Date.now() - a.t <= 4000 ? 1 : Date.now() - a.t <= 8000 ? 2 : 3} typed={typing?.agent === a.name}
         open={popped === a.name} setOpen={(o) => setPopped((was) => (o ? a.name : was === a.name ? null : was))} pop={setPopped} hold={(on, at, text) => hold(a.name, on, at, text)} />)}

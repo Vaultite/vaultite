@@ -17,6 +17,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A video playing on in a background tab keeps its speaker**: when one of a page's videos paused while another went on
   sounding (YouTube's next video or an ad, a preview beside it), its tab lost its speaker and the card for hidden tabs
   never showed; now both come back within seconds.
+- **The companion on a phone is a co-editor, not a cursor**: no arrow follows you around. While it writes, points at a
+  line (lit a moment) or thinks on what you asked from the phone, a thin caret in its colour with its name shows where,
+  then fades; past the screen's edge, a chip says "Claude is writing" and scrolls there. Its words come in a card at
+  the bottom, by your thumb, with a box to reply; swipe it down to close. Its face in the note's top bar opens what it
+  said, with a dot for what you haven't seen.
 - **A phone's screenshot pasted into a terminal reaches the agent**: a HEIC photo, as iPhones paste them, is given to
   the shell as a JPEG beside it, the same size (the original kept), so Claude Code and Codex can read it.
 - **Terminals kept and drawn by Ghostty's engine**: the terminal server and the pages keep each terminal's screen and

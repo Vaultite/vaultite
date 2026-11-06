@@ -82,6 +82,8 @@ type Ink = { shape: string; box: Rect; points: [number, number][] }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass (why: its words on it);
  *  starting: its session boots (asks wait for its first `next`); runs (claude, codex), model, effort; asks: a permission. */
 export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean; why?: string
+  /** When it last pointed at its place (look, highlight, a say given one): a phone, with no cursor, shows it a moment. */
+  pointed?: number
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
 /** Where a page's element is in its page (CSS px, at its zoom), for the window to draw at: the engine's answer for `el`. */
 export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
@@ -2143,7 +2145,7 @@ plugin.op({
   run: async (p) => {
     const name = who(p), t = await resolve(target(p, true), name)
     did(name, "look")
-    setAgent(name, { ...t, state: acting(name) })
+    setAgent(name, { ...t, state: acting(name), pointed: Date.now() })
     return t
   },
   text: (r) => `Looking at ${placeText(r, paneById(r.pane)?.title)}.`,
@@ -2173,7 +2175,7 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
     did(name, "say")
     const given = ROOTS.some((k) => p[k] !== undefined) || p.line !== undefined || p.find || p.x !== undefined
     const t = given ? await resolve(target(p, true), name) : {}
-    setAgent(name, { ...t, state: acting(name) })
+    setAgent(name, { ...t, state: acting(name), ...(given ? { pointed: Date.now() } : {}) })
     // (shown as it was written: its bubble, with its words and place as the call has them)
     const use = toolUse.getStore(), shown = use ? streams.get(use)?.note : undefined, was = shown ? notes.get(shown) : undefined
     // (its bubble closed as it was written: it stays closed, its words in its history)
@@ -2625,7 +2627,7 @@ plugin.op({
     if (!t.path && p.keep) throw new OpError("keep is for notes")
     did(name, "highlight")
     if (p.keep) notOnDrawing(t, "keep is for notes; its highlight is your selection there for a while")
-    const a = setAgent(name, { ...t, state: acting(name) })
+    const a = setAgent(name, { ...t, state: acting(name), pointed: Date.now() })
     if (!p.keep) return putNote({ kind: "highlight", agent: name, ...t }, HIGHLIGHT_MS)
     await applyEdit(ctx, a, { path: t.path!, find: t.find, line: t.line, text: `==${EMOJI[a.tint] ?? ""}${t.find}==` }, false)
     return { path: t.path, kept: true }

@@ -2,8 +2,9 @@
 // right-click is its menu). Atop the Conversations panel too.
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
 import { cn, type FileHead, menuBelow, menuFor, type MenuItem } from "@vaultite"
-import { type Agent, getState, goToPerson, liveAgents, subscribe } from "./live"
-import { follow } from "./Overlay"
+import { type Agent, getState, goToPerson, liveAgents, subscribe, unread } from "./live"
+import { follow, showSaid } from "./Overlay"
+import { usePhone } from "./Phone"
 import { STATUS } from "./look"
 import { agentMenu } from "./session"
 
@@ -44,6 +45,8 @@ function useFit(on?: boolean) {
 export function Faces({ path, big, fit, more }: { path: string; big?: boolean; fit?: boolean; more?: () => MenuItem[] }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [ref, room] = useFit(fit)
+  // (a phone has no cursor to click: its face opens what it said and a box to ask it, with what's unread as a dot)
+  const phone = usePhone()
   const people = s.people[path] ?? []
   if (s.mode === "off" && !people.length) return null
   const agents = s.mode === "off" ? [] : liveAgents().sort((a, b) => Number(b.path === path) - Number(a.path === path))
@@ -62,13 +65,14 @@ export function Faces({ path, big, fit, more }: { path: string; big?: boolean; f
         </button>
       ))}
       {shown.map((a, i) => (
-        <button key={a.name} type="button" aria-label={`Go to ${a.name}`} data-tip={where(a)} data-agent={a.name} data-state={a.state} onClick={() => follow(a)}
+        <button key={a.name} type="button" aria-label={`Go to ${a.name}`} data-tip={where(a)} data-agent={a.name} data-state={a.state} onClick={() => (phone ? showSaid(a.name) : follow(a))}
           onContextMenu={menuFor(() => [...agentMenu(a), ...(more?.() ?? []).map((x, i) => (i ? x : { ...x, sep: true }))])}
           className={cn("relative grid cursor-pointer place-items-center rounded-full hover:z-10", size, (i > 0 || people.length > 0) && overlap)}>
           <span className={cn("relative grid place-items-center rounded-full font-bold text-white ring-2 ring-background transition-transform hover:scale-110", big ? "size-6 text-[12px]" : "size-[20px] text-[10.5px]",
             a.path !== path && "opacity-60")} style={{ background: `var(--${a.tint})` }}>
             {a.name.charAt(0).toUpperCase()}
             {a.state !== "watching" && <span aria-hidden className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-white ring-2 ring-background" style={{ background: `var(--${a.tint})` }} />}
+            {phone && unread(a.name).some((n) => !s.notes.some((x) => x.id === n.id)) && <span data-companion-unread aria-label="Unread" className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-foreground ring-2 ring-background" />}
           </span>
         </button>
       ))}
