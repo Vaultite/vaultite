@@ -50,7 +50,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   wears the companion's colour as a ring instead of a dot, and it and the border fade in and out.
 - **The companion's cursor no longer turns up at a stale spot in the window**: back from answering in another app, or
   its place gone from view, with no status bar to rest in it fades out instead of showing its words where it was minutes
-  ago, and a pane not shown is pointed at by its tab. Its words and cursor draw over a web page they reach.
+  ago, and a pane not shown is pointed at by its tab. Its words and cursor draw over a web page they reach. A Talk key's
+  answer, once said by your pointer, no longer shows again by the status bar, and its cursor comes back by your note
+  only while that note is on screen, else home, instead of flying to a corner of the window.
 
 ## 0.10.0 (2026-11-06)
 

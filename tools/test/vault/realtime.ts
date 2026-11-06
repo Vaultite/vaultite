@@ -263,7 +263,7 @@ export default async ($: VaultTest) => {
     ws.emit("message", JSON.stringify({ t: "answered", agent: "Claude", heard: "how are you", said: "I'm good, thanks!" }))
     const said = ws.got.filter((m: Any) => m.t === "said").at(-1)?.said ?? []
     check("realtime: what it answered alone is kept as their ask and its say (their box), never said again by the pipeline's voice", said.some((n: Any) => n.kind === "ask" && n.text === "how are you") &&
-      said.some((n: Any) => n.kind === "say" && n.text === "I'm good, thanks!" && !n.answers), said)
+      said.some((n: Any) => n.kind === "say" && n.text === "I'm good, thanks!" && n.answers?.realtime), said)
     // (its realtime voice paused, as the helper tells: in companion status, with why)
     ws.emit("message", JSON.stringify({ t: "realtime", paused: { account: "quota", why: "You have no credits remaining.", until: Date.now() + 600_000 } }))
     const st = await vau("companion", "status")

@@ -261,8 +261,9 @@ type Agent = { name: string; tint: string; state: string; t?: number; seen?: boo
   frame?: Rect
   runs?: string; model?: string; effort?: string }
 type Note = { id: string; kind: string; agent: string; t: number; text?: string; question?: boolean; dismissed?: number; seen?: boolean
-  /** A say answering a Talk key's ask (on screen or in the app): when it was asked, whether it was said, its language. */
-  answers?: { t: number; voice?: boolean; lang?: string } }
+  /** A say answering a Talk key's ask (on screen or in the app): when it was asked, whether it was said, its language;
+   *  `realtime`: the realtime voice's own words, said already. */
+  answers?: { t: number; voice?: boolean; lang?: string; realtime?: boolean } }
 /** The companion's socket, as the helper (?screen=1): the agents and their bubbles, and what the user asks on screen. */
 const live = (() => {
   let ws: WebSocket | null = null, port: number | null = null, wait = 1000, timer: ReturnType<typeof setTimeout> | null = null
@@ -1236,7 +1237,7 @@ let speakingNow: Scene["speaking"] = null
  *  by voice); its last words when the next say begins, or after a pause. */
 function voiceHeard(n: Note) {
   const a = n.answers, mode = prefs.voice.mode
-  if (n.kind !== "say" || !a || !n.text || n.dismissed || a.t < hushed || (voiced && a.t < voiced.asked)) return
+  if (n.kind !== "say" || !a || a.realtime || !n.text || n.dismissed || a.t < hushed || (voiced && a.t < voiced.asked)) return
   if (!voiced || voiced.asked !== a.t) {
     // (a newer ask's answer: the last one stops, said or not; the realtime voice's few words before it go on)
     const after = !!fronted && !fronted.begun && a.t >= (lastAsk?.up ?? Infinity)

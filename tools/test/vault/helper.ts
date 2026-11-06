@@ -412,6 +412,36 @@ export default async ($: VaultTest) => {
     c.comeBack(name)
     const [, homeSt] = await api("POST", "ops/companion.status", {})
     check("companion: done there, its cursor leaves the screen", !(homeSt as { agents?: { sx?: number; app?: string }[] }).agents?.some((a) => a.sx !== undefined || a.app), homeSt)
+    {
+      // (back in the window: by their note only while it's on screen; one in a tab behind sent it to a file's row, far off)
+      const { EventEmitter } = await import("node:events")
+      type Got = { t: string; id?: string; agent?: string; note?: { id: string }; said?: { text?: string }[] }
+      const live = c.plugin.sockets.find((x: { pattern: string[] }) => x.pattern.join("/") === "companion/live")!
+      const sock = (screen: boolean) => {
+        const got: Got[] = []
+        const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got, close() {}, ping() {}, terminate() {}, send(t: string) { got.push(JSON.parse(t)) } })
+        live.fn(ws as never, { headers: {}, socket: { remoteAddress: "127.0.0.1" } } as never, { query: screen ? { screen: "1" } : {}, wild: [] })
+        return ws
+      }
+      const win = sock(false), where = (shown: string[]) => win.emit("message", Buffer.from(JSON.stringify({ t: "where", open: ["Notes/A.md"], shown, focus: { path: "Notes/A.md", line: 3 }, active: true })))
+      const placed = async () => ((await api("POST", "ops/companion.status", {}))[1] as { agents: { name: string; path?: string }[] }).agents.find((a) => a.name === name)
+      where([]); c.comeBack(name)
+      const behind = await placed()
+      where(["Notes/A.md"]); c.comeBack(name)
+      const shown = await placed()
+      check("companion: back from the screen, by their note when it's shown, else home (never a tab behind's file row)", !!behind && !behind.path && shown?.path === "Notes/A.md", [behind, shown])
+      // (an exchange's answers were said by the pointer or in its box: once it's over, no window shows them again)
+      const helper = sock(true)
+      helper.emit("message", JSON.stringify({ t: "riding", agent: name }))
+      helper.emit("message", JSON.stringify({ t: "answered", agent: name, heard: "how are you", said: "I'm good." }))
+      const answer = win.got.filter((m) => m.t === "note").at(-1)?.note
+      helper.emit("message", JSON.stringify({ t: "riding", agent: "" }))
+      const dropped = win.got.findIndex((m) => m.t === "drop" && m.id === answer?.id), over = win.got.findIndex((m) => m.t === "riding" && m.agent === "")
+      const kept = win.got.filter((m) => m.t === "said").at(-1)?.said ?? []
+      check("companion: its exchange over, its answers there leave the windows before its cursor shows there, kept in its history",
+        !!answer && dropped >= 0 && dropped < over && kept.some((n) => n.text === "I'm good."), { answer, got: win.got.slice(-4) })
+      helper.emit("close"); win.emit("close")
+    }
     check("companion: in quiet no edit reaches it, nor does the helper send one (it follows nothing on screen)", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
       c.screenMoment({ kind: "edit", app: "com.apple.Terminal", window: 42, hunks: [{ line: 3, removed: [], added: ["ok"] }] }) === null)
     await api("PATCH", "config/plugin/companion", { mode: null })

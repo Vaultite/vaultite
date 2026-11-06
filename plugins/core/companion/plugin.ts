@@ -121,8 +121,8 @@ export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "sug
   /** The text it was on is gone: shown by its last line, found again if the text comes back. */
   orphaned?: boolean
   /** A say answering a Talk key's ask: when that ask came, whether it was said (`voice`) and in what language, for the
-   *  desktop app to say it aloud. */
-  answers?: { t: number; voice?: true; lang?: string } }
+   *  desktop app to say it aloud (`realtime`: said already, the realtime voice's own). Its exchange's: gone with it. */
+  answers?: { t: number; voice?: true; lang?: string; realtime?: true } }
 /** A word in a thread: the user's, an agent's, or a guest's (`name`: the guest's, or the agent's in a person's thread); when
  *  (older ones have none). */
 export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
@@ -881,10 +881,11 @@ function screenPlace(m: Record<string, unknown>) {
 }
 /** What the last ask on screen found near the pointer, by agent: what `--ax` points at. */
 const nearBy = new Map<string, Near[]>()
-/** Its cursor off the screen, done there (the helper's: its exchange over, idle a while): back to the user's note. */
+/** Its cursor off the screen, done there (the helper's: its exchange over, idle a while): back to the user's note while
+ *  it's on screen, else home (one in a tab behind would send it to a file's row or a list's edge, far from them). */
 export function comeBack(name: string) {
   if (!agents.has(key(name))) return
-  const f = focus()
+  const w = [...windows.values()].sort((a, b) => b.at - a.at).find((x) => x.focus), f = w?.focus?.path && w.shown.includes(w.focus.path) ? w.focus : null
   setAgent(name, { ...Object.fromEntries(PLACE_KEYS.map((k) => [k, undefined])), ...(f?.path ? { path: f.path, line: f.line } : {}) })
 }
 /** What the user did on screen, as the helper says it: an ask, or a point (no words). Over Vaultite's own window, it
@@ -933,7 +934,7 @@ function screenAnswered(m: Record<string, unknown>) {
     for (const n of [...notes.values()].filter(theirs)) dropNote(n.id)
     if (said.some(theirs)) { said = said.filter((n) => !theirs(n)); broadcast({ t: "said", said }) }
   } else if (heard) keepSaid({ id: `ask-rt-${t}`, kind: "ask", by: "user", agent: name, text: heard, t, seen: true })
-  keepSaid(putNote({ kind: "say", agent: name, text: words, seen: true }, sayMs(words)))
+  keepSaid(putNote({ kind: "say", agent: name, text: words, seen: true, answers: { t, realtime: true } }, sayMs(words)))
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
@@ -980,7 +981,11 @@ const riding = () => [...ridingBy.values()].find(Boolean) ?? ""
 function ride(ws: WebSocket, agent: string) {
   const was = riding()
   if (agent) ridingBy.set(ws, agent); else ridingBy.delete(ws)
-  if (riding() !== was) broadcast({ t: "riding", agent: riding() })
+  if (riding() === was) return
+  // (its exchange over: what it answered there was said by the pointer or in its box, never a bubble after, where its
+  // cursor goes next; a late answer still comes as one)
+  if (was) for (const n of [...notes.values()]) if (n.kind === "say" && n.answers && key(n.agent) === key(was)) dropNote(n.id)
+  broadcast({ t: "riding", agent: riding() })
 }
 
 /** What the user pressed on the drawing over the screen: Clear, Keep, a button's next step (an ask by where it is). */
