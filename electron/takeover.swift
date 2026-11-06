@@ -129,8 +129,14 @@ func describe(_ el: AXUIElement) -> [String: Any] {
   if let w: AXUIElement = attr(el, kAXWindowAttribute) { m["window"] = wid(w) ?? 0; m["title"] = attr(w, kAXTitleAttribute) as String? ?? "" }
   // (in a web page: its fields don't hear a value set from outside, so words are typed there)
   var up: AXUIElement? = el, web = false
-  for _ in 0..<40 { guard let u = up else { break }; if (attr(u, kAXRoleAttribute) as String?) == "AXWebArea" { web = true; break }; up = attr(u, kAXParentAttribute) }
+  for _ in 0..<40 {
+    guard let u = up else { break }
+    if (attr(u, kAXRoleAttribute) as String?) == "AXWebArea" { web = true; if let url: URL = attr(u, kAXURLAttribute) { m["url"] = url.absoluteString }; break }
+    up = attr(u, kAXParentAttribute)
+  }
   m["web"] = web
+  // (the page or document its window shows: a private site is never acted on)
+  if m["url"] == nil, let w: AXUIElement = attr(el, kAXWindowAttribute), let doc: String = attr(w, kAXDocumentAttribute) { m["url"] = doc }
   return m
 }
 
@@ -253,6 +259,13 @@ func scroll(_ p: CGPoint, _ dy: Int32, _ dx: Int32) {
   for _ in 0..<4 { post(CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2, wheel1: dy / 4, wheel2: dx / 4, wheel3: 0)); pause(16) }
 }
 func point(_ req: [String: Any]) -> CGPoint { CGPoint(x: req["x"] as? Double ?? 0, y: req["y"] as? Double ?? 0) }
+/** Why the keys can't go where they'd land now (a password field, Vaultite's own window), checked at each step. */
+func keysRefused() -> String? {
+  guard let el = target(["focused": true]) else { return nil }
+  return secure(el) ? "secure" : pidOf(el) == vaultitePid ? "vaultite" : nil
+}
+/** Why the pointer can't act at `p`: Vaultite's own window there. */
+func pointRefused(_ p: CGPoint) -> String? { windowUnder(p)?.pid == vaultitePid ? "vaultite" : nil }
 
 // ---------- requests
 
@@ -297,17 +310,23 @@ func handle(_ req: [String: Any]) -> [String: Any] {
     }
   case "click":
     if halted() { return ["ok": false, "why": "user"] }
+    if let no = pointRefused(point(req)) { return ["ok": false, "why": no] }
     click(point(req), req["count"] as? Int ?? 1, req["right"] as? Bool ?? false)
     return ["ok": !halted(), "how": "point"]
-  case "hover": moveTo(point(req)); return ["ok": true, "how": "point"]
+  case "hover":
+    if let no = pointRefused(point(req)) { return ["ok": false, "why": no] }
+    moveTo(point(req)); return ["ok": true, "how": "point"]
   case "scroll":
+    if let no = pointRefused(point(req)) { return ["ok": false, "why": no] }
     scroll(point(req), Int32(req["dy"] as? Double ?? 0), Int32(req["dx"] as? Double ?? 0))
     return ["ok": !halted(), "how": "point"]
   case "key":
     if halted() { return ["ok": false, "why": "user"] }
+    if let no = keysRefused() { return ["ok": false, "why": no] }
     return key(req["key"] as? String ?? "") ? ["ok": true, "how": "key"] : ["ok": false, "why": "key"]
   case "type":
     if halted() { return ["ok": false, "why": "user"] }
+    if let no = keysRefused() { return ["ok": false, "why": no] }
     return type(req["text"] as? String ?? "") ? ["ok": true, "how": "key"] : ["ok": false, "why": "user"]
   default: return ["error": "unknown op"]
   }

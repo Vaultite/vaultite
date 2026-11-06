@@ -6,7 +6,9 @@ import fs from "node:fs"
 import path from "node:path"
 import { HEX } from "../plugins/core/companion/screenmarks.ts"
 import { buildTakeover, takeoverHelperName } from "./takeover-build.ts"
-import { type Call, outward, plan, type Probe, type Rect, refusal, spotOf, type Step } from "./takeoverlogic.ts"
+import { privateApp } from "../core/privateapps.ts"
+import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
+import { type Call, keepsYes, outward, plan, type Probe, type Rect, refusal, spotOf, type Step } from "./takeoverlogic.ts"
 
 type Point = { x: number; y: number }
 type Near = { id: string; role: string; label: string; frame: Rect }
@@ -110,7 +112,15 @@ let answer: ((yes: boolean) => void) | null = null
 /** Offer `line` by `at` (their yes: a click on Do it, or said); false on No, Esc, the exchange ending, or no answer. */
 function offer(line: string, name: string, tint: string, at: Point, sent: () => void): Promise<boolean> {
   answered(false)
-  if (QUIET) { sent(); return new Promise((done) => { answer = done }) }
+  if (!QUIET) show(line, name, tint, at)
+  sent()
+  return new Promise((done) => {
+    const late = setTimeout(() => { if (answer === settle) answered(false) }, OFFER_MS)
+    const settle = (yes: boolean) => { clearTimeout(late); done(yes) }
+    answer = settle
+  })
+}
+function show(line: string, name: string, tint: string, at: Point) {
   const W = 340, H = 118, d = screen.getDisplayNearestPoint(at).workArea
   const x = Math.round(Math.min(Math.max(at.x + 18, d.x + 8), d.x + d.width - W - 8)), y = Math.round(Math.min(Math.max(at.y + 18, d.y + 8), d.y + d.height - H - 8))
   const w = floating({ x, y, width: W, height: H }, true)
@@ -119,12 +129,6 @@ function offer(line: string, name: string, tint: string, at: Point, sent: () => 
   void w.loadURL(page(`<style>:root { --tint: ${tintOf(tint)} }</style><div class="card"><div class="line"><span class="dot"></span>${esc(line)}</div>
 <div class="sub">${esc(name)} will use your mouse and keys while you watch. Move the mouse or press Esc to stop.</div>
 <div class="row"><a href="takeover:no">Not now</a><a class="yes" href="takeover:yes">Do it</a></div></div>`)).then(() => { if (card === w) w.showInactive() }, () => {})
-  sent()
-  return new Promise((done) => {
-    const late = setTimeout(() => { if (answer === settle) answered(false) }, OFFER_MS)
-    const settle = (yes: boolean) => { clearTimeout(late); done(yes) }
-    answer = settle
-  })
 }
 function answered(yes: boolean) {
   const a = answer
@@ -154,10 +158,11 @@ let consent: { agent: string; at: number } | null = null
 let drive: { name: string; pointer: Point | null; moved: boolean; idle: ReturnType<typeof setTimeout> | null; stopped?: string } | null = null
 let queue: Promise<void> = Promise.resolve()
 
-/** They took it back (moved the mouse, a key, Esc), or the exchange ended: it stops at once, their yes with it. */
+/** Driving ends: its steps done (their yes kept for the next), or they took it back (moved the mouse, a key, Esc), the
+ *  exchange ended or another drives (it stops at once, their yes with it). */
 function stop(why: string) {
   answered(false)
-  consent = null
+  if (!keepsYes(why)) consent = null
   const d = drive
   if (!d) return
   d.stopped = why
@@ -202,13 +207,15 @@ function idle() {
 const pointerNow = (): Promise<Point> => ask<{ x?: number; y?: number }>({ op: "pointer" }).then((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 }))
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
-type Ask = { id: string; agent: string; tint: string; step: Step; ask?: string }
+type Ask = { id: string; agent: string; tint: string; step: Step; ask?: string; apps: string[]; sites: string[] }
 async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>> {
   const { step } = m
   const probeAt: Call = step.el ? { op: "probe", frame: step.el.frame, role: step.el.role ?? "", label: step.el.label ?? "" }
     : step.at ? { op: "probe", frame: { ...step.at, width: 1, height: 1 }, role: "", label: "" } : { op: "probe", focused: true }
+  // (private: the screen plugin's apps, and the companion's own apps and sites, the server's)
+  const hidden = (a: { bundle: string; name: string; url?: string }) => host.isPrivate(a) || privateApp(a, m.apps) || (!!a.url && siteIn(hostOf(a.url), m.sites))
   const there = await ask<Probe>(probeAt)
-  const no = refusal(step, there, host.isPrivate)
+  const no = refusal(step, there, hidden)
   if (no) return { ok: false, why: "refused", text: no }
   const spot: Point = spotOf(step, there) ?? await pointerNow()
   // (the field with the keys: its cursor flies there too, as to an element)
@@ -228,8 +235,12 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
   // (its cursor flies there first, so every step is seen)
   await wait(FLY_MS)
   if (d.stopped) return took(d.stopped)
+  // (the offer may have waited: what's there now is checked again, and a send that wasn't offered isn't done)
+  const now = await ask<Probe>(probeAt)
+  const changed = refusal(step, now, hidden) ?? (outward(step, now) && !out ? "it changed into a send, post or delete since you offered: offer it again" : null)
+  if (changed) { idle(); return { ok: false, why: "refused", text: changed } }
   let did: Record<string, unknown> | null = null, why = ""
-  for (const attempt of plan(step, there)) {
+  for (const attempt of plan(step, now)) {
     let ok = true
     for (const call of attempt) {
       if (["click", "hover", "scroll"].includes(call.op)) d.moved = true
@@ -241,13 +252,13 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
     if (ok) { did ??= { how: "none" }; break }
     did = null
   }
-  if (!did) { idle(); return { ok: false, why: "failed", text: why === "secure" ? "that's a password field: the companion never types secrets" : `it didn't work there (${why || "no way to"}): point at it again, or tell them how` } }
+  if (!did) { idle(); return { ok: false, why: "failed", text: why === "secure" ? "that's a password field: the companion never types secrets" : why === "vaultite" ? "that's Vaultite's own window: act there with --ui or --pane" : `it didn't work there (${why || "no way to"}): point at it again, or tell them how` } }
   idle()
   // (what's there now, by fresh ids: the next step points at those)
   await wait(350)
   const near = await host.near(spot).catch(() => [])
-  const now = await ask<Probe>({ op: "probe", focused: true }).catch(() => null)
-  return { ok: true, how: did.how, ...(near.length ? { near } : {}), ...(now?.ok && !host.isPrivate({ bundle: now.bundle ?? "", name: now.name ?? "" }) ? { app: now.name, title: now.title } : {}) }
+  const after = await ask<Probe>({ op: "probe", focused: true }).catch(() => null)
+  return { ok: true, how: did.how, ...(near.length ? { near } : {}), ...(after?.ok && !hidden({ bundle: after.bundle ?? "", name: after.name ?? "", url: after.url }) ? { app: after.name, title: after.title } : {}) }
 }
 const took = (why: string) => ({ ok: false, why: "stopped", text: why.startsWith("user") ? `they took over (${why === "user-mouse" ? "moved the mouse" : "pressed a key"}): stop, and don't act again unless they ask` : "the exchange ended: stop" })
 
@@ -255,6 +266,7 @@ const took = (why: string) => ({ ok: false, why: "stopped", text: why.startsWith
 export function takeoverHeard(m: Record<string, unknown>, host: TakeoverHost) {
   if (m.t === "takeover-answer") return void (answer && answered(m.yes === true))
   if (m.t !== "takeover" || typeof m.id !== "string" || !m.step || typeof m.step !== "object") return
-  const req = { id: m.id, agent: String(m.agent ?? ""), tint: String(m.tint ?? "orange"), step: m.step as Step, ...(typeof m.ask === "string" ? { ask: m.ask } : {}) }
+  const list = (x: unknown) => (Array.isArray(x) ? x.map(String) : [])
+  const req = { id: m.id, agent: String(m.agent ?? ""), tint: String(m.tint ?? "orange"), step: m.step as Step, ...(typeof m.ask === "string" ? { ask: m.ask } : {}), apps: list(m.apps), sites: list(m.sites) }
   queue = queue.then(() => run(req, host).catch((e: Error) => ({ ok: false, why: "failed", text: e.message })).then((r) => host.reply({ t: "takeover-done", id: req.id, ...r })))
 }

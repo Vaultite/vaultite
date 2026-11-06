@@ -23,6 +23,13 @@ export default async ($: VaultTest) => {
     L.outward({ action: "click", el: { ...el, label: "Send" } }, mail) === `Press "Send" in Mail?` && L.outward({ action: "click", el }, mail) === null &&
     L.outward({ action: "press", key: "Enter" }, { ...mail, bundle: "com.apple.MobileSMS", name: "Messages" }) === "Send it in Messages?" &&
     L.outward({ action: "press", key: "Enter" }, { ...mail, bundle: "com.apple.TextEdit" }) === null)
+  check("takeover: Return in any field or page, a new line typed, cmd+Delete and a wordless button in a page are asked each time",
+    L.outward({ action: "press", key: "Return" }, { ...mail, bundle: "com.google.Chrome", name: "Chrome", role: "AXGroup", web: true }) === "Send it in Chrome?" &&
+    L.outward({ action: "press", key: "Enter" }, { ...mail, role: "AXTextArea" }) === "Send it in Mail?" &&
+    L.outward({ action: "type", value: "hi\nthere" }, mail) === "Type it and send it in Mail?" && L.outward({ action: "type", value: "hi there" }, mail) === null &&
+    L.outward({ action: "press", key: "cmd+Backspace" }, mail) === "Delete it in Mail?" && L.outward({ action: "press", key: "Backspace" }, mail) === null &&
+    L.outward({ action: "click", el: { ...el, label: "" } }, { ...mail, label: "", bundle: "com.apple.Safari", name: "Safari" }) === "Press that button in Safari?" &&
+    L.outward({ action: "click", el: { ...el, label: "" } }, { ...mail, label: "", bundle: "com.apple.calculator" }) === null)
   const ops = (plan: Any[][]) => plan.map((a) => a.map((c: Any) => c.op).join("+")).join(" | ")
   check("takeover: a click presses its element (Accessibility) before the pointer; a point is only clicked",
     ops(L.plan({ action: "click", el }, mail)) === "press | click" && ops(L.plan({ action: "click", at: { x: 5, y: 6 } }, mail)) === "click" &&
@@ -34,8 +41,15 @@ export default async ($: VaultTest) => {
   check("takeover: a box already as asked isn't pressed again",
     ops(L.plan({ action: "check", el }, { ...mail, checked: true })) === "" && ops(L.plan({ action: "uncheck", el }, { ...mail, checked: true })) === "press | click")
   check("takeover: a spoken yes or no answers an offer; anything longer is an ask",
-    T.answerOf("Yes, please!") === true && T.answerOf("sure") === true && T.answerOf("go ahead") === true && T.answerOf("No, not now") === false &&
+    T.answerOf("Yes, please!") === true && T.answerOf("sure") === true && T.answerOf("okay, go ahead") === true && T.answerOf("No, not now") === false &&
     T.answerOf("don't") === false && T.answerOf("what does this button do?") === null && T.answerOf("") === null)
+  check("takeover: a no anywhere is a no, and a yes is only yes words",
+    T.answerOf("please stop") === false && T.answerOf("okay wait") === false && T.answerOf("sure, not that one") === false &&
+    T.answerOf("yes but the other button") === null && T.answerOf("yes do it") === true)
+  check("takeover: a private site (the page its window shows) is refused like a private app",
+    /private/.test(L.refusal({ action: "click", el }, { ...mail, url: "https://diary.example.com/today" }, (a) => /diary\.example\.com/.test(a.url ?? "")) ?? ""))
+  check("takeover: their yes outlasts a step's end, not their taking over or the exchange ending",
+    L.keepsYes("done") && !L.keepsYes("user-mouse") && !L.keepsYes("user-esc") && !L.keepsYes("ended") && !L.keepsYes("another") && !L.keepsYes("quit"))
 
   // ---------- act on the screen, through a stand-in helper
   const c = await import("../../../plugins/core/companion/plugin.ts")
@@ -57,7 +71,7 @@ export default async ($: VaultTest) => {
   let [st, r] = await api("POST", "ops/companion.act", { action: "click", ax: "a1", ask: "Want me to save it?" })
   const s1 = steps().at(-1), me = (await api("POST", "ops/companion.status", {}))[1].agents.find((a: Any) => a.name === "Claude")
   check("takeover: act --ax sends the helper the element's step and its offer, its cursor flown there first",
-    st === 200 && s1?.step.action === "click" && s1.step.el.label === "Save" && s1.step.el.frame.width === 80 && s1.ask === "Want me to save it?" && s1.agent === "Claude" && me?.sx !== undefined, [st, r, s1, me])
+    st === 200 && s1?.step.action === "click" && s1.step.el.label === "Save" && s1.step.el.frame.width === 80 && s1.ask === "Want me to save it?" && s1.agent === "Claude" && Array.isArray(s1.apps) && Array.isArray(s1.sites) && me?.sx !== undefined, [st, r, s1, me])
   check("takeover: it answers how it went and what's there now, by fresh ids", /^Done \(through Accessibility\)\. Now in Mail, "Draft"\.\nNear it now/.test(r.text) && /a1 menu item "Save as"/.test(r.text), r)
   ;[st, r] = await api("POST", "ops/companion.act", { action: "click", ax: "a2" })
   check("takeover: the next step points by the last step's ids", st === 404 && /no element a2/.test(r.error), [st, r])
