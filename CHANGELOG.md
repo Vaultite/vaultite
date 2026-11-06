@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A window left open across an update no longer breaks on a plugin updated meanwhile**: a vault plugin written for a
+  newer plugin API waits instead of drawing names the window lacks (Next actions failed to draw with Dataview's new Do
+  it), and the window reloads once into the new build when nothing would be lost.
 - **The companion tells you a job's news aloud**: when one needs you, is ready for review, done or failed, its voice says
   so in a line while you're at the Mac (you held its Talk key in the last 15 minutes) and not in a focus block; else the
   menu bar's notification waits for you. Off with the setting Say a job's news.

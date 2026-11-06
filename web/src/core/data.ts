@@ -77,6 +77,8 @@ export type VaultPluginInfo = {
   settings?: SettingDecls
   /** Its bundle's version, when it's on and built (else null). */
   bundle: string | null
+  /** The plugin API it was written for (its manifest's), checked against this window's own. */
+  apiVersion?: number | null
   pages: { name: string; text: string }[]
 } & VaultMeta
 import type { Update } from "../../../core/updates.ts"

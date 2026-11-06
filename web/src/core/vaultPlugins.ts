@@ -12,6 +12,8 @@ import { pluginIcon } from "@/core/pages"
 import { openDetail } from "@/core/nav"
 import { notify } from "@/core/notify"
 import { noteAppError } from "@/core/errors"
+import { safeToReload } from "@/core/unsaved"
+import { API_VERSION } from "../../../core/version.ts"
 
 // The modules the app's plugins export (their manifests' `exports`), for vault plugins that require them
 // (@plugins/logs/sections): loaded when asked.
@@ -110,6 +112,18 @@ async function importBundle(info: VaultPluginInfo, version: string) {
   }
 }
 
+/** Whether plugin `info` needs a newer plugin API than this window was built with (`api`): the server took it, so this
+ *  window is older than its server (open since before an update) and its code would find names missing in "@vaultite". */
+export const tooNew = (info: Pick<VaultPluginInfo, "apiVersion">, api = API_VERSION) => typeof info.apiVersion === "number" && info.apiVersion > api
+/** Each API a window reloaded itself for, this session: once, never a loop. */
+const RELOADED = "vaultite.reloadedForApi"
+/** This window older than a plugin it's handed: it reloads into the server's build once nothing would be lost. */
+function reloadForApi(v: number) {
+  try { if (sessionStorage.getItem(RELOADED) === String(v)) return; sessionStorage.setItem(RELOADED, String(v)) } catch { return }
+  const go = () => { if (safeToReload()) location.reload(); else setTimeout(go, 5000) }
+  go()
+}
+
 /** The vault plugins in this state: bundles that are new since last time are imported, then the list is replaced. */
 export async function loadVaultPlugins(state: State) {
   const list = state.vaultPlugins ?? []
@@ -117,6 +131,12 @@ export async function loadVaultPlugins(state: State) {
   for (const info of list) if (info.bundle) versions.set(info.id, info.bundle)
   await Promise.all(list.map(async (info) => {
     if (!info.bundle) return void loaded.delete(info.id)
+    // (its code would draw "@vaultite" names this window lacks: React's "element type is undefined" on every page with it)
+    if (tooNew(info)) {
+      reloadForApi(info.apiVersion!)
+      return void loaded.set(info.id, { version: info.bundle, def: null, at: Date.now(),
+        error: `written for plugin API ${info.apiVersion}, newer than this window's (${API_VERSION}): it loads once the app reloads` })
+    }
     const hit = loaded.get(info.id)
     if (hit?.version === info.bundle && hit.error && Date.now() - (hit.at ?? 0) < RETRY) return
     if (hit?.version !== info.bundle || hit.error) loaded.set(info.id, await importBundle(info, info.bundle))
