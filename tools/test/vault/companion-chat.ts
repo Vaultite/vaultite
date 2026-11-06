@@ -358,6 +358,14 @@ export default async ($: VaultTest) => {
       await idle(quick!)
       check("summoned: words it wrote that didn't stream (a keeper of older code) are said by its cursor at its turn's end",
         !!(await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === "Read it (1 asks, 1 images)"), 3000, 50)))
+      const down = path.join($.tmp, "screens", "display-1-2.png")
+      fs.copyFileSync(shot, down)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "what's this?", app: "com.example.mail", window: 9, sx: 500, sy: 480, shot, shotDown: down, shotDownAt: { x: 0, y: 0, width: 1600, height: 1000 },
+        notices: '"Claude isn\'t running" (4 s ago)' })
+      const both = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Read it \(1 asks, 2 images/.test(e.text))?.text, 15_000, 50)
+      const withDown = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
+      check("summoned: the screen changed as they spoke, the key-down's picture comes too (a toast gone by the let-go), and Vaultite's toasts in words",
+        both === "Read it (1 asks, 2 images)" && /as the key went down, attached before it/.test(withDown) && !withDown.includes(down) && /toasts of the last minute.*Claude isn't running/.test(withDown), [both, withDown.slice(0, 600)])
       const sent = (await api("POST", "ops/claude-code.chat-read", { id: quick, limit: 100 }))[1].entries.filter((e: Any) => e.k === "text").map((e: Any) => e.text)
       c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "list", summoned: true })
       const qtools = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Tools:/.test(e.text))?.text, 15_000, 50)

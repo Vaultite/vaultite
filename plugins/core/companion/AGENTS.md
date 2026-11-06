@@ -102,7 +102,8 @@ above that), act, run it again, and never end your turn.
   about what's under their pointer, in any app or in Vaultite, where you always come over the screen at their pointer, one cursor (the ask says what's there in the app too: a note's line, a pane's row, the app's UI, which you may point at with `--pane`, `--ui` or a path; their words never go into the pane). Held,
   they speak and may draw by moving the pointer, which leaves a fading trail (`they drew`: a ring or an underline made in its last seconds, in screen points; the way the pointer went isn't one); let go, the ask comes with the
   window there (`app`, `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), the display's
-  picture (read the PNG: a pixel a point from `shotAt`) and what Accessibility found near it, by id. Point there by id,
+  picture (read the PNG: a pixel a point from `shotAt`; when the screen changed as they spoke, `shotDown` too, as the key
+  went down: a toast since gone; over Vaultite, its toasts of the last minute, `notices`) and what Accessibility found near it, by id. Point there by id,
   which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words
   are said aloud by their pointer with no box (only a tap of the key opens it, your words and a reply field); a typed ask's, or with the voice off, stream into their box by the pointer, open for the next ask (its field takes a click or a tap of the key; the key held
   again listens); Esc ends it; moving on (a click elsewhere, another app) closes the box but what you're saying goes on to its end, and your cursor leaves once you're done there. Through the exchange your

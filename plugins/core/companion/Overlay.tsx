@@ -3,7 +3,7 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, noticesSince, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { uiElement } from "./panes"
@@ -306,11 +306,17 @@ export function Popover({ a, close, menu, phone }: { a: Agent; close: () => void
 /** What's at x, y of the window as a Talk key's ask over it says it (electron/helper.ts asks): a note's line (its word or
  *  selection), a pane's row or point (the words under the pointer as `under`), the app's UI; nothing known there, null. */
 export function placeAt(x: number, y: number): Record<string, unknown> | null {
+  // (the toasts of the last minute: one they point at may be gone by the time they let go)
+  const told = noticesText(), notices = told ? { notices: told } : {}
   const at = noteAt(x, y) ?? paneAt(x, y)
-  if (!at) return null
-  if ("path" in at && at.path) return { path: at.path, line: at.line, ...(at.find ? { find: at.find } : {}), ...(at.selection ? { selection: at.selection } : {}) }
+  if (!at) return told ? notices : null
+  if ("path" in at && at.path) return { path: at.path, line: at.line, ...(at.find ? { find: at.find } : {}), ...(at.selection ? { selection: at.selection } : {}), ...notices }
   const { text, ...p } = at as PanePlace
-  return { ...p, ...(text ? { under: text } : {}) }
+  return { ...p, ...(text ? { under: text } : {}), ...notices }
+}
+/** The window's toasts of the last minute, newest last, as words: "Claude isn't running" (an error, 12 s ago). */
+export function noticesText(now = Date.now()) {
+  return noticesSince(now - 60_000).slice(-5).map((n) => `${JSON.stringify(n.text)} (${n.kind === "error" ? "an error, " : ""}${Math.max(0, Math.round((now - n.at) / 1000))} s ago)`).join("; ")
 }
 
 /** A box's corner nearest its cursor's tip, sharper (`data-side`, `data-up`: where boxes.ts put it). */

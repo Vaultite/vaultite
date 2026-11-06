@@ -395,6 +395,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `noteFor(store, target, from)`: The note an embed names, or null (not a note, or no such file).
 - `NotePreview({ store, target, from })`: A note drawn whole for a glance (Page preview's popover), scrolled to the heading `target` names; a block target shows only that block.
 - `NoteTopItem`: Drawn in a note's page under its properties, above its text (a toolbar, a banner): every Markdown file, dashboards too, in every mode but source; `place`: in a tab or a sheet.
+- `Notice`: The toasts shown lately, newest last: what an agent asks after its command (`vau command`), and the companion when the user points at one that's gone.
+- `noticesSince(t)`: Toasts shown since `t` (ms), newest last.
 - `notify(text, opts?)`: Show a toast.
 - `notifyError(e, what?, opts?)`: An error as a toast, `what` saying what failed ("Couldn't rename it"): "Couldn't rename it: the disk is full", or, for a bug, just `what` with Details (Errors, where its text is kept).
 - `NotifyOptions`

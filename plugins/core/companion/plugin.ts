@@ -71,6 +71,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** What was under their pointer, in words; on screen, that point (sx, sy), the picture's frame (`shotAt`: a pixel a
    *  point), what Accessibility found near it (`near`, ids for --ax) and what they drew (`ink`). */
   under?: string; sx?: number; sy?: number; shotAt?: Rect; near?: Near[]; ink?: Ink[]
+  /** The display's picture as the key went down too, when the screen changed while they spoke (a toast gone); over
+   *  Vaultite, its toasts of the last minute (`notices`, in words). */
+  shotDown?: string; shotDownAt?: Rect; notices?: string
   /** In a pane (a terminal, a web page: today's tab id) or the app's UI (a data-ui id), by its title; a terminal's row, a
    *  page's element (a snapshot ref) or the text under the pointer (`text`). */
   pane?: string; ui?: string; row?: number; el?: string
@@ -841,8 +844,10 @@ const jobsSeen = (ids: string[]) => (plugin.service("delegate:seen") as ((by: st
 const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
 plugin.onEvent({ types: ["delegate.job"] }, (ev) => { if (ev.by === "companion") toScreens({ t: "jobs", jobs: jobsNow() }) })
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
+/** Only the helper's own pictures: an agent reads what's named here. */
+const OWN_SHOT = /[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+)\.png$/
 function screenPlace(m: Record<string, unknown>) {
-  const shot = str(m.shot), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
+  const shot = str(m.shot), down = str(m.shotDown), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
   const rect = (r: unknown): Rect | null => { const o = (r ?? {}) as Record<string, unknown>, v = [o.x, o.y, o.width, o.height].map(Number); return v.every(Number.isFinite) ? { x: Math.round(v[0]), y: Math.round(v[1]), width: Math.round(v[2]), height: Math.round(v[3]) } : null }
   const near = Array.isArray(m.near) ? m.near.slice(0, 40).flatMap((e: Record<string, unknown>) => { const f = rect(e?.frame); return f && str(e.id) ? [{ id: str(e.id).slice(0, 8), role: str(e.role).slice(0, 40), label: str(e.label).slice(0, 120), frame: f }] : [] }) : []
   const ink = Array.isArray(m.ink) ? m.ink.slice(0, 12).flatMap((k: Record<string, unknown>) => { const b = rect(k?.box); return b ? [{ shape: str(k.shape).slice(0, 20), box: b,
@@ -851,8 +856,9 @@ function screenPlace(m: Record<string, unknown>) {
   return { ...(str(m.app) ? { app: str(m.app).slice(0, 200) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
     ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
-    // (only the helper's own pictures: an agent reads what's named here)
-    ...(/[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+)\.png$/.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
+    ...(OWN_SHOT.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
+    ...(OWN_SHOT.test(down) && OWN_SHOT.test(shot) ? { shotDown: down, ...(rect(m.shotDownAt) ? { shotDownAt: rect(m.shotDownAt)! } : {}) } : {}),
+    ...(str(m.notices) ? { notices: str(m.notices).slice(0, 1200) } : {}),
     ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}) }
 }
 /** What the last ask on screen found near the pointer, by agent: what `--ax` points at. */
@@ -1692,7 +1698,7 @@ const SCREEN_CHARS = 4000
 /** The model summoned asks run on; "" (the setting's companion, or an agent not Claude Code's): the long session takes them. */
 const summonedModel = () => { const m = setting("summoned_model"); return onChat(agentSetting()) && m !== "companion" ? m : "" }
 /** The pictures an ask's text names, attached to its message (no Read call before its first word). */
-const shotsOf = (ms: Moment[]) => [...new Set(ms.flatMap((m) => (m.shot && fs.existsSync(m.shot) ? [m.shot] : [])))].slice(-2)
+const shotsOf = (ms: Moment[]) => [...new Set(ms.flatMap((m) => [m.shotDown, m.shot].filter((f): f is string => !!f && fs.existsSync(f))))].slice(-3)
 let laneOf: { vault: Vault; lane: Lane } | null = null
 const lane = (): Lane => {
   if (laneOf?.vault === plugin.vault) return laneOf.lane
@@ -1708,7 +1714,8 @@ const lane = (): Lane => {
       const slim = ms.map((m) => (m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
       const text = [momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobsLine(jobsNow())].filter(Boolean).join("\n")
       // (its picture attached, not a path: given one, it spent a turn reading it before its first word)
-      const images = shotsOf(ms), named = images.reduce((t, f) => t.split(`its picture: ${f}`).join("its picture, attached to this message"), text)
+      const images = shotsOf(ms), named = images.reduce((t, f) => t.split(`its picture: ${f}`).join("its picture, attached to this message")
+        .split(`as the key went down: ${f}`).join("as the key went down, attached before it"), text)
       return { text: named.replace(/\(point at one: --ax <id>\)/g, "(point at one: [point a1])"), images }
     },
     agent: (name) => agents.get(key(name)), setAgent, did,
@@ -2184,6 +2191,8 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
       : `- move${at}: they folded what you wrote there back into a bubble (more for a bubble than the note), ${JSON.stringify(cut(m.text ?? "", 200))}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
     if (m.shot) out.push(`  its picture: ${m.shot}${m.shotAt ? ` (the screen around their pointer, a pixel a point: its top left is sx ${m.shotAt.x}, sy ${m.shotAt.y}, so its pixel x, y is sx ${m.shotAt.x} + x, sy ${m.shotAt.y} + y${m.sx !== undefined ? `; their pointer at ${m.sx - m.shotAt.x}, ${m.sy! - m.shotAt.y} in it` : ""})` : ""}`)
+    if (m.shotDown) out.push(`  its picture as the key went down: ${m.shotDown} (the screen changed while they spoke: what they meant may be only in this one${m.shotDownAt ? `; its top left is sx ${m.shotDownAt.x}, sy ${m.shotDownAt.y}` : ""})`)
+    if (m.notices) out.push(`  Vaultite's toasts of the last minute (gone from the picture, maybe): ${m.notices}`)
     if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, and it says your words for you, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)

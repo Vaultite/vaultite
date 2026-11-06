@@ -257,6 +257,15 @@ export default async ($: VaultTest) => {
       liveInput({}, true) && !liveInput({ VAULTITE_QUIET: "1" }, true) && !liveInput({}, false) && liveInput({ VAULTITE_HELPER_TAP: "1" }, false) && !liveInput({ VAULTITE_QUIET: "1", VAULTITE_HELPER_TAP: "1" }, false))
   }
   {
+    // The display at key-down and at let-go: kept both only when something there came or went (a toast), not a caret.
+    const { bitmapsDiffer, THUMB } = await import("../../../electron/helperlogic.ts")
+    const page = () => Buffer.alloc(THUMB.w * THUMB.h * 4, 230), cell = (b: Buffer, i: number, v: number) => { b.fill(v, i * 4, i * 4 + 3); return b }
+    const toast = page()
+    for (let i = 0; i < 12; i++) cell(toast, THUMB.w * 28 + 30 + i, 40)
+    check("helper: a toast gone between key-down and let-go is a change; a caret's blink or a clock's tick isn't",
+      bitmapsDiffer(page(), toast) && !bitmapsDiffer(page(), cell(page(), 100, 200)) && !bitmapsDiffer(page(), cell(cell(page(), 5, 120), 900, 120)) && !bitmapsDiffer(page(), page()))
+  }
+  {
     // The summoned exchange's geometry (electron/helperlogic.ts): beside the pointer, its box reachable, the picture.
     const { besidePointer, panelAt, pointerBox, reaching, shotCrop, SHOT_MOST } = await import("../../../electron/helperlogic.ts")
     const d = { x: 0, y: 0, width: 1470, height: 956 }

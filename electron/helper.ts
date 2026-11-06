@@ -12,7 +12,7 @@ import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, onDictating, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, besidePointer, drawnShapes, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
+import { atOffset, badgeOf, besidePointer, bitmapsDiffer, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
@@ -464,7 +464,9 @@ type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; s
   /** Its coming was cued. */
   cued?: boolean
   /** What's at the point let go at, gathered as its words are finished (not after). */
-  place?: Promise<{ w: AppWindowInfo | null; place: Record<string, unknown> }> }
+  place?: Promise<{ w: AppWindowInfo | null; place: Record<string, unknown> }>
+  /** The display as the key went down: a toast or a menu there then may be gone by the let-go. */
+  down?: Promise<Shot | null> }
 let summon: Summon | null = null
 /** The exchange its answer is in: its box open by the point asked about (and the window there), since `since`. */
 type Exchange = { name: string; p: Point; w: AppWindowInfo | null; since: number
@@ -524,6 +526,7 @@ async function startSummon() {
   const p = screen.getCursorScreenPoint(), at = Date.now(), own = live.state.agents.get(name)
   const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, state: "listening", trail: [], at, was: own ? placeKey(own) : "", press }
   summon = s
+  s.down = shotAt(p).catch(() => null)
   live.say({ t: "summoning" })
   // (a press that's a shortcut shows nothing: it appears after a moment)
   setTimeout(draw, 130)
@@ -569,7 +572,25 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
 /** The window at the point let go at and what's there (pointedAt), its cursor left there only once it's asked. */
 async function gather(s: Summon) {
   const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
-  return { w, place: await pointedAt(s.name, s.p, w?.window ? w : null, false) }
+  const place = await pointedAt(s.name, s.p, w?.window ? w : null, false), down = await s.down
+  // (the screen changed as they spoke: the picture from the key-down too, what they meant may be only there)
+  if (down && place.shot && place.app !== "private" && shotChanged(down, { file: String(place.shot), frame: place.shotAt as Rect })) Object.assign(place, { shotDown: down.file, shotDownAt: down.frame })
+  return { w, place }
+}
+type Shot = { file: string; frame: Rect }
+/** Whether two pictures of the display differ where they overlap (a toast, a menu: not a caret's blink), each read
+ *  small; mostly apart, they're taken as changed. */
+function shotChanged(a: Shot, b: Shot) {
+  const x = Math.max(a.frame.x, b.frame.x), y = Math.max(a.frame.y, b.frame.y)
+  const w = Math.min(a.frame.x + a.frame.width, b.frame.x + b.frame.width) - x, h = Math.min(a.frame.y + a.frame.height, b.frame.y + b.frame.height) - y
+  if (w < a.frame.width / 2 || h < a.frame.height / 2) return true
+  const small = (s: Shot) => {
+    const img = nativeImage.createFromPath(s.file), k = img.getSize().width / s.frame.width
+    if (img.isEmpty() || !k) return null
+    return img.crop({ x: Math.round((x - s.frame.x) * k), y: Math.round((y - s.frame.y) * k), width: Math.round(w * k), height: Math.round(h * k) }).resize({ width: THUMB.w, height: THUMB.h, quality: "good" }).toBitmap()
+  }
+  const [p, q] = [small(a), small(b)]
+  return !!p && !!q && bitmapsDiffer(p, q)
 }
 /** Where a summon is, as words for the realtime voice (it never sees the screen): the app and its window's title. */
 function whereOf(s: Summon) {
@@ -786,7 +807,7 @@ function inAppAt(p: Point): Promise<Record<string, unknown> | null> {
     w.page.send("vaultite:place-at", { id, x: (p.x - b.x) / w.zoom, y: (p.y - b.y) / w.zoom })
   })
 }
-const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "row", "x", "y", "under", "title"])
+const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "row", "x", "y", "under", "title", "notices"])
 /** The home window's page answering inAppAt: only what a place has. */
 function placeTold(from: WebContents, m: { id?: unknown; place?: unknown }) {
   if (from !== host?.homeWindow()?.page || typeof m?.id !== "number") return

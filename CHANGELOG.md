@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
+- **The companion sees what was there as you pressed**: a toast or menu that's gone by the time you let go of ⌃⌥ still
+  reaches it (the screen's picture from the key-down comes too, when the screen changed while you spoke), and over
+  Vaultite it's told the app's toasts of the last minute ("Claude isn't running"), so it can answer about them.
 - **The companion checks before it says it's done**: asked over the screen to show its session, open a note or show a
   pane, it does it (rather than telling you how), and only says it worked when the app says so: `vau command` now
   answers once the command has run, with the toasts it showed ("Claude isn't running"). It knows a terminal pane can

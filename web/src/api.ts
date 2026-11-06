@@ -263,7 +263,7 @@ export { onActivity, type ActivityNote } from "@/core/activity"
 export { onTrace, trace, type TraceEvent } from "@/core/trace"
 export { span, takeSpans, type Span } from "@/core/spans"
 export { onAppError, takeAppErrors, type AppError } from "@/core/errors"
-export { dismissNotice, errorText, notify, notifyError, type NotifyOptions } from "@/core/notify"
+export { dismissNotice, errorText, noticesSince, notify, notifyError, type Notice, type NotifyOptions } from "@/core/notify"
 // What a screen reader is told without the focus moving (toasts say theirs): an agent finished, waits, failed.
 export { announce, announceAgent, type AgentPhase } from "@/core/announce"
 export { plainError } from "../../core/plainerror.ts"

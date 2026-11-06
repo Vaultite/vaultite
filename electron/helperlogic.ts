@@ -229,3 +229,17 @@ export const badgeOf = (unread: number, jobs: HelperJob[]) => { const n = unread
 /** Whether this copy may hear the user's keys (the global tap) and take the one lock: their app, never one a script
  *  drives (VAULTITE_QUIET) or run from source unless asked (VAULTITE_HELPER_TAP=1): a test can't take their Talk key. */
 export const liveInput = (env: Record<string, string | undefined>, packaged: boolean) => !env.VAULTITE_QUIET && (packaged || env.VAULTITE_HELPER_TAP === "1")
+
+/** The size two pictures of the display are compared at (helper.ts' shotChanged): a cell is about 30 points. */
+export const THUMB = { w: 48, h: 32 }
+/** Whether two same-size BGRA bitmaps differ past noise: a few cells changed clearly (a toast, a menu, a dialog), not
+ *  one a little (a caret's blink, a clock's second). */
+export function bitmapsDiffer(a: Buffer, b: Buffer, cells = 3, by = 40) {
+  if (a.length !== b.length) return true
+  let changed = 0
+  for (let i = 0; i + 3 < a.length; i += 4) {
+    if (Math.abs(a[i] - b[i]) > by || Math.abs(a[i + 1] - b[i + 1]) > by || Math.abs(a[i + 2] - b[i + 2]) > by) changed++
+    if (changed >= cells) return true
+  }
+  return false
+}
