@@ -11,7 +11,7 @@ import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
 import { openLinkMenu } from "@/components/LinkMenu"
 import { renderMarkdown } from "@/core/markdown"
-import { notify } from "@/core/notify"
+import { dismissNotice, notify } from "@/core/notify"
 import { timelineKinds, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { BlockView, useKindSections } from "@/components/Blocks"
@@ -162,9 +162,13 @@ function FileLoad({ path, store, editable = true, autoFocus, onEscape, className
     className={className} onGone={() => setFile("missing")} />
 }
 
+/** The editors whose save said it failed (its toast up): a later save that works takes it down. */
+const toasted = new WeakSet<Autosave>()
 /** No banner here: a conflict not shown in the text or a failed save is a toast, saved again from it. `above`: the
  *  file's lines the editor doesn't show above its own. */
 function saveToast(s: SaveStatus, path: string, above: number, saver: Autosave) {
+  if (s.kind === "ok") { if (toasted.delete(saver)) dismissNotice(`unsaved:${path}`); return }
+  if (s.kind === "conflict" || s.kind === "error") toasted.add(saver)
   if (s.kind === "conflict" && s.inline === false) {
     notify(`${stem(path)}: ${conflictText(s, above)} Both versions are kept in its history.`, {
       kind: "error", duration: 15_000, id: `unsaved:${path}`, action: { label: "Keep yours", run: () => saver.keep("mine") },
