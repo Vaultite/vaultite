@@ -93,6 +93,7 @@ const EDITORS = /vscode|VSCode|cursor|zed|xcode|sublime|jetbrains|intellij|webst
 /** Where an ask over `o` runs on this machine; `self`: this machine's Tailscale names (its Serve sites). */
 export async function resolveHere(o: Over, vault: string, self: string[] = [], roots = ROOTS): Promise<Found> {
   if (o.path) return { cwd: vault, why: `the note ${o.path}` }
+  let away = ""
   for (const u of urlsIn(o)) {
     if (u.hostname === "github.com") {
       const [owner, repo] = u.pathname.split("/").filter(Boolean)
@@ -105,7 +106,9 @@ export async function resolveHere(o: Over, vault: string, self: string[] = [], r
     else if (u.hostname.endsWith(".ts.net") && self.includes(u.hostname)) port = servedPort(await serveStatus(), u.hostname, u.port)
     if (!port) continue
     const dir = await listenerDir(port), top = dir ? await repoOf(dir) : ""
-    if (top || dir) return { cwd: top || dir, why: `the preview ${u.host} is served from ${tilde(top || dir)}`, preview: u.origin }
+    if (top) return { cwd: top, why: `the preview ${u.host} is served from ${tilde(top)}`, preview: u.origin }
+    // (an app's own server, a bundle: no project to work on there)
+    if (dir) away = `the preview ${u.host} is served from ${tilde(dir)}, not a repo`
   }
   if (o.app && EDITORS.test(o.app) && o.title) {
     for (const part of o.title.split(/ [—–-] /).reverse()) {
@@ -113,7 +116,7 @@ export async function resolveHere(o: Over, vault: string, self: string[] = [], r
       if (dir) return { cwd: dir, why: `${path.basename(dir)}, open in ${o.title}` }
     }
   }
-  return { cwd: vault, why: "nothing on screen named a project: the vault" }
+  return { cwd: vault, why: `${away || "nothing on screen named a project"}: the vault` }
 }
 
 /** The Tailscale name of an address that's another machine's: its hostname, when `hosts` (machine id -> hostname) has it. */
