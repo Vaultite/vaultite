@@ -8,7 +8,7 @@ import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentAsk, type AgentCommand, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
-  agentLines, HTTPError, LOCAL as LOCAL_DIR, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
+  agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import {
@@ -922,6 +922,7 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     sent(s, ws, bytes.length)
   })
   const uploads = new Map<string, string>()
+  let pasted = Promise.resolve() // (each upload's path in the order they came, a slow conversion's too)
   ws.on("message", (data: RawData, binary: boolean) => {
     const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data)
     if (binary) {
@@ -944,8 +945,12 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     else if (msg.t === "upload") {
       let file: string | null = null
       try { file = upload(s.id, uploads, msg) } catch (e) { console.error("terminal upload:", e); return }
-      // (a WSL distro's shell is given the path as it sees it)
-      if (file) void inWsl(s).then((wsl) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "uploaded", path: wsl ? wslPath(file!) : file })) })
+      // (a HEIC photo, as phones paste screenshots, as a JPEG beside it, which agents can read; a WSL distro's shell is
+      // given the path as it sees it)
+      if (file) pasted = pasted.then(() => readableImage(file!)).then(async (f) => {
+        const wsl = await inWsl(s)
+        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "uploaded", path: wsl ? wslPath(f) : f }))
+      }).catch((e) => console.error("terminal upload:", e))
     }
   })
   ws.on("close", () => {

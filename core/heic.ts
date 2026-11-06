@@ -6,7 +6,8 @@ import fs from "node:fs"
 import path from "node:path"
 import { LOCAL } from "./plugins.ts"
 
-const DIR = path.join(LOCAL, "cache", "heic")
+/** (read when used: core/plugins.ts, where LOCAL is, hands readableImage on to plugins, so loads this first) */
+const cacheDir = () => path.join(LOCAL, "cache", "heic")
 /** Copies older than this are cleared on the next conversion. */
 const KEEP_MS = 30 * 86400_000
 
@@ -37,13 +38,13 @@ const running = new Map<string, Promise<string | null>>()
  *  made. Two requests for the same photo share one conversion. */
 export function jpegOf(abs: string, st: fs.Stats): Promise<string | null> {
   const key = crypto.createHash("sha1").update(`${abs}\0${st.size}\0${st.mtimeMs}`).digest("hex")
-  const out = path.join(DIR, `${key}.jpg`)
+  const out = path.join(cacheDir(), `${key}.jpg`)
   if (fs.existsSync(out)) return Promise.resolve(out)
   let job = running.get(key)
   if (job) return job
   const cmd = converter(abs, `${out}.tmp.jpg`)
   if (!cmd) return Promise.resolve(null)
-  fs.mkdirSync(DIR, { recursive: true })
+  fs.mkdirSync(cacheDir(), { recursive: true })
   job = new Promise<string | null>((done) => {
     execFile(cmd[0], cmd[1], { timeout: 60_000 }, (err) => {
       try {
@@ -62,12 +63,33 @@ export function jpegOf(abs: string, st: fs.Stats): Promise<string | null> {
   return job
 }
 
+/** HEIC or HEIF by its first bytes (an `ftyp` box of one of their brands), whatever the file is named. */
+export function heicBytes(file: string): boolean {
+  const b = Buffer.alloc(12)
+  try { const fd = fs.openSync(file, "r"); try { fs.readSync(fd, b, 0, 12, 0) } finally { fs.closeSync(fd) } } catch { return false }
+  return b.subarray(4, 8).toString("latin1") === "ftyp" && /^(hei[cxms]|hev[cx]|mif1|msf1)$/.test(b.subarray(8, 12).toString("latin1"))
+}
+
+/** A file an agent can read: a HEIC photo (a phone's screenshot pasted into a terminal) as a JPEG beside it, the same
+ *  size, the original kept; any other file, or one that can't be converted here, as it is. */
+export function readableImage(file: string): Promise<string> {
+  if (!isHeic(file) && !heicBytes(file)) return Promise.resolve(file)
+  const out = `${file.replace(/\.(heic|heif)$/i, "")}.jpg`
+  const cmd = converter(file, out)
+  if (!cmd) return Promise.resolve(file)
+  return new Promise((done) => execFile(cmd[0], cmd[1], { timeout: 60_000 }, (err) => {
+    if (!err && fs.existsSync(out) && fs.statSync(out).size) return done(out)
+    fs.rmSync(out, { force: true })
+    done(file)
+  }))
+}
+
 /** Copies not made or used for a while go (a photo's old versions, photos deleted). */
 function tidy() {
   try {
     const now = Date.now()
-    for (const f of fs.readdirSync(DIR)) {
-      const p = path.join(DIR, f)
+    for (const f of fs.readdirSync(cacheDir())) {
+      const p = path.join(cacheDir(), f)
       if (now - fs.statSync(p).atimeMs > KEEP_MS && now - fs.statSync(p).mtimeMs > KEEP_MS) fs.rmSync(p, { force: true })
     }
   } catch { /* the folder went: nothing to tidy */ }

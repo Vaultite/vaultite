@@ -17,6 +17,7 @@ import { entryOf, type Op, type OpCtx, type OpDid, type OpEntry, type OpImage, t
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { gitEnv } from "./gitenv.ts"
+export { readableImage } from "./heic.ts"
 export { CONNECT_HEADER, fromInternet, GUEST_HEADER, servedAt } from "./owner.ts"
 export { outliving, runtimeDir } from "./runtime.ts"
 export { vauShims } from "./vaushims.ts"

@@ -907,6 +907,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `propertyTypes(vault, plugins?, own?)`: The vault's property types: another app's (the service `property-types` of a plugin that's on), with `.vaultite/types.json`'s over them (`own`: false leaves those out).
 - `publicUrl(raw)`: A web address the server may fetch: http(s) only, no user or password, on a public host (by its name; its addresses are checked as it's fetched).
 - `quoted(v, n?)`: Text in quotes on one line, cut at `n` characters: a description's way to cite what a call was given.
+- `readableImage(file)`: A file an agent can read: a HEIC photo (a phone's screenshot pasted into a terminal) as a JPEG beside it, the same size, the original kept; any other file, or one that can't be converted here, as…
 - `readSidebars(raw)`: sidebars.json as it's saved (or a workspace's copy), checked; null when it has neither sidebar (unset: the default).
 - `readTypes(file)`: A types file's `types` ({"due": "date"}), read leniently: unknown types and odd keys are left out.
 - `recordSpan(s)`: Keep a finished span (the app's arrive through POST activity/perf).

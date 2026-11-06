@@ -89,5 +89,17 @@ export default async ($: VaultTest) => {
     const t = Date.now(), again = await thumbOf(bad, fs.statSync(bad), 512, false)
     check("thumbs: a file that can't be drawn is none, and isn't tried again", first === null && again === null && Date.now() - t < 20, Date.now() - t)
   }
+  // ---------- a HEIC pasted into a terminal goes to the agent as a JPEG (core/heic.ts readableImage) ----------
+  const { readableImage, heicBytes } = await import("../../../core/heic.ts")
+  check("heic: a PNG is pasted as it is", await readableImage(photo) === photo)
+  if (process.platform === "darwin" && fs.existsSync("/usr/bin/sips")) {
+    // (named as a phone's paste may be, without .heic: its bytes say what it is)
+    const heic = path.join(dir, "pasted.img")
+    execFileSync("/usr/bin/sips", ["-s", "format", "heic", photo, "--out", heic], { stdio: "ignore" })
+    const jpg = await readableImage(heic), b = fs.existsSync(jpg) ? fs.readFileSync(jpg) : Buffer.alloc(0)
+    check("heic: a HEIC is a JPEG beside it, the original kept", heicBytes(heic) && jpg === `${heic}.jpg` && b[0] === 0xff && b[1] === 0xd8 && fs.existsSync(heic), jpg)
+    const bad = at("broken.heic", "not a photo")
+    check("heic: one that can't be converted is pasted as it is", await readableImage(bad) === bad && !fs.existsSync(path.join(dir, "broken.jpg")))
+  } else skip("heic: converting a HEIC", "no sips (to make one)")
   fs.rmSync(dir, { recursive: true })
 }

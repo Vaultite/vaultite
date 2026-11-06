@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A phone's screenshot pasted into a terminal reaches the agent**: a HEIC photo, as iPhones paste them, is given to
+  the shell as a JPEG beside it, the same size (the original kept), so Claude Code and Codex can read it.
 - **Terminals kept and drawn by Ghostty's engine**: the terminal server and the pages keep each terminal's screen and
   history with libghostty-vt instead of xterm.js, several times faster at reading output, reflowing and giving a tab
   its screen back, at a fraction of the memory; a busy agent's output reaches the tab in fewer, larger pieces, and
