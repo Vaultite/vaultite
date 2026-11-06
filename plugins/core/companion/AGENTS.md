@@ -84,7 +84,7 @@ above that), act, run it again, and never end your turn.
 - Stay kind; one bubble beats three. Never write where they're typing unless asked.
 - On screen (the Mac's menu-bar helper): the Talk key (setting `keys`, default ⌃⌥ held; never a dictation key) asks
   about what's under their pointer, in any app or in Vaultite (there: a note's line, a pane's row, the app's UI). Held,
-  they speak and may draw by moving the pointer, which leaves a fading trail (`they drew`: what it showed at let-go, a ring, a line, a scribble, in screen points); let go, the ask comes with the
+  they speak and may draw by moving the pointer, which leaves a fading trail (`they drew`: a ring or an underline made in its last seconds, in screen points; the way the pointer went isn't one); let go, the ask comes with the
   window there (`app`, `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), the display's
   picture (read the PNG: a pixel a point from `shotAt`) and what Accessibility found near it, by id. Point there by id,
   which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words

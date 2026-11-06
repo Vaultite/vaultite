@@ -102,6 +102,12 @@ export function trailStrokes(samples: (Point & { t: number })[], until: number, 
   }
   return out.filter((k) => k.slice(1).reduce((n, p, i) => n + Math.hypot(p.x - k[i].x, p.y - k[i].y), 0) >= 24)
 }
+/** What of the trail was meant as a drawing: rings round something and underlines (or strikes); the way the pointer
+ *  went to point at a thing, a wander or a twitch is no drawing. */
+export function drawnShapes(ink: ReturnType<typeof inkOf>) {
+  return ink.filter((k) => (k.shape === "ring" && Math.min(k.box.width, k.box.height) >= 14 && Math.max(k.box.width, k.box.height) <= 900) ||
+    (k.shape === "underline" && k.box.width >= 40 && k.box.height <= 14))
+}
 /** Where a stroke comes back round on itself (a ring drawn after the way there): the index the loop starts at, or -1. */
 function loopAt(k: Point[]) {
   const pts = simplify(k, 2)

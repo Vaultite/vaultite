@@ -5,8 +5,8 @@ export type Sample = { x: number; y: number; t: number }
 /** A piece of the trail to stroke: from `a` to `b`, at `alpha`, `width` wide. */
 export type Piece = { a: [number, number]; b: [number, number]; alpha: number; width: number }
 
-/** How long a part of it lasts (ms), and how wide its newest part is (points). */
-export const TRAIL = { fade: 1600, width: 7 }
+/** How long a part of it lasts (ms; reduced motion: a short stroke, cut, not faded), how wide its newest part is (points). */
+export const TRAIL = { fade: 1700, still: 700, width: 10 }
 
 /** A Catmull-Rom point between p1 and p2 (`k` 0..1), p0 and p3 their neighbours: a smooth curve through every sample. */
 function spline(p0: Sample, p1: Sample, p2: Sample, p3: Sample, k: number): [number, number] {
@@ -21,7 +21,7 @@ export const live = (s: Sample[], now: number, fade = TRAIL.fade) => s.filter((p
 /** The trail at `now` as short pieces along a smooth curve, each as faded as it is old: solid where the pointer is, gone
  *  after `fade` ms, thinning a little as it fades. `still`: reduced motion, no fading (it's cut, not faded). */
 export function trailPieces(s: Sample[], now: number, o: { fade?: number; width?: number; still?: boolean } = {}): Piece[] {
-  const fade = o.fade ?? TRAIL.fade, width = o.width ?? TRAIL.width, out: Piece[] = []
+  const fade = o.fade ?? (o.still ? TRAIL.still : TRAIL.fade), width = o.width ?? TRAIL.width, out: Piece[] = []
   const pts = live(s, now, fade)
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[i - 1] ?? pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] ?? p2

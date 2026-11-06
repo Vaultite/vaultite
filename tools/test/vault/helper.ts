@@ -66,7 +66,7 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { atOffset, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene, trailStrokes } = await import("../../../electron/helperlogic.ts")
+    const { atOffset, drawnShapes, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene, trailStrokes } = await import("../../../electron/helperlogic.ts")
     const area = { x: 0, y: 25, width: 1600, height: 975 }, bounds = { x: 0, y: 0, width: 1600, height: 1000 }, size = { width: 300, height: 200 }
     const { arrowBox, boxAt, flagBox } = await import("../../../plugins/core/companion/boxes.ts")
     const meets = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
@@ -133,6 +133,9 @@ export default async ($: VaultTest) => {
     check("helper: held, the pointer's trail is what it drew: its last seconds, the way to a thing and the ring round it read as that ring",
       drawn.length === 1 && read[0]?.shape === "ring" && Math.abs(read[0].box.x - 510) < 6 && Math.abs(read[0].box.width - 100) < 8, { n: drawn.length, read })
     const paused = trailStrokes([...way, ...way.map((p) => ({ ...p, x: p.x + 400, t: p.t + 900 }))], t0 + 2000)
+    const pointed = drawnShapes(inkOf(trailStrokes(way, t0 + 600))), underlined = drawnShapes(inkOf([Array.from({ length: 20 }, (_, i) => ({ x: 300 + i * 8, y: 500 + (i % 2) }))]))
+    check("helper: only what was meant goes as a drawing: a ring, an underline; the pointer's way to a thing doesn't", !pointed.length && underlined[0]?.shape === "underline" &&
+      drawnShapes(read).length === 1, { pointed, underlined })
     check("helper: a pause splits the trail into strokes; a twitch isn't a stroke", paused.length === 2 && !trailStrokes([{ x: 1, y: 1, t: 1 }, { x: 3, y: 2, t: 17 }], 20).length, paused.length)
   }
   {

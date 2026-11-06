@@ -12,7 +12,7 @@ import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, besidePointer, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, shotCrop, trailStrokes } from "./helperlogic.ts"
+import { atOffset, badgeOf, besidePointer, drawnShapes, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, shotCrop, trailStrokes } from "./helperlogic.ts"
 import { closePanel, drawingActs, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
@@ -469,13 +469,13 @@ function trailed(p: Point, t: number) {
 /** The summoned companion's ask (`text`; none, a point at what its trail marks): about the point let go at, with what's
  *  there, the display's picture and what Accessibility finds near it; its answer comes in its box, open by it. */
 async function sendSummon(s: Summon, text: string) {
-  const ink = trailStrokes(s.trail, s.released ?? Date.now())
+  const ink = drawnShapes(inkOf(trailStrokes(s.trail, s.released ?? Date.now())))
   if (!text && !ink.length) { summon = summon === s ? null : summon; return draw() }
   Object.assign(s, { state: "thinking" })
   draw()
   const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
   const place = await pointedAt(s.name, s.p, w?.window ? w : null)
-  live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink: inkOf(ink) } : {}) })
+  live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}) })
   voiceFor(s.name, text, true)
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
