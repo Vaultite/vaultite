@@ -33,10 +33,12 @@ function lines(root: HTMLElement, axis: "x" | "y") {
 
   /** Where each line goes now; what it was drawn as, to tell when nothing moves any more. */
   function draw() {
-    const box = root.getBoundingClientRect(), k = root.offsetWidth / box.width || 1
     const heads = new Map<string, HTMLElement>()
     // (a group's chip and the copy of one going: the chip's)
     for (const h of root.querySelectorAll<HTMLElement>("[data-line-head]")) if (!heads.has(h.dataset.lineHead!) || !h.inert) heads.set(h.dataset.lineHead!, h)
+    // (no groups: nothing measured, so a render here never lays out the page early)
+    if (!heads.size && !drawn.size) return ""
+    const box = root.getBoundingClientRect(), k = root.offsetWidth / box.width || 1
     const sig: string[] = []
     const shown = new Set<string>()
     // Where each starts: a line stops short of the next group's chip, so a tab sliding in from past it (the blank tab
@@ -120,7 +122,7 @@ function lines(root: HTMLElement, axis: "x" | "y") {
   const kick = () => {
     last = draw()
     calm = 0
-    if (!raf && moves()) raf = requestAnimationFrame(tick)
+    if (!raf && moves() && (last || drawn.size)) raf = requestAnimationFrame(tick)
   }
   root.addEventListener(MOTION, kick)
   // (a list making way for a drag slides by CSS transitions: core/slide.ts)
