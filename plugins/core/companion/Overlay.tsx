@@ -158,7 +158,15 @@ function atElement(el: HTMLElement): Spot {
   const r = el.getBoundingClientRect(), x = r.left + Math.min(r.width * 0.6, Math.max(4, r.width - 6)), y = r.top + r.height * 0.6
   return { x, y, low: y + FLAG > innerHeight - 40, rides: !!el.closest("aside[data-peek]") || undefined, target: rectOf(r) }
 }
-const uiSpot = (id: string, find?: string) => { const el = uiElement(id), at = el && find ? shown(el, find) : null; return at ? atElement(at) : el ? atElement(el) : null }
+/** What `find` found in a ui last (a walk of its text, once, not on every frame). */
+const found = new Map<string, HTMLElement>()
+const uiSpot = (id: string, find?: string) => {
+  const el = uiElement(id)
+  if (!el || !find) return el ? atElement(el) : null
+  const k = `${id}\0${find}`, was = found.get(k), at = was?.isConnected && el.contains(was) ? was : shown(el, find)
+  if (at) { found.clear(); found.set(k, at) }
+  return atElement(at ?? el)
+}
 
 type Screen = { r: DOMRect; lines: string[]; rowH: number; cw: number }
 /** A terminal pane's screen as drawn: its box, its lines (terminalText: with WebGL it's a canvas), a row's height, a cell's width. */

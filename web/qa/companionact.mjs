@@ -25,7 +25,7 @@ try {
 
   // Words not there: a 404 that says what the panel shows.
   const miss = await call("companion.act", { ui: "panel:pages:pages", find: "No such page here", action: "click" })
-  check("a miss says what's there", miss.status === 404 && /it shows/.test(miss.body?.error ?? ""), miss)
+  check("a miss says so, and nothing of what the panel shows", miss.status === 404 && !/it shows:/.test(miss.body?.error ?? ""), miss)
   // Typing into the app's UI isn't a click.
   const typed = await call("companion.act", { ui: "panel:pages:pages", action: "fill", value: "x" })
   check("only clicks in the app's UI", typed.status === 400, typed)

@@ -1,5 +1,5 @@
-// The server's reads of the Talk key's press log (presslog.ts, userData/talk): a day's steps and a press's kept audio,
-// for the Companion page's Details. Reads only.
+// The server's reads of the Talk key's press log (presslog.ts, userData/talk): a day's steps, a press's kept audio and
+// its ask's picture (userData/screens), for the Companion page's Details. Reads only.
 import fs from "node:fs"
 import path from "node:path"
 import { app } from "electron"
@@ -19,6 +19,12 @@ export async function talkCall(name: string, args: unknown[]) {
       const b = id ? fs.readFileSync(path.join(dir(), `${id}.wav`)) : null
       return b && b.length <= MOST ? { wav: b.toString("base64") } : { wav: null }
     } catch { return { wav: null } }
+  }
+  if (name === "talk:shot") {
+    // (only the helper's own pictures of the screen, by name: nothing else on this Mac)
+    const n = typeof (o as { name?: unknown }).name === "string" ? (o as { name: string }).name : ""
+    if (!/^display-[\w-]+\.png$/.test(n)) return { png: null }
+    try { const b = fs.readFileSync(path.join(app.getPath("userData"), "screens", n)); return { png: b.length <= MOST ? b.toString("base64") : null } } catch { return { png: null } }
   }
   throw new Error(`no talk call ${name}`)
 }

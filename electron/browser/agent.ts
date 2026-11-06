@@ -229,10 +229,11 @@ async function startTracking(p: EnginePage) {
     if (method === "Network.requestWillBeSent" && (params.type === "XHR" || params.type === "Fetch")) live.set(String(params.requestId), Date.now())
     else if (method === "Network.loadingFinished" || method === "Network.loadingFailed") live.delete(String(params.requestId))
   }
-  const off = () => { p.wc.debugger.off("message", heard); loading.delete(p.wc); tracking.delete(p.wc) }
-  p.wc.debugger.on("message", heard)
   // (an iframe's or an in-page navigation leaves the page's requests running: only a new document ends them)
-  p.wc.on("did-start-navigation", (e) => { if (e.isMainFrame && !e.isSameDocument) { live.clear(); navigated.set(p.wc, Date.now()) } })
+  const went = (e: { isMainFrame: boolean; isSameDocument: boolean }) => { if (e.isMainFrame && !e.isSameDocument) { live.clear(); navigated.set(p.wc, Date.now()) } }
+  const off = () => { p.wc.debugger.off("message", heard); p.wc.off("did-start-navigation", went); loading.delete(p.wc); tracking.delete(p.wc) }
+  p.wc.debugger.on("message", heard)
+  p.wc.on("did-start-navigation", went)
   try { await cdp(p.wc, "Network.enable", { maxTotalBufferSize: 0, maxResourceBufferSize: 0 }); p.wc.debugger.once("detach", off) } catch { off() }
 }
 /** Data requests that began since `since` (or a second before) and haven't ended: long-lived ones (a mail app's open
@@ -395,10 +396,12 @@ export async function press(p: EnginePage, combo: string) {
 }
 
 /** After an action: a moment for what it started (a navigation, a menu, a download) to settle. */
+/** The acts that can set off a navigation a moment after (a link's click, Enter in a form). */
+const LATE = new Set(["click", "dblclick", "press", "select", "check", "uncheck"])
 /** How long after an act a navigation it set off may still begin. */
 const SETTLE_MS = 400
-export async function settle(p: EnginePage, was: string, since = Date.now()) {
-  const until = Date.now() + 8000, soon = Date.now() + SETTLE_MS
+export async function settle(p: EnginePage, was: string, since = Date.now(), late = true) {
+  const until = Date.now() + 8000, soon = Date.now() + (late ? SETTLE_MS : 0)
   // (a page that goes elsewhere a moment after the click, from its script, is waited for: not just one already loading)
   while (Date.now() < soon && !p.wc.isDestroyed() && !p.wc.isLoading() && (navigated.get(p.wc) ?? 0) < since) await new Promise((r) => setTimeout(r, 50))
   while (Date.now() < until && !p.wc.isDestroyed() && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
@@ -586,7 +589,7 @@ async function act(p: EnginePage, a: Act) {
   if (limit && !seen.has(p.wc)) await tree(p)
   const before = seen.get(p.wc), was = p.wc.getURL(), since = Date.now(), had = new Set(allPages().map((x) => x.id))
   if (a.fields) await fillForm(p, fieldsOf(a.fields)); else await step(p, a)
-  const r = { ...await settle(p, was, since), ...await openedBy(p, had) }
+  const r = { ...await settle(p, was, since, a.fields ? false : LATE.has(a.action)), ...await openedBy(p, had) }
   if (!limit || p.wc.isDestroyed()) {
     // (no diff: still till what the action fetched has come, so the next step finds the page it drew)
     const until = Date.now() + 3000

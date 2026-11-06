@@ -2789,9 +2789,9 @@ async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, acti
   try {
     const r = await ctx.ui({ action: "companion:click", ui, find, how: action }).catch((e) => {
       throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
-    }) as { found: boolean; label?: string; text?: string; notices?: InApp["notices"] } | null
+    }) as { found: boolean; label?: string; notices?: InApp["notices"] } | null
     if (r?.found) return { ui, clicked: r.label ?? "", notices: r.notices ?? [] }
-    throw new OpError(find ? `no "${find}" in ${ui} on the user's screen${r?.text ? `; it shows: ${r.text.replace(/\s+/g, " ").slice(0, 300)}` : ""}` : `${ui} isn't on the user's screen (vau tabs lists tabs and panes)`, 404)
+    throw new OpError(find ? `no "${find}" in ${ui} on the user's screen (use its words as shown)` : `${ui} isn't on the user's screen (vau tabs lists tabs and panes)`, 404)
   } finally { setAgent(name, { state: acting(name) }) }
 }
 
@@ -2819,6 +2819,7 @@ async function screenAct(p: Record<string, unknown>, name: string) {
 plugin.op({
   id: "companion.act",
   cli: "companion act",
+  owner: "The companion's actions",
   summary: "Act in the user's own web page, the app's UI or (asked on the screen) another app, with your cursor there: click, fill, type, press a key, pick an option, scroll.",
   help: `Their tab, before their eyes: as in their notes, act when that's what they want (they asked, or it's plainly the
 next step); a long errand goes to a page of your own instead (vau browser open --task, its tab group yours), told with a
@@ -2884,10 +2885,15 @@ function shows(p: Pane, path: string) {
 async function openSeen(name: string, path: string, open: () => Promise<unknown>) {
   const was = allPanes().find((p) => shows(p, path) && p.tab)
   if (was) { setAgent(name, { ui: `tab:${was.tab}`, state: "writing", pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
+  const focused = paneFocus()?.id
   const r = await opening.run(true, open)
   // (the window says what it shows a moment after)
   let p: Pane | undefined
-  for (const until = Date.now() + 1500; !p && Date.now() < until;) { await new Promise((done) => setTimeout(done, 100)); p = allPanes().find((x) => shows(x, path)) }
+  for (const until = Date.now() + 1500; !p && Date.now() < until;) {
+    await new Promise((done) => setTimeout(done, 100))
+    const f = paneFocus()
+    p = allPanes().find((x) => shows(x, path)) ?? (f && f.id !== focused ? f : undefined)
+  }
   p ??= paneFocus() ?? undefined
   if (p && !privatePane(p)) setAgent(name, { ...await resolve({ pane: p.id }, name).catch(() => ({ pane: p!.id })), state: acting(name), pointed: Date.now() })
   else setAgent(name, { state: acting(name) })
@@ -3327,22 +3333,22 @@ end), as the menu-bar helper logged them on this machine.
   run: async (p) => {
     const day = str(p.day) || localDate(Date.now())
     const got = await plugin.desktop("talk:presses", { day }).catch(() => []), presses = (Array.isArray(got) ? got : []) as PressLine[]
-    return { day, exchanges: exchanges(log.read(day), acts.read(day), presses), spent: spent(presses), jobs: jobs.cards().map((j) => ({ ...j, at: j.started, ...(j.ended ? { ended: j.ended } : {}) })) }
+    return { day, exchanges: exchanges(log.read(day), acts.read(day), presses, ownName()), spent: spent(presses), jobs: jobs.cards().map((j) => ({ ...j, at: j.started, ...(j.ended ? { ended: j.ended } : {}) })) }
   },
   text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "ask" : "asks"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${e.voice ? "said" : "asked"}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
     ...(r.spent.length ? [`Used: ${r.spent.map((x: Spent) => `${x.service} ${x.uses}${x.seconds ? `, ${Math.round(x.seconds)} s` : ""}${x.cost ? `, $${x.cost.toFixed(3)}` : ""}`).join("; ")}`] : [])].join("\n"),
 })
 /** A Talk key ask's picture of the screen, as the helper wrote it (userData/screens/display-*.png): no other file. */
-const shotFile = (f: string) => /^display-[\w-]+\.png$/.test(path.basename(f)) && path.basename(path.dirname(f)) === "screens" && fs.existsSync(f)
 plugin.op({
   id: "companion.press-media",
+  owner: "The companion's presses",
   summary: "A Talk key press's kept audio (WAV) and its ask's picture of the screen (PNG), base64, for its Details on the Companion page.",
   kind: "read",
   mcp: false,
   params: { press: { type: "string", description: "the press's id (companion conversation)" }, shot: { type: "string", description: "its ask's picture (companion conversation)" } },
   run: async (p) => {
     const wav = str(p.press) ? ((await plugin.desktop("talk:audio", { press: str(p.press) }).catch(() => null)) as { wav: string | null } | null)?.wav ?? null : null
-    const png = str(p.shot) && shotFile(str(p.shot)) ? fs.readFileSync(str(p.shot)).toString("base64") : null
+    const png = str(p.shot) ? ((await plugin.desktop("talk:shot", { name: path.basename(str(p.shot)) }).catch(() => null)) as { png: string | null } | null)?.png ?? null : null
     return { wav, png }
   },
   text: (r) => [r.wav ? "Its audio is kept." : "No audio kept.", r.png ? "Its picture is kept." : "No picture kept."].join(" "),

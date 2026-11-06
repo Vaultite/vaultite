@@ -28,8 +28,10 @@ const costOf = (steps: PressLine[]) => { const c = steps.reduce((s, x) => s + (t
 
 /** The day's exchanges, oldest first: each ask, its answer and acts until the next ask, the press that sent it (a press
  *  ended "sent" in the 3 s before its moment). */
-export function exchanges(ms: Moment[], acts: Act[], presses: PressLine[]): Exchange[] {
-  const asks = ms.filter((m) => ASKS.has(m.kind) && !m.again)
+export function exchanges(ms: Moment[], allActs: Act[], presses: PressLine[], name: string): Exchange[] {
+  // (its own: asks for it (or for no one, a point), and what it did, summoned or not; @ada's are Ada's)
+  const mine = (as: string) => as === name || as.startsWith(`${name} (`)
+  const asks = ms.filter((m) => ASKS.has(m.kind) && !m.again && (!m.for || m.for === name)), acts = allActs.filter((a) => mine(a.as))
   const byPress = new Map<string, PressLine[]>()
   for (const l of presses) byPress.set(l.press, [...(byPress.get(l.press) ?? []), l])
   const sent = [...byPress.values()].flatMap((steps) => { const end = steps.find((s) => s.ev === "end" && s.outcome === "sent"); return end ? [{ end, steps }] : [] })

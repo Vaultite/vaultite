@@ -37,7 +37,7 @@ export async function clickUi(m: Record<string, unknown>) {
   const root = uiElement(String(m.ui ?? "")), find = String(m.find ?? "").trim()
   if (!root) return { found: false }
   const el = find ? shown(root, find) : root
-  if (!el) return { found: false, text: (root.innerText || "").trim().slice(0, 600) }
+  if (!el) return { found: false }
   el.scrollIntoView({ block: "nearest" })
   const r = el.getBoundingClientRect(), at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 }
   const from = Date.now(), dbl = m.action === "dblclick"
