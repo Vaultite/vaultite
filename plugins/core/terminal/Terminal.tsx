@@ -148,6 +148,55 @@ function osc52(data: string) {
   return true
 }
 
+/** What dictation types through, on the view's [data-terminal] element (plugins/core/dictation/terminal.ts): the
+ *  keyboard's input, bracketed pastes, the cursor, and the words not settled yet drawn dimmed there. */
+function dictationInput(t: XTerm) {
+  let words = "", shown: HTMLElement | null = null, follow: { dispose: () => void } | null = null
+  /** The cursor's cell in its screen's own pixels; null while it's scrolled off. */
+  const cell = () => {
+    const screen = t.element?.querySelector<HTMLElement>("[data-term-screen]"), b = t.buffer.active
+    const row = b.baseY + b.cursorY - b.viewportY
+    if (!screen || !t.cols || row < 0 || row >= t.rows) return null
+    return { screen, x: b.cursorX, row, w: screen.clientWidth / t.cols, h: screen.clientHeight / t.rows }
+  }
+  // (from the cursor on, wrapping at the screen's edge as typed text would)
+  const draw = () => {
+    const c = words ? cell() : null
+    if (!c) { shown?.remove(); return }
+    if (!shown) {
+      shown = document.createElement("div")
+      shown.dataset.termPending = ""
+      shown.setAttribute("aria-hidden", "true")
+      Object.assign(shown.style, { position: "absolute", left: "0", right: "0", zIndex: "8", pointerEvents: "none", whiteSpace: "pre-wrap",
+        wordBreak: "break-all", color: "var(--muted-foreground)" })
+      shown.append(document.createElement("span"))
+    }
+    if (shown.parentElement !== c.screen) c.screen.append(shown)
+    Object.assign(shown.style, { top: `${c.row * c.h}px`, textIndent: `${c.x * c.w}px`, lineHeight: `${c.h}px`, fontFamily: t.options.fontFamily ?? "",
+      fontSize: `${t.options.fontSize}px` })
+    const span = shown.firstChild as HTMLElement
+    span.style.background = t.options.theme?.background ?? ""
+    span.textContent = words
+  }
+  return {
+    send: (data: string) => t.input(data),
+    bracketed: () => t.modes.bracketedPasteMode,
+    caret: () => {
+      const c = cell()
+      if (!c) return null
+      const r = c.screen.getBoundingClientRect(), w = r.width / t.cols, h = r.height / t.rows, b = t.buffer.active
+      return { rect: new DOMRect(r.left + c.x * w, r.top + c.row * h, 0, h), before: b.getLine(b.baseY + b.cursorY)?.translateToString(false, 0, b.cursorX) ?? "" }
+    },
+    pending: (text: string) => {
+      words = text
+      // (redrawn as the screen moves under them: output, a scroll, a new size)
+      if (words && !follow) follow = t.onRender(draw)
+      if (!words) { follow?.dispose(); follow = null }
+      draw()
+    },
+  }
+}
+
 /** How much drawn output a page tells the server about at once (plugin.ts paces the shell by it). */
 const ACK = 128 << 10
 
@@ -632,6 +681,8 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       const r = el.querySelector("[data-term-screen]")?.getBoundingClientRect()
       return r ? { x: r.left, y: r.top, width: r.width / t.cols, height: r.height / t.rows } : null
     } })
+    const dictation = dictationInput(t)
+    Object.defineProperty(el, "terminalInput", { configurable: true, value: dictation })
     // In the frame its box changed (a ResizeObserver's turn comes before the paint), so the new size and what it draws
     // show together. Not while a sidebar or split is dragged: it keeps its size, clipped, till the end.
     const refit = () => { if (!resizing()) l.refit() }
@@ -725,7 +776,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     scrolled()
 
     return () => {
-      ro.disconnect(); offResized(); unregister(); onScroll.dispose()
+      ro.disconnect(); offResized(); unregister(); onScroll.dispose(); dictation.pending("")
       el.removeEventListener("touchstart", onTouchStart, true)
       el.removeEventListener("touchmove", onTouchMove, true)
       el.removeEventListener("touchend", onTouchEnd, true)

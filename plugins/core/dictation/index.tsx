@@ -2,19 +2,21 @@
 // session, electron/dictation.ts the recognizer). A tap starts and the next stops; held, it listens until let go.
 import { useEffect } from "react"
 import { Mic } from "lucide-react"
-import { definePlugin, dictation, dictationSource, fnDictation, listening, notify, notifyError, openPermissions, pluginSettings, pressDictation,
+import { definePlugin, dictation, dictationSource, fnDictation, hintDictation, listening, notify, notifyError, openPermissions, pluginSettings, pressDictation,
   startDictation, typingIn, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
 import { fieldTarget } from "./field"
+import { terminalTarget, type TerminalInput } from "./terminal"
 
-/** Where the words go: the editor or field with the keyboard; with neither, nowhere (talking to the companion is its
- *  Talk keys'). */
+/** Where the words go: the editor, terminal or field with the keyboard; with none, nowhere (talking to the companion
+ *  is its Talk keys'). */
 async function targetHere(): Promise<DictationTarget | null> {
   const el = document.activeElement
   const cm = el instanceof HTMLElement ? el.closest(".cm-editor") : null
   // (CodeMirror comes with the editor, not with the app)
   const view = cm instanceof HTMLElement ? (await import("./editor")).viewOf(cm) : null
   if (view) return view.target ?? fieldTarget(view.dom)
-  // (a terminal keeps its keys: what's said there would run)
+  const term = el?.closest<HTMLElement & { terminalInput?: TerminalInput }>("[data-terminal]")
+  if (term?.terminalInput && el?.matches("[data-term-input]")) return terminalTarget(term, term.terminalInput)
   if (el instanceof HTMLElement && typingIn(el) && !el.closest("[data-keeps-keys], [data-term]")) return fieldTarget(el)
   return null
 }
@@ -44,7 +46,7 @@ function failed(code: string, message?: string) {
 
 async function begin(hold: boolean) {
   const target = await targetHere()
-  if (!target) { notify("Click where the words should go, then dictate"); return false }
+  if (!target) { hintDictation("Click where the words should go, then dictate"); return false }
   const s = pluginSettings("dictation").get()
   const language = typeof s.language === "string" ? s.language.trim() : ""
   const silence = typeof s.silence === "number" ? s.silence : 0

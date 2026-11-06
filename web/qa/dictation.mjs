@@ -37,7 +37,8 @@ if (!cloud && !engines?.[ENGINE]) { await app.close(); await skip(`${ENGINE} doe
 await win.evaluate(() => { window.ends = []; window.vaultite.dictation.on((e) => { if (e.type === "end") window.ends.push(e) }) })
 const text = () => win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
 const pending = () => win.evaluate(() => document.querySelector(".cm-dictation-pending")?.textContent ?? "")
-const listening = () => win.evaluate(() => !!document.querySelector(".dictation-pill"))
+// (not the hint the pill's place shows when there's nowhere to dictate)
+const listening = () => win.evaluate(() => !!document.querySelector(".dictation-pill:not([data-hint])"))
 const normal = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim()
 
 // ---------- a tap: listens until the file ends (as if the user tapped again), the words dimmed, then in the note

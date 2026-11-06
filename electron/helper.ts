@@ -532,7 +532,9 @@ async function begin() {
   // (a cursor's conversation open: the words go in its box)
   if (panelFocused()) return listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true } })
   const focus = await screenAsk<Focus>("focus")
-  if (focus.vaultite || dictating()) return
+  if (dictating()) return
+  // (a window of Vaultite's that isn't a vault's, a Quick Look: it says so rather than nothing)
+  if (focus.vaultite) return hint("Click where the words should go, then dictate")
   // (a password field gets nothing said; with no field, nothing is heard: talking to the companion is its own keys')
   if (focus.field && focus.secure) return
   if (!focus.field) return hint(prefs.talk.length ? `No text field here: ${keysSaid(prefs.talk)} talks to ${live.state.name || "the companion"}` : "No text field here")

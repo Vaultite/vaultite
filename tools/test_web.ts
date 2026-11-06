@@ -22,7 +22,8 @@ const STUBS: Record<string, string> = {
 }
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
 const shim = path.join(tempDir("vau-shim-"), "vaultite.ts")
-fs.writeFileSync(shim, `export { blockPieces, paragraphAt } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}`)
+fs.writeFileSync(shim, `export { blockPieces, paragraphAt } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}
+export { joinText } from ${JSON.stringify(pathToFileURL(path.join(ROOT, "core", "dictationtext.ts")).href)}`)
 registerHooks({
   resolve(spec, context, next) {
     if (spec === "@vaultite") return { url: pathToFileURL(shim).href, shortCircuit: true }
@@ -2105,6 +2106,39 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("dictation: a replacement, whatever its case and spacing", swap("At Claude, can you look?") === "@claude, can you look?" && swap("ask at  claude now") === "ask @claude now")
   check("dictation: whole words only, and never twice", swap("chat Claude") === "chat Claude" && swap("@claude") === "@claude" && swap("at Claudette") === "at Claudette")
   check("dictation: a line without its colon is ignored; $ written as is", swap("at Claude", ["nonsense"]) === "at Claude" && swap("five dollars", ["five dollars: $5"]) === "$5")
+}
+
+// ---------- Dictation into a terminal: a paste on one line, never an Enter (plugins/core/dictation/terminal.ts) ----------
+{
+  const { terminalTarget, oneLine } = await plugin("dictation/terminal.ts")
+  /** A terminal stood in: what its line shows before the cursor (the echo of what's sent, once `echo` is on). */
+  const term = (bracketed: boolean, line = "> ") => {
+    const sent: string[] = [], shown: string[] = []
+    const el = Object.assign(new EventTarget(), { isConnected: true })
+    const t = { send: (d: string) => { sent.push(d) }, bracketed: () => bracketed, caret: () => ({ rect: null, before: line }), pending: (w: string) => { shown.push(w) } }
+    return { el, sent, shown, target: terminalTarget(el, t), echo: (s: string) => { line += s } }
+  }
+  const a = term(true)
+  a.target.pending("Remember to buy")
+  a.target.final("Remember to buy milk\nand bread.\r\n")
+  check("dictation in a terminal: words not settled drawn by the terminal, at its cursor", a.shown[0] === "Remember to buy", a.shown)
+  check("dictation in a terminal: a settled chunk is a bracketed paste when the program asked, with no Enter, its line breaks spaces",
+    a.sent.length === 1 && a.sent[0] === "\x1b[200~Remember to buy milk and bread. \x1b[201~" && !/[\r\n]/.test(a.sent[0]), a.sent)
+  check("…and the pending words are cleared as it settles", a.shown.at(-1) === "", a.shown)
+  a.target.final("Then call Alice.")
+  check("dictation in a terminal: the next chunk follows after a space, before its echo is on screen", a.sent[1] === "\x1b[200~Then call Alice.\x1b[201~", a.sent)
+  const b = term(false, "$ ls")
+  b.target.final("minus la")
+  check("dictation in a terminal: a plain paste when the program didn't ask for brackets, a space after what's on the line", b.sent[0] === " minus la", b.sent)
+  b.el.dispatchEvent(new Event("keydown"))
+  b.echo(" minus la\u2028")
+  b.target.final("now")
+  check("dictation in a terminal: after a key there, what's on screen is what it follows", b.sent[1] === "now", b.sent)
+  b.target.end()
+  check("dictation in a terminal: nothing but words goes in (controls, separators)", oneLine("a\tb\x1bc\u2029d\x7fe") === "a b c d e" && oneLine("one\n\n two") === "one two")
+  const c = term(true)
+  c.target.final("  \n ")
+  check("dictation in a terminal: nothing said, nothing sent", !c.sent.length, c.sent)
 }
 
 // ---------- Audio recorder: the transcript under the recording (plugins/core/audio-recorder/transcript.ts) ----------

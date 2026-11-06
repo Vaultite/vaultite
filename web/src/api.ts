@@ -293,7 +293,7 @@ export { openPermissions } from "@/core/desktop"
 export { CURSOR_SPRING, glide as springStep, stiffness, type Glide } from "@/core/spring"
 /** Dictation: the session (into a note's editor or a field), its events for plugins (`onDictation`) and its source. */
 export { joinText } from "../../core/dictationtext.ts"
-export { dictation, dictationSource, fnDictation, listening, onDictation, onTalkKey, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"
+export { dictation, dictationSource, fnDictation, hintDictation, listening, onDictation, onTalkKey, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"
 // The Dock's icon (the desktop app; null in a browser): the Dock icon plugin.
 export { dockIcon } from "@/core/desktop"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.

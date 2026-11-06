@@ -4,6 +4,7 @@ import type { EditorView } from "@codemirror/view"
 import { cell } from "@/core/signal"
 import { parseReplacement, replacer } from "../../../core/dictationtext.ts"
 import { fnKey, type TalkAction } from "../../../core/fnkey.ts"
+import { announce } from "@/core/announce"
 import { makePill } from "@/core/pill"
 
 export type DictationEvent =
@@ -42,14 +43,14 @@ export type DictationSource = {
   onKey?: (fn: (k: { down?: boolean; other?: boolean; talk?: TalkAction }) => void) => () => void
 }
 
-/** Where the words go: a note's editor (it shows the pending words itself) or a field. */
+/** Where the words go: a note's editor or a terminal (each shows the pending words itself), or a field. */
 export type DictationTarget = {
   pending: (text: string) => void
   final: (text: string) => void
   end: () => void
   /** Where on screen the words go (the indicator sits by it; empty: not shown now); null once it's gone, which ends it. */
   rect: () => DOMRect | null
-  /** It draws the pending words itself (an editor); a field's are in the indicator. */
+  /** It draws the pending words itself (an editor, a terminal); a field's are in the indicator. */
   showsPending?: boolean
   /** A note's editor, and the note. */
   view?: EditorView
@@ -205,6 +206,7 @@ const indicator = (() => {
   }
   return {
     show() {
+      hinted?.remove()
       if (pill) return
       pill = makePill()
       // (pressed, not clicked: the editor keeps the keyboard)
@@ -215,6 +217,32 @@ const indicator = (() => {
     hide() { cancelAnimationFrame(raf); pill?.el.remove(); pill = null },
   }
 })()
+
+/** Nowhere to dictate: `text` a moment in the pill's place, by what has the keyboard (else at the window's foot, where
+ *  the helper says it over other apps), and to a screen reader. A toast in the window's corner went unseen. */
+export function hintDictation(text: string) {
+  announce(text)
+  hinted?.remove()
+  const el = (hinted = document.createElement("div"))
+  el.className = "dictation-pill"
+  el.dataset.ready = el.dataset.hint = ""
+  el.setAttribute("aria-hidden", "true")
+  el.style.pointerEvents = "none"
+  const words = document.createElement("span")
+  words.className = "dictation-pending"
+  words.textContent = text
+  el.append(words)
+  document.body.append(el)
+  const f = document.activeElement, w = el.offsetWidth, h = el.offsetHeight
+  const r = f instanceof HTMLElement && f !== document.body && f.getClientRects().length ? f.getBoundingClientRect() : null
+  // (a whole pane focused is no spot: the foot, then)
+  const by = r && r.height < innerHeight / 2 ? r : null
+  const x = by ? Math.max(8, Math.min(innerWidth - w - 8, by.left)) : (innerWidth - w) / 2
+  const y = !by ? innerHeight - h - 56 : by.bottom + 6 + h <= innerHeight - 8 ? by.bottom + 6 : Math.max(8, by.top - h - 6)
+  el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`
+  setTimeout(() => { el.remove(); if (hinted === el) hinted = null }, 2600)
+}
+let hinted: HTMLElement | null = null
 
 // ---------- the key: a tap starts and the next one stops; held down, it listens until it's let go
 

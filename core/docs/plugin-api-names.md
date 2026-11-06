@@ -174,7 +174,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `DictationEvent`
 - `dictationSource`: The source of dictation here, or null: a browser, a phone, an app build from before it.
 - `DictationSource`
-- `DictationTarget`: Where the words go: a note's editor (it shows the pending words itself) or a field.
+- `DictationTarget`: Where the words go: a note's editor or a terminal (each shows the pending words itself), or a field.
 - `DiffLine`: Kept, only in the second text (add), only in the first (del), or `n` unchanged lines folded away (gap).
 - `diffLines(a, b)`: How to turn a into b (textedit's opcodes), never a wrong diff at any size.
 - `DiffRows({ lines })`: The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls.
@@ -288,6 +288,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `highlightColor(text)`: The colour a highlight's text starts with, and how long its emoji is (UTF-16 units); null: the default.
 - `HighlightColor`
 - `highlightItems(view, at?)`: The colours as menu rows (Default first), the highlight at the selection's ringed; `at`: the one there (the swatch's), with Remove highlight under them.
+- `hintDictation(text)`: Nowhere to dictate: `text` a moment in the pill's place, by what has the keyboard (else at the window's foot, where the helper says it over other apps), and to a screen reader.
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
 - `holdHeight(el, key, anyWidth?, shrinks?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes (`shrinks`: see Held).
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.

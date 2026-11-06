@@ -5,7 +5,7 @@
   "essential": true,
   "desktopApp": true,
   "name": "Dictation",
-  "description": "Speak where the cursor is (a note, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized by Soniox in the cloud with its key, else on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. With nothing to type into, it says so and listens to nothing.",
+  "description": "Speak where the cursor is (a note, a terminal, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized by Soniox in the cloud with its key, else on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. In a terminal the words go in as a paste and never press Enter. With nothing to type into, it says so and listens to nothing.",
   "settings": {
     "engine": {
       "type": "enum",
