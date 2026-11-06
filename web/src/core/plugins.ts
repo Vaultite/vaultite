@@ -426,6 +426,9 @@ function panelFor(key: string, name: string, p: Plugin, make: (arg: string) => S
   return panel
 }
 
+/** The plugin that's on that hands tasks to a worker (Do it), if one is. */
+export const taskDoer = (disabled: string[]) => active(disabled).find((p) => p.doTask)?.doTask ?? null
+
 /** Every plugin's panels (on or off), for the default setup. */
 const panelInfo = () =>
   PLUGINS.flatMap((p) => Object.entries(p.sidebar ?? {}).map(([name, s]) => ({ key: `${p.id}:${name}`, sort: s.sort, hidden: s.hidden, side: s.side })))

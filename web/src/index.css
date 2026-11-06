@@ -1454,3 +1454,9 @@ html[data-translucent][data-translucent-pages] {
 .dark .welcome-scrim { background: rgb(0 0 0 / 0.32); }
 .welcome-scrim[data-welcome-page="look"] { background: transparent; }
 @keyframes welcome-scrim-in { from { background: transparent; } }
+
+/* Do it on a drawn note's open task: on hover (a phone: always, a small tap away). */
+.md-do-it { margin-left: 8px; padding: 0 6px; border-radius: 6px; color: var(--primary); font-size: 12px; line-height: 20px; cursor: pointer; opacity: 0; }
+li:hover:not(:has(li:hover)) > .md-do-it, .md-do-it:focus-visible { opacity: 1; }
+.md-do-it:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+@media (pointer: coarse) { .md-do-it { opacity: 1; line-height: 28px; } }

@@ -236,6 +236,25 @@ export function wireTasks(root: HTMLElement, toggle: ((nth: number, on: boolean)
   })
 }
 
+/** A Do it on each open task of what's drawn (the same boxes as wireTasks): `run` gets the box's nth. */
+export function wireDoIt(root: HTMLElement, run: (nth: number, button: HTMLButtonElement) => void) {
+  const boxes = [...root.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].filter((b) => {
+    const embed = b.closest("[data-md-embed], [data-embed]")
+    return !embed || embed === root || !root.contains(embed)
+  })
+  boxes.forEach((b, i) => {
+    const li = b.closest("li")
+    if (!li || b.checked || b.dataset.status || li.querySelector(":scope > .md-do-it")) return
+    const go = document.createElement("button")
+    go.type = "button"
+    go.className = "md-do-it"
+    go.dataset.doIt = ""
+    go.textContent = "Do it"
+    go.onclick = (e) => { e.preventDefault(); e.stopPropagation(); run(i, go) }
+    li.insertBefore(go, li.querySelector(":scope > ul, :scope > ol"))
+  })
+}
+
 /** `text` with its nth task ticked (or not), or null when it has no such task. */
 export function tickTask(text: string, nth: number, on: boolean): string | null {
   const at = taskMarks(text)[nth]

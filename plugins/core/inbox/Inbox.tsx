@@ -6,7 +6,7 @@ import {
   Maximize2, ListChecks, MessageCircleQuestion, MessageSquareReply, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
-  activePane, askMove, askMoveMany, backDetail, closePane, currentRow, moveInList, Badged, Button, cn, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, Markdown, menuBelow, menuFor,
+  activePane, askMove, askMoveMany, backDetail, closePane, currentRow, moveInList, Badged, Button, cn, del, detailPath, DoIt, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, Markdown, menuBelow, menuFor,
   notify, notifyError, openDetail, replaceDetail, openFile, openMenu, openView, openWebLink, optimistic, Panel, paneTab, panesShowing, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, selectPane, setProperty, SheetHead, snippet,
   SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useStoreWith, useTick, type MenuItem,
   type FileHead, type SidebarCtx, type Store, type SwipeAction, type TabButton,
@@ -237,6 +237,7 @@ export function ItemBar({ file }: { file: FileHead & { place: "bar" | "line" } }
   const bar = file.place === "bar"
   return (
     <span data-inbox-bar className={cn("flex shrink-0 items-center", bar ? "gap-0.5" : "-my-1.5 md:my-0")}>
+      {r.do && <DoIt task={{ text: r.do }} done={() => void markDone(r)} />}
       {itemButtons(r).map((b) => (
         <button key={b.label} type="button" aria-label={b.label} data-tip={b.label} data-inbox-bar-button={b.label} onClick={b.run}
           className={cn("grid shrink-0 cursor-pointer place-items-center text-muted-foreground hover:text-foreground",
@@ -642,6 +643,7 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
           {(meta || draft) && <span className="block text-[13px] text-muted-foreground max-md:text-[15px] max-md:line-clamp-2 md:truncate"><DraftTag to={pathOf(r)} className="mr-1.5 align-[1px]" />{meta}</span>}
         </span>
       </button>
+      {!done && r.do && <DoIt task={{ text: r.do }} done={() => void markDone(r)} />}
       {done
         ? <button type="button" className={iconButton} aria-label="Back to review" data-tip="Back to review" onClick={() => { haptic("medium"); void reopen(r) }}><RotateCcw className="size-4" strokeWidth={2.25} /></button>
         : <>

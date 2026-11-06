@@ -806,6 +806,8 @@ function chooserView(view: EditorView) {
 }
 
 /** The extension for a note's editor (only a file's own: an embed or a field has no path). */
+export { doItEditor, taskHere } from "./doitline"
+
 export function companionExtension(ctx: EditorCtx): Extension {
   if (ctx.kind !== "markdown" || !ctx.path) return []
   const path = ctx.path

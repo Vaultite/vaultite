@@ -329,6 +329,9 @@ export type NewTabSection = {
   only?: "phone" | "desktop"
 }
 
+/** A task for Do it: a line of a note (`path`, its 1-based `line`) or, with no path, only its words. */
+export type DoTask = { text: string; path?: string; line?: number }
+
 /** A panel in the desktop sidebar (search, pinned pages, the file tree). The sidebar is only the panels of plugins that
  *  are on: turn a plugin off and its panel goes. */
 export type SidebarPanel = {
@@ -697,6 +700,8 @@ export type PluginDef = {
   /** Panels named by an argument: a sidebar naming "<plugin>:<name>/<arg>" draws this one's panel for that arg (Pinned's
    *  "file": any file). They exist only while a sidebar names them. */
   sidebarFor?: Record<string, (arg: string) => SidebarPanel>
+  /** Hands a task to a worker, whether it went: tasks get a Do it (<DoIt/>) while a plugin that's on has this. */
+  doTask?: (task: DoTask) => Promise<boolean>
   /** What it draws in the desktop sidebar's header, by name (see HeaderItem). */
   header?: Record<string, HeaderItem>
   /** What it draws in the status bar, by name (see StatusItem). */

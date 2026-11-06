@@ -35,11 +35,11 @@ plugin.kind(new Kind({
       title: truthy(fm.title) ? str(fm.title) : stem, status, from: truthy(fm.from) ? str(fm.from) : "",
       source: truthy(fm.source) ? str(fm.source) : "", created: fm.created ?? null, updated: fm.updated ?? null, origin: truthy(fm.origin) ? str(fm.origin) : "",
       agent: truthy(fm.agent) ? str(fm.agent) : "", session: truthy(fm.session) ? str(fm.session) : "", terminal: truthy(fm.terminal) ? str(fm.terminal) : "",
-      machine: truthy(fm.machine) ? str(fm.machine) : "", snoozed: truthy(fm.snoozed) ? str(fm.snoozed) : null, pinned: fm.pinned === true, body,
+      machine: truthy(fm.machine) ? str(fm.machine) : "", snoozed: truthy(fm.snoozed) ? str(fm.snoozed) : null, pinned: fm.pinned === true, do: truthy(fm.do) ? str(fm.do) : "", body,
     }, STATUSES.includes(status) ? [] : [`status \`${status}\` isn't one of \`new\` or \`done\``]]
   },
   render: (r) => [{ status: r.status || "new", from: r.from || null, source: r.source || null, created: r.created, updated: r.updated || null, origin: r.origin || null,
-    agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null, pinned: r.pinned === true || null }, r.body || ""],
+    agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null, pinned: r.pinned === true || null, do: r.do || null }, r.body || ""],
   // Done is archived and archived is done: one state, the file in Inbox/.archive/ (out of the way), whichever key said
   // so. Taking either back (Back to review, Undo, the same page added again) makes it new, out of the archive.
   prepare(r, old) {
@@ -1333,11 +1333,12 @@ tldr goes on top, so the user knows what it says before reading it: two or three
     tldr: { type: "string", description: "what it says in short, on top: two or three plain sentences the user reads first" },
     source: { type: "string", description: "where it came from, when it's about one page: its address" },
     from: { type: "string", description: "who it's from (default: you, as the server knows the caller)" },
+    do: { type: "string", description: "a task a worker could do alone, standing alone: the item gets a Do it that hands it over (a suggestion)" },
   },
   args: ["title"],
   run: async (p, ctx) => {
     const r = await ctx.api("POST", "inbox", { title: p.title.trim(), body: withTldr(str(p.tldr), str(p.body).trim()), from: str(p.from).trim() || ctx.who.label,
-      ...(str(p.source).trim() ? { source: str(p.source).trim() } : {}) })
+      ...(str(p.source).trim() ? { source: str(p.source).trim() } : {}), ...(str(p.do).trim() ? { do: str(p.do).trim() } : {}) })
     return { path: `${r.id}.md`, title: r.title }
   },
   text: (r) => `In the user's inbox: ${r.path} (they'll see it marked new).`,

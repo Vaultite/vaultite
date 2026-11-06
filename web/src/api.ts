@@ -24,7 +24,7 @@ export { definePlugin, detailPath } from "@/core/define"
 export { API_VERSION, APP_VERSION } from "../../core/version.ts"
 /** What a pinned entry is: a file, a heading in a note ("Notes/Idea.md#Plan"), a search ("search:<query>"). */
 export { pinKind, placePin, SEARCH as PIN_SEARCH, VIEW as PIN_VIEW } from "../../core/pins.ts"
-export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, ReadingBlock, ReadingBlocks, ReadingDrawn, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TabButton, TimelineKind, ViewCtx, ViewDef, WebContainer, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
+export type { AgentDef, AmbientItem, BlockCtx, DoTask, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, ReadingBlock, ReadingBlocks, ReadingDrawn, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TabButton, TimelineKind, ViewCtx, ViewDef, WebContainer, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
@@ -191,6 +191,7 @@ export { NotePreview, noteFor } from "@/components/NoteEmbed"
 // saved in place; and any file drawn as `![[file]]` draws it.
 export { FileEditor, NoteEditor, type FileEditorProps, type NoteEditorProps } from "@/components/NoteEditor"
 export { FileEmbed } from "@/components/FileEmbed"
+export { DoIt } from "@/components/DoIt"
 // The address of a file's bytes (an image's src, a binary format's file; an iPhone photo as JPEG where needed).
 export { rawUrl } from "@/components/FileViewers"
 export { kindIcon } from "@/core/filekinds"

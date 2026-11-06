@@ -128,6 +128,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `slash`: Its entries in the editor's slash menu (see SlashItem). Every plugin's blocks are offered there already.
 - `sidebar`: Its panels in the desktop sidebar, by name (see SidebarPanel).
 - `sidebarFor`: Panels named by an argument: a sidebar naming "<plugin>:<name>/<arg>" draws this one's panel for that arg (Pinned's "file": any file). They exist only while a sidebar names them.
+- `doTask`: Hands a task to a worker, whether it went: tasks get a Do it (<DoIt/>) while a plugin that's on has this.
 - `header`: What it draws in the desktop sidebar's header, by name (see HeaderItem).
 - `status`: What it draws in the status bar, by name (see StatusItem).
 - `ambient`: What it draws in the status bar whatever is open, by name (see AmbientItem).

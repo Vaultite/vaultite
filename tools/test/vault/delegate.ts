@@ -8,7 +8,7 @@ import { waitFor } from "../lib.ts"
 import { fakeSdk } from "./claude-chat.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, app, check } = $
+  const { VAULT, api, app, check, read, write } = $
   const { cascade, childrenOf, clampMode, taskOf } = await import("../../../plugins/core/delegate/graph.ts")
   const { changedFiles, HOME, newTerminalId, PERMISSION_MODES } = await import("../../../core/agents.ts")
   const { modeOf } = await import("../../../plugins/core/codex/plugin.ts")
@@ -178,6 +178,21 @@ export default async ($: VaultTest) => {
     ;[st, b] = await api("POST", "ops/companion.handoff", { task: "And trains too", say: "Adding trains.", job: job.id }, agent)
     await waitFor(() => (runOf(job.link.split("/").pop())?.said.length ?? 0) >= 2, 3000, 50)
     check("handoff: a follow-up to a job goes on in its same session", st === 200 && b.id === job.id && runOf(job.link.split("/").pop())?.said.at(-1)?.text === "And trains too", [st, b])
+    // Do it: a task line handed over, in progress; a suggestion's words; a line that isn't an open task.
+    write("Notes/Errands.md", "# Errands\n\n- [ ] Compare the two flights 📅 2026-12-01\n- [x] Book the car\n")
+    ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 3, text: "Compare the two flights" }, asApp)
+    const doRun = runOf(b.link?.split("/").pop())
+    check("Do it: a task line's worker is told its note and line, on Opus, and it goes in progress", st === 200 && b.state === "running" && doRun?.model === "opus" &&
+      /Notes\/Errands\.md \(line 3\): Compare the two flights/.test(doRun?.said[0]?.text ?? "") && read("Notes/Errands.md").includes("- [/] Compare the two flights 📅 2026-12-01"), [st, b, read("Notes/Errands.md")])
+    ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 4 }, asApp)
+    check("Do it: a line that's no open task is refused", st === 404, [st, b])
+    write("Notes/Errands.md", "# Moved down\n\n\n- [ ] Call Lighthouse\n")
+    ;[st, b] = await api("POST", "ops/companion.do", { path: "Notes/Errands.md", line: 2, text: "Call Lighthouse" }, asApp)
+    check("Do it: a line that moved is found by its words", st === 200 && read("Notes/Errands.md").includes("- [/] Call Lighthouse"), [st, b])
+    ;[st, b] = await api("POST", "ops/companion.do", { text: "Tidy the trip note" }, asApp)
+    check("Do it: only words is a job too", st === 200 && /Tidy the trip note/.test(runOf(b.link?.split("/").pop())?.said[0]?.text ?? ""), [st, b])
+    ;[st, b] = await api("POST", "ops/inbox.add", { title: "Tidy the trip note", do: "Tidy the trip note", from: "Dream" })
+    check("inbox add --do: the item keeps its task", st === 200 && /^do: Tidy the trip note$/m.test(read(b.path)), [st, b])
     sc.emit("close")
     // (the ask taken, so no later area's companion finds it waiting)
     await api("POST", "ops/companion.next", { timeout: 0 })

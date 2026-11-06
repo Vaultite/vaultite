@@ -7,10 +7,12 @@ import { Copy } from "lucide-react"
 import { keyHint } from "@/core/commands"
 import { drawnLink, followLink, linkClick, resolver } from "@/core/links"
 import { type MarkdownOpts, renderInline, renderMarkdown } from "@/core/markdown"
-import { dropMermaid, hydrate, markdownDrawn, richClick, tickTask, wireTasks } from "@/core/richmd"
+import { dropMermaid, hydrate, markdownDrawn, richClick, taskMarks, tickTask, wireDoIt, wireTasks } from "@/core/richmd"
 import { fileOf, isReadOnly, readFile } from "@/core/files"
 import { put } from "@/core/http"
 import { notifyError } from "@/core/notify"
+import { taskDoer } from "@/core/plugins"
+import { getPrefs } from "@/core/prefs"
 import { assetPath, openEmbedMenu } from "@/components/EmbedMenu"
 import { rawUrl } from "@/components/FileViewers"
 import { EmbedView } from "@/components/NoteEmbed"
@@ -40,6 +42,22 @@ async function tickIn(path: string, text: string, nth: number, on: boolean) {
   } catch (e) { notifyError(e, "Couldn't tick it") }
 }
 
+/** Hands the nth task of `text`, as it's in `path` now, to a worker. */
+async function doIn(path: string, text: string, nth: number, button: HTMLButtonElement) {
+  const doer = taskDoer(getPrefs().disabled)
+  if (!doer) return
+  button.disabled = true
+  try {
+    const f = await readFile(path)
+    const at = f.text.indexOf(text), mark = taskMarks(text)[nth]
+    if (at < 0 || mark === undefined) throw new Error("it changed since it was drawn")
+    const start = f.text.lastIndexOf("\n", at + mark) + 1, end = f.text.indexOf("\n", at + mark)
+    const words = f.text.slice(start, end < 0 ? undefined : end).replace(/^.*?\[.\]\s*/, "")
+    await doer({ path, line: f.text.slice(0, start).split("\n").length, text: words })
+  } catch (e) { notifyError(e, "Couldn't hand it off") }
+  button.disabled = false
+}
+
 /** `inline`: one line in running text; else a document at a sheet's sizes unless `full`. `from`: its file (for `[[#Heading]]`,
  *  closest names); `plain`: no note look; `seen`: notes embedding it; `tasks`: its boxes tick in `from`, where `text` is. */
 export function Markdown({ text, store, inline, full, className, from, plain, seen, tasks }: { text: string; store?: Store; inline?: boolean; full?: boolean; className?: string; from?: string; plain?: boolean; seen?: string[]; tasks?: boolean }) {
@@ -54,6 +72,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     if (!ref.current) return
     hydrate(ref.current)
     wireTasks(ref.current, tasks && from && !isReadOnly(from) ? (nth, on) => void tickIn(from, text, nth, on) : null)
+    if (tasks && from && !isReadOnly(from) && taskDoer(getPrefs().disabled)) wireDoIt(ref.current, (nth, button) => void doIn(from, text, nth, button))
     markdownDrawn(ref.current)
     // Its links have no address (a click follows them): Tab reaches them, and Enter presses them (core/keylist.ts).
     for (const a of ref.current.querySelectorAll<HTMLElement>("a[data-wiki], a[data-tag], a[data-url]")) { a.tabIndex = 0; a.setAttribute("role", "link") }

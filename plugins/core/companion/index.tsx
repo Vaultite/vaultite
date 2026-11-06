@@ -1,5 +1,5 @@
 import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
-import { Crosshair, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal, Undo2 } from "lucide-react"
+import { Crosshair, Play, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal, Undo2 } from "lucide-react"
 import { answerPlaceAt, cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
@@ -10,6 +10,7 @@ import { Arrow, follow, Overlay, placeAt, showSaid } from "./Overlay"
 import { Presence } from "./Presence"
 import { followItems, modeItem, MODES, setMode, showSession } from "./session"
 import { clickUi, watchPanes } from "./panes"
+import { doTask } from "./doit"
 import { privateNote } from "./private"
 import { offerThreads } from "./threads"
 
@@ -121,8 +122,15 @@ function Background() {
 }
 
 // (a shared folder's guest gets the threads and nothing of the agents)
+/** Do it, on the caret's task line. */
+const doItItem = (view: Parameters<NonNullable<typeof loaded>["taskHere"]>[0], path?: string): MenuItem[] => {
+  const task = path && !share ? loaded?.taskHere(view, path) : null
+  return task ? [{ label: "Do it", icon: Play, run: () => void doTask(task) }] : []
+}
+
 export default definePlugin({
-  editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? (await load()).companionExtension(ctx) : []),
+  editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? [(await load()).companionExtension(ctx), ...(share ? [] : (await load()).doItEditor(ctx.path))] : []),
+  doTask: share ? undefined : doTask,
   background: () => <Background />,
   answers: share ? undefined : { click: clickUi },
   ambient: share ? undefined : { status: { title: "Companion", sort: 25, left: true, render: () => <Status /> } },
@@ -139,6 +147,7 @@ export default definePlugin({
     { id: "companion:undo-edit", name: "Undo the companion's last edit", when: () => canUndoEdit(), run: () => void undoEdit(), icon: Undo2 },
   ],
   editorMenu: ({ view, path }) => [
+    ...doItItem(view, path),
     ...(path && !share && getState().mode !== "off" && loaded ? loaded.foldItems(view, path) : []),
     ...(path && !share && !view.state.selection.main.empty && getState().mode !== "off" && !privateNote(path)
       ? (liveAgents().length > 1 ? liveAgents().map((a) => a.name) : [getState().name]).map((n) => ({ label: `Ask ${n} about this`, icon: MessageCirclePlus, run: () => ask(n) })) : []),

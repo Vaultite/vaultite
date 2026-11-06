@@ -18,6 +18,8 @@ export type InboxItem = {
   snoozed?: string | null
   /** Pinned on top of the inbox till it's done. */
   pinned?: boolean
+  /** A suggestion: the task its Do it hands to a worker. */
+  do?: string
   /** An agent's report (inbox.report): who wrote it, its session, the app terminal and the machine it ran on, for the reply. */
   agent?: string; session?: string; terminal?: string; machine?: string
 }
