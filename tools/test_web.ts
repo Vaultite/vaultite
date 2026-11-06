@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { registerHooks } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { check, cpuMs, section, summary, tempDir } from "./test/lib.ts"
+import { check, cpuMs, exit, section, summary, tempDir } from "./test/lib.ts"
 const t0 = Date.now()
 
 const ROOT = path.dirname(import.meta.dirname)
@@ -3358,4 +3358,4 @@ await section("screen drawings", async () => {
   check("screen drawings: with all, the marks too, where the overlay found them; nothing worth keeping, none", withMarks?.elements.some((e: Any) => e.type === "ellipse") && sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: [1, 1] }])) === null)
 })
 
-process.exit(summary("web", t0))
+await exit(summary("web", t0))

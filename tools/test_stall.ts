@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { once } from "node:events"
 import fs from "node:fs"
 import path from "node:path"
-import { check, freePort, results, sleep, summary, tempDir, testServer } from "./test/lib.ts"
+import { check, exit, freePort, results, sleep, summary, tempDir, testServer } from "./test/lib.ts"
 const began = Date.now()
 if (process.platform === "win32") { console.log("skip stall: FIFOs stand in for a slow file, and Windows has none"); process.exit(0) }
 
@@ -107,4 +107,4 @@ for (const [how, end] of [["exits", "process.exit(0)"], ["is killed", "process.k
   if (!gone && Number(pid) > 0) try { process.kill(Number(pid), "SIGKILL") } catch { /* gone */ }
 }
 if (results.some((r) => r.status === "FAIL")) console.log(log.slice(-3000))
-process.exit(summary("stall", began))
+await exit(summary("stall", began))

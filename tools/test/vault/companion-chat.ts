@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events"
 import type { IncomingMessage } from "node:http"
 import fs from "node:fs"
 import net from "node:net"
+import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
@@ -12,10 +13,12 @@ import { waitFor } from "../lib.ts"
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..")
 const CHATD = path.join(ROOT, "plugins/core/claude-code/chatd.ts")
 const HOOKS = path.join(import.meta.dirname, "chatd", "hooks.ts")
+/** Where a test lets a held stream go on (chatd/sdk.ts, "hold"). */
+const RELEASE = path.join(os.tmpdir(), `vaultite-chatd-release-${process.pid}`)
 
 /** A real chat keeper (chatd.ts, its own process) at `sock`, its SDK the stand-in (chatd/sdk.ts). */
 async function keeper(sock: string) {
-  const p = spawn(process.execPath, ["--import", pathToFileURL(HOOKS).href, CHATD, sock, sock], { stdio: ["ignore", "ignore", "pipe"], env: process.env })
+  const p = spawn(process.execPath, ["--import", pathToFileURL(HOOKS).href, CHATD, sock, sock], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, CHATD_TEST_RELEASE: RELEASE } })
   let err = ""
   p.stderr!.on("data", (d) => { err += d })
   const up = await waitFor(() => new Promise<boolean>((r) => { const c = net.connect(sock); c.on("connect", () => { c.destroy(); r(true) }); c.on("error", () => r(false)) }), 10000, 100)
@@ -221,7 +224,8 @@ export default async ($: VaultTest) => {
     check("companion chat: a window that closes as a streamed edit is typed fails its call at once", !!failed, await said(id).then((x) => x.slice(-2)))
     await idle(id)
 
-    // Closed as it was written: a bubble or a comment the user dismissed mid-stream stays gone once its call comes.
+    // Closed as it was written: a bubble or a comment the user dismissed mid-stream stays gone once its call comes. Its
+    // stream waits half way for the dismissal: a runner that stalls would otherwise get its last words before it.
     const long = (what: string) => `${what} with a long answer that keeps going for a while, word after word, so it can be closed before it ends, and a little more to be sure`
     const dismissed = async (kind: string, ask: string, words: string) => {
       w.got.length = 0
@@ -229,12 +233,14 @@ export default async ($: VaultTest) => {
       const shown = await waitFor(() => w.got.find((m) => m.t === "note" && m.note.kind === kind && m.note.text?.length > 8 && words.startsWith(m.note.text))?.note, 5000, 5)
       w.ws.emit("message", Buffer.from(JSON.stringify({ t: "answer", id: shown?.id, verdict: "dismiss" })))
       await waitFor(() => w.got.some((m) => m.t === "drop" && m.id === shown?.id), 3000, 5)
+      fs.writeFileSync(RELEASE, "")
       await idle(id)
+      fs.rmSync(RELEASE, { force: true })
       return { shown, back: w.got.some((m) => m.t === "note" && m.note.kind === kind && m.note.text === words), open: (await status()).notes.some((n: Any) => n.id === shown?.id || n.text === words) }
     }
-    const bub = await dismissed("say", `stream say {"text":"${long("A bubble")}"}`, long("A bubble"))
+    const bub = await dismissed("say", `hold say {"text":"${long("A bubble")}"}`, long("A bubble"))
     check("companion chat: a bubble closed as it's written stays closed when its call comes", !!bub.shown && !bub.back && !bub.open, bub)
-    const card = await dismissed("comment", `stream comment {"path":"Notes/Chat.md","find":"Alice","text":"${long("A comment")}"}`, long("A comment"))
+    const card = await dismissed("comment", `hold comment {"path":"Notes/Chat.md","find":"Alice","text":"${long("A comment")}"}`, long("A comment"))
     const past = (await api("POST", "ops/companion.history", { path: "Notes/Chat.md" }))[1].past as Any[]
     check("companion chat: a comment dismissed as it's written stays dismissed, with all its words", !!card.shown && !card.back && !card.open &&
       past.some((n) => n.id === card.shown.id && n.text === long("A comment")), [card, past])

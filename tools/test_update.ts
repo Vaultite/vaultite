@@ -3,7 +3,7 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { check, modesEnforced, section, sleep, standIn, summary, tempDir } from "./test/lib.ts"
+import { check, exit, modesEnforced, section, sleep, standIn, summary, tempDir } from "./test/lib.ts"
 import { afterUpdate, installedCommit } from "../electron/installed.ts"
 
 const t0 = Date.now()
@@ -175,4 +175,4 @@ await section("after a launch: the running server against the installed build", 
     && !afterUpdate({ installed: NEW, app: NEW, server: null, restarted: false }).restart)
 })
 
-process.exit(summary("update", t0))
+await exit(summary("update", t0))

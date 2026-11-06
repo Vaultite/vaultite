@@ -32,6 +32,19 @@ const VOICE_NAMES: Record<string, string> = { soniox: "Soniox", elevenlabs: "Ele
 export const voiceHereText = (v: ReturnType<typeof voiceHere>) =>
   `Voice here: hears with ${v.hears === "soniox" ? "Soniox" : "this Mac's recognizer"}${v.mic ? ` through ${v.mic}` : ""}; ${v.speaks.length ? `speaks with ${v.speaks.map((p) => VOICE_NAMES[p]).join(", then ")}` : "never speaks (voice off)"}; realtime ${v.realtime === "on" ? `on (OpenAI ${v.model})` : v.realtime === "no key" ? "off: no OpenAI key" : "off"}.`
 
+/** What ElevenLabs says this key's plan has used and allows this month (characters), or null (no key, no answer). */
+export async function elevenUsage(plugin: Plugin): Promise<{ used: number; limit: number; resets?: number } | null> {
+  const key = keyOf(allKeys(plugin).companion?.elevenlabs)
+  if (!key) return null
+  try {
+    const r = await fetch(`${ELEVEN_API()}/v1/user/subscription`, { headers: { "xi-api-key": key }, signal: AbortSignal.timeout(5000) })
+    if (!r.ok) return null
+    const j = await r.json() as { character_count?: number; character_limit?: number; next_character_count_reset_unix?: number }
+    return typeof j.character_count === "number" && typeof j.character_limit === "number"
+      ? { used: j.character_count, limit: j.character_limit, ...(j.next_character_count_reset_unix ? { resets: j.next_character_count_reset_unix * 1000 } : {}) } : null
+  } catch { return null }
+}
+
 export function voiceOps(plugin: Plugin) {
   const all = () => allKeys(plugin)
   const eleven = () => keyOf(all().companion?.elevenlabs), soniox = () => keyOf(all().dictation?.soniox)

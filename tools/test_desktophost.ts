@@ -4,7 +4,7 @@ import fs from "node:fs"
 import http from "node:http"
 import path from "node:path"
 import { WebSocket } from "ws"
-import { check, freePort, sleep, summary, tempDir, testServer } from "./test/lib.ts"
+import { check, exit, freePort, sleep, summary, tempDir, testServer } from "./test/lib.ts"
 const began = Date.now()
 
 const tmp = tempDir("vaultite-host-test-")
@@ -146,4 +146,4 @@ const one = serve(port)
   const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
   check("serving: a server that stops lets its vault go", !claimFile() || (process.platform === "win32" && !alive(claimed().pid)))
 }
-process.exit(summary("desktophost", began))
+await exit(summary("desktophost", began))

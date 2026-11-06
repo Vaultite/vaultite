@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
-import { check, freePort, section, skip, sleep, summary, waitFor } from "./test/lib.ts"
+import { check, exit, freePort, section, skip, sleep, summary, waitFor } from "./test/lib.ts"
 
 const began = Date.now()
 if (process.platform !== "win32") { console.log("test_installer: Windows only"); process.exit(0) }
@@ -191,4 +191,4 @@ await section("uninstall", async () => {
 
 if (app && (app as ReturnType<typeof spawn>).exitCode === null) (app as ReturnType<typeof spawn>).kill()
 fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 })
-process.exit(summary("installer", began))
+await exit(summary("installer", began))

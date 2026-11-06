@@ -4,7 +4,7 @@ import { spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { absorb, check, lastTimes, report, section, summary, tempDir } from "./test/lib.ts"
+import { absorb, check, exit, lastTimes, report, section, summary, tempDir } from "./test/lib.ts"
 import { AREAS } from "./test/vault/index.ts"
 
 const argv = process.argv.slice(2)
@@ -35,15 +35,14 @@ const areas = argv.length ? AREAS.filter((a) => want.has(a.name)) : AREAS
 // (a process each few areas, its own app's start being a second or two)
 const jobs = asked || Math.min(4, os.availableParallelism(), Math.ceil(areas.length / 8))
 const t0 = Date.now()
-if (jobs > 1 && areas.length > 1) process.exit(await shards())
+if (jobs > 1 && areas.length > 1) await exit(await shards())
 const { vaultHarness } = await import("./test/vault/harness.ts")
 const $ = await vaultHarness(from)
 for (const a of areas) {
   const mod = await import(`./test/vault/${a.name}.ts`)
   await section(a.name, () => mod.default($))
 }
-const code = summary("vault", t0)
-process.exit(code)
+await exit(summary("vault", t0))
 
 /** The areas split into `jobs` shards by their last times (an area's deps run in its shard too), each run by a process
  *  of its own; their output printed as each ends, then the totals. */

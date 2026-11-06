@@ -106,7 +106,7 @@ function alive() {
     const said = `${current?.name ?? "test"}: stalled, nothing checked for ${STALL / 1000} s${last ? ` after "${last.name}"` : ""}`
     console.log(`FAIL ${said}`)
     annotate(said)
-    process.exit(1)
+    void exit(1)
   }, Math.min(STALL, 5000))
   watchdog.unref()
 }
@@ -243,6 +243,12 @@ export function lastTimes(suite: string) {
 }
 
 /** Prints the totals (and each section's time when there were several), keeps the run, returns the exit code. */
+/** Exits once what was printed is out: a pipe's writes on macOS are asynchronous, and exiting at once cut a log short. */
+export async function exit(code: number): Promise<never> {
+  await Promise.all([process.stdout, process.stderr].map((s) => new Promise((r) => s.write("", r))))
+  process.exit(code)
+}
+
 export function summary(suite: string, t0: number) {
   close()
   if (watchdog) clearInterval(watchdog)

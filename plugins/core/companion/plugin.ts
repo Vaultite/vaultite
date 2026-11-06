@@ -7,7 +7,7 @@ import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentModels, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
 import { byUser, liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
-import { joinPath, Kind, readText, requestWriter, safeName, type Vault, type Writer, writeAtomic } from "../../../core/vault.ts"
+import { joinPath, Kind, readText, requestWriter, safeName, type Vault, type Writer, writeAtomic, writeNew } from "../../../core/vault.ts"
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { bridges } from "./bridge.ts"
 import { type Follow, follows } from "./follows.ts"
@@ -20,8 +20,9 @@ import { screenDrawings } from "./drawings.ts"
 import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { anchorsOf, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
-import { voiceHere, voiceHereText, voiceOps } from "./voice.ts"
+import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type Job, jobOf, jobsLine, jobsText, jobTask } from "./jobs.ts"
+import { type Exchange, exchanges, type PressLine, type Spent, spent } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
 export { nearest } // (its tests reach it through the plugin)
 
@@ -124,7 +125,7 @@ export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "sug
  *  (older ones have none). */
 export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
-export type Act = { t: number; as: string; op: string; seqs?: number[] }
+export type Act = { t: number; as: string; op: string; seqs?: number[]; text?: string }
 /** A note's lines from..to (1-based, of `of`), sent with the moments in it; a drawing's scene as text. */
 export type Excerpt = { path: string; from: number; to: number; of: number; lines: string[]; scene?: string
   /** A pane pointed at: what it shows now (a terminal's screen, a page's tree), by its title. */
@@ -229,9 +230,10 @@ const log = plugin.dayLog<Moment>("moments")
 const acts = plugin.dayLog<Act>("actions")
 /** What's logged that isn't acting: its turn's bookkeeping. */
 const BOOKKEEPING = new Set(["next", "handed", "sent", "done", "again"])
-const did = (as: string, op: string, seqs?: number[]) => {
+/** `text`: what it said (a say's words), kept for the conversation's page. */
+const did = (as: string, op: string, seqs?: number[], text?: string) => {
   const t = Date.now(), quick = inSummoned.getStore() === true
-  acts.append(t, [{ t, as: quick ? lane().as(as) : as, op, ...(seqs ? { seqs } : {}) }])
+  acts.append(t, [{ t, as: quick ? lane().as(as) : as, op, ...(seqs ? { seqs } : {}), ...(text ? { text: text.slice(0, 2000) } : {}) }])
   if (BOOKKEEPING.has(op)) return
   if (quick) lane().acted()
   else handed.delete(key(as))
@@ -2267,7 +2269,7 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
   args: ["text"],
   run: async (p, ctx) => {
     const name = who(p)
-    did(name, "say")
+    did(name, "say", undefined, str(p.text))
     const given = ROOTS.some((k) => p[k] !== undefined) || p.line !== undefined || p.find || p.x !== undefined
     const t = given ? await resolve(target(p, true), name) : {}
     setAgent(name, { ...t, state: acting(name), ...(given ? { pointed: Date.now() } : {}) })
@@ -3314,6 +3316,90 @@ plugin.op({
   },
   text: (r) => timingsText(r.day, r.rows),
 })
+
+plugin.op({
+  id: "companion.conversation",
+  cli: "companion conversation",
+  summary: "The user's talk with the companion on a day: each ask (a Talk key's press, an @name), its answer and what it did, its timings and press; and what its services used.",
+  help: `What the Companion page shows. Each exchange's press has its steps (mic, recognizer, the key's up and down, its
+end), as the menu-bar helper logged them on this machine.
+
+  vau companion conversation
+  vau companion conversation --day 2026-11-05`,
+  kind: "read",
+  params: { day: { type: "string", description: "a day (YYYY-MM-DD); default: today" } },
+  run: async (p) => {
+    const day = str(p.day) || localDate(Date.now())
+    const got = await plugin.desktop("talk:presses", { day }).catch(() => []), presses = (Array.isArray(got) ? got : []) as PressLine[]
+    return { day, exchanges: exchanges(log.read(day), acts.read(day), presses), spent: spent(presses), jobs: jobsNow() }
+  },
+  text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "ask" : "asks"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${e.voice ? "said" : "asked"}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
+    ...(r.spent.length ? [`Used: ${r.spent.map((x: Spent) => `${x.service} ${x.uses}${x.seconds ? `, ${Math.round(x.seconds)} s` : ""}${x.cost ? `, $${x.cost.toFixed(3)}` : ""}`).join("; ")}`] : [])].join("\n"),
+})
+/** A Talk key ask's picture of the screen, as the helper wrote it (userData/screens/display-*.png): no other file. */
+const shotFile = (f: string) => /^display-[\w-]+\.png$/.test(path.basename(f)) && path.basename(path.dirname(f)) === "screens" && fs.existsSync(f)
+plugin.op({
+  id: "companion.press-media",
+  summary: "A Talk key press's kept audio (WAV) and its ask's picture of the screen (PNG), base64, for its Details on the Companion page.",
+  kind: "read",
+  mcp: false,
+  params: { press: { type: "string", description: "the press's id (companion conversation)" }, shot: { type: "string", description: "its ask's picture (companion conversation)" } },
+  run: async (p) => {
+    const wav = str(p.press) ? ((await plugin.desktop("talk:audio", { press: str(p.press) }).catch(() => null)) as { wav: string | null } | null)?.wav ?? null : null
+    const png = str(p.shot) && shotFile(str(p.shot)) ? fs.readFileSync(str(p.shot)).toString("base64") : null
+    return { wav, png }
+  },
+  text: (r) => [r.wav ? "Its audio is kept." : "No audio kept.", r.png ? "Its picture is kept." : "No picture kept."].join(" "),
+})
+
+/** Where each service's balance is told, when it can't be asked. */
+type UsageRow = { service: string; today: Spent; week: Spent; left?: { used: number; limit: number; resets?: number; unit: string }; billing?: string }
+const BILLING: Record<string, string> = { openai: "https://platform.openai.com/settings/organization/billing/overview", soniox: "https://console.soniox.com", elevenlabs: "https://elevenlabs.io/app/subscription" }
+plugin.op({
+  id: "companion.usage",
+  cli: "companion usage",
+  summary: "What the companion's services used today and this week (counted by Vaultite from its presses), and what's left where the provider says.",
+  help: `Per service: its uses, seconds heard and cost today and over the last 7 days; ElevenLabs' characters left this
+month from its API (with this machine's key); for the others, where to see the balance. The Claude plans' limits are
+Claude Code's (vau claude-code limits).
+
+  vau companion usage`,
+  kind: "read",
+  run: async (): Promise<{ services: UsageRow[] }> => {
+    const days = Array.from({ length: 7 }, (_, i) => localDate(Date.now() - i * 86_400_000))
+    const got = await Promise.all(days.map((day) => plugin.desktop("talk:presses", { day }).catch(() => []) as Promise<unknown>))
+    const lines = got.map((x) => (Array.isArray(x) ? x : []) as PressLine[])
+    const today = spent(lines[0]), week = spent(lines.flat()), eleven = await elevenUsage(plugin)
+    const services = [...new Set([...week.map((x) => x.service), ...(eleven ? ["elevenlabs"] : [])])]
+    return { services: services.map((service) => ({ service, today: today.find((x) => x.service === service) ?? { service, uses: 0 }, week: week.find((x) => x.service === service) ?? { service, uses: 0 },
+      ...(service === "elevenlabs" && eleven ? { left: { ...eleven, unit: "characters" } } : {}), ...(BILLING[service] ? { billing: BILLING[service] } : {}) })) }
+  },
+  text: (r) => (r.services.length ? r.services.map((x: UsageRow) => `${x.service}: today ${x.today.uses}${x.today.cost ? ` ($${x.today.cost.toFixed(3)})` : ""}, this week ${x.week.uses}${x.week.cost ? ` ($${x.week.cost.toFixed(3)})` : ""}${x.left ? `; ${x.left.limit - x.left.used} of ${x.left.limit} ${x.left.unit} left` : ""}`).join("\n") : "Nothing used this week."),
+})
+
+plugin.op({
+  id: "companion.page",
+  cli: "companion page",
+  summary: "Open the Companion page: your talk with it (asks, answers, jobs, each press's details) and what its services used.",
+  help: `Written into the pages folder first when the vault doesn't have it yet (its blocks: companion-conversation,
+companion-usage).
+
+  vau companion page`,
+  kind: "write",
+  lock: false,
+  run: async (_p, ctx) => {
+    const home = plugin.vault.pagesHome(), at = home ? `${home}/Companion.md` : "Companion.md"
+    // (a vault that had it on before its page came: written now, as turning it on would have)
+    if (!fs.existsSync(plugin.vault.abs(at))) writeNew(plugin.vault.abs(at), readText(path.join(plugin.dir, "pages", "Companion.md")))
+    await ctx.op("ui.open", { path: at }).catch(() => {})
+    return { path: at }
+  },
+  text: (r) => `Opened ${r.path}.`,
+})
+
+// (the Companion page's blocks as text: what /api/render shows)
+plugin.block("companion-conversation", async (ctx) => (await plugin.host.call("companion.conversation", { day: ctx.today })).text)
+plugin.block("companion-usage", async () => (await plugin.host.call("companion.usage", {})).text)
 
 // ---------- a change of settings (mode, name) reaches the windows
 
