@@ -23,7 +23,7 @@ import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type JobState, jobSpoken, jobTimingsText } from "./jobs.ts"
 import { jobOps } from "./workers.ts"
-import { type Exchange, exchanges, type PressLine, type Spent, spent } from "./conversation.ts"
+import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
 import { doneText, stepOf, takeovers } from "./takeover.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -231,7 +231,7 @@ let nid = 0
 const log = plugin.dayLog<Moment>("moments")
 const acts = plugin.dayLog<Act>("actions")
 /** What's logged that isn't acting: its turn's bookkeeping. */
-const BOOKKEEPING = new Set(["next", "handed", "sent", "done", "again"])
+const BOOKKEEPING = new Set(["next", "handed", "sent", "done", "again", "result", "withdrawn", "talked"])
 /** `text`: what it said (a say's words), kept for the conversation's page. */
 const did = (as: string, op: string, seqs?: number[], text?: string) => {
   const t = Date.now(), quick = inSummoned.getStore() === true
@@ -906,7 +906,10 @@ function screenAnswered(m: Record<string, unknown>) {
   const name = str(m.agent) || ownName(), heard = str(m.heard).trim().slice(0, 2000), words = str(m.said).trim().slice(0, 2000)
   if (!words || mode() === "off") return
   const t = Date.now()
-  const asks = m.withdraw === true && isMain(name) ? lane().withdraw(words) : []
+  const asks = m.withdraw === true && isMain(name) ? lane().withdraw() : []
+  // (the talk's log: the summoned answer withdrawn and these words said instead, or small talk the voice answered alone)
+  if (asks.length) { did(name, "withdrawn", asks.map((x) => x.seq)); acts.append(t, [{ t, as: name, op: "say", text: words }]) }
+  else did(name, "talked", undefined, JSON.stringify({ heard, said: words }))
   if (asks.length) {
     // (their ask stays, as it came; what the summoned session said of it goes)
     const ts = new Set(asks.map((x) => x.t)), theirs = (n: Note) => n.kind === "say" && key(n.agent) === key(name) && !!n.answers && ts.has(n.answers.t)
@@ -1625,7 +1628,9 @@ export type ChatHow = { cwd?: string; account?: string; model?: string; effort?:
   images?: string[]; quick?: boolean
   /** A lean session's whole system prompt and the few Claude Code tools it has; its words as written (`onText`). */
   system?: string; builtins?: string[]; onText?: (use: string, text: string, end?: "done" | "stop") => void }
-export type ChatState = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; error?: string; seq?: number; turn?: { text: string } | null }
+export type ChatState = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; error?: string; seq?: number; turn?: { text: string } | null
+  /** Tokens its last request read. */
+  context?: number }
 /** What claude-code exports as `chat`. */
 export type Chat = {
   start: (o: ChatHow & { prompt?: string }) => Promise<ChatState>
@@ -1642,6 +1647,8 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
 const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-stop"]
+/** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
+const QUIET_RESULTS = new Set(["see", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
@@ -1675,10 +1682,15 @@ function toolsFor(name: string, list = TOOLS, busy = () => turning.has(key(name)
         const { done, ...given } = (args && typeof args === "object" ? args : {}) as Record<string, unknown>
         try {
           const r = await toolUse.run(use, () => plugin.host.call(op.id, { ...given, ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: `companion ${short}` }))
+          // (what it answered, ids and all, for the talk a fresh session is told: "the one you just opened")
+          if (!QUIET_RESULTS.has(short) && r.text) did(name, "result", undefined, `${short}: ${String(r.text).slice(0, 400)}`)
           // (not its last call: its turn goes on, and its cursor shows it busy, a bubble or not, until it ends)
           if (ends && done !== true && busy() && agents.get(key(name))?.state === "watching") setAgent(name, { state: "thinking" })
           return { content: [{ type: "text", text: r.text }], ...((ends && done === true) || LAST.has(short) ? { endsTurn: true } : {}) }
-        } catch (e) { return { isError: true, content: [{ type: "text", text: (e as Error).message }] } }
+        } catch (e) {
+          did(name, "result", undefined, `${short} failed: ${(e as Error).message.slice(0, 300)}`)
+          return { isError: true, content: [{ type: "text", text: (e as Error).message }] }
+        }
         finally { if (use) streamDone(use) }
       } }]
   })
@@ -1698,7 +1710,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["open", "page", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-stop"]
+const SUMMONED_TOOLS = ["open", "page", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-stop", "conversation"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -1726,19 +1738,32 @@ const lane = (): Lane => {
     caption: (name, text) => screenDrawing.recaption(name, text),
     text: async (ms) => {
       const slim = ms.map((m) => (m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
-      const text = [momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobs.line()].filter(Boolean).join("\n")
+      // (when it is, as a friend beside them would know: "this morning", "last night" in the talk make sense)
+      const now = new Date().toLocaleString("en-US", { weekday: "long", hour: "2-digit", minute: "2-digit", hour12: false })
+      const text = [`(now: ${now})`, momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobs.line()].filter(Boolean).join("\n")
       // (its picture attached, not a path: given one, it spent a turn reading it before its first word)
       const images = shotsOf(ms), named = images.reduce((t, f) => t.split(`its picture: ${f}`).join("its picture, attached to this message")
         .split(`as the key went down: ${f}`).join("as the key went down, attached before it"), text)
       return { text: named.replace(/\(point at one: --ax <id>\)/g, "(point at one: [point a1])"), images }
     },
     agent: (name) => agents.get(key(name)), setAgent, did,
+    talk: (t) => talkBefore(t),
     say: (name, text) => { const a = agents.get(key(name)), answers = inSummoned.run(true, () => answering(name))
       keepSaid(putNote({ kind: "say", agent: name, text, ...(a?.path ? { path: a.path, line: a.line } : {}), ...(answers ? { answers } : {}) }, sayMs(text))) },
   })
   laneOf = { vault: plugin.vault, lane: l }
   return l
 }
+
+/** What a fresh summoned session is told first: their ME.md (its start) and the talk before `t`, its last day. */
+function talkBefore(t: number) {
+  const days = [...new Set([localDate(t - 86_400_000), localDate(t)])]
+  const xs = days.flatMap((d) => exchanges(log.read(d), acts.read(d), [], ownName())).filter((e) => e.t < t && t - e.t < 86_400_000)
+  const body = String((plugin.vault.has("me") ? plugin.vault.get("me", "me") : null)?.body ?? "").trim()
+  return { me: body.length > ME_CHARS ? `${body.slice(0, ME_CHARS)}…` : body, said: talkSoFar(xs, t) }
+}
+/** How much of ME.md a fresh summoned session is told (its first sections: who they are, how they want it). */
+const ME_CHARS = 5000
 
 const READY = "Read ME.md and `vau docs companion` first, once."
 /** Agents whose chat session's turn runs (or was just sent its message): moments meanwhile wait for its end. */

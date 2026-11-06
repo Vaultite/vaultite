@@ -352,7 +352,7 @@ export default async ($: VaultTest) => {
         answered?.agent === "Claude" && /- ask on screen/.test(asked) && /a1 button "Send"/.test(asked) && (await said(longId)).length === before, [answered, asked])
       check("summoned: its picture is said to be attached, not a path to read", /its picture, attached to this message/.test(asked) && !asked.includes(shot), asked.slice(0, 400))
       check("summoned: its words show as they're written, their tags never", !!growing && !/\[/.test(growing.text), growing)
-      check("summoned: the window's text it's given is cut to what's by their pointer", asked.length < 6500 && /Send/.test(asked.split("what the window says")[1] ?? "") && /…/.test(asked), asked.length)
+      check("summoned: the window's text it's given is cut to what's by their pointer", asked.slice(Math.max(0, asked.search(/^- ask on screen/m))).length < 6500 && /Send/.test(asked.split("what the window says")[1] ?? "") && /…/.test(asked), asked.length)
       const drew = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((x: Any) => x.as === "Claude (summoned)").at(-1)
       const acts = fs.readFileSync(fs.readdirSync(c.plugin.localDir()).filter((f) => f.startsWith("actions-")).map((f) => path.join(c.plugin.localDir(), f)).at(-1)!, "utf8")
       check("summoned: a tag points (its cursor there) and a mark tag draws", /"op":"look"/.test(acts) && /"op":"draw"/.test(acts) && drew?.word !== undefined, drew)
@@ -392,7 +392,7 @@ export default async ($: VaultTest) => {
       const allow = rules("Allowed"), deny = rules("Denied")
       const runs = (cmd: string, rs: (string | undefined)[]) => rs.some((r, i) => i % 2 === 0 && !!r && (cmd === r || (rs[i + 1] !== undefined && cmd.startsWith(`${r} `))))
       const named = [...SUMMONED_PROMPT.matchAll(/\bvau(?: [a-z][\w:-]*){1,2}/g)].map((x) => x[0]), refused = named.filter((x) => !runs(x, allow) || runs(x, deny))
-      const served = (qtools ?? "").split(".")[0].replace(/^Tools: /, "").split(","), tools = [...SUMMONED_PROMPT.matchAll(/mcp__vaultite-app__([\w-]+)|the ([\w-]+) tool\b/g)].map((x) => x[1] ?? x[2])
+      const served = (qtools ?? "").split(".")[0].replace(/^Tools: /, "").split(",").map((x: string) => x.replace(/ \(.*\)$/, "")), tools = [...SUMMONED_PROMPT.matchAll(/mcp__vaultite-app__([\w-]+)|the ([\w-]+) tool\b/g)].map((x) => x[1] ?? x[2])
       check("summoned: every command its prompt names runs without asking, and every tool it names is served (its own page with a split too)",
         named.length >= 5 && !refused.length && tools.every((t) => served.includes(t)) && served.includes("page"), { refused, tools, served, allow })
       await idle(quick!)
@@ -425,8 +425,9 @@ export default async ($: VaultTest) => {
       await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "working", 5000, 20)
       const longBefore = (await said(longId)).length
       const recapped = (await said(warmed!)).find((e) => e.k === "user")?.text ?? ""
-      check("summoned: a fresh session's first ask is told what was said before in the talk (theirs and its), so it goes on from there",
-        /A fresh session of the same talk; said before/.test(recapped) && /they: words O botão de enviar/.test(recapped) && /you: O botão de enviar/.test(recapped), recapped.slice(0, 600))
+      check("summoned: a fresh session's first ask is told the talk so far from its log (theirs, its words and what it did), so it goes on from there",
+        /fresh session of an ongoing talk/.test(recapped) && /they (said|asked): words O botão de enviar/.test(recapped) && /you: O botão de enviar/.test(recapped) &&
+        /min ago|just now/.test(recapped), recapped.slice(0, 900))
       sc.emit("message", Buffer.from(JSON.stringify({ t: "interrupt" })))
       check("summoned: the Talk key pressed again (or Esc) mid-answer stops its turn at once, never the long session's",
         !!(await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "idle", 500, 20)) &&

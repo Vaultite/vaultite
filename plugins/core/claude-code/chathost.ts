@@ -45,6 +45,8 @@ export type Summary = {
   /** The last turn: what the user said, the answer's last text, and its error. */
   turn: { prompt: string; text: string; error?: string } | null
   error?: string; quiet?: boolean
+  /** Tokens its last request read (its context now), as the API counted them. */
+  context?: number
 }
 
 /** A permission allowed (`always`: its rules too) or not (`message`: why); questions' answers (options, text or both;
@@ -383,6 +385,11 @@ export class Host {
     } else if (m.type === "system" && m.subtype === "status" && m.permissionMode && m.permissionMode !== x.s.mode) {
       x.s.mode = m.permissionMode as Mode
       this.emit({ t: "state", s: x.s })
+    }
+    if (m.type === "assistant" && !m.parent_tool_use_id) {
+      const u = m.message.usage as { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined
+      const n = (u?.input_tokens ?? 0) + (u?.cache_read_input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0)
+      if (n) x.s.context = n
     }
     this.streamed(x, m)
     const stopped = m.type === "result" && x.stopping

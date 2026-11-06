@@ -17,6 +17,27 @@ export default async ($: VaultTest) => {
     c.editText("a\nb", { append: true, text: "x" }) === "a\nb\nx")
 
   {
+    // The talk a fresh summoned session is told: from the log, with what it did, withdrawn answers and small talk.
+    const v = await import("../../../plugins/core/companion/conversation.ts")
+    const now = 10_000_000, ask = (seq: number, t: number, text: string) => ({ seq, t, kind: "ask", text, summoned: true, for: "Claude" }) as Any
+    const xs = v.exchanges([ask(1, now - 40 * 60_000, "open the pr"), ask(2, now - 5 * 60_000, "how's it going")], [
+      { t: now - 40 * 60_000 + 500, as: "Claude (summoned)", op: "say", text: "Opening it." },
+      { t: now - 40 * 60_000 + 900, as: "Claude (summoned)", op: "result", text: "open: Opened https://github.com/x/y/pull/3 (pane p7)." },
+      { t: now - 5 * 60_000 + 400, as: "Claude (summoned)", op: "say", text: "Let me look at the whole screen" },
+      { t: now - 5 * 60_000 + 600, as: "Claude", op: "withdrawn", seqs: [2] }, { t: now - 5 * 60_000 + 600, as: "Claude", op: "say", text: "Good, thanks!" },
+      { t: now - 60_000, as: "Claude", op: "talked", text: JSON.stringify({ heard: "thanks", said: "Anytime." }) },
+    ], [], "Claude")
+    const said = v.talkSoFar(xs, now)
+    check("companion: the talk keeps what it did with its ids, the realtime voice's words over a withdrawn answer, and small talk",
+      xs.length === 3 && /40 min ago.*open the pr\n  you: Opening it\.\n  you did: open: Opened https:\/\/github\.com\/x\/y\/pull\/3 \(pane p7\)/.test(said) &&
+      /you: Good, thanks!/.test(said) && !/whole screen/.test(said) && /1 min ago, they said: thanks\n  you: Anytime\./.test(said), said)
+    const many = Array.from({ length: 200 }, (_, i) => ask(i, now - (200 - i) * 60_000, `ask number ${i} ${"word ".repeat(40)}`))
+    const long = v.talkSoFar(v.exchanges(many, [], [], "Claude"), now, 3000)
+    check("companion: a long talk is told within its budget, its newest asks whole and the oldest left out",
+      long.length <= 3000 && /ask number 199/.test(long) && !/ask number 0 /.test(long) && long.split("\n").at(-1)!.length > 160, long.length)
+  }
+
+  {
     // @name in a line: at its start any agent's name; anywhere after, only the companion's and the agents around.
     const l = await import("../../../plugins/core/companion/live.ts")
     const names = ["companion", "claude", "ada"], mid = ["claude"], ask = (s: string) => l.mentionIn(s, names, mid)
