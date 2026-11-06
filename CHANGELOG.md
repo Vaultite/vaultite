@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Mini-apps go anywhere**: any file can be drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right
+  Apps/Weather.html`), so one .html page or note with a genui or mcp-app block is an embed, a tab or a panel.
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
 - **The companion sees what was there as you pressed**: a toast or menu that's gone by the time you let go of ⌃⌥ still

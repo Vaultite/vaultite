@@ -694,6 +694,9 @@ export type PluginDef = {
   slash?: (store: Store) => SlashItem[]
   /** Its panels in the desktop sidebar, by name (see SidebarPanel). */
   sidebar?: Record<string, SidebarPanel>
+  /** Panels named by an argument: a sidebar naming "<plugin>:<name>/<arg>" draws this one's panel for that arg (Pinned's
+   *  "file": any file). They exist only while a sidebar names them. */
+  sidebarFor?: Record<string, (arg: string) => SidebarPanel>
   /** What it draws in the desktop sidebar's header, by name (see HeaderItem). */
   header?: Record<string, HeaderItem>
   /** What it draws in the status bar, by name (see StatusItem). */

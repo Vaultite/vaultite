@@ -1,6 +1,6 @@
 // Pinned: the files pinned to the sidebar (.vaultite/pages.json), all of pinning. Pins change one at a time on the file
 // as it is (POST /api/pins), so an old copy can't bring back pages unpinned elsewhere; pins follow moves.
-import { HTTPError, type OpCtx, OpError, type Param, pinProblem, placePin, Plugin, relocatedPin, repinList } from "../../../core/plugins.ts"
+import { HTTPError, movedFilePanels, type OpCtx, OpError, type Param, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
 import { ConfigError, type Item, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -72,7 +72,15 @@ export function repin(vault: Vault, src: string, dst: string | null) {
   if (JSON.stringify(out) !== JSON.stringify(list)) vault.setConfig("pages", { ...conf, pinned: out })
 }
 
-plugin.onMove((from, to) => repin(plugin.vault, from, to))
+/** A file moved: the panels drawing it follow it. */
+export function repanel(vault: Vault, src: string, dst: string | null) {
+  const s = readSidebars(vault.config("sidebars"))
+  if (!s) return
+  const next = movedFilePanels(s, src, dst)
+  if (!sameSidebars(s, next)) vault.patchConfig("sidebars", { left: next.left, right: next.right, collapsed: next.collapsed, heights: next.heights, dock: next.dock ?? null })
+}
+
+plugin.onMove((from, to) => { repin(plugin.vault, from, to); repanel(plugin.vault, from, to) })
 
 /** What core/pages.ts tells "pages:installed" (its Installed). */
 type Installed = { made: string[] }

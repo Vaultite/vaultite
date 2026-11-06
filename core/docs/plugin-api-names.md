@@ -217,6 +217,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `FileMark`: A short mark after a file's name in the file tree (Token count's size over its limit), with its tooltip.
 - `fileMenu(file, opts?)`: A vault file's menu wherever it's shown: `top` (what's about where it is), change it, the plugins' groups, its path, Archive and Delete.
 - `FileMenuItem`: An item in a file's menu.
+- `filePanelKey(path)`
 - `FileRow`: What a plugin draws into a file tree row itself (`fileRows`): on the row and its name, and elements before the name (in place of the row's icon) or after it.
 - `FileRowPart`: Classes, attributes and a style for a part of a file tree row.
 - `fileRowsChanged()`
@@ -282,6 +283,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Heading`
 - `HeadingButton({ icon, label, tip, strokeWidth, className, … })`: An icon button in a panel's heading or a row: its label is its tooltip unless `tip` says otherwise.
 - `headingsOf(text)`: Every `# heading` of a text (ATX), in order, with its line (0-based).
+- `hidePanel(key)`: Hide a panel (out of both sidebars; its plugin stays on).
 - `HIGHLIGHT_COLORS`: The six colours, in Obsidian's order: each one's name (drawn as `hl-<name>`) and emoji.
 - `HIGHLIGHT_EMOJI`: A colour emoji (with the variation selector some keyboards add after it).
 - `highlightAt(state, from, to?)`: The highlight from..to is in (its marks too), in that paragraph.
@@ -884,6 +886,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `matchServed(plugins, prefix)`: The plugin serving an address outside /api/ (plugin.serve) by its first segment, among `plugins` (the ones on).
 - `matchSocket(plugins, parts)`: The plugin and socket for a WebSocket request path (parts under /api/), and the wildcard values.
 - `merge3(base, mine, actual, fuzzy?)`: Apply base -> mine onto `actual`, or null when a changed line was edited there too (a conflict).
+- `movedFilePanels(s, src, dst)`: The setup with file (or folder) `src`'s panels following its move; `dst` null: it's gone, and they with it.
 - `noDesktop()`
 - `NOT_THE_USER`: Why a caller may not answer for the user, as its refusal says.
 - `OpCall`: An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's).

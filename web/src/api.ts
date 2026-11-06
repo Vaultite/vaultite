@@ -123,7 +123,8 @@ export { fetchMachines, machinePath, onMachine, otherMachines, severalMachines, 
 // Where the sidebars' setup comes from (.vaultite/sidebars.json, or a plugin that keeps its own: Workspaces).
 export { readSidebars, sameSidebars, savedSidebars, setDefaultSidebars, sidebars, sidebarsChanged, useSidebars, vaultSidebars } from "@/core/plugins"
 // Show a sidebar panel (its sidebar open, it unfolded): revealPanel, else dockAtEnd puts it at the end of a sidebar.
-export { dockAtEnd, offerPanel, revealPanel, sideOf as panelSide } from "@/core/plugins"
+export { dockAtEnd, hidePanel, offerPanel, revealPanel, sideOf as panelSide } from "@/core/plugins"
+export { filePanelKey } from "../../core/sidebars.ts"
 // The left sidebar's mode: one panel alone filling it (Activity's), kept in the workspace.
 export { setSidebarMode, sidebarMode, toggleSidebarMode, useSidebarMode } from "@/core/sidebarmode"
 // Plugins a plugin runs (Obsidian's, under plugin-compat): listed and drawn like any, their switches its own.
