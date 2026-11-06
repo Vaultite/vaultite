@@ -22,10 +22,11 @@ export default async ($: VaultTest) => {
   }
 
   // ---------- the stand-in: OpenAI Realtime's events for small talk, and for a screen question (a tool call)
-  let refuse = false, mute = false
+  let refuse = false, mute = false, broke = false, connections = 0
   const server = http.createServer(), wss = new WebSocketServer({ server, verifyClient: (_i, done) => done(!refuse, 401) })
   const got: Any[] = [], auths: string[] = []
   wss.on("connection", (ws: WebSocket, req) => {
+    connections++
     auths.push(`${req.headers.authorization} ${new URL(String(req.url), "http://x").searchParams.get("model")}`)
     let rn = 0, items = 0, bytes = 0, story: ReturnType<typeof setInterval> | null = null, storyId = ""
     const send = (m: object) => ws.send(JSON.stringify(m))
@@ -36,6 +37,8 @@ export default async ($: VaultTest) => {
       if (m.type === "input_audio_buffer.append") bytes += Buffer.from(m.audio, "base64").length
       if (m.type === "response.cancel" && story) { clearInterval(story); story = null; send({ type: "response.done", response: { id: storyId, status: "cancelled", output: [] } }) }
       if (m.type !== "response.create" || mute) return
+      // (OpenAI's answer to an account with no credits)
+      if (broke) return send({ type: "error", error: { type: "insufficient_quota", code: "insufficient_quota", message: "You have no credits remaining. Add credits to continue using the API." } })
       const id = `resp_${++rn}`, item = `item_${++items}`, usage = { input_tokens: 300, output_tokens: 60, input_token_details: { text_tokens: 200, audio_tokens: 100, cached_tokens: 0 }, output_token_details: { text_tokens: 10, audio_tokens: 50 } }
       send({ type: "response.created", response: { id } })
       const audio = (ms: number) => send({ type: "response.output_audio.delta", response_id: id, item_id: item, delta: Buffer.alloc(ms * 48).toString("base64") })
@@ -60,7 +63,7 @@ export default async ($: VaultTest) => {
   const url = `ws://127.0.0.1:${(server.address() as Any).port}/v1/realtime`
 
   const { realtimeFront } = await import("../../../electron/realtimefront.ts")
-  const rig = (o: { key?: boolean } = {}) => {
+  const rig = (o: { key?: boolean; pauseMs?: number } = {}) => {
     const ev: Any[] = []
     const f = realtimeFront({
       config: async () => (o.key === false ? null : { url, key: "sk-test-1", model: "gpt-realtime-2.1-mini", voice: "cedar" }),
@@ -72,7 +75,8 @@ export default async ($: VaultTest) => {
       state: (s) => ev.push(["state", s]),
       log: (t) => ev.push(["log", t]),
       heard: (h) => ev.push(["heard", h]),
-      heardMs: 300, lookMs: 3000, firstMs: 1000,
+      heardMs: 300, lookMs: 3000, firstMs: 1000, pauseMs: o.pauseMs,
+      notice: (why) => ev.push(["notice", why]),
     })
     return { f, ev }
   }
@@ -164,6 +168,35 @@ export default async ($: VaultTest) => {
     check("realtime: an answer that doesn't come in time goes to the pipeline", await until(() => quiet.ev.some((e) => e[0] === "fallback" && e[1] === "still there?"), 6000), quiet.ev)
     mute = false
     f.close(); off.f.close(); quiet.f.close()
+  }
+  {
+    // an account with no credits: one press fails over, the voice pauses (told once), presses skip it, one try later
+    broke = true
+    const { f, ev } = rig({ pauseMs: 600 })
+    f.warm(); f.press(); speak(f); f.release()
+    await sleep(100)
+    const heardAt = Date.now()
+    // (refused before its words settled: the pipeline has it at once; after, the front hands it back)
+    const took = f.heard("are you there")
+    if (took) await until(() => ev.some((e) => e[0] === "fallback"))
+    const cost = took ? Date.now() - heardAt : 0
+    console.log(`  (a refused press fails over ${cost} ms after dictation's words, on a stand-in on this machine)`)
+    const before = connections, asked = got.filter((m) => m.type === "response.create").length
+    f.press(); speak(f); f.release()
+    await sleep(50)
+    check("realtime: no credits, the press fails over, the user told once, and the next press skips it (no socket, no try)", (took ? ev.some((e) => e[0] === "fallback") : true) && f.heard("again?") === false &&
+      !f.available() && connections === before && got.filter((m) => m.type === "response.create").length === asked && ev.filter((e) => e[0] === "notice").length === 1 && /no credits/.test(ev.find((e) => e[0] === "notice")[1]), ev)
+    await until(() => got.some((m) => m.type === "response.create" && m.response?.conversation === "none"), 3000)
+    await sleep(100)
+    check("realtime: paused a while, it tries once in the background (a word, outside the conversation); still refused, still paused, not told again",
+      got.some((m) => m.type === "response.create" && m.response?.conversation === "none" && m.response.output_modalities[0] === "text") && !f.available() && ev.filter((e) => e[0] === "notice").length === 1, got.map((m) => m.type))
+    broke = false
+    await until(() => f.available(), 3000)
+    f.press(); speak(f); f.release()
+    await sleep(50)
+    check("realtime: paid again, its next try finds it back, and presses go to it", f.available() && f.heard("hello again") === true, ev)
+    await until(() => ev.some((e) => e[0] === "answered"))
+    f.close()
   }
   wss.close(); server.close()
 

@@ -14,7 +14,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   (OpenAI's, with your own key: `vau secret "OpenAI API key" | vau voice key --provider openai`) answers right away.
   Small talk it answers itself; for anything on screen it says a few words while the summoned model looks, then says
   that answer, its marks drawn as before. Press again while it speaks to cut in. Without the key, or if it fails, the
-  dictation and voice pipeline answers as before (setting Voice front; Realtime model and voice).
+  dictation and voice pipeline answers as before (setting Voice front; Realtime model and voice). An OpenAI account
+  with no credits pauses it for ten minutes, said once in a notice, so presses don't keep trying it.
 - **A spoken answer needs no box**: asked by voice, the companion answers with its cursor, its voice and its marks;
   its box (its words and a reply field) shows when you tap the Talk key, for a typed ask, or if the voice doesn't
   come. Waiting feels alive: let go and your trail draws into its cursor, which glows softly while it thinks, then

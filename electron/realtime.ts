@@ -4,7 +4,10 @@ import { WebSocket } from "ws"
 import type { Usage } from "./realtimelogic.ts"
 
 export type RealtimeConfig = { url: string; key: string; model: string; voice: string; instructions: string; tools: object[] }
-export type Done = { id: string; status: string; usage?: Usage; error?: string; calls: { id: string; name: string; args: string }[] }
+export type Done = { id: string; status: string; usage?: Usage; error?: string; quota?: boolean; calls: { id: string; name: string; args: string }[] }
+/** Whether an error is the account's (no credits, over its quota): every try fails alike till someone pays. */
+export const quotaError = (e: { code?: unknown; type?: unknown; message?: unknown }) =>
+  /insufficient_quota|billing|quota_exceeded/i.test(`${e.code ?? ""} ${e.type ?? ""}`) || /no credits|exceeded your current quota|billing/i.test(String(e.message ?? ""))
 export type RealtimeEvents = {
   /** The session is set up (its first `session.updated`). */
   ready: () => void
@@ -18,7 +21,7 @@ export type RealtimeEvents = {
   began: (rid: string, ask: number) => void
   done: (d: Done) => void
   /** Something went wrong: `fatal`, the session is gone. */
-  error: (e: { code?: string; message: string; fatal: boolean }) => void
+  error: (e: { code?: string; message: string; fatal: boolean; quota?: boolean }) => void
 }
 
 export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) {
@@ -34,10 +37,10 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
     const s = JSON.stringify(e)
     if (open) ws.send(s); else early.push(s)
   }
-  const fail = (message: string, code?: string) => {
+  const fail = (message: string, code?: string, quota = false) => {
     if (closed) return
     closed = true
-    on.error?.({ message, fatal: true, ...(code ? { code } : {}) })
+    on.error?.({ message, fatal: true, ...(code ? { code } : {}), ...(quota ? { quota } : {}) })
     try { ws.terminate() } catch { /* gone */ }
   }
 
@@ -49,7 +52,7 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
     } }))
     for (const s of early.splice(0)) ws.send(s)
   })
-  ws.on("unexpected-response", (_req, res) => fail(`OpenAI answered ${res.statusCode}`, res.statusCode === 401 ? "auth" : String(res.statusCode)))
+  ws.on("unexpected-response", (_req, res) => fail(`OpenAI answered ${res.statusCode}`, res.statusCode === 401 ? "auth" : String(res.statusCode), res.statusCode === 429))
   ws.on("error", (e) => fail(e.message))
   ws.on("close", () => fail("its socket closed"))
   let readied = false
@@ -69,7 +72,8 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
         const r = m.response ?? {}
         if (active === r.id || active === "?") active = null
         const calls = (r.output ?? []).filter((x: { type?: string }) => x.type === "function_call").map((x: { call_id: string; name: string; arguments?: string }) => ({ id: x.call_id, name: x.name, args: x.arguments ?? "" }))
-        on.done?.({ id: r.id, status: r.status ?? "completed", usage: r.usage, calls, ...(r.status_details?.error?.message ? { error: r.status_details.error.message } : {}) })
+        const err = r.status_details?.error
+        on.done?.({ id: r.id, status: r.status ?? "completed", usage: r.usage, calls, ...(err?.message ? { error: err.message } : {}), ...(err && quotaError(err) ? { quota: true } : {}) })
         next()
         break
       }
@@ -79,7 +83,7 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
         if (e.code === "response_cancel_not_active" || /truncat/i.test(String(e.message))) break
         // (the response asked for refused: the next may go)
         if (active === "?") { active = null; queueMicrotask(next) }
-        on.error?.({ message: String(e.message ?? "error"), code: e.code, fatal: false })
+        on.error?.({ message: String(e.message ?? "error"), code: e.code, fatal: false, ...(quotaError(e) ? { quota: true } : {}) })
         break
       }
     }
@@ -104,7 +108,7 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
     note: (text: string) => send({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text }] } }),
     output: (call: string, text: string) => send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: call, output: text } }),
     /** A response (after the one running, if one is): its number, which `began` tells. */
-    respond(r: { instructions?: string; tool_choice?: "auto" | "none" } = {}) {
+    respond(r: { instructions?: string; tool_choice?: "auto" | "none"; output_modalities?: string[]; conversation?: "none"; max_output_tokens?: number } = {}) {
       const n = ++asked
       waiting.push({ n, r: { type: "response.create", ...(Object.keys(r).length ? { response: r } : {}) } })
       next()

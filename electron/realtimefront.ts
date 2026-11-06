@@ -33,6 +33,10 @@ export function realtimeFront(o: {
   /** Its cursor: thinking while the screen round runs; done when the turn is over. */
   state: (s: "thinking" | "done") => void
   log?: (t: TurnLog) => void
+  /** Said once when it pauses, the account's credits gone (the pipeline answers meanwhile). */
+  notice?: (why: string) => void
+  /** How long it pauses then, before it tries again (in the background, once). */
+  pauseMs?: number
   /** Each sentence of the higher model's answer as it's heard (its marks keep to it: helper.ts voiceHeardLine). */
   heard?: (h: Heard) => void
   /** How long the session stays open unused; how long a screen round may take; how long a tool call waits for the
@@ -46,6 +50,10 @@ export function realtimeFront(o: {
   let cfg: FrontConfig | null | undefined, cfgAt = 0, cfgLoading: Promise<void> | null = null
   let s: RealtimeSession | null = null, sKey = "", turns = 0
   let turn: Turn | null = null, idle: ReturnType<typeof setTimeout> | null = null
+  /** Paused till then: the account can't pay, so no press tries it (told once); then one try in the background. */
+  let pausedUntil = 0, toldPause = false, retry: ReturnType<typeof setTimeout> | null = null
+  const paused = () => now() < pausedUntil
+  const PAUSE = o.pauseMs ?? 10 * 60_000
   const talk: string[] = []
   /** What's queued to the player, by item: when it starts and how long it is (for a truncate at barge-in). */
   let playEnd = 0
@@ -61,7 +69,7 @@ export function realtimeFront(o: {
 
   /** Its session, opened (or again, for another key, model or voice; or a fresh one after many turns). */
   function session(): RealtimeSession | null {
-    if (!cfg) return null
+    if (!cfg || paused()) return null
     const k = JSON.stringify(cfg)
     if (s && s.alive() && sKey === k && turns < 20) return s
     s?.close()
@@ -77,8 +85,8 @@ export function realtimeFront(o: {
       audio: (b, rid, item) => heardAudio(b, rid, item),
       said: (d, rid) => { const t = owner.get(rid); if (t && !t.answerRids.has(rid)) t.said += d },
       call: (c) => called(c),
-      done: (d) => responded(d),
-      error: (e) => { if (me !== s) return; if (e.fatal) s = null; errored(e.message, e.fatal) },
+      done: (d) => { if (d.quota) pause(d.error ?? "no credits"); responded(d) },
+      error: (e) => { if (me !== s) return; if (e.quota) pause(e.message); if (e.fatal) s = null; errored(e.message, e.fatal) },
     })
     s = me
     return me
@@ -166,6 +174,35 @@ export function realtimeFront(o: {
     const parts = sentences(sp.text), chars = parts.reduce((n, x) => n + x.length, 0) || 1
     let at = it.start
     for (const x of parts) { const dur = (it.ms * x.length) / chars; o.heard?.({ text: x, at: Math.round(at), dur: Math.round(dur) }); at += dur }
+  }
+
+  /** The account can't pay: no try for a while, said once, then one try in the background. */
+  function pause(why: string) {
+    pausedUntil = now() + PAUSE
+    if (!toldPause) { toldPause = true; o.notice?.(why) }
+    const was = s
+    s = null
+    queueMicrotask(() => was?.close())
+    if (retry) clearTimeout(retry)
+    retry = setTimeout(probe, PAUSE)
+    retry.unref?.()
+  }
+  /** A word asked of it in text, outside the conversation: paid for, it's back; refused again, paused again. */
+  function probe() {
+    retry = null
+    if (!cfg) return
+    let over = false
+    const end = (quota: boolean, why = "") => {
+      if (over) return
+      over = true
+      p.close()
+      if (quota) return pause(why)
+      pausedUntil = 0; toldPause = false
+    }
+    const p = realtimeSession({ ...cfg, instructions: "Answer with one word.", tools: [] }, {
+      done: (d) => end(!!d.quota, d.error), error: (e) => end(!!e.quota, e.message),
+    })
+    p.respond({ output_modalities: ["text"], conversation: "none", max_output_tokens: 16, instructions: "Say OK." })
   }
 
   function errored(message: string, fatal: boolean) {
@@ -270,7 +307,7 @@ export function realtimeFront(o: {
 
   return {
     /** Whether it may answer (its key and settings not known yet: maybe). */
-    available: () => cfg !== null,
+    available: () => cfg !== null && !paused(),
     /** The Talk key pressed: the key read, the session opened while they speak. */
     warm() { void refresh().then(() => { if (cfg) session() }) },
     /** A turn begins (the Talk key held over the screen): what was playing stops (barge-in). */
@@ -309,10 +346,10 @@ export function realtimeFront(o: {
       const t = turn
       if (!t || t.state !== "listening" || t.released) return
       t.released = now()
-      if (!t.speech || msOf(t.bytes) < 250) { t.state = "pipeline"; return }
+      if (!t.speech || msOf(t.bytes) < 250 || paused()) { t.state = "pipeline"; return }
       void refresh().then(() => {
         if (turn !== t || t.state !== "listening") return
-        const live = t.live?.alive() ? t.live : cfg ? session() : null
+        const live = t.live?.alive() && !paused() ? t.live : cfg ? session() : null
         if (!live) { t.state = "pipeline"; if (t.heard !== undefined) o.fallback(t.heard); return }
         if (t.live !== live) { live.clear(); for (const b of t.buf.splice(0)) live.append(b); t.live = live }
         t.state = "answering"
@@ -347,7 +384,7 @@ export function realtimeFront(o: {
     stop: () => hush("they stopped you"),
     /** Whether it's speaking or about to (its cursor shows it speaking). */
     speaking: () => !!turn && (turn.state === "answering" || turn.state === "looking" || turn.state === "done") && playEnd > now(),
-    close() { hush("closed"); s?.close(); s = null; turn = null; if (idle) clearTimeout(idle) },
+    close() { hush("closed"); s?.close(); s = null; turn = null; if (idle) clearTimeout(idle); if (retry) clearTimeout(retry) },
   }
 }
 export type RealtimeFront = ReturnType<typeof realtimeFront>

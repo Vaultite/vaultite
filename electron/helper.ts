@@ -890,6 +890,8 @@ const voiceFront = realtimeFront({
   fallback: (heard) => { const s = summon; if (s) void sendSummon(s, heard) },
   state: (st) => { if (summon && st === "thinking") { summon.state = "thinking"; draw() } },
   heard: (h) => voiceHeardLine(h),
+  notice: () => notice("realtime-paused", "Realtime voice paused: OpenAI account has no credits", "The companion answers through dictation and its cloud voice meanwhile, and tries again in 10 minutes.",
+    "https://platform.openai.com/settings/organization/billing"),
   // (in the press's log: a talk turn ends there; a screen round's was sent, and the pipeline's fallback goes on)
   log: (t) => {
     const p = summon?.press, d = { kind: t.kind, model: t.model, cost: Number(t.cost.toFixed(5)), ...(t.firstMs !== undefined ? { firstMs: t.firstMs } : {}), ...(t.answerMs !== undefined ? { answerMs: t.answerMs } : {}), ...(t.failed ? { failed: t.failed } : {}) }
