@@ -1691,7 +1691,7 @@ const lane = (): Lane => {
     file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel,
     // (low effort: its thinking, which can't be turned off, took 1 to 2 s of each answer at the account's high)
     options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, effort: "low", quick: true, system: SUMMONED_PROMPT,
-      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, allowed: ALLOWED, denied: ["Bash(vau companion:*)"],
+      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, allowed: [...ALLOWED, "Bash(vau command companion:session)"], denied: ["Bash(vau companion:*)"],
       tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
     acts: () => { const [say, look, draw] = toolsFor(ownName(), SUMMONED_ACTS, () => lane().busy()); return { say, look, draw } },
     caption: (name, text) => screenDrawing.recaption(name, text),

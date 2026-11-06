@@ -41,9 +41,12 @@ async function start(name: string) {
 
 /** Agent `name`'s session (the companion's by default), in a new tab: its chat, or its terminal. */
 export async function showSession(name = getState().name) {
-  const r = await op<{ sessions: { name: string; id: string }[] }>("companion.status")
+  const r = await op<{ sessions: { name: string; id: string }[]; summoned: { id: string | null } | null; moments: { kind: string; summoned?: boolean }[] }>("companion.status")
   const s = r.sessions.find((x) => x.name.toLowerCase() === name.toLowerCase())
-  if (s) openView(sessionView(s.id), { newTab: true })
+  // (its Talk key's asks run in a session of their own: that one, when it's what they talked to last or the only one)
+  const asked = r.moments.findLast((m) => m.kind === "ask" || m.kind === "point"), quick = main(name) ? r.summoned?.id : null
+  if (quick && (!s || asked?.summoned)) openView(sessionView(quick), { newTab: true })
+  else if (s) openView(sessionView(s.id), { newTab: true })
   else notify(`${name} isn't running`, { action: { label: "Start", run: () => void (main(name) ? setMode(getState().mode === "off" ? "quiet" : getState().mode) : start(name)) } })
 }
 

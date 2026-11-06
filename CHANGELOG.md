@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Show the companion's session opens the one you talk to**: its Talk key's session (shown when it answered last or the
+  long one isn't running), which it can open itself when you ask, rather than a "isn't running" toast.
 - **The Talk key never fails silently**: a press that hears nothing, loses its recognizer or can't reach Vaultite
   shows "Didn't catch that" by the companion's cursor with a soft sound, its audio kept to hear again; pressing again
   while its last words are still coming listens again rather than being swallowed; and a test copy of the app can no
