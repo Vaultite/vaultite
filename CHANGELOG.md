@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A window reload no longer ends an agent's page in a background tab**: after a deploy's reload, a page an agent is
+  at work in (or asking you something on) waits for its tab, instead of being closed with its work and its ask.
 - **Extensions can tell an agent's tab**: in Vaultite's browser `tabs.get` says `vaultiteAgent` on an agent's page, so a
   site blocker can leave agents alone and still hold the user's tabs.
 - **Mini-apps go anywhere**: any file can be drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right
