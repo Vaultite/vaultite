@@ -92,7 +92,7 @@ export function companionVoice(o: {
   function cloudNow(): CloudVoice | null {
     const s = speech?.s, p = o.prefs()
     if (!s) return null
-    const c: CloudConfig = { provider: "soniox", url: s.url, key: s.key, model: s.model, voice: p.name || "Hazel", speed: p.speed }
+    const c: CloudConfig = { provider: "soniox", url: s.url, key: s.key, model: s.model, voice: p.name || "Adrian", speed: p.speed }
     const config = JSON.stringify(c)
     if (cloud?.config !== config) { cloud?.v.close(); cloud = { config, v: cloudVoice(c) } }
     return cloud.v

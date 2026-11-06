@@ -108,7 +108,7 @@ export default async ($: VaultTest) => {
     const { prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
     const decls = { dictation: {}, screen: {}, companion: JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../../../plugins/core/companion/manifest.json"), "utf8")).settings }
     const def = prefsOf({}, {}, {}, decls).voice, set = prefsOf({}, { voice: "always", voice_name: "Larissa", voice_speed: 3 }, {}, decls).voice
-    check("voice: its settings, the manifest's defaults (when you speak, Hazel), a speed kept in range", def.mode === "auto" && def.name === "Hazel" && def.speed === 1 &&
+    check("voice: its settings, the manifest's defaults (when you speak, Adrian), a speed kept in range", def.mode === "auto" && def.name === "Adrian" && def.speed === 1 &&
       set.mode === "always" && set.name === "Larissa" && set.speed === 1.3, { def, set })
     const d = { id: 1, bounds: { x: 0, y: 0, width: 1000, height: 800 } }
     const scene = (level: number) => sceneFor(d, { agents: [], summon: null, ink: null, pill: null, speaking: { name: "Claude", level } }, { x: 1, y: 1 }, [d])
