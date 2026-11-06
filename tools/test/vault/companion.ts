@@ -295,6 +295,17 @@ export default async ($: VaultTest) => {
       fx.steps.every((s: Any) => s.moments.length && s.expect.length && Object.keys(s.notes).length), best.rows.filter((r: Any) => !r.ok))
     check("companion eval: the session it comes from misses where it hedged and wrote what was for a bubble", base.right === 26 && !base.rows[19].ok && !base.rows[6].ok, scoreText(base))
     function scoreText(r: Any) { return e.scoreText("baseline", r) }
+    // (a summoned answer is read aloud: today's real ones as heard, and as they'd be said)
+    const bad = ['Yes. Rooms page in Lighthouse Architecture, Office room: you and Bob are connected. Tab is recording the mic ("Microphone recording", Transcribe, Audio on). Muted shows in the presence list.',
+      '#changelog: Lighthouse Agents bot posts a daily draft for the "What\'s new" page at ~2-3 AM, covering the previous day. Recent: Oct 30 document search, Oct 31 search/filing comparison.',
+      "Same channel: an automated deploy log, latest v0.1.209 today 11:11 AM.", "- **Left**: nav\n- **Middle**: Office room"]
+    const good = ["Yep, you're in the Office room with Bob. Your mic is muted, but this tab is still recording, so transcription is on.",
+      "This is where the bot drops a draft of each day's changelog, every night around two. The latest one is about chat improvements. Want me to read it to you?"]
+    const sp = e.spokenScore([...bad, ...good]), summ = JSON.parse(fs.readFileSync(new URL("../../evals/companion/summoned-2026-11-05.json", import.meta.url), "utf8"))
+    check("companion eval: as speech, labels in quotes, brackets, lists, versions and times in digits are faults; a friend's two sentences are clean",
+      sp.rows.slice(0, 4).every((r) => r.faults.length) && sp.rows.slice(4).every((r) => !r.faults.length) && sp.clean === 2 && e.spokenStyle("Sure, let me look. It's the Wi-Fi.").faults.includes("preamble"), sp.rows)
+    check("companion eval: the summoned fixture's asks each have their window's text and a point", summ.asks.length >= 10 &&
+      summ.asks.every((a: Any) => a.screen && Number.isFinite(a.sx) && (a.text || a.kind === "point")))
   }
   {
     // The old notice mode is pair now (core/migrations.ts), as a vault had it.

@@ -1,0 +1,314 @@
+{
+ "about": "Real Talk key asks of 2026-11-05 to the summoned companion (Haiku), names and places made up: the window's Accessibility text, what was under the pointer, the elements near it. Its answers are read aloud, so each is scored as speech (score.ts spokenStyle): short, plain sentences, the answer first, nothing a voice can't say. tools/evals/summoned.ts --fixture runs them.",
+ "asks": [
+  {
+   "id": "rooms-see",
+   "kind": "ask",
+   "text": "So can you see what's going on here in this area?",
+   "app": "com.google.Chrome",
+   "title": "Lighthouse Architecture - Microphone recording - Google Chrome - Alice",
+   "under": "Google Chrome: group",
+   "screen": "Back\nForward\nReload\ninternal.lighthouse.example/#/human/rooms — Address and search bar\nTo open this link, choose an app\nBookmark this tab\nOpen Gemini in Chrome\nWork\nLighthouse Architecture\nLighthouse\nPlanning\nQuests\nPlaybook\nCRM\nMeetings\nCosts\nCode\nAgents\nInfra\nData\nErrors\nWebsite\nHuman\nSwitch to light mode\nHide bars\nRooms\nDrawing\nAGENTS.md\nAccess\nWhat this section is\nOffice\nConnected\nPresence\nAlice Park\nyou\nCarol Diaz\nMuted\nCamera\nShare screen\nAudio on\nTranscribe\nGo to Side room\nLeave\nMicrophone\nDefault\nSpeaker\nDefault\nCamera\nDefault\nNoise filter\nManaged by your organization\nCustomize Chrome\nExpand Tabs (⇧⌘L)\nInbox (64) - alice@lighthouse.example - Lighthouse Labs Mail\nLighthouse Labs - Calendar - Week of November 1, 2026\nLighthouse Architecture - Microphone recording\nMute tab\nNew Tab\nNew tab",
+   "sx": 830,
+   "sy": 273,
+   "near": [
+    {
+     "id": "a1",
+     "role": "text",
+     "label": "Carol Diaz",
+     "frame": {
+      "x": 602,
+      "y": 249,
+      "width": 110,
+      "height": 16
+     }
+    },
+    {
+     "id": "a2",
+     "role": "text",
+     "label": "you",
+     "frame": {
+      "x": 695,
+      "y": 223,
+      "width": 17,
+      "height": 13
+     }
+    },
+    {
+     "id": "a3",
+     "role": "text",
+     "label": "Alice Park",
+     "frame": {
+      "x": 602,
+      "y": 221,
+      "width": 87,
+      "height": 16
+     }
+    },
+    {
+     "id": "a4",
+     "role": "button",
+     "label": "Agents",
+     "frame": {
+      "x": 758,
+      "y": 92,
+      "width": 79,
+      "height": 24
+     }
+    },
+    {
+     "id": "a5",
+     "role": "button",
+     "label": "Infra",
+     "frame": {
+      "x": 839,
+      "y": 92,
+      "width": 65,
+      "height": 24
+     }
+    },
+    {
+     "id": "a6",
+     "role": "button",
+     "label": "Code",
+     "frame": {
+      "x": 688,
+      "y": 92,
+      "width": 69,
+      "height": 24
+     }
+    },
+    {
+     "id": "a7",
+     "role": "button",
+     "label": "Data",
+     "frame": {
+      "x": 906,
+      "y": 92,
+      "width": 66,
+      "height": 24
+     }
+    },
+    {
+     "id": "a8",
+     "role": "text field",
+     "label": "Address and search bar",
+     "frame": {
+      "x": 266,
+      "y": 44,
+      "width": 781,
+      "height": 24
+     }
+    },
+    {
+     "id": "a9",
+     "role": "button",
+     "label": "Errors",
+     "frame": {
+      "x": 973,
+      "y": 92,
+      "width": 73,
+      "height": 24
+     }
+    },
+    {
+     "id": "a10",
+     "role": "button",
+     "label": "Costs",
+     "frame": {
+      "x": 614,
+      "y": 92,
+      "width": 72,
+      "height": 24
+     }
+    },
+    {
+     "id": "a11",
+     "role": "button",
+     "label": "Meetings",
+     "frame": {
+      "x": 521,
+      "y": 92,
+      "width": 92,
+      "height": 24
+     }
+    },
+    {
+     "id": "a12",
+     "role": "button",
+     "label": "Website",
+     "frame": {
+      "x": 1048,
+      "y": 92,
+      "width": 85,
+      "height": 24
+     }
+    },
+    {
+     "id": "a13",
+     "role": "button",
+     "label": "To open this link, choose an app",
+     "frame": {
+      "x": 1055,
+      "y": 44,
+      "width": 116,
+      "height": 24
+     }
+    }
+   ]
+  },
+  {
+   "id": "rooms-explain",
+   "kind": "ask",
+   "text": "Explain to me what's in this page.",
+   "app": "com.google.Chrome",
+   "title": "Lighthouse Architecture - Microphone recording - Google Chrome - Alice",
+   "under": "Google Chrome: group",
+   "screen": "Back\nForward\nReload\ninternal.lighthouse.example/#/human/rooms — Address and search bar\nTo open this link, choose an app\nBookmark this tab\nOpen Gemini in Chrome\nWork\nLighthouse Architecture\nLighthouse\nPlanning\nQuests\nPlaybook\nCRM\nMeetings\nCosts\nCode\nAgents\nInfra\nData\nErrors\nWebsite\nHuman\nSwitch to light mode\nHide bars\nRooms\nDrawing\nAGENTS.md\nAccess\nWhat this section is\nOffice\nConnected\nPresence\nAlice Park\nyou\nCarol Diaz\nBob Lee\nMuted\nCamera\nShare screen\nAudio on\nTranscribe\nGo to Side room\nLeave\nMicrophone\nDefault\nSpeaker\nDefault\nCamera\nDefault\nNoise filter\nManaged by your organization\nCustomize Chrome\nExpand Tabs (⇧⌘L)\nInbox (64) - alice@lighthouse.example - Lighthouse Labs Mail\nLighthouse Labs - Calendar - Week of November 1, 2026\nLighthouse Architecture - Microphone recording\nMute tab\nNew tab",
+   "sx": 666,
+   "sy": 397,
+   "near": [
+    {
+     "id": "a1",
+     "role": "text",
+     "label": "Bob Lee",
+     "frame": {
+      "x": 602,
+      "y": 277,
+      "width": 107,
+      "height": 16
+     }
+    },
+    {
+     "id": "a2",
+     "role": "text",
+     "label": "Carol Diaz",
+     "frame": {
+      "x": 602,
+      "y": 249,
+      "width": 110,
+      "height": 16
+     }
+    },
+    {
+     "id": "a3",
+     "role": "text",
+     "label": "Alice Park",
+     "frame": {
+      "x": 602,
+      "y": 221,
+      "width": 87,
+      "height": 16
+     }
+    },
+    {
+     "id": "a4",
+     "role": "text",
+     "label": "you",
+     "frame": {
+      "x": 695,
+      "y": 223,
+      "width": 17,
+      "height": 13
+     }
+    },
+    {
+     "id": "a5",
+     "role": "button",
+     "label": "Access",
+     "frame": {
+      "x": 380,
+      "y": 132,
+      "width": 89,
+      "height": 31
+     }
+    }
+   ]
+  },
+  {
+   "id": "tab-groups",
+   "kind": "ask",
+   "text": "What's this thing?",
+   "app": "com.google.Chrome",
+   "title": "Lighthouse Architecture - Microphone recording - Google Chrome - Alice",
+   "under": "Google Chrome: group",
+   "screen": "Back\nForward\nReload\ninternal.lighthouse.example/#/human/rooms — Address and search bar\nTo open this link, choose an app\nBookmark this tab\nOpen Gemini in Chrome\nWork\nLighthouse Architecture\nLighthouse\nPlanning\nQuests\nPlaybook\nCRM\nMeetings\nCosts\nCode\nAgents\nInfra\nData\nErrors\nWebsite\nHuman\nSwitch to light mode\nHide bars\nRooms\nDrawing\nAGENTS.md\nAccess\nWhat this section is\nOffice\nConnected\nPresence\nAlice Park\nyou\nBob Lee\nCarol Diaz\nMuted\nCamera\nShare screen\nAudio on\nTranscribe\nGo to Side room\nLeave\nMicrophone\nDefault\nSpeaker\nDefault\nCamera\nDefault\nNoise filter\nManaged by your organization\nCustomize Chrome\nExpand Tabs (⇧⌘L)\nLighthouse Architecture - Microphone recording\nMute tab\nClose\nLighthouse Labs - Calendar - Week of November 1, 2026\nInbox (63) - alice@lighthouse.example - Lighthouse Labs Mail\nClose\nNew tab",
+   "sx": 22,
+   "sy": 118
+  },
+  {
+   "id": "address-bar",
+   "kind": "ask",
+   "text": "Do you know what this is?",
+   "app": "com.google.Chrome",
+   "title": "Lighthouse Architecture - Microphone recording - Google Chrome - Alice",
+   "under": "Google Chrome: text field \"Address and search bar\"",
+   "screen": "Back\nForward\nReload\ninternal.lighthouse.example/#/human/rooms — Address and search bar\nTo open this link, choose an app\nBookmark this tab\nOpen Gemini in Chrome\nWork\nLighthouse Architecture\nLighthouse\nPlanning\nQuests\nPlaybook\nCRM\nMeetings\nCosts\nCode\nAgents\nInfra\nData\nErrors\nWebsite\nHuman\nSwitch to light mode\nHide bars\nRooms\nDrawing\nAGENTS.md\nAccess\nWhat this section is\nOffice\nConnected\nPresence\nAlice Park\nyou\nBob Lee\nCarol Diaz\nMuted\nCamera\nShare screen\nAudio on\nTranscribe\nGo to Side room\nLeave\nMicrophone\nDefault\nSpeaker\nDefault\nCamera\nDefault\nNoise filter\nManaged by your organization\nCustomize Chrome\nExpand Tabs (⇧⌘L)\nLighthouse Architecture - Microphone recording\nMute tab\nLighthouse Labs - Calendar - Week of November 1, 2026\nInbox (63) - alice@lighthouse.example - Lighthouse Labs Mail\nNew tab",
+   "sx": 420,
+   "sy": 56
+  },
+  {
+   "id": "wifi",
+   "kind": "ask",
+   "text": "I moved my cursor a little bit. What is this thing?",
+   "app": "com.google.Chrome",
+   "title": "Lighthouse Architecture - Microphone recording - Google Chrome - Alice",
+   "under": "Control Center: status menu \"Wi‑Fi, connected, 3 bars\"",
+   "screen": "Back\nForward\nReload\ninternal.lighthouse.example/#/human/rooms — Address and search bar\nTo open this link, choose an app\nBookmark this tab\nOpen Gemini in Chrome\nWork\nLighthouse Architecture\nLighthouse\nPlanning\nQuests\nPlaybook\nCRM\nMeetings\nCosts\nCode\nAgents\nInfra\nData\nErrors\nWebsite\nHuman\nSwitch to light mode\nHide bars\nRooms\nDrawing\nAGENTS.md\nAccess\nWhat this section is\nOffice\nConnected\nPresence\nAlice Park\nyou\nBob Lee\nCarol Diaz\nMuted\nCamera\nShare screen\nAudio on\nTranscribe\nGo to Side room\nLeave\nMicrophone\nDefault\nSpeaker\nDefault\nCamera\nDefault\nNoise filter\nManaged by your organization\nCustomize Chrome\nExpand Tabs (⇧⌘L)\nLighthouse Architecture - Microphone recording\nMute tab\nLighthouse Labs - Calendar - Week of November 1, 2026\nInbox (63) - alice@lighthouse.example - Lighthouse Labs Mail\nNew tab",
+   "sx": 1290,
+   "sy": 12
+  },
+  {
+   "id": "slack-deploys",
+   "kind": "ask",
+   "text": "Whats happening here",
+   "app": "com.tinyspeck.slackmacgap",
+   "title": "eng-deploys (Channel) - Lighthouse - Slack [Main]",
+   "screen": "eng-deploys (Channel) - Lighthouse - Slack [Main]\nShow Workspace Switcher\nBack in history\nForward in history\nSearch\nChat with Slackbot AI\nOpen Claude\nHelp\nSlackbot\nHome\nDMs\nActivity\nFiles\nTo-dos\nAgents & tools\nAdmin\nNew message\nChannel or user name\nThreads\nHuddles\nDrafts & sent\nSaved\nDirectories\nall-lighthouse\nproduct\nautomated\nchangelog\ncrm\ncrm-test\nmeetings\nengineering\neng-alerts\neng-costs\neng-deploys\neng-deploys-dev\neng-notifications\nChannels\nCarol D\nBob Lee\nClaude\nAlice\nyou\nInvite people\nAWS Support\nDemo Request\nGoogle Calendar\nn8n.cloud\nLighthouse Agents\nSlack\nAdd apps\nCurrently in: engineering\nChannel details for #eng-deploys\nView all 3 members. Includes Carol D and Bob Lee.\nStart huddle in eng-deploys\nSearch in channel\nMessages\nAdd canvas\nCanvas\nList\nFolder\nDiscover new skills for Slackbot here\nLighthouse Agents\nAPP\n  \nOct 27th at 11:29:40 PM\n11:29 PM\nprod v0.1.201 is live\n1 reply\n9 days ago\nLighthouse Agents\nAPP\n  \nOct 28th at 7:13:42 AM\n7:13 AM\nprod v0.1.201 is live\n1 reply\n8 days ago\nLighthouse Agents\nAPP\n  \nOct 28th at 11:36:32 AM\n11:36 AM\nprod v0.1.202 is live\n1 reply\n8 days ago\nLighthouse Agents\nAPP\n  \nOct 28th at 1:16:42 PM\n1:16 PM\nprod v0.1.203 is live\n1 reply\n8 days ago\nLighthouse Agents\nAPP\n  \nOct 28th at 3:15:40 PM\n3:15 PM\nprod v0.1.204 is live\nLighthouse Agents\nAPP\n  \nOct 28th at 5:05:34 PM\n5:05 PM\nprod v0.1.205 is live\n1 reply\n8 days ago\nLighthouse Agents\nAPP\n  \nOct 28th at 5:53:19 PM\n5:53 PM\nprod v0.1.206 is live\n1 reply\n8 days ago\nLighthouse Agents\nAPP\n  \nOct 29th at 12:29:11 AM\n12:29 AM\nprod v0.1.207 is live\n1 reply\n8 days ago\nLighthouse Agents\nAPP\n  \nOct 29th at 11:23:22 AM\n11:23 AM\nprod v0.1.208 is live\n1 reply\n7 days ago\nLighthouse Agents\nAPP\n  \nToday at 11:11:10 AM\n11:11 AM\nprod v0.1.209 is live\n1 reply\nToday at 11:12 AM\nBold\nItalic\nUnderline\nStrikethrough\nLink\nOrdered list\nBulleted list\nBlockquote\nCode\nCode block\nDivider\n\n — Message to eng-deploys\nShow formatting\nEmoji\nMention someone\nRecord video clip\nRecord audio clip\nRun shortcut\nSend now\nTurn on focus mode\nProcessing uploaded file… complete! Message ready to be sent.\nChannel eng-deploys",
+   "sx": 700,
+   "sy": 420
+  },
+  {
+   "id": "slack-changelog",
+   "kind": "ask",
+   "text": "Whats in here",
+   "app": "com.tinyspeck.slackmacgap",
+   "title": "changelog (Channel) - Lighthouse - Slack [Main]",
+   "screen": "changelog (Channel) - Lighthouse - Slack [Main]\nShow Workspace Switcher\nBack in history\nForward in history\nSearch\nChat with Slackbot AI\nOpen Claude\nHelp\nSlackbot\nHome\nDMs\nActivity\nFiles\nTo-dos\nAgents & tools\nAdmin\nNew message\nChannel or user name\nThreads\nHuddles\nDrafts & sent\nSaved\nDirectories\nall-lighthouse\nproduct\nautomated\nchangelog\ncrm\ncrm-test\nmeetings\nengineering\neng-alerts\neng-costs\neng-deploys\neng-deploys-dev\neng-notifications\nChannels\nCarol D\nBob Lee\nClaude\nAlice\nyou\nInvite people\nAWS Support\nDemo Request\nGoogle Calendar\nn8n.cloud\nLighthouse Agents\nSlack\nAdd apps\nCurrently in: automated\nChannel details for #changelog\nView all 3 members. Includes Carol D and Bob Lee.\nStart huddle in changelog\nSearch in channel\nMessages\nAdd canvas\nCanvas\nList\nFolder\nDiscover new skills for Slackbot here\nLighthouse Agents\nAPP\n  \nOct 31st at 3:36:39 AM\n3:36 AM\nYesterday's changelog draft for the \"What's new\" page:\nDocument Search Improvements\nTry asking the chat market-wide questions about filings! (You can filter by market cap, filing date and item)\nFaster, more reliable document search\nLighthouse Agents\nAPP\n  \nNov 1st at 2:36:28 AM\n2:36 AM\nDraft changelog for yesterday (Oct 31) for the \"What's new\" page:\nSearch and Documents Improvements\nTry asking the chat to compare two filings! (It now reads them sentence by sentence)\nSearch finds companies even without an exact name match\nSearch matches words in any order\nSearch shows table rows under their headers\nSearch flags newer filings\nAsk about groups like \"US P&C insurers\" and get the full list\nPortfolio chart legend matches the portfolio line colour\nLighthouse Agents\nAPP\n  \nYesterday at 2:37:26 AM\n2:37 AM\nYesterday's changelog draft for the \"What's new\" page:\nReport Polish\nReports no longer repeat a quote that is already in the text\nLighthouse Agents\nAPP\n  \nToday at 2:37:01 AM\n2:37 AM\nYesterday's changelog draft for the \"What's new\" page (Nov 4):\nData and Chat Improvements\nChat weighs lopsided odds and looks for the missing piece before answering\nMarket caps are more accurate for companies that merged or list several share classes\nBetter Canadian share-class handling\nScreener drawer reads period dates and capitalises Fed correctly\nWant it shorter? The Canada and market cap lines are the ones I'd cut if they feel too internal.\nBold\nItalic\nUnderline\nStrikethrough\nLink\nOrdered list\nBulleted list\nBlockquote\nCode\nCode block\nDivider\n\n — Message to changelog\nShow formatting\nEmoji\nMention someone\nRecord video clip\nRecord audio clip\nRun shortcut\nSend now\nTurn on focus mode\nProcessing uploaded file… complete! Message ready to be sent.\nChannel changelog",
+   "sx": 700,
+   "sy": 460
+  },
+  {
+   "id": "inbox-point",
+   "kind": "point",
+   "app": "com.google.Chrome",
+   "title": "Inbox (63) - alice@lighthouse.example - Lighthouse Labs Mail - Google Chrome - Alice",
+   "sx": 620,
+   "sy": 300,
+   "under": "Google Chrome: link \"Inbox (63)\"",
+   "screen": "Back\nForward\nReload\nmail.example.com/mail/u/0/#inbox — Address and search bar\nCompose\nInbox 63\nStarred\nSnoozed\nSent\nDrafts\nPrimary\nPromotions\nUpdates\nInvitation: Matt <> Bob @ Fri Nov 6, 2026 10am - 10:30am (PST) (alice@lighthouse.example)\nBob Lee\nPayroll corrections and compliance review\n6:47 AM\nUpdated invitation: Check-in @ Thu Nov 5, 2026 8:30am - 9am (PST)\nApplication notes - Nov 2\nCloud Notifications\n[Action may be required] Python 3.10 end of support for Functions\nData health alert: 17 failed checks\nLighthouse Agents\nWeekly digest\n1-50 of 2,341"
+  },
+  {
+   "id": "finder-folder",
+   "kind": "ask",
+   "text": "what is this thing?",
+   "app": "com.apple.finder",
+   "title": "Desktop",
+   "sx": 180,
+   "sy": 240,
+   "under": "Finder: folder \"Phone-backup\", in \"Desktop\"",
+   "screen": "Desktop\nFavorites\nRecents\nApplications\nDesktop\nDocuments\nDownloads\nPhone-backup\n44 items\nModified Oct 24, 2025 at 9:12 PM\nScreenshot 2026-11-05 at 4.38.50 PM.png\nInvoice-2026-114.pdf\nTrip ideas.txt"
+  },
+  {
+   "id": "companion-howto",
+   "kind": "ask",
+   "text": "Can you explain me how I should use this a little bit better like the companions",
+   "app": "com.google.Chrome",
+   "title": "Lighthouse Architecture - Microphone recording - Google Chrome - Alice",
+   "under": "Google Chrome: group",
+   "screen": "Back\nForward\nReload\ninternal.lighthouse.example/#/human/rooms — Address and search bar\nTo open this link, choose an app\nBookmark this tab\nOpen Gemini in Chrome\nWork\nLighthouse Architecture\nLighthouse\nPlanning\nQuests\nPlaybook\nCRM\nMeetings\nCosts\nCode\nAgents\nInfra\nData\nErrors\nWebsite\nHuman\nSwitch to light mode\nHide bars\nRooms\nDrawing\nAGENTS.md\nAccess\nWhat this section is\nOffice\nConnected\nPresence\nAlice Park\nyou\nBob Lee\nCarol Diaz\nMuted\nCamera\nShare screen\nAudio on\nTranscribe\nGo to Side room\nLeave\nMicrophone\nDefault\nSpeaker\nDefault\nCamera\nDefault\nNoise filter\nManaged by your organization\nCustomize Chrome\nExpand Tabs (⇧⌘L)\nLighthouse Architecture - Microphone recording\nMute tab\nLighthouse Labs - Calendar - Week of November 1, 2026\nInbox (63) - alice@lighthouse.example - Lighthouse Labs Mail\nNew tab",
+   "sx": 22,
+   "sy": 118
+  }
+ ]
+}

@@ -36,3 +36,42 @@ export function scoreText(label: string, r: ReturnType<typeof score>) {
   return [`${label}: ${r.right}/${r.of} as expected (speak or stay silent right ${r.speak}/${r.of}; where, of the ${spoke} it spoke in, ${r.place}/${spoke})`,
     ...r.rows.map((x) => `${x.ok ? "  ok  " : "  MISS"} ${String(x.step).padStart(2)} ${x.got.padEnd(7)} want ${x.expect.join("|").padEnd(13)} ${x.why}`)].join("\n")
 }
+
+// ---------- spoken: a summoned answer is read aloud (tools/evals/summoned.ts --fixture)
+
+/** What a voice can't say well, each a way an answer reads as text rather than speech. */
+const UNSPOKEN: [string, RegExp][] = [
+  ["list", /(^|\n)\s*([-*•]|\d+[.)])\s/],
+  ["markup", /[*_`#>|]|\*\*/],
+  ["brackets", /[()[\]{}]/],
+  ["quotes", /["“”«»]|(^|\s)'[^']+'(\s|[.,!?]|$)/],
+  ["symbols", /[/\\=~^%$€@&+]|->|→|≈/],
+  ["colon list", /:(?!\d)\s*\S[^.!?]*,/],
+  ["version or id", /\bv?\d+\.\d+(\.\d+)*\b|\b[a-z]\d{1,3}\b|\w+_\w+|\b\w+-\d+\b/i],
+  ["date or time in digits", /\b\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b/],
+  ["several lines", /\n/],
+]
+/** How an answer starts when it isn't with the answer. */
+const PREAMBLE = /^(sure|certainly|of course|great question|good question|let me|i'll|i will|i can see|looking at|it looks like you('re| are) asking|based on|according to|here('s| is) (what|a))\b/i
+
+export type Spoken = { words: number; sentences: number; faults: string[] }
+/** An answer as speech: its words and sentences, and what makes it read as text (lists, brackets, symbols, ids, dates
+ *  in digits, a colon list, a preamble before the answer, too long). */
+export function spokenStyle(text: string, most = { words: 35, sentences: 3 }): Spoken {
+  const t = text.trim(), words = t.split(/\s+/).filter((w) => /\w/.test(w)).length
+  const sentences = t.split(/(?<=[.!?])\s+(?=\S)|\n+/).filter((s) => /\w/.test(s)).length
+  const faults = UNSPOKEN.filter(([, re]) => re.test(t)).map(([name]) => name)
+  if (words > most.words) faults.push("too long")
+  if (sentences > most.sentences) faults.push("too many sentences")
+  if (PREAMBLE.test(t)) faults.push("preamble")
+  return { words, sentences, faults }
+}
+/** A run's answers as speech: how many sound right, their length, and which faults came up how often. */
+export function spokenScore(texts: string[]) {
+  const rows = texts.map((t) => spokenStyle(t)), n = rows.length || 1
+  const tally: Record<string, number> = {}
+  for (const r of rows) for (const f of r.faults) tally[f] = (tally[f] ?? 0) + 1
+  const sorted = rows.map((r) => r.words).sort((a, b) => a - b)
+  return { rows, clean: rows.filter((r) => !r.faults.length).length, of: rows.length, short: rows.filter((r) => r.words <= 30).length,
+    words: { mean: Math.round(rows.reduce((s, r) => s + r.words, 0) / n), median: sorted[Math.floor((sorted.length - 1) / 2)] ?? 0, most: sorted.at(-1) ?? 0 }, tally }
+}
