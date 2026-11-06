@@ -16,9 +16,11 @@ type Scene = { agents: Item[]; summon: Item | null }
 const scenes: Scene[] = []
 let pointer = { x: 500, y: 500 }
 const display = { id: 1, bounds: { x: 0, y: 0, width: 1600, height: 1000 }, workArea: { x: 0, y: 25, width: 1600, height: 975 } }
+/** What the window's pages send the main process (ipcMain), by channel. */
+const ipc = new Map<string, (e: { sender: unknown }) => void>()
 mock.module(pathToFileURL(fs.realpathSync(path.join(ROOT, "node_modules/electron/index.js"))).href, { exports: {
   app: { on() {}, getName: () => "Vaultite", getPath: () => os.tmpdir(), getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false },
-  Menu: { buildFromTemplate() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
+  Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }) => void) => { ipc.set(ch, fn) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
   screen: { getCursorScreenPoint: () => pointer, getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
 } })
 type Acts = { open: (name: string, at: Pt) => void }
@@ -47,7 +49,8 @@ const posted: { url: string; body: string }[] = []
 const srv = http.createServer((q, res) => {
   let body = ""
   q.on("data", (c) => { body += c })
-  q.on("end", () => { posted.push({ url: q.url ?? "", body }); res.setHeader("Content-Type", "application/json"); res.end("{}") })
+  // (the user's dictation keys: fn and right Option, as in a real vault; the companion's Talk key its default, ⌃⌥)
+  q.on("end", () => { posted.push({ url: q.url ?? "", body }); res.setHeader("Content-Type", "application/json"); res.end(/plugin\/dictation/.test(body) ? '{"keys":["fn","right_option"],"fn":true}' : "{}") })
 })
 const wss = new WebSocketServer({ noServer: true })
 srv.on("upgrade", (req, s, h) => wss.handleUpgrade(req, s, h, (ws) => { sock = ws; ws.send(JSON.stringify({ t: "state", mode: "pair", name: "Claude", agents: [agent], notes: [] })) }))
@@ -66,7 +69,9 @@ const homeWindow = () => windowShown
 process.env.VAULTITE_QUIET = "1"
 const helper = await import(at("helper.ts"))
 const hp: Record<string, unknown> = {}
-await helper.startHelper({ home: () => ({ port, path: "/vault", name: "Vault" }), homeWindow, openHome() {}, focusedPage: () => null, event() {}, prefs: () => hp, setPrefs: (x: object) => Object.assign(hp, x), quit() {}, icon: "" })
+/** The vault window's page while it has the keyboard (null: another app's in front): what the helper sends it. */
+let focused: { isDestroyed: () => boolean; send: (ch: string, m: unknown) => void; got: unknown[] } | null = null
+await helper.startHelper({ home: () => ({ port, path: "/vault", name: "Vault" }), homeWindow, openHome() {}, focusedPage: () => focused, event() {}, prefs: () => hp, setPrefs: (x: object) => Object.assign(hp, x), quit() {}, icon: "" })
 type MenuItem = { label?: string; sublabel?: string; type?: string; enabled?: boolean; click?: () => void }
 const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => void; stub: (op: string, v: object) => void; scene: () => Scene | null; asked: () => Record<string, unknown>[]; badge: () => string
   menu: () => MenuItem[] } }).vaultiteHelper
@@ -193,6 +198,70 @@ await wait(400)
 chord(false)
 await wait(100)
 check("held with nothing said nor drawn: nothing goes", asks().length === before && !H.scene()!.summon, asks())
+heardWords = "and this?"
+
+// ---------- in a Vaultite window: the Talk key goes to its page; where no box of the companion's takes the keyboard (a
+// terminal), the page hands it back and the companion comes over the screen, never dictation
+await wait(400)
+focused = { isDestroyed: () => false, send(ch, m) { if (ch === "vaultite:fn") this.got.push(m) }, got: [] }
+const asked0 = asks().length
+chord(true)
+await wait(40)
+check("in the window: a held ⌃⌥ goes to its page as the companion's (listen), not as dictation", JSON.stringify(focused.got) === '[{"talk":"listen"}]' && !H.scene()!.summon, focused.got)
+ipc.get("vaultite:talk-elsewhere")?.({ sender: focused })
+check("…the page can't take it there (a terminal): the companion comes over the screen, listening by the pointer", await until(() => H.scene()!.summon?.state === "listening"), H.scene()!.summon)
+heardWords = "what's running here?"
+await wait(300)
+chord(false)
+check("…let go, its words go to the companion, and the page hears no more of this press", await until(() => asks().some((m) => m.text === "what's running here?")) && asks().length === asked0 + 1 &&
+  JSON.stringify(focused.got) === '[{"talk":"listen"}]', [asks().slice(-1), focused.got])
+H.heard({ event: "esc" })
+ipc.get("vaultite:talk-elsewhere")?.({ sender: focused })
+check("a page's hand-back with no press of the key under way does nothing", await until(() => !H.scene()!.summon), H.scene()!.summon)
+// (⌃⌥ in every order, either Option, let go either way, as the screen helper's tap tells it: right Option is a dictation
+// key, Control and left Option aren't watched; a chord is told as such)
+const CTRL = 59, ROPT = 61, LOPT = 58
+type Key = "ctrl" | "ropt" | "lopt"
+const held = new Set<Key>()
+let live = false
+/** One key pressed or let go, as screen.swift sends it: a watched key's own event (alone or not), else "something
+ *  else" once a watched one was heard; then the chord's state. */
+function press(k: Key, on: boolean) {
+  const code = { ctrl: CTRL, ropt: ROPT, lopt: LOPT }[k]
+  if (on) held.add(k); else held.delete(k)
+  if (code === ROPT) { live = true; H.heard({ event: "mod", code, on, alone: on && held.size === 1, at: Date.now() }) }
+  else if (live) { live = false; H.heard({ event: "mod", other: true }) }
+  const chordOn = held.has("ctrl") && (held.has("ropt") || held.has("lopt")) && held.size === 2
+  if (chordOn !== chordWas) H.heard({ event: "chord", name: "control_option", on: chordOn })
+  chordWas = chordOn
+}
+let chordWas = false
+const orders: [string, [Key, boolean, number][]][] = [
+  ["⌃ then right ⌥, ⌥ let go first", [["ctrl", true, 30], ["ropt", true, 600], ["ropt", false, 30], ["ctrl", false, 300]]],
+  ["⌃ then right ⌥, ⌃ let go first", [["ctrl", true, 30], ["ropt", true, 600], ["ctrl", false, 30], ["ropt", false, 300]]],
+  ["right ⌥ then ⌃ at once", [["ropt", true, 60], ["ctrl", true, 600], ["ropt", false, 30], ["ctrl", false, 300]]],
+  ["right ⌥, a moment, then ⌃", [["ropt", true, 320], ["ctrl", true, 600], ["ctrl", false, 30], ["ropt", false, 300]]],
+  ["⌃ then left ⌥", [["ctrl", true, 30], ["lopt", true, 600], ["lopt", false, 30], ["ctrl", false, 300]]],
+  ["left ⌥ then ⌃", [["lopt", true, 30], ["ctrl", true, 600], ["ctrl", false, 30], ["lopt", false, 300]]],
+]
+/** Whether a dictation press reached the page and wasn't taken back (a down with no "other" after it). */
+const dictated = (got: unknown[]) => { let open = false; for (const m of got as { down?: boolean; other?: boolean }[]) { if (m.down === true) open = true; else if (m.other) open = false } return open }
+for (const [name, steps] of orders) {
+  // (in a window: a terminal's page, which hands the companion's press to the screen)
+  focused = { isDestroyed: () => false, send(ch, m) { if (ch === "vaultite:fn") this.got.push(m) }, got: [] }
+  for (const [k, on, after] of steps) { press(k, on); await wait(after) }
+  check(`⌃⌥ in a window (${name}): the companion's press goes to the page, no dictation is left started`, focused.got.some((m) => (m as { talk?: string }).talk === "listen") && !dictated(focused.got), focused.got)
+  H.heard({ event: "esc" })
+  await wait(300)
+  // (outside the app: the companion comes at the pointer; no field gets words)
+  focused = null
+  const before = asks().length
+  for (const [k, on, after] of steps) { press(k, on); await wait(after); if (on && held.size === 2) check(`⌃⌥ outside the app (${name}): the companion listens at the pointer`, await until(() => H.scene()!.summon?.state === "listening", 1000), H.scene()!.summon) }
+  check(`⌃⌥ outside the app (${name}): what was said goes to the companion, once`, await until(() => asks().length === before + 1), asks().slice(-1))
+  H.heard({ event: "esc" })
+  await wait(300)
+}
+focused = null
 heardWords = "and this?"
 
 // ---------- unread: a badge on the menu bar icon; a bubble clicked opens its conversation

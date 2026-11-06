@@ -41,6 +41,9 @@ export type DictationSource = {
   /** The fn key (or another dictation key), as the desktop app's menu-bar helper hears it while this window has the
    *  keyboard (`other`: a key pressed with it); `talk`: what a companion's Talk key does (its gesture, the helper's). */
   onKey?: (fn: (k: { down?: boolean; other?: boolean; talk?: TalkAction }) => void) => () => void
+  /** The Talk key's press can't be answered here (no companion box takes the keyboard, as in a terminal): the helper
+   *  summons it over the screen instead. */
+  talkElsewhere?: () => void
 }
 
 /** Where the words go: a note's editor or a terminal (each shows the pending words itself), or a field. */
@@ -297,3 +300,5 @@ export function fnDictation(begin: (hold: boolean) => Promise<boolean>) {
 /** A companion's Talk key while this window has the keyboard, as its gesture (core/fnkey.ts talkGesture): listen (held),
  *  send (let go), type (a tap), free (a double tap), cancel. Returns how to stop hearing it. */
 export const onTalkKey = (fn: (a: NonNullable<TalkAction>) => void) => dictationSource?.onKey?.((k) => { if (k.talk) fn(k.talk) }) ?? (() => {})
+/** This window can't take the Talk key's press: the companion comes over the screen, at the pointer. */
+export const talkElsewhere = () => dictationSource?.talkElsewhere?.()

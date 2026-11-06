@@ -688,6 +688,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `takeAppErrors()`: The errors waiting to be sent, oldest first; they're the caller's now (the queue is emptied).
 - `takeSchemeLink(url, mod?)`: A plugin that's on takes this link of another app's scheme (`<app>://`): whether one did.
 - `takeSpans()`: The spans ended since the last call.
+- `talkElsewhere()`: This window can't take the Talk key's press: the companion comes over the screen, at the pointer.
 - `Target`
 - `TargetView({ store, to, close, setTarget })`: A tab's target drawn outside the panes, in a sheet (a glance): a file as a sheet shows one, a plugin's view as its tab draws it, filling the sheet when it fills a pane.
 - `TerminalAgent`

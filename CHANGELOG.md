@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **⌃⌥ in a terminal talks to the companion again**: in a Vaultite window, holding the Talk key where the companion's
+  box can't take the keyboard (a terminal's pane) dictated into the terminal; now the companion comes at the pointer
+  over the screen, as in any other app, and its words only ever go to it. Dictation keys still work alone.
 - **A phone's screenshot pasted into a terminal reaches the agent**: a HEIC photo, as iPhones paste them, is given to
   the shell as a JPEG beside it, the same size (the original kept), so Claude Code and Codex can read it.
 - **Terminals kept and drawn by Ghostty's engine**: the terminal server and the pages keep each terminal's screen and

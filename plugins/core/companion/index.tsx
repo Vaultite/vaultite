@@ -1,6 +1,6 @@
 import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal, Undo2 } from "lucide-react"
-import { cn, currentEditor, definePlugin, dictation, menuAbove, notify, onTalkKey, op, runCommandById, share, stopDictation, useFocusedFile, type MenuItem } from "@vaultite"
+import { cn, currentEditor, definePlugin, dictation, menuAbove, notify, onTalkKey, op, runCommandById, share, stopDictation, talkElsewhere, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
@@ -11,6 +11,7 @@ import { Presence } from "./Presence"
 import { followItems, modeItem, MODES, setMode, showSession } from "./session"
 import { watchPanes } from "./panes"
 import { privateNote } from "./private"
+import { inCompanionBox } from "./talkbox"
 import { offerThreads } from "./threads"
 
 // Companion: an always-on agent session in the app, with a cursor of its own (plugin.ts says how it's fed). editor.ts
@@ -35,26 +36,36 @@ setGuest(share)
 // (where the pointer is in the window: a Talk key's ask is about what's under it)
 let pointer: { x: number; y: number } | null = null
 const frame = () => new Promise((r) => requestAnimationFrame(r))
-/** A Talk key held in this window: the companion's cursor comes to the pointer with its box, listening; what's said is
- *  sent as it's let go. Its cursor not drawn (asleep, in another window): an ask by the caret's line instead. */
-async function talk(): Promise<boolean> {
+/** A Talk key held here: its cursor and box at the pointer (not drawn: an ask by the caret's line), listening till let
+ *  go; where no box of its own takes the keyboard (a terminal), it comes over the screen: never dictation's place. */
+async function talk() {
   const st = getState()
-  if (share) return false
-  if (st.mode === "off") { notify("The companion is off: turn it on to talk to it"); return false }
-  if (dictation()) return false
+  if (share) return
+  if (st.mode === "off") return notify("The companion is off: turn it on to talk to it")
+  // (dictation a dictation key started, as the Talk key came: the companion's now)
+  if (dictation()) { void stopDictation(true); for (let i = 0; i < 30 && dictation(); i++) await frame() }
   const p = pointer ?? { x: innerWidth / 2, y: innerHeight / 2 }
   summoning()
-  if (!talkAt(p.x, p.y)) ask()
-  return listenInBox()
-}
-/** Dictation into the box that just opened (it takes the keyboard as it opens), sent as it stops. */
-async function listenInBox() {
-  for (let i = 0; i < 30; i++) {
-    await frame()
-    const f = document.activeElement
-    if (f instanceof HTMLInputElement || f instanceof HTMLTextAreaElement) break
+  if (!talkAt(p.x, p.y)) {
+    const ed = currentEditor()
+    // (no cursor of its own here: in a note, an ask by its line; in a drawing, about what's selected; else the screen's)
+    if (ed?.path && ed.kind === "markdown") ask()
+    else if (!askDrawing()) return talkElsewhere()
   }
-  if (!runCommandById("dictation:start")) return false
+  if (!(await boxTakesKeys())) { talkDone(); return talkElsewhere() }
+  await listenInBox()
+}
+/** Whether its box (just opened) has the keyboard, a few frames on: as it opens it takes it, unless something keeps it. */
+async function boxTakesKeys() {
+  for (let i = 0; i < 15; i++) {
+    if (inCompanionBox(document.activeElement)) return true
+    await frame()
+  }
+  return false
+}
+/** Dictation into its box, which has the keyboard (nowhere else), sent as it stops. */
+async function listenInBox() {
+  if (!inCompanionBox(document.activeElement) || dictation() || !runCommandById("dictation:start")) return false
   for (let i = 0; i < 30 && !dictation(); i++) await frame()
   talkHeard(!!dictation())
   return !!dictation()
@@ -67,7 +78,7 @@ function talkKey(a: "listen" | "send" | "type" | "free" | "cancel") {
   if (a === "send") return void stopDictation()
   talkHeard(false)
   // (the tap's dictation may still be stopping)
-  if (a === "free") return void (async () => { for (let i = 0; i < 60 && dictation(); i++) await frame(); if (!dictation()) await listenInBox() })()
+  if (a === "free") return void (async () => { for (let i = 0; i < 60 && dictation(); i++) await frame(); if (!dictation() && await boxTakesKeys()) await listenInBox() })()
   void stopDictation(true)
   if (a === "cancel") talkDone()
 }

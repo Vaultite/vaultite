@@ -1,6 +1,6 @@
 /** The menu-bar helper (a Mac's; one per Mac, a lock): the app and its home vault's server kept with no window: the keys
  *  (dictation's; the companion summoned over the screen, overlay.ts), screen reading, what's in front. electron/CLAUDE.md. */
-import { app, Menu, Notification, nativeImage, screen, shell, Tray, type BrowserWindow, type WebContents } from "electron"
+import { app, ipcMain, Menu, Notification, nativeImage, screen, shell, Tray, type BrowserWindow, type WebContents } from "electron"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -79,6 +79,8 @@ export async function startHelper(h: HelperHost) {
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v),
     asked: () => [...asked], spoken: () => [...spoken], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
   onScreenEvent(heard)
+  ipcMain.removeAllListeners("vaultite:talk-elsewhere")
+  ipcMain.on("vaultite:talk-elsewhere", (e) => talkElsewhere(e.sender))
   onDictating(() => stopVoice())
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) } })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
@@ -426,6 +428,15 @@ function talkHeard(m: FnEvent) {
   if (to) { to.send("vaultite:fn", { talk: a }); if (a === "send" || a === "cancel") talkPage = null; return }
   talkPage = null
   talkAct(a)
+}
+
+/** The window that had the Talk key's press can't answer it there (no box of the companion's takes the keyboard, as in
+ *  a terminal): the companion comes over the screen at the pointer, as in any app; the press goes on here. */
+function talkElsewhere(from: WebContents) {
+  if (!talkPage || talkPage !== from) return
+  talkPage = null
+  if (gesture.state === "held") talkAct("listen")
+  else if (gesture.state === "typed") talkAct("type")
 }
 
 function talkAct(a: NonNullable<TalkAction>) {

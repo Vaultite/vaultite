@@ -171,6 +171,8 @@ contextBridge.exposeInMainWorld("vaultite", {
       ipcRenderer.on("vaultite:fn", h)
       return () => { ipcRenderer.removeListener("vaultite:fn", h) }
     },
+    // (a Talk key's press this window can't answer: the helper summons the companion over the screen)
+    talkElsewhere: () => ipcRenderer.send("vaultite:talk-elsewhere"),
   } : undefined,
   // Other apps' windows in tabs (electron/apps.ts).
   apps: MAC ? {
