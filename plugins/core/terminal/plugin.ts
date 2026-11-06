@@ -1523,7 +1523,8 @@ plugin.route("GET", "terminals/instructions", () => ({ text: agentContext() }))
 /** This machine's terminals; `ended=1`: the ones that ended lately too (kept a while by their backend, with how). */
 plugin.route("GET", "terminals/sessions", async (req) => {
   await owner(req)
-  return { sessions: await localList(), backend: (await backendForNew()).name, ...(req.query.ended ? { ended: await endedList() } : {}) }
+  // (`starting`: ones whose shell is on its way, not listed yet: their tabs aren't gone)
+  return { sessions: await localList(), backend: (await backendForNew()).name, ...(starting.size ? { starting: [...starting.keys()] } : {}), ...(req.query.ended ? { ended: await endedList() } : {}) }
 })
 
 /** What a terminal shows: its last `lines` lines (its screen and the history above it; `all`: all it keeps), as text

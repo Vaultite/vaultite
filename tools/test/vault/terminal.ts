@@ -10,11 +10,11 @@ export default async ($: VaultTest) => {
   // opening, resuming by title, typing, ending, tidying gone agents' tabs.
   {
     const calls: string[] = []
-    const tabs = [["t1", "claude-live1"], ["t2", "claude-gone1"], ["t3", "k3j2h1g0"], ["t4", "claude-far@m1"]].map(([id, t]) => ({ id, to: `view:terminal/${t}` }))
+    const tabs = [["t1", "claude-live1"], ["t2", "claude-gone1"], ["t3", "k3j2h1g0"], ["t4", "claude-far@m1"], ["t5", "claude-new1"]].map(([id, t]) => ({ id, to: `view:terminal/${t}` }))
     const termApi = async (m: string, r: string, b?: unknown) => {
       calls.push(`${m} ${r}${b === undefined ? "" : ` ${JSON.stringify(b)}`}`)
       if (r.startsWith("terminals/sessions")) return { status: 200, body: { sessions: [{ id: "claude-live1", agent: "claude", process: "claude", clients: 1, started: Date.now() - 120000, title: "Fixing the build", state: "working" },
-        { id: "a8f3k2m1", agent: null, process: "zsh", clients: 0, started: Date.now() - 60000, name: "Release notes" }], ...(r.includes("ended=1") ? { ended: [{ id: "q9w8e7r6", backend: "vaultite", command: "npm test", started: Date.now() - 90000, exit: { code: 3, signal: 0, at: Date.now() - 30000 } }] } : {}) } }
+        { id: "a8f3k2m1", agent: null, process: "zsh", clients: 0, started: Date.now() - 60000, name: "Release notes" }], starting: ["claude-new1"], ...(r.includes("ended=1") ? { ended: [{ id: "q9w8e7r6", backend: "vaultite", command: "npm test", started: Date.now() - 90000, exit: { code: 3, signal: 0, at: Date.now() - 30000 } }] } : {}) } }
       if (r.includes("/capture?")) return { status: 200, body: { id: r.split("/")[1], format: "text", text: "line 1\nline 2" } }
       if (m === "POST" && r.endsWith("/wait")) return { status: 200, body: { met: "exit", timedOut: false, waited: 1.5, for: ["exit"], exit: { code: 3, signal: 0 } } }
       if (r === "workspaces") return { status: 200, body: { workspaces: [{ layout: { root: { id: "g0", tabs, active: "t1" }, focus: "g0" } }] } }
@@ -45,10 +45,10 @@ export default async ($: VaultTest) => {
     let tr = await term("list")
     check("vau terminal: the sessions, what runs in them and their tabs; then the tabs whose session is gone (another machine's aren't)",
       tr.code === 0 && tr.out.includes('claude-live1  claude (working)  "Fixing the build"  2m ago, tab in workspace 1') && tr.out.includes('a8f3k2m1  zsh  named "Release notes"') &&
-      tr.out.includes("claude-gone1  gone, tab in workspace 1 (an agent's") && tr.out.includes("k3j2h1g0  gone, tab in workspace 1 (a new shell") && !tr.out.includes("claude-far"), tr)
+      tr.out.includes("claude-gone1  gone, tab in workspace 1 (an agent's") && tr.out.includes("k3j2h1g0  gone, tab in workspace 1 (a new shell") && !tr.out.includes("claude-far") && !tr.out.includes("claude-new1"), tr)
     calls.length = 0
     tr = await term("tidy")
-    check("vau terminal tidy: closes the tabs of agents' sessions that are gone, not shells'",
+    check("vau terminal tidy: closes the tabs of agents' sessions that are gone, not shells', nor one still starting",
       tr.code === 0 && calls.filter((x) => x.startsWith("POST workspaces/close")).join() === 'POST workspaces/close {"path":"view:terminal/claude-gone1"}', [tr, calls])
     calls.length = 0
     tr = await term("open", { agent: "claude", split: "right" })

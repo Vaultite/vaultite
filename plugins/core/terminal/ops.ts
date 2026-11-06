@@ -16,7 +16,7 @@ type TabAt = { workspace: number; tab: string }
  *  starts it by itself. Plain shells (`k3j2h1g0`) start again; resumes resume. */
 const freshAgent = (id: string) => { const t = parseTerminal(id); return !!t && !t.resume && !t.machine }
 
-async function sessions(ctx: OpCtx, ended = false): Promise<{ sessions: Session[]; ended?: Ended[] }> {
+async function sessions(ctx: OpCtx, ended = false): Promise<{ sessions: Session[]; ended?: Ended[]; starting?: string[] }> {
   return await ctx.api("GET", `terminals/sessions${ended ? "?ended=1" : ""}`)
 }
 
@@ -184,7 +184,7 @@ terminal attach <terminal> shows one in the terminal you run it in (⌃\ detache
       const m = machine === "all" ? null : await elsewhere(plugin, machine ?? "")
       if (m) return await there(plugin, ctx, m, "terminal.list", { ...(ended ? { ended } : {}) })
       const [ss, tabs] = await Promise.all([sessions(ctx, !!ended), tabsOf(ctx)])
-      const live = new Set(ss.sessions.map((s) => s.id))
+      const live = new Set([...ss.sessions.map((s) => s.id), ...(ss.starting ?? [])])
       const gone = [...tabs].filter(([t]) => !t.includes("@") && !live.has(t)).map(([t, at]) => ({ id: t, tabs: at, agent: freshAgent(t) }))
       const out: { sessions: (Session & { tabs: TabAt[] })[]; gone: typeof gone; ended?: Ended[]; machines?: Record<string, string> } =
         { sessions: ss.sessions.map((s) => ({ ...s, tabs: tabs.get(s.id) ?? [] })), gone, ...(ended ? { ended: ss.ended ?? [] } : {}) }
@@ -605,7 +605,7 @@ ended, with Restart) until you close them or run this; exiting the shell after t
     params: { id: { type: "string", description: "only this terminal's tabs" } },
     run: async ({ id }, ctx) => {
       const [ss, tabs] = await Promise.all([sessions(ctx), tabsOf(ctx)])
-      const live = new Set(ss.sessions.map((s) => s.id))
+      const live = new Set([...ss.sessions.map((s) => s.id), ...(ss.starting ?? [])])
       const dead = [...tabs.keys()].filter((t) => !t.includes("@") && !live.has(t) && freshAgent(t) && (!id || t === id))
       let closed = 0
       for (const t of dead) closed += await closeTabs(ctx, t)
