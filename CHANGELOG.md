@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Zen floats its page as a card again**: its old snippet had stopped matching the panes, leaving the page on the
+  window's colour under a page-coloured bar. Zen now uses the app's own pane cards (a vault using Zen moves over by
+  itself, its other snippets kept), and the bar above a file has a faint line under it.
 - **Clicks in agents' pages land again**: a page an agent opened while no spare was ready never drew on a Mac, so
   every click there was dropped (an Allow in a Claude Code session "changed nothing"). Each now starts from a ready
   view, and one that stopped drawing (its window out of sight a while) is shown again before an agent acts in it or

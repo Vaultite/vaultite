@@ -35,7 +35,7 @@ export function ViewBar({ children, right, className }: { children?: ReactNode; 
   const ref = useRef<HTMLDivElement>(null)
   usePaneTopBar(ref)
   return (
-    <div ref={ref} data-view-bar className={cn("group/bar sight-top sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 bg-background px-2 text-[13px]", className)}>
+    <div ref={ref} data-view-bar className={cn("group/bar sight-top sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 border-b-[0.5px] border-border/70 bg-background px-2 text-[13px]", className)}>
       <NavButtons />
       {/* (squeezed past what its crumbs can shrink to, it cuts them off rather than drawing them under the buttons;
           the margin keeps focus rings) */}
