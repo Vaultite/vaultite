@@ -720,9 +720,10 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   draw()
   chatChanged()
   const how = await engineFor(s)
-  if (mine.into === "summon") mine.of?.press?.step("stt", { engine: how.engine })
   // (a Talk key's audio is kept a while: a press that went nowhere can be heard again)
   const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]), ...(tap ? { tap } : {}) })
+  // (the recognizer that hears it: Soniox, or this Mac's and why not Soniox; one failing later logs stt-fallback)
+  if (mine.into === "summon") mine.of?.press?.step("stt", { engine: r.engine ?? how.engine, ...(r.why ? { why: r.why } : {}), ...(r.ok ? {} : { failed: r.code ?? "?" }) })
   if (r.ok || session !== mine) return
   session = null
   if (mine.into === "summon" && mine.of?.state === "listening") { void inkOff(); missed(mine.of, `the recognizer didn't start (${r.code ?? "?"})`) }

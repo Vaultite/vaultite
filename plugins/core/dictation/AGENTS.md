@@ -12,7 +12,7 @@ space) and never with an Enter: nothing runs until the user presses it. Browsers
 it.
 - Settings (`.vaultite/plugins/dictation/data.json`): `engine` `auto` | `soniox` | `apple` | `parakeet`; `language` (Apple's,
   `pt-BR`; the Mac's when left out); `languages` (Soniox's hints, `[en, pt]`; the language and the Mac's when left out); `silence` (seconds without speech before a tapped dictation stops; 0, the default,
-  never); `replacements`, lines of "said: written" (`at Claude: @claude`), whose said words the recognizer listens for;
+  never); `replacements`, lines of "said: written" (`at Claude: @claude`), whose said words the recognizer listens for (as it does for Vaultite's own words, the agents' names and the newest notes' names; a plugin adds its own with the service `dictation:terms`);
   `keep_audio` (this Mac's), the last dictation's audio kept in the app's logs folder as `dictation-last.wav`.
 - Soniox (cloud, real time, any language, switching on its own) is `auto`'s pick once this machine has its key:
   `vau secret "Soniox API key" | vau dictation key` (kept in data/config.json, never the vault). The same key gives the companion its voice (Soniox's TTS). The socket is open only

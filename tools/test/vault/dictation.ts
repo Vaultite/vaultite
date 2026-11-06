@@ -27,8 +27,14 @@ export default async ($: VaultTest) => {
   process.env.VAULTITE_SONIOX_API = `http://127.0.0.1:${(rest.address() as Any).port}`
   process.env.VAULTITE_SONIOX_URL = "ws://127.0.0.1:1/stand-in"
   try {
+    fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
+    fs.writeFileSync(path.join(VAULT, "Notes", "Quillfeather.md"), "A name a recognizer wouldn't know.\n")
+    fs.writeFileSync(path.join(VAULT, "Notes", "Hushed thing.md"), "---\nprivate: true\n---\nNot for anyone.\n")
+    await vault.sync()
     let [st, c] = await api("GET", "dictation/cloud")
     check("dictation: no key, automatic is this Mac's", st === 200 && !c.key && !c.why, c)
+    check("dictation: the recognizer is told Vaultite's words, the companion's name and the newest notes' names, not a private one's",
+      ["Vaultite", "Claude", "Codex", "Quillfeather"].every((w) => c.terms?.includes(w)) && !c.terms.includes("Hushed thing") && c.terms.length <= 80, c.terms)
     const [, sp0] = await api("GET", "companion/voice")
     check("dictation: no key, the companion's voice isn't Soniox's", !sp0.soniox, sp0)
     await set({ engine: "soniox" })
@@ -55,13 +61,14 @@ export default async ($: VaultTest) => {
     check("dictation: the key only for this machine's owner", sr === 403 && ssr === 403, [sr, ssr])
     await set({ engine: "parakeet" })
     ;[, c] = await api("GET", "dictation/cloud")
-    check("dictation: a local recognizer picked keeps it local", !c.key, c)
+    check("dictation: a local recognizer picked keeps it local, still told the words to expect", !c.key && c.terms?.includes("Vaultite"), c)
     const inVault = (() => { try { return execFileSync("grep", ["-rl", "good-key-123", VAULT], { encoding: "utf8" }) } catch { return "" } })()
     check("dictation: the key is nowhere in the vault", !inVault, inVault)
     cr = await vau("dictation", "key", "--remove")
     check("dictation key --remove: gone", cr.code === 0 && !JSON.parse(fs.readFileSync(config, "utf8")).dictation, cr)
   } finally {
     fs.rmSync(path.join(VAULT, settings), { force: true })
+    for (const n of ["Quillfeather.md", "Hushed thing.md"]) fs.rmSync(path.join(VAULT, "Notes", n), { force: true })
     rest.close()
   }
   await helper($, tmp)

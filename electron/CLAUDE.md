@@ -45,7 +45,8 @@
   one lock; a scripted copy hears a file, never the microphone, and where that lock is held (the user's app runs) its QA
   (web/qa/helper.mjs) is skipped unless VAULTITE_QA_LIVE=1. Each Talk-key press is logged (presslog.ts:
   userData/talk/talk-<day>.jsonl, a missed press's audio beside it): a press that went nowhere can be traced, and one
-  that went shows its answer's first sound (`sound`: whose voice, ms after let-go) and a voice failing over.
+  that went shows its answer's first sound (`sound`: whose voice, ms after let-go) and a voice failing over; `stt` names
+  the recognizer that heard it (`soniox`, else this Mac's with `why`), `stt-fallback` one failing mid-press.
 - The realtime voice (realtimefront.ts over realtime.ts, OpenAI's WebSocket): dictation's session taps the mic for it
   (`tap`, 16 kHz, made 24 kHz), voice.ts' `stream()` plays its audio. Dictation still runs: its words are the screen
   round's question and the fallback's, and the box's. Its tests are a stand-in socket; tools/evals/realtime.ts the real one.

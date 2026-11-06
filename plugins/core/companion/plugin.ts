@@ -1146,6 +1146,8 @@ plugin.provide("companion:panes", () => allPanes().filter((p) => !privatePane(p)
 plugin.provide("companion:private", (url: string, container: string | null) => privatePage(url, container))
 /** Whether a note is private (the setting's folders, or companion: private in it). */
 plugin.provide("companion:hidden", (path: string) => hidden(path))
+/** Its names, for dictation to expect (@claude, "ask Ada"). */
+plugin.provide("dictation:terms", () => [...new Set([ownName(), ...[...agents.values()].map((a) => a.name)])].filter(Boolean))
 /** A watch's hit: a moment for the companion while it runs (true), else the watches' inbox (false). */
 plugin.provide("companion:watch", (h: { id: string; title: string; why: string; done: boolean; changes: string[]; url?: string }) => {
   const name = ownName()

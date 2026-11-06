@@ -13,16 +13,33 @@ export const SET_KEY = `vau secret "Soniox API key" | vau dictation key`
 const stored = () => (plugin.secrets()[plugin.id] ?? {}) as { soniox?: unknown }
 const keyHere = () => { const k = stored().soniox; return typeof k === "string" && k.trim() ? k.trim() : "" }
 
-/** Whether Soniox hears dictation here, with its key; `why` when the engine asked for is Soniox but there's no key. */
+/** Words a recognizer gets wrong unless told (Vaultite's own, the agents'), always expected. */
+const VOCABULARY = ["Vaultite", "vau", "Claude", "Claude Code", "Codex", "Sonnet", "Opus", "Agent SDK"]
+/** How many of the vault's note names, newest first, go to the recognizer with them. */
+const NOTE_NAMES = 40
+/** The words dictation expects: Vaultite's, what plugins add ("dictation:terms": the companion's names), and the names
+ *  of the notes changed last (not dates, not archived or private ones). */
+export function terms(): string[] {
+  const added = plugin.allServices("dictation:terms").flatMap((fn) => { try { const t = fn(); return Array.isArray(t) ? t : [] } catch { return [] } })
+  const notes = [...plugin.vault.entries.values()].filter((e) => e.rel.endsWith(".md") && !e.rel.startsWith(".") && !e.archived && !e.fm?.private && e.fm?.companion !== "private")
+    .sort((a, b) => (a.stat.ns < b.stat.ns ? 1 : a.stat.ns > b.stat.ns ? -1 : 0))
+    .map((e) => e.rel.split("/").pop()!.slice(0, -3)).filter((n) => n.length >= 3 && n.length <= 40 && !/^\d/.test(n) && n.split(/\s+/).length <= 4)
+  return [...new Set([...VOCABULARY, ...added.filter((t): t is string => typeof t === "string"), ...notes.slice(0, NOTE_NAMES)])].slice(0, 80)
+}
+
+/** Whether Soniox hears dictation here, with its key; `why` when the engine asked for is Soniox but there's no key.
+ *  Either way, the words it should expect (`terms`). */
 plugin.route("GET", "dictation/cloud", async (req) => {
   await plugin.ownerOnly(req, "Dictation's key")
   const s = plugin.settings()
   const engine = s.engine ?? "auto"
-  if (plugin.isOff() || (engine !== "auto" && engine !== "soniox")) return {}
+  if (plugin.isOff()) return {}
+  const expect = { terms: terms() }
+  if (engine !== "auto" && engine !== "soniox") return expect
   const key = keyHere()
-  if (!key) return engine === "soniox" ? { why: `No Soniox key on this machine (${SET_KEY})` } : {}
+  if (!key) return engine === "soniox" ? { why: `No Soniox key on this machine (${SET_KEY})`, ...expect } : expect
   const languages = Array.isArray(s.languages) ? s.languages.filter((l): l is string => typeof l === "string" && !!l.trim()).map((l) => l.trim()) : []
-  return { url: WS(), key, model: MODEL, languages }
+  return { url: WS(), key, model: MODEL, languages, ...expect }
 }, { lock: false, sync: false })
 
 plugin.op({
