@@ -423,7 +423,12 @@ func outputNow() -> [String: Any] {
 }
 
 /** A level the eye reads: speech's RMS (about 0.02 to 0.3) spread over 0 to 1. */
-func shaped(_ rms: Float) -> Double { Double((min(1, max(0, (20 * log10(max(rms, 1e-5)) + 50) / 40)) * 100).rounded() / 100) }
+// (in steps: CI's Swift gave up type-checking it as one expression)
+func shaped(_ rms: Float) -> Double {
+  let db: Float = 20 * log10(max(rms, 1e-5))
+  let level: Float = min(1, max(0, (db + 50) / 40))
+  return Double((level * 100).rounded() / 100)
+}
 
 func convert(_ b: AVAudioPCMBuffer, _ c: AVAudioConverter) -> AVAudioPCMBuffer? {
   let cap = AVAudioFrameCount(Double(b.frameLength) * RATE / b.format.sampleRate) + 64

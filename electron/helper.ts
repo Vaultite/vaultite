@@ -47,7 +47,9 @@ const QUIET = !!process.env.VAULTITE_QUIET
 /** The app the user uses: only it hears their keys (helperlogic.ts liveInput). */
 const LIVE = liveInput(process.env, app.isPackaged)
 // (a scripted copy's or one run from source: its own lock, never the user's app's)
-const LOCK = path.join(os.tmpdir(), LIVE ? "vaultite-helper.sock" : `vaultite-helper-${process.pid}.sock`)
+const LOCK_NAME = LIVE ? "vaultite-helper" : `vaultite-helper-${process.pid}`
+// (Windows listens only on a named pipe, never a file's path)
+const LOCK = process.platform === "win32" ? `\\\\.\\pipe\\${LOCK_NAME}-${os.userInfo().username}` : path.join(os.tmpdir(), `${LOCK_NAME}.sock`)
 let host: HelperHost | null = null
 /** A scripted copy's stand-ins for the screen helper's answers (web/qa/helper.mjs): it never reads or types into the
  *  user's apps. */
@@ -72,7 +74,7 @@ function takeLock(): Promise<net.Server | null> {
   return listen().then((s) => s ?? new Promise((done) => {
     const probe = net.connect(LOCK)
     probe.once("connect", () => { probe.destroy(); done(null) })
-    probe.once("error", () => { fs.rmSync(LOCK, { force: true }); void listen().then(done) })
+    probe.once("error", () => { if (process.platform !== "win32") fs.rmSync(LOCK, { force: true }); void listen().then(done) })
   }))
 }
 

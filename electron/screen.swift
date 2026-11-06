@@ -459,7 +459,8 @@ func shootDisplay(_ x: Double, _ y: Double, _ exclude: [Int], _ file: String, _ 
     guard let d = content.displays.first(where: { CGDisplayBounds($0.displayID).contains(p) }) ?? content.displays.first else { return done(["ok": false, "why": "no-display"]) }
     let whole = CGDisplayBounds(d.displayID)
     // (a part of it, kept inside it: the source rect is the display's own points, from its top left)
-    let b = crop.map { $0.intersection(whole) }.flatMap { $0.isNull || $0.width < 1 || $0.height < 1 ? nil : $0 } ?? whole
+    var b = whole
+    if let c = crop?.intersection(whole), !c.isNull, c.width >= 1, c.height >= 1 { b = c }
     let filter = SCContentFilter(display: d, excludingWindows: content.windows.filter { exclude.contains(Int($0.windowID)) })
     let conf = SCStreamConfiguration()
     if b != whole { conf.sourceRect = CGRect(x: b.minX - whole.minX, y: b.minY - whole.minY, width: b.width, height: b.height) }

@@ -846,8 +846,11 @@ final class Session: @unchecked Sendable {
         level = max(level, (sum / Float(pcm.count)).squareRoot())
         levelMs += Double(pcm.count) / RATE * 1000
         if levelMs >= 100 {
-            let db = 20 * log10(max(level, 1e-6))
-            emit("level", ["v": (min(1, max(0, (db + 60) / 50)) * 100).rounded() / 100])
+            // (typed in steps: CI's older Swift gives up on the one expression)
+            let db: Float = 20 * log10(max(level, 1e-6))
+            let shown: Float = min(1, max(0, (db + 60) / 50))
+            let v: Float = (shown * 100).rounded() / 100
+            emit("level", ["v": v])
             level = 0; levelMs = 0
         }
         if engine == nil { backlog.append(pcm) } else { process(pcm) }
