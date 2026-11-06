@@ -29,7 +29,7 @@ try {
   }
   /** The bar as text: each tab's label, its group's name in brackets ("~" folded), a chip as <name>. */
   // (a chip's count is drawn always, hidden while it's open: not what it says)
-  const bar = () => page.$$eval("[data-tab-bar]:not([data-tabs-hidden]) :is([data-tab-id], [data-group-chip])", (els) => els.map((e) => (e.dataset.groupChip ? `<${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}>` : e.textContent.trim())).join(" "))
+  const bar = () => page.$$eval("[data-tab-bar] :is([data-tab-id], [data-group-chip])", (els) => els.map((e) => (e.dataset.groupChip ? `<${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-group-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}>` : e.textContent.trim())).join(" "))
   const tab = (label) => page.locator("[data-tab-bar] [data-tab-id]", { hasText: label }).first()
   const menu = async (loc, ...items) => {
     await loc.click({ button: "right" }); await wait(200)

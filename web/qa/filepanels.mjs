@@ -15,7 +15,7 @@ const api = apiAt(B)
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
 watch(page)
 await page.goto(B)
-await page.waitForSelector("[data-sidebar], aside", { timeout: 20000 })
+await page.waitForSelector("aside", { timeout: 20000 })
 
 await api("POST", "ops/panel.right", { panel: "QA/Weather.html", vault: true })
 await api("POST", "ops/panel.right", { panel: "QA/Cups.md", vault: true })
