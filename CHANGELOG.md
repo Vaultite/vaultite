@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Sidebar panels that aren't lists keep their room**: when the Conversations panel's talk (or another panel that
+  isn't rows) was taller than the room left, it folded to its heading and showed nothing; it now takes the room and
+  scrolls, and the wheel at the talk's end brings its ask line in.
 - **Glass bundles look like glass in the web demo**: the demo has no desktop under its window, so Full glass and
   Glass now show a soft wallpaper (on vaultite.com's bundle pages, the page's own) through blurred, see-through bars.
   Asking for a bundle the demo already has replaces its copy, so switching back and forth works.

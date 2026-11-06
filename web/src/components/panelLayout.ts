@@ -78,7 +78,9 @@ function snapToRows(l: Laid, hs: number[], tree = true): number[] {
     const down = Math.max(0, ...ends.filter((e) => e <= room + 0.5))
     const up = Math.min(Infinity, ...ends.filter((e) => e > room + 0.5 && l.chrome[i] + e <= l.rest[i]))
     const lift = Math.ceil(up - room - SLACK)
-    const end = (!down || l.chrome[i] + down < p.min) && g >= 0 && out[g] - lift >= l.ps[g].min ? up : down
+    // (a row end under its least isn't one to end at: a panel that isn't rows (a chat) has only its heading's, and
+    // snapped there it showed nothing; it keeps its height and ends mid-content)
+    const end = !down || l.chrome[i] + down < p.min ? (g >= 0 && out[g] - lift >= l.ps[g].min ? up : 0) : down
     if (!end || end === Infinity) return
     const d = end === up ? -lift : Math.floor(room - end + SLACK)
     out[i] -= d
