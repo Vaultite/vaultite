@@ -65,8 +65,8 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   /** No page of its own has painted yet: it shows the window's colour (`looks`) rather than white. */
   fresh: boolean
   /** An agent's: out of sight it's parked (see `park`) rather than hidden, so it draws on. `parked`: it is now;
-   *  `resting`: hidden there a while (`rest`), `woke` when it last woke. */
-  drawn?: boolean; parked?: boolean; resting?: boolean; woke?: number
+   *  `resting`: hidden there a while (`rest`), `woke` when it last woke; `drew` when its document was last seen drawing. */
+  drawn?: boolean; parked?: boolean; resting?: boolean; woke?: number; drew?: number; seeing?: Promise<void>
   /** When the user last pressed a key or the pointer in it, any frame (Chromium's user activation, for its opens). */
   input: number
   /** Where it was opened and the sign-in it reached, till the user moves it on (webpages.ts Flow). */
@@ -409,14 +409,22 @@ function takeSpare(profile: string) {
   spare = null
   return s.view
 }
+/** A view for an agent's page with its renderer running, out of the window: the spare, else one made so now. On a Mac a
+ *  view parked before its renderer starts never draws (Electron's unthrottled widget is left unshown), so no press lands. */
+async function readyView(profile: string) {
+  const view = takeSpare(profile) ?? newView(profile), wc = view.webContents
+  if (!wc.getURL()) void wc.loadURL("about:blank").catch(() => {})
+  if (wc.isLoading()) await new Promise<void>((done) => { const t = setTimeout(done, 2000); wc.once("did-stop-loading", () => { clearTimeout(t); done() }) })
+  return view
+}
 
 /** `agent`: an agent's, in the background (no tab). `adopt`: the contents a page's window.open made (`opener`'s), already
  *  loading `url`. */
-function make(win: AppWindow, url: string, profile: string, tab: string, { agent = false, adopt, opener }: { agent?: boolean; adopt?: WebContents; opener?: number } = {}): Page {
+function make(win: AppWindow, url: string, profile: string, tab: string, { agent = false, adopt, opener, ready }: { agent?: boolean; adopt?: WebContents; opener?: number; ready?: WebContentsView } = {}): Page {
   if (!popups) void import("./popup.ts").then((k) => { popups = k })
   // (a tab whose page went, or moved to other logins, given its history back: Back and Forward as they were)
   const kept = tab && !adopt ? restoreMod?.pastOf(tab, profile, url) ?? null : null
-  const taken = adopt || kept ? null : takeSpare(profile), view = taken ?? newView(profile, adopt)
+  const taken = adopt || kept ? null : ready ?? takeSpare(profile), view = taken ?? newView(profile, adopt)
   makeSpare(profile)
   // (see-through till it paints, over its last picture: `web:frame`)
   view.setBackgroundColor(kept && !kept.load && restoreMod?.frameFor(tab, url, profile) ? "#00000000" : lookOf(win))
@@ -431,6 +439,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   if (agent) park(p)
   const wc = view.webContents
   if (taken) wc.once("did-navigate", () => { wc.navigationHistory.clear(); p.blankBehind = false })
+  wc.on("did-navigate", () => { p.drew = undefined })
   // (its address mid-restore is any of its entries': the tab mustn't follow it till it's at its own)
   let restored = () => {}
   if (kept) {
@@ -764,10 +773,41 @@ function rest(p: Page) {
   p.view.webContents.setBackgroundThrottling(true)
 }
 /** Awake again: parked and drawing, settled once its first frame since is likely drawn. */
-function wake(p: Page) {
+async function wake(p: Page) {
   if (p.resting) park(p)
   const left = (p.woke ?? 0) + 100 - Date.now()
-  return left > 0 ? new Promise<void>((done) => setTimeout(done, left)) : Promise.resolve()
+  if (left > 0) await new Promise<void>((done) => setTimeout(done, left))
+  if (p.parked && Date.now() - (p.drew ?? 0) > SEEN_MS) await seeDraws(p)
+}
+/** What page `p`'s document answers to `code` (null: nothing within `ms`). */
+const askPage = (p: Page, code: string, ms: number) => Promise.race([new Promise<null>((done) => setTimeout(done, ms, null)),
+  p.view.webContents.executeJavaScriptInIsolatedWorld(1018, [{ code }]).catch(() => null)])
+const frameIn = async (p: Page, ms: number) => (await askPage(p, "new Promise((done) => requestAnimationFrame(() => done(true)))", ms)) === true
+/** How long a parked page seen drawing is taken to draw still: its window out of sight meanwhile may have stopped it. */
+const SEEN_MS = 5000
+/** An agent's page draws where it's shown, parked or in its tab (one call at a time). */
+const seeDraws = (p: Page) => (p.seeing ??= drawing(p).finally(() => { p.seeing = undefined }))
+/** An unthrottled page that stopped drawing for good (Electron on a Mac keeps its widget shown, not its compositor) takes
+ *  no press: it's hidden and throttled, then, once its page is hidden, shown unthrottled again, which shows both. */
+async function drawing(p: Page) {
+  const wc = p.view.webContents
+  if (wc.isDestroyed()) return
+  if (await frameIn(p, 300)) { p.drew = Date.now(); return }
+  if (!p.drawn || p.player || p.resting || !p.view.getVisible() || wc.isDestroyed()) return
+  const parked = !!p.parked
+  if (parked) rest(p)
+  else { p.view.setVisible(false); wc.setBackgroundThrottling(true) }
+  for (const until = Date.now() + 1000; Date.now() < until;) {
+    if (await askPage(p, "document.visibilityState", 200) === "hidden") break
+    await new Promise((done) => setTimeout(done, 30))
+  }
+  if (wc.isDestroyed()) return
+  // (as it was, unless it moved meanwhile: parked or placed again, that's shown it)
+  if (parked && p.resting) park(p)
+  else if (!parked && !p.parked && !p.view.getVisible() && p.want && !p.player) { wc.setBackgroundThrottling(false); p.view.setVisible(true) }
+  // (tried once a while at most, drawn or not: its window may be out of sight)
+  await frameIn(p, 1000)
+  p.drew = Date.now()
 }
 /** Out of sight: parked if it's an agent's, else hidden. */
 const stow = (p: Page) => { if (p.drawn) park(p); else p.view.setVisible(false) }
@@ -907,7 +947,9 @@ function fit(p: Page) {
   const z = p.win.webContents.getZoomFactor()
   round(p, Math.round((rect.radius ?? 0) * z))
   p.view.setBounds({ x: Math.round(rect.x * z), y: Math.round(rect.y * z), width: Math.round(rect.width * z), height: Math.round(rect.height * z) })
+  const shown = !p.view.getVisible()
   p.view.setVisible(true)
+  if (shown && p.drawn) void seeDraws(p)
 }
 const round = (p: Page, r: number) => { if ((p.radius ?? 0) !== r) { p.radius = r; p.view.setBorderRadius(r) } }
 
@@ -1128,6 +1170,8 @@ export function webWindow(win: AppWindow) {
   // (a page full screen in it follows it as it goes full screen; the window leaving full screen takes the page out too)
   win.contentView.on("bounds-changed", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
   win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
+  // (back to the window: an agent's page in a tab may have stopped drawing while it was out of sight, `drawing`)
+  win.on("focus", () => { for (const p of pages.values()) if (p.win === win && p.drawn && shownNow(p)) void seeDraws(p) })
   win.on("closed", () => {
     // (a page on its way to another window goes on: that window takes it, else it ends)
     for (const p of [...pages.values()]) if (p.win === win && p.moving === undefined) end(p)
@@ -1149,7 +1193,7 @@ setOpener(async (win, url, profile) => {
   if (!shows(url)) throw new Error("only http and https pages")
   await readySession(profile)
   if (!mayOpen(profile)) throw new Error("this container is locked")
-  const p = make(win as AppWindow, url, profile, "", { agent: true })
+  const p = make(win as AppWindow, url, profile, "", { agent: true, ready: await readyView(profile) })
   pagesChanged(p.win)
   return allPages().find((x) => x.id === p.id)!
 })
