@@ -51,6 +51,40 @@ try {
   check("nothing over the page at first", !!await until(async () => !(await over()), 20000))
   const click = async (x, y) => { const b = await view(); await win.mouse.click(b.x + x, b.y + y) }
 
+  // What's see-through over the page (a pane's handle till its bar is hovered) leaves it alone; shown, it's over it.
+  await win.evaluate(({ x, y }) => {
+    const d = document.createElement("button")
+    d.id = "qa-ghost"
+    d.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:20px;height:28px;z-index:19;opacity:0`
+    document.body.append(d)
+  }, { x: placed.x + placed.width - 26, y: placed.y - 4 })
+  await wait(800)
+  check("a see-through control over the page's corner leaves it alone", !await over())
+  await win.evaluate(() => { document.getElementById("qa-ghost").style.opacity = "1" })
+  check("… shown, it raises the window", !!await until(over, 3000))
+  await win.evaluate(() => { document.getElementById("qa-ghost").style.opacity = "0" })
+  check("… see-through again, the window drops", !!await until(async () => !(await over()), 3000))
+  await win.evaluate(() => document.getElementById("qa-ghost").remove())
+
+  // A press passed through while something was over the page is let go there, though that went before the release.
+  await win.evaluate(() => {
+    const d = document.createElement("div")
+    d.dataset.floats = ""
+    d.id = "qa-float"
+    d.style.cssText = "position:fixed;right:20px;bottom:20px;width:200px;height:40px;background:#333;pointer-events:none"
+    document.body.append(d)
+  })
+  check("a float over the page raises the window", !!await until(over, 3000))
+  const upsBefore = (await view()).counts.ups, ownBefore = (await view()).counts.own
+  await win.mouse.move(placed.x + 120, placed.y + 50)
+  await win.mouse.down()
+  await win.evaluate(() => document.getElementById("qa-float").remove())
+  await until(async () => !(await over()), 3000)
+  await win.mouse.up()
+  check("… a press there, the float gone before it's let go, is a click in the page",
+    !!await until(async () => { const c = (await view())?.counts; return c?.ups === upsBefore + 1 && c?.own === ownBefore + 1 }, 3000), [(await view())?.counts, upsBefore, ownBefore])
+  await wait(300)
+
   // An overlay that takes the pointer on itself, as a floating pane does: no data-floats, a button of its own, over the
   // page's middle.
   await win.evaluate(({ x, y }) => {
@@ -63,9 +97,9 @@ try {
   check("an overlay over the page raises the window", !!await until(over, 5000))
   await wait(300)
   await click(120, 50)
-  check("… a click on the page beside it reaches the page", !!await until(async () => (await view())?.counts?.own === 1, 3000), (await view())?.counts)
+  check("… a click on the page beside it reaches the page", !!await until(async () => (await view())?.counts?.own === 2, 3000), (await view())?.counts)
   await win.locator("#qa-over-button").click()
-  check("… a click on it is its own", await win.evaluate(() => document.getElementById("qa-over-button").dataset.n) === "1" && (await view())?.counts?.own === 1, (await view())?.counts)
+  check("… a click on it is its own", await win.evaluate(() => document.getElementById("qa-over-button").dataset.n) === "1" && (await view())?.counts?.own === 2, (await view())?.counts)
 
   // The page's cursor shows over it.
   const b = await view()

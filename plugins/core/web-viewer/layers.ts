@@ -41,7 +41,9 @@ export function hitCover(box: HTMLElement, r: DOMRect): Cover {
   if (R <= L || B <= T) return null
   const w = innerWidth - 1, h = innerHeight - 1
   const hit = (x: number, y: number) => document.elementFromPoint(Math.min(w, x), Math.min(h, y))
-  const over = (at: Element | null) => !!at && at !== box && !box.contains(at) && !at.closest(NEVER)
+  // (what's see-through draws nothing over the page: a pane's handle till its bar is hovered. Shown, it fades in, which
+  // `moved` hears)
+  const over = (at: Element | null) => !!at && at !== box && !box.contains(at) && !at.closest(NEVER) && at.checkVisibility({ opacityProperty: true })
   // A popup over the page, hit where it is: its middle and around it (one with no pointer is a float's, below).
   for (const p of document.querySelectorAll(POPUPS)) {
     if (box.contains(p)) continue
@@ -138,7 +140,8 @@ export function passPointer(box: HTMLElement, id: () => number | null, area: () 
   let held = 0
   const send = (e: MouseEvent, type: "mouseMove" | "mouseDown" | "mouseUp" | "mouseLeave" | "mouseWheel") => {
     const page = id()
-    if (raised !== "through" || page === null) return
+    // (a press taken while it was through is let go in the page, though what was over it went meanwhile)
+    if ((raised !== "through" && !(held && (type === "mouseUp" || type === "mouseMove"))) || page === null) return
     const r = area()
     void webPages?.pointer(page, { type, x: e.clientX - r.left, y: e.clientY - r.top, button: (["left", "middle", "right"] as const)[e.button] ?? "left",
       clickCount: e.detail || 1, dx: e instanceof WheelEvent ? e.deltaX : 0, dy: e instanceof WheelEvent ? e.deltaY : 0 }).catch(() => {})
@@ -148,7 +151,7 @@ export function passPointer(box: HTMLElement, id: () => number | null, area: () 
   const on: [EventTarget, string, (e: MouseEvent) => void][] = [
     [box, "mousedown", (e) => { if (raised === "through") held |= bit(e); send(e, "mouseDown") }],
     [window, "mousemove", (e) => { if (held || inBox(e)) send(e, "mouseMove") }],
-    [window, "mouseup", (e) => { if (held & bit(e) || inBox(e)) { held &= ~bit(e); send(e, "mouseUp") } }],
+    [window, "mouseup", (e) => { if (held & bit(e) || inBox(e)) { send(e, "mouseUp"); held &= ~bit(e) } }],
     [box, "mouseleave", (e) => { if (!held) send(e, "mouseLeave") }],
     [box, "wheel", (e) => send(e, "mouseWheel")]]
   for (const [at, ev, fn] of on) at.addEventListener(ev, fn as EventListener, { passive: true })

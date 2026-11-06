@@ -1840,8 +1840,10 @@ function raise(win: AppWindow, how: Raise) {
 
 /** The pointer over a page while the window's page lets it through, at the page's own CSS pixels from its corner. */
 function pointer(p: Page, m: unknown) {
-  if (raised.get(p.win) !== "through" || !m || typeof m !== "object") return
+  if (!m || typeof m !== "object") return
   const e = m as { type?: unknown; x?: unknown; y?: unknown; button?: unknown; clickCount?: unknown; dx?: unknown; dy?: unknown }
+  // (a press passed while through is let go here even once the window dropped under the page: else it's held for good)
+  if (raised.get(p.win) !== "through" && !((held.get(p.view.webContents) ?? 0) && (e.type === "mouseUp" || e.type === "mouseMove"))) return
   const z = p.win.webContents.getZoomFactor(), num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
   const x = Math.round(num(e.x) * z), y = Math.round(num(e.y) * z)
   const button = e.button === "right" || e.button === "middle" ? e.button : "left", clickCount = Math.max(1, Math.min(3, num(e.clickCount)))

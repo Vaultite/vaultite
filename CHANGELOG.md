@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Web pages take every click again**: a page's corner under a pane's hidden handle (its bar out of sight) no longer
+  sends the page's clicks the long way round, where buttons like Allow took several tries; a click whose press came
+  while something was over the page is let go in it, though that went before the release.
 - **Settings opens on Appearance, About comes last**: General is now About (the version, app updates and errors), the
   last of the app's own sections, so Appearance leads the list it opens on. File history's settings are in Files.
 - **Zoom follows what you're looking at**: ⌘+ ⌘- ⌘0 zoom the focused pane's content, not the whole app: a note's
