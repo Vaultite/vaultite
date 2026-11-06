@@ -80,6 +80,8 @@ async function cdp(port: number, page: string) {
     ws.send(JSON.stringify({ id, method, params }))
   })
   const evaluate = async (expression: string) => (await call("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })).result?.value
+  // (a window's target is listed with the URL it's loading before that document is there: until then it's about:blank)
+  await waitFor(async () => String(await evaluate("location.href")).startsWith(page) || null, 30_000, 100)
   return { call, evaluate, close: () => ws.close() }
 }
 
