@@ -14,6 +14,7 @@ import { revive, stripKit, unloadPages, webHandlers, webWindow } from "./web.ts"
 import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
+import { talkCall } from "./talklog.ts"
 import { afterUpdate, installedCommit } from "./installed.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { dictationHandlers, setDictationServer, stopDictation } from "./dictation.ts"
@@ -287,6 +288,7 @@ function serverFor(v: Known) {
 const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
   : m.name === "app:updates" ? appUpdates()
   : typeof m.name === "string" && m.name.startsWith("screen:") ? (helper ? helper.screenCall(m.name, Array.isArray(m.args) ? m.args : []) : null)
+  : typeof m.name === "string" && m.name.startsWith("talk:") ? talkCall(m.name, Array.isArray(m.args) ? m.args : [])
   : typeof m.name === "string" && m.name.startsWith("voice:") ? (helper ? helper.voiceCall(m.name, Array.isArray(m.args) ? m.args : []) : { said: false, why: "no menu-bar helper here" })
   : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
 

@@ -21,6 +21,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   load no longer stays without its title.
 - **Extensions can tell an agent's tab**: in Vaultite's browser `tabs.get` says `vaultiteAgent` on an agent's page, so a
   site blocker can leave agents alone and still hold the user's tabs.
+- **The Companion page**: your talk with the companion a day at a time (what you asked, what it said and did, its jobs
+  as cards), each press's details (its steps, timings, cost, picture and audio) and what its services used this week
+  with what's left. Its menu in the status bar, or `vau companion page`.
 - **Mini-apps go anywhere**: any file can be drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right
   Apps/Weather.html`), so one .html page or note with a genui or mcp-app block is an embed, a tab or a panel.
 - **The Talk key's companion is never left halfway**: each press runs one state machine (held, sending, thinking,

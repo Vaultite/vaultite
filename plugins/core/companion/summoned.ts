@@ -41,7 +41,7 @@ export function summonedLane(o: {
   /** Its drawing's words, now that a block of them is whole: its marks' beats are their sentences. */
   caption: (name: string, text: string) => void
   agent: (name: string) => Agent | undefined; setAgent: (name: string, a: Partial<Agent>) => void
-  did: (as: string, op: string, seqs?: number[]) => void; say: (name: string, text: string) => void
+  did: (as: string, op: string, seqs?: number[], text?: string) => void; say: (name: string, text: string) => void
 }) {
   /** Its session: when it started, its last ask, how many it took, and the prompt it was told (`v`). */
   type Kept = { id: string; model: string; t: number; handed: number; v?: string; last?: number }
@@ -121,7 +121,7 @@ export function summonedLane(o: {
     // (its words not heard as they came, a keeper of older code: said whole now, its tags acted on)
     const turn = handed && !acted && !withdrawn && s.state === "idle" ? parseTags(s.turn?.text?.trim() ?? "") : null
     if (turn?.tags.length) for (const t of turn.tags) then(() => tagged(t, turn.said))
-    if (turn?.said) { acted = true; told("you", turn.said); inSummoned.run(true, () => o.did(name, "say")); o.say(name, turn.said) }
+    if (turn?.said) { acted = true; told("you", turn.said); inSummoned.run(true, () => o.did(name, "say", undefined, turn.said)); o.say(name, turn.said) }
     if (handed) o.setAgent(name, acted ? { state: "watching" } : { state: "watching", seen: true })
     if (was && handed) inSummoned.run(true, () => o.did(name, "done"))
     handed = false; asking = false

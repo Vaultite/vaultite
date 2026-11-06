@@ -1,6 +1,6 @@
 import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
 import { Crosshair, Play, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal, Undo2 } from "lucide-react"
-import { answerPlaceAt, cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
+import { answerPlaceAt, cn, currentEditor, definePlugin, menuAbove, notify, notifyError, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
@@ -11,6 +11,7 @@ import { Presence } from "./Presence"
 import { followItems, modeItem, MODES, setMode, showSession } from "./session"
 import { clickUi, watchPanes } from "./panes"
 import { doTask } from "./doit"
+import { ConversationBlock, UsageBlock } from "./Page"
 import { privateNote } from "./private"
 import { offerThreads } from "./threads"
 
@@ -77,6 +78,7 @@ function Status() {
     ...(s.mode === "off" ? [] : liveAgents()).filter((x) => x.path || x.pane || x.ui).map((x, i) => ({ label: `Go to ${x.name}`, icon: Crosshair, run: () => follow(x), sep: i === 0 })),
     ...(a ? followItems(a.name) : []),
     { label: `Ask ${s.name}`, icon: MessageCirclePlus, run: () => ask(), sep: true },
+    { label: "Show its page", icon: MessagesSquare, run: () => void op("companion.page").catch((e) => notifyError(e, "Couldn't open its page")) },
     { label: "Show its session", icon: SquareTerminal, run: () => void showSession() },
     { label: "Restart its session", icon: Power, run: () => void op("companion.stop").then(() => setMode(s.mode === "off" ? "quiet" : s.mode)) },
   ]
@@ -133,6 +135,7 @@ export default definePlugin({
   doTask: share ? undefined : doTask,
   background: () => <Background />,
   answers: share ? undefined : { click: clickUi },
+  blocks: { "companion-conversation": () => <ConversationBlock />, "companion-usage": () => <UsageBlock /> },
   ambient: share ? undefined : { status: { title: "Companion", sort: 25, left: true, render: () => <Status /> } },
   fileBar: { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
   // (its key is threads.ts' PANEL)
@@ -144,6 +147,7 @@ export default definePlugin({
     COMMENT,
     ...MODES.map((m) => ({ id: `companion:${m.mode}`, name: `Companion: ${m.label}`, when: () => getState().mode !== m.mode, run: () => void setMode(m.mode) })),
     { id: "companion:session", name: "Show the companion's session", run: () => showSession(), icon: SquareTerminal },
+    { id: "companion:page", name: "Show the companion's page", words: "conversation usage jobs", run: () => void op("companion.page").catch((e) => notifyError(e, "Couldn't open its page")), icon: MessagesSquare },
     { id: "companion:undo-edit", name: "Undo the companion's last edit", when: () => canUndoEdit(), run: () => void undoEdit(), icon: Undo2 },
   ],
   editorMenu: ({ view, path }) => [
