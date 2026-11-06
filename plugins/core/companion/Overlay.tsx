@@ -6,7 +6,7 @@ import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, 
 import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, noticesSince, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { uiElement } from "./panes"
+import { shown, uiElement } from "./panes"
 import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin,  type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
 import { arrowBox, boxAt } from "./boxes"
 import { Chat } from "./Chat"
@@ -100,13 +100,16 @@ function rowOf(path: string): Spot | null {
   return { x, y, low: y + FLAG > Math.min(c.bottom, innerHeight - 40), rides: !!el.closest("aside[data-peek]") || undefined }
 }
 
-/** Where an agent with nowhere to be rests: its arrow in the status bar, else (the bar's companion hidden, a phone) in the
- *  window's corner. */
-function home(a: Agent, i: number): Spot {
+/** Where each cursor was last shown, for one with nowhere to be to fade there. */
+const lastShown = new Map<string, Spot>()
+/** Where an agent with nowhere to be rests: its arrow in the status bar, else (the bar's companion hidden, a phone) it
+ *  fades where it last was, never flying off to a corner. */
+function home(a: Agent, _i: number): Spot | null {
   const el = document.querySelector(`[data-companion-home="${CSS.escape(a.name)}"]`)
   const r = el?.getClientRects().length ? el.getBoundingClientRect() : null
   if (r?.width) return { x: r.left, y: r.top, parked: true, low: true, docked: true }
-  return { x: window.innerWidth - 150 - i * 90, y: window.innerHeight - 70, parked: true, low: true }
+  const was = lastShown.get(a.name)
+  return was ? { ...was, parked: true, docked: true } : null
 }
 /** How long an agent's cursor stays where it last acted, idle, before it goes home. */
 const IDLE_MS = 8000
@@ -134,7 +137,7 @@ function spotOf(a: Agent, i: number, held = false): Spot | null {
     const c = coords(typing.view, Math.min(typing.pos, typing.view.state.doc.length))
     return { x: c.x, y: c.y, low: c.y + FLAG > c.box.bottom }
   }
-  if (!a.path && (a.ui || a.pane)) { const at = a.ui ? uiSpot(a.ui) : paneSpot(a); if (at) return at }
+  if (!a.path && (a.ui || a.pane)) { const at = a.ui ? uiSpot(a.ui, a.find) : paneSpot(a); if (at) return at }
   const v = a.path ? viewOf(a.path) : null
   const pos = v ? posIn(v, a) : null
   if (!v || pos === null) return (a.path && rowOf(a.path)) || home(a, i)
@@ -155,7 +158,7 @@ function atElement(el: HTMLElement): Spot {
   const r = el.getBoundingClientRect(), x = r.left + Math.min(r.width * 0.6, Math.max(4, r.width - 6)), y = r.top + r.height * 0.6
   return { x, y, low: y + FLAG > innerHeight - 40, rides: !!el.closest("aside[data-peek]") || undefined, target: rectOf(r) }
 }
-const uiSpot = (id: string) => { const el = uiElement(id); return el ? atElement(el) : null }
+const uiSpot = (id: string, find?: string) => { const el = uiElement(id), at = el && find ? shown(el, find) : null; return at ? atElement(at) : el ? atElement(el) : null }
 
 type Screen = { r: DOMRect; lines: string[]; rowH: number; cw: number }
 /** A terminal pane's screen as drawn: its box, its lines (terminalText: with WebGL it's a canvas), a row's height, a cell's width. */
@@ -959,7 +962,7 @@ export function Overlay() {
     if (h?.left && !stays(a, h.left)) { holds.current.delete(a.name); h = undefined }
     // (only while it works, writes, speaks or points, as a collaborator in a shared doc: idle a while, it rests at home)
     const idle = !h && !said && !waiting && !a.asks && typing?.agent !== a.name && a.state === "watching" && Date.now() - a.t > IDLE_MS
-    const at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : idle ? { ...home(a, i), docked: true } : spotOf(a, i)
+    const at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : idle ? home(a, i) : spotOf(a, i)
     // (left on a line of a note not on screen now: where that note is, as it would be)
     const off = !!h?.left && !h.screen && !(h.at.path && viewOf(h.at.path))
     return { a, i, spot: at && h && !h.screen && !off ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, waiting, with: [] as Agent[], under: false, shift: 0, held: h }
@@ -971,7 +974,7 @@ export function Overlay() {
     if (top) { c.under = true; top.with.push(c.a); c.shift = top.with.length }
   }
   for (const c of cursors) if (c.held) c.shift = c.held.shift
-  for (const c of cursors) if (c.spot && !c.spot.away) lastSpots.current.set(c.a.name, c.spot)
+  for (const c of cursors) if (c.spot && !c.spot.away) { lastSpots.current.set(c.a.name, c.spot); if (!c.spot.docked) lastShown.set(c.a.name, c.spot) }
   drawn.current = new Map(cursors.map((c) => [c.a.name, c.held ?? { at: placeOf(c.a), i: c.i, shift: c.shift, dx: 0, dy: 0 }]))
   // Comments beside their lines, scrolling with the note and clipped to what of its pane shows: cards in the margin (as
   // in a shared doc), or a dot each by the text, the threads being in the Conversations panel.

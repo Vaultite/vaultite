@@ -19,6 +19,7 @@ import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHe
 import { type Drawing, elementPlaces } from "./drawing.ts"
 import { type Heard, heardBeats } from "../plugins/core/companion/screenmarks.ts"
 import { type Press, pressLog } from "./presslog.ts"
+import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { companionVoice } from "./voice.ts"
 import { realtimeFront } from "./realtimefront.ts"
 
@@ -47,7 +48,9 @@ const QUIET = !!process.env.VAULTITE_QUIET
 /** The app the user uses: only it hears their keys (helperlogic.ts liveInput). */
 const LIVE = liveInput(process.env, app.isPackaged)
 // (a scripted copy's or one run from source: its own lock, never the user's app's)
-const LOCK = path.join(os.tmpdir(), LIVE ? "vaultite-helper.sock" : `vaultite-helper-${process.pid}.sock`)
+const LOCK_NAME = LIVE ? "vaultite-helper" : `vaultite-helper-${process.pid}`
+// (Windows listens only on a named pipe, never a file's path)
+const LOCK = process.platform === "win32" ? `\\\\.\\pipe\\${LOCK_NAME}-${os.userInfo().username}` : path.join(os.tmpdir(), `${LOCK_NAME}.sock`)
 let host: HelperHost | null = null
 /** A scripted copy's stand-ins for the screen helper's answers (web/qa/helper.mjs): it never reads or types into the
  *  user's apps. */
@@ -72,7 +75,7 @@ function takeLock(): Promise<net.Server | null> {
   return listen().then((s) => s ?? new Promise((done) => {
     const probe = net.connect(LOCK)
     probe.once("connect", () => { probe.destroy(); done(null) })
-    probe.once("error", () => { fs.rmSync(LOCK, { force: true }); void listen().then(done) })
+    probe.once("error", () => { if (process.platform !== "win32") fs.rmSync(LOCK, { force: true }); void listen().then(done) })
   }))
 }
 
@@ -285,12 +288,14 @@ const live = (() => {
       chatChanged()
     })
     s.on("error", () => {})
-    s.on("close", () => { if (ws === s) { ws = null; if (port !== null) { timer = setTimeout(connect, wait); wait = Math.min(wait * 2, 30_000) } } })
+    s.on("close", () => { if (ws === s) { ws = null; if (port !== null) { timer = setTimeout(connect, wait); wait = Math.min(wait * 2, 5000) } } })
   }
   return {
     state,
     open(p: number | null) { this.close(); port = p; if (p !== null) connect() },
     close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = []; state.jobs = null; drawn = null; showDrawing(null) },
+    /** Not connected: try again now, not at the next backoff (a press is waiting for it). */
+    now() { if (ws || port === null) return; if (timer) clearTimeout(timer); wait = 1000; connect() },
     say(m: object) { if (QUIET) asked.push(m); if (ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(m)); return true } return false },
   }
 })()
@@ -377,7 +382,7 @@ function modHeard(m: Record<string, unknown>) {
 }
 /** A chord (⌃⌥, fn⌃): the companion's if it's a Talk key, else dictation's, as a key's press and release. */
 function chordHeard(m: Record<string, unknown>) {
-  const name = String(m.name), e: FnEvent = m.other === true ? { other: true } : { down: m.on === true }
+  const name = String(m.name), e: FnEvent = m.other === true ? { other: true } : { down: m.on === true, ...typeof m.t === "number" ? { t: m.t } : {} }
   if (prefs.talk.includes(name)) talkHeard(e)
   else if (heardKeys().includes(name)) fnHeard(e)
 }
@@ -430,18 +435,37 @@ const MISSED_MS = 2400
 /** A press of the Talk key that went nowhere (`why`, logged): its cursor says so a moment (`words`) with a soft cue,
  *  then goes (or rides on, its exchange on); its audio is kept beside the log, to hear again. Never silence. */
 function missed(s: Summon | null, why: string, words = "Didn't catch that") {
-  const kept = s?.press && !s.press.ended() ? keepAudio(s.press.id) : null
-  s?.press?.end("missed", { why, ...(kept ? { audio: kept } : {}) })
-  if (!s || summon !== s) return draw()
-  Object.assign(s, { state: "missed", missed: words })
+  endMissed(s, why)
+  if (!s || summon !== s || !s.m.send("miss", why)) return draw()
+  s.missed = words
   cue("missed")
   draw()
   setTimeout(() => {
-    if (summon !== s || s.state !== "missed") return
-    if (exchange) Object.assign(s, { state: "watching", missed: undefined })
-    else summon = null
+    if (summon !== s || s.m.phase !== "missed") return
+    s.missed = undefined
+    if (exchange) s.m.send("shown")
+    else closeSummon(s, "missed shown")
     draw()
   }, MISSED_MS)
+}
+/** The press logged as missed (`why`), its audio kept beside the log: once. */
+function endMissed(s: Summon | null, why: string) {
+  const kept = s?.press && !s.press.ended() ? keepAudio(s.press.id) : null
+  s?.press?.end("missed", { why, ...(kept ? { audio: kept } : {}) })
+}
+/** Held, but nothing hears any more (the recognizer didn't start, or stopped): its cursor says so till it's let go, then
+ *  what was heard goes (`heard`), else it's missed. Never sent while held. */
+function failed(s: Summon, why: string, words: string, heard = "") {
+  if (!heard) endMissed(s, why)
+  if (!s.m.send("fail", why)) return
+  Object.assign(s, { missed: words, heard })
+  cue("missed")
+  draw()
+}
+/** A summon over (its exchange ended, its miss shown, cancelled, a new press): its machine closed, the cursor gone. */
+function closeSummon(s: Summon, why: string) {
+  s.m.send("close", why)
+  if (summon === s) summon = null
 }
 /** The last press's audio (dictation.ts keeps it in the logs), copied beside the log as `<press>.wav`; the last few kept. */
 function keepAudio(id: string) {
@@ -458,14 +482,18 @@ function keepAudio(id: string) {
 }
 /** The companion called up outside Vaultite: its cursor at the pointer (listening, then thinking), the window there, the
  *  pointer's trail while the key is held (`released`: when it was let go); `was`: where its own cursor was. */
-type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; state: "listening" | "thinking" | "watching" | "missed"; trail: (Point & { t: number })[]; released?: number
-  at: number; was: string; typing?: boolean
+type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; trail: (Point & { t: number })[]; released?: number
+  at: number; was: string
+  /** Where the press is (pressmachine.ts), each move in its log. */
+  m: PressMachine
+  /** Words heard before the recognizer stopped while it was held: sent once it's let go. */
+  heard?: string
+  /** Its turn on the ask seen at work (the agent's state, the server's): only then can it be over. */
+  begun?: boolean
   /** Its press went nowhere: what its cursor says a moment ("Didn't catch that"). */
   missed?: string
   /** Its press, in the log of presses. */
   press?: Press | null
-  /** Its turn on the ask seen at work (from then on its state is the agent's). */
-  busySeen?: boolean
   /** Its coming was cued. */
   cued?: boolean
   /** What's at the point let go at, gathered as its words are finished (not after). */
@@ -487,7 +515,7 @@ function talkHeard(m: FnEvent) {
   if (!host?.home()) return
   // (pressed again: its voice stops at once, and gets ready for the next answer)
   if ("down" in m && m.down) { stopVoice(); live.say({ t: "interrupt" }); speaker.warm(); voiceFront.warm(); lastAsk = null }
-  const now = Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
+  const now = "t" in m && m.t ? m.t : Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
   // (each press logged, what it did or that it did nothing: presses that go nowhere can be traced)
   if (a === "listen") press = presses.start("talk", "down", { front: front?.bundle ?? "" })
   else if (kind === "down" && !a) presses.start("talk", "down", { front: front?.bundle ?? "" }).end("ignored", { gesture: gesture.state })
@@ -502,18 +530,28 @@ function talkAct(a: NonNullable<TalkAction>) {
   if (a === "send") {
     // (hands-free in its box: what's in it goes; held: let go here, it thinks here)
     if (session?.into === "summon" || (starting && startingTalk)) {
-      if (summon) { Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking", released: Date.now() }); summon.place = gather(summon); voiceFront.release(whereOf(summon)) }
+      if (summon?.m.send("up")) { Object.assign(summon, { p: screen.getCursorScreenPoint(), released: Date.now() }); summon.place = gather(summon); voiceFront.release(whereOf(summon)) }
       // (something to send, said or drawn: it's heard as it's let go)
       if (summon && ((session && (session.finals.length || session.pending.trim())) || trailStrokes(summon.trail, Date.now()).length)) cue("sent")
       void inkOff(); draw()
     }
     // (let go with nothing listening: it never started or stopped early, and nothing's coming of it)
-    else if (!session && summon?.state === "listening") { void inkOff(); return missed(summon, "no recognizer running at let-go") }
+    else if (!session && summon?.m.phase === "listening") { void inkOff(); return missed(summon, "no recognizer running at let-go") }
+    // (held after the recognizer stopped: what it heard goes now, else it's missed)
+    else if (summon?.m.phase === "failed") {
+      const s = summon
+      void inkOff()
+      if (!s.heard) return missed(s, "nothing heard: the recognizer had stopped", s.missed)
+      s.m.send("up")
+      Object.assign(s, { p: screen.getCursorScreenPoint(), released: Date.now() })
+      s.place = gather(s)
+      return void sendSummon(s, s.heard)
+    }
     return act("stop", true)
   }
   if (a === "type") {
     // (a tap: its box, focused, to type in; nothing heard)
-    if (summon) Object.assign(summon, { typing: true, state: "watching" })
+    summon?.m.send("tap")
     press?.end("typed")
     void inkOff()
     act("cancel", true)
@@ -525,11 +563,17 @@ function talkAct(a: NonNullable<TalkAction>) {
 /** A Talk key held: its cursor at the pointer, listening, the words by it; the pointer leaves a trail
  *  meanwhile (drags too: the screen helper keeps them from the app). */
 async function startSummon() {
+  // (the server's socket reconnecting (a restart): it's asked again at once, and the press waits a moment for it)
+  if (!live.state.name) { live.now(); for (let i = 0; i < 30 && !live.state.name && press && !press.ended(); i++) await new Promise((r) => setTimeout(r, 50)) }
   const name = live.state.name
   if (live.state.mode === "off") { press?.end("dropped", { why: "the companion is off" }); return notice("off", "The companion is off", "Turn it on in the companion's settings to talk to it.") }
   if (!name) { press?.end("dropped", { why: "no companion yet" }); return hint("The companion isn't ready yet: open Vaultite") }
   const p = screen.getCursorScreenPoint(), at = Date.now(), own = live.state.agents.get(name)
-  const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, state: "listening", trail: [], at, was: own ? placeKey(own) : "", press }
+  const mine = press
+  const m = pressMachine({ log: (t) => mine?.after("state", t), stuck: (phase) => stuck(s, phase) })
+  const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, m, trail: [], at, was: own ? placeKey(own) : "", press }
+  // (one still sending goes on to be sent, then closes: a newer press has the cursor)
+  if (summon && summon.m.phase !== "sending") closeSummon(summon, "a new press")
   summon = s
   s.down = shotAt(p).catch(() => null)
   live.say({ t: "summoning" })
@@ -546,10 +590,18 @@ async function startSummon() {
   await listenFor({ into: "summon", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true, of: s })
 }
 const inkOff = () => screenAsk("ink", { on: false }).catch(() => {})
+/** A press stuck in a phase past its limit (pressmachine.ts LIMITS): held 10 min (a lost key-up), let go with nothing
+ *  sent, or asked with no turn begun. Its cursor never stays stuck. */
+function stuck(s: Summon, phase: Phase) {
+  s.press?.after("stuck", { phase })
+  if (phase === "listening") { s.m.send("stuck"); if (session?.of === s) stopFor(session.sink, true); void inkOff(); if (summon === s) summon = null; return draw() }
+  missed(s, `stuck ${phase}`, phase === "thinking" ? "No answer came" : "Something went wrong")
+  if (phase === "thinking") setTimeout(() => { if (summon === s) endExchange(false) }, MISSED_MS + 50)
+}
 /** The pointer moved while it's fed: held, its trail (the last few seconds). */
 function trailed(p: Point, t: number) {
   const s = summon
-  if (!s || s.state !== "listening" || s.typing) return
+  if (!s || s.m.phase !== "listening") return
   s.trail.push({ x: p.x, y: p.y, t })
   if (s.trail.length > 400 || t - s.trail[0].t > 4000) s.trail = s.trail.filter((q) => t - q.t <= 4000).slice(-400)
 }
@@ -558,7 +610,6 @@ function trailed(p: Point, t: number) {
 async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; talk?: string[] } = {}) {
   const ink = drawnShapes(inkOf(trailStrokes(s.trail, s.released ?? Date.now())))
   if (!text && !ink.length) return missed(s, "nothing heard nor drawn")
-  Object.assign(s, { state: "thinking" })
   draw()
   const { w, place } = await (s.place ?? gather(s))
   const win = w?.window && !w.vaultite && place.app !== "private" ? w : null
@@ -569,6 +620,8 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
     ...(how.front ? { front: how.front, ...(how.talk?.length ? { talk: how.talk } : {}) } : {}) })
   if (!sent) return missed(s, "Vaultite's server isn't connected", "Can't reach Vaultite")
   s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot, ...(how.front ? { front: how.front } : {}) })
+  s.m.send("sent")
+  if (summon !== s) s.m.send("close", "a newer press")
   if (s.press) lastAsk = { press: s.press, up: s.released ?? Date.now() }
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
@@ -648,6 +701,7 @@ function answerArrived() {
   const x = exchange
   if (!x || x.arrived) return
   x.arrived = true
+  if (summon?.name === x.name) summon.m.send("arrived")
   cue("answer")
 }
 /** A soft cue (the companion's `sounds`; a scripted copy only notes it). */
@@ -663,7 +717,7 @@ function endExchange(stop = true) {
   if (!exchange && !summon) return
   const name = exchange?.name ?? summon?.name
   exchange = null
-  summon = null
+  if (summon) closeSummon(summon, stop ? "esc" : "over")
   inAppSpots.clear()
   const a = name ? live.state.agents.get(name) : undefined
   if (a && onScreen(a) && a.state === "watching") leave(a.name)
@@ -677,14 +731,14 @@ function endExchange(stop = true) {
 function going(x: Exchange) {
   if (!x.spoken) return false
   const a = live.state.agents.get(x.name), s = summon?.name === x.name ? summon : null
-  return !!speakingNow || speaker.saying() || (!!a && BUSY.has(a.state)) || (s?.state === "thinking" && !s.busySeen)
+  return !!speakingNow || speaker.saying() || (!!a && BUSY.has(a.state)) || (!!s && waiting(s))
 }
 /** They clicked elsewhere, went to another app, or its box closed: the box goes, but a spoken answer goes on to its end
  *  (only the Talk key, Esc or a new ask stop it), its cursor leaving once it's said (settle). */
 function moveOn() {
   const x = exchange
   // (held: the press is theirs, a drag its trail)
-  if (summon?.state === "listening") return
+  if (summon && HELD.has(summon.m.phase)) return
   if (x && going(x)) { if (panelOpen()) closePanel(); return draw() }
   endExchange(false)
 }
@@ -694,7 +748,7 @@ let settleTimer: ReturnType<typeof setTimeout> | null = null
 /** A spoken exchange done (its words said to their end, its turn over), its box not open: a moment on, its cursor leaves. */
 function settle() {
   const x = exchange
-  const done = (): boolean => !!x && exchange === x && !going(x) && panelOpen() !== x.name && summon?.state !== "listening" && (x.arrived || !!summon?.busySeen)
+  const done = (): boolean => !!x && exchange === x && !going(x) && panelOpen() !== x.name && !(summon && HELD.has(summon.m.phase)) && (x.arrived || !!summon?.begun)
   if (!x?.spoken || settleTimer || !done()) return
   settleTimer = setTimeout(() => { settleTimer = null; if (done()) endExchange(false); else settle() }, LINGER_MS)
 }
@@ -759,7 +813,10 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
     ...(r.mic ? { mic: r.mic.name, micWhy: r.mic.why, ...(r.mic.bluetooth ? { bluetooth: true } : {}) } : {}) })
   if (r.ok || session !== mine) return
   session = null
-  if (mine.into === "summon" && mine.of?.state === "listening") { void inkOff(); missed(mine.of, `the recognizer didn't start (${r.code ?? "?"})`) }
+  const of = mine.into === "summon" ? mine.of : undefined, why = `the recognizer didn't start (${r.code ?? "?"})`
+  // (still held: said so till it's let go; let go already: missed)
+  if (of?.m.phase === "listening") failed(of, why, r.code === "permission" ? "Vaultite can't use the mic" : "The mic didn't start")
+  else if (of?.m.phase === "sending") { void inkOff(); missed(of, why) }
   draw()
   chatChanged()
   if (r.code === "permission") notice("mic", "Vaultite isn't allowed to use the microphone", "Allow it in System Settings, Privacy & Security, Microphone.",
@@ -858,8 +915,10 @@ async function finish(s: Session, cancelled: boolean) {
   }
   if (s.into === "summon") {
     const m = s.of ?? summon
-    if (!m || m.typing) return
-    if (cancelled) { m.press?.end("cancelled"); if (summon === m) summon = null; return draw() }
+    if (!m || !HELD.has(m.m.phase) && m.m.phase !== "sending") return
+    if (cancelled) { m.press?.end("cancelled"); closeSummon(m, "cancelled"); return draw() }
+    // (the recognizer stopped while it's still held (an error, its silence): what it heard waits for the let-go)
+    if (HELD.has(m.m.phase)) return failed(m, `the recognizer stopped while held${text ? "" : ", nothing heard"}`, "Stopped hearing you", text)
     // (the realtime voice gives its first sound: the summoned session is asked at once all the same, its answer said
     // after the realtime voice's few words, or dropped if it answered alone)
     const front = voiceFront.heard(m, text)
@@ -981,7 +1040,9 @@ const voiceFront = realtimeFront<Summon>({
     if (mine) { fronted = null; hushed = Date.now(); if (voiced?.quiet) clearTimeout(voiced.quiet); voiced = null; speaker.drop() }
     if (r.said) live.say({ t: "answered", agent: s.name, heard: r.heard, said: r.said, ...(mine ? { withdraw: true } : {}) })
     if (summon !== s) return
-    s.state = "watching"
+    // (its answer is whole already, said as it plays)
+    s.m.send("arrived", "the realtime voice answered alone")
+    s.m.send("done")
     const x = exchange?.name === s.name ? exchange : null
     openAnswer(s.name, s.p, s.w, x ? x.since : s.at)
     // (heard already: no cue for it)
@@ -1078,7 +1139,7 @@ function holdMic(press?: Press) {
   let quietFrom = 0
   holding = setInterval(() => {
     const x = exchange
-    const busy = !!session || summon?.state === "listening" || summon?.state === "thinking" || (!!x && going(x)) || speaker.saying() || voiceFront.speaking()
+    const busy = !!session || (!!summon && ACTIVE.has(summon.m.phase)) || (!!x && going(x)) || speaker.saying() || voiceFront.speaking()
     if (busy) quietFrom = 0
     else quietFrom ||= Date.now()
     if (Date.now() - since < HOLD_MOST_MS && (busy || Date.now() - quietFrom < HOLD_TAIL_MS)) return
@@ -1292,6 +1353,11 @@ function handOff(agents: ScreenAgent[], called: Scene["summon"]): { agents: Scre
 }
 
 const BUSY = new Set(["thinking", "reading", "writing", "starting"])
+/** A press's phases: held; let go with nothing come yet; anything still to hear or say. */
+const HELD = new Set<Phase>(["listening", "failed"]), WAITING = new Set<Phase>(["sending", "thinking"])
+/** Let go and its turn not seen yet: words may have come before the agent's state says it's at work. */
+const waiting = (s: Summon) => WAITING.has(s.m.phase) || (s.m.phase === "answering" && !s.begun)
+const ACTIVE = new Set<Phase>(["listening", "failed", "sending", "thinking", "working", "answering"])
 /** Whether its own place, in the exchange of summon `s`, points at something (an element, a found text, another spot,
  *  a place in Vaultite's window): not where it was summoned nor where the ask parked it. */
 const pointing = (a: Agent, s: Summon) => placeKey(a) !== s.was && (!onScreen(a) || !!a.frame || !!a.find || (typeof a.sx === "number" && typeof a.sy === "number" && Math.hypot(a.sx - s.p.x, a.sy! - s.p.y) > 4))
@@ -1342,13 +1408,15 @@ function draw() {
   }
   // (held: it rides beside the pointer through the exchange, the overlay fed the pointer; a press that's a shortcut
   // shows nothing: it waits a moment to appear)
-  const listening = s?.state === "listening" && !s.typing
-  if (listening) s.p = screen.getCursorScreenPoint()
+  const ph = s?.m.phase, listening = ph === "listening"
+  if (s && listening) s.p = screen.getCursorScreenPoint()
   const words = session?.into === "summon" ? [...session.finals, session.pending].reduce((all, t) => (t ? all + joinText(all, t) : all), "").trim() : ""
   const own = s ? live.state.agents.get(s.name) : undefined, busy = !!own && BUSY.has(own.state)
-  if (s?.state === "thinking" && busy) s.busySeen = true
+  if (s && busy && (ph === "thinking" || ph === "answering")) { s.begun = true; s.m.send("busy") }
+  // (its turn over and nothing still said: answered, its exchange open)
+  else if (s?.begun && (ph === "working" || ph === "answering") && !busy && !speakingNow && !speaker.saying() && !voiceFront.speaking()) s.m.send("done")
   // (once its turn is seen at work, it's as busy as the agent is)
-  const state = !s ? "watching" : listening ? "listening" : s.state === "missed" ? "missed" : busy || (s.state === "thinking" && !s.busySeen) ? "thinking" : "watching"
+  const state = !s ? "watching" : listening ? "listening" : ph === "missed" || ph === "failed" ? "missed" : busy || (s && waiting(s)) ? "thinking" : "watching"
   const home = s && besidePointer(s.p, screen.getDisplayNearestPoint(s.p).bounds)
   const called: Scene["summon"] = s && home && (!listening || Date.now() - s.at > 120)
     ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...(state === "missed" && s.missed ? { missed: s.missed } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null

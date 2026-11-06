@@ -53,6 +53,24 @@ export function withoutPanel(s: Sidebars, key: string): Sidebars {
   return { left: s.left.filter((k) => k !== key), right: s.right.filter((k) => k !== key), collapsed: s.collapsed.filter((k) => k !== key), heights, ...at, ...(dock?.length ? { dock } : {}) }
 }
 
+/** A panel that draws a file of the vault (a mini-app): its key ("pages:file/Apps/Weather.html"), and the file a key
+ *  names (null: another panel). Pinned pages draws them. */
+const FILE_PANEL = "pages:file/"
+export const filePanelKey = (path: string) => FILE_PANEL + path
+export const filePanelPath = (key: string) => (key.startsWith(FILE_PANEL) ? key.slice(FILE_PANEL.length) : null)
+
+/** The setup with file (or folder) `src`'s panels following its move; `dst` null: it's gone, and they with it. */
+export function movedFilePanels(s: Sidebars, src: string, dst: string | null): Sidebars {
+  const moved = (k: string) => {
+    const f = filePanelPath(k)
+    if (f === null || (f !== src && !f.startsWith(`${src}/`))) return k
+    return dst === null ? null : filePanelKey(dst + f.slice(src.length))
+  }
+  const all = (l: string[]) => l.flatMap((k) => moved(k) ?? [])
+  const heights = Object.fromEntries(Object.entries(s.heights).flatMap(([k, v]) => { const to = moved(k); return to ? [[to, v]] : [] }))
+  return { ...s, left: all(s.left), right: all(s.right), collapsed: all(s.collapsed), heights, ...(s.dock ? { dock: all(s.dock) } : {}) }
+}
+
 /** Put a panel at a place: moved there (folded or not, as it was), or shown there if it was hidden. An anchor that isn't
  *  in that sidebar puts it at the end. */
 export function placePanel(s: Sidebars, key: string, to: Place): Sidebars {

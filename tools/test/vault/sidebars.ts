@@ -39,6 +39,19 @@ export default async ($: VaultTest) => {
   check("vau panels: an unknown panel lists the real ones", cr.code === 1 && cr.err.includes("terminal:sessions"), cr)
   cr = await vau("plugin", "off", "search")
   check("vau plugin off: one of the app's own (alwaysOn) says it's always on", cr.code === 1 && cr.err.includes("always on") && !conf("plugins").disabled?.includes("search"), cr)
+  // A file drawn as a panel: named by its path, following its move, gone with it.
+  write("Apps/Weather.html", "<title>Weather</title>")
+  cr = await vau("panels", "right", "Apps/Weather.html")
+  check("vau panels right <file>: the file is a panel", cr.code === 0 && sb().right.at(-1) === "pages:file/Apps/Weather.html" && /Weather/.test(cr.out), cr.out)
+  cr = await vau("panels", "right", "Apps/Nothing.html")
+  check("vau panels: no such file, no panel", cr.code !== 0, cr.out)
+  await vau("move", "Apps/Weather.html", "Apps/Forecast.html")
+  check("a file panel follows its file's move", sb().right.at(-1) === "pages:file/Apps/Forecast.html", sb().right)
+  cr = await vau("panels", "hide", "Apps/Forecast.html")
+  check("vau panels hide <file>: out of the sidebar, the file stays", cr.code === 0 && !sb().right.includes("pages:file/Apps/Forecast.html") && exists("Apps/Forecast.html"), cr.out)
+  await vau("panels", "left", "Apps/Forecast.html")
+  await api("DELETE", "file?path=Apps/Forecast.html")
+  check("a file panel goes with its file", !left().includes("pages:file/Apps/Forecast.html"), left())
   fs.rmSync(path.join(VAULT, ".vaultite/sidebars.json"), { force: true })
   // A new tab's page: .vaultite/newtab.json (core/newtab.ts), its sections and its buttons (palette commands), a key each.
   {

@@ -1,10 +1,12 @@
 // The sidebars' panels (core/sidebars.ts): list, move, hide, fold. They change the setup the user sees: their
 // window's workspace with Workspaces on (service "sidebars:of"), else sidebars.json, key by key.
+import fs from "node:fs"
+import path from "node:path"
 import type { App } from "../app.ts"
 import { panelsOf, type PanelDef } from "../appsource.ts"
 import { type Op, OpError, type Param } from "../ops.ts"
 import { anchorFor } from "../slots.ts"
-import { defaultSidebars, placePanel, readSidebars, setCollapsed, setDocked, type Side, sideOf, type Sidebars, withoutPanel } from "../sidebars.ts"
+import { defaultSidebars, filePanelKey, filePanelPath, placePanel, readSidebars, setCollapsed, setDocked, type Side, sideOf, type Sidebars, withoutPanel } from "../sidebars.ts"
 import { type Any, lines, serviceOn, windowWorkspace } from "./common.ts"
 import { onOff, pluginList } from "./plugins.ts"
 
@@ -26,8 +28,9 @@ const panelDefs = (app: App): PanelDef[] => pluginList(app).flatMap(panelsOf)
 export function panelList(app: App, own?: Sidebars | null): { setup: Sidebars; panels: Panel[] } {
   const plugins = pluginList(app)
   const { on } = onOff(plugins, app.vault.config("plugins"))
-  const defs = plugins.flatMap(panelsOf)
-  const setup = own ?? readSidebars(app.vault.config("sidebars")) ?? defaultSidebars(defs)
+  const declared = plugins.flatMap(panelsOf)
+  const setup = own ?? readSidebars(app.vault.config("sidebars")) ?? defaultSidebars(declared)
+  const defs = [...declared, ...[...setup.left, ...setup.right].flatMap((k) => { const f = filePanelPath(k); return f === null ? [] : [fileDef(f)] })]
   const panel = (d: PanelDef): Panel => {
     const side = sideOf(setup, d.key)
     return { key: d.key, title: d.title, plugin: d.plugin, on: on(d.plugin), side, place: side ? setup[side].indexOf(d.key) + 1 : null,
@@ -38,6 +41,9 @@ export function panelList(app: App, own?: Sidebars | null): { setup: Sidebars; p
   const hidden = defs.filter((d) => !shown.includes(d)).sort((a, b) => a.sort - b.sort)
   return { setup, panels: [...shown, ...hidden].map(panel) }
 }
+
+/** A file drawn as a panel (a mini-app), named by its file. */
+const fileDef = (file: string): PanelDef => ({ key: filePanelKey(file), plugin: "pages", title: path.basename(file).replace(/\.[^.]+$/, ""), sort: 100, hidden: true, names: [file] })
 
 /** The sidebars as text: each sidebar's panels in order, then the hidden ones. */
 export function showPanels(ps: Panel[]) {
@@ -64,22 +70,28 @@ export async function sidebarsTarget(app: App, ctx: Parameters<Op["run"]>[1], p:
   return n ? await of(n) : null
 }
 
-/** A panel by its key, another name its plugin gives it (`names`), its title or heading, its name in its plugin, or its
+const isFile = (app: App, rel: string) => {
+  if (rel.startsWith("/") || rel.split("/").includes("..")) return false
+  try { return fs.statSync(app.vault.abs(rel)).isFile() } catch { return false }
+}
+
+/** A panel by its key, a file's path (drawn as a panel), another name its plugin gives it (`names`), its title or heading, its name in its plugin, or its
  *  plugin's id when that has one panel ("terminals", "file tree", "pinned", "search"). */
 function namedPanel(app: App, list: Panel[], q: string) {
   const low = q.toLowerCase().trim().replace(/[\s_-]+/g, " ")
   const defs = new Map(panelDefs(app).map((d) => [d.key, d]))
   const norm = (s: string | undefined) => (s ?? "").toLowerCase().replace(/[\s_-]+/g, " ")
-  const hit = list.find((p) => p.key === q) ?? list.find((p) => defs.get(p.key)?.names.some((n) => norm(n) === low)) ??
+  const hit = list.find((p) => p.key === q || filePanelPath(p.key) === q) ?? list.find((p) => defs.get(p.key)?.names.some((n) => norm(n) === low)) ??
     list.find((p) => norm(p.title) === low) ?? list.find((p) => norm(defs.get(p.key)?.heading) === low) ?? list.find((p) => norm(p.key.split(":")[1]) === low) ??
     list.find((p) => p.plugin === low && list.filter((x) => x.plugin === low).length === 1)
+  if (!hit && isFile(app, q)) return { key: filePanelKey(q), title: fileDef(q).title, plugin: "pages", on: true, side: null, place: null, collapsed: false, docked: false }
   if (!hit) throw new OpError(`no sidebar panel '${q}'. Panels: ${list.map((p) => `${p.key} (${p.title})`).join(", ")}`, 404)
   return hit
 }
 
 const WORKSPACE: Param = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels to use; the user's window's when left out (Workspaces on)" }
 const VAULT: Param = { type: "boolean", description: "sidebars.json itself (the default for workspaces without panels of their own), not a workspace's" }
-const PANEL: Param = { type: "string", required: true, description: "the panel: its key (files:files), title or a plain name (terminals, file tree, pinned, search)" }
+const PANEL: Param = { type: "string", required: true, description: "the panel: its key (files:files), title or a plain name (terminals, file tree, pinned, search), or a file of the vault to draw as one (Apps/Weather.html)" }
 
 const HELP = `The desktop app's two sidebars are stacks of plugins' panels (Search field, Pinned pages, File explorer,
 Terminals...), kept in .vaultite/sidebars.json: {"left": [panels], "right": [panels], "collapsed": [panels]}, top to
@@ -89,7 +101,9 @@ on). Without the file, every panel its plugin doesn't hide is on the left, by it
 always a current workspace, and each has its own panels (\`sidebars\` in its entry; none of its own: sidebars.json's,
 which is also what new workspaces start with): these read and change the workspace the user's window is on
 (--workspace <n> for another, --vault for sidebars.json itself). A panel is named by its key, its title or a plain
-name: "terminals", "file tree" (or "files"), "pinned", "search". Positions count from 1, in the panel's sidebar.
+name: "terminals", "file tree" (or "files"), "pinned", "search". A file of the vault is a panel too, drawn there (a
+mini-app: an .html page, a note with a genui or mcp-app block): hiding it only takes it out of the sidebar. Positions
+count from 1, in the panel's sidebar.
 
   vau panels
   vau panels move terminals top
@@ -97,6 +111,7 @@ name: "terminals", "file tree" (or "files"), "pinned", "search". Positions count
   vau panels hide search
   vau panels show search               (at the end of the left sidebar; \`show search right\` for the right one)
   vau panels right "local graph"       (to the end of the right sidebar)
+  vau panels right Apps/Weather.html   (that file, drawn in the right sidebar)
   vau panels left "local graph"
   vau panels collapse pinned
   vau panels expand pinned

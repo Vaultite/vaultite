@@ -1134,7 +1134,7 @@ export function webWindow(win: AppWindow) {
     raise(win, null)
     for (const p of pages.values()) if (p.win === win && !p.player) { if (p.full) leaveFull(p); p.want = null; stow(p) }
     for (const p of windowReloaded(pages.values(), win, Date.now())) end(p)
-    setTimeout(() => { for (const p of unclaimed(pages.values(), Date.now())) end(p) }, RECLAIM_MS + 100)
+    setTimeout(() => { for (const p of unclaimed(pages.values(), Date.now(), (x) => pageKept(x.id))) end(p) }, RECLAIM_MS + 100)
   })
 }
 

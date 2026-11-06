@@ -80,9 +80,13 @@ export function windowReloaded<W, P extends Owned<W>>(pages: Iterable<P>, win: W
   return out
 }
 
-/** Pages a reloaded window's tabs didn't take back in time. */
-export const unclaimed = <W, P extends Owned<W>>(pages: Iterable<P>, now: number) =>
-  [...pages].filter((p) => p.orphan !== undefined && now - p.orphan >= RECLAIM_MS)
+/** Pages a reloaded window's tabs didn't take back in time. One an agent keeps (`kept`: at work in it, asking there)
+ *  waits on for its tab: a hidden tab never asks for its page again, and ending it would end the agent's work. */
+export function unclaimed<W, P extends Owned<W>>(pages: Iterable<P>, now: number, kept: (p: P) => boolean = () => false): P[] {
+  const late = [...pages].filter((p) => p.orphan !== undefined && now - p.orphan >= RECLAIM_MS)
+  for (const p of late) if (kept(p)) p.orphan = undefined
+  return late.filter((p) => p.orphan !== undefined)
+}
 
 /** Under memory pressure, background tabs' pages to discard (Chrome's way: the tab stays, its page loads again when
  *  shown): past each window's KEEP most recently shown, never one playing sound. */

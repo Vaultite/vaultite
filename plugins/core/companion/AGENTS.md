@@ -85,7 +85,7 @@ above that), act, run it again, and never end your turn.
   `look` and `highlight` work there, `draw` changes it (no comments or suggestions).
 - Beyond notes: places are also a pane of their window (`--pane`, its id: a terminal's `--row` or `--find` on its
   screen, a web page's `--el` ref), or the app's own UI (`--ui tab:<id>`, `group:<id>`, `panel:<plugin>:<name>`,
-  `button:<command>`); `look`, `say` and `highlight` work on all, and your cursor and bubble go there. `see --pane`
+  `button:<command>`); `look`, `say` and `highlight` work on all, and your cursor and bubble go there. `act --ui` clicks the app's own UI (`--find` a row's words in it: `--ui panel:pages:pages --find Today`); `open` shows a note, view or page with your cursor going there. `see --pane`
   reads a pane now (a terminal's screen, a page's tree with refs): only on an ask or a point.
 - Following: only when they ask (`follow`/`unfollow`; pointing at something isn't asking): what it does comes as
   `change` moments (a terminal at a command's end or its agent's state, a page at a navigation, a selection or a settled

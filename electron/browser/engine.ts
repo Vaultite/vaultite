@@ -252,6 +252,10 @@ let agentActing: (id: number) => boolean = () => false
  *  agent's page in the background, never the user's tab: agent.ts says. */
 export const setAgentActing = (fn: (id: number) => boolean) => { agentActing = fn }
 export const openedByAgent = (id: number) => agentActing(id)
+let agentOwned: (id: number) => boolean = () => false
+/** Whether page `id` is an agent's now (not the user's, nor one they took over): agent.ts says; extensions see it on its tab. */
+export const setAgentOwned = (fn: (id: number) => boolean) => { agentOwned = fn }
+export const ownedByAgent = (id: number) => agentOwned(id)
 
 type Opener = (win: EngineWindow, url: string, profile: string) => Promise<EnginePage>
 let opener: Opener = () => Promise.reject(new Error("no pages here"))

@@ -1,7 +1,7 @@
 import { useEffect } from "react"
-import { Pin, PinOff } from "lucide-react"
+import { AppWindow, PanelRight, PanelRightClose, Pin, PinOff } from "lucide-react"
 import {
-  currentEditor, currentFile, definePlugin, focusedPane, getTabLayout, shownTab, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
+  currentEditor, currentFile, definePlugin, dockAtEnd, FileEmbed, filePanelKey, focusedPane, hidePanel, panelSide, stem, getTabLayout, shownTab, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
   usePane, useViewsVersion, useWorkspaceVersion, viewPinLabel, type Store, type TabLayout,
 } from "@vaultite"
 import { PinCurrent, pinChecklist, PinnedPages, showAsMenu } from "./Pinned"
@@ -39,6 +39,10 @@ function searchHere() {
   const q = to.startsWith("view:search/") ? to.slice("view:search/".length).trim() : ""
   return q ? PIN_SEARCH + q : null
 }
+
+/** "Show in the sidebar", drawn there, or taking it out: a mini-app's third place, after a tab and an embed. */
+const showFile = (path: string, on: boolean) => (on ? dockAtEnd(filePanelKey(path), "right") : hidePanel(filePanelKey(path)))
+const fileShown = (path: string) => !!panelSide(filePanelKey(path))
 
 // The same list as a tab (view:pages: drag the panel's heading onto a pane, or the command).
 function PinnedView({ store }: { store: Store }) {
@@ -86,6 +90,14 @@ function Tiles({ store }: { store: Store }) {
 }
 
 export default definePlugin({
+  // Any file drawn in a sidebar: `vau panels right Apps/Weather.html`, or a file's menu.
+  sidebarFor: {
+    file: (path) => ({
+      title: stem(path).replace(/^.*\//, ""), flyout: { icon: AppWindow, width: 360 },
+      tab: () => ({ name: stem(path).replace(/^.*\//, ""), open: () => void openFile(path, { newTab: true }) }),
+      render: ({ store }) => <div data-file-panel={path} className="px-2 pb-2"><FileEmbed store={store} path={path} fill /></div>,
+    }),
+  },
   sidebar: { pages: { title: "Pinned pages", heading: "Pinned", sort: 10, view: "pages", render: (ctx) => <PinnedPages {...ctx} />,
     actions: ({ file }) => <PinCurrent file={file} />, menu: () => [{ label: "Pinned pages", icon: Pin, run: () => {}, items: pinChecklist(currentFile()) }, ...showAsMenu()] } },
   views: {
@@ -99,11 +111,15 @@ export default definePlugin({
       run: () => pinNoted(currentFile(), !isPinned(currentFile())), nameWhenOn: "Unpin current file from the sidebar", on: () => isPinned(currentFile()) },
     // Bookmarks: the heading the cursor is under, the search on screen.
     { id: "file:pin-heading", name: "Pin current heading to the sidebar", desktop: true, when: () => { const h = headingHere(); return !!h && !isPinned(h) }, run: () => pinNoted(headingHere()!, true) },
+    { id: "file:panel", name: "Show current file in the sidebar", when: () => !!currentFile(), run: () => showFile(currentFile(), !fileShown(currentFile())),
+      nameWhenOn: "Remove current file from the sidebar", on: () => !!currentFile() && fileShown(currentFile()) },
     { id: "search:pin", name: "Pin current search to the sidebar", desktop: true, when: () => { const q = searchHere(); return !!q && !isPinned(q) }, run: () => pinNoted(searchHere()!, true) },
   ],
   // Any file of the vault, or a folder (it opens in place there): Pin or Unpin in its menus (the tree's, its tab's, the
   // phone's …), in the current workspace's list with Workspaces on.
-  fileMenu: (path) => (pinnable(path) ? pinItems(path) : []),
+  fileMenu: (path) => [...(pinnable(path) ? pinItems(path) : []), fileShown(path)
+    ? { label: "Remove from the sidebar", icon: PanelRightClose, section: "navigate", run: () => showFile(path, false) }
+    : { label: "Show in the sidebar", icon: PanelRight, section: "navigate", run: () => showFile(path, true) }],
   folderMenu: (path) => (pinnable(path) ? pinItems(path) : []),
   // A view that can be pinned (a web page, Inbox, a coding agent's terminal: its conversation, a search): Pin or Unpin
   // in its tab's menu and its row's.

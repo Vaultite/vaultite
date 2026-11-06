@@ -9,7 +9,7 @@ import { presence } from "./look"
 import { Arrow, follow, Overlay, placeAt, showSaid } from "./Overlay"
 import { Presence } from "./Presence"
 import { followItems, modeItem, MODES, setMode, showSession } from "./session"
-import { watchPanes } from "./panes"
+import { clickUi, watchPanes } from "./panes"
 import { privateNote } from "./private"
 import { offerThreads } from "./threads"
 
@@ -124,6 +124,7 @@ function Background() {
 export default definePlugin({
   editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? (await load()).companionExtension(ctx) : []),
   background: () => <Background />,
+  answers: share ? undefined : { click: clickUi },
   ambient: share ? undefined : { status: { title: "Companion", sort: 25, left: true, render: () => <Status /> } },
   fileBar: { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
   // (its key is threads.ts' PANEL)

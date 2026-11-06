@@ -1,3 +1,10 @@
+## Mini-apps
+A mini-app the user describes is one file you write, never a new kind of thing: an `.html` page (below), or a note with a
+```genui or ```block-mcp-app block when that's enough (`vau docs genui`, `vau docs mcp-apps`; smaller, and drawn with the
+app's own controls). It goes where they ask: in a note (`![[Weather.html]]`), as a tab (`vau open`), or in a sidebar
+(`vau panels right Apps/Weather.html`). New ones go in `Apps/`, unless they say where. Asking about one: the companion
+reads the pane it's over.
+
 ## Interactive pages (`*.html`)
 **Interactive pages are HTML files** (artifacts, like Claude's): a dashboard, a calculator, a chart, anything a
 Markdown page can't do. The app runs them sandboxed: no network, no access to the app. They read the vault through
@@ -22,7 +29,6 @@ Markdown page can't do. The app runs them sandboxed: no network, no access to th
 - A claude.ai artifact runs as is (write its HTML as a `.html` file): `window.claude.use()` gives `sample` (Claude
   Code here, asked once per page), `db`, `artifact.publish`, `user`, `downloads`; `window.storage` and `complete()` too.
 - Show one inside any Markdown file with `![[Spending.html]]` on a line of its own (`![[Spending.html|400]]`: 400px
-  tall); the same works for a CSV. To add one to the sidebar, add its path to `pinned` in `.vaultite/pages.json`
-  (Pinned).
+  tall); the same works for a CSV. A link to it in the sidebar: `vau pin <file>`. Drawn in the sidebar: `vau panels right <file>`.
 - `/api/render?path=Finance/Spending.html` gives its title, its text and the files it reads (not what its code
   draws: read those files to answer questions about it).

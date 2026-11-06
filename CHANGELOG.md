@@ -6,9 +6,24 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
-- **The browser fills your own logins and saves new ones**: on a sign-in page your passwords have the site for, a key in
-  the address bar (or Fill login) fills it, unlocking them first; a sign-in they don't have is offered to save, a new
-  password to update. Agents never see what's filled, and their own sign-ins are never offered.
+- **Your passwords in Vaultite**: the desktop app opens your own KeePass file (the one KeePassXC and Strongbox open),
+  unlocked with Touch ID or its password. The browser fills your logins from it (a key in the address bar, or Fill
+  login) and offers to save a new sign-in or update a password; each change is written into the file (its old copy
+  kept) and into the group KeePassXC shares with agents, so they use it at once. `vau secret` can be answered from
+  your passwords (with Touch ID) or kept there. Agents never see what's filled.
+- **A window reload no longer ends an agent's page in a background tab**: after a deploy's reload, a page an agent is
+  at work in (or asking you something on) waits for its tab, instead of being closed with its work and its ask.
+- **Extensions can tell an agent's tab**: in Vaultite's browser `tabs.get` says `vaultiteAgent` on an agent's page, so a
+  site blocker can leave agents alone and still hold the user's tabs.
+- **Mini-apps go anywhere**: any file can be drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right
+  Apps/Weather.html`), so one .html page or note with a genui or mcp-app block is an embed, a tab or a panel.
+- **The Talk key's companion is never left halfway**: each press runs one state machine (held, sending, thinking,
+  answering, open, closed), every step in its press log; one stuck (a lost key-up, an ask with no answer) ends with a
+  word rather than a cursor thinking forever. If the recognizer stops while you hold the key, its cursor says so and
+  what it heard goes when you let go, never mid-sentence; a press just after a restart waits for Vaultite to reconnect.
+- **The companion clicks Vaultite's own buttons, tabs and sidebar rows, and you see what it does**: its cursor flies to
+  what it opens or clicks first (even when it acts through the CLI), it hands work off again from the Talk key, and with
+  nowhere to be it fades where it is rather than flying to the window's corner.
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
 - **The companion sees what was there as you pressed**: a toast or menu that's gone by the time you let go of ⌃⌥ still

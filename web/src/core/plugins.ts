@@ -409,11 +409,21 @@ export type PanelOf = { key: string; plugin: Plugin; panel: SidebarPanel }
 
 /** The panels of the plugins that are on, by `sort` (then the plugins' order): the order of the Panels menu. */
 export function sidebarPanels(disabled: string[]): PanelOf[] {
+  const named = [...sidebars().left, ...sidebars().right]
   return active(disabled)
     .flatMap((p) => [...Object.entries(p.sidebar ?? {}).map(([name, panel]) => ({ key: `${p.id}:${name}`, plugin: p, panel })),
+      ...Object.entries(p.sidebarFor ?? {}).flatMap(([name, make]) => named.filter((k) => k.startsWith(`${p.id}:${name}/`)).map((key) => ({ key, plugin: p, panel: panelFor(key, name, p, make) }))),
       ...Object.entries(p.fileBar ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, plugin: p, panel: barPanel(`${p.id}:${name}`, p, item) }))])
     .map((x, i) => ({ ...x, i }))
     .sort((a, b) => (a.panel.sort ?? 100) - (b.panel.sort ?? 100) || a.i - b.i)
+}
+
+// (one object per key, so a redraw is the same panel)
+const argPanels = new Map<string, SidebarPanel>()
+function panelFor(key: string, name: string, p: Plugin, make: (arg: string) => SidebarPanel) {
+  let panel = argPanels.get(key)
+  if (!panel) argPanels.set(key, panel = make(key.slice(`${p.id}:${name}/`.length)))
+  return panel
 }
 
 /** Every plugin's panels (on or off), for the default setup. */

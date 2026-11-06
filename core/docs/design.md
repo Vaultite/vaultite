@@ -21,6 +21,7 @@ The primitives that arrange a page, and the options every block takes.
 | Options | Each block's own are declared by its plugin (`vau blocks <name>`); typing in a block suggests them. One it doesn't take, or of the wrong type, gets a quiet line under the block while editing, and the block is drawn anyway |
 | Markdown | Any text between blocks takes a row of its own, like this one |
 | Embeds | `![[Spending.html]]` or `![[Transactions.csv]]` on a line of its own: an interactive page or a table (`\|400`: its height); a PDF, audio, video, or a file a plugin draws (`![[Board.canvas]]`: a canvas of cards and arrows) the same way; a note (`![[Note]]`, a section `![[Note#Heading]]`, a block `![[Note#^id]]`) is its text |
+| Mini-apps | One file (an .html page, a note with a genui or mcp-app block) in any of three places: embedded in a note, opened as a tab, or drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right <file>`) |
 | Frontmatter | `icon` (a lucide name, drawn before the title), `tint` (a colour token), `plugin` (hidden while it's off), `container` (the Browser container its web links open in) |
 | Archived | "Archive" in a file's menu: moved into `.archive/` in its folder with `archived: true` (hidden in the file tree until "Show archived files", then dimmed), left out of the sidebar, lists, the graph and database views (a base's `archived: true` adds them), last in search |
 

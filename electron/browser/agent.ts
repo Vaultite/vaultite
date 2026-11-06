@@ -4,7 +4,7 @@ import { app, type WebContents } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
+import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 import { changes, mainLines } from "./axlines.ts"
 
@@ -641,6 +641,7 @@ export const acting = (p: EnginePage, by: By, what: string) => {
 /** Who opens what page `id` opens now: its agent, or one that acted in it a moment ago (a click on a link to a new tab). */
 const openerOf = (id: number) => owners.get(id) ?? (Date.now() - (doing.get(id)?.at ?? 0) < 5000 ? doing.get(id)?.by : undefined)
 setAgentActing((id) => !!openerOf(id))
+setAgentOwned((id) => owners.has(id) && !taken.has(id))
 // What an agent opened from a page (a link to a new tab, a sign-in popup) is that agent's page too, in the background.
 eachPage((p) => {
   const by = p.opener === undefined || p.tab() ? undefined : openerOf(p.opener)

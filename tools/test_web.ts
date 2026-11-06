@@ -1794,6 +1794,10 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const ended = wp.windowReloaded([r1, r2, r3], "w", 1000)
   check("pages: a window reloading: tabs' pages wait to be taken back, the rest end", ended.length === 2 && r1.orphan === 1000 && r1.holds === 0, ended)
   check("pages: one not taken back in time ends", !wp.unclaimed([r1], 1000 + wp.RECLAIM_MS - 1).length && wp.unclaimed([r1], 1000 + wp.RECLAIM_MS)[0] === r1)
+  const r4 = page("t10")
+  wp.windowReloaded([r4], "w", 1000)
+  check("pages: …but an agent's, in a tab in the background, waits on for its tab (its work and its ask go on)",
+    !wp.unclaimed([r4], 1000 + wp.RECLAIM_MS, (p) => p === r4).length && r4.orphan === undefined && wp.claim([r4], "w", "t10", "").reuse === r4)
   const m1 = page("t8", { holds: 0 }), m2 = page("t8", { win: "w2", holds: 0 })
   wp.tabMoved([m1], "w", "t8", 1000)
   check("pages: a tab moved to another window takes its page there, live", m1.moving === 1000 && wp.claim([m1], "w2", "t8", "").reuse === m1 && m1.moving === undefined)

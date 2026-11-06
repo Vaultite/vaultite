@@ -95,6 +95,14 @@ await openUrl(`${SITE}/one`)
 check("its content script ran, with the sync area's colour", await until(async () => (await painted())?.painter === "teal", 15000), [await painted(), await views()])
 const pageId = (await views()).find((v) => v.url.startsWith(SITE))?.id
 check("… and its tab from the service worker", await until(async () => (await painted())?.painterTab === String(pageId), 10000), [await painted(), pageId])
+check("… a page of the user's isn't an agent's", (await painted())?.painterAgent === "false", await painted())
+// An agent's page, in the background: its tab says so, for a site blocker to leave it alone.
+const agentPage = () => app.evaluate(async ({ webContents }, at) => {
+  const wc = webContents.getAllWebContents().find((w) => w.getURL() === at)
+  return wc ? wc.executeJavaScript("document.documentElement.dataset.painterAgent", true) : null
+}, `${SITE}/agents`)
+const opened1 = await fetch(`${origin}/api/ops/web-viewer.open`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: `${SITE}/agents` }) })
+check("an agent's page: its tab says it's an agent's", await until(async () => (await agentPage()) === "true", 15000), [opened1.status, await agentPage(), await views()])
 check("… and its own stylesheet loads in the page", await until(async () => (await painted())?.painterCss === "loaded", 10000), await painted())
 check("its button in the bar, badged", await until(async () => (await win.locator(`[data-ext-button="${ID}"]`).innerText()) === "on", 10000),
   await win.locator(`[data-ext-button="${ID}"]`).count())
