@@ -102,21 +102,10 @@ export async function forgetFile() {
 
 export const lockNow = () => void call("lock").catch((e) => notifyError(e, "Couldn't lock it"))
 
-/** What `t` was copied for, cleared from the clipboard after 30 s if it still holds it. A window in the background
- *  can't read the clipboard, so then it's checked when the window comes back. */
-let clearing: { text: string; timer: number } | null = null
+/** Copied by the app, which clears it from the clipboard after 30 s if it still holds it. */
 export async function copySecret(text: string, what: string) {
-  try { await navigator.clipboard.writeText(text) } catch (e) { return notifyError(e, `Couldn't copy the ${what}`) }
-  if (clearing) clearTimeout(clearing.timer)
-  const mine = { text, timer: window.setTimeout(() => void clearIfMine(mine), 30_000) }
-  clearing = mine
+  try { await call("copy", text) } catch (e) { return notifyError(e, `Couldn't copy the ${what}`) }
   notify(`Copied the ${what}: cleared in 30 seconds`)
-}
-async function clearIfMine(mine: { text: string }) {
-  if (clearing !== mine) return
-  if (!document.hasFocus()) return void window.addEventListener("focus", () => void clearIfMine(mine), { once: true })
-  clearing = null
-  try { if (await navigator.clipboard.readText() === mine.text) await navigator.clipboard.writeText("") } catch { /* not ours to read now */ }
 }
 
 /** Agents' uses of your logins; null where the server has none to give (an older one). */

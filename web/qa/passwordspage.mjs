@@ -3,7 +3,7 @@
 // searched, an entry's sheet (masked password, reveal, its code, agents' uses of it), edited with the generator and
 // the agent-free switch, a new one, deleted with Undo, locked and unlocked, and what's written read back from the file.
 // WRITES: the throwaway vault only (and the made-up file in a temporary folder).
-//   node web/qa/passwords.mjs <vault copy> [<folder for its pictures>]
+//   node web/qa/passwordspage.mjs <vault copy> [<folder for its pictures>]
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"

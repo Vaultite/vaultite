@@ -9,10 +9,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Your passwords in Vaultite**: your own KeePass file (the one KeePassXC and Strongbox open) in a tab of the desktop
   app (Show passwords), unlocked with Touch ID or its password: entries searched and listed by group, their username,
   password, one-time code and websites to copy or open, edited or made with a generator, deleted to the recycle bin
-  with Undo, which agents used each one, and a switch to let agents use an entry without asking. The browser fills your logins from it (a key in the address bar, or Fill
-  login) and offers to save a new sign-in or update a password; each change is written into the file (its old copy
-  kept) and into the group KeePassXC shares with agents, so they use it at once. `vau secret` can be answered from
-  your passwords (with Touch ID) or kept there. Agents never see what's filled.
+  with Undo, which agents used each one, and a switch to let agents use an entry without asking. The browser fills
+  your logins from it (a key in the address bar, or Fill login) and offers to save a new sign-in or update a password;
+  each change is written into the file (its old copy kept) and into the group KeePassXC shares with agents, so they
+  use it at once. `vau secret` can be answered from your passwords (with Touch ID) or kept there. Agents never see
+  what's filled.
 - **A window reload no longer ends an agent's page in a background tab**: after a deploy's reload, a page an agent is
   at work in (or asking you something on) waits for its tab, instead of being closed with its work and its ask.
 - **Do it**: an open task line (hover it; on a phone, the caret's line) or a suggestion in the inbox has a Do it that hands
