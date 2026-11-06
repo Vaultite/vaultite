@@ -2128,7 +2128,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     const log: Ev[] = [], stops: number[] = []
     return { log, stops, currentTime: 10, destination: {}, createOscillator: () => ({ type: "", frequency: param(log, "f"), connect() {}, start() {}, stop: (t: number) => stops.push(t) }), createGain: () => ({ gain: param(log, "g"), connect() {} }) }
   }
-  for (const name of ["listen", "sent", "answer"] as const) {
+  for (const name of ["listen", "sent", "answer", "missed"] as const) {
     const c = fake()
     playCue(c, name)
     const gains = c.log.filter((e) => e[0].startsWith("g")), peak = Math.max(...gains.map((e) => e[1])), end = Math.max(...c.stops) - 10

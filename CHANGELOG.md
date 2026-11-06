@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Talk key never fails silently**: a press that hears nothing, loses its recognizer or can't reach Vaultite
+  shows "Didn't catch that" by the companion's cursor with a soft sound, its audio kept to hear again; pressing again
+  while its last words are still coming listens again rather than being swallowed; and a test copy of the app can no
+  longer take your Talk key or microphone. Each press is logged, so one that went nowhere can be traced.
 - **A spoken answer needs no box**: asked by voice, the companion answers with its cursor, its voice and its marks;
   its box (its words and a reply field) shows when you tap the Talk key, for a typed ask, or if the voice doesn't
   come. Waiting feels alive: let go and your trail draws into its cursor, which glows softly while it thinks, then

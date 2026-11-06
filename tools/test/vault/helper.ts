@@ -1,4 +1,6 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process"
+import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 
@@ -236,6 +238,23 @@ export default async ($: VaultTest) => {
     const r1 = calm.pose(11)
     calm.pen({ id: "p", strokes: [{ start: 2000, dur: 300, pts: [[0, 0], [50, 50]] }] }, 20)
     check("pilot: with reduced motion each place is there at once, a drawing done at once", r1.x === 400 && r1.y === 400 && calm.pose(21).x === 50, [r1, calm.pose(21)])
+  }
+  {
+    // Each press of a key, logged a day at a time (electron/presslog.ts): its steps, how it ended once, old days gone.
+    const { pressLog } = await import("../../../electron/presslog.ts")
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vau-presses-"))
+    let t = new Date(2026, 10, 5, 18, 9, 41).getTime()
+    fs.writeFileSync(path.join(dir, "talk-2026-10-01.jsonl"), "{}\n")
+    fs.writeFileSync(path.join(dir, "talk-2026-11-01.jsonl"), "{}\n")
+    const log = pressLog(() => dir, "talk", () => t), p = log.start("talk", "down", { front: "com.example.mail" })
+    t += 40; p.step("stt", { engine: "apple" }); t += 900; p.step("up", { action: "send" }); p.end("missed", { why: "nothing heard" }); p.end("sent"); p.step("stt-end")
+    const lines = log.read("2026-11-05")
+    check("press log: a press's steps in order with their time from its start, ended once, a step after its end marked late",
+      lines.map((l) => l.ev).join() === "down,stt,up,end,stt-end" && lines[2].ms === 940 && lines[3].outcome === "missed" && lines[4].late === true && p.ended() && lines.every((l) => l.press === p.id && l.kind === "talk"), lines)
+    check("press log: a day a file, two weeks kept", fs.existsSync(path.join(dir, "talk-2026-11-05.jsonl")) && fs.existsSync(path.join(dir, "talk-2026-11-01.jsonl")) && !fs.existsSync(path.join(dir, "talk-2026-10-01.jsonl")))
+    const { liveInput } = await import("../../../electron/helperlogic.ts")
+    check("helper: only the app the user runs hears their keys and takes the one lock; never a copy a script drives or one run from source, unless asked",
+      liveInput({}, true) && !liveInput({ VAULTITE_QUIET: "1" }, true) && !liveInput({}, false) && liveInput({ VAULTITE_HELPER_TAP: "1" }, false) && !liveInput({ VAULTITE_QUIET: "1", VAULTITE_HELPER_TAP: "1" }, false))
   }
   {
     // The summoned exchange's geometry (electron/helperlogic.ts): beside the pointer, its box reachable, the picture.

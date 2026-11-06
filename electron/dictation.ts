@@ -129,6 +129,8 @@ export type DictateOptions = { engine?: unknown; language?: unknown; silence?: u
 export async function dictate(sink: DictationSink, opts: DictateOptions) {
   let engine = opts.engine === "parakeet" ? "parakeet" : "apple"
   const language = typeof opts.language === "string" ? opts.language : ""
+  // (a copy a script drives hears a file, never the microphone: it can't take the user's)
+  if (process.env.VAULTITE_QUIET && !process.env.VAULTITE_DICTATION_FILE) return { ok: false, code: "quiet" }
   const [allowed, { cloud, why }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
   if (!allowed) return { ok: false, code: "permission" }
   for (const fn of starts) fn()

@@ -12,10 +12,11 @@ import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, onDictating, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, besidePointer, drawnShapes, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, shotCrop, trailStrokes } from "./helperlogic.ts"
+import { atOffset, badgeOf, besidePointer, drawnShapes, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
 import { closePanel, cue as playCue, drawingActs, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
+import { type Press, pressLog } from "./presslog.ts"
 import { companionVoice } from "./voice.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
@@ -40,8 +41,10 @@ export type HelperHost = {
 }
 
 const QUIET = !!process.env.VAULTITE_QUIET
-// (a scripted copy's own: never the user's app's)
-const LOCK = path.join(os.tmpdir(), QUIET ? `vaultite-helper-${process.pid}.sock` : "vaultite-helper.sock")
+/** The app the user uses: only it hears their keys (helperlogic.ts liveInput). */
+const LIVE = liveInput(process.env, app.isPackaged)
+// (a scripted copy's or one run from source: its own lock, never the user's app's)
+const LOCK = path.join(os.tmpdir(), LIVE ? "vaultite-helper.sock" : `vaultite-helper-${process.pid}.sock`)
 let host: HelperHost | null = null
 /** A scripted copy's stand-ins for the screen helper's answers (web/qa/helper.mjs): it never reads or types into the
  *  user's apps. */
@@ -76,7 +79,7 @@ export async function startHelper(h: HelperHost) {
   if (!lock) return false
   host = h
   app.on("will-quit", stopHelper)
-  if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v),
+  if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v), presses: () => presses.read(),
     asked: () => [...asked], spoken: () => [...spoken], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
   onScreenEvent(heard)
   ipcMain.removeAllListeners("vaultite:talk-elsewhere")
@@ -327,7 +330,9 @@ const key = fnKey()
 /** The helper's own session: words into another app's field, into a cursor's conversation, or the companion summoned
  *  (`summon`: its words by its cursor, sent when let go); `talk`: a Talk key's, sent when it stops. */
 type Session = { sink: DictationSink; into: "field" | "panel" | "summon"; focus: Focus; finals: string[]; pending: string; level: number; ready: boolean
-  swap: [RegExp, string][]; talk?: boolean }
+  swap: [RegExp, string][]; talk?: boolean
+  /** The summoned companion its words are for (a new press may summon another before they're done). */
+  of?: Summon }
 let session: Session | null = null
 /** The window's page that has this press (fn there is its ⌘J; a Talk key's gesture its companion's), till it's let go. */
 let page: WebContents | null = null, talkPage: WebContents | null = null
@@ -336,7 +341,7 @@ let page: WebContents | null = null, talkPage: WebContents | null = null
  *  Talk keys, a key alone by its code, a chord by its name. */
 const heardKeys = () => (prefs.fn ? prefs.keys : [])
 const keysNow = () => `${heardKeys().join()}|${prefs.talk.join()}`
-const listen = () => { const all = [...heardKeys(), ...prefs.talk]; return screenAsk("fn", { keys: keyCodes(all), chords: all.filter(isChord) }) }
+const listen = () => { const all = [...heardKeys(), ...prefs.talk]; return LIVE ? screenAsk("fn", { keys: keyCodes(all), chords: all.filter(isChord) }) : Promise.resolve({}) }
 let mods = modKeys(heardKeys()), talkMods = modKeys(prefs.talk), followed = keysNow()
 function followKeys() {
   if (keysNow() === followed) return
@@ -405,10 +410,48 @@ function act(a: FnAction, talk = false) {
 // ---------- the Talk keys: the companion summoned at the pointer (HeyClicky's gesture, core/fnkey.ts talkGesture)
 
 const gesture = talkGesture()
+/** What each press of the Talk key did, a day at a time beside the app's own (presslog.ts); `press`: the latest. */
+const presses = pressLog(() => path.join(app.getPath("userData"), "talk"), "talk")
+let press: Press | null = null
+/** How long its cursor says a press went nowhere. */
+const MISSED_MS = 2400
+/** A press of the Talk key that went nowhere (`why`, logged): its cursor says so a moment (`words`) with a soft cue,
+ *  then goes (or rides on, its exchange on); its audio is kept beside the log, to hear again. Never silence. */
+function missed(s: Summon | null, why: string, words = "Didn't catch that") {
+  const kept = s?.press && !s.press.ended() ? keepAudio(s.press.id) : null
+  s?.press?.end("missed", { why, ...(kept ? { audio: kept } : {}) })
+  if (!s || summon !== s) return draw()
+  Object.assign(s, { state: "missed", missed: words })
+  cue("missed")
+  draw()
+  setTimeout(() => {
+    if (summon !== s || s.state !== "missed") return
+    if (exchange) Object.assign(s, { state: "watching", missed: undefined })
+    else summon = null
+    draw()
+  }, MISSED_MS)
+}
+/** The last press's audio (dictation.ts keeps it in the logs), copied beside the log as `<press>.wav`; the last few kept. */
+function keepAudio(id: string) {
+  try {
+    const from = path.join(app.getPath("logs"), "dictation-last.wav"), dir = path.join(app.getPath("userData"), "talk")
+    if (!fs.existsSync(from) || Date.now() - fs.statSync(from).mtimeMs > 60_000) return null
+    fs.mkdirSync(dir, { recursive: true })
+    const to = path.join(dir, `${id}.wav`)
+    fs.copyFileSync(from, to)
+    const wavs = fs.readdirSync(dir).filter((f) => f.endsWith(".wav")).map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t)
+    for (const w of wavs.slice(10)) fs.rmSync(path.join(dir, w.f), { force: true })
+    return to
+  } catch { return null }
+}
 /** The companion called up outside Vaultite: its cursor at the pointer (listening, then thinking), the window there, the
  *  pointer's trail while the key is held (`released`: when it was let go); `was`: where its own cursor was. */
-type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; state: "listening" | "thinking" | "watching"; trail: (Point & { t: number })[]; released?: number
+type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; state: "listening" | "thinking" | "watching" | "missed"; trail: (Point & { t: number })[]; released?: number
   at: number; was: string; typing?: boolean
+  /** Its press went nowhere: what its cursor says a moment ("Didn't catch that"). */
+  missed?: string
+  /** Its press, in the log of presses. */
+  press?: Press | null
   /** Its turn on the ask seen at work (from then on its state is the agent's). */
   busySeen?: boolean
   /** Its coming was cued. */
@@ -427,11 +470,20 @@ function talkHeard(m: FnEvent) {
   if (!host?.home()) return
   // (pressed again: its voice stops at once, and gets ready for the next answer)
   if ("down" in m && m.down) { stopVoice(); speaker.warm() }
-  const now = Date.now(), a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
+  const now = Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
+  // (each press logged, what it did or that it did nothing: presses that go nowhere can be traced)
+  if (a === "listen") press = presses.start("talk", "down", { front: front?.bundle ?? "" })
+  else if (kind === "down" && !a) presses.start("talk", "down", { front: front?.bundle ?? "" }).end("ignored", { gesture: gesture.state })
+  else press?.step(kind, { action: a ?? "none" })
   if (!a) return
   if (a === "listen") talkPage = host.focusedPage()
   const to = talkPage && !talkPage.isDestroyed() ? talkPage : null
-  if (to) { to.send("vaultite:fn", { talk: a }); if (a === "send" || a === "cancel") talkPage = null; return }
+  if (to) {
+    if (a === "listen") press?.step("window")
+    to.send("vaultite:fn", { talk: a })
+    if (a === "send" || a === "cancel") { talkPage = null; press?.end(a === "send" ? "window" : "cancelled") }
+    return
+  }
   talkPage = null
   talkAct(a)
 }
@@ -441,13 +493,14 @@ function talkHeard(m: FnEvent) {
 function talkElsewhere(from: WebContents) {
   if (!talkPage || talkPage !== from) return
   talkPage = null
+  press?.step("handed-back")
   if (gesture.state === "held") talkAct("listen")
   else if (gesture.state === "typed") talkAct("type")
 }
 
 function talkAct(a: NonNullable<TalkAction>) {
   if (a === "listen") return act("start", true)
-  if (a === "cancel") { void inkOff(); return act("cancel", true) }
+  if (a === "cancel") { void inkOff(); press?.end("cancelled", { why: "another key with it" }); return act("cancel", true) }
   if (a === "send") {
     // (hands-free in its box: what's in it goes; held: let go here, it thinks here)
     if (session?.into === "summon" || (starting && startingTalk)) {
@@ -456,12 +509,14 @@ function talkAct(a: NonNullable<TalkAction>) {
       if (summon && ((session && (session.finals.length || session.pending.trim())) || trailStrokes(summon.trail, Date.now()).length)) cue("sent")
       void inkOff(); draw()
     }
-    else if (!session && summon?.state === "listening") { summon = null; void inkOff(); return draw() }
+    // (let go with nothing listening: it never started or stopped early, and nothing's coming of it)
+    else if (!session && summon?.state === "listening") { void inkOff(); return missed(summon, "no recognizer running at let-go") }
     return act("stop", true)
   }
   if (a === "type") {
     // (a tap: its box, focused, to type in; nothing heard)
     if (summon) Object.assign(summon, { typing: true, state: "watching" })
+    press?.end("typed")
     void inkOff()
     act("cancel", true)
     return openTyping()
@@ -472,12 +527,11 @@ function talkAct(a: NonNullable<TalkAction>) {
 /** A Talk key held outside Vaultite: its cursor at the pointer, listening, the words by it; the pointer leaves a trail
  *  meanwhile (drags too: the screen helper keeps them from the app). */
 async function startSummon() {
-  if (dictating()) return
   const name = live.state.name
-  if (live.state.mode === "off") return notice("off", "The companion is off", "Turn it on in the companion's settings to talk to it.")
-  if (!name) return hint("The companion isn't ready yet: open Vaultite")
+  if (live.state.mode === "off") { press?.end("dropped", { why: "the companion is off" }); return notice("off", "The companion is off", "Turn it on in the companion's settings to talk to it.") }
+  if (!name) { press?.end("dropped", { why: "no companion yet" }); return hint("The companion isn't ready yet: open Vaultite") }
   const p = screen.getCursorScreenPoint(), at = Date.now(), own = live.state.agents.get(name)
-  const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, state: "listening", trail: [], at, was: own ? placeKey(own) : "" }
+  const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, state: "listening", trail: [], at, was: own ? placeKey(own) : "", press }
   summon = s
   live.say({ t: "summoning" })
   // (a press that's a shortcut shows nothing: it appears after a moment)
@@ -485,7 +539,10 @@ async function startSummon() {
   void screenAsk("ink", { on: true })
   void screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).then((w) => { s.w = w.window ? w : null }, () => {})
   draw()
-  await listenFor({ into: "summon", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true })
+  // (pressed again as its last words are still being finished (or it speaks): those go first, then this one listens)
+  for (let i = 0; i < 60 && session?.into === "summon"; i++) await new Promise((r) => setTimeout(r, 25))
+  if (session?.into === "summon") s.press?.step("took over a press still finishing")
+  await listenFor({ into: "summon", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true, of: s })
 }
 const inkOff = () => screenAsk("ink", { on: false }).catch(() => {})
 /** The pointer moved while it's fed: held, its trail (the last few seconds). */
@@ -499,13 +556,15 @@ function trailed(p: Point, t: number) {
  *  there, the display's picture and what Accessibility finds near it; its answer comes in its box, open by it. */
 async function sendSummon(s: Summon, text: string) {
   const ink = drawnShapes(inkOf(trailStrokes(s.trail, s.released ?? Date.now())))
-  if (!text && !ink.length) { summon = summon === s ? null : summon; return draw() }
+  if (!text && !ink.length) return missed(s, "nothing heard nor drawn")
   Object.assign(s, { state: "thinking" })
   draw()
   const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
   const place = await pointedAt(s.name, s.p, w?.window ? w : null)
   stopVoice()
-  live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true })
+  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true })
+  if (!sent) return missed(s, "Vaultite's server isn't connected", "Can't reach Vaultite")
+  s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot })
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
@@ -560,7 +619,7 @@ function answerArrived() {
 /** How long a spoken answer's first words wait for its voice before its box shows them. */
 const VOICE_WAIT = 3500
 /** A soft cue (the companion's `sounds`; a scripted copy only notes it). */
-function cue(name: "listen" | "sent" | "answer") {
+function cue(name: "listen" | "sent" | "answer" | "missed") {
   if (QUIET) return void asked.push({ cue: name })
   if (prefs.sounds) playCue(name)
 }
@@ -615,8 +674,9 @@ function hint(text: string) {
   setTimeout(draw, 2250)
 }
 
-async function listenFor(o: Pick<Session, "into" | "focus" | "talk">) {
-  if (dictating()) return
+async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
+  // (a Talk key's is the companion's, whatever else listens: that ends; other keys leave a session under way alone)
+  if (dictating() && !o.talk) return
   stopVoice()
   const s = prefs.dictation, lines = replacements()
   const mine: Session = { sink: { tell: (e) => told(mine, e) }, ...o, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines) }
@@ -624,10 +684,12 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk">) {
   draw()
   chatChanged()
   const how = await engineFor(s)
-  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true, words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]) })
+  if (mine.into === "summon") mine.of?.press?.step("stt", { engine: how.engine })
+  // (a Talk key's audio is kept a while: a press that went nowhere can be heard again)
+  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]) })
   if (r.ok || session !== mine) return
   session = null
-  if (mine.into === "summon" && summon?.state === "listening") { summon = null; void inkOff() }
+  if (mine.into === "summon" && mine.of?.state === "listening") { void inkOff(); missed(mine.of, `the recognizer didn't start (${r.code ?? "?"})`) }
   draw()
   chatChanged()
   if (r.code === "permission") notice("mic", "Vaultite isn't allowed to use the microphone", "Allow it in System Settings, Privacy & Security, Microphone.",
@@ -675,6 +737,9 @@ async function pointedAt(name: string, p: Point, w: AppWindowInfo | null): Promi
 function told(s: Session, e: Record<string, unknown>) {
   if (session !== s) return
   const said = (t: unknown) => s.swap.reduce((x, [re, to]) => x.replace(re, to), String(t ?? ""))
+  if (s.into === "summon" && (e.type === "start" || e.type === "error" || e.type === "end" || e.type === "fallback"))
+    s.of?.press?.step(`stt-${e.type}`, { ...(e.reason ? { reason: e.reason } : {}), ...(e.code ? { code: e.code } : {}), ...(e.message ? { message: String(e.message).slice(0, 200) } : {}),
+      ...(e.type === "end" ? { chars: s.finals.join(" ").length } : {}) })
   if (e.type === "start") s.ready = true
   else if (e.type === "level") s.level = Number(e.v) || 0
   else if (e.type === "pending") s.pending = said(e.text)
@@ -693,9 +758,9 @@ async function finish(s: Session, cancelled: boolean) {
     return chatChanged(cancelled || !text ? undefined : { text, listening: false, done: true, ...(s.talk ? { send: true } : {}) })
   }
   if (s.into === "summon") {
-    const m = summon
+    const m = s.of ?? summon
     if (!m || m.typing) return
-    if (cancelled) { summon = null; return draw() }
+    if (cancelled) { m.press?.end("cancelled"); if (summon === m) summon = null; return draw() }
     return sendSummon(m, text)
   }
   if (cancelled || !text) return
@@ -1044,10 +1109,10 @@ function draw() {
   const own = s ? live.state.agents.get(s.name) : undefined, busy = !!own && BUSY.has(own.state)
   if (s?.state === "thinking" && busy) s.busySeen = true
   // (once its turn is seen at work, it's as busy as the agent is)
-  const state = !s ? "watching" : listening ? "listening" : busy || (s.state === "thinking" && !s.busySeen) ? "thinking" : "watching"
+  const state = !s ? "watching" : listening ? "listening" : s.state === "missed" ? "missed" : busy || (s.state === "thinking" && !s.busySeen) ? "thinking" : "watching"
   const home = s && besidePointer(s.p, screen.getDisplayNearestPoint(s.p).bounds)
   const called: Scene["summon"] = s && home && (!listening || Date.now() - s.at > 120)
-    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
+    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...(state === "missed" && s.missed ? { missed: s.missed } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
   followPointer(!!called, trailed)
   // (it came: a soft cue, once a press)
   if (called && s && !s.cued) { s.cued = true; if (listening) cue("listen") }

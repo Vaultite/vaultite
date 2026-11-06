@@ -46,7 +46,9 @@ export type ScreenAgent = { name: string; tint: string; state: string; sx: numbe
 export type Point = { x: number; y: number }
 /** The companion called up by a Talk key, listening (its words as they come) or thinking; `follow`: in its exchange, it
  *  rides beside the pointer on every display (the overlay's feed); `aim`: what it points at, which it flies to. */
-export type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
+export type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching" | "missed"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
+  /** Its press went nowhere: what it says a moment. */
+  missed?: string
   follow?: boolean; aim?: { id: string; x: number; y: number }
   /** Listening, how loud they are (0 to 1). */
   level?: number }
@@ -216,3 +218,7 @@ export function jobNews(before: HelperJob[] | null, after: HelperJob[]) {
 }
 /** The menu bar icon's badge: its words not seen, and jobs ended that weren't opened. */
 export const badgeOf = (unread: number, jobs: HelperJob[]) => { const n = unread + jobs.filter((j) => j.unseen).length; return n ? String(n) : "" }
+
+/** Whether this copy may hear the user's keys (the global tap) and take the one lock: their app, never one a script
+ *  drives (VAULTITE_QUIET) or run from source unless asked (VAULTITE_HELPER_TAP=1): a test can't take their Talk key. */
+export const liveInput = (env: Record<string, string | undefined>, packaged: boolean) => !env.VAULTITE_QUIET && (packaged || env.VAULTITE_HELPER_TAP === "1")

@@ -18,8 +18,10 @@ let pointer = { x: 500, y: 500 }
 const display = { id: 1, bounds: { x: 0, y: 0, width: 1600, height: 1000 }, workArea: { x: 0, y: 25, width: 1600, height: 975 } }
 /** What the window's pages send the main process (ipcMain), by channel. */
 const ipc = new Map<string, (e: { sender: unknown }) => void>()
+/** The app's own folder (its logs, the log of presses), apart from anything real. */
+const USERDATA = fs.mkdtempSync(path.join(os.tmpdir(), "vau-helperdraw-"))
 mock.module(pathToFileURL(fs.realpathSync(path.join(ROOT, "node_modules/electron/index.js"))).href, { exports: {
-  app: { on() {}, getName: () => "Vaultite", getPath: () => os.tmpdir(), getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false },
+  app: { on() {}, getName: () => "Vaultite", getPath: () => USERDATA, getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false },
   Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }) => void) => { ipc.set(ch, fn) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
   screen: { getCursorScreenPoint: () => pointer, getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
 } })
@@ -38,8 +40,14 @@ mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async (
 // (the recognizer: what it heard, given when it's stopped)
 type Sink = { tell: (e: Record<string, unknown>) => void }
 let heardWords = "what's this?"
-mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink) => { sink.tell({ type: "start" }); return { ok: true } }, dictating: () => false,
-  stopFor: (sink: Sink, cancel = false) => setTimeout(() => { if (!cancel && heardWords) sink.tell({ type: "final", text: heardWords }); sink.tell({ type: "end", reason: cancel ? "cancel" : "stop" }) }, 5),
+// (`sttDrops`: the recognizer's socket drops mid-press; `finishMs`: how long its last words take once stopped)
+let sttDrops = false, finishMs = 5
+mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink) => {
+  sink.tell({ type: "start" })
+  if (sttDrops) setTimeout(() => { sink.tell({ type: "error", code: "socket", message: "the connection closed" }); sink.tell({ type: "end", reason: "error" }) }, 60)
+  return { ok: true }
+}, dictating: () => false,
+  stopFor: (sink: Sink, cancel = false) => { const words = heardWords; setTimeout(() => { if (!cancel && words) sink.tell({ type: "final", text: words }); sink.tell({ type: "end", reason: cancel ? "cancel" : "stop" }) }, finishMs) },
   dictationEngines: async () => ({}), onDictating: () => () => {} } })
 
 // (the server: settings, and the companion's socket)
@@ -73,7 +81,7 @@ const hp: Record<string, unknown> = {}
 let focused: { isDestroyed: () => boolean; send: (ch: string, m: unknown) => void; got: unknown[] } | null = null
 await helper.startHelper({ home: () => ({ port, path: "/vault", name: "Vault" }), homeWindow, openHome() {}, focusedPage: () => focused, event() {}, prefs: () => hp, setPrefs: (x: object) => Object.assign(hp, x), quit() {}, icon: "" })
 type MenuItem = { label?: string; sublabel?: string; type?: string; enabled?: boolean; click?: () => void }
-const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => void; stub: (op: string, v: object) => void; scene: () => Scene | null; asked: () => Record<string, unknown>[]; badge: () => string
+const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => void; presses: () => Record<string, unknown>[]; stub: (op: string, v: object) => void; scene: () => Scene | null; asked: () => Record<string, unknown>[]; badge: () => string
   menu: () => MenuItem[] } }).vaultiteHelper
 
 let fails = 0
@@ -206,7 +214,39 @@ chord(true)
 await wait(400)
 chord(false)
 await wait(100)
-check("held with nothing said nor drawn: nothing goes", asks().length === before && !H.scene()!.summon, asks())
+check("held with nothing said nor drawn: nothing goes, but its cursor says it didn't catch that, with a soft cue",
+  asks().length === before && H.scene()!.summon?.state === "missed" && /didn't catch that/i.test(String((H.scene()!.summon as { missed?: string })?.missed)) && H.asked().at(-1)?.cue === "missed", [asks().length - before, H.scene()!.summon, H.asked().slice(-2)])
+const lastEnd = () => H.presses().filter((l) => l.ev === "end").at(-1)
+check("…and the press is logged: down, the recognizer, let go, what it heard, and why it went nowhere",
+  lastEnd()?.outcome === "missed" && /nothing heard/.test(String(lastEnd()?.why)) && ["down", "stt", "stt-start", "up", "stt-end"].every((ev) => H.presses().some((l) => l.press === lastEnd()?.press && l.ev === ev)), H.presses().slice(-8))
+check("…then its cursor goes", await until(() => !H.scene()!.summon, 3500), H.scene()!.summon)
+// (the recognizer's connection drops mid-press: said so, never a silent nothing)
+sttDrops = true
+chord(true)
+await wait(300)
+chord(false)
+check("the recognizer drops mid-press: its cursor says it didn't catch that, the press logged with the error", await until(() => H.scene()!.summon?.state === "missed") &&
+  H.presses().some((l) => l.press === lastEnd()?.press && l.ev === "stt-error" && l.code === "socket") && lastEnd()?.outcome === "missed", H.presses().slice(-6))
+sttDrops = false
+await until(() => !H.scene()!.summon, 3500)
+// (pressed again as the last press's words are still being finished: both go, in order, none swallowed)
+heardWords = "first one"
+finishMs = 500
+chord(true)
+await wait(300)
+chord(false)
+await wait(80)
+chord(true)
+await wait(30)
+heardWords = "second one"
+finishMs = 5
+check("pressed again while the last words are still coming: it listens again (not swallowed)", await until(() => H.scene()!.summon?.state === "listening", 1500), H.scene()!.summon)
+await wait(400)
+chord(false)
+check("…and both asks go, in order", await until(() => asks().some((m) => m.text === "second one")) && asks().findIndex((m) => m.text === "first one") < asks().findIndex((m) => m.text === "second one") &&
+  asks().findIndex((m) => m.text === "first one") >= 0, asks().slice(-3).map((m) => m.text))
+H.heard({ event: "esc" })
+await wait(300)
 heardWords = "and this?"
 
 // ---------- in a Vaultite window: the Talk key goes to its page; where no box of the companion's takes the keyboard (a

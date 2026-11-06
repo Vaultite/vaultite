@@ -1,7 +1,7 @@
-// The companion's soft cues (web/src/screen.tsx plays them; the setting `sounds`): made here from a few tones, no files.
-// listen: summoned, two quick notes rising; sent: let go, a short falling glide; answer: its answer coming, a soft bell.
+// The companion's soft cues (screen.tsx plays them; the setting `sounds`), made of a few tones: listen two notes rising,
+// sent a short falling glide, answer a soft bell, missed (a press that went nowhere) two low notes falling.
 
-export type Cue = "listen" | "sent" | "answer"
+export type Cue = "listen" | "sent" | "answer" | "missed"
 /** What a cue needs of an audio context (a real one plays it; tools/test_web.ts stands one in). */
 type Param = { setValueAtTime: (v: number, t: number) => unknown; linearRampToValueAtTime: (v: number, t: number) => unknown; exponentialRampToValueAtTime: (v: number, t: number) => unknown }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,6 +20,7 @@ const NOTES: Record<Cue, { at: number; dur: number; from: number; to?: number; l
   listen: [{ at: 0, dur: 0.07, from: 659, level: 0.8 }, { at: 0.075, dur: 0.11, from: 880, level: 1 }],
   sent: [{ at: 0, dur: 0.13, from: 784, to: 523, level: 0.9 }],
   answer: [{ at: 0, dur: 0.32, from: 1047, level: 0.8 }, { at: 0, dur: 0.22, from: 2093, level: 0.25 }, { at: 0.06, dur: 0.3, from: 1319, level: 0.5 }],
+  missed: [{ at: 0, dur: 0.1, from: 523, level: 0.7 }, { at: 0.11, dur: 0.16, from: 392, level: 0.6 }],
 }
 /** How long cue `name` sounds (s). */
 export const cueLength = (name: Cue) => Math.max(...NOTES[name].map((n) => n.at + n.dur))

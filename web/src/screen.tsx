@@ -24,7 +24,8 @@ type Point = { x: number; y: number }
 type Rect = { x: number; y: number; width: number; height: number }
 type Say = { id: string; text: string; question?: boolean }
 type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; target?: Rect; say?: Say }
-type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
+type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching" | "missed"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
+  missed?: string
   follow?: boolean; aim?: { id: string; x: number; y: number }; level?: number }
 type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null
   pill: { level: number; text: string; ready: boolean; hint?: boolean } | null
@@ -404,9 +405,11 @@ function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?:
       className={cn(FADES, "pointer-events-none")} style={{ "--c": tint } as React.CSSProperties}>
       {/* (thinking: a soft glow breathing at its tip, its own, not a spinner; it gives way to its voice or a flight) */}
       <span aria-hidden className="companion-glow" />
-      <div className="pilot-arrow relative origin-[3px_2px] [scale:var(--pilot-scale,1)]"><div className={cn(c.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div></div>
+      <div className="pilot-arrow relative origin-[3px_2px] [scale:var(--pilot-scale,1)]"><div className={cn(c.state === "thinking" && "companion-bob", c.state === "missed" && "companion-miss")}><Arrow tint={tint} /></div></div>
       <div data-flag style={{ background: tint }} className={FLAG}>
         {c.name}
+        {/* (a press that went nowhere says so, never silence) */}
+        {c.state === "missed" && c.missed && <span data-companion-missed className="font-medium opacity-90">{c.missed}</span>}
         <Mark mark={speaking && c.state !== "listening" ? "speak" : c.state === "listening" ? (c.level === undefined ? "wave" : "hear") : c.state === "thinking" ? "dots" : null} />
       </div>
       {c.words && <div data-bubble className={cn(WORDS, "bg-background")} style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
@@ -536,12 +539,14 @@ const STYLE = `
 .companion-pop { animation: companion-pop .28s cubic-bezier(.2,.9,.3,1.25); transform-origin: top left; }
 @keyframes companion-pop { from { opacity: 0; scale: .9; } }
 [data-parked] .pilot-arrow { animation: pilot-float 2.6s ease-in-out infinite; }
+.companion-miss { animation: companion-miss .45s ease-in-out; }
+@keyframes companion-miss { 20% { translate: -3px 0; } 45% { translate: 3px 0; } 70% { translate: -2px 0; } }
 .companion-glow { position: absolute; left: -14px; top: -15px; width: 34px; height: 34px; border-radius: 99px; pointer-events: none; opacity: 0; scale: .6;
   background: radial-gradient(circle, color-mix(in srgb, var(--c) 55%, transparent) 0%, color-mix(in srgb, var(--c) 18%, transparent) 45%, transparent 70%); transition: opacity .3s ease-out, scale .3s ease-out; }
 [data-companion-summoned="thinking"]:not([data-speaking]):not([data-moving]) .companion-glow { opacity: 1; scale: 1; animation: companion-glow 1.4s ease-in-out infinite; }
 @keyframes companion-glow { 0%, 100% { scale: .8; opacity: .55; } 50% { scale: 1.15; opacity: 1; } }
 @keyframes pilot-float { 50% { translate: 0 -3px; } }
-@media (prefers-reduced-motion: reduce) { .companion-glow, .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .companion-miss, .companion-glow, .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
 `
 document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE }))
 document.documentElement.style.background = "transparent"
