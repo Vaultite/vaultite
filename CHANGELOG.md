@@ -26,6 +26,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The companion remembers the talk**: a fresh session of its Talk key (after a pause, a restart, or once its context
   grows) is told the talk so far from its log, with what it did (what it opened, the jobs it started), instead of the
   last few lines of the last ten minutes. Small talk the realtime voice answered shows on the Companion page too.
+- **Agents at work in terminals no longer keep the app busy**: the whole window no longer draws again every 2 s while
+  one prints, and a terminal tab not shown wakes no frames; switching tabs and opening menus do less work too.
 - **A foldable callout opened stays open, with no empty gap**: scrolled away and back, or its note left and opened
   again, a section you opened is still open, and one shut is drawn at its shut height instead of held at its open one
   for a few seconds, so the page no longer jumps under you.
