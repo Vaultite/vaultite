@@ -60,6 +60,7 @@ function soniox(c: CloudConfig): CloudVoice {
       const why = `${m.error_type ?? "error"} ${m.error_code ?? ""}`.trim()
       // (one with no stream is the connection's: every stream fails)
       for (const [id, s] of m.stream_id ? (x ? [[m.stream_id, x] as const] : []) : [...streams]) { streams.delete(id); s.to.fail(why) }
+      if (!streams.size) rest()
       return
     }
     if (!x) return
@@ -86,6 +87,7 @@ function soniox(c: CloudConfig): CloudVoice {
       return () => { if (streams.delete(id)) { send({ stream_id: id, cancel: true }); if (!streams.size) rest() } }
     },
     warm() { open(); rest() },
+    reset: close,
     close,
   }
 }
@@ -167,6 +169,7 @@ function elevenlabs(c: CloudConfig): CloudVoice {
       return () => { if (streams.delete(id)) { send({ context_id: id, close_context: true }); if (!streams.size) rest() } }
     },
     warm() { open(); rest() },
+    reset: close,
     close,
   }
 }

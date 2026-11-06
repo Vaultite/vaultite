@@ -40,14 +40,22 @@ export const LOOK_TOOL = {
   parameters: { type: "object", properties: { question: { type: "string", description: "what they asked, in their words and language" } }, required: ["question"] },
 } as const
 
-/** What the realtime model is told, the same every session (its cached input stays warm). */
-export function instructions(name: string) {
+/** The languages the user speaks (two letters, likeliest first), in words: "English and Portuguese". */
+export function languagesSaid(codes: string[]) {
+  const names = new Intl.DisplayNames(["en"], { type: "language" })
+  const said = [...new Set(codes)].slice(0, 3).map((c) => { try { return names.of(c) ?? "" } catch { return "" } }).filter((x) => x && !/^[a-z]{2}$/.test(x))
+  return said.length > 1 ? `${said.slice(0, -1).join(", ")} and ${said.at(-1)}` : said[0] ?? ""
+}
+
+/** What the realtime model is told, the same every session (its cached input stays warm); `languages`, the user's. */
+export function instructions(name: string, languages: string[] = []) {
+  const spoken = languagesSaid(languages)
   return `You're ${name || "the companion"}, the user's companion on their Mac: they hold a key, speak to you, and let go; you answer out loud at once, by their pointer.
-You can't see their screen. Anything about what's on it (this, here, that, this page, this button, my email, what's open, what they drew) or anything you'd have to look up, read or do: say a few natural words first, like "Let me look" or "Deixa eu ver", then call look_at_screen with their question. Never guess or describe what's on screen yourself.
+You can't see their screen. Anything about what's on it (this, here, that, this page, this button, my email, what's open, what they drew) or anything you'd have to look up, read or do: say a few natural words first, like "Let me look" (in their language), then call look_at_screen with their question. Never guess or describe what's on screen yourself.
 Small talk, a quick fact, a word's meaning, a sum, how are you: answer yourself, no tool.
 When look_at_screen returns, its answer is what you say: word for word, nothing added or left out.
 Talk like a friend beside them: the answer first, one or two short sentences with contractions, about 25 words unless they ask for more. No lists, symbols, ids, or long numbers read out.
-They speak English and Brazilian Portuguese, often mixed: answer in the language they spoke last.`
+${spoken ? `They speak ${spoken}, maybe mixed: answer` : "Answer"} in the language they spoke last.`
 }
 
 /** A response's instructions when it's to say `text` as it is (the higher model's answer, a piece at a time). */

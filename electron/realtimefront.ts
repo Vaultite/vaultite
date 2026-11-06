@@ -23,6 +23,8 @@ export function realtimeFront(o: {
   /** The session's key and settings; null: the pipeline answers (no key, or voice_front is pipeline). */
   config: () => Promise<FrontConfig | null>
   name: () => string
+  /** The languages the user speaks (two letters, likeliest first). */
+  languages?: () => string[]
   player: Player
   /** The screen round: the helper sends the ask (the user's words, the talk so far) to the summoned session. */
   look: (q: { question: string; talk: string[] }) => void
@@ -77,7 +79,7 @@ export function realtimeFront(o: {
     s?.close()
     turns = 0
     sKey = k
-    const me: RealtimeSession = realtimeSession({ ...cfg, instructions: instructions(o.name()), tools: [LOOK_TOOL] }, {
+    const me: RealtimeSession = realtimeSession({ ...cfg, instructions: instructions(o.name(), o.languages?.() ?? []), tools: [LOOK_TOOL] }, {
       began: (rid, n) => {
         const t = turn
         if (!t || !t.asks.has(n)) return
@@ -227,6 +229,9 @@ export function realtimeFront(o: {
     clearTimeout(t.waiting)
     if (t.call) clearTimeout(t.call.timer)
     s?.cancel()
+    // (what it began saying ends where it is: an open stream would hold up what plays after it)
+    for (const rid of t.rids) { streams.get(rid)?.end(); streams.delete(rid) }
+    rest()
     console.warn(`realtime: ${why}; the pipeline answers`)
     o.log?.({ kind: t.call ? "look" : "talk", cost: t.cost, model: cfg?.model ?? "", usage: t.usage, failed: why })
     // (the screen round already went: its answer is said by the pipeline's voice, as `owns` now says no)
@@ -247,7 +252,7 @@ export function realtimeFront(o: {
   }
   function rest() {
     if (idle) clearTimeout(idle)
-    idle = setTimeout(() => { if (!turn || turn.state === "done" || turn.state === "stopped") { s?.close(); s = null } }, IDLE)
+    idle = setTimeout(() => { if (!turn || !["listening", "answering", "looking"].includes(turn.state)) { s?.close(); s = null } }, IDLE)
     idle.unref?.()
   }
 
@@ -259,12 +264,15 @@ export function realtimeFront(o: {
       const at = now()
       for (const [item, it] of items) if (at - it.start < it.ms) s.truncate(item, Math.max(0, at - it.start))
     }
+    // (each stream ended, so none left open holds up what plays after it)
+    for (const st of streams.values()) st.end()
     items.clear(); streams.clear(); playEnd = 0
     o.player.stop()
     if (t && (t.state === "answering" || t.state === "looking")) {
       if (t.call && !t.call.answered) { clearTimeout(t.call.timer); t.call.answered = true; s?.output(t.call.id, JSON.stringify({ error: why })) }
       t.state = "stopped"
     }
+    if (s) rest()
   }
 
   /** The higher model's say `id` as written so far: said in pieces, the first once it has a few words. */
@@ -353,11 +361,11 @@ export function realtimeFront(o: {
       const t = turn
       if (!t || t.state !== "listening" || t.released) return
       t.released = now()
-      if (!t.speech || msOf(t.bytes) < 250 || paused()) { t.state = "pipeline"; return }
+      if (!t.speech || msOf(t.bytes) < 250 || paused()) { t.state = "pipeline"; rest(); return }
       void refresh().then(() => {
         if (turn !== t || t.state !== "listening") return
         const live = t.live?.alive() && !paused() ? t.live : cfg ? session() : null
-        if (!live) { t.state = "pipeline"; if (t.heard !== undefined) o.fallback(t.heard); return }
+        if (!live) { t.state = "pipeline"; rest(); if (t.heard !== undefined) o.fallback(t.heard); return }
         if (t.live !== live) { live.clear(); for (const b of t.buf.splice(0)) live.append(b); t.live = live }
         t.state = "answering"
         turns++
@@ -377,9 +385,8 @@ export function realtimeFront(o: {
     },
     /** Whether a say answering an ask made at `t` (its `answers.t`) is this front's to speak. */
     owns: (t: number) => !!turn && turn.state === "looking" && !!turn.lookedAt && t >= turn.lookedAt - 50,
-    /** The higher model's say as it's written; `end`: one say whole (no id: its turn is over). */
+    /** The higher model's say as it's written. */
     text: sayText,
-    end: sayEnd,
     /** The companion's state (the server's): busy on the screen round, then done with it, which ends its answer. */
     agent(state: string) {
       const t = turn

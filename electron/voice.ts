@@ -30,6 +30,9 @@ export function companionVoice(o: {
   level: (speaking: boolean, v: number) => void
   /** Each sentence as it's heard: when it began (ms, the clock's) and how long it takes (a drawing's pen keeps to it). */
   heard?: (h: Heard & { say: string }) => void
+  /** What happened to an answer, for the press log: its first sound heard (`at`, the clock's ms) and whose voice it
+   *  was, or a cloud voice failing and the next taking over. */
+  told?: (e: { t: "sound"; at: number; by: string } | { t: "fallback"; why: string; to: string }) => void
   /** A scripted copy's (VAULTITE_QUIET): what it would play goes here, and nothing plays. */
   record?: (m: Record<string, unknown>) => void
 }) {
@@ -45,6 +48,9 @@ export function companionVoice(o: {
   let gen = 0, ready: Promise<void> = Promise.resolve(), waiting = 0
   /** The realtime voice's pieces, numbered far from voicelogic's. */
   let streamed = 1_000_000
+  /** The answer whose first sound was told (its gen); a scripted copy's pieces heard so far. */
+  let sounded = -1
+  const recorded = new Set<number>()
 
   async function binary() {
     const shipped = path.join(SHIPPED, voiceHelperName())
@@ -72,7 +78,10 @@ export function companionVoice(o: {
     return starting
   }
   function heard(m: { type?: string; n?: number; v?: number; at?: number }) {
-    if (m.type === "start" && typeof m.n === "number" && typeof m.at === "number") v.played(m.n, m.at)
+    if (m.type === "start" && typeof m.n === "number" && typeof m.at === "number") {
+      v.played(m.n, m.at)
+      if (sounded !== gen && m.n < 1_000_000) { sounded = gen; o.told?.({ t: "sound", at: m.at, by: whose(v.tier()) }) }
+    }
     else if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, Number(m.v) || 0) }
     else if (m.type === "done" && typeof m.n === "number") { playing.delete(m.n); if (!playing.size) tell(false, 0) }
     else if (m.type === "stopped") { playing.clear(); tell(false, 0) }
@@ -81,8 +90,14 @@ export function companionVoice(o: {
   /** Commands go once its helper is up, in order. */
   let line = Promise.resolve()
   function send(m: Record<string, unknown>) {
-    // (a scripted copy plays nothing: a piece ended is a piece played)
-    if (o.record) { o.record(m.cmd === "pcm" ? { cmd: "pcm", n: m.n } : m); if (m.cmd === "end") heard({ type: "done", n: m.n as number }); return }
+    // (a scripted copy plays nothing: a piece is heard as it's given, as a file is written (VOICE_OUT), and played once ended)
+    if (o.record) {
+      o.record(m.cmd === "pcm" ? { cmd: "pcm", n: m.n } : m)
+      if ((m.cmd === "pcm" || m.cmd === "say") && !recorded.has(m.n as number)) { recorded.add(m.n as number); heard({ type: "start", n: m.n as number, at: Date.now() }) }
+      if (m.cmd === "end") heard({ type: "done", n: m.n as number })
+      if (m.cmd === "stop") recorded.clear()
+      return
+    }
     line = line.then(async () => { const c = await start(); c?.stdin?.write(JSON.stringify(m) + "\n") })
     if (idle) clearTimeout(idle)
     idle = setTimeout(quit, IDLE_MS)
@@ -124,18 +139,28 @@ export function companionVoice(o: {
     return order.filter((x) => !!keys?.k[x])
   }
   const cloudsNow = () => chain().map(cloudOf).filter((x): x is CloudVoice => !!x)
+  /** Whose voice is at `tier` of the chain: a provider's, else this Mac's. */
+  const whose = (tier: number) => chain().filter((p) => !!cloudOf(p))[tier] ?? "mac"
 
   const v: Voice = voice({
     clouds: cloudsNow,
     heard: (h) => o.heard?.(h),
+    told: (e) => { if (e.t === "fallback") o.told?.({ t: "fallback", why: e.why, to: whose(e.to) }) },
     hints: o.hints,
     out: {
       pcm: (n, pcm) => { playing.add(n); send({ cmd: "pcm", n, data: pcm.toString("base64") }) },
       say: (n, text, language) => { playing.add(n); send({ cmd: "say", n, text, language, speed: o.prefs().speed || 1 }) },
       end: (n) => { playing.add(n); send({ cmd: "end", n }) },
-      stop: () => { playing.clear(); if (child || o.record) send({ cmd: "stop" }); tell(false, 0) },
+      stop: () => hush(),
     },
   })
+
+  /** Its helper silenced, what's queued there dropped (voicelogic's pieces and the realtime voice's streams alike). */
+  function hush() {
+    playing.clear()
+    if (child || o.record) send({ cmd: "stop" })
+    tell(false, 0)
+  }
 
   function quit() {
     idle = null
@@ -182,10 +207,8 @@ export function companionVoice(o: {
       const n = ++streamed
       return { pcm: (b: Buffer) => { playing.add(n); send({ cmd: "pcm", n, data: b.toString("base64") }) }, end: () => { playing.add(n); send({ cmd: "end", n }) } }
     },
-    /** Silence, at once. */
-    stop: () => { gen++; v.stop() },
-    /** Whether an answer is being spoken now. */
-    on: () => v.on(),
+    /** Silence, at once: an answer's pieces, and audio streamed from elsewhere (voicelogic knows only its own). */
+    stop: () => { gen++; const had = playing.size > 0; v.stop(); if (had) hush() },
     /** Whether any of its words are still to be said: playing, made or being made, or on their way to it. */
     saying: () => playing.size > 0 || waiting > 0 || v.ahead(),
     quit,

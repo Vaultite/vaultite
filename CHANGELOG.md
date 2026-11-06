@@ -25,7 +25,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   in Vaultite's windows as in any app, never a second cursor or box beside it (nor its arrow pulsing in the status
   bar); over Vaultite it still knows the note line, terminal row or button under the pointer and can point there. Its
   voice stops only for the Talk key, Esc or a new ask: clicking, typing elsewhere or switching apps no longer cut it
-  off, and its cursor leaves once it's done speaking. A held ⌃⌥ never dictates into a terminal. Dictation keys still
+  off, and its cursor leaves once it's done speaking. The Talk key or Esc stops its thinking too, so the next ask is
+  answered at once, and the realtime voice's words stop with it. A held ⌃⌥ never dictates into a terminal. Dictation keys still
   work alone.
 - **A video playing on in a background tab keeps its speaker**: when one of a page's videos paused while another went on
   sounding (YouTube's next video or an ad, a preview beside it), its tab lost its speaker and the card for hidden tabs

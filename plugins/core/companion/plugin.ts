@@ -911,6 +911,8 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
     // (its Talk key pressed: its summoned session made ready while they speak)
     if (m.t === "summoning") return void lane().warm()
+    // (pressed again, or Esc, mid-answer: its summoned turn stops where it is, so the next ask isn't kept waiting)
+    if (m.t === "interrupt") return void bargeIn()
     // (who rides with their pointer: the windows draw no cursor of its meanwhile)
     if (m.t === "riding") return void ride(ws, str(m.agent).slice(0, 80))
     // (a job opened from the menu bar: no longer news)
@@ -924,6 +926,13 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "realtime") { const p = m.paused as Record<string, unknown> | null; realtimePaused.set(ws, p && typeof p === "object" ? { account: str(p.account), why: str(p.why).slice(0, 300), until: Number(p.until) || 0 } : null) }
   })
   ws.on("close", () => { screens.delete(ws); realtimePaused.delete(ws); ride(ws, "") })
+}
+/** The summoned session's turn stopped (its Talk key pressed again, Esc): only it, never the long session's. */
+function bargeIn() {
+  if (!lane().busy()) return
+  const name = ownName()
+  stopStreams(name)
+  void lane().interrupt().then((ok) => { if (ok) did(name, "stopped") }, () => {})
 }
 /** Each helper's agent riding with the pointer over the screen (its Talk key's exchange); `riding()` the one now. */
 const ridingBy = new Map<WebSocket, string>()

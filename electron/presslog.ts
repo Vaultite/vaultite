@@ -7,8 +7,10 @@ import path from "node:path"
 const KEEP_DAYS = 14
 const day = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` }
 
-/** A press under way: its steps, then how it ended (once; steps after its end are kept, marked late). */
-export type Press = { id: string; step: (ev: string, data?: Record<string, unknown>) => void; end: (outcome: string, data?: Record<string, unknown>) => void; ended: () => boolean }
+/** A press under way: its steps, then how it ended (once; steps after its end are kept, marked late); `after`, what its
+ *  ask led to once sent (its answer's first sound, a voice failing over). */
+export type Press = { id: string; step: (ev: string, data?: Record<string, unknown>) => void; end: (outcome: string, data?: Record<string, unknown>) => void; ended: () => boolean
+  after: (ev: string, data?: Record<string, unknown>) => void }
 
 /** The log in `dir` (`<prefix>-<day>.jsonl`), each line `{t, press, kind, ev, ...}`; older days than KEEP_DAYS go. */
 export function pressLog(dir: () => string, prefix = "presses", now = Date.now) {
@@ -37,6 +39,7 @@ export function pressLog(dir: () => string, prefix = "presses", now = Date.now) 
         step: (e, d = {}) => put(e, over ? { ...d, late: true } : d),
         end: (outcome, d = {}) => { if (over) return; over = true; put("end", { outcome, ...d }) },
         ended: () => over,
+        after: (e, d = {}) => put(e, d),
       }
     },
     /** A day's lines (`date`: YYYY-MM-DD), oldest first. */

@@ -378,6 +378,15 @@ export default async ($: VaultTest) => {
       sc.emit("message", Buffer.from(JSON.stringify({ t: "summoning" })))
       const warmed = await waitFor(() => { try { const x = JSON.parse(fs.readFileSync(laneFile, "utf8")).id; return x !== quick ? x : null } catch { return null } }, 5000, 50)
       check("summoned: its Talk key pressed with no process up, a fresh one starts while they speak", !!warmed && (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.some((s: Any) => s.id === warmed), warmed)
+      await idle(warmed!)
+      // (pressed again, or Esc, mid-answer: its turn stops, the long session's left alone)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "slow: tell me all about this window", app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "working", 5000, 20)
+      const longBefore = (await said(longId)).length
+      sc.emit("message", Buffer.from(JSON.stringify({ t: "interrupt" })))
+      check("summoned: the Talk key pressed again (or Esc) mid-answer stops its turn at once, never the long session's",
+        !!(await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "idle", 500, 20)) &&
+        (await said(longId)).length === longBefore)
       sc.emit("close")
       await api("POST", "ops/companion.stop", {})
       check("summoned: the companion stopped, its summoned session ends too", !!(await waitFor(async () => !(await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.length, 5000, 100)) &&

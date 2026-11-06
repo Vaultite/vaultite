@@ -105,7 +105,6 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
   return {
     /** Whether it can still be used. */
     alive: () => !closed,
-    ready: () => readied,
     /** Mic audio, 24 kHz pcm16. */
     append: (b: Buffer) => { if (b.length) send({ type: "input_audio_buffer.append", audio: b.toString("base64") }) },
     clear: () => send({ type: "input_audio_buffer.clear" }),
@@ -123,7 +122,6 @@ export function realtimeSession(c: RealtimeConfig, on: Partial<RealtimeEvents>) 
     /** What's running stops, and what waited goes. */
     cancel() { waiting.length = 0; if (active) send({ type: "response.cancel" }) },
     truncate: (item: string, ms: number) => send({ type: "conversation.item.truncate", item_id: item, content_index: 0, audio_end_ms: Math.max(0, Math.floor(ms)) }),
-    busy: () => !!active || waiting.length > 0,
     close() { if (closed) return; closed = true; try { ws.close() } catch { /* gone */ } },
   }
 }

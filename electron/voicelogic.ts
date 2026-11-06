@@ -11,8 +11,9 @@ export type Timed = { chars: string[]; ends: number[] }
 /** What a cloud voice tells of a piece it makes: its audio as it comes (PCM, 16-bit mono at `RATE`), its end, or why
  *  it failed. */
 export type Made = { audio: (pcm: Buffer, timed?: Timed) => void; end: () => void; fail: (why: string) => void }
-/** A cloud voice (tts.ts): makes a piece, answering a cancel. */
-export type Cloud = { make: (p: Piece, to: Made) => () => void }
+/** A cloud voice (tts.ts): makes a piece, answering a cancel; `reset`, its connection dropped (one that failed a piece
+ *  may be dead: the next answer opens another). */
+export type Cloud = { make: (p: Piece, to: Made) => () => void; reset?: () => void }
 /** Where audio goes, in order (voice.swift): a piece's PCM, or its words for this Mac's voice to say; `end` says a
  *  piece has all it gets; `stop` silences all at once. */
 export type Out = { pcm: (n: number, pcm: Buffer) => void; say: (n: number, text: string, language: string) => void; end: (n: number) => void; stop: () => void }
@@ -103,6 +104,7 @@ export function voice(o: VoiceOptions) {
    *  (what's played of it stays: the next says the rest, from the next word). */
   function fail(s: Slot, why: string) {
     if (!slots.includes(s)) return
+    const failed = o.clouds()[tier]
     tier++
     o.told?.({ t: "fallback", n: s.p.n, why, from: s.sent, to: tier })
     for (const x of slots) if (x.state === "making") {
@@ -111,6 +113,8 @@ export function voice(o: VoiceOptions) {
       // (its timing starts again with the next voice, its start long told: its sentences aren't told on)
       Object.assign(x, { state: x.p.text ? "wait" : "made", bufs: [], fwd: 0, sent: 0, timed: undefined, told: x.at === undefined ? 0 : Infinity })
     }
+    // (its pieces handed on first: what it still had is cancelled, so its drop fails none)
+    failed?.reset?.()
     drain()
   }
 
@@ -177,6 +181,8 @@ export function voice(o: VoiceOptions) {
     on: () => on,
     /** Whether pieces of it are still to go out to the player (made or being made). */
     ahead: () => head < slots.length,
+    /** The voice it's at: the cloud voice's place in `clouds()`, or past the last (this Mac's). */
+    tier: () => tier,
     /** The pieces so far, for tests. */
     pieces: () => slots.map((s) => ({ ...s.p, state: s.state })),
   }

@@ -286,6 +286,9 @@ const voiced = (id: string, text: string) => sock!.send(JSON.stringify({ t: "not
 setAgent({ state: "thinking", t: Date.now() })
 voiced("v1", "That's your test run, still going. It's on the second suite now.")
 check("voice: its answer to a spoken ask is said aloud", await until(() => H.spoken().some((m) => m.cmd === "say" && /test run/.test(String(m.text)))), H.spoken().slice(-3))
+const sound = H.presses().filter((l) => l.ev === "sound").at(-1)
+check("voice: …its first sound is in the press's log: whose voice, how long after the key was let go", sound?.press === H.presses().filter((l) => l.ev === "end" && l.outcome === "sent").at(-1)?.press &&
+  sound?.by === "mac" && typeof sound.afterUp === "number" && sound.afterUp >= 0, H.presses().slice(-4))
 let stopped = stops()
 H.heard({ event: "click", x: 50, y: 50 })
 front(false)
@@ -425,6 +428,17 @@ sock!.send(JSON.stringify({ t: "jobs", jobs: [{ ...job("needs you"), id: "d2", t
 await wait(50)
 check("jobs: one that comes to need them isn't news unless it was at work before; needing them, it goes first", notices().length === 1 && H.menu().find((i) => i.label === "Book it")?.sublabel === "Needs you" &&
   H.menu().findIndex((i) => i.label === "Book it") < H.menu().findIndex((i) => i.label === "Compare the flights") && H.badge() === "1", [notices(), H.menu().map((i) => i.label)])
+
+// ---------- its voice: a stop silences audio streamed from elsewhere too (the realtime voice's), nothing left saying
+{
+  const { companionVoice } = await import(at("voice.ts"))
+  const rec: Record<string, unknown>[] = []
+  const cv = companionVoice({ port: () => null, prefs: () => ({ mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 }), hints: () => ["en"], level: () => {},
+    record: (m: Record<string, unknown>) => void rec.push(m) })
+  cv.stream().pcm(Buffer.alloc(480))
+  cv.stop()
+  check("voice: a stop silences the realtime voice's streamed audio too, and nothing is left to say (its cursor isn't held)", rec.some((m) => m.cmd === "stop") && !cv.saying(), rec)
+}
 
 helper.stopHelper()
 srv.close()

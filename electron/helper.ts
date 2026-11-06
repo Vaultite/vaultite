@@ -111,6 +111,7 @@ export async function startHelper(h: HelperHost) {
 export function stopHelper() {
   if (!host) return
   host = null
+  voiceFront.close()
   speaker.quit()
   live.close()
   closePanel()
@@ -478,7 +479,7 @@ let exchange: Exchange | null = null
 function talkHeard(m: FnEvent) {
   if (!host?.home()) return
   // (pressed again: its voice stops at once, and gets ready for the next answer)
-  if ("down" in m && m.down) { stopVoice(); speaker.warm(); voiceFront.warm() }
+  if ("down" in m && m.down) { stopVoice(); live.say({ t: "interrupt" }); speaker.warm(); voiceFront.warm(); lastAsk = null }
   const now = Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
   // (each press logged, what it did or that it did nothing: presses that go nowhere can be traced)
   if (a === "listen") press = presses.start("talk", "down", { front: front?.bundle ?? "" })
@@ -529,10 +530,11 @@ async function startSummon() {
   void screenAsk("ink", { on: true })
   void screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).then((w) => { s.w = w.window ? w : null }, () => {})
   draw()
+  // (its realtime turn begins now: a let-go while the last press's words finish is this one's)
+  voiceFront.press()
   // (pressed again as its last words are still being finished (or it speaks): those go first, then this one listens)
   for (let i = 0; i < 60 && session?.into === "summon"; i++) await new Promise((r) => setTimeout(r, 25))
   if (session?.into === "summon") s.press?.step("took over a press still finishing")
-  voiceFront.press()
   await listenFor({ into: "summon", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true, of: s })
 }
 const inkOff = () => screenAsk("ink", { on: false }).catch(() => {})
@@ -559,6 +561,7 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
     ...(how.front ? { front: how.front, ...(how.talk?.length ? { talk: how.talk } : {}) } : {}) })
   if (!sent) return missed(s, "Vaultite's server isn't connected", "Can't reach Vaultite")
   s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot, ...(how.front ? { front: how.front } : {}) })
+  if (s.press && !how.front) lastAsk = { press: s.press, up: s.released ?? Date.now() }
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
@@ -628,7 +631,8 @@ function cue(name: "listen" | "sent" | "answer" | "missed") {
 }
 /** The exchange over (Esc; `stop`: its voice too): its box closed, its cursor gone (at once when it's done; else once it is). */
 function endExchange(stop = true) {
-  if (stop) stopVoice()
+  // (Esc: its words and its turn on them stop)
+  if (stop) { stopVoice(); live.say({ t: "interrupt" }) }
   if (settleTimer) { clearTimeout(settleTimer); settleTimer = null }
   if (!exchange && !summon) return
   const name = exchange?.name ?? summon?.name
@@ -893,13 +897,25 @@ async function askFrom(name: string, text: string) {
 
 /** What a scripted copy would have said aloud (it plays nothing). */
 const spoken: Record<string, unknown>[] = []
+/** The press whose ask went last, and when its key was let go: its answer's first sound is logged with it. */
+let lastAsk: { press: Press; up: number } | null = null
+/** The languages the user speaks, likeliest first (two letters): dictation's hints, then the Mac's. */
+const hints = () => [...new Set([...(Array.isArray(prefs.dictation.languages) ? prefs.dictation.languages.map(String) : []), ...app.getPreferredSystemLanguages()]
+  .map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2}$/.test(l)))]
 const speaker = companionVoice({
   port: () => host?.home()?.port ?? null,
   prefs: () => prefs.voice,
-  hints: () => [...new Set([...(Array.isArray(prefs.dictation.languages) ? prefs.dictation.languages.map(String) : []), ...app.getPreferredSystemLanguages()]
-    .map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2}$/.test(l)))],
+  hints,
   level: (on, v) => voiceLevel(on, v),
   heard: (h) => voiceHeardLine(h),
+  // (the press's log: how long from letting the key go to the answer's first sound, and a voice failing over)
+  told: (e) => {
+    const x = lastAsk
+    if (!x) return
+    if (e.t === "fallback") return x.press.after("voice-fallback", { why: e.why, to: e.to })
+    lastAsk = null
+    x.press.after("sound", { by: e.by, afterUp: Math.round(e.at - x.up) })
+  },
   ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
 })
 /** The realtime voice (realtimefront.ts): a spoken ask over the screen heard as it's said and answered at once, in its
@@ -907,6 +923,7 @@ const speaker = companionVoice({
 const voiceFront = realtimeFront({
   config: realtimeConfig,
   name: () => live.state.name,
+  languages: hints,
   player: speaker,
   look: ({ question, talk }) => { const s = summon; if (s) void sendSummon(s, question, { front: "realtime", talk }) },
   answered: ({ heard, said }) => {
@@ -978,7 +995,6 @@ function voiceHeardAgent(a: Agent) {
   if (a.name === live.state.name) voiceFront.agent(a.state)
   if (voiced?.name === a.name && voiced.notes.length && (a.state === "watching" || a.state === "away")) speaker.end()
 }
-/** Silence, at once: what's said now, and what's still to come of answers asked before `until` (now). */
 /** The drawing up, as the server sent it; the sentences of the answer said aloud so far, as heard (any voice's). */
 let drawn: Drawing | null = null, heardLines: Heard[] = []
 /** A sentence heard (the companion's voice, or another that plays its answer): its drawing's pen keeps to it. */
@@ -991,6 +1007,7 @@ export function voiceHeardLine(h: Heard) {
 function paceDrawing() {
   showDrawing(drawn && (heardLines.length ? { ...drawn, spoken: heardBeats(drawn.caption ?? "", heardLines) } : drawn), elementPlaces(lastNear))
 }
+/** Silence, at once: what's said now, and what's still to come of answers asked before `until` (now). */
 function stopVoice(until = Date.now()) {
   hushed = Math.max(hushed, until)
   if (voiced?.quiet) clearTimeout(voiced.quiet)
