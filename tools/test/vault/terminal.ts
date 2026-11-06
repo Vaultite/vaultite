@@ -381,8 +381,9 @@ export default async ($: VaultTest) => {
       after.ended === true && after.text.includes("got hello") && !(await b.list()).some((x) => x.id === "cap1"), [ended, after])
     check("terminal server: it tells what happens (started, meta, exited with how)", evs.map((e) => e.type).filter((t) => ["started", "meta", "exited"].includes(t)).join() === "started,meta,exited" &&
       (evs.find((e) => e.type === "exited")?.exit as { code: number })?.code === 4 && (evs[0].info as { command?: string })?.command === "the test", evs.map((e) => e.type))
-    await b.create("keys1", { ...spec, run: { command: "stty raw -echo; dd bs=1 count=8 2>/dev/null | od -An -c; sleep 5" } })
-    await new Promise((r) => setTimeout(r, 300))
+    // (sent once its tty is raw (said as worked out, so not its command line), not after a guess: C-c ended a slow one)
+    await b.create("keys1", { ...spec, run: { command: "stty raw -echo; echo raw-$((6 * 7)); dd bs=1 count=8 2>/dev/null | od -An -c; sleep 5" } })
+    await waitFor(async () => /raw-42/.test((await b.capture("keys1", { format: "text" })).text) || null, 10_000, 50)
     await b.send("keys1", { keys: ["C-c", "Up", "Escape", "M-x", "Tab"] })
     const keyed = await waitFor(async () => { const t = (await b.capture("keys1", { format: "text" })).text; return /\\t/.test(t) ? t : null }, 5_000, 50)
     await b.kill("keys1")
