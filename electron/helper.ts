@@ -12,7 +12,7 @@ import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, besidePointer, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, shotCrop } from "./helperlogic.ts"
+import { atOffset, badgeOf, besidePointer, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, shotCrop, trailStrokes } from "./helperlogic.ts"
 import { closePanel, drawingActs, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
@@ -282,7 +282,6 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "fn") return prefs.talk.includes("fn") ? talkHeard(m as FnEvent) : prefs.keys.includes("fn") ? fnHeard(m) : undefined
   if (m.event === "mod") return modHeard(m)
   if (m.event === "chord") return chordHeard(m)
-  if (m.event === "ink") return inkHeard(m)
   if (m.event === "moved") return windowMoved(m)
   // (its answer showing: a click elsewhere or Esc ends the exchange)
   if (m.event === "click") { const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) endExchange(); return }
@@ -398,8 +397,9 @@ function act(a: FnAction, talk = false) {
 
 const gesture = talkGesture()
 /** The companion called up outside Vaultite: its cursor at the pointer (listening, then thinking), the window there, the
- *  ink drawn while the key is held; `was`: where its own cursor was, which hides till its ask moves it. */
-type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; state: "listening" | "thinking" | "watching"; ink: Point[][]; at: number; was: string; typing?: boolean
+ *  pointer's trail while the key is held (`released`: when it was let go); `was`: where its own cursor was. */
+type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; state: "listening" | "thinking" | "watching"; trail: (Point & { t: number })[]; released?: number
+  at: number; was: string; typing?: boolean
   /** Its turn on the ask seen at work (from then on its state is the agent's). */
   busySeen?: boolean }
 let summon: Summon | null = null
@@ -426,7 +426,7 @@ function talkAct(a: NonNullable<TalkAction>) {
   if (a === "cancel") { void inkOff(); return act("cancel", true) }
   if (a === "send") {
     // (hands-free in its box: what's in it goes; held: let go here, it thinks here)
-    if (session?.into === "summon" || (starting && startingTalk)) { if (summon) Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking" }); void inkOff(); draw() }
+    if (session?.into === "summon" || (starting && startingTalk)) { if (summon) Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking", released: Date.now() }); void inkOff(); draw() }
     else if (!session && summon?.state === "listening") { summon = null; void inkOff(); return draw() }
     return act("stop", true)
   }
@@ -440,14 +440,15 @@ function talkAct(a: NonNullable<TalkAction>) {
   void freeTalk()
 }
 
-/** A Talk key held outside Vaultite: its cursor at the pointer, listening, the words by it; drags meanwhile are ink. */
+/** A Talk key held outside Vaultite: its cursor at the pointer, listening, the words by it; the pointer leaves a trail
+ *  meanwhile (drags too: the screen helper keeps them from the app). */
 async function startSummon() {
   if (dictating()) return
   const name = live.state.name
   if (live.state.mode === "off") return notice("off", "The companion is off", "Turn it on in the companion's settings to talk to it.")
   if (!name) return hint("The companion isn't ready yet: open Vaultite")
   const p = screen.getCursorScreenPoint(), at = Date.now(), own = live.state.agents.get(name)
-  const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, state: "listening", ink: [], at, was: own ? placeKey(own) : "" }
+  const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, state: "listening", trail: [], at, was: own ? placeKey(own) : "" }
   summon = s
   live.say({ t: "summoning" })
   // (a press that's a shortcut shows nothing: it appears after a moment)
@@ -458,21 +459,17 @@ async function startSummon() {
   await listenFor({ into: "summon", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true })
 }
 const inkOff = () => screenAsk("ink", { on: false }).catch(() => {})
-let inkDrawn: ReturnType<typeof setTimeout> | null = null
-/** A point of ink: a stroke begun, drawn on, ended (screen points). */
-function inkHeard(m: Record<string, unknown>) {
+/** The pointer moved while it's fed: held, its trail (the last few seconds). */
+function trailed(p: Point, t: number) {
   const s = summon
-  if (!s || s.state !== "listening") return
-  const p = { x: Number(m.x), y: Number(m.y) }
-  if (m.phase === "down" || !s.ink.length) s.ink.push([p]); else s.ink.at(-1)!.push(p)
-  s.p = p
-  inkDrawn ??= setTimeout(() => { inkDrawn = null; draw() }, 16)
+  if (!s || s.state !== "listening" || s.typing) return
+  s.trail.push({ x: p.x, y: p.y, t })
+  if (s.trail.length > 400 || t - s.trail[0].t > 4000) s.trail = s.trail.filter((q) => t - q.t <= 4000).slice(-400)
 }
-
-/** The summoned companion's ask (`text`; none, a point at what the ink marks): about the point let go at, with what's
+/** The summoned companion's ask (`text`; none, a point at what its trail marks): about the point let go at, with what's
  *  there, the display's picture and what Accessibility finds near it; its answer comes in its box, open by it. */
 async function sendSummon(s: Summon, text: string) {
-  const ink = s.ink.filter((k) => k.length > 1)
+  const ink = trailStrokes(s.trail, s.released ?? Date.now())
   if (!text && !ink.length) { summon = summon === s ? null : summon; return draw() }
   Object.assign(s, { state: "thinking" })
   draw()
@@ -984,7 +981,7 @@ function draw() {
   // (held: it rides beside the pointer through the exchange, the overlay fed the pointer; a press that's a shortcut
   // shows nothing: it waits a moment to appear)
   const listening = s?.state === "listening" && !s.typing
-  if (listening && !inkDrawn && !s.ink.length) s.p = screen.getCursorScreenPoint()
+  if (listening) s.p = screen.getCursorScreenPoint()
   const words = session?.into === "summon" ? [...session.finals, session.pending].reduce((all, t) => (t ? all + joinText(all, t) : all), "").trim() : ""
   const own = s ? live.state.agents.get(s.name) : undefined, busy = !!own && BUSY.has(own.state)
   if (s?.state === "thinking" && busy) s.busySeen = true
@@ -992,8 +989,8 @@ function draw() {
   const state = !s ? "watching" : listening ? "listening" : busy || (s.state === "thinking" && !s.busySeen) ? "thinking" : "watching"
   const home = s && besidePointer(s.p, screen.getDisplayNearestPoint(s.p).bounds)
   const called: Scene["summon"] = s && home && (!listening || Date.now() - s.at > 120)
-    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
-  followPointer(!!called)
+    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
+  followPointer(!!called, trailed)
   panelAvoid(aimed?.frame ? [aimed.frame] : [])
   for (const a of live.state.agents.values()) if (a.state !== "away") leaveWhenDone(a, says)
   watchWindows()
@@ -1001,8 +998,7 @@ function draw() {
   const hintNow = hinted && hinted.until > Date.now() ? hinted : null
   const pill: Scene["pill"] = d && d.into === "field" ? { level: d.level, text: d.pending || d.finals.at(-1) || "", ready: d.ready, ...(d.focus.frame ? { display: displayOf(d.focus.frame) } : {}) }
     : hintNow ? { level: 0, text: hintNow.text, ready: true, hint: true } : null
-  const ink = s && s.ink.length && (exchange || s.state !== "watching") ? { tint: s.tint, strokes: s.ink } : null
-  lastScene = { ...handOff(agents, called), ink, pill, speaking: speakingNow }
+  lastScene = { ...handOff(agents, called), pill, speaking: speakingNow }
   showOverlay(based || null, lastScene)
   badge()
 }

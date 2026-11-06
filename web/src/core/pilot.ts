@@ -14,8 +14,8 @@ export type Mode = "follow" | "fly" | "pen" | "parked" | "back"
  *  the next input). `to`: where it's headed or rests (null: with the pointer). */
 export type Pose = { x: number; y: number; scale: number; mode: Mode; busy: boolean; to: Pt | null }
 
-/** Beside the pointer: fast, never sluggish. */
-export const FOLLOW = stiffness(170)
+/** Beside the pointer: it trails it, visibly following (about a third of a second to catch up), never sluggish. */
+export const FOLLOW = stiffness(340)
 /** Pointing: shown this long once it's there before moving on can take it back. */
 export const DWELL = 900
 /** Moving on: the pointer this far from where it was when the pointing began. */

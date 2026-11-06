@@ -14,11 +14,11 @@ export type PanelActs = { send: (name: string, text: string) => void; mic: () =>
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
 const wins = new Map<number, BrowserWindow>()
 let url = ""
-let scene: Scene = { agents: [], summon: null, ink: null, pill: null }
+let scene: Scene = { agents: [], summon: null, pill: null }
 let acts: OverlayActs | null = null
 let watching = false
 
-const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.ink && !x.pill && !drawing
+const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.pill && !drawing
 /** What each window was sent last (its scene's shape and places), and its hiding once it's had nothing to draw a while. */
 const sent = new Map<BrowserWindow, { shape: string; at: string }>()
 const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()
@@ -91,8 +91,11 @@ let feed: ReturnType<typeof setInterval> | null = null, fed = "", lastP: Point |
 const speed = { x: 0, y: 0 }
 /** Where the companion is headed or rests while it points (the overlay's pilot says; null: beside the pointer). */
 let pilotTo: Point | null = null
-/** Feed the pointer to the overlay (on: an exchange), and its box along with it. */
-export function followPointer(on: boolean) {
+/** Where the pointer went, each move while it's fed (the helper keeps the trail the Talk key's hold draws). */
+let tap: ((p: Point, t: number) => void) | null = null
+/** Feed the pointer to the overlay (on: an exchange), and its box along with it; `moved` hears each move. */
+export function followPointer(on: boolean, moved?: (p: Point, t: number) => void) {
+  tap = on ? moved ?? null : null
   if (on === !!feed) return
   if (!on) { clearInterval(feed!); feed = null; fed = ""; pilotTo = null; return }
   feed = setInterval(() => feedPointer(), 16)
@@ -108,6 +111,7 @@ function feedPointer(again = false) {
   lastP = p; lastT = now
   if (key !== fed || again) {
     fed = key
+    tap?.(p, now)
     const home = besidePointer(p, screen.getDisplayNearestPoint(p).bounds), ds = screen.getAllDisplays()
     for (const [id, w] of wins) {
       if (w.isDestroyed() || w.webContents.isLoading()) continue

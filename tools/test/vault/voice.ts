@@ -111,7 +111,7 @@ export default async ($: VaultTest) => {
     check("voice: its settings, the manifest's defaults (when you speak, Adrian), a speed kept in range", def.mode === "auto" && def.name === "Adrian" && def.speed === 1 &&
       set.mode === "always" && set.name === "Larissa" && set.speed === 1.3, { def, set })
     const d = { id: 1, bounds: { x: 0, y: 0, width: 1000, height: 800 } }
-    const scene = (level: number) => sceneFor(d, { agents: [], summon: null, ink: null, pill: null, speaking: { name: "Claude", level } }, { x: 1, y: 1 }, [d])
+    const scene = (level: number) => sceneFor(d, { agents: [], summon: null, pill: null, speaking: { name: "Claude", level } }, { x: 1, y: 1 }, [d])
     const a = splitScene(scene(0.2)), b = splitScene(scene(0.8))
     check("voice: its level changes only the places the overlay is sent, not what it draws", a.shape === b.shape && a.at.level === 0.2 && b.at.level === 0.8 && a.shape.includes('"speaking":{"name":"Claude"}'), { a, b })
   }

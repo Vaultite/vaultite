@@ -12,7 +12,7 @@ const ROOT = path.resolve(import.meta.dirname, "../..")
 const at = (f: string) => pathToFileURL(path.join(ROOT, "electron", f)).href
 type Pt = { x: number; y: number }
 type Item = { name: string; sx: number; sy: number; from?: Pt; leaving?: boolean; state?: string; words?: string; follow?: boolean; aim?: { id: string; x: number; y: number } }
-type Scene = { agents: Item[]; summon: Item | null; ink: { strokes: Pt[][] } | null }
+type Scene = { agents: Item[]; summon: Item | null }
 const scenes: Scene[] = []
 let pointer = { x: 500, y: 500 }
 const display = { id: 1, bounds: { x: 0, y: 0, width: 1600, height: 1000 }, workArea: { x: 0, y: 25, width: 1600, height: 975 } }
@@ -25,12 +25,12 @@ type Acts = { open: (name: string, at: Pt) => void }
 type PanelActs = { send: (name: string, text: string) => void; closed: (name: string) => void }
 let acts: Acts | null = null, panelActs: PanelActs | null = null
 const panels: { name: string; at: Pt; items: { id: string; kind: string }[]; how: string; focus: boolean }[] = []
-let panelShown = false, closed = 0, following = false
+let panelShown = false, closed = 0, following = false, fed: ((p: Pt, t: number) => void) | null = null
 mock.module(at("overlay.ts"), { exports: { showOverlay: (_b: string, s?: Scene) => { if (s) scenes.push(JSON.parse(JSON.stringify(s))) }, overlayActs: (a: Acts) => { acts = a },
   onPanel: (a: PanelActs) => { panelActs = a }, openPanel: (_b: string, at: Pt, d: { name: string; items: []; how: string }, focus = true) => { panelShown = true; panels.push({ ...d, at, focus }) }, panelData() {},
   panelOpen: () => (panelShown ? panels.at(-1)?.name ?? null : null), panelFocused: () => false, panelMenuClosed() {}, closePanel() { if (panelShown) { panelShown = false; closed++; panelActs?.closed("Claude") } },
   ownWindows: () => [], panelBounds: () => (panelShown ? { x: 600, y: 300, width: 300, height: 160 } : null),
-  showDrawing() {}, drawingActs() {}, endDrawing() {}, followPointer: (on: boolean) => { following = on }, panelAvoid() {} } })
+  showDrawing() {}, drawingActs() {}, endDrawing() {}, followPointer: (on: boolean, moved?: (p: Pt, t: number) => void) => { following = on; fed = on ? moved ?? null : null }, panelAvoid() {} } })
 mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async () => ({}), startScreen: async () => {}, stopScreen() {}, windowShot: async () => null, displayShot: async () => null,
   fnUsage: async () => null } })
 // (the recognizer: what it heard, given when it's stopped)
@@ -89,7 +89,7 @@ await until(() => scenes.length > 0)
 check("helper draw: in a note, Vaultite in front: nothing on screen", !H.scene()!.agents.length && !H.scene()!.summon, H.scene())
 front(false)
 await wait(80)
-check("helper draw: another app in front, the companion idle: still nothing (no cursor at rest)", !H.scene()!.agents.length && !H.scene()!.summon && !H.scene()!.ink, H.scene())
+check("helper draw: another app in front, the companion idle: still nothing (no cursor at rest)", !H.scene()!.agents.length && !H.scene()!.summon, H.scene())
 
 scenes.length = 0
 setAgent({ path: undefined, line: undefined, sx: 800, sy: 500 })
@@ -139,11 +139,11 @@ await wait(40)
 check("summoned: a shortcut's press shows nothing at first (⌃⌥→ is a window manager's)", !H.scene()!.summon, H.scene()!.summon)
 check("summoned: held, its cursor comes beside the pointer, listening, riding with it (the overlay fed the pointer)",
   await until(() => H.scene()!.summon?.state === "listening" && H.scene()!.summon?.sx === 524 && !!H.scene()!.summon?.follow) && following, [H.scene()!.summon, following])
-H.heard({ event: "ink", phase: "down", x: 470, y: 470 })
-for (let i = 1; i <= 10; i++) H.heard({ event: "ink", phase: "move", x: 470 + i * 6, y: 470 + (i % 2) })
-H.heard({ event: "ink", phase: "up", x: 530, y: 471 })
+// (the pointer moved while held: the overlay's feed tells the helper each move, its trail)
+const feed = fed as ((p: Pt, t: number) => void) | null
+for (let i = 0; i <= 10; i++) feed?.({ x: 470 + i * 6, y: 470 + (i % 2) }, Date.now() - 200 + i * 16)
 pointer = { x: 530, y: 471 }
-check("summoned: a drag while held is ink, drawn as it goes, the cursor beside it", await until(() => (H.scene()!.ink?.strokes[0]?.length ?? 0) >= 10 && H.scene()!.summon?.sx === 554), H.scene())
+check("summoned: held, the pointer's moves are its trail (the overlay draws it from its feed), the cursor beside it", !!feed && await until(() => H.scene()!.summon?.sx === 554), H.scene())
 await wait(300)
 chord(false)
 check("summoned: let go, it thinks there", await until(() => H.scene()!.summon?.state === "thinking"), H.scene()!.summon)
@@ -168,7 +168,7 @@ check("summoned: its words go in the box, seen there", H.asked().some((m) => m.t
 H.heard({ event: "click", x: 700, y: 350 })
 check("summoned: a click in its box keeps it", closed === 0)
 H.heard({ event: "click", x: 50, y: 50 })
-check("summoned: a click elsewhere ends the exchange: the box closes, the cursor goes, the pointer no longer fed", closed === 1 && !H.scene()!.ink && !H.scene()!.summon && !following, closed)
+check("summoned: a click elsewhere ends the exchange: the box closes, the cursor goes, the pointer no longer fed", closed === 1 && !H.scene()!.summon && !following, closed)
 setAgent({ state: "watching", t: Date.now() - 7000 })
 check("summoned: done there, idle and its words gone, its cursor leaves the screen", await until(() => H.asked().some((m) => m.t === "home" && m.agent === "Claude")), H.asked().slice(-3))
 

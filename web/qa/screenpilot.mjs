@@ -1,6 +1,6 @@
 // The summoned companion in its exchange (web/src/core/pilot.ts in web/src/screen.tsx's page, its pen in
 // web/src/screendraw/pen.ts and Draw.tsx), headless with a stand-in bridge: it rides beside the pointer on a fast
-// spring, flies an arc to what it points at, traces its marks as the ink draws them, goes back once the pointer moves
+// spring, the Talk key held its pointer leaves a fading trail, it flies an arc to what it points at, traces its marks as the ink draws them, goes back once the pointer moves
 // on, sleeps when still, and with reduced motion is just there. Its answer's box says how to reply and its field takes
 // the keyboard as the box does. Reads only web/dist (npm run build first): no app, no window on screen.
 // node web/qa/screenpilot.mjs
@@ -25,7 +25,7 @@ async function open(reduced = false, hash = "") {
     window.requestAnimationFrame = (fn) => { window.__frames++; return raf(fn) }
     window.__calls = []
     const call = (name) => (...a) => window.__calls.push([name, ...a])
-    window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt() { return () => {} }, onPointer(fn) { window.__pointer = fn; return () => {} }, pilot: call("pilot"), grab() {},
+    window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt(fn) { window.__at = fn; return () => {} }, onPointer(fn) { window.__pointer = fn; return () => {} }, pilot: call("pilot"), grab() {},
       open() {}, stop() {}, draw: { on(fn) { window.__draw = fn; return () => {} }, act() {} },
       panel: { on(fn) { window.__panel = fn; return () => {} }, size() {}, send: call("send"), close() {}, mic() {}, more() {} } }
   })
@@ -34,7 +34,7 @@ async function open(reduced = false, hash = "") {
   return page
 }
 const BESIDE = [24, 20]
-const summon = (page, extra = {}) => page.evaluate((s) => window.__scene({ width: 1200, height: 800, top: 25, agents: [], summon: { name: "Claude", tint: "orange", state: "watching", sx: 124, sy: 120, follow: true, ...s }, ink: null, pill: null }), extra)
+const summon = (page, extra = {}) => page.evaluate((s) => window.__scene({ width: 1200, height: 800, top: 25, agents: [], summon: { name: "Claude", tint: "orange", state: "watching", sx: 124, sy: 120, follow: true, ...s }, pill: null }), extra)
 const pointer = (page, x, y) => page.evaluate(([x, y, b]) => window.__pointer([x, y, x + b[0], y + b[1]]), [x, y, BESIDE])
 /** Where its arrow's tip is each frame for `ms`, and as a frame later begins, the ink's front (`ink`: a mark's mask). */
 const sample = (page, ms, ink = false) => page.evaluate(([ms, ink]) => new Promise((done) => {
@@ -66,10 +66,10 @@ const start = (await sample(page, 20)).filter(Boolean).at(-1)
 check("summoned in an exchange, it rides beside the pointer (right of and below its arrow)", start?.x === 124 && start?.y === 120, start)
 
 await pointer(page, 700, 400)
-const ride = (await sample(page, 500)).filter(Boolean), d0 = Math.hypot(700 + 24 - 124, 400 + 20 - 120)
-const at150 = ride.find((_, i) => i >= 9), xs = ride.map((p) => p.x)
-check("the pointer jumps: it follows, most of the way in a sixth of a second, never past, and settles there",
-  ride.length > 20 && Math.hypot(at150.x - 724, at150.y - 420) < d0 * 0.2 && Math.max(...xs) <= 724.01 && ride.at(-1).x === 724 && ride.at(-1).y === 420, { at150, end: ride.at(-1), n: ride.length })
+const ride = (await sample(page, 900)).filter(Boolean), d0 = Math.hypot(700 + 24 - 124, 400 + 20 - 120)
+const early = ride[4], at330 = ride[20], xs = ride.map((p) => p.x)
+check("the pointer jumps: it trails after it, visibly behind at first, most of the way in a third of a second, never past, and settles there",
+  ride.length > 30 && Math.hypot(early.x - 724, early.y - 420) > d0 * 0.3 && Math.hypot(at330.x - 724, at330.y - 420) < d0 * 0.05 && Math.max(...xs) <= 724.01 && ride.at(-1).x === 724 && ride.at(-1).y === 420, { early, at330, end: ride.at(-1), n: ride.length })
 // (a hand's move: the pointer along a line, a sample a frame, as the overlay's feed sends it)
 const glide = page.evaluate(() => new Promise((done) => {
   const out = []; let i = 0
@@ -77,17 +77,60 @@ const glide = page.evaluate(() => new Promise((done) => {
     if (i <= 40) window.__pointer([700 - i * 12, 400 + i * 4, 724 - i * 12, 420 + i * 4])
     const el = document.querySelector("[data-companion-summoned]"), m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(el.style.transform)
     out.push({ x: +m[1] + 3, y: +m[2] + 2, px: 724 - Math.min(40, i) * 12 })
-    if (++i < 70) requestAnimationFrame(f); else done(out)
+    if (++i < 85) requestAnimationFrame(f); else done(out)
   }
   requestAnimationFrame(f)
 }))
 const moved = await glide, steps = moved.slice(1).map((p, i) => Math.hypot(p.x - moved[i].x, p.y - moved[i].y)), lag = Math.max(...moved.slice(5, 40).map((p) => Math.abs(p.x - p.px)))
-check("a hand's move: it rides along smoothly, close behind, in even steps (no jumps)", Math.max(...steps) < 25 && lag < 60 && moved.at(-1).x === 244, { steps: Math.max(...steps), lag, end: moved.at(-1) })
+check("a hand's move: it trails along smoothly, visibly behind but never lost, in even steps (no jumps)", Math.max(...steps) < 25 && lag > 20 && lag < 120 && Math.abs(moved.at(-1).x - 244) < 2, { steps: Math.max(...steps), lag, end: moved.at(-1) })
 await pointer(page, 700, 400)
+await page.waitForTimeout(500)
 await page.waitForTimeout(500)
 const f0 = await page.evaluate(() => window.__frames)
 await page.waitForTimeout(400)
 check("still, it asks for no frames (cheap when idle)", (await page.evaluate(() => window.__frames)) === f0)
+
+// held: bars by its name show how loud they are; the pointer leaves a trail in its colour, the newest part solid, older
+// parts fading, gone after letting go
+await summon(page, { state: "listening", level: 0.1 })
+const quiet = await page.evaluate(() => document.querySelector(".companion-hear i:nth-child(2)")?.getBoundingClientRect().height)
+await page.evaluate(() => window.__at({ agents: {}, summon: [124, 120], hear: 1 }))
+await page.waitForTimeout(150)
+const loud = await page.evaluate(() => document.querySelector(".companion-hear i:nth-child(2)")?.getBoundingClientRect().height)
+check("listening, bars by its name rise and fall with their voice", quiet > 0 && loud > quiet * 2, { quiet, loud })
+const ringed = page.evaluate(() => new Promise((done) => {
+  let i = 0
+  const f = () => { const a = (i / 40) * Math.PI * 2; window.__pointer([500 + 120 * Math.cos(a), 400 + 70 * Math.sin(a), 524 + 120 * Math.cos(a), 420 + 70 * Math.sin(a)]); if (++i <= 60) requestAnimationFrame(f); else done() }
+  requestAnimationFrame(f)
+}))
+await ringed
+await page.waitForTimeout(20)
+const ink = await page.evaluate(() => {
+  const c = document.querySelector("canvas"), g = c?.getContext("2d"), dpr = devicePixelRatio
+  // (alpha where the pointer is now, at 1.5 turns, and where it was a turn before at the same spot's opposite side)
+  const at = (deg) => { const a = (deg / 360) * Math.PI * 2; return g.getImageData(Math.round((500 + 120 * Math.cos(a)) * dpr), Math.round((400 + 70 * Math.sin(a)) * dpr), 1, 1).data[3] }
+  const px = (deg) => { const a = (deg / 360) * Math.PI * 2; return g.getImageData(Math.round((500 + 120 * Math.cos(a)) * dpr), Math.round((400 + 70 * Math.sin(a)) * dpr), 1, 1).data }
+  return c && { w: c.width, head: at(540), older: at(200), newer: at(340), empty: g.getImageData(Math.round(500 * dpr), Math.round(400 * dpr), 1, 1).data[3], colour: [...px(540)].slice(0, 3).join() }
+})
+check("held, the pointer leaves a thick trail in its colour, its newest part solid, older parts fainter, nothing off it",
+  !!ink && ink.w > 0 && ink.head > 240 && ink.older > 0 && ink.older < ink.newer - 30 && ink.empty === 0 && ink.colour !== "0,0,0", ink)
+// (seamless: along a stretch of one age, its opacity never dips where its pieces meet)
+const dips = await page.evaluate(() => {
+  const g = document.querySelector("canvas").getContext("2d"), dpr = devicePixelRatio, out = []
+  for (let deg = 200; deg <= 340; deg += 1.5) { const a = (deg / 360) * Math.PI * 2; out.push(g.getImageData(Math.round((500 + 120 * Math.cos(a)) * dpr), Math.round((400 + 70 * Math.sin(a)) * dpr), 1, 1).data[3]) }
+  return Math.max(...out.slice(1).map((v, i) => out[i] - v))
+})
+check("…smooth, with no seams or beads where its pieces meet", dips < 12, dips)
+await summon(page, { state: "thinking" })
+await page.waitForTimeout(2000)
+const after = await page.evaluate(() => document.querySelector("canvas")?.width)
+check("let go, the rest of the trail fades away, its canvas gone to nothing", after === 0, after)
+const f1 = await page.evaluate(() => window.__frames)
+await page.waitForTimeout(300)
+check("…and nothing runs after", (await page.evaluate(() => window.__frames)) === f1)
+await summon(page)
+await pointer(page, 700, 400)
+await page.waitForTimeout(900)
 
 // pointing: an arc to the element, then back once the pointer moves on
 await summon(page, { aim: { id: "a1", x: 300, y: 650 } })
@@ -144,6 +187,13 @@ await summon(calm, { aim: { id: "r1", x: 300, y: 300 } })
 await calm.waitForTimeout(40)
 const c2 = (await sample(calm, 20)).filter(Boolean).at(-1)
 check("reduced motion: it's beside the pointer and at what it points at at once", c1.x === 624 && c1.y === 520 && c2.x === 300 && c2.y === 300, { c1, c2 })
+await summon(calm, { state: "listening" })
+for (const [x, y] of [[300, 300], [340, 310], [380, 330], [420, 360]]) await pointer(calm, x, y)
+await calm.waitForTimeout(100)
+const solid = await calm.evaluate(() => { const c = document.querySelector("canvas"), g = c.getContext("2d"), d = devicePixelRatio; return [g.getImageData(Math.round(320 * d), Math.round(305 * d), 1, 1).data[3], g.getImageData(Math.round(420 * d), Math.round(360 * d), 1, 1).data[3]] })
+await summon(calm, { state: "thinking" })
+await calm.waitForTimeout(100)
+check("reduced motion: the trail is drawn without fading, and gone at once when let go", solid[0] > 200 && solid[1] > 200 && await calm.evaluate(() => document.querySelector("canvas")?.width === 0), solid)
 
 // its answer's box: how to reply, and its field takes the keyboard as the box does
 const box = await open(false, "#panel")

@@ -1,7 +1,7 @@
 // The companion over the screen (web/src/screen.tsx, the page electron/overlay.ts' windows draw), headless with a stand-in
 // for its bridge: cursors glide, fade, look as the window's and hand over to it; their words never cover their name
 // (plugins/core/companion/boxes.ts), a bubble clicked opens the conversation (#panel); summoned, listening and thinking,
-// with ink. Reads only web/dist (npm run build first): no app, no window on screen.
+// its words. Reads only web/dist (npm run build first): no app, no window on screen.
 // node web/qa/screencursor.mjs
 import fs from "node:fs"
 import path from "node:path"
@@ -28,7 +28,7 @@ await page.addInitScript(() => {
 })
 await page.goto("http://screen.test/screen.html")
 await page.waitForFunction(() => !!window.__scene)
-const scene = (agents, summon = null, ink = null) => page.evaluate(([agents, summon, ink]) => window.__scene({ width: 1200, height: 800, top: 25, agents, summon, ink, pill: null }), [agents, summon, ink])
+const scene = (agents, summon = null) => page.evaluate(([agents, summon]) => window.__scene({ width: 1200, height: 800, top: 25, agents, summon, pill: null }), [agents, summon])
 const calls = (name) => page.evaluate((name) => window.__calls.filter((c) => c[0] === name), name)
 const A = (sx, sy, extra = {}) => ({ name: "Claude", tint: "orange", state: "thinking", sx, sy, ...extra })
 const pos = () => page.evaluate(() => { const el = [...document.querySelectorAll('#root > div[style*="translate"]')].find((e) => e.style.transform.startsWith("translate")); const m = el && /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(el.style.transform); return m ? [+m[1], +m[2]] : null })
@@ -103,14 +103,13 @@ check("one going into the window fades on its way", going === true)
 
 // summoned: at the pointer, listening with its words by it, then thinking; its own cursor takes over, no ghost
 const S = (state, extra = {}) => ({ name: "Claude", tint: "orange", state, sx: 600, sy: 400, ...extra })
-await scene([], S("listening", { words: "what's this button" }), { tint: "orange", strokes: [[{ x: 560, y: 420 }, { x: 600, y: 424 }, { x: 640, y: 420 }]] })
+await scene([], S("listening", { words: "what's this button" }))
 await page.waitForTimeout(300)
-const heard = await page.evaluate(() => { const c = document.querySelector("[data-companion-summoned]"); return c && { state: c.dataset.companionSummoned, wave: !!c.querySelector(".companion-wave"), words: c.querySelector("[data-bubble]")?.textContent,
-  ink: document.querySelectorAll('path[stroke-linecap="round"]').length } })
-check("summoned, listening: its cursor with a wave, its words by it as they come, the ink drawn", heard?.state === "listening" && heard.wave && heard.words === "what's this button" && heard.ink === 1, heard)
+const heard = await page.evaluate(() => { const c = document.querySelector("[data-companion-summoned]"); return c && { state: c.dataset.companionSummoned, wave: !!c.querySelector(".companion-wave"), words: c.querySelector("[data-bubble]")?.textContent } })
+check("summoned, listening: its cursor with a wave, its words by it as they come", heard?.state === "listening" && heard.wave && heard.words === "what's this button", heard)
 await scene([], S("thinking"))
 await page.waitForTimeout(100)
-check("let go, it thinks there (dots), the words gone with the ink", await page.evaluate(() => { const c = document.querySelector("[data-companion-summoned]"); return c?.dataset.companionSummoned === "thinking" && !!c.querySelector(".companion-dots") && !c.querySelector("[data-bubble]") && !document.querySelector('path[stroke-linecap="round"]') }))
+check("let go, it thinks there (dots), the words gone", await page.evaluate(() => { const c = document.querySelector("[data-companion-summoned]"); return c?.dataset.companionSummoned === "thinking" && !!c.querySelector(".companion-dots") && !c.querySelector("[data-bubble]") }))
 await scene([A(600, 400, { from: { x: 600, y: 400 } })])
 await page.waitForTimeout(30)
 const swapped = await page.evaluate(() => ({ cursors: document.querySelectorAll('#root > div[style*="translate"]').length, ghost: document.querySelectorAll("[data-gone]").length }))

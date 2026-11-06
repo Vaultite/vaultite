@@ -66,7 +66,7 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { atOffset, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
+    const { atOffset, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene, trailStrokes } = await import("../../../electron/helperlogic.ts")
     const area = { x: 0, y: 25, width: 1600, height: 975 }, bounds = { x: 0, y: 0, width: 1600, height: 1000 }, size = { width: 300, height: 200 }
     const { arrowBox, boxAt, flagBox } = await import("../../../plugins/core/companion/boxes.ts")
     const meets = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
@@ -87,7 +87,7 @@ export default async ($: VaultTest) => {
     check("helper: a cursor's conversation opens clear of its arrow and name, always on screen",
       !meets({ ...panelAt({ x: 100, y: 990 }, size, area, 130), ...size }, flagBox({ x: 100, y: 990 }, 130, area)) && panelAt({ x: 100, y: 0 }, { width: 300, height: 960 }, area).y >= 25)
     check("helper: a spot left in a window stays inside it as it shrinks", JSON.stringify(atOffset({ x: 10, y: 10, width: 100, height: 100 }, { dx: 500, dy: 50 })) === '{"x":102,"y":60}')
-    const blank = { agents: [], summon: null, ink: null, pill: null }
+    const blank = { agents: [], summon: null, pill: null }
     check("helper: a display's scene knows the menu bar's height", sceneFor({ id: 1, bounds, workArea: area }, blank, { x: 0, y: 0 }, []).top === 25)
     const defaults = { dictation: { fn: { default: true }, keys: { default: ["fn_control"] } }, companion: { keys: { default: ["control_option"] } }, screen: { private_apps: { default: ["1Password"] } } }
     const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, {}, { private_apps: [] }, defaults)
@@ -101,12 +101,15 @@ export default async ($: VaultTest) => {
       JSON.stringify(pointIn({ x: 0, y: 30, width: 800, height: 600 }, false)) === '{"x":400,"y":42}')
     const left = { id: 1, bounds: { x: 0, y: 0, width: 1000, height: 800 } }, right = { id: 2, bounds: { x: 1000, y: 0, width: 1000, height: 800 } }
     const scene = { agents: [{ name: "Claude", tint: "orange", state: "thinking", sx: 1500, sy: 100, target: { x: 1480, y: 90, width: 100, height: 20 } }],
-      summon: { name: "Claude", tint: "orange", state: "listening" as const, sx: 978, sy: 266, words: "what's" }, ink: { tint: "orange", strokes: [[{ x: 900, y: 200 }, { x: 950, y: 210 }], [{ x: 1200, y: 300 }]] },
+      summon: { name: "Claude", tint: "orange", state: "listening" as const, sx: 978, sy: 266, words: "what's" },
       pill: { level: 0.5, text: "hello", ready: true, display: 2 } }
     const l = sceneFor(left, scene, { x: 10, y: 10 }, [left, right]), r = sceneFor(right, scene, { x: 10, y: 10 }, [left, right])
-    check("helper: each display draws what's on it, in its own points (a target's frame, ink too); the pill on its field's display",
-      !l.agents.length && l.summon?.sx === 978 && l.ink?.strokes.length === 1 && !l.pill && r.agents[0]?.sx === 500 && r.agents[0]?.target?.x === 480 && !r.summon &&
-      r.ink?.strokes[0][0].x === 200 && r.pill?.text === "hello", { l, r })
+    check("helper: each display draws what's on it, in its own points (a target's frame); the pill on its field's display",
+      !l.agents.length && l.summon?.sx === 978 && !l.pill && r.agents[0]?.sx === 500 && r.agents[0]?.target?.x === 480 && !r.summon && r.pill?.text === "hello", { l, r })
+    const riding = sceneFor(right, { ...scene, summon: { ...scene.summon, follow: true } }, { x: 10, y: 10 }, [left, right])
+    check("helper: riding with the pointer, the summoned one is on every display (each draws it while it's there)", riding.summon?.sx === -22, riding.summon)
+    const loud = (level: number) => splitScene(sceneFor(left, { ...scene, summon: { ...scene.summon, follow: true, level } }, { x: 10, y: 10 }, [left, right]))
+    check("helper: listening, how loud they are goes with the places, not as a new scene", loud(0.2).shape === loud(0.9).shape && loud(0.9).at.hear === 0.9, loud(0.9).at)
     const noField = sceneFor(left, { ...scene, pill: { ...scene.pill, display: 9 } }, { x: 10, y: 10 }, [left, right])
     check("helper: with no field's display, the pill is on the pointer's", !!noField.pill)
     const crossing = { ...scene, agents: [{ ...scene.agents[0], from: { x: 900, y: 100 } }] }
@@ -121,6 +124,16 @@ export default async ($: VaultTest) => {
     const ink = inkOf([ring, under, [{ x: 1, y: 1 }]])
     check("helper: ink reads as shapes with their box and a few points: a ring round something, an underline",
       ink.length === 2 && ink[0].shape === "ring" && ink[0].box.x === 440 && ink[0].box.width === 120 && ink[0].points.length <= 40 && ink[1].shape === "underline" && ink[1].points.length < 10, ink)
+    // (the trail a held Talk key leaves: the way there, then a ring round the thing)
+    const t0 = 10_000, way = Array.from({ length: 30 }, (_, i) => ({ x: 100 + i * 13, y: 100 + i * 6, t: t0 + i * 16 }))
+    const loop = Array.from({ length: 50 }, (_, i) => ({ x: 560 + 50 * Math.cos(-Math.PI + (i / 49) * Math.PI * 2.2), y: 300 + 30 * Math.sin(-Math.PI + (i / 49) * Math.PI * 2.2), t: t0 + 480 + i * 16 }))
+    const still = [{ x: 900, y: 900, t: t0 - 5000 }]
+    const drawn = trailStrokes([...still, ...way, ...loop], t0 + 1300)
+    const read = inkOf(drawn)
+    check("helper: held, the pointer's trail is what it drew: its last seconds, the way to a thing and the ring round it read as that ring",
+      drawn.length === 1 && read[0]?.shape === "ring" && Math.abs(read[0].box.x - 510) < 6 && Math.abs(read[0].box.width - 100) < 8, { n: drawn.length, read })
+    const paused = trailStrokes([...way, ...way.map((p) => ({ ...p, x: p.x + 400, t: p.t + 900 }))], t0 + 2000)
+    check("helper: a pause splits the trail into strokes; a twitch isn't a stroke", paused.length === 2 && !trailStrokes([{ x: 1, y: 1, t: 1 }, { x: 3, y: 2, t: 17 }], 20).length, paused.length)
   }
   {
     // The helper's cursor between the window and the screen (electron/helper.ts draw), in a Node of its own with Electron
@@ -167,9 +180,9 @@ export default async ($: VaultTest) => {
     P(100, 100)
     check("pilot: it starts beside the pointer", JSON.stringify(run(16).at(-1)).includes('"x":124,"y":120'), pilot.pose(t))
     P(600, 100)
-    const follow = run(400), fx = follow.map((q) => q.x)
-    check("pilot: it rides with the pointer on a fast spring: most of the way in a sixth of a second, never past, then still",
-      Math.abs(follow[10].x - 624) < 12 && Math.max(...fx) <= 624.01 && follow.at(-1)!.x === 624 && !follow.at(-1)!.busy && follow.every((q) => q.mode === "follow"), fx.slice(0, 12))
+    const follow = run(800), fx = follow.map((q) => q.x)
+    check("pilot: it trails the pointer on a spring, visibly behind at first, there in about a third of a second, never past, then still",
+      624 - follow[4].x > 150 && Math.abs(follow[20].x - 624) < 6 && Math.max(...fx) <= 624.01 && follow.at(-1)!.x === 624 && !follow.at(-1)!.busy && follow.every((q) => q.mode === "follow"), fx.slice(0, 22))
     pilot.aim({ id: "a1", x: 300, y: 500 }, t)
     const dur = flightMs(Math.hypot(300 - 624, 500 - 120)), flight = run(dur + 32)
     const mid = flight[Math.floor(flight.length / 2)], onLine = 624 + (300 - 624) * ((mid.y - 120) / (500 - 120))

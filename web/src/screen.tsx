@@ -1,5 +1,5 @@
-// The companion over the screen (electron/overlay.ts): summoned (listening, thinking), agents' cursors where they point,
-// their bubbles (a click opens #panel, a window that takes the keyboard), the ink, the dictation pill. Nothing rests here.
+// The companion over the screen (electron/overlay.ts): summoned (listening, its trail, thinking), agents' cursors and
+// their bubbles (a click opens #panel, which takes the keyboard), the dictation pill. Nothing rests here.
 import { StrictMode, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createRoot } from "react-dom/client"
 import { Check, Mic } from "lucide-react"
@@ -11,6 +11,7 @@ import { sanitizeHtml } from "@/core/sanitize"
 import { joinText } from "../../core/dictationtext"
 import { CURSOR_SPRING, glide, type Glide } from "@/core/spring"
 import { makePilot, type PenScript, type Pilot } from "@/core/pilot"
+import { type Sample, TRAIL, trailPieces } from "@/core/trail"
 import { cn, followSystemTheme } from "@/lib/utils"
 // (what its flag shows, by the window's own rule: the two draw one cursor)
 import { presence, type Mark as MarkKind } from "../../plugins/core/companion/look"
@@ -23,13 +24,13 @@ type Rect = { x: number; y: number; width: number; height: number }
 type Say = { id: string; text: string; question?: boolean }
 type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; target?: Rect; say?: Say }
 type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
-  follow?: boolean; aim?: { id: string; x: number; y: number } }
-type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null; ink: { tint: string; strokes: Point[][] } | null
+  follow?: boolean; aim?: { id: string; x: number; y: number }; level?: number }
+type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null
   pill: { level: number; text: string; ready: boolean; hint?: boolean } | null
   /** The cursor saying its answer aloud: its level comes with the places (`At.level`). */
   speaking?: { name: string; level?: number } | null }
 /** Only the places changed (helperlogic.ts splitScene): x, y and a target's frame. */
-type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number }
+type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number; hear?: number }
 type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
   /** What its empty field says (an answer's box: how to reply without the mouse). */
   hint?: string }
@@ -60,6 +61,7 @@ function frame(t: number) {
     if (m.el) m.paint(m.el, m.g.x, m.g.y)
   }
   if (flying.pilot && flyPose(t + clockOff)) moving = true
+  if (trail.pts.length && drawTrail(t + clockOff)) moving = true
   raf = moving ? requestAnimationFrame(frame) : 0
   if (!moving) last = 0
 }
@@ -80,6 +82,8 @@ function flyPose(now: number) {
     // (only the display it's on draws it)
     const on = pose.x > -40 && pose.y > -40 && pose.x < innerWidth + 40 && pose.y < innerHeight + 40
     el.style.visibility = on ? "" : "hidden"
+    // (resting where it points, it floats a little)
+    el.toggleAttribute("data-parked", pose.mode === "parked")
     const to = pose.to ? `${Math.round(pose.to.x)},${Math.round(pose.to.y)}` : ""
     if (on && to !== flying.to) { flying.to = to; api?.pilot?.(pose.to ? [Math.round(pose.to.x), Math.round(pose.to.y)] : null) }
   }
@@ -97,9 +101,73 @@ function startFlying(c: Summoned) {
   kick()
 }
 function pointerMoved(p: [number, number, number, number]) {
+  // (held, the pointer leaves its trail)
+  if (view.s?.summon?.state === "listening") {
+    if (!trail.pts.length || trail.tint !== view.s.summon.tint) { trail.tint = view.s.summon.tint; trail.colour = getComputedStyle(document.documentElement).getPropertyValue(`--${trail.tint}`).trim() || "#e8590c" }
+    trail.pts.push({ x: p[0], y: p[1], t: clock() })
+    kick()
+  }
   if (!flying.pilot) return
   flying.pilot.pointer({ x: p[0], y: p[1] }, { x: p[2], y: p[3] }, clock())
   kick()
+}
+// ---------- the trail: while the Talk key is held the pointer leaves a thick stroke in the companion's colour, smooth
+// through its samples, the newest part solid and older parts fading (core/trail.ts); let go, the rest fades
+
+const trail: { pts: Sample[]; tint: string; colour: string; el: HTMLCanvasElement | null; mask: HTMLCanvasElement | null } = { pts: [], tint: "", colour: "#e8590c", el: null, mask: null }
+// (its fade as a mask: each piece's opacity drawn as a grey, the lightest kept where pieces meet (no seams, no beads),
+// then that grey made the alpha of its colour)
+const ALPHA = "vaultite-trail-alpha"
+function drawTrail(now: number) {
+  const held = view.s?.summon?.state === "listening"
+  // (reduced motion: no fading, gone once let go)
+  if (flying.reduced && !held) trail.pts = []
+  const pieces = trailPieces(trail.pts, now, { still: flying.reduced })
+  if (!pieces.length && !held) trail.pts = []
+  else if (trail.pts.length > 600) trail.pts = trail.pts.filter((p) => now - p.t < TRAIL.fade)
+  const c = trail.el ??= Object.assign(document.createElement("canvas"), { className: "pointer-events-none fixed inset-0", ariaHidden: "true" })
+  if (!c.isConnected) {
+    document.body.prepend(c)
+    document.body.insertAdjacentHTML("beforeend", `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="${ALPHA}" color-interpolation-filters="sRGB"><feColorMatrix type="luminanceToAlpha"/></filter></svg>`)
+  }
+  const dpr = devicePixelRatio || 1, w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr)
+  // (no trail: an empty canvas, sized to nothing, costs nothing)
+  const want = trail.pts.length ? [w, h] : [0, 0]
+  if (c.width !== want[0] || c.height !== want[1]) { c.width = want[0]; c.height = want[1]; c.style.width = `${innerWidth}px`; c.style.height = `${innerHeight}px` }
+  const g = c.getContext("2d")
+  if (!g || !trail.pts.length) return false
+  g.setTransform(1, 0, 0, 1, 0, 0)
+  g.clearRect(0, 0, w, h)
+  if (!pieces.length) return true
+  // (only the room the trail takes is worked on)
+  const pad = TRAIL.width, xs = pieces.flatMap((p) => [p.a[0], p.b[0]]), ys = pieces.flatMap((p) => [p.a[1], p.b[1]])
+  const x0 = Math.max(0, Math.floor((Math.min(...xs) - pad) * dpr)), y0 = Math.max(0, Math.floor((Math.min(...ys) - pad) * dpr))
+  const x1 = Math.min(w, Math.ceil((Math.max(...xs) + pad) * dpr)), y1 = Math.min(h, Math.ceil((Math.max(...ys) + pad) * dpr))
+  if (x1 <= x0 || y1 <= y0) return true
+  const m = trail.mask ??= document.createElement("canvas")
+  if (m.width < x1 - x0 || m.height < y1 - y0) { m.width = Math.max(m.width, x1 - x0); m.height = Math.max(m.height, y1 - y0) }
+  const k = m.getContext("2d")!
+  k.setTransform(1, 0, 0, 1, 0, 0)
+  k.globalCompositeOperation = "source-over"
+  k.fillStyle = "#000"
+  k.fillRect(0, 0, x1 - x0, y1 - y0)
+  k.setTransform(dpr, 0, 0, dpr, -x0, -y0)
+  k.globalCompositeOperation = "lighten"
+  k.lineCap = "round"
+  for (const p of pieces) {
+    const grey = Math.round(p.alpha * 255)
+    k.strokeStyle = `rgb(${grey},${grey},${grey})`
+    k.lineWidth = p.width
+    k.beginPath(); k.moveTo(p.a[0], p.a[1]); k.lineTo(p.b[0], p.b[1]); k.stroke()
+  }
+  g.filter = `url(#${ALPHA})`
+  g.drawImage(m, 0, 0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0)
+  g.filter = "none"
+  g.globalCompositeOperation = "source-in"
+  g.fillStyle = trail.colour
+  g.fillRect(x0, y0, x1 - x0, y1 - y0)
+  g.globalCompositeOperation = "source-over"
+  return true
 }
 /** A drawing's strokes for its pen (Draw.tsx, on the display that has them). */
 function penFor(s: PenScript | null) {
@@ -174,9 +242,12 @@ const targetOf = (a: Agent) => (a.target ? [a.target.x, a.target.y, a.target.wid
 
 /** Its voice's level, as bars by its name: a style, not a render. */
 const speakAt = (v: number) => document.documentElement.style.setProperty("--speak", String(v))
+/** How loud they are as it listens, as bars by its name. */
+const hearAt = (v: number) => document.documentElement.style.setProperty("--hear", String(v))
 function onScene(s: Shown) {
   const was = view.s
   speakAt(s.speaking?.level ?? 0)
+  hearAt(s.summon?.level ?? 0)
   for (const a of s.agents) { back(`agent:${a.name}`); aim(`agent:${a.name}`, a.sx, a.sy, AGENT, a.from) }
   if (s.summon?.follow) { back("summon"); startFlying(s.summon) }
   else if (s.summon) { back("summon"); aim("summon", s.summon.sx, s.summon.sy, AGENT, undefined, s.summon.state === "listening") }
@@ -195,6 +266,7 @@ function onScene(s: Shown) {
 }
 function onAt(at: At) {
   speakAt(at.level ?? 0)
+  hearAt(at.hear ?? 0)
   for (const a of view.s?.agents ?? []) {
     const p = at.agents[a.name]
     if (!p) continue
@@ -249,8 +321,9 @@ function useAge(t?: number): 0 | 1 | 2 | 3 {
 }
 
 /** A flag's mark, as the window draws it: dots working, a wave listening, a tick for a moment let pass. */
-function Mark({ mark, at }: { mark: MarkKind | "speak"; at?: number }) {
+function Mark({ mark, at }: { mark: MarkKind | "speak" | "hear"; at?: number }) {
   if (mark === "speak") return <span className="companion-speak" aria-label="speaking"><i /><i /><i /></span>
+  if (mark === "hear") return <span className="companion-hear" aria-label="listening"><i /><i /><i /><i /></span>
   if (mark === "dots") return <span className="companion-dots" aria-hidden><i /><i /><i /></span>
   if (mark === "wave") return <span className="companion-wave" aria-hidden><i /><i /><i /></span>
   if (mark === "tick") return <Check key={at} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />
@@ -301,25 +374,15 @@ function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?:
   const ref = c.follow ? (el: HTMLElement | null) => { flying.el = el; if (el && flying.pilot) flyPose(clock()) } : attach("summon", paintCursor)
   return (
     <div ref={ref} data-gone={gone || c.leaving || undefined} data-companion-summoned={c.state} data-follow={c.follow || undefined} className={cn(FADES, "pointer-events-none")}>
-      <div className="relative origin-[3px_2px] [scale:var(--pilot-scale,1)]"><div className={cn(c.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div></div>
+      <div className="pilot-arrow relative origin-[3px_2px] [scale:var(--pilot-scale,1)]"><div className={cn(c.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div></div>
       <div data-flag style={{ background: tint }} className={FLAG}>
         {c.name}
-        <Mark mark={speaking && c.state !== "listening" ? "speak" : c.state === "listening" ? "wave" : c.state === "thinking" ? "dots" : null} />
+        <Mark mark={speaking && c.state !== "listening" ? "speak" : c.state === "listening" ? (c.level === undefined ? "wave" : "hear") : c.state === "thinking" ? "dots" : null} />
       </div>
       {c.words && <div data-bubble className={cn(WORDS, "bg-background")} style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
         <span className="line-clamp-[8] text-foreground/80">{c.words}</span>
       </div>}
     </div>
-  )
-}
-
-/** What the user draws while a Talk key is held: strokes in its colour, as by pen. */
-function Ink({ ink }: { ink: NonNullable<Shown["ink"]> }) {
-  const d = (k: Point[]) => k.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ")
-  return (
-    <svg className="screen-in pointer-events-none fixed inset-0 size-full" aria-hidden>
-      {ink.strokes.map((k, i) => <path key={i} d={d(k)} fill="none" stroke={`var(--${ink.tint})`} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />)}
-    </svg>
   )
 }
 
@@ -408,7 +471,6 @@ function Screen() {
   if (!s) return null
   return (
     <>
-      {s.ink && <Ink ink={s.ink} />}
       {/* (the agents' drawings, under their cursors) */}
       <ScreenDrawings grab={grab} pen={s.summon?.follow ? penFor : undefined} />
       {s.agents.map((a) => <Cursor key={a.name} a={a} speaking={s.speaking?.name === a.name} />)}
@@ -432,6 +494,9 @@ const STYLE = `
 .companion-wave { display: inline-flex; align-items: center; gap: 1.5px; height: 9px; }
 .companion-wave i { width: 2px; height: 100%; border-radius: 9px; background: currentColor; transform-origin: center; animation: companion-wave 1s infinite ease-in-out; }
 .companion-wave i:nth-child(2) { animation-delay: .2s } .companion-wave i:nth-child(3) { animation-delay: .4s }
+.companion-hear { display: inline-flex; align-items: center; gap: 1.5px; height: 10px; }
+.companion-hear i { width: 2px; height: 100%; border-radius: 9px; background: currentColor; transform: scaleY(min(1, calc(.25 + var(--hear, 0) * var(--k)))); transition: transform 70ms ease-out; }
+.companion-hear i:nth-child(1) { --k: .5 } .companion-hear i:nth-child(2) { --k: 1 } .companion-hear i:nth-child(3) { --k: .8 } .companion-hear i:nth-child(4) { --k: .4 }
 .companion-speak { display: inline-flex; align-items: center; gap: 1.5px; height: 10px; }
 .companion-speak i { width: 2px; height: 100%; border-radius: 9px; background: currentColor; transform: scaleY(min(1, calc(.3 + var(--speak, 0) * .6))); transition: transform 90ms ease-out; }
 .companion-speak i:nth-child(2) { transform: scaleY(min(1, calc(.3 + var(--speak, 0) * .9))); }
@@ -440,7 +505,9 @@ const STYLE = `
 @keyframes companion-seen { from { opacity: 0; scale: .4; } }
 .companion-pop { animation: companion-pop .28s cubic-bezier(.2,.9,.3,1.25); transform-origin: top left; }
 @keyframes companion-pop { from { opacity: 0; scale: .9; } }
-@media (prefers-reduced-motion: reduce) { .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
+[data-parked] .pilot-arrow { animation: pilot-float 2.6s ease-in-out infinite; }
+@keyframes pilot-float { 50% { translate: 0 -3px; } }
+@media (prefers-reduced-motion: reduce) { .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
 `
 document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE }))
 document.documentElement.style.background = "transparent"

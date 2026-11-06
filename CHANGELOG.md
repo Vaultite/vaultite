@@ -21,8 +21,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   written, starting with its first sentence; its cursor shows it talking. Soniox's voice with your Soniox key, else
   this Mac's; pressing the key again, Esc or moving on stops it. The companion's Voice setting: when you speak (the
   default), always, or off.
-- **The companion moves with you on screen**: summoned with its Talk key, its cursor rides beside your pointer through
-  the exchange (across displays), its answer's box with it, holding still as you reach for it; when it points it flies
+- **The companion moves with you on screen**: hold its Talk key and your pointer leaves a trail in its colour, fading as
+  it goes, so you can ring or underline what you mean (sent with your words); its cursor trails your pointer on a spring
+  through the exchange (across displays), its answer's box with it, holding still as you reach for it; when it points it flies
   there on an arc and lands on the element, its marks drawn in with its cursor as the pen, in time with its words, and
   it comes back once you move on (at once with reduced motion). The box's reply field takes one click, or a tap of the
   Talk key, without leaving your app; the screen's picture it reads is no longer scaled, so it points where it means.

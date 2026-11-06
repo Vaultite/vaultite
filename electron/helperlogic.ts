@@ -41,13 +41,14 @@ export type Point = { x: number; y: number }
 /** The companion called up by a Talk key, listening (its words as they come) or thinking; `follow`: in its exchange, it
  *  rides beside the pointer on every display (the overlay's feed); `aim`: what it points at, which it flies to. */
 export type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
-  follow?: boolean; aim?: { id: string; x: number; y: number } }
-/** What the overlay draws: cursors, the companion summoned, the ink drawn while its key is held, and the dictation pill,
- *  by its display's bottom centre (`display`: the one; else the pointer's). */
+  follow?: boolean; aim?: { id: string; x: number; y: number }
+  /** Listening, how loud they are (0 to 1). */
+  level?: number }
+/** What the overlay draws: cursors, the companion summoned (the pointer's trail while its key is held: the overlay draws
+ *  it from its feed), and the dictation pill, by its display's bottom centre (`display`: the one; else the pointer's). */
 export type Scene = {
   agents: ScreenAgent[]
   summon: Summoned | null
-  ink: { tint: string; strokes: Point[][] } | null
   /** `hint`: a word for a moment, nothing heard (a key pressed where it does nothing). */
   pill: { level: number; text: string; ready: boolean; display?: number; hint?: boolean } | null
   /** The cursor whose answer is being said aloud (its name), and how loud it is now (0 to 1). */
@@ -64,7 +65,6 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
     ({ ...a, sx: a.sx - dx, sy: a.sy - dy, ...(a.from ? { from: { x: a.from.x - dx, y: a.from.y - dy } } : {}), ...(a.target ? { target: { ...a.target, x: a.target.x - dx, y: a.target.y - dy } } : {}),
       ...(a.aim ? { aim: { ...a.aim, x: a.aim.x - dx, y: a.aim.y - dy } } : {}) })
   const pillHere = !!s.pill && (s.pill.display !== undefined && all.some((x) => x.id === s.pill!.display) ? s.pill.display === d.id : on(pointer.x, pointer.y))
-  const strokes = s.ink?.strokes.filter((k) => k.some((p) => on(p.x, p.y))).map((k) => k.map((p) => ({ x: p.x - dx, y: p.y - dy }))) ?? []
   return {
     width: d.bounds.width, height: d.bounds.height,
     // (the menu bar's height: what goes above a cursor stays under it)
@@ -72,7 +72,6 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
     agents: s.agents.filter(here).map(local),
     // (riding with the pointer, it's on every display: each draws it while it's there)
     summon: s.summon && (s.summon.follow || here(s.summon)) ? local(s.summon) : null,
-    ink: s.ink && strokes.length ? { tint: s.ink.tint, strokes } : null,
     pill: pillHere ? s.pill : null,
     speaking: s.speaking ?? null,
   }
@@ -82,22 +81,50 @@ export type DisplayScene = ReturnType<typeof sceneFor>
 /** A display's scene as what it draws (`shape`, compared as text) and where (`at`): while only places change (the
  *  pointer, a window moved), only `at` goes to the window. */
 export function splitScene(s: DisplayScene) {
-  // (its voice's level changes many times a second: a place, not a shape)
-  const shape = JSON.stringify({ ...s, speaking: s.speaking ? { name: s.speaking.name } : null, agents: s.agents.map(({ sx: _x, sy: _y, from: _f, target: _t, ...a }) => a), summon: s.summon && { ...s.summon, sx: 0, sy: 0, from: undefined } })
+  // (its voice's level and theirs as it listens change many times a second: places, not a shape)
+  const shape = JSON.stringify({ ...s, speaking: s.speaking ? { name: s.speaking.name } : null, agents: s.agents.map(({ sx: _x, sy: _y, from: _f, target: _t, ...a }) => a),
+    summon: s.summon && { ...s.summon, sx: 0, sy: 0, from: undefined, level: s.summon.level === undefined ? undefined : 0 } })
   const at = { agents: Object.fromEntries(s.agents.map((a) => [a.name, [a.sx, a.sy, ...(a.target ? [a.target.x, a.target.y, a.target.width, a.target.height] : [])]])), summon: s.summon ? [s.summon.sx, s.summon.sy] : null,
-    ...(s.speaking ? { level: s.speaking.level } : {}) }
+    ...(s.speaking ? { level: s.speaking.level } : {}), ...(s.summon?.level !== undefined ? { hear: s.summon.level } : {}) }
   return { shape, at }
 }
 
+/** What the pointer drew while the Talk key was held: its trail's last `keep` ms before `until` (what still showed),
+ *  in strokes where it paused (`gap` ms still), each long enough to be meant. */
+export function trailStrokes(samples: (Point & { t: number })[], until: number, keep = 2000, gap = 250): Point[][] {
+  const out: Point[][] = []
+  let last = -Infinity
+  for (const p of samples) {
+    if (p.t < until - keep || p.t > until) continue
+    if (p.t - last > gap || !out.length) out.push([])
+    out.at(-1)!.push({ x: p.x, y: p.y })
+    last = p.t
+  }
+  return out.filter((k) => k.slice(1).reduce((n, p, i) => n + Math.hypot(p.x - k[i].x, p.y - k[i].y), 0) >= 24)
+}
+/** Where a stroke comes back round on itself (a ring drawn after the way there): the index the loop starts at, or -1. */
+function loopAt(k: Point[]) {
+  const pts = simplify(k, 2)
+  for (let j = 3; j < pts.length; j++) {
+    let run = 0
+    for (let i = j - 1; i >= 0; i--) {
+      run += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+      if (run > 90 && Math.hypot(pts[j].x - pts[i].x, pts[j].y - pts[i].y) < 22) return k.indexOf(pts[i])
+    }
+  }
+  return -1
+}
+
 /** Ink as the agent reads it: each stroke's shape (a ring round something, a line, a scribble), its box and its points,
- *  a few dozen at most (screen points). */
+ *  a few dozen at most (screen points). A ring drawn at the end of the way there is that ring. */
 export function inkOf(strokes: Point[][]) {
-  return strokes.filter((k) => k.length > 1).slice(0, 12).map((k) => {
+  return strokes.filter((k) => k.length > 1).slice(0, 12).map((whole) => {
+    const at = loopAt(whole), k = at > 0 ? whole.slice(at) : whole
     const xs = k.map((p) => p.x), ys = k.map((p) => p.y)
     const box = { x: Math.round(Math.min(...xs)), y: Math.round(Math.min(...ys)), width: Math.round(Math.max(...xs) - Math.min(...xs)), height: Math.round(Math.max(...ys) - Math.min(...ys)) }
     const len = k.slice(1).reduce((n, p, i) => n + Math.hypot(p.x - k[i].x, p.y - k[i].y), 0)
     const ends = Math.hypot(k[0].x - k.at(-1)!.x, k[0].y - k.at(-1)!.y), size = Math.max(1, Math.hypot(box.width, box.height))
-    const shape = len < 6 ? "dot" : ends < size * 0.3 && len > size * 1.5 ? "ring" : len < ends * 1.25 ? (box.width > box.height * 3 ? "underline" : "line") : "scribble"
+    const shape = len < 6 ? "dot" : at >= 0 || (ends < size * 0.3 && len > size * 1.5) ? "ring" : len < ends * 1.25 ? (box.width > box.height * 3 ? "underline" : "line") : "scribble"
     return { shape, box, points: simplify(k, 2.5).slice(0, 40).map((p) => [Math.round(p.x), Math.round(p.y)] as [number, number]) }
   })
 }
