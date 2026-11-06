@@ -124,7 +124,7 @@ function weigh(p: EnginePage) {
   h.timer = setTimeout(() => {
     if (waiting.get(p.wc) !== h || p.wc.isDestroyed()) return
     if (Date.now() > h.until) { waiting.delete(p.wc); return }
-    if (p.wc.isLoading() || shows(p, "password")) { h.timer = setTimeout(() => weigh(p), h.until - Date.now()); return }
+    if (p.wc.isLoading() || shows(p, "password")) { h.timer = setTimeout(() => weigh(p), 2000); return }
     waiting.delete(p.wc)
     void offer(p, h).catch((e) => console.error("vaultite: a sign-in wasn't offered to save:", (e as Error).message))
   }, 1200)
