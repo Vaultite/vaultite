@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Sidebar panels that aren't lists keep their room**: when the Conversations panel's talk (or another panel that
+  isn't rows) was taller than the room left, it folded to its heading and showed nothing; it now takes the room and
+  scrolls, and the wheel at the talk's end brings its ask line in.
 - **Agents browse faster**: a click answers about 300 ms sooner (it watches the page settle while it waits for a
   navigation the click may set off, not after), page loads and closes answer as they end (10 to 100 ms sooner), and a
   site's open stream (a live channel, a long poll) no longer holds an answer for 4 seconds.
