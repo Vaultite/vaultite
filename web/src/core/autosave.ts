@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useState } from "react"
 import { get, post, put as putJson, request } from "@/core/http"
 import { deletedHere, gone, moveMark, readFile, splitFm, stem, whereNow, type FileText } from "@/core/files"
 import { onReconnect, useVaultChange } from "@/core/live"
-import { merge3, mergeClashes, type Clash } from "@/core/merge"
+import { differences, merge3, mergeClashes, type Clash } from "@/core/merge"
 import { errorReason, notify } from "@/core/notify"
 import { dropDraft, keepDraft } from "@/core/drafts"
 import { trackUnsaved } from "@/core/unsaved"
@@ -12,9 +12,9 @@ import { applyEdit, editOf, LEAN_PAST, textHash } from "../../../core/texthash.t
 import { keptLive, onHandBack, typedLive } from "@/core/cosync"
 import { trace } from "@/core/trace"
 
-/** A conflict: `base` the text both sides started from, `lines` where they clash (the file's, 1-based), `who` the agent
- *  that wrote theirs when known, `inline` when the editor shows it in place (undefined while that's found out). */
-export type Conflict = { kind: "conflict"; base: string; theirs: FileText; lines: number[]; who?: string; inline?: boolean }
+/** A conflict: `base` the text both sides started from, `lines` where they clash (1-based), `who` who wrote theirs, `inline`
+ *  when shown in place (undefined till known); `version`: theirs is another device's (mergeIn), not the disk's. */
+export type Conflict = { kind: "conflict"; base: string; theirs: FileText; lines: number[]; who?: string; inline?: boolean; version?: boolean; note?: string }
 export type SaveStatus = { kind: "ok" } | { kind: "error"; message: string } | Conflict
 
 type Options = {
@@ -28,7 +28,7 @@ type Options = {
   onDisk?: (f: FileText) => void
   /** Show the merged `text` with its clashes in place to settle there (editor/conflicts.ts); false if it can't. `left`
    *  hears how many are left. */
-  conflict?: (text: string, clashes: Clash[], who: string | undefined, left: (n: number, rest?: Clash[]) => void) => boolean
+  conflict?: (text: string, clashes: Clash[], who: string | undefined, left: (n: number, rest?: Clash[]) => void, note?: string) => boolean
   /** Deleted or moved on disk (a move through the API is followed by its tab instead). */
   onGone: () => void
   readOnly?: boolean
@@ -64,6 +64,7 @@ export function conflictText(c: Conflict, above = 0) {
   const ns = [...new Set(c.lines.map((n) => n - above).filter((n) => n > 0))]
   const lines = !ns.length ? "" : ns.length === 1 ? `line ${ns[0]}` : `lines ${ns.slice(0, -1).join(", ")} and ${ns.at(-1)}`
   const where = c.lines.some((n) => n <= above) ? (lines ? `the properties and ${lines}` : "the properties") : lines
+  if (c.version) return `${where ? `${where[0].toUpperCase()}${where.slice(1)} ${where.startsWith("line ") ? "differs" : "differ"}` : "It differs"} in the version iCloud kept from ${c.who ?? "another device"}.`
   if (!where) return c.who ? `${c.who} edited it while you typed.` : "It changed elsewhere while you typed."
   return c.who ? `${c.who} edited ${where} while you typed.` : `${where[0].toUpperCase()}${where.slice(1)} changed elsewhere while you typed.`
 }
@@ -519,7 +520,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
     /** A new editor drawn: the conflicts its last one left, shown again (if the text is as they left it). */
     reshow() {
       const c = status, p = parked
-      if (c.kind !== "conflict" || !p || now() !== p.text || !o.current.conflict?.(p.text, p.clashes, c.who, s.left)) return
+      if (c.kind !== "conflict" || !p || now() !== p.text || !o.current.conflict?.(p.text, p.clashes, c.who, s.left, c.note)) return
       parked = null
       tell({ ...c, inline: true })
     },
@@ -528,23 +529,25 @@ export function makeAutosave(path: string, initial: string, options: Options) {
     keep(side: "mine" | "theirs") {
       if (status.kind !== "conflict") return
       const c = status, typed = now(), p = parked, was = s.disk
+      // (another device's version isn't on disk: the file stays as it is till the choice is saved)
+      const disk = c.version ? was : c.theirs.text
       // (left by its editor: theirs is merged in already, mine in the clashes, perhaps typed over since)
       const { text: merged, clashes } = p ? mergeClashes(p.text, typed, withTheirs(p.text, p.clashes)) : mergeClashes(c.base, typed, c.theirs.text)
       const text = side === "mine" ? (p ? typed : merged) : withTheirs(merged, clashes)
-      s.disk = c.theirs.text
-      mtime = c.theirs.mtime
+      s.disk = disk
+      if (!c.version) mtime = c.theirs.mtime
       show(text)
       tell({ kind: "ok" })
       go({ type: "resolve" })
-      const saved = text === c.theirs.text ? Promise.resolve() : s.save(true)
-      if (text === c.theirs.text) dropDraft(path)
+      const saved = text === disk ? Promise.resolve() : s.save(true)
+      if (text === disk) dropDraft(path)
       // (the file as this choice saved it: anything typed after it, saved or not, would be lost to an undo)
       const kept = saved.then(() => s.disk)
       const undo = async () => {
         const disk = await kept
         if (s.disk !== disk || now() !== disk) throw new Error("Couldn't undo: the text changed since. Both versions are in the note's history.")
         // (the file back as it was, the text as typed, and the choice again)
-        if (side === "mine" && s.disk !== c.theirs.text) await putJson("file", { path: where(), text: c.theirs.text, base: s.disk })
+        if ((side === "mine" || c.version) && s.disk !== disk) await putJson("file", { path: where(), text: disk, base: s.disk })
         s.disk = was
         show(typed)
         tell(c)
@@ -554,6 +557,30 @@ export function makeAutosave(path: string, initial: string, options: Options) {
       }
       notify(side === "mine" ? `Kept yours; ${theirName(c.who)} version is in the note's history` : `Kept ${theirName(c.who)} version; yours is in the note's history`,
         { id: `unsaved:${path}`, action: { label: "Undo", run: undo } })
+    },
+
+    /** Merge in another device's version (iCloud's, from `who`) from `base` (null: each difference clashes), clashes shown
+     *  in place; once saved: "same" (nothing missing here), "merged", "settled", or "unsaved" (not shown, or not saved). */
+    async mergeIn(base: string | null, other: string, who: string): Promise<"same" | "merged" | "settled" | "unsaved"> {
+      await s.calm()
+      const mine = now()
+      const { text, clashes } = base === null ? differences(mine, other) : mergeClashes(base, mine, other)
+      if (!clashes.length && text === mine) return "same"
+      await post("history/keep", { path: where(), text: other }).catch(() => {})
+      if (!clashes.length) {
+        show(text)
+        s.changed()
+        await s.save()
+        return now() === s.disk ? "merged" : "unsaved"
+      }
+      const note = `iCloud kept another version of this from ${who}`
+      if (!o.current.conflict?.(text, clashes, who, s.left, note)) return "unsaved"
+      const c: Conflict = { kind: "conflict", base: base ?? mine, theirs: { path: where(), text: other, mtime, kind: null, problems: [] }, lines: clashes.map((k) => k.at + 1), who, inline: true, version: true, note }
+      last = c
+      tell(c)
+      go({ type: "clash" })
+      await s.calm()
+      return now() === s.disk ? "settled" : "unsaved"
     },
   }
   return s

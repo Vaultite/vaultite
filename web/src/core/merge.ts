@@ -69,3 +69,10 @@ export function mergeClashes(base: string, mine: string, theirs: string): { text
   out.push(...B.slice(pos))
   return { text: out.join("\n"), clashes }
 }
+
+/** Two versions with no common one to merge from: `mine` as it is, every stretch where they differ a clash. */
+export function differences(mine: string, theirs: string): { text: string; clashes: Clash[] } {
+  const A = mine.split("\n"), B = theirs.split("\n")
+  const clashes = opcodes(A, B).filter((o) => o[0] !== "equal").map(([, i1, i2, j1, j2]) => ({ at: i1, mine: A.slice(i1, i2), theirs: B.slice(j1, j2) }))
+  return { text: mine, clashes }
+}

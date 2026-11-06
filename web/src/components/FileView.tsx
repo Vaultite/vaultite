@@ -2,7 +2,8 @@
 // merges changes made on disk meanwhile. Pages, plugin formats, media and outside-the-vault files each have their view.
 import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import { AlertTriangle, BookOpen, Folder, FolderInput, Smile, Trash2, type LucideIcon } from "lucide-react"
+import { BookOpen, Folder, FolderInput, Smile, Trash2, type LucideIcon } from "lucide-react"
+import { Banner } from "@/components/Banner"
 import { menuFor, menuOnCard } from "@/components/ContextMenu"
 import { copyToVault, copyToVaultItem, folderMenu, revealItem } from "@/components/FileActions"
 import { mediaItems } from "@/components/EmbedMenu"
@@ -15,7 +16,7 @@ import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
 import { openLinkMenu } from "@/components/LinkMenu"
 import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editing"
-import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onSettle, openFile, openFolder, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
+import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onMergeIn, onSettle, openFile, openFolder, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
 import { isDesktop } from "@/core/platform"
 import { takeRename } from "@/core/workspace"
 import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
@@ -675,9 +676,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const saver = useAutosave(path, initial.text, {
     text: full, apply, onStatus: setStatus, readOnly: ro,
     // (in the editor when it's the one drawn: a plugin's drawing, a notebook or the reading view gets the banner's choice)
-    conflict: (text, clashes, who, left) => {
+    conflict: (text, clashes, who, left, note) => {
       const ed = editor.current
-      return !!ed?.api.view.dom.isConnected && !ed.api.view.state.readOnly && ed.api.conflict(text, clashes, who, left) && (apply(text), true)
+      return !!ed?.api.view.dom.isConnected && !ed.api.view.state.readOnly && ed.api.conflict(text, clashes, who, left, note) && (apply(text), true)
     },
     onDisk: (f) => { remember(path, f); setProblems(f.problems ?? []) },
     onGone: () => { seen.delete(path); onGone() },
@@ -711,6 +712,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [editAround])
 
   useEffect(() => onSettle(path, saver.calm, () => saver.disk), [path, saver])
+  useEffect(() => (ro ? undefined : onMergeIn(path, saver.mergeIn)), [path, saver, ro])
 
   const [badJson, setBadJson] = useState<string | null>(null)
   const jsonCheck = useRef(0)
@@ -1017,20 +1019,6 @@ function InTrash({ path, note = "" }: { path: string; note?: string }) {
 }
 
 const sentence = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
-
-/** A note over the file, and what can be done about it (`actions`: [label, run], a falsy one left out). */
-function Banner({ tone, icon: Icon = AlertTriangle, actions = [], children }: {
-  tone: "warn" | "info"; icon?: LucideIcon; actions?: (readonly [string, () => unknown] | false)[]; children: ReactNode
-}) {
-  return (
-    <div role={tone === "warn" ? "alert" : "status"} className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] px-3 py-2.5 text-[15px]"
-      style={{ background: `color-mix(in srgb, ${tone === "warn" ? "var(--orange)" : "var(--muted-foreground)"} 14%, transparent)` }}>
-      <Icon className="size-4 shrink-0" strokeWidth={2.25} style={{ color: tone === "warn" ? "var(--orange)" : "var(--muted-foreground)" }} />
-      <span className="flex-1">{children}</span>
-      {actions.map((a) => a && <button key={a[0]} type="button" className="cursor-pointer font-semibold text-primary" onClick={() => void a[1]()}>{a[0]}</button>)}
-    </div>
-  )
-}
 
 /** A read that failed because the file isn't text (415) or is too big to read as text (413). */
 const NOT_TEXT = /isn't text'?$|too big to open as text$/

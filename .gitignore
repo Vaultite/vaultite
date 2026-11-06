@@ -6,6 +6,7 @@ web/qa/shots/
 dist-app/
 dist-test/
 plugins/core/audio-recorder/bin/
+plugins/core/sync-conflicts/bin/
 electron/bin/
 electron/build.json
 electron/cli.json

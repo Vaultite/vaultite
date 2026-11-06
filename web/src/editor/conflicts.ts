@@ -11,7 +11,8 @@ import { frontmatter } from "./frontmatter"
 
 /** One clash in the doc: the user's lines are `from`..`to` (whole lines, no break after; empty if they deleted them). */
 type Chunk = { id: number; from: number; to: number; theirs: string[] }
-type Conflicts = { chunks: Chunk[]; who?: string; open?: Open }
+/** `note`: what the bar over the user's lines says instead of "edited while you typed" (another device's version). */
+type Conflicts = { chunks: Chunk[]; who?: string; note?: string; open?: Open }
 /** How many are left as each is settled; with `rest`, the editor is going and these are left (for the next one). */
 export type Open = (left: number, rest?: Clash[]) => void
 
@@ -43,7 +44,7 @@ function decorate(state: EditorState): DecorationSet {
   for (const c of v.chunks) {
     const empty = c.from === c.to, n = Math.max(lines(c), c.theirs.length)
     const atStart = state.doc.lineAt(c.from).from === c.from
-    ranges.push(Decoration.widget({ widget: new Bar(c, v.who, "mine", empty, n), block: true, side: empty && !atStart ? 1 : -1 }).range(c.from))
+    ranges.push(Decoration.widget({ widget: new Bar(c, v.who, "mine", empty, n, v.note), block: true, side: empty && !atStart ? 1 : -1 }).range(c.from))
     if (!empty) {
       for (let pos = c.from; pos <= c.to;) {
         const line = state.doc.lineAt(pos)
@@ -51,18 +52,18 @@ function decorate(state: EditorState): DecorationSet {
         pos = line.to + 1
       }
     }
-    ranges.push(Decoration.widget({ widget: new Bar(c, v.who, "theirs", empty, n), block: true, side: 1 }).range(c.to))
+    ranges.push(Decoration.widget({ widget: new Bar(c, v.who, "theirs", empty, n, v.note), block: true, side: 1 }).range(c.to))
   }
   return Decoration.set(ranges, true)
 }
 
 class Bar extends WidgetType {
-  c: Chunk; who: string | undefined; side: "mine" | "theirs"; empty: boolean; lines: number
-  constructor(c: Chunk, who: string | undefined, side: "mine" | "theirs", empty: boolean, lines: number) {
+  c: Chunk; who: string | undefined; side: "mine" | "theirs"; empty: boolean; lines: number; note: string | undefined
+  constructor(c: Chunk, who: string | undefined, side: "mine" | "theirs", empty: boolean, lines: number, note?: string) {
     super()
-    this.c = c; this.who = who; this.side = side; this.empty = empty; this.lines = lines
+    this.c = c; this.who = who; this.side = side; this.empty = empty; this.lines = lines; this.note = note
   }
-  eq(o: Bar) { return o.c.id === this.c.id && o.who === this.who && o.side === this.side && o.empty === this.empty && o.lines === this.lines }
+  eq(o: Bar) { return o.c.id === this.c.id && o.who === this.who && o.side === this.side && o.empty === this.empty && o.lines === this.lines && o.note === this.note }
   ignoreEvent() { return true }
   toDOM(view: EditorView) {
     const box = document.createElement("div")
@@ -91,7 +92,7 @@ class Bar extends WidgetType {
       const note = document.createElement("div")
       note.className = "cm-clash-note"
       const what = this.lines > 1 ? "these lines" : "this line"
-      note.textContent = this.who ? `${this.who} edited ${what} while you typed` : `${capitalize(what)} changed elsewhere while you typed`
+      note.textContent = this.note ?? (this.who ? `${this.who} edited ${what} while you typed` : `${capitalize(what)} changed elsewhere while you typed`)
       box.append(note, bar(this.empty ? "Yours (deleted)" : "Yours", "mine", "Keep yours"))
     } else {
       const text = document.createElement("div")
@@ -152,8 +153,8 @@ export const conflicts: Extension = [
 ]
 
 /** Show `clashes` (lines of `text`, now the doc) in place; false when one is where it can't be shown (a hidden
- *  frontmatter). `open` hears how many are left as each is settled (or undone). */
-export function showConflicts(view: EditorView, clashes: Clash[], who: string | undefined, open: Open): boolean {
+ *  frontmatter). `open` hears how many are left as each is settled (or undone); `note` is the bars' (Conflicts). */
+export function showConflicts(view: EditorView, clashes: Clash[], who: string | undefined, open: Open, note?: string): boolean {
   const doc = view.state.doc, body = view.state.field(frontmatter, false) ?? 0
   let id = Date.now()
   const chunks: Chunk[] = []
@@ -165,7 +166,7 @@ export function showConflicts(view: EditorView, clashes: Clash[], who: string | 
     if (body && from < body) return false
     chunks.push({ id: id++, from, to, theirs: k.theirs })
   }
-  view.dispatch({ effects: setConflicts.of({ chunks, who, open }) })
+  view.dispatch({ effects: setConflicts.of({ chunks, who, note, open }) })
   const near = chunks.find((c) => c.to >= view.state.selection.main.head) ?? chunks[0]
   if (near && !view.hasFocus) view.dispatch({ effects: EditorView.scrollIntoView(near.from, { y: "center" }) })
   return true

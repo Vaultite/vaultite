@@ -42,6 +42,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "codex", deps: ["pages"] },
   { name: "backlinks", deps: ["pages"] },
   { name: "history", deps: ["pages"] },
+  { name: "sync-conflicts", deps: ["pages"] },
   { name: "graph", deps: ["pages","vau"] },
   { name: "kinds", deps: ["data","pages"] },
   { name: "canvas", deps: ["pages","graph"] },

@@ -6,8 +6,8 @@ import os from "node:os"
 import path from "node:path"
 import { monitorEventLoopDelay } from "node:perf_hooks"
 import {
-  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, recordSpan, section, serverUrl, spans, type Proc, type RequestEnd,
-  type RequestStart, type Span,
+  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, type Machine, OpError, Plugin, processTable, recordSpan, section, serverUrl,
+  spans, type Proc, type RequestEnd, type RequestStart, type Span,
 } from "../../../core/plugins.ts"
 import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
@@ -1120,6 +1120,28 @@ async function writeRecap(date: string) {
   })
 }
 
+/** The machine that writes the recaps when it isn't this one: the one their job runs on (Machines' first), so two never
+ *  write a day's at once (iCloud would show one and hide the other). Null: this one, or none known. */
+async function recapWriter(): Promise<{ id: string; m: Machine | null } | null> {
+  const ids = await plugin.ask<string[]>("machines:ids", []), self = await plugin.ask<string>("machines:self", "")
+  if (!ids.length || !self || self === ids[0]) return null
+  return { id: ids[0], m: await plugin.ask<Machine | null>("machines:machine", null, ids[0]) }
+}
+/** activity.recap --write on the recaps' machine, its answer as if run here; once only (one passed on isn't again). */
+async function writeThere({ id, m }: { id: string; m: Machine | null }, client: string | null | undefined, params: object) {
+  const name = m?.label || id, why = `${name} writes the recaps (their job runs there)`
+  if (!m || client?.startsWith("machine/")) throw new OpError(`${why}: write it there`, 409)
+  if (!m.online) throw new OpError(`${why} and is offline: try again once it's back`, 502)
+  let r: Response
+  try {
+    r = await fetch(`${m.url}/api/ops/activity.recap`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
+      body: JSON.stringify(params), signal: AbortSignal.timeout(60_000) })
+  } catch { throw new OpError(`${why} and doesn't answer`, 502) }
+  const out = await r.json().catch(() => ({})) as { error?: unknown; days?: RecapDay[] }
+  if (!r.ok) throw new OpError(`${name}: ${typeof out.error === "string" ? out.error : `answered ${r.status}`}`, r.status)
+  return out as { days: RecapDay[] }
+}
+
 /** The days this machine already wrote (or found nothing for), so a recap you deleted isn't made again. */
 function written(): Set<string> {
   try { return new Set(JSON.parse(fs.readFileSync(path.join(plugin.localDir(), "recaps.json"), "utf8")).days ?? []) } catch { return new Set() }
@@ -1213,12 +1235,17 @@ machine's Activity and File history, so a past day without a file can be made on
   params: {
     date: { type: "string", description: "YYYY-MM-DD, today (the default) or yesterday" },
     days: { type: "integer", minimum: 1, maximum: 31, default: 1, description: "how many days, ending with that date" },
-    write: { type: "boolean", description: "write that day's Recaps file now from what this machine has (its entries replaced, your lines kept)" },
+    write: { type: "boolean", description: "write that day's Recaps file now (its entries replaced, your lines kept), on the machine that writes them: Machines' first, which runs their job" },
   },
   args: ["date"],
-  run: async ({ date, days, write }) => {
+  run: async ({ date, days, write }, ctx) => {
     const d = dateOf(date)
-    if (write) { built.delete(d); await writeRecap(d) }
+    if (write) {
+      const there = await recapWriter()
+      if (there) return await writeThere(there, ctx.who.client, { date: d, days: days ?? 1, write: true })
+      built.delete(d)
+      await writeRecap(d)
+    }
     return { days: await recapDays(d, days ?? 1) }
   },
   text: (r: { days: RecapDay[] }) => recapText(r.days),

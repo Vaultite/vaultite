@@ -30,7 +30,7 @@ export type { AgentDef, AmbientItem, BlockCtx, DoTask, BrowseEntry, BrowseSource
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
-export { closeView, createFile, createNamed, folderOf, folderTarget, freeName, homeOf, isDoc, isFolder, isHidden, isViewOpen, markNew, openFile, openFolder, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, shownName, splitFm, stem } from "@/core/files"
+export { closeView, createFile, createNamed, folderOf, folderTarget, freeName, homeOf, isDoc, isFolder, isHidden, isViewOpen, markNew, mergeIntoFile, openFile, openFolder, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, shownName, splitFm, stem } from "@/core/files"
 /** A folder of the vault, picked in the palette (one typed that isn't there is made). */
 export { chooseFolder } from "@/components/FolderPicker"
 export { seenArea } from "@/components/FileTree"
@@ -200,6 +200,8 @@ export { kindIcon } from "@/core/filekinds"
 export { AmbientButton } from "@/components/Ambient"
 export { CORNERS, useCornerDrag, useCornerStack, type Corner } from "@/components/CornerCard"
 export { Button, buttonClass, HeadingButton } from "@/components/Button"
+// A note over a file's text and what can be done about it (a NoteTopItem's).
+export { Banner } from "@/components/Banner"
 export { Badged, Bar, Bars, Editable, IconAction, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Slider, Stat, Switch, type Dot } from "@/components/kit"
 export { switchPreview, type Preview, type PreviewOption } from "@/components/SettingPreview"
 export { Frame } from "@/components/ChoicePictures"

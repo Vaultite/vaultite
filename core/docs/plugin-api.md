@@ -253,6 +253,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
 - `terminal:<…>` (meters, access, waits, state, agent-waits, screen, locate, runs, agent-env, wait, of, of-pids, info): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
+- `versions:icloud` (sync-conflicts)
 - `watches:read` (watches): A source read now (note:, terminal:, site: in the user's tab), as the companion's follows read panes; null: none such.
 - `watches:changes` (watches): What changed between two reads, in a few lines (a terminal's new output, a page's lines gone and new).
 - `widgets:refresh` (inbox): Another plugin's data the widgets show changed (a routine ticked).

@@ -253,6 +253,20 @@ export async function settleFile(path: string): Promise<string | undefined> {
   return open[0]?.disk()
 }
 
+/** Each open editor's way to bring in another device's version of its file (autosave's `mergeIn`), by its file. */
+type MergeIn = (base: string | null, text: string, who: string) => Promise<"same" | "merged" | "settled" | "unsaved">
+const mergers = new Map<string, MergeIn>()
+export function onMergeIn(path: string, fn: MergeIn) {
+  mergers.set(path, fn)
+  return () => { if (mergers.get(path) === fn) mergers.delete(path) }
+}
+/** Merge `text`, another device's version of `path` (iCloud's, from `who`), into its open editor from `base` (autosave's
+ *  mergeIn), answering once it's saved; "closed" when no editor has the file open. */
+export async function mergeIntoFile(path: string, base: string | null, text: string, who: string) {
+  const fn = mergers.get(path)
+  return fn ? await fn(base, text, who) : "closed" as const
+}
+
 /** A file about to be opened: the pointer resting on its row or link (read after a moment), or pressing it (read now),
  *  so its text is on its way before the click. null: the pointer left. */
 let intent = 0

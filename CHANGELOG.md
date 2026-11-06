@@ -9,6 +9,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Agents browse faster**: a click answers about 300 ms sooner (it watches the page settle while it waits for a
   navigation the click may set off, not after), page loads and closes answer as they end (10 to 100 ms sooner), and a
   site's open stream (a live channel, a long poll) no longer holds an answer for 4 seconds.
+- **Versions iCloud kept out of sight show in the note**: when two Macs change a note in iCloud Drive at once, iCloud
+  shows one and hides the other, which nothing showed until now. The note says so at its top: merge the other in (where
+  both changed the same lines, you choose in place, as with an agent's edit) or keep the note as it is; the other's text
+  goes to the note's history first. `vau conflicts` lists the files that have one.
+- **Recaps are written by one machine only**: `vau recap --write` on another Mac is passed on to the machine that writes
+  them (Machines' first, which runs their job), so two Macs never write a day's recap at once.
 - **The companion's take-over offer waits for your answer**: it stays by your pointer until you click Do it or Not now,
   say yes or no, press Esc, click elsewhere or ask something else, instead of going after 30 seconds, even mid-sentence.
 - **The Talk key's companion answers every ask**: one it handled with a tool alone (closing a job, following a pane)

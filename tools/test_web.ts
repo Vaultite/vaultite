@@ -22,7 +22,7 @@ const STUBS: Record<string, string> = {
 }
 // Autosave's server, reads, toasts and connection: the made-up ones its section sets on globalThis.__autosave.
 const AUTOSAVE_STUBS: Record<string, string> = {
-  "@/core/http": "const f = () => globalThis.__autosave; export const request = (...a) => f().request(...a); export const get = (p) => f().get(p); export const post = async () => ({}); export const put = (p, b) => f().putJson(p, b)",
+  "@/core/http": "const f = () => globalThis.__autosave; export const request = (...a) => f().request(...a); export const get = (p) => f().get(p); export const post = async (p, b) => { globalThis.__autosave.posts?.push([p, b]); return {} }; export const put = (p, b) => f().putJson(p, b)",
   "@/core/files": `export const deletedHere = () => false; export const gone = (e) => /^Error: no file /.test(String(e)); export const moveMark = () => 0; export const whereNow = (p) => p
     export const readFile = (p) => globalThis.__autosave.readFile(p); export const stem = (p) => p.replace(/^.*\\//, "").replace(/\\.md$/, "")
     export const splitFm = (t) => { const m = /^---\\n[\\s\\S]*?\\n---\\n/.exec(t); return m ? { fm: m[0], body: t.slice(m[0].length) } : { fm: "", body: t } }`,
@@ -3411,7 +3411,7 @@ await section("autosave", async () => {
     return res(200, b.lean ? (srv.text === sent ? { ...rest, same: true } : { ...rest, edit: editOf(sent, srv.text) }) : file())
   }
   const fake: Any = (globalThis as Any).__autosave = {
-    back: new Set<() => void>(), toasts: [] as string[],
+    back: new Set<() => void>(), toasts: [] as string[], posts: [] as [string, Any][],
     async request(_m: string, _p: string, body: Any) {
       if (srv.down) throw new TypeError("Failed to fetch")
       const r = handle(body)
@@ -3540,6 +3540,55 @@ await section("autosave", async () => {
     await ticks()
     check("autosave: shown again by the next editor; without one, Keep theirs saves theirs and what was done meanwhile",
       again && held === "a\ntheirs\n- [ ] t\n" && srv.text === "a\ntheirs\n- [x] t\n" && ed.said.at(-1)?.kind === "ok" && !as.heldByConflict(P), { again, held, disk: srv.text })
+    ed.close()
+  }
+  {
+    // Another device's version iCloud kept apart (plugins/core/sync-conflicts), brought in: clean, merged and saved on
+    // what's on disk; nothing missing, nothing written; clashing, shown in place, the file untouched till settled.
+    const BASE = "one\ntwo\nthree\n", MINE = "one, here\ntwo\nthree\n"
+    srv.text = MINE
+    let ed = open(true)
+    fake.posts.length = 0
+    let r = await ed.saver.mergeIn(BASE, "one\ntwo\nthree, there\n", "Mini")
+    check("autosave: another device's version that merges cleanly is merged and saved, its text kept in File history first",
+      r === "merged" && srv.text === "one, here\ntwo\nthree, there\n" && fake.posts.some(([p, b]: Any) => p === "history/keep" && b.text === "one\ntwo\nthree, there\n"), { r, disk: srv.text, posts: fake.posts })
+    let puts = srv.puts
+    r = await ed.saver.mergeIn(BASE, BASE, "Mini")
+    check("autosave: one with nothing missing here writes nothing", r === "same" && srv.puts === puts, { r, puts: srv.puts - puts })
+    ed.close()
+
+    srv.text = MINE
+    ed = open(true)
+    puts = srv.puts
+    const settled = ed.saver.mergeIn(BASE, "one, there\ntwo\nthree\n", "Mini")
+    await ticks()
+    const held = ed.said.at(-1)
+    check("autosave: one that clashes is shown in place as the other device's, nothing written meanwhile",
+      held?.kind === "conflict" && held.version === true && held.inline === true && /Mini/.test(held.note ?? "") && ed.shown?.clashes.length === 1 && srv.puts === puts && as.conflictText(held) === "Line 1 differs in the version iCloud kept from Mini.",
+      { held, shown: ed.shown, text: held && as.conflictText(held) })
+    ed.set("one, there\ntwo\nthree\n") // (Keep theirs, in the editor)
+    ed.shown.left(0)
+    r = await settled
+    check("autosave: settled in place, it's saved on what's on disk", r === "settled" && srv.text === "one, there\ntwo\nthree\n" && ed.said.at(-1)?.kind === "ok", { r, disk: srv.text })
+    ed.close()
+
+    srv.text = MINE
+    ed = open(true)
+    puts = srv.puts
+    const kept = ed.saver.mergeIn(null, "one\ntwo, there\nthree\n", "Mini")
+    await ticks()
+    const each = ed.shown?.clashes.length
+    ed.shown.left(1, ed.shown.clashes) // (its editor went)
+    ed.saver.keep("mine")
+    r = await kept
+    check("autosave: with no common version each difference clashes; Keep yours from the banner leaves the file as it is",
+      each === 1 && r === "settled" && srv.text === MINE && srv.puts === puts && ed.said.at(-1)?.kind === "ok", { each, r, disk: srv.text, puts: srv.puts - puts })
+    ed.close()
+
+    srv.text = MINE
+    ed = open(false)
+    r = await ed.saver.mergeIn(BASE, "one, there\ntwo\nthree\n", "Mini")
+    check("autosave: where it can't be shown in place, it says so and holds nothing", r === "unsaved" && srv.text === MINE && !as.heldByConflict(P) && ed.said.at(-1)?.kind !== "conflict", { r, said: ed.said.at(-1) })
     ed.close()
   }
   {

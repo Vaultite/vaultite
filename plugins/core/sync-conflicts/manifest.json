@@ -1,0 +1,8 @@
+{
+  "id": "sync-conflicts",
+  "icon": "git-compare-arrows",
+  "category": "system",
+  "alwaysOn": true,
+  "name": "Sync conflicts",
+  "description": "When two devices change a file in iCloud Drive at once, iCloud shows one version and keeps the other out of sight. This finds those versions and shows them in the note, to merge in or let go."
+}

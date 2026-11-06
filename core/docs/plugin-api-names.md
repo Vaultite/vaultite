@@ -71,6 +71,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when unset: core/filing.ts), else Attachments.
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
 - `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (an agent at work, waiting for you), the same wherever the icon is.
+- `Banner({ tone, icon, actions, children })`: A note over the file, and what can be done about it (`actions`: [label, run], a falsy one left out).
 - `Bar({ w, className })`: A line of text still to come, inside the element that will hold it, so it takes that line's height (`w`: its width).
 - `BarKey`
 - `Bars({ data, color, height, format, goal })`: Single-series bar chart with a hover/tap readout.
@@ -377,6 +378,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `MenuItem`
 - `menuShowing()`: A menu is showing.
 - `merge3`
+- `mergeIntoFile(path, base, text, who)`: Merge `text`, another device's version of `path` (iCloud's, from `who`), into its open editor from `base` (autosave's mergeIn), answering once it's saved; "closed" when no editor has the file open.
 - `mergeTabsSeen(other)`: Another copy of these tabs (the workspace's file, from another device): where it saw a pane later, that's taken.
 - `mintedHere(id)`: Whether this page made terminal `id` ("claude-k3j2h1g0@studio" too) just now, so its tab may start it: a tab put back (a reload, the app reopened, another device) only attaches, and never starts…
 - `modifiedSteps()`: The first steps of the commands' keys that hold ⌘, ⌃ or ⌥: what a widget keeping the keyboard outside the page (the desktop Browser) hands back as keydowns for `runShortcut`.

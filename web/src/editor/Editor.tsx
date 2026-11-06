@@ -56,8 +56,8 @@ export type EditorApi = {
   /** Where the app can put the cursor near `pos` without opening a drawn block (livePreview's offBlocks). */
   offBlocks: (pos: number) => number | null
   /** Put in `text` with its clashes shown in place (editor/conflicts.ts); false if one can't be shown, and nothing changed.
-   *  `open` hears how many are left as the user settles them. */
-  conflict: (text: string, clashes: Clash[], who: string | undefined, open: Open) => boolean
+   *  `open` hears how many are left as the user settles them; `note`, what the bars say instead of "edited while you typed". */
+  conflict: (text: string, clashes: Clash[], who: string | undefined, open: Open, note?: string) => boolean
   /** Scroll to the first conflict left. */
   revealConflict: () => void
   /** It came back as its tab's editor was left (editor/kept.ts), selection included: that's where its cursor goes. */
@@ -426,11 +426,11 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           write: (moved) => { if (Math.abs(moved) >= 1) { if (sc) sc.scrollTop += moved; else window.scrollBy(0, moved) } },
         })
       },
-      conflict: (text, clashes, who, open) => {
+      conflict: (text, clashes, who, open, note) => {
         const at = v.state.field(frontmatter, false) ?? 0
         if (at && clashes.some((k) => k.at < v.state.doc.lineAt(at).number - 1)) return false
         api.replace(text)
-        return showConflicts(v, clashes, who, open)
+        return showConflicts(v, clashes, who, open, note)
       },
       revealConflict: () => revealConflict(v),
       reveal: (line) => {

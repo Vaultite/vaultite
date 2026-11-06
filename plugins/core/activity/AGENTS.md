@@ -31,6 +31,7 @@ type: recap
 - Written by the app from this machine's Activity and File history: today's every few minutes while things change,
   yesterday's until 03:00, earlier days once (back as far as File history keeps versions). Don't write the entries;
   lines of the user's own above or below them stay. Read one with `activity.recap` (`vau recap yesterday`).
+- One machine writes them, Machines' first (their job runs there): `vau recap --write` on another is passed on to it.
 - Yours (the app, another device's edits arriving on disk) one by one; an agent's edits one line per session, except
   records of the user's life (logs, people, books...: their plugin is about life or health), which stay one by one
   with `by <agent>`. Tasks are Markdown checkboxes (`[x]` done, `[-]` cancelled, `[/]` started, the Tasks plugin's own

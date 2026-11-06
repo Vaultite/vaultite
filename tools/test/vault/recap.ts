@@ -137,6 +137,33 @@ export default async ($: VaultTest) => {
   await api("GET", "state")
   await act.recapsDue()
   check("recap: one you deleted isn't made again", !exists(yfile))
+  {
+    // One machine writes the recaps (their job's, Machines' first): --write elsewhere is passed on to it, its answer
+    // taken, nothing written here (two Macs writing a day's recap at once is a conflict iCloud hides).
+    const http = await import("node:http")
+    const got: Any[] = []
+    const box = http.createServer((req, res) => {
+      let body = ""
+      req.on("data", (c) => { body += c })
+      req.on("end", () => { got.push({ url: req.url, client: req.headers["x-vaultite-client"], body: JSON.parse(body || "{}") }); res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify({ days: [{ date: "from-box", entries: [], live: false }] })) })
+    })
+    await new Promise<void>((r) => box.listen(0, "127.0.0.1", r))
+    const machines = app.plugins.find((p: Any) => p.id === "machines")!, was = { ...machines.services }
+    const online = { id: "box", label: "Box", url: `http://127.0.0.1:${(box.address() as Any).port}`, online: true, self: false }
+    Object.assign(machines.services, { "machines:ids": () => ["box", "here"], "machines:self": async () => "here", "machines:machine": async (id: string) => (id === "box" ? online : null) })
+    const today = `Recaps/${localDay()}.md`
+    if (exists(today)) fs.rmSync(path.join(VAULT, today))
+    try {
+      const [code, r] = await api("POST", "ops/activity.recap", { write: true })
+      check("recap: --write on a machine that doesn't write recaps is passed on to the one that does, nothing written here",
+        code === 200 && r.days?.[0]?.date === "from-box" && got[0]?.url === "/api/ops/activity.recap" && got[0].body.write === true && String(got[0].client).startsWith("machine/") && !exists(today), [code, r, got])
+      online.online = false
+      const [off, e] = await api("POST", "ops/activity.recap", { write: true })
+      check("recap: ...and says so when that machine is offline", off === 502 && /Box writes the recaps/.test(e.error) && !exists(today), [off, e])
+      const [, read] = await api("POST", "ops/activity.recap", {})
+      check("recap: reading one needs no other machine", Array.isArray(read.days) && got.length === 1, read)
+    } finally { Object.assign(machines.services, was); box.close() }
+  }
   fs.rmSync(path.join(VAULT, ".obsidian/plugins/obsidian-tasks-plugin"), { recursive: true })
   fs.rmSync(path.join(VAULT, ".vaultite/plugins/activity/data.json"))
   for (const d of ["Rc", "Recaps"]) fs.rmSync(path.join(VAULT, d), { recursive: true, force: true })
