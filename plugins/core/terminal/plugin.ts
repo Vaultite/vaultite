@@ -779,7 +779,7 @@ async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | nul
   if (run) {
     fs.mkdirSync(TMP, { recursive: true })
     // (with its Enter: a shell at its prompt reads it as typed, so no pause before it)
-    await b.send(id, { text: `${runScript(path.join(TMP, `run-${id}.sh`), id, run, kindOf(sh))}\r` })
+    await b.send(id, { text: `${runScript(path.join(TMP, `run-${id}.sh`), id, run, kindOf(sh), sh)}\r` })
   }
   return true
 }

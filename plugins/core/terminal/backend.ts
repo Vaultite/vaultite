@@ -219,7 +219,7 @@ export const psQuote = (s: string) => `'${s.replaceAll("'", "''")}'`
 
 /** The script a ready shell runs to become an agent's (typed into it as one short line), for its kind of shell (cmd
  *  has no ready shells: it starts at once). */
-export function runScript(file: string, id: string, run: AgentRun, kind: ShellKind = "posix") {
+export function runScript(file: string, id: string, run: AgentRun, kind: ShellKind = "posix", shell = "") {
   if (kind === "pwsh") {
     // (read and run, not dot-sourced: an execution policy may refuse a script file, never a command)
     const ps1 = `${file}.ps1`
@@ -232,7 +232,8 @@ export function runScript(file: string, id: string, run: AgentRun, kind: ShellKi
   const at = there(file)
   // (the empty title: a prompt's, like Ubuntu's "user@host: dir", would name the agent's tab until it sets its own)
   fs.writeFileSync(file, `rm -f ${shellQuote(at)}\nclear\nprintf '\\033]0;\\007'\nexport VAULTITE_TERMINAL=${shellQuote(id)}\n${run.cwd ? `cd ${shellQuote(there(run.cwd))} && ` : ""}${run.command}\n`, { mode: 0o600 })
-  return ` source ${shellQuote(at)}`
+  // (`.`: sh and dash have no `source`, so an agent never started there; fish has only `source`)
+  return ` ${progName(shell) === "fish" ? "source" : "."} ${shellQuote(at)}`
 }
 
 // PowerShell's console in UTF-8, as Node, git and vau write: else it reads a program's output (`$x = vau read ...`, an
