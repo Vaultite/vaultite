@@ -637,6 +637,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SidebarTile({ icon, iconClassName, tint, badge, label, active, onClick, onContextMenu, href, className, … })`: A sidebar tile, a SidebarRow drawn as its icon alone, bigger (a grid of them: Pinned's tiles): named by its tooltip, under it.
 - `sightOf(el)`: Where on screen (client coordinates) what's in `el`'s scroller can be seen.
 - `SlashItem`: An entry in the editor's slash menu: `text` replaces the "/query" ("$|" marks the cursor), or `run` does something else with the function that types text there.
+- `Slider({ value, min, max, step, label, onInput, onChange, className })`: A value along a track, in the accent colour (index.css .slider).
 - `slotAt(box, items, x, y, axis)`: Where a drag at (x, y) lands among `items` (in order, `box` their offset parent) as laid out, not as slid: before which (its index; `items.length`, the end).
 - `snippet(md)`: Markdown as one line of plain text: a preview in a row, a card or a search result.
 - `SortableList({ ids, onMove, className, lift, children })`: Rows the user reorders by dragging (5px to start; a held finger on touch); `onMove(from, to)` with their ids.

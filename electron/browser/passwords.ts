@@ -1,6 +1,6 @@
 // Your passwords: the user's own KeePass file (the one KeePassXC and Strongbox open), for the Passwords page, filling
 // their own logins and saving new ones. This computer's, set up here; never through the server, which agents can call.
-import { app, dialog, powerMonitor, safeStorage, systemPreferences } from "electron"
+import { app, clipboard, dialog, powerMonitor, safeStorage, systemPreferences } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -175,6 +175,16 @@ handle("passwords:give", async (_win, id) => {
     if (!await systemPreferences.promptTouchID(`give ${f.Title || "a password"} to an agent`).then(() => true, () => false)) throw new Error("Touch ID didn't confirm it")
   }
   return f.Password ?? ""
+})
+
+// (copied here, not by the page: a window in the background can't touch the clipboard, so it never cleared it on time)
+let copied: { text: string; timer: NodeJS.Timeout } | null = null
+handle("passwords:copy", async (_win, text) => {
+  if (typeof text !== "string" || !text) return
+  await clipboard.writeText(text)
+  if (copied) clearTimeout(copied.timer)
+  const mine = { text, timer: setTimeout(async () => { if (copied === mine) { copied = null; if (await clipboard.readText() === text) await clipboard.clear() } }, 30_000) }
+  copied = mine
 })
 
 // ---------- the page's calls (the app's windows only) ----------
