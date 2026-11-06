@@ -93,8 +93,10 @@ func tappedChord(_ type: CGEventType, _ e: CGEvent) {
     let on = mods == f, was = chordOn[n] ?? false
     if on == was { continue }
     chordOn[n] = on
-    if on { send(["event": "chord", "name": n, "on": true]) }
-    else { send(mods.isSuperset(of: f) ? ["event": "chord", "name": n, "other": true] : ["event": "chord", "name": n, "on": false]) }
+    // (when it happened, ms since 1970: a busy app hearing it late still tells a tap from a hold)
+    let t = Date().timeIntervalSince1970 * 1000
+    if on { send(["event": "chord", "name": n, "on": true, "t": t]) }
+    else { send(mods.isSuperset(of: f) ? ["event": "chord", "name": n, "other": true] : ["event": "chord", "name": n, "on": false, "t": t]) }
   }
 }
 

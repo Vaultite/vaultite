@@ -382,7 +382,7 @@ function modHeard(m: Record<string, unknown>) {
 }
 /** A chord (⌃⌥, fn⌃): the companion's if it's a Talk key, else dictation's, as a key's press and release. */
 function chordHeard(m: Record<string, unknown>) {
-  const name = String(m.name), e: FnEvent = m.other === true ? { other: true } : { down: m.on === true }
+  const name = String(m.name), e: FnEvent = m.other === true ? { other: true } : { down: m.on === true, ...typeof m.t === "number" ? { t: m.t } : {} }
   if (prefs.talk.includes(name)) talkHeard(e)
   else if (heardKeys().includes(name)) fnHeard(e)
 }
@@ -515,7 +515,7 @@ function talkHeard(m: FnEvent) {
   if (!host?.home()) return
   // (pressed again: its voice stops at once, and gets ready for the next answer)
   if ("down" in m && m.down) { stopVoice(); live.say({ t: "interrupt" }); speaker.warm(); voiceFront.warm(); lastAsk = null }
-  const now = Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
+  const now = "t" in m && m.t ? m.t : Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
   // (each press logged, what it did or that it did nothing: presses that go nowhere can be traced)
   if (a === "listen") press = presses.start("talk", "down", { front: front?.bundle ?? "" })
   else if (kind === "down" && !a) presses.start("talk", "down", { front: front?.bundle ?? "" }).end("ignored", { gesture: gesture.state })

@@ -42,7 +42,8 @@ export const keyCodes = (keys: readonly string[]) => keys.flatMap((k) => CODES[k
 /** How long right Option or Command must be alone before it counts: a chord's key comes sooner, and starts nothing. */
 export const ALONE_MS = 200
 
-export type FnEvent = { down: boolean } | { other: true }
+/** `t`: when the key moved (ms since 1970), if its tap said; else it's when heard. */
+export type FnEvent = { down: boolean; t?: number } | { other: true }
 /** What the tap says: a watched key's press or release (`alone`: nothing else held), or that something else came. */
 export type ModEvent = { code?: number; on?: boolean; alone?: boolean; at?: number; other?: boolean }
 /** `fn`: what it means as fn's events; `wait`: call `settled` in ALONE_MS. */

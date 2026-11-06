@@ -96,10 +96,16 @@ async function until(fn: () => boolean, ms = 3000) {
   for (const end = Date.now() + ms; Date.now() < end;) { if (fn()) return true; await new Promise((r) => setTimeout(r, 10)) }
   return fn()
 }
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+// (a key's moves carry when they happened, as the native tap's do: held is the waits since it went down, so a slow
+// runner's late timer never turns a tap into a hold)
+let downAt = 0, heldMs = 0
+const wait = (ms: number) => { heldMs += ms; return new Promise((r) => setTimeout(r, ms)) }
 const claude = () => scenes.map((s) => s.agents.find((a) => a.name === "Claude")).filter((a): a is Item => !!a)
 const front = (vaultite: boolean, bundle = "com.example.mail") => H.heard({ event: "front", bundle: vaultite ? "app.vaultite" : bundle, name: "x", title: "t", window: 5, vaultite })
-const chord = (on: boolean) => H.heard({ event: "chord", name: "control_option", on })
+const chord = (on: boolean) => {
+  if (on) { downAt = Math.max(Date.now(), downAt + heldMs); heldMs = 0 }
+  H.heard({ event: "chord", name: "control_option", on, t: on ? downAt : downAt + heldMs })
+}
 const asks = () => H.asked().filter((m) => m.kind === "ask" || m.kind === "point")
 
 await until(() => !!sock)
