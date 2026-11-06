@@ -3067,6 +3067,17 @@ await section("agent logins", async () => {
   check("agent logins: a code split in a box per digit", f5.kind === "otp" && f5.otp.length === 6, f5)
   check("agent logins: a page with no login form has none", loginForm([search, input({ type: "checkbox" })]).kind === "none")
 
+  // Your own sign-ins (electron/browser/userlogins.ts): what one offers to save.
+  const { saveOffer } = await import("../electron/browser/loginform.ts")
+  const saved = [{ id: "a", username: "alice@example.com", modified: 1 }, { id: "b", username: "Alice@example.com", modified: 5 }, { id: "c", username: "bob", modified: 3 }]
+  check("your logins: a sign-in a site has no entry for offers a new one", JSON.stringify(saveOffer([], "alice", null)) === '{"kind":"new"}' && saveOffer(saved, "carol", new Set())?.kind === "new")
+  check("your logins: one whose password an entry of that username has offers nothing", saveOffer(saved, "bob", new Set(["c"])) === null)
+  check("your logins: a new password for a username offers to update its newest entry (any case)", JSON.stringify(saveOffer(saved, "alice@EXAMPLE.com", new Set())) === '{"kind":"update","id":"b"}')
+  check("your logins: another username's password doesn't count", saveOffer(saved, "bob", new Set(["a"]))?.kind === "update")
+  check("your logins: locked, an entry of that username might have it: nothing offered", saveOffer(saved, "bob", null) === null && saveOffer(saved, "dan", null)?.kind === "new")
+  check("your logins: no username heard: the site's only entry is the one updated, unless it has it", saveOffer([saved[2]], "", new Set())?.kind === "update"
+    && saveOffer([saved[2]], "", new Set(["c"])) === null && saveOffer(saved, "", new Set())?.kind === "new" && saveOffer(saved, "", new Set(["a"])) === null)
+
   // What agents see of a page that holds a filled secret: never the secret, as is or as an address encodes it.
   const s = "p@ss wörd&1!"
   const encoded = [s, encodeURIComponent(s), encodeURIComponent(s).toLowerCase(), new URLSearchParams([["pw", s]]).toString().slice(3), encodeURI(s)]
@@ -3076,6 +3087,55 @@ await section("agent logins", async () => {
   keep("482913", 60_000)
   const answer = scrubDeep({ tab: 3, title: "Code 482913", lines: ["a 482913"], png: "iVBORw0K482913AAAA" })
   check("agent logins: an answer's every string is scrubbed, a picture's bytes left whole", answer.title === "Code •••" && answer.lines[0] === "a •••" && answer.png === "iVBORw0K482913AAAA" && answer.tab === 3, answer)
+})
+
+// ---------- Browser: your passwords, the user's own KeePass file (electron/browser/kdbxedit.ts) ----------
+// A made-up main file with a KeeShare-exported Agents group, as KeePassXC writes it; never a real one.
+await section("your passwords", async () => {
+  const kp = await import("../electron/browser/keepass.ts")
+  const ed = await import("../electron/browser/kdbxedit.ts")
+  const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
+  const MAIN = "made-up main password", SHARE = "made-up share password"
+  const db = Kdbx.create(new Credentials(ProtectedValue.fromString(MAIN)), "Main")
+  const agents = db.createGroup(db.getDefaultGroup(), "Agents")
+  const b64 = (s: string) => Buffer.from(s).toString("base64")
+  const ref = `<?xml version="1.0"?><KeeShare><Type><Export/></Type><Group>${Buffer.from(agents.uuid.bytes).toString("base64")}</Group><Path>${b64("agents.kdbx")}</Path><Password>${b64(SHARE)}</Password><KeepGroups>True</KeepGroups></KeeShare>`
+  agents.customData = new Map([["KeeShare/Reference", { value: b64(ref) }]])
+  const bank = db.createEntry(db.getDefaultGroup())
+  bank.fields.set("Title", "Bank"); bank.fields.set("UserName", "alice"); bank.fields.set("Password", ProtectedValue.fromString("bank-pw"))
+  db.createGroup(agents, "Projects")
+  let file = new Uint8Array(await db.save())
+
+  let main = await kp.loadKdbx(file, MAIN)
+  const shares = ed.sharesOf(main, "/made/up/Main.kdbx")
+  check("your passwords: KeePassXC's KeeShare export is found, its path against the file's folder", shares.length === 1 && shares[0].path === "/made/up/agents.kdbx" && shares[0].password === SHARE && shares[0].keepGroups, shares.map((s) => s.path))
+  const agentsId = shares[0].group, projects = ed.listOf(main, "/f").groups.find((g) => g.name === "Projects")!.id
+  const id = ed.applyChange(main, { group: agentsId, title: "Lighthouse", username: "alice", password: "pw-1", urls: ["https://lighthouse.example.com", "https://auth.lighthouse.example.com"], tags: ["agent-free"], notes: "n" })
+  const inSub = ed.applyChange(main, { group: projects, title: "Harbor", username: "bob", password: "pw-h", urls: ["harbor.example.org"], tags: [], notes: "" })
+  file = new Uint8Array(await main.save())
+  main = await kp.loadKdbx(file, MAIN)
+  const list = ed.listOf(main, "/f")
+  const light = list.entries.find((e) => e.id === id)!
+  check("your passwords: a new entry keeps its addresses, tags and group", light.urls.length === 2 && light.free && light.group === agentsId && light.shared, light)
+  check("your passwords: entries in the exported group (and its subgroups) are for agents, others aren't", list.entries.find((e) => e.id === inSub)!.shared && !list.entries.find((e) => e.title === "Bank")!.shared)
+  check("your passwords: the list has no secret", !JSON.stringify(list).includes("pw-1") && !JSON.stringify(list).includes("bank-pw"))
+  ed.applyChange(main, { id, title: "Lighthouse", username: "alice", password: "pw-2", urls: ["https://lighthouse.example.com"], tags: [], notes: "n" })
+  const full = ed.fullOf(main, "/f", id)!
+  const entry = ed.entryById(main, id)!
+  check("your passwords: an edit changes it and keeps the old one in its history", full.password === "pw-2" && !full.free && full.urls.length === 1 && entry.history.length === 1 && kp.fieldsOf(entry.history[0]).Password === "pw-1")
+
+  const out = await kp.openDatabase(new Uint8Array(await ed.exportOf(main, shares[0])), SHARE)
+  const ids = out.entries.map((e) => e.id).sort().join()
+  check("your passwords: the export is what agents read, with the same entry ids, subgroups too", ids === [id, inSub].sort().join() && out.secrets(id)?.password === "pw-2", out.entries.map((e) => e.title))
+  check("your passwords: nothing outside the exported group reaches agents", !out.entries.some((e) => e.title === "Bank"))
+
+  ed.removeEntry(main, inSub)
+  const binned = ed.listOf(main, "/f")
+  check("your passwords: deleting goes to the recycle bin first", binned.groups.find((g) => g.id === binned.entries.find((e) => e.id === inSub)?.group)?.bin === true)
+  ed.removeEntry(main, inSub)
+  check("your passwords: deleting from the bin removes it", !ed.listOf(main, "/f").entries.some((e) => e.id === inSub))
+  const after = await kp.openDatabase(new Uint8Array(await ed.exportOf(main, shares[0])), SHARE)
+  check("your passwords: a deleted entry leaves the export", !after.entries.some((e) => e.id === inSub))
 })
 
 // ---------- Browser: a login sealed for another Mac's app (electron/browser/sealed.ts) ----------
