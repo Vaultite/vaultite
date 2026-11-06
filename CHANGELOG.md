@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Glass bundles look like glass in the web demo**: the demo has no desktop under its window, so Full glass and
+  Glass now show a soft wallpaper (on vaultite.com's bundle pages, the page's own) through blurred, see-through bars.
+  Asking for a bundle the demo already has replaces its copy, so switching back and forth works.
 - **The web demo's Browser shows real sites**: its tabs hold neodisk.app and olimpicos.net live (sandboxed, sending no
   referrer), beside a note about the page you're on; and the demo follows the site that embeds it, its light or dark
   look and its visitor's answer about AI (`?theme=`, `?ai=`).

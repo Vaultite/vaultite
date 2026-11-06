@@ -1430,6 +1430,20 @@ html[data-translucent][data-translucent-pages] {
   }
 }
 
+/* The web demo's desktop under a translucent window (web/demo/boot.ts sets data-demo-desk): a wallpaper of its own in
+   the scheme's colours, soft as the system's blur would leave it (it only shows through the chrome); or, on vaultite.com's
+   bundle pages (page), none: the page around it draws one and blurs it under the window. */
+html[data-demo-desk] {
+  --demo-desk:
+    radial-gradient(60% 55% at 12% 18%, color-mix(in srgb, var(--blue) 85%, transparent), transparent 70%),
+    radial-gradient(55% 60% at 88% 12%, color-mix(in srgb, var(--pink) 70%, transparent), transparent 70%),
+    radial-gradient(65% 60% at 80% 88%, color-mix(in srgb, var(--orange) 80%, transparent), transparent 70%),
+    radial-gradient(60% 65% at 15% 92%, color-mix(in srgb, var(--teal) 80%, transparent), transparent 70%),
+    linear-gradient(135deg, var(--indigo), var(--purple));
+}
+html[data-translucent][data-demo-desk=own] { background: var(--demo-desk); }
+html.dark[data-translucent][data-demo-desk=own] { background: linear-gradient(rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.45)), var(--demo-desk); }
+
 /* A setting's preview card (components/SettingPreview.tsx): fades and grows in from its row; warm, it's there at once. */
 @keyframes preview-in { from { opacity: 0; scale: 0.96; } }
 [data-setting-preview][data-cold] .preview-card { animation: preview-in var(--motion) var(--ease-out); }

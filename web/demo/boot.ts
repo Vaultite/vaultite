@@ -11,6 +11,22 @@ import olimpicos from "./sites/olimpicos.png?inline"
 const ICONS: Record<string, string> = { "https://neodisk.app/": neodisk, "https://olimpicos.net/": olimpicos }
 frameSites(SITES.map(({ url, title }) => ({ url, title, icon: ICONS[url] ?? "" })))
 
+// A translucent window's desktop (core/appearance.ts stands in for the app's): the demo's own wallpaper, or, with
+// ?desk=page (vaultite.com's bundle pages), the page's around it, which hears when the window is see-through (and dark).
+const root = document.documentElement
+root.dataset.demoDesk = new URLSearchParams(location.search).get("desk") === "page" && parent !== window ? "page" : "own"
+if (parent !== window) {
+  let was = ""
+  const tell = () => {
+    const glass = { on: root.hasAttribute("data-translucent"), pages: root.hasAttribute("data-translucent-pages"), dark: root.classList.contains("dark") }
+    if (JSON.stringify(glass) === was) return
+    was = JSON.stringify(glass)
+    parent.postMessage({ type: "vaultite-demo:glass", ...glass }, location.origin)
+  }
+  new MutationObserver(tell).observe(root, { attributeFilter: ["data-translucent", "data-translucent-pages", "class"] })
+  tell()
+}
+
 const server = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
 const ready = new Promise<void>((ok, no) => {
   server.onmessage = (e) => { if (e.data.type === "ready") ok(); else if (e.data.type === "failed") no(new Error(e.data.error)) }
@@ -187,7 +203,8 @@ async function bundles() {
   const openBundle = async (asked: string, running = false) => {
     let id = asked
     if (asked.startsWith("gh:")) {
-      const r = await api("bundles/import", { from: asked.slice(3) })
+      // (the demo's copy of one asked for again is replaced: a link is the visitor's go, and the server asks for it)
+      const r = await api("bundles/import", { from: asked.slice(3), replace: true })
       if (r.error) return fail(asked, r.error)
       id = r.bundle.id
     }
