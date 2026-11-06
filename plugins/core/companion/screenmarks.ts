@@ -34,8 +34,8 @@ export type MarkType = Mark["type"]
  *  beats), and the screen rects of its places (`places`: "el:e12", "pane:t3", "ui:tab:t3"). */
 export type Drawing = { id: string; agent: string; tint: string; t: number; marks: Mark[]; caption?: string; places?: Record<string, Rect>; kept?: string
   /** Its caption's sentences as they're heard aloud (the companion's voice): when each began (ms, the clock's) and how
-   *  long it took; null, not heard (yet). The pen draws each beat while its sentence is heard. */
-  spoken?: (Spoken | null)[] }
+   *  long it took; null, not heard (yet). The pen draws each beat while its sentence is heard; `waits`, still being said. */
+  spoken?: (Spoken | null)[]; waits?: boolean }
 export type Spoken = { at: number; dur: number }
 
 export const MARK_TYPES: MarkType[] = ["point", "ring", "frame", "underline", "strike", "connect", "num", "check", "cross", "spotlight", "scroll", "write", "paper", "sticky", "list", "button", "copy", "open"]
@@ -45,7 +45,7 @@ export const MOST = { marks: 40, items: 60, points: 200, values: 24, list: 12, l
 export const PAPER = { w: 360, h: 240 }
 
 /** The vocabulary in a few lines, for the op's help and the docs. */
-export const VOCABULARY = `Spots: {"el": "<id>"} (an element of the ask: snaps to its frame; the best), {"find": "<words>"} (the thing on the screen saying them), {"pane": "<id>"} or {"ui": "tab:<id>"} in the app; [x, y, w, h] or [x, y] in screen points only for what has none (a bare point snaps to what they drew round it, else to the element there).
+export const VOCABULARY = `Spots: {"el": "<id>"} (an element of the ask: snaps to its frame; the best), {"find": "<words>"} (the thing on the screen saying them now, by their pointer), {"pane": "<id>"} or {"ui": "tab:<id>"} in the app; [x, y, w, h] or [x, y] in screen points only for what has none (a bare point snaps to a frame round what they drew there, else to the element there).
 On the screen: point, ring, frame (a thing or an area boxed, the whole of it: what it is), underline, strike, check, cross, spotlight {at, label?}; num {at, n}; scroll {at, dir}; connect {from, to, label?}.
 On calm space (at optional): write {text, size: s|m|l}; paper {w, h, title?, grid?, items}: its items in its own units (0,0 its top left): line|arrow {from: [x,y], to}, rect|ellipse {x,y,w,h,label?}, path {points}, text {x,y,text}, chart {kind: bar|line, x,y,w,h, values, labels?}; sticky {text, title?}; list {items, title?, numbered?}.
 Actions: copy {text}, open {url}, button {label, do: {copy}|{open}|{ask: "<follow-up>"}}.
@@ -67,7 +67,8 @@ export function checkMarks(marks: unknown): Mark[] {
 
 function checkMark(m: unknown): Mark {
   if (!isObj(m)) throw new Error("a mark is an object: {\"type\": ..., ...}")
-  const type = m.type as MarkType
+  // (an arrow is a connect, as its tag is)
+  const type = (m.type === "arrow" ? "connect" : m.type) as MarkType
   if (!MARK_TYPES.includes(type)) throw new Error(`type is one of ${MARK_TYPES.join(", ")}`)
   const base: Base = {}
   if (m.beat !== undefined) { if (!Number.isInteger(m.beat) || (m.beat as number) < 0 || (m.beat as number) > 50) throw new Error("beat: a sentence's index, from 0"); base.beat = m.beat as number }
@@ -207,6 +208,16 @@ export function byLabel<T extends { label: string }>(els: T[], text: string): T 
     ?? els.find((e) => norm(e.label).length >= 3 && want.includes(norm(e.label))) ?? null
 }
 
+/** Words found on the screen, and how well (3: an element named them; 2: their whole words; 1: inside longer words). */
+export type Found = Rect & { q: number }
+const gapOf = (a: Rect, b: Rect) => Math.hypot(Math.max(0, b.x - a.x - a.w, a.x - b.x - b.w), Math.max(0, b.y - a.y - a.h, a.y - b.y - b.h))
+/** Of places words were found, the one meant: the best match, then the nearest `by` (what the user drew, else their
+ *  pointer), so of two panes saying them the one they're at wins. */
+export function bestFound(found: Found[], by: Rect[] = []): Found | null {
+  const gap = (r: Rect) => (by.length ? Math.min(...by.map((b) => gapOf(r, b))) : 0)
+  return [...found].sort((a, b) => b.q - a.q || gap(a) - gap(b))[0] ?? null
+}
+
 /** Marks whose size is what they mean (a ring, a frame, a line under or through, a spotlight). */
 const SIZED = new Set<MarkType>(["ring", "frame", "underline", "strike", "spotlight"])
 const contains = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
@@ -215,26 +226,39 @@ const iou = (a: Rect, b: Rect) => {
   const i = w > 0 && h > 0 ? w * h : 0
   return i ? i / (a.w * a.h + b.w * b.h - i) : 0
 }
-/** `marks` at what's there: a sized mark at a bare point (a guessed pixel) goes round what the user drew there (`drawn`),
- *  else the element it's on or by (`places`' "el:a3"); a box much like an element's, that element. */
+const within = (r: Rect, b: Rect, slack = 8) => r.x >= b.x - slack && r.y >= b.y - slack && r.x + r.w <= b.x + b.w + slack && r.y + r.h <= b.y + b.h + slack
+/** `marks` at what's there: a sized mark at a guessed pixel or box goes round what the user drew there (`drawn`; a ring
+ *  there a frame: they circled a thing or a group), else the element it's on, by or much like (`places`' "el:a3"). */
 export function snapMarks(marks: Mark[], places: Record<string, Rect> = {}, drawn: Rect[] = []): Mark[] {
   const els = Object.entries(places).filter(([k, r]) => k.startsWith("el:") && r.w > 0 && r.h > 0).map(([k, r]) => ({ id: k.slice(3), r }))
   const area = (r: Rect) => r.w * r.h
-  const snap = (s: Spot): Spot => {
-    if (!("x" in s)) return s
+  // (what they circled: round the elements inside it, the whole of each, else as drawn)
+  const circled = (ring: Rect): Rect => {
+    const inside = els.map((e) => e.r).filter((r) => within(r, ring) && area(r) < area(ring) * 0.9)
+    if (!inside.length) return { x: ring.x, y: ring.y, w: ring.w, h: ring.h }
+    const x = Math.min(...inside.map((r) => r.x)), y = Math.min(...inside.map((r) => r.y))
+    return { x, y, w: Math.max(...inside.map((r) => r.x + r.w)) - x, h: Math.max(...inside.map((r) => r.y + r.h)) - y }
+  }
+  const snap = (s: Spot): { at: Spot; ring?: true } => {
+    if (!("x" in s)) return { at: s }
     if (s.w || s.h) {
       const like = els.filter((e) => iou(e.r, s) >= 0.6).sort((a, b) => iou(b.r, s) - iou(a.r, s))[0]
-      return like ? { el: like.id } : s
+      if (like) return { at: { el: like.id } }
+      const ring = drawn.filter((r) => iou(r, s) >= 0.5).sort((a, b) => iou(b, s) - iou(a, s))[0]
+      return ring ? { at: circled(ring), ring: true } : { at: s }
     }
     const ring = drawn.filter((r) => contains(r, s.x, s.y)).sort((a, b) => area(a) - area(b))[0]
-    if (ring) return { x: ring.x, y: ring.y, w: ring.w, h: ring.h }
+    if (ring) return { at: circled(ring), ring: true }
     const on = els.filter((e) => contains(e.r, s.x, s.y)).sort((a, b) => area(a.r) - area(b.r))[0]
-    if (on) return { el: on.id }
-    const gap = (r: Rect) => Math.hypot(Math.max(r.x - s.x, 0, s.x - r.x - r.w), Math.max(r.y - s.y, 0, s.y - r.y - r.h))
-    const by = els.filter((e) => gap(e.r) <= 12).sort((a, b) => gap(a.r) - gap(b.r))[0]
-    return by ? { el: by.id } : s
+    if (on) return { at: { el: on.id } }
+    const by = els.filter((e) => gapOf(e.r, s) <= 12).sort((a, b) => gapOf(a.r, s) - gapOf(b.r, s))[0]
+    return { at: by ? { el: by.id } : s }
   }
-  return marks.map((m) => (SIZED.has(m.type) && "at" in m && m.at ? { ...m, at: snap(m.at) } as Mark : m))
+  return marks.map((m) => {
+    if (!SIZED.has(m.type) || !("at" in m) || !m.at) return m
+    const { at, ring } = snap(m.at)
+    return { ...m, ...(ring && m.type === "ring" ? { type: "frame" } : {}), at } as Mark
+  })
 }
 
 // ---------- timing: marks come in beats, each with a sentence of the words
@@ -270,13 +294,13 @@ export function heardBeats(caption: string, heard: Heard[]): (Spoken | null)[] {
     return null
   })
 }
-/** When each beat starts (ms after `t0`, the drawing's clock) and how long its marks are spread over: while its sentence
- *  is heard, when it's said aloud; else the time to read the ones before (beatTimes), on from the last heard. */
-export function pacedBeats(caption: string, beats: number, spoken: (Spoken | null)[] | undefined, t0: number) {
+/** When each beat starts (ms after `t0`, the drawing's clock) and how long its marks spread over: while its sentence is
+ *  heard (one not heard yet while it `waits`: Infinity); else the time to read the ones before, on from the last heard. */
+export function pacedBeats(caption: string, beats: number, spoken: (Spoken | null)[] | undefined, t0: number, waits = false) {
   const ss = sentences(caption), times: number[] = [], spread: (number | null)[] = []
   for (let b = 0; b <= beats; b++) {
     const h = spoken?.[b], was = b ? spoken?.[b - 1] : null
-    const t = h ? h.at - t0 : b === 0 ? 0 : was ? was.at + was.dur - t0 : times[b - 1] + (ss[b - 1] ? readMs(ss[b - 1]) : 1200)
+    const t = h ? h.at - t0 : waits ? Infinity : b === 0 ? 0 : was ? was.at + was.dur - t0 : times[b - 1] + (ss[b - 1] ? readMs(ss[b - 1]) : 1200)
     times.push(Math.max(0, b ? times[b - 1] : 0, t))
     spread.push(h ? h.dur : null)
   }

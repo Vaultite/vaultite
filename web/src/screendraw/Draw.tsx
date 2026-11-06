@@ -31,17 +31,17 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
   if (!born.has(d.id)) { born.set(d.id, { t0: Date.now() + (pen && d.here.home && !still() ? PEN_LEAD : 0), shown: new Map(), at: Date.now() }); if (born.size > 20) born.delete(born.keys().next().value!) }
   const { t0, shown: showedAt } = born.get(d.id)!
   // (each beat while its sentence is heard, when the voice says it; else in the time to read it)
-  const last = Math.max(0, ...d.marks.map((m) => m.beat ?? 0)), { times, spread } = useMemo(() => pacedBeats(d.caption ?? "", last, d.spoken, t0), [d.caption, last, d.spoken, t0])
+  const last = Math.max(0, ...d.marks.map((m) => m.beat ?? 0)), { times, spread } = useMemo(() => pacedBeats(d.caption ?? "", last, d.spoken, t0, d.waits), [d.caption, last, d.spoken, t0, d.waits])
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const next = times.find((t) => t0 + t > now)
-    if (next === undefined) return
+    if (next === undefined || !Number.isFinite(next)) return
     const id = setTimeout(() => setNow(Date.now()), t0 + next - Date.now() + 5)
     return () => clearTimeout(id)
   }, [now, times, t0])
-  // (the first beat's marks are there from the start, waiting out the pen's lead; one shown stays, though its sentence
-  // turns out to be heard later than reckoned)
-  const b0 = born.get(d.id)!, beat = b0.beat = Math.max(b0.beat ?? 0, times.filter((t) => t0 + t <= now).length - 1)
+  // (the first beat's marks are there from the start, waiting out the pen's lead, unless they wait for their words; one
+  // shown stays, though its sentence turns out to be heard later than reckoned)
+  const b0 = born.get(d.id)!, beat = b0.beat = Math.max(b0.beat ?? (Number.isFinite(times[0]) ? 0 : -1), times.filter((t) => t0 + t <= now).length - 1)
   const placed = useMemo(() => place(d, d.here, labelSize, measure), [d])
   const W = d.here.width, H = d.here.height, seed = hash(d.id)
   // (in each beat, one after another, on the drawing's clock: when each starts, and its delay from when it showed)
@@ -55,8 +55,8 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
   const shown = placed.filter((p) => (p.mark.beat ?? 0) <= beat)
   for (const p of shown) if (!showedAt.has(p.i)) showedAt.set(p.i, Date.now())
   const order = new Map(shown.map((p) => [p.i, startAt.get(p.i)! - showedAt.get(p.i)!]))
-  // (the cursor's pen: the strokes of the marks here, as the ink draws them)
-  const script = useMemo(() => (pen && d.here.home ? { id: d.id, strokes: penStrokes(placed, (i) => seed + i * 97, (i) => startAt.get(i)!) } : null), [pen, d.id, d.here.home, placed, seed, startAt])
+  // (the cursor's pen: the strokes of the marks here, as the ink draws them; those still waiting for their words, once timed)
+  const script = useMemo(() => (pen && d.here.home ? { id: d.id, strokes: penStrokes(placed.filter((p) => Number.isFinite(startAt.get(p.i))), (i) => seed + i * 97, (i) => startAt.get(i)!) } : null), [pen, d.id, d.here.home, placed, seed, startAt])
   // (its ink starts when the browser starts its animations, which may be later than it was drawn (React holds a suspended
   // part back a moment, then a frame): the drawing's clock, and so the pen's, set by the first one's start)
   const root = useRef<HTMLDivElement>(null)
@@ -81,20 +81,25 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
   }, [d.id])
   useEffect(() => { if (pen) pen(leaving ? null : script) }, [pen, script, leaving])
   useEffect(() => () => pen?.(null), [pen])
+  // (a walkthrough: once the next beat is drawn, what pointed goes and what it showed steps back; cards and steps stay)
+  const newest = Math.max(0, ...shown.filter((p) => (startAt.get(p.i) ?? Infinity) <= now).map((p) => p.mark.beat ?? 0))
+  const pastOf = (p: Placed) => ((p.mark.beat ?? 0) >= newest || p.card ? undefined : GONE.has(p.mark.type) ? "sd-gone" : STEP_BACK.has(p.mark.type) ? "sd-past" : undefined)
   const keepable = d.marks.some((m) => m.type === "paper" || m.type === "sticky" || m.type === "list" || m.type === "write")
   return (
     <div ref={root} data-screendraw={d.id} data-beat={beat} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
-      {shown.filter((p) => p.mark.type === "spotlight" && p.box).map((p) => <Spotlight key={p.i} r={p.box!} W={W} H={H} delay={order.get(p.i)!} />)}
-      {shown.filter((p) => p.mark.type === "frame" && p.box).map((p) => <Focus key={p.i} p={p} delay={order.get(p.i)!} />)}
+      {shown.filter((p) => p.mark.type === "spotlight" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Spotlight r={p.box!} W={W} H={H} delay={order.get(p.i)!} /></div>)}
+      {shown.filter((p) => p.mark.type === "frame" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Focus p={p} delay={order.get(p.i)!} /></div>)}
       <svg className="sd-glow absolute inset-0 overflow-visible" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        {shown.map((p) => <Strokes key={p.i} p={p} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} W={W} H={H} />)}
+        {shown.map((p) => <g key={p.i} className={pastOf(p)}><Strokes p={p} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} W={W} H={H} /></g>)}
       </svg>
-      {shown.map((p) => <Parts key={p.i} p={p} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} grab={grab} seed={seed + p.i * 131} id={`sd${seed}-${p.i}`} />)}
+      {shown.map((p) => <div key={p.i} className={pastOf(p)}><Parts p={p} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} grab={grab} seed={seed + p.i * 131} id={`sd${seed}-${p.i}`} /></div>)}
       {d.here.home && shown.length > 0 && !leaving && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} grab={grab} />}
     </div>
   )
 }
 
+/** An earlier beat's marks, once a later one is drawn: what only pointed goes, what showed a thing dims. */
+const GONE = new Set<Mark["type"]>(["point", "spotlight"]), STEP_BACK = new Set<Mark["type"]>(["ring", "frame", "underline", "strike", "connect", "scroll"])
 const ms = (n: number) => `${Math.round(n)}ms`
 /** Reduced motion: everything drawn at once, no pen to wait for. */
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches

@@ -1,5 +1,6 @@
 // The menu-bar helper's reckoning, apart from Electron so it's tested alone (tools/test/vault/helper.ts).
 import { arrowBox, boxAt, flagBox } from "../plugins/core/companion/boxes.ts"
+import { jobTold } from "../plugins/core/companion/jobs.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 type Decls = Record<string, { default?: unknown }>
@@ -10,7 +11,9 @@ export type Prefs = { fn: boolean; keys: string[]; talk: string[]; privateApps: 
   /** Soft cues as it's summoned, sent an ask, and answers (the companion's `sounds`). */
   sounds: boolean
   /** Who hears a spoken ask and answers it first (realtimefront.ts): a realtime model, or dictation and the voice. */
-  realtime: { front: "realtime" | "pipeline"; model: string; voice: string } }
+  realtime: { front: "realtime" | "pipeline"; model: string; voice: string }
+  /** Which jobs' news is told (the companion's job_news). */
+  jobNews: string }
 /** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
  *  `settings` giving the defaults. */
 export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
@@ -38,6 +41,7 @@ export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, 
       model: String(val(c.realtime_model, def(DEFAULTS.companion, "realtime_model") ?? "") || "gpt-realtime-2.1-mini"),
       voice: String(val(c.realtime_voice, def(DEFAULTS.companion, "realtime_voice") ?? "") || "cedar"),
     },
+    jobNews: String(val(c.job_news, def(DEFAULTS.companion, "job_news") ?? "quiet")),
   }
 }
 
@@ -223,12 +227,12 @@ export function jobsShown(jobs: HelperJob[], now = Date.now()) {
   return jobs.filter((j) => ACTIVE.has(j.state) || (j.state !== "stopped" && (j.unseen || now - j.at < 86_400_000)))
     .sort((a, b) => (RANK[a.state] ?? 3) - (RANK[b.state] ?? 3) || b.at - a.at).slice(0, 6)
 }
-/** Jobs that came to need the user, or ended (ready for review, done, failed), since `before` (null: the first list
- *  heard, no news): a notification each. */
-export function jobNews(before: HelperJob[] | null, after: HelperJob[]) {
+/** Jobs whose news is told (`news`: job_news) that came to need the user, or ended (ready for review, done, failed),
+ *  since `before` (null: the first list heard, no news): a notification each. */
+export function jobNews(before: HelperJob[] | null, after: HelperJob[], news: string) {
   if (!before) return []
   const was = new Map(before.map((j) => [j.id, j.state]))
-  return after.filter((j) => was.has(j.id) && was.get(j.id) !== j.state && (j.state === "needs you" || (["ready for review", "done", "failed"].includes(j.state) && j.unseen)))
+  return after.filter((j) => was.has(j.id) && was.get(j.id) !== j.state && jobTold(j.state, news) && (j.state === "needs you" || j.unseen))
 }
 /** A job's line under its title in the menu: its state, where, and what it does now or ended with. */
 export const jobSublabel = (j: HelperJob) => [`${JOB_SAID[j.state] ?? j.state}${j.unseen ? ", new" : ""}${j.took ? ` · ${j.took}` : ""}`, j.where, ACTIVE.has(j.state) ? j.now : j.result]

@@ -183,7 +183,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-models:codex` (codex): The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take.
 - `agent-pick:claude` (claude-code): The keys answering its questions with `choices`, or "chat" ("agent-pick:claude"): a digit picks (a multi-select's toggles, then Tab; its Type something is ↓ past the options, then Tab, Enter); 1 submits the review at the end.
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
-- `agent-turn:claude` (claude-code): A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.
+- `agent-turn:claude` (claude-code): A session's latest turn: the user's last message, Claude's last answer, its background tasks running ("agent-turn:claude", read as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.
 - `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.
 - `agents-used:companion` (companion): The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"): its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first.
 - `companion:who` (companion): The agent whose session runs in app terminal `terminal`, as Provenance names who wrote a line: its name, colour, and the model and effort it was started with; null when it's no companion's.
@@ -251,7 +251,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
-- `terminal:<…>` (meters, access, waits, state, agent-waits, screen, locate, runs, agent-env, wait, of, of-pids, info): agent-meters; terminal
+- `terminal:<…>` (meters, access, waits, state, ended, agent-waits, screen, locate, runs, agent-env, wait, of, of-pids, info): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
 - `versions:icloud` (sync-conflicts)
 - `watches:read` (watches): A source read now (note:, terminal:, site: in the user's tab), as the companion's follows read panes; null: none such.

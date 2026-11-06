@@ -574,6 +574,8 @@ async function askIn(id: string, agent = "") {
 plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || current(id)?.state === "blocked")
 /** Terminal `id`'s state now (StateChange without its time), or null when nothing says. */
 plugin.provide("terminal:state", (id: string) => (TERMINAL_ID.test(id) ? current(id) : null))
+/** How terminal `id` ended (its exit code, signal; `lost`: unknown), while it's kept here; null while it runs. */
+plugin.provide("terminal:ended", (id: string) => (TERMINAL_ID.test(id) ? endOf(id) : null))
 /** Agent terminal `id`'s agent says it waits on the user (`kind`: a permission or a question), or no longer (null). */
 plugin.provide("terminal:agent-waits", (id: string, kind: Kind | null) => {
   if (!TERMINAL_ID.test(id) || (kind !== null && kind !== "permission" && kind !== "question") || (terms.get(id)?.waits ?? null) === kind) return
@@ -995,7 +997,7 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     if (binary) {
       s.link.write(buf)
       // (a page's own answers to its terminal's questions aren't typing: a focus report, a DA)
-      if (!buf.includes(27) || buf.length === 1) lastInput.set(s.id, Date.now())
+      if (!buf.includes(27) || buf.length === 1) { lastInput.set(s.id, Date.now()); pageInput.set(s.id, Date.now()) }
       // Enter may have started a program (claude, vim): tabs show its name soon, not at the next poll.
       if (buf.includes(13)) setTimeout(listChanged, 400)
       return
@@ -1373,6 +1375,8 @@ const cleanName = (s: string) => s.replace(/[\s\p{Cc}]+/gu, " ").trim().slice(0,
 
 /** When each terminal was last typed into (a page, vau terminal send): a state told before that is an older turn's. */
 const lastInput = new Map<string, number>()
+/** When each was last typed into in one of its tabs: by the user, not an op. */
+const pageInput = new Map<string, number>()
 /** What was sent into each terminal from outside its tabs (vau terminal send and key, the inbox), by whom: the last 20. */
 type Sent = { at: number; by: string; text?: string; keys?: string[] }
 const inputs = new Map<string, Sent[]>()
@@ -1711,9 +1715,9 @@ plugin.provide("terminal:of-pids", async (pids: number[]) => {
   return null
 })
 
-/** A terminal's id and title (the user's name for it, else a Claude Code session's), whether something runs in it and
- *  its agent's session id, or null when it isn't running. */
+/** A terminal's id and title (the user's name for it, else a Claude Code session's), whether something runs in it, its
+ *  agent's session id and when it was last typed into in a tab (`typed`), or null when it isn't running. */
 plugin.provide("terminal:info", async (id: string) => {
-  const s = (await localList()).find((x) => x.id === id)
-  return s ? { id: s.id, title: s.name ?? s.title, busy: s.busy, ...(s.session ? { session: s.session } : {}) } : null
+  const s = (await localList()).find((x) => x.id === id), typed = pageInput.get(id)
+  return s ? { id: s.id, title: s.name ?? s.title, busy: s.busy, ...(s.session ? { session: s.session } : {}), ...(typed ? { typed } : {}) } : null
 })

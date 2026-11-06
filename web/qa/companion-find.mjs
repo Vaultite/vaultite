@@ -67,6 +67,42 @@ if (named.text) {
 r = await op("companion.draw", { marks: [{ type: "ring", at: { find: "words nowhere on this screen 41" } }] })
 check("words the window doesn't show aren't drawn, and it says so", r.status === 409 && /nothing on the user's screen says/.test(r.error ?? ""), r)
 
+// (the same words in two places, styled in parts, a hidden copy and one under a cover; short words inside longer ones)
+const put = await page.evaluate(() => {
+  const add = (css, html) => { const d = document.createElement("div"); (window.qaFind ??= []).push(d); d.style.cssText = `position:fixed;z-index:99999;font:14px sans-serif;background:white;${css}`; d.innerHTML = html; document.body.append(d); return d }
+  const left = add("left:40px;top:300px", "Every <b>thought</b>, your own."), right = add("left:900px;top:300px", "Every <i>thought</i>, your own.")
+  add("left:500px;top:500px;visibility:hidden", "Lighthouse beam 7")
+  add("left:500px;top:560px", "Lighthouse beam 8")
+  add("left:490px;top:550px;width:200px;height:40px;z-index:100000", "")
+  add("left:40px;top:620px", "Try agai tomorrow again")
+  const ox = window.screenX, oy = window.screenY + Math.max(0, window.outerHeight - window.innerHeight), at = (e) => { const b = e.getBoundingClientRect(); return { x: Math.round(ox + b.left), y: Math.round(oy + b.top) } }
+  return { left: at(left), right: at(right) }
+})
+const findAt = async (words, sx, sy) => {
+  helper.send(JSON.stringify({ t: "moment", kind: "ask", agent: "Claude", text: "this one", ui, sx, sy }))
+  await wait(300)
+  const res = await op("companion.draw", { marks: [{ type: "ring", at: { find: words } }] })
+  return { res, at: drawing()?.places?.[`find:${words}`] }
+}
+const nearRight = await findAt("Every thought, your own", put.right.x + 20, put.right.y + 5), nearLeft = await findAt("Every thought, your own", put.left.x + 20, put.left.y + 5)
+check("words split by styling are found whole; of two places saying them, the one by their pointer",
+  Math.abs((nearRight.at?.x ?? -99) - put.right.x) <= 2 && Math.abs((nearLeft.at?.x ?? -99) - put.left.x) <= 2, { nearRight, nearLeft, put })
+const hidden = await findAt("Lighthouse beam 7", 520, 510), covered = await findAt("Lighthouse beam 8", 520, 570), inside = await findAt("gai", 60, 630)
+check("words hidden, under something or only inside longer words aren't found", hidden.res.status === 409 && covered.res.status === 409 && inside.res.status === 409, { hidden, covered, inside })
+await page.evaluate(() => window.qaFind?.forEach((e) => e.remove()))
+
+// (a web page's own finder, electron/browser/findwords.ts, run as agent:find runs it: in the page)
+const { findWords } = await import("../../electron/browser/findwords.ts")
+const site = await ctx.newPage()
+await site.setContent(`<body style="font:16px sans-serif;margin:0"><p style="position:absolute;left:20px;top:40px">No model, <em>no internet</em>. Your vault changes only when you write in it.</p>
+  <p style="position:absolute;left:20px;top:200px;visibility:hidden">Use AI</p><button aria-label="Use AI" style="position:absolute;left:400px;top:200px;width:40px;height:30px">🤖</button>
+  <p style="position:absolute;left:20px;top:300px">Again and again</p></body>`)
+const inPage = (words) => site.evaluate(`(${findWords})(${JSON.stringify(words)})`)
+const [line, label, part] = await Promise.all([inPage("No model, no internet. Your vault changes only when you write in it."), inPage("Use AI"), inPage("ai")])
+check("a web page's words are found there whole, across its styling; an element its label names; hidden or inside words, not",
+  line.length === 1 && line[0].q === 2 && Math.abs(line[0].x - 20) <= 2 && label.length === 1 && label[0].q === 3 && Math.abs(label[0].x - 400) <= 2 && part.length === 0, { line, label, part })
+await site.close()
+
 await op("companion.clear")
 helper.close()
 await ctx.close()

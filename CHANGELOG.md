@@ -6,6 +6,36 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Telling a job more is quicker and loses nothing**: the companion hands on your own words, where you were and your
+  screen's picture with a short note, instead of retelling your ask first (seconds slower, and slips crept in).
+- **The companion walks you through a screen in step with its voice**: each mark lands as its words are heard, with any
+  voice (Soniox's and this Mac's too), one mark per thing it names, the earlier ones stepping back as the next comes; a
+  drawing it had to retry is never said twice, and its cursor stays by you until it flies straight to the next mark.
+- **The companion's spoken answers play to their end**: with ElevenLabs' voice an answer often stopped a second or so
+  in (or a few seconds, on a longer one), and two says in a row cut each other short. A job's news now waits for the
+  answer being said instead of cutting it off; pressing the Talk key still stops it at once. A voice that makes no sound
+  (out of credits) hands on to the next, and when none can speak a notice says so once and the answer shows in its box.
+- **The companion stays quiet about routine work**: a handoff says nothing unless there's something to hear (a question,
+  an unexpected place); its job card and the seen tick show it was heard. Its jobs' news is never said aloud: a job that
+  needs you or failed is a silent notification. The setting Job news says it aloud again, done and ready too, or off.
+- **The companion hears what you meant and checks before it acts**: a dictation slip is read by sound and what's on
+  screen, every part of an ask is done, and before cutting or rewriting what you pointed at it marks it (and asks when
+  unsure). It looks things up instead of guessing (read-only commands anywhere in your home, never keys), and stays quiet
+  about routine work.
+- **The companion's marks land on what you mean**: words it marks are found where they show now, in any pane (a web
+  page, a terminal, a note, the app), the one by your pointer when two say them, never its own words or what's hidden
+  behind a page; a box it reads off your screen's picture is no longer drawn off by where that picture starts; what you
+  circle is framed whole, round the things inside it; a corrected mark replaces the last; and a mark it can't place
+  tells it, so it checks with you before acting on it.
+- **The companion's jobs end as they did and run on the always-on machine**: a worker that closes its own session after
+  its answer (as one shipping all the way does) is done, or ready for review with its changes, instead of failed; only
+  a crash or an end with nothing to show fails. A job nothing ties to your laptop (a note, research, a GitHub page
+  checked out there) runs on an always-on machine serving your vault (the setting Jobs' machine); a preview or an
+  editor's project still runs where it's served.
+- **Finished jobs close their terminals, and the companion knows how a job goes now**: a done job's terminal closes by
+  itself after two minutes, unless it's on your screen, you typed in it or it still runs something in the background;
+  the job stays in Jobs with its result, and opening it or telling it more resumes its conversation. Asked how a job
+  goes, the companion reads what its worker said and was told last and the questions it asks, instead of its first title.
 - **A clipped X post keeps its video**: with the Videos plugin on, the post's video (and its transcript) is saved into
   the clip's own note a few minutes later, not a second note; the Web clipper's Save videos setting turns it off.
 - **On a phone, the caret that follows your reading sits on a line's text**: past a quote's mark or a list item's bullet

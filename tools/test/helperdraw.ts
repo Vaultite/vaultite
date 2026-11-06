@@ -453,16 +453,20 @@ check("jobs: one at work is in the menu bar's Jobs, saying so, where and what it
   await until(() => jobItem()?.sublabel === "Working · 2 min\nM4, site, Personal, Claude Code\nReading the fares") && !notices().length && H.badge() === "1" &&
   H.menu().some((i) => i.label === "Jobs (1 working)"), [jobItem(), notices()])
 sock!.send(JSON.stringify({ t: "jobs", jobs: [job("ready for review", true)] }))
-check("jobs: once it's ready for review, a notification, and the badge counts it till it's opened; its diff shown", await until(() => notices().length === 1 && H.badge() === "2") &&
-  notices()[0].state === "ready for review" && /^Ready for review, new · 2 min\n.*\n1 file changed/.test(jobItem()?.sublabel ?? ""), [notices(), H.badge(), jobItem()])
+check("jobs: once it's ready for review the badge counts it till it's opened, with no notification (job_news: quiet); its diff shown",
+  await until(() => H.badge() === "2") && !notices().length && /^Ready for review, new · 2 min\n.*\n1 file changed/.test(jobItem()?.sublabel ?? ""), [notices(), H.badge(), jobItem()])
 jobItem()!.click!()
-check("jobs: clicked, it opens its terminal in Vaultite, and it's no longer news", await until(() => posted.some((p) => p.url === "/api/ops/ui.open" && JSON.parse(p.body).path === "view:terminal/claude-abc")) &&
+check("jobs: clicked, it opens its job in Vaultite (its terminal, resumed if closed), and it's no longer news", await until(() => posted.some((p) => p.url === "/api/ops/companion.job-open" && JSON.parse(p.body).id === "j1")) &&
   H.asked().some((m) => m.t === "job-seen" && JSON.stringify(m.ids) === '["j1"]'), posted.slice(-2))
 sock!.send(JSON.stringify({ t: "jobs", jobs: [{ ...job("needs you"), id: "j2", title: "Book it" }, job("done")] }))
 await wait(50)
-check("jobs: one that comes to need them isn't news unless it was at work before; needing them, it goes first", notices().length === 1 && /^Needs you/.test(H.menu().find((i) => i.label === "Book it")?.sublabel ?? "") &&
+check("jobs: one that comes to need them isn't news unless it was at work before; needing them, it goes first", !notices().length && /^Needs you/.test(H.menu().find((i) => i.label === "Book it")?.sublabel ?? "") &&
   H.menu().findIndex((i) => i.label === "Book it") < H.menu().findIndex((i) => i.label === "Compare the flights") && H.badge() === "1" &&
   H.menu().some((i) => i.label === "Jobs (1 needs you)"), [notices(), H.menu().map((i) => i.label)])
+sock!.send(JSON.stringify({ t: "jobs", jobs: [{ ...job("working"), id: "j3", title: "Ask me" }] }))
+await wait(50)
+sock!.send(JSON.stringify({ t: "jobs", jobs: [{ ...job("needs you"), id: "j3", title: "Ask me" }] }))
+check("jobs: one at work that comes to need them is a notification", await until(() => notices().length === 1 && notices()[0].state === "needs you"), notices())
 
 // ---------- its voice: a stop silences audio streamed from elsewhere too (the realtime voice's), nothing left saying
 {

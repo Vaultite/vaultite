@@ -17,6 +17,8 @@ export function cloudVoice(c: CloudConfig): CloudVoice {
 }
 
 const KEEP_MS = 20_000, IDLE_MS = 90_000
+/** ElevenLabs: a piece whose audio went this quiet (ms) has all of it; after its final word, this long for audio still coming. */
+const QUIET_MS = 1000, FINAL_MS = 300
 
 /** Soniox's TTS (docs.soniox.com/tts): one socket, a stream per piece (5 at most), its config then its text whole; its
  *  audio comes as base64 PCM with each character's timing. A keepalive between streams, closed a while after the last. */
@@ -92,11 +94,12 @@ function soniox(c: CloudConfig): CloudVoice {
   }
 }
 
-/** ElevenLabs' multi-context socket (elevenlabs.io/docs, multi-stream-input): one socket for a voice and model, a context
- *  per piece, its text flushed and closed at once; PCM at 24 kHz with each character's timing (per chunk: added up). */
+/** ElevenLabs' multi-context socket (multi-stream-input): a context per piece, its text flushed, PCM at 24 kHz with each
+ *  character's timing; it ends, its context closed, once those cover its text, else once its audio went quiet. */
 function elevenlabs(c: CloudConfig): CloudVoice {
   let ws: WebSocket | null = null, idle: ReturnType<typeof setTimeout> | null = null, cid = 0
-  const streams = new Map<string, { to: Made; timed: Timed; bytes: number }>()
+  type Stream = { to: Made; timed: Timed; bytes: number; letters: number; quiet?: ReturnType<typeof setTimeout>; closed?: boolean }
+  const streams = new Map<string, Stream>()
   const queued: string[] = []
   const url = () => {
     const u = new URL(`${c.url.replace(/\/$/, "")}/v1/text-to-speech/${encodeURIComponent(c.voice)}/multi-stream-input`)
@@ -116,7 +119,7 @@ function elevenlabs(c: CloudConfig): CloudVoice {
     s.on("close", () => {
       if (ws !== s) return
       ws = null; queued.length = 0
-      for (const [id, x] of streams) { streams.delete(id); x.to.fail("the socket closed") }
+      for (const [id, x] of streams) { drop(id, x); x.to.fail("the socket closed") }
     })
     return s
   }
@@ -129,16 +132,30 @@ function elevenlabs(c: CloudConfig): CloudVoice {
     idle = setTimeout(() => { if (!streams.size) close() }, IDLE_MS)
     idle.unref?.()
   }
+  function drop(id: string, x: Stream) { clearTimeout(x.quiet); streams.delete(id); if (!streams.size) rest() }
+  /** The piece ended, its context closed (closing it sooner can end its audio short). */
+  function finish(id: string, x: Stream) {
+    if (!x.closed) { x.closed = true; send({ context_id: id, close_context: true }) }
+    drop(id, x)
+    x.to.end()
+  }
+  /** No audio for `ms`: all of it has come, and the piece ends (its context closed). */
+  function hush(id: string, x: Stream, ms: number) {
+    clearTimeout(x.quiet)
+    x.quiet = setTimeout(() => { if (streams.get(id) === x) finish(id, x) }, ms)
+    x.quiet.unref?.()
+  }
   function heard(d: string) {
     let m: { contextId?: string; audio?: string | null; isFinal?: boolean; error?: string; message?: string
       alignment?: { chars?: string[]; charStartTimesMs?: number[]; charDurationsMs?: number[] } | null }
     try { m = JSON.parse(d) } catch { return }
     const x = m.contextId ? streams.get(m.contextId) : undefined
     if (m.error) {
-      for (const [id, s] of m.contextId ? (x ? [[m.contextId, x] as const] : []) : [...streams]) { streams.delete(id); s.to.fail(String(m.error)) }
+      for (const [id, s] of m.contextId ? (x ? [[m.contextId, x] as const] : []) : [...streams]) { drop(id, s); s.to.fail(String(m.error)) }
       return
     }
     if (!x) return
+    const id = m.contextId!
     if (m.audio) {
       const pcm = Buffer.from(m.audio, "base64"), at = x.bytes / (RATE * 2), a = m.alignment
       if (a?.chars && a.charStartTimesMs && a.charDurationsMs) {
@@ -147,26 +164,29 @@ function elevenlabs(c: CloudConfig): CloudVoice {
       }
       x.bytes += pcm.length
       x.to.audio(pcm, x.timed)
+      if (x.timed.chars.join("").replace(/\s/g, "").length >= x.letters) return finish(id, x)
+      if (!m.isFinal) hush(id, x, x.closed ? FINAL_MS : QUIET_MS)
     }
-    if (m.isFinal) { streams.delete(m.contextId!); x.to.end(); if (!streams.size) rest() }
+    // (its final word can come before its last audio: what still comes a moment after it is said too)
+    if (m.isFinal) { x.closed = true; hush(id, x, FINAL_MS) }
   }
   function close() {
     if (idle) { clearTimeout(idle); idle = null }
     const s = ws
     ws = null; queued.length = 0
-    for (const [id, x] of streams) { streams.delete(id); x.to.fail("closed") }
+    for (const [id, x] of streams) { drop(id, x); x.to.fail("closed") }
     if (s?.readyState === WebSocket.OPEN) s.send(JSON.stringify({ close_socket: true }))
     s?.close()
   }
   return {
     make(p, to) {
-      const id = `v${++cid}`
-      streams.set(id, { to, timed: { chars: [], ends: [] }, bytes: 0 })
+      const id = `v${++cid}`, x: Stream = { to, timed: { chars: [], ends: [] }, bytes: 0, letters: p.text.replace(/\s/g, "").length }
+      streams.set(id, x)
       if (idle) { clearTimeout(idle); idle = null }
       send({ text: " ", context_id: id, ...(c.speed && c.speed !== 1 ? { voice_settings: { speed: Math.min(1.2, Math.max(0.7, c.speed)) } } : {}) })
+      // (not closed with it: closed at once, its final word came after its first second of audio and the rest was lost)
       send({ text: `${p.text} `, context_id: id, flush: true })
-      send({ context_id: id, close_context: true })
-      return () => { if (streams.delete(id)) { send({ context_id: id, close_context: true }); if (!streams.size) rest() } }
+      return () => { if (streams.get(id) !== x) return; drop(id, x); if (!x.closed) send({ context_id: id, close_context: true }) }
     },
     warm() { open(); rest() },
     reset: close,

@@ -7,12 +7,14 @@ import { questionsOf, resultText, summarize, userText } from "./chatlog.ts"
 type Json = any
 
 /** Byte strings a line must have to matter (the rest is skipped without parsing): plugin.ts tests them on the raw line. */
-export const WANTED = ['"type":"user"', '"type":"assistant"', '"ai-title"', '"custom-title"']
+export const WANTED = ['"type":"user"', '"type":"assistant"', '"ai-title"', '"custom-title"', '"type":"queue-operation"']
 
 /** A conversation read so far, fed one line of the transcript at a time (the lines with a WANTED string). */
 export class Conversation {
   entries: Entry[] = []
   head: Head = { title: "", cwd: "", model: "", first: "", last: "", branch: "" }
+  /** Its background tasks still running (a Bash or Agent call run_in_background), by tool_use id: done once told. */
+  background = new Set<string>()
   private titleKind = ""
   private lastMsg = ""
   private firstPrompt = ""
@@ -39,6 +41,11 @@ export class Conversation {
     if (!d || typeof d !== "object") return
     if (d.type === "custom-title" && d.customTitle) { this.head.title = String(d.customTitle); this.titleKind = "custom"; return }
     if (d.type === "ai-title" && d.aiTitle) { if (this.titleKind !== "custom") { this.head.title = String(d.aiTitle); this.titleKind = "ai" } return }
+    if (d.type === "queue-operation") {
+      const done = /<task-notification>[\s\S]*?<tool-use-id>([^<]+)<\/tool-use-id>/.exec(String(d.content ?? ""))?.[1]
+      if (done) this.background.delete(done)
+      return
+    }
     if ((d.type !== "user" && d.type !== "assistant") || d.isSidechain || d.isMeta) return
     const at = typeof d.timestamp === "string" ? d.timestamp : ""
     if (at) { this.head.first ||= at; this.head.last = at }
@@ -52,6 +59,8 @@ export class Conversation {
           if (c?.type !== "tool_result") continue
           const t = this.tools.get(String(c.tool_use_id))
           if (t) { t.result = truncate(resultText(c.content)); t.error = !!c.is_error }
+          if (c.is_error) this.background.delete(String(c.tool_use_id))
+          else if (/^Async agent launched/.test(t?.result ?? "")) this.background.add(String(c.tool_use_id))
         }
         return
       }
@@ -76,6 +85,7 @@ export class Conversation {
           input: truncate(typeof input === "string" ? input : JSON.stringify(input, null, 2)), result: null, error: false, at }
         this.tools.set(t.id, t)
         this.entries.push(t)
+        if (input.run_in_background === true) this.background.add(t.id)
         this.lastMsg = ""
       }
     }

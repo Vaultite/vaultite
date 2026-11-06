@@ -20,9 +20,10 @@ export type Out = { pcm: (n: number, pcm: Buffer) => void; say: (n: number, text
 export const RATE = 24_000
 const BYTES_PER_S = RATE * 2
 
-/** `say`: the say it's of; `at`: when it's heard (the player's), `told` its sentences heard so far, told on. */
+/** `say`: the say it's of; `at`: when it's heard (the player's), `told` its sentences heard so far, told on; `secs`, how
+ *  long it plays, as the player said (this Mac's voice). */
 type Slot = { p: Piece; say: string; state: "wait" | "making" | "made" | "done"; bufs: Buffer[]; fwd: number; sent: number; timed?: Timed; cancel?: () => void; timer?: ReturnType<typeof setTimeout>
-  at?: number; told: number }
+  at?: number; told: number; secs?: number }
 
 export type VoiceOptions = {
   out: Out
@@ -36,10 +37,10 @@ export type VoiceOptions = {
   firstMs?: number
   stallMs?: number
   /** Each sentence as it's heard (a piece's start, by the player, and its characters' timing): the drawing's pen keeps
-   *  to them. A piece with no timing (this Mac's voice) tells none. */
+   *  to them. A piece with no timing (this Mac's voice, a cloud's that gave none) tells them spread over its length. */
   heard?: (h: Heard & { say: string }) => void
   /** What happened, for the log and tests: a piece's first audio, a fallback and why. */
-  told?: (e: { t: "audio"; n: number; ms: number } | { t: "fallback"; n: number; why: string; from: number; to: number }) => void
+  told?: (e: { t: "audio"; n: number; ms: number } | { t: "fallback"; n: number; why: string; from: number; to: number; slow?: true }) => void
 }
 
 /** The voice of one answer at a time: `start` begins one (silencing the last), its says' text comes as it grows (`text`)
@@ -82,7 +83,7 @@ export function voice(o: VoiceOptions) {
     if (!cloud) return
     s.state = "making"
     const t0 = Date.now()
-    const watch = (ms: number, why: string) => { clearTimeout(s.timer); s.timer = setTimeout(() => fail(s, why), ms) }
+    const watch = (ms: number, why: string) => { clearTimeout(s.timer); s.timer = setTimeout(() => fail(s, why, true), ms) }
     watch(firstMs, "its first audio was late")
     const live = () => slots.includes(s) && s.state === "making"
     s.cancel = cloud.make(s.p, {
@@ -95,18 +96,19 @@ export function voice(o: VoiceOptions) {
         if (slots[head] === s) drain()
         tell(s)
       },
-      end() { if (!live()) return; clearTimeout(s.timer); s.state = "made"; drain(); tell(s) },
+      // (ended with no audio for its words, as a voice out of credits does: the next voice says them)
+      end() { if (!live()) return; if (!s.bufs.length && s.p.text) return fail(s, "it made no audio"); clearTimeout(s.timer); s.state = "made"; drain(); tell(s) },
       fail(why) { if (live()) fail(s, why) },
     })
   }
 
   /** A cloud failed a piece: it and every piece not made yet go to the next voice, each on from where its audio got
    *  (what's played of it stays: the next says the rest, from the next word). */
-  function fail(s: Slot, why: string) {
+  function fail(s: Slot, why: string, slow = false) {
     if (!slots.includes(s)) return
     const failed = o.clouds()[tier]
     tier++
-    o.told?.({ t: "fallback", n: s.p.n, why, from: s.sent, to: tier })
+    o.told?.({ t: "fallback", n: s.p.n, why, from: s.sent, to: tier, ...(slow ? { slow } : {}) })
     for (const x of slots) if (x.state === "making") {
       clearTimeout(x.timer); x.cancel?.()
       x.p = { ...x.p, text: resume(x) }
@@ -136,7 +138,8 @@ export function voice(o: VoiceOptions) {
   /** A piece's sentences told as heard, once it's playing and their characters are timed (its last, once it's all made). */
   function tell(s: Slot) {
     const t = s.timed
-    if (!o.heard || s.at === undefined || !t?.ends.length || s.told === Infinity) return
+    if (!o.heard || s.at === undefined || s.told === Infinity) return
+    if (!t?.ends.length) return spread(s)
     let from = 0
     const ss = sentences(s.p.text)
     for (let j = 0; j < ss.length; j++) {
@@ -150,6 +153,21 @@ export function voice(o: VoiceOptions) {
       o.heard({ say: s.say, text: ss[j], at: Math.round(s.at + start * 1000), dur: Math.max(0, Math.round((end - start) * 1000)) })
       s.told = j + 1
     }
+  }
+
+  /** A piece with no timing, its sentences told once its length is known (its audio's, else the player's), each by its
+   *  share of the characters: an estimate on the player's clock, never a guess at reading speed. */
+  function spread(s: Slot) {
+    const secs = s.secs ?? (s.state === "made" || s.state === "done" ? s.bufs.reduce((n, b) => n + b.length, 0) / BYTES_PER_S : 0)
+    if (!secs || s.told) return
+    const ss = sentences(s.p.text), all = ss.reduce((n, x) => n + x.length + 1, 0)
+    let k = 0
+    for (const x of ss) {
+      const share = (x.length + 1) / all
+      o.heard!({ say: s.say, text: x, at: Math.round(s.at! + k * secs * 1000), dur: Math.round(share * secs * 1000) })
+      k += share
+    }
+    s.told = ss.length
   }
 
   function silence() {
@@ -175,6 +193,8 @@ export function voice(o: VoiceOptions) {
     },
     /** Piece `n` is heard from `at` (the player's clock, ms): its sentences are told as heard. */
     played(n: number, at: number) { const s = slots.find((x) => x.p.n === n); if (s && s.at === undefined) { s.at = at; tell(s) } },
+    /** Piece `n` plays for `secs` s, as the player has it all (this Mac's voice): its sentences are told by it. */
+    length(n: number, secs: number) { const s = slots.find((x) => x.p.n === n); if (s && secs > 0) { s.secs = secs; tell(s) } },
     /** Silence at once: what's playing and what's to come. */
     stop: silence,
     /** Whether an answer is being spoken (some of it still to come or to play). */

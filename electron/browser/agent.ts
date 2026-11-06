@@ -7,6 +7,7 @@ import path from "node:path"
 import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentOwned, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 import { changes, mainLines } from "./axlines.ts"
+import { findWords } from "./findwords.ts"
 
 /** A step's small picture, for the replay's filmstrip (agentruns.ts reads them). */
 export const THUMB_WIDTH = 320
@@ -1048,6 +1049,12 @@ serve("agent:at", async (_win, tab, x, y) => {
   const code = `(() => { let e = document.elementFromPoint(${at[0]}, ${at[1]}); while (e && e.parentElement && (e.innerText || "").trim().length < 12) e = e.parentElement; return e ? (e.innerText || "").trim().slice(0, 600) : "" })()`
   const text = String(await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code }]).catch(() => "") ?? "")
   return { tab: p.id, url: p.wc.getURL(), text }
+})
+// (the companion's marks: where the page shows words now, in its viewport's CSS px)
+serve("agent:find", async (_win, tab, words) => {
+  const p = pageFor(tab, "read"), want = String(words ?? "").slice(0, 200)
+  const found = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: `(${findWords})(${JSON.stringify(want)})` }]).catch(() => []) as unknown
+  return { tab: p.id, zoom: p.wc.getZoomFactor(), found: Array.isArray(found) ? found.slice(0, 20) : [] }
 })
 serve("agent:close", async (_win, tab) => {
   const p = allPages().find((x) => x.id === Number(tab))

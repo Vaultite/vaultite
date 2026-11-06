@@ -80,13 +80,20 @@ export function alongLine(pts: [number, number][], k: number): Pt {
 type Flight = { from: Pt; to: Pt | null; t0: number; dur: number }
 const end = (s: Stroke) => s.start + s.dur
 
+/** When it leaves `from` for the first stroke: a flight's time before it starts (never a slow drift over a long wait). */
+export const penLeaves = (script: PenScript, from: Pt, t0: number) => {
+  const f = script.strokes[0]
+  return Math.max(t0, f.start - flightMs(Math.hypot(f.pts[0][0] - from.x, f.pts[0][1] - from.y)))
+}
 /** The pen's tip at `t` along `script`: on the stroke being drawn (the earliest one not done), hopping between strokes
- *  just in time for the next; before the first, flying there from `from` (where it was at `t0`). Null: done. */
+ *  just in time for the next; before the first, at `from` (where it was at `t0`), then flying there. Null: done. */
 export function penAt(script: PenScript, t: number, from: Pt, t0: number): { p: Pt; flying: boolean; done: boolean } {
   const ss = script.strokes
   const first = ss[0], firstAt = { x: first.pts[0][0], y: first.pts[0][1] }
   if (t < first.start) {
-    const k = clamp01((t - t0) / Math.max(1, first.start - t0))
+    const leave = penLeaves(script, from, t0)
+    if (t < leave) return { p: from, flying: false, done: false }
+    const k = clamp01((t - leave) / Math.max(1, first.start - leave))
     return { p: arcAt(from, firstAt, smooth(k)), flying: true, done: false }
   }
   // (the stroke whose turn it is: started, and every one before it done)
@@ -122,7 +129,8 @@ export function makePilot(o: { reduced?: boolean } = {}) {
   let mode: Mode = "follow", g: Glide | null = null, last = 0
   let pointer: Pt | null = null, home: Pt | null = null
   let flight: Flight | null = null, aim: Aim | null = null, pen: PenScript | null = null
-  let penFrom: Pt = { x: 0, y: 0 }, penT0 = 0
+  /** Where its pen leaves from and when it got its strokes; `penRides`: it rides with the pointer till it must leave. */
+  let penFrom: Pt = { x: 0, y: 0 }, penT0 = 0, penRides = false
   /** Where the pointer was when the pointing began, and since when it's been shown there. */
   let anchor: Pt | null = null, settled = 0, rest: Pt | null = null
   const done = new Set<string>()
@@ -167,7 +175,7 @@ export function makePilot(o: { reduced?: boolean } = {}) {
       const same = pen?.id === s.id
       pen = s
       if (o.reduced) { const e = alongLine(s.strokes.at(-1)!.pts, 1); rest = e; flight = null; g = { x: e.x, y: e.y, vx: 0, vy: 0 }; mode = "parked"; settled = now; anchor = pointer; return }
-      if (!same || mode !== "pen") { penFrom = here(); penT0 = now; anchor = pointer }
+      if (!same || mode !== "pen") { penFrom = here(); penT0 = now; anchor = pointer; penRides = mode === "follow" || mode === "back" }
       flight = null
       mode = "pen"
     },
@@ -178,6 +186,12 @@ export function makePilot(o: { reduced?: boolean } = {}) {
       last = now
       if (!home) return { ...here(), scale: 1, mode, busy: false, to: null }
       if (mode === "pen" && pen) {
+        // (its first stroke a while off, its words not said yet: beside the pointer (or where it was) till it must go)
+        if (penRides && now < penLeaves(pen, here(), now)) {
+          if (!o.reduced && g) glide(g, home.x, home.y, FOLLOW, dt)
+          penFrom = here(); penT0 = now
+          return { ...penFrom, scale: 1, mode: "follow", busy: true, to: null }
+        }
         const at = penAt(pen, now, penFrom, penT0)
         g = { x: at.p.x, y: at.p.y, vx: 0, vy: 0 }
         if (at.done) { mode = "parked"; settled = now; rest = at.p }

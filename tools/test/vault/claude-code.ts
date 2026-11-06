@@ -83,6 +83,14 @@ export default async ($: VaultTest) => {
       check("asking: answered, a plan, another tool waiting, or a prompt after it",
         askingIn(lines(ask, answered)) === null && (askingIn(lines(plan)) as Any)?.plan === "## Plan\n1. Do it" &&
         askingIn(lines(ask, answered, bash)) === null && askingIn(lines(ask, { type: "user", message: { content: "Never mind" } })) === null)
+      // Its background tasks: a call run in the background, or an agent launched async, runs until its notification.
+      const { Conversation } = await import("../../../plugins/core/claude-code/transcript.ts")
+      const cv = new Conversation(), feed = (x: unknown) => cv.line(JSON.stringify(x))
+      feed({ type: "assistant", message: { content: [{ type: "tool_use", id: "b1", name: "Bash", input: { command: "npm run build", run_in_background: true } }, { type: "tool_use", id: "a1", name: "Agent", input: { prompt: "x" } }] } })
+      feed({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "a1", content: "Async agent launched successfully.\nagentId: x" }] } })
+      const both = cv.background.size
+      feed({ type: "queue-operation", operation: "enqueue", content: "<task-notification>\n<task-id>t</task-id>\n<tool-use-id>b1</tool-use-id>\n<status>completed</status>\n</task-notification>" })
+      check("transcript: background tasks run till their notification", both === 2 && cv.background.size === 1 && cv.background.has("a1"), [both, [...cv.background]])
       const keys = (await import("../../../plugins/core/claude-code/plugin.ts")).plugin.services["agent-pick:claude"] as (q: Any, c: Any) => string[]
       const one = [{ question: "Q", options: [{ label: "A" }, { label: "B" }, { label: "C" }] }]
       check("pick keys: a digit; typed: the one after the options, the text, Enter; several or a multi-select end with 1 on the review",

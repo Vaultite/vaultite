@@ -200,4 +200,27 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   check("paced: its marks spread over the time it's said, not bunched", delays.length >= 3 && Math.max(...delays) - Math.min(...delays.slice(1)) >= 600, delays)
 }
 
+// ---- a walkthrough while its words are being said: nothing before its sentence is heard; the earlier marks step back
+{
+  const page = await open()
+  const TOUR = { id: "dw", agent: "Claude", tint: "orange", t: Date.now(), caption: "Your folders are here. You share from up here.", places: ELEMENTS, waits: true, spoken: [null, null],
+    marks: [{ type: "frame", at: B(16, 104, 216, 126), label: "Folders" }, { type: "point", at: R("sent") }, { type: "ring", at: { el: "share" }, beat: 1 }] }
+  await show(page, TOUR)
+  await page.waitForSelector("[data-screendraw=dw]")
+  await page.waitForTimeout(600)
+  const before = await page.evaluate(() => document.querySelectorAll("[data-screendraw=dw] [data-mark-i]").length)
+  const t1 = await page.evaluate(() => Date.now())
+  await show(page, { ...TOUR, spoken: [{ at: t1 + 900, dur: 1200 }, null] })
+  await page.waitForTimeout(500)
+  const early = await page.evaluate(() => document.querySelectorAll("[data-screendraw=dw] [data-mark-i]").length)
+  await page.waitForTimeout(700)
+  const heard = await page.evaluate(() => document.querySelectorAll("[data-screendraw=dw] [data-mark-i]").length)
+  check("walkthrough: while its words are being said, no mark shows before its sentence is heard", before === 0 && early === 0 && heard >= 2, { before, early, heard })
+  await show(page, { ...TOUR, spoken: [{ at: t1 + 900, dur: 1200 }, { at: t1 + 2200, dur: 1000 }] })
+  await page.waitForTimeout(1600)
+  const past = await page.evaluate(() => ({ frame: document.querySelector("[data-focus]")?.parentElement?.className, point: [...document.querySelectorAll("svg .sd-gone")].length, ring: document.querySelector("[data-screendraw=dw]")?.getAttribute("data-beat") }))
+  check("walkthrough: as the next thing is named, the one before steps back and what pointed at it goes", past.frame === "sd-past" && past.point === 1 && past.ring === "1", past)
+  await page.screenshot({ path: path.join(SHOTS, "screendraw-walkthrough.png") })
+}
+
 await done()

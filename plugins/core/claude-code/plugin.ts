@@ -582,8 +582,8 @@ plugin.provide("agent-session:claude", (id: string): { transcript: string; last:
   return t ? { transcript: found.file, last: t.st.mtimeMs, ttl: ttlOf(t.text), account: found.account.id } : null
 })
 
-/** A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox
- *  reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
+/** A session's latest turn: the user's last message, Claude's last answer, its background tasks running ("agent-turn:claude",
+ *  read as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
 plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   const now = !terminal && session ? chat.turnNow(session) : null
   const sid = session || await sessionIn(terminal)
@@ -591,7 +591,7 @@ plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   const t = found ? await transcript(found.file) : null
   // (a chat's turn as its keeper says it, the files from its transcript)
   if (now) return { ...now, files: t ? lastTurn(t.talk.entries).files : [] }
-  return t ? { session: sid, ...lastTurn(t.talk.entries) } : null
+  return t ? { session: sid, ...lastTurn(t.talk.entries), background: t.talk.background.size } : null
 })
 
 /** What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog

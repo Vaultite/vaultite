@@ -270,7 +270,8 @@ it runs inside Vaultite, then each plugin's line for agents. The vault's rules, 
     help: `A command runs alone in the terminal, through the login shell (so with the user's PATH): it ends when the command
 does, and its exit code is the terminal's (vau terminal wait gives it; capture reads what it printed, for an hour after).
 wait waits for that here and answers the exit code and the last lines. An agent (claude, codex...; claude_personal: in
-one of its accounts) starts with prompt as its first message; nothing: a shell. name names it (its tabs, the list, and
+one of its accounts) starts with prompt as its first message (with session, it resumes that session of the agent's,
+prompt its next message); nothing: a shell. name names it (its tabs, the list, and
 how to address it: vau terminal capture "<name>"); cwd is the folder it starts in (the vault's by default). open shows
 its tab too (as vau terminal open does). With machine, on another of the Machines.
 
@@ -283,6 +284,7 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       command: { type: "string", description: "a shell command to run, alone: the terminal ends when it does, with its exit code" },
       agent: { type: "string", description: "a coding agent to run instead (claude, codex, opencode...; claude_personal: one of its accounts)" },
       prompt: { type: "string", description: "the agent's first message: its task" },
+      session: { type: "string", description: "the agent's session to resume (its id) instead of a new one; prompt is its next message" },
       name: { type: "string", description: "its name (at most 80 characters): its tabs and the list show it, and it addresses it" },
       cwd: { type: "string", description: "the folder it starts in, a full path (default: the vault's)" },
       ...HOW,
@@ -291,8 +293,9 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       timeout: { type: "number", minimum: 0, maximum: 3600, default: 600, description: "with wait, seconds to wait at most" },
       open: { type: "boolean", description: "show its tab in the user's window too" },
     },
-    run: async ({ command, agent, prompt, name, cwd, machine, wait, timeout, open, model, effort, mode, allow }, ctx) => {
+    run: async ({ command, agent, prompt, session, name, cwd, machine, wait, timeout, open, model, effort, mode, allow }, ctx) => {
       const how = howOf({ model, effort, mode, allow, cwd })
+      if (session && (!agent || !/^[\w.-]{4,100}$/.test(session))) throw new OpError(agent ? `'${session}' isn't a session's id` : "a `session` is an agent's: name the `agent` (claude, codex...)")
       if (!agent && (model || effort || mode || allow?.length)) throw new OpError("`model`, `effort`, `mode` and `allow` are an agent's: name the `agent`")
       if (command && agent) throw new OpError("give a `command` or an `agent`, not both")
       if (agent && !TERMINAL_AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
@@ -300,11 +303,12 @@ its tab too (as vau terminal open does). With machine, on another of the Machine
       if (wait && !command) throw new OpError("`wait` is a command's: an agent's turn is waited for with vau terminal wait")
       const m = await elsewhere(plugin, machine ?? "")
       if (m) {
-        const out = await there(plugin, ctx, m, "terminal.start", { ...(command ? { command } : {}), ...(agent ? { agent } : {}), ...(prompt ? { prompt } : {}),
+        const out = await there(plugin, ctx, m, "terminal.start", { ...(command ? { command } : {}), ...(agent ? { agent } : {}), ...(prompt ? { prompt } : {}), ...(session ? { session } : {}),
           ...(name ? { name } : {}), ...how, ...(wait ? { wait, timeout } : {}) }, wait ? Number(timeout) + 30 : 30)
         return { ...out, shown: open ? await shown(ctx, out.id) : false }
       }
-      const id = newTerminalId(agent)
+      const [who, profile] = (agent ?? "").split("_")
+      const id = session ? resumeTerminalId(who, session, profile) : newTerminalId(agent)
       const body = { ...(command ? { command } : {}), ...(name ? { name } : {}), ...(cwd ? { cwd } : {}) }
       if (agent) {
         await startAgent(ctx, id, prompt?.trim() || undefined, how)

@@ -47,6 +47,7 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
   animation: sd-open var(--dur, 640ms) cubic-bezier(.5,0,.12,1) var(--delay, 0ms) both, sd-land 1s ease-out calc(var(--delay, 0ms) + var(--dur, 640ms) * .75) both; }
 @keyframes sd-open { from { width: 12px; height: 12px; opacity: 0; } 10% { opacity: 1; } }
 @keyframes sd-land { from { box-shadow: 0 0 0 1px color-mix(in srgb, white 40%, transparent), 0 0 0 5px color-mix(in srgb, var(--tint) 28%, transparent), 0 0 30px color-mix(in srgb, var(--tint) 65%, transparent); } }
+.sd-past, .sd-gone { transition: opacity .5s ease-out; } .sd-past { opacity: .4; } .sd-gone { opacity: 0; }
 .sd-dim { fill: rgba(0,0,0,.42); }
 .sd-pen { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: sd-pen var(--dur, 500ms) cubic-bezier(.35,.1,.35,1) var(--delay, 0ms) forwards; }
 @keyframes sd-pen { to { stroke-dashoffset: 0; } }

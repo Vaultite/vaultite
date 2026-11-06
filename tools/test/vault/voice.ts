@@ -111,7 +111,20 @@ export default async ($: VaultTest) => {
     check("voice: each sentence as heard, from its piece's start and its characters' timing (the last once all of it's made)", two.p.text === "Second one too. Third." &&
       JSON.stringify(early) === '["Second one too."]' && JSON.stringify(heard) === '[{"say":"s1","text":"Second one too.","at":5000,"dur":1500},{"say":"s1","text":"Third.","at":6600,"dur":600}]', heard)
     v.played(made[0].p.n, 3000)
-    check("voice: none told for a piece without its timing", heard.length === 2, heard)
+    check("voice: none told for a piece without its timing, while it's still being made", heard.length === 2, heard)
+    made[0].to.audio(pcm(1))
+    made[0].to.end()
+    check("voice: a cloud's piece that gave no timing tells its sentences by its audio's length, from the player's start", JSON.stringify(heard[2]) === '{"say":"s1","text":"First one here.","at":3000,"dur":1000}', heard)
+    // (this Mac's voice: no audio here, its length the player's)
+    const mac: Any[] = [], said: Any[] = []
+    const m = voice({ clouds: () => [], hints: () => ["en"], heard: (h) => mac.push(h), out: { pcm() {}, say: (n) => said.push(n), end() {}, stop() {} } })
+    m.start()
+    m.text("s2", "One two three four. Five six seven. ")
+    m.end()
+    m.played(said[0], 1000)
+    m.length(said[0], 3)
+    check("voice: this Mac's piece tells its sentences over its length as the player says it, each by its share of the words",
+      mac.length === 1 && mac[0].at === 1000 && mac[0].dur === 3000 && said.length === 2, [mac, said])
   }
   {
     const { v, out } = rig({ cloud: false })
@@ -145,6 +158,17 @@ export default async ($: VaultTest) => {
     v.end()
     await sleep(120)
     check("voice: a piece whose first audio is late is this Mac's", out.some((e) => e[0] === "say" && e[2] === "Slow.") && made[0].cancelled, out)
+  }
+  {
+    const out: Ev[] = [], made: Any[] = [], told: Any[] = []
+    const w = voice({ clouds: () => [{ make: (_p: Any, to: Any) => { made.push({ to }); return () => {} } }], hints: () => ["en"], told: (e) => told.push(e),
+      out: { pcm: (n, b) => out.push(["pcm", n, b.length]), say: (n, t, l) => out.push(["say", n, t, l]), end: (n) => out.push(["end", n]), stop: () => out.push(["stop"]) } })
+    w.start()
+    w.text("s1", "Out of credits. ")
+    w.end()
+    made.at(-1)!.to.end()
+    check("voice: a cloud voice that ends a piece with no audio (out of credits) hands its words to the next voice, told so (not as slow)",
+      out.some((e) => e[0] === "say" && e[2] === "Out of credits.") && told.some((e) => e.t === "fallback" && e.why === "it made no audio" && !e.slow), { out, told })
   }
   {
     const { v, out, made } = rig()
@@ -227,15 +251,19 @@ export default async ($: VaultTest) => {
     const got: Any[] = [], seen: { url: string; key: string }[] = []
     wss.on("connection", (ws, req) => {
       seen.push({ url: String(req.url), key: String(req.headers["xi-api-key"]) })
+      // (as it was heard to: a context closed ends at once with its final word, its audio still to come dropped; one
+      // whose text says "early" gets that word between its chunks; "bare" has no timings)
       ws.on("message", (d) => {
         const m = JSON.parse(String(d))
         got.push(m)
+        if (m.close_context) return void ws.send(JSON.stringify({ audio: null, isFinal: true, contextId: m.context_id }))
         if (!m.flush) return
-        const audio = Buffer.alloc(24_000).toString("base64")
-        const alignment = { chars: ["H", "i"], charStartTimesMs: [0, 100], charDurationsMs: [100, 150] }
-        ws.send(JSON.stringify({ audio, contextId: m.context_id, alignment }))
-        ws.send(JSON.stringify({ audio, contextId: m.context_id, alignment }))
-        ws.send(JSON.stringify({ audio: null, isFinal: true, contextId: m.context_id }))
+        const audio = Buffer.alloc(24_000).toString("base64"), id = m.context_id, bare = /bare/.test(m.text)
+        const timed = (chars: string[]) => (bare ? {} : { alignment: { chars, charStartTimesMs: chars.map((_, i) => i * 50), charDurationsMs: chars.map(() => 50) } })
+        const words = [...String(m.text)], half = Math.ceil(words.length / 2)
+        ws.send(JSON.stringify({ audio, contextId: id, ...timed(words.slice(0, half)) }))
+        if (/early/.test(m.text)) ws.send(JSON.stringify({ audio: null, isFinal: true, contextId: id }))
+        setTimeout(() => { if (ws.readyState === ws.OPEN && !got.some((x) => x.close_context && x.context_id === id)) ws.send(JSON.stringify({ audio, contextId: id, ...timed(words.slice(half)) })) }, 120)
       })
     })
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
@@ -244,13 +272,23 @@ export default async ($: VaultTest) => {
     let timed: Any = null
     c.make({ n: 1, text: "Hi there.", language: "en" }, { audio: (b: Buffer, t?: Any) => { heard.push(["audio", b.length]); timed = t }, end: () => heard.push(["end"]), fail: (w: string) => heard.push(["fail", w]) })
     for (let i = 0; i < 100 && !heard.some((h) => h[0] === "end"); i++) await sleep(20)
+    const piece = async (text: string) => {
+      const h: string[] = [], t0 = Date.now()
+      c.make({ n: 2, text, language: "en" }, { audio: () => h.push("audio"), end: () => h.push("end"), fail: (w: string) => h.push(`fail ${w}`) })
+      for (let i = 0; i < 150 && !h.includes("end"); i++) await sleep(20)
+      return { h: h.join(), ms: Date.now() - t0 }
+    }
+    const early = await piece("Its final word comes early."), bare = await piece("No timings, bare.")
     const u = new URL(seen[0]?.url ?? "/", "http://x")
     check("tts: ElevenLabs' socket for its voice and model, PCM at 24 kHz with timings, the key as a header", u.pathname === "/v1/text-to-speech/nPczCjzI2devNBz1zQrb/multi-stream-input" &&
       u.searchParams.get("model_id") === "eleven_flash_v2_5" && u.searchParams.get("output_format") === "pcm_24000" && u.searchParams.get("sync_alignment") === "true" && seen[0].key === "eleven-key-1", seen)
-    check("tts: a context per piece, opened, its text flushed and closed, at the speed set", got[0]?.text === " " && got[0].voice_settings?.speed === 1.1 && got[1]?.text === "Hi there. " && got[1].flush === true &&
-      got[2]?.close_context === true && new Set(got.map((m) => m.context_id)).size === 1, got)
-    check("tts: its audio, then its end; each chunk's timings follow the audio before it", JSON.stringify(heard) === '[["audio",24000],["audio",24000],["end"]]' &&
-      JSON.stringify(timed?.ends) === "[0.1,0.25,0.6,0.75]", { heard, timed })
+    const first = got.filter((m) => m.context_id === got[0]?.context_id)
+    check("tts: a context per piece, opened, its text flushed, closed only once its audio is all in, at the speed set", first[0]?.text === " " && first[0].voice_settings?.speed === 1.1 &&
+      first[1]?.text === "Hi there. " && first[1].flush === true && first[2]?.close_context === true && first.length === 3, got)
+    check("tts: all its audio, then its end (the bug: closed with its text, it ended after its first chunk); timings follow the audio before",
+      JSON.stringify(heard) === '[["audio",24000],["audio",24000],["end"]]' && JSON.stringify(timed?.ends?.slice(0, 3)) === "[0.05,0.1,0.15]" && timed?.ends?.[5] === 0.55, { heard, timed })
+    check("tts: its final word before its last audio: that audio is still said, then it ends", early.h === "audio,audio,end", early)
+    check("tts: audio without timings ends once it goes quiet a moment", bare.h === "audio,audio,end" && bare.ms >= 1000 && bare.ms < 2500, bare)
     c.close()
     wss.close(); server.close()
   }

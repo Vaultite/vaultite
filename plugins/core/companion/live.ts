@@ -256,7 +256,7 @@ function open() {
     else if (m.t === "y-state" || m.t === "y" || m.t === "aw" || m.t === "y-reject" || m.t === "y-peers" || m.t === "y-clash" || m.t === "y-gone") rooms?.heard(m)
     else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
     // (where its places are on the screen, for a drawing over it)
-    else if (m.t === "locate") say({ t: "done", rid: m.rid, ok: true, rects: locate(m.places) })
+    else if (m.t === "locate") say({ t: "done", rid: m.rid, ok: true, rects: locate(m.places, m.near) })
   }
 }
 

@@ -32,7 +32,8 @@ export function companionVoice(o: {
   heard?: (h: Heard & { say: string }) => void
   /** What happened to an answer, for the press log: its first sound (`at`, the clock's ms) and whose voice, a cloud
    *  voice failing over, or its output device changing as it played (said again from `again` s before). */
-  told?: (e: { t: "sound"; at: number; by: string; out?: string } | { t: "fallback"; why: string; to: string } | { t: "reroute"; why: string; again: number }) => void
+  told?: (e: { t: "sound"; at: number; by: string; out?: string } | { t: "fallback"; why: string; from: string; to: string; slow?: true } | { t: "reroute"; why: string; again: number }
+    | { t: "silent"; by: string; why?: string }) => void
   /** A scripted copy's (VAULTITE_QUIET): what it would play goes here, and nothing plays. */
   record?: (m: Record<string, unknown>) => void
 }) {
@@ -43,6 +44,8 @@ export function companionVoice(o: {
   let only: Provider | null = null
   /** Pieces sent to it and not played to their end yet (the player's numbers). */
   const playing = new Set<number>()
+  /** Pieces given words (audio, or text to say) and those heard to start: one given words that ends unheard said nothing. */
+  const worded = new Set<number>(), begun = new Set<number>()
   let speaking = false
   /** Each answer's number: what an older one still sends is dropped; `waiting`: its words given, not yet past `ready`. */
   let gen = 0, ready: Promise<void> = Promise.resolve(), waiting = 0
@@ -79,22 +82,33 @@ export function companionVoice(o: {
         }
       })
       c.stdin!.on("error", () => {})
-      c.on("error", () => {})
-      c.once("exit", () => { if (child === c) { child = null; playing.clear(); tell(false, 0) } })
+      c.on("error", (e) => console.warn(`voice: its player didn't run (${e.message})`))
+      c.once("exit", (code, signal) => {
+        if (child !== c) return
+        // (gone mid-answer: what it had is lost, and the user is told; the next answer starts another)
+        if (playing.size) o.told?.({ t: "silent", by: "player", why: `its player quit (${signal ?? `exit ${code}`})` })
+        child = null; playing.clear(); worded.clear(); begun.clear(); tell(false, 0)
+      })
       child = c
       return c
     }, (e) => { console.warn(`voice: its helper isn't here (${(e as Error).message})`); return null }).finally(() => { starting = null })
     return starting
   }
-  function heard(m: { type?: string; n?: number; v?: number; at?: number; why?: string; again?: number; name?: string; transport?: string; rate?: number }) {
+  function heard(m: { type?: string; n?: number; v?: number; at?: number; s?: number; why?: string; again?: number; name?: string; transport?: string; rate?: number }) {
     const k = typeof m.n === "number" ? ofPlayer.get(m.n) : undefined, mine = k?.startsWith("v") ? Number(k.slice(1)) : null
     if (m.type === "start" && typeof m.n === "number" && typeof m.at === "number") {
+      begun.add(m.n)
       if (mine !== null) v.played(mine, m.at)
       if (sounded !== gen && mine !== null) { sounded = gen; o.told?.({ t: "sound", at: m.at, by: whose(v.tier()), ...(output ? { out: output } : {}) }) }
     }
+    else if (m.type === "length" && typeof m.n === "number" && typeof m.s === "number") { if (mine !== null) v.length(mine, m.s) }
     else if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, Number(m.v) || 0) }
-    else if (m.type === "done" && typeof m.n === "number") { playing.delete(m.n); forget(m.n); if (!playing.size) tell(false, 0) }
-    else if (m.type === "stopped") { playing.clear(); tell(false, 0) }
+    else if (m.type === "done" && typeof m.n === "number") {
+      if (worded.has(m.n) && !begun.has(m.n) && mine !== null) o.told?.({ t: "silent", by: whose(v.tier()) })
+      worded.delete(m.n); begun.delete(m.n)
+      playing.delete(m.n); forget(m.n); if (!playing.size) tell(false, 0)
+    }
+    else if (m.type === "stopped") { playing.clear(); worded.clear(); begun.clear(); tell(false, 0) }
     else if (m.type === "output") output = `${m.name} (${m.transport}${m.rate ? `, ${Math.round(Number(m.rate) / 1000)} kHz` : ""})`
     else if (m.type === "rerouted") o.told?.({ t: "reroute", why: String(m.why ?? ""), again: Number(m.again) || 0 })
   }
@@ -121,12 +135,14 @@ export function companionVoice(o: {
     const port = o.port()
     if (!port) return
     if (keys && keys.port === port && Date.now() - keys.at < 60_000) return
-    let k: Keys = {}
     try {
       const r = await fetch(`http://127.0.0.1:${port}/api/companion/voice`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
-      if (r.ok) k = await r.json() as Keys
-    } catch { /* this Mac's voice */ }
-    keys = { at: Date.now(), port, k }
+      if (!r.ok) throw new Error(`${r.status}`)
+      keys = { at: Date.now(), port, k: await r.json() as Keys }
+    } catch {
+      // (its server busy or restarting: the keys it had stay, asked again soon; none known, this Mac's voice)
+      keys = { at: Date.now() - 50_000, port, k: keys?.port === port ? keys.k : {} }
+    }
   }
   /** Each provider's cloud voice, by what it's set to (one kept while that stays). */
   function cloudOf(p: Provider): CloudVoice | null {
@@ -157,11 +173,11 @@ export function companionVoice(o: {
   const v: Voice = voice({
     clouds: cloudsNow,
     heard: (h) => o.heard?.(h),
-    told: (e) => { if (e.t === "fallback") o.told?.({ t: "fallback", why: e.why, to: whose(e.to) }) },
+    told: (e) => { if (e.t === "fallback") o.told?.({ t: "fallback", why: e.why, from: whose(e.to - 1), to: whose(e.to), ...(e.slow ? { slow: e.slow } : {}) }) },
     hints: o.hints,
     out: {
-      pcm: (n, pcm) => out(() => { const p = pn(`v${n}`); playing.add(p); send({ cmd: "pcm", n: p, data: pcm.toString("base64") }) }),
-      say: (n, text, language) => out(() => { const p = pn(`v${n}`); playing.add(p); send({ cmd: "say", n: p, text, language, speed: o.prefs().speed || 1 }) }),
+      pcm: (n, pcm) => out(() => { const p = pn(`v${n}`); playing.add(p); worded.add(p); send({ cmd: "pcm", n: p, data: pcm.toString("base64") }) }),
+      say: (n, text, language) => out(() => { const p = pn(`v${n}`); playing.add(p); worded.add(p); send({ cmd: "say", n: p, text, language, speed: o.prefs().speed || 1 }) }),
       end: (n) => out(() => { const p = pn(`v${n}`); playing.add(p); send({ cmd: "end", n: p }) }),
       // (held, nothing of it reached the player: the realtime voice's words there go on)
       stop: () => { if (held) held = []; else hush() },
@@ -171,7 +187,7 @@ export function companionVoice(o: {
 
   /** Its helper silenced, what's queued there dropped (voicelogic's pieces and the realtime voice's streams alike). */
   function hush() {
-    playing.clear()
+    playing.clear(); worded.clear(); begun.clear()
     toPlayer.clear(); ofPlayer.clear()
     if (child || o.record) send({ cmd: "stop" })
     tell(false, 0)

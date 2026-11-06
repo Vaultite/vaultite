@@ -12,8 +12,8 @@ const linesOf = (text: string) => text.split("\n").map((l) => {
   const ask = /^- ask .*?: (".*")$/.exec(l.trim())
   try { return ask ? String(JSON.parse(ask[1])) : l.trim() } catch { return l.trim() }
 })
-/** What a message asks it to call. */
-const callsIn = (text: string) => linesOf(text).flatMap((t) => {
+/** What a message asks it to call (an ask's lines, one call each). */
+const callsIn = (text: string) => linesOf(text).flatMap((l) => l.split("\n")).flatMap((t) => {
   const m = /^(call|stream|cut|hold) (\w+) (\{.*\})$/.exec(t)
   try { return m ? [{ how: m[1], name: m[2], args: JSON.parse(m[3]), json: m[3] }] : [] } catch { return [] }
 })
@@ -98,7 +98,7 @@ export function query({ prompt, options }: Any) {
       if (linesOf(text).some((l) => /^list\b/.test(l))) {
         const tools = options.mcpServers?.["vaultite-app"] ? (await (await mcp()).listTools()).tools : []
         const always = tools.length && tools.every((t) => t._meta?.["anthropic/alwaysLoad"] === true)
-        say(`Tools: ${tools.map((t) => t.name).join(",")}${always ? " (always loaded)" : ""}. Allowed: ${(options.allowedTools ?? []).join(",")}. Denied: ${(options.disallowedTools ?? []).join(",")}. Resumed: ${options.resume ? "yes" : "no"}. Told: ${/vaultite-app tools/.test(options.systemPrompt?.append ?? "") ? "tools" : "nothing"}. Ends: ${options.env?.CLAUDE_CODE_TERMINAL_MCP_TOOLS ?? ""}. Prompt: ${typeof options.systemPrompt === "string" ? "its own" : "Claude Code's"}. Builtins: ${Array.isArray(options.tools) ? options.tools.join(",") : "all"}. Settings: ${(options.settingSources ?? []).join(",") || "none"}. Effort: ${options.effort ?? ""}`)
+        say(`Tools: ${tools.map((t) => t.name).join(",")}${always ? " (always loaded)" : ""}. Allowed: ${(options.allowedTools ?? []).join(",")}. Denied: ${(options.disallowedTools ?? []).join(",")}. Resumed: ${options.resume ? "yes" : "no"}. Told: ${/vaultite-app tools/.test(options.systemPrompt?.append ?? "") ? "tools" : "nothing"}. Ends: ${options.env?.CLAUDE_CODE_TERMINAL_MCP_TOOLS ?? ""}. Prompt: ${typeof options.systemPrompt === "string" ? "its own" : "Claude Code's"}. Builtins: ${Array.isArray(options.tools) ? options.tools.join(",") : "all"}. Settings: ${(options.settingSources ?? []).join(",") || "none"}. Effort: ${options.effort ?? ""}. Dirs: ${(options.additionalDirectories ?? []).join(",")}`)
         continue
       }
       const calls = callsIn(text), said: string[] = []

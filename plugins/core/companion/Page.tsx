@@ -153,6 +153,9 @@ function Details({ e }: { e: Exchange }) {
 /** A step's fields as words: what it says beyond its name and time. */
 const stepText = (s: PressLine) => Object.entries(s).filter(([k]) => !["t", "press", "kind", "ev", "ms"].includes(k)).map(([k, v]) => `${k} ${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join(" · ")
 
+/** Job `j`'s terminal in a tab: one closed once done resumes its conversation (a job no longer kept: its link as it was). */
+const openJob = (j: JobCard) => void op("companion.job-open", { id: j.id }).catch(() => j.link && openTab(j.link))
+
 /** A job as a card in the talk: its state, where it runs, what it's doing, and its session a click away. */
 export function Job({ j }: { j: JobCard }) {
   useTick(30_000)
@@ -163,7 +166,7 @@ export function Job({ j }: { j: JobCard }) {
       <div className="flex items-center gap-2">
         <Icon className="size-4 shrink-0" style={{ color: st.tint }} strokeWidth={2.25} />
         <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{j.title || "A job"}</span>
-        {j.link && <Button look="quiet" size="small" onClick={() => openTab(j.link!)}>Open</Button>}
+        {j.link && <Button look="quiet" size="small" onClick={() => openJob(j)}>Open</Button>}
       </div>
       <div className="text-[13px] text-muted-foreground">
         {st.word}{j.where ? ` · ${j.where}` : ""} · {long < 1 ? "under a minute" : `${Math.round(long)} min`}
@@ -183,7 +186,7 @@ export function JobRow({ j }: { j: JobCard }) {
   </>
   const cls = "flex min-h-7 w-full items-center gap-1.5 rounded-[7px] border border-border/60 px-2 py-1 text-left text-[13px]"
   return j.link
-    ? <button type="button" className={cn(cls, "cursor-pointer hover:border-border hover:bg-foreground/[0.03]")} onClick={() => openTab(j.link!)} data-companion-job={j.id} data-state={j.state}>{body}</button>
+    ? <button type="button" className={cn(cls, "cursor-pointer hover:border-border hover:bg-foreground/[0.03]")} onClick={() => openJob(j)} data-companion-job={j.id} data-state={j.state}>{body}</button>
     : <div className={cls} data-companion-job={j.id} data-state={j.state}>{body}</div>
 }
 

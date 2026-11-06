@@ -2,7 +2,7 @@
 // when the exchange ends (the next ask, Clear, a while idle); Keep saves it as an .excalidraw file.
 import fs from "node:fs"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
-import { appPlaces, checkMarks, type Drawing, findsOf, type Mark, type Rect, sentences, snapMarks, toExcalidraw } from "./screenmarks.ts"
+import { appPlaces, checkMarks, type Drawing, findsOf, type Mark, type Rect, sentences, snapMarks, spots, toExcalidraw } from "./screenmarks.ts"
 
 /** A drawing left up this long with nothing new goes by itself. */
 const IDLE_MS = 5 * 60_000
@@ -16,6 +16,8 @@ export function screenDrawings(plugin: Plugin, o: {
   tint: (agent: string) => string
   /** The elements the agent's last ask came with, as places ("el:a3"). */
   elements: (agent: string) => Record<string, Rect>
+  /** Those of `ids` the window can find again, where they are now. */
+  live: (agent: string, ids: string[]) => Promise<Record<string, Rect>>
   /** Where words show on the screen of the agent's last ask (screen points), or null. */
   find: (agent: string, text: string) => Promise<Rect | null>
   /** What the user drew round things with that ask (rings' boxes). */
@@ -39,12 +41,14 @@ export function screenDrawings(plugin: Plugin, o: {
   async function draw(agent: string, marks: unknown, say?: string) {
     let ms: Mark[]
     try { ms = checkMarks(marks) } catch (e) { throw new OpError((e as Error).message) }
-    const want = appPlaces(ms), places: Record<string, Rect> = { ...o.elements(agent), ...(want.length ? await o.locate(want) : {}) }
+    const want = appPlaces(ms), ids = [...new Set(spots(ms).flatMap((s) => ("el" in s ? [s.el] : [])))]
+    const [here, moved] = await Promise.all([want.length ? o.locate(want) : {}, ids.length ? o.live(agent, ids).catch(() => ({})) : {}])
+    const places: Record<string, Rect> = { ...o.elements(agent), ...moved, ...here }
     const missing = want.filter((p) => !places[p])
     if (missing.length) throw new OpError(`not on the user's screen: ${missing.join(", ")} (vau tabs lists the panes)`, 409)
-    for (const text of findsOf(ms)) { const r = await o.find(agent, text); if (r) places[`find:${text}`] = r }
+    await Promise.all(findsOf(ms).map(async (text) => { const r = await o.find(agent, text).catch(() => null); if (r) places[`find:${text}`] = r }))
     const unfound = findsOf(ms).filter((t) => !places[`find:${t}`])
-    if (unfound.length) throw new OpError(`nothing on the user's screen says ${unfound.map((t) => JSON.stringify(t)).join(", ")}: mark an element by id, or a point`, 409)
+    if (unfound.length) throw new OpError(`nothing on the user's screen says ${unfound.map((t) => JSON.stringify(t)).join(", ")} now, so nothing was drawn and they saw no mark: use the words exactly as it shows them (a few will do), an element by id, or the area's box; don't go on as if they saw it`, 409)
     // (a guessed pixel: round what they drew there, or the element it's on)
     ms = snapMarks(ms, places, o.drawn(agent))
     const caption = say ?? o.words(agent)

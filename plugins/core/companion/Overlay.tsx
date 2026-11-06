@@ -9,6 +9,7 @@ import { pointFor } from "./canvas"
 import { shown, uiElement } from "./panes"
 import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin,  type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
 import { arrowBox, boxAt } from "./boxes"
+import { interfaceZoom, onTop, type Screen, screenOf } from "./locate"
 import { Chat } from "./Chat"
 import { presence, STATUS } from "./look"
 import { agentMenu } from "./session"
@@ -170,15 +171,6 @@ const uiSpot = (id: string, find?: string) => {
   return atElement(at ?? el)
 }
 
-type Screen = { r: DOMRect; lines: string[]; rowH: number; cw: number }
-/** A terminal pane's screen as drawn: its box, its lines (terminalText: with WebGL it's a canvas), a row's height, a cell's width. */
-function screenOf(pane: HTMLElement): Screen | null {
-  const host = pane.querySelector<HTMLElement & { terminalText?: () => string; terminalCell?: () => { width: number } | null }>("[data-terminal]")
-  const scr = host?.querySelector<HTMLElement>("[data-term-screen]")
-  if (!host?.terminalText || !scr) return null
-  const lines = host.terminalText().split("\n"), r = scr.getBoundingClientRect()
-  return { r, lines, rowH: r.height / Math.max(1, lines.length), cw: host.terminalCell?.()?.width || 8 }
-}
 /** The row (from 1) a place names on a screen: its row, else the last showing its text, else the last written. */
 function rowIn(s: Screen, t: { row?: number; find?: string }) {
   if (t.row) return clamp(t.row, 1, s.lines.length)
@@ -195,7 +187,8 @@ function paneBox(t: Target & Pick<Agent, "box">): (DOMRect | { left: number; top
     return { left: scr.r.left, top, right: scr.r.left + w, bottom: top + scr.rowH, width: w, height: scr.rowH, row: scr } }
   const page = el.querySelector<HTMLElement>("[data-web-box]")
   if (page) {
-    const b = page.getBoundingClientRect(), z = t.box?.zoom ?? 1
+    // (a page's CSS px is its zoom in screen points, the app's own CSS px its interface size)
+    const b = page.getBoundingClientRect(), z = (t.box?.zoom ?? 1) / interfaceZoom()
     if (!t.box) return Object.assign(b, { over: true })
     const left = b.left + t.box.x * z, top = b.top + t.box.y * z, width = t.box.w * z, height = t.box.h * z
     return { left, top, right: left + width, bottom: top + height, width, height, over: true }
@@ -350,7 +343,8 @@ export function elementsNear(x: number, y: number, radius = 260, most = 30) {
     // (a whole pane or column holds everything: no help naming one thing)
     if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth || r.width * r.height > innerWidth * innerHeight * 0.3) continue
     const d = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom))
-    if (d > radius) continue
+    // (a pane's kept tab, or what a web page's view covers: not what they see)
+    if (d > radius || !onTop(el, r)) continue
     const ui = el.dataset.ui, line = (el.innerText || "").trim().split("\n")[0], aria = el.getAttribute("role")
     if (aria === "none" || aria === "presentation") continue
     const label = (el.getAttribute("aria-label") || el.dataset.tip || el.dataset.heading || line || el.getAttribute("placeholder") || "").trim().slice(0, 120)

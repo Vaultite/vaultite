@@ -3,10 +3,11 @@
 import { execFile } from "node:child_process"
 import os from "node:os"
 import { agentName, parseTerminal } from "../../../core/agents.ts"
-import { gitEnv, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
-import { cardOf, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, linkOf, linksIn, live, type Result, step, type Where } from "./jobs.ts"
+import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
+import { cardOf, endEvent, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
+  step, type Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
-import { type Found, headOf, machineOfUrl, type Over, refusal, repoOf, resolveHere, tilde, urlsIn } from "./where.ts"
+import { type Found, headOf, machineOfUrl, movable, type Over, preferredMachine, refusal, repoOf, resolveHere, tilde, urlsIn } from "./where.ts"
 
 /** What the plugin gives the jobs: the ask a handoff came from, its say, its action log, who an `as` names. */
 export type JobDeps = {
@@ -17,13 +18,22 @@ export type JobDeps = {
   cards: (cards: JobCard[]) => void
   /** Job `j` moved on from `from` (its news told aloud, where the user is). */
   moved?: (j: Job, from: string) => void
+  /** Whether a window shows `link` in its shown tab. */
+  onScreen?: (link: string) => boolean
   as: object
 }
-/** A worker's terminal as read where it runs (the op companion.worker). */
-export type Seen = { running: boolean; state?: string; kind?: string; msg?: string; title?: string
-  turn?: { text: string; files: string[]; at: number; final: boolean } | null; diff?: string }
+/** A worker's terminal as read where it runs (the op companion.worker): `typed` when the user last typed in one of its
+ *  tabs, `asks` the questions it waits on, its turn's `prompt` the last it was told. */
+export type Seen = { running: boolean; state?: string; kind?: string; msg?: string; title?: string; typed?: number; asks?: string[]
+  turn?: { text: string; files: string[]; at: number; final: boolean; session?: string; prompt?: string; background?: number } | null; diff?: string
+  /** How its terminal ended, when it did and that's known. */
+  exit?: { code: number; signal: number; lost?: boolean } }
 
 const KEEP = 40, KEEP_DAYS = 7
+/** How long a job done keeps its terminal: follow-ups mostly come within a minute or two, and still find it running. */
+let grace = 120_000
+/** Another grace (the tests'). */
+export const tidyAfter = (ms: number) => { grace = ms }
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const git = (cwd: string, args: string[]) => new Promise<string>((ok) => execFile("git", args, { cwd, timeout: 5000, maxBuffer: 4 << 20, env: gitEnv() }, (e, out) => ok(e ? "" : String(out))))
 /** The changes since `base` in one line: files changed, lines in and out, new files, commits ("" when none). */
@@ -34,8 +44,6 @@ export async function diffSince(cwd: string, base: string) {
   const n = fresh.split("\n").filter(Boolean).length, c = Number(commits.trim()) || 0
   return [m ? `${m[1]} file${m[1] === "1" ? "" : "s"} changed, +${m[2] ?? 0} -${m[3] ?? 0}` : "", n ? `${n} new file${n > 1 ? "s" : ""}` : "", c ? `${c} commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")
 }
-/** A terminal's title as a line of what it does: Claude Code's spinner and marks off. */
-const titled = (t?: string) => (t ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim()
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 
@@ -100,21 +108,36 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const at = top || found.cwd
     return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base: top ? await headOf(top) : "", refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")) }
   }
-  /** Where a handoff runs: as asked (machine, cwd), else from the ask: an address another machine serves goes there. */
+  type Placed = Awaited<ReturnType<typeof placeHere>>
+  /** Where a handoff runs: as asked (machine, cwd), else from the ask: an address another machine serves goes there; what
+   *  nothing ties here (a note, research, a GitHub page checked out there too) goes to the machine jobs prefer. */
   async function route(m: Moment | undefined, p: Record<string, unknown>): Promise<Omit<Where, "agent" | "account" | "harness" | "model" | "effort">> {
     const o: Over = m ? { url: m.url, app: m.app, title: m.title, path: m.path, screen: m.screen, under: m.under } : {}
     let machine = str(p.machine).trim()
     if (machine && (await plugin.ask<Machine | null>("machines:machine", null, machine))?.self) machine = ""
-    if (!machine && !str(p.cwd)) {
+    const asked = !!machine || !!str(p.cwd)
+    if (!asked) {
       const hosts = Object.fromEntries((await machines()).filter((x) => !x.self && x.online).map((x) => [x.id, hostOf(x.url)]).filter(([, h]) => h))
       machine = machineOfUrl(o, hosts)?.machine ?? ""
     }
-    const there = machine
+    let there = machine
       ? await atMachine(machine, "companion.where", { ...(str(p.cwd) ? { cwd: str(p.cwd) } : {}), ...(o.url ? { url: o.url } : urlsIn(o)[0] ? { url: urlsIn(o)[0].href } : {}),
-        ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }) as unknown as Awaited<ReturnType<typeof placeHere>>
+        ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }) as unknown as Placed
       : await placeHere(o, str(p.cwd))
+    if (!asked && !machine && movable(there)) ({ machine, there } = await preferred(o, there))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
     return { machine, label: await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}) }
+  }
+  /** An ask placed `here` moved to the machine jobs prefer: there in its checkout of the GitHub page's repo, else in its
+   *  vault unless the repo is checked out only here. Only the page and the note go with it: a local address is this one's. */
+  async function preferred(o: Over, here: Placed): Promise<{ machine: string; there: Placed }> {
+    const all = await machines(), self = all.find((x) => x.self)
+    const pick = preferredMachine(all, setting("jobs_machine"), await plugin.ask<string>("machines:vault", ""), self ? !!self.standalone : !inDesktop())
+    if (!pick.machine) return { machine: "", there: pick.why ? { ...here, why: `${here.why} (${pick.why}: here)` } : here }
+    const m = pick.machine, gh = urlsIn(o).find((u) => u.hostname === "github.com")?.href
+    const far = await atMachine(m.id, "companion.where", { ...(gh ? { url: gh } : {}), ...(o.path ? { path: o.path } : {}) }, 6).catch(() => null) as Placed | null
+    if (!far || (!far.repo && here.repo)) return { machine: "", there: { ...here, why: `${here.why} (${far ? `not checked out on ${m.label}` : `${m.label} doesn't answer`}: here)` } }
+    return { machine: m.id, there: { ...far, why: `${far.why}, on ${m.label} (${pick.why})` } }
   }
   /** The Claude Code a job runs as when the handoff names none: the setting, with its account (claude_personal). */
   const jobsAgent = () => { const own = setting("jobs_agent") || "claude"; return own.split("_")[0] === "claude" ? own : "claude" }
@@ -130,47 +153,80 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   // ---------- reading its worker
 
-  /** Its terminal here as it is: running, its state, title, and with `turn` its last turn and the diff since `base`. */
-  async function seenHere(id: string, o: { turn?: boolean; cwd?: string; base?: string } = {}): Promise<Seen> {
+  /** Its terminal here as it is: running (else how it ended), its state, title, and with `turn` its last turn (its
+   *  `session`'s, which outlives the terminal) and the diff since `base`. */
+  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string } = {}): Promise<Seen> {
     const running = await plugin.ask<boolean>("terminal:runs", false, id)
     const st = await plugin.ask<{ state?: string; kind?: string; msg?: string } | null>("terminal:state", null, id)
-    const info = running ? await plugin.ask<{ title?: string } | null>("terminal:info", null, id) : null
+    const info = running ? await plugin.ask<{ title?: string; typed?: number } | null>("terminal:info", null, id) : null
+    const exit = running ? null : await plugin.ask<Seen["exit"] | null>("terminal:ended", null, id)
     const agent = parseTerminal(id)?.agent ?? ""
-    const turn = o.turn && agent ? await plugin.ask<{ text?: string; files?: string[]; at?: number; final?: boolean } | null>(`agent-turn:${agent}`, null, id, "") : null
+    type Turn = { text?: string; files?: string[]; at?: number; final?: boolean; session?: string; prompt?: string; background?: number }
+    const turn = o.turn && agent ? await plugin.ask<Turn | null>(`agent-turn:${agent}`, null, id, o.session ?? "") : null
+    const asking = o.turn && agent && st?.kind === "question" ? await plugin.ask<{ questions?: { question?: string }[] } | null>(`agent-asking:${agent}`, null, id, o.session ?? "").catch(() => null) : null
+    const asks = (asking?.questions ?? []).map((q) => str(q.question)).filter(Boolean)
     return { running, ...(st?.state ? { state: st.state } : {}), ...(st?.kind ? { kind: st.kind } : {}), ...(st?.msg ? { msg: st.msg } : {}), ...(info?.title ? { title: info.title } : {}),
-      ...(o.turn ? { turn: turn ? { text: str(turn.text), files: turn.files ?? [], at: turn.at ?? 0, final: turn.final !== false && !!turn.text } : null } : {}),
+      ...(info?.typed ? { typed: info.typed } : {}), ...(asks.length ? { asks } : {}),
+      ...(exit ? { exit: { code: exit.code, signal: exit.signal, ...(exit.lost ? { lost: true } : {}) } } : {}),
+      ...(o.turn ? { turn: turn ? { text: str(turn.text), files: turn.files ?? [], at: turn.at ?? 0, final: turn.final !== false && !!turn.text, ...(turn.session ? { session: turn.session } : {}),
+        ...(turn.prompt ? { prompt: turn.prompt } : {}), ...(turn.background ? { background: turn.background } : {}) } : null } : {}),
       ...(o.turn && o.cwd && o.base ? { diff: await diffSince(o.cwd, o.base) } : {}) }
   }
-  const seenOf = (j: Job, turn = false) => (j.where.machine
-    ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, ...(turn ? { turn, cwd: j.where.cwd, ...(j.where.base ? { base: j.where.base } : {}) } : {}) }, 10) as Promise<Seen>
-    : seenHere(j.terminal, { turn, cwd: j.where.cwd, base: j.where.base }))
+  /** Job `j`'s worker read where it runs; `turn`: its last turn too, `diff`: and its changes. */
+  const seenOf = (j: Job, turn = false, diff = turn) => {
+    const o = { ...(turn ? { turn, ...(j.session ? { session: j.session } : {}) } : {}), ...(diff ? { cwd: j.where.cwd, ...(j.where.base ? { base: j.where.base } : {}) } : {}) }
+    return j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, ...o }, 10) as Promise<Seen> : seenHere(j.terminal, o)
+  }
 
   /** When each job's worker was first seen at rest (its turn may be over once that holds). */
   const resting = new Map<string, number>()
   const busy = new Set<string>()
   const HOLD = 1500
-  /** Job `j` read again: its worker's state moves it (a rest that holds is its turn's end: its results read then). */
-  async function refresh(j: Job) {
+  /** When each live job's latest turn was read: what it says, read again at most every READ. */
+  const read = new Map<string, number>()
+  const READ = 15_000
+  /** Job `j` read again: its worker's state moves it (a rest that holds is its turn's end: its results read then); a
+   *  done one may have its terminal closed (tidy). */
+  async function refresh(j: Job, now = false) {
     if (busy.has(j.id) || j.state === "stopped" || !j.terminal) return
     busy.add(j.id)
     try {
-      const s = await seenOf(j).catch(() => null)
+      const fresh = now || (live(j.state) && Date.now() - (read.get(j.id) ?? 0) >= READ)
+      const s = await seenOf(j, fresh, false).catch(() => null)
       // (a machine away or slow: not an end)
       if (!s) return
       let moved = false
-      const was = j.now
-      j.now = s.kind ? `waits on ${s.kind === "permission" ? "a permission" : s.kind === "question" ? "an answer" : s.kind}${s.msg ? `: ${s.msg}` : ""}` : s.msg || titled(s.title) || j.now
-      if (!s.running) { moved = move(j, "ended"); resting.delete(j.id) }
-      else if (s.state === "working") { j.stepped ??= Date.now(); moved = move(j, "working"); resting.delete(j.id) }
+      const was = j.now, said = j.last?.at
+      if (fresh) { read.set(j.id, Date.now()); heard(j, s) }
+      j.now = nowOf(j, s)
+      if (s.running && j.exited) { delete j.exited; delete j.closed; moved = true }
+      if ((s.typed ?? 0) > j.started && !j.held) { j.held = true; moved = true }
+      if (!s.running) { resting.delete(j.id); if (!j.exited) moved = await ended(j, s) }
+      else if (s.state === "working") { j.stepped ??= Date.now(); moved = move(j, "working"); resting.delete(j.id); if (!j.session) moved = await learn(j) || moved }
       else if (s.state === "blocked") { moved = move(j, "asks"); resting.delete(j.id) }
       else if (s.state === "error") { moved = move(j, "error"); resting.delete(j.id) }
       else if ((s.state === "idle" || s.state === "done") && (j.state === "working" || j.state === "needs you" || j.state === "starting")) {
         const since = resting.get(j.id)
         if (since === undefined) { resting.set(j.id, Date.now()); setTimeout(() => void refresh(j), HOLD + 100).unref?.() }
         else if (Date.now() - since >= HOLD) moved = await finish(j)
-      }
-      if (moved || j.now !== was) changed()
+      } else if (j.state === "done") moved = await tidy(j, s)
+      if (moved || j.now !== was || j.last?.at !== said) changed()
     } finally { busy.delete(j.id) }
+  }
+  /** What its worker's latest turn (`s`, read with it) says: what it said and was told last, what it asks. */
+  function heard(j: Job, s: Seen) {
+    if (!s.turn) return
+    j.last = lastOf(s.turn, s.asks)
+    if (s.turn.session) j.session ??= s.turn.session
+  }
+  /** What its turn ended with (`s`, read with its turn): its words since the job's turn began, files, diff, links. */
+  function resultOf(j: Job, s: Seen) {
+    const t = s.turn, text = t && t.at >= j.turn - 1000 ? t.text : ""
+    if (t?.session) j.session = t.session
+    const result: Result = { ...(text ? { text: text.slice(0, 4000) } : {}), ...(t?.files?.length ? { files: t.files.map((f) => tilde(f)).slice(0, 40) } : {}),
+      ...(s.diff ? { diff: s.diff } : !s.diff && t?.files?.length && j.where.repo ? { diff: `${t.files.length} file${t.files.length > 1 ? "s" : ""} changed` } : {}),
+      ...linksIn(text, j.where.preview) }
+    return { result, text, changes: !!j.where.repo && !!(s.diff || t?.files?.length) }
   }
   /** Its turn over: what it ended with, and whether it changed anything to review. A job still starting counts only once
    *  its transcript has an answer since it began (Claude Code rests a moment before its first step). */
@@ -180,12 +236,68 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const t = s.turn
     if (j.state === "starting" && !(t?.final && t.at >= j.turn - 1000)) return false
     resting.delete(j.id)
-    const text = t && t.at >= j.turn - 1000 ? t.text : ""
-    const result: Result = { ...(text ? { text: text.slice(0, 4000) } : {}), ...(t?.files?.length ? { files: t.files.map((f) => tilde(f)).slice(0, 40) } : {}),
-      ...(s.diff ? { diff: s.diff } : !s.diff && t?.files?.length && j.where.repo ? { diff: `${t.files.length} file${t.files.length > 1 ? "s" : ""} changed` } : {}),
-      ...linksIn(text, j.where.preview) }
-    j.result = result
-    return move(j, j.where.repo && (s.diff || t?.files?.length) ? "changed" : "answered")
+    const r = resultOf(j, s)
+    j.result = r.result
+    heard(j, s)
+    return move(j, r.changes ? "changed" : "answered")
+  }
+  /** Its terminal ended (`s`): while it worked, by what it left in its session's transcript and how it ended (endEvent);
+   *  else as the lifecycle says. Read once per end. */
+  async function ended(j: Job, s: Seen) {
+    if (!live(j.state)) { j.exited = Date.now(); move(j, "ended"); resumable(j); return true }
+    const r = await seenOf(j, true).catch(() => null)
+    if (!r) return false
+    j.exited = Date.now()
+    const x = s.exit, done = resultOf(j, r)
+    if (done.text || done.result.files?.length) j.result = done.result
+    heard(j, r)
+    // (a terminal ended on purpose, End session or vau terminal end, reads as a SIGHUP)
+    const crashed = !!x && (!!x.lost || x.code !== 0 || (x.signal !== 0 && x.signal !== 1))
+    move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed }))
+    resumable(j)
+    return true
+  }
+  /** Job `j`'s terminal gone: from now on it's the one resuming its conversation (opening its card, a follow-up). */
+  function resumable(j: Job) {
+    const to = j.state === "stopped" ? "" : resumeOf(j)
+    if (to) j.terminal = to
+  }
+
+  /** When the user last opened a job (its grace starts again). */
+  const opened = new Map<string, number>()
+  /** Job `j` done a while (`s`: its worker now): its terminal closed, unless its worker isn't at rest, still runs
+   *  something in the background, was typed in by the user or is in front of them. Its conversation resumes. */
+  async function tidy(j: Job, s: Seen) {
+    if (!s.running || j.held || Date.now() - Math.max(j.at, opened.get(j.id) ?? 0) < grace || (s.state !== "idle" && s.state !== "done")) return false
+    const t = await seenOf(j, true, false).catch(() => null)
+    if (t?.turn?.session) j.session ??= t.turn.session
+    if (!t?.running || t.turn?.background || !resumeOf(j) || d.onScreen?.(linkOf(j))) return false
+    await plugin.runOp("terminal.end", { id: terminalOf(j) })
+    j.exited = j.closed = Date.now()
+    resumable(j)
+    return true
+  }
+  /** Job `j`'s conversation running again in a terminal when its own was closed or ended (told `prompt` first). */
+  async function wake(ctx: OpCtx, j: Job, prompt = "") {
+    const s = await seenOf(j).catch(() => null)
+    if (!s || s.running) return false
+    if (!j.session) throw new OpError(`${j.id}'s terminal ended and its conversation isn't known: hand it off again`, 409)
+    const w = j.where
+    const r = await ctx.op("terminal.start", { agent: w.agent, session: j.session, ...(prompt ? { prompt } : {}), name: j.title, cwd: w.cwd, ...(w.model ? { model: w.model } : {}),
+      ...(w.effort ? { effort: w.effort } : {}), ...(w.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(w.machine ? { machine: w.machine } : {}) }) as { id: string }
+    j.terminal = r.id.split("@")[0]
+    delete j.exited; delete j.closed
+    opened.set(j.id, Date.now())
+    return true
+  }
+  /** Its worker's session, once it says (its transcript is what's read after its terminal ends). */
+  const tried = new Map<string, number>()
+  async function learn(j: Job) {
+    if (Date.now() - (tried.get(j.id) ?? 0) < 30_000) return false
+    tried.set(j.id, Date.now())
+    const s = await seenOf(j, true, false).catch(() => null)
+    if (s?.turn?.session) { j.session = s.turn.session; tried.delete(j.id) }
+    return !!j.session
   }
 
   // Its terminal here tells its changes (its hooks, OSC 7501, its end); one on another machine is asked now and then.
@@ -198,7 +310,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     ticks++
     for (const j of all()) {
       const recent = Date.now() - j.at < 6 * 3600_000
-      if (live(j.state) ? (j.where.machine || ticks % 2 === 0) : j.where.machine && j.state !== "stopped" && recent && ticks % 10 === 0) void refresh(j).catch(() => {})
+      // (one done whose terminal runs: looked at for tidy)
+      const later = (j.where.machine && j.state !== "stopped" && recent) || (j.state === "done" && !j.exited)
+      if (live(j.state) ? (j.where.machine || ticks % 2 === 0) : later && ticks % 10 === 0) void refresh(j).catch(() => {})
     }
   }, 3000)
   timer.unref?.()
@@ -211,16 +325,29 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   const terminalOf = (j: Job) => `${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`
 
-  /** A follow-up or correction to job `j`, typed into its worker's terminal (the user's own words, as if they typed). */
+  /** Job `j` named `title` (its card and its terminal), when a follow-up changed what it's about. */
+  async function retitle(ctx: OpCtx, j: Job, title: string) {
+    j.title = title.replace(/\s+/g, " ").trim().slice(0, 80)
+    await ctx.op("terminal.rename", { id: terminalOf(j), name: j.title }).catch(() => {})
+    changed()
+  }
+  /** A follow-up or correction to job `j`, typed into its worker's terminal (the user's own words, as if they typed);
+   *  its terminal closed or ended, its conversation resumed with it. */
   async function steer(ctx: OpCtx, j: Job, text: string) {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
     const s = await seenOf(j).catch(() => null)
-    if (s && !s.running) { move(j, "ended"); changed(); throw new OpError(`${j.id}'s terminal ended: hand it off again`, 409) }
-    if (s?.state === "blocked" && s.kind === "permission") throw new OpError(`${j.id} waits on a permission in its terminal (${s.msg ?? "open it"}): only the user answers it there (${linkOf(j)})`, 409)
-    const r = await ctx.op("terminal.send", { id: terminalOf(j), text }) as { submitted?: boolean | null; why?: string }
-    if (r.submitted === false) throw new OpError(`it didn't take it: ${r.why ?? "its input kept the text"} (${linkOf(j)})`, 409)
+    if (s && !s.running) {
+      if (!j.exited) await ended(j, s)
+      changed()
+      if (!await wake(ctx, j, text)) throw new OpError(`${j.id}'s terminal can't be reached now: try again (${linkOf(j)})`, 502)
+    } else {
+      if (s?.state === "blocked" && s.kind === "permission") throw new OpError(`${j.id} waits on a permission in its terminal (${s.msg ?? "open it"}): only the user answers it there (${linkOf(j)})`, 409)
+      const r = await ctx.op("terminal.send", { id: terminalOf(j), text }) as { submitted?: boolean | null; why?: string }
+      if (r.submitted === false) throw new OpError(`it didn't take it: ${r.why ?? "its input kept the text"} (${linkOf(j)})`, 409)
+    }
     move(j, "told")
     j.turn = Date.now()
+    j.now = `Told: ${gist(text, 120)}`
     resting.delete(j.id)
     changed()
   }
@@ -234,20 +361,20 @@ runs where the ask was over, derived on the spot: a preview's address (localhost
 serving it, its repo, on its machine), a GitHub page (its checkout here), an editor's window (its project), a note (the
 vault); cwd and machine say it instead. A job is in the menu bar's Jobs (starting, working, needs you, ready for
 review, done, failed, stopped) with where it runs; opening it opens its terminal, where the user can type. A coding job
-ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they say so. Your say
-shows by your cursor as it starts; then end your turn. job: a follow-up or a correction to one of yours (companion
+ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they say so. A routine
+handoff says nothing (its card in Jobs shows it); say only what they need to hear (a question, an unexpected place). End your turn. job: a follow-up or a correction to one of yours (companion
 jobs), typed into its terminal. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
 
-  vau companion handoff "Make the header blue on this page" --say "On it: a session in personal-website."
-  vau companion handoff "Use the darker blue instead" --job jd3k2h1g --say "Telling it."`,
+  vau companion handoff "Make the header blue on this page"
+  vau companion handoff "Use the darker blue instead" --job jd3k2h1g`,
     kind: "write",
     lock: false,
-    params: { task: { type: "string", required: true, description: "what to do, standing alone: the goal, where, what to end with (the ask's words, place and picture go with it); with job, what to tell it" },
-      say: { type: "string", required: true, description: "what you tell the user now, a few words, saying where it runs (On it: a session in personal-website)" },
+    params: { task: { type: "string", required: true, description: "what to do, standing alone: the goal, where, what to end with (the ask's words, place and picture go with it); with job, a short note of what it's for: their words, place and picture go with it too" },
+      say: { type: "string", description: "only what they need to hear now, in a few words (a question, an unexpected place it runs); none for a routine handoff" },
       agent: { type: "string", enum: ["claude", "codex", "opencode"], default: "claude", description: "who does it: Claude Code (on Opus, high, unless model says), Codex or OpenCode" },
       model: { type: "string", description: "its model (default: the setting jobs_model for Claude Code, the agent's own else)" },
       effort: { type: "string", description: "how hard it thinks (default: the setting jobs_effort for Claude Code)" },
-      title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words)" },
+      title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words); with job, its new name, when the follow-up changes what it's about" },
       cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over" },
       machine: { type: "string", description: "another of the Machines to run it on, by id (with cwd: that machine's folder)" },
       job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" }, as: d.as },
@@ -257,9 +384,13 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
       if (!task) throw new OpError("task: what to do")
       if (str(p.job)) {
         const j = jobOf(str(p.job))
-        await steer(ctx, j, task)
+        // (their ask goes with it once: one the job was already given isn't told again)
+        const m = d.askOf(name), fresh = m && m.t > (j.asked ?? 0) ? m : undefined
+        await steer(ctx, j, followTask(task, fresh))
+        if (fresh) j.asked = fresh.t
+        if (str(p.title).trim()) await retitle(ctx, j, str(p.title))
         d.did(name, "handoff")
-        await d.say(ctx, name, str(p.say))
+        if (str(p.say).trim()) await d.say(ctx, name, str(p.say))
         return cardOf(j)
       }
       const m = d.askOf(name)
@@ -281,10 +412,10 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
       j.carded = Date.now()
       changed()
       d.did(name, "handoff")
-      await d.say(ctx, name, str(p.say))
+      if (str(p.say).trim()) await d.say(ctx, name, str(p.say))
       return { ...cardOf(j), why: where.why }
     },
-    text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs and hears when it's ready: end your turn.`,
+    text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`,
     did: (p) => ({ action: "run", text: p.job ? `Told the job ${p.job} ${quoted(p.task, 60)}` : `Handed off ${quoted(p.task, 60)}`, by: d.who(p) }),
   })
 
@@ -314,10 +445,31 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
     args: ["id"],
     run: async (p) => {
       const j = jobOf(str(p.id))
-      await refresh(j).catch(() => {})
+      await refresh(j, true).catch(() => {})
       return j
     },
     text: (r) => jobText(r),
+  })
+
+  plugin.op({
+    id: "companion.job-open",
+    cli: "companion job-open",
+    summary: "Open a job's terminal in a tab (as its card does): one closed once it was done resumes its conversation first.",
+    help: `  vau companion job-open jd3k2h1g`,
+    kind: "write",
+    lock: false,
+    params: { id: { type: "string", required: true, description: "the job's id (or the end of it)" } },
+    args: ["id"],
+    run: async (p, ctx) => {
+      const j = jobOf(str(p.id))
+      if (j.state !== "stopped" && await wake(ctx, j)) changed()
+      opened.set(j.id, Date.now())
+      seen([j.id])
+      await ctx.op("ui.open", { path: linkOf(j) })
+      return cardOf(j)
+    },
+    text: (r) => `Opened "${r.title}" (${r.id}).`,
+    did: (p) => ({ action: "ui", text: `Opened the job ${p.id}` }),
   })
 
   plugin.op({
@@ -361,9 +513,10 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
     summary: "A job's worker terminal on this machine as Vaultite reads it: running, its state and title; turn: its last turn, and the diff since base in cwd.",
     kind: "read",
     params: { id: { type: "string", required: true, description: "its terminal's id" }, turn: { type: "boolean", description: "its last turn and the diff too" },
+      session: { type: "string", description: "its agent's session (its turn read from it, the terminal ended or not)" },
       cwd: { type: "string", description: "its folder (the diff's)" }, base: { type: "string", description: "the commit the diff counts from" } },
     args: ["id"],
-    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, cwd: str(p.cwd), base: str(p.base) }),
+    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base) }),
   })
 
   /** Jobs the user opened: no longer news. */

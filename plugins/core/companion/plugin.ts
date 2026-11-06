@@ -3,10 +3,11 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
+import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentModels, type AgentUse, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
-import { byUser, liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
+import { byUser, LOCAL, liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
 import { joinPath, Kind, readText, requestWriter, safeName, type Vault, type Writer, writeAtomic, writeNew } from "../../../core/vault.ts"
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { bridges } from "./bridge.ts"
@@ -17,11 +18,11 @@ import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
 import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from "./text.ts"
 import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
 import { screenDrawings } from "./drawings.ts"
-import { byLabel, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
-import { anchorsOf, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
+import { bestFound, byLabel, checkMarks, type Found, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
+import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
-import { type JobState, jobSpoken, jobTimingsText } from "./jobs.ts"
+import { type JobState, jobSpoken, jobTimingsText, jobTold } from "./jobs.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
@@ -339,6 +340,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
   keepAsked(full)
+  // (a new ask: the last answer's drawing goes, a Talk key's too, so a mark it corrects is replaced, not stacked)
+  if (full.for && (m.kind === "ask" || m.kind === "point")) screenDrawing.clear({ agent: full.for })
   // (its Talk key's: the summoned session's, which runs warm apart from the long one)
   if (lane().takes(full)) {
     setAgent(full.for!, { state: "thinking", ...placeOf(m) })
@@ -354,8 +357,6 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
     for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
     for (const s of sessions()) if (isChat(s.id) && meantFor(full, s.name)) void pump(s.name)
   }
-  // (a new ask: the last answer's drawing goes)
-  if (full.for && (m.kind === "ask" || m.kind === "point")) screenDrawing.clear({ agent: full.for })
   // (one starting shows that until its first `next` takes it)
   if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(full.for))?.state !== "starting") {
     setAgent(full.for, { state: "thinking", ...placeOf(m) })
@@ -830,14 +831,17 @@ const takeover = takeovers(send, (name, sx, sy) => void resolve(target({ sx, sy 
 /** The companion's drawing over the screen (drawings.ts). */
 const screenDrawing = screenDrawings(plugin, {
   send: (m) => { for (const ws of screens) send(ws, m) },
-  locate: async (places) => {
-    const ws = [...windows.entries()].sort((a, b) => b[1].at - a[1].at)[0]?.[0], reply: { rects?: Record<string, ScreenRect> } = {}
-    if (!ws) return {}
-    await askWindow(ws, { t: "locate", places }, 3000, reply).catch(() => false)
-    return reply.rects ?? {}
-  },
+  locate: (places) => windowRects(places),
   tint: (a) => agentOf(a).tint,
   elements: (a) => Object.fromEntries((nearBy.get(key(a)) ?? []).map((e) => [`el:${e.id}`, rectOfNear(e)])),
+  // (Vaultite's own elements by their data-ui id, found again where they are now: the ask's frames may be stale)
+  live: async (a, ids) => {
+    const ask = askOf(a), ui = (e: Near) => / ui:(\S+)/.exec(e.role)?.[1]
+    if (!ask || awayIn([ask])) return {}
+    const els = (nearBy.get(key(a)) ?? []).filter((e) => ids.includes(e.id) && ui(e))
+    const now = await Promise.all(els.map((e) => windowRects([`ui:${ui(e)}`], { x: e.frame.x + e.frame.width / 2, y: e.frame.y + e.frame.height / 2 }).then((r) => r[`ui:${ui(e)}`])))
+    return Object.fromEntries(els.flatMap((e, i) => (now[i] ? [[`el:${e.id}`, { ...now[i], label: e.label }]] : [])))
+  },
   find: (a, text) => screenFind(a, text),
   drawn: (a) => (askOf(a)?.ink ?? []).map((k) => ({ x: k.box.x, y: k.box.y, w: k.box.width, h: k.box.height })),
   words: (a) => {
@@ -846,18 +850,45 @@ const screenDrawing = screenDrawings(plugin, {
   },
 })
 const rectOfNear = (e: Near): ScreenRect => ({ x: e.frame.x, y: e.frame.y, w: e.frame.width, h: e.frame.height, label: e.label })
-/** Where words show on the screen agent `a`'s last ask was over (screen points): an element it came with saying them,
- *  else one the window has (Vaultite's page, or another app's Accessibility through its helper); null, nowhere. */
+/** Where the window used last has `places` now (locate.ts), in screen points; words found nearest `near`. */
+async function windowRects(places: string[], near?: { x: number; y: number }): Promise<Record<string, ScreenRect & { q?: number }>> {
+  const ws = [...windows.entries()].sort((a, b) => b[1].at - a[1].at)[0]?.[0], reply: { rects?: Record<string, ScreenRect & { q?: number }> } = {}
+  if (ws) await askWindow(ws, { t: "locate", places, ...(near ? { near } : {}) }, 3000, reply).catch(() => false)
+  return reply.rects ?? {}
+}
+/** Where words show now on the screen of agent `a`'s last ask (screen points): over another app, its element or the app's
+ *  (Accessibility); over Vaultite, its window's and its web pages', the best nearest what they drew or pointed at. */
 async function screenFind(a: string, text: string): Promise<ScreenRect | null> {
-  const el = byLabel(nearBy.get(key(a)) ?? [], text)
-  if (el) return rectOfNear(el)
-  if (awayIn([askOf(a)].filter((m) => !!m))) {
+  const ask = askOf(a), near = byLabel(nearBy.get(key(a)) ?? [], text)
+  if (awayIn([ask].filter((m) => !!m))) {
+    if (near) return rectOfNear(near)
     const r = await takeover.find(text)
     return r.ok && r.found ? rectOfNear(r.found) : null
   }
-  const ws = [...windows.entries()].sort((x, y) => y[1].at - x[1].at)[0]?.[0], reply: { rects?: Record<string, ScreenRect> } = {}
-  if (ws) await askWindow(ws, { t: "locate", places: [`find:${text}`] }, 3000, reply).catch(() => false)
-  return reply.rects?.[`find:${text}`] ?? null
+  const pointer = ask?.sx !== undefined && ask.sy !== undefined ? { x: ask.sx, y: ask.sy } : undefined
+  const by = ask?.ink?.length ? ask.ink.map((k) => ({ x: k.box.x, y: k.box.y, w: k.box.width, h: k.box.height })) : pointer ? [{ ...pointer, w: 0, h: 0 }] : []
+  const [here, pages] = await Promise.all([windowRects([`find:${text}`, "pages"], pointer), pageFinds(a, text)])
+  const found: Found[] = here[`find:${text}`] ? [{ q: 2, ...here[`find:${text}`] }] : []
+  for (const p of pages) {
+    const box = here[`page:${p.pane}`]
+    for (const r of box ? p.found : []) {
+      const at = { x: Math.round(box.x + r.x * p.zoom), y: Math.round(box.y + r.y * p.zoom), w: Math.round(r.w * p.zoom), h: Math.round(r.h * p.zoom), q: r.q }
+      if (at.x < box.x + box.w && at.y < box.y + box.h && at.x + at.w > box.x && at.y + at.h > box.y) found.push(at)
+    }
+  }
+  const best = bestFound(found, by)
+  if (best) return { x: best.x, y: best.y, w: best.w, h: best.h }
+  // (nothing there now: the element the ask came with, as it was)
+  return near ? rectOfNear(near) : null
+}
+/** Where the web pages shown in the user's window say `text` (their viewport's CSS px, a CSS px `zoom` points). */
+async function pageFinds(name: string, text: string) {
+  const tabs = await plugin.desktop("agent:tabs", { name, session: "", task: "", summary: "", remote: false }).catch(() => []) as (BrowserTab & { shown?: boolean })[]
+  const shown = tabs.filter((t) => t.pane && t.shown && t.access !== "none" && !privatePage(t.url, t.container)).slice(0, 8)
+  const late = <T,>(ms: number) => new Promise<T>((_ok, no) => setTimeout(() => no(new Error("late")), ms))
+  const each = await Promise.all(shown.map((t) => Promise.race([plugin.desktop("agent:find", t.tab, text), late(1500)])
+    .then((r) => ({ pane: t.pane!, ...(r as { zoom: number; found: Found[] }) }), () => null)))
+  return each.filter((x): x is NonNullable<typeof x> => !!x && Array.isArray(x.found) && Number.isFinite(x.zoom))
 }
 const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush"])
 const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
@@ -1308,7 +1339,7 @@ export function endOf(cur: string, e: Omit<Edit, "path">): { line: number; find?
 
 /** A streaming call: what shows as it comes (a bubble, a comment or reply, an edit typed in by a window); `whole`: nothing
  *  does, its call does it all (an edit that becomes a proposal, one no window shows, one whose place comes last). */
-type Streamed = { use: string; agent: string; tool: Streaming; ended?: "done" | "stop"; whole?: boolean; note?: string; reply?: { id: string; at: number }
+type Streamed = { use: string; agent: string; tool: Streaming; ended?: "done" | "stop"; whole?: boolean; note?: string; reply?: { id: string; at: number }; again?: boolean
   edit?: { ws: WebSocket; rid: string; e: Edit; text: string; sent: number; open: boolean; final: boolean; was: string | null; job: Promise<"typed" | "stopped" | "unshown"> } }
 const streams = new Map<string, Streamed>()
 /** The tool_use a chat session's call is for, through the op it runs: the stream that showed it. */
@@ -1344,13 +1375,21 @@ function streamed(name: string, tool: Streaming, use: string, json: string, end?
   // (a draw's words are its say, its bubble by its cursor as a say's; one on a drawing (actions, path) has none)
   const field = tool === "draw" ? "say" : "text"
   if (tool === "draw" && keys.some((k) => k === "actions" || k === "path")) s.whole = true
+  // (its words wait for its marks, whole and sound: a draw refused would have said them, and its retry again)
+  const held = tool === "draw" && !s.whole && !s.note && !marksSound(whole.marks)
+  if (held && whole.marks !== undefined) s.whole = true
   const text = typeof whole[field] === "string" ? whole[field] as string : open?.key === field ? open.text : null
-  if (text !== null && !s.whole) {
+  if (text !== null && !s.whole && !held) {
     try { if (tool === "edit") editStream(s, whole, keys, text); else noteStream(s, whole, keys, text) } catch { s.whole = true }
   }
   if (end) s.ended = end
   if (end === "stop") finishStream(s)
 }
+
+const marksSound = (marks: unknown) => { try { return marks !== undefined && !!checkMarks(marks).length } catch { return false } }
+/** A draw's words said though its marks weren't drawn (none found there): its retry's words, the same, go on from them. */
+const saidUndrawn = new Map<string, { note: string; text: string; ask: number }>()
+const sameStart = (a: string, b: string) => { const x = a.trim().toLowerCase(), y = b.trim().toLowerCase(); return x.startsWith(y) || y.startsWith(x) }
 
 /** A say's bubble or a comment's card, its words growing as they come (a comment kept once its call ends it). */
 function noteStream(s: Streamed, given: Record<string, unknown>, keys: string[], text: string) {
@@ -1358,6 +1397,8 @@ function noteStream(s: Streamed, given: Record<string, unknown>, keys: string[],
   const n = s.note ? notes.get(s.note) : s.reply ? notes.get(s.reply.id) : undefined
   if (n) {
     const r = s.reply ? n.replies?.[s.reply.at] : null
+    // (a retry's words still those said: what was said stays as it was)
+    if (s.again && n.text?.startsWith(text)) return
     if (r && r.text !== text) r.text = text
     else if (!s.reply && n.text !== text) n.text = text
     else return
@@ -1387,6 +1428,11 @@ function noteStream(s: Streamed, given: Record<string, unknown>, keys: string[],
       s.note = note.id
     }
   } else {
+    const undrawn = s.tool === "draw" ? saidUndrawn.get(key(s.agent)) : undefined
+    if (undrawn && undrawn.ask === askOf(s.agent)?.t && notes.has(undrawn.note) && sameStart(undrawn.text, text)) {
+      saidUndrawn.delete(key(s.agent)); s.note = undrawn.note; s.again = true
+      return noteStream(s, given, keys, text)
+    }
     const t = placed ? target(given) : {}
     setAgent(s.agent, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(s.agent) })
     const answers = answering(s.agent)
@@ -1643,7 +1689,7 @@ plugin.onEvent({ types: ["terminal.agent-missing"] }, (ev) => {
 /** A tool served to a chat session, run here: claude-code's chat relays its calls. */
 export type ChatTool = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; run: (args: unknown, use?: string) => Promise<unknown>
   streams?: boolean; ends?: boolean; stream?: (use: string, json: string, end?: "done" | "stop") => void }
-export type ChatHow = { cwd?: string; account?: string; model?: string; effort?: string; append?: string; title?: string; by?: string; inbox?: boolean; allowed?: string[]; denied?: string[]; tools?: ChatTool[]
+export type ChatHow = { cwd?: string; account?: string; model?: string; effort?: string; append?: string; title?: string; by?: string; inbox?: boolean; allowed?: string[]; denied?: string[]; dirs?: string[]; tools?: ChatTool[]
   /** Its permission mode (Claude Code's): the summoned session's is dontAsk, what isn't allowed refused at once. */
   mode?: "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
   /** Pictures sent with its message (an ask's screenshot); `quick`: no thinking first. */
@@ -1668,13 +1714,13 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-stop"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop"]
 /** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
 const QUIET_RESULTS = new Set(["see", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-stop"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1732,14 +1778,19 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["open", "page", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-stop", "conversation"]
+const SUMMONED_TOOLS = ["open", "page", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-open", "job-stop", "conversation"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
 const SUMMONED_BUILTINS = ["Bash"]
 /** What it runs, never asked (dontAsk: anything else is refused at once, never a check that keeps them waiting
- *  while they talk): the long session's commands, and showing things in their window. */
-const SUMMONED_ALLOWED = [...ALLOWED, "Bash(vau --help)", "Bash(vau open:*)", "Bash(vau commands:*)", "Bash(vau command companion:session:*)", "Bash(vau screen:*)"]
+ *  while they talk): the long session's commands, showing things in their window, and looking around (READ_ONLY). */
+const SUMMONED_ALLOWED = [...ALLOWED, "Bash(vau --help)", "Bash(vau open:*)", "Bash(vau commands:*)", "Bash(vau command companion:session:*)", "Bash(vau screen:*)",
+  "Bash(tailscale serve status:*)", "Bash(tailscale status:*)", "Bash(lsof:*)", "Bash(git -C * log *)", "Bash(git -C * show *)"]
+/** Where its read-only commands (ls, cat, grep...: Claude Code tells them from writes, redirects too) may look unasked:
+ *  code and documents, never home's dotfiles or Library (keys, cookies, mail); git's -c could run a pager, so it's refused. */
+const READ_ONLY = { dirs: ["Projects", "Documents"].map((d) => path.join(os.homedir(), d)),
+  denied: [`/${path.resolve(LOCAL)}`].map((d) => `Read(${d}/**)`).concat("Read(**/.env*)", "Bash(git * --output*)", "Bash(git * -c *)", "Bash(git * --config-env*)", "Bash(git * --exec-path*)") }
 /** An ask's window text it's given at most (chars), the lines by what's at their pointer first: the rest is in its
  *  picture, and every ask's text stays in its history. */
 const SCREEN_CHARS = 4000
@@ -1754,7 +1805,8 @@ const lane = (): Lane => {
     file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel,
     // (low effort: its thinking, which can't be turned off, took 1 to 2 s of each answer at the account's high)
     options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, effort: "low", quick: true, system: SUMMONED_PROMPT,
-      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, mode: "dontAsk", allowed: SUMMONED_ALLOWED, denied: ["Bash(vau companion:*)"],
+      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, mode: "dontAsk", allowed: SUMMONED_ALLOWED,
+      denied: ["Bash(vau companion:*)", ...READ_ONLY.denied], dirs: READ_ONLY.dirs,
       tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
     acts: () => { const [say, look, draw] = toolsFor(ownName(), SUMMONED_ACTS, () => lane().busy()); return { say, look, draw } },
     found: async (text) => {
@@ -1764,7 +1816,7 @@ const lane = (): Lane => {
     },
     caption: (name, text) => screenDrawing.recaption(name, text),
     text: async (ms) => {
-      const slim = ms.map((m) => (m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
+      const slim = ms.map((m) => inPicture(m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
       // (when it is, as a friend beside them would know: "this morning", "last night" in the talk make sense)
       const now = new Date().toLocaleString("en-US", { weekday: "long", hour: "2-digit", minute: "2-digit", hour12: false })
       const text = [`(now: ${now})`, momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobs.line()].filter(Boolean).join("\n")
@@ -2247,7 +2299,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
       continue
     }
     const thread = m.item && (m.kind === "ask" || m.kind === "reply") && personThread(m.item) ? ` (in their comment thread ${m.item}, by the line: answer in it, companion comment --id ${m.item})` : ""
-    if (m.kind === "ask") out.push(`- ask${at}${thread}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more || m.again ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
+    if (m.kind === "ask") out.push(`- ask${at}${m.voice ? " (said: may hold the recognizer's slips)" : ""}${thread}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more || m.again ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "point") out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "edit") {
       out.push(`- edit${at}${m.again ? " (they went on writing: all of it now)" : ""}`)
@@ -2365,6 +2417,7 @@ const jobs = jobOps(plugin, {
   say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
   moved: (j, from) => void jobNews(j.title, j.state, from).catch(() => {}),
+  onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
 /** The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"):
  *  its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first. */
@@ -2378,10 +2431,10 @@ const AROUND_MS = 15 * 60_000
  *  aloud at home from a phone's ask) and not in a focus block; else the menu bar's notification waits for them, silent. */
 async function jobNews(title: string, state: string, from: string) {
   const text = jobSpoken({ title, state: state as JobState }, from), last = moments.findLast((m) => m.summoned)?.t ?? 0
-  if (!text || mode() === "off" || setting("voice") === "off" || plugin.settings().job_voice === false || Date.now() - last > AROUND_MS) return
+  if (!text || setting("job_news") !== "spoken" || !jobTold(state, "spoken") || mode() === "off" || setting("voice") === "off" || Date.now() - last > AROUND_MS) return
   const block = await plugin.host.call("block.status", {}).then((r) => r.result as { now?: unknown } | null).catch(() => null)
   if (block?.now) return
-  await plugin.desktop("voice:sample", { text })
+  await plugin.desktop("voice:sample", { text, after: true })
 }
 
 /** The open task line `line` (1-based) of `src`, or the only one with `text`: its index, or -1. */
@@ -3146,7 +3199,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
   kind: "write",
   lock: false,
   params: { marks: { type: "array", items: { type: "object" }, description: "marks to draw on the screen: {\"type\": \"ring\" | \"point\" | \"frame\" | \"connect\" | \"paper\" | ..., ...} (see help)" },
-    say: { type: "string", description: "with marks: your words, said with them; each mark's beat is a sentence of them" },
+    say: { type: "string", description: "with marks, written after them: your words, said once the marks check; each mark's beat is a sentence of them" },
     actions: { type: "array", items: { type: "object" }, description: "on a drawing (path): what to do, in order: {\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...}" },
     path: PATH, as: AS },
   run: async (p, ctx) => {
@@ -3178,7 +3231,11 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
 async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
   const name = who(p)
   did(name, "draw")
-  const d = await screenDrawing.draw(name, p.marks, str(p.say) || undefined)
+  const d = await screenDrawing.draw(name, p.marks, str(p.say) || undefined).catch((e) => {
+    const use = toolUse.getStore(), n = use ? streams.get(use)?.note : undefined, ask = askOf(name)?.t
+    if (n && ask !== undefined) saidUndrawn.set(key(name), { note: n, text: notes.get(n)?.text ?? str(p.say), ask })
+    throw e
+  })
   const r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
   const at = r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : {}
   if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...at, ...(p.as ? { as: p.as } : {}) })

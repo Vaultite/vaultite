@@ -797,7 +797,7 @@ export default async ($: VaultTest) => {
     const helper = fake(), last = () => helper.got.filter((m: Any) => m.t === "drawing").at(-1)
     live.fn(helper, req, { query: { screen: "1" }, wild: [] })
     const rects: Any = { "ui:tab:t1": { x: 40, y: 60, w: 120, h: 28 } }
-    const win = fake((m, ws) => { if (m.t === "locate") setImmediate(() => ws.emit("message", JSON.stringify({ t: "done", rid: m.rid, ok: true, rects: Object.fromEntries(m.places.filter((p: string) => rects[p]).map((p: string) => [p, rects[p]])) }))) })
+    const win = fake((m, ws) => { if (m.t === "locate") setImmediate(() => ws.emit("message", JSON.stringify({ t: "done", rid: m.rid, ok: true, rects: Object.fromEntries(Object.keys(rects).filter((p) => m.places.includes(p) || (p.startsWith("page:") && m.places.includes("pages"))).map((p) => [p, rects[p]])) }))) })
     live.fn(win, req, { query: {}, wild: [] })
     let [st3, r3] = await api("POST", "ops/companion.draw", { say: "Share is here. Then pick who.", marks: [{ type: "ring", at: [900, 40, 96, 32], label: "Share" }, { type: "connect", from: [900, 40, 96, 32], to: { ui: "tab:t1" }, beat: 1 },
       { type: "paper", title: "Login flow", items: [{ type: "rect", x: 10, y: 10, w: 100, h: 40, label: "Log in" }] }] })
@@ -837,6 +837,28 @@ export default async ($: VaultTest) => {
     await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
     helper.emit("message", JSON.stringify({ t: "drawing-act", id: last()?.drawing.id, kind: "clear" }))
     check("companion: Clear on the screen takes it down", last()?.drawing === null, last())
+    // (words in web pages: each page shown asked where it says them now, in its own px and zoom; the one at their pointer wins)
+    Object.assign(rects, { "page:p1": { x: 100, y: 50, w: 600, h: 800 }, "page:p2": { x: 700, y: 50, w: 600, h: 800 } })
+    const wasDesktop = c.plugin.desktop, asked: Any[] = []
+    c.plugin.desktop = async (name: string, ...args: Any[]) => {
+      asked.push([name, ...args])
+      if (name === "agent:tabs") return [1, 2, 3].map((n) => ({ tab: n, pane: `p${n}`, shown: n < 3, access: "read", url: `https://${n}.example.com`, title: `Page ${n}`, container: null }))
+      if (name === "agent:find") return { tab: args[0], zoom: args[0] === 2 ? 1.25 : 1, found: args[1] === "No model, no internet" ? [{ x: 10, y: 20, w: 100, h: 20, q: 2 }] : [] }
+      throw new Error("no such call")
+    }
+    try {
+      c.addMoment({ kind: "ask", text: "cut this", pane: "p2", sx: 760, sy: 80 })
+      ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "No model, no internet" } }] })
+      const right = last()?.drawing?.places?.["find:No model, no internet"]
+      c.addMoment({ kind: "ask", text: "and here?", pane: "p1", sx: 150, sy: 60 })
+      await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "No model, no internet" } }] })
+      const left = last()?.drawing?.places?.["find:No model, no internet"]
+      check("companion: words a web page shows are found there, as it is now, mapped by its zoom; of two pages saying them, the one at their pointer",
+        st3 === 200 && JSON.stringify(right) === '{"x":713,"y":75,"w":125,"h":25}' && JSON.stringify(left) === '{"x":110,"y":70,"w":100,"h":20}' &&
+        !asked.some((a) => a[0] === "agent:find" && a[1] === 3), [st3, r3, right, left, asked])
+      ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "Nowhere at all" } }] })
+      check("companion: words nothing shows draw nothing, and it says they saw no mark", st3 === 409 && /nothing on the user's screen says "Nowhere at all".*saw no mark/.test(r3.error), r3)
+    } finally { c.plugin.desktop = wasDesktop; await api("POST", "ops/companion.clear", {}) }
     ;[st3] = await api("POST", "ops/companion.save-drawing", {})
     check("companion: nothing up, nothing to keep", st3 === 404)
     // (the elements a summoned ask came with: {el} spots snap to them on the server too)

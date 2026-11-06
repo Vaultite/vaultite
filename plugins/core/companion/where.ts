@@ -4,12 +4,12 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { gitEnv } from "../../../core/plugins.ts"
+import { gitEnv, type Machine } from "../../../core/plugins.ts"
 
 /** What an ask was over, as far as routing needs it (a Moment's). */
 export type Over = { url?: string; app?: string; title?: string; path?: string; screen?: string; under?: string }
-/** Where it resolved: the folder (a repo's top, else the vault), why, and the preview it came from. */
-export type Found = { cwd: string; why: string; preview?: string }
+/** Where it resolved: the folder (a repo's top, else the vault), why, what led there, and the preview it came from. */
+export type Found = { cwd: string; why: string; from?: "note" | "github" | "preview" | "editor" | "vault"; preview?: string }
 
 const HOME = os.homedir()
 const run = (cmd: string, args: string[], cwd?: string) => new Promise<string>((ok) =>
@@ -92,13 +92,13 @@ const EDITORS = /vscode|VSCode|cursor|zed|xcode|sublime|jetbrains|intellij|webst
 
 /** Where an ask over `o` runs on this machine; `self`: this machine's Tailscale names (its Serve sites). */
 export async function resolveHere(o: Over, vault: string, self: string[] = [], roots = ROOTS): Promise<Found> {
-  if (o.path) return { cwd: vault, why: `the note ${o.path}` }
+  if (o.path) return { cwd: vault, why: `the note ${o.path}`, from: "note" }
   let away = ""
   for (const u of urlsIn(o)) {
     if (u.hostname === "github.com") {
       const [owner, repo] = u.pathname.split("/").filter(Boolean)
       const dir = owner && repo ? checkoutOf(`${owner}/${repo}`, roots) : ""
-      if (dir) return { cwd: dir, why: `${owner}/${repo} on GitHub, checked out at ${tilde(dir)}` }
+      if (dir) return { cwd: dir, why: `${owner}/${repo} on GitHub, checked out at ${tilde(dir)}`, from: "github" }
       continue
     }
     let port = 0
@@ -106,18 +106,37 @@ export async function resolveHere(o: Over, vault: string, self: string[] = [], r
     else if (u.hostname.endsWith(".ts.net") && self.includes(u.hostname)) port = servedPort(await serveStatus(), u.hostname, u.port)
     if (!port) continue
     const dir = await listenerDir(port), top = dir ? await repoOf(dir) : ""
-    if (top) return { cwd: top, why: `the preview ${u.host} is served from ${tilde(top)}`, preview: u.origin }
+    if (top) return { cwd: top, why: `the preview ${u.host} is served from ${tilde(top)}`, from: "preview", preview: u.origin }
     // (an app's own server, a bundle: no project to work on there)
     if (dir) away = `the preview ${u.host} is served from ${tilde(dir)}, not a repo`
   }
   if (o.app && EDITORS.test(o.app) && o.title) {
     for (const part of o.title.split(/ [—–-] /).reverse()) {
       const dir = namedCheckout(part.replace(/\s*\(.*\)$/, ""), roots)
-      if (dir) return { cwd: dir, why: `${path.basename(dir)}, open in ${o.title}` }
+      if (dir) return { cwd: dir, why: `${path.basename(dir)}, open in ${o.title}`, from: "editor" }
     }
   }
-  return { cwd: vault, why: `${away || "nothing on screen named a project"}: the vault` }
+  return { cwd: vault, why: `${away || "nothing on screen named a project"}: the vault`, from: "vault" }
 }
+
+/** Where jobs with nothing tying them here go (the setting jobs_machine: auto, here or a machine's id), of the machines
+ *  listed: auto is an always-on one (its server on its own, not in a laptop's app) unless this one is (`here`). */
+export function preferredMachine(all: Machine[], want: string, vault: string, here: boolean): { machine: Machine | null; why: string } {
+  const w = want.trim() || "auto", none = { machine: null, why: "" }
+  // (it runs there in its copy of this vault, through its companion: companion.where, companion.worker)
+  const fits = (m: Machine) => m.online && !m.self && !!vault && m.vault === vault && !!m.plugins?.includes("companion")
+  if (w === "here") return none
+  if (w !== "auto") {
+    const m = all.find((x) => x.id === w)
+    return !m || m.self ? none : fits(m) ? { machine: m, why: "the machine jobs prefer" }
+      : { machine: null, why: `${m.label}, where jobs go, ${!m.online ? "is offline" : m.vault !== vault ? "has another vault" : "runs no companion"}` }
+  }
+  const m = here ? null : all.find((x) => x.standalone && fits(x))
+  return m ? { machine: m, why: "always on" } : none
+}
+/** Whether an ask placed here may run on the machine jobs prefer: not over a preview served here or an editor's project
+ *  open here (the copy the user watches). */
+export const movable = (f: Found) => f.from !== "preview" && f.from !== "editor"
 
 /** The Tailscale name of an address that's another machine's: its hostname, when `hosts` (machine id -> hostname) has it. */
 export function machineOfUrl(o: Over, hosts: Record<string, string>): { machine: string; url: string } | null {

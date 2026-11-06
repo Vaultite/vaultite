@@ -23,12 +23,40 @@ export default async ($: VaultTest) => {
     check("jobs: nothing moves a stopped job; a reviewed one stopped is done", b.state === "stopped" && b.log.length === 2 && c.state === "done" && c.log.at(-1).ev === "stop", [b.log, c.log])
     check("jobs: a worker that ends while it works failed; one ready for review that ends is done",
       run(["working", "ended"]).state === "failed" && run(["working", "changed", "ended"]).state === "done" && run(["ended"]).state === "failed")
+    const E = (text: boolean, final: boolean, changes: boolean, crashed: boolean) => J.endEvent({ text, final, changes, crashed })
+    check("jobs: a terminal ending after its worker left an answer is done (with changes, ready for review), mid-turn too unless it crashed; with nothing, failed",
+      E(true, false, false, false) === "answered" && E(true, true, true, true) === "changed" && E(false, false, true, false) === "changed" &&
+      E(true, false, false, true) === "ended" && E(false, false, false, false) === "ended")
     check("jobs: every state is in the table, and each one reached is one of them", J.JOB_STATES.every((s) => s in J.JOB_NEXT) &&
       Object.values(J.JOB_NEXT).every((m) => Object.values(m).every((s) => (J.JOB_STATES as readonly string[]).includes(s!))))
     check("jobs: its news in a line said aloud: needs you, ready for review, done, failed; a reviewed job done isn't news again",
       J.jobSpoken({ title: "Make the header blue on the about page please", state: "ready for review" }, "working") === 'The job "Make the header blue" is ready for review.' &&
       J.jobSpoken({ title: "x", state: "needs you" }, "working") === 'The job "x" needs you.' && J.jobSpoken({ title: "", state: "failed" }, "working") === "A job failed." &&
       J.jobSpoken({ title: "x", state: "done" }, "ready for review") === "" && J.jobSpoken({ title: "x", state: "working" }, "starting") === "")
+    check("jobs: news told by job_news: needing you or failed by default (quiet), every end when spoken, none when off",
+      J.jobTold("needs you", "quiet") && J.jobTold("failed", "quiet") && !J.jobTold("done", "quiet") && !J.jobTold("ready for review", "quiet") &&
+      J.jobTold("done", "spoken") && J.jobTold("ready for review", "spoken") && !J.jobTold("needs you", "off") && !J.jobTold("working", "spoken"))
+    {
+      const { jobNews } = await import("../../../electron/helperlogic.ts")
+      const j = (state: string) => ({ id: "a", title: "x", state, link: null, unseen: true, at: 0 })
+      check("jobs: the menu bar's notifications follow job_news",
+        jobNews([j("working")], [j("done")], "quiet").length === 0 && jobNews([j("working")], [j("done")], "spoken").length === 1 &&
+        jobNews([j("working")], [j("needs you")], "quiet").length === 1 && jobNews([j("working")], [j("failed")], "off").length === 0)
+    }
+    {
+      const jt = J.jobTask("Fix the footer", undefined, true)
+      const first = J.lastOf({ text: "Fixed it. The links \"Why now?\" stay.\n\nShould I also change the header? Or keep it as is?", at: 5, final: true, prompt: jt })
+      const told = J.lastOf({ text: "Looking at it.", at: 9, final: false, prompt: "Use the **darker** blue", background: 2 })
+      check("jobs: its latest turn: what it said, the questions its answer ends with (quotes left out), what it was told after its task, its background tasks",
+        first.text.startsWith("Fixed it.") && JSON.stringify(first.asks) === JSON.stringify(["Should I also change the header?", "Or keep it as is?"]) && first.told === undefined &&
+        told.told === "Use the darker blue" && told.asks === undefined && told.background === 2, [first, told])
+      const j = { title: "Fix the footer", turn: 10_000, now: "starting", last: { text: "Checking the footer at phone width. Then the header.", at: 20_000 } }
+      check("jobs: what it does now is what it waits on, else what it said last this turn, else its status (not its own title)",
+        J.nowOf(j, {}) === "Checking the footer at phone width." && J.nowOf(j, { kind: "question", msg: "Which blue?" }) === "waits on an answer: Which blue?" &&
+        J.nowOf({ ...j, turn: 30_000 }, { title: "✳ Fix the footer" }) === "starting" && J.nowOf({ ...j, turn: 30_000 }, { title: "✳ Editing a.ts" }) === "Editing a.ts")
+      check("jobs: its conversation resumes in its account's terminal", J.resumeOf({ session: "s-123", where: { agent: "claude_agent" } as Any }) === "resume-claude_agent-s-123" &&
+        J.resumeOf({ where: { agent: "claude" } as Any }) === "")
+    }
     check("jobs: a PR and a preview's link from the worker's last message", JSON.stringify(J.linksIn("Done. PR: https://github.com/lighthouse/site/pull/12, try http://localhost:5173/about.")) ===
       JSON.stringify({ pr: "https://github.com/lighthouse/site/pull/12", link: "http://localhost:5173/about" }) && J.linksIn("nothing", "https://m1.tail1.ts.net:8450").link === "https://m1.tail1.ts.net:8450")
   }
@@ -43,6 +71,16 @@ export default async ($: VaultTest) => {
     const home = "/Users/alice"
     check("where: a folder a rule names is refused with its why, others not", W.refusal("/Users/alice/Work/Acme/api", ["~/Work/Acme: Acme's work runs on its own machine"], home) === "Acme's work runs on its own machine" &&
       W.refusal("/Users/alice/Work/AcmeX", ["~/Work/Acme: no"], home) === "" && W.refusal("/Users/alice/Projects/site", ["~/Work/Acme"], home) === "")
+    const mac = (id: string, o: Any = {}): Any => ({ id, label: id.toUpperCase(), url: `https://${id}.tail1.ts.net`, online: true, self: false, plugins: ["terminal", "companion"], vault: "v1", ...o })
+    const ms = [mac("lap", { self: true }), mac("box", { standalone: true, vault: "v2" }), mac("old", { standalone: true, plugins: ["terminal"] }), mac("m1", { standalone: true }), mac("pc", { standalone: true })]
+    const pick = (want: string, here = false, all = ms) => W.preferredMachine(all, want, "v1", here)
+    check("where: jobs prefer the first always-on machine online with this vault and a companion; none when this one is always on, or set to here",
+      pick("auto").machine?.id === "m1" && pick("").machine?.id === "m1" && pick("auto", true).machine === null && pick("here").machine === null &&
+      pick("auto", false, ms.map((m) => (m.id === "m1" ? { ...m, online: false } : m))).machine?.id === "pc", [pick("auto"), pick("auto", true)])
+    check("where: a machine named for jobs is used while it can be, else here, saying why", pick("pc").machine?.id === "pc" && pick("lap").machine === null &&
+      pick("box").machine === null && /another vault/.test(pick("box").why) && pick("nope").machine === null)
+    check("where: a preview or an editor's project stays where it's served; a note, a GitHub page or nothing may move",
+      !W.movable({ cwd: "/r", why: "", from: "preview" }) && !W.movable({ cwd: "/r", why: "", from: "editor" }) && W.movable({ cwd: "/r", why: "", from: "github" }) && W.movable({ cwd: "/v", why: "", from: "vault" }))
     check("where: an address another machine serves goes to it", W.machineOfUrl({ url: "https://studio.tail1.ts.net:8450/x" }, { studio: "studio.tail1.ts.net" })?.machine === "studio" &&
       W.machineOfUrl({ url: "http://localhost:3000" }, { studio: "studio.tail1.ts.net" }) === null)
   }
@@ -57,9 +95,9 @@ export default async ($: VaultTest) => {
   {
     const gh = await W.resolveHere({ url: "https://github.com/lighthouse/site/issues/4" }, VAULT, [], roots)
     const note = await W.resolveHere({ path: "Notes/Plan.md", url: "http://localhost:1" }, VAULT, [], roots)
-    check("where: a GitHub page is its checkout here; a note is the vault", fs.realpathSync(gh.cwd) === real && note.cwd === VAULT, [gh, note])
+    check("where: a GitHub page is its checkout here; a note is the vault", fs.realpathSync(gh.cwd) === real && note.cwd === VAULT && gh.from === "github" && note.from === "note", [gh, note])
     const editor = await W.resolveHere({ app: "com.microsoft.VSCode", title: "index.html — site" }, VAULT, [], roots)
-    check("where: an editor's window is its project's checkout", fs.realpathSync(editor.cwd) === real, editor)
+    check("where: an editor's window is its project's checkout", fs.realpathSync(editor.cwd) === real && editor.from === "editor", editor)
     if (process.platform !== "win32") {
       const server = spawn(process.execPath, ["-e", "const s=require('http').createServer(()=>{}).listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { cwd: path.join(repo), stdio: ["ignore", "pipe", "ignore"] })
       const port = await new Promise<string>((ok) => server.stdout!.once("data", (d) => ok(String(d).trim())))
@@ -114,6 +152,10 @@ export default async ($: VaultTest) => {
       ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Use the darker blue", say: "Telling it.", job: card.id }, agent)
       const told = await waitFor(() => fs.existsSync(path.join(repo, "told.txt")) && fs.readFileSync(path.join(repo, "told.txt"), "utf8").trim(), 10000, 100)
       check("handoff --job: typed into its worker's terminal, which goes on", st === 200 && told === "Use the darker blue", [st, b, told])
+      check("handoff --job: a follow-up carries the user's own words and screen once, one line",
+        J.followTask("Darker", { t: 1, seq: 1, kind: "ask", text: "make it darker", voice: true, app: "com.example.browser", title: "Site", shot: "/s.png" } as Any) ===
+          'Darker (The user, through their companion: They said (dictated, so it may hold slips: go by the task): "make it darker" · Where: on their screen, in "Site" (com.example.browser) · Their screen then (a picture): /s.png)' &&
+        J.followTask("Darker", undefined) === "Darker")
       const asks = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r.state === "needs you" && r }, 10000, 100)
       check("jobs: a permission it waits on is needs you, saying what", !!asks && /waits on a permission: Bash\(rm -rf build\)/.test(asks.now), asks)
       ;[st, b] = await api("POST", "ops/companion.handoff", { task: "go on", say: "Telling it.", job: card.id }, agent)
@@ -165,6 +207,83 @@ export default async ($: VaultTest) => {
     }
   }
 
+  // A worker's terminal ending mid-turn: closed on purpose (vau terminal end, End session) or exiting cleanly, it's done
+  // by what it left, read from its session once the terminal's gone; crashed, it failed.
+  if (process.platform !== "win32") {
+    const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
+    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "jobs-plain-")), ids: string[] = [], read: string[] = []
+    let then = "sleep 600"
+    cc["agent:claude"] = async () => ({ command: `sleep 0.3; printf '\\033]7501;state=working\\033\\\\'; sleep 1.5; ${then}`, cwd: null })
+    cc["agent-turn:claude"] = async (_id: string, session = "") => { read.push(session); return { session: "sess-1", text: "Shipped it: committed and pushed.", files: [], at: Date.now(), final: false } }
+    const job = async (id: string) => (await api("POST", "ops/companion.job", { id }))[1]
+    const hand = async (how: string) => {
+      then = how
+      const [st, b] = await api("POST", "ops/companion.handoff", { task: "Ship it", say: "On it.", cwd: plain }, agent)
+      if (st !== 200) return { st, b }
+      ids.push(b.link.split("/").pop())
+      await waitFor(async () => (await job(b.id)).state === "working", 10000, 100)
+      return { st, b }
+    }
+    try {
+      const clean = await hand("exit 0")
+      const done = await waitFor(async () => { const r = await job(clean.b.id); return r.state !== "working" && r }, 15000, 200)
+      check("jobs: a worker that exits mid-turn after its answer is done, its words read from its session after its terminal ended",
+        done?.state === "done" && /Shipped it/.test(done.result?.text ?? "") && done.session === "sess-1" && read.includes("sess-1"), [done, read])
+      check("jobs: an ended job's end is read once: it stays done", (await job(clean.b.id)).state === "done")
+      const purpose = await hand("sleep 600")
+      await api("DELETE", `terminals/${ids.at(-1)}`)
+      const closed = await waitFor(async () => { const r = await job(purpose.b.id); return r.state !== "working" && r }, 15000, 200)
+      check("jobs: a worker's terminal ended on purpose while it works, after it said something, is done", closed?.state === "done", closed)
+      const crash = await hand("exit 3")
+      const failed = await waitFor(async () => { const r = await job(crash.b.id); return r.state !== "working" && r }, 15000, 200)
+      check("jobs: a worker that crashes mid-turn failed", failed?.state === "failed", failed)
+    } finally {
+      Object.assign(cc, was)
+      for (const k of Object.keys(cc)) if (!(k in was)) delete cc[k]
+      for (const id of ids) await api("DELETE", `terminals/${id}`).catch(() => {})
+      fs.rmSync(plain, { recursive: true, force: true })
+    }
+  }
+
+  // A job done a while closes its terminal (not while its worker runs something in the background); its conversation
+  // resumes with a follow-up.
+  if (process.platform !== "win32") {
+    const Wk = await import("../../../plugins/core/companion/workers.ts")
+    const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
+    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "jobs-tidy-")), started: Any[] = []
+    let background = 1
+    cc["agent:claude"] = async (start: Any) => { started.push(start); return { command: "sleep 0.3; printf '\\033]7501;state=working\\033\\\\'; sleep 0.5; printf '\\033]7501;state=idle\\033\\\\'; sleep 600", cwd: null } }
+    cc["agent-turn:claude"] = async () => ({ session: "sess-tidy", text: "Wrote the summary. Should I add it to Today?", files: [], at: Date.now(), final: true, background })
+    const job = async (id: string) => (await api("POST", "ops/companion.job", { id }))[1]
+    const runs = async (id: string) => (await api("GET", "terminals/sessions"))[1].sessions.some((x: Any) => x.id === id)
+    let first = ""
+    Wk.tidyAfter(0)
+    try {
+      const [st, b] = await api("POST", "ops/companion.handoff", { task: "Write the summary", cwd: plain }, agent)
+      first = b.link.split("/").pop()
+      const done = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r }, 15000, 200)
+      check("jobs: done while it runs something in the background, its terminal stays", st === 200 && !!done && await runs(first) && !done.closed, done)
+      background = 0
+      const closed = await waitFor(async () => { const r = await job(b.id); return r.closed && r }, 10000, 200)
+      check("jobs: done a while, its terminal closes by itself; it stays done, its result and questions kept, resuming from its card",
+        !!closed && closed.state === "done" && closed.terminal === "resume-claude-sess-tidy" && /Wrote the summary/.test(closed.result?.text ?? "") &&
+        closed.last?.asks?.[0] === "Should I add it to Today?" && !!(await waitFor(async () => !(await runs(first)), 5000, 100)), closed)
+      const [st2, b2] = await api("POST", "ops/companion.handoff", { task: "Yes, add it", job: b.id, title: "Summary on Today" }, agent)
+      const resumed = started.at(-1)
+      check("handoff --job on a closed job: its conversation resumed with the follow-up, renamed as asked",
+        st2 === 200 && b2.state === "working" && b2.title === "Summary on Today" && b2.link === "view:terminal/resume-claude-sess-tidy" && resumed?.resume === "sess-tidy" &&
+        resumed?.prompt === "Yes, add it" && !!(await waitFor(() => runs("resume-claude-sess-tidy"), 5000, 100)), [st2, b2, resumed])
+    } finally {
+      Wk.tidyAfter(120_000)
+      Object.assign(cc, was)
+      for (const k of Object.keys(cc)) if (!(k in was)) delete cc[k]
+      for (const id of [first, "resume-claude-sess-tidy"]) if (id) await api("DELETE", `terminals/${id}`).catch(() => {})
+      fs.rmSync(plain, { recursive: true, force: true })
+    }
+  }
+
   // Another machine's job: where and its worker asked of that machine's companion, its terminal started and ended there.
   {
     const http = await import("node:http")
@@ -178,7 +297,8 @@ export default async ($: VaultTest) => {
         calls.push({ op, p, client: req.headers["x-vaultite-client"] })
         const out: Any = op === "companion.where" ? { cwd: "/home/alice/Projects/site", repo: "site", base: "abc123", why: "as asked", refused: "" }
           : op === "terminal.start" ? { id: "claude-remote1" }
-          : op === "companion.worker" ? (stage === "working" ? { running: true, state: "working", title: "✳ Editing the header" }
+          : op === "companion.worker" ? (stage === "working" ? { running: true, state: "working", title: "✳ Editing the header", typed: Date.now(), ...(p.turn ? { turn: { text: "", files: [], at: 0, final: false, session: "rs1" } } : {}) }
+            : stage === "gone" ? { running: false, exit: { code: 0, signal: 1 }, ...(p.turn ? { turn: { text: "Shipped the header.", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: false, session: "rs1" }, diff: "1 file changed, +2 -1" } : {}) }
             : { running: true, state: "idle", ...(p.turn ? { turn: { text: "Header done. Try https://studio.tail1.ts.net:8450", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: true }, diff: "1 file changed, +2 -1" } : {}) })
           : op === "terminal.end" ? { id: "claude-remote1" } : {}
         res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(out))
@@ -200,15 +320,33 @@ export default async ($: VaultTest) => {
         st === 200 && b.link === "view:terminal/claude-remote1@studio" && b.where.startsWith("Studio, site") && calls[0]?.op === "companion.where" && calls[0].client?.startsWith("machine/") &&
         start?.p.cwd === "/home/alice/Projects/site" && /Fix the header/.test(start?.p.prompt ?? ""), [st, b, calls])
       const working = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job.id }))[1]; return r.state === "working" && r }, 10000, 200)
-      check("jobs on another machine: read from its worker there", !!working && working.now === "Editing the header", working)
+      check("jobs on another machine: read from its worker there; typed in there by the user, it's theirs (never closed by itself)", !!working && working.now === "Editing the header" && working.held === true, working)
       stage = "idle"
       const review = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job.id }))[1]; return r.state === "ready for review" && r }, 15000, 300)
       check("jobs on another machine: its turn's end there, with the diff counted there and its preview link", !!review && review.result.diff === "1 file changed, +2 -1" &&
         review.result.link === "https://studio.tail1.ts.net:8450" && calls.some((c) => c.op === "companion.worker" && c.p.turn && c.p.base === "abc123"), review)
       ;[st, b] = await api("POST", "ops/companion.job-stop", { id: job.id }, agent)
       check("job-stop on another machine: its terminal ended there; reviewed, it's done", st === 200 && b.state === "done" && calls.some((c) => c.op === "terminal.end" && c.p.id === "claude-remote1"), [st, b, calls.at(-1)])
+      // Nothing tying it here (no machine, no folder, no preview or editor): to the always-on machine with this vault.
+      Object.assign(studio, { standalone: true, vault: "v1" })
+      ms["machines"] = async () => [{ id: "lap", label: "Lap", url: "http://127.0.0.1:1", online: true, self: true, plugins: ["terminal", "companion"], vault: "v1" }, studio]
+      ms["machines:vault"] = () => "v1"
+      stage = "working"
+      calls.length = 0
+      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Research the header", say: "On it." }, agent)
+      job = b
+      check("handoff with nothing tying it here (the ask's GitHub page): on the always-on machine, only the page passed on", st === 200 && b.where.startsWith("Studio") && /Studio \(always on\)/.test(b.why) &&
+        calls[0]?.op === "companion.where" && JSON.stringify(calls[0].p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }), [st, b, calls[0]])
+      await waitFor(async () => (await api("POST", "ops/companion.job", { id: job.id }))[1].session === "rs1", 10000, 200)
+      stage = "gone"
+      const shipped = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job.id }))[1]; return r.state !== "working" && r }, 15000, 300)
+      const again = (await api("POST", "ops/companion.job", { id: job.id }))[1]
+      check("jobs on another machine: a worker that closed itself after its changes is ready for review, read from its session, and stays so",
+        shipped?.state === "ready for review" && /Shipped the header/.test(shipped.result?.text ?? "") && again.state === "ready for review" &&
+        calls.some((c) => c.op === "companion.worker" && c.p.turn && c.p.session === "rs1"), [shipped, again.state])
     } finally {
       Object.assign(ms, wasM)
+      for (const k of Object.keys(ms)) if (!(k in wasM)) delete ms[k]
       server.close()
     }
   }

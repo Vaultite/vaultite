@@ -20,7 +20,7 @@ final class Piece {
   var buffers: [AVAudioPCMBuffer] = []
   var starts: [AVAudioFramePosition] = []
   var scheduled = 0, played = 0
-  var ended = false, making = 0
+  var ended = false, making = 0, measured = false
   /** It gives way to what follows (a realtime voice's few words before the answer): once the next piece has audio, it
    *  plays out if it ends within this many seconds, else it ends at its next pause. */
   var yields: Double?
@@ -326,6 +326,8 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
         play(b, p)
       }
       if !p.complete { break }
+      // (how long it plays, once it's all here: its sentences are timed by it when its voice gave no timing)
+      if !p.measured { p.measured = true; emit(["type": "length", "n": p.n, "s": Double(p.buffers.reduce(0) { $0 + Int($1.frameLength) }) / RATE]) }
     }
     finished()
   }

@@ -3390,9 +3390,19 @@ await section("screen drawings", async () => {
   const at = (marks: unknown[], drawn: unknown[] = []) => sm.snapMarks(sm.checkMarks(marks), places, drawn).map((m: Any) => m.at)
   const [inRing, onIcon, byButton, alone, likeSection, pointed] = at([{ type: "ring", at: [100, 200] }, { type: "ring", at: [155, 165] }, { type: "frame", at: [395, 410] },
     { type: "ring", at: [900, 900] }, { type: "frame", at: [8, 125, 260, 92] }, { type: "point", at: [150, 170] }], [{ x: 0, y: 101, w: 293, h: 146 }, { x: 145, y: 155, w: 20, h: 20 }])
-  check("screen drawings: a ring at a guessed pixel goes round what they drew there (the smallest), the element it's on or by, else stays; a box like an element's is it; a point is a point",
-    JSON.stringify(inRing) === '{"x":0,"y":101,"w":293,"h":146}' && JSON.stringify(onIcon) === '{"x":145,"y":155,"w":20,"h":20}' && byButton.el === "a3" &&
+  check("screen drawings: a ring at a guessed pixel goes round what they drew there (the smallest; round the elements in it), the element it's on or by, else stays; a box like an element's is it; a point is a point",
+    JSON.stringify(inRing) === '{"x":0,"y":120,"w":270,"h":100}' && JSON.stringify(onIcon) === '{"x":145,"y":155,"w":20,"h":20}' && byButton.el === "a3" &&
     alone.x === 900 && alone.w === 0 && likeSection.el === "a2" && pointed.x === 150 && at([{ type: "ring", at: [155, 165] }])[0].el === "a1", [inRing, onIcon, byButton, alone, likeSection, pointed])
+  // (the sidebar's tab groups, circled: a ring at a pixel in it, or a box much like it, frames the groups, not one of them)
+  const groups = { "el:g1": { x: 4, y: 262, w: 90, h: 24 }, "el:g2": { x: 4, y: 290, w: 90, h: 24 }, "el:g3": { x: 4, y: 318, w: 90, h: 24 }, "el:x": { x: 70, y: 290, w: 16, h: 16 } }
+  const ink = [{ x: 0, y: 258, w: 97, h: 129 }]
+  const [ringed, boxed] = [sm.snapMarks(sm.checkMarks([{ type: "ring", at: [48, 310], label: "Tab groups" }]), groups, ink)[0], sm.snapMarks(sm.checkMarks([{ type: "frame", at: [0, 258, 141, 131] }]), groups, ink)[0]]
+  check("screen drawings: what they circled is framed whole, round the things inside it: a ring there is a frame",
+    ringed.type === "frame" && ringed.label === "Tab groups" && JSON.stringify(ringed.at) === '{"x":4,"y":262,"w":90,"h":80}' && boxed.type === "frame" && JSON.stringify(boxed.at) === '{"x":4,"y":262,"w":90,"h":80}', [ringed, boxed])
+  const spotsFound = [{ x: 100, y: 100, w: 50, h: 20, q: 2 }, { x: 800, y: 100, w: 50, h: 20, q: 2 }, { x: 900, y: 600, w: 50, h: 20, q: 1 }]
+  check("screen drawings: of the places words were found, the best match, then the nearest what they drew or pointed at",
+    sm.bestFound(spotsFound, [{ x: 820, y: 90, w: 0, h: 0 }])?.x === 800 && sm.bestFound(spotsFound, [{ x: 120, y: 90, w: 0, h: 0 }])?.x === 100 && sm.bestFound(spotsFound)?.x === 100 &&
+    sm.bestFound([...spotsFound, { x: 0, y: 0, w: 5, h: 5, q: 3 }], [{ x: 820, y: 90, w: 0, h: 0 }])?.q === 3 && sm.bestFound([]) === null)
   const near = [{ id: "a1", label: "Address and search bar" }, { id: "a2", label: "Send" }, { id: "a3", label: "Send later" }, { id: "a4", label: "New tab" }]
   check("screen drawings: words name the element saying them: the same words first, then the most like them",
     sm.byLabel(near, "send")?.id === "a2" && sm.byLabel(near, "Send later")?.id === "a3" && sm.byLabel(near, "address bar") === null && sm.byLabel(near, "the New tab button")?.id === "a4" && sm.byLabel(near, "") === null)

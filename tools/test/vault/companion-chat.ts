@@ -357,6 +357,28 @@ export default async ($: VaultTest) => {
       const acts = fs.readFileSync(fs.readdirSync(c.plugin.localDir()).filter((f) => f.startsWith("actions-")).map((f) => path.join(c.plugin.localDir(), f)).at(-1)!, "utf8")
       check("summoned: a tag points (its cursor there) and a mark tag draws", /"op":"look"/.test(acts) && /"op":"draw"/.test(acts) && drew?.word !== undefined, drew)
       check("summoned: its answer says it answers a Talk key's ask, a typed one", answered?.answers?.t > 0 && !answered.answers.voice, answered?.answers)
+      // (its picture's pixels are its points: what it's told and its tags agree, mapped to the screen by where the picture
+      // sits; a mark that didn't show is told with its next ask)
+      await idle(quick!)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: 'words Here [frame 10,20,30,40 "Tabs"], not [ring "Nowhere at all"].', app: "com.example.mail", window: 9, sx: 150, sy: 90,
+        shot, shotAt: { x: 100, y: 50, width: 1329, height: 864 }, ink: [{ shape: "ring", box: { x: 400, y: 300, width: 50, height: 40 }, points: [[400, 300], [450, 340]] }] })
+      await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && /^Here/.test(n.text ?? "")), 15_000, 50)
+      await idle(quick!)
+      const inPicture = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
+      const { matchSocket: socketOf } = await import("../../../core/plugins.ts")
+      const screen1: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], send(t: string) { screen1.got.push(JSON.parse(t)) }, close() {}, ping() {}, terminate() {} })
+      socketOf($.app.plugins, ["companion", "live"])![1].fn(screen1, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+      const framed = screen1.got.find((m: Any) => m.t === "drawing")?.drawing?.marks?.find((k: Any) => k.label === "Tabs")
+      check("summoned: its ask's points are its picture's pixels, and a tag's pixels land on the screen where the picture shows them",
+        /their pointer at 50, 40 in it/.test(inPicture) && /its box 300,250,50,40/.test(inPicture) && JSON.stringify(framed?.at) === '{"x":110,"y":70,"w":30,"h":40}', [framed, inPicture.slice(0, 900)])
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "words Okay.", app: "com.example.mail", window: 9, sx: 150, sy: 90 })
+      await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "Okay."), 15_000, 50)
+      await idle(quick!)
+      const toldOf = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
+      check("summoned: a mark of its last answer that didn't show is told with the next ask, so it doesn't go on as if they saw it",
+        /they never saw: your \[ring "Nowhere at all"\] wasn't drawn/.test(toldOf), toldOf.slice(0, 400))
+      check("summoned: its Talk key's next ask takes the last answer's drawing down (a corrected mark replaces it, never stacks)",
+        screen1.got.some((m: Any) => m.t === "drawing" && m.drawing === null), screen1.got.map((m: Any) => m.t))
       c.screenMoment({ kind: "ask", agent: "Claude", text: "words O botão de enviar", voice: true, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
       const aloud = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "O botão de enviar"), 15_000, 50)
       check("summoned: one asked by voice says so (the desktop app says it aloud)", aloud?.answers?.voice === true && aloud.answers.t > answered.answers.t, aloud?.answers)
@@ -365,6 +387,15 @@ export default async ($: VaultTest) => {
       const drawn = await waitFor(async () => { const d = (await status()).notes.filter((n: Any) => n.kind === "say" && n.text === "Right here, by Send."); return d.length ? d : null }, 15_000, 50)
       check("summoned: a draw's words are a say as it writes them, one bubble, an answer by voice", drawn?.length === 1 && drawn[0].answers?.voice === true, drawn)
       await idle(quick!)
+      // (a draw refused (a mark it can't draw, words nothing shows) and tried again: its words are said once)
+      const tour = (say: string, bad: string) => `stream draw {"marks":[${bad}],"say":"${say}"}\nstream draw {"marks":[{"type":"ring","at":[500,480]},{"type":"arrow","from":[500,480],"to":[600,480],"beat":1}],"say":"${say}","done":true}`
+      for (const [say, bad, why] of [["Your inbox. Then Send.", '{"type":"blob","at":[500,480]}', "a mark it can't draw"], ["The list. Then Attach.", '{"type":"ring","at":{"find":"Nowhere at all"}}', "words nothing shows"]]) {
+        c.screenMoment({ kind: "ask", agent: "Claude", text: tour(say, bad), voice: true, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+        await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === say) || null, 15_000, 50)
+        await idle(quick!)
+        const once = (await status()).notes.filter((n: Any) => n.kind === "say" && n.text === say)
+        check(`summoned: a draw refused for ${why}, then drawn, says its words once (one bubble), never again`, once.length === 1, (await status()).notes.filter((n: Any) => n.kind === "say").slice(-3))
+      }
       c.screenMoment({ kind: "ask", agent: "Claude", text: "what's this?", app: "com.example.mail", window: 9, sx: 500, sy: 480, shot })
       const seen = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Read it \(1 asks/.test(e.text))?.text, 15_000, 50)
       check("summoned: the display's picture comes with its message (no Read before its first word)", seen === "Read it (1 asks, 1 images)", seen)
@@ -386,6 +417,9 @@ export default async ($: VaultTest) => {
         /\bhandoff\b/.test(qtools ?? "") && /\bdraw\b/.test(qtools ?? "") && !/\bsay\b|\bedit\b|\bcomment\b|\bhandover\b/.test((qtools ?? "").split(".")[0]) && (await said(longId)).length === before, [qtools, sent])
       check("summoned: a lean session: its own prompt, only Bash of Claude Code's tools, none of the user's settings, low effort",
         /Prompt: its own\. Builtins: Bash\. Settings: none\. Effort: low/.test(qtools ?? ""), qtools)
+      check("summoned: it looks in their projects and documents unasked (ls, lsof, tailscale serve status), never home's dotfiles or Library, nor git -c",
+        ["Bash(tailscale serve status:*)", "Bash(git * -c *)", `Dirs: ${path.join(os.homedir(), "Projects")},${path.join(os.homedir(), "Documents")}`].every((x) => (qtools ?? "").includes(x)) &&
+        !(qtools ?? "").includes(`Dirs: ${os.homedir()}.`), qtools)
       // (dontAsk refuses at once what isn't listed: a command or tool its prompt names must be one it may run)
       const { SUMMONED_PROMPT } = await import("../../../plugins/core/companion/summoned.ts")
       const rules = (k: string) => (new RegExp(`${k}: (.*?)\\. [A-Z]`).exec(qtools ?? "")?.[1] ?? "").split(",").flatMap((x) => /^Bash\((.*?)(:\*)?\)$/.exec(x)?.slice(1, 3) ?? [])

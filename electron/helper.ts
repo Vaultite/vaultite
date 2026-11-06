@@ -188,14 +188,15 @@ const jobIcon = (state: string) => (state === "starting" || state === "working" 
 /** The Jobs header: how many work, and how many need the user. */
 const jobsHeader = (jobs: HelperJob[]) => { const n = (s: string[]) => jobs.filter((j) => s.includes(j.state)).length, w = n(["starting", "working"]), y = n(["needs you"])
   return `Jobs${w || y ? ` (${[w ? `${w} working` : "", y ? `${y} need${y > 1 ? "" : "s"} you` : ""].filter(Boolean).join(", ")})` : ""}` }
-/** A job opened: its tab in the home vault's window (opened first if need be), and it's no longer news. */
+/** A job opened: its tab in the home vault's window (opened first if need be; one closed once done resumes), and it's
+ *  no longer news. */
 async function openJob(j: HelperJob) {
   live.say({ t: "job-seen", ids: [j.id] })
   if (!j.link || !host) return
   host.openHome()
   // (a window just opening has no page to open it in yet)
   for (let i = 0; i < 20; i++) {
-    if (await op("ui.open", { path: j.link }).then(() => true, () => false)) return
+    if (await op("companion.job-open", { id: j.id }).catch(() => op("ui.open", { path: j.link })).then(() => true, () => false)) return
     await new Promise((r) => setTimeout(r, 500))
   }
 }
@@ -228,7 +229,7 @@ const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("compan
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
 let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {},
   voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 }, sounds: true,
-  realtime: { front: "realtime", model: "gpt-realtime-2.1-mini", voice: "cedar" } }
+  realtime: { front: "realtime", model: "gpt-realtime-2.1-mini", voice: "cedar" }, jobNews: String(DEFAULTS.companion.job_news?.default ?? "quiet") }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -305,7 +306,7 @@ const live = (() => {
       else if (m.t === "find") return void findIn(m)
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
-        for (const j of jobNews(state.jobs, jobs)) jobNotice(j)
+        for (const j of jobNews(state.jobs, jobs, prefs.jobNews)) jobNotice(j)
         state.jobs = jobs
         return badge()
       } else return
@@ -656,6 +657,7 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
   s.m.send("sent")
   if (summon !== s) s.m.send("close", "a newer press")
   if (s.press) lastAsk = { press: s.press, up: s.released ?? Date.now() }
+  askedAloud = true
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
@@ -1147,6 +1149,7 @@ async function askFrom(name: string, text: string) {
   const said = Date.now() - saidInBox < 60_000
   saidInBox = 0
   stopVoice()
+  askedAloud = said
   live.say({ t: "moment", kind: "ask", agent: name, text, ...(await pointedAt(name, p, w?.window ? w : null)), summoned: true, ...(said ? { voice: true } : {}) })
   if (!x) { exchange = { name, p, w: w?.window ? w : null, since: Date.now() }; void screenAsk("exchange", { on: true }) }
 }
@@ -1170,9 +1173,11 @@ const speaker = companionVoice({
   // (the press's log: how long from letting the key go to the answer's first sound, a voice failing over, and its
   // output changing under it (said again from a little before))
   told: (e) => {
+    voiceTrouble(e)
     const x = lastAsk
     if (!x) return
-    if (e.t === "fallback") return x.press.after("voice-fallback", { why: e.why, to: e.to })
+    if (e.t === "fallback") return x.press.after("voice-fallback", { why: e.why, from: e.from, to: e.to })
+    if (e.t === "silent") return x.press.after("voice-silent", { by: e.by, ...(e.why ? { why: e.why } : {}) })
     if (e.t === "reroute") return x.press.after("voice-reroute", { why: e.why, again: e.again })
     if (x.sounded) return
     x.sounded = true
@@ -1180,6 +1185,17 @@ const speaker = companionVoice({
   },
   ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
 })
+const VOICES: Record<string, string> = { elevenlabs: "ElevenLabs", soniox: "Soniox", mac: "this Mac" }
+/** Its voice failing, told once a run: a cloud voice that didn't speak (not one merely slow), or none making a sound,
+ *  whose answer then shows in its box by the pointer. */
+function voiceTrouble(e: Parameters<NonNullable<Parameters<typeof companionVoice>[0]["told"]>>[0]) {
+  if (e.t === "fallback" && !e.slow) notice(`voice-fallback-${e.from}`, `${VOICES[e.from] ?? e.from}'s voice didn't speak`,
+    `${e.why[0].toUpperCase()}${e.why.slice(1)}: maybe its credits ran out or its key was refused. ${VOICES[e.to] ?? e.to}'s voice speaks meanwhile.`)
+  if (e.t !== "silent") return
+  const why = e.why ? `${e.why[0].toUpperCase()}${e.why.slice(1)}` : `${VOICES[e.by] ?? e.by}'s voice made no sound`
+  notice("voice-silent", "The companion can't speak", `${why.replace(/^this/, "This")}, so its answer shows in its box by your pointer. vau companion status says what its voice runs on.`)
+  if (exchange?.spoken && panelOpen() !== exchange.name) answerBox()
+}
 /** The realtime voice (realtimefront.ts): a spoken ask over the screen, its first sound at once: small talk it answers
  *  alone; for the screen two words, the summoned answer (asked at once) said after them. Callbacks are each press's. */
 const voiceFront = realtimeFront<Summon>({
@@ -1262,17 +1278,29 @@ function voiceHeardAgent(a: Agent) {
   // (the realtime voice's conversation told what was said after its few words, so a follow-up knows)
   if (v.fronted) { voiceFront.answer(v.fronted, [...v.texts?.values() ?? []].join(" ")); v.fronted = undefined }
 }
-/** The drawing up, as the server sent it; the sentences of the answer said aloud so far, as heard (any voice's). */
-let drawn: Drawing | null = null, heardLines: Heard[] = []
+/** The drawing up, as the server sent it; the sentences of the answer said aloud so far, as heard (any voice's), and
+ *  when its pacing last learnt something (a sentence heard, the drawing come). */
+let drawn: Drawing | null = null, heardLines: Heard[] = [], pacedAt = 0, waited = false, repace: ReturnType<typeof setTimeout> | null = null
+/** The last ask was spoken (its answer is said aloud, as the setting `voice` is `auto`). */
+let askedAloud = false
+/** How long a beat waits for its sentence to be heard, with nothing heard meanwhile, before it goes by the reading time. */
+const WAIT_HEARD_MS = 4000
 /** A sentence heard (the companion's voice, or another that plays its answer): its drawing's pen keeps to it. */
 export function voiceHeardLine(h: Heard) {
   heardLines.push({ text: h.text, at: h.at, dur: h.dur })
   // (only the one still up: one cleared or ended stays gone)
-  if (drawn && drawingUp() === drawn.id) paceDrawing()
+  if (drawn && drawingUp() === drawn.id) paceDrawing(true)
 }
-/** The drawing, each beat timed to when its sentence is heard (overlay: the pen draws while those words are said). */
-function paceDrawing() {
-  showDrawing(drawn && (heardLines.length ? { ...drawn, spoken: heardBeats(drawn.caption ?? "", heardLines) } : drawn), elementPlaces(lastNear))
+/** The drawing, each beat timed to when its sentence is heard (overlay: the pen draws while those words are said); while
+ *  its words are still being said, a beat not heard yet waits for them. */
+function paceDrawing(learnt = true) {
+  if (learnt) pacedAt = Date.now()
+  if (repace) { clearTimeout(repace); repace = null }
+  // (its words still to come, or being said: its answer's voice not begun yet, or not done)
+  const aloud = prefs.voice.mode === "always" || (prefs.voice.mode === "auto" && askedAloud)
+  const waits = waited = !!drawn && Date.now() - pacedAt < WAIT_HEARD_MS && (voiced ? voiced.name === drawn.agent && speaker.saying() : aloud && exchange?.name === drawn.agent)
+  if (waits) { repace = setTimeout(() => { repace = null; paceDrawing(false) }, pacedAt + WAIT_HEARD_MS - Date.now() + 20); repace.unref?.() }
+  showDrawing(drawn && (heardLines.length || waits ? { ...drawn, spoken: heardBeats(drawn.caption ?? "", heardLines), ...(waits ? { waits } : {}) } : drawn), elementPlaces(lastNear))
 }
 /** Silence, at once: what's said now, and what's still to come of answers asked before `until` (now). */
 function stopVoice(until = Date.now()) {
@@ -1318,8 +1346,8 @@ function voiceLevel(on: boolean, v: number) {
   const name = voiced?.name ?? speakingNow?.name ?? (voiceFront.speaking() ? live.state.name : undefined)
   const was = speakingNow
   speakingNow = on && name ? { name, level: Math.round(v * 20) / 20 } : null
-  // (quiet now: said to its end, maybe, its exchange over, once the voice has moved on)
-  if (!on) setTimeout(settle, 50)
+  // (quiet now: said to its end, maybe, its exchange over, once the voice has moved on; its drawing waits no more)
+  if (!on) setTimeout(() => { settle(); if (waited) paceDrawing(false) }, 50)
   if (!!was !== !!speakingNow || was?.name !== speakingNow?.name) return draw()
   if (lastScene && speakingNow && was?.level !== speakingNow.level) { lastScene = { ...lastScene, speaking: speakingNow }; showOverlay(based || null, lastScene) }
 }
@@ -1623,10 +1651,18 @@ const boxWords = (s: Session) => s.finals.reduce((all, t) => all + joinText(all,
 
 // ---------- the server's calls (screen.text, screen.shot: plugins/core/screen)
 
+/** Whether its voice and the Talk key's exchange went quiet within `ms`: nothing said, listened for or worked on. */
+async function quiet(ms: number) {
+  const busy = () => speaker.saying() || voiceFront.speaking() || (!!summon && ACTIVE.has(summon.m.phase)) || (!!exchange && going(exchange))
+  for (const end = Date.now() + ms; busy(); await new Promise((r) => setTimeout(r, 250))) if (Date.now() > end) return false
+  return true
+}
 /** The server's calls to its voice (companion.voice-sample): a sample said aloud now, for the user to hear. */
 export async function voiceCall(name: string, args: unknown[]) {
-  const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { text?: unknown; provider?: unknown }
+  const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { text?: unknown; provider?: unknown; after?: unknown }
   if (name !== "voice:sample" || typeof o.text !== "string" || !o.text.trim()) throw new Error(`no voice call ${name}`)
+  // (news, a job's: said once its answer is, never over it; a sample asked for is said now)
+  if (o.after === true && !await quiet(60_000)) return { said: false, why: "it was still speaking" }
   stopVoice()
   return speaker.sample(o.text.slice(0, 2000), o.provider === "elevenlabs" || o.provider === "soniox" ? o.provider : undefined)
 }

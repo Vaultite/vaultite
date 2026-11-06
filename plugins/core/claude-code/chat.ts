@@ -43,7 +43,9 @@ export type ChatStart = { prompt?: string; cwd?: string; account?: string; model
   onText?: (use: string, text: string, end?: "done" | "stop") => void
   title?: string; by?: string; tools?: ChatTool[]; inbox?: boolean
   /** Permission rules it runs without asking ("mcp__vaultite-app": its tools; "Bash(vau read:*)"), and never. */
-  allowed?: string[]; denied?: string[] }
+  allowed?: string[]; denied?: string[]
+  /** Folders besides cwd its read-only commands may read unasked (additionalDirectories). */
+  dirs?: string[] }
 
 const SESSION = /^[\w-]{1,80}$/
 const MODE_LABELS: Record<Mode, string> = { default: "Ask for permissions", acceptEdits: "Accept edits", plan: "Plan mode", auto: "Auto mode",
@@ -420,7 +422,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       ...(o.system !== undefined ? { system: o.system, builtins: o.builtins ?? [] } : { append: [chatContext(), o.append].filter(Boolean).join("\n\n") }),
       ...(o.onText ? { texts: true } : {}), ...(o.title ? { title: o.title } : {}),
       ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema, streams, ends }) => ({ name, description, schema, ...(streams ? { streams } : {}), ...(ends ? { ends } : {}) })) } : {}),
-      ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.inbox === false ? { quiet: true } : {}), ...(o.quick ? { quick: true } : {}) }
+      ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.dirs?.length ? { dirs: o.dirs } : {}), ...(o.inbox === false ? { quiet: true } : {}), ...(o.quick ? { quick: true } : {}) }
   }
 
   /** A new session: its id. `own`: a plugin's, run so again when it's resumed. */

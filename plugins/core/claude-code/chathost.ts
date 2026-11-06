@@ -23,6 +23,8 @@ export type Spec = {
   model?: string; effort?: Effort; mode?: Mode; append?: string; title?: string; tools?: ToolDef[]
   /** Permission rules it runs without asking (allowedTools: "mcp__vaultite-app", "Bash(vau read:*)"), and never. */
   allowed?: string[]; denied?: string[]
+  /** Folders besides cwd its read-only commands may read unasked. */
+  dirs?: string[]
   /** Who started it ("app", "inbox", a plugin's id): the inbox and the list say so. */
   by?: string; account?: string
   /** Its news stays out of the inbox (a plugin's own session). */
@@ -185,7 +187,7 @@ export class Host {
       ...(spec.resume ? { resume: spec.id } : { sessionId: spec.id }),
       ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}),
       ...(spec.mode ? { permissionMode: spec.mode } : {}), ...(spec.allowed?.length ? { allowedTools: spec.allowed } : {}),
-      ...(spec.denied?.length ? { disallowedTools: spec.denied } : {}),
+      ...(spec.denied?.length ? { disallowedTools: spec.denied } : {}), ...(spec.dirs?.length ? { additionalDirectories: spec.dirs } : {}),
       // (only so the picker can switch to it later, as the TUI's --allow-dangerously-skip-permissions does)
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true, thinking: spec.quick ? { type: "disabled" } : { type: "adaptive", display: "summarized" },
