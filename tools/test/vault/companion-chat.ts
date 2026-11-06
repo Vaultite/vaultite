@@ -183,8 +183,12 @@ export default async ($: VaultTest) => {
     check("companion chat: a say's bubble grows as it's written, one bubble, its call ending it", bubbles.length > 2 && new Set(bubbles.map((n) => n.id)).size === 1 &&
       bubbles[0].text.length < bubbles.at(-1).text.length, bubbles.map((n) => n.text))
     await idle(id)
-    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'stream edit {"path":"Notes/Chat.md","after":"Call Alice friday","text":"- Book the train\\n- Pack light"}' })
+    // (held mid-text till its window opened it: a slow open would take all its words with it)
+    c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'hold edit {"path":"Notes/Chat.md","after":"Call Alice friday","text":"- Book the train\\n- Pack light"}' })
+    await waitFor(() => w.got.some((m) => m.t === "stream"), 15_000, 20)
+    fs.writeFileSync(RELEASE, "")
     await waitFor(async () => (await said(id)).some((e) => e.k === "text" && /Typed into Notes\/Chat\.md/.test(e.text)), 15_000, 20)
+    fs.rmSync(RELEASE, { force: true })
     const opened = w.got.find((m) => m.t === "stream"), more = w.got.filter((m) => m.t === "stream-more" && m.rid === opened?.rid), ended = w.got.find((m) => m.t === "stream-end" && m.rid === opened?.rid)
     check("companion chat: an edit's words go to the window as they're written: its place first, then more, then all of it",
       opened?.after === "Call Alice friday" && opened.text.length < 20 && more.length > 1 && ended?.text === "- Book the train\n- Pack light" &&
@@ -335,11 +339,14 @@ export default async ($: VaultTest) => {
       fs.writeFileSync(shot, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"))
       const before = (await said(longId)).length
       const screen = ["Inbox", ...Array.from({ length: 400 }, (_, i) => `Message ${i} from Bob about the weekly digest`), "Send", "Attach"].join("\n")
-      c.screenMoment({ kind: "ask", agent: "Claude", text: 'words That is the Send button [point a1], and this sends it [ring a1 "Send"].', app: "com.example.mail", window: 9, title: "Inbox", sx: 500, sy: 480,
+      // (held half way till its growing bubble is seen: a slow poll would miss it, and the whole one go before it's asked)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: 'hold words That is the Send button [point a1], and this sends it [ring a1 "Send"].', app: "com.example.mail", window: 9, title: "Inbox", sx: 500, sy: 480,
         shot, shotAt: { x: 0, y: 0, width: 1600, height: 1000 }, screen, near: [{ id: "a1", role: "button", label: "Send", frame: { x: 480, y: 470, width: 60, height: 24 } }] })
       const growing = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && /^That is the Send button/.test(n.text ?? "") && n.text !== "That is the Send button, and this sends it."), 15_000, 5)
+      fs.writeFileSync(RELEASE, "")
       const answered = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "That is the Send button, and this sends it."), 15_000, 50)
       await idle(quick!)
+      fs.rmSync(RELEASE, { force: true })
       const asked = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
       check("summoned: an ask on screen is its session's message, its picture attached, answered in words by the companion's cursor",
         answered?.agent === "Claude" && /- ask on screen/.test(asked) && /a1 button "Send"/.test(asked) && (await said(longId)).length === before, [answered, asked])

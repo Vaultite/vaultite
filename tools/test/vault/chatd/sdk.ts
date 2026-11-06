@@ -1,5 +1,5 @@
-// The Agent SDK in a test's chat keeper, with no model: "call|stream|cut|hold <tool> <json>" calls a tool (streamed; cut
-// off; held half way till $CHATD_TEST_RELEASE's file is there), "words <text>" streams it, "slow" waits, "list" says how.
+// The Agent SDK in a test's chat keeper, no model: "call|stream|cut|hold <tool> <json>" calls a tool (streamed; cut off;
+// held mid-text till $CHATD_TEST_RELEASE's file is there), "[hold ]words <text>" streams it, "slow" waits, "list" says how.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -17,6 +17,12 @@ const callsIn = (text: string) => linesOf(text).flatMap((t) => {
   const m = /^(call|stream|cut|hold) (\w+) (\{.*\})$/.exec(t)
   try { return m ? [{ how: m[1], name: m[2], args: JSON.parse(m[3]), json: m[3] }] : [] } catch { return [] }
 })
+
+/** Half way through a call's text in its JSON (else half way through the JSON). */
+function midText(json: string, args: Any) {
+  const text = typeof args.text === "string" ? JSON.stringify(args.text) : "", at = text ? json.indexOf(text) : -1
+  return at >= 0 ? at + Math.floor(text.length / 2) : Math.floor(json.length / 2)
+}
 
 export function query({ prompt, options }: Any) {
   const out: Any[] = []
@@ -47,8 +53,8 @@ export function query({ prompt, options }: Any) {
     }
   }
   /** A tool call's input streamed: its block opened, its JSON in pieces of `n`, closed (`whole`: else cut off half way;
-   *  `held`: it waits half way, until released). */
-  const streamIn = async (name: string, json: string, use: string, whole: boolean, held = false) => {
+   *  `held`: it waits at that index, half way through its text, until released). */
+  const streamIn = async (name: string, json: string, use: string, whole: boolean, held = -1) => {
     const mid = `msg_${crypto.randomUUID().slice(0, 8)}`, ev = (event: Any) => push({ type: "stream_event", event, uuid: crypto.randomUUID(), ...base })
     ev({ type: "message_start", message: { id: mid } })
     ev({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: use, name: `mcp__vaultite-app__${name}`, input: {} } })
@@ -56,17 +62,23 @@ export function query({ prompt, options }: Any) {
     for (let i = 0; i < upTo; i += 6) {
       ev({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: json.slice(i, Math.min(upTo, i + 6)) } })
       if (await pause(15)) return false
-      if (held && i < half && i + 6 >= half && await released()) return false
+      if (i < held && i + 6 >= held && await released()) return false
     }
     if (whole) ev({ type: "content_block_stop", index: 0 })
     return whole
   }
-  /** Its words written as a model's are: streamed in pieces, then the whole message and the turn's end. */
-  const write = async (text: string) => {
+  /** Its words written as a model's are: streamed in pieces, then the whole message and the turn's end (`held`: it
+   *  waits half way, until released). */
+  const write = async (text: string, held = false) => {
     const mid = `msg_${crypto.randomUUID().slice(0, 8)}`, ev = (event: Any) => push({ type: "stream_event", event, uuid: crypto.randomUUID(), ...base })
     ev({ type: "message_start", message: { id: mid } })
     ev({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })
-    for (let i = 0; i < text.length; i += 5) { ev({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: text.slice(i, i + 5) } }); await pause(10) }
+    const half = Math.floor(text.length / 2)
+    for (let i = 0; i < text.length; i += 5) {
+      ev({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: text.slice(i, i + 5) } })
+      await pause(10)
+      if (held && i < half && i + 5 >= half) await released()
+    }
     ev({ type: "content_block_stop", index: 0 })
     push({ type: "assistant", message: { id: mid, content: [{ type: "text", text }] }, uuid: crypto.randomUUID(), ...base })
     push({ type: "result", subtype: "success", is_error: false, duration_ms: 10, result: text, uuid: crypto.randomUUID(), ...base })
@@ -81,8 +93,8 @@ export function query({ prompt, options }: Any) {
         push({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 10, uuid: crypto.randomUUID(), ...base })
         continue
       }
-      const written = linesOf(text).find((l) => /^words /.test(l))
-      if (written) { await write(written.slice(6)); continue }
+      const written = linesOf(text).find((l) => /^(hold )?words /.test(l))
+      if (written) { await write(written.replace(/^(hold )?words /, ""), written.startsWith("hold ")); continue }
       if (linesOf(text).some((l) => /^list\b/.test(l))) {
         const tools = options.mcpServers?.["vaultite-app"] ? (await (await mcp()).listTools()).tools : []
         const always = tools.length && tools.every((t) => t._meta?.["anthropic/alwaysLoad"] === true)
@@ -94,7 +106,7 @@ export function query({ prompt, options }: Any) {
       for (const c of calls) {
         const use = `toolu_${crypto.randomUUID().slice(0, 8)}`
         // (cut off, or interrupted, as it wrote it: its turn ends there)
-        if (c.how !== "call" && !(await streamIn(c.name, c.json, use, c.how !== "cut", c.how === "hold"))) { stopped = true; break }
+        if (c.how !== "call" && !(await streamIn(c.name, c.json, use, c.how !== "cut", c.how === "hold" ? midText(c.json, c.args) : -1))) { stopped = true; break }
         const r = await (await mcp()).callTool({ name: c.name, arguments: c.args, _meta: { "claudecode/toolUseId": use } }) as Any
         said.push(`${r.isError ? "error: " : ""}${r.content?.map((x: Any) => x.text).join(" ")}`)
         // (its hooks after the call, as Claude Code runs them: one may end the turn there)
