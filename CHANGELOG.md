@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents start in a terminal whose shell is sh or dash**: a ready `sh` shell was told to `source` the agent's start,
+  which only bash, zsh and fish know, so the agent never started there (Linux with `/bin/sh` as the terminal's shell).
+- **A quick tap of the Talk key on a busy Mac stays a tap**: the key's press and release carry when they happened, so a
+  Mac slow to hear them no longer reads a tap (its box) as a hold (listening).
 - **A window left open across an update no longer breaks on a plugin updated meanwhile**: a vault plugin written for a
   newer plugin API waits instead of drawing names the window lacks (Next actions failed to draw with Dataview's new Do
   it), and the window reloads once into the new build when nothing would be lost.
