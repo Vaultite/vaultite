@@ -252,6 +252,20 @@ export default async ($: VaultTest) => {
     check("press log: a press's steps in order with their time from its start, ended once, a step after its end marked late",
       lines.map((l) => l.ev).join() === "down,stt,up,end,stt-end" && lines[2].ms === 940 && lines[3].outcome === "missed" && lines[4].late === true && p.ended() && lines.every((l) => l.press === p.id && l.kind === "talk"), lines)
     check("press log: a day a file, two weeks kept", fs.existsSync(path.join(dir, "talk-2026-11-05.jsonl")) && fs.existsSync(path.join(dir, "talk-2026-11-01.jsonl")) && !fs.existsSync(path.join(dir, "talk-2026-10-01.jsonl")))
+    // A Talk-key press's machine (electron/pressmachine.ts): its table only, each move logged, a stuck phase told.
+    const { pressMachine } = await import("../../../electron/pressmachine.ts")
+    const moves: string[] = [], stuck: string[] = []
+    const m = pressMachine({ log: (x) => moves.push(`${x.from}>${x.to}:${x.on}`), stuck: (ph) => stuck.push(ph), limits: { sending: 20 } })
+    const took = [m.send("sent"), m.send("up"), m.send("up")]
+    await new Promise((r) => setTimeout(r, 60))
+    m.send("sent"); m.send("busy"); m.send("arrived"); m.send("done"); m.send("close", "esc"); m.send("arrived")
+    check("press machine: only what its phase takes moves it, each move logged; a phase past its limit is told stuck once",
+      took.join() === "false,true,false" && moves.join() === "listening>sending:up,sending>thinking:sent,thinking>working:busy,working>answering:arrived,answering>open:done,open>closed:close" &&
+      m.phase === "closed" && stuck.join() === "sending", [moves, stuck])
+    const held = pressMachine({ limits: {} })
+    held.send("fail")
+    const notSent = !held.send("sent"), was = held.phase
+    check("press machine: held after the recognizer stopped, nothing is sent till it's let go", notSent && was === "failed" && held.send("up") && held.send("sent"), [was, held.phase])
     const { liveInput } = await import("../../../electron/helperlogic.ts")
     check("helper: only the app the user runs hears their keys and takes the one lock; never a copy a script drives or one run from source, unless asked",
       liveInput({}, true) && !liveInput({ VAULTITE_QUIET: "1" }, true) && !liveInput({}, false) && liveInput({ VAULTITE_HELPER_TAP: "1" }, false) && !liveInput({ VAULTITE_QUIET: "1", VAULTITE_HELPER_TAP: "1" }, false))

@@ -41,13 +41,14 @@ mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async (
 type Sink = { tell: (e: Record<string, unknown>) => void }
 let heardWords = "what's this?"
 // (`sttDrops`: the recognizer's socket drops mid-press; `finishMs`: how long its last words take once stopped)
-let sttDrops = false, finishMs = 5
+let sttDrops: boolean | string = false, finishMs = 5
 // (`micBt`: the mic it hears with is a Bluetooth one, held open after; each release of it)
 let micBt = false
 const releases: number[] = []
 mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink) => {
   sink.tell({ type: "start" })
-  if (sttDrops) setTimeout(() => { sink.tell({ type: "error", code: "socket", message: "the connection closed" }); sink.tell({ type: "end", reason: "error" }) }, 60)
+  const drops = sttDrops
+  if (drops) setTimeout(() => { if (typeof drops === "string") sink.tell({ type: "final", text: drops }); sink.tell({ type: "error", code: "socket", message: "the connection closed" }); sink.tell({ type: "end", reason: "error" }) }, 60)
   return { ok: true, ...(micBt ? { mic: { uid: "pods", name: "Alice's AirPods", bluetooth: true, why: "the system's input (set)", fallback: [] } } : {}) }
 }, dictating: () => false,
   stopFor: (sink: Sink, cancel = false) => { const words = heardWords; setTimeout(() => { if (!cancel && words) sink.tell({ type: "final", text: words }); sink.tell({ type: "end", reason: cancel ? "cancel" : "stop" }) }, finishMs) },
@@ -240,7 +241,19 @@ await wait(300)
 chord(false)
 check("the recognizer drops mid-press: its cursor says it didn't catch that, the press logged with the error", await until(() => H.scene()!.summon?.state === "missed") &&
   H.presses().some((l) => l.press === lastEnd()?.press && l.ev === "stt-error" && l.code === "socket") && lastEnd()?.outcome === "missed", H.presses().slice(-6))
+const moves = (id: unknown) => H.presses().filter((l) => l.press === id && l.ev === "state").map((l) => `${l.to}`).join()
+check("…its phases are in the press's log, from held to closed: none left halfway", await until(() => moves(lastEnd()?.press) === "failed,missed,closed", 3500), H.presses().slice(-6))
+// (it drops after some words, still held: nothing goes while held, what was heard goes once let go)
+sttDrops = "half of it"
+const dropAsks = asks().length
+chord(true)
+await wait(300)
+check("the recognizer stops after some words, still held: its cursor says so, nothing sent yet",
+  H.scene()!.summon?.state === "missed" && /stopped hearing/i.test(String((H.scene()!.summon as { missed?: string })?.missed)) && asks().length === dropAsks, [H.scene()!.summon, asks().length - dropAsks])
+chord(false)
+check("…let go, what it heard goes", await until(() => asks().at(-1)?.text === "half of it"), asks().slice(-2))
 sttDrops = false
+H.heard({ event: "esc" })
 await until(() => !H.scene()!.summon, 3500)
 // (pressed again as the last press's words are still being finished: both go, in order, none swallowed)
 heardWords = "first one"

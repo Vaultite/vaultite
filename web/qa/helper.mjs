@@ -1,6 +1,6 @@
 // The menu-bar helper (electron/helper.ts) in the desktop app, unseen: fn⌃ with no field hears nothing; ⌃⌥ held summons
 // the companion at the pointer, listening (speech from a file), and let go asks it about the window there, its answer's
-// box open by it (said aloud) and its cursor riding beside the pointer over the screen; closing the window keeps the server and reopening takes it back.
+// answer said aloud (no box) and its cursor riding beside the pointer over the screen; closing the window keeps the server and reopening takes it back.
 // The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/helper.mjs <vault copy>
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
@@ -52,18 +52,18 @@ check("…its words by it as they come", await until(() => helper((h) => /milk/i
 await chord(false)
 const ask = await until(() => helper((h) => h.asked().find((m) => m.kind === "ask")), 30000, 200)
 check("let go, what was said goes, about the window under the pointer", !!ask && ask.app === "com.example.notes" && ask.window === 9 && /milk/i.test(ask.text ?? ""), ask)
-const box = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html#panel")), 10000)
-check("its answer's box opens by it", !!box && !box.isClosed())
+// ---------- its cursor over the screen: through the exchange, the summoned one, riding beside the pointer
+const at = await until(() => helper((h) => (h.scene()?.summon?.follow ? h.scene().summon : null)), 10000, 200)
+check("the companion's cursor rides beside the pointer through the exchange (its own place no cursor of its own)", !!at && !(await helper((h) => h.scene()?.agents?.length)), at)
+check("the overlay draws its cursor and name", !!overlay && await until(() => overlay.evaluate((n) => document.body.textContent.includes(n), at?.name ?? "?"), 5000))
+check("an ask by voice gets no box: its answer is said by its cursor", !app.windows().some((p) => p.url().endsWith("/screen.html#panel")))
 
 // ---------- its answer to an ask by voice, said aloud as it's written (a scripted copy plays nothing: it tells what it'd say)
 // (its agent isn't here: what it answers is that it couldn't start)
 const spoken = () => helper((h) => h.spoken().filter((m) => m.cmd === "say").map((m) => m.text).join(" "))
 check("its answer to an ask by voice is said aloud", await until(async () => /^I couldn't start/.test(await spoken()), 8000, 200), await helper((h) => h.spoken()))
-
-// ---------- its cursor over the screen: through the exchange, the summoned one, riding beside the pointer
-const at = await until(() => helper((h) => (h.scene()?.summon?.follow ? h.scene().summon : null)), 10000, 200)
-check("the companion's cursor rides beside the pointer through the exchange (its own place no cursor of its own)", !!at && !(await helper((h) => h.scene()?.agents?.length)), at)
-check("the overlay draws its cursor and name", !!overlay && await until(() => overlay.evaluate((n) => document.body.textContent.includes(n), at?.name ?? "?"), 5000))
+check("…and the press's phases are in its log, from held to answered", await until(() => helper((h) => { const id = h.presses().filter((l) => l.ev === "end").at(-1)?.press
+  return h.presses().filter((l) => l.press === id && l.ev === "state").map((l) => l.to).join().startsWith("sending,thinking") }), 5000), await helper((h) => h.presses().slice(-8)))
 check("the overlay paints nothing else: it's see-through", !!overlay && await overlay.evaluate(() => getComputedStyle(document.documentElement).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(document.body).backgroundColor === "rgba(0, 0, 0, 0)"))
 
 await helper((h) => h.heard({ event: "esc" }))
