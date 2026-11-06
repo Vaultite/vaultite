@@ -1656,7 +1656,9 @@ const lane = (): Lane => {
     text: async (ms) => {
       const slim = ms.map((m) => (m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
       const text = [momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobsLine(jobsNow())].filter(Boolean).join("\n")
-      return { text: text.replace(/\(point at one: --ax <id>\)/g, "(point at one: [point a1])"), images: shotsOf(ms) }
+      // (its picture attached, not a path: given one, it spent a turn reading it before its first word)
+      const images = shotsOf(ms), named = images.reduce((t, f) => t.split(`its picture: ${f}`).join("its picture, attached to this message"), text)
+      return { text: named.replace(/\(point at one: --ax <id>\)/g, "(point at one: [point a1])"), images }
     },
     agent: (name) => agents.get(key(name)), setAgent, did,
     say: (name, text) => { const a = agents.get(key(name)), answers = inSummoned.run(true, () => answering(name))

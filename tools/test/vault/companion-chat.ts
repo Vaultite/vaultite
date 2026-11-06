@@ -335,6 +335,7 @@ export default async ($: VaultTest) => {
       const asked = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
       check("summoned: an ask on screen is its session's message, its picture attached, answered in words by the companion's cursor",
         answered?.agent === "Claude" && /- ask on screen/.test(asked) && /a1 button "Send"/.test(asked) && (await said(longId)).length === before, [answered, asked])
+      check("summoned: its picture is said to be attached, not a path to read", /its picture, attached to this message/.test(asked) && !asked.includes(shot), asked.slice(0, 400))
       check("summoned: its words show as they're written, their tags never", !!growing && !/\[/.test(growing.text), growing)
       check("summoned: the window's text it's given is cut to what's by their pointer", asked.length < 6500 && /Send/.test(asked.split("what the window says")[1] ?? "") && /…/.test(asked), asked.length)
       const drew = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((x: Any) => x.as === "Claude (summoned)").at(-1)
