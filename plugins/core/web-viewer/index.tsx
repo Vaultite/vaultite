@@ -6,6 +6,7 @@ import { choose, closePane, closeView, definePlugin, detailPath, setFocusedPane,
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, chosenFor, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
 import { iconCame, siteIcon, spinnerIcon } from "./icons"
+import { framedSite } from "./framed"
 import { painted } from "./layers"
 import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView } from "./Sites"
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
@@ -268,7 +269,7 @@ export default definePlugin({
   views: {
     web: {
       icon: Globe,
-      title: (arg) => { const { url } = splitArg(arg); return url ? titleOf(url) || extensionPageName(url) || (url.startsWith("view-source:") ? url : hostOf(url)) || "Web page" : "New tab" },
+      title: (arg) => { const { url } = splitArg(arg); return url ? titleOf(url) || framedSite(url)?.title || extensionPageName(url) || (url.startsWith("view-source:") ? url : hostOf(url)) || "Web page" : "New tab" },
       // (loading: a spinner, as a browser's tab shows; a page's source: its own icon)
       iconFor: (arg, tab) => {
         const { container, url } = splitArg(arg), c = containerById(container), color = c ? colorOf(c) : undefined
@@ -293,7 +294,7 @@ export default definePlugin({
       argState: true,
       // Pinned by its address, named by its title (kept up to date while it's open).
       pinAs: (arg) => (/^https?:\/\//i.test(splitArg(arg).url) ? arg : null),
-      pinLabel: (arg) => titleOf(splitArg(arg).url),
+      pinLabel: (arg) => { const { url } = splitArg(arg); return titleOf(url) ?? framedSite(url)?.title },
       // (another container is another page, in other logins: drawn afresh)
       render: ({ arg, focused, setArg }) => (
         <Suspense fallback={null}><WebPage key={splitArg(arg).container ?? ""} arg={arg} focused={focused} setArg={setArg} /></Suspense>
@@ -360,6 +361,8 @@ export default definePlugin({
   // this browser has containers; one no container is called is left to the rules)
   webLink: (url, { newTab, front, out, container, fromApp }) => {
     const chosen = chosenFor(container)
+    // (no pages here but framed sites, the web demo's: one of those opens in a tab, the rest outside)
+    if (!webPages && framedSite(url) && !out) { if (newTab) openTab(`view:web/${url}`, { background: !front }); else openPage(url); return true }
     if (!webPages || out || (!linksInViewer() && chosen === undefined)) return false
     if (fromApp && chosen === undefined) { void settingsRead().then(() => openFromApp(url, openPage)); return true }
     const c = destination(url, { from: null, fresh: true, chosen }).container

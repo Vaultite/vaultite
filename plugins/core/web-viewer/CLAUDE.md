@@ -3,6 +3,8 @@
 - Desktop only: a `view:web/<url>` tab is an Electron WebContentsView over the pane (`electron/web.ts`), a session per
   profile, http(s) and installed extensions' own pages (chrome-extension://) only. Its preloads are the engine's
   (electron/browser/), registered on its session, and web.ts's web-preload.cjs, which only tells its first paint.
+- Without the desktop app (web, phones) a tab's page opens outside (WebPage's `Elsewhere`), but for the few sites the web
+  demo names (framed.ts): those show live, in a sandboxed frame of their own origin (FramedPage.tsx).
 - A new page shows the app's background (`web:look`) till its site first paints, then its canvas (engine.ts
   `canvasOf`): white, the web's default (which a view's colour also is: kept dark, unstyled sites go dark), unless dark
   pages darken it (the theme's background). Not white at commit: nothing holds the old frame till the first paint, so

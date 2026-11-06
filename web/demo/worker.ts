@@ -6,6 +6,7 @@ import fs, { changes } from "./node/fs.ts"
 import { NEEDS_APP } from "./node/stub.ts"
 import { fitForDemo, isObj, machineOff, OFF, panelsOff, SHOWN, type PluginsJson } from "./machine.ts"
 import { fromGitHub } from "./github.ts"
+import { SITES } from "./sites.ts"
 import { jsonOf, open, type App } from "../../core/app.ts"
 import { Live } from "../../core/live.ts"
 import { contentType, HTTPError, matchSocket, Text } from "../../core/plugins.ts"
@@ -30,6 +31,12 @@ for (const id of fs.readdirSync("/app/bundles") as string[]) {
   machineOffFile(file)
   const sb = `/app/bundles/${id}/sidebars.json`
   if (fs.existsSync(sb)) fs.writeFileSync(sb, JSON.stringify(panelsOff(JSON.parse(fs.readFileSync(sb, "utf8") as string)), null, 2) + "\n")
+}
+// The Browser's live sites come with a note about each, which its Links panel shows beside the site (sites.ts).
+for (const site of SITES) {
+  const file = `/app/bundles/browser/${site.note}`
+  fs.mkdirSync(file.slice(0, file.lastIndexOf("/")), { recursive: true })
+  fs.writeFileSync(file, site.body)
 }
 
 // ---------- the vault, kept in IndexedDB ----------

@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The web demo's Browser shows real sites**: its tabs hold neodisk.app and olimpicos.net live (sandboxed, sending no
+  referrer), beside a note about the page you're on; and the demo follows the site that embeds it, its light or dark
+  look and its visitor's answer about AI (`?theme=`, `?ai=`).
 - **Zen floats its page as a card again**: its old snippet had stopped matching the panes, leaving the page on the
   window's colour under a page-coloured bar. Zen now uses the app's own pane cards (a vault using Zen moves over by
   itself, its other snippets kept), and the bar above a file has a faint line under it.
