@@ -53,7 +53,8 @@ export function secretOps(): Op[] {
 other machines sharing the vault (their phone may be on one); the first answer closes the rest. The value comes back
 over the tailnet and is printed, nothing else: never written to the vault, the logs or File history. Pipe it where it
 goes, so it never lands in a transcript. A binary file comes back as base64. Not an MCP tool: secrets stay on the
-user's machines. Dismissed, it fails (exit 1) and prints nothing.
+user's machines. In the desktop app the user may pick it from their passwords, or keep what they type there. Dismissed,
+it fails (exit 1) and prints nothing.
 
   vau secret "App Store Connect key (.p8)" --file | gh secret set NOTARY_KEY
   vau secret "The studio's Wi-Fi password" | pbcopy`,
