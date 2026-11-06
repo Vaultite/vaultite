@@ -57,7 +57,7 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   x?: number; y?: number; changes?: string[]; scene?: string
   /** A reply to or a dismissal of one of its bubbles (`item`: the say), not a comment. */
   bubble?: boolean
-  /** Asked with its Talk key (on screen, or in the app at the pointer): its summoned session's (summoned.ts); `voice`:
+  /** Asked with its Talk key (over the screen, Vaultite's windows too: the helper's): its summoned session's (summoned.ts); `voice`:
    *  said, not typed (its answer is said aloud, the desktop app's voice.ts). */
   summoned?: boolean; voice?: boolean
   /** Asked through the realtime voice (the desktop app's realtimefront.ts): it already told them it's looking and says
@@ -265,7 +265,7 @@ const broadcast = (m: object) => {
   for (const [ws, g] of guests) if (ws.readyState === ws.OPEN) toGuest(ws, g, m as { t: string; note?: Note; id?: string })
 }
 // (fresh: what a new agent started from the app runs, profiles what the names that pick one start, harnesses what can run)
-const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said, follows: followed.list(), ...offers() })
+const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said, follows: followed.list(), riding: riding(), ...offers() })
 function offers() {
   const named = Object.entries(offered()).map(([name, p]) => [name, { agent: p.agent, ...howOf(p.agent, p.model, p.effort) }])
   return { fresh: { agent: agentSetting(), ...howOf(agentSetting()) }, profiles: Object.fromEntries(named), harnesses: harnesses() }
@@ -863,7 +863,8 @@ export function comeBack(name: string) {
   const f = focus()
   setAgent(name, { ...Object.fromEntries(PLACE_KEYS.map((k) => [k, undefined])), ...(f?.path ? { path: f.path, line: f.line } : {}) })
 }
-/** What the user did on screen, as the helper says it: an ask, or a point (no words). */
+/** What the user did on screen, as the helper says it: an ask, or a point (no words). Over Vaultite's own window, it
+ *  says what's there as the page knows it too (a note's line, a pane's row, the app's UI), asked as one asked there. */
 export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) {
   if (m.kind !== "ask" && m.kind !== "point") return null
   const place = screenPlace(m)
@@ -873,8 +874,18 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
   // (the Talk key let go `keyUp`: its words finished and what's there gathered since, as its pause)
   const up = Number(m.keyUp), waited = Number.isFinite(up) ? Date.now() - up : NaN
   const talk = Array.isArray(m.talk) ? m.talk.slice(-8).map((x) => str(x).slice(0, 300)).filter(Boolean) : []
-  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, summoned: true, ...(m.voice === true ? { voice: true } : {}),
-    ...(waited >= 0 && waited < 60_000 ? { waited: Math.round(waited) } : {}), ...(m.front === "realtime" ? { front: "realtime" as const, ...(talk.length ? { talk } : {}) } : {}) }, req)
+  const asked = { summoned: true as const, ...(m.voice === true ? { voice: true } : {}), ...(waited >= 0 && waited < 60_000 ? { waited: Math.round(waited) } : {}),
+    ...(m.front === "realtime" ? { front: "realtime" as const, ...(talk.length ? { talk } : {}) } : {}) }
+  if (!place.app && (str(m.pane) || str(m.ui))) {
+    const { under: _, title: __, ...seen } = place
+    return void paneMoment({ ...m, summoned: true }, req, { ...seen, ...asked })
+  }
+  if (!place.app && str(m.path)) {
+    const selection = str(m.selection).slice(0, 4000) || undefined
+    return addMoment({ kind: m.kind, for: str(m.agent) || undefined, path: str(m.path), line: Number(m.line) || undefined, text: str(m.text) || undefined, ...(selection ? { selection } : {}),
+      ...(m.kind === "point" && str(m.find) ? { find: str(m.find).slice(0, 200) } : {}), ...place, ...asked }, req)
+  }
+  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, ...asked }, req)
 }
 /** Each helper's realtime voice, paused (the account can't pay, or its key is refused) and why. */
 const realtimePaused = new Map<WebSocket, { account: string; why: string; until: number } | null>()
@@ -900,6 +911,8 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
     // (its Talk key pressed: its summoned session made ready while they speak)
     if (m.t === "summoning") return void lane().warm()
+    // (who rides with their pointer: the windows draw no cursor of its meanwhile)
+    if (m.t === "riding") return void ride(ws, str(m.agent).slice(0, 80))
     // (a job opened from the menu bar: no longer news)
     if (m.t === "job-seen" && Array.isArray(m.ids)) return void jobsSeen(m.ids.filter((x): x is string => typeof x === "string").slice(0, 30))
     // (a cursor's conversation opened over the screen: its says seen)
@@ -910,7 +923,15 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     // (its realtime voice paused, and why, or back: for its status)
     if (m.t === "realtime") { const p = m.paused as Record<string, unknown> | null; realtimePaused.set(ws, p && typeof p === "object" ? { account: str(p.account), why: str(p.why).slice(0, 300), until: Number(p.until) || 0 } : null) }
   })
-  ws.on("close", () => { screens.delete(ws); realtimePaused.delete(ws) })
+  ws.on("close", () => { screens.delete(ws); realtimePaused.delete(ws); ride(ws, "") })
+}
+/** Each helper's agent riding with the pointer over the screen (its Talk key's exchange); `riding()` the one now. */
+const ridingBy = new Map<WebSocket, string>()
+const riding = () => [...ridingBy.values()].find(Boolean) ?? ""
+function ride(ws: WebSocket, agent: string) {
+  const was = riding()
+  if (agent) ridingBy.set(ws, agent); else ridingBy.delete(ws)
+  if (riding() !== was) broadcast({ t: "riding", agent: riding() })
 }
 
 /** What the user pressed on the drawing over the screen: Clear, Keep, a button's next step (an ask by where it is). */
@@ -972,20 +993,14 @@ plugin.socket("companion/live", (ws, req, { query }) => {
     } else if (m.t === "moment" && (m.kind === "ask" || m.kind === "point" || m.kind === "change") && (str(m.pane) || str(m.ui)) && !str(m.path)) {
       // (an ask or a point on a pane or the app's UI, or a change in UI it follows: the window says what's there)
       w.at = Date.now()
-      void paneMoment(w, m, req)
+      void paneMoment(m, req)
     } else if (m.t === "moment" && typeof m.kind === "string" && ["ask", "point", "edit"].includes(m.kind)) {
       w.at = Date.now()
       addMoment({ kind: m.kind as Moment["kind"], for: str(m.agent) || undefined, path: str(m.path) || undefined, line: Number(m.line) || undefined, text: str(m.text) || undefined,
         selection: str(m.selection) || undefined, find: m.kind === "point" || str(m.scene) ? str(m.find).slice(0, 200) || undefined : undefined,
         hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined,
         ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}), ...point(m),
-        ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}),
-        ...(m.summoned === true && m.kind !== "edit" ? { summoned: true, ...(m.voice === true ? { voice: true } : {}) } : {}) }, req)
-    } else if (m.t === "summoning") {
-      lane().warm()
-    } else if (m.t === "hush") {
-      // (a Talk key's box closed in the app: its answer stops being said aloud)
-      broadcast({ t: "hush" })
+        ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}) }, req)
     } else if (m.t === "pin" && typeof m.id === "string") {
       pin(m.id)
     } else if (m.t === "seen" && Array.isArray(m.ids)) {
@@ -1077,9 +1092,9 @@ async function resolve(t: Target, name: string): Promise<Target & Boxed> {
   return t
 }
 
-/** An ask or a point on a pane or the app's UI (the window says what's there), or a change in UI it follows: a moment.
- *  Never a follow: that's only asked for (companion follow). */
-async function paneMoment(_w: Win, m: Record<string, unknown>, req: IncomingMessage) {
+/** An ask or a point on a pane or the app's UI (the window says what's there; `extra`: a Talk key's over it, its point and
+ *  picture), or a change in UI it follows: a moment. Never a follow: that's only asked for (companion follow). */
+async function paneMoment(m: Record<string, unknown>, req: IncomingMessage | undefined, extra: Partial<Moment> = {}) {
   const ui = str(m.ui).slice(0, 120) || undefined
   // (a tab of one pane is that pane; a split tab is its panes)
   const tabId = /^tab:(.+)$/.exec(ui ?? "")?.[1], inTab = tabId ? allPanes().filter((x) => x.tab === tabId) : []
@@ -1090,13 +1105,13 @@ async function paneMoment(_w: Win, m: Record<string, unknown>, req: IncomingMess
   const agent = str(m.agent) || undefined, title = (p?.title || (tab ? inTab.filter((x) => !privatePane(x)).map((x) => x.title).join(" · ") : "") || str(m.title)).slice(0, 200) || undefined
   const asked = m.kind === "ask" ? str(m.text).slice(0, 4000) || undefined : undefined
   const text = (m.kind === "ask" ? str(m.under) : str(m.text)).slice(0, 4000) || undefined
-  const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}), ...(m.summoned === true && m.kind !== "change" ? { summoned: true, ...(m.voice === true ? { voice: true } : {}) } : {}) }
+  const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}), ...(m.summoned === true && m.kind !== "change" ? { summoned: true, ...(m.voice === true ? { voice: true } : {}) } : {}), ...extra }
   if (m.kind === "change") {
     if (!followed.list().some((f) => f.ui === ui)) return
     return void addMoment({ kind: "change", for: agent, ...where, what: "it changed", changes: Array.isArray(m.changes) ? m.changes.map(String).slice(0, 30) : [] })
   }
   const x = p && paneSource(p.to)
-  if (x?.kind === "note") return void addMoment({ kind: m.kind as "ask", for: agent, path: x.path, line: 1, ...(asked ? { text: asked } : {}), ...(where.summoned ? { summoned: true, ...(where.voice ? { voice: true } : {}) } : {}) }, req)
+  if (x?.kind === "note") return void addMoment({ kind: m.kind as "ask", for: agent, path: x.path, line: 1, ...(asked ? { text: asked } : {}), ...(where.summoned ? { summoned: true, ...(where.voice ? { voice: true } : {}) } : {}), ...extra }, req)
   let under = text
   if (x?.kind === "site" && m.x !== undefined) {
     const t = await pageOf(p!.id).catch(() => null)

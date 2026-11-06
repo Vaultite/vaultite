@@ -171,8 +171,16 @@ contextBridge.exposeInMainWorld("vaultite", {
       ipcRenderer.on("vaultite:fn", h)
       return () => { ipcRenderer.removeListener("vaultite:fn", h) }
     },
-    // (a Talk key's press this window can't answer: the helper summons the companion over the screen)
-    talkElsewhere: () => ipcRenderer.send("vaultite:talk-elsewhere"),
+    // (what's at a point of this window, for a Talk key's ask over it: the helper asks, the page answers)
+    placeAt: (fn) => {
+      const h = async (_e, q) => {
+        let place = null
+        try { place = await fn(q.x, q.y) } catch { /* nothing known there */ }
+        ipcRenderer.send("vaultite:place", { id: q.id, place })
+      }
+      ipcRenderer.on("vaultite:place-at", h)
+      return () => { ipcRenderer.removeListener("vaultite:place-at", h) }
+    },
   } : undefined,
   // Other apps' windows in tabs (electron/apps.ts).
   apps: MAC ? {

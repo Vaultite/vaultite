@@ -18,13 +18,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   with no credits, or a key it refuses, pauses it (one notice; companion status says why) and it tries again every ten
   minutes, so presses don't keep trying it.
 - **A spoken answer needs no box**: asked by voice, the companion answers with its cursor, its voice and its marks;
-  its box (its words and a reply field) shows when you tap the Talk key, for a typed ask, or if the voice doesn't
-  come. Waiting feels alive: let go and your trail draws into its cursor, which glows softly while it thinks, then
+  its box (its words and a reply field) shows only when you tap the Talk key, or for a typed ask. Waiting feels alive: let go and your trail draws into its cursor, which glows softly while it thinks, then
   speaks or flies; soft short sounds as you summon it, let go and its answer comes (Sounds setting, on by default). A
   box that does show no longer jumps as its words stream in.
-- **⌃⌥ in a terminal talks to the companion again**: in a Vaultite window, holding the Talk key where the companion's
-  box can't take the keyboard (a terminal's pane) dictated into the terminal; now the companion comes at the pointer
-  over the screen, as in any other app, and its words only ever go to it. Dictation keys still work alone.
+- **One companion per talk, and it talks until you stop it**: the Talk key (⌃⌥) brings one companion at your pointer,
+  in Vaultite's windows as in any app, never a second cursor or box beside it (nor its arrow pulsing in the status
+  bar); over Vaultite it still knows the note line, terminal row or button under the pointer and can point there. Its
+  voice stops only for the Talk key, Esc or a new ask: clicking, typing elsewhere or switching apps no longer cut it
+  off, and its cursor leaves once it's done speaking. A held ⌃⌥ never dictates into a terminal. Dictation keys still
+  work alone.
 - **A video playing on in a background tab keeps its speaker**: when one of a page's videos paused while another went on
   sounding (YouTube's next video or an ad, a preview beside it), its tab lost its speaker and the card for hidden tabs
   never showed; now both come back within seconds.

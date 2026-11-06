@@ -2137,19 +2137,6 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   }
 }
 
-// ---------- A Talk key's words go only into the companion's own box (plugins/core/companion/talkbox.ts) ----------
-{
-  const { inCompanionBox } = await plugin("companion/talkbox.ts")
-  /** A `tag` element inside `box`, stood in: enough for `closest` on a "box :is(tags)" selector. */
-  const el = (tag: string, box: string) => ({ closest: (sel: string) => (sel.split(/,\s*(?![^(]*\))/).some((s) => {
-    const m = /^(\[[^\]]+\]) :is\(([^)]*)\)$/.exec(s.trim())
-    return !!m && m[1] === box && m[2].split(/,\s*/).includes(tag)
-  }) ? {} : null) })
-  check("talk key: its words go into its box by the pointer or a comment card to it", inCompanionBox(el("input", "[data-companion-popover]")) && inCompanionBox(el("input", "[data-companion-note]")))
-  check("talk key: never into the terminal, note or field that had the keyboard (dictation's place)", !inCompanionBox(el("textarea", "[data-terminal]")) && !inCompanionBox(el("input", "[data-ui]")) &&
-    !inCompanionBox(el("div", "[data-companion-popover]")) && !inCompanionBox(null) && !inCompanionBox(undefined))
-}
-
 // ---------- Dictation into a terminal: a paste on one line, never an Enter (plugins/core/dictation/terminal.ts) ----------
 {
   const { terminalTarget, oneLine } = await plugin("dictation/terminal.ts")

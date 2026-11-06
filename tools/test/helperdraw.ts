@@ -17,12 +17,12 @@ const scenes: Scene[] = []
 let pointer = { x: 500, y: 500 }
 const display = { id: 1, bounds: { x: 0, y: 0, width: 1600, height: 1000 }, workArea: { x: 0, y: 25, width: 1600, height: 975 } }
 /** What the window's pages send the main process (ipcMain), by channel. */
-const ipc = new Map<string, (e: { sender: unknown }) => void>()
+const ipc = new Map<string, (e: { sender: unknown }, m?: unknown) => void>()
 /** The app's own folder (its logs, the log of presses), apart from anything real. */
 const USERDATA = fs.mkdtempSync(path.join(os.tmpdir(), "vau-helperdraw-"))
 mock.module(pathToFileURL(fs.realpathSync(path.join(ROOT, "node_modules/electron/index.js"))).href, { exports: {
-  app: { on() {}, getName: () => "Vaultite", getPath: () => USERDATA, getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false },
-  Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }) => void) => { ipc.set(ch, fn) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
+  app: { on() {}, getName: () => "Vaultite", getPath: () => USERDATA, getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false, getPreferredSystemLanguages: () => ["en-US"] },
+  Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }, m?: unknown) => void) => { ipc.set(ch, fn) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
   screen: { getCursorScreenPoint: () => pointer, getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
 } })
 type Acts = { open: (name: string, at: Pt) => void }
@@ -69,11 +69,12 @@ const setAgent = (a: Record<string, unknown>) => {
   sock!.send(JSON.stringify({ t: "agent", agent }))
 }
 
-// (the vault's window at 100, 50 on screen, its cursor drawn at 200, 300 in it, going to 400, 300: the arrow's box is 3, 2 off)
-let windowShown = true
-const homeWindow = () => windowShown
-  ? { page: { isDestroyed: () => false, executeJavaScriptInIsolatedWorld: async () => [["Claude", 197, 298, 397, 298]] }, bounds: { x: 100, y: 50, width: 1200, height: 800 }, zoom: 1 }
-  : null
+// (the vault's window at 100, 50 on screen, its cursor drawn at 200, 300 in it, going to 400, 300: the arrow's box is 3, 2 off;
+// asked what's at a point of it, its page says `placeHere`, a pane's row, and keeps what it was sent)
+let windowShown = true, placeHere: Record<string, unknown> | null = { pane: "p1", row: 4, under: "npm test", title: "Terminal" }
+const homePage = { isDestroyed: () => false, executeJavaScriptInIsolatedWorld: async () => [["Claude", 197, 298, 397, 298]], got: [] as { ch: string; m: unknown }[],
+  send(ch: string, m: { id: number; x: number; y: number }) { this.got.push({ ch, m }); if (ch === "vaultite:place-at") setTimeout(() => ipc.get("vaultite:place")?.({ sender: homePage }, { id: m.id, place: placeHere }), 5) } }
+const homeWindow = () => windowShown ? { page: homePage, bounds: { x: 100, y: 50, width: 1200, height: 800 }, zoom: 1 } : null
 process.env.VAULTITE_QUIET = "1"
 const helper = await import(at("helper.ts"))
 const hp: Record<string, unknown> = {}
@@ -82,6 +83,7 @@ let focused: { isDestroyed: () => boolean; send: (ch: string, m: unknown) => voi
 await helper.startHelper({ home: () => ({ port, path: "/vault", name: "Vault" }), homeWindow, openHome() {}, focusedPage: () => focused, event() {}, prefs: () => hp, setPrefs: (x: object) => Object.assign(hp, x), quit() {}, icon: "" })
 type MenuItem = { label?: string; sublabel?: string; type?: string; enabled?: boolean; click?: () => void }
 const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => void; presses: () => Record<string, unknown>[]; stub: (op: string, v: object) => void; scene: () => Scene | null; asked: () => Record<string, unknown>[]; badge: () => string
+  spoken: () => Record<string, unknown>[]
   menu: () => MenuItem[] } }).vaultiteHelper
 
 let fails = 0
@@ -168,13 +170,11 @@ const cues = () => H.asked().flatMap((m) => ("cue" in m ? [m.cue] : []))
 check("summoned: soft cues as it came and as it was let go with words (a scripted copy plays none)", cues().join() === "listen,sent", cues())
 const panelsBefore = panels.length
 check("summoned: an ask by voice gets no box: its answer is spoken by its cursor", !panelShown && panels.length === panelsBefore, panels.at(-1))
+check("summoned: while it rides with the pointer, the windows are told (they draw no cursor of its, no arrow at work)", H.asked().some((m) => m.t === "riding" && m.agent === "Claude"), H.asked().filter((m) => m.t === "riding"))
 sock!.send(JSON.stringify({ t: "note", note: { id: "s0", kind: "say", agent: "Claude", text: "That's the Send button.", t: Date.now() } }))
 check("summoned: its answer coming, a soft cue", await until(() => cues().join() === "listen,sent,answer"), cues())
-await wait(1000)
-check("summoned: its voice still to start, still no box", !panelShown)
-const box = await until(() => panelShown, 4000) ? panels.at(-1) as { focus: boolean; at: Pt; hint?: string } : undefined
-check("summoned: its voice never came: its box opens by it after all, its field saying how to reply, not taking the keyboard",
-  box?.focus === false && /tap ⌃⌥ to type, hold to talk/.test(box.hint ?? ""), box)
+await wait(3800)
+check("summoned: its voice never came: still no box (only a tap of the key opens one)", !panelShown && panels.length === panelsBefore, panels.at(-1))
 scenes.length = 0
 setAgent({ path: undefined, line: undefined, app: "com.example.mail", window: 9, state: "thinking" })
 await wait(80)
@@ -182,15 +182,25 @@ check("summoned: one cursor through the exchange, the summoned one, thinking; it
   !claude().length && scenes.at(-1)!.summon?.state === "thinking" && !scenes.at(-1)!.summon?.aim, scenes.at(-1))
 setAgent({ sx: 496, sy: 482, frame: { x: 480, y: 470, width: 60, height: 24 } })
 check("summoned: pointing at an element, it's told to fly there", await until(() => H.scene()!.summon?.aim?.x === 496 && H.scene()!.summon?.aim?.y === 482) && !claude().length, H.scene()!.summon)
+windowShown = true
+setAgent({ app: undefined, window: undefined, sx: undefined, sy: undefined, frame: undefined, pane: "p1", row: 4 })
+check("summoned: pointing at a pane in Vaultite's window, it flies where the window would draw it, no cursor of the window's", await until(() => H.scene()!.summon?.aim?.x === 500 && H.scene()!.summon?.aim?.y === 350) && !claude().length, H.scene()!.summon)
+setAgent({ pane: undefined, row: undefined, app: "com.example.mail", window: 9 })
 setAgent({ state: "watching", t: Date.now() })
 check("summoned: its turn done, it rides on, waiting", await until(() => H.scene()!.summon?.state === "watching"), H.scene()!.summon)
+// (a tap of the key mid-exchange: its box, its words and the field)
+chord(true)
+await wait(60)
+chord(false)
+check("summoned: a tap of the key opens its box after all", await until(() => panelShown), panels.at(-1))
 sock!.send(JSON.stringify({ t: "said", said: [{ id: "ask-1", kind: "ask", by: "user", agent: "Claude", text: "what's this?", t: Date.now(), seen: true }, { id: "s1", kind: "say", agent: "Claude", text: "The Send button.", t: Date.now() }] }))
 await wait(50)
 check("summoned: its words go in the box, seen there", H.asked().some((m) => m.t === "saw" && JSON.stringify(m.ids) === '["s1"]'), H.asked().slice(-3))
 H.heard({ event: "click", x: 700, y: 350 })
 check("summoned: a click in its box keeps it", closed === 0)
 H.heard({ event: "click", x: 50, y: 50 })
-check("summoned: a click elsewhere ends the exchange: the box closes, the cursor goes, the pointer no longer fed", closed === 1 && !H.scene()!.summon && !following, closed)
+check("summoned: a click elsewhere, nothing being said: the box closes, the exchange ends, the pointer no longer fed", closed === 1 && !H.scene()!.summon && !following, closed)
+check("summoned: …and the windows are told it no longer rides", await until(() => H.asked().filter((m) => m.t === "riding").at(-1)?.agent === ""), H.asked().filter((m) => m.t === "riding"))
 setAgent({ state: "watching", t: Date.now() - 7000 })
 check("summoned: done there, idle and its words gone, its cursor leaves the screen", await until(() => H.asked().some((m) => m.t === "home" && m.agent === "Claude")), H.asked().slice(-3))
 
@@ -249,24 +259,80 @@ H.heard({ event: "esc" })
 await wait(300)
 heardWords = "and this?"
 
-// ---------- in a Vaultite window: the Talk key goes to its page; where no box of the companion's takes the keyboard (a
-// terminal), the page hands it back and the companion comes over the screen, never dictation
+// ---------- in a Vaultite window: the same companion over the screen, the page never told the key (one companion);
+// the ask says what the page has there (a pane's row)
 await wait(400)
 focused = { isDestroyed: () => false, send(ch, m) { if (ch === "vaultite:fn") this.got.push(m) }, got: [] }
+front(true)
+const vwin = { window: 3, bundle: "app.vaultite", name: "Vaultite", title: "Vault", vaultite: true, frame: { x: 100, y: 50, width: 1200, height: 800 } }
+H.stub("at", vwin)
+const mailUnder = { ok: true, bundle: "com.example.mail", name: "Mail", role: "button", label: "Send" }
+H.stub("under", { ok: true, vaultite: true })
 const asked0 = asks().length
+scenes.length = 0
 chord(true)
-await wait(40)
-check("in the window: a held ⌃⌥ goes to its page as the companion's (listen), not as dictation", JSON.stringify(focused.got) === '[{"talk":"listen"}]' && !H.scene()!.summon, focused.got)
-ipc.get("vaultite:talk-elsewhere")?.({ sender: focused })
-check("…the page can't take it there (a terminal): the companion comes over the screen, listening by the pointer", await until(() => H.scene()!.summon?.state === "listening"), H.scene()!.summon)
+check("in Vaultite's window: a held ⌃⌥ summons the companion at the pointer, listening, the page told nothing", await until(() => H.scene()!.summon?.state === "listening") && !focused.got.length, [H.scene()!.summon, focused.got])
 heardWords = "what's running here?"
 await wait(300)
 chord(false)
-check("…let go, its words go to the companion, and the page hears no more of this press", await until(() => asks().some((m) => m.text === "what's running here?")) && asks().length === asked0 + 1 &&
-  JSON.stringify(focused.got) === '[{"talk":"listen"}]', [asks().slice(-1), focused.got])
+const inWin = await until(() => asks().some((m) => m.text === "what's running here?")) ? asks().at(-1)! : null
+check("…let go, one ask goes, about what the page has under the pointer (its pane and row) and the display's point, no app",
+  asks().length === asked0 + 1 && inWin?.pane === "p1" && inWin?.row === 4 && inWin?.under === "npm test" && inWin?.sx === 530 && !inWin?.app && homePage.got.some((g) => g.ch === "vaultite:place-at" && (g.m as Pt).x === 430 && (g.m as Pt).y === 421), [inWin, homePage.got])
+check("…one cursor all along: the summoned one, no other drawn on screen, the page told nothing", !focused.got.length && scenes.every((x) => !x.agents.some((a) => a.name === "Claude")), [focused.got, scenes.filter((x) => x.agents.length)])
+
+// ---------- its voice goes on to its end: only the Talk key, Esc or a new ask stop it
+const stops = () => H.spoken().filter((m) => m.cmd === "stop").length
+const voiced = (id: string, text: string) => sock!.send(JSON.stringify({ t: "note", note: { id, kind: "say", agent: "Claude", text, t: Date.now(), answers: { t: Date.now(), voice: true } } }))
+setAgent({ state: "thinking", t: Date.now() })
+voiced("v1", "That's your test run, still going. It's on the second suite now.")
+check("voice: its answer to a spoken ask is said aloud", await until(() => H.spoken().some((m) => m.cmd === "say" && /test run/.test(String(m.text)))), H.spoken().slice(-3))
+let stopped = stops()
+H.heard({ event: "click", x: 50, y: 50 })
+front(false)
+H.heard({ event: "front", bundle: "com.example.notes", name: "Notes", title: "n", window: 11, vaultite: false })
+await wait(100)
+check("voice: a click elsewhere or another app in front doesn't stop it, and its cursor stays", stops() === stopped && !!H.scene()!.summon, [stops(), H.scene()!.summon])
+voiced("v1", "That's your test run, still going. It's on the second suite now. Want the failures?")
+check("voice: …its words still come and are said", await until(() => H.spoken().some((m) => m.cmd === "say" && /failures/.test(String(m.text)))), H.spoken().slice(-3))
 H.heard({ event: "esc" })
-ipc.get("vaultite:talk-elsewhere")?.({ sender: focused })
-check("a page's hand-back with no press of the key under way does nothing", await until(() => !H.scene()!.summon), H.scene()!.summon)
+check("voice: Esc stops it at once, and the exchange ends", stops() > stopped && await until(() => !H.scene()!.summon), [stops(), H.scene()!.summon])
+// (barge-in: the key pressed mid-answer stops it, and it listens for the next ask)
+H.stub("at", win)
+H.stub("under", mailUnder)
+chord(true)
+await wait(300)
+chord(false)
+await until(() => asks().length > asked0 + 1)
+setAgent({ state: "thinking", t: Date.now() })
+voiced("v2", "It's the Send button. It sends the draft.")
+await until(() => H.spoken().some((m) => m.cmd === "say" && /Send button/.test(String(m.text))))
+stopped = stops()
+chord(true)
+check("voice: the Talk key pressed mid-answer stops it, and it listens for the next ask", stops() > stopped && await until(() => H.scene()!.summon?.state === "listening"), [stops(), H.scene()!.summon])
+heardWords = "and that one?"
+await wait(300)
+chord(false)
+await until(() => asks().some((m) => m.text === "and that one?"))
+voiced("v3", "That one archives it. Swipe left to undo.")
+await until(() => H.spoken().some((m) => m.cmd === "say" && /archives/.test(String(m.text))))
+stopped = stops()
+acts!.open("Claude", { x: 600, y: 470 })
+panelActs!.send("Claude", "and the third?")
+check("voice: a new ask (typed in its box) stops what it's saying", await until(() => stops() > stopped), stops())
+H.heard({ event: "esc" })
+await until(() => !H.scene()!.summon)
+setAgent({ state: "watching", t: Date.now() })
+// (said to its end, its turn over: its cursor leaves a moment on, no Esc needed)
+chord(true)
+await wait(300)
+chord(false)
+await until(() => H.scene()!.summon?.state === "thinking")
+setAgent({ state: "thinking", t: Date.now() })
+await wait(50)
+voiced("v4", "Yes, it's done.")
+setAgent({ state: "watching", t: Date.now() })
+check("voice: said to its end and its turn over, its cursor stays a moment, then leaves", !!H.scene()!.summon && await until(() => !H.scene()!.summon, 4000), H.scene()!.summon)
+heardWords = "and this?"
 // (⌃⌥ in every order, either Option, let go either way, as the screen helper's tap tells it: right Option is a dictation
 // key, Control and left Option aren't watched; a chord is told as such)
 const CTRL = 59, ROPT = 61, LOPT = 58
@@ -296,10 +362,12 @@ const orders: [string, [Key, boolean, number][]][] = [
 /** Whether a dictation press reached the page and wasn't taken back (a down with no "other" after it). */
 const dictated = (got: unknown[]) => { let open = false; for (const m of got as { down?: boolean; other?: boolean }[]) { if (m.down === true) open = true; else if (m.other) open = false } return open }
 for (const [name, steps] of orders) {
-  // (in a window: a terminal's page, which hands the companion's press to the screen)
+  // (in a window: its page gets nothing of the companion's press, nor a dictation left started; the companion listens)
   focused = { isDestroyed: () => false, send(ch, m) { if (ch === "vaultite:fn") this.got.push(m) }, got: [] }
-  for (const [k, on, after] of steps) { press(k, on); await wait(after) }
-  check(`⌃⌥ in a window (${name}): the companion's press goes to the page, no dictation is left started`, focused.got.some((m) => (m as { talk?: string }).talk === "listen") && !dictated(focused.got), focused.got)
+  const inBefore = asks().length
+  for (const [k, on, after] of steps) { press(k, on); await wait(after); if (on && held.size === 2) check(`⌃⌥ in a window (${name}): the companion listens at the pointer`, await until(() => H.scene()!.summon?.state === "listening", 1000), H.scene()!.summon) }
+  check(`⌃⌥ in a window (${name}): one ask to the companion, the page told nothing of it, no dictation left started`, await until(() => asks().length === inBefore + 1) &&
+    !focused.got.some((m) => "talk" in (m as object)) && !dictated(focused.got), [focused.got, asks().length - inBefore])
   H.heard({ event: "esc" })
   await wait(300)
   // (outside the app: the companion comes at the pointer; no field gets words)

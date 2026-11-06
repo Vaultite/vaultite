@@ -40,7 +40,7 @@ type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) =
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
   onCue?: (fn: (name: Cue) => void) => () => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
-  panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: () => void; mic: () => void; more: (x: number, y: number) => void } }
+  panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: (esc?: boolean) => void; mic: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
 followSystemTheme()
@@ -460,7 +460,7 @@ function Panel() {
     }
   }), [])
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") api?.panel.close() }
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") api?.panel.close(true) }
     // (given the keyboard, by a click anywhere in it or its Talk key tapped: straight into its field)
     const focused = () => { const f = document.querySelector<HTMLInputElement>("[data-companion-popover] input"); if (f && document.activeElement !== f) f.focus() }
     addEventListener("keydown", esc)

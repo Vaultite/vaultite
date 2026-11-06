@@ -41,8 +41,8 @@ export function companionVoice(o: {
   /** Pieces sent to it and not played to their end yet. */
   const playing = new Set<number>()
   let speaking = false
-  /** Each answer's number: what an older one still sends is dropped. */
-  let gen = 0, ready: Promise<void> = Promise.resolve()
+  /** Each answer's number: what an older one still sends is dropped; `waiting`: its words given, not yet past `ready`. */
+  let gen = 0, ready: Promise<void> = Promise.resolve(), waiting = 0
   /** The realtime voice's pieces, numbered far from voicelogic's. */
   let streamed = 1_000_000
 
@@ -81,7 +81,8 @@ export function companionVoice(o: {
   /** Commands go once its helper is up, in order. */
   let line = Promise.resolve()
   function send(m: Record<string, unknown>) {
-    if (o.record) return o.record(m.cmd === "pcm" ? { cmd: "pcm", n: m.n } : m)
+    // (a scripted copy plays nothing: a piece ended is a piece played)
+    if (o.record) { o.record(m.cmd === "pcm" ? { cmd: "pcm", n: m.n } : m); if (m.cmd === "end") heard({ type: "done", n: m.n as number }); return }
     line = line.then(async () => { const c = await start(); c?.stdin?.write(JSON.stringify(m) + "\n") })
     if (idle) clearTimeout(idle)
     idle = setTimeout(quit, IDLE_MS)
@@ -173,8 +174,8 @@ export function companionVoice(o: {
       v.end("sample")
       return { said: true, by }
     },
-    text: (id: string, whole: string) => { const g = gen; void ready.then(() => { if (g === gen) v.text(id, whole) }) },
-    end: (id?: string) => { const g = gen; void ready.then(() => { if (g === gen) v.end(id) }) },
+    text: (id: string, whole: string) => { const g = gen; waiting++; void ready.then(() => { waiting--; if (g === gen) v.text(id, whole) }) },
+    end: (id?: string) => { const g = gen; waiting++; void ready.then(() => { waiting--; if (g === gen) v.end(id) }) },
     /** Audio made elsewhere (the realtime voice: 24 kHz pcm16), played in order after what's playing, as its own
      *  piece; stop() silences it too. */
     stream() {
@@ -185,6 +186,8 @@ export function companionVoice(o: {
     stop: () => { gen++; v.stop() },
     /** Whether an answer is being spoken now. */
     on: () => v.on(),
+    /** Whether any of its words are still to be said: playing, made or being made, or on their way to it. */
+    saying: () => playing.size > 0 || waiting > 0 || v.ahead(),
     quit,
   }
 }

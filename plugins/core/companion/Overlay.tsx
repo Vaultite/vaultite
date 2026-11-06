@@ -7,7 +7,7 @@ import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiff
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { uiElement } from "./panes"
-import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, hush, type Target, type Note, onBump, pick, pin,  type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin,  type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
 import { arrowBox, boxAt } from "./boxes"
 import { Chat } from "./Chat"
 import { presence, STATUS } from "./look"
@@ -278,8 +278,8 @@ export function SayActions({ n, small }: { n: Note; small?: boolean }) {
   </>
 }
 
-/** Its last words (each can be put in the note or pinned into a comment) above a box to ask it something, there. Opened
- *  by a Talk key: about what was under the pointer, sent as its dictation stops, and open for the answer. */
+/** Its last words (each can be put in the note or pinned into a comment) above a box to ask it something, there. Never
+ *  opened by a Talk key: that companion comes over the screen (electron/helper.ts). */
 export function Popover({ a, close, menu, phone }: { a: Agent; close: () => void; menu: (e: React.MouseEvent) => void
   /** A phone's: a card across the bottom, its box not taking the keyboard till tapped. */
   phone?: boolean }) {
@@ -288,34 +288,13 @@ export function Popover({ a, close, menu, phone }: { a: Agent; close: () => void
   const mine = s.said.filter((n) => n.agent === a.name)
   // (its history open: all of it seen)
   useEffect(() => { sawSays(mine.map((n) => n.id)) }, [mine.length])
-  // (closed after a Talk key's ask: moving on, its answer is no longer said aloud)
-  const talkedHere = useRef(false)
-  useEffect(() => () => { if (talked?.agent === a.name) talked = null; if (talkedHere.current) hush() }, [])
-  const send = (said?: string) => {
-    const text = (said ?? draft).trim()
+  const send = () => {
+    const text = draft.trim()
     if (!text) return
-    const t = talked?.agent === a.name ? talked : null
-    talked = null
     const v = a.path ? viewOf(a.path) : null, pos = v ? posIn(v, a) : null
-    // (a Talk key's: what was under the pointer, a note's line, a pane or the app's UI; else where its cursor is)
-    const place = t ? talkPlace(t.at) : { path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line }
-    // (said: its dictation stopped and sent it; its answer is said aloud too)
-    if (!sendMoment({ kind: "ask", agent: a.name, ...place, text, ...(t ? { summoned: true, ...(said !== undefined ? { voice: true } : {}) } : {}) })) return unsent()
-    if (t) talkedHere.current = true
-    // (a Talk key's stays open: its answer comes into it, and what's typed next is about the same place)
-    if (!t) return close()
-    talked = { ...t, send: false }
-    setDraft("")
+    if (!sendMoment({ kind: "ask", agent: a.name, path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line, text })) return unsent()
+    close()
   }
-  // (a Talk key's dictation stopped: what it typed in goes, as the input holds it now)
-  const listening = useDictation((d) => !!d), was = useRef(listening)
-  useEffect(() => {
-    const stopped = was.current && !listening
-    was.current = listening
-    if (!stopped || talked?.agent !== a.name || !talked.send) return
-    const box = document.querySelector<HTMLInputElement>(`[data-companion-popover="${CSS.escape(a.name)}"] input`)
-    setTimeout(() => send(box?.value ?? draft), 0)
-  }, [listening])
   return (
     <Chat name={a.name} tint={tintOf(a.name)} how={howText(a)} items={mine} draft={draft} setDraft={setDraft} send={send} close={close} more={(e) => { close(); menu(e) }}
       words={(n) => <Markdown text={n.text ?? ""} className="companion-md" />} time={(t) => fmtTime(new Date(t).toISOString())} actions={(n) => <SayActions n={n as Note} />}
@@ -324,10 +303,11 @@ export function Popover({ a, close, menu, phone }: { a: Agent; close: () => void
   )
 }
 
-/** A Talk key's place as its ask says it: a note's line (its word or selection), a pane's row or point (the words under
- *  the pointer as `under`), the app's UI; nothing under the pointer, no place. */
-function talkPlace(at: ReturnType<typeof noteAt> | PanePlace | null) {
-  if (!at) return {}
+/** What's at x, y of the window as a Talk key's ask over it says it (electron/helper.ts asks): a note's line (its word or
+ *  selection), a pane's row or point (the words under the pointer as `under`), the app's UI; nothing known there, null. */
+export function placeAt(x: number, y: number): Record<string, unknown> | null {
+  const at = noteAt(x, y) ?? paneAt(x, y)
+  if (!at) return null
   if ("path" in at && at.path) return { path: at.path, line: at.line, ...(at.find ? { find: at.find } : {}), ...(at.selection ? { selection: at.selection } : {}) }
   const { text, ...p } = at as PanePlace
   return { ...p, ...(text ? { under: text } : {}) }
@@ -861,15 +841,6 @@ function topOf(v: EditorView, pos: number) {
 /** Open agent `name`'s box by its cursor: what it said, and asking it (the status bar's menu, where its cursor rests). */
 let popOpen: ((name: string | null) => void) | null = null
 export const showSaid = (name: string) => popOpen?.(name)
-/** A Talk key's conversation: about what was under the pointer (`at`), sent as its dictation stops (`send`). */
-let talked: { agent: string; at: ReturnType<typeof noteAt> | PanePlace | null; send: boolean } | null = null
-let talkHere: ((x: number, y: number) => boolean) | null = null
-/** A Talk key pressed in the window: the companion's cursor comes to the pointer (x, y) and opens its box there; false
- *  when its cursor isn't drawn. `heard`: the dictation that starts in it, once it does. */
-export const talkAt = (x: number, y: number) => talkHere?.(x, y) ?? false
-export const talkHeard = (on: boolean) => { if (talked) talked.send = on }
-/** A Talk key's press that was a shortcut: its box closes. */
-export const talkDone = () => { if (talked) { popOpen?.(null); talked = null } }
 
 export function Overlay() {
   const s = useSyncExternalStore(subscribe, getState)
@@ -884,15 +855,6 @@ export function Overlay() {
   popOpen = setPopped
   // (a phone: no cursor, but a caret where it works and a card by the thumb, Phone.tsx)
   const phone = usePhone()
-  talkHere = (x, y) => {
-    const name = getState().name
-    if (phone || !drawn.current.has(name)) return false
-    const note = noteAt(x, y)
-    hold(name, true, { x, y }, note ?? undefined)
-    talked = { agent: name, at: note ?? paneAt(x, y), send: false }
-    setPopped(name)
-    return true
-  }
   const [hovered, setHovered] = useState<string | null>(null)
   const heights = useRef(new Map<string, number>())
   const rooms = useRef(new Map<EditorView, number>())
@@ -979,6 +941,12 @@ export function Overlay() {
     if (dictationSource && !a.path && (a.app || a.sx !== undefined)) {
       const was = lastSpots.current.get(a.name)
       return { a, i, spot: was ? { ...was, away: true } : null, said: null, waiting: false, with: [] as Agent[], under: false, shift: 0, held: undefined }
+    }
+    // (riding with the pointer over the screen, the helper's: one companion, so none here; hidden where its place is,
+    // for the riding one to fly there (helper.ts inAppPoint), never at home)
+    if (s.riding === a.name) {
+      const at = spotOf(a, i)
+      return { a, i, spot: at && !at.docked ? { ...at, away: true } : null, said: null, waiting: false, with: [] as Agent[], under: false, shift: 0, held: undefined }
     }
     const mine = says(a), said = mine.findLast((n) => !heldBack(n)) ?? null, waiting = mine.some(heldBack)
     let h = holds.current.get(a.name)

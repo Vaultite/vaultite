@@ -83,18 +83,20 @@ await until(() => win.evaluate(() => !document.querySelector(".dictation-pill"))
 const note = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
 check("its words land in the note", /Asked: what does this paragraph say about milk/i.test(note), note)
 
-// ---------- a Talk key held while the window has the keyboard: the companion's box (by its cursor, or a thread), listening
+// ---------- a Talk key held over the window: the same companion over the screen (one companion), never the page's box
 const line = await win.locator("[data-pane] .cm-line", { hasText: "Asked:" }).boundingBox()
 await win.mouse.move(line.x + 20, line.y + line.height / 2)
-await fnKey({ talk: "listen" })
-const into = await until(() => win.evaluate(() => { const f = document.activeElement; return !!document.querySelector(".dictation-pill") && !!f?.closest("[data-companion-popover], [data-companion-note], [data-companion-add], .cm-companion-draft, [data-companion-thread]") && (f.tagName === "INPUT" || f.tagName === "TEXTAREA" || f.isContentEditable) }), 8000)
-check("a Talk key in the window opens the companion's box, listening in it", into, await win.evaluate(() => document.activeElement?.outerHTML.slice(0, 200)))
 const left = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
-await until(() => win.evaluate(() => !document.querySelector(".dictation-pill")), 30000, 100)
+await helper((h) => h.heard({ event: "chord", name: "control_option", on: true }))
+check("a Talk key over the window summons the companion over the screen, listening by the pointer", await until(() => helper((h) => h.scene()?.summon?.state === "listening"), 8000))
+check("…and the page opens no box of its own, nor draws a cursor of its", await win.evaluate(() => !document.querySelector("[data-companion-popover]") && ![...document.querySelectorAll(".companion-cursor")].some((c) => c.getAttribute("data-away") === null && c.getAttribute("data-docked") === null)))
+await wait(600)
+await helper((h) => h.heard({ event: "chord", name: "control_option", on: false }))
+const starts = () => helper((h) => h.spoken().filter((m) => m.cmd === "say" && /^I couldn't start/.test(m.text)).length)
+check("…its answer is said aloud, as anywhere", await until(async () => (await starts()) >= 2, 10000, 200), await helper((h) => h.spoken()))
 const after = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
 check("…and nothing it hears goes in the note", after === left, { left, after })
-const starts = () => helper((h) => h.spoken().filter((m) => m.cmd === "say" && /^I couldn't start/.test(m.text)).length)
-check("…and its answer is said aloud, as on screen", await until(async () => (await starts()) >= 2, 10000, 200), await helper((h) => h.spoken()))
+await helper((h) => h.heard({ event: "esc" }))
 
 // ---------- closing the window keeps the server; the app clicked again opens it on the same one
 const alive = () => fetch(`http://127.0.0.1:${port}/api/ops/screen.front`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.ok, () => false)

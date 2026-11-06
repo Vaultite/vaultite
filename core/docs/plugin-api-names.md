@@ -46,6 +46,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AmbientItem`: Drawn in the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click away from its page.
 - `announce(text, opts?)`: Say `text` to a screen reader: politely, after what it's reading, or `assertive` (an error) at once.
 - `announceAgent(label, was, now)`: Say what matters when agent `label` goes from `was` to `now`: it finished, it waits for the user, it failed.
+- `answerPlaceAt(fn)`: What's at x, y of this window, told to the desktop app's helper when a Talk key's ask is over it (the companion summoned over the screen): a note's line, a pane's row, the app's UI.
 - `API_VERSION`
 - `APP_VERSION`
 - `appDevice`: Which app this is, as the server hears it (X-Vaultite-Client: app/<device>, for Activity).
@@ -416,7 +417,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onResized(f)`: Run `f` each time a resize drag ends; returns its undo.
 - `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
 - `onTabsEvent(fn)`: Hear every change of this window's tabs as events; returns the unsubscribe.
-- `onTalkKey(fn)`: A companion's Talk key while this window has the keyboard, as its gesture (core/fnkey.ts talkGesture): listen (held), send (let go), type (a tap), free (a double tap), cancel.
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`
 - `op(id, params?)`: Run an operation of the API (core/ops.ts: `POST /api/ops/<id>`): its result.
@@ -688,7 +688,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `takeAppErrors()`: The errors waiting to be sent, oldest first; they're the caller's now (the queue is emptied).
 - `takeSchemeLink(url, mod?)`: A plugin that's on takes this link of another app's scheme (`<app>://`): whether one did.
 - `takeSpans()`: The spans ended since the last call.
-- `talkElsewhere()`: This window can't take the Talk key's press: the companion comes over the screen, at the pointer.
 - `Target`
 - `TargetView({ store, to, close, setTarget })`: A tab's target drawn outside the panes, in a sheet (a glance): a file as a sheet shows one, a plugin's view as its tab draws it, filling the sheet when it fills a pane.
 - `TerminalAgent`

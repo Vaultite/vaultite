@@ -8,8 +8,9 @@ import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
 export type OverlayActs = { open: (name: string, at: Point) => void; stop: () => void }
-/** What the user does in a cursor's conversation: asks (typed), the microphone, More (its menu), and it closed. */
-export type PanelActs = { send: (name: string, text: string) => void; mic: () => void; more: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; closed: (name: string) => void }
+/** What the user does in a cursor's conversation: asks (typed), the microphone, More (its menu), and it closed (`esc`:
+ *  by Esc in it; else clicked away, its close, or closed by the helper). */
+export type PanelActs = { send: (name: string, text: string) => void; mic: () => void; more: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; closed: (name: string, why?: "esc") => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
 const wins = new Map<number, BrowserWindow>()
@@ -198,7 +199,9 @@ export type PanelData = { name: string; tint: string; how: string; items: { id: 
 const WIDTH = 300, PAD = 16
 /** `travels`: an exchange's box, going with the companion as it rides beside the pointer (`goal`: where it's going,
  *  `held`: till when it holds for the pointer reaching for it). */
-let panel: { w: BrowserWindow; name: string; at: Point; data: PanelData; height: number; menu: boolean; focus: boolean; travels: boolean; goal?: Point; pos?: Point; held: number } | null = null
+let panel: { w: BrowserWindow; name: string; at: Point; data: PanelData; height: number; menu: boolean; focus: boolean; travels: boolean; goal?: Point; pos?: Point; held: number
+  /** Closed by Esc in it: its exchange ends, its voice with it. */
+  esc?: boolean } | null = null
 let panelActs: PanelActs | null = null
 /** What the box keeps clear of besides its cursor (what it points at, its marks). */
 let avoid: Rect[] = []
@@ -222,14 +225,14 @@ export function openPanel(base: string, at: Point, data: PanelData, focus = true
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   w.setHiddenInMissionControl(true)
   w.setAlwaysOnTop(true, "screen-saver", 1)
-  const mine = { w, name: data.name, at, data, height: 0, menu: false, focus, travels, held: 0 }
+  const mine: NonNullable<typeof panel> = { w, name: data.name, at, data, height: 0, menu: false, focus, travels, held: 0 }
   panel = mine
   // (a link in its words opens in the browser, never in this window)
   w.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) void shell.openExternal(url); return { action: "deny" } })
   w.webContents.on("will-navigate", (e, url) => { e.preventDefault(); if (/^https?:/i.test(url)) void shell.openExternal(url) })
   w.webContents.on("did-finish-load", () => { if (panel === mine) w.webContents.send("vaultite:panel", mine.data) })
   w.on("blur", () => { if (panel === mine && !mine.menu) closePanel() })
-  w.on("closed", () => { if (panel === mine) { panel = null; panelActs?.closed(mine.name) } })
+  w.on("closed", () => { if (panel === mine) { panel = null; panelActs?.closed(mine.name, mine.esc ? "esc" : undefined) } })
   void w.loadURL(`${base}/screen.html#panel`).catch(() => {})
 }
 
@@ -246,8 +249,10 @@ export const panelBounds = () => { if (!panel || panel.w.isDestroyed() || !panel
 export const ownWindows = () => [...wins.values(), ...(panel && !panel.w.isDestroyed() ? [panel.w] : [])]
   .map((w) => Number(/^window:(\d+)/.exec(w.getMediaSourceId())?.[1] ?? 0)).filter((n) => n > 0)
 export const panelFocused = () => !!panel && !panel.w.isDestroyed() && panel.w.isFocused()
-export function closePanel() {
-  if (panel && !panel.w.isDestroyed()) panel.w.close()
+export function closePanel(esc = false) {
+  if (!panel || panel.w.isDestroyed()) return
+  if (esc) panel.esc = true
+  panel.w.close()
 }
 
 /** Where the box goes for its cursor at `at`: clear of its arrow and name, what it points at, the user's pointer. */
@@ -299,7 +304,7 @@ export function onPanel(a: PanelActs) {
   panelActs = a
   ipcMain.on("panel:size", (e, h: unknown) => { const p = ofPanel(e); if (p && typeof h === "number" && h > 0 && Math.round(h) !== p.height) { p.height = Math.round(h); place() } })
   ipcMain.on("panel:send", (e, text: unknown) => { const p = ofPanel(e); if (p && typeof text === "string" && text.trim()) { a.send(p.name, text.trim()) } })
-  ipcMain.on("panel:close", (e) => { if (ofPanel(e)) closePanel() })
+  ipcMain.on("panel:close", (e, esc: unknown) => { if (ofPanel(e)) closePanel(esc === true) })
   ipcMain.on("panel:mic", (e) => { if (ofPanel(e)) a.mic() })
   ipcMain.on("panel:more", (e, m: { x?: unknown; y?: unknown }) => {
     const p = ofPanel(e)

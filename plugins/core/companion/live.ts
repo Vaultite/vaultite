@@ -53,9 +53,12 @@ export type StreamMsg = { t: "stream"; m: EditAsk } | { t: "more"; rid: string; 
 type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; draft: Draft | null; follows: Follow[]
   people: Record<string, Person[]>
   /** What a new agent runs: one whose name picks none, those whose name does (by profile name), what's installed. */
-  fresh: How; profiles: Record<string, How>; harnesses: Harness[] }
+  fresh: How; profiles: Record<string, How>; harnesses: Harness[]
+  /** The agent riding with the user's pointer over the screen (its Talk key's exchange, the desktop app's helper): its
+   *  cursor isn't drawn here meanwhile, one companion at a time. */
+  riding: string }
 let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, draft: null, people: {}, follows: [],
-  fresh: { agent: "", model: "", effort: "" }, profiles: {}, harnesses: [] }
+  fresh: { agent: "", model: "", effort: "" }, profiles: {}, harnesses: [], riding: "" }
 const subs = new Set<() => void>()
 const changed = () => { for (const fn of [...subs]) fn() }
 export const getState = () => state
@@ -220,7 +223,7 @@ function open() {
   s.onclose = () => {
     if (ws !== s) return
     ws = null
-    set({ connected: false })
+    set({ connected: false, riding: "" })
     streamer?.(null, { t: "cut" })
     if (users > 0) retry = setTimeout(open, Math.min(30_000, 1000 * 2 ** tries++))
   }
@@ -230,7 +233,8 @@ function open() {
     if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[], said: (m.said as Note[] | undefined) ?? [],
       // (what an agent started from here runs; no model: its agent takes none)
       fresh: (m.fresh as How | undefined) ?? { agent: "", model: "", effort: "" }, profiles: (m.profiles as State["profiles"] | undefined) ?? {},
-      harnesses: (m.harnesses as Harness[] | undefined) ?? [], follows: (m.follows as Follow[] | undefined) ?? [] }); heard(m.agents as Agent[]) }
+      harnesses: (m.harnesses as Harness[] | undefined) ?? [], follows: (m.follows as Follow[] | undefined) ?? [], riding: typeof m.riding === "string" ? m.riding : "" }); heard(m.agents as Agent[]) }
+    else if (m.t === "riding") set({ riding: typeof m.agent === "string" ? m.agent : "" })
     else if (m.t === "follows") set({ follows: (m.follows as Follow[] | undefined) ?? [] })
     else if (m.t === "said") set({ said: m.said as Note[] })
     else if (m.t === "agent") {
@@ -285,10 +289,6 @@ export function sendMoment(m: { kind: "ask" | "point" | "edit" | "change"; agent
   if (a && a.state !== "away" && a.state !== "starting") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : m.pane || m.ui ? { path: undefined, line: undefined, find: undefined, pane: m.pane, ui: m.ui, row: m.row } : {}) }, 10_000)
   return true
 }
-/** Its Talk key pressed here: its summoned session gets ready while they speak. */
-export const summoning = () => void say({ t: "summoning" })
-/** A Talk key's box closed: its answer stops being said aloud (the desktop app's voice). */
-export const hush = () => void say({ t: "hush" })
 /** A part of the app's UI an agent follows changed: its new lines (and those gone). */
 export const uiChanged = (agent: string, ui: string, changes: string[], title?: string) => sendMoment({ kind: "change", agent, ui, changes, ...(title ? { title } : {}) })
 /** A say turned into a margin comment, same words, same place. */

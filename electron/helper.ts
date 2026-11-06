@@ -84,13 +84,14 @@ export async function startHelper(h: HelperHost) {
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v), presses: () => presses.read(),
     asked: () => [...asked], spoken: () => [...spoken], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
   onScreenEvent(heard)
-  ipcMain.removeAllListeners("vaultite:talk-elsewhere")
-  ipcMain.on("vaultite:talk-elsewhere", (e) => talkElsewhere(e.sender))
+  ipcMain.removeAllListeners("vaultite:place")
+  ipcMain.on("vaultite:place", (e, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
   onDictating(() => stopVoice())
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) } })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu,
-    closed: () => { if (session?.into === "panel") stopFor(session.sink, true); endExchange(); draw() } })
+    // (Esc in its box ends the exchange; the box closed otherwise (clicked away, its close) leaves what it says going on)
+    closed: (_name, why) => { if (session?.into === "panel") stopFor(session.sink, true); if (why === "esc") endExchange(); else moveOn(); draw() } })
   if (!QUIET) await startScreen().catch((e) => console.error("vaultite: the screen helper didn't start:", e))
   // (a copy a script drives (web/qa/helper.mjs) shows nothing in the menu bar and never hears the user's fn)
   if (!QUIET) {
@@ -229,6 +230,8 @@ async function refresh() {
 }
 
 type Agent = { name: string; tint: string; state: string; t?: number; seen?: boolean; why?: string; app?: string; window?: number; find?: string; sx?: number; sy?: number; display?: number; path?: string
+  /** Its place in the app, off a note: a pane (a terminal's row), the app's UI; a note's line. */
+  line?: number; pane?: string; row?: number; ui?: string
   /** What it points at on screen (an element of an ask's list): its words never cover it. */
   frame?: Rect
   runs?: string; model?: string; effort?: string }
@@ -260,6 +263,8 @@ const live = (() => {
         state.notes = new Map((m.notes as Note[]).map((n) => [n.id, n]))
         state.said = (m.said as Note[] | undefined) ?? []
         state.harnesses = (m.harnesses as typeof state.harnesses | undefined) ?? []
+        // (connected again: the server hears who rides with the pointer now)
+        ridingSaid = null
       } else if (m.t === "said") state.said = (m.said as Note[] | undefined) ?? []
       else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a); voiceHeardAgent(a) }
       else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n); voiceHeard(n); if (n.kind === "say" && n.agent === exchange?.name && n.t >= exchange.since) answerArrived() }
@@ -296,14 +301,12 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "mod") return modHeard(m)
   if (m.event === "chord") return chordHeard(m)
   if (m.event === "moved") return windowMoved(m)
-  // (its answer showing: a click elsewhere or Esc ends the exchange)
-  if (m.event === "click") { const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) endExchange(); return }
+  // (its exchange on: a click elsewhere moves on, Esc ends it, its voice with it)
+  if (m.event === "click") { const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
   if (m.event === "esc") return endExchange()
   if (m.event === "front") {
     // (another app in front: they moved on)
-    if (exchange && !m.vaultite && front && m.bundle !== front.bundle) endExchange()
-    // (an answer in the app, another app now in front)
-    else if (voiced?.inApp && !m.vaultite) stopVoice()
+    if (exchange && !m.vaultite && front && m.bundle !== front.bundle) moveOn()
     front = m as unknown as AppWindowInfo
     // (another app in front may cover or uncover what the cursors point at: looked at again)
     for (const e of placed.values()) e.at = 0
@@ -337,8 +340,8 @@ type Session = { sink: DictationSink; into: "field" | "panel" | "summon"; focus:
   /** The summoned companion its words are for (a new press may summon another before they're done). */
   of?: Summon }
 let session: Session | null = null
-/** The window's page that has this press (fn there is its ⌘J; a Talk key's gesture its companion's), till it's let go. */
-let page: WebContents | null = null, talkPage: WebContents | null = null
+/** The window's page that has this press (fn there is its ⌘J), till it's let go. */
+let page: WebContents | null = null
 
 /** The screen helper's tap hears the picked keys only: the dictation keys (none while Dictate anywhere is off) and the
  *  Talk keys, a key alone by its code, a chord by its name. */
@@ -463,14 +466,15 @@ type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; s
   place?: Promise<{ w: AppWindowInfo | null; place: Record<string, unknown> }> }
 let summon: Summon | null = null
 /** The exchange its answer is in: its box open by the point asked about (and the window there), since `since`. */
-let exchange: { name: string; p: Point; w: AppWindowInfo | null; since: number
-  /** Its answer is spoken: no box (its cursor, its voice and its marks say it), unless the voice doesn't come. */
+type Exchange = { name: string; p: Point; w: AppWindowInfo | null; since: number
+  /** Its answer is spoken: no box (its cursor, its voice and its marks say it); a tap of the key opens one. */
   spoken?: boolean
-  /** Its answer began coming (its first words, a drawing); its voice was heard. */
-  arrived?: boolean; heard?: boolean } | null = null
+  /** Its answer began coming (its first words, a drawing). */
+  arrived?: boolean }
+let exchange: Exchange | null = null
 
-/** A Talk key (alone, or a chord), as its gesture: in a Vaultite window with the keyboard, its page's companion; else
- *  the companion summoned here. */
+/** A Talk key (alone, or a chord), as its gesture: the companion summoned at the pointer, in any app and in Vaultite's
+ *  windows alike (one companion, over the screen: the page never gets the key). */
 function talkHeard(m: FnEvent) {
   if (!host?.home()) return
   // (pressed again: its voice stops at once, and gets ready for the next answer)
@@ -481,26 +485,7 @@ function talkHeard(m: FnEvent) {
   else if (kind === "down" && !a) presses.start("talk", "down", { front: front?.bundle ?? "" }).end("ignored", { gesture: gesture.state })
   else press?.step(kind, { action: a ?? "none" })
   if (!a) return
-  if (a === "listen") talkPage = host.focusedPage()
-  const to = talkPage && !talkPage.isDestroyed() ? talkPage : null
-  if (to) {
-    if (a === "listen") press?.step("window")
-    to.send("vaultite:fn", { talk: a })
-    if (a === "send" || a === "cancel") { talkPage = null; press?.end(a === "send" ? "window" : "cancelled") }
-    return
-  }
-  talkPage = null
   talkAct(a)
-}
-
-/** The window that had the Talk key's press can't answer it there (no box of the companion's takes the keyboard, as in
- *  a terminal): the companion comes over the screen at the pointer, as in any app; the press goes on here. */
-function talkElsewhere(from: WebContents) {
-  if (!talkPage || talkPage !== from) return
-  talkPage = null
-  press?.step("handed-back")
-  if (gesture.state === "held") talkAct("listen")
-  else if (gesture.state === "typed") talkAct("type")
 }
 
 function talkAct(a: NonNullable<TalkAction>) {
@@ -529,7 +514,7 @@ function talkAct(a: NonNullable<TalkAction>) {
   void freeTalk()
 }
 
-/** A Talk key held outside Vaultite: its cursor at the pointer, listening, the words by it; the pointer leaves a trail
+/** A Talk key held: its cursor at the pointer, listening, the words by it; the pointer leaves a trail
  *  meanwhile (drags too: the screen helper keeps them from the app). */
 async function startSummon() {
   const name = live.state.name
@@ -608,11 +593,11 @@ async function freeTalk() {
   if (panelOpen()) await listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true })
 }
 
-/** Its answer's box, by where it was asked, unfocused till clicked: typing there, or holding the key again, goes on; Esc,
- *  a click elsewhere or another app ends it. */
+/** Its answer's box, by where it was asked, unfocused till clicked (spoken: none, its voice says it): typing there, or
+ *  holding the key again, goes on; Esc ends it, a click elsewhere or another app moves on (moveOn). */
 function openAnswer(name: string, p: Point, w: AppWindowInfo | null, since: number) {
   if (!based) return
-  // (an answer said aloud needs no box: the box comes by a tap of the key, or if the voice doesn't)
+  // (an answer said aloud needs no box: the box comes only by a tap of the key)
   const spoken = prefs.voice.mode !== "off"
   exchange = { name, p, w, since, ...(spoken ? { spoken } : {}) }
   void screenAsk("exchange", { on: true })
@@ -629,28 +614,27 @@ function answerBox() {
   openPanel(based, besidePointer(now, screen.getDisplayNearestPoint(now).bounds), d, false, true)
   draw()
 }
-/** The exchange's answer began coming: a soft cue; spoken, the box shows after all if its voice hasn't started soon. */
+/** The exchange's answer began coming: a soft cue. */
 function answerArrived() {
   const x = exchange
   if (!x || x.arrived) return
   x.arrived = true
   cue("answer")
-  if (x.spoken) setTimeout(() => { if (exchange === x && !x.heard && panelOpen() !== x.name) answerBox() }, VOICE_WAIT)
 }
-/** How long a spoken answer's first words wait for its voice before its box shows them. */
-const VOICE_WAIT = 3500
 /** A soft cue (the companion's `sounds`; a scripted copy only notes it). */
 function cue(name: "listen" | "sent" | "answer" | "missed") {
   if (QUIET) return void asked.push({ cue: name })
   if (prefs.sounds) playCue(name)
 }
-/** The exchange over: its box closed, its cursor gone (at once when it's done; else once it is). */
-function endExchange() {
-  stopVoice()
+/** The exchange over (Esc; `stop`: its voice too): its box closed, its cursor gone (at once when it's done; else once it is). */
+function endExchange(stop = true) {
+  if (stop) stopVoice()
+  if (settleTimer) { clearTimeout(settleTimer); settleTimer = null }
   if (!exchange && !summon) return
   const name = exchange?.name ?? summon?.name
   exchange = null
   summon = null
+  inAppSpots.clear()
   const a = name ? live.state.agents.get(name) : undefined
   if (a && onScreen(a) && a.state === "watching") leave(a.name)
   endDrawing()
@@ -658,6 +642,31 @@ function endExchange() {
   void screenAsk("exchange", { on: false }).catch(() => {})
   if (panelOpen()) closePanel()
   draw()
+}
+/** Its spoken answer still going: being said (or still to be), or its turn still at work on it. */
+function going(x: Exchange) {
+  if (!x.spoken) return false
+  const a = live.state.agents.get(x.name), s = summon?.name === x.name ? summon : null
+  return !!speakingNow || speaker.saying() || (!!a && BUSY.has(a.state)) || (s?.state === "thinking" && !s.busySeen)
+}
+/** They clicked elsewhere, went to another app, or its box closed: the box goes, but a spoken answer goes on to its end
+ *  (only the Talk key, Esc or a new ask stop it), its cursor leaving once it's said (settle). */
+function moveOn() {
+  const x = exchange
+  // (held: the press is theirs, a drag its trail)
+  if (summon?.state === "listening") return
+  if (x && going(x)) { if (panelOpen()) closePanel(); return draw() }
+  endExchange(false)
+}
+/** How long its cursor stays once its spoken answer is said, before it leaves. */
+const LINGER_MS = 1500
+let settleTimer: ReturnType<typeof setTimeout> | null = null
+/** A spoken exchange done (its words said to their end, its turn over), its box not open: a moment on, its cursor leaves. */
+function settle() {
+  const x = exchange
+  const done = (): boolean => !!x && exchange === x && !going(x) && panelOpen() !== x.name && summon?.state !== "listening" && (x.arrived || !!summon?.busySeen)
+  if (!x?.spoken || settleTimer || !done()) return
+  settleTimer = setTimeout(() => { settleTimer = null; if (done()) endExchange(false); else settle() }, LINGER_MS)
 }
 
 /** The recognizer, as the page picks it (plugins/core/dictation): Parakeet for English when it's here, else Apple's. */
@@ -752,9 +761,32 @@ async function pointedAt(name: string, p: Point, w: AppWindowInfo | null, parks 
   const win = w?.window && !w.vaultite ? w : null
   if (win && hidden(win)) return { app: "private" }
   if (parks && win?.frame) park(name, win.window, offsetIn(win.frame, p))
-  const [text, shot, under, near] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 20_000 }) : null, shotAt(p), underAt(p), nearAt(p)])
-  return { ...(win ? { app: win.bundle, window: win.window, title: win.title } : under ? { app: under.bundle } : {}), sx: Math.round(p.x), sy: Math.round(p.y),
+  const [text, shot, under, near, there] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 20_000 }) : null, shotAt(p), underAt(p), nearAt(p),
+    w?.vaultite ? inAppAt(p) : null])
+  return { ...(there ?? {}), ...(win ? { app: win.bundle, window: win.window, title: win.title } : under ? { app: under.bundle } : {}), sx: Math.round(p.x), sy: Math.round(p.y),
     ...(text?.ok && text.text ? { screen: text.text } : {}), ...(shot ? { shot: shot.file, shotAt: shot.frame } : {}), ...(under ? { under: under.text } : {}), ...(near.length ? { near } : {}) }
+}
+
+/** What's at a screen point of the home vault's window, as its page knows it (a note's line, a pane's row, the app's UI):
+ *  a Talk key's ask there is about that too. Null off it, or when the page doesn't say in time. */
+const placeAsked = new Map<number, (place: Record<string, unknown> | null) => void>()
+let placeAsks = 0
+function inAppAt(p: Point): Promise<Record<string, unknown> | null> {
+  const w = host?.homeWindow(), b = w?.bounds
+  if (!w || !b || w.page.isDestroyed() || p.x < b.x || p.y < b.y || p.x >= b.x + b.width || p.y >= b.y + b.height) return Promise.resolve(null)
+  const id = ++placeAsks
+  return new Promise((done) => {
+    const late = setTimeout(() => { placeAsked.delete(id); done(null) }, 400)
+    placeAsked.set(id, (place) => { clearTimeout(late); placeAsked.delete(id); done(place) })
+    w.page.send("vaultite:place-at", { id, x: (p.x - b.x) / w.zoom, y: (p.y - b.y) / w.zoom })
+  })
+}
+const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "row", "x", "y", "under", "title"])
+/** The home window's page answering inAppAt: only what a place has. */
+function placeTold(from: WebContents, m: { id?: unknown; place?: unknown }) {
+  if (from !== host?.homeWindow()?.page || typeof m?.id !== "number") return
+  const place = m.place && typeof m.place === "object" ? Object.fromEntries(Object.entries(m.place).filter(([k, v]) => PLACE_KEYS.has(k) && (typeof v === "string" || typeof v === "number"))) : null
+  placeAsked.get(m.id)?.(place && Object.keys(place).length ? place : null)
 }
 
 function told(s: Session, e: Record<string, unknown>) {
@@ -884,8 +916,8 @@ const voiceFront = realtimeFront({
     s.state = "watching"
     const x = exchange?.name === s.name ? exchange : null
     openAnswer(s.name, s.p, s.w, x ? x.since : s.at)
-    // (heard already: no cue nor box for it)
-    if (exchange) Object.assign(exchange, { arrived: true, heard: true })
+    // (heard already: no cue for it)
+    if (exchange) exchange.arrived = true
   },
   fallback: (heard) => { const s = summon; if (s) void sendSummon(s, heard) },
   state: (st) => { if (summon && st === "thinking") { summon.state = "thinking"; draw() } },
@@ -912,16 +944,16 @@ async function realtimeConfig() {
   return k.url && k.key ? { url: k.url, key: k.key, model: r.model, voice: r.voice } : null
 }
 
-/** The answer being said: the ask it answers (when it came), its says (the last still growing); `inApp`: asked in a
- *  Vaultite window. Answers to asks before `hushed` are silent: stopped, or a newer ask came. */
-let voiced: { name: string; asked: number; inApp: boolean; notes: string[]; quiet: ReturnType<typeof setTimeout> | null } | null = null
+/** The answer being said: the ask it answers (when it came), its says (the last still growing). Answers to asks before
+ *  `hushed` are silent: stopped (the Talk key, Esc), or a newer ask came. */
+let voiced: { name: string; asked: number; notes: string[]; quiet: ReturnType<typeof setTimeout> | null } | null = null
 let hushed = 0
 /** When words were last said into a cursor's box: the ask they make is a spoken one. */
 let saidInBox = 0
 let speakingNow: Scene["speaking"] = null
 
 /** One of its says, as its words come: an answer to a Talk key's ask said aloud as the setting says (`auto`: one asked
- *  by voice), on screen or in the app alike; its last words when the next say begins, or after a pause. */
+ *  by voice); its last words when the next say begins, or after a pause. */
 function voiceHeard(n: Note) {
   const a = n.answers, mode = prefs.voice.mode
   // (the realtime voice's screen round: it says this answer itself)
@@ -933,7 +965,7 @@ function voiceHeard(n: Note) {
     if (mode === "off" || (mode === "auto" && !a.voice)) return
     speaker.begin("", a.lang)
     heardLines = []
-    voiced = { name: n.agent, asked: a.t, inApp: !exchange, notes: [], quiet: null }
+    voiced = { name: n.agent, asked: a.t, notes: [], quiet: null }
   }
   const v = voiced
   if (!v.notes.includes(n.id)) { const was = v.notes.at(-1); if (was) speaker.end(was); v.notes.push(n.id) }
@@ -971,7 +1003,8 @@ function voiceLevel(on: boolean, v: number) {
   const name = voiced?.name ?? speakingNow?.name ?? (voiceFront.speaking() ? live.state.name : undefined)
   const was = speakingNow
   speakingNow = on && name ? { name, level: Math.round(v * 20) / 20 } : null
-  if (on && exchange) exchange.heard = true
+  // (quiet now: said to its end, maybe, its exchange over, once the voice has moved on)
+  if (!on) setTimeout(settle, 50)
   if (!!was !== !!speakingNow || was?.name !== speakingNow?.name) return draw()
   if (lastScene && speakingNow && was?.level !== speakingNow.level) { lastScene = { ...lastScene, speaking: speakingNow }; showOverlay(based || null, lastScene) }
 }
@@ -994,7 +1027,7 @@ function park(name: string, window: number, o: { dx: number; dy: number }) {
   parks.set(name, { window, ...o })
   for (const [k, e] of placed) if (k.startsWith(`${name}:`)) e.at = 0
 }
-const placeKey = (a: Agent) => `${a.name}:${a.app ?? ""}|${a.window ?? ""}|${a.find ?? ""}|${a.sx ?? ""}|${a.sy ?? ""}`
+const placeKey = (a: Agent) => `${a.name}:${a.app ?? ""}|${a.window ?? ""}|${a.find ?? ""}|${a.sx ?? ""}|${a.sy ?? ""}|${a.path ?? ""}|${a.line ?? ""}|${a.pane ?? ""}|${a.row ?? ""}|${a.ui ?? ""}`
 const onScreen = (a: Agent) => !a.path && (!!a.app || (typeof a.sx === "number" && typeof a.sy === "number"))
 /** `r` with whether a window in front of its own covers its point. */
 async function seen(r: Omit<Placed, "at" | "pending">): Promise<Omit<Placed, "at" | "pending">> {
@@ -1159,9 +1192,22 @@ function handOff(agents: ScreenAgent[], called: Scene["summon"]): { agents: Scre
 }
 
 const BUSY = new Set(["thinking", "reading", "writing", "starting"])
-/** Whether its own place, in the exchange of summon `s`, points at something (an element, a found text, another spot):
- *  not where it was summoned nor where the ask parked it. */
-const pointing = (a: Agent, s: Summon) => placeKey(a) !== s.was && (!!a.frame || !!a.find || (typeof a.sx === "number" && typeof a.sy === "number" && Math.hypot(a.sx - s.p.x, a.sy! - s.p.y) > 4))
+/** Whether its own place, in the exchange of summon `s`, points at something (an element, a found text, another spot,
+ *  a place in Vaultite's window): not where it was summoned nor where the ask parked it. */
+const pointing = (a: Agent, s: Summon) => placeKey(a) !== s.was && (!onScreen(a) || !!a.frame || !!a.find || (typeof a.sx === "number" && typeof a.sy === "number" && Math.hypot(a.sx - s.p.x, a.sy! - s.p.y) > 4))
+/** Where the window would draw its place there (a pane's row, the app's UI, a note's line), in screen points: its own
+ *  cursor hides while it rides with the pointer, and the riding one flies there. Asked once a place, again after a while. */
+const inAppSpots = new Map<string, { p: Point | null; at: number; pending: boolean }>()
+function inAppPoint(a: Agent) {
+  const k = placeKey(a), had = inAppSpots.get(k)
+  if (!had || (!had.pending && Date.now() - had.at > 1000)) {
+    const mine = { p: had?.p ?? null, at: Date.now(), pending: true }
+    inAppSpots.set(k, mine)
+    // (a moment for the window to place it: the agent's news reaches it as it reaches here)
+    setTimeout(() => void inApp().then((m) => { if (inAppSpots.get(k) !== mine) return; inAppSpots.set(k, { p: m.get(a.name)?.to ?? null, at: Date.now(), pending: false }); draw() }), 60)
+  }
+  return inAppSpots.get(k)!.p
+}
 /** What a scripted copy said and drew last (web/qa/helper.mjs), and its menu bar badge. */
 const asked: object[] = []
 let lastScene: Scene | null = null, badged = ""
@@ -1175,9 +1221,16 @@ function draw() {
   const s = summon
   let aimed: { id: string; x: number; y: number; frame?: Rect } | null = null
   for (const a of live.state.agents.values()) {
-    if (a.state === "away" || !onScreen(a)) continue
-    // (summoned: one cursor, the summoned one, which flies to what its own place points at)
-    if (s?.name === a.name) { if (pointing(a, s)) { const e = pointOf(a); if (e.p && !e.covered) aimed = { id: placeKey(a), x: e.p.x, y: e.p.y, frame: a.frame ?? e.target } } continue }
+    if (a.state === "away") continue
+    // (summoned: one cursor, the summoned one, which flies to what its own place points at, on screen or in the window)
+    if (s?.name === a.name) {
+      if (!pointing(a, s)) continue
+      if (!onScreen(a)) { const p = inAppPoint(a); if (p) aimed = { id: placeKey(a), x: p.x, y: p.y }; continue }
+      const e = pointOf(a)
+      if (e.p && !e.covered) aimed = { id: placeKey(a), x: e.p.x, y: e.p.y, frame: a.frame ?? e.target }
+      continue
+    }
+    if (!onScreen(a)) continue
     // (a new place being found: it stays where it was meanwhile, or where it was summoned)
     const e = pointOf(a), p = e.p ?? (e.pending ? drawnAt.get(keyOf(a)) ?? (s?.name === a.name ? s.p : undefined) : null)
     if (!p || e.covered) continue
@@ -1212,6 +1265,16 @@ function draw() {
   lastScene = { ...handOff(agents, called), pill, speaking: speakingNow }
   showOverlay(based || null, lastScene)
   badge()
+  rides()
+  settle()
+}
+/** Who rides with the pointer now (summoned: listening, thinking, its exchange on), as the server was last told: the
+ *  windows draw no cursor of its, nor its arrow at work in the status bar, meanwhile. */
+let ridingSaid: string | null = null
+function rides() {
+  const now = summon?.name ?? ""
+  if (now === ridingSaid) return
+  if (live.say({ t: "riding", agent: now })) ridingSaid = now
 }
 /** The menu bar icon's badge: how many of its words weren't seen, and jobs ended that weren't opened. */
 function badge() {

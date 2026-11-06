@@ -175,6 +175,8 @@ export function voice(o: VoiceOptions) {
     stop: silence,
     /** Whether an answer is being spoken (some of it still to come or to play). */
     on: () => on,
+    /** Whether pieces of it are still to go out to the player (made or being made). */
+    ahead: () => head < slots.length,
     /** The pieces so far, for tests. */
     pieces: () => slots.map((s) => ({ ...s.p, state: s.state })),
   }

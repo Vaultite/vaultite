@@ -49,7 +49,8 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
     },
     size: (h) => ipcRenderer.send("panel:size", h),
     send: (text) => ipcRenderer.send("panel:send", text),
-    close: () => ipcRenderer.send("panel:close"),
+    // (`esc`: Esc in it, which ends its exchange; its close leaves what it says going on)
+    close: (esc) => ipcRenderer.send("panel:close", esc === true),
     mic: () => ipcRenderer.send("panel:mic"),
     more: (x, y) => ipcRenderer.send("panel:more", { x, y }),
   },
