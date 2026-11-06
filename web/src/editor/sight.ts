@@ -3,7 +3,7 @@ import { EditorSelection } from "@codemirror/state"
 import { EditorView, ViewPlugin } from "@codemirror/view"
 import { lineInSight, sightOf, wholly } from "@/core/sight"
 import { scrollingBox } from "@/lib/utils"
-import { offBlocks } from "./livePreview"
+import { offBlocks, textStart } from "./livePreview"
 
 /** The cursor as you type, a found word, a jump: clear of the bars drawn over the text (CodeMirror sees only its scroller). */
 export const sightMargins = EditorView.scrollMargins.of((view) => {
@@ -24,10 +24,9 @@ export const followReader = ViewPlugin.define((view) => {
     if (view.hasFocus || !sel.empty || !view.dom.getClientRects().length || wholly(view, sel.head)) return
     const s = sightOf(view.dom)
     if (s.top >= view.documentTop + view.contentHeight || s.bottom <= view.documentTop) return
-    let pos = offBlocks(view.state, lineInSight(view))
-    // (past a heading's hidden #s: a caret in them is drawn nowhere, and what acts at it has no place)
-    const line = pos === null ? null : view.state.doc.lineAt(pos), marks = line && pos === line.from ? /^#{1,6}[ \t]+/.exec(line.text) : null
-    if (pos !== null && marks) pos += marks[0].length
+    // (at its text, past a heading's #s, a quote's > or a task's box: a caret in hidden marks is drawn nowhere)
+    const at = offBlocks(view.state, lineInSight(view))
+    const pos = at !== null && at === view.state.doc.lineAt(at).from ? textStart(view.state, at) : at
     if (pos !== null && pos !== sel.head) view.dispatch({ selection: EditorSelection.cursor(pos), userEvent: "select.follow" })
   }
   const settle = () => { clearTimeout(timer); timer = window.setTimeout(follow, 150) }

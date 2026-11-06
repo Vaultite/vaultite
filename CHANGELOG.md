@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **On a phone, the caret that follows your reading sits on a line's text**: past a quote's mark or a list item's bullet
+  and box too, not only a heading's #s, where nothing could find it on screen.
 - **Sidebar panels that aren't lists keep their room**: when the Conversations panel's talk (or another panel that
   isn't rows) was taller than the room left, it folded to its heading and showed nothing; it now takes the room and
   scrolls, and the wheel at the talk's end brings its ask line in.
