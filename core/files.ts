@@ -11,6 +11,7 @@ import { ARCHIVE_DIR, inArchive } from "./fileprops.ts"
 import { extOf, isTextKind, kindOf, tooBig } from "./filetypes.ts"
 import { highlighter, matches, type Node, parse, type SearchDoc, SearchError } from "./searchquery.ts"
 import { merge3 } from "./textedit.ts"
+import { xmlDecode } from "./unzip.ts"
 import { applyEdit, editOf, textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { prose } from "./frontmatter.ts"
@@ -480,6 +481,14 @@ function searchFiles(vault: Vault) {
 const DATA_URL = /(data:[\w.+-]+\/[\w.+-]+;base64,)[A-Za-z0-9+/=]{256,}/g
 const searchText = (t: string) => t.replace(DATA_URL, "$1…")
 
+const PAGE = new Set(["html", "htm"])
+const MARKUP = /<!--[\s\S]*?-->|<(script|style|template)\b[\s\S]*?<\/\1\s*>|<[^>]*>/gi
+/** A web page as search reads it: its words, not its markup, scripts or styles (an app's can be megabytes of code and
+ *  data), each on its line in the file (what's left out keeps its line breaks), entities decoded. */
+export function pageText(html: string): string {
+  return xmlDecode(html.replace(MARKUP, (m) => (m.includes("\n") ? m.replace(/[^\n]+/g, "") : " "))).replace(/[ \t\u00a0]+/g, " ")
+}
+
 /** A file's text to search, read now: null when it isn't text; DISK when it's too big to keep (read when searched);
  *  undefined while it's only in iCloud (asked for, not waited on: tried again next time). */
 async function readIndexed(abs: string, rel: string, reader: Reader | null, room: number): Promise<string | null | undefined> {
@@ -494,9 +503,13 @@ async function readIndexed(abs: string, rel: string, reader: Reader | null, room
     const head = Buffer.alloc(Math.min(st.size, 8000))
     await fh.read(head, 0, head.length, 0)
     if (head.includes(0)) return null
-    if (st.size > PIECE || st.size > room) return DISK
+    const page = PAGE.has(extOf(rel))
+    if (st.size > PIECE || (!page && st.size > room)) return DISK
     const text = textOf(await fh.readFile())
-    return text === null ? null : searchText(text)
+    if (text === null) return null
+    if (!page) return searchText(text)
+    const words = searchText(pageText(text))
+    return words.length > room ? DISK : words
   } finally {
     await fh.close()
   }
@@ -564,7 +577,11 @@ async function* pieces(abs: string): AsyncGenerator<string> {
 async function* textsOf(vault: Vault, rel: string, f: Indexed): AsyncGenerator<string> {
   if (f.text === null) return
   if (f.text !== DISK) { yield f.text; return }
-  if (!f.reader) { yield* pieces(vault.abs(rel)); return }
+  if (!f.reader) {
+    const page = PAGE.has(extOf(rel))
+    for await (const piece of pieces(vault.abs(rel))) yield page ? pageText(piece) : piece
+    return
+  }
   let text = ""
   try { text = String(f.reader(await fs.promises.readFile(vault.abs(rel)), rel) ?? "") } catch { /* gone meanwhile */ }
   if (text) yield text

@@ -620,6 +620,8 @@ export class Entry {
   kind: Kind | null
   fm: Item = {}
   body = ""
+  /** The file's text as read (line ends as \n): fm and body come from it, and body is a slice of it, so it costs no memory. */
+  text = ""
   /** The file's line (0-based) the body starts on, past the frontmatter and blank lines. */
   bodyLine = 0
   item: Item | null = null
@@ -1520,13 +1522,14 @@ export class Vault {
       const t = text ?? readText(this.abs(rel))
       if (typeof t !== "string") throw t
       ;[e.fm, e.body] = parseText(t)
+      e.text = t
       e.bodyLine = bodyLine(t)
     } catch (ex) {
       // Keep what we had, so a half-written or broken file doesn't make its item vanish.
       const name = ex instanceof YAMLError ? "YAMLError" : ex instanceof TypeError ? "UnicodeDecodeError" : "OSError"
       e.problems = [`can't read the frontmatter (${name}); nothing from this file was updated`]
       e.broken = true
-      if (old) { e.fm = old.fm; e.body = old.body; e.bodyLine = old.bodyLine; e.item = old.item; e.kind = old.kind } else e.kind = this.kindFor(rel, {})
+      if (old) { e.fm = old.fm; e.body = old.body; e.text = old.text; e.bodyLine = old.bodyLine; e.item = old.item; e.kind = old.kind } else e.kind = this.kindFor(rel, {})
       this.entries.set(rel, e)
       return e
     }

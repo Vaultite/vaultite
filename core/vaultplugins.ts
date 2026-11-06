@@ -143,10 +143,18 @@ function builtCss() {
 /** A class name as a CSS selector writes it (CSS.escape, for the characters Tailwind's names have). */
 const escapeClass = (c: string) => c.replace(/^(\d)/, "\\3$1 ").replace(/[^\w-]/g, (ch) => `\\${ch}`)
 
-/** Its Tailwind classes in the `plugins` layer, under the app's utilities, so it never restyles the app. Variants the
- *  app lacks (`md:-m-1`) go in `plugin-variants` above them, to win on its own elements as they would in the app. */
-async function styles(dir: string, used: Set<string>) {
-  const { compile } = await import("@tailwindcss/node")
+/** The classes the app's built stylesheet has, as its selectors write them: read once per stylesheet. */
+let appClasses: { file: string; names: Set<string> } | null = null
+function classesOfApp() {
+  const text = builtCss(), file = appCss?.file ?? ""
+  if (appClasses?.file !== file) appClasses = { file, names: new Set([...text.matchAll(/\.((?:\\[0-9a-fA-F]{1,6} |\\.|[\w-])+)(?=[{:, >[.])/g)].map((m) => m[1])) }
+  return appClasses.names
+}
+
+/** Its styles (compileStyles), kept by what they're made of (its classes, which of them the app has): an app update
+ *  rarely changes a plugin's. */
+const stylesFile = new Map<string, string>() // each plugin's styles' cache file, as last made or read (build keeps it)
+async function styles(id: string, dir: string, used: Set<string>) {
   const { Scanner } = await import("@tailwindcss/oxide")
   const scanner = new Scanner({})
   const candidates = new Set<string>()
@@ -155,8 +163,23 @@ async function styles(dir: string, used: Set<string>) {
     if (!/\.[jt]sx?$/.test(f) || !used.has(f)) continue
     for (const c of scanner.getCandidatesWithPositions({ content: readText(f), extension: path.extname(f).slice(1) })) candidates.add(c.candidate)
   }
-  const app = builtCss()
-  const theirs = (c: string) => [..."{:, >[."].some((ch) => app.includes(`.${escapeClass(c)}${ch}`))
+  const app = classesOfApp()
+  const theirs = (c: string) => app.has(escapeClass(c))
+  const sorted = [...candidates].sort()
+  const key = crypto.createHash("sha256").update(BUILD).update(CODE).update(dir).update(sorted.map((c) => `${c}\0${theirs(c) ? 1 : 0}`).join("\n")).digest("hex").slice(0, 12)
+  const file = path.join(CACHE, `${id}-styles-${key}.json`)
+  stylesFile.set(id, path.basename(file))
+  try { return JSON.parse(readText(file)) as string } catch { /* not made yet */ }
+  const css = await compileStyles(dir, candidates, theirs)
+  fs.mkdirSync(CACHE, { recursive: true })
+  writeAtomic(file, JSON.stringify(css))
+  return css
+}
+
+/** Its Tailwind classes in the `plugins` layer, under the app's utilities, so it never restyles the app. Variants the
+ *  app lacks (`md:-m-1`) go in `plugin-variants` above them, to win on its own elements as they would in the app. */
+async function compileStyles(dir: string, candidates: Set<string>, theirs: (c: string) => boolean) {
+  const { compile } = await import("@tailwindcss/node")
   const top = [...candidates].filter((c) => c.replace(/\[[^\]]*\]/g, "").includes(":") && !theirs(c))
   const props: string[] = []
   const layer = async (name: string, list: string[]) => {
@@ -259,7 +282,7 @@ const MAIN = "main.js" // (not a chunk's name: theirs have a hash)
 
 /** The bundle as the app loads it: its code with its styles (its Tailwind classes, compiled against the app's). */
 async function withStyles(vp: VaultPlugin, c: Code) {
-  const css = c.sheets.join("\n") + await styles(fs.realpathSync(vp.dir), new Set(c.used))
+  const css = c.sheets.join("\n") + await styles(vp.id, fs.realpathSync(vp.dir), new Set(c.used))
   const style = `globalThis.__vaultite.style(${JSON.stringify(vp.id)}, ${JSON.stringify(css)});\n`
   if (!c.preload.length) return { code: style + c.entry, chunks: c.chunks }
   // Imported only once they're there: a static import (a chunk the module shares with its import()s) runs before
@@ -531,17 +554,19 @@ export class VaultPlugins {
       try {
         built = JSON.parse(readText(file))
       } catch {
-        let code: Code
+        let code: Code, bundled = false
         try { code = JSON.parse(readText(codeFile)) } catch {
           code = await bundle(vp)
+          bundled = true
           // (what it read as it built is what was allowed: the app runs it as the user's own code)
           if (digestOf(vp.dir).content !== vp.digest.content) throw new Error("its files changed as it was built: it's built again once allowed")
         }
         built = await withStyles(vp, code)
         fs.mkdirSync(CACHE, { recursive: true })
-        const mine = new RegExp(`^${vp.id.replace(/[^\w-]/g, "\\$&")}-(code-)?[0-9a-f]{12}\\.json$`) // (not claude-chat's for claude)
-        for (const old of fs.readdirSync(CACHE)) if (mine.test(old)) fs.rmSync(path.join(CACHE, old), { force: true })
-        writeAtomic(codeFile, JSON.stringify(code))
+        const mine = new RegExp(`^${vp.id.replace(/[^\w-]/g, "\\$&")}-(code-|styles-)?[0-9a-f]{12}\\.json$`) // (not claude-chat's for claude)
+        const keep = new Set([path.basename(codeFile), stylesFile.get(vp.id)])
+        for (const old of fs.readdirSync(CACHE)) if (mine.test(old) && !keep.has(old)) fs.rmSync(path.join(CACHE, old), { force: true })
+        if (bundled) writeAtomic(codeFile, JSON.stringify(code))
         writeAtomic(file, JSON.stringify(built))
       }
       vp.bundle = { hash: vp.hash, ...built }

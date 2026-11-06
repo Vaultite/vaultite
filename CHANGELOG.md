@@ -22,6 +22,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   goes to the note's history first. `vau conflicts` lists the files that have one.
 - **Recaps are written by one machine only**: `vau recap --write` on another Mac is passed on to the machine that writes
   them (Machines' first, which runs their job), so two Macs never write a day's recap at once.
+- **Search reads web pages for their words**: an HTML file is searched for the text it shows (its title and body), not
+  its markup, scripts or styles, so a page that is an app no longer matches on its code, and the first search after a
+  start holds less in memory.
+- **The server starts faster after an update**: a vault plugin's styles are kept by what they're made of, so an update
+  no longer restyles every vault plugin as the server starts (half a second less with 27 of them).
 - **The companion's take-over offer waits for your answer**: it stays by your pointer until you click Do it or Not now,
   say yes or no, press Esc, click elsewhere or ask something else, instead of going after 30 seconds, even mid-sentence.
 - **The Talk key's companion answers every ask**: one it handled with a tool alone (closing a job, following a pane)
