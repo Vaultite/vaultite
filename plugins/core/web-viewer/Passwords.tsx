@@ -263,7 +263,7 @@ export async function removeEntry(e: Row, full?: Full) {
   const ok = await deleting.remove(e.id, () => call("delete", e.id), "Couldn't delete it")
   if (!ok) return
   if (inBin) return notify(`Deleted “${name}”`)
-  notify(`Moved “${name}” to the recycle bin`, kept ? { action: { label: "Undo", run: () => call("save", changeOf(kept!)) } } : {})
+  notify(`Moved “${name}” to the recycle bin`, kept ? { action: { label: "Undo", run: () => { deleting.back([e.id]); return call("save", changeOf(kept!)) } } } : {})
 }
 
 // ---------- agents' logins: every use, newest first ----------

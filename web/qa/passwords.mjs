@@ -167,7 +167,8 @@ await sheet.locator("[data-password-delete]").click()
 check("Delete: off the list at once, with Undo", await until(async () => !(await rows()).includes("Ferry"), 3000) && await until(() => toast("to the recycle bin").count(), 2000) > 0, await rows())
 check("… in the file's recycle bin", await until(async () => (await reread()).find((e) => e.title === "Ferry")?.group === "Recycle Bin", 3000), (await reread()).map((e) => `${e.title}:${e.group}`))
 await toast("to the recycle bin").locator("[data-button]").click()
-check("Undo puts it back in its group", await until(async () => (await reread()).find((e) => e.title === "Ferry")?.group === "Work", 5000) && await until(async () => (await rows()).includes("Ferry"), 3000))
+check("Undo puts it back in its group", await until(async () => (await reread()).find((e) => e.title === "Ferry")?.group === "Work", 5000) && await until(async () => (await rows()).includes("Ferry"), 3000),
+  [await win.locator("[data-sonner-toast]").allInnerTexts(), (await reread()).map((e) => `${e.title}:${e.group}`)])
 
 // ---------- the lock ----------
 await win.locator('[data-passwords-action="lock"]').click()
