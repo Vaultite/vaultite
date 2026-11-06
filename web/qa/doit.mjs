@@ -3,7 +3,7 @@
 // WRITES fixtures (QA/ in the vault): throwaway server only.
 //   node web/qa/doit.mjs <base url> <vault path>
 import { mkdirSync, writeFileSync } from "node:fs"
-import { apiAt, qa, until, SHOTS as OUT } from "./lib/qa.mjs"
+import { apiAt, qa, until, wait, SHOTS as OUT } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 mkdirSync(`${VAULT}/QA`, { recursive: true })
@@ -36,6 +36,8 @@ check("drawn: hidden until hovered", await read.evaluate((b) => getComputedStyle
 await page.locator("[data-embed] li", { hasText: "Compare the two flights" }).first().hover()
 check("drawn: shown on hover", await until(() => read.evaluate((b) => getComputedStyle(b).opacity === "1"), 2000))
 await page.screenshot({ path: `${OUT}doit-read.png` })
+// (the same task tapped again within moments is taken for one tap)
+await wait(3100)
 await read.click()
 check("drawn: a click hands over its note, line and words", await until(() => asked.length === 1, 3000) && asked[0].path === "QA/Errands.md" && asked[0].text === "Compare the two flights" && asked[0].line === 6, asked)
 asked.length = 1
@@ -49,4 +51,20 @@ await row.locator("[data-do-it]").click()
 check("a click hands over its words", await until(() => asked.length === 2, 3000) && asked[1].text === "Tidy the trip note" && !asked[1].path, asked)
 check("and settles it", await until(() => row.count().then((n) => n === 0), 5000))
 await page.close()
+
+// A phone: no hover, so only the caret's line shows it, and a tap hands it over.
+const phone = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage()
+watch(phone)
+const tapped = []
+await phone.route("**/api/ops/companion.do", (r) => { tapped.push(r.request().postDataJSON()); return r.fulfill({ json: { id: "j2", title: "Water the fern", agent: "claude", state: "running", link: null, unseen: false, at: 1 } }) })
+writeFileSync(`${VAULT}/QA/Phone.md`, "---\ntype: note\n---\n- [ ] Water the fern\n- [ ] Call the dentist\n")
+await phone.goto(`${B}#file/${encodeURIComponent("QA/Phone.md")}`)
+const line2 = phone.locator(".cm-line", { hasText: "Water the fern" })
+await line2.waitFor({ timeout: 20000 })
+await line2.tap()
+const onPhone = phone.locator(".cm-do-it")
+check("phone: the caret's line has it, only that one", await until(() => onPhone.count().then((n) => n === 1), 5000) && await onPhone.evaluate((b) => getComputedStyle(b).opacity) === "1", await onPhone.count())
+await onPhone.tap()
+check("phone: a tap hands it over", await until(() => tapped.length === 1, 3000) && tapped[0].text === "Water the fern", tapped)
+await phone.close()
 done()

@@ -2328,22 +2328,30 @@ starts at once through companion handoff.
   run: async (p, ctx) => {
     const rel = str(p.path), words = str(p.text).trim()
     if (!rel && !words) throw new OpError("say what: a note's path and line, or the task's text")
-    let line = "", at = 0
+    let line = "", at = 0, mark: { old: string; new: string } | null = null
     if (rel) {
-      const lines = fs.readFileSync(plugin.vault.abs(rel), "utf8")
-      const i = openTaskLine(lines, Number(p.line) || 0, words)
+      const src = fs.readFileSync(plugin.vault.abs(rel), "utf8"), i = openTaskLine(src, Number(p.line) || 0, words), lines = src.split("\n")
       if (i < 0) throw new OpError(`no open task ${words ? `"${cut(words, 60)}" ` : ""}at line ${p.line} of ${rel}`, 404)
-      line = lines.split("\n")[i]
+      line = lines[i]
       at = i + 1
+      // In progress first: a second tap (another device's) finds it taken, and two workers never start.
+      let before = ""
+      // (the lines above it tell twins apart)
+      for (let k = i - 1; k >= 0 && src.indexOf(before + line) !== src.lastIndexOf(before + line); k--) before = `${lines[k]}\n${before}`
+      mark = { old: before + line, new: before + line.replace("[ ]", "[/]") }
+      await ctx.op("file.edit", { path: rel, ...mark }).catch(() => { throw new OpError(`that task was just handed over, or changed: ${cut(line.trim(), 60)}`, 409) })
     }
     const said = rel ? line.replace(/^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s+/, "") : words
     const task = rel
       ? [`Do this task from the note ${rel} (line ${at}): ${said}`, "Read the note first: it's the context. When it's fully done, mark the line done (tasks_complete, or `[x]` with vau edit). If it needs the user (a decision, a sign-in, anything outward like a post or a message), leave it open and say what you need."].join("\n\n")
       : [`Do this: ${said}`, "If it needs the user (a decision, a sign-in, anything outward like a post or a message), stop and say what you need."].join("\n\n")
-    const job = await ctx.op("companion.handoff", { task, say: `On it: ${cut(said, 60)}`, title: cut(said, 80) })
-    // (in progress once it's really started; a line changed meanwhile just stays as it is)
-    if (rel) await ctx.op("file.edit", { path: rel, old: line, new: line.replace("[ ]", "[/]") }).catch(() => {})
-    return job
+    try {
+      return await ctx.op("companion.handoff", { task, say: `On it: ${cut(said, 60)}`, title: cut(said, 80) })
+    } catch (e) {
+      // (nobody's on it: the line's open again)
+      if (mark) await ctx.op("file.edit", { path: rel, old: mark.new, new: mark.old }).catch(() => {})
+      throw e
+    }
   },
   text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}.`,
   did: (p) => ({ action: "run", text: `Do it: ${JSON.stringify(cut(str(p.text) || `${str(p.path)}:${p.line}`, 60))}` }),
