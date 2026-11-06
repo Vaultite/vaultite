@@ -567,7 +567,10 @@ export function termdBackend(name: string, o: { daemon: string; log?: (...a: unk
     if (!ctl) {
       // (a connection that closes clears only itself: a retired server's can close after the next one's is made)
       const p: Promise<Wire> = open().then(async (w) => {
-        w.onClose = () => { if (ctl === p) ctl = null }
+        const at = Date.now()
+        // (its events are heard only on a control connection: one that closed is made again while the server runs, or a
+        // terminal's state and end would go unheard till some call made one; soon, unless it closed at once)
+        w.onClose = () => { if (ctl !== p) return; ctl = null; setTimeout(() => { if (!ctl) void running() }, Date.now() - at > 5000 ? 500 : 10_000).unref?.() }
         client.follow(w)
         await takeOver(w, o.oldServers ?? [], o.log && ((...a) => o.log!("terminal:", ...a)))
         return w
