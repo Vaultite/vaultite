@@ -9,7 +9,7 @@ import { errorReason, notify } from "@/core/notify"
 import { dropDraft, keepDraft } from "@/core/drafts"
 import { trackUnsaved } from "@/core/unsaved"
 import { applyEdit, editOf, LEAN_PAST, textHash } from "../../../core/texthash.ts"
-import { keptLive } from "@/core/cosync"
+import { keptLive, onHandBack, typedLive } from "@/core/cosync"
 import { trace } from "@/core/trace"
 
 /** A conflict: `base` the text both sides started from, `lines` where they clash (the file's, 1-based), `who` the agent
@@ -102,6 +102,8 @@ export type SaveEvent =
   /** The save's answer is in (`again`: what's on disk was a save of ours whose answer was lost: save on top of it). */
   | { type: "saved"; again?: boolean } | { type: "failed"; retry: boolean }
   | { type: "clash" } | { type: "resolve" } | { type: "retry" } | { type: "close" } | { type: "mount" }
+  /** Saving's back from a live session (core/cosync.ts), on the text the server has after it. */
+  | { type: "rebase" }
 
 /** What a step starts: the typing timer, a save, a read, the last send without the view, the status said again, the
  *  device's draft dropped, an error said no more (all saved). */
@@ -176,6 +178,13 @@ export function step(p: Phase, e: SaveEvent, nothing: () => boolean): { to: Phas
       // (React's strict mode closes and draws a view again at once)
       if (p.kind === "closing") return go(p.was)
       return p.kind === "gone" ? rest(false) : go(p)
+    case "rebase":
+      // (what the server lacks is sent at once: the session may have gone with the socket; a read on its way was made on
+      // the old base)
+      if (p.kind === "checking") return go({ kind: "checking", again: false }, "read")
+      if (p.kind === "saving") return go({ ...p, again: true })
+      if (p.kind !== "idle" && p.kind !== "pending" && p.kind !== "error") return go(p)
+      return nothing() ? rest(p.kind === "pending" && p.recheck) : send(p.kind === "pending" && p.recheck)
   }
 }
 
@@ -330,6 +339,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
       }
       const r = known ?? await readFile(where())
       if (!mine()) return
+      if (keptLive(where())) return void go({ type: "read" })
       if (r.text === before) return void go({ type: "read" })
       const typed = now(), own = ownSave(r.text, before)
       if (own !== undefined) unconfirmed = []
@@ -383,7 +393,7 @@ export function makeAutosave(path: string, initial: string, options: Options) {
   /** Send what's pending without the view (it's going); a failure is a toast holding the edits. */
   const flush = (base: string, say: boolean) => {
     const text = now()
-    if (text === base || o.current.readOnly || keptLive(where())) return
+    if (text === base || o.current.readOnly || typedLive(where())) return
     // (kept here first: a save too big for keepalive is a plain one, which a closed window may cut short)
     keepDraft(path, text, base)
     const send = async (base: string | null) => {
@@ -433,11 +443,17 @@ export function makeAutosave(path: string, initial: string, options: Options) {
       addEventListener("online", back)
       document.addEventListener("visibilitychange", shown)
       const unback = onReconnect(back)
-      const untrack = trackUnsaved(() => !o.current.readOnly && !keptLive(where()) && (phase.kind === "pending" || phase.kind === "saving" || status.kind !== "ok" || now() !== s.disk), where)
+      const unhand = onHandBack((p, base) => {
+        if (p !== where()) return
+        if (base !== null && base !== s.disk) { s.disk = base; mtime = 0; unconfirmed = [] }
+        go({ type: "rebase" })
+      })
+      const untrack = trackUnsaved(() => !o.current.readOnly && !typedLive(where()) && (phase.kind === "pending" || phase.kind === "saving" || status.kind !== "ok" || now() !== s.disk), where)
       return () => {
         ghost = o.current.text()
         untrack()
         unback()
+        unhand()
         removeEventListener("pagehide", leave)
         removeEventListener("online", back)
         document.removeEventListener("visibilitychange", shown)

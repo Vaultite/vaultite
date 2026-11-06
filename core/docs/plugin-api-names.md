@@ -325,8 +325,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isWindows`: A Windows computer.
 - `joinText(before, text)`: `text` said after `before` (what precedes where it goes): a space between words, none before punctuation or at a line's start.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
-- `keepLive(path)`: A live session keeps `path` from now: returns how to say it stopped.
-- `keptLive(path)`: Whether a live session keeps `path` now.
+- `keepLive(path)`: A live session takes `path`'s saving (joining it): `live` once typed in, `handBack` on `base` (the text the server has then; none: what its editors last saved).
+- `keptLive(path)`: Whether a live session keeps `path` now (joining it or typed in): its editors' autosave stands down.
 - `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard.
 - `keyboardBusy(mine?)`: Whether the keyboard is someone else's (an overlay, or a field outside `mine`), so a view focusing itself (a terminal reconnecting) must leave it.
 - `keyboardUp()`: The on-screen keyboard is up: the visible part of the page is well short of the window.
@@ -613,7 +613,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SettingRow({ label, sub, stack, below, value, onClick, chevron, preview, children, className, … })`: A setting: name and line on the left, control on the right (`stack`: under it on phones; `below`: always, a chip list); `onClick`: a button with `value` and a chevron; `preview`: pictures of what…
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
-- `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).
+- `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent): the text the server has then, as the first editor knows it (undefined: none open; a…
 - `setUiMarks(owner, marks)`: `owner`'s marks now, by data-ui id (an empty map takes them all down).
 - `severalMachines()`: Whether this vault runs on another machine too (a command about machines is offered only then): false until known, asked once in the background.
 - `share`

@@ -14,6 +14,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   menu bar's notification waits for you. Off with the setting Say a job's news.
 - **A server following a branch keeps up with a busy one**: when the newest commit hasn't passed CI yet (pushes coming
   faster than CI runs), `vau service`'s updates take the newest one that has, rather than waiting for a quiet moment.
+- **Typing together, then alone, saves without a false conflict**: once the others leave a note, or the connection
+  drops (often on a phone), what you type on saves on top of what you all typed, rather than asking you to settle a
+  conflict over it, and text typed just as someone joins no longer shows up twice (plugin API 9: `keepLive` returns
+  a hold, `live()` and `handBack(base)`).
 - **A finished agent's tab never starts it again after a restart**: a session you ended stays ended when its tab comes
   back after Vaultite restarts (a deploy), rather than resuming the conversation by itself.
 - **A reply to a handed-off agent is never cut off**: replying from the Inbox before its turn ended no longer lets that

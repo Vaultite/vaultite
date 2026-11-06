@@ -30,12 +30,25 @@ const AUTOSAVE_STUBS: Record<string, string> = {
   "@/core/notify": "export const errorReason = (e) => e?.message ?? null; export const notify = (text) => { globalThis.__autosave.toasts.push(text) }",
   "@/core/drafts": "export const keepDraft = () => {}; export const dropDraft = () => {}",
 }
+// Co-typing's socket, editors and app (plugins/core/companion/cotype.ts): the made-up ones on globalThis.__cotype, its
+// hold on a note the app's own (core/cosync.ts, as autosave has it).
+const COTYPE_STUBS: Record<string, string> = {
+  "./live": `const f = () => globalThis.__cotype; export const getState = () => f().state; export const say = (m) => f().say(m)
+    export const setPeople = () => {}; export const setRooms = (r) => { f().rooms = r }; export const subscribe = (fn) => { f().subs.add(fn); return () => f().subs.delete(fn) }`,
+  "@vaultite": `export { keepLive } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "cosync.ts")).href)}
+    export { merge3 } from ${JSON.stringify(pathToFileURL(path.join(ROOT, "core", "textedit.ts")).href)}
+    export const notify = () => {}; export const settleFile = (p) => globalThis.__cotype.settleFile(p)`,
+  "@codemirror/view": "export const ViewPlugin = { define: (create) => ({ create }) }; export const EditorView = { scrollIntoView: () => null }",
+  "y-codemirror.next": "export const ySyncAnnotation = {}; export const yCollab = (ytext) => ({ ytext })",
+  "./text": `export * from ${JSON.stringify(pathToFileURL(path.join(ROOT, "plugins", "core", "companion", "text.ts")).href)}`,
+}
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
 const shim = path.join(tempDir("vau-shim-"), "vaultite.ts")
 fs.writeFileSync(shim, `export { blockPieces, paragraphAt } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}
 export { joinText } from ${JSON.stringify(pathToFileURL(path.join(ROOT, "core", "dictationtext.ts")).href)}`)
 registerHooks({
   resolve(spec, context, next) {
+    if (spec in COTYPE_STUBS && context.parentURL?.endsWith("/plugins/core/companion/cotype.ts")) return { url: `data:text/javascript,${encodeURIComponent(COTYPE_STUBS[spec])}`, shortCircuit: true }
     if (spec === "@vaultite") return { url: pathToFileURL(shim).href, shortCircuit: true }
     if (spec in AUTOSAVE_STUBS && context.parentURL?.endsWith("/web/src/core/autosave.ts")) return { url: `data:text/javascript,${encodeURIComponent(AUTOSAVE_STUBS[spec])}`, shortCircuit: true }
     if (spec in STUBS) return { url: `data:text/javascript,${encodeURIComponent(STUBS[spec])}`, shortCircuit: true }
@@ -3402,11 +3415,12 @@ await section("autosave", async () => {
     async request(_m: string, _p: string, body: Any) {
       if (srv.down) throw new TypeError("Failed to fetch")
       const r = handle(body)
+      fake.wrote?.()
       if (srv.gate) await srv.gate
       return r
     },
     async readFile() { return file() },
-    async get() { return { mtime: srv.mtime, size: srv.text.length } },
+    async get(p: string) { return p.startsWith("activity") ? { events: [] } : { mtime: srv.mtime, size: srv.text.length } },
     async putJson(_p: string, b: Any) { srv.text = b.text; srv.mtime++; return file() },
   }
   // (the page's events, which the module listens to as a browser's)
@@ -3421,7 +3435,7 @@ await section("autosave", async () => {
     const said: Any[] = []
     const saver = as.makeAutosave(P, srv.text, { text: () => typed, apply: (t: string) => { typed = t }, onStatus: (s: Any) => said.push(s), onGone: () => {} })
     const close = saver.mount()
-    return { saver, close, said, get text() { return typed }, type(t: string) { typed = t; saver.changed() } }
+    return { saver, close, said, get text() { return typed }, type(t: string) { typed = t; saver.changed() }, set(t: string) { typed = t } }
   }
 
   {
@@ -3513,7 +3527,177 @@ await section("autosave", async () => {
     check("autosave: a save failing with a change on disk heard meanwhile reads it (the file moved: its edits offered back)",
       heard.to.kind === "checking" && heard.do.join() === "read", heard)
   }
-  delete g.addEventListener; delete g.removeEventListener; delete g.document; delete g.__autosave
+
+  // Typed together (plugins/core/companion/cotype.ts) on a made-up room: the server's doc, written to the file when the
+  // test says (its turn, a pause after typing), and what's written on disk merged into it.
+  const Y = await import("yjs"), { fromBase64, toBase64 } = await import("lib0/buffer")
+  const { span } = await plugin("companion/text.ts")
+  const co: Any = g.__cotype = { state: { connected: true }, subs: new Set(), rooms: null, settleFile: async () => {}, say: (m: Any) => co.state.connected && room.said(m) }
+  const { cotype } = await plugin("companion/cotype.ts")
+  const to = (m: Any) => setImmediate(() => co.rooms.heard(m))
+  const into = (t: Any, text: string, origin: unknown) => {
+    const now = t.toString(), [a, b] = span(now, text)
+    t.doc.transact(() => { if (now.length - a - b) t.delete(a, now.length - a - b); if (text.length - a - b) t.insert(a, text.slice(a, text.length - b)) }, origin)
+  }
+  const room: Any = {
+    doc: null, disk: "", others: 0, held: null, lost: false,
+    /** On another machine's rooms (bridge.ts): that machine writes its own copy (`host`), never this server's. */
+    remote: false, host: "",
+    get text() { return room.doc.getText("md") },
+    reset(text: string) {
+      room.doc?.destroy()
+      room.doc = new Y.Doc()
+      room.text.insert(0, text)
+      room.disk = text
+      room.doc.on("update", (u: Uint8Array, origin: unknown) => { if (origin !== "client") to({ t: "y", path: P, u: toBase64(u) }) })
+    },
+    write() { if (room.remote) room.host = room.text.toString(); else { srv.text = room.text.toString(); srv.mtime++; room.disk = srv.text } },
+    reread() { if (srv.text !== room.disk) { into(room.text, merge.merge3(room.disk, room.text.toString(), srv.text) ?? room.text.toString(), "disk"); room.disk = srv.text } },
+    /** The other one types, and it's written. */
+    other(text: string) { into(room.text, text, "other"); room.write() },
+    peers(n: number) { room.others = n; to({ t: "y-peers", path: P, others: n }) },
+    said(m: Any) {
+      if (m.t === "y-open") {
+        room.reread()
+        const u = m.bare ? undefined : toBase64(Y.encodeStateAsUpdate(room.doc)), held = room.held
+        void (async () => { if (!m.bare) await held; to({ t: "y-state", path: P, u, others: room.others, remote: room.remote || undefined }) })()
+      } else if (m.t === "y" && !room.lost) Y.applyUpdate(room.doc, fromBase64(m.u), "client")
+      return true
+    },
+  }
+  /** An editor as cotype.ts sees one; bound (yCollab, stubbed), what's typed goes into the doc and it shows the doc. */
+  const view = (ed: Any) => {
+    let yt: Any = null
+    const mirror = () => ed.set(yt.toString())
+    const v = {
+      dom: { isConnected: true },
+      get state() { return { doc: { toString: () => ed.text, get length() { return ed.text.length } } } },
+      dispatch(spec: Any) {
+        if (spec.changes) {
+          const { from, to, insert } = spec.changes, text = ed.text.slice(0, from) + insert + ed.text.slice(to)
+          if (yt && !spec.annotations) into(yt, text, null); else ed.set(text)
+        }
+        const ext = spec.effects?.value?.extension
+        if (Array.isArray(ext)) { yt?.unobserve(mirror); yt = ext.find((x: Any) => x?.ytext)?.ytext ?? null; yt?.observe(mirror) }
+      },
+      type(text: string) { if (yt) into(yt, text, null); else ed.type(text) },
+    }
+    return v
+  }
+  /** A note open in an editor that co-types: alone till someone comes. */
+  const together = async (text: string) => {
+    srv.text = text
+    room.reset(text)
+    Object.assign(room, { others: 0, remote: false })
+    fake.wrote = () => room.reread()
+    const ed = open(), v = view(ed), plug = cotype(P)[1].create(v)
+    co.settleFile = async () => { await ed.saver.settle(); return ed.saver.disk }
+    await ticks()
+    return { ed, v, close: () => { plug.destroy(); ed.close() } }
+  }
+
+  {
+    const { ed, v, close } = await together("a\n")
+    room.peers(1)
+    await ticks()
+    v.type("a\nmine\n")
+    await ticks()
+    room.write()
+    room.other("a\nmine\ntheirs\n")
+    await ticks()
+    v.type("a\nmine\ntheirs\nlast\n") // (still to be written as the other one leaves)
+    await ticks()
+    room.peers(0)
+    await ticks()
+    room.write()
+    v.type("a\nmine\ntheirs\nlast\nalone\n")
+    await ed.saver.save()
+    await ticks()
+    check("cotype: typed together, then alone, typing on saves on what the server has: no conflict, both sides' text kept",
+      srv.text === "a\nmine\ntheirs\nlast\nalone\n" && !ed.said.some((x: Any) => x.kind === "conflict"), { text: srv.text, said: ed.said.map((x: Any) => x.kind) })
+    close()
+  }
+  {
+    const { ed, v, close } = await together("a\n")
+    v.type("a\nb\n")
+    let saved = () => {}, answer = () => {}
+    srv.gate = new Promise((r) => { saved = r })
+    void ed.saver.save()
+    await ticks()
+    room.held = new Promise<void>((r) => { answer = r })
+    room.peers(1) // (someone came as it saved)
+    await ticks()
+    srv.gate = null
+    saved()
+    await ticks()
+    v.type("a\nb\nc\n") // (typed as the doc is on its way)
+    await ed.saver.save()
+    await ticks()
+    answer()
+    room.held = null
+    await ticks()
+    room.write()
+    check("cotype: joined mid-save, what's typed as the doc comes is in it once", srv.text === "a\nb\nc\n" && ed.text === "a\nb\nc\n", { disk: srv.text, editor: ed.text })
+    room.peers(0)
+    await ticks()
+    close()
+  }
+  {
+    const { ed, v, close } = await together("a\n")
+    room.peers(1)
+    await ticks()
+    v.type("a\nmine\n")
+    await ticks()
+    room.write()
+    room.other("a\nmine\ntheirs\n")
+    await ticks()
+    room.lost = true // (a phone's stuck tunnel: what's sent from here never gets there)
+    v.type("a\nmine\ntheirs\nlost\n")
+    await ticks()
+    co.state.connected = false
+    for (const fn of co.subs) fn()
+    await ed.saver.settle()
+    await ticks()
+    check("cotype: the socket gone, what the server never got is saved, the rest kept, no conflict",
+      srv.text === "a\nmine\ntheirs\nlost\n" && !ed.said.some((x: Any) => x.kind === "conflict"), { text: srv.text, said: ed.said.map((x: Any) => x.kind) })
+    close()
+    room.lost = false
+    co.state.connected = true
+  }
+  {
+    // On another machine's rooms: it goes (typed on here alone, saved on this machine), and comes back.
+    const { ed, v, close } = await together("a\n")
+    fake.wrote = undefined
+    room.remote = true
+    room.peers(1)
+    await ticks()
+    v.type("a\nmine\n")
+    await ticks()
+    room.other("a\nmine\ntheirs\n")
+    await ticks()
+    room.remote = false // (this server's own room, asked again: no one else in it)
+    room.others = 0
+    to({ t: "y-gone", path: P })
+    await ticks()
+    v.type("a\nmine\ntheirs\naway\n")
+    await ed.saver.save()
+    await ticks()
+    const here = srv.text
+    room.remote = true
+    room.others = 1
+    to({ t: "y-state", path: P, u: toBase64(Y.encodeStateAsUpdate(room.doc)), others: 1, remote: true }) // (back)
+    await ticks()
+    room.write()
+    check("cotype: another machine's rooms gone and back, what was typed here meanwhile is saved here, then reaches it once",
+      here === "a\nmine\ntheirs\naway\n" && room.host === "a\nmine\ntheirs\naway\n" && !ed.said.some((x: Any) => x.kind === "conflict"),
+      { here, there: room.host, said: ed.said.map((x: Any) => x.kind) })
+    room.remote = false
+    room.peers(0)
+    await ticks()
+    close()
+  }
+  delete fake.wrote
+  delete g.addEventListener; delete g.removeEventListener; delete g.document; delete g.__autosave; delete g.__cotype
 })
 
 await exit(summary("web", t0))

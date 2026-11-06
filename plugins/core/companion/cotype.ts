@@ -11,18 +11,20 @@ import { getState, type Person, say, setPeople, setRooms, subscribe } from "./li
 import { span } from "./text"
 
 /** A note open here: its doc as the server has it (`ready`), the editors showing it, whether they type into it now
- *  (`bound`, while `others` are in it too) and the autosave's stand-down meanwhile (`release`). */
+ *  (`bound`, while `others` are in it too) and the session's hold on its saving, from asking for the doc (`hold`). */
 type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness | null; views: Set<EditorView>; ready: boolean; bound: boolean; others: number
-  release: (() => void) | null; joining: boolean
+  hold: ReturnType<typeof keepLive> | null; joining: boolean
   /** The doc asked for and not here yet: asked again meanwhile, it would come twice. */
   asking: boolean
   /** Saving alone even with others (the server says: a guest in a note too long to type in together). */
   alone: boolean
-  /** Saved alone, just before asking for the doc: the text then, so what's typed till it comes isn't lost. */
+  /** Saved alone, just before asking for the doc: the text the server has then, so what's typed till it comes isn't lost. */
   settled: string | null
-  /** Typed in on another machine's rooms, which writes it (its guests are there: bridge.ts): bound even alone, and the
-   *  text as that machine last sent it (`synced`), what's typed here since goes back in if it goes and comes back. */
-  remote: boolean; synced: string | null }
+  /** Typed in on another machine's rooms, which writes it (its guests are there: bridge.ts): bound even alone. */
+  remote: boolean
+  /** The text as the server (or that machine) last sent it: what's typed here since goes back in if it goes and comes
+   *  back, and is what autosave sends if the socket goes. */
+  synced: string | null }
 const rooms = new Map<string, Room>()
 const slot = new Compartment()
 /** What the others typed comes in as the server's: not this window's to save, nor to undo. */
@@ -36,7 +38,8 @@ function fresh(r: Room, aware = true) {
   const doc = new Y.Doc(), aw = aware ? new Awareness(doc) : null
   Object.assign(r, { doc, text: doc.getText("md"), aw })
   doc.on("update", (u: Uint8Array, origin: unknown) => {
-    if (origin === "server") { if (r.remote) r.synced = r.text.toString() } else if (r.bound) say({ t: "y", path: r.path, u: toBase64(u) })
+    if (origin === "server") r.synced = r.text.toString()
+    else if (r.bound) say({ t: "y", path: r.path, u: toBase64(u) })
   })
   aw?.on("update", ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
     if (origin === "local" && r.bound) say({ t: "aw", path: r.path, u: toBase64(encodeAwarenessUpdate(aw, [...added, ...updated, ...removed])) })
@@ -45,7 +48,7 @@ function fresh(r: Room, aware = true) {
 }
 
 function open(path: string): Room {
-  const r = { path, views: new Set(), ready: false, bound: false, others: 0, release: null, joining: false, asking: false, settled: null, alone: false, remote: false, synced: null } as unknown as Room
+  const r = { path, views: new Set(), ready: false, bound: false, others: 0, hold: null, joining: false, asking: false, settled: null, alone: false, remote: false, synced: null } as unknown as Room
   fresh(r, false)
   rooms.set(path, r)
   if (getState().connected) say({ t: "y-open", path, bare: true })
@@ -65,7 +68,8 @@ function tellPeople(r: Room) {
 function bind(r: Room) {
   if (!r.aw) return
   r.bound = true
-  r.release ??= keepLive(r.path)
+  r.hold ??= keepLive(r.path)
+  r.hold.live()
   const text = r.text.toString(), first = [...r.views].find((v) => v.dom.isConnected)
   const typed = first && r.settled !== null && first.state.doc.toString() !== r.settled ? merge3(r.settled, first.state.doc.toString(), text) : null
   r.settled = null
@@ -80,43 +84,59 @@ function bind(r: Room) {
   r.aw.setLocalStateField("user", { name: "" }) // (the server says who: its name and colour)
 }
 
-/** Back to saving alone: at once, saving what the server may not have (the socket went); `going`: a moment later, as
- *  the editor goes with it (what the others typed last is the server's to write, not this one's autosave). */
-function unbind(r: Room, how: "alone" | "going" | "again" = "alone") {
-  if (!r.bound) return
-  r.bound = false
-  for (const v of r.views) if (v.dom.isConnected) v.dispatch({ effects: slot.reconfigure([]) })
-  // (its caret goes from the others' screens)
-  if (r.aw) {
-    removeAwarenessStates(r.aw, [r.doc.clientID], "gone")
-    if (getState().connected) say({ t: "aw", path: r.path, u: toBase64(encodeAwarenessUpdate(r.aw, [r.doc.clientID])) })
-    r.aw.destroy()
-    r.aw = null
-  }
-  tellPeople(r)
-  const release = r.release
-  r.release = null
-  if (!release) return
-  if (how === "going") setTimeout(release, 2000)
-  else { release(); if (how === "alone") void settleFile(r.path) }
+/** Back to saving alone: on the doc (`alone`: the others left), or as the server last sent it (`dropped`: the socket
+ *  went, what it never got is saved); `going`, a moment later, as the editor goes; `again`, held for the doc again. */
+function unbind(r: Room, how: "alone" | "dropped" | "going" | "again" = "alone") {
+  // (on another machine's rooms, this server never wrote it: autosave keeps the base it has)
+  const base = !r.bound || how === "going" || r.remote ? null : how === "dropped" ? r.synced : r.text.toString()
+  if (r.bound) {
+    r.bound = false
+    for (const v of r.views) if (v.dom.isConnected) v.dispatch({ effects: slot.reconfigure([]) })
+    // (its caret goes from the others' screens)
+    if (r.aw) {
+      removeAwarenessStates(r.aw, [r.doc.clientID], "gone")
+      if (getState().connected) say({ t: "aw", path: r.path, u: toBase64(encodeAwarenessUpdate(r.aw, [r.doc.clientID])) })
+      r.aw.destroy()
+      r.aw = null
+    }
+    tellPeople(r)
+  } else if (how !== "again" && r.hold) r.settled = null // (a join given up: saved alone from here, what it held is old)
+  // (going: what the others typed last is the server's to write, not this one's autosave)
+  if (how !== "again") handBack(r, base, how === "going")
 }
 
-/** Off another machine's rooms: what it last sent is where typing here goes back in from, when it's back. */
+/** Its editors save it again, on `base` (core/cosync.ts); `later`, a moment from now. */
+function handBack(r: Room, base: string | null, later = false) {
+  const hold = r.hold
+  r.hold = null
+  if (later) setTimeout(() => hold?.handBack(base), 2000)
+  else hold?.handBack(base)
+}
+
+/** Off another machine's rooms, or the socket went: saved here again; what it last sent is where typing here goes back
+ *  in from, when it's back. */
 function away(r: Room) {
   if (r.remote && r.bound) r.settled = r.synced ?? r.text.toString()
+  unbind(r, "dropped")
   r.remote = false
   r.ready = false
   r.asking = false
   r.others = 0
 }
 
-/** Someone else came: what was typed here alone is saved first, then the doc as the server has it is typed into. */
+/** Someone else came: what was typed here alone is saved first, then the doc as the server has it is typed into. From
+ *  asking for it, autosave stands down: what's typed meanwhile reaches the doc once, through bind. */
 async function together(r: Room) {
   if (r.bound || r.joining || r.asking) return
   r.joining = true
-  try { await settleFile(r.path) } finally { r.joining = false }
-  r.settled = [...r.views].find((v) => v.dom.isConnected)?.state.doc.toString() ?? null
-  if (rooms.get(r.path) === r && (r.others > 0 || r.remote) && getState().connected) { r.asking = true; say({ t: "y-open", path: r.path }) }
+  let disk: string | undefined
+  try { disk = await settleFile(r.path) } finally { r.joining = false }
+  r.settled = disk ?? [...r.views].find((v) => v.dom.isConnected)?.state.doc.toString() ?? null
+  if (rooms.get(r.path) === r && (r.others > 0 || r.remote) && getState().connected) {
+    r.asking = true
+    r.hold ??= keepLive(r.path)
+    say({ t: "y-open", path: r.path })
+  }
 }
 
 function close(r: Room) {
@@ -138,6 +158,8 @@ function heard(m: Record<string, unknown>) {
     r.alone = m.alone === true
     if (r.others > 0 && !r.alone) void together(r)
   } else if (m.t === "y-state" && typeof m.u === "string") {
+    // (the doc as this window had it: autosave's base if it saves alone from here)
+    const was = r.bound && !r.remote ? r.text.toString() : null
     unbind(r, "again")
     r.remote = m.remote === true
     fresh(r)
@@ -147,7 +169,11 @@ function heard(m: Record<string, unknown>) {
     r.others = Number(m.others) || 0
     r.alone = m.alone === true
     // (with others, or on another machine: once what was typed here alone is saved, and asked for again)
-    if ((r.others > 0 || r.remote) && !r.alone) { if (r.settled !== null) bind(r); else void together(r) }
+    if ((r.others > 0 || r.remote) && !r.alone && r.settled !== null) bind(r)
+    else {
+      handBack(r, was)
+      if ((r.others > 0 || r.remote) && !r.alone) void together(r)
+    }
   } else if (m.t === "y-peers") {
     r.others = Number(m.others) || 0
     if (r.others === 0) { if (!r.remote) unbind(r) }
@@ -155,7 +181,6 @@ function heard(m: Record<string, unknown>) {
   } else if (m.t === "y-gone") {
     // (that machine went, or stopped sharing it: saved here again, and asked for here)
     away(r)
-    unbind(r)
     if (getState().connected) say({ t: "y-open", path: r.path, bare: true })
   } else if (m.t === "y" && typeof m.u === "string") Y.applyUpdate(r.doc, fromBase64(m.u), "server")
   else if (m.t === "aw" && typeof m.u === "string") { if (r.aw) applyAwarenessUpdate(r.aw, fromBase64(m.u), "server") }
@@ -188,7 +213,7 @@ subscribe(() => {
   if (now === was) return
   was = now
   for (const r of rooms.values()) {
-    if (!now) { away(r); unbind(r) } else say({ t: "y-open", path: r.path, bare: true })
+    if (!now) away(r); else say({ t: "y-open", path: r.path, bare: true })
   }
 })
 

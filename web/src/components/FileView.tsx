@@ -710,7 +710,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     if (block !== f) editAround(joinFm(block, b))
   }, [editAround])
 
-  useEffect(() => onSettle(path, settle), [path, settle])
+  useEffect(() => onSettle(path, settle, () => saver.disk), [path, settle, saver])
 
   const [badJson, setBadJson] = useState<string | null>(null)
   const jsonCheck = useRef(0)

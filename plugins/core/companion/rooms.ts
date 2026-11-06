@@ -174,8 +174,8 @@ export function rooms(plugin: Plugin) {
       removeAwarenessStates(r.aw, [...ids], ws)
       tell(r, ws, { t: "aw", u: toBase64(encodeAwarenessUpdate(r.aw, [...ids])) })
     }
-    // (what they typed is written as theirs before the others hear they're alone: alone, a window saves the doc as its own)
-    if (peer && r.pending?.peer === peer) flush(r)
+    // (what's typed is written before the others hear they're alone: alone, a window saves on the doc as it has it)
+    if (r.pending && (r.pending.peer === peer || r.peers.size < 2)) flush(r)
     void inTurn(r, async () => counted(r))
     if (r.peers.size) return
     flush(r)

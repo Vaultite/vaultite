@@ -236,16 +236,21 @@ function prefetchFile(path: string) {
   ahead.set(path, { p, at: now })
 }
 
-/** Each open editor's way to save what's typed now and wait for it (FileView's `settle`), by its file. */
-const settlers = new Map<string, Set<() => Promise<void>>>()
-export function onSettle(path: string, fn: () => Promise<void>) {
-  const set = settlers.get(path) ?? new Set()
-  settlers.set(path, set.add(fn))
-  return () => { set.delete(fn); if (!set.size && settlers.get(path) === set) settlers.delete(path) }
+/** Each open editor's way to save what's typed now and wait for it (FileView's `settle`), and the text the server has
+ *  from it (`disk`), by its file. */
+type Settler = { settle: () => Promise<void>; disk: () => string }
+const settlers = new Map<string, Set<Settler>>()
+export function onSettle(path: string, settle: () => Promise<void>, disk: () => string) {
+  const set = settlers.get(path) ?? new Set(), me = { settle, disk }
+  settlers.set(path, set.add(me))
+  return () => { set.delete(me); if (!set.size && settlers.get(path) === set) settlers.delete(path) }
 }
-/** Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent). */
-export async function settleFile(path: string) {
-  await Promise.all([...(settlers.get(path) ?? [])].map((fn) => fn().catch(() => {})))
+/** Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent): the text
+ *  the server has then, as the first editor knows it (undefined: none open; a failed save leaves it behind the typing). */
+export async function settleFile(path: string): Promise<string | undefined> {
+  const open = [...(settlers.get(path) ?? [])]
+  await Promise.all(open.map((s) => s.settle().catch(() => {})))
+  return open[0]?.disk()
 }
 
 /** A file about to be opened: the pointer resting on its row or link (read after a moment), or pressing it (read now),
