@@ -201,6 +201,27 @@ const again = await win.evaluate(() => window.vaultite.dictation.start({ engine:
 check("⌘J while it roams stops it rather than starting another", again?.code === "roaming", again)
 check("…the box goes", await landed())
 
+// ---------- in the window: a double tap is hands-free, and stays so once it leaves
+await wait(2500)
+await line("First:").click()
+await fn({ down: true }); await wait(60); await fn({ down: false }); await wait(100); await fn({ down: true }); await wait(60); await fn({ down: false })
+check("in the window, a double tap: hands-free, its pill says so", await until(() => win.evaluate(() => document.querySelector(".dictation-pill .dictation-pending")?.textContent === "Hands-free"), 8000))
+await win.evaluate(() => dispatchEvent(new Event("blur")))
+check("…out of the window, still hands-free in the box", await until(async () => (await pill())?.free === true, 5000), await pill())
+await tap()
+check("…the next press stops it", await landed())
+
+// ---------- held as it leaves the window: letting go stops it, wherever that is
+await wait(2500)
+await line("First:").click()
+await fn({ down: true })
+await until(pagePill, 5000)
+await win.evaluate(() => dispatchEvent(new Event("blur")))
+check("held out of the window: on in the box", await until(async () => !!(await pill()), 5000))
+const letGo = Date.now()
+await chord(false)
+check("…let go, it stops", await landed() && Date.now() - letGo < 5000, Date.now() - letGo)
+
 // ---------- ⌃⌥ held while it roams: its words land first
 await stub("page", {})
 await stub("focus", { ...Notes, field: true, before: "" })
