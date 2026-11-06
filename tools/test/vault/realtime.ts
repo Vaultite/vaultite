@@ -110,7 +110,8 @@ export default async ($: VaultTest) => {
     speak(f)
     f.release("(Where they are: Mail, its window \"Inbox\".)")
     const held = f.heard(p2, "what does this button do")
-    await until(() => ev.some((e) => e[0] === "log"))
+    // (its tool's answer to the model can go after the turn's log: both waited for)
+    await until(() => ev.some((e) => e[0] === "log") && got.some((m) => m.item?.type === "function_call_output"))
     const look = routes(ev, 2)
     check("realtime: a screen question: its few words played, its route `look` (the summoned answer goes after them, which they give way to), no read-back", held === "held" &&
       look.length === 1 && look[0].to === "look" && ev.some((e) => e[0] === "pcm") && ev.some((e) => e[0] === "yield" && e[2] === 0.25) &&
