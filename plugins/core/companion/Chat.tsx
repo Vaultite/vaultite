@@ -33,7 +33,7 @@ export function Chat({ name, tint, how, items, draft, setDraft, send, close, mor
   const list = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => { list.current?.scrollTo({ top: list.current.scrollHeight }) }, [items.length, busy])
   return (
-    <div data-companion-popover={name} className={`companion-pop flex w-[300px] max-w-[calc(100vw-8px)] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg ${className ?? ""}`}
+    <div data-companion-popover={name} data-floats className={`companion-pop flex w-[300px] max-w-[calc(100vw-8px)] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg ${className ?? ""}`}
       style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)`, ...style }}>
       <div data-swipe={phone || undefined} className={`flex items-center gap-1 pt-1 pr-1 pl-3 ${phone ? "touch-none" : ""}`}>
         <div data-companion-how className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-muted-foreground">{how || name}</div>

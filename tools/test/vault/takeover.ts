@@ -50,6 +50,8 @@ export default async ($: VaultTest) => {
     /private/.test(L.refusal({ action: "click", el }, { ...mail, url: "https://diary.example.com/today" }, (a) => /diary\.example\.com/.test(a.url ?? "")) ?? ""))
   check("takeover: their yes outlasts a step's end, not their taking over or the exchange ending",
     L.keepsYes("done") && !L.keepsYes("user-mouse") && !L.keepsYes("user-esc") && !L.keepsYes("ended") && !L.keepsYes("another") && !L.keepsYes("quit"))
+  check("takeover: their hand coming off Do it isn't taking over; a spoken or an old yes has no grace",
+    L.handGrace(10_000, 10_200) === L.HAND_MS - 200 && L.handGrace(10_000, 10_000 + L.HAND_MS + 1) === 0 && L.handGrace(0, 10_000) === 0)
 
   // ---------- act on the screen, through a stand-in helper
   const c = await import("../../../plugins/core/companion/plugin.ts")

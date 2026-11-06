@@ -8,7 +8,7 @@ import { HEX } from "../plugins/core/companion/screenmarks.ts"
 import { buildTakeover, takeoverHelperName } from "./takeover-build.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
-import { type Call, keepsYes, outward, plan, type Probe, type Rect, refusal, spotOf, type Step } from "./takeoverlogic.ts"
+import { type Call, handGrace, keepsYes, outward, plan, type Probe, type Rect, refusal, spotOf, type Step } from "./takeoverlogic.ts"
 
 type Point = { x: number; y: number }
 type Near = { id: string; role: string; label: string; frame: Rect }
@@ -20,6 +20,8 @@ const QUIET = !!process.env.VAULTITE_QUIET
 const FLY_MS = 450, DRIVE_MS = 2500
 /** How long an offer waits for their answer, and how long a yes lasts with no step (the exchange ends it sooner). */
 const OFFER_MS = 30_000, YES_MS = 120_000
+/** How long the offer and the border take to fade out (the page's takeover-out). */
+const FADE_MS = 160
 
 // ---------- takeover.swift
 
@@ -80,25 +82,32 @@ export function stopTakeover() {
 
 const page = (body: string) => `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><meta charset="utf-8"><style>
 :root { color-scheme: light dark; font: 13px/1.35 -apple-system, system-ui, sans-serif; --tint: #e8590c }
-html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; cursor: default }
-.card { position: absolute; inset: 6px; border-radius: 12px; padding: 10px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;
-  background: light-dark(rgb(255 255 255 / .96), rgb(38 38 40 / .96)); color: light-dark(#1d1d1f, #f5f5f7);
-  box-shadow: 0 0 0 1px light-dark(rgb(0 0 0 / .1), rgb(255 255 255 / .12)), 0 8px 24px rgb(0 0 0 / .25) }
-.line { font-weight: 600; display: flex; gap: 7px; align-items: center } .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tint); flex: none }
-.sub { opacity: .65; font-size: 12px } .row { display: flex; gap: 6px; justify-content: flex-end; margin-top: auto }
-a { text-decoration: none; padding: 4px 12px; border-radius: 7px; color: inherit; background: light-dark(rgb(0 0 0 / .06), rgb(255 255 255 / .1)) }
+html, body { margin: 0; overflow: hidden; background: transparent; user-select: none; cursor: default }
+/* (as a question bubble of the companion's: its colour is the ring and a tint, no dot; the window takes its height) */
+.card { margin: 8px 14px 18px; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; transform-origin: top left;
+  background: color-mix(in srgb, var(--tint) 9%, light-dark(rgb(255 255 255 / .97), rgb(38 38 40 / .97))); color: light-dark(#1d1d1f, #f5f5f7);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tint) 70%, transparent), 0 8px 24px rgb(0 0 0 / .25) }
+.line { font-weight: 600; overflow-wrap: anywhere } .sub { opacity: .65; font-size: 12px } .row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 2px }
+a { text-decoration: none; padding: 4px 12px; border-radius: 7px; line-height: 18px; white-space: nowrap; color: inherit; background: light-dark(rgb(0 0 0 / .06), rgb(255 255 255 / .1)) }
 a.yes { background: var(--tint); color: #fff } a:hover { filter: brightness(1.08) }
 .edge { position: fixed; inset: 0; border: 4px solid var(--tint); border-radius: 12px; box-shadow: inset 0 0 28px color-mix(in srgb, var(--tint) 45%, transparent) }
 .pill { position: fixed; top: 34px; left: 50%; transform: translateX(-50%); padding: 5px 14px; border-radius: 999px; background: var(--tint); color: #fff;
   font-weight: 500; white-space: nowrap; box-shadow: 0 4px 14px rgb(0 0 0 / .25) }
+/* (hidden till shown, then IN starts it: a window that isn't on screen yet may not run its animations) */
+body > div { opacity: 0 }
+@keyframes takeover-in { from { opacity: 0; scale: .92 } to { opacity: 1; scale: 1 } } @keyframes takeover-out { from { opacity: 1 } to { opacity: 0; scale: .97 } }
+@keyframes takeover-show { from { opacity: 0 } to { opacity: 1 } } @keyframes takeover-hide { from { opacity: 1 } to { opacity: 0 } }
+@media (prefers-reduced-motion: reduce) { @keyframes takeover-in { from { opacity: 0 } to { opacity: 1 } } @keyframes takeover-out { from { opacity: 1 } to { opacity: 0 } } }
 </style><body>${body}</body>`)}`
+export const IN = `.card { animation: takeover-in .26s cubic-bezier(.2,.9,.3,1.2) both } .edge, .pill { animation: takeover-show .2s ease-out both }`
+export const OUT = `.card { animation: takeover-out ${FADE_MS}ms ease-in both !important } .edge, .pill { animation: takeover-hide ${FADE_MS}ms ease-in both !important }`
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)
 const tintOf = (t: string) => HEX[t] ?? HEX.orange
 
-function floating(b: Electron.Rectangle, mouse: boolean) {
+function floating(b: Electron.Rectangle, mouse: boolean, sized = false) {
   const w = new BrowserWindow({ ...b, transparent: true, frame: false, hasShadow: false, resizable: false, movable: false, minimizable: false, maximizable: false,
     fullscreenable: false, focusable: false, skipTaskbar: true, show: false, type: "panel", acceptFirstMouse: true, backgroundColor: "#00000000",
-    webPreferences: { sandbox: true, contextIsolation: true, javascript: false } })
+    webPreferences: { sandbox: true, contextIsolation: true, javascript: false, enablePreferredSizeMode: sized } })
   if (!mouse) w.setIgnoreMouseEvents(true)
   // (as the overlay's: every Space, over full screen apps, and the app stays in the Dock)
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
@@ -106,8 +115,23 @@ function floating(b: Electron.Rectangle, mouse: boolean) {
   w.setAlwaysOnTop(true, "screen-saver")
   return w
 }
+/** Shown without taking focus, then faded in. */
+function appear(w: BrowserWindow) {
+  w.showInactive()
+  void w.webContents.insertCSS(IN).catch(() => {})
+}
+/** Faded out, then gone; it takes no click meanwhile. */
+function fadeAway(w: BrowserWindow | null) {
+  if (!w || w.isDestroyed()) return
+  if (!w.isVisible()) return void w.destroy()
+  w.setIgnoreMouseEvents(true)
+  void w.webContents.insertCSS(OUT).catch(() => {})
+  setTimeout(() => { if (!w.isDestroyed()) w.destroy() }, FADE_MS + 40)
+}
 
 let card: BrowserWindow | null = null
+/** When they clicked Do it: their hand coming off it right after isn't them taking over. */
+let yesClicked = 0
 let answer: ((yes: boolean) => void) | null = null
 /** Offer `line` by `at` (their yes: a click on Do it, or said); false on No, Esc, the exchange ending, or no answer. */
 function offer(line: string, name: string, tint: string, at: Point, sent: () => void): Promise<boolean> {
@@ -121,19 +145,27 @@ function offer(line: string, name: string, tint: string, at: Point, sent: () => 
   })
 }
 function show(line: string, name: string, tint: string, at: Point) {
-  const W = 340, H = 118, d = screen.getDisplayNearestPoint(at).workArea
-  const x = Math.round(Math.min(Math.max(at.x + 18, d.x + 8), d.x + d.width - W - 8)), y = Math.round(Math.min(Math.max(at.y + 18, d.y + 8), d.y + d.height - H - 8))
-  const w = floating({ x, y, width: W, height: H }, true)
+  // (as tall as its words need: a long ask takes two or three lines, and the buttons stay in)
+  const W = 368, d = screen.getDisplayNearestPoint(at).workArea
+  const place = (h: number) => ({ width: W, height: h, x: Math.round(Math.min(Math.max(at.x + 18, d.x + 8), d.x + d.width - W - 8)),
+    y: Math.round(Math.min(Math.max(at.y + 18, d.y + 8), d.y + d.height - h - 8)) })
+  const w = floating(place(118), true, true)
   card = w
-  w.webContents.on("will-navigate", (e, url) => { e.preventDefault(); answered(url === "takeover:yes") })
-  void w.loadURL(page(`<style>:root { --tint: ${tintOf(tint)} }</style><div class="card"><div class="line"><span class="dot"></span>${esc(line)}</div>
-<div class="sub">${esc(name)} will use your mouse and keys while you watch. Move the mouse or press Esc to stop.</div>
-<div class="row"><a href="takeover:no">Not now</a><a class="yes" href="takeover:yes">Do it</a></div></div>`)).then(() => { if (card === w) w.showInactive() }, () => {})
+  w.webContents.on("preferred-size-changed", (_e, size) => { if (!w.isDestroyed() && size.height > 0) w.setBounds(place(Math.ceil(size.height))) })
+  w.webContents.on("will-navigate", (e, url) => {
+    e.preventDefault()
+    if (url === "takeover:yes") yesClicked = Date.now()
+    answered(url === "takeover:yes")
+  })
+  void w.loadURL(offerPage(line, name, tint)).then(() => { if (card === w) appear(w) }, () => {})
 }
+export const offerPage = (line: string, name: string, tint: string) => page(`<style>:root { --tint: ${tintOf(tint)} }</style><div class="card"><div class="line">${esc(line)}</div>
+<div class="sub">${esc(name)} will use your mouse and keys while you watch. Move the mouse or press Esc to stop.</div>
+<div class="row"><a href="takeover:no">Not now</a><a class="yes" href="takeover:yes">Do it</a></div></div>`)
 function answered(yes: boolean) {
   const a = answer
   answer = null
-  if (card && !card.isDestroyed()) card.destroy()
+  fadeAway(card)
   card = null
   a?.(yes)
 }
@@ -146,9 +178,9 @@ function showBorder(name: string, tint: string, at: Point) {
   const w = floating(d.bounds, false)
   border = w
   void w.loadURL(page(`<style>:root { --tint: ${tintOf(tint)} }</style><div class="edge"></div><div class="pill">${esc(name)} is using your Mac · move the mouse or press Esc to take over</div>`))
-    .then(() => { if (border === w) w.showInactive() }, () => {})
+    .then(() => { if (border === w) appear(w) }, () => {})
 }
-function hideBorder() { if (border && !border.isDestroyed()) border.destroy(); border = null }
+function hideBorder() { fadeAway(border); border = null }
 
 // ---------- driving
 
@@ -191,7 +223,8 @@ export const takeoverEnded = () => stop("ended")
 async function driving(name: string, tint: string, at: Point): Promise<string | null> {
   if (drive && drive.name === name) { if (drive.idle) clearTimeout(drive.idle); drive.idle = null; return null }
   if (drive) stop("another")
-  const g = await ask<{ ok?: boolean }>({ op: "guard", on: true })
+  const g = await ask<{ ok?: boolean }>({ op: "guard", on: true, grace: handGrace(yesClicked, Date.now()) })
+  yesClicked = 0
   if (!g.ok) return "it can't tell when they take back the mouse (Vaultite needs Accessibility): it won't drive blind"
   const p = await ask<{ ok?: boolean; x?: number; y?: number }>({ op: "pointer" })
   drive = { name, pointer: p.ok ? { x: Number(p.x), y: Number(p.y) } : null, moved: false, idle: null }

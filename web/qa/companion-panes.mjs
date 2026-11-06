@@ -65,6 +65,8 @@ r = await op("companion.highlight", { pane, find: "needle-17" })
 check("highlight in a terminal: its row lit in its colour", await until(async () => (await page.locator("[data-companion-highlight]").count()) > 0, 3000), r)
 await op("companion.say", { text: "That's the line.", pane, find: "needle-17" })
 check("say in a pane: its bubble there", await until(async () => (await page.locator("[data-companion-bubble]").count()) > 0, 3000))
+// (a native web page draws over the window's page: what's shown of it floats, so the window rises over one it reaches)
+check("its bubble and cursor float (layers.ts' floats), as a toast does", (await page.locator("[data-companion-bubble][data-floats]").count()) > 0 && (await cursor.getAttribute("data-floats")) !== null)
 await page.screenshot({ path: `${OUT}terminal.png` })
 
 // Asked to follow the terminal (pointing at it never is).
@@ -98,6 +100,28 @@ for (let i = 0; i < 4 && !hit; i++) { r = await op("companion.next", { timeout: 
 check("what it waited for comes to the companion as a watch moment (not the packed in between)", !!hit && (hit.changes ?? []).some((l) => l.includes("shipped")) && hit.text === "Tell me when it ships", r)
 check("and it's done", (await op("watches.list")).find?.((w) => w.title === "Order")?.state === "done")
 await op("watches.remove", { id: "Order" })
+
+// A pane not shown (another tab in front): its cursor points at its tab, not at a spot of the window.
+await page.locator('[data-ui="button:tab:new"]').first().click()
+check("(a new tab hides the terminal's pane)", await until(async () => !(await page.locator(`[data-pane-frame="${pane}"]`).isVisible())))
+await op("companion.look", { pane })
+await wait(900)
+at = await tip()
+const tabs = await page.evaluate(() => [...document.querySelectorAll('[data-ui^="tab:"]')].filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return { text: e.textContent, left: b.left, top: b.top, right: b.right, bottom: b.bottom } }))
+const onTab = tabs.find((b) => !!at && at.x >= b.left - 2 && at.x <= b.right + 2 && at.y >= b.top - 2 && at.y <= b.bottom + 2)
+check("look at a pane not shown: its cursor at its tab", !!onTab && !/new tab/i.test(onTab.text), { at, tabs })
+
+// Its place gone from view and no status bar to rest in: it fades where it was, its words never shown there.
+await page.addStyleTag({ content: "[data-companion-status] { display: none !important }" })
+await op("companion.look", { ui: "button:tab:new" })
+await wait(900)
+const gone = await page.addStyleTag({ content: '[data-ui="button:tab:new"] { display: none !important }' })
+check("its place gone and no home: it fades where it was", await until(async () => (await cursor.getAttribute("data-faded")) !== null, 4000))
+await op("companion.say", { text: "Words for nowhere." })
+await wait(1500)
+check("and what it says then shows at no stale spot, nor floats there unseen", (await page.locator("[data-companion-bubble]").count()) === 0 && (await cursor.getAttribute("data-faded")) !== null
+  && (await page.locator(".companion-cursor [data-floats], .companion-cursor[data-floats]").count()) === 0)
+await gone.evaluate((el) => el.remove())
 
 await op("companion.clear")
 await ctx.close()

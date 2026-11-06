@@ -3,7 +3,7 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, noticesSince, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, getTabLayout, tabOfPane, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, noticesSince, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { shown, uiElement } from "./panes"
@@ -26,6 +26,8 @@ type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boo
   away?: boolean
   /** Over a web page: drawn over it (the window rises over the page for it, layers.ts' floats). */
   over?: boolean
+  /** Where it was last drawn, no longer where its place is (home()'s fallback): it fades out there, never shows. */
+  faded?: boolean
   /** What it points at (an element of the app, a terminal's row, a page's element): its words never cover it. */
   target?: { x: number; y: number; width: number; height: number } }
 /** A cursor's place as drawn: what it looked at, its place among them, its step in a stack; held, it stays there (dx, dy
@@ -103,13 +105,13 @@ function rowOf(path: string): Spot | null {
 /** Where each cursor was last shown, for one with nowhere to be to fade there. */
 const lastShown = new Map<string, Spot>()
 /** Where an agent with nowhere to be rests: its arrow in the status bar, else (the bar's companion hidden, a phone) it
- *  fades where it last was, never flying off to a corner. */
+ *  fades where it last was, never flying off to a corner, and never shows there again: that spot may be minutes old. */
 function home(a: Agent, _i: number): Spot | null {
   const el = document.querySelector(`[data-companion-home="${CSS.escape(a.name)}"]`)
   const r = el?.getClientRects().length ? el.getBoundingClientRect() : null
   if (r?.width) return { x: r.left, y: r.top, parked: true, low: true, docked: true }
   const was = lastShown.get(a.name)
-  return was ? { ...was, parked: true, docked: true } : null
+  return was ? { ...was, parked: true, docked: true, faded: true } : null
 }
 /** How long an agent's cursor stays where it last acted, idle, before it goes home. */
 const IDLE_MS = 8000
@@ -186,7 +188,7 @@ function rowIn(s: Screen, t: { row?: number; find?: string }) {
 }
 /** The box a pane's place takes on screen: a terminal's row (`find`: its text), a page's element, else the pane. */
 function paneBox(t: Target & Pick<Agent, "box">): (DOMRect | { left: number; top: number; right: number; bottom: number; width: number; height: number }) & { over?: boolean; row?: Screen } | null {
-  const el = t.pane ? uiElement(`pane:${t.pane}`) : null
+  const el = t.pane ? paneEl(t.pane) : null
   if (!el) return null
   const scr = screenOf(el)
   if (scr) { const row = rowIn(scr, t), top = scr.r.top + (row - 1) * scr.rowH, w = Math.max(scr.cw * 2, (scr.lines[row - 1]?.trimEnd().length ?? 0) * scr.cw)
@@ -200,11 +202,22 @@ function paneBox(t: Target & Pick<Agent, "box">): (DOMRect | { left: number; top
   }
   return el.getBoundingClientRect()
 }
+/** A pane as drawn, not its half of a split tab's row or its row in a list, which say data-ui pane: too. */
+function paneEl(id: string) {
+  return [...document.querySelectorAll<HTMLElement>(`[data-ui="${CSS.escape(`pane:${id}`)}"]`)].find((e) => !e.matches("[data-pane-half], [data-place], [data-tab-row]") && e.getClientRects().length > 0) ?? null
+}
+/** A pane not shown: its half of its tab's row (a split's), else its tab. */
+function tabSpot(pane: string): Spot | null {
+  const half = [...document.querySelectorAll<HTMLElement>(`[data-pane-half="${CSS.escape(pane)}"]`)].find((e) => e.getClientRects().length > 0)
+  if (half) return atElement(half)
+  const tab = tabOfPane(getTabLayout(), pane)
+  return tab ? uiSpot(`tab:${tab.id}`) : null
+}
 /** Where its cursor is in a pane: past a terminal row's text, by a page's element (over the page), else the pane's corner;
  *  a pane not shown, at its tab. */
 function paneSpot(a: Agent): Spot | null {
-  const el = uiElement(`pane:${a.pane}`)
-  if (!el) return uiSpot(`tab:${a.pane}`)
+  const el = paneEl(a.pane!)
+  if (!el) return tabSpot(a.pane!)
   const r = el.getBoundingClientRect(), b = paneBox(a)
   if (!b) return null
   const whole = b.width === r.width && b.height === r.height && !b.row
@@ -338,12 +351,10 @@ export const readMs = (text: string) => 1500 + text.split(/\s+/).length * 220
 
 /** Its words by its cursor: a click (a tap) opens a box to reply in, Enter sends it; a question shows its box from the
  *  start. Put in note, Pin and Close by it; held still (past its time) while the pointer or the focus is in it. */
-function Bubble({ n, tint, maxWidth, room, drawn, hold, floats }: { n: Note; tint: string; maxWidth: number; drawn: boolean
+function Bubble({ n, tint, maxWidth, room, drawn, hold }: { n: Note; tint: string; maxWidth: number; drawn: boolean
   /** How tall its words may grow, inside the window. */
   room: number
-  hold: (on: boolean) => void
-  /** Over a web page: the window rises over it for the bubble. */
-  floats?: boolean }) {
+  hold: (on: boolean) => void }) {
   const [replying, setReplying] = useState(!!n.question)
   const [draft, setDraft] = useState("")
   const [inside, setInside] = useState(false)
@@ -372,7 +383,7 @@ function Bubble({ n, tint, maxWidth, room, drawn, hold, floats }: { n: Note; tin
   const open = () => { setReplying(true); requestAnimationFrame(() => field.current?.focus()) }
   if (gone) return null
   return (
-    <div ref={box} key={n.id} data-companion-bubble={n.id} data-floats={floats ? "" : undefined} data-question={n.question || undefined} role={n.question ? "group" : undefined} aria-label={n.question ? "A question" : undefined}
+    <div ref={box} key={n.id} data-companion-bubble={n.id} data-floats data-question={n.question || undefined} role={n.question ? "group" : undefined} aria-label={n.question ? "A question" : undefined}
       onPointerEnter={(e) => { if (e.pointerType !== "touch") setInside(true) }} onPointerLeave={(e) => { if (e.pointerType !== "touch") setInside(false) }}
       onFocus={() => setInside(true)} onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node | null)) setInside(false) }}
       onClick={(e) => { if (!drawn && !replying && !(e.target as Element).closest("button, a")) open() }}
@@ -514,14 +525,6 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   const closeFan = (focusFlag = false) => { clearTimeout(shut.current); if (focusFlag) { setFan(false); flagRef.current?.focus() } else shut.current = setTimeout(() => setFan(false), 350) }
   useEffect(() => () => clearTimeout(shut.current), [])
   useEffect(() => { if (!many) setFan(false) }, [many])
-  // (its question is here, with its buttons: the inbox's toast of it, now or arriving just after, would cover them)
-  const asked = a.asks?.event
-  useEffect(() => {
-    if (!asked) return
-    dismissNotice(`inbox-${asked}`)
-    const t = setTimeout(() => dismissNotice(`inbox-${asked}`), 1500)
-    return () => clearTimeout(t)
-  }, [asked])
   // (its flag goes toward the room; its words go where boxes.ts finds room)
   const flagRight = at.x > innerWidth - 140
   // (its name and its mark show while it does anything, then it fades to the bare arrow, as in a shared doc; hovered, again)
@@ -534,14 +537,25 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
     addEventListener("pointerdown", down, true)
     return () => removeEventListener("pointerdown", down, true)
   }, [open, fan, setOpen])
-  // (resting at home, it's its arrow in the status bar: it fades as it lands there, and shows again as it leaves)
-  const docked = !!spot.docked && !open && !fan && !bubble && !a.asks && !typed && !menued
+  // (resting at home, it's its arrow in the status bar: it fades as it lands there, and shows again as it leaves; with no
+  // arrow there, it fades where it was, its words and asks waiting in its history and the inbox)
+  const docked = !!spot.docked && !open && (!!spot.faded || (!fan && !bubble && !a.asks && !typed && !menued))
+  // (its question is here, with its buttons: the inbox's toast of it, now or arriving just after, would cover them)
+  const asked = docked ? undefined : a.asks?.event
+  useEffect(() => {
+    if (!asked) return
+    dismissNotice(`inbox-${asked}`)
+    const t = setTimeout(() => dismissNotice(`inbox-${asked}`), 1500)
+    return () => clearTimeout(t)
+  }, [asked])
   const away = !!spot.away && !open
   // (back from the screen: it's where it's going at once, showing as the screen's cursor lands there)
   const wasAway = useRef(false), arriveBy = useRef(0)
   if (wasAway.current && !away) arriveBy.current = Date.now() + 700
   wasAway.current = away
   const arriving = Date.now() < arriveBy.current
+  // (shown, it's drawn over a web page it reaches, as a toast is: layers.ts checks each float's box against the page's)
+  const floats = !docked && !away
   const tx = docked ? at.x : at.x - 3, ty = docked ? at.y : at.y - 2
   useGlide(box, tx, ty, away || arriving, a.state === "writing" || typed ? stiffness(WRITING_MS) : CURSOR_SPRING)
   // (its words, its box or its question placed by one rule (boxes.ts): never over its arrow, its name or what it points at)
@@ -559,9 +573,9 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
   if (spot.drawn && !bubble && !a.asks) return null
   const enter = (e: React.PointerEvent) => { if (e.pointerType !== "touch") setHover(true) }
   return (
-    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-floats={spot.over && !docked ? "" : undefined} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
+    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-floats={floats ? "" : undefined} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
-      data-docked={docked || undefined} data-away={away || undefined} data-to={`${Math.round(tx)},${Math.round(ty)}`}
+      data-docked={docked || undefined} data-faded={(docked && spot.faded) || undefined} data-away={away || undefined} data-to={`${Math.round(tx)},${Math.round(ty)}`}
       style={{ scale: docked ? String(DOCK_SCALE) : "1", transformOrigin: "0 0",
         transition: away ? "none" : `scale 380ms cubic-bezier(.2,.85,.25,1), ${arriving ? "opacity .2s .35s" : docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
         opacity: docked || away ? 0 : shown.dim ? 0.55 : 1, visibility: docked || away ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
@@ -571,7 +585,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
         {dot && !open && <span data-companion-unread aria-label="Unread" className="absolute top-[-1px] left-[12px] size-[7px] rounded-full ring-2 ring-background" style={{ background: tint }} />}
       </div>
       <button ref={flagRef} type="button" tabIndex={tag || many ? 0 : -1} aria-label={many ? `${[a, ...others].map((x) => x.name).join(", ")} here` : `Go to ${a.name}`} aria-haspopup={many ? "menu" : undefined} aria-expanded={many ? fan : undefined}
-        data-companion-flag data-under-pages={spot.over ? undefined : ""} data-tip={many || !(a.path || a.pane) ? undefined : "Go to where it is"}
+        data-companion-flag data-floats={floats && (tag || fan) ? "" : undefined} data-under-pages={floats && (tag || fan) ? undefined : ""} data-tip={many || !(a.path || a.pane) ? undefined : "Go to where it is"}
         onPointerEnter={(e) => { if (e.pointerType !== "touch") keepFan() }} onPointerLeave={(e) => { if (e.pointerType !== "touch") closeFan() }}
         onFocus={keepFan} onBlur={(e) => { if (!box.current?.querySelector("[data-companion-fan]")?.contains(e.relatedTarget as Node | null)) closeFan() }}
         onKeyDown={(e) => { if (many && e.key === "ArrowDown") { e.preventDefault(); setFan(true); requestAnimationFrame(() => box.current?.querySelector<HTMLElement>("[data-companion-fan] button")?.focus()) } else if (e.key === "Escape" && fan) { e.preventDefault(); setFan(false) } }}
@@ -589,8 +603,9 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
       {/* (kept inside the window) */}
       {open && <Popover a={a} close={() => setOpen(false)} menu={(e) => menu(e, true)} />}
       </>}
-      {a.asks && !open ? (
-        <div key={a.asks.event} data-companion-ask={a.asks.event} role="group" aria-label={`${a.name} asks`}
+      {/* (none while it's hidden: an unseen float would still raise the window over a page) */}
+      {!floats ? null : a.asks && !open ? (
+        <div key={a.asks.event} data-companion-ask={a.asks.event} data-floats role="group" aria-label={`${a.name} asks`}
           className={cn("companion-pop pointer-events-auto absolute top-0 left-0 flex w-max flex-col gap-1.5 rounded-[12px] border border-border/60 bg-background px-3 py-2 text-[13.5px] leading-snug text-foreground shadow-lg", CORNER)}
           style={{ maxWidth: Math.min(300, innerWidth - 16), boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
           <span>{a.asks.text}</span>
@@ -605,7 +620,7 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
           </span>
         </div>
       ) : bubble && !open && (
-        <Bubble n={bubble} tint={tint} drawn={!!spot.drawn} hold={setKeep} floats={!!spot.over}
+        <Bubble n={bubble} tint={tint} drawn={!!spot.drawn} hold={setKeep}
           maxWidth={Math.min(320, innerWidth - 16)} room={Math.min(360, innerHeight - 24)} />
       )}
     </div>

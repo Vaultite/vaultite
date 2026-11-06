@@ -61,6 +61,12 @@ export function outward(step: Step, there: Probe): string | null {
   return null
 }
 
+/** How long after their click on Do it a mouse move is their hand coming off the button, not them taking over (a
+ *  click or a key still is). */
+export const HAND_MS = 1500
+/** What's left of that grace when the guard goes on (a spoken yes, or one long ago: none). */
+export const handGrace = (clickedAt: number, now: number) => (clickedAt > 0 ? Math.max(0, HAND_MS - (now - clickedAt)) : 0)
+
 /** Whether their yes still holds after the driving ends this way: a step done keeps it, them taking over or the
  *  exchange ending doesn't. */
 export const keepsYes = (why: string) => why === "done"

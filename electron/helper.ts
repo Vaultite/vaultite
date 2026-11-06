@@ -1392,12 +1392,12 @@ function movedFrom(key: string, p: Point) {
 
 // ---------- one cursor, two drawers: the window draws its agents in it, this the rest; between them it glides, never jumps
 
-/** Where the window's own cursors are (plugins/core/companion/Overlay.tsx), in screen points: `at` where each is drawn
- *  now (mid-glide too), `to` where it's going. Read from its page's DOM, never its code; none while it isn't on screen. */
+/** Where the window's cursors are (Overlay.tsx; its page's DOM, never its code), in screen points: `at` drawn now, `to`
+ *  where it's going. None off screen, nor one faded where it last was (`data-faded`): none flies to or from it. */
 async function inApp(): Promise<Map<string, { at: Point; to: Point }>> {
   const w = host?.homeWindow()
   if (!w || w.page.isDestroyed()) return new Map()
-  const code = `[...document.querySelectorAll(".companion-cursor[data-agent]")].map((el) => { const r = el.getBoundingClientRect(),
+  const code = `[...document.querySelectorAll(".companion-cursor[data-agent]:not([data-faded])")].map((el) => { const r = el.getBoundingClientRect(),
     m = /^(-?[\\d.]+),(-?[\\d.]+)$/.exec(el.dataset.to ?? ""); return [el.dataset.agent, r.left, r.top, m ? +m[1] : r.left, m ? +m[2] : r.top] })`
   const rows = await w.page.executeJavaScriptInIsolatedWorld(1007, [{ code }]).catch(() => []) as [string, number, number, number, number][]
   // (its tip: 3, 2 into the box, as both draw the arrow)

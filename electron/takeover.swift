@@ -143,6 +143,8 @@ func describe(_ el: AXUIElement) -> [String: Any] {
 // ---------- the user taking it back: any mouse move, click or key that isn't ours
 
 var guarding = false, stopped = false, moved = 0.0
+/** Until when a mouse move isn't theirs taking over (their hand coming off Do it); a click or a key still is. */
+var graceUntil = 0.0
 var guardTap: CFMachPort?
 let guardLock = NSLock()
 func userDid(_ why: String) {
@@ -164,6 +166,7 @@ func guardStarted() -> Bool {
       switch type {
       case .mouseMoved, .leftMouseDragged, .rightMouseDragged:
         // (a nudge isn't taking over: a few points' drift from a desk's knock still is ours)
+        if CFAbsoluteTimeGetCurrent() < graceUntil { break }
         moved += abs(e.getDoubleValueField(.mouseEventDeltaX)) + abs(e.getDoubleValueField(.mouseEventDeltaY))
         if moved > 6 { userDid("mouse") }
       case .keyDown: userDid(e.getIntegerValueField(.keyboardEventKeycode) == 53 ? "esc" : "key")
@@ -278,7 +281,8 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "guard":
     let on = req["on"] as? Bool ?? false
     if on && !guardStarted() { return ["ok": false, "why": "tap"] }
-    guardLock.lock(); guarding = on; stopped = false; moved = 0; guardLock.unlock()
+    let grace = on ? (req["grace"] as? Double ?? 0) : 0
+    guardLock.lock(); guarding = on; stopped = false; moved = 0; graceUntil = CFAbsoluteTimeGetCurrent() + grace / 1000; guardLock.unlock()
     // (off, it sees nothing: no tap between the user and their apps but while it drives)
     if let t = guardTap { CGEvent.tapEnable(tap: t, enable: on) }
     return ["ok": true]
