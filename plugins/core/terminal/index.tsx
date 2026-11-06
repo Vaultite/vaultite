@@ -36,7 +36,12 @@ function Preview() {
 function SessionNames() {
   const layout = useSyncExternalStore(onTabLayoutChange, getTabLayout)
   const any = JSON.stringify(layout).includes('"view:terminal/')
-  useEffect(() => (any ? subscribeSessions(viewsChanged) : undefined), [any])
+  // (tabs drawn again only when what they show of a session changed, not on each list: a whole-app render)
+  useEffect(() => {
+    if (!any) return
+    let was = ""
+    return subscribeSessions(() => { const k = tabsKey(); if (k !== was) { was = k; viewsChanged() } })
+  }, [any])
   useEffect(() => {
     if (matchMedia("(pointer: coarse)").matches) return
     const load = () => void preload().catch(() => { chunk = null })
@@ -46,6 +51,12 @@ function SessionNames() {
   }, [])
   return null
 }
+
+/** What terminal tabs show of each session (index.tsx' views: title, icon, its tint, class and dot, where it opens). */
+const tabsKey = () => JSON.stringify((getSessions().list ?? []).map((s) => {
+  const a = agentIn(s)
+  return [s.id, labelOf(s, a), s.machineLabel, a?.name, stateClass(s, a), tintOf(s, a), dotOf(s, a), s.note, s.session]
+}))
 
 const openTab = (to: string) => openView(to, { newTab: !isViewOpen(to) })
 
