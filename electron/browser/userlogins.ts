@@ -38,7 +38,9 @@ const tellForm = (p: EnginePage) => tell(p.win, { type: "engine:passwords:form",
 ipcMain.on("vaultite:logins:form", (e, given: unknown) => {
   const p = senderPage(e)
   if (!p || !given || typeof given !== "object") return
-  const g = given as Partial<Shows>, f = e.senderFrame!
+  const g = given as Partial<Shows> & { url?: unknown }, f = e.senderFrame!
+  // (a word from the document before this one, come late)
+  if (typeof g.url === "string" && g.url !== f.url) return
   const map = forms.get(p.wc) ?? new Map<string, Shows>()
   forms.set(p.wc, map)
   const was = shows(p, "form")
@@ -124,7 +126,7 @@ function weigh(p: EnginePage) {
   h.timer = setTimeout(() => {
     if (waiting.get(p.wc) !== h || p.wc.isDestroyed()) return
     if (Date.now() > h.until) { waiting.delete(p.wc); return }
-    if (p.wc.isLoading() || shows(p, "password")) { h.timer = setTimeout(() => weigh(p), h.until - Date.now()); return }
+    if (p.wc.isLoading() || shows(p, "password")) { h.timer = setTimeout(() => weigh(p), 2000); return }
     waiting.delete(p.wc)
     void offer(p, h).catch((e) => console.error("vaultite: a sign-in wasn't offered to save:", (e as Error).message))
   }, 1200)

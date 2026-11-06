@@ -14,7 +14,8 @@ if (/^https?:/.test(location.href)) {
     && (!i.checkVisibility || i.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
 
   // ---------- whether the frame shows a login form: a password field, a username's or a one-time code's ----------
-  let told = { form: false, password: false }, timer = 0
+  // (each document says its state once, even none: a late word from the page before it would stand otherwise)
+  let told = null, timer = 0
   const scan = () => {
     timer = 0
     let form = false, password = false
@@ -26,9 +27,9 @@ if (/^https?:/.test(location.href)) {
       form = true
       if (pw) { password = true; break }
     }
-    if (form !== told.form || password !== told.password) {
+    if (!told || form !== told.form || password !== told.password) {
       told = { form, password }
-      ipcRenderer.send("vaultite:logins:form", told)
+      ipcRenderer.send("vaultite:logins:form", { ...told, url: location.href })
     }
   }
   // (at most a scan in a while, however busy the page: a query of its inputs)
