@@ -4,13 +4,39 @@
 #   update.sh build <clone> <repo url> <the running app's commit> [<branch> <npm script> <commit>]
 #     the branch's newest (or <commit>), built in a clone of its own into <clone>/../update.noindex. Exit 3: the app runs it.
 #   update.sh install <the app's pid> <new .app> <the running .app> [<its executable's name> [stay]]
-#     stay: the app quit for good, so it isn't opened again
+#     staged and checked beside the app (says "staged" on fd 3 when there is one), then once the app quit swapped in and
+#     opened again. Exit 1: not staged, the app untouched. stay: the app quit for good, so it isn't opened again
 set -eu
 # The login shell brings the user's aliases (an `rm -I` prompts, gets no answer and fails every build): none here.
 unalias -a 2>/dev/null || true
 [ "$(uname)" = Darwin ] && export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 # An app started from the Dock gets 256 open files, too few for electron-builder signing every file it copied.
 ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
+
+# A whole copy of the build in <from> at <to>, checked: its build.json is the commit update.sh build wrote, its key
+# files are there, as many files as the build. Else why not (stdout), with rsync's own words in the log.
+stage() {
+  rsync -a "$1/" "$2/" || { echo "the copy into $2 failed"; return 1; }
+  got=$(sed -n 's/^.*"commit": *"\([0-9a-f]*\)".*$/\1/p' "$2/$res/electron/build.json" 2>/dev/null | head -n 1)
+  [ -n "$want" ] && [ "$got" = "$want" ] || { echo "the copy's build.json says ${got:-nothing}, not the build's ${want:-commit}"; return 1; }
+  for f in "$bin" "$res/server.ts" "$res/package.json" "$res/electron/boot.ts" "$res/electron/main.ts"; do
+    [ -e "$2/$f" ] || { echo "the copy has no $f"; return 1; }
+  done
+  [ -x "$2/$bin" ] || { echo "the copy's $bin can't run"; return 1; }
+  [ $(( $(find "$1" | wc -l) )) -eq $(( $(find "$2" | wc -l) )) ] || { echo "the copy has a different number of files than the build"; return 1; }
+}
+# The pids of the app's own main process, run from <its executable> (not its helpers, server, terminal keeper or agents'
+# `vau mcp`, which run its binaries too: Chromium's with --type=, Node's with a script from <its own files>).
+mains() {
+  ps -A -ww -o pid= -o command= | awk -v exe="$1" -v own="$2/" '{
+    pid = $1; sub(/^ *[0-9]+ /, "")
+    if (index($0, exe) != 1) next
+    rest = substr($0, length(exe) + 1)
+    if (rest != "" && substr(rest, 1, 1) != " ") next
+    if (index(rest, " " own) == 1 || rest ~ / --type=/) next
+    print pid
+  }'
+}
 
 case ${1:-} in
 build)
@@ -49,20 +75,48 @@ build)
   ;;
 install)
   pid=$2 new=$3 app=$4 exe=${5:-} stay=${6:-}
-  while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
-  # Quit for good, it may be opened again meanwhile (its LaunchAgent, the user): never swap an app out from under itself.
-  [ "$stay" = stay ] && pgrep -f "^$app/" >/dev/null && { echo "not installed: $app runs again"; exit 0; }
-  # Copied beside it, then swapped in: a copy cut off midway (a full disk) leaves the old app whole. Failed or not, the
-  # app opens again (the old one, if anything failed).
+  # (the app may be gone when this says it's staged, fd 3: a write to its closed pipe fails rather than end this)
+  trap '' PIPE
+  want=$(cat "$(dirname "$new")/commit" 2>/dev/null || true)
+  if [ "$(uname)" = Darwin ]; then res=Contents/Resources/app bin=Contents/MacOS/${exe:-$(basename "$app" .app)}
+  else res=resources/app bin=${exe:-$(basename "$app")}; fi
+  # Staged beside it while the app still runs (the same volume, so the swap is a rename), and checked: the app quits only
+  # once it's whole, and a copy cut off or wrong never goes in.
   rm -rf "$app.new" "$app.old"
-  if rsync -a "$new/" "$app.new/" && mv "$app" "$app.old"; then
-    if mv "$app.new" "$app"; then rm -rf "$app.old" || true
-    else mv "$app.old" "$app" || true; echo "couldn't replace $app"; fi
-  else rm -rf "$app.new" || true; echo "couldn't replace $app"; fi
+  if ! why=$(stage "$new" "$app.new"); then
+    rm -rf "$app.new" || true
+    echo "not installed: $why"
+    exit 1
+  fi
+  echo "staged $want"
+  { echo staged >&3; } 2>/dev/null || true
+  while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+  # Opened again meanwhile (the Dock, a link, its LaunchAgent): never swap an app out from under itself, or that copy
+  # runs the old tree while the disk says new. It offers the update again.
+  if [ -n "$(mains "$app/$bin" "$app/$res")" ]; then
+    rm -rf "$app.new" || true
+    echo "not installed: $app was opened again before the swap"
+    exit 0
+  fi
+  # Two renames, the old app whole until the second; failed, it stays (and opens again, the old one).
+  if mv "$app" "$app.old"; then
+    if mv "$app.new" "$app"; then
+      rm -rf "$app.old" || true
+      echo "installed $want"
+    else
+      mv "$app.old" "$app" || true
+      rm -rf "$app.new" || true
+      echo "not installed: couldn't move the new app into $app"
+    fi
+  else
+    rm -rf "$app.new" || true
+    echo "not installed: couldn't move $app aside"
+  fi
   [ "$stay" = stay ] && exit 0
+  if [ -n "${VAULTITE_UPDATE_OPEN:-}" ]; then "$VAULTITE_UPDATE_OPEN" "$app" # (tests: never the real app)
   # An app a LaunchAgent runs (its label, not LaunchServices' application.*) starts again under it, so a crash still
   # brings it back; `open` would leave it unwatched.
-  if [ "$(uname)" = Darwin ]; then
+  elif [ "$(uname)" = Darwin ]; then
     case ${XPC_SERVICE_NAME:-0} in
     0 | application.*) open "$app" ;;
     *) launchctl kickstart "gui/$(id -u)/$XPC_SERVICE_NAME" || open "$app" ;;

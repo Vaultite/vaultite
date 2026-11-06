@@ -11,6 +11,10 @@
 - Four apps, each its own id, name and userData, so any of them install side by side: Vaultite (releases), Vaultite
   Nightly (`nightly.cjs`), Vaultite Main (`source.cjs`: built from source, `app:build`) and Vaultite Dev (a branch;
   `npm run app:dev` opens the sandbox, never Set up).
+- An update (update.sh install) is staged beside the app and renamed in once it quit: a copy opened from the old bundle
+  meanwhile would run the replaced tree while the disk says new (`ps` still shows the old path), so a running main is
+  looked for first, and the app checks its server against build.json once up (installed.ts). The app's binary also runs
+  its server, terminal keeper and agents' `vau mcp`: those aren't the app running.
 - Test a release under another `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check
   its privacy grants. Uploading the update feed is by hand, never part of a build.
 - Debugging the real window: `debugPort` in `vaults.json` (or `VAULTITE_DEBUG_PORT`) serves Chromium's DevTools

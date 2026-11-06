@@ -14,6 +14,7 @@ import { revive, stripKit, unloadPages, webHandlers, webWindow } from "./web.ts"
 import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
+import { afterUpdate, installedCommit } from "./installed.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { dictationHandlers, setDictationServer, stopDictation } from "./dictation.ts"
 import type { HelperPrefs } from "./helper.ts"
@@ -417,6 +418,7 @@ async function openVault(p: string, file?: string) {
   }
   const w: Win = { vault: v, win, server, link, port, ready: false, queue: file ? [file] : [] }
   wins.set(p, w)
+  if (server) checkInstalled(w)
   v.open = true
   save()
   // (maximized as it's shown: maximizing shows a hidden window)
@@ -1035,7 +1037,7 @@ handle("app:ready", (w) => {
   setTimeout(() => { tellStatus(w); if (ready) tell(w) }, 0)
   return w.queue.splice(0)
 })
-handle("app:update-restart", () => restartToUpdate())
+handle("app:update-restart", () => restartToUpdate(true))
 handle("app:updates", () => ({ mode: updates, available: updatable() }))
 handle("app:updates-set", (_w, mode: UpdateMode) => {
   if (!UPDATE_MODES.includes(mode) || mode === updates) return
@@ -1337,9 +1339,38 @@ function lastBuild() {
 async function attachedCommit() {
   const all = [...wins.values()]
   if (!all.length || all.some((w) => !w.link)) return ""
-  const ran = await Promise.all(all.map((w) => fetch(`http://127.0.0.1:${w.port}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" },
-    body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { result?: { commit?: unknown } }) => String(j.result?.commit ?? ""), () => "")))
+  const ran = await Promise.all(all.map((w) => serverCommit(w.port)))
   return ran.every((c) => /^[0-9a-f]{40}$/.test(c) && c === ran[0]) ? ran[0] : ""
+}
+/** The commit the server on `port` runs (its app.version), "" when it doesn't say. */
+const serverCommit = (port: number) => fetch(`http://127.0.0.1:${port}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" },
+  body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { result?: { commit?: unknown } }) => String(j.result?.commit ?? ""), () => "")
+
+/** Vaults whose server this run restarted onto the installed build (once each). */
+const restartedOnto = new Set<string>()
+/** A window's own server, once up: on the installed build? One started from the tree an update was replacing restarts
+ *  once onto it; the app itself started from there offers a restart. Both logged. */
+function checkInstalled(w: Win) {
+  if (!app.isPackaged) return
+  // (past watchServer's first 10 s, where a server that stops counts as one that couldn't open the vault)
+  setTimeout(() => void (async () => {
+    const p = w.vault.path
+    if (wins.get(p) !== w || !w.server || w.server.exitCode !== null) return
+    const installed = installedCommit(ROOT), server = (await serverCommit(w.port)) || null
+    const { stale, restart } = afterUpdate({ installed, app: BUILD?.commit ?? null, server, restarted: restartedOnto.has(p) })
+    if (!stale && !restart) return
+    const log = updateLog(), at = new Date().toISOString()
+    if (stale) {
+      fs.writeSync(log, `${at} this app runs ${BUILD!.commit}, but ${installed} is installed: it started from the app an update replaced\n`)
+      if (!RELEASE && built() === installed && ready !== installed) { ready = installed; for (const x of wins.values()) tell(x); buildMenu() }
+    }
+    if (restart && w.server?.exitCode === null) {
+      restartedOnto.add(p)
+      fs.writeSync(log, `${at} ${nameOf(p)}'s server runs ${server}, not the installed ${installed}: restarting it\n`)
+      w.server.kill() // (watchServer starts it again, on its port)
+    }
+    fs.closeSync(log)
+  })(), 15_000)
 }
 
 function buildUpdate(byHand: boolean, want: string) {
@@ -1454,9 +1485,9 @@ function stopChecking() {
   if (checking?.pid) try { process.kill(-checking.pid, "SIGTERM") } catch { /* gone */ }
 }
 
-/** Quit, put the new app in this one's place, and open it again (update.sh install waits for this process to end). A
- *  newer build under way is dropped (the next check starts it again). */
-function restartToUpdate() {
+/** Quit once the new app is staged beside this one, which update.sh install then swaps in and opens (it waits for this
+ *  process to end). A newer build under way is dropped (the next check starts it again). */
+function restartToUpdate(byHand = false) {
   if (status === "Restarting to update…") return // pressed twice
   if (RELEASE) {
     if (!ready || !releases) return
@@ -1467,22 +1498,44 @@ function restartToUpdate() {
     return void afterFlush(() => releases!.quitAndInstall(WIN, WIN))
   }
   // (already installing: an earlier restart whose quit didn't go through, its install still waiting for this one)
-  if (!installing && !install(true)) return
-  restarting(ready!.slice(0, 7))
-  afterFlush(() => app.quit())
+  const to = ready, staged = install(true)
+  if (!to || !staged) return
+  restarting(to.slice(0, 7))
+  void staged.then((ok) => {
+    if (ok) return afterFlush(() => app.quit())
+    // (not offered again until the next check: an automatic restart would copy it again every minute)
+    fs.rmSync(UPDATED(), { force: true })
+    ready = null
+    setStatus(null)
+    buildMenu()
+    if (byHand) updateFailed("The new version couldn't be put in place (update.log says why).")
+  })
 }
-/** update.sh install, once: it waits for this process to end, then swaps the new app in (and opens it, `reopen`). */
-let installing = false
-function install(reopen: boolean) {
-  if (installing || !ready || ready !== built() || !replaceable()) return false
-  installing = true
+/** update.sh install, once: it copies the new app beside this one and checks it (staged: true; false, it isn't and this
+ *  app stays as it is), waits for this process to end, swaps it in and opens it (`reopen`). */
+let installing: Promise<boolean> | null = null
+function install(reopen: boolean): Promise<boolean> | null {
+  if (installing) return installing
+  if (!ready || ready !== built() || !replaceable()) return null
   stopChecking()
   const log = updateLog()
   fs.writeSync(log, `${new Date().toISOString()} installing ${ready} into ${BUNDLE}${reopen ? "" : " as the app quits"}\n`)
-  spawn(SHELL, [path.join(ROOT, "electron", "update.sh"), "install", String(process.pid), BUILT(), BUNDLE, path.basename(app.getPath("exe")), ...(reopen ? [] : ["stay"])],
-    { detached: true, stdio: ["ignore", log, log] }).unref()
+  // (fd 3: where it says it's staged; quitting, nobody waits)
+  const child = spawn(SHELL, [path.join(ROOT, "electron", "update.sh"), "install", String(process.pid), BUILT(), BUNDLE, path.basename(app.getPath("exe")), ...(reopen ? [] : ["stay"])],
+    { detached: true, stdio: ["ignore", log, log, reopen ? "pipe" : "ignore"] })
+  child.unref()
   fs.closeSync(log)
-  return true
+  if (!reopen) return (installing = Promise.resolve(true))
+  const said = child.stdio[3] as NodeJS.ReadableStream
+  installing = new Promise<boolean>((done) => {
+    // (a copy that stalls, say a disk gone: given up, the app untouched)
+    const stall = setTimeout(() => { try { process.kill(-child.pid!, "SIGTERM") } catch { /* gone */ } done(false) }, 10 * 60_000)
+    said.on("data", (b: Buffer) => { if (/staged/.test(b.toString())) { clearTimeout(stall); done(true) } })
+    said.on("error", () => {})
+    child.once("exit", () => { clearTimeout(stall); done(false) })
+  })
+  void installing.then((ok) => { if (!ok) installing = null })
+  return installing
 }
 /** `quit` once the toast had a beat to draw and the browser's cookies are written (Chromium writes them in batches;
  *  session cookies are the engine's to keep, browser/sessioncookies.ts). */
@@ -1614,7 +1667,7 @@ function buildMenu() {
     run: command,
     go: (p) => { const f = focusedVault(); if (f?.ready) f.win.webContents.send("vaultite", { type: "go", path: p }) },
     update: updatable() ? (ready
-      ? { label: "Restart to update", click: restartToUpdate }
+      ? { label: "Restart to update", click: () => restartToUpdate(true) }
       : { label: checking || fetching ? "Checking for updates…" : "Check for updates…", enabled: !checking && !fetching, click: () => checkForUpdate(true) }) : null,
     vaults: [...recent.map((v) => ({ label: nameOf(v.path), sublabel: v.path, type: "checkbox" as const, checked: wins.has(v.path),
       click: () => openVault(v.path).catch((e) => failedBox(`Couldn't open ${nameOf(v.path)}`, e)) })),

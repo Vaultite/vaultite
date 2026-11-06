@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
+  in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
 - **Show the companion's session opens the one you talk to**: its Talk key's session (shown when it answered last or the
   long one isn't running), which it can open itself when you ask, rather than a "isn't running" toast.
 - **The companion knows when you ask it over Vaultite**: holding ⌃⌥ over Vaultite's own window no longer tells it
