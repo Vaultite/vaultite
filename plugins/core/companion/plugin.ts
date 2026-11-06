@@ -2907,6 +2907,12 @@ plugin.around("ui.open", async (call, next) => {
   const name = opening.getStore() ? null : companionAsking()
   return name ? (await openSeen(name, String(call.params.path ?? ""), () => next())).result : next()
 })
+plugin.around("ui.command", async (call, next) => {
+  const name = companionAsking(), id = str(call.params.id)
+  // (its button, where the window shows one: the cursor goes there as it runs)
+  if (name && id) setAgent(name, { ui: `button:${id}`, state: "writing", pointed: Date.now() })
+  try { return await next() } finally { if (name) setAgent(name, { state: acting(name) }) }
+})
 plugin.around("tabs.focus", async (call, next) => {
   const name = companionAsking(), what = str(call.params.what), tab = name && allPanes().find((p) => p.id === what || p.tab === what || shows(p, what))?.tab
   if (name && tab) { setAgent(name, { ui: `tab:${tab}`, state: "writing", pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }

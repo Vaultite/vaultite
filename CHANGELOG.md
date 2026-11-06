@@ -17,6 +17,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   each change is written into the file (its old copy kept) and into the group KeePassXC shares with agents, so they
   use it at once. `vau secret` can be answered from your passwords (with Touch ID) or kept there. Agents never see
   what's filled.
+- **An agent's click in a page no longer says "nothing changed" when it did**: it waits for the data the click fetched
+  (an iframe moving meanwhile no longer cuts it short, nor does a page's first click), for a web component's change, and
+  for a page that goes elsewhere a moment after the click, which used to hang it.
+- **Your passwords in Vaultite**: the desktop app opens your own KeePass file (the one KeePassXC and Strongbox open),
+  unlocked with Touch ID or its password. The browser fills your logins from it (a key in the address bar, or Fill
+  login) and offers to save a new sign-in or update a password; each change is written into the file (its old copy
+  kept) and into the group KeePassXC shares with agents, so they use it at once. `vau secret` can be answered from
+  your passwords (with Touch ID) or kept there. Agents never see what's filled.
 - **A window reload no longer ends an agent's page in a background tab**: after a deploy's reload, a page an agent is
   at work in (or asking you something on) waits for its tab, instead of being closed with its work and its ask.
 - **Do it**: an open task line (hover it; on a phone, the caret's line) or a suggestion in the inbox has a Do it that hands

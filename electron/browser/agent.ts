@@ -211,17 +211,28 @@ export async function snapshot(p: EnginePage) {
 /** Each agent page's requests for data under way (fetch, XHR), by id with when each began: a client-rendered page draws
  *  what they bring, so settling waits for them. Over the DevTools protocol, in agents' pages only. */
 const loading = new WeakMap<WebContents, Map<string, number>>()
-async function trackRequests(p: EnginePage) {
-  if (loading.has(p.wc)) return
+/** When each agent page last began going to another document (its main frame's): a navigation an act set off late. */
+const navigated = new WeakMap<WebContents, number>()
+/** Each page's tracking as it starts: an act waits for it, so its first one sees the page's requests too. */
+const tracking = new WeakMap<WebContents, Promise<void>>()
+function trackRequests(p: EnginePage) {
+  const was = tracking.get(p.wc)
+  if (was) return was
+  const t = startTracking(p)
+  tracking.set(p.wc, t)
+  return t
+}
+async function startTracking(p: EnginePage) {
   const live = new Map<string, number>()
   loading.set(p.wc, live)
   const heard = (_e: unknown, method: string, params: { requestId?: string; type?: string }) => {
     if (method === "Network.requestWillBeSent" && (params.type === "XHR" || params.type === "Fetch")) live.set(String(params.requestId), Date.now())
     else if (method === "Network.loadingFinished" || method === "Network.loadingFailed") live.delete(String(params.requestId))
   }
-  const off = () => { p.wc.debugger.off("message", heard); loading.delete(p.wc) }
+  const off = () => { p.wc.debugger.off("message", heard); loading.delete(p.wc); tracking.delete(p.wc) }
   p.wc.debugger.on("message", heard)
-  p.wc.on("did-start-navigation", () => live.clear())
+  // (an iframe's or an in-page navigation leaves the page's requests running: only a new document ends them)
+  p.wc.on("did-start-navigation", (e) => { if (e.isMainFrame && !e.isSameDocument) { live.clear(); navigated.set(p.wc, Date.now()) } })
   try { await cdp(p.wc, "Network.enable", { maxTotalBufferSize: 0, maxResourceBufferSize: 0 }); p.wc.debugger.once("detach", off) } catch { off() }
 }
 /** Data requests that began since `since` (or a second before) and haven't ended: long-lived ones (a mail app's open
@@ -238,7 +249,11 @@ async function quiet(p: EnginePage, since = Date.now(), cap = 2000) {
       let t = setTimeout(end, 300)
       const cap = setTimeout(end, ${Math.max(300, left)}), o = new MutationObserver(() => { clearTimeout(t); t = setTimeout(end, 300) })
       function end() { o.disconnect(); clearTimeout(t); clearTimeout(cap); done(true) }
-      o.observe(document, { subtree: true, childList: true, attributes: true, characterData: true })
+      const how = { subtree: true, childList: true, attributes: true, characterData: true }
+      // (a web component's open shadow roots change apart from the document: watched each)
+      const roots = [document]
+      for (let i = 0; i < roots.length && roots.length < 500; i++) for (const el of roots[i].querySelectorAll("*")) if (el.shadowRoot) roots.push(el.shadowRoot)
+      for (const r of roots) o.observe(r, how)
     })` }]).catch(() => {})
     if (!fetching(p, since)) return
     while (fetching(p, since) && Date.now() < until) await new Promise((r) => setTimeout(r, 50))
@@ -373,9 +388,12 @@ export async function press(p: EnginePage, combo: string) {
 }
 
 /** After an action: a moment for what it started (a navigation, a menu, a download) to settle. */
+/** How long after an act a navigation it set off may still begin. */
+const SETTLE_MS = 400
 export async function settle(p: EnginePage, was: string, since = Date.now()) {
-  const until = Date.now() + 8000
-  await new Promise((r) => setTimeout(r, 250))
+  const until = Date.now() + 8000, soon = Date.now() + SETTLE_MS
+  // (a page that goes elsewhere a moment after the click, from its script, is waited for: not just one already loading)
+  while (Date.now() < soon && !p.wc.isDestroyed() && !p.wc.isLoading() && (navigated.get(p.wc) ?? 0) < since) await new Promise((r) => setTimeout(r, 50))
   while (Date.now() < until && !p.wc.isDestroyed() && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
   const started = () => (downloads.get(p.wc) ?? []).filter((d) => d.at >= since)
   const short = Date.now() + 5000
@@ -555,6 +573,8 @@ async function openedBy(p: EnginePage, had: Set<number>) {
 /** An action (or a whole form, `fields`) settled: where the tab is, what it downloaded, and what changed on the page since
  *  the agent last saw it (`diff`: lines, or the new page's when it went to another; none takes no tree). */
 async function act(p: EnginePage, a: Act) {
+  // (a resting page's input went nowhere till it woke; its first act's requests weren't seen)
+  await Promise.all([p.wake(), tracking.get(p.wc)])
   const limit = diffLimit(a.diff)
   if (limit && !seen.has(p.wc)) await tree(p)
   const before = seen.get(p.wc), was = p.wc.getURL(), since = Date.now(), had = new Set(allPages().map((x) => x.id))
