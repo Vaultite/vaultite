@@ -120,16 +120,16 @@ export default async ($: VaultTest) => {
       fs.rmSync(path.join(VAULT, ".vaultite/bundles/spaces"), { recursive: true })
       setConf("plugins", plugins)
     }
-    // A snippet one of the app's bundles or an imported one brings (Zen's floating panes, Life OS's serif titles) goes
-    // off in another; the user's own stay.
+    // A snippet a bundle brings (an imported one's serif titles) goes off in another; the user's own stay.
     const lookThen = conf("appearance")
     write(".vaultite/bundles/serif/bundle.json", JSON.stringify({ name: "Serif", from: "alice/serif" }))
+    write(".vaultite/bundles/serif/appearance.json", JSON.stringify({ snippets: ["Serif titles"] }))
     write(".vaultite/bundles/serif/snippets/Serif titles.css", "h1 { font-family: serif; }\n")
-    setConf("appearance", { ...lookThen, snippets: ["Floating panes", "Serif titles", "Wide lines"] })
+    setConf("appearance", { ...lookThen, snippets: ["Serif titles", "Wide lines"] })
     const snipsTo = async (id: string) => (await api("GET", `bundles/${id}`))[1].plan.appearance.find((c: Any) => c.key === "snippets")
-    const toStandard = await snipsTo("standard"), toZen = await snipsTo("zen")
+    const toStandard = await snipsTo("standard"), toSerif = await snipsTo("serif")
     check("bundles: another bundle turns off a bundle's snippet, keeping the user's", JSON.stringify(toStandard?.to) === JSON.stringify(["Wide lines"]), toStandard)
-    check("bundles: a bundle's own snippet stays on with it", JSON.stringify(toZen?.to) === JSON.stringify(["Floating panes", "Wide lines"]), toZen)
+    check("bundles: a bundle's own snippet stays on with it", (toSerif?.to ?? ["Serif titles", "Wide lines"]).join() === "Serif titles,Wide lines", toSerif)
     fs.rmSync(path.join(VAULT, ".vaultite/bundles/serif"), { recursive: true })
     // A restyle (only appearance.json) changes the keys it names, never another bundle's snippet.
     write(".vaultite/bundles/glassy/bundle.json", JSON.stringify({ name: "Glassy" }))

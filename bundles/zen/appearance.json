@@ -2,12 +2,10 @@
   "density": "comfortable",
   "sidebarScroll": "panels",
   "panelDividers": false,
-  "snippets": [
-    "Floating panes"
-  ],
+  "snippets": [],
   "fileIcons": true,
   "tabBar": false,
-  "paneTabBars": false, "dimPanes": true, "paneCards": false,
+  "paneTabBars": false, "dimPanes": true, "paneCards": true,
   "rails": false, "peekShade": true, "sidebarButtons": false, "fileBarFade": "typing",
   "lineNumbers": false,
   "statusBar": ["vim:mode", "properties:chips", "provenance:origin", "core:view", "core:words", "core:characters", "token-count:tokens"],
