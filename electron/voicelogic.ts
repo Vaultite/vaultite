@@ -1,5 +1,6 @@
 // The companion's voice apart from Electron (tools/test/vault/voice.ts): says cut in pieces as they stream, made by cloud
 // voices a few ahead, played in order; one that fails (offline, dropped) hands on to the next, then this Mac's, from there.
+import { type Heard, sentences } from "../plugins/core/companion/screenmarks.ts"
 import { chunker, languageOf, sayable } from "../plugins/core/companion/spoken.ts"
 
 /** A piece of an answer: its plain words, in its language (two letters). `n` counts every piece ever, so what a player
@@ -18,7 +19,9 @@ export type Out = { pcm: (n: number, pcm: Buffer) => void; say: (n: number, text
 export const RATE = 24_000
 const BYTES_PER_S = RATE * 2
 
-type Slot = { p: Piece; state: "wait" | "making" | "made" | "done"; bufs: Buffer[]; fwd: number; sent: number; timed?: Timed; cancel?: () => void; timer?: ReturnType<typeof setTimeout> }
+/** `say`: the say it's of; `at`: when it's heard (the player's), `told` its sentences heard so far, told on. */
+type Slot = { p: Piece; say: string; state: "wait" | "making" | "made" | "done"; bufs: Buffer[]; fwd: number; sent: number; timed?: Timed; cancel?: () => void; timer?: ReturnType<typeof setTimeout>
+  at?: number; told: number }
 
 export type VoiceOptions = {
   out: Out
@@ -31,6 +34,9 @@ export type VoiceOptions = {
   /** A piece whose first audio hasn't come by then, or whose audio stalls that long, is the next voice's. */
   firstMs?: number
   stallMs?: number
+  /** Each sentence as it's heard (a piece's start, by the player, and its characters' timing): the drawing's pen keeps
+   *  to them. A piece with no timing (this Mac's voice) tells none. */
+  heard?: (h: Heard & { say: string }) => void
   /** What happened, for the log and tests: a piece's first audio, a fallback and why. */
   told?: (e: { t: "audio"; n: number; ms: number } | { t: "fallback"; n: number; why: string; from: number; to: number }) => void
 }
@@ -44,9 +50,9 @@ export function voice(o: VoiceOptions) {
   const local = () => tier >= o.clouds().length
   let says = new Map<string, ReturnType<typeof chunker>>()
 
-  function add(text: string) {
+  function add(text: string, say: string) {
     language ??= languageOf(`${asked} ${text}`, o.hints())
-    slots.push({ p: { n: ++n, text: sayable(text, language), language }, state: "wait", bufs: [], fwd: 0, sent: 0 })
+    slots.push({ p: { n: ++n, text: sayable(text, language), language }, say, state: "wait", bufs: [], fwd: 0, sent: 0, told: 0 })
     drain()
   }
 
@@ -86,8 +92,9 @@ export function voice(o: VoiceOptions) {
         if (timed) s.timed = timed
         watch(stallMs, "its audio stalled")
         if (slots[head] === s) drain()
+        tell(s)
       },
-      end() { if (!live()) return; clearTimeout(s.timer); s.state = "made"; drain() },
+      end() { if (!live()) return; clearTimeout(s.timer); s.state = "made"; drain(); tell(s) },
       fail(why) { if (live()) fail(s, why) },
     })
   }
@@ -101,7 +108,8 @@ export function voice(o: VoiceOptions) {
     for (const x of slots) if (x.state === "making") {
       clearTimeout(x.timer); x.cancel?.()
       x.p = { ...x.p, text: resume(x) }
-      Object.assign(x, { state: x.p.text ? "wait" : "made", bufs: [], fwd: 0, sent: 0, timed: undefined })
+      // (its timing starts again with the next voice, its start long told: its sentences aren't told on)
+      Object.assign(x, { state: x.p.text ? "wait" : "made", bufs: [], fwd: 0, sent: 0, timed: undefined, told: x.at === undefined ? 0 : Infinity })
     }
     drain()
   }
@@ -121,6 +129,25 @@ export function voice(o: VoiceOptions) {
     return from < 0 ? "" : rest.slice(from).trim()
   }
 
+  /** A piece's sentences told as heard, once it's playing and their characters are timed (its last, once it's all made). */
+  function tell(s: Slot) {
+    const t = s.timed
+    if (!o.heard || s.at === undefined || !t?.ends.length || s.told === Infinity) return
+    let from = 0
+    const ss = sentences(s.p.text)
+    for (let j = 0; j < ss.length; j++) {
+      const a = s.p.text.indexOf(ss[j], from)
+      if (a < 0) return
+      const b = Math.min(a + ss[j].length, t.chars.length)
+      from = a + ss[j].length
+      if (j < s.told) continue
+      if (t.ends.length < b || (b >= t.chars.length && s.state === "making")) return
+      const start = a > 0 ? t.ends[Math.min(a, t.ends.length) - 1] : 0, end = t.ends[b - 1]
+      o.heard({ say: s.say, text: ss[j], at: Math.round(s.at + start * 1000), dur: Math.max(0, Math.round((end - start) * 1000)) })
+      s.told = j + 1
+    }
+  }
+
   function silence() {
     for (const s of slots) { clearTimeout(s.timer); if (s.state === "making") s.cancel?.() }
     if (slots.length || on) o.out.stop()
@@ -135,13 +162,15 @@ export function voice(o: VoiceOptions) {
       if (!on) return
       let c = says.get(id)
       if (!c) { c = chunker(); says.set(id, c) }
-      for (const piece of c.feed(whole)) add(piece)
+      for (const piece of c.feed(whole)) add(piece, id)
     },
     /** Say `id`'s last words are in (no id: every say's). */
     end(id?: string) {
       if (!on) return
-      for (const [k, c] of says) if (!id || k === id) { const rest = c.flush(); if (rest) add(rest) }
+      for (const [k, c] of says) if (!id || k === id) { const rest = c.flush(); if (rest) add(rest, k) }
     },
+    /** Piece `n` is heard from `at` (the player's clock, ms): its sentences are told as heard. */
+    played(n: number, at: number) { const s = slots.find((x) => x.p.n === n); if (s && s.at === undefined) { s.at = at; tell(s) } },
     /** Silence at once: what's playing and what's to come. */
     stop: silence,
     /** Whether an answer is being spoken (some of it still to come or to play). */

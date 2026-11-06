@@ -3217,6 +3217,15 @@ await section("screen drawings", async () => {
   check("screen drawings: words read as sentences (a line's end too)", sm.sentences("Click Share. Then pick who!\nDone").join("|") === "Click Share.|Then pick who!|Done")
   const times = sm.beatTimes("Click Share up here. Then pick who you want in the list.", 2)
   check("screen drawings: each beat starts when the sentence before is read, longer ones later; past the words, a steady pace", times[0] === 0 && times[1] >= 700 && times[2] - times[1] > times[1] && times[2] - times[1] <= 3500, times)
+  // ---- paced to the voice: each beat while its sentence is heard
+  const cap = "Click **Share** up here. Then pick who you want in the list. Done."
+  const heard = sm.heardBeats(cap, [{ text: "Let me look.", at: 500, dur: 600 }, { text: "Click Share up here.", at: 1000, dur: 1400 }, { text: "Then pick who you want in the list.", at: 2600, dur: 2000 }])
+  check("screen drawings: the caption's sentences matched in order to those heard (its words, Markdown aside), none for one not said yet",
+    JSON.stringify(heard) === '[{"at":1000,"dur":1400},{"at":2600,"dur":2000},null]', heard)
+  const paced = sm.pacedBeats(cap, 2, heard, 800), still = sm.pacedBeats(cap, 2, undefined, 0)
+  check("screen drawings: heard, a beat starts as its sentence does and spreads over it; not yet heard, as the last one ends; no voice, the reading pace",
+    JSON.stringify(paced.times) === "[200,1800,3800]" && JSON.stringify(paced.spread) === "[1400,2000,null]" && JSON.stringify(still.times) === JSON.stringify(sm.beatTimes(cap, 2)) &&
+    sm.pacedBeats(cap, 1, [{ at: 0, dur: 500 }, null], 2000).times.join() === "0,0", { paced, still })
   // ---- labels: never over what they name, always on screen
   const rnd = (() => { let a = 7; return () => { a = (a * 16807) % 2147483647; return a / 2147483647 } })(), screen = { x: 0, y: 25, w: 1280, h: 775 }
   const bads: unknown[] = []

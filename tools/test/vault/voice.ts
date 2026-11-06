@@ -96,6 +96,24 @@ export default async ($: VaultTest) => {
       '[["Isso é o botão de compartilhar.","pt"],["Clique nele","pt"]]', out)
   }
   {
+    // (its sentences as heard: the player's start of each piece, the cloud's timing of its characters)
+    const heard: Any[] = [], made: Any[] = []
+    const cloud = { make: (p: Any, to: Any) => { made.push({ p, to }); return () => {} } }
+    const v = voice({ clouds: () => [cloud], hints: () => ["en"], firstMs: 5000, stallMs: 5000, heard: (h) => heard.push(h),
+      out: { pcm() {}, say() {}, end() {}, stop() {} } })
+    v.start()
+    v.text("s1", "First one here. Second one too. Third. X")
+    const two = made[1], chars = [...two.p.text], ends = chars.map((_c: string, i: number) => Math.round((i + 1) * 100) / 1000)
+    two.to.audio(pcm(2.2), { chars, ends })
+    v.played(two.p.n, 5000)
+    const early = heard.map((h) => h.text)
+    two.to.end()
+    check("voice: each sentence as heard, from its piece's start and its characters' timing (the last once all of it's made)", two.p.text === "Second one too. Third." &&
+      JSON.stringify(early) === '["Second one too."]' && JSON.stringify(heard) === '[{"say":"s1","text":"Second one too.","at":5000,"dur":1500},{"say":"s1","text":"Third.","at":6600,"dur":600}]', heard)
+    v.played(made[0].p.n, 3000)
+    check("voice: none told for a piece without its timing", heard.length === 2, heard)
+  }
+  {
     const { v, out } = rig({ cloud: false })
     v.start("", "pt")
     v.text("s1", "Ok. Sure thing. ")
@@ -289,6 +307,7 @@ export default async ($: VaultTest) => {
     send({ cmd: "end", n: 1 }); send({ cmd: "end", n: 2 })
     for (let i = 0; i < 300 && !lines.some((l) => l.type === "done" && l.n === 2); i++) await sleep(20)
     const order = lines.filter((l) => l.type === "start" || l.type === "done").map((l) => `${l.type}${l.n}`).join()
+    check("voice player: each piece says when it's heard (the drawing's pen keeps to it)", lines.filter((l) => l.type === "start").every((l) => typeof l.at === "number" && Math.abs(l.at - Date.now()) < 60_000), lines.filter((l) => l.type === "start"))
     check("voice player: pieces play in order, a cloud's PCM and then this Mac's voice made for the next, each told done", order === "start1,done1,start2,done2", lines.filter((l) => l.type !== "level"))
     check("voice player: its level as it plays", lines.some((l) => l.type === "level" && l.v > 0.3), lines.filter((l) => l.type === "level").slice(0, 5))
     send({ cmd: "pcm", n: 3, data: tone.toString("base64") })

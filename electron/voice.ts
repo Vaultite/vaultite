@@ -6,6 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { cloudVoice, type CloudConfig, type CloudVoice } from "./tts.ts"
 import { voice, type Voice } from "./voicelogic.ts"
+import type { Heard } from "../plugins/core/companion/screenmarks.ts"
 import { buildVoice, voiceHelperName } from "./voice-build.ts"
 
 const SHIPPED = path.join(import.meta.dirname, "bin")
@@ -27,6 +28,8 @@ export function companionVoice(o: {
   hints: () => string[]
   /** It's speaking (or stopped), and how loud now (0 to 1). */
   level: (speaking: boolean, v: number) => void
+  /** Each sentence as it's heard: when it began (ms, the clock's) and how long it takes (a drawing's pen keeps to it). */
+  heard?: (h: Heard & { say: string }) => void
   /** A scripted copy's (VAULTITE_QUIET): what it would play goes here, and nothing plays. */
   record?: (m: Record<string, unknown>) => void
 }) {
@@ -66,8 +69,9 @@ export function companionVoice(o: {
     }, (e) => { console.warn(`voice: its helper isn't here (${(e as Error).message})`); return null }).finally(() => { starting = null })
     return starting
   }
-  function heard(m: { type?: string; n?: number; v?: number }) {
-    if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, Number(m.v) || 0) }
+  function heard(m: { type?: string; n?: number; v?: number; at?: number }) {
+    if (m.type === "start" && typeof m.n === "number" && typeof m.at === "number") v.played(m.n, m.at)
+    else if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, Number(m.v) || 0) }
     else if (m.type === "done" && typeof m.n === "number") { playing.delete(m.n); if (!playing.size) tell(false, 0) }
     else if (m.type === "stopped") { playing.clear(); tell(false, 0) }
   }
@@ -120,6 +124,7 @@ export function companionVoice(o: {
 
   const v: Voice = voice({
     clouds: cloudsNow,
+    heard: (h) => o.heard?.(h),
     hints: o.hints,
     out: {
       pcm: (n, pcm) => { playing.add(n); send({ cmd: "pcm", n, data: pcm.toString("base64") }) },

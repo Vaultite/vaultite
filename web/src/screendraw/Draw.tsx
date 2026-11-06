@@ -2,7 +2,7 @@
 // its words; labels in pills, cards on calm space, a Keep and a Clear while it's up.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ArrowRight, Check, Copy, ExternalLink, X } from "lucide-react"
-import { beatTimes, type Mark, type PaperItem, type Rect } from "../../../plugins/core/companion/screenmarks"
+import { type Mark, pacedBeats, type PaperItem, type Rect } from "../../../plugins/core/companion/screenmarks"
 import { PEN_LEAD, type PenScript } from "../core/pilot"
 import { inflate, place, type Placed, type Pt, type Size } from "./layout"
 import { hash, headLines, inkPath, type Line, linePath, sketch } from "./ink"
@@ -24,13 +24,14 @@ const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return l ? {
 
 /** When each drawing was first seen (`t0`: its first beat, after the pen's lead), and when each mark first showed: every
  *  part's delay counts from the drawing's clock, whatever comes again (kept, a new place, more marks). */
-const born = new Map<string, { t0: number; shown: Map<number, number>; at: number; committed?: boolean }>()
+const born = new Map<string, { t0: number; shown: Map<number, number>; at: number; committed?: boolean; beat?: number }>()
 
 /** `pen`: the companion's cursor is here to draw it (its first beat waits for it to fly there), told its strokes. */
 export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a: Act) => void; grab: (on: boolean) => void; leaving?: boolean; pen?: (s: PenScript | null) => void }) {
   if (!born.has(d.id)) { born.set(d.id, { t0: Date.now() + (pen && d.here.home && !still() ? PEN_LEAD : 0), shown: new Map(), at: Date.now() }); if (born.size > 20) born.delete(born.keys().next().value!) }
   const { t0, shown: showedAt } = born.get(d.id)!
-  const last = Math.max(0, ...d.marks.map((m) => m.beat ?? 0)), times = useMemo(() => beatTimes(d.caption ?? "", last), [d.caption, last])
+  // (each beat while its sentence is heard, when the voice says it; else in the time to read it)
+  const last = Math.max(0, ...d.marks.map((m) => m.beat ?? 0)), { times, spread } = useMemo(() => pacedBeats(d.caption ?? "", last, d.spoken, t0), [d.caption, last, d.spoken, t0])
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const next = times.find((t) => t0 + t > now)
@@ -38,16 +39,19 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
     const id = setTimeout(() => setNow(Date.now()), t0 + next - Date.now() + 5)
     return () => clearTimeout(id)
   }, [now, times, t0])
-  // (the first beat's marks are there from the start, waiting out the pen's lead)
-  const beat = Math.max(0, times.filter((t) => t0 + t <= now).length - 1)
+  // (the first beat's marks are there from the start, waiting out the pen's lead; one shown stays, though its sentence
+  // turns out to be heard later than reckoned)
+  const b0 = born.get(d.id)!, beat = b0.beat = Math.max(b0.beat ?? 0, times.filter((t) => t0 + t <= now).length - 1)
   const placed = useMemo(() => place(d, d.here, labelSize, measure), [d])
   const W = d.here.width, H = d.here.height, seed = hash(d.id)
   // (in each beat, one after another, on the drawing's clock: when each starts, and its delay from when it showed)
   const startAt = useMemo(() => {
-    const out = new Map<number, number>(), counts = new Map<number, number>()
-    for (const p of placed) { const b = p.mark.beat ?? 0, k = counts.get(b) ?? 0; counts.set(b, k + 1); out.set(p.i, t0 + (times[b] ?? 0) + k * STAGGER) }
+    const out = new Map<number, number>(), counts = new Map<number, number>(), of = new Map<number, number>()
+    for (const p of placed) of.set(p.mark.beat ?? 0, (of.get(p.mark.beat ?? 0) ?? 0) + 1)
+    // (a heard sentence's marks spread over the time it's said, as a hand draws while it speaks)
+    for (const p of placed) { const b = p.mark.beat ?? 0, k = counts.get(b) ?? 0, gap = Math.max(STAGGER, (spread[b] ?? 0) / (of.get(b) ?? 1)); counts.set(b, k + 1); out.set(p.i, t0 + (times[b] ?? 0) + k * gap) }
     return out
-  }, [placed, times, t0])
+  }, [placed, times, spread, t0])
   const shown = placed.filter((p) => (p.mark.beat ?? 0) <= beat)
   for (const p of shown) if (!showedAt.has(p.i)) showedAt.set(p.i, Date.now())
   const order = new Map(shown.map((p) => [p.i, startAt.get(p.i)! - showedAt.get(p.i)!]))

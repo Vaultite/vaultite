@@ -142,6 +142,8 @@ function sendDrawing() {
   const ds = screen.getAllDisplays(), p = screen.getCursorScreenPoint()
   for (const d of ds) { const w = wins.get(d.id); if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:draw", drawing && drawingFor(drawing, d, ds, p)) }
 }
+/** The drawing up now (its id), if any: cleared or ended, none. */
+export const drawingUp = () => drawing?.id ?? null
 /** The exchange is over: its drawing goes, and the server hears it. */
 export function endDrawing() {
   if (!drawing) return

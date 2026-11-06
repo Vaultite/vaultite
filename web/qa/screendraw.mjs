@@ -176,4 +176,25 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   await page.screenshot({ path: path.join(SHOTS, `screendraw-pad-${name}.png`) })
 }
 
+// ---- paced to the voice: a beat's marks wait for its sentence to be heard, and spread over it
+{
+  const page = await open()
+  const t = await page.evaluate(() => Date.now())
+  const PACED = { id: "dp", agent: "Claude", tint: "orange", t, caption: "Share is up here. Then pick who in the list.", places: ELEMENTS,
+    marks: [{ type: "ring", at: { el: "share" } }, { type: "check", at: R("row1"), beat: 1 }, { type: "cross", at: R("row3"), beat: 1 }],
+    spoken: [{ at: t, dur: 2500 }, null] }
+  await show(page, PACED)
+  await page.waitForSelector("[data-screendraw=dp]")
+  const beat = () => page.evaluate(() => document.querySelector("[data-screendraw=dp]")?.getAttribute("data-beat"))
+  // (its second sentence turns out to be heard later than the first's end: at 4.5 s)
+  await page.waitForTimeout(300)
+  await show(page, { ...PACED, spoken: [{ at: t, dur: 2500 }, { at: t + 4500, dur: 1600 }] })
+  await page.waitForTimeout(2900)
+  const waited = await beat()
+  const came = await until(async () => (await beat()) === "1", 5000)
+  const delays = await page.evaluate(() => [...document.querySelectorAll("[data-mark-i] .sd-pen")].map((e) => parseFloat(getComputedStyle(e).animationDelay) * 1000))
+  check("paced: a beat waits for its sentence to be heard, then comes", waited === "0" && !!came, { waited })
+  check("paced: its marks spread over the time it's said, not bunched", delays.length >= 3 && Math.max(...delays) - Math.min(...delays.slice(1)) >= 600, delays)
+}
+
 await done()

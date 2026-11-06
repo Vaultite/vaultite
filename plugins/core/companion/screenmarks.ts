@@ -1,5 +1,6 @@
 // What the companion draws over the screen (companion draw --marks): marks as data, checked here for the server and the
 // overlay alike (no Node, no DOM), and a drawing kept as an .excalidraw scene. web/src/screendraw draws them.
+import { sayable, speakable } from "./spoken.ts"
 
 /** A rectangle in screen points (a point: w and h 0); an element's, with what it says. */
 export type Rect = { x: number; y: number; w: number; h: number; label?: string }
@@ -30,7 +31,11 @@ export type Mark = Base & (
 export type MarkType = Mark["type"]
 /** A drawing as the overlay gets it: an agent's marks, the words they're timed with (`caption`, its sentences the
  *  beats), and the screen rects of its places (`places`: "el:e12", "pane:t3", "ui:tab:t3"). */
-export type Drawing = { id: string; agent: string; tint: string; t: number; marks: Mark[]; caption?: string; places?: Record<string, Rect>; kept?: string }
+export type Drawing = { id: string; agent: string; tint: string; t: number; marks: Mark[]; caption?: string; places?: Record<string, Rect>; kept?: string
+  /** Its caption's sentences as they're heard aloud (the companion's voice): when each began (ms, the clock's) and how
+   *  long it took; null, not heard (yet). The pen draws each beat while its sentence is heard. */
+  spoken?: (Spoken | null)[] }
+export type Spoken = { at: number; dur: number }
 
 export const MARK_TYPES: MarkType[] = ["point", "ring", "frame", "underline", "strike", "connect", "num", "check", "cross", "spotlight", "scroll", "write", "paper", "sticky", "list", "button", "copy", "open"]
 /** Cards: placed on calm space when they have no `at`. */
@@ -201,6 +206,38 @@ export function beatTimes(caption: string, beats: number) {
   return out
 }
 const readMs = (s: string) => Math.min(3500, Math.max(700, 300 + s.split(/\s+/).length * 230))
+
+/** A sentence as the voice said it (electron/voice.ts, or any voice that plays the answer): its words, when it began
+ *  (ms, the clock's), how long it took. */
+export type Heard = { text: string; at: number; dur: number }
+const wordsOf = (s: string) => sayable(speakable(s)).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+/** Each of `caption`'s sentences as it was heard: matched in order to the sentences said (most of their words the same),
+ *  null for one not heard yet. */
+export function heardBeats(caption: string, heard: Heard[]): (Spoken | null)[] {
+  const said = heard.map((h) => ({ h, w: new Set(wordsOf(h.text)) }))
+  let from = 0
+  return sentences(caption).map((s) => {
+    const w = wordsOf(s)
+    if (!w.length) return null
+    for (let i = from; i < said.length; i++) {
+      const same = w.filter((x) => said[i].w.has(x)).length
+      if (same >= Math.max(1, 0.6 * Math.max(w.length, said[i].w.size))) { from = i + 1; return { at: said[i].h.at, dur: said[i].h.dur } }
+    }
+    return null
+  })
+}
+/** When each beat starts (ms after `t0`, the drawing's clock) and how long its marks are spread over: while its sentence
+ *  is heard, when it's said aloud; else the time to read the ones before (beatTimes), on from the last heard. */
+export function pacedBeats(caption: string, beats: number, spoken: (Spoken | null)[] | undefined, t0: number) {
+  const ss = sentences(caption), times: number[] = [], spread: (number | null)[] = []
+  for (let b = 0; b <= beats; b++) {
+    const h = spoken?.[b], was = b ? spoken?.[b - 1] : null
+    const t = h ? h.at - t0 : b === 0 ? 0 : was ? was.at + was.dur - t0 : times[b - 1] + (ss[b - 1] ? readMs(ss[b - 1]) : 1200)
+    times.push(Math.max(0, b ? times[b - 1] : 0, t))
+    spread.push(h ? h.dur : null)
+  }
+  return { times, spread }
+}
 
 // ---------- kept: a drawing as an .excalidraw scene (vau docs excalidraw)
 

@@ -13,9 +13,10 @@ import { dictate, dictating, stopFor, dictationEngines, onDictating, type Dictat
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
 import { atOffset, badgeOf, besidePointer, drawnShapes, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
-import { closePanel, cue as playCue, drawingActs, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
+import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
-import { elementPlaces } from "./drawing.ts"
+import { type Drawing, elementPlaces } from "./drawing.ts"
+import { type Heard, heardBeats } from "../plugins/core/companion/screenmarks.ts"
 import { type Press, pressLog } from "./presslog.ts"
 import { companionVoice } from "./voice.ts"
 
@@ -250,7 +251,7 @@ const live = (() => {
       let m: Record<string, unknown>
       try { m = JSON.parse(String(d)) } catch { return }
       // (the companion's drawing over the screen: the server's, its places found there)
-      if (m.t === "drawing") { if (m.drawing) answerArrived(); return showDrawing((m.drawing as Parameters<typeof showDrawing>[0]) ?? null, elementPlaces(lastNear)) }
+      if (m.t === "drawing") { if (m.drawing) answerArrived(); drawn = (m.drawing as Drawing | undefined) ?? null; return paceDrawing() }
       if (m.t === "state") {
         state.mode = String(m.mode); state.name = String(m.name)
         state.agents = new Map((m.agents as Agent[]).map((a) => [a.name, a]))
@@ -278,7 +279,7 @@ const live = (() => {
   return {
     state,
     open(p: number | null) { this.close(); port = p; if (p !== null) connect() },
-    close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = []; state.jobs = null; showDrawing(null) },
+    close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = []; state.jobs = null; drawn = null; showDrawing(null) },
     say(m: object) { if (QUIET) asked.push(m); if (ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(m)); return true } return false },
   }
 })()
@@ -841,6 +842,7 @@ const speaker = companionVoice({
   hints: () => [...new Set([...(Array.isArray(prefs.dictation.languages) ? prefs.dictation.languages.map(String) : []), ...app.getPreferredSystemLanguages()]
     .map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2}$/.test(l)))],
   level: (on, v) => voiceLevel(on, v),
+  heard: (h) => voiceHeardLine(h),
   ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
 })
 /** The answer being said: the ask it answers (when it came), its says (the last still growing); `inApp`: asked in a
@@ -861,6 +863,7 @@ function voiceHeard(n: Note) {
     stopVoice(a.t)
     if (mode === "off" || (mode === "auto" && !a.voice)) return
     speaker.begin("", a.lang)
+    heardLines = []
     voiced = { name: n.agent, asked: a.t, inApp: !exchange, notes: [], quiet: null }
   }
   const v = voiced
@@ -874,6 +877,18 @@ function voiceHeardAgent(a: Agent) {
   if (voiced?.name === a.name && voiced.notes.length && (a.state === "watching" || a.state === "away")) speaker.end()
 }
 /** Silence, at once: what's said now, and what's still to come of answers asked before `until` (now). */
+/** The drawing up, as the server sent it; the sentences of the answer said aloud so far, as heard (any voice's). */
+let drawn: Drawing | null = null, heardLines: Heard[] = []
+/** A sentence heard (the companion's voice, or another that plays its answer): its drawing's pen keeps to it. */
+export function voiceHeardLine(h: Heard) {
+  heardLines.push({ text: h.text, at: h.at, dur: h.dur })
+  // (only the one still up: one cleared or ended stays gone)
+  if (drawn && drawingUp() === drawn.id) paceDrawing()
+}
+/** The drawing, each beat timed to when its sentence is heard (overlay: the pen draws while those words are said). */
+function paceDrawing() {
+  showDrawing(drawn && (heardLines.length ? { ...drawn, spoken: heardBeats(drawn.caption ?? "", heardLines) } : drawn), elementPlaces(lastNear))
+}
 function stopVoice(until = Date.now()) {
   hushed = Math.max(hushed, until)
   if (voiced?.quiet) clearTimeout(voiced.quiet)

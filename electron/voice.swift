@@ -29,6 +29,8 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
   /** Bumped by a stop: what a buffer stopped then says when it's let go is dropped. */
   var gen = 0
   var running = false, started = Set<Int>()
+  /** Where what's scheduled ends, in the player's samples: a piece starts there, or now if it ran dry. */
+  var queueEnd: AVAudioFramePosition = 0
   var file: AVAudioFile?
   var idle: Timer?
   var synths: [AVSpeechSynthesizer] = []
@@ -106,6 +108,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
     pieces.removeAll()
     started.removeAll()
     if running { node.stop() }
+    queueEnd = 0
     level = 0
     emit(["type": "stopped"])
     emit(["type": "level", "v": 0])
@@ -125,8 +128,12 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
   }
 
   func play(_ b: AVAudioPCMBuffer, _ p: Piece) {
-    if !started.contains(p.n) { started.insert(p.n); emit(["type": "start", "n": p.n]) }
+    let first = !started.contains(p.n)
+    if first { started.insert(p.n) }
+    let now = Date().timeIntervalSince1970 * 1000
     if let f = file {
+      // (a file: heard when it's written)
+      if first { emit(["type": "start", "n": p.n, "at": now]) }
       try? f.write(from: b)
       p.played += 1
       var sum: Float = 0
@@ -139,11 +146,15 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
       do { try engine.start(); running = true } catch { emit(["type": "error", "message": "\(error)"]); return }
     }
     idle?.invalidate(); idle = nil
+    if !node.isPlaying { node.play() }
+    // (when its first sound will be heard: after what's queued, and the device's latency; the drawing's pen keeps to it)
+    let at = node.lastRenderTime.flatMap { node.playerTime(forNodeTime: $0) }?.sampleTime ?? 0, begin = max(queueEnd, at)
+    if first { emit(["type": "start", "n": p.n, "at": now + Double(begin - at) / RATE * 1000 + engine.outputNode.presentationLatency * 1000]) }
+    queueEnd = begin + AVAudioFramePosition(b.frameLength)
     let g = gen
     node.scheduleBuffer(b, completionCallbackType: .dataPlayedBack) { [weak self] _ in
       DispatchQueue.main.async { guard let self, g == self.gen else { return }; p.played += 1; self.finished() }
     }
-    if !node.isPlaying { node.play() }
   }
 
   /** Pieces played to their end are told done; with nothing left, the engine rests a while, then lets the device go. */
@@ -159,7 +170,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
       if running && idle == nil {
         idle = Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { [weak self] _ in
           guard let self, self.pieces.isEmpty else { return }
-          self.node.stop(); self.engine.stop(); self.running = false; self.idle = nil
+          self.node.stop(); self.engine.stop(); self.running = false; self.idle = nil; self.queueEnd = 0
         }
       }
     }

@@ -42,7 +42,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The companion answers out loud**: hold ⌃⌥ and ask by voice, over any app or in Vaultite, and its answer is
   spoken by your pointer as it's written, starting with its first sentence (words that come with a drawing too); its cursor shows it talking. ElevenLabs' voice (Brian) with your ElevenLabs key
   (`vau voice key`), else Soniox's (Adrian), else this Mac's, each taking over from the next word if one fails;
-  `vau voice sample` lets you hear one; dates, ranges and abbreviations are said as words; pressing the key again, Esc or moving on stops it. The companion's Voice setting: when you speak (the
+  `vau voice sample` lets you hear one; what it draws comes as you hear its words, each mark while its sentence is said; dates, ranges and abbreviations are said as words; pressing the key again, Esc or moving on stops it. The companion's Voice setting: when you speak (the
   default), always, or off.
 - **The companion moves with you on screen**: hold its Talk key and your pointer leaves a trail in its colour, fading as
   it goes, so you can ring or underline what you mean (sent with your words); its cursor trails your pointer on a spring
