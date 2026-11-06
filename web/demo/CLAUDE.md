@@ -15,3 +15,6 @@ The web demo (`npm run build:demo`): the whole app in a browser, no server, on t
   `boot.ts`), so the Agents bundle has something to look at; still nothing of theirs runs.
 - A bundle from a repository (`?bundle=gh:owner/name`, a bundle's link on vaultite.com/b/...) is fetched by the browser
   from GitHub's API (`github.ts`), not git: about 3 requests of the 60 an hour GitHub allows an address without a token.
+- The Browser bundle's tabs show a few sites live (`sites.ts`: framed by web-viewer's FramedPage.tsx), pinned and opened
+  as it's turned on, each with a note about it. A site added must allow framing, run no trackers and load nothing from
+  elsewhere: visitors' browsers reach it, and vaultite.com/privacy says who sees them.

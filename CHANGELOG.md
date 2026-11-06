@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The web demo's Browser shows real sites**: its tabs hold neodisk.app and olimpicos.net live (sandboxed, sending no
+  referrer), beside a note about the page you're on; and the demo follows the site that embeds it, its light or dark
+  look and its visitor's answer about AI (`?theme=`, `?ai=`).
 - **Clicks in agents' pages land again**: a page an agent opened while no spare was ready never drew on a Mac, so
   every click there was dropped (an Allow in a Claude Code session "changed nothing"). Each now starts from a ready
   view, and one that stopped drawing (its window out of sight a while) is shown again before an agent acts in it or

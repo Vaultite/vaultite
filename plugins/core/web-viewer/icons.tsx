@@ -4,6 +4,7 @@ import { forwardRef } from "react"
 import { Globe, type LucideIcon, type LucideProps } from "lucide-react"
 import { cell, webPages } from "@vaultite"
 import { hostOf } from "./address"
+import { framedIcon } from "./framed"
 
 /** By key (a host, or a host and a page's first path segment: iconKey): a data URL, "" for none (yet, or one that
  *  couldn't be drawn). */
@@ -46,7 +47,8 @@ export function iconCame(key: string, icon: string) {
 function useIcon(keys: string[]) {
   for (const k of keys) want(k)
   const id = keys.join(" ")
-  return icons.use((m) => { for (const k of id.split(" ")) { const v = m.get(k); if (v) return v } return "" })
+  // (a site shown framed, the web demo's: its own, as it named it)
+  return icons.use((m) => { for (const k of id.split(" ")) { const v = m.get(k); if (v) return v } return "" }) || framedIcon(keys[keys.length - 1])
 }
 
 /** A site's icon (`host`), or a page's (`url`: its own, else its site's). */
