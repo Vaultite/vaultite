@@ -1,6 +1,7 @@
 // The companion's voice out (voice.ts): an answer's pieces in order, a cloud's PCM or this Mac's voice, its level as it
 // plays; JSON lines in and out. VOICE_OUT=<file.wav> writes the audio there instead: tests never make a sound.
 import AVFoundation
+import CoreAudio
 import Foundation
 
 let RATE = 24_000.0
@@ -12,19 +13,25 @@ func emit(_ m: [String: Any]) {
   FileHandle.standardOutput.write(s.data(using: .utf8)!)
 }
 
-/** One piece: its buffers as they come, whether all came (`ended`, and no synthesis still at work). */
+/** One piece: its buffers as they come, whether all came (`ended`, and no synthesis still at work); `starts`, where each
+ *  one scheduled begins in the player's samples. */
 final class Piece {
   let n: Int
   var buffers: [AVAudioPCMBuffer] = []
+  var starts: [AVAudioFramePosition] = []
   var scheduled = 0, played = 0
   var ended = false, making = 0
   init(_ n: Int) { self.n = n }
   var complete: Bool { ended && making == 0 }
 }
 
+/** How far back it says again after its output went away (what the device had but never played), at most and at least:
+ *  from the quietest moment between, a gap between words. */
+let REWIND_MAX = 0.9, REWIND_MIN = 0.25
+
 final class Voice: NSObject, AVSpeechSynthesizerDelegate {
-  let engine = AVAudioEngine()
-  let node = AVAudioPlayerNode()
+  var engine = AVAudioEngine()
+  var node = AVAudioPlayerNode()
   var pieces: [Piece] = []
   /** Bumped by a stop: what a buffer stopped then says when it's let go is dropped. */
   var gen = 0
@@ -35,6 +42,9 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
   var idle: Timer?
   var synths: [AVSpeechSynthesizer] = []
   var level: Float = 0, lastLevel = Date.distantPast
+  /** Where its output went away (the player's samples then), as it settles before it's played again. */
+  var lostAt: AVAudioFramePosition?, settling: DispatchWorkItem?
+  var device: AudioObjectID = 0, configWatch: NSObjectProtocol?
 
   override init() {
     super.init()
@@ -42,10 +52,104 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
       let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: RATE, AVNumberOfChannelsKey: 1, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false]
       file = try? AVAudioFile(forWriting: URL(fileURLWithPath: out), settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
     } else {
-      engine.attach(node)
-      engine.connect(node, to: engine.mainMixerNode, format: format)
-      engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buf, _ in self?.metered(buf) }
+      build()
+      watchOutput()
     }
+  }
+
+  /** Its engine, new: one started before the output changed under it plays into nothing. */
+  func build() {
+    if let w = configWatch { NotificationCenter.default.removeObserver(w) }
+    engine = AVAudioEngine()
+    node = AVAudioPlayerNode()
+    engine.attach(node)
+    engine.connect(node, to: engine.mainMixerNode, format: format)
+    engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buf, _ in self?.metered(buf) }
+    configWatch = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in self?.outputChanged("its engine's output changed") }
+  }
+
+  /** The output device (the default one), its rate and its streams: Bluetooth headphones switch profile after the
+   *  microphone closes (a call's, then music's), and what was playing went to the old one, unheard. */
+  func watchOutput() {
+    var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, .main) { [weak self] _, _ in self?.watchDevice(); self?.outputChanged("another output device") }
+    watchDevice()
+  }
+  func watchDevice() {
+    var id = AudioObjectID(0), size = UInt32(MemoryLayout<AudioObjectID>.size)
+    var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &id) == noErr, id != device, id != 0 else { return }
+    device = id
+    for sel in [kAudioDevicePropertyNominalSampleRate, kAudioDevicePropertyStreamConfiguration, kAudioDevicePropertyStreams] {
+      var a = AudioObjectPropertyAddress(mSelector: sel, mScope: sel == kAudioDevicePropertyNominalSampleRate ? kAudioObjectPropertyScopeGlobal : kAudioObjectPropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+      // (one gone as the default: what it says no longer matters)
+      AudioObjectAddPropertyListenerBlock(id, &a, .main) { [weak self] _, _ in if self?.device == id { self?.outputChanged("its output device changed") } }
+    }
+  }
+
+  /** The output changed: where it stopped being heard is kept now; once it settles (changes come in a burst), a new
+   *  engine plays on from a little before there. */
+  func outputChanged(_ why: String) {
+    if lostAt == nil && !pieces.isEmpty { lostAt = position() }
+    settling?.cancel()
+    let w = DispatchWorkItem { [weak self] in self?.reroute(why) }
+    settling = w
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: w)
+  }
+
+  /** Where it is in the player's samples: rendered so far (a file: written). */
+  func position() -> AVAudioFramePosition {
+    if file != nil || !running { return queueEnd }
+    return node.lastRenderTime.flatMap { node.playerTime(forNodeTime: $0) }?.sampleTime ?? queueEnd
+  }
+
+  func reroute(_ why: String) {
+    settling = nil
+    let at = lostAt ?? position()
+    lostAt = nil
+    gen += 1
+    idle?.invalidate(); idle = nil
+    if file == nil {
+      if running { node.stop(); engine.stop() }
+      running = false
+      build()
+    }
+    queueEnd = file == nil ? 0 : queueEnd
+    guard let p = pieces.first(where: { !$0.starts.isEmpty }) else { return }
+    // (said again from a gap between words a little before it went: the next pieces start over as they are)
+    let from = quiet(p, before: at)
+    var said = 0.0
+    for q in pieces {
+      var k = 0
+      if q === p {
+        while k < q.starts.count, q.starts[k] + AVAudioFramePosition(q.buffers[k].frameLength) <= from { k += 1 }
+        if k < q.starts.count, q.starts[k] < from, let tail = slice(q.buffers[k], from: AVAudioFrameCount(from - q.starts[k])) { q.buffers[k] = tail }
+        said = Double(max(0, at - from)) / RATE
+      }
+      q.starts.removeSubrange(k...)
+      q.scheduled = k
+      q.played = k
+    }
+    emit(["type": "rerouted", "why": why, "again": (said * 100).rounded() / 100])
+    pump()
+  }
+
+  /** The quietest moment of `p`'s audio between REWIND_MAX and REWIND_MIN before `at` (10 ms windows). */
+  func quiet(_ p: Piece, before at: AVAudioFramePosition) -> AVAudioFramePosition {
+    let lo = max(p.starts[0], at - AVAudioFramePosition(REWIND_MAX * RATE)), hi = max(lo, at - AVAudioFramePosition(REWIND_MIN * RATE)), win = AVAudioFramePosition(RATE / 100)
+    var best = hi, low = Float.infinity
+    var t = hi
+    while t >= lo {
+      var sum: Float = 0, count = 0
+      for (i, b) in p.buffers.prefix(p.starts.count).enumerated() {
+        let s = p.starts[i], e = s + AVAudioFramePosition(b.frameLength)
+        guard e > t, s < t + win, let d = b.floatChannelData?[0] else { continue }
+        for f in max(t, s)..<min(t + win, e) { let v = d[Int(f - s)]; sum += v * v; count += 1 }
+      }
+      if count > 0, sum / Float(count) < low { low = sum / Float(count); best = t }
+      t -= win
+    }
+    return best
   }
 
   func piece(_ n: Int) -> Piece {
@@ -103,12 +207,13 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
   /** All at once: nothing more plays, nothing queued stays. */
   func stop() {
     gen += 1
+    lostAt = nil
     for s in synths { s.stopSpeaking(at: .immediate) }
     synths.removeAll()
     pieces.removeAll()
     started.removeAll()
     if running { node.stop() }
-    queueEnd = 0
+    queueEnd = file == nil ? 0 : queueEnd
     level = 0
     emit(["type": "stopped"])
     emit(["type": "level", "v": 0])
@@ -134,6 +239,8 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
     if let f = file {
       // (a file: heard when it's written)
       if first { emit(["type": "start", "n": p.n, "at": now]) }
+      p.starts.append(queueEnd)
+      queueEnd += AVAudioFramePosition(b.frameLength)
       try? f.write(from: b)
       p.played += 1
       var sum: Float = 0
@@ -150,6 +257,7 @@ final class Voice: NSObject, AVSpeechSynthesizerDelegate {
     // (when its first sound will be heard: after what's queued, and the device's latency; the drawing's pen keeps to it)
     let at = node.lastRenderTime.flatMap { node.playerTime(forNodeTime: $0) }?.sampleTime ?? 0, begin = max(queueEnd, at)
     if first { emit(["type": "start", "n": p.n, "at": now + Double(begin - at) / RATE * 1000 + engine.outputNode.presentationLatency * 1000]) }
+    p.starts.append(begin)
     queueEnd = begin + AVAudioFramePosition(b.frameLength)
     let g = gen
     node.scheduleBuffer(b, completionCallbackType: .dataPlayedBack) { [weak self] _ in
@@ -211,6 +319,14 @@ func convert(_ b: AVAudioPCMBuffer, _ c: AVAudioConverter) -> AVAudioPCMBuffer? 
   return err == nil && out.frameLength > 0 ? out : nil
 }
 
+/** `b` from frame `from` on, a buffer of its own. */
+func slice(_ b: AVAudioPCMBuffer, from: AVAudioFrameCount) -> AVAudioPCMBuffer? {
+  guard from < b.frameLength, let out = AVAudioPCMBuffer(pcmFormat: b.format, frameCapacity: b.frameLength - from), let src = b.floatChannelData?[0], let dst = out.floatChannelData?[0] else { return nil }
+  out.frameLength = b.frameLength - from
+  for i in 0..<Int(out.frameLength) { dst[i] = src[Int(from) + i] }
+  return out
+}
+
 /** This Mac's best voice for `language` (two letters, or a locale): premium, then enhanced, the user's region first. */
 func bestVoice(_ language: String) -> AVSpeechSynthesisVoice? {
   let lang = language.lowercased().replacingOccurrences(of: "_", with: "-")
@@ -240,6 +356,8 @@ Thread {
       case "say": voice.say(n, m["text"] as? String ?? "", m["language"] as? String ?? "en", m["speed"] as? Double ?? speed)
       case "end": voice.end(n)
       case "stop": voice.stop()
+      // (as its output device changing does: tests)
+      case "reroute": voice.outputChanged("asked")
       case "speed": speed = m["v"] as? Double ?? 1
       case "voices":
         let l = m["language"] as? String ?? "en"

@@ -31,8 +31,9 @@ export function companionVoice(o: {
   /** Each sentence as it's heard: when it began (ms, the clock's) and how long it takes (a drawing's pen keeps to it). */
   heard?: (h: Heard & { say: string }) => void
   /** What happened to an answer, for the press log: its first sound heard (`at`, the clock's ms) and whose voice it
-   *  was, or a cloud voice failing and the next taking over. */
-  told?: (e: { t: "sound"; at: number; by: string } | { t: "fallback"; why: string; to: string }) => void
+   *  was, a cloud voice failing and the next taking over, or its output device changing as it played (Bluetooth
+   *  headphones leaving their call profile once the microphone closes): said again from `again` s before. */
+  told?: (e: { t: "sound"; at: number; by: string } | { t: "fallback"; why: string; to: string } | { t: "reroute"; why: string; again: number }) => void
   /** A scripted copy's (VAULTITE_QUIET): what it would play goes here, and nothing plays. */
   record?: (m: Record<string, unknown>) => void
 }) {
@@ -77,7 +78,7 @@ export function companionVoice(o: {
     }, (e) => { console.warn(`voice: its helper isn't here (${(e as Error).message})`); return null }).finally(() => { starting = null })
     return starting
   }
-  function heard(m: { type?: string; n?: number; v?: number; at?: number }) {
+  function heard(m: { type?: string; n?: number; v?: number; at?: number; why?: string; again?: number }) {
     if (m.type === "start" && typeof m.n === "number" && typeof m.at === "number") {
       v.played(m.n, m.at)
       if (sounded !== gen && m.n < 1_000_000) { sounded = gen; o.told?.({ t: "sound", at: m.at, by: whose(v.tier()) }) }
@@ -85,6 +86,7 @@ export function companionVoice(o: {
     else if (m.type === "level") { if (speaking || playing.size) tell(playing.size > 0, Number(m.v) || 0) }
     else if (m.type === "done" && typeof m.n === "number") { playing.delete(m.n); if (!playing.size) tell(false, 0) }
     else if (m.type === "stopped") { playing.clear(); tell(false, 0) }
+    else if (m.type === "rerouted") o.told?.({ t: "reroute", why: String(m.why ?? ""), again: Number(m.again) || 0 })
   }
   function tell(on: boolean, v: number) { speaking = on; o.level(on, on ? v : 0) }
   /** Commands go once its helper is up, in order. */

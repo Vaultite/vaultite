@@ -21,6 +21,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Dictation knows Vaultite's words**: the recognizer (Soniox or this Mac's) is told to expect Vaultite, vau, Claude,
   Codex, the companion's names and your newest notes' names, so "Vaultite" no longer comes out as "Voltite". The Talk
   key's press log says which recognizer heard each press, and why when it wasn't Soniox.
+- **The companion's voice no longer cuts out after its first words on Bluetooth headphones**: AirPods switch back from
+  their call profile a moment after the microphone closes, and the answer went on playing to the old one, unheard. Its
+  voice now follows the output as it changes (headphones, another device), saying again from the pause just before.
 - **Show the companion's session opens the one you talk to**: its Talk key's session (shown when it answered last or the
   long one isn't running), which it can open itself when you ask, rather than a "isn't running" toast.
 - **The companion knows when you ask it over Vaultite**: holding ⌃⌥ over Vaultite's own window no longer tells it

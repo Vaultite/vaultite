@@ -919,8 +919,9 @@ async function askFrom(name: string, text: string) {
 
 /** What a scripted copy would have said aloud (it plays nothing). */
 const spoken: Record<string, unknown>[] = []
-/** The press whose ask went last, and when its key was let go: its answer's first sound is logged with it. */
-let lastAsk: { press: Press; up: number } | null = null
+/** The press whose ask went last, and when its key was let go: its answer's first sound is logged with it (`sounded`),
+ *  and what its voice went through. */
+let lastAsk: { press: Press; up: number; sounded?: boolean } | null = null
 /** The languages the user speaks, likeliest first (two letters): dictation's hints, then the Mac's. */
 const hints = () => [...new Set([...(Array.isArray(prefs.dictation.languages) ? prefs.dictation.languages.map(String) : []), ...app.getPreferredSystemLanguages()]
   .map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2}$/.test(l)))]
@@ -930,12 +931,15 @@ const speaker = companionVoice({
   hints,
   level: (on, v) => voiceLevel(on, v),
   heard: (h) => voiceHeardLine(h),
-  // (the press's log: how long from letting the key go to the answer's first sound, and a voice failing over)
+  // (the press's log: how long from letting the key go to the answer's first sound, a voice failing over, and its
+  // output changing under it (said again from a little before))
   told: (e) => {
     const x = lastAsk
     if (!x) return
     if (e.t === "fallback") return x.press.after("voice-fallback", { why: e.why, to: e.to })
-    lastAsk = null
+    if (e.t === "reroute") return x.press.after("voice-reroute", { why: e.why, again: e.again })
+    if (x.sounded) return
+    x.sounded = true
     x.press.after("sound", { by: e.by, afterUp: Math.round(e.at - x.up) })
   },
   ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),

@@ -310,7 +310,19 @@ export default async ($: VaultTest) => {
     check("voice player: each piece says when it's heard (the drawing's pen keeps to it)", lines.filter((l) => l.type === "start").every((l) => typeof l.at === "number" && Math.abs(l.at - Date.now()) < 60_000), lines.filter((l) => l.type === "start"))
     check("voice player: pieces play in order, a cloud's PCM and then this Mac's voice made for the next, each told done", order === "start1,done1,start2,done2", lines.filter((l) => l.type !== "level"))
     check("voice player: its level as it plays", lines.some((l) => l.type === "level" && l.v > 0.3), lines.filter((l) => l.type === "level").slice(0, 5))
-    send({ cmd: "pcm", n: 3, data: tone.toString("base64") })
+    // (its output device changing as it plays, as Bluetooth headphones do once the microphone closes: a fresh output, the
+    // piece said again from the gap between words before where it went, then on to its end)
+    const gapped = Buffer.from(tone)
+    gapped.fill(0, 24_000, 28_800)
+    send({ cmd: "pcm", n: 3, data: gapped.toString("base64") })
+    send({ cmd: "reroute" })
+    for (let i = 0; i < 100 && !lines.some((l) => l.type === "rerouted"); i++) await sleep(20)
+    send({ cmd: "end", n: 3 })
+    for (let i = 0; i < 100 && !lines.some((l) => l.type === "done" && l.n === 3); i++) await sleep(20)
+    const again = lines.find((l) => l.type === "rerouted")?.again
+    check("voice player: its output changing mid-piece, it plays on from the pause before where it went, to the piece's end", Math.abs(again - 0.41) < 0.02 &&
+      lines.some((l) => l.type === "done" && l.n === 3), lines.filter((l) => l.type === "rerouted" || (l.type === "done" && l.n === 3)))
+    send({ cmd: "pcm", n: 4, data: tone.toString("base64") })
     send({ cmd: "stop" })
     for (let i = 0; i < 100 && !lines.some((l) => l.type === "stopped"); i++) await sleep(20)
     child.stdin.end()
