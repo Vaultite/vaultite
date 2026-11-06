@@ -38,7 +38,9 @@ const tellForm = (p: EnginePage) => tell(p.win, { type: "engine:passwords:form",
 ipcMain.on("vaultite:logins:form", (e, given: unknown) => {
   const p = senderPage(e)
   if (!p || !given || typeof given !== "object") return
-  const g = given as Partial<Shows>, f = e.senderFrame!
+  const g = given as Partial<Shows> & { url?: unknown }, f = e.senderFrame!
+  // (a word from the document before this one, come late)
+  if (typeof g.url === "string" && g.url !== f.url) return
   const map = forms.get(p.wc) ?? new Map<string, Shows>()
   forms.set(p.wc, map)
   const was = shows(p, "form")

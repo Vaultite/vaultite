@@ -29,7 +29,7 @@ if (/^https?:/.test(location.href)) {
     }
     if (!told || form !== told.form || password !== told.password) {
       told = { form, password }
-      ipcRenderer.send("vaultite:logins:form", told)
+      ipcRenderer.send("vaultite:logins:form", { ...told, url: location.href })
     }
   }
   // (at most a scan in a while, however busy the page: a query of its inputs)
