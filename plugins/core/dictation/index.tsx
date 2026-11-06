@@ -52,7 +52,8 @@ async function begin(hold: boolean) {
   const silence = typeof s.silence === "number" ? s.silence : 0
   // (left out of its settings: the manifest's default)
   const replacements = Array.isArray(s.replacements) ? s.replacements.filter((x): x is string => typeof x === "string") : ["at Claude: @claude"]
-  await startDictation(target, { engine: await engineFor(s.engine, language), language, silence, hold, replacements, keep: s.keep_audio === true }, failed)
+  const microphone = typeof s.microphone === "string" ? s.microphone : undefined
+  await startDictation(target, { engine: await engineFor(s.engine, language), language, silence, hold, replacements, keep: s.keep_audio === true, microphone }, failed)
   return !!dictation()
 }
 

@@ -34,7 +34,7 @@ plugin.route("GET", "dictation/cloud", async (req) => {
   const s = plugin.settings()
   const engine = s.engine ?? "auto"
   if (plugin.isOff()) return {}
-  const expect = { terms: terms(), ...(typeof s.microphone === "string" && s.microphone.trim() ? { microphone: s.microphone.trim() } : {}) }
+  const expect = { terms: terms() }
   if (engine !== "auto" && engine !== "soniox") return expect
   const key = keyHere()
   if (!key) return engine === "soniox" ? { why: `No Soniox key on this machine (${SET_KEY})`, ...expect } : expect

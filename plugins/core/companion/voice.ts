@@ -15,9 +15,9 @@ export const SET_ELEVEN = `vau secret "ElevenLabs API key" | vau voice key --pro
 const keyOf = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
 const allKeys = (plugin: Plugin) => plugin.secrets() as { companion?: { elevenlabs?: unknown; openai?: unknown }; dictation?: { soniox?: unknown } }
 
-/** What its voice runs on here, each piece the user's own key (or this Mac's, free), for its status: who hears a Talk
- *  key's words, who speaks (in the order tried), and the realtime voice. Never a key itself. */
-export function voiceHere(plugin: Plugin, setting: (key: string) => string) {
+/** What its voice runs on here, each piece the user's own key (or this Mac's, free), for its status: who hears a Talk key's
+ *  words and through which mic (as the desktop app says), who speaks (in order tried), the realtime voice. Never a key. */
+export function voiceHere(plugin: Plugin, setting: (key: string) => string, mic?: string) {
   const k = allKeys(plugin), eleven = !!keyOf(k.companion?.elevenlabs), openai = !!keyOf(k.companion?.openai)
   // (Soniox hears only with dictation's engine on auto or soniox: plugins/core/dictation)
   const engine = String(plugin.peer("dictation")?.settings().engine ?? "auto")
@@ -25,12 +25,12 @@ export function voiceHere(plugin: Plugin, setting: (key: string) => string) {
   const order = setting("voice_provider") === "soniox" ? ["soniox", "elevenlabs"] : ["elevenlabs", "soniox"]
   const speaks = setting("voice") === "off" ? [] : [...order.filter((p) => (p === "soniox" ? !!keyOf(k.dictation?.soniox) : eleven)), "mac"]
   const realtime = setting("voice") === "off" || setting("voice_front") !== "realtime" ? "off" : openai ? "on" : "no key"
-  return { hears: soniox ? "soniox" : "mac", speaks, realtime, ...(realtime === "on" ? { model: setting("realtime_model") } : {}) }
+  return { hears: soniox ? "soniox" : "mac", ...(mic ? { mic } : {}), speaks, realtime, ...(realtime === "on" ? { model: setting("realtime_model") } : {}) }
 }
 const VOICE_NAMES: Record<string, string> = { soniox: "Soniox", elevenlabs: "ElevenLabs", mac: "this Mac's" }
 /** voiceHere's words. */
 export const voiceHereText = (v: ReturnType<typeof voiceHere>) =>
-  `Voice here: hears with ${v.hears === "soniox" ? "Soniox" : "this Mac's recognizer"}; ${v.speaks.length ? `speaks with ${v.speaks.map((p) => VOICE_NAMES[p]).join(", then ")}` : "never speaks (voice off)"}; realtime ${v.realtime === "on" ? `on (OpenAI ${v.model})` : v.realtime === "no key" ? "off: no OpenAI key" : "off"}.`
+  `Voice here: hears with ${v.hears === "soniox" ? "Soniox" : "this Mac's recognizer"}${v.mic ? ` through ${v.mic}` : ""}; ${v.speaks.length ? `speaks with ${v.speaks.map((p) => VOICE_NAMES[p]).join(", then ")}` : "never speaks (voice off)"}; realtime ${v.realtime === "on" ? `on (OpenAI ${v.model})` : v.realtime === "no key" ? "off: no OpenAI key" : "off"}.`
 
 export function voiceOps(plugin: Plugin) {
   const all = () => allKeys(plugin)

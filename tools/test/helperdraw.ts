@@ -42,16 +42,16 @@ type Sink = { tell: (e: Record<string, unknown>) => void }
 let heardWords = "what's this?"
 // (`sttDrops`: the recognizer's socket drops mid-press; `finishMs`: how long its last words take once stopped)
 let sttDrops = false, finishMs = 5
-let released = 0, lingered = false
-mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink, o: { linger?: boolean }) => {
-  lingered = !!o.linger
-  sink.tell({ type: "mic", name: "Built-in Microphone", transport: "built-in", why: "the Mac's input is Bluetooth (Bob's headset): the built-in one keeps its sound" })
+// (`micBt`: the mic it hears with is a Bluetooth one, held open after; each release of it)
+let micBt = false
+const releases: number[] = []
+mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink) => {
   sink.tell({ type: "start" })
   if (sttDrops) setTimeout(() => { sink.tell({ type: "error", code: "socket", message: "the connection closed" }); sink.tell({ type: "end", reason: "error" }) }, 60)
-  return { ok: true }
+  return { ok: true, ...(micBt ? { mic: { uid: "pods", name: "Alice's AirPods", bluetooth: true, why: "the system's input (set)", fallback: [] } } : {}) }
 }, dictating: () => false,
   stopFor: (sink: Sink, cancel = false) => { const words = heardWords; setTimeout(() => { if (!cancel && words) sink.tell({ type: "final", text: words }); sink.tell({ type: "end", reason: cancel ? "cancel" : "stop" }) }, finishMs) },
-  dictationEngines: async () => ({}), onDictating: () => () => {}, releaseMic: () => { released++ } } })
+  dictationEngines: async () => ({}), onDictating: () => () => {}, onAudioDevices: () => () => {}, releaseMic: () => { releases.push(Date.now()) } } })
 
 // (the server: settings, and the companion's socket)
 let agent: Record<string, unknown> = { name: "Claude", tint: "orange", state: "watching", t: Date.now(), path: "Notes/A.md", line: 3 }
@@ -328,20 +328,23 @@ check("voice: a new ask (typed in its box) stops what it's saying", await until(
 H.heard({ event: "esc" })
 await until(() => !H.scene()!.summon)
 setAgent({ state: "watching", t: Date.now() })
-// (said to its end, its turn over: its cursor leaves a moment on, no Esc needed)
+// (said to its end, its turn over: its cursor leaves a moment on, no Esc needed; heard through a Bluetooth mic, held open
+// till then so the headset keeps its profile)
+micBt = true
 chord(true)
 await wait(300)
 chord(false)
-const releasedBefore = released
 await until(() => H.scene()!.summon?.state === "thinking")
 setAgent({ state: "thinking", t: Date.now() })
-await wait(100)
-const heldThinking = released === releasedBefore
+await wait(1300)
+check("mic: a Bluetooth mic stays open past the press while its answer is worked on", !releases.length, releases)
 voiced("v4", "Yes, it's done.")
+const saidAt = Date.now()
 setAgent({ state: "watching", t: Date.now() })
 check("voice: said to its end and its turn over, its cursor stays a moment, then leaves", !!H.scene()!.summon && await until(() => !H.scene()!.summon, 4000), H.scene()!.summon)
-check("mic: a Talk key's press says which microphone heard it and why, and keeps a Bluetooth one open till its answer is said, then lets it go",
-  lingered && heldThinking && released > releasedBefore && H.presses().some((l) => l.ev === "mic" && l.transport === "built-in" && /Bluetooth/.test(String(l.why))), [released, H.presses().filter((l) => l.ev === "mic").at(-1)])
+check("mic: …and is released a moment after the answer is said, in the press's log with its mic", await until(() => releases.length === 1, 3000) && releases[0] - saidAt >= 900 &&
+  H.presses().some((l) => l.ev === "stt" && l.mic === "Alice's AirPods" && l.bluetooth === true) && H.presses().some((l) => l.ev === "mic-release"), [releases, saidAt, H.presses().filter((l) => /^mic/.test(String(l.ev)))])
+micBt = false
 heardWords = "and this?"
 // (⌃⌥ in every order, either Option, let go either way, as the screen helper's tap tells it: right Option is a dictation
 // key, Control and left Option aren't watched; a chord is told as such)

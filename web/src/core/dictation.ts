@@ -22,6 +22,8 @@ export type DictationEvent =
   | { type: "final"; text: string }
   /** Quiet for `ms` after speech: 700 ends a clause (what was heard turns final), 2000 a thought. */
   | { type: "pause"; ms: number }
+  /** The mic it hears with (the app picks it: electron/miclogic.ts), told again when its device went or changed (`why`). */
+  | { type: "mic"; name: string; why?: string; bluetooth?: boolean }
   /** The cloud recognizer couldn't (no key, no network, it dropped): this Mac's goes on, `message` says why. */
   | { type: "fallback"; message: string }
   /** `settled`: ms from the stop to the last words. */
@@ -34,7 +36,7 @@ export type DictationEngines = { apple: boolean; parakeet: boolean; locale?: str
 export type DictationSource = {
   engines: (language: string) => Promise<DictationEngines>
   /** `words`: what to listen for (Apple's); `keep`: keep the audio for replaying it (electron/dictation.ts says where). */
-  start: (o: { engine: DictationEngine; language: string; silence: number; words?: string[]; keep?: boolean }) => Promise<{ ok: boolean; code?: string; message?: string }>
+  start: (o: { engine: DictationEngine; language: string; silence: number; words?: string[]; keep?: boolean; microphone?: string }) => Promise<{ ok: boolean; code?: string; message?: string }>
   stop: () => Promise<unknown>
   cancel: () => Promise<unknown>
   on: (fn: (e: DictationEvent) => void) => () => void
@@ -116,7 +118,9 @@ let session = 0
 /** Listen, typing into `target` (`hold`: push to talk, the key still down). Says why when it can't. */
 export async function startDictation(target: DictationTarget, o: { engine: DictationEngine; language: string; silence: number; hold?: boolean
   /** "said: written" lines (`replacements`), which are also the words listened for; `keep`: keep the audio. */
-  replacements?: string[]; keep?: boolean },
+  replacements?: string[]; keep?: boolean
+  /** The setting `microphone`: auto, default, builtin or a device's name. */
+  microphone?: string },
   failed: (code: string, message?: string) => void) {
   const src = dictationSource
   if (!src) return failed("unsupported")
@@ -132,7 +136,7 @@ export async function startDictation(target: DictationTarget, o: { engine: Dicta
   indicator.show()
   tell({ type: "start" })
   const words = (o.replacements ?? []).map(parseReplacement).filter((x) => !!x).map((x) => x[0])
-  const r = await src.start({ engine: o.engine, language: o.language, silence: o.silence, words, keep: !!o.keep }).catch((e) => ({ ok: false, code: "helper", message: String(e) }))
+  const r = await src.start({ engine: o.engine, language: o.language, silence: o.silence, words, keep: !!o.keep, ...(o.microphone ? { microphone: o.microphone } : {}) }).catch((e) => ({ ok: false, code: "helper", message: String(e) }))
   if (!r.ok && session === mine) { finish(); failed(r.code ?? "helper", r.message) }
 }
 

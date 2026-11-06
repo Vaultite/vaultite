@@ -257,6 +257,41 @@ export default async ($: VaultTest) => {
       liveInput({}, true) && !liveInput({ VAULTITE_QUIET: "1" }, true) && !liveInput({}, false) && liveInput({ VAULTITE_HELPER_TAP: "1" }, false) && !liveInput({ VAULTITE_QUIET: "1", VAULTITE_HELPER_TAP: "1" }, false))
   }
   {
+    // The mic dictation and the Talk key hear with (electron/miclogic.ts), from made-up device lists: a Bluetooth
+    // headset's own mic drops it to call quality, so with one as the output `auto` takes the built-in (or a wired) one.
+    const { pickMic, micSaid } = await import("../../../electron/miclogic.ts")
+    const mac = { uid: "BuiltInMic", name: "MacBook Pro Microphone", transport: "bltn", input: true, output: false }
+    const speakers = { uid: "BuiltInSpeaker", name: "MacBook Pro Speakers", transport: "bltn", input: false, output: true }
+    const pods = { uid: "aa-bb:input", name: "Alice's AirPods Pro", transport: "blue", input: true, output: true }
+    const usb = { uid: "usb-mic", name: "Lighthouse USB Mic", transport: "usb", input: true, output: false }
+    const loop = { uid: "virtual-loop", name: "Loopback Audio", transport: "virt", input: true, output: true }
+    const list = (devices: typeof mac[], input: string, output: string) => ({ devices, input, output })
+    const podsBoth = list([mac, speakers, pods, loop], pods.uid, pods.uid)
+    const a = pickMic("auto", podsBoth)
+    check("mic: auto, AirPods out and in, hears with the built-in mic, the AirPods mic never opened", a.uid === mac.uid && !a.bluetooth && /AirPods Pro, is Bluetooth/.test(a.why) && !a.fallback.includes(pods.uid), a)
+    check("mic: left out or blank is auto", pickMic(undefined, podsBoth).uid === mac.uid && pickMic("  ", podsBoth).uid === mac.uid)
+    const lid = pickMic("auto", list([speakers, pods, usb, loop], pods.uid, pods.uid))
+    check("mic: auto with no built-in mic (a closed lid) takes a wired one, never a virtual device", lid.uid === usb.uid && !lid.bluetooth, lid)
+    const only = pickMic("auto", list([speakers, pods, loop], pods.uid, pods.uid))
+    check("mic: auto with only the Bluetooth mic hears with it, said as Bluetooth (held open till the answer is said)", only.uid === pods.uid && only.bluetooth && /no built-in or wired mic/.test(only.why), only)
+    const wired = pickMic("auto", list([mac, speakers, pods, usb], usb.uid, pods.uid))
+    check("mic: auto keeps the system's input when it isn't Bluetooth, the built-in next should it go", wired.uid === usb.uid && wired.fallback[0] === mac.uid, wired)
+    const out = pickMic("auto", list([mac, speakers, pods], pods.uid, speakers.uid))
+    check("mic: auto with the speakers out is the system's input, even a Bluetooth one", out.uid === pods.uid && out.why === "the system's input", out)
+    const def = pickMic("default", podsBoth)
+    check("mic: default is the system's input whatever the output", def.uid === pods.uid && def.bluetooth && /set/.test(def.why), def)
+    const built = pickMic("builtin", podsBoth), noBuilt = pickMic("builtin", list([speakers, pods], pods.uid, pods.uid))
+    check("mic: builtin is the Mac's own; with none, the system's input and why", built.uid === mac.uid && noBuilt.uid === pods.uid && /no built-in mic/.test(noBuilt.why), [built, noBuilt])
+    const named = pickMic("lighthouse usb", list([mac, speakers, pods, usb], mac.uid, pods.uid)), byUid = pickMic("usb-mic", list([mac, usb], mac.uid, speakers.uid))
+    check("mic: a device's name (any case, or part of it, or its uid) picks it", named.uid === usb.uid && byUid.uid === usb.uid && named.fallback.includes(mac.uid), [named, byUid])
+    const gone = pickMic("Studio Mic", podsBoth)
+    check("mic: a name not here is auto's pick, saying so", gone.uid === mac.uid && /^Studio Mic isn't here: /.test(gone.why), gone)
+    check("mic: no devices listed yet, or no input at all: the system's input", pickMic("auto", null).uid === "" && pickMic("auto", list([speakers], "", speakers.uid)).why === "no microphone found")
+    check("mic: said for the status", micSaid(a) === `MacBook Pro Microphone, ${a.why}` && micSaid({ name: "", why: "no microphone found" }) === "no microphone found")
+    const { voiceHereText } = await import("../../../plugins/core/companion/voice.ts")
+    check("mic: the status's Voice here line says which mic it hears with", /^Voice here: hears with Soniox through MacBook Pro Microphone, the output/.test(voiceHereText({ hears: "soniox", mic: micSaid(a), speaks: ["mac"], realtime: "off" })))
+  }
+  {
     // The display at key-down and at let-go: kept both only when something there came or went (a toast), not a caret.
     const { bitmapsDiffer, THUMB } = await import("../../../electron/helperlogic.ts")
     const page = () => Buffer.alloc(THUMB.w * THUMB.h * 4, 230), cell = (b: Buffer, i: number, v: number) => { b.fill(v, i * 4, i * 4 + 3); return b }

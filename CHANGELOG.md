@@ -23,9 +23,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   key's press log says which recognizer heard each press, and why when it wasn't Soniox.
 - **The companion's voice no longer cuts out after its first words on Bluetooth headphones**: AirPods switch back from
   their call profile a moment after the microphone closes, and the answer went on playing to the old one, unheard. With
-  AirPods on, dictation and the Talk key now hear with the Mac's built-in microphone, so they keep their full sound
-  (Dictation's setting Microphone picks another; one used anyway stays open until the answer is said), and the voice
-  follows the output as it changes, saying again from the pause just before.
+  Bluetooth headphones as the output, dictation and the Talk key now hear with the Mac's built-in (or a wired)
+  microphone, so they keep their full sound; Dictation's setting Microphone picks another, one used anyway stays open
+  until the answer is said, a mic unplugged mid-press hands on to the next, and `vau companion status` says which it
+  hears with. The voice follows the output as it changes, saying again from the pause just before.
 - **Show the companion's session opens the one you talk to**: its Talk key's session (shown when it answered last or the
   long one isn't running), which it can open itself when you ask, rather than a "isn't running" toast.
 - **The companion knows when you ask it over Vaultite**: holding ⌃⌥ over Vaultite's own window no longer tells it

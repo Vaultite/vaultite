@@ -46,7 +46,8 @@
   (web/qa/helper.mjs) is skipped unless VAULTITE_QA_LIVE=1. Each Talk-key press is logged (presslog.ts:
   userData/talk/talk-<day>.jsonl, a missed press's audio beside it): a press that went nowhere can be traced, and one
   that went shows its answer's first sound (`sound`: whose voice, ms after let-go) and a voice failing over; `stt` names
-  the recognizer that heard it (`soniox`, else this Mac's with `why`), `stt-fallback` one failing mid-press.
+  the recognizer that heard it (`soniox`, else this Mac's with `why`), `stt-fallback` one failing mid-press; its `mic`
+  and `micWhy` the input device and why, `mic-change` one that went mid-press.
 - The realtime voice (realtimefront.ts over realtime.ts, OpenAI's WebSocket): dictation's session taps the mic for it
   (`tap`, 16 kHz, made 24 kHz), voice.ts' `stream()` plays its audio. It only gives the first sound: dictation still runs,
   and its words go to the summoned session at once, as on the pipeline (a screen answer is never slower for it); that
@@ -54,9 +55,9 @@
   give way, voice.swift `yield`; `talk`: it answered alone, the summoned answer withdrawn). Its tests are a stand-in
   socket; tools/evals/realtime.ts the real one.
 - Bluetooth headsets drop to a call's sound while their microphone is open, and leave it about 2 s after it closes.
-  So dictation.swift hears with the built-in microphone when the Mac's input is a headset (the setting Microphone,
-  `auto`; the press log's `mic`); one used anyway is held open after a Talk key's press till its answer is said
-  (`releaseMic`, at most 30 s). voice.swift follows its output device all the same (an engine started before a switch
+  So with one as the output, miclogic.ts picks the built-in (else a wired) mic (the setting Microphone, `auto`;
+  dictation.swift lists the devices and opens the pick, the next one should it go); one used anyway is held open after
+  a Talk key's press till its answer is said and a second on (`releaseMic`, at most 60 s). voice.swift follows its output device all the same (an engine started before a switch
   plays into nothing): a new engine, said again from the pause before (`voice-reroute`; `sound` says where it plays).
 - The overlay (overlay.ts) is BrowserWindows, never `AppWindow`s: those count as the app's windows (the Dock, menus).
   `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock. It never takes the keyboard: a

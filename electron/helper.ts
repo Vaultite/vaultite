@@ -9,7 +9,8 @@ import { WebSocket } from "ws"
 import { ALONE_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
 import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
-import { dictate, dictating, stopFor, dictationEngines, onDictating, releaseMic, type DictationSink } from "./dictation.ts"
+import { dictate, dictating, stopFor, dictationEngines, onAudioDevices, onDictating, releaseMic, type DictationSink } from "./dictation.ts"
+import { micSaid, pickMic } from "./miclogic.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
 import { atOffset, badgeOf, besidePointer, bitmapsDiffer, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
@@ -87,6 +88,8 @@ export async function startHelper(h: HelperHost) {
   ipcMain.removeAllListeners("vaultite:place")
   ipcMain.on("vaultite:place", (e, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
   onDictating(() => stopVoice())
+  // (the mic it would hear with now, for its status: devices plugged, the output changed)
+  onAudioDevices((d) => micTold(pickMic(prefs.dictation.microphone, d)))
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) } })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu,
@@ -252,7 +255,7 @@ const live = (() => {
     if (port === null) return
     const s = new WebSocket(`ws://127.0.0.1:${port}/api/companion/live?screen=1`)
     ws = s
-    s.on("open", () => { wait = 1000; if (realtimePaused) s.send(JSON.stringify({ t: "realtime", paused: realtimePaused })) })
+    s.on("open", () => { wait = 1000; if (realtimePaused) s.send(JSON.stringify({ t: "realtime", paused: realtimePaused })); if (micSent) s.send(JSON.stringify({ t: "mic", mic: micSent })) })
     s.on("message", (d) => {
       let m: Record<string, unknown>
       try { m = JSON.parse(String(d)) } catch { return }
@@ -338,6 +341,8 @@ const key = fnKey()
  *  (`summon`: its words by its cursor, sent when let go); `talk`: a Talk key's, sent when it stops. */
 type Session = { sink: DictationSink; into: "field" | "panel" | "summon"; focus: Focus; finals: string[]; pending: string; level: number; ready: boolean
   swap: [RegExp, string][]; talk?: boolean
+  /** The mic it hears with is a Bluetooth one: held open after, till its answer is said (holdMic). */
+  bluetooth?: boolean
   /** The summoned companion its words are for (a new press may summon another before they're done). */
   of?: Summon }
 let session: Session | null = null
@@ -427,7 +432,6 @@ const MISSED_MS = 2400
 function missed(s: Summon | null, why: string, words = "Didn't catch that") {
   const kept = s?.press && !s.press.ended() ? keepAudio(s.press.id) : null
   s?.press?.end("missed", { why, ...(kept ? { audio: kept } : {}) })
-  releaseMic()
   if (!s || summon !== s) return draw()
   Object.assign(s, { state: "missed", missed: words })
   cue("missed")
@@ -656,7 +660,6 @@ function endExchange(stop = true) {
   // (Esc: its words and its turn on them stop)
   if (stop) { stopVoice(); live.say({ t: "interrupt" }) }
   if (settleTimer) { clearTimeout(settleTimer); settleTimer = null }
-  setTimeout(micDone, 50)
   if (!exchange && !summon) return
   const name = exchange?.name ?? summon?.name
   exchange = null
@@ -735,6 +738,7 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   // (a Talk key's is the companion's, whatever else listens: that ends; other keys leave a session under way alone)
   if (dictating() && !o.talk) return
   stopVoice()
+  holdEnd()
   const s = prefs.dictation, lines = replacements()
   // (held over the screen: the realtime voice hears the microphone too)
   const tap = o.into === "summon" && prefs.realtime.front === "realtime" && voiceFront.available()
@@ -744,9 +748,15 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   chatChanged()
   const how = await engineFor(s)
   // (a Talk key's audio is kept a while: a press that went nowhere can be heard again)
-  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", linger: mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]), ...(tap ? { tap } : {}) })
-  // (the recognizer that hears it: Soniox, or this Mac's and why not Soniox; one failing later logs stt-fallback)
-  if (mine.into === "summon") mine.of?.press?.step("stt", { engine: r.engine ?? how.engine, ...(r.why ? { why: r.why } : {}), ...(r.ok ? {} : { failed: r.code ?? "?" }) })
+  // (an answer said aloud follows a Talk key's: a Bluetooth mic stays open till it's said, holdMic)
+  const answered = mine.into === "summon" || !!mine.talk
+  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]), ...(tap ? { tap } : {}),
+    microphone: s.microphone, hold: answered })
+  if (r.mic) { mine.bluetooth = r.mic.bluetooth; micTold(r.mic) }
+  // (the recognizer that hears it: Soniox, or this Mac's and why not Soniox; one failing later logs stt-fallback; the mic
+  // and why that one, mic-change should it go mid-press)
+  if (mine.into === "summon") mine.of?.press?.step("stt", { engine: r.engine ?? how.engine, ...(r.why ? { why: r.why } : {}), ...(r.ok ? {} : { failed: r.code ?? "?" }),
+    ...(r.mic ? { mic: r.mic.name, micWhy: r.mic.why, ...(r.mic.bluetooth ? { bluetooth: true } : {}) } : {}) })
   if (r.ok || session !== mine) return
   session = null
   if (mine.into === "summon" && mine.of?.state === "listening") { void inkOff(); missed(mine.of, `the recognizer didn't start (${r.code ?? "?"})`) }
@@ -823,14 +833,17 @@ function told(s: Session, e: Record<string, unknown>) {
   if (s.into === "summon" && (e.type === "start" || e.type === "error" || e.type === "end" || e.type === "fallback"))
     s.of?.press?.step(`stt-${e.type}`, { ...(e.reason ? { reason: e.reason } : {}), ...(e.code ? { code: e.code } : {}), ...(e.message ? { message: String(e.message).slice(0, 200) } : {}),
       ...(e.type === "end" ? { chars: s.finals.join(" ").length } : {}) })
-  // (which microphone hears it, and why: a Bluetooth headset's own drops its sound to a call's)
-  if (s.into === "summon" && e.type === "mic") s.of?.press?.step("mic", { name: e.name, transport: e.transport, why: e.why })
-  if (e.type === "start") s.ready = true
+  if (e.type === "mic") {
+    // (its device gone or changed mid-press, it went on with the next; or the one picked wasn't there by the start)
+    s.bluetooth = e.bluetooth === true
+    if ((e.why || e.missing) && s.into === "summon") s.of?.press?.step("mic-change", { name: String(e.name ?? ""), why: String(e.why ?? "not there at the start"), ...(e.bluetooth ? { bluetooth: true } : {}) })
+    if (e.why || e.missing) micTold({ name: String(e.name ?? ""), why: `${e.why ?? "the one picked wasn't there"}: went on with it` })
+  } else if (e.type === "start") s.ready = true
   else if (e.type === "level") s.level = Number(e.v) || 0
   else if (e.type === "speech" && s.into === "summon") voiceFront.speech()
   else if (e.type === "pending") s.pending = said(e.text)
   else if (e.type === "final") { const t = said(e.text).trim(); if (t) s.finals.push(t); s.pending = "" }
-  else if (e.type === "end") { session = null; void finish(s, e.reason === "cancel") }
+  else if (e.type === "end") { session = null; if (s.bluetooth) holdMic(s.of?.press ?? undefined); void finish(s, e.reason === "cancel") }
   draw()
   if (s.into === "panel") chatChanged()
 }
@@ -1028,7 +1041,6 @@ function voiceHeard(n: Note) {
 }
 /** Its turn over: what it wrote last is said to its end. */
 function voiceHeardAgent(a: Agent) {
-  if (a.state === "watching" || a.state === "away") setTimeout(micDone, 50)
   const v = voiced
   if (v?.name !== a.name || !v.notes.length || (a.state !== "watching" && a.state !== "away")) return
   speaker.end()
@@ -1056,20 +1068,43 @@ function stopVoice(until = Date.now()) {
   speaker.stop()
   voiceFront.stop()
 }
-/** A Bluetooth microphone kept open after a Talk key's press (its headset's sound kept as is) goes once nothing more of
- *  its answer is to be said: its turn over, its voice quiet. */
-function micDone() {
-  const s = summon, a = s ? live.state.agents.get(s.name) : undefined
-  if (session?.into === "summon" || speaker.saying() || voiceFront.speaking() || speakingNow || (s?.state === "thinking" && !s.busySeen) || (a && BUSY.has(a.state))) return
-  releaseMic()
+/** A Bluetooth mic stays open past its press (dictation.swift `hold`): closing it would take the headset out of its call
+ *  profile ~2 s on, cutting the answer said meanwhile. Released once nothing is listened for, worked on or said, a moment on. */
+let holding: ReturnType<typeof setInterval> | null = null
+const HOLD_TAIL_MS = 1000, HOLD_MOST_MS = 60_000
+function holdMic(press?: Press) {
+  holdEnd()
+  const since = Date.now()
+  let quietFrom = 0
+  holding = setInterval(() => {
+    const x = exchange
+    const busy = !!session || summon?.state === "listening" || summon?.state === "thinking" || (!!x && going(x)) || speaker.saying() || voiceFront.speaking()
+    if (busy) quietFrom = 0
+    else quietFrom ||= Date.now()
+    if (Date.now() - since < HOLD_MOST_MS && (busy || Date.now() - quietFrom < HOLD_TAIL_MS)) return
+    holdEnd()
+    releaseMic()
+    press?.after("mic-release", { heldMs: Date.now() - since })
+  }, 250)
 }
+/** A new press takes the held mic on (or another is opened): no release meanwhile. */
+function holdEnd() { if (holding) { clearInterval(holding); holding = null } }
+/** The mic it hears with here and why, for its status (vau companion status), told when it changes. */
+let micSent = ""
+function micTold(m: { name: string; why: string }) {
+  const said = micSaid(m)
+  if (said === micSent) return
+  micSent = said
+  live.say({ t: "mic", mic: said })
+}
+
 /** Its cursor shows it speaking, its level as it goes: only the level changed, the overlay is told that alone. */
 function voiceLevel(on: boolean, v: number) {
   const name = voiced?.name ?? speakingNow?.name ?? (voiceFront.speaking() ? live.state.name : undefined)
   const was = speakingNow
   speakingNow = on && name ? { name, level: Math.round(v * 20) / 20 } : null
   // (quiet now: said to its end, maybe, its exchange over, once the voice has moved on)
-  if (!on) setTimeout(() => { settle(); micDone() }, 50)
+  if (!on) setTimeout(settle, 50)
   if (!!was !== !!speakingNow || was?.name !== speakingNow?.name) return draw()
   if (lastScene && speakingNow && was?.level !== speakingNow.level) { lastScene = { ...lastScene, speaking: speakingNow }; showOverlay(based || null, lastScene) }
 }

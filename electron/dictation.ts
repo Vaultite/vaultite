@@ -6,6 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { AppWindow } from "./appwindow.ts"
 import { buildDictation, helperName, parakeetModel } from "./dictation-build.ts"
+import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
 
 /** Shipped built in the app (tools/build_helpers.ts), else built the first time into userData. */
 const SHIPPED = path.join(import.meta.dirname, "bin")
@@ -21,6 +22,14 @@ const IDLE_MS = 15 * 60_000
 /** The session under way's number: what the helper says of an earlier one (its end, after another started) is dropped. */
 let sid = 0
 let checked: ((msg: Record<string, unknown>) => void)[] = []
+/** This Mac's audio devices as the helper last told them (again at each change), and who waits for the first list. */
+let devices: Devices | null = null
+let listed: (() => void)[] = []
+const deviceWatchers = new Set<(d: Devices) => void>()
+/** Told the devices as they change (while the helper runs): what the mic would be now. */
+export const onAudioDevices = (fn: (d: Devices) => void) => { deviceWatchers.add(fn); if (devices) fn(devices); return () => deviceWatchers.delete(fn) }
+/** A Bluetooth mic held open past its session (dictation.swift `hold`), till releaseMic. */
+let heldMic = ""
 
 async function binary() {
   const shipped = path.join(SHIPPED, helperName())
@@ -48,6 +57,8 @@ function start(): Promise<ChildProcess> {
     child.once("exit", () => {
       if (helper !== child) return
       helper = null
+      devices = null
+      heldMic = ""
       for (const done of checked.splice(0)) done({ apple: false, parakeet: false })
       if (owner) tell({ type: "error", code: "helper", message: "Dictation stopped unexpectedly" }, { type: "end", reason: "error" })
       owner = null
@@ -79,6 +90,14 @@ function sinkOf(win: AppWindow) {
 
 function heard(m: Record<string, unknown>) {
   if (m.type === "engines") { for (const done of checked.splice(0)) done(m); return }
+  if (m.type === "devices") {
+    devices = { devices: Array.isArray(m.devices) ? m.devices : [], input: String(m.input ?? ""), output: String(m.output ?? "") }
+    for (const done of listed.splice(0)) done()
+    for (const fn of deviceWatchers) fn(devices)
+    return
+  }
+  if (m.type === "mic-held") { heldMic = String(m.name ?? ""); return }
+  if (m.type === "mic-released") { heldMic = ""; return }
   if (m.type === "ready" || (typeof m.id === "number" && m.id !== sid)) return
   if (m.type === "audio") return void owner?.audio?.(Buffer.from(String(m.data ?? ""), "base64"))
   tell(m)
@@ -108,20 +127,18 @@ export const setDictationServer = (f: typeof serverOf) => { serverOf = f }
 type Cloud = { url: string; key: string; model?: string; languages: string[] }
 /** Soniox's key and settings when the vault's server says it hears this one (plugins/core/dictation/plugin.ts), else
  *  why not (unanswered: this Mac's engine, and why); and the words to expect (`terms`: Vaultite's, the vault's names). */
-async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?: Cloud; why?: string; terms: string[]; mic?: string }> {
+async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?: Cloud; why?: string; terms: string[] }> {
   const port = serverOf(sink.win)
   if (!port) return { terms: [] }
   try {
     const r = await fetch(`http://127.0.0.1:${port}/api/dictation/cloud`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
-    const c = (r.ok ? await r.json() : {}) as Partial<Cloud> & { why?: string; terms?: unknown; microphone?: unknown }
+    const c = (r.ok ? await r.json() : {}) as Partial<Cloud> & { why?: string; terms?: unknown }
     const terms = Array.isArray(c.terms) ? c.terms.filter((t): t is string => typeof t === "string") : []
-    // (the setting Microphone, this machine's)
-    const mic = typeof c.microphone === "string" ? c.microphone : undefined
-    if (!c.url || !c.key) return { why: c.why ?? (r.ok ? undefined : `Vaultite's server answered ${r.status}`), terms, mic }
+    if (!c.url || !c.key) return { why: c.why ?? (r.ok ? undefined : `Vaultite's server answered ${r.status}`), terms }
     // (no languages set: the one asked for and the Mac's, as hints; Soniox switches between them on its own)
     const said = c.languages?.length ? c.languages : [language, ...app.getPreferredSystemLanguages()]
     const languages = [...new Set(said.map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2,3}$/.test(l)))].slice(0, 6)
-    return { cloud: { url: c.url, key: c.key, model: c.model, languages }, terms, mic }
+    return { cloud: { url: c.url, key: c.key, model: c.model, languages }, terms }
   } catch (e) { return { why: `Vaultite's server didn't answer (${(e as Error).name === "TimeoutError" ? "timed out" : (e as Error).message})`, terms: [] } }
 }
 
@@ -133,16 +150,23 @@ const starts = new Set<() => void>()
 /** Told as any dictation starts (a window's, the helper's): the companion's voice stops, never heard by the microphone. */
 export const onDictating = (fn: () => void) => { starts.add(fn); return () => starts.delete(fn) }
 
-/** `linger`: a Bluetooth microphone stays open after the session until releaseMic() (a Talk key's: its answer said). */
-export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; words?: unknown; keep?: unknown; tap?: boolean; linger?: boolean }
+export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; words?: unknown; keep?: unknown; tap?: boolean
+  /** The setting `microphone` (miclogic.ts); `hold`: a Bluetooth mic stays open after, till releaseMic (a Talk key's). */
+  microphone?: unknown; hold?: boolean }
+/** The devices: as told, else the first list a fresh helper tells (a moment at most). */
+async function listedDevices() {
+  if (devices || !helper) return devices
+  await new Promise<void>((done) => { listed.push(done); setTimeout(done, 400) })
+  return devices
+}
 /** Listen for `sink` (another's session ends, "elsewhere"): through Soniox when its key is set, this Mac's engine
  *  (`engine`) taking over should it fail. Says which hears (`engine`), and `why` not Soniox when it was asked for. */
-export async function dictate(sink: DictationSink, opts: DictateOptions): Promise<{ ok: boolean; code?: string; message?: string; engine?: string; why?: string }> {
+export async function dictate(sink: DictationSink, opts: DictateOptions): Promise<{ ok: boolean; code?: string; message?: string; engine?: string; why?: string; mic?: MicPick }> {
   let engine = opts.engine === "parakeet" ? "parakeet" : "apple"
   const language = typeof opts.language === "string" ? opts.language : ""
   // (a copy a script drives hears a file, never the microphone: it can't take the user's)
   if (process.env.VAULTITE_QUIET && !process.env.VAULTITE_DICTATION_FILE) return { ok: false, code: "quiet" }
-  const [allowed, { cloud, why, terms, mic }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
+  const [allowed, { cloud, why, terms }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
   if (!allowed) return { ok: false, code: "permission" }
   for (const fn of starts) fn()
   let model = engine === "parakeet" ? parakeetModel() : null
@@ -153,23 +177,28 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
   }
   try { await start() } catch (e) { return { ok: false, code: "helper", message: (e as Error).message } }
   if (idle) { clearTimeout(idle); idle = null }
+  const file = !!(process.env.VAULTITE_QUIET && process.env.VAULTITE_DICTATION_FILE)
+  const mic = file ? undefined : pickMic(opts.microphone, await listedDevices())
   if (owner && owner !== sink) tell({ type: "end", reason: "elsewhere" })
   owner = sink
   const silence = Number(opts.silence)
   send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: Number.isFinite(silence) ? silence : 0, ...(cloud ? { cloud } : {}), ...(opts.tap ? { tap: true } : {}),
-    words: termsOf(opts.words, terms), mic: mic ?? "auto", ...(opts.linger ? { linger: true } : {}),
+    ...(mic ? { mic: [mic.uid, ...mic.fallback].filter(Boolean), hold: opts.hold === true } : {}),
+    words: termsOf(opts.words, terms),
     // (Keep the last dictation's audio: in the app's logs, to replay through tools/dictation_bench.ts)
     ...(opts.keep === true ? { record: path.join(app.getPath("logs"), "dictation-last.wav") } : {}),
     // (a script driving the app hears a file instead: web/qa/dictation.mjs)
-    ...(process.env.VAULTITE_QUIET && process.env.VAULTITE_DICTATION_FILE ? { file: process.env.VAULTITE_DICTATION_FILE } : {}) })
+    ...(file ? { file: process.env.VAULTITE_DICTATION_FILE } : {}) })
   if (why && !cloud) tell({ type: "fallback", message: why })
-  return { ok: true, engine: cloud ? "soniox" : engine, ...(why && !cloud ? { why } : {}) }
+  return { ok: true, engine: cloud ? "soniox" : engine, ...(why && !cloud ? { why } : {}), ...(mic ? { mic } : {}) }
 }
+/** The Bluetooth mic held past its session closed: its answer is said. */
+export const releaseMic = () => { heldMic = ""; send({ cmd: "release" }) }
+/** The mic held open past its session, if one is ("" none). */
+export const micHeld = () => heldMic
 /** Stop (what was heard turns final) or cancel `sink`'s session; another's is left alone. */
 export const stopFor = (sink: DictationSink, cancel = false) => { if (owner === sink) send({ cmd: cancel ? "cancel" : "stop" }) }
 export const dictating = () => owner
-/** A Bluetooth microphone kept open after a Talk key's session (its headset's sound kept while the answer is said): let go. */
-export const releaseMic = () => { if (helper) send({ cmd: "release" }) }
 export { engines as dictationEngines }
 
 export const dictationHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
