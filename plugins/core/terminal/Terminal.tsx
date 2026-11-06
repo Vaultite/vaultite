@@ -1,16 +1,14 @@
-// The terminal view: xterm.js on a WebSocket to the shell, its own chunk, coloured from the app's tokens. On phones a
-// tap brings up the keyboard and a row of the keys a phone's lacks sits above it.
+// The terminal view: libghostty-vt (vt/term.ts) on a WebSocket to the shell, its own chunk, coloured from the app's
+// tokens. On phones a tap brings up the keyboard and a row of the keys a phone's lacks sits above it.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy, TextSelect } from "lucide-react"
-import { Terminal as XTerm, type ILink, type ITheme } from "@xterm/xterm"
-import { FitAddon } from "@xterm/addon-fit"
-import { SearchAddon, type ISearchOptions } from "@xterm/addon-search"
-import { WebLinksAddon } from "@xterm/addon-web-links"
-import { WebglAddon } from "@xterm/addon-webgl"
-import "@xterm/xterm/css/xterm.css"
 import { agentOfTerminal, appShortcut, askedAt, closeView, cn, getStore, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, keysText, linkClick, mintedHere, notifyError, offerPicture, onLook, openFile, openMenu, onResized, openPermissions, openWebLink, pastedFiles, pluginSettings, resizing, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { countText, FindField, FindTools, floatingBar, floatingSpot, MAX, type FindOptions } from "@plugins/find/tools"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
+import { setModule, Term, type Link, type Theme } from "./vt/term"
+import { vtModule } from "./vt/wasm"
+
+setModule(await vtModule())
 
 type RGBA = [number, number, number, number]
 
@@ -33,43 +31,32 @@ function resolver() {
   return { read, done: () => el.remove() }
 }
 
-const hex = ([r, g, b, a]: RGBA) => "#" + [r, g, b, ...(a < 1 ? [Math.round(a * 255)] : [])].map((n) => Math.round(n).toString(16).padStart(2, "0")).join("")
+const num = ([r, g, b]: RGBA) => (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b)
 /** a toward b by t (0..1), opaque. */
 const mix = (a: RGBA, b: RGBA, t: number): RGBA => [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * t).concat(1) as RGBA
 
 /** Translucent pages (appearance `translucentPages`): the terminal draws no ground, the pane's glass shows through. */
 const glassy = () => { const r = document.documentElement; return r.hasAttribute("data-translucent") && r.hasAttribute("data-translucent-pages") }
 
-function theme(): ITheme {
+/** The terminal's colours from the app's; find's as a note's find bar lights matches, in the app's yellow, the current
+ *  one orange. */
+function theme(): Theme {
   const { read, done } = resolver()
   const dark = document.documentElement.classList.contains("dark")
   const bg = read("--background"), fg = read("--foreground"), gray = read("--gray")
   const bright = (c: RGBA) => mix(c, fg, 0.25) // lighter on dark, darker on light
-  const colour = (token: string) => { const c = read(token); return [hex(c), hex(bright(c))] }
+  const colour = (token: string) => { const c = read(token); return [num(c), num(bright(c))] }
   const [red, brightRed] = colour("--red"), [green, brightGreen] = colour("--green"), [yellow, brightYellow] = colour("--yellow")
   const [blue, brightBlue] = colour("--blue"), [magenta, brightMagenta] = colour("--purple"), [cyan, brightCyan] = colour("--teal")
-  const sel = read("--primary")
-  const out: ITheme = {
-    background: glassy() ? "#00000000" : hex(bg), foreground: hex(fg), cursor: hex(fg), cursorAccent: hex(bg),
-    selectionBackground: hex([sel[0], sel[1], sel[2], 0.3]), selectionInactiveBackground: hex([gray[0], gray[1], gray[2], 0.25]),
-    scrollbarSliderBackground: hex([gray[0], gray[1], gray[2], 0.25]), scrollbarSliderHoverBackground: hex([gray[0], gray[1], gray[2], 0.4]),
-    scrollbarSliderActiveBackground: hex([gray[0], gray[1], gray[2], 0.5]),
+  const yel = read("--yellow"), orange = read("--orange")
+  const out: Theme = {
+    background: num(bg), foreground: num(fg), cursor: num(fg), cursorAccent: num(bg), clear: glassy(),
+    selection: { color: num(read("--primary")), alpha: 0.3 }, selectionInactive: { color: num(gray), alpha: 0.25 }, scrollbar: num(gray),
     // Black and white are the page's own ends; on a light page "white" text is a grey that still reads.
-    black: hex(dark ? mix(bg, fg, 0.22) : fg), brightBlack: hex(gray),
-    white: hex(dark ? mix(bg, fg, 0.82) : mix(bg, fg, 0.5)), brightWhite: hex(dark ? fg : mix(bg, fg, 0.35)),
-    red, brightRed, green, brightGreen, yellow, brightYellow, blue, brightBlue, magenta, brightMagenta, cyan, brightCyan,
+    ansi: [num(dark ? mix(bg, fg, 0.22) : fg), red, green, yellow, blue, magenta, cyan, num(dark ? mix(bg, fg, 0.82) : mix(bg, fg, 0.5)),
+      num(gray), brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan, num(dark ? fg : mix(bg, fg, 0.35))],
+    find: { match: num(mix(bg, yel, 0.32)), active: num(mix(bg, orange, 0.5)), border: num(orange), ruler: num(yel), activeRuler: num(orange) },
   }
-  done()
-  return out
-}
-
-/** How a find in the terminal lights its matches: as a note's find bar does, in the app's yellow, the current one
- *  orange (opaque: the search addon wants #RRGGBB). */
-function findLook(): NonNullable<ISearchOptions["decorations"]> {
-  const { read, done } = resolver()
-  const bg = read("--background"), yellow = read("--yellow"), orange = read("--orange")
-  const out = { matchBackground: hex(mix(bg, yellow, 0.32)), matchOverviewRuler: hex(yellow),
-    activeMatchBackground: hex(mix(bg, orange, 0.5)), activeMatchBorder: hex(orange), activeMatchColorOverviewRuler: hex(orange) }
   done()
   return out
 }
@@ -91,28 +78,16 @@ function vaultFiles() {
 }
 const BOUND = /[\s"'`([<{=,]/
 
-/** A link under the pointer marks its terminal ([data-term-link]): scripts see it whatever draws the screen. */
-const linkHover = (e: MouseEvent) => (e.target as Element | null)?.closest<HTMLElement>("[data-term]")?.setAttribute("data-term-link", "")
-const linkLeave = (e: MouseEvent) => (e.target as Element | null)?.closest<HTMLElement>("[data-term]")?.removeAttribute("data-term-link")
-
 /** The vault's files named on a terminal row (as the vault has them, after ./ or under the vault's folder), as links that
  *  open them: what an agent says it wrote is a click away. */
-function fileLinks(t: XTerm, y: number): ILink[] | undefined {
-  const line = t.buffer.active.getLine(y - 1)
-  if (!line) return
+function fileLinks(t: Term, y: number): Link[] | undefined {
   // The row's text, and each character's column (a wide one takes two)
-  const at: number[] = []
-  let text = ""
-  for (let x = 0; x < t.cols; x++) {
-    const cell = line.getCell(x)
-    if (!cell || !cell.getWidth()) continue
-    const ch = cell.getChars() || " "
-    for (let k = 0; k < ch.length; k++) at.push(x)
-    text += ch
-  }
+  const row = t.s.line(y - 1)
+  if (!row) return
+  const { text, at } = row
   const files = vaultFiles(), vault = getStore()?.vault.path
   if (!files || !vault || !text.includes(".")) return
-  const root = `${vault.replace(/\/+$/, "")}/`, links: ILink[] = []
+  const root = `${vault.replace(/\/+$/, "")}/`, links: Link[] = []
   // (each place an extension ends: the files whose last 4 characters end there)
   for (const m of text.matchAll(/\.[\w-]{1,10}(?=$|[\s"'`)\]>}:;,!?.])/g)) {
     const end = m.index + m[0].length
@@ -123,8 +98,7 @@ function fileLinks(t: XTerm, y: number): ILink[] | undefined {
       else if (text.slice(0, start).endsWith("./")) start -= 2
       if (start > 0 && !BOUND.test(text[start - 1])) continue
       if (links.length && at[start] <= links[links.length - 1].range.end.x - 1) break
-      links.push({ text: path, range: { start: { x: at[start] + 1, y }, end: { x: at[end - 1] + 1, y } },
-        activate: (e) => openFile(path, { newTab: linkClick(e).newTab }), hover: linkHover, leave: linkLeave })
+      links.push({ text: path, range: { start: { x: at[start] + 1, y }, end: { x: at[end - 1] + 1, y } }, activate: (e) => openFile(path, { newTab: linkClick(e).newTab }) })
       break
     }
   }
@@ -140,24 +114,15 @@ function copy(text: string) {
 }
 const flushCopy = () => { if (pendingCopy !== null) copy(pendingCopy) }
 
-/** OSC 52 (a program copying, like Claude Code's "copied to clipboard"): "c;<base64>". "?" asks to read it: ignored. */
-function osc52(data: string) {
-  const b64 = data.slice(data.indexOf(";") + 1)
-  if (!b64 || b64 === "?") return true
-  try { copy(new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))) } catch { /* not base64 */ }
-  return true
-}
-
 /** What dictation types through, on the view's [data-terminal] element (plugins/core/dictation/terminal.ts): the
  *  keyboard's input, bracketed pastes, the cursor, and the words not settled yet drawn dimmed there. */
-function dictationInput(t: XTerm) {
+function dictationInput(t: Term) {
   let words = "", shown: HTMLElement | null = null, follow: { dispose: () => void } | null = null
   /** The cursor's cell in its screen's own pixels; null while it's scrolled off. */
   const cell = () => {
-    const screen = t.element?.querySelector<HTMLElement>("[data-term-screen]"), b = t.buffer.active
-    const row = b.baseY + b.cursorY - b.viewportY
-    if (!screen || !t.cols || row < 0 || row >= t.rows) return null
-    return { screen, x: b.cursorX, row, w: screen.clientWidth / t.cols, h: screen.clientHeight / t.rows }
+    const screen = t.screenEl, cur = t.cursor()
+    if (!screen || !t.cols || !cur) return null
+    return { screen, x: cur.x, row: cur.y, w: screen.clientWidth / t.cols, h: screen.clientHeight / t.rows }
   }
   // (from the cursor on, wrapping at the screen's edge as typed text would)
   const draw = () => {
@@ -172,20 +137,20 @@ function dictationInput(t: XTerm) {
       shown.append(document.createElement("span"))
     }
     if (shown.parentElement !== c.screen) c.screen.append(shown)
-    Object.assign(shown.style, { top: `${c.row * c.h}px`, textIndent: `${c.x * c.w}px`, lineHeight: `${c.h}px`, fontFamily: t.options.fontFamily ?? "",
-      fontSize: `${t.options.fontSize}px` })
+    Object.assign(shown.style, { top: `${c.row * c.h}px`, textIndent: `${c.x * c.w}px`, lineHeight: `${c.h}px`, fontFamily: t.o.fontFamily,
+      fontSize: `${t.o.fontSize}px` })
     const span = shown.firstChild as HTMLElement
-    span.style.background = t.options.theme?.background ?? ""
+    span.style.background = t.o.theme.clear ? "" : `#${t.o.theme.background.toString(16).padStart(6, "0")}`
     span.textContent = words
   }
   return {
     send: (data: string) => t.input(data),
-    bracketed: () => t.modes.bracketedPasteMode,
+    bracketed: () => t.bracketedPaste,
     caret: () => {
       const c = cell()
       if (!c) return null
-      const r = c.screen.getBoundingClientRect(), w = r.width / t.cols, h = r.height / t.rows, b = t.buffer.active
-      return { rect: new DOMRect(r.left + c.x * w, r.top + c.row * h, 0, h), before: b.getLine(b.baseY + b.cursorY)?.translateToString(false, 0, b.cursorX) ?? "" }
+      const r = c.screen.getBoundingClientRect(), w = r.width / t.cols, h = r.height / t.rows
+      return { rect: new DOMRect(r.left + c.x * w, r.top + c.row * h, 0, h), before: t.rowText(c.row, c.x) }
     },
     pending: (text: string) => {
       words = text
@@ -213,7 +178,7 @@ const base64 = (f: Blob) => new Promise<string>((resolve, reject) => {
 
 /** This device's clipboard, pasted into the terminal: an image goes to the server as a file (like a pasted screenshot),
  *  text is typed. iOS asks first (its own small Paste button); dismissed, nothing happens. */
-async function readClipboard(t: XTerm, sendFiles: (files: File[]) => void) {
+async function readClipboard(t: Term, sendFiles: (files: File[]) => void) {
   const clip = navigator.clipboard
   if (!clip?.read) { const text = await clip?.readText(); if (text) t.paste(text); return }
   const files: File[] = []
@@ -238,12 +203,12 @@ const settings = pluginSettings<{ cursor?: string; cursorBlink?: boolean }>("ter
 function cursor() {
   const s = settings.get()
   const style = s.cursor === "bar" || s.cursor === "underline" ? s.cursor : "block"
-  return { cursorStyle: style, cursorInactiveStyle: style === "block" ? "outline" : style, cursorBlink: s.cursorBlink !== false } as const
+  return { style, inactive: style === "block" ? "outline" : style, blink: s.cursorBlink !== false } as const
 }
 /** The keys a phone's keyboard lacks, as the terminal sends them (labels as a Mac writes them: keysText where drawn). Arrows
  *  follow the program's cursor-keys mode. */
-const arrow = (t: XTerm, k: string) => (t.modes.applicationCursorKeysMode ? `\x1bO${k}` : `\x1b[${k}`)
-const KEYS: { label: ReactNode; name: string; send: (t: XTerm) => string }[] = [
+const arrow = (t: Term, k: string) => (t.applicationCursor ? `\x1bO${k}` : `\x1b[${k}`)
+const KEYS: { label: ReactNode; name: string; send: (t: Term) => string }[] = [
   { label: "esc", name: "Escape", send: () => "\x1b" },
   { label: "tab", name: "Tab", send: () => "\t" },
   { label: "⇧tab", name: "Shift Tab", send: () => "\x1b[Z" },
@@ -276,7 +241,7 @@ type Status = { kind: "live"; /** macOS keeps it from its agent's folder (the se
 /** A terminal and its socket kept apart from its tab's view: a hidden tab's is parked still connected, so it comes back
  *  at once as it was. The last PARKED stay; the shell keeps running on the server either way. */
 type Live = {
-  id: string; t: XTerm; box: HTMLDivElement; search: SearchAddon
+  id: string; t: Term; box: HTMLDivElement
   /** What its find bar looked for last: shown again when it's opened again. */
   find: { text: string } & FindOptions
   status: Status; mounted: boolean; ended: boolean
@@ -319,22 +284,20 @@ function create(id: string): Live {
   // How long it took to show its shell, from when it was asked for (else from now: a tab put back), part by part.
   const asked = askedAt(id), opening = span("terminal.open", { agent: agentOfTerminal(id)?.name ?? "shell", how: asked === undefined ? "shown" : "asked" }, asked)
   if (asked !== undefined) opening.mark("tab")
-  const t = new XTerm({
-    fontFamily: codeFont(), fontSize: fontSize(textSize("terminal")), lineHeight: 1.15,
-    // (the search addon lights matches with decorations, still a proposed API)
-    ...cursor(), scrollback: 10000, allowProposedApi: true, theme: theme(),
+  const c = cursor()
+  // WebGL: Canvas2D under translucent pages (WebGL draws text on a see-through ground thin and ragged) and once a
+  // context is lost.
+  const t = new Term({
+    fontFamily: codeFont(), fontSize: fontSize(textSize("terminal")), lineHeight: 1.15, mac: isMac,
+    cursorStyle: c.style, cursorInactiveStyle: c.inactive, cursorBlink: c.blink, scrollback: 10000, theme: theme(), webgl: !glassy(),
     // Links go where notes' do (the Browser when it's on, ⌘-click the system browser); OSC 8 ones (ls, gh) too.
-    linkHandler: { activate: (e, uri) => { if (/^https?:/i.test(uri)) openWebLink(uri, linkClick(e)) } },
+    onLink: (e, uri) => { if (/^https?:/i.test(uri)) openWebLink(uri, linkClick(e)) },
+    // OSC 52 (a program copying, like Claude Code's "copied to clipboard")
+    onCopy: copy,
   })
-  const fit = new FitAddon()
-  t.loadAddon(fit)
-  t.loadAddon(new WebLinksAddon((e, uri) => openWebLink(uri, linkClick(e)), { hover: linkHover, leave: linkLeave }))
-  const search = new SearchAddon({ highlightLimit: MAX })
-  t.loadAddon(search)
   const files = t.registerLinkProvider({ provideLinks: (y, done) => done(fileLinks(t, y)) })
   const box = document.createElement("div")
   box.style.width = box.style.height = "100%"
-  const osc = t.parser.registerOscHandler(52, osc52)
   // The app's shortcuts win over the shell, except ⌃ + a letter (⌃C, ⌃R): let through, the key reaches the app.
   // ⇧↩ is a new line in an agent's prompt: ESC + return, as a terminal set up for Claude Code sends it.
   t.attachCustomKeyEventHandler((e) => {
@@ -342,7 +305,7 @@ function create(id: string): Live {
       if (e.type === "keydown") { e.preventDefault(); if (!replaying) send(enc.encode("\x1b\r")) }
       return false
     }
-    // Off a Mac, ⌃⇧C copies and ⌃⇧V pastes (the browser's paste event, which xterm.js takes), as terminals there do.
+    // Off a Mac, ⌃⇧C copies and ⌃⇧V pastes (the browser's paste event, which the terminal takes), as terminals there do.
     if (!isMac && e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && (e.code === "KeyC" || e.code === "KeyV")) {
       if (e.type === "keydown") {
         e.stopPropagation()
@@ -364,55 +327,13 @@ function create(id: string): Live {
   })
   // Recolour with the app (its scheme, light or dark, a theme or snippet), and take its monospace font.
   const offLook = onLook(() => {
-    t.options.theme = theme()
-    if (t.options.fontFamily !== codeFont()) { t.options.fontFamily = codeFont(); try { fit.fit() } catch { /* not laid out */ } }
-    renderer()
+    t.setTheme(theme())
+    t.setFont(codeFont(), t.o.fontSize)
+    if (opened) t.setWebgl(!glassy())
   })
-  const offSettings = settings.onChange(() => Object.assign(t.options, cursor()))
+  const offSettings = settings.onChange(() => t.setCursor(cursor()))
 
   let ws: WebSocket | null = null, timer = 0, tries = 0, gone = false, exited = false, refused = false, opened = false
-  // WebGL: the DOM renderer lays out the whole app per new glyph (a first screen 150-500 ms late). The DOM one without
-  // WebGL, after a lost context, and under translucent pages (WebGL draws text on a see-through ground thin and ragged).
-  let gl: WebglAddon | null = null, glLost = false
-  const renderer = () => {
-    if (!opened || (glassy() ? !gl : gl || glLost)) return
-    if (gl) { gl.dispose(); gl = null } else try {
-      const g = new WebglAddon()
-      g.onContextLoss(() => { glLost = true; g.dispose(); if (gl === g) gl = null })
-      t.loadAddon(g)
-      gl = g
-    } catch { glLost = true /* no WebGL here */ }
-    try { fit.fit() } catch { /* not laid out */ } // (their cells may differ by a fraction)
-    if (t.element) t.element.dataset.termRenderer = gl ? "webgl" : "dom"
-  }
-  // The app's own names for its parts (scripts, styles and other plugins use these, never the renderer's classes).
-  const tag = () => {
-    const root = t.element
-    if (!root) return
-    root.dataset.term = ""
-    if (t.textarea) t.textarea.dataset.termInput = ""
-    for (const [cls, name] of [["screen", "data-term-screen"], ["viewport", "data-term-viewport"], ["scrollable-element", "data-term-ground"]])
-      root.querySelector(`.xterm-${cls}`)?.setAttribute(name, "")
-  }
-  // Its rows drawn now, not at the next frame (xterm.js's own render, not public: if it moves, this does nothing).
-  const drawNow = () => {
-    const rs = (t as unknown as { _core?: { _renderService?: { _renderRows?: (a: number, b: number) => void } } })._core?._renderService
-    if (!rs?._renderRows) return false
-    rs._renderRows(0, t.rows - 1)
-    return true
-  }
-  // What it shows, for a closing pane's fade or a dragged card: WebGL's canvas reads back empty once shown, so it's
-  // drawn again now.
-  const picture = (screen: HTMLElement) => {
-    if (!gl) return null
-    const layers = [...screen.querySelectorAll("canvas")]
-    if (!layers[0]?.width || !drawNow()) return null
-    const c = document.createElement("canvas")
-    c.width = layers[0].width; c.height = layers[0].height
-    const g = c.getContext("2d")
-    for (const layer of layers) g?.drawImage(layer, 0, 0, c.width, c.height)
-    return c
-  }
   // Only the tab that made this id starts its session; one put back (a reload, the app reopened) only attaches, so an
   // agent whose session is gone isn't started again by itself (the server says "gone"; Restart starts it).
   let attachOnly = !mintedHere(id), sessionGone = false
@@ -468,7 +389,7 @@ function create(id: string): Live {
         tries = 0
         attachOnly = true // reconnecting (the server restarted) never starts it again
         // (as many lines as its shell keeps, the setting on the machine it runs on: the replay is all of them)
-        if (msg.scrollback && msg.scrollback !== t.options.scrollback) t.options.scrollback = msg.scrollback
+        if (msg.scrollback && msg.scrollback !== t.o.scrollback) t.setScrollback(msg.scrollback)
         t.reset() // what the shell printed comes again (the replay), or it's a new shell
         replayNext = !msg.fresh
         setStatus({ kind: "live" })
@@ -512,8 +433,7 @@ function create(id: string): Live {
   }
 
   const send = (data: string | Uint8Array<ArrayBuffer>) => { if (ws?.readyState === WebSocket.OPEN) ws.send(data) }
-  const onData = t.onData((d) => { if (!replaying) send(enc.encode(d)) })
-  const onBinary = t.onBinary((d) => { if (!replaying) send(Uint8Array.from(d, (c) => c.charCodeAt(0) & 255)) })
+  const onBytes = t.onBytes((d) => { if (!replaying) send(typeof d === "string" ? enc.encode(d) : d as Uint8Array<ArrayBuffer>) })
   // Drawn at each new size at once; the shell hears a lone one (a sidebar shown) at once, a run of them (a window dragged)
   // once it settles: a program redraws its whole screen for every size it's given (an agent's, dozens into the history).
   let resizing = 0, lastResize = -Infinity
@@ -540,7 +460,7 @@ function create(id: string): Live {
   }
   const onPaste = (e: ClipboardEvent) => {
     const files = pastedFiles(e.clipboardData)
-    if (!files.length) return // text: xterm.js pastes it
+    if (!files.length) return // text: the terminal pastes it
     e.preventDefault(); e.stopImmediatePropagation()
     sendFiles(files)
   }
@@ -585,35 +505,28 @@ function create(id: string): Live {
   document.addEventListener("visibilitychange", onShown)
 
   const l: Live = {
-    id, t, box, search, find: { text: "", caseSensitive: false, wholeWord: false, regexp: false }, status: { kind: "connecting", tries: 0 }, mounted: false, ended: false, view: null, send, sendFiles, claim,
-    // Once its box is in the page (xterm.js measures its cells there).
+    id, t, box, find: { text: "", caseSensitive: false, wholeWord: false, regexp: false }, status: { kind: "connecting", tries: 0 }, mounted: false, ended: false, view: null, send, sendFiles, claim,
+    // Once its box is in the page (the terminal measures its cells there).
     open: () => {
       if (opened) return
       opened = true
       opening.mark("view")
       t.open(box)
-      tag()
-      renderer()
-      const screen = t.element?.querySelector<HTMLElement>("[data-term-screen]")
-      if (screen) offerPicture(screen, () => picture(screen))
-      t.textarea?.addEventListener("focus", onFocus)
+      // (what it shows, for a closing pane's fade or a dragged card: drawn again now)
+      offerPicture(t.screenEl, () => t.picture())
+      t.textarea.addEventListener("focus", onFocus)
       l.refit()
-      opening.mark("xterm")
+      opening.mark("terminal")
       connect()
     },
-    // A new size clears WebGL's canvas and xterm.js draws it a frame later: drawn at once, no frame shows it blank.
-    refit: () => {
-      const { cols, rows } = t
-      try { fit.fit() } catch { return /* not laid out */ }
-      if (gl && (t.cols !== cols || t.rows !== rows)) drawNow()
-    },
+    refit: () => { t.fit() },
     // Restart, Try again, Start a new one: the user asks for it, so it may start the session.
     restart: () => { clearTimeout(timer); attachOnly = false; t.reset(); setStatus({ kind: "connecting", tries: 0 }); connect(); t.focus() },
     dispose: () => {
       if (gone) return
       gone = true
       clearTimeout(timer); clearTimeout(resizing)
-      offLook(); offSettings(); osc.dispose(); files.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
+      offLook(); offSettings(); files.dispose(); onBytes.dispose(); onResize.dispose()
       t.textarea?.removeEventListener("focus", onFocus)
       window.removeEventListener("focus", onShown)
       document.removeEventListener("visibilitychange", onShown)
@@ -645,16 +558,15 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
   const [up, setUp] = useState(false)
   const area = useVisibleArea(phone && typing)
   const pageAt = useRef(0) // where the page was scrolled before the keyboard came up
-  const touchActions = useRef({ key: (_send: (t: XTerm) => string) => {}, paste: () => {}, hide: () => {} })
+  const touchActions = useRef({ key: (_send: (t: Term) => string) => {}, paste: () => {}, hide: () => {} })
   // Its own text size, apart from the app's zoom: ⌘ (or ⌃) and the wheel, or a pinch, over it (quick text size on),
   // before the terminal scrolls with it.
   const size = useTextSize("terminal")
   useTextSizeWheel(host, "terminal", true)
   useEffect(() => {
     const l = live.current
-    if (!l || l.t.options.fontSize === fontSize(size)) return
-    l.t.options.fontSize = fontSize(size)
-    l.refit()
+    if (!l || l.t.o.fontSize === fontSize(size)) return
+    l.t.setFont(l.t.o.fontFamily, fontSize(size))
   }, [size])
 
   // The session's terminal: a parked one comes back as it was, else a new one connects.
@@ -667,15 +579,11 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     l.mounted = true
     l.view = { status: setStatus, close: () => closeTab.current() }
     setStatus(l.status)
-    if (t.options.fontSize !== fontSize(textSize("terminal"))) t.options.fontSize = fontSize(textSize("terminal"))
+    t.setFont(t.o.fontFamily, fontSize(textSize("terminal")))
     l.open()
     l.refit() // this pane may be another size than where it was parked
     // What it shows (`all`: its whole history too), as text, for scripts (web/qa): with WebGL the screen is a canvas.
-    Object.defineProperty(el, "terminalText", { configurable: true, value: (all = false) => {
-      const b = t.buffer.active, lines: string[] = []
-      for (let y = all ? 0 : b.viewportY, end = all ? b.length : b.viewportY + t.rows; y < end; y++) lines.push(b.getLine(y)?.translateToString(true) ?? "")
-      return lines.join("\n")
-    } })
+    Object.defineProperty(el, "terminalText", { configurable: true, value: (all = false) => t.text(all) })
     // Where its cells are on screen: the screen's corner and a cell's size, in CSS pixels.
     Object.defineProperty(el, "terminalCell", { configurable: true, value: () => {
       const r = el.querySelector("[data-term-screen]")?.getBoundingClientRect()
@@ -690,7 +598,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     ro.observe(el)
     const offResized = onResized(refit)
 
-    // Touch: xterm.js neither scrolls nor focuses on a touch, so it's done here: a tap focuses (during the touch, the only
+    // Touch: the terminal neither scrolls nor focuses on a touch, so it's done here: a tap focuses (during the touch, the only
     // time iOS shows the keyboard), a long press opens the menu, a swipe scrolls like a wheel and glides on.
     let start: { x: number; y: number } | null = null, press = 0, pressed = false
     let swiping = false, lastY = 0, lastT = 0, speed = 0, glide = 0
@@ -708,8 +616,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       menu({ x: e.clientX, y: e.clientY })
     }
     el.addEventListener("contextmenu", onContextMenu, true)
-    const wheel = (deltaY: number, x: number, y: number) => t.element?.querySelector("[data-term-screen]")
-      ?.dispatchEvent(new WheelEvent("wheel", { deltaY, deltaMode: 0, clientX: x, clientY: y, bubbles: true, cancelable: true }))
+    const wheel = (deltaY: number, x: number, y: number) => { const c = t.cellAt(x, y); t.wheel(deltaY, { x: c.px, y: c.py }) }
     const onTouchStart = (e: TouchEvent) => {
       clearTimeout(press); cancelAnimationFrame(glide)
       pressed = false; swiping = false
@@ -771,7 +678,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     }
     const unregister = register({ id, end: () => l.send(JSON.stringify({ t: "close" })) })
     // Scrolled up its history: the way back to the end shows (output goes on arriving below).
-    const scrolled = () => { const b = t.buffer.active; setUp(b.viewportY < b.baseY) }
+    const scrolled = () => { const v = t.viewport; setUp(v.y < v.base) }
     const onScroll = t.onScroll(scrolled)
     scrolled()
 
@@ -829,7 +736,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
           {openPermissions && <button type="button" onClick={openPermissions} className="shrink-0 cursor-pointer rounded-[6px] bg-primary px-2.5 py-1 text-[13px] font-medium text-primary-foreground hover:opacity-90">Permissions</button>}
         </div>
       )}
-      {/* (isolate: xterm.js's layers' z-indexes stay inside, under the bars below; WebGL's canvases would cover them) */}
+      {/* (isolate: the terminal's layers stay inside, under the bars below) */}
       <div className="relative isolate min-h-0 flex-1 pl-3 pr-1 pt-2 pb-1">
         {/* Touch: no browser text selection or callout on a long press (the terminal's menu opens instead), and the
             keyboard's hidden field at 16px, or iOS zooms the page in when it's focused. */}
@@ -869,35 +776,23 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
 
 const regexOk = (s: string) => { try { new RegExp(s); return true } catch { return false } }
 
-/** Find in the terminal, over its top right corner: the search addon looks through the scrollback, as you type from the
- *  newest line up; ↵ goes to the next match down, ⇧↵ up. */
+/** Find in the terminal, over its top right corner: it looks through the scrollback, as you type from the newest line
+ *  up; ↵ goes to the next match down, ⇧↵ up. */
 function FindBar({ l, ask, close }: { l: Live; ask: number; close: () => void }) {
   const [spec, setSpec] = useState(l.find)
   const [found, setFound] = useState({ current: -1, total: 0 })
   const ref = useRef<HTMLInputElement>(null)
-  const look = useRef<ISearchOptions["decorations"]>(undefined)
   /** `by` 0: found again from the match it's on (typed, an option changed); else the next match down (1) or up (-1). */
   const run = (s: Live["find"], by: 0 | 1 | -1) => {
     l.find = s
-    if (!s.text || (s.regexp && !regexOk(s.text))) { l.search.clearDecorations(); setFound({ current: -1, total: 0 }); return }
-    const o: ISearchOptions = { caseSensitive: s.caseSensitive, wholeWord: s.wholeWord, regex: s.regexp, decorations: look.current }
-    if (!by) l.search.clearDecorations() // (a new search: it stays on the selected match if that still matches)
-    if (by > 0) l.search.findNext(s.text, o); else l.search.findPrevious(s.text, o)
+    if (!s.text || (s.regexp && !regexOk(s.text))) { l.t.clearFind(); setFound({ current: -1, total: 0 }); return }
+    l.t.find(s, by, MAX, (r) => setFound({ current: r.index, total: r.count }))
   }
   const latest = useRef(run)
   latest.current = run
   useEffect(() => {
-    const results = l.search.onDidChangeResults((r) => setFound({ current: r.resultIndex, total: r.resultCount }))
-    // The current match is also the terminal's selection, drawn over its highlight: while the bar has the keyboard, the
-    // selection (the terminal's inactive one) takes the current match's colour.
-    const paint = () => {
-      look.current = findLook()
-      l.t.options.theme = { ...l.t.options.theme, selectionInactiveBackground: look.current.activeMatchBackground }
-    }
-    const offLook = onLook(() => { paint(); latest.current(l.find, 0) })
-    paint()
     latest.current(l.find, 0) // (opened again: what it found last, lit again)
-    return () => { results.dispose(); offLook(); l.search.clearDecorations(); l.t.options.theme = theme() }
+    return () => l.t.clearFind()
   }, [l])
   useEffect(() => { ref.current?.focus(); ref.current?.select() }, [ask])
 

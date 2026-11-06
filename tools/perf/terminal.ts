@@ -1,5 +1,5 @@
 // Terminal benchmark on a throwaway server: opening, keystroke echo, output bursts, a 60 fps program, reattach, terminal.list.
-// node tools/perf/terminal.ts [--runs 200] [--out r.json] [--compare b.json] [--root <dir>] [--browser (page side)] [--dotfiles]
+// node tools/perf/terminal.ts [--runs 200] [--out r.json] [--compare b.json] [--root <dir>] [--browser (page side); --page-only: only it; --parts echo,frames,replay,memory,tabs; --gpu] [--dotfiles]
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
@@ -11,6 +11,7 @@ import { backendName, serverFiles } from "../../plugins/core/terminal/backend.ts
 import { PROTOCOL } from "../../plugins/core/terminal/termd/protocol.ts"
 import { freePort, isolated, makeVault } from "./vault.ts"
 
+const part = (name: string) => { const p = arg("parts", "all"); return p === "all" || p.split(",").includes(name) }
 const arg = (name: string, dflt: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt }
 const flag = (name: string) => process.argv.includes(`--${name}`)
 const ROOT = path.resolve(arg("root", path.join(import.meta.dirname, "..", "..")))
@@ -205,6 +206,7 @@ for f in range(240):
 const result: Record<string, unknown> = { runs: RUNS, node: process.version, date: new Date().toISOString(), load: os.loadavg()[0] }
 try {
   await boot()
+  if (flag("page-only")) throw "page"
   step("opening")
   // Opening: new shells (no spare), then ones the page's list socket keeps ready.
   const cold: Record<string, number>[] = []
@@ -325,8 +327,8 @@ try {
 
   if (flag("browser")) result.browser = await browserSide()
 } catch (e) {
-  console.error(e)
-  result.failed = String(e)
+  if (e === "page") result.browser = await browserSide().catch((err) => { console.error(err); return String(err) })
+  else { console.error(e); result.failed = String(e) }
 } finally {
   await cleanup()
 }
@@ -336,7 +338,9 @@ async function browserSide() {
   // (Playwright's own Chromium, after this machine's QA slot: tools/qa_slots.ts)
   const { hold } = await import("../qa_slots.ts"), { chromium } = await import("playwright-core")
   await hold()
-  const browser = await chromium.launch({ args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--ignore-gpu-blocklist"] })
+  // (--gpu: the machine's GPU, still headless, where it has one: Metal on a Mac; else SwiftShader's software GL)
+  const gl = flag("gpu") ? [process.platform === "darwin" ? "--use-angle=metal" : "--use-gl=angle"] : ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--ignore-gpu-blocklist"]
+  const browser = await chromium.launch({ args: [...gl, "--mute-audio"] })
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
     await page.addInitScript(() => {
@@ -359,7 +363,7 @@ async function browserSide() {
     await page.locator("[data-term]").click()
     // Input to echo drawn: the key's event, then the frame after the echo is parsed (the row shows it).
     const keys: number[] = []
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < (part("echo") ? 40 : 0); i++) {
       const ch = String.fromCharCode(97 + (i % 26))
       const p = page.evaluate((ch: string) => new Promise<number>((resolve) => {
         let t0 = 0
@@ -373,14 +377,15 @@ async function browserSide() {
         }
         step()
       }), ch)
-      await sleep(30)
+      // (a random wait: a fixed one locks each key to one place between frames, and a run's median to 2 or 3 of them)
+      await sleep(30 + Math.random() * 17)
       await page.keyboard.type(ch)
       keys.push(await p)
       await sleep(30)
     }
     await page.keyboard.press("Control+U")
     // Frames under heavy output: rAF gaps and long tasks while 2 MB scroll by.
-    const frames = page.evaluate(() => new Promise<{ gaps: number[]; long: number[]; ms: number }>((resolve) => {
+    const frames = !part("frames") ? null : page.evaluate(() => new Promise<{ gaps: number[]; long: number[]; ms: number }>((resolve) => {
       const gaps: number[] = [], long: number[] = []
       new PerformanceObserver((l) => { for (const e of l.getEntries()) long.push(e.duration) }).observe({ type: "longtask", buffered: false })
       let last = performance.now(), quiet = 0
@@ -395,10 +400,94 @@ async function browserSide() {
       requestAnimationFrame(step)
     }))
     await sleep(100)
-    await page.keyboard.type("yes | head -c 2000000\n")
-    const r = await frames
+    if (part("frames")) await page.keyboard.type("yes | head -c 2000000\n")
+    const r = frames ? await frames : { gaps: [NaN], long: [] as number[], ms: 0 }
     const busy = r.gaps.slice(0, Math.max(1, r.gaps.length - 31))
-    return { echoDrawn: stats(keys), frame: stats(busy), longTasks: r.long.length, longTaskMs: Math.round(r.long.reduce((a: number, b: number) => a + b, 0)), outputMs: Math.round(r.ms) }
+    const out = { echoDrawn: stats(keys), frame: stats(busy), longTasks: r.long.length, longTaskMs: Math.round(r.long.reduce((a: number, b: number) => a + b, 0)), outputMs: Math.round(r.ms) } as Record<string, unknown>
+    // A 10k-line history replayed into a page: its first binary message to the last line drawn (the next frame).
+    if (part("replay")) await page.keyboard.type("clear; seq 10000 | awk '{printf \"\\033[3%dmline %d lorem ipsum dolor sit amet, consectetur adipiscing elit\\033[0m\\n\", $1%8, $1}'\n")
+    for (let i = 0; i < 200 && part("replay") && !/line 10000 /.test(await text()); i++) await sleep(100)
+    const replay: number[] = []
+    for (let i = 0; i < (part("replay") ? 5 : 0); i++) {
+      const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+      await p2.addInitScript(() => {
+        const w = window as unknown as Record<string, unknown>
+        const W = window.WebSocket
+        window.WebSocket = class extends W {
+          constructor(url: string | URL, p?: string | string[]) {
+            super(url, p)
+            if (/\/api\/terminal\//.test(String(url))) this.addEventListener("message", (e) => { if (typeof e.data !== "string") w.__first ??= performance.now() })
+          }
+        } as unknown as typeof window.WebSocket
+      })
+      await p2.goto(`${BASE}/#view/terminal%2F${id}`)
+      replay.push(await p2.evaluate(() => new Promise<number>((resolve) => {
+        const w = window as unknown as { __first?: number }, end = performance.now() + 20000
+        const step = () => {
+          const el = document.querySelector("[data-terminal]") as unknown as { terminalText?: () => string } | null
+          if (w.__first && el?.terminalText?.().includes("line 10000 ")) return requestAnimationFrame(() => resolve(performance.now() - w.__first!))
+          if (performance.now() > end) return resolve(NaN)
+          requestAnimationFrame(step)
+        }
+        step()
+      })))
+      await p2.close()
+    }
+    if (part("replay")) out.replay = stats(replay)
+    // (memory: a fresh page, before any terminal and after six, each with output, five of them parked)
+    const ids: string[] = []
+    if (part("memory")) {
+      const fresh = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+      await fresh.goto(`${BASE}/`)
+      await sleep(3000)
+      const cdp = await fresh.context().newCDPSession(fresh)
+      const heap = async () => { await cdp.send("HeapProfiler.collectGarbage"); const u = await cdp.send("Runtime.getHeapUsage") as { usedSize: number; backingStorageSize?: number }; return u.usedSize + (u.backingStorageSize ?? 0) }
+      const m0 = await heap()
+      for (let i = 0; i < 6; i++) {
+        const tid = newId()
+        ids.push(tid)
+        await fresh.evaluate((h) => { location.hash = h }, `#view/terminal%2F${tid}`)
+        const shown = () => fresh.evaluate((t) => [...document.querySelectorAll(`[data-terminal="${t}"]`)].map((e) => (e as unknown as { terminalText?: () => string }).terminalText?.() ?? "").join("\n"), tid)
+        for (let k = 0; k < 100 && !/\$ /.test(await shown()); k++) await sleep(100)
+        await fresh.locator(`[data-terminal="${tid}"] [data-term]`).click()
+        await fresh.keyboard.type("seq 1 3000\n")
+        for (let k = 0; k < 100 && !/3000/.test(await shown()); k++) await sleep(100)
+      }
+      await sleep(500)
+      out.parkedBytes = (await heap()) - m0
+      await fresh.close()
+    }
+    // Tab switch: a second terminal in this page, then each picked in turn, a screenful drawn in both: from the ask
+    // (the hash changing) to the frame after it shows its text. Four switches warm up, forty are timed.
+    if (part("tabs")) {
+      const other = newId()
+      ids.push(other)
+      const textOf = (t: string) => page.evaluate((t) => (document.querySelector(`[data-terminal="${t}"]`) as unknown as { terminalText?: () => string } | null)?.terminalText?.() ?? "", t)
+      await page.evaluate((h) => { location.hash = h }, `#view/terminal%2F${other}`)
+      for (let k = 0; k < 100 && !/\$ /.test(await textOf(other)); k++) await sleep(100)
+      await page.locator(`[data-terminal="${other}"] [data-term]`).click()
+      await page.keyboard.type("seq 1 3000\n")
+      for (let k = 0; k < 100 && !/3000/.test(await textOf(other)); k++) await sleep(100)
+      const switches: number[] = []
+      for (let i = 0; i < 44; i++) {
+        const to = i % 2 ? other : id
+        const ms = await page.evaluate((h) => new Promise<number>((resolve) => {
+          const t0 = performance.now(), want = decodeURIComponent(h.split("%2F")[1])
+          location.hash = h
+          const step = () => {
+            const el = [...document.querySelectorAll<HTMLElement>("[data-terminal]")].find((e) => e.offsetParent && e.getAttribute("data-terminal") === want)
+            if (el && (el as unknown as { terminalText: () => string }).terminalText().trim()) return requestAnimationFrame(() => resolve(performance.now() - t0))
+            requestAnimationFrame(step)
+          }
+          step()
+        }), `#view/terminal%2F${to}`)
+        if (i >= 4) switches.push(ms)
+        await sleep(150)
+      }
+      out.tabSwitch = stats(switches)
+    }
+    for (const t of [...ids, id]) await fetch(`${BASE}/api/ops/terminal.end`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: t }) }).catch(() => {})
+    return out
   } finally { await browser.close() }
 }
 
@@ -430,5 +519,8 @@ row("  server cpu per list + sessions", "list.cpuPerPair")
 for (const k of ["median", "p90"]) row(`browser: key to echo drawn ${k}`, `browser.echoDrawn.${k}`)
 for (const k of ["median", "p90", "p99"]) row(`browser: frame during 2 MB ${k}`, `browser.frame.${k}`)
 row("browser: long tasks", "browser.longTasks", ""); row("browser: long tasks total", "browser.longTaskMs")
+for (const k of ["median", "p90"]) row(`browser: 10k-line replay drawn ${k}`, `browser.replay.${k}`)
+for (const k of ["median", "p90"]) row(`browser: tab switch (40) ${k}`, `browser.tabSwitch.${k}`)
+row("browser: 5 parked terminals' heap", "browser.parkedBytes", " B")
 if (OUT) fs.writeFileSync(OUT, JSON.stringify(result, null, 2))
 process.exit(0)

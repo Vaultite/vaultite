@@ -6,11 +6,12 @@ import { agentIn, autoLabel, current, dotOf, endForGood, getSessions, iconOf, la
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
 import { AskBox, openAsk } from "./AskBox"
+import { vtModule } from "./vt/wasm"
 
-// xterm.js is its own chunk: loaded when a terminal tab opens, or ahead of it once the app is idle on a computer (the
-// first terminal then doesn't wait for ~0.5 MB of script; phones, which rarely open one, load it when they do).
+// The terminal is its own chunk, with libghostty-vt's WebAssembly compiled beside it: loaded when a terminal tab opens,
+// or ahead of it once the app is idle on a computer (phones, which rarely open one, load it when they do).
 let chunk: Promise<typeof import("./Terminal")> | null = null
-const preload = () => (chunk ??= import("./Terminal"))
+const preload = () => (chunk ??= Promise.all([import("./Terminal"), vtModule()]).then(([m]) => m))
 const TerminalView = lazy(preload)
 
 function Preview() {
@@ -31,7 +32,7 @@ function Preview() {
 }
 
 /** While a terminal tab is open, follow the sessions list so tabs show each session's name, colour and state; on a
- *  computer, also preload xterm.js's chunk once idle. */
+ *  computer, also preload the terminal's chunk once idle. */
 function SessionNames() {
   const layout = useSyncExternalStore(onTabLayoutChange, getTabLayout)
   const any = JSON.stringify(layout).includes('"view:terminal/')

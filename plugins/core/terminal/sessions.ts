@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, op, openView, parseTerminal, type Agent, type AgentPhase, type Dot } from "@vaultite"
 
-// Which terminal the keyboard was in last (for "End terminal session"), without loading xterm.js: the lazy view
+// Which terminal the keyboard was in last (for "End terminal session"), without loading the terminal: the lazy view
 // registers itself here while it's mounted.
 type Live = { id: string; end: () => void }
 const live = new Map<string, Live>()

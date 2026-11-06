@@ -7,10 +7,16 @@
   meta...) reach plugin.ts' `onEvent`; an end nobody heard (the server was away) goes to the next to subscribe.
 - `vt/vt.ts` is Ghostty's terminal as WebAssembly (`ghostty-vt.wasm`, a release's file: `tools/ghostty_update.ts`
   takes another, checking its signature), one instance per terminal (its memory goes back when it ends). It answers
-  programs as xterm.js does (`asXterm`), since a page answers in its stead while attached; its pictures are drawn by
-  xterm.js in the pages, so they carry no palette. Output is parsed as it's read and passed on at once after input, or
+  programs as the pages do (`asXterm`: what xterm.js answered), since a page answers in its stead while attached; the
+  pages draw with the same module (`vt/term.ts`: `screen.ts` its render state, encoders, selection and search;
+  `render/` WebGL2 or Canvas2D), so pictures carry no palette. Output is parsed as it's read and passed on at once after input, or
   every few ms while it pours (BATCH in host.ts). `tools/test_vt.ts` checks it against xterm.js, `tools/perf/vt.ts`
   times both.
+- The page's terminal (`vt/term.ts`) is libghostty-vt's too, from the same `ghostty-vt.wasm` (`vt/wasm.ts`, compiled
+  with the chunk). Use Ghostty's own encoders, selection and search (`screen.ts`), not hand-written escape codes; only
+  what its encoder leaves to the platform's text (Backspace, ⌥←) is in `input.ts`. WebGL's glyphs are drawn on their
+  own ground (keyed by colours, shared between terminals): on a clear one text reads heavier. Gotchas: a `bool` the
+  module reports is one byte (read `getUint8`); structs passed "by value" go by pointer in the wasm ABI.
 - When termd can't start, the same host runs in the server (`localBackend`: an in-process pipe), ending with it. Another
   plugin's `terminal:backend` (herdr, Rex) implements `Backend` (backend.ts); one without `capture` is from before and
   isn't used. Names follow the port (backendName), so a QA server's terminals stay out of the live list, and an app

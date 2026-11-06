@@ -9,6 +9,11 @@ This product includes third-party software and assets:
   web/src/components/ui/button.tsx are adapted from it.
 - libghostty-vt (https://github.com/ghostty-org/ghostty), MIT License, Copyright (c) 2024 Mitchell Hashimoto, Ghostty
   contributors: plugins/core/terminal/vt/ghostty-vt.wasm is its WebAssembly build, as released (PROVENANCE.md there).
+- ghostty-web (https://github.com/kkrausse/ghostty-web, at 8a0701c3), MIT License, Copyright (c) 2025 Coder, (c) 2026
+  kkrausse: plugins/core/terminal/vt/render/webgl.ts follows its WebGL2 renderer's design (instanced passes, an atlas).
+- xterm.js (https://github.com/xtermjs/xterm.js), MIT License, Copyright (c) 2017-2019 The xterm.js authors:
+  plugins/core/terminal/vt/render/boxdraw.ts draws box and block characters after its custom glyphs, and the cell
+  measurement, key sequences and glyph atlas in plugins/core/terminal/vt/ follow its behaviour.
 - Colour palettes in web/src/themes/, each under the licence listed in web/src/themes/LICENSES.md.
 
 Obsidian is a trademark of Dynalist Inc. Vaultite is not affiliated with or endorsed by Dynalist Inc.; the name is used

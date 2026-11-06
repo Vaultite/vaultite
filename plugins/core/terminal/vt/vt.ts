@@ -7,11 +7,11 @@ type TypeInfo = { kind: string; values?: Record<string, number> }
 /** What a terminal answers its program (xterm.js's own answers, which the app's pages give too): DA1 VT100 with
  *  advanced video, DA2 xterm.js' version. */
 const DA1 = { level: 1, features: [2] }, DA2 = { type: 0, firmware: 276, rom: 0 }
-/** Answers as xterm.js gives them (a page answers in its stead while attached): no kitty keyboard, XTVERSION or color
- *  queries; graphemes (2027) not known; no page in DECXCPR. */
+/** Answers as the app's terminals have always given them (the server and the pages say the same): no kitty keyboard,
+ *  XTVERSION or color queries; no page in DECXCPR. */
 function asXterm(reply: string) {
   if (/^\x1b\[\?\d*u$/.test(reply) || reply.startsWith("\x1bP>|") || /^\x1b\](?:4;\d+|1[0-9]);/.test(reply)) return ""
-  return reply.replace(/^\x1b\[\?2027;\d\$y$/, "\x1b[?2027;0$y").replace(/^(\x1b\[\?\d+;\d+);\d+R$/, "$1R")
+  return reply.replace(/^(\x1b\[\?\d+;\d+);\d+R$/, "$1R")
 }
 
 const enc = new TextEncoder(), dec = new TextDecoder()
@@ -62,13 +62,13 @@ export const LAYOUT: Record<string, number> = {
 
 /** One terminal, in a WebAssembly instance of its own: memory a terminal grew goes back when it ends. */
 export class Vt {
-  private x: Exports
-  private types: Record<string, TypeInfo>
-  private h = 0
+  protected x: Exports
+  protected types: Record<string, TypeInfo>
+  protected h = 0
   private fmt = 0
-  private o: VtOptions
+  protected o: VtOptions
   /** Scratch for out-parameters (64 bytes), and the input buffer output is copied into. */
-  private scratch = 0
+  protected scratch = 0
   private inPtr = 0
   private inLen = 0
   private replies: string[] = []
@@ -90,30 +90,31 @@ export class Vt {
     this.set("SCROLLBACK_MAX_BYTES", this.size(0xffffffff))
     // (history goes by the page: at least as many lines kept)
     this.set("SCROLLBACK_MAX_LINES", this.size(o.scrollback > 0 ? o.scrollback + PAGE_ROWS : 0))
-    this.setMode(2027, false) // (widths as xterm.js has them, while the pages draw with it)
+    // (graphemes as one character, emoji sequences two columns: the server and the pages count widths alike)
+    this.setMode(2027, true)
     this.callbacks()
     this.fmt = this.make((slot) => this.x.ghostty_formatter_terminal_new(0, slot, this.h))
   }
 
   // ---------- the C ABI
 
-  private e(type: string, name: string) {
+  protected e(type: string, name: string) {
     const v = this.types[type]?.values?.[name]
     if (v === undefined) throw new Error(`libghostty-vt has no ${type} ${name}`)
     return v
   }
-  private get u8() { return new Uint8Array(this.x.memory.buffer) }
-  private get dv() { return new DataView(this.x.memory.buffer) }
-  private cstr(p: number) { const b = this.u8; let n = p; while (b[n]) n++; return dec.decode(b.subarray(p, n)) }
-  private check(r: number, what: string) { if (r !== 0) throw new Error(`libghostty-vt: ${what} failed (${r})`); return r }
+  protected get u8() { return new Uint8Array(this.x.memory.buffer) }
+  protected get dv() { return new DataView(this.x.memory.buffer) }
+  protected cstr(p: number) { const b = this.u8; let n = p; while (b[n]) n++; return dec.decode(b.subarray(p, n)) }
+  protected check(r: number, what: string) { if (r !== 0) throw new Error(`libghostty-vt: ${what} failed (${r})`); return r }
   /** A handle a constructor puts in an out-slot. */
-  private make(fn: (slot: number) => number) {
+  protected make(fn: (slot: number) => number) {
     const slot = this.x.ghostty_wasm_alloc_opaque()
     try { this.check(fn(slot), "new"); return this.x.ghostty_wasm_take_opaque(slot) } finally { this.x.ghostty_wasm_free_opaque(slot) }
   }
   /** A size_t at the scratch, its pointer. */
-  private size(v: number) { this.dv.setUint32(this.scratch, v >>> 0, true); return this.scratch }
-  private set(opt: string, ptr: number) { this.check(this.x.ghostty_terminal_set(this.h, this.e("GhosttyTerminalOption", opt), ptr), `set ${opt}`) }
+  protected size(v: number) { this.dv.setUint32(this.scratch, v >>> 0, true); return this.scratch }
+  protected set(opt: string, ptr: number) { this.check(this.x.ghostty_terminal_set(this.h, this.e("GhosttyTerminalOption", opt), ptr), `set ${opt}`) }
   /** The formatter's options as last set. */
   private fopts: Record<string, number> = {}
   private fset(opt: string, v: number) {
@@ -122,16 +123,18 @@ export class Vt {
     this.dv.setUint32(this.scratch, v >>> 0, true)
     this.check(this.x.ghostty_formatter_set(this.fmt, this.e("GhosttyFormatterOption", opt), this.scratch), `format ${opt}`)
   }
-  private get(data: string, read: (dv: DataView, p: number) => number) {
+  protected get(data: string, read: (dv: DataView, p: number) => number) {
     this.check(this.x.ghostty_terminal_get(this.h, this.e("GhosttyTerminalData", data), this.scratch), `get ${data}`)
     return read(this.dv, this.scratch)
   }
-  private u16(data: string) { return this.get(data, (d, p) => d.getUint16(p, true)) }
-  private u32(data: string) { return this.get(data, (d, p) => d.getUint32(p, true)) }
+  protected u16(data: string) { return this.get(data, (d, p) => d.getUint16(p, true)) }
+  protected u32(data: string) { return this.get(data, (d, p) => d.getUint32(p, true)) }
 
+  /** More callbacks a subclass sets (the page's clipboard): an option, its signature and function. */
+  protected more(): { opt: string; sig: [number, boolean]; fn: (...a: number[]) => number | void }[] { return [] }
   private callbacks() {
-    const table = this.x.__indirect_function_table
-    const t = trampolines([[4, false], [3, true], [2, false]], [
+    const table = this.x.__indirect_function_table, more = this.more()
+    const t = trampolines([[4, false], [3, true], [2, false], ...more.map((m) => m.sig)], [
       (_t, _u, ptr, len) => { const r = asXterm(dec.decode(this.u8.subarray(ptr, ptr + len))); if (r) this.replies.push(r) },
       (_t, _u, out) => {
         const d = this.dv
@@ -143,12 +146,14 @@ export class Vt {
         return 1
       },
       () => { this.titled = true },
+      ...more.map((m) => m.fn),
     ])
-    const at = table.grow(3)
-    for (let i = 0; i < 3; i++) table.set(at + i, t[String(i)] as never)
+    const at = table.grow(3 + more.length)
+    for (let i = 0; i < 3 + more.length; i++) table.set(at + i, t[String(i)] as never)
     this.set("WRITE_PTY", at)
     this.set("DEVICE_ATTRIBUTES", at + 1)
     this.set("TITLE_CHANGED", at + 2)
+    more.forEach((m, i) => this.set(m.opt, at + 3 + i))
   }
 
   // ---------- the terminal
@@ -190,9 +195,10 @@ export class Vt {
     if (!this.inPtr) throw new Error("libghostty-vt: out of memory")
   }
 
-  resize(cols: number, rows: number) {
+  /** A new size; `cellWidth` and `cellHeight` (px) are what pixel mouse reports and size queries tell. */
+  resize(cols: number, rows: number, cellWidth = 8, cellHeight = 16) {
     if (cols === this.cols && rows === this.rows) return
-    this.check(this.x.ghostty_terminal_resize(this.h, cols, rows, 8, 16), "resize")
+    this.check(this.x.ghostty_terminal_resize(this.h, cols, rows, cellWidth, cellHeight), "resize")
     if (this.replies.length) { const r = this.replies.join(""); this.replies = []; this.o.onReply?.(r) }
   }
   reset() { this.x.ghostty_terminal_reset(this.h) }
@@ -211,7 +217,7 @@ export class Vt {
     this.check(this.x.ghostty_terminal_get(this.h, this.e("GhosttyTerminalData", "MODE"), this.scratch), "mode")
     return this.dv.getUint8(this.scratch + 2) !== 0
   }
-  private setMode(n: number, on: boolean) {
+  protected setMode(n: number, on: boolean) {
     this.dv.setUint16(this.scratch, n & 0x7fff, true)
     this.dv.setUint8(this.scratch + 2, on ? 1 : 0)
     this.set("MODE_DEFAULT", this.scratch)
@@ -223,7 +229,7 @@ export class Vt {
   // ---------- what it shows
 
   /** Its screen and history from row `from` (of its screen and history) down, as text, VT or HTML. */
-  private format(emit: "PLAIN" | "VT" | "HTML", from: number, o: { unwrap: boolean; trim: boolean; extras?: number }) {
+  protected format(emit: "PLAIN" | "VT" | "HTML", from: number, o: { unwrap: boolean; trim: boolean; extras?: number }) {
     this.fset("EMIT", this.e("GhosttyFormatterFormat", emit))
     this.fset("UNWRAP", o.unwrap ? 1 : 0)
     this.fset("TRIM", o.trim ? 1 : 0)

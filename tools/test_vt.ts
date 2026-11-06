@@ -67,10 +67,11 @@ await section("the module", () => {
 })
 
 await section("answers", () => {
-  // What xterm.js' headless terminal answered (test_vt's record of it, 2026-11-05): a page answers the same.
+  // What xterm.js' headless terminal answered (test_vt's record of it, 2026-11-05), but graphemes (2027) on: the pages
+  // draw with libghostty-vt too, so both count emoji sequences' widths as it does.
   const XTERM: Record<string, string> = {
     "\x1b[c": "\x1b[?1;2c", "\x1b[>c": "\x1b[>0;276;0c", "\x1b[5n": "\x1b[0n", "\x1b[6n": "\x1b[2;1R", "\x1b[?6n": "\x1b[?2;1R",
-    "\x1b[?2004$p": "\x1b[?2004;2$y", "\x1b[?1049$p": "\x1b[?1049;2$y", "\x1b[?2026$p": "\x1b[?2026;2$y", "\x1b[?2027$p": "\x1b[?2027;0$y",
+    "\x1b[?2004$p": "\x1b[?2004;2$y", "\x1b[?1049$p": "\x1b[?1049;2$y", "\x1b[?2026$p": "\x1b[?2026;2$y", "\x1b[?2027$p": "\x1b[?2027;1$y",
     "\x1b[4$p": "\x1b[4;2$y", "\x1bP$qm\x1b\\": "\x1bP1$r0m\x1b\\",
     // (none: no kitty keyboard, XTVERSION, colors, sizes, color scheme or ENQ)
     "\x1b[>q": "", "\x1b[?u": "", "\x1b]10;?\x07": "", "\x1b]11;?\x07": "", "\x1b]12;?\x07": "", "\x1b]4;1;?\x07": "",

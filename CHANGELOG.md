@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals kept and drawn by Ghostty's engine**: the terminal server and the pages keep each terminal's screen and
+  history with libghostty-vt instead of xterm.js, several times faster at reading output, reflowing and giving a tab
+  its screen back, at a fraction of the memory; a busy agent's output reaches the tab in fewer, larger pieces, and
+  keystrokes echo at once. Emoji sequences, flags and other graphemes draw as one character, in two columns.
 - **Files keeps its rows, however fast it scrolls**: with each panel in its own box, a long file tree scrolled far down
   no longer shrinks to a row or two (or a lone "Show more") with empty room under it once a panel above it grows or
   shrinks, nor stops short after Expand all; its rows are drawn in the frame it scrolls, and a panel's scrollbar is
