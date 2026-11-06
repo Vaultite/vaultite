@@ -339,12 +339,19 @@ async function pointTo(p: EnginePage, who: string, x: number | null, y: number |
 /** Who's acting in each page now (`actIn` sets it), for the pointer's name. */
 const actor = new WeakMap<WebContents, string>()
 
+/** An agent's input to page `p`, only while it's still theirs: the user taking it over (or pausing agents) mid-act stops
+ *  it there, so a fill's select-all and Backspace never land on what they type. */
+function ours(p: EnginePage) {
+  if (taken.has(p.id) || paused.has(p.id)) throw new Error("the user took this page over (or paused agents in it) mid-act: stopped there")
+}
+const input = (p: EnginePage, method: string, params: Record<string, unknown>) => { ours(p); return cdp(p.wc, method, params) }
+const pressMine = (p: EnginePage, combo: string) => { ours(p); return press(p, combo) }
 async function click(p: EnginePage, x: number, y: number, count = 1) {
   await pointTo(p, actor.get(p.wc) ?? "", x, y, true)
-  await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y })
+  await input(p, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y })
   for (let i = 1; i <= count; i++) {
-    await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: i })
-    await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: i })
+    await input(p, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: i })
+    await input(p, "Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: i })
   }
 }
 
@@ -443,19 +450,19 @@ async function step(p: EnginePage, a: Act) {
   switch (a.action) {
     case "click": case "dblclick": case "hover": {
       const n = await targetOf(p, a, need)
-      if (a.action === "hover") { await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y); await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x: n.x, y: n.y }) }
+      if (a.action === "hover") { await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y); await input(p, "Input.dispatchMouseEvent", { type: "mouseMoved", x: n.x, y: n.y }) }
       else await click(p, n.x, n.y, a.action === "dblclick" ? 2 : 1)
       break
     }
     case "fill": case "type": {
       // (type with no control: where the caret is, as a person typing on)
-      if (a.action === "type" && !a.ref && !a.at) { await pointTo(p, actor.get(p.wc) ?? "", null, null); if (a.value) await cdp(p.wc, "Input.insertText", { text: String(a.value) }); break }
+      if (a.action === "type" && !a.ref && !a.at) { await pointTo(p, actor.get(p.wc) ?? "", null, null); if (a.value) await input(p, "Input.insertText", { text: String(a.value) }); break }
       const n = await targetOf(p, a, need)
       await click(p, n.x, n.y)
       if (n.id) await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {})
       // (fill: what's there goes first, as a person selecting it all would)
-      if (a.action === "fill") { await press(p, process.platform === "darwin" ? "Meta+a" : "Control+a"); await press(p, "Backspace") }
-      if (a.value) await cdp(p.wc, "Input.insertText", { text: String(a.value) })
+      if (a.action === "fill") { await pressMine(p, process.platform === "darwin" ? "Meta+a" : "Control+a"); await pressMine(p, "Backspace") }
+      if (a.value) await input(p, "Input.insertText", { text: String(a.value) })
       break
     }
     case "press": {
@@ -463,7 +470,7 @@ async function step(p: EnginePage, a: Act) {
       if (COPY.test(key) && heldNear(p)) throw new Error("no copying in a page the app filled a login in")
       if (a.ref) { const n = await nodeOf(p, a.ref); await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y); await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {}) }
       else await pointTo(p, actor.get(p.wc) ?? "", null, null)
-      await press(p, key)
+      await pressMine(p, key)
       break
     }
     case "check": case "uncheck": {
@@ -521,14 +528,14 @@ async function step(p: EnginePage, a: Act) {
         const e = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true, composed: true })
         ;(t || document.body).dispatchEvent(e)
         return e.defaultPrevented })()`
-      if (!await p.wc.executeJavaScriptInIsolatedWorld(1016, [{ code }]).catch(() => false)) await cdp(p.wc, "Input.insertText", { text })
+      if (!await p.wc.executeJavaScriptInIsolatedWorld(1016, [{ code }]).catch(() => false)) await input(p, "Input.insertText", { text })
       break
     }
     case "scroll": {
       const n = a.ref ? await nodeOf(p, a.ref) : null
       const dy = { up: -600, down: 600 }[String(a.direction ?? a.value ?? "down")] ?? 600
       await pointTo(p, actor.get(p.wc) ?? "", n?.x ?? null, n?.y ?? null)
-      await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseWheel", x: n?.x ?? 400, y: n?.y ?? 300, deltaX: 0, deltaY: dy })
+      await input(p, "Input.dispatchMouseEvent", { type: "mouseWheel", x: n?.x ?? 400, y: n?.y ?? 300, deltaX: 0, deltaY: dy })
       break
     }
     default: throw new Error(`no action "${a.action}": click, dblclick, hover, fill, type, paste, press, check, uncheck, select, upload or scroll`)

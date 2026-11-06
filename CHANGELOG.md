@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Taking over a page from an agent stops it at once**: its act stops at the next click or key rather than running to
+  its end, so a form it was filling never selects and deletes what you start typing.
 - **Terminals come back clean after a restart**: output still being drawn when the connection dropped no longer lands
   on top of the replay (a garbled screen), keys you type while it replays reach the program, and closing a terminal's
   last tab while the server is slow to answer never ends what runs in it.
