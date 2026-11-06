@@ -205,8 +205,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     setSaving(true)
     try {
       const page = await web.html(id)
-      const r = await post<{ path: string; title: string; existing?: boolean }>("clip", { url: page.url, html: page.html })
-      if (!r.existing) notify(`Saved "${r.title}"`, { action: { label: "Open", run: () => openInSplit(`file:${r.path}`) } })
+      const r = await post<{ path: string; title: string; existing?: boolean; video?: boolean }>("clip", { url: page.url, html: page.html })
+      if (!r.existing) notify(`Saved "${r.title}"${r.video ? ": its video follows in a few minutes" : ""}`, { action: { label: "Open", run: () => openInSplit(`file:${r.path}`) } })
       else {
         // Saved before: its note, and the page as it is now only if asked.
         openInSplit(`file:${r.path}`)

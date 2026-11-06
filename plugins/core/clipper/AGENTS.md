@@ -23,3 +23,9 @@ The page's main content, as Markdown.
 - `"inbox": true` (or `vau clip <url> --inbox`, MCP's `clip` with `inbox`) puts it in the user's inbox to review instead
   (with the Inbox plugin on): `Inbox/<Title>.md`, `type: inbox`, `status: new`, `from` (who clipped it), the same keys
   otherwise.
+- An X post with a video (its own: not a reply's, a quoted post's or a GIF) gets its video too, while a plugin that
+  saves videos is on (`video.save`: the Videos plugin): the clip answers at once with `video: true`, and a few minutes
+  later the video lands in the same note, not a second one: its embed on top (`![[<post>.mp4]]`), its transcript as a
+  `## Transcript` section at the end. `update` keeps them. Off for one clip with `"video": false` (`vau clip <url>
+  --no-video`), for all with the plugin's Save videos setting (`.vaultite/plugins/clipper/data.json`:
+  `"videos": false`). `videoError` says why a video couldn't be asked for.

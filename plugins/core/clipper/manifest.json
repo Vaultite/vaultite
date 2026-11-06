@@ -8,6 +8,7 @@
   "settings": {
     "folder": { "type": "string", "folder": true, "default": "Clippings", "label": "Folder", "description": "where clipped pages are saved" },
     "tags": { "type": "list", "default": ["Clipping"], "label": "Tags", "description": "the tags each clipped page gets" },
-    "inbox": { "type": "boolean", "default": false, "label": "Into the inbox", "description": "clipped pages land in the inbox to review (Inbox/), with the Inbox plugin on" }
+    "inbox": { "type": "boolean", "default": false, "label": "Into the inbox", "description": "clipped pages land in the inbox to review (Inbox/), with the Inbox plugin on" },
+    "videos": { "type": "boolean", "default": true, "label": "Save videos", "description": "an X post's video is saved into its clip too, by a plugin that saves videos (Videos) while one is on" }
   }
 }

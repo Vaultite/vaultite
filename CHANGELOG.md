@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A clipped X post keeps its video**: with the Videos plugin on, the post's video (and its transcript) is saved into
+  the clip's own note a few minutes later, not a second note; the Web clipper's Save videos setting turns it off.
 - **On a phone, the caret that follows your reading sits on a line's text**: past a quote's mark or a list item's bullet
   and box too, not only a heading's #s, where nothing could find it on screen.
 - **Sidebar panels that aren't lists keep their room**: when the Conversations panel's talk (or another panel that
