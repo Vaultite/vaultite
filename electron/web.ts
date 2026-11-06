@@ -1,6 +1,6 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
 import { allPages, canvasOf, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, mayPicture, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setCanvasHandler, setEngineHost, setOpener } from "./browser/engine.ts"
@@ -1836,23 +1836,41 @@ function raise(win: AppWindow, how: Raise) {
   if (win.isDestroyed()) return
   raised.set(win, how)
   restack(win)
+  passPinch(win, false)
+  // (a pointer resting over a page as the window goes over it, as fingers on the trackpad leave it, is told to the
+  // window's page: it then says whether it's over the page there, `pointer`)
+  if (!MAC || how !== "through") return
+  const at = screen.getCursorScreenPoint(), b = win.getContentBounds()
+  if (at.x >= b.x && at.y >= b.y && at.x < b.x + b.width && at.y < b.y + b.height) win.webContents.sendInputEvent({ type: "mouseMove", x: at.x - b.x, y: at.y - b.y })
+}
+
+/** Whether a pinch in each window goes to the page under the pointer now, the window's page letting it through there. */
+const pinchPassed = new WeakMap<AppWindow, boolean>()
+function passPinch(win: AppWindow, on: boolean) {
+  if (!MAC || win.isDestroyed() || (pinchPassed.get(win) ?? false) === on) return
+  pinchPassed.set(win, on)
+  void import("./gestures.ts").then((g) => g.passPinch(win, on))
 }
 
 /** The pointer over a page while the window's page lets it through, at the page's own CSS pixels from its corner. */
 function pointer(p: Page, m: unknown) {
   if (!m || typeof m !== "object") return
-  const e = m as { type?: unknown; x?: unknown; y?: unknown; button?: unknown; clickCount?: unknown; dx?: unknown; dy?: unknown }
+  const e = m as { type?: unknown; x?: unknown; y?: unknown; button?: unknown; clickCount?: unknown; dx?: unknown; dy?: unknown; keys?: unknown }
   // (a press passed while through is let go here even once the window dropped under the page: else it's held for good)
   if (raised.get(p.win) !== "through" && !((held.get(p.view.webContents) ?? 0) && (e.type === "mouseUp" || e.type === "mouseMove"))) return
+  // (while it's over the page, a pinch is the page's too: gestures.m)
+  if (raised.get(p.win) === "through") passPinch(p.win, e.type !== "mouseLeave")
   const z = p.win.webContents.getZoomFactor(), num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
   const x = Math.round(num(e.x) * z), y = Math.round(num(e.y) * z)
   const button = e.button === "right" || e.button === "middle" ? e.button : "left", clickCount = Math.max(1, Math.min(3, num(e.clickCount)))
+  const keys = (Object.keys(KEY_BITS) as (keyof typeof KEY_BITS)[]).filter((k) => Array.isArray(e.keys) && e.keys.includes(k))
+  const modifiers = keys.reduce((n, k) => n | KEY_BITS[k], 0)
   const wc = p.view.webContents
   // (the click landed on the window's view, which macOS gave the keyboard: a press in the page takes it, as a real one does)
   if (e.type === "mouseDown" && !wc.isFocused()) wc.focus()
   const direct = () => {
-    if (e.type === "mouseWheel") wc.sendInputEvent({ type: "mouseWheel", x, y, deltaX: -num(e.dx), deltaY: -num(e.dy), canScroll: true })
-    else if (e.type === "mouseMove" || e.type === "mouseDown" || e.type === "mouseUp" || e.type === "mouseLeave") wc.sendInputEvent({ type: e.type, x, y, button, clickCount })
+    if (e.type === "mouseWheel") wc.sendInputEvent({ type: "mouseWheel", x, y, deltaX: -num(e.dx), deltaY: -num(e.dy), canScroll: true, modifiers: keys })
+    else if (e.type === "mouseMove" || e.type === "mouseDown" || e.type === "mouseUp" || e.type === "mouseLeave") wc.sendInputEvent({ type: e.type, x, y, button, clickCount, modifiers: keys })
   }
   // Over the DevTools protocol, which finds the frame under the pointer as the Mac's input does: sendInputEvent never
   // reaches a frame from another site (a captcha, "Sign in with Google"). At the page's CSS pixels; a leave has none.
@@ -1863,10 +1881,12 @@ function pointer(p: Page, m: unknown) {
   held.set(wc, now)
   const pz = wc.getZoomFactor() || 1
   const at = { x: Math.round(num(e.x) * z / pz), y: Math.round(num(e.y) * z / pz) }
-  const params = type === "mouseWheel" ? { type, ...at, deltaX: num(e.dx) * z / pz, deltaY: num(e.dy) * z / pz }
-    : type === "mouseMoved" ? { type, ...at, button: now ? (now & 1 ? "left" : now & 2 ? "right" : "middle") : "none", buttons: now }
-    : { type, ...at, button, buttons: now, clickCount }
+  const params = type === "mouseWheel" ? { type, ...at, modifiers, deltaX: num(e.dx) * z / pz, deltaY: num(e.dy) * z / pz }
+    : type === "mouseMoved" ? { type, ...at, modifiers, button: now ? (now & 1 ? "left" : now & 2 ? "right" : "middle") : "none", buttons: now }
+    : { type, ...at, modifiers, button, buttons: now, clickCount }
   void cdp(wc, "Input.dispatchMouseEvent", params).catch(direct)
 }
 /** The buttons held in each page, by the window's passed pointer. */
 const held = new WeakMap<WebContents, number>()
+/** The keys a passed pointer's event holds, by Electron's names, as the DevTools protocol's bits. */
+const KEY_BITS = { alt: 1, control: 2, meta: 4, shift: 8 }

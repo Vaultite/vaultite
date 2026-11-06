@@ -3,7 +3,7 @@
 // Back and Forward from the app's keys, the page's, the mouse's buttons (over the page and the app) and the bar (its list
 // on a right-click); find in page (⌘F from the page and the app, Enter, ⌘G, Esc, its words kept; a card over the page's
 // top right that leaves the page its size and its clicks; a site's own ⌘F left to it); a site's zoom (⌘= in the page and the app, kept per host, said in a toast, the bar's reset), never the app's, and a pinch's
-// magnifying; ⌘R, ⇧⌘R and ⌥⌘I the
+// magnifying (under a toast too, its ⌃ passed on); ⌘R, ⇧⌘R and ⌥⌘I the
 // page's, never the app's menu; Esc stops a load; ⇧⌘[ ]; ⌘W on a pinned web tab rests it. WRITES: the throwaway vault.
 //   node web/qa/browserkeys.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -242,6 +242,19 @@ check("a pinch magnifies the page, not reflowing it", pinched[0] > 1.5 && pinche
 const unpinched = await pinch(0.25)
 check("… and pinches back to its size, no smaller", Math.abs(unpinched[0] - 1) < 0.01, unpinched)
 check("the app's own page doesn't magnify", Math.abs((await pinch(2, true))[0] - 1) < 0.01)
+// Under a toast, what the window's page passes on keeps its keys: a pinch it got reaches the page as ⌃-wheels (sites
+// that zoom themselves read them). A real pinch is handed to the page natively before that: web/qa/pinch.mjs.
+const covered = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0], kids = w.contentView.children
+  return kids.indexOf(w.view) > kids.findIndex((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
+})
+await fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "notify", text: "Lighthouse lamp lit" }) })
+check("a toast over the page raises the window's page over it", await until(covered, 4000))
+await inPage("window.__wheels = []; addEventListener('wheel', (e) => __wheels.push(e.ctrlKey), { passive: true }); true")
+await pinch(1.5, true)
+const wheels = await inPage("__wheels")
+check("… a pinch on the window's page there reaches the page with its ⌃", wheels.length > 0 && wheels.every(Boolean), wheels)
+await until(async () => !(await covered()), 15000)
 
 // ---------- reload, DevTools, Esc ----------
 await win.evaluate(() => { window.__alive = 1 })

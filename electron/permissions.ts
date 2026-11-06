@@ -6,7 +6,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { PERMISSIONS, VAULT_PANE, actionOf, paneUrl, signingOf, type Permission, type PermissionDef, type PermissionState, type Signing } from "../core/permissions.ts"
-import { addonName, buildMacPermissions, loadMacPermissions, type MacPermissions } from "./macpermissions-build.ts"
+import { macAddon, type MacAddon } from "./macaddons.ts"
 
 const FOLDERS: Record<string, () => string> = {
   desktop: () => app.getPath("desktop"), documents: () => app.getPath("documents"), downloads: () => app.getPath("downloads"),
@@ -17,15 +17,11 @@ const checked = new Map<string, PermissionState>()
 
 // ---------- the addon: shipped built in the app (tools/build_helpers.ts), else built the first time into userData
 
-let addon: MacPermissions | null = null
-let loading: Promise<MacPermissions | null> | null = null
-function native(): Promise<MacPermissions | null> {
+let addon: MacAddon | null = null
+let loading: Promise<MacAddon | null> | null = null
+function native(): Promise<MacAddon | null> {
   if (addon) return Promise.resolve(addon)
-  loading ??= (async () => {
-    const shipped = path.join(import.meta.dirname, "bin", addonName())
-    const file = fs.existsSync(shipped) ? shipped : await buildMacPermissions(path.join(app.getPath("userData"), "bin"))
-    return (addon = loadMacPermissions(file))
-  })().catch((e) => { console.warn(`permissions: no native helper (${(e as Error).message})`); return null })
+  loading ??= macAddon("macpermissions", path.join(app.getPath("userData"), "bin")).then((a) => (addon = a)).catch((e) => { console.warn(`permissions: no native helper (${(e as Error).message})`); return null })
   return loading
 }
 const ask = (cmd: string, more: Record<string, unknown> = {}) => addon?.call({ cmd, ...more })

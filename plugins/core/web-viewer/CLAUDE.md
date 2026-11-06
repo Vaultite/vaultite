@@ -13,7 +13,9 @@
   peeking, a floating pane) takes its own, the rest going on to the page over the DevTools protocol (sendInputEvent
   never reaches a frame from another site, a captcha's or "Sign in with Google"), its cursor shown back. An overlay no
   hit test finds (it takes no pointer, or sits between their points: a corner card) needs `data-floats`. Small ambient
-  bits the page may hide (a companion's cursor) take `data-under-pages`, so they don't raise the window.
+  bits the page may hide (a companion's cursor) take `data-under-pages`, so they don't raise the window. A pinch can't
+  be passed on so (no API takes one): macOS gives it to the view on top, so electron/gestures.m hands it to the page
+  under the pointer before the window sees it, whole; `web/qa/pinch.mjs` posts real ones (VAULTITE_REAL_INPUT=1).
 - Electron drags the window wherever any of its views has a drag region (`-webkit-app-region`), whatever is drawn over
   it, and Chromium neither clips regions nor stacks them: only document order counts. So a site's own are off
   (web-preload.cjs) and the window's are cut where a page shows (WebPage's `data-web-cut`); `web/qa/pageclicks.mjs`.

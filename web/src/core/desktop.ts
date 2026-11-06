@@ -202,9 +202,10 @@ export type WebPages = {
   raise: (how: "app" | "through" | null) => Promise<unknown>
   /** The app's background (#rrggbb): what a new page shows till its first page comes in. Older builds don't have it. */
   look?: (background: string) => Promise<unknown>
-  /** The pointer over page `id` while the window lets it through: where in the page (CSS pixels), what it did. */
+  /** The pointer over page `id` while the window lets it through: where in the page (CSS pixels), what it did, the keys
+   *  held. */
   pointer: (id: number, m: { type: "mouseMove" | "mouseDown" | "mouseUp" | "mouseLeave" | "mouseWheel"; x: number; y: number
-    button?: "left" | "middle" | "right"; clickCount?: number; dx?: number; dy?: number }) => Promise<unknown>
+    button?: "left" | "middle" | "right"; clickCount?: number; dx?: number; dy?: number; keys?: ("alt" | "control" | "meta" | "shift")[] }) => Promise<unknown>
   /** Something of the window's was focused: the keyboard comes to the window from a page that has it (its id), if one
    *  does (else null). */
   take?: () => Promise<number | null>

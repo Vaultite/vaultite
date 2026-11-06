@@ -134,6 +134,9 @@ const CURSORS = new Set(["crosshair", "text", "wait", "help", "e-resize", "n-res
 const RENAMED: Record<string, string> = { hand: "pointer", nodrop: "no-drop" }
 export const cssCursor = (c: unknown) => (typeof c !== "string" ? "" : RENAMED[c] ?? (CURSORS.has(c) ? c : ""))
 
+/** The keys held that a passed pointer's event carries (a ⌘-click, a pinch's ⌃), by Electron's names. */
+const KEYS = ["alt", "control", "meta", "shift"] as const
+const HELD = { alt: "altKey", control: "ctrlKey", meta: "metaKey", shift: "shiftKey" } as const
 /** The pointer over a page's box while the window lets it through, passed on to the page, and the page's cursor shown
  *  there. A press in the page keeps the pointer till it's let go, as a real one does (a drag out over the mini player). */
 export function passPointer(box: HTMLElement, id: () => number | null, area: () => DOMRect) {
@@ -144,7 +147,8 @@ export function passPointer(box: HTMLElement, id: () => number | null, area: () 
     if ((raised !== "through" && !(held && (type === "mouseUp" || type === "mouseMove"))) || page === null) return
     const r = area()
     void webPages?.pointer(page, { type, x: e.clientX - r.left, y: e.clientY - r.top, button: (["left", "middle", "right"] as const)[e.button] ?? "left",
-      clickCount: e.detail || 1, dx: e instanceof WheelEvent ? e.deltaX : 0, dy: e instanceof WheelEvent ? e.deltaY : 0 }).catch(() => {})
+      clickCount: e.detail || 1, dx: e instanceof WheelEvent ? e.deltaX : 0, dy: e instanceof WheelEvent ? e.deltaY : 0,
+      keys: KEYS.filter((k) => e[HELD[k]]) }).catch(() => {})
   }
   const inBox = (e: Event) => e.target instanceof Node && box.contains(e.target)
   const bit = (e: MouseEvent) => 1 << e.button
