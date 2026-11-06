@@ -1637,11 +1637,11 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open"]
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1694,7 +1694,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["draw", "see", "act", "follow", "clear", "handoff"]
+const SUMMONED_TOOLS = ["open", "draw", "see", "act", "follow", "clear", "handoff"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -2761,6 +2761,33 @@ private page or note is never shown.
   text: (r) => `"${r.title}" (pane ${r.pane}${r.url ? `, ${r.url}` : ""}${r.access === "read" ? "; you may only read here" : ""}):\n${r.text || "(nothing to read)"}`,
 })
 
+type Acted = { url: string; title: string; navigated: boolean; opened?: { tab: number; url: string; title: string }[]; diff?: { page: boolean; lines: string[]; more: number } }
+/** What an act in a page did, as told: the page's text is all it sees, so no change there isn't "nothing happened". */
+function actText(r: Acted, action: string) {
+  const opened = r.opened?.length ? `\nOpened ${r.opened.map((o) => o.title || o.url).join(", ")} in a new tab.` : ""
+  const lines = r.diff?.lines?.length ? `\n${r.diff.page ? "The page now" : "What changed (- gone, + new)"}:\n${r.diff.lines.join("\n")}${r.diff.more ? `\n… ${r.diff.more} more lines` : ""}` : ""
+  const none = lines || opened ? "" : action === "scroll" ? "\nScrolled; the page's text is the same (see shows what's in view)." : "\nIts text didn't change (a change only its picture shows isn't in it: see, or look at the screen)."
+  return `${r.navigated ? "Went to another page: " : ""}${r.title || r.url}${opened}${lines}${none}`
+}
+type InApp = { ui: string; clicked: string; notices?: { text: string; kind?: string }[] }
+const actInAppText = (r: InApp) => `Clicked ${r.clicked ? JSON.stringify(r.clicked) : r.ui} in the app.${r.notices?.length ? ` It then showed: ${r.notices.map((n) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}`
+/** How long its cursor flies before it clicks, so they see where. */
+const LAND_MS = 450
+/** A click on the app's own UI, its cursor there first (index.tsx' answers.click): only what's on screen. */
+async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, action: string): Promise<InApp> {
+  if (action !== "click" && action !== "dblclick") throw new OpError("in the app's own UI it clicks (click, dblclick): to write in a note, edit; in a page, give its pane", 400)
+  did(name, "act")
+  setAgent(name, { ui, ...(find ? { find } : {}), state: "writing", pointed: Date.now() })
+  await new Promise((done) => setTimeout(done, LAND_MS))
+  try {
+    const r = await ctx.ui({ action: "companion:click", ui, find, how: action }).catch((e) => {
+      throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
+    }) as { found: boolean; label?: string; text?: string; notices?: InApp["notices"] } | null
+    if (r?.found) return { ui, clicked: r.label ?? "", notices: r.notices ?? [] }
+    throw new OpError(find ? `no "${find}" in ${ui} on the user's screen${r?.text ? `; it shows: ${r.text.replace(/\s+/g, " ").slice(0, 300)}` : ""}` : `${ui} isn't on the user's screen (vau tabs lists tabs and panes)`, 404)
+  } finally { setAgent(name, { state: acting(name) }) }
+}
+
 const ACTS = ["click", "dblclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll"]
 plugin.op({
   id: "companion.act",
@@ -2774,24 +2801,92 @@ say. Only where its container lets agents act, never on a private page. Answers 
   vau companion act --pane t5x1 fill --el e5 --value "alice@example.com"`,
   kind: "write",
   lock: false,
-  params: { pane: PANE, action: { type: "string", required: true, enum: ACTS, description: "what to do" }, el: EL,
-    value: { type: "string", description: "the text to fill or type, or the option to select" }, key: { type: "string", description: "the key to press (Enter, Tab, Escape)" },
+  params: { pane: PANE, ui: { ...UI, description: "instead of a page: the app's own UI, by its id (as in look), to click" },
+    find: { type: "string", description: "with ui: the words of what to click in it (a pinned page's name in panel:pages:pages)" },
+    action: { type: "string", required: true, enum: ACTS, description: "what to do" }, el: EL,
+    value: { type: "string", description: "the text to fill or type, or the option to select (scroll: up or down)" }, key: { type: "string", description: "the key to press (Enter, Tab, Escape)" },
     direction: { type: "string", enum: ["up", "down"], description: "which way to scroll" }, as: AS },
-  args: ["action"],
-  run: async (p) => {
-    const name = who(p), id = str(p.pane) || paneFocus()?.id
-    if (!id) throw new OpError("give `pane`: the user isn't in a web page")
+  args: ["action", "value"],
+  run: async (p, ctx) => {
+    const name = who(p)
+    if (str(p.ui)) return actInApp(ctx, name, str(p.ui), str(p.find), str(p.action))
+    const id = str(p.pane) || paneFocus()?.id
+    if (!id) throw new OpError("give `pane` (a web page) or `ui` (the app's own UI): the user isn't in a web page")
+    if (p.action === "scroll" && !p.direction && /^(up|down)$/i.test(str(p.value))) p = { ...p, direction: str(p.value).toLowerCase(), value: undefined }
     const t = await pageFor(id, "act", name)
     did(name, "act")
     if (str(p.el)) setAgent(name, { ...await resolve({ pane: id, el: str(p.el) }, name).catch(() => ({ pane: id })), state: "writing" })
     try {
       const r = await plugin.desktop("agent:act", t.tab, { action: p.action, ref: str(p.el) || undefined, value: p.value, key: p.key, direction: p.direction, diff: "summary" },
-        { name, session: "", task: "", summary: "", remote: false }).catch((e) => { throw new OpError((e as Error).message, 409) }) as { url: string; title: string; navigated: boolean; diff?: { page: boolean; lines: string[]; more: number } }
+        { name, session: "", task: "", summary: "", remote: false }).catch((e) => { throw new OpError((e as Error).message, 409) }) as Acted
       return { pane: id, ...r }
     } finally { setAgent(name, { state: acting(name) }) }
   },
-  text: (r) => `${r.navigated ? "Went to another page: " : ""}${r.title || r.url}${r.diff?.lines?.length ? `\n${r.diff.page ? "The page now" : "What changed (- gone, + new)"}:\n${r.diff.lines.join("\n")}${r.diff.more ? `\n… ${r.diff.more} more lines` : ""}` : "\nNothing changed on the page."}`,
-  did: (p) => ({ action: "ui", text: `${String(p.action)} in the user's page${p.el ? ` (${String(p.el)})` : ""}`, paths: [], by: who(p) }),
+  text: (r, p) => ("clicked" in r ? actInAppText(r) : actText(r, String(p.action))),
+  did: (p) => ({ action: "ui", text: `${String(p.action)} in ${p.ui ? `the app (${String(p.ui)}${p.find ? ` "${String(p.find)}"` : ""})` : "the user's page"}${p.el ? ` (${String(p.el)})` : ""}`, paths: [], by: who(p) }),
+})
+
+// ---------- opening things before their eyes: its cursor goes where it opens, as the CLI's opens do too
+
+/** Set while its own open runs, so the CLI's wrap below doesn't fly it twice. */
+const opening = new AsyncLocalStorage<boolean>()
+/** Which of its sessions asked over the CLI (its session header): the summoned one, or an agent's own; else null. */
+function companionAsking(): string | null {
+  const sid = requestWriter.getStore()?.session
+  if (!sid) return null
+  if (laneOf?.vault === plugin.vault && lane().id() === sid) return ownName()
+  return [...agents.values()].find((a) => session(a.name)?.id === sid)?.name ?? null
+}
+/** What a pane shows that `path` opens (a note, a folder's page, a view, a web address). */
+function shows(p: Pane, path: string) {
+  const x = path.replace(/^file:/, "")
+  return /^https?:\/\//i.test(x) ? p.to === `view:web/${x}` || p.to.startsWith(`view:web/${x.replace(/\/$/, "")}`)
+    : x.startsWith("view:") ? p.to === x : p.to === `file:${x}` || p.to === `file:${x}.md` || p.to === `view:folder/${x}`
+}
+/** Open `path` with its cursor there: on its tab first when it's open already, then on what opened. */
+async function openSeen(name: string, path: string, open: () => Promise<unknown>) {
+  const was = allPanes().find((p) => shows(p, path) && p.tab)
+  if (was) { setAgent(name, { ui: `tab:${was.tab}`, state: "writing", pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
+  const r = await opening.run(true, open)
+  // (the window says what it shows a moment after)
+  let p: Pane | undefined
+  for (const until = Date.now() + 1500; !p && Date.now() < until;) { await new Promise((done) => setTimeout(done, 100)); p = allPanes().find((x) => shows(x, path)) }
+  p ??= paneFocus() ?? undefined
+  if (p && !privatePane(p)) setAgent(name, { ...await resolve({ pane: p.id }, name).catch(() => ({ pane: p!.id })), state: acting(name), pointed: Date.now() })
+  else setAgent(name, { state: acting(name) })
+  return { result: r, pane: p?.id }
+}
+plugin.around("ui.open", async (call, next) => {
+  const name = opening.getStore() ? null : companionAsking()
+  return name ? (await openSeen(name, String(call.params.path ?? ""), () => next())).result : next()
+})
+plugin.around("tabs.focus", async (call, next) => {
+  const name = companionAsking(), what = str(call.params.what), tab = name && allPanes().find((p) => p.id === what || p.tab === what || shows(p, what))?.tab
+  if (name && tab) { setAgent(name, { ui: `tab:${tab}`, state: "writing", pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
+  return next()
+})
+plugin.op({
+  id: "companion.open",
+  cli: "companion open",
+  summary: "Open a note, a folder, a view or a web page in the user's window, your cursor flying there so they see it.",
+  help: `For what they asked to see: a pinned page, a note, a site. It answers the pane it opened (a web page's: see and act
+work there).
+
+  vau companion open Personal/Dashboards/Today.md
+  vau companion open https://example.com --split right`,
+  kind: "write",
+  lock: false,
+  params: { path: { type: "string", required: true, description: "a vault path (or as they say it: Today), a folder, a view (view:graph) or a web address" },
+    split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down)" }, newTab: { type: "boolean", description: "in a new tab" }, as: AS },
+  args: ["path"],
+  run: async (p, ctx) => {
+    const name = who(p), path = str(p.path)
+    did(name, "open")
+    const r = await openSeen(name, path, () => ctx.op("ui.open", { path, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}) }))
+    return { path, pane: r.pane ?? null }
+  },
+  text: (r) => `Opened ${r.path}${r.pane ? ` (pane ${r.pane})` : ""}.`,
+  did: (p) => ({ action: "ui", text: `Opened ${String(p.path)} in the app`, paths: [], by: who(p) }),
 })
 
 const followText = (f: Follow) => `${f.id}: ${f.pane ? `pane ${f.pane}` : f.tab ? `tab ${f.tab}` : f.group ? `tab group ${f.group}` : f.ui}${f.title ? ` "${f.title}"` : ""}`

@@ -1,7 +1,7 @@
 // The window's panes for the companion (live.ts' `where`): each pane's tab, title and tab group, and the focused one;
 // and the parts of the app's UI it follows, watched here (their text, as it settles).
 import { Eye } from "lucide-react"
-import { focusedPane, getStore, getTabLayout, notifyError, onTabLayoutChange, op, panesOf, setUiMarks, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
+import { focusedPane, getStore, getTabLayout, noticesSince, notifyError, onTabLayoutChange, op, panesOf, setUiMarks, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
 import { getState, sayWhereSoon, setPanes, subscribe, tintOf, uiChanged, type Follow } from "./live"
 
 /** The most a window tells: a vault's tabs, rarely this many. */
@@ -16,6 +16,36 @@ setPanes(() => {
 /** The element on screen with data-ui `id` (the first shown), or null. */
 export function uiElement(id: string): HTMLElement | null {
   return [...document.querySelectorAll<HTMLElement>(`[data-ui="${CSS.escape(id)}"]`)].find((e) => e.getClientRects().length > 0) ?? null
+}
+
+const CLICKABLE = "button, a[href], [role=button], [role=link], [role=menuitem], [role=tab], [role=treeitem], [role=option], [role=checkbox], [role=switch], [tabindex], [data-ui]"
+/** In `root`, the element showing `find` (its words or its label), the shortest such: what to click for it. */
+export function shown(root: HTMLElement, find: string): HTMLElement | null {
+  const want = find.toLowerCase(), hits: HTMLElement[] = []
+  for (const e of [root, ...root.querySelectorAll<HTMLElement>("*")]) {
+    if (!e.getClientRects().length || e.closest(".companion-overlay")) continue
+    const label = (e.getAttribute("aria-label") ?? e.dataset.tip ?? "").toLowerCase()
+    if (label.includes(want) || (e.childElementCount === 0 && (e.innerText || "").toLowerCase().includes(want))) hits.push(e)
+  }
+  const exact = (e: HTMLElement) => [(e.innerText || "").trim().toLowerCase(), (e.getAttribute("aria-label") ?? "").toLowerCase()].includes(want)
+  const best = hits.sort((a, b) => Number(exact(b)) - Number(exact(a)) || (a.innerText || "").length - (b.innerText || "").length)[0]
+  return best ? (best.closest<HTMLElement>(CLICKABLE) && root.contains(best.closest(CLICKABLE)) ? best.closest<HTMLElement>(CLICKABLE)! : best) : null
+}
+/** An agent's click on the app's own UI (companion act --ui): the element with data-ui `ui`, or the one showing `find`
+ *  in it, pressed as a pointer would; what it was, and the toasts it showed. */
+export async function clickUi(m: Record<string, unknown>) {
+  const root = uiElement(String(m.ui ?? "")), find = String(m.find ?? "").trim()
+  if (!root) return { found: false }
+  const el = find ? shown(root, find) : root
+  if (!el) return { found: false, text: (root.innerText || "").trim().slice(0, 600) }
+  el.scrollIntoView({ block: "nearest" })
+  const r = el.getBoundingClientRect(), at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 }
+  const from = Date.now(), dbl = m.action === "dblclick"
+  for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup"]) el.dispatchEvent(t.startsWith("pointer") ? new PointerEvent(t, { ...at, pointerId: 1, isPrimary: true, pointerType: "mouse" }) : new MouseEvent(t, at))
+  el.click()
+  if (dbl) el.dispatchEvent(new MouseEvent("dblclick", at))
+  await new Promise((done) => setTimeout(done, 400))
+  return { found: true, label: (el.getAttribute("aria-label") || el.innerText || "").trim().slice(0, 120), notices: noticesSince(from).map((n) => ({ text: n.text, kind: n.kind })) }
 }
 
 const TEXT_GAP = 5000
