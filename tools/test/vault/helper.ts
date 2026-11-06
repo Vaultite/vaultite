@@ -76,7 +76,7 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { atOffset, drawnShapes, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene, trailStrokes } = await import("../../../electron/helperlogic.ts")
+    const { atOffset, dictationKeys, drawnShapes, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene, tappedKeys, trailStrokes } = await import("../../../electron/helperlogic.ts")
     const area = { x: 0, y: 25, width: 1600, height: 975 }, bounds = { x: 0, y: 0, width: 1600, height: 1000 }, size = { width: 300, height: 200 }
     const { arrowBox, boxAt, flagBox } = await import("../../../plugins/core/companion/boxes.ts")
     const meets = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
@@ -103,6 +103,8 @@ export default async ($: VaultTest) => {
     const none = prefsOf({}, {}, {}, defaults), set = prefsOf({ fn: false, keys: ["right_option"] }, {}, { private_apps: [] }, defaults)
     check("helper: settings left out are the manifests' defaults (fn⌃ dictates, ⌃⌥ talks); set ones win, an empty private list too",
       none.fn && none.keys.join() === "fn_control" && none.talk.join() === "control_option" && set.keys.join() === "right_option" && none.privateApps.join() === "1Password" && !set.fn && set.privateApps.length === 0, { none, set })
+    check("helper: Dictate anywhere off, its keys go unheard but the Talk keys are still tapped (the companion stays)",
+      dictationKeys(set).length === 0 && tappedKeys(set).join() === "control_option" && tappedKeys(none).join() === "fn_control,control_option", [tappedKeys(set), tappedKeys(none)])
     const split = prefsOf({ keys: ["fn", "right_option", "control_option"] }, {}, {}, defaults), mine = prefsOf({}, { keys: ["fn"] }, {}, defaults)
     check("helper: Talk keys are the companion's, and a key in both talks, never dictates",
       split.talk.join() === "control_option" && split.keys.join() === "fn,right_option" && mine.talk.join() === "fn" && !mine.keys.includes("fn"), { split, mine })

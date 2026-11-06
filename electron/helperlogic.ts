@@ -41,6 +41,11 @@ export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, 
   }
 }
 
+/** The dictation keys heard: none while Dictate anywhere is off. */
+export const dictationKeys = (p: Pick<Prefs, "fn" | "keys">) => (p.fn ? p.keys : [])
+/** What the screen helper's tap hears: the dictation keys and the Talk keys, which turning dictation off never takes. */
+export const tappedKeys = (p: Pick<Prefs, "fn" | "keys" | "talk">) => [...dictationKeys(p), ...p.talk]
+
 /** Where on screen an element (or a window) is: by its left edge's middle, an element; a window, by its title bar. */
 export function pointIn(r: Rect, element: boolean) {
   return element ? { x: r.x + Math.min(16, r.width / 2), y: r.y + r.height / 2 } : { x: r.x + r.width / 2, y: r.y + 12 }

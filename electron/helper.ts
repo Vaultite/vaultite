@@ -16,7 +16,7 @@ import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, besidePointer, bitmapsDiffer, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, trailStrokes } from "./helperlogic.ts"
+import { atOffset, badgeOf, besidePointer, bitmapsDiffer, dictationKeys, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
@@ -388,9 +388,9 @@ let page: WebContents | null = null
 
 /** The screen helper's tap hears the picked keys only: the dictation keys (none while Dictate anywhere is off) and the
  *  Talk keys, a key alone by its code, a chord by its name. */
-const heardKeys = () => (prefs.fn ? prefs.keys : [])
+const heardKeys = () => dictationKeys(prefs)
 const keysNow = () => `${heardKeys().join()}|${prefs.talk.join()}`
-const listen = () => { const all = [...heardKeys(), ...prefs.talk]; return LIVE ? screenAsk("fn", { keys: keyCodes(all), chords: all.filter(isChord) }) : Promise.resolve({}) }
+const listen = () => { const all = tappedKeys(prefs); return LIVE ? screenAsk("fn", { keys: keyCodes(all), chords: all.filter(isChord) }) : Promise.resolve({}) }
 let mods = modKeys(heardKeys()), talkMods = modKeys(prefs.talk), followed = keysNow()
 function followKeys() {
   if (keysNow() === followed) return
