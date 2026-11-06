@@ -301,8 +301,15 @@ func describe(_ w: [String: Any]) -> [String: Any] {
   return m
 }
 /** The topmost window under a point (screen points, top-left origin): what the companion's cursor was dropped on. */
+/** Vaultite's own count (an ask there is about its note, pane or UI: `vaultite`), its window kept on top too; its overlays
+ *  and boxes, above those, never do. Leaving them all out named the app behind Vaultite's window as the one asked about. */
 func windowAt(_ x: Double, _ y: Double) -> [String: Any] {
-  guard let w = windowList().first(where: { boundsOf($0)?.contains(CGPoint(x: x, y: y)) == true && ($0[kCGWindowOwnerPID as String] as? Int).map { pid_t($0) != vaultitePid } ?? false && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0 }) else { return ["window": 0] }
+  guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return ["window": 0] }
+  let p = CGPoint(x: x, y: y)
+  guard let w = list.first(where: { w in
+    let layer = w[kCGWindowLayer as String] as? Int ?? -1, own = (w[kCGWindowOwnerPID as String] as? Int).map { pid_t($0) == vaultitePid } ?? false
+    return (layer == 0 || (own && layer == Int(CGWindowLevelForKey(.floatingWindow)))) && boundsOf(w)?.contains(p) == true && (w[kCGWindowAlpha as String] as? Double ?? 1) > 0
+  }) else { return ["window": 0] }
   return describe(w)
 }
 /** What's under a point (screen points, top-left origin), as Accessibility names it: a desktop icon, a button, a row.
