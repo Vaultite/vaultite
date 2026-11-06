@@ -17,8 +17,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Dictate into terminals**: ⌘J or fn in a terminal (a shell, Claude Code) dims the words not settled at its cursor
   and pastes each settled chunk there, on one line and never with Enter, so nothing runs until you press it. With
   nowhere to dictate, the hint shows in the pill's place where you look, not as a toast in the corner.
-- **The companion answers out loud**: hold ⌃⌥ and ask by voice, and its answer is spoken by your pointer as it's
-  written, starting with its first sentence; its cursor shows it talking. Soniox's voice with your Soniox key, else
+- **The companion answers out loud**: hold ⌃⌥ and ask by voice, over any app or in Vaultite, and its answer is
+  spoken by your pointer as it's written, starting with its first sentence (words that come with a drawing too); its cursor shows it talking. Soniox's voice with your Soniox key, else
   this Mac's; pressing the key again, Esc or moving on stops it. The companion's Voice setting: when you speak (the
   default), always, or off.
 - **The companion moves with you on screen**: hold its Talk key and your pointer leaves a trail in its colour, fading as

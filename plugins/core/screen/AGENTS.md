@@ -8,7 +8,7 @@ the display's picture and what's near the pointer), or you ask.
   com.apple.Safari --find "Sign in"` (one found by its words), or `--sx/--sy` (screen points: the picture is the screen around
   the pointer at a pixel a point, so a pixel's sx, sy is its x, y plus the picture's top left). The cursor flies there
   over the user's screen (it rides beside their pointer while they talk to it), its words in the box beside it.
-- Its voice: an ask by voice is answered aloud as its say is written (the companion's setting `voice`: `auto`, the
+- Its voice: an ask by voice (on screen or in a Vaultite window alike) is answered aloud as its say or draw's say is written (the companion's setting `voice`: `auto`, the
   default; `always`, a typed ask too; `off`), in Soniox's voice `voice_name` (Adrian) with this machine's Soniox key, else
   this Mac's. Write a say as you'd say it: the answer first, no lists, code or addresses. The Talk key, Esc or moving on
   stop it at once.

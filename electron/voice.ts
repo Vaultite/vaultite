@@ -126,9 +126,9 @@ export function companionVoice(o: {
     },
     /** A new answer to `asked` (the ask's words) is to be spoken: what was speaking stops. Its words wait for the
      *  key's answer (asked once a minute), so its first piece knows whether the cloud speaks. */
-    begin(asked: string) {
+    begin(asked: string, lang?: string) {
       const g = ++gen
-      v.start(asked)
+      v.start(asked, lang)
       ready = fetchSpeech().then(() => {}, () => {})
       return g
     },

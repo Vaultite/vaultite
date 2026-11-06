@@ -260,7 +260,7 @@ const edit = (e: EditAsk) => inTurn(async () => {
 /** Something the user did, for the agents (an ask: for `agent`, else the companion, who shows it thinking at once).
  *  `waited`: ms since they last typed. False when it couldn't go. */
 export function sendMoment(m: { kind: "ask" | "point" | "edit" | "change"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number
-  x?: number; y?: number; changes?: string[]; scene?: string; pane?: string; ui?: string; row?: number; title?: string; under?: string; summoned?: boolean }) {
+  x?: number; y?: number; changes?: string[]; scene?: string; pane?: string; ui?: string; row?: number; title?: string; under?: string; summoned?: boolean; voice?: boolean }) {
   if (share) return true // (no agent works for a guest)
   if (!say({ t: "moment", ...m })) return false
   const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
@@ -269,6 +269,8 @@ export function sendMoment(m: { kind: "ask" | "point" | "edit" | "change"; agent
 }
 /** Its Talk key pressed here: its summoned session gets ready while they speak. */
 export const summoning = () => void say({ t: "summoning" })
+/** A Talk key's box closed: its answer stops being said aloud (the desktop app's voice). */
+export const hush = () => void say({ t: "hush" })
 /** A part of the app's UI an agent follows changed: its new lines (and those gone). */
 export const uiChanged = (agent: string, ui: string, changes: string[], title?: string) => sendMoment({ kind: "change", agent, ui, changes, ...(title ? { title } : {}) })
 /** A say turned into a margin comment, same words, same place. */

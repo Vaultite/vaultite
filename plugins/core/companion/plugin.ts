@@ -19,6 +19,7 @@ import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Targ
 import { screenDrawings } from "./drawings.ts"
 import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { inSummoned, type Lane, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
+import { languageIn } from "./spoken.ts"
 import { type Job, jobOf, jobsLine, jobsText, jobTask } from "./jobs.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -53,8 +54,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   x?: number; y?: number; changes?: string[]; scene?: string
   /** A reply to or a dismissal of one of its bubbles (`item`: the say), not a comment. */
   bubble?: boolean
-  /** Asked with its Talk key (on screen, or in the app at the pointer): its summoned session's (summoned.ts). */
-  summoned?: boolean
+  /** Asked with its Talk key (on screen, or in the app at the pointer): its summoned session's (summoned.ts); `voice`:
+   *  said, not typed (its answer is said aloud, the desktop app's voice.ts). */
+  summoned?: boolean; voice?: boolean
   /** A move: its words moved by the user, a bubble put in the note or what it wrote folded back into a bubble. */
   into?: "note" | "bubble"
   /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
@@ -103,7 +105,10 @@ export type Note = Target & Boxed & { id: string; kind: "say" | "comment" | "sug
   /** A comment the user dismissed, when: kept in its note's history. */
   dismissed?: number
   /** The text it was on is gone: shown by its last line, found again if the text comes back. */
-  orphaned?: boolean }
+  orphaned?: boolean
+  /** A say answering a Talk key's ask: when that ask came, whether it was said (`voice`) and in what language, for the
+   *  desktop app to say it aloud. */
+  answers?: { t: number; voice?: true; lang?: string } }
 /** A word in a thread: the user's, an agent's, or a guest's (`name`: the guest's, or the agent's in a person's thread); when
  *  (older ones have none). */
 export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
@@ -356,7 +361,7 @@ async function wake(m: Moment, from: IncomingMessage) {
   try { await plugin.runOp("companion.start", { ...(isMain(name) ? {} : { as: name }), ...(m.path ? { path: m.path, line: m.line } : {}), after: m.seq - 1 }, undefined, from) }
   catch (e) {
     setAgent(name, { state: "watching" })
-    putNote({ kind: "say", agent: name, text: `I couldn't start: ${(e as Error).message}`, ...(m.path ? { path: m.path, line: m.line } : {}) }, SAY_MS)
+    putNote({ kind: "say", agent: name, text: `I couldn't start: ${(e as Error).message}`, ...(m.path ? { path: m.path, line: m.line } : {}), ...(m.summoned ? { answers: answersOf(m) } : {}) }, SAY_MS)
   } finally { waking.delete(k) }
 }
 
@@ -821,7 +826,7 @@ const screenDrawing = screenDrawings(plugin, {
     return [...notes.values()].findLast((n) => n.kind === "say" && n.agent === a && n.t >= asked)?.text
   },
 })
-const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said"])
+const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush"])
 /** Its jobs (jobs.ts): delegate's tasks it started for the user; [] while Delegation is off. */
 const jobsNow = (): Job[] => ((plugin.service("delegate:jobs") as ((by: string) => Record<string, unknown>[]) | null)?.("companion") ?? []).map(jobOf)
 const jobsSeen = (ids: string[]) => (plugin.service("delegate:seen") as ((by: string, ids: string[]) => void) | null)?.("companion", ids)
@@ -857,7 +862,7 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
   // (a point where nothing can be read, as the menu bar: still there, with its picture)
   if (!place.app && place.sx === undefined) return null
   if (place.near) nearBy.set(key(str(m.agent) || ownName()), place.near)
-  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, summoned: true }, req)
+  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, summoned: true, ...(m.voice === true ? { voice: true } : {}) }, req)
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
@@ -949,9 +954,12 @@ plugin.socket("companion/live", (ws, req, { query }) => {
         hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined,
         ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}), ...point(m),
         ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}),
-        ...(m.summoned === true && m.kind !== "edit" ? { summoned: true } : {}) }, req)
+        ...(m.summoned === true && m.kind !== "edit" ? { summoned: true, ...(m.voice === true ? { voice: true } : {}) } : {}) }, req)
     } else if (m.t === "summoning") {
       lane().warm()
+    } else if (m.t === "hush") {
+      // (a Talk key's box closed in the app: its answer stops being said aloud)
+      broadcast({ t: "hush" })
     } else if (m.t === "pin" && typeof m.id === "string") {
       pin(m.id)
     } else if (m.t === "seen" && Array.isArray(m.ids)) {
@@ -1056,13 +1064,13 @@ async function paneMoment(_w: Win, m: Record<string, unknown>, req: IncomingMess
   const agent = str(m.agent) || undefined, title = (p?.title || (tab ? inTab.filter((x) => !privatePane(x)).map((x) => x.title).join(" · ") : "") || str(m.title)).slice(0, 200) || undefined
   const asked = m.kind === "ask" ? str(m.text).slice(0, 4000) || undefined : undefined
   const text = (m.kind === "ask" ? str(m.under) : str(m.text)).slice(0, 4000) || undefined
-  const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}), ...(m.summoned === true && m.kind !== "change" ? { summoned: true } : {}) }
+  const where = { ...(pane ? { pane } : {}), ...(ui && !pane ? { ui } : {}), ...(title ? { title } : {}), ...(m.summoned === true && m.kind !== "change" ? { summoned: true, ...(m.voice === true ? { voice: true } : {}) } : {}) }
   if (m.kind === "change") {
     if (!followed.list().some((f) => f.ui === ui)) return
     return void addMoment({ kind: "change", for: agent, ...where, what: "it changed", changes: Array.isArray(m.changes) ? m.changes.map(String).slice(0, 30) : [] })
   }
   const x = p && paneSource(p.to)
-  if (x?.kind === "note") return void addMoment({ kind: m.kind as "ask", for: agent, path: x.path, line: 1, ...(asked ? { text: asked } : {}), ...(where.summoned ? { summoned: true } : {}) }, req)
+  if (x?.kind === "note") return void addMoment({ kind: m.kind as "ask", for: agent, path: x.path, line: 1, ...(asked ? { text: asked } : {}), ...(where.summoned ? { summoned: true, ...(where.voice ? { voice: true } : {}) } : {}) }, req)
   let under = text
   if (x?.kind === "site" && m.x !== undefined) {
     const t = await pageOf(p!.id).catch(() => null)
@@ -1209,7 +1217,18 @@ const toolUse = new AsyncLocalStorage<string | undefined>()
 const STREAM_MS = 5 * 60_000
 const ANCHORS = ["find", "after", "line", "append"]
 
-type Streaming = "say" | "comment" | "edit"
+/** The Talk key's ask a say of `name`'s answers, if it's one: when it came, said or typed, its language (voice.ts). */
+function answering(name: string): Note["answers"] {
+  const from = inSummoned.getStore() ? lane().last() : moments.filter((m) => meantFor(m, name) && Date.now() - m.t < 180_000).slice(-5)
+  const m = from.findLast((x) => x.kind === "ask" || x.kind === "point")
+  return m?.summoned ? answersOf(m) : undefined
+}
+function answersOf(m: Moment): NonNullable<Note["answers"]> {
+  const lang = m.text ? languageIn(m.text) : null
+  return { t: m.t, ...(m.voice ? { voice: true as const } : {}), ...(lang ? { lang } : {}) }
+}
+
+type Streaming = "say" | "comment" | "edit" | "draw"
 /** A streaming tool's input so far (`end`: written whole, its call to come; or its turn ended first). */
 function streamed(name: string, tool: Streaming, use: string, json: string, end?: "done" | "stop") {
   let s = streams.get(use)
@@ -1223,7 +1242,10 @@ function streamed(name: string, tool: Streaming, use: string, json: string, end?
   }
   if (s.ended) return
   const { whole, keys, open } = partialArgs(json)
-  const text = typeof whole.text === "string" ? whole.text : open?.key === "text" ? open.text : null
+  // (a draw's words are its say, its bubble by its cursor as a say's; one on a drawing (actions, path) has none)
+  const field = tool === "draw" ? "say" : "text"
+  if (tool === "draw" && keys.some((k) => k === "actions" || k === "path")) s.whole = true
+  const text = typeof whole[field] === "string" ? whole[field] as string : open?.key === field ? open.text : null
   if (text !== null && !s.whole) {
     try { if (tool === "edit") editStream(s, whole, keys, text); else noteStream(s, whole, keys, text) } catch { s.whole = true }
   }
@@ -1243,7 +1265,7 @@ function noteStream(s: Streamed, given: Record<string, unknown>, keys: string[],
     return void broadcast({ t: "note", note: n })
   }
   if (s.note || s.reply) return // (gone meanwhile)
-  const placed = keys.slice(0, keys.indexOf("text")).some((k) => ["path", "line", "find", "x", "y", "id"].includes(k))
+  const placed = s.tool !== "draw" && keys.slice(0, keys.indexOf("text")).some((k) => ["path", "line", "find", "x", "y", "id"].includes(k))
   if (s.tool === "comment") {
     // (its place after its words: by the line it's on now, the moment's, until its call says where)
     const a = agents.get(key(s.agent))
@@ -1268,7 +1290,8 @@ function noteStream(s: Streamed, given: Record<string, unknown>, keys: string[],
   } else {
     const t = placed ? target(given) : {}
     setAgent(s.agent, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(s.agent) })
-    s.note = putNote({ kind: "say", agent: s.agent, text, ...t, ...(given.ask === true ? { question: true } : {}), writer: { client: AS_TOOL.client, agent: AS_TOOL.agent } }).id
+    const answers = answering(s.agent)
+    s.note = putNote({ kind: "say", agent: s.agent, text, ...t, ...(given.ask === true ? { question: true } : {}), ...(answers ? { answers } : {}), writer: { client: AS_TOOL.client, agent: AS_TOOL.agent } }).id
   }
   did(s.agent, "word")
 }
@@ -1544,7 +1567,7 @@ const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1610,7 +1633,8 @@ const lane = (): Lane => {
       by: "companion", inbox: false, allowed: ALLOWED, denied: ["Bash(vau companion:*)"], tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
     text: async (ms) => ({ text: [momentsText(ms, mode(), focus(), await excerpts(apiCtx, ms)), jobsLine(jobsNow())].filter(Boolean).join("\n"), images: shotsOf(ms) }),
     agent: (name) => agents.get(key(name)), setAgent, did,
-    say: (name, text) => { const a = agents.get(key(name)); keepSaid(putNote({ kind: "say", agent: name, text, ...(a?.path ? { path: a.path, line: a.line } : {}) }, sayMs(text))) },
+    say: (name, text) => { const a = agents.get(key(name)), answers = inSummoned.run(true, () => answering(name))
+      keepSaid(putNote({ kind: "say", agent: name, text, ...(a?.path ? { path: a.path, line: a.line } : {}), ...(answers ? { answers } : {}) }, sayMs(text))) },
   })
   laneOf = { vault: plugin.vault, lane: l }
   return l
@@ -2162,7 +2186,8 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
       clearTimeout(timers.get(was.id))
       timers.set(was.id, setTimeout(() => dropNote(was.id), sayMs(str(p.text))))
     }
-    const n = was ?? putNote({ kind: "say", agent: name, text: str(p.text), ...t, ...(p.ask ? { question: true } : {}), writer: requestWriter.getStore() ?? { client: ctx.who.client, agent: ctx.who.agent } }, sayMs(str(p.text)))
+    const answers = was ? undefined : answering(name)
+    const n = was ?? putNote({ kind: "say", agent: name, text: str(p.text), ...t, ...(p.ask ? { question: true } : {}), ...(answers ? { answers } : {}), writer: requestWriter.getStore() ?? { client: ctx.who.client, agent: ctx.who.agent } }, sayMs(str(p.text)))
     keepSaid(n)
     return n
   },
@@ -2917,6 +2942,7 @@ plugin.op({
   run: async (p) => {
     const name = str(p.as) ? who(p) : ownName(), s = session(name), k = key(name)
     stopStreams(name)
+    broadcast({ t: "hush", agent: name })
     const asks = (batches.get(k) ?? []).flatMap((n) => moments.find((m) => m.seq === n && m.kind === "ask")?.text ?? [])
     const keys = s && !isChat(s.id) ? INTERRUPT[runsOf(s).split("_")[0]] : undefined
     // (its summoned session, answering a Talk key's ask)

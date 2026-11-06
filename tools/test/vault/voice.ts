@@ -9,7 +9,7 @@ export default async ($: VaultTest) => {
   const { check, tmp, sleep } = $
   // The companion's voice (electron/voice.ts): words made plain and cut as they stream, made ahead, played in order, this
   // Mac's from where the cloud stopped. Nothing plays a sound: the player writes a file, the cloud is a stand-in.
-  const { chunker, languageOf, speakable } = await import("../../../plugins/core/companion/spoken.ts")
+  const { chunker, languageIn, languageOf, speakable } = await import("../../../plugins/core/companion/spoken.ts")
   {
     check("voice: Markdown said as plain words: no code, ids or addresses, a link by its words",
       speakable("Click **Share** (a3), then see [the guide](https://x.com/g) or https://example.com/a. Run:\n```\nnpm test\n```\nDone 🎉") ===
@@ -28,7 +28,7 @@ export default async ($: VaultTest) => {
     const long = chunker(), clause = long.feed(`${"word ".repeat(22)}and then, ${"more ".repeat(12)}`)
     check("voice: a long sentence is cut at a clause", clause.length === 1 && clause[0].endsWith("then,"), clause)
     check("voice: the language of its words, of the user's (Portuguese, English)", languageOf("Claro, esse botão abre a janela de compartilhar.", ["en", "pt"]) === "pt" &&
-      languageOf("Sure, that button opens the share sheet.", ["pt", "en"]) === "en" && languageOf("Ok.", ["pt", "en"]) === "pt" && languageOf("Olá", ["en"]) === "en")
+      languageOf("Sure, that button opens the share sheet.", ["pt", "en"]) === "en" && languageOf("Ok.", ["pt", "en"]) === "pt" && languageOf("Olá", ["en"]) === "en" && languageIn("Ok?") === null && languageIn("o que é isso?") === "pt")
   }
 
   // ---------- the voice of an answer: pieces ahead, in order, the fallback, stopping
@@ -78,6 +78,12 @@ export default async ($: VaultTest) => {
     v.end()
     check("voice: no cloud voice (no key): this Mac's says each piece, in the answer's language", JSON.stringify(out.filter((e) => e[0] === "say").map((e) => [e[2], e[3]])) ===
       '[["Isso é o botão de compartilhar.","pt"],["Clique nele","pt"]]', out)
+  }
+  {
+    const { v, out } = rig({ cloud: false })
+    v.start("", "pt")
+    v.text("s1", "Ok. Sure thing. ")
+    check("voice: an answer in the language its ask was in, when that's known", out.filter((e) => e[0] === "say").every((e) => e[3] === "pt") && out.some((e) => e[0] === "say"), out)
   }
   {
     const { v, out, made } = rig({ firstMs: 60 })

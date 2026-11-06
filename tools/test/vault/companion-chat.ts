@@ -333,6 +333,15 @@ export default async ($: VaultTest) => {
       const asked = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
       check("summoned: an ask on screen is its session's message, its picture attached, answered by the companion's cursor",
         answered?.agent === "Claude" && /- ask on screen/.test(asked) && /a1 button "Send"/.test(asked) && (await said(longId)).length === before, [answered, asked])
+      check("summoned: its answer says it answers a Talk key's ask, a typed one", answered?.answers?.t > 0 && !answered.answers.voice, answered?.answers)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: 'call say {"text":"O botão de enviar","done":true}', voice: true, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      const aloud = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "O botão de enviar"), 15_000, 50)
+      check("summoned: one asked by voice says so (the desktop app says it aloud)", aloud?.answers?.voice === true && aloud.answers.t > answered.answers.t, aloud?.answers)
+      await idle(quick!)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: 'call draw {"marks":[{"type":"point","at":[500,480]}],"say":"Right here, by Send.","done":true}', voice: true, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      const drawn = await waitFor(async () => { const d = (await status()).notes.filter((n: Any) => n.kind === "say" && n.text === "Right here, by Send."); return d.length ? d : null }, 15_000, 50)
+      check("summoned: a draw's words are a say as it writes them, one bubble, an answer by voice", drawn?.length === 1 && drawn[0].answers?.voice === true, drawn)
+      await idle(quick!)
       c.screenMoment({ kind: "ask", agent: "Claude", text: "what's this?", app: "com.example.mail", window: 9, sx: 500, sy: 480, shot })
       const seen = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Read it \(1 asks/.test(e.text))?.text, 15_000, 50)
       check("summoned: the display's picture comes with its message (no Read before its first word)", seen === "Read it (1 asks, 1 images)", seen)

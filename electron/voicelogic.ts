@@ -123,8 +123,8 @@ export function voice(o: VoiceOptions) {
   }
 
   return {
-    /** A new answer to an ask in `asked` words (its language's best hint): what was speaking stops. */
-    start(words = "") { silence(); asked = words; language = null; local = false; on = true },
+    /** A new answer to an ask in `asked` words, or in `lang` when that's known: what was speaking stops. */
+    start(words = "", lang?: string) { silence(); asked = words; language = lang || null; local = false; on = true },
     /** Say `id`'s text so far (its whole text each time). */
     text(id: string, whole: string) {
       if (!on) return

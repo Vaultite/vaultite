@@ -56,16 +56,18 @@ const box = await until(() => app.windows().find((p) => p.url().endsWith("/scree
 check("its answer's box opens by it", !!box && !box.isClosed())
 
 // ---------- its answer to an ask by voice, said aloud as it's written (a scripted copy plays nothing: it tells what it'd say)
-const said = (text) => fetch(`http://127.0.0.1:${port}/api/ops/companion.say`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: JSON.stringify({ text }) })
-await said("It says milk keeps a week. Then it goes **sour**")
+// (its agent isn't here: what it answers is that it couldn't start)
 const spoken = () => helper((h) => h.spoken().filter((m) => m.cmd === "say").map((m) => m.text).join(" "))
-check("its answer to an ask by voice is said aloud, in plain words, its last words after a pause", await until(async () => (await spoken()).endsWith("It says milk keeps a week. Then it goes sour"), 8000, 200), await helper((h) => h.spoken()))
+check("its answer to an ask by voice is said aloud", await until(async () => /^I couldn't start/.test(await spoken()), 8000, 200), await helper((h) => h.spoken()))
 
 // ---------- its cursor over the screen: through the exchange, the summoned one, riding beside the pointer
 const at = await until(() => helper((h) => (h.scene()?.summon?.follow ? h.scene().summon : null)), 10000, 200)
 check("the companion's cursor rides beside the pointer through the exchange (its own place no cursor of its own)", !!at && !(await helper((h) => h.scene()?.agents?.length)), at)
 check("the overlay draws its cursor and name", !!overlay && await until(() => overlay.evaluate((n) => document.body.textContent.includes(n), at?.name ?? "?"), 5000))
 check("the overlay paints nothing else: it's see-through", !!overlay && await overlay.evaluate(() => getComputedStyle(document.documentElement).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(document.body).backgroundColor === "rgba(0, 0, 0, 0)"))
+
+await helper((h) => h.heard({ event: "esc" }))
+check("Esc ends the exchange and silences its voice at once", await until(() => helper((h) => h.spoken().at(-1)?.cmd === "stop"), 3000), await helper((h) => h.spoken().slice(-2)))
 
 // ---------- fn while the window has the keyboard: its ⌘J, into the note
 fs.writeFileSync(path.join(VAULT, "Said.md"), "# Said\n\nAsked:")
@@ -91,6 +93,8 @@ const left = await win.evaluate(() => [...document.querySelectorAll("[data-pane]
 await until(() => win.evaluate(() => !document.querySelector(".dictation-pill")), 30000, 100)
 const after = await win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
 check("…and nothing it hears goes in the note", after === left, { left, after })
+const starts = () => helper((h) => h.spoken().filter((m) => m.cmd === "say" && /^I couldn't start/.test(m.text)).length)
+check("…and its answer is said aloud, as on screen", await until(async () => (await starts()) >= 2, 10000, 200), await helper((h) => h.spoken()))
 
 // ---------- closing the window keeps the server; the app clicked again opens it on the same one
 const alive = () => fetch(`http://127.0.0.1:${port}/api/ops/screen.front`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.ok, () => false)

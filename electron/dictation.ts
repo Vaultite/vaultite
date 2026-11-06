@@ -119,6 +119,10 @@ async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?
   } catch { return {} }
 }
 
+const starts = new Set<() => void>()
+/** Told as any dictation starts (a window's, the helper's): the companion's voice stops, never heard by the microphone. */
+export const onDictating = (fn: () => void) => { starts.add(fn); return () => starts.delete(fn) }
+
 export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; words?: unknown; keep?: unknown }
 /** Listen for `sink` (another's session ends, "elsewhere"): through Soniox when its key is set, this Mac's engine
  *  (`engine`) taking over should it fail. */
@@ -127,6 +131,7 @@ export async function dictate(sink: DictationSink, opts: DictateOptions) {
   const language = typeof opts.language === "string" ? opts.language : ""
   const [allowed, { cloud, why }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
   if (!allowed) return { ok: false, code: "permission" }
+  for (const fn of starts) fn()
   let model = engine === "parakeet" ? parakeetModel() : null
   if (engine === "parakeet" && !model) {
     if (!cloud) return { ok: false, code: "model" }

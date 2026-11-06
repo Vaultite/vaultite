@@ -9,7 +9,7 @@ import { WebSocket } from "ws"
 import { ALONE_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
 import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
-import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
+import { dictate, dictating, stopFor, dictationEngines, onDictating, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
 import { atOffset, badgeOf, besidePointer, drawnShapes, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, shotCrop, trailStrokes } from "./helperlogic.ts"
@@ -79,6 +79,7 @@ export async function startHelper(h: HelperHost) {
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v),
     asked: () => [...asked], spoken: () => [...spoken], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
   onScreenEvent(heard)
+  onDictating(() => stopVoice())
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) } })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu,
@@ -223,7 +224,9 @@ type Agent = { name: string; tint: string; state: string; t?: number; seen?: boo
   /** What it points at on screen (an element of an ask's list): its words never cover it. */
   frame?: Rect
   runs?: string; model?: string; effort?: string }
-type Note = { id: string; kind: string; agent: string; t: number; text?: string; question?: boolean; dismissed?: number; seen?: boolean }
+type Note = { id: string; kind: string; agent: string; t: number; text?: string; question?: boolean; dismissed?: number; seen?: boolean
+  /** A say answering a Talk key's ask (on screen or in the app): when it was asked, whether it was said, its language. */
+  answers?: { t: number; voice?: boolean; lang?: string } }
 /** The companion's socket, as the helper (?screen=1): the agents and their bubbles, and what the user asks on screen. */
 const live = (() => {
   let ws: WebSocket | null = null, port: number | null = null, wait = 1000, timer: ReturnType<typeof setTimeout> | null = null
@@ -253,6 +256,8 @@ const live = (() => {
       else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a); voiceHeardAgent(a) }
       else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n); voiceHeard(n) }
       else if (m.t === "drop") state.notes.delete(String(m.id))
+      // (its answer stopped in the app: Esc, its box closed)
+      else if (m.t === "hush") return stopVoice()
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
         for (const j of jobNews(state.jobs, jobs)) jobNotice(j)
@@ -289,6 +294,8 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "front") {
     // (another app in front: they moved on)
     if (exchange && !m.vaultite && front && m.bundle !== front.bundle) endExchange()
+    // (an answer in the app, another app now in front)
+    else if (voiced?.inApp && !m.vaultite) stopVoice()
     front = m as unknown as AppWindowInfo
     // (another app in front may cover or uncover what the cursors point at: looked at again)
     for (const e of placed.values()) e.at = 0
@@ -475,8 +482,8 @@ async function sendSummon(s: Summon, text: string) {
   draw()
   const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
   const place = await pointedAt(s.name, s.p, w?.window ? w : null)
-  live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}) })
-  voiceFor(s.name, text, true)
+  stopVoice()
+  live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true })
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
@@ -709,8 +716,8 @@ async function askFrom(name: string, text: string) {
   // (said into its box a moment ago: spoken; typed, its answer stays silent unless its voice is always on)
   const said = Date.now() - saidInBox < 60_000
   saidInBox = 0
-  voiceFor(name, text, said)
-  live.say({ t: "moment", kind: "ask", agent: name, text, ...(await pointedAt(name, p, w?.window ? w : null)) })
+  stopVoice()
+  live.say({ t: "moment", kind: "ask", agent: name, text, ...(await pointedAt(name, p, w?.window ? w : null)), summoned: true, ...(said ? { voice: true } : {}) })
   if (!x) { exchange = { name, p, w: w?.window ? w : null, since: Date.now() }; void screenAsk("exchange", { on: true }) }
 }
 
@@ -726,24 +733,27 @@ const speaker = companionVoice({
   level: (on, v) => voiceLevel(on, v),
   ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
 })
-/** The answer being said: its agent's says since its ask; `notes`, those it has said, the last still growing. */
-let voiced: { name: string; since: number; notes: string[]; quiet: ReturnType<typeof setTimeout> | null } | null = null
+/** The answer being said: the ask it answers (when it came), its says (the last still growing); `inApp`: asked in a
+ *  Vaultite window. Answers to asks before `hushed` are silent: stopped, or a newer ask came. */
+let voiced: { name: string; asked: number; inApp: boolean; notes: string[]; quiet: ReturnType<typeof setTimeout> | null } | null = null
+let hushed = 0
 /** When words were last said into a cursor's box: the ask they make is a spoken one. */
 let saidInBox = 0
 let speakingNow: Scene["speaking"] = null
 
-/** An ask to `name` went: its answer is said aloud when the setting says so (`spoken`: asked by voice). */
-function voiceFor(name: string, text: string, spokenAsk: boolean) {
-  stopVoice()
-  const mode = prefs.voice.mode
-  if (mode === "off" || (mode === "auto" && !spokenAsk)) return
-  speaker.begin(text)
-  voiced = { name, since: Date.now(), notes: [], quiet: null }
-}
-/** One of its says, as its words come: said as they're ready; its last words when the next begins, or after a pause. */
+/** One of its says, as its words come: an answer to a Talk key's ask said aloud as the setting says (`auto`: one asked
+ *  by voice), on screen or in the app alike; its last words when the next say begins, or after a pause. */
 function voiceHeard(n: Note) {
+  const a = n.answers, mode = prefs.voice.mode
+  if (n.kind !== "say" || !a || !n.text || n.dismissed || a.t < hushed || (voiced && a.t < voiced.asked)) return
+  if (!voiced || voiced.asked !== a.t) {
+    // (a newer ask's answer: the last one stops, said or not)
+    stopVoice(a.t)
+    if (mode === "off" || (mode === "auto" && !a.voice)) return
+    speaker.begin("", a.lang)
+    voiced = { name: n.agent, asked: a.t, inApp: !exchange, notes: [], quiet: null }
+  }
   const v = voiced
-  if (!v || n.kind !== "say" || n.agent !== v.name || !n.text || n.t < v.since - 1000 || n.dismissed) return
   if (!v.notes.includes(n.id)) { const was = v.notes.at(-1); if (was) speaker.end(was); v.notes.push(n.id) }
   speaker.text(n.id, n.text)
   if (v.quiet) clearTimeout(v.quiet)
@@ -753,7 +763,9 @@ function voiceHeard(n: Note) {
 function voiceHeardAgent(a: Agent) {
   if (voiced?.name === a.name && voiced.notes.length && (a.state === "watching" || a.state === "away")) speaker.end()
 }
-function stopVoice() {
+/** Silence, at once: what's said now, and what's still to come of answers asked before `until` (now). */
+function stopVoice(until = Date.now()) {
+  hushed = Math.max(hushed, until)
   if (voiced?.quiet) clearTimeout(voiced.quiet)
   voiced = null
   speaker.stop()

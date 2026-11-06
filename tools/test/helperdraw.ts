@@ -38,7 +38,7 @@ type Sink = { tell: (e: Record<string, unknown>) => void }
 let heardWords = "what's this?"
 mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink) => { sink.tell({ type: "start" }); return { ok: true } }, dictating: () => false,
   stopFor: (sink: Sink, cancel = false) => setTimeout(() => { if (!cancel && heardWords) sink.tell({ type: "final", text: heardWords }); sink.tell({ type: "end", reason: cancel ? "cancel" : "stop" }) }, 5),
-  dictationEngines: async () => ({}) } })
+  dictationEngines: async () => ({}), onDictating: () => () => {} } })
 
 // (the server: settings, and the companion's socket)
 let agent: Record<string, unknown> = { name: "Claude", tint: "orange", state: "watching", t: Date.now(), path: "Notes/A.md", line: 3 }

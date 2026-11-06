@@ -7,7 +7,7 @@ import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiff
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { uiElement } from "./panes"
-import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin,  type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, hush, type Target, type Note, onBump, pick, pin,  type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
 import { arrowBox, boxAt } from "./boxes"
 import { Chat } from "./Chat"
 import { presence, STATUS } from "./look"
@@ -285,7 +285,9 @@ function Popover({ a, close, menu }: { a: Agent; close: () => void; menu: (e: Re
   const mine = s.said.filter((n) => n.agent === a.name)
   // (its history open: all of it seen)
   useEffect(() => { sawSays(mine.map((n) => n.id)) }, [mine.length])
-  useEffect(() => () => { if (talked?.agent === a.name) talked = null }, [])
+  // (closed after a Talk key's ask: moving on, its answer is no longer said aloud)
+  const talkedHere = useRef(false)
+  useEffect(() => () => { if (talked?.agent === a.name) talked = null; if (talkedHere.current) hush() }, [])
   const send = (said?: string) => {
     const text = (said ?? draft).trim()
     if (!text) return
@@ -294,7 +296,9 @@ function Popover({ a, close, menu }: { a: Agent; close: () => void; menu: (e: Re
     const v = a.path ? viewOf(a.path) : null, pos = v ? posIn(v, a) : null
     // (a Talk key's: what was under the pointer, a note's line, a pane or the app's UI; else where its cursor is)
     const place = t ? talkPlace(t.at) : { path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line }
-    if (!sendMoment({ kind: "ask", agent: a.name, ...place, text, ...(t ? { summoned: true } : {}) })) return unsent()
+    // (said: its dictation stopped and sent it; its answer is said aloud too)
+    if (!sendMoment({ kind: "ask", agent: a.name, ...place, text, ...(t ? { summoned: true, ...(said !== undefined ? { voice: true } : {}) } : {}) })) return unsent()
+    if (t) talkedHere.current = true
     // (a Talk key's stays open: its answer comes into it, and what's typed next is about the same place)
     if (!t) return close()
     talked = { ...t, send: false }

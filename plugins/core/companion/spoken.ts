@@ -99,17 +99,22 @@ const WORDS: Record<string, string[]> = {
 }
 const MARKS: Record<string, RegExp> = { pt: /[ãõç]|ção|ões/g, es: /[ñ¿¡]|ción/g, fr: /[èêëàùç]|eau/g, de: /[äöüß]/g, it: /zion[ei]\b/g }
 
-/** The language `text` is in, of `hints` (two letters each; none: any it knows), by its common words; `fallback` when it
+/** The language `text` is in, of `hints` (two letters each; none: any it knows), by its common words; null when it
  *  can't tell. */
-export function languageOf(text: string, hints: string[] = [], fallback = hints[0] ?? "en"): string {
+export function languageIn(text: string, hints: string[] = []): string | null {
   const known = (hints.length ? hints : Object.keys(WORDS)).map((h) => h.slice(0, 2).toLowerCase()).filter((h) => WORDS[h])
-  if (known.length < 2) return known[0] ?? fallback
   const words = text.toLowerCase().match(/\p{L}+/gu) ?? []
-  let best = fallback, top = 0
+  let best: string | null = null, top = 0
   for (const l of known) {
     const set = new Set(WORDS[l])
     const n = words.filter((w) => set.has(w)).length + 2 * (text.toLowerCase().match(MARKS[l] ?? /$^/g)?.length ?? 0)
     if (n > top) { top = n; best = l }
   }
   return best
+}
+/** The same, `fallback` (the likeliest hint) when it can't tell; one hint alone is that one. */
+export function languageOf(text: string, hints: string[] = [], fallback = hints[0] ?? "en"): string {
+  const known = hints.map((h) => h.slice(0, 2).toLowerCase()).filter((h) => WORDS[h])
+  if (hints.length && known.length < 2) return known[0] ?? fallback
+  return languageIn(text, hints) ?? fallback
 }
