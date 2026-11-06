@@ -1,7 +1,7 @@
 // What extensions ask that Electron doesn't answer (extensions.preload.cjs asks): tabs (a page, by its WebContents'
 // id) and windows (a vault window), the toolbar button, events about pages, permissions, cookies, native messaging.
 import { dialog, ipcMain, Notification, webFrameMain, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent, type ServiceWorkerMain, type Session, type WebContents, type WebFrameMain } from "electron"
-import { allPages, appWindows, focusedWindow, tell, tellAll, windowById, windowOfPage, type EnginePage, type EngineWindow } from "./engine.ts"
+import { allPages, appWindows, focusedWindow, ownedByAgent, tell, tellAll, windowById, windowOfPage, type EnginePage, type EngineWindow } from "./engine.ts"
 import { extensionPage } from "./crx.ts"
 import { dirOf, get, imageOf, manifestOf, nativeHost, said, change, type Installed } from "./extstore.ts"
 import { spawn, type ChildProcess } from "node:child_process"
@@ -46,6 +46,8 @@ function tabOf(p: EnginePage) {
     url: wc.getURL(), title: wc.getTitle(), ...(icons.get(wc.id) ? { favIconUrl: icons.get(wc.id) } : {}),
     status: wc.isLoading() ? "loading" : "complete", audible: wc.isCurrentlyAudible(), mutedInfo: { muted: wc.isAudioMuted() },
     discarded: false, autoDiscardable: true, frozen: false, groupId: -1, splitViewId: -1, width, height, lastAccessed: Date.now(),
+    // (Vaultite's own: a site blocker leaves an agent's page alone, never the user's)
+    ...(ownedByAgent(p.id) ? { vaultiteAgent: true } : {}),
   }
 }
 function windowOf(win: EngineWindow, s: Session, populate?: boolean) {

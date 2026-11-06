@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Extensions can tell an agent's tab**: in Vaultite's browser `tabs.get` says `vaultiteAgent` on an agent's page, so a
+  site blocker can leave agents alone and still hold the user's tabs.
 - **Mini-apps go anywhere**: any file can be drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right
   Apps/Weather.html`), so one .html page or note with a genui or mcp-app block is an embed, a tab or a panel.
 - **The Talk key's companion is never left halfway**: each press runs one state machine (held, sending, thinking,

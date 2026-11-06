@@ -3,7 +3,7 @@ const root = document.documentElement
 // (/stop: sent to its own page, as a site blocker sends a feed to its blocked page)
 if (location.pathname === "/stop") location.replace(`${chrome.runtime.getURL("stop.html")}?from=${encodeURIComponent(location.href)}`)
 chrome.storage.sync.get({ color: "none" }).then((r) => { root.dataset.painter = r.color })
-chrome.runtime.sendMessage({ type: "hello" }).then((r) => { root.dataset.painterTab = String(r?.tab) })
+chrome.runtime.sendMessage({ type: "hello" }).then((r) => { root.dataset.painterTab = String(r?.tab); root.dataset.painterAgent = String(r?.agent) })
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "sync" && changes.color) root.dataset.painter = root.dataset.painterSynced = changes.color.newValue
 })

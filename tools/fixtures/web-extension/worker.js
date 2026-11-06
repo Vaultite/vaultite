@@ -4,7 +4,7 @@ chrome.runtime.onInstalled.addListener(() => { chrome.storage.sync.set({ color: 
 chrome.action.setBadgeText({ text: "on" })
 chrome.action.setBadgeBackgroundColor({ color: "#2266cc" })
 chrome.runtime.onMessage.addListener((m, sender, reply) => {
-  if (m?.type === "hello") reply({ tab: sender.tab?.id ?? -1 })
+  if (m?.type === "hello") chrome.tabs.get(sender.tab?.id ?? -1).then((t) => reply({ tab: t.id, agent: !!t.vaultiteAgent }), () => reply({ tab: -1, agent: false }))
   else if (m?.type === "open") chrome.tabs.create({ url: m.url }).then((t) => reply({ opened: !!t }))
   else if (m?.type === "windows") chrome.windows.getAll({ populate: true }).then((w) => reply({ windows: w.length, tabs: w.flatMap((x) => x.tabs ?? []).length }))
   return true
