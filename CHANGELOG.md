@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Settings opens on Appearance, About comes last**: General is now About (the version, app updates and errors), the
+  last of the app's own sections, so Appearance leads the list it opens on. File history's settings are in Files.
 - **Zoom follows what you're looking at**: ⌘+ ⌘- ⌘0 zoom the focused pane's content, not the whole app: a note's
   text, a terminal's (a point at a time, as in Ghostty), a web page's site (kept per site, as before) or a canvas, with a
   short line saying where it's at ("Terminal text 14 pt") and Reset; in a browser they do the same for a note or a

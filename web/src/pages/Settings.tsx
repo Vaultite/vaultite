@@ -1,7 +1,7 @@
 // Settings: sections beside the one shown (a sheet each where narrow). The app's own plugins' settings are parts of their
 // kind's section (Search field's in Files); the others' are on their page, under Plugins, a section here with Get.
 import { useContext, useMemo, useState, useEffect, type ReactNode } from "react"
-import { ChevronLeft, Cog, FolderOpen, Keyboard, Palette, PenLine, Puzzle, ShieldCheck, SlidersHorizontal, Sparkles, SquareTerminal, Store as StoreIcon, type LucideIcon } from "lucide-react"
+import { ChevronLeft, FolderOpen, Info, Keyboard, Palette, PenLine, Puzzle, ShieldCheck, SlidersHorizontal, Sparkles, SquareTerminal, Store as StoreIcon, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
@@ -99,14 +99,15 @@ const headed = (id: string, label: string, icon: LucideIcon, tint: string, body:
 /** Plugins, or Get: a section of Settings where wide; a pick between them where narrow is their own page. */
 const pickSetup = (to: "plugins" | "get") => (settingsSection.get() === to ? undefined : openSetup(to))
 const CORE: Sec[] = [
-  headed("general", "General", Cog, "var(--gray)", () => <Updates />, "Version, updates, errors and file history"),
   headed("appearance", "Appearance", Palette, "var(--blue)", () => <AppearancePanel />, "Layout, colours, text and motion"),
   headed("editor", "Editor", PenLine, "var(--orange)", (store) => <EditorPanel store={store} />, "Writing and reading notes"),
-  headed("files", "Files", FolderOpen, "var(--teal)", () => null, "Properties, the file list and where new files go"),
+  headed("files", "Files", FolderOpen, "var(--teal)", () => null, "Properties, the file list, file history and where new files go"),
   { id: "hotkeys", label: "Hotkeys", icon: Keyboard, tint: "var(--gray)", render: () => <HotkeysSheet /> },
   headed("terminal", "Terminal", SquareTerminal, "var(--gray)", () => null, "Its shell, its cursor and who may open one"),
   // (macOS's: the desktop app on a Mac only)
   ...(desktopApp?.permission ? [headed("permissions", "Permissions", ShieldCheck, "var(--blue)", () => <PermissionsPanel />, "What macOS lets Vaultite do on this Mac")] : []),
+  // (last of the app's own: looked for when something's wrong or new, not to set things up)
+  headed("about", "About", Info, "var(--gray)", () => <Updates />, "Version, updates and errors"),
   // (the menu's AI group: the app's plugins' pages follow it)
   headed("ai", "AI", Sparkles, "var(--purple)", (store) => <AiPanel store={store} />, "Agents, the apps you connect and what they read"),
   // (the menu's Plugins group: yours, then Get)
@@ -280,10 +281,10 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     { id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => show("hotkeys") },
     { id: "vaults", label: "Manage vaults", sub: store.vault.path, where: "Vaults", words: "vault folder",
       run: () => { if (desktopApp) void desktopApp.manageVaults(); else openDetail("vaults") } },
-    { ...row("version", "Version", "General", '[data-settings-row="version"]', `Vaultite ${APP_VERSION}`), words: "about" },
+    { ...row("version", "Version", "About", '[data-settings-row="version"]', `Vaultite ${APP_VERSION}`), words: "about" },
     ...(desktopApp?.permission ? [{ id: "permissions", label: "Permissions", sub: "What macOS lets Vaultite do", where: "Settings", run: () => show("permissions"),
       words: "privacy security macos microphone camera location accessibility screen recording input monitoring automation files folders desktop documents downloads full disk access icloud vault signed signature" }] : []),
-    ...(desktopApp?.updates ? [{ ...row("updates", "App updates", "General", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
+    ...(desktopApp?.updates ? [{ ...row("updates", "App updates", "About", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
     { ...row("plugin-updates", "Plugin updates", "Plugins", '[data-settings-row="plugin-updates"]', "Vaultite's, all or none"), words: "update automatically plugins" },
   ]
   const plugins = PLUGINS.filter((p) => hasSettings(p, store.pluginSettings ?? [])).sort((a, b) => byName.compare(a.name, b.name)).flatMap((p) => {

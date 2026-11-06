@@ -83,8 +83,8 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     const text = await page.locator("main").innerText()
     const nav = await page.locator("[data-settings-nav]").evaluateAll((els) => els.map((e) => e.dataset.settingsNav))
-    check("Settings: General, its sections, AI, then Plugins and Get; no Features, no Bundles", (await page.locator("[data-settings-setup]").count()) === 2 &&
-      ["general", "appearance", "editor", "files", "hotkeys", "terminal"].every((id, i) => nav[i] === id) && nav.indexOf("plugins") === nav.indexOf("get") - 1 &&
+    check("Settings: its sections, About last of them, AI, then Plugins and Get; no Features, no Bundles", (await page.locator("[data-settings-setup]").count()) === 2 &&
+      ["appearance", "editor", "files", "hotkeys", "terminal"].every((id, i) => nav[i] === id) && nav.indexOf("about") === nav.indexOf("ai") - 1 && nav.indexOf("plugins") === nav.indexOf("get") - 1 &&
       nav.indexOf("ai") < nav.indexOf("plugins") && !nav.includes("bundles") &&
       !(await page.locator('[data-rail-fold="Features"]').count()) && !nav.some((n) => n.startsWith("plugin:")), nav)
     check("Settings: opens on Appearance", await page.locator('[data-settings-section="appearance"]').count() === 1)
@@ -95,13 +95,13 @@ try {
     await page.locator('[data-settings-nav="files"]').click()
     const members = async (sec) => page.locator(`[data-settings-section="${sec}"] [data-settings-member]`).evaluateAll((els) => els.map((e) => e.dataset.settingsMember))
     const files = await members("files")
-    check("Files: the app's own plugins of its kind that have settings, each a part", ["files", "search", "pages", "recent"].every((id) => files.includes(id)), files)
+    check("Files: the app's own plugins of its kind that have settings, each a part", ["files", "search", "pages", "recent", "history"].every((id) => files.includes(id)), files)
     check("...not one with nothing to set", !files.includes("outline"))
     check("...nor one that can be switched (a gear away on Plugins)", !["web-viewer", "logs", "workspaces"].some((id) => files.includes(id)))
     check("...a long form a row to its sheet (Graph view)", (await page.locator('[data-settings-section="files"] button[data-settings-member="graph"]').count()) === 1)
-    await page.locator('[data-settings-nav="general"]').click()
-    const general = await members("general")
-    check("General: File history and Errors, not Terminal (its own)", general.includes("history") && general.includes("errors") && !general.includes("terminal"), general)
+    await page.locator('[data-settings-nav="about"]').click()
+    const about = await members("about")
+    check("About: Errors, not File history (Files') nor Terminal (its own)", about.includes("errors") && !about.includes("history") && !about.includes("terminal"), about)
     await page.locator('[data-settings-nav="terminal"]').click()
     check("Terminal: its settings, no title again", (await members("terminal")).includes("terminal") &&
       !(await page.locator('[data-settings-section="terminal"] [data-settings-member="terminal"]').innerText()).startsWith("Terminal"))
@@ -111,7 +111,7 @@ try {
     await page.locator('[data-settings-nav="plugins"]').click()
     check("Plugins: a section of Settings, lit in its menu", !!(await until(() => page.locator('main [data-settings-section="plugins"] [data-setup=plugins] [data-plugin-row]').count(), 4000)) &&
       (await page.evaluate(() => location.hash)) === "#settings" && (await page.locator('[data-settings-nav="plugins"]').getAttribute("aria-current")) === "page")
-    check("...Plugin updates under the list, not in General", await page.locator('[data-settings-section="plugins"] [data-settings-row="plugin-updates"]').count() === 1)
+    check("...Plugin updates under the list, not in About", await page.locator('[data-settings-section="plugins"] [data-settings-row="plugin-updates"]').count() === 1)
     await page.locator('[data-settings-nav="get"]').click()
     check("Get: a section too, its categories as chips", !!(await until(() => page.locator('main [data-settings-section="get"] [data-setup=get]').count(), 4000)) &&
       (await page.evaluate(() => location.hash)) === "#settings")

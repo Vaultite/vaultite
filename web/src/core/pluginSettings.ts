@@ -159,9 +159,9 @@ export const settingsCommands = (): Command[] =>
 
 /** Where Settings shows the settings of one of the app's own plugins (always on): in a section, by its category. The
  *  others' are a gear away on Plugins. */
-const HOMES: Record<string, string> = { writing: "editor", navigation: "files", formats: "files", life: "files", agents: "ai", "ai-apps": "ai", system: "general" }
-/** One with a section of its own (Terminal's), whatever its category. */
-const OWN: Record<string, string> = { terminal: "terminal" }
-export const settingsHome = (p: Plugin): string | null => (p.alwaysOn ? OWN[p.id] ?? HOMES[p.category ?? ""] ?? "general" : null)
+const HOMES: Record<string, string> = { writing: "editor", navigation: "files", formats: "files", life: "files", agents: "ai", "ai-apps": "ai", system: "about" }
+/** One whose section isn't its category's: Terminal's own, File history's Files (it keeps your files' versions). */
+const OWN: Record<string, string> = { terminal: "terminal", history: "files" }
+export const settingsHome = (p: Plugin): string | null => (p.alwaysOn ? OWN[p.id] ?? HOMES[p.category ?? ""] ?? "about" : null)
 /** Its settings are a row in that section, opening their sheet, rather than drawn there: a long form (Graph view's). */
 export const settingsApart = (p: Plugin) => Object.keys(p.settingsDecls ?? {}).length > 10
