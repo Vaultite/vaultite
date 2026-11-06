@@ -60,6 +60,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** Asked with its Talk key (on screen, or in the app at the pointer): its summoned session's (summoned.ts); `voice`:
    *  said, not typed (its answer is said aloud, the desktop app's voice.ts). */
   summoned?: boolean; voice?: boolean
+  /** Asked through the realtime voice (the desktop app's realtimefront.ts): it already told them it's looking and says
+   *  the answer itself; `talk`, what was said with it before. */
+  front?: "realtime"; talk?: string[]
   /** A move: its words moved by the user, a bubble put in the note or what it wrote folded back into a bubble. */
   into?: "note" | "bubble"
   /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
@@ -869,8 +872,17 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
   if (place.near) nearBy.set(key(str(m.agent) || ownName()), place.near)
   // (the Talk key let go `keyUp`: its words finished and what's there gathered since, as its pause)
   const up = Number(m.keyUp), waited = Number.isFinite(up) ? Date.now() - up : NaN
+  const talk = Array.isArray(m.talk) ? m.talk.slice(-8).map((x) => str(x).slice(0, 300)).filter(Boolean) : []
   return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, summoned: true, ...(m.voice === true ? { voice: true } : {}),
-    ...(waited >= 0 && waited < 60_000 ? { waited: Math.round(waited) } : {}) }, req)
+    ...(waited >= 0 && waited < 60_000 ? { waited: Math.round(waited) } : {}), ...(m.front === "realtime" ? { front: "realtime" as const, ...(talk.length ? { talk } : {}) } : {}) }, req)
+}
+/** What the realtime voice answered alone (small talk): their words and its, kept as an ask and a say, no turn. */
+function screenAnswered(m: Record<string, unknown>) {
+  const name = str(m.agent) || ownName(), heard = str(m.heard).trim().slice(0, 2000), said = str(m.said).trim().slice(0, 2000)
+  if (!said || mode() === "off") return
+  const t = Date.now()
+  if (heard) keepSaid({ id: `ask-rt-${t}`, kind: "ask", by: "user", agent: name, text: heard, t, seen: true })
+  keepSaid(putNote({ kind: "say", agent: name, text: said, seen: true }, sayMs(said)))
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
@@ -891,6 +903,7 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
     if (m.t === "drawing-act") return void drawingAct(m, req)
     if (m.t === "moment") screenMoment(m, req)
+    if (m.t === "answered") screenAnswered(m)
   })
   ws.on("close", () => screens.delete(ws))
 }
@@ -2133,6 +2146,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
       : `- move${at}: they folded what you wrote there back into a bubble (more for a bubble than the note), ${JSON.stringify(cut(m.text ?? "", 200))}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
     if (m.shot) out.push(`  its picture: ${m.shot}${m.shotAt ? ` (the screen around their pointer, a pixel a point: its top left is sx ${m.shotAt.x}, sy ${m.shotAt.y}, so its pixel x, y is sx ${m.shotAt.x} + x, sy ${m.shotAt.y} + y${m.sx !== undefined ? `; their pointer at ${m.sx - m.shotAt.x}, ${m.sy! - m.shotAt.y} in it` : ""})` : ""}`)
+    if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, and it says your say's words for you, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
     for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height}: ${k.points.map((p) => p.join(",")).join(" ")}`)

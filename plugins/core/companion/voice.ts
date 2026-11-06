@@ -1,6 +1,7 @@
 // Its voice's keys and its sample (the desktop app speaks: electron/voice.ts). ElevenLabs' key is this machine's, in
 // data/config.json (`companion.elevenlabs`), never the vault's; Soniox's is dictation's.
 import { OpError, type Plugin } from "../../../core/plugins.ts"
+import { openaiText, realtimeKeys, SET_OPENAI } from "./realtime.ts"
 
 // (tests point these at a stand-in)
 const ELEVEN_WS = () => process.env.VAULTITE_ELEVENLABS_URL || "wss://api.elevenlabs.io"
@@ -15,6 +16,7 @@ export function voiceOps(plugin: Plugin) {
   const all = () => plugin.secrets() as { companion?: { elevenlabs?: unknown }; dictation?: { soniox?: unknown } }
   const keyOf = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
   const eleven = () => keyOf(all().companion?.elevenlabs), soniox = () => keyOf(all().dictation?.soniox)
+  const openai = realtimeKeys(plugin)
 
   /** The cloud voices this machine has a key for, for its desktop app. */
   plugin.route("GET", "companion/voice", async (req) => {
@@ -28,22 +30,24 @@ export function voiceOps(plugin: Plugin) {
     cli: "voice key",
     mcp: false,
     owner: "The voice's keys",
-    summary: "Set this machine's key for a cloud voice the companion speaks with: ElevenLabs' (first tried once set), or Soniox's (dictation's too).",
+    summary: "Set this machine's key for a cloud voice the companion speaks with: ElevenLabs' (first tried once set), Soniox's (dictation's too), or OpenAI's (its realtime voice).",
     help: `Kept in this machine's data/config.json, never in the vault; checked first (ElevenLabs': a word said). Pipe it in from
 vau secret, so it never lands in a transcript. With nothing piped, says whether one is set.
 
   ${SET_ELEVEN}
+  ${SET_OPENAI}
   vau voice key --provider elevenlabs --remove`,
     kind: "write",
     lock: false,
     params: {
       key: { type: "string", stdin: true, description: "the API key (piped in when left out)" },
-      provider: { type: "string", enum: ["elevenlabs", "soniox"], default: "elevenlabs", description: "whose key: elevenlabs, or soniox (the same as vau dictation key)" },
+      provider: { type: "string", enum: ["elevenlabs", "soniox", "openai"], default: "elevenlabs", description: "whose key: elevenlabs, soniox (the same as vau dictation key), or openai (the realtime voice: it hears you and answers at once)" },
       remove: { type: "boolean", description: "remove the key: the next voice speaks" },
     },
     run: async ({ key, provider, remove }, ctx) => {
       if (ctx.who.client === "mcp") throw new OpError("not over MCP: keys stay on the user's machines (vau voice key, in a terminal)", 403)
       if (provider === "soniox") return { provider, ...(await ctx.op("dictation.key", { ...(key ? { key } : {}), ...(remove ? { remove } : {}) })) }
+      if (provider === "openai") return openai({ key, remove })
       const stored = (all().companion ?? {}) as Record<string, unknown>
       if (remove) { const { elevenlabs: _, ...rest } = stored; plugin.saveSecrets(Object.keys(rest).length ? rest : null); return { provider: "elevenlabs", set: false, removed: true } }
       const k = typeof key === "string" ? key.trim() : ""
@@ -57,10 +61,11 @@ vau secret, so it never lands in a transcript. With nothing piped, says whether 
       return { provider: "elevenlabs", set: true, checked: !!r?.ok }
     },
     text: (r: { provider: string; set?: boolean; removed?: boolean; checked?: boolean }) => r.provider === "soniox" ? (r.set ? "A Soniox key is set." : "No Soniox key here.")
+      : r.provider === "openai" ? openaiText(r)
       : r.removed ? "Removed the ElevenLabs key: the companion speaks with Soniox's voice, else this Mac's."
       : r.checked === undefined ? (r.set ? "An ElevenLabs key is set: the companion speaks with ElevenLabs' voice." : `No ElevenLabs key here: ${SET_ELEVEN}`)
       : `Set the ElevenLabs key${r.checked ? "" : " (ElevenLabs didn't answer, so it isn't checked)"}: the companion speaks with ElevenLabs' voice.`,
-    did: (p) => ({ action: "settings", text: p.remove ? "Removed the ElevenLabs key" : p.key ? "Set a voice key" : "Checked for a voice key" }),
+    did: (p) => ({ action: "settings", text: p.remove ? `Removed the ${p.provider === "openai" ? "OpenAI" : "ElevenLabs"} key` : p.key ? "Set a voice key" : "Checked for a voice key" }),
   })
 
   plugin.op({

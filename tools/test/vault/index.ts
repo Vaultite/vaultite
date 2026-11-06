@@ -80,6 +80,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "companion", deps: ["pages"] },
   { name: "helper", deps: ["pages"] },
   { name: "voice", deps: ["pages", "cli"] },
+  { name: "realtime", deps: ["pages", "cli"] },
   { name: "dictation", deps: ["pages","live","cli"] },
   { name: "companion-chat", deps: ["pages", "claude-chat"] },
   { name: "watches", deps: ["pages"] },

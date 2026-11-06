@@ -119,8 +119,8 @@ async function helper($: VaultTest, tmp: string) {
   })
   await new Promise<void>((done) => srv.listen(0, "127.0.0.1", done))
   const port = (srv.address() as Any).port
-  const run = (mode: string, key = "test-key") => new Promise<Any[]>((done) => {
-    const c = spawn(bin, ["--file", audio, "--fast", "--engine", "apple", "--language", "en-US", "--words", "Alice Park,at Claude",
+  const run = (mode: string, key = "test-key", more: string[] = []) => new Promise<Any[]>((done) => {
+    const c = spawn(bin, ["--file", audio, "--fast", ...more, "--engine", "apple", "--language", "en-US", "--words", "Alice Park,at Claude",
       "--cloud", JSON.stringify({ url: `ws://127.0.0.1:${port}/${mode}`, key, languages: ["en", "pt"] })], { stdio: ["ignore", "pipe", "ignore"] })
     let out = ""
     c.stdout.on("data", (d) => (out += d))
@@ -139,6 +139,11 @@ async function helper($: VaultTest, tmp: string) {
     for (let i = 0; i < 100 && !s.closed; i++) await $.sleep(10)
     // (the stand-in answers at once: what's left is the helper's own path from the stop to the last words)
     check("dictation helper: the last words a moment after the stop, the socket closed", end?.type === "end" && end.reason === "stop" && end.settled < 150 && s.closed, end)
+    // (the realtime voice hears the mic too: its audio told as it comes, 16-bit at 16 kHz; the file, then 2.5 s of silence)
+    const tapped = await run("ok", "test-key", ["--tap"])
+    const bytes = tapped.filter((e) => e.type === "audio").reduce((n, e) => n + Buffer.from(e.data, "base64").length, 0)
+    const secs = Number(/estimated duration: ([\d.]+)/.exec(execFileSync("/usr/bin/afinfo", [audio], { encoding: "utf8" }))?.[1])
+    check("dictation helper: tapped, the mic's audio is told as it's heard (16-bit, 16 kHz), and words still come", Math.abs(bytes / 32_000 - secs - 2.5) < 0.3 && finals(tapped).length === 3 && !es.some((e) => e.type === "audio"), { bytes, secs })
     es = await run("drop")
     const fb = es.findIndex((e) => e.type === "fallback"), local = finals(es.slice(fb + 1)).join(" ")
     check("dictation helper: dropped mid-stream, what Soniox settled stays and this Mac hears the rest", fb > 0 && finals(es.slice(0, fb)).join() === "Segment 1." &&

@@ -549,6 +549,8 @@ final class Session: @unchecked Sendable {
     var onEnd: (() -> Void)?
     /// What the microphone heard, kept for replaying it (the setting Keep the last dictation's audio).
     var recording: AVAudioFile?
+    /// The microphone's audio told as it comes, 16-bit at 16 kHz (the companion's realtime voice hears it too).
+    var tap = false
 
     init(source: Source, silence: Double) {
         self.source = source
@@ -600,6 +602,14 @@ final class Session: @unchecked Sendable {
             b.frameLength = AVAudioFrameCount(pcm.count)
             pcm.withUnsafeBufferPointer { b.floatChannelData![0].update(from: $0.baseAddress!, count: pcm.count) }
             try? f.write(from: b)
+        }
+        if tap {
+            var d = Data(count: pcm.count * 2)
+            d.withUnsafeMutableBytes { raw in
+                let o = raw.bindMemory(to: Int16.self)
+                for (i, x) in pcm.enumerated() { o[i] = Int16(max(-1, min(1, x)) * 32767).littleEndian }
+            }
+            emit("audio", ["data": d.base64EncodedString()])
         }
         var sum: Float = 0
         for x in pcm { sum += x * x }
@@ -751,6 +761,7 @@ func handle(_ cmd: [String: Any]) {
             var s: Session!
             let source: Source = (cmd["file"] as? String).map { f in FileSource(URL(fileURLWithPath: f), fast: false) { s.stop("stop") } } ?? Microphone()
             s = Session(source: source, silence: cmd["silence"] as? Double ?? 0)
+            s.tap = cmd["tap"] as? Bool ?? false
             if let path = cmd["record"] as? String, !path.isEmpty {
                 try? FileManager.default.removeItem(atPath: path)
                 s.recording = try? AVAudioFile(forWriting: URL(fileURLWithPath: path), settings: mono16k.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
@@ -786,6 +797,7 @@ if let file = arg("--file") {
     var session: Session!
     let src = FileSource(URL(fileURLWithPath: file), fast: args.contains("--fast")) { session.stop("stop") }
     session = Session(source: src, silence: 0)
+    session.tap = args.contains("--tap")
     session.onEnd = { exit(0) }
     session.start(warm: args.contains("--warm"), make: makeEngine(cmd))
     dispatchMain()

@@ -12,7 +12,9 @@ const SHIPPED = path.join(import.meta.dirname, "bin")
 let helper: ChildProcess | null = null
 let starting: Promise<ChildProcess> | null = null
 /** Who hears the session under way: a window, or the menu-bar helper. */
-export type DictationSink = { tell: (m: Record<string, unknown>) => void; win?: AppWindow }
+export type DictationSink = { tell: (m: Record<string, unknown>) => void; win?: AppWindow
+  /** The microphone's audio as it comes (16-bit, 16 kHz), when its session was started with `tap`. */
+  audio?: (pcm: Buffer) => void }
 let owner: DictationSink | null = null
 let idle: ReturnType<typeof setTimeout> | null = null
 const IDLE_MS = 15 * 60_000
@@ -78,6 +80,7 @@ function sinkOf(win: AppWindow) {
 function heard(m: Record<string, unknown>) {
   if (m.type === "engines") { for (const done of checked.splice(0)) done(m); return }
   if (m.type === "ready" || (typeof m.id === "number" && m.id !== sid)) return
+  if (m.type === "audio") return void owner?.audio?.(Buffer.from(String(m.data ?? ""), "base64"))
   tell(m)
   if (m.type === "end") {
     owner = null
@@ -123,7 +126,7 @@ const starts = new Set<() => void>()
 /** Told as any dictation starts (a window's, the helper's): the companion's voice stops, never heard by the microphone. */
 export const onDictating = (fn: () => void) => { starts.add(fn); return () => starts.delete(fn) }
 
-export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; words?: unknown; keep?: unknown }
+export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; words?: unknown; keep?: unknown; tap?: boolean }
 /** Listen for `sink` (another's session ends, "elsewhere"): through Soniox when its key is set, this Mac's engine
  *  (`engine`) taking over should it fail. */
 export async function dictate(sink: DictationSink, opts: DictateOptions) {
@@ -145,7 +148,7 @@ export async function dictate(sink: DictationSink, opts: DictateOptions) {
   if (owner && owner !== sink) tell({ type: "end", reason: "elsewhere" })
   owner = sink
   const silence = Number(opts.silence)
-  send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: Number.isFinite(silence) ? silence : 0, ...(cloud ? { cloud } : {}),
+  send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: Number.isFinite(silence) ? silence : 0, ...(cloud ? { cloud } : {}), ...(opts.tap ? { tap: true } : {}),
     words: Array.isArray(opts.words) ? opts.words.filter((w) => typeof w === "string").slice(0, 100).map((w) => w.slice(0, 100)) : [],
     // (Keep the last dictation's audio: in the app's logs, to replay through tools/dictation_bench.ts)
     ...(opts.keep === true ? { record: path.join(app.getPath("logs"), "dictation-last.wav") } : {}),

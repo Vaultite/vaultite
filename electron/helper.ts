@@ -19,6 +19,7 @@ import { type Drawing, elementPlaces } from "./drawing.ts"
 import { type Heard, heardBeats } from "../plugins/core/companion/screenmarks.ts"
 import { type Press, pressLog } from "./presslog.ts"
 import { companionVoice } from "./voice.ts"
+import { realtimeFront } from "./realtimefront.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
@@ -200,7 +201,8 @@ const manifest = (id: string) => {
 const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("companion"), screen: manifest("screen") }
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
 let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {},
-  voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 }, sounds: true }
+  voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 }, sounds: true,
+  realtime: { front: "realtime", model: "gpt-realtime-2.1-mini", voice: "cedar" } }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -472,7 +474,7 @@ let exchange: { name: string; p: Point; w: AppWindowInfo | null; since: number
 function talkHeard(m: FnEvent) {
   if (!host?.home()) return
   // (pressed again: its voice stops at once, and gets ready for the next answer)
-  if ("down" in m && m.down) { stopVoice(); speaker.warm() }
+  if ("down" in m && m.down) { stopVoice(); speaker.warm(); voiceFront.warm() }
   const now = Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
   // (each press logged, what it did or that it did nothing: presses that go nowhere can be traced)
   if (a === "listen") press = presses.start("talk", "down", { front: front?.bundle ?? "" })
@@ -507,7 +509,7 @@ function talkAct(a: NonNullable<TalkAction>) {
   if (a === "send") {
     // (hands-free in its box: what's in it goes; held: let go here, it thinks here)
     if (session?.into === "summon" || (starting && startingTalk)) {
-      if (summon) { Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking", released: Date.now() }); summon.place = gather(summon) }
+      if (summon) { Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking", released: Date.now() }); summon.place = gather(summon); voiceFront.release(whereOf(summon)) }
       // (something to send, said or drawn: it's heard as it's let go)
       if (summon && ((session && (session.finals.length || session.pending.trim())) || trailStrokes(summon.trail, Date.now()).length)) cue("sent")
       void inkOff(); draw()
@@ -545,6 +547,7 @@ async function startSummon() {
   // (pressed again as its last words are still being finished (or it speaks): those go first, then this one listens)
   for (let i = 0; i < 60 && session?.into === "summon"; i++) await new Promise((r) => setTimeout(r, 25))
   if (session?.into === "summon") s.press?.step("took over a press still finishing")
+  voiceFront.press()
   await listenFor({ into: "summon", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true, of: s })
 }
 const inkOff = () => screenAsk("ink", { on: false }).catch(() => {})
@@ -557,7 +560,7 @@ function trailed(p: Point, t: number) {
 }
 /** The summoned companion's ask (`text`; none, a point at what its trail marks): about the point let go at, with what's
  *  there, the display's picture and what Accessibility finds near it; its answer comes in its box, open by it. */
-async function sendSummon(s: Summon, text: string) {
+async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; talk?: string[] } = {}) {
   const ink = drawnShapes(inkOf(trailStrokes(s.trail, s.released ?? Date.now())))
   if (!text && !ink.length) return missed(s, "nothing heard nor drawn")
   Object.assign(s, { state: "thinking" })
@@ -565,10 +568,12 @@ async function sendSummon(s: Summon, text: string) {
   const { w, place } = await (s.place ?? gather(s))
   const win = w?.window && !w.vaultite && place.app !== "private" ? w : null
   if (win?.frame) park(s.name, win.window, offsetIn(win.frame, s.p))
-  stopVoice()
-  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true, ...(s.released ? { keyUp: s.released } : {}) })
+  // (the realtime voice's screen round: its few words meanwhile go on)
+  if (!how.front) stopVoice()
+  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true, ...(s.released ? { keyUp: s.released } : {}),
+    ...(how.front ? { front: how.front, ...(how.talk?.length ? { talk: how.talk } : {}) } : {}) })
   if (!sent) return missed(s, "Vaultite's server isn't connected", "Can't reach Vaultite")
-  s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot })
+  s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot, ...(how.front ? { front: how.front } : {}) })
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
@@ -577,6 +582,12 @@ async function sendSummon(s: Summon, text: string) {
 async function gather(s: Summon) {
   const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
   return { w, place: await pointedAt(s.name, s.p, w?.window ? w : null, false) }
+}
+/** Where a summon is, as words for the realtime voice (it never sees the screen): the app and its window's title. */
+function whereOf(s: Summon) {
+  const w = s.w, drew = drawnShapes(inkOf(trailStrokes(s.trail, s.released ?? Date.now()))).length > 0
+  const app = w && !w.vaultite ? (hidden(w) ? "a private app" : `${w.name}${w.title ? `, its window "${w.title.slice(0, 120)}"` : ""}`) : ""
+  return app || drew ? `(Where they are: ${app || "their screen"}${drew ? "; they drew on the screen as they spoke" : ""}.)` : undefined
 }
 
 /** A tap: its box at the pointer, focused, to type the ask in (its answer's box already up: into its field). */
@@ -689,14 +700,16 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   if (dictating() && !o.talk) return
   stopVoice()
   const s = prefs.dictation, lines = replacements()
-  const mine: Session = { sink: { tell: (e) => told(mine, e) }, ...o, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines) }
+  // (held over the screen: the realtime voice hears the microphone too)
+  const tap = o.into === "summon" && prefs.realtime.front === "realtime" && voiceFront.available()
+  const mine: Session = { sink: { tell: (e) => told(mine, e), ...(tap ? { audio: (b: Buffer) => voiceFront.audio(b) } : {}) }, ...o, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines) }
   session = mine
   draw()
   chatChanged()
   const how = await engineFor(s)
   if (mine.into === "summon") mine.of?.press?.step("stt", { engine: how.engine })
   // (a Talk key's audio is kept a while: a press that went nowhere can be heard again)
-  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]) })
+  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]), ...(tap ? { tap } : {}) })
   if (r.ok || session !== mine) return
   session = null
   if (mine.into === "summon" && mine.of?.state === "listening") { void inkOff(); missed(mine.of, `the recognizer didn't start (${r.code ?? "?"})`) }
@@ -752,6 +765,7 @@ function told(s: Session, e: Record<string, unknown>) {
       ...(e.type === "end" ? { chars: s.finals.join(" ").length } : {}) })
   if (e.type === "start") s.ready = true
   else if (e.type === "level") s.level = Number(e.v) || 0
+  else if (e.type === "speech" && s.into === "summon") voiceFront.speech()
   else if (e.type === "pending") s.pending = said(e.text)
   else if (e.type === "final") { const t = said(e.text).trim(); if (t) s.finals.push(t); s.pending = "" }
   else if (e.type === "end") { session = null; void finish(s, e.reason === "cancel") }
@@ -771,6 +785,8 @@ async function finish(s: Session, cancelled: boolean) {
     const m = s.of ?? summon
     if (!m || m.typing) return
     if (cancelled) { m.press?.end("cancelled"); if (summon === m) summon = null; return draw() }
+    // (the realtime voice has it: dictation's words are its question, and its fallback)
+    if (m === summon && voiceFront.heard(text)) { m.press?.step("realtime"); return }
     return sendSummon(m, text)
   }
   if (cancelled || !text) return
@@ -854,6 +870,42 @@ const speaker = companionVoice({
   heard: (h) => voiceHeardLine(h),
   ...(QUIET ? { record: (m: Record<string, unknown>) => void spoken.push(m) } : {}),
 })
+/** The realtime voice (realtimefront.ts): a spoken ask over the screen heard as it's said and answered at once, in its
+ *  own voice; what's on screen it asks the summoned session (sendSummon), saying a few words meanwhile. */
+const voiceFront = realtimeFront({
+  config: realtimeConfig,
+  name: () => live.state.name,
+  player: speaker,
+  look: ({ question, talk }) => { const s = summon; if (s) void sendSummon(s, question, { front: "realtime", talk }) },
+  answered: ({ heard, said }) => {
+    const s = summon
+    if (said) live.say({ t: "answered", agent: s?.name ?? live.state.name, heard, said })
+    if (!s) return
+    s.state = "watching"
+    const x = exchange?.name === s.name ? exchange : null
+    openAnswer(s.name, s.p, s.w, x ? x.since : s.at)
+    // (heard already: no cue nor box for it)
+    if (exchange) Object.assign(exchange, { arrived: true, heard: true })
+  },
+  fallback: (heard) => { const s = summon; if (s) void sendSummon(s, heard) },
+  state: (st) => { if (summon && st === "thinking") { summon.state = "thinking"; draw() } },
+  heard: (h) => voiceHeardLine(h),
+  // (in the press's log: a talk turn ends there; a screen round's was sent, and the pipeline's fallback goes on)
+  log: (t) => {
+    const p = summon?.press, d = { kind: t.kind, model: t.model, cost: Number(t.cost.toFixed(5)), ...(t.firstMs !== undefined ? { firstMs: t.firstMs } : {}), ...(t.answerMs !== undefined ? { answerMs: t.answerMs } : {}), ...(t.failed ? { failed: t.failed } : {}) }
+    if (p && !p.ended() && t.kind === "talk" && !t.failed) p.end("realtime", d)
+    else p?.step("realtime", d)
+  },
+})
+/** The realtime voice's key and settings: none when it's off (voice_front pipeline, the voice off, no OpenAI key). */
+async function realtimeConfig() {
+  const r = prefs.realtime, port = host?.home()?.port
+  if (r.front !== "realtime" || prefs.voice.mode === "off" || !port) return null
+  const res = await fetch(`http://127.0.0.1:${port}/api/companion/realtime`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
+  const k = (res.ok ? await res.json() : {}) as { url?: string; key?: string }
+  return k.url && k.key ? { url: k.url, key: k.key, model: r.model, voice: r.voice } : null
+}
+
 /** The answer being said: the ask it answers (when it came), its says (the last still growing); `inApp`: asked in a
  *  Vaultite window. Answers to asks before `hushed` are silent: stopped, or a newer ask came. */
 let voiced: { name: string; asked: number; inApp: boolean; notes: string[]; quiet: ReturnType<typeof setTimeout> | null } | null = null
@@ -866,6 +918,8 @@ let speakingNow: Scene["speaking"] = null
  *  by voice), on screen or in the app alike; its last words when the next say begins, or after a pause. */
 function voiceHeard(n: Note) {
   const a = n.answers, mode = prefs.voice.mode
+  // (the realtime voice's screen round: it says this answer itself)
+  if (n.kind === "say" && a && n.text && !n.dismissed && voiceFront.owns(a.t)) return voiceFront.text(n.id, n.text)
   if (n.kind !== "say" || !a || !n.text || n.dismissed || a.t < hushed || (voiced && a.t < voiced.asked)) return
   if (!voiced || voiced.asked !== a.t) {
     // (a newer ask's answer: the last one stops, said or not)
@@ -883,6 +937,7 @@ function voiceHeard(n: Note) {
 }
 /** Its turn over: what it wrote last is said to its end. */
 function voiceHeardAgent(a: Agent) {
+  if (a.name === live.state.name) voiceFront.agent(a.state)
   if (voiced?.name === a.name && voiced.notes.length && (a.state === "watching" || a.state === "away")) speaker.end()
 }
 /** Silence, at once: what's said now, and what's still to come of answers asked before `until` (now). */
@@ -903,10 +958,11 @@ function stopVoice(until = Date.now()) {
   if (voiced?.quiet) clearTimeout(voiced.quiet)
   voiced = null
   speaker.stop()
+  voiceFront.stop()
 }
 /** Its cursor shows it speaking, its level as it goes: only the level changed, the overlay is told that alone. */
 function voiceLevel(on: boolean, v: number) {
-  const name = voiced?.name ?? speakingNow?.name
+  const name = voiced?.name ?? speakingNow?.name ?? (voiceFront.speaking() ? live.state.name : undefined)
   const was = speakingNow
   speakingNow = on && name ? { name, level: Math.round(v * 20) / 20 } : null
   if (on && exchange) exchange.heard = true

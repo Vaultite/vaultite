@@ -10,6 +10,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   shows "Didn't catch that" by the companion's cursor with a soft sound, its audio kept to hear again; pressing again
   while its last words are still coming listens again rather than being swallowed; and a test copy of the app can no
   longer take your Talk key or microphone. Each press is logged, so one that went nowhere can be traced.
+- **The companion talks back at once**: hold ⌃⌥ over the screen and speak, and on letting go a realtime voice
+  (OpenAI's, with your own key: `vau secret "OpenAI API key" | vau voice key --provider openai`) answers right away.
+  Small talk it answers itself; for anything on screen it says a few words while the summoned model looks, then says
+  that answer, its marks drawn as before. Press again while it speaks to cut in. Without the key, or if it fails, the
+  dictation and voice pipeline answers as before (setting Voice front; Realtime model and voice).
 - **A spoken answer needs no box**: asked by voice, the companion answers with its cursor, its voice and its marks;
   its box (its words and a reply field) shows when you tap the Talk key, for a typed ask, or if the voice doesn't
   come. Waiting feels alive: let go and your trail draws into its cursor, which glows softly while it thinks, then

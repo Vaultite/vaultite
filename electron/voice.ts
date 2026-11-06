@@ -43,6 +43,8 @@ export function companionVoice(o: {
   let speaking = false
   /** Each answer's number: what an older one still sends is dropped. */
   let gen = 0, ready: Promise<void> = Promise.resolve()
+  /** The realtime voice's pieces, numbered far from voicelogic's. */
+  let streamed = 1_000_000
 
   async function binary() {
     const shipped = path.join(SHIPPED, voiceHelperName())
@@ -173,6 +175,12 @@ export function companionVoice(o: {
     },
     text: (id: string, whole: string) => { const g = gen; void ready.then(() => { if (g === gen) v.text(id, whole) }) },
     end: (id?: string) => { const g = gen; void ready.then(() => { if (g === gen) v.end(id) }) },
+    /** Audio made elsewhere (the realtime voice: 24 kHz pcm16), played in order after what's playing, as its own
+     *  piece; stop() silences it too. */
+    stream() {
+      const n = ++streamed
+      return { pcm: (b: Buffer) => { playing.add(n); send({ cmd: "pcm", n, data: b.toString("base64") }) }, end: () => { playing.add(n); send({ cmd: "end", n }) } }
+    },
     /** Silence, at once. */
     stop: () => { gen++; v.stop() },
     /** Whether an answer is being spoken now. */

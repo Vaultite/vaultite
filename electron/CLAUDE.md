@@ -40,6 +40,9 @@
   Only the app the user runs (packaged, not VAULTITE_QUIET; VAULTITE_HELPER_TAP=1 by hand) hears their keys and takes the
   one lock; a scripted copy hears a file, never the microphone. Each Talk-key press is logged (presslog.ts:
   userData/talk/talk-<day>.jsonl, a missed press's audio beside it): a press that went nowhere can be traced.
+- The realtime voice (realtimefront.ts over realtime.ts, OpenAI's WebSocket): dictation's session taps the mic for it
+  (`tap`, 16 kHz, made 24 kHz), voice.ts' `stream()` plays its audio. Dictation still runs: its words are the screen
+  round's question and the fallback's, and the box's. Its tests are a stand-in socket; tools/evals/realtime.ts the real one.
 - The overlay (overlay.ts) is BrowserWindows, never `AppWindow`s: those count as the app's windows (the Dock, menus).
   `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock. It never takes the keyboard: a
   cursor's conversation is a window of its own (`type: "panel"`, non-activating), so typing there leaves the app in

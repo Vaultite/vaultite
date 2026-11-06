@@ -8,7 +8,9 @@ export type Prefs = { fn: boolean; keys: string[]; talk: string[]; privateApps: 
   /** Whether its answers are spoken (`auto`: an ask by voice), by which cloud voice first, which voices, how fast. */
   voice: { mode: "auto" | "always" | "off"; provider: "auto" | "elevenlabs" | "soniox"; name: string; eleven: { voice: string; model: string }; speed: number }
   /** Soft cues as it's summoned, sent an ask, and answers (the companion's `sounds`). */
-  sounds: boolean }
+  sounds: boolean
+  /** Who hears a spoken ask and answers it first (realtimefront.ts): a realtime model, or dictation and the voice. */
+  realtime: { front: "realtime" | "pipeline"; model: string; voice: string } }
 /** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
  *  `settings` giving the defaults. */
 export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
@@ -30,6 +32,11 @@ export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, 
       eleven: { voice: String(val(c.elevenlabs_voice, def(DEFAULTS.companion, "elevenlabs_voice") ?? "") || ""),
         model: String(val(c.elevenlabs_model, def(DEFAULTS.companion, "elevenlabs_model") ?? "") || "") },
       speed: Math.min(1.3, Math.max(0.7, Number(val(c.voice_speed, def(DEFAULTS.companion, "voice_speed") ?? 1)) || 1)),
+    },
+    realtime: {
+      front: val(c.voice_front, def(DEFAULTS.companion, "voice_front")) === "pipeline" ? "pipeline" : "realtime",
+      model: String(val(c.realtime_model, def(DEFAULTS.companion, "realtime_model") ?? "") || "gpt-realtime-2.1-mini"),
+      voice: String(val(c.realtime_voice, def(DEFAULTS.companion, "realtime_voice") ?? "") || "cedar"),
     },
   }
 }
