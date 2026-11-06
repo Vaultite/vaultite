@@ -442,17 +442,20 @@ func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int) -> [String: Any] {
   return ["ok": true, "elements": found.sorted { $0.0 < $1.0 }.prefix(most).map { $0.1 }]
 }
 
-/** The whole display under a point, as a PNG at a pixel a point, without the windows asked (ours: the overlay, the
- *  conversation); ScreenCaptureKit's, macOS 14 on. Answers when it's written. */
-func shootDisplay(_ x: Double, _ y: Double, _ exclude: [Int], _ file: String, _ done: @escaping ([String: Any]) -> Void) {
+/** The display under a point (or `crop` of it, screen points), as a PNG at a pixel a point, without the windows asked
+ *  (ours: the overlay, the conversation); ScreenCaptureKit's, macOS 14 on. Answers when it's written. */
+func shootDisplay(_ x: Double, _ y: Double, _ exclude: [Int], _ file: String, _ crop: CGRect?, _ done: @escaping ([String: Any]) -> Void) {
   guard #available(macOS 14.0, *) else { return done(["ok": false, "why": "macos"]) }
   SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, err in
     guard let content else { return done(["ok": false, "why": err?.localizedDescription ?? "no screen recording"]) }
     let p = CGPoint(x: x, y: y)
     guard let d = content.displays.first(where: { CGDisplayBounds($0.displayID).contains(p) }) ?? content.displays.first else { return done(["ok": false, "why": "no-display"]) }
-    let b = CGDisplayBounds(d.displayID)
+    let whole = CGDisplayBounds(d.displayID)
+    // (a part of it, kept inside it: the source rect is the display's own points, from its top left)
+    let b = crop.map { $0.intersection(whole) }.flatMap { $0.isNull || $0.width < 1 || $0.height < 1 ? nil : $0 } ?? whole
     let filter = SCContentFilter(display: d, excludingWindows: content.windows.filter { exclude.contains(Int($0.windowID)) })
     let conf = SCStreamConfiguration()
+    if b != whole { conf.sourceRect = CGRect(x: b.minX - whole.minX, y: b.minY - whole.minY, width: b.width, height: b.height) }
     conf.width = Int(b.width); conf.height = Int(b.height); conf.showsCursor = false
     SCScreenshotManager.captureImage(contentFilter: filter, configuration: conf) { img, err in
       guard let img else { return done(["ok": false, "why": err?.localizedDescription ?? "no-image"]) }
@@ -518,7 +521,9 @@ Thread {
     guard let data = line.data(using: .utf8), let req = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
     // (the display's picture comes when it's written: its answer goes then)
     if req["op"] as? String == "display" {
-      shootDisplay(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["exclude"] as? [Int] ?? [], req["file"] as? String ?? "") { r in var res = r; res["id"] = req["id"]; send(res) }
+      let c = req["crop"] as? [String: Double]
+      let crop = c.flatMap { c in [c["x"], c["y"], c["width"], c["height"]].allSatisfy { $0 != nil } ? CGRect(x: c["x"]!, y: c["y"]!, width: c["width"]!, height: c["height"]!) : nil }
+      shootDisplay(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["exclude"] as? [Int] ?? [], req["file"] as? String ?? "", crop) { r in var res = r; res["id"] = req["id"]; send(res) }
       continue
     }
     DispatchQueue.main.sync {

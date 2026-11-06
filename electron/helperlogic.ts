@@ -38,8 +38,10 @@ export function pointIn(r: Rect, element: boolean) {
 export type ScreenAgent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean
   target?: Rect; say?: { id: string; text: string; question?: boolean } }
 export type Point = { x: number; y: number }
-/** The companion called up by a Talk key: at the pointer, listening (its words as they come) or thinking. */
-export type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean }
+/** The companion called up by a Talk key, listening (its words as they come) or thinking; `follow`: in its exchange, it
+ *  rides beside the pointer on every display (the overlay's feed); `aim`: what it points at, which it flies to. */
+export type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
+  follow?: boolean; aim?: { id: string; x: number; y: number } }
 /** What the overlay draws: cursors, the companion summoned, the ink drawn while its key is held, and the dictation pill,
  *  by its display's bottom centre (`display`: the one; else the pointer's). */
 export type Scene = {
@@ -58,8 +60,9 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
   const on = (x: number, y: number) => inside(d, x, y)
   const here = (a: { sx: number; sy: number; from?: Point }) => on(a.sx, a.sy) || (!!a.from && on(a.from.x, a.from.y))
   const dx = d.bounds.x, dy = d.bounds.y
-  const local = <T extends { sx: number; sy: number; from?: Point; target?: Rect }>(a: T) =>
-    ({ ...a, sx: a.sx - dx, sy: a.sy - dy, ...(a.from ? { from: { x: a.from.x - dx, y: a.from.y - dy } } : {}), ...(a.target ? { target: { ...a.target, x: a.target.x - dx, y: a.target.y - dy } } : {}) })
+  const local = <T extends { sx: number; sy: number; from?: Point; target?: Rect; aim?: { id: string; x: number; y: number } }>(a: T) =>
+    ({ ...a, sx: a.sx - dx, sy: a.sy - dy, ...(a.from ? { from: { x: a.from.x - dx, y: a.from.y - dy } } : {}), ...(a.target ? { target: { ...a.target, x: a.target.x - dx, y: a.target.y - dy } } : {}),
+      ...(a.aim ? { aim: { ...a.aim, x: a.aim.x - dx, y: a.aim.y - dy } } : {}) })
   const pillHere = !!s.pill && (s.pill.display !== undefined && all.some((x) => x.id === s.pill!.display) ? s.pill.display === d.id : on(pointer.x, pointer.y))
   const strokes = s.ink?.strokes.filter((k) => k.some((p) => on(p.x, p.y))).map((k) => k.map((p) => ({ x: p.x - dx, y: p.y - dy }))) ?? []
   return {
@@ -67,7 +70,8 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
     // (the menu bar's height: what goes above a cursor stays under it)
     top: d.workArea ? Math.max(0, d.workArea.y - d.bounds.y) : 0,
     agents: s.agents.filter(here).map(local),
-    summon: s.summon && here(s.summon) ? local(s.summon) : null,
+    // (riding with the pointer, it's on every display: each draws it while it's there)
+    summon: s.summon && (s.summon.follow || here(s.summon)) ? local(s.summon) : null,
     ink: s.ink && strokes.length ? { tint: s.ink.tint, strokes } : null,
     pill: pillHere ? s.pill : null,
     speaking: s.speaking ?? null,
@@ -110,10 +114,44 @@ function simplify(k: Point[], eps: number): Point[] {
 }
 
 /** Where a cursor's conversation opens (its top left, points) for a cursor at `p`, by the window's rule (boxes.ts): inside
- *  the space windows get, never over its arrow, its name (`flag`: its width, about) or what it points at. */
-export function panelAt(p: Point, size: { width: number; height: number }, area: Rect, flag = 120, target?: Rect | null): Point {
-  const b = boxAt(p, size, area, [arrowBox(p), flagBox(p, flag, area), ...(target ? [target] : [])])
+ *  the space windows get, never over its arrow, its name (`flag`: its width, about), what it points at or `clear`. */
+export function panelAt(p: Point, size: { width: number; height: number }, area: Rect, flag = 120, target?: Rect | null, clear: Rect[] = []): Point {
+  const b = boxAt(p, size, area, [arrowBox(p), flagBox(p, flag, area), ...(target ? [target] : []), ...clear])
   return { x: Math.round(b.x), y: Math.round(b.y) }
+}
+
+// ---------- the summoned companion's exchange: beside the pointer, its box with it, the display's picture
+
+/** Where the companion rides beside the pointer: a little right of and below its arrow, on the other side near an edge. */
+export const BESIDE = { x: 24, y: 20 }
+export function besidePointer(p: Point, bounds: Rect): Point {
+  const right = p.x + BESIDE.x + 40 > bounds.x + bounds.width, low = p.y + BESIDE.y + 40 > bounds.y + bounds.height
+  return { x: Math.round(right ? p.x - BESIDE.x - 14 : p.x + BESIDE.x), y: Math.round(low ? p.y - BESIDE.y - 10 : p.y + BESIDE.y) }
+}
+/** What the user's own pointer covers (its arrow, at the system's size): the box never goes there. */
+export const pointerBox = (p: Point): Rect => ({ x: p.x - 6, y: p.y - 6, width: 30, height: 34 })
+
+/** Whether the box holds still for the pointer: it's in it, or heading for it (fast enough, its way within 35° of the
+ *  box's nearest point, not far): then it can be reached and clicked; moving elsewhere, the box comes along. */
+export function reaching(p: Point, v: Point, box: Rect) {
+  const pad = 10
+  if (p.x >= box.x - pad && p.x <= box.x + box.width + pad && p.y >= box.y - pad && p.y <= box.y + box.height + pad) return true
+  const near = { x: Math.max(box.x, Math.min(box.x + box.width, p.x)), y: Math.max(box.y, Math.min(box.y + box.height, p.y)) }
+  const dx = near.x - p.x, dy = near.y - p.y, d = Math.hypot(dx, dy), speed = Math.hypot(v.x, v.y)
+  if (d > 520 || speed < 120) return false
+  return (dx * v.x + dy * v.y) / (d * speed) > Math.cos((35 * Math.PI) / 180)
+}
+
+/** The largest picture Claude takes as it is (no scaling: a pixel stays a point), by its vision limits: about 1.15
+ *  megapixels, 1568 px on the long side. */
+export const SHOT_MOST = { pixels: 1_150_000, side: 1568 }
+/** The part of display `d` pictured for an ask at `p`: all of it when it fits, else as much as fits around the pointer
+ *  (a pixel a point, centred on it and kept inside the display). */
+export function shotCrop(d: Rect, p: Point): Rect {
+  const scale = Math.min(1, SHOT_MOST.side / Math.max(d.width, d.height), Math.sqrt(SHOT_MOST.pixels / (d.width * d.height)))
+  const w = Math.floor(d.width * scale), h = Math.floor(d.height * scale)
+  const at = (c: number, size: number, from: number, span: number) => Math.round(Math.max(from, Math.min(from + span - size, c - size / 2)))
+  return { x: at(p.x, w, d.x, d.width), y: at(p.y, h, d.y, d.height), width: w, height: h }
 }
 
 /** A point kept inside a window as it moves: where in it (from its top left) the user left a cursor. */

@@ -14,6 +14,14 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
     ipcRenderer.on("vaultite:screen-at", h)
     return () => { ipcRenderer.removeListener("vaultite:screen-at", h) }
   },
+  // (the pointer and the companion's home beside it, while it rides with it: [x, y, homeX, homeY] in this display's points)
+  onPointer(fn) {
+    const h = (_e, m) => fn(m)
+    ipcRenderer.on("vaultite:pointer", h)
+    return () => { ipcRenderer.removeListener("vaultite:pointer", h) }
+  },
+  // (where the companion is headed or rests while it points, [x, y] here; null: beside the pointer)
+  pilot: (to) => ipcRenderer.send("screen:pilot", to),
   grab: (on) => ipcRenderer.send("screen:grab", !!on),
   open: (name, x, y) => ipcRenderer.send("screen:open", { name, x, y }),
   stop: () => ipcRenderer.send("screen:stop"),

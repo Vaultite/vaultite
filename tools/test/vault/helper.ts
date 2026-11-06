@@ -157,6 +157,89 @@ export default async ($: VaultTest) => {
     check("spring: one long frame lands where many short ones do", Math.abs(big.x - steps.x) < 1e-6, { big, steps })
   }
   {
+    // The summoned companion's motion (web/src/core/pilot.ts): beside the pointer on a fast spring, an arc to what it
+    // points at, its marks traced as their pen, back once the user moves on; the same on every display's window.
+    const { alongLine, cubicBezier, DWELL, flightMs, makePilot, MOVE_ON, penAt } = await import("../../../web/src/core/pilot.ts")
+    const pilot = makePilot(), home = (p: { x: number; y: number }) => ({ x: p.x + 24, y: p.y + 20 })
+    let t = 1000
+    const P = (x: number, y: number) => { const p = { x, y }; pilot.pointer(p, home(p), t) }
+    const run = (ms: number, every = 16) => { const out = []; for (const end = t + ms; t < end;) { t += every; out.push(pilot.pose(t)) } return out }
+    P(100, 100)
+    check("pilot: it starts beside the pointer", JSON.stringify(run(16).at(-1)).includes('"x":124,"y":120'), pilot.pose(t))
+    P(600, 100)
+    const follow = run(400), fx = follow.map((q) => q.x)
+    check("pilot: it rides with the pointer on a fast spring: most of the way in a sixth of a second, never past, then still",
+      Math.abs(follow[10].x - 624) < 12 && Math.max(...fx) <= 624.01 && follow.at(-1)!.x === 624 && !follow.at(-1)!.busy && follow.every((q) => q.mode === "follow"), fx.slice(0, 12))
+    pilot.aim({ id: "a1", x: 300, y: 500 }, t)
+    const dur = flightMs(Math.hypot(300 - 624, 500 - 120)), flight = run(dur + 32)
+    const mid = flight[Math.floor(flight.length / 2)], onLine = 624 + (300 - 624) * ((mid.y - 120) / (500 - 120))
+    check("pilot: pointing, it flies an arc there (bent up off the straight way, a little bigger mid-flight) and lands on it",
+      flight[0].mode === "fly" && Math.abs(mid.x - onLine) > 20 && mid.scale > 1.05 && flight.at(-1)!.x === 300 && flight.at(-1)!.y === 500 && flight.at(-1)!.mode === "parked", { mid, last: flight.at(-1) })
+    P(640, 130)
+    run(DWELL + 100)
+    check("pilot: there, a small move of the pointer leaves it pointing", pilot.mode() === "parked")
+    P(600 + MOVE_ON + 40, 100)
+    const away = run(1000)
+    check("pilot: moving on takes it back to the pointer, flying, then riding with it", away[0].mode === "back" && away.at(-1)!.mode === "follow" && away.at(-1)!.x === 600 + MOVE_ON + 64, away.at(-1))
+    pilot.aim({ id: "a1", x: 300, y: 500 }, t)
+    check("pilot: the same pointing again doesn't fly it back there", run(50).at(-1)!.mode === "follow")
+    // (its pen: two strokes, a gap between them)
+    const s0 = t + 520, script = { id: "d1", strokes: [{ start: s0, dur: 400, pts: [[100, 300], [300, 300]] as [number, number][] }, { start: s0 + 1400, dur: 300, pts: [[100, 400], [100, 600]] as [number, number][] }] }
+    pilot.pen(script, t)
+    const before = run(260).at(-1)!
+    t = s0 + 200
+    const drawing = pilot.pose(t), ease = cubicBezier(0.35, 0.1, 0.35, 1)(0.5)
+    check("pilot: given strokes, it flies to the first as the ink begins, then keeps to the ink's front as its pen",
+      before.mode === "pen" && before.x < 700 && before.x > 100 && Math.abs(drawing.x - (100 + 200 * ease)) < 0.6 && drawing.y === 300, { before, drawing, ease })
+    t = s0 + 900
+    const waiting = pilot.pose(t)
+    t = s0 + 1400 - 20
+    const hopping = pilot.pose(t)
+    check("pilot: between strokes it waits at the last one's end, then hops so it's at the next as it begins", waiting.x === 300 && waiting.y === 300 && hopping.y > 330 && hopping.y < 400, { waiting, hopping })
+    t = s0 + 1800
+    const ended = pilot.pose(t)
+    check("pilot: done drawing, it stays by its last stroke", ended.mode === "parked" && ended.x === 100 && ended.y === 600, ended)
+    pilot.pen(null, t)
+    check("pilot: the drawing gone, it flies back to the pointer", pilot.pose(t + 16).mode === "back")
+    const q = penAt(script, s0 + 1400 + 150, { x: 0, y: 0 }, t), half = alongLine([[100, 400], [100, 600]], cubicBezier(0.35, 0.1, 0.35, 1)(0.5))
+    check("pilot: its pen's place on a stroke is the reveal's, eased the same", Math.abs(q.p.y - half.y) < 0.6, { q, half })
+    check("pilot: CSS's cubic-bezier as browsers solve it (ease at a half is 0.8024)", Math.abs(cubicBezier(0.25, 0.1, 0.25, 1)(0.5) - 0.8024) < 0.002)
+    // (each display's window runs one: fed the same, at their own frame rates, they agree)
+    const a = makePilot(), b = makePilot(), feed = [[0, 100, 100], [100, 500, 300], [180, 520, 340], [400, 900, 200]] as const
+    let worst = 0
+    for (let ms = 0; ms <= 1200; ms++) {
+      for (const [at, x, y] of feed) if (at === ms) { a.pointer({ x, y }, home({ x, y }), 5000 + ms); b.pointer({ x, y }, home({ x, y }), 5000 + ms) }
+      if (ms === 500) { a.aim({ id: "x", x: 200, y: 600 }, 5000 + ms); b.aim({ id: "x", x: 200, y: 600 }, 5000 + ms) }
+      const pa = ms % 16 === 0 ? a.pose(5000 + ms) : null, pb = ms % 7 === 0 ? b.pose(5000 + ms) : null
+      if (pa && pb) worst = Math.max(worst, Math.hypot(pa.x - pb.x, pa.y - pb.y))
+    }
+    check("pilot: two windows fed the same pointer, at 60 and 144 frames a second, draw it in the same place", worst < 0.5, worst)
+    const calm = makePilot({ reduced: true })
+    calm.pointer({ x: 10, y: 10 }, { x: 34, y: 30 }, 0)
+    calm.aim({ id: "r", x: 400, y: 400 }, 10)
+    const r1 = calm.pose(11)
+    calm.pen({ id: "p", strokes: [{ start: 2000, dur: 300, pts: [[0, 0], [50, 50]] }] }, 20)
+    check("pilot: with reduced motion each place is there at once, a drawing done at once", r1.x === 400 && r1.y === 400 && calm.pose(21).x === 50, [r1, calm.pose(21)])
+  }
+  {
+    // The summoned exchange's geometry (electron/helperlogic.ts): beside the pointer, its box reachable, the picture.
+    const { besidePointer, panelAt, pointerBox, reaching, shotCrop, SHOT_MOST } = await import("../../../electron/helperlogic.ts")
+    const d = { x: 0, y: 0, width: 1470, height: 956 }
+    check("beside: right of and below the pointer; on the other side by an edge", JSON.stringify(besidePointer({ x: 500, y: 400 }, d)) === '{"x":524,"y":420}' &&
+      besidePointer({ x: 1460, y: 400 }, d).x < 1460 && besidePointer({ x: 500, y: 950 }, d).y < 950)
+    const box = { x: 600, y: 300, width: 300, height: 160 }
+    check("reaching: the pointer in the box, or heading for it, holds it; moving elsewhere or barely moving doesn't",
+      reaching({ x: 650, y: 320 }, { x: 0, y: 0 }, box) && reaching({ x: 400, y: 380 }, { x: 600, y: 20 }, box) && !reaching({ x: 400, y: 380 }, { x: -600, y: 0 }, box) &&
+      !reaching({ x: 400, y: 380 }, { x: 0, y: 600 }, box) && !reaching({ x: 400, y: 380 }, { x: 60, y: 0 }, box))
+    const meets = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+    const misses = [10, 700, 1400].flatMap((x) => [40, 500, 900].map((y) => ({ x, y }))).filter((p) => meets({ ...panelAt(besidePointer(p, d), { width: 300, height: 180 }, { ...d, y: 25, height: 931 }, 100, null, [pointerBox(p)]), width: 300, height: 180 }, pointerBox(p)))
+    check("box: the answer's box never covers the user's pointer, anywhere on screen", !misses.length, misses)
+    const crop = shotCrop(d, { x: 766, y: 463 }), whole = shotCrop({ x: 0, y: 0, width: 1280, height: 800 }, { x: 10, y: 10 }), side = shotCrop({ x: -2560, y: -200, width: 2560, height: 1440 }, { x: -100, y: 1200 })
+    check("picture: as much of the display as Claude takes unscaled (a pixel stays a point), around the pointer, inside the display",
+      crop.width * crop.height <= SHOT_MOST.pixels && Math.abs(crop.width / crop.height - 1470 / 956) < 0.01 && crop.x <= 766 && crop.x + crop.width >= 766 && crop.y >= 0 && crop.y + crop.height <= 956 &&
+      JSON.stringify(whole) === '{"x":0,"y":0,"width":1280,"height":800}' && side.x + side.width === 0 && side.y + side.height === 1240 && side.width * side.height <= SHOT_MOST.pixels, { crop, whole, side })
+  }
+  {
     // The companion hears the user on screen: an ask or a point with the window's text, the display's picture, what's near
     // the pointer and what they drew.
     const c = await import("../../../plugins/core/companion/plugin.ts")
@@ -169,7 +252,7 @@ export default async ($: VaultTest) => {
     const deskText = desk ? c.momentsText([desk], "quiet", null) : ""
     const [, deskSt] = await api("POST", "ops/companion.status", {})
     check("companion: an ask from the desktop (no window) says what was under the pointer, its point, and the display's picture",
-      deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/display-812-1.png (the display") &&
+      deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer") &&
       (deskSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 812), [deskText, deskSt])
     const bar = c.addMoment({ kind: "point", sx: 1290, sy: 12, shot: "/tmp/x/screens/region-2.png" })
     const barText = bar ? c.momentsText([bar], "quiet", null) : ""
@@ -183,7 +266,7 @@ export default async ($: VaultTest) => {
       ink: [{ shape: "ring", box: { x: 770, y: 410, width: 100, height: 60 }, points: [[770, 440], [820, 410], [870, 440]] }] })
     const heldText = held ? c.momentsText([held], "quiet", null) : ""
     check("companion: a summoned ask says the display's picture and their pointer in it, what they drew and what's near, by id",
-      heldText.includes("its picture: /tmp/x/screens/display-812-1.png (the display, a pixel a point: its top left is sx 0, sy 0; their pointer at 812, 440 in it)") &&
+      heldText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer, a pixel a point: its top left is sx 0, sy 0, so its pixel x, y is sx 0 + x, sy 0 + y; their pointer at 812, 440 in it)") &&
       heldText.includes("they drew a ring round sx 770-870, sy 410-470") && heldText.includes('a1 button "Send" at 790,430 60×24'), heldText)
     const name = (barSt as { agents: { name: string; sx?: number }[] }).agents.find((a) => a.sx === 1290)!.name
     const [axSt] = await api("POST", "ops/companion.look", { ax: "a1", as: name })

@@ -2,6 +2,7 @@
 // sends this display, drawn by Draw.tsx (loaded with the first one); what the user presses goes back.
 import { lazy, Suspense, useSyncExternalStore } from "react"
 import type { Drawing, Rect } from "../../../plugins/core/companion/screenmarks"
+import type { PenScript } from "../core/pilot"
 import type { Here } from "./layout"
 
 /** A drawing as this display gets it: `here`, where the display is and whether it has the cards. */
@@ -26,11 +27,11 @@ bridge?.on((x) => {
 })
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 
-/** This display's drawing, and the last one fading as it goes. */
-export function ScreenDrawings({ grab }: { grab: (on: boolean) => void }) {
+/** This display's drawing, and the last one fading as it goes; `pen`: the companion's cursor draws it, told its strokes. */
+export function ScreenDrawings({ grab, pen }: { grab: (on: boolean) => void; pen?: (s: PenScript | null) => void }) {
   const { d, gone } = useSyncExternalStore(subscribe, () => view), show = d ?? gone
   if (!show) return null
-  return <Suspense fallback={null}><Draw key={show.id} d={show} leaving={!d} act={(a) => bridge?.act(a)} grab={grab} /></Suspense>
+  return <Suspense fallback={null}><Draw key={show.id} d={show} leaving={!d} act={(a) => bridge?.act(a)} grab={grab} pen={pen} /></Suspense>
 }
 
 document.head.append(Object.assign(document.createElement("style"), { textContent: `

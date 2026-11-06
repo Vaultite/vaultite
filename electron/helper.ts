@@ -12,8 +12,8 @@ import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, type DictationSink } from "./dictation.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent } from "./helperlogic.ts"
-import { closePanel, drawingActs, endDrawing, onPanel, openPanel, overlayActs, ownWindows, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
+import { atOffset, badgeOf, besidePointer, type HelperJob, inkOf, jobNews, jobsShown, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, shotCrop } from "./helperlogic.ts"
+import { closePanel, drawingActs, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { elementPlaces } from "./drawing.ts"
 import { companionVoice } from "./voice.ts"
@@ -49,7 +49,7 @@ const stubs = new Map<string, Record<string, unknown>>()
 const screenAsk = <T = Record<string, unknown>>(op: string, req: Record<string, unknown> = {}): Promise<T> =>
   QUIET ? Promise.resolve((stubs.get(op) ?? { ok: false, why: "quiet", window: 0 }) as T) : askHelper<T>(op, req)
 const windowShot = (window: number, dir: string) => (QUIET ? Promise.resolve(null) : shoot(window, dir))
-const displayShot = (p: Point, exclude: number[]) => (QUIET ? Promise.resolve(null) : shootDisplay(p, exclude, SHOTS()))
+const displayShot = (p: Point, exclude: number[]) => (QUIET ? Promise.resolve(null) : shootDisplay(p, exclude, SHOTS(), shotCrop(screen.getDisplayNearestPoint(p).bounds, p)))
 let lock: net.Server | null = null
 let tray: Tray | null = null
 const SHOTS = () => path.join(app.getPath("userData"), "screens")
@@ -399,7 +399,9 @@ function act(a: FnAction, talk = false) {
 const gesture = talkGesture()
 /** The companion called up outside Vaultite: its cursor at the pointer (listening, then thinking), the window there, the
  *  ink drawn while the key is held; `was`: where its own cursor was, which hides till its ask moves it. */
-type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; state: "listening" | "thinking" | "watching"; ink: Point[][]; at: number; was: string; typing?: boolean }
+type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; state: "listening" | "thinking" | "watching"; ink: Point[][]; at: number; was: string; typing?: boolean
+  /** Its turn on the ask seen at work (from then on its state is the agent's). */
+  busySeen?: boolean }
 let summon: Summon | null = null
 /** The exchange its answer is in: its box open by the point asked about (and the window there), since `since`. */
 let exchange: { name: string; p: Point; w: AppWindowInfo | null; since: number } | null = null
@@ -448,6 +450,8 @@ async function startSummon() {
   const s: Summon = { name, tint: own?.tint ?? "orange", p, w: null, state: "listening", ink: [], at, was: own ? placeKey(own) : "" }
   summon = s
   live.say({ t: "summoning" })
+  // (a press that's a shortcut shows nothing: it appears after a moment)
+  setTimeout(draw, 130)
   void screenAsk("ink", { on: true })
   void screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).then((w) => { s.w = w.window ? w : null }, () => {})
   draw()
@@ -480,12 +484,13 @@ async function sendSummon(s: Summon, text: string) {
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
 
-/** A tap: its box at the pointer, focused, to type the ask in. */
+/** A tap: its box at the pointer, focused, to type the ask in (its answer's box already up: into its field). */
 function openTyping() {
   const name = live.state.name
   if (!name) return
   const p = summon?.p ?? screen.getCursorScreenPoint(), w = summon?.w ?? null
-  openChat(name, p)
+  if (exchange?.name === name && panelOpen() === name) { const d = chatOf(name); if (d && based) openPanel(based, besidePointer(screen.getCursorScreenPoint(), screen.getDisplayNearestPoint(p).bounds), d, true, true); return }
+  openChat(name, p, !!summon)
   if (panelOpen() !== name) return
   exchange = { name, p, w, since: Date.now() }
   void screenAsk("exchange", { on: true })
@@ -504,16 +509,21 @@ function openAnswer(name: string, p: Point, w: AppWindowInfo | null, since: numb
   exchange = { name, p, w, since }
   const d = chatOf(name)
   if (!d) return
-  openPanel(based, p, d, false)
+  // (it travels with the companion beside the pointer; its field is there, the keyboard left with their app)
+  const now = screen.getCursorScreenPoint()
+  openPanel(based, besidePointer(now, screen.getDisplayNearestPoint(now).bounds), d, false, true)
   void screenAsk("exchange", { on: true })
   draw()
 }
-/** The exchange over: its box closed, its cursor gone once it's done there. */
+/** The exchange over: its box closed, its cursor gone (at once when it's done; else once it is). */
 function endExchange() {
   stopVoice()
   if (!exchange && !summon) return
+  const name = exchange?.name ?? summon?.name
   exchange = null
   summon = null
+  const a = name ? live.state.agents.get(name) : undefined
+  if (a && onScreen(a) && a.state === "watching") leave(a.name)
   endDrawing()
   gesture.reset()
   void screenAsk("exchange", { on: false }).catch(() => {})
@@ -660,18 +670,22 @@ function chatOf(name: string): PanelData | null {
     .map((n) => ({ id: n.id, kind: n.kind, text: n.text, t: n.t, ...(n.question ? { question: true } : {}) }))
   const s = session?.into === "panel" ? session : null
   const words = s ? { text: [...s.finals, s.pending].reduce((all, t) => (t ? all + joinText(all, t) : all), "").trim(), listening: true } : chatWords
-  const busy = a.state === "thinking" || a.state === "reading" || a.state === "writing" || a.state === "starting"
-  return { name, tint: a.tint, how: howWith(a, live.state.harnesses), items, ...(words ? { words } : {}), ...(busy ? { busy } : {}) }
+  const busy = BUSY.has(a.state)
+  // (an answer's box: how to reply without reaching for the mouse)
+  const talk = prefs.talk.length ? keysSaid(prefs.talk.slice(0, 1)) : ""
+  const hint = since && talk ? `Reply, or tap ${talk} to type, hold to talk` : undefined
+  return { name, tint: a.tint, how: howWith(a, live.state.harnesses), items, ...(words ? { words } : {}), ...(busy ? { busy } : {}), ...(hint ? { hint } : {}) }
 }
 
-/** Its conversation open by its cursor (`at`, the screen's), taking the keyboard: its bubble goes into it, all of it seen. */
-function openChat(name: string, at: Point) {
+/** Its conversation open by its cursor (`at`, the screen's), taking the keyboard: its bubble goes into it, all of it seen;
+ *  `travels`: summoned, it goes with the companion. */
+function openChat(name: string, at: Point, travels = false) {
   if (!based) return
   chatWords = undefined
   const d = chatOf(name)
   if (!d) return
   for (const n of live.state.notes.values()) if (n.kind === "say" && n.agent === name && !n.dismissed) live.say({ t: "hide", id: n.id })
-  openPanel(based, at, d)
+  openPanel(based, at, d, true, travels)
   seeSaid(name)
   draw()
 }
@@ -938,7 +952,10 @@ function handOff(agents: ScreenAgent[], called: Scene["summon"]): { agents: Scre
   return { agents: out.filter(([k]) => k !== "summon").map(([, it]) => it as ScreenAgent), summon: (out.find(([k]) => k === "summon")?.[1] as Summoned | undefined) ?? null }
 }
 
-let following: ReturnType<typeof setInterval> | null = null
+const BUSY = new Set(["thinking", "reading", "writing", "starting"])
+/** Whether its own place, in the exchange of summon `s`, points at something (an element, a found text, another spot):
+ *  not where it was summoned nor where the ask parked it. */
+const pointing = (a: Agent, s: Summon) => placeKey(a) !== s.was && (!!a.frame || !!a.find || (typeof a.sx === "number" && typeof a.sy === "number" && Math.hypot(a.sx - s.p.x, a.sy! - s.p.y) > 4))
 /** What a scripted copy said and drew last (web/qa/helper.mjs), and its menu bar badge. */
 const asked: object[] = []
 let lastScene: Scene | null = null, badged = ""
@@ -950,10 +967,11 @@ function draw() {
   const agents: ScreenAgent[] = []
   const says = [...live.state.notes.values()].filter((n) => n.kind === "say" && !n.dismissed)
   const s = summon
+  let aimed: { id: string; x: number; y: number; frame?: Rect } | null = null
   for (const a of live.state.agents.values()) {
     if (a.state === "away" || !onScreen(a)) continue
-    // (summoned: its own cursor waits till the ask moves it)
-    if (s?.name === a.name && placeKey(a) === s.was) continue
+    // (summoned: one cursor, the summoned one, which flies to what its own place points at)
+    if (s?.name === a.name) { if (pointing(a, s)) { const e = pointOf(a); if (e.p && !e.covered) aimed = { id: placeKey(a), x: e.p.x, y: e.p.y, frame: a.frame ?? e.target } } continue }
     // (a new place being found: it stays where it was meanwhile, or where it was summoned)
     const e = pointOf(a), p = e.p ?? (e.pending ? drawnAt.get(keyOf(a)) ?? (s?.name === a.name ? s.p : undefined) : null)
     if (!p || e.covered) continue
@@ -963,14 +981,20 @@ function draw() {
     agents.push({ name: a.name, tint: a.tint, state: a.state, sx: p.x, sy: p.y, t: a.t, ...(a.seen ? { seen: true } : {}), ...(a.why ? { why: a.why } : {}), ...(target ? { target } : {}),
       ...(say?.text ? { say: { id: say.id, text: say.text, ...(say.question ? { question: true } : {}) } } : {}) })
   }
-  // (held: it follows the pointer, as a pen; a press that's a shortcut shows nothing: it waits a moment to appear)
+  // (held: it rides beside the pointer through the exchange, the overlay fed the pointer; a press that's a shortcut
+  // shows nothing: it waits a moment to appear)
   const listening = s?.state === "listening" && !s.typing
   if (listening && !inkDrawn && !s.ink.length) s.p = screen.getCursorScreenPoint()
-  if (listening && !following) following = setInterval(draw, 33)
-  else if (!listening && following) { clearInterval(following); following = null }
   const words = session?.into === "summon" ? [...session.finals, session.pending].reduce((all, t) => (t ? all + joinText(all, t) : all), "").trim() : ""
-  const called: Scene["summon"] = s && !agents.some((a) => a.name === s.name) && (!listening || Date.now() - s.at > 120)
-    ? { name: s.name, tint: s.tint, state: s.state, sx: Math.round(s.p.x), sy: Math.round(s.p.y), ...(words ? { words } : {}) } : null
+  const own = s ? live.state.agents.get(s.name) : undefined, busy = !!own && BUSY.has(own.state)
+  if (s?.state === "thinking" && busy) s.busySeen = true
+  // (once its turn is seen at work, it's as busy as the agent is)
+  const state = !s ? "watching" : listening ? "listening" : busy || (s.state === "thinking" && !s.busySeen) ? "thinking" : "watching"
+  const home = s && besidePointer(s.p, screen.getDisplayNearestPoint(s.p).bounds)
+  const called: Scene["summon"] = s && home && (!listening || Date.now() - s.at > 120)
+    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
+  followPointer(!!called)
+  panelAvoid(aimed?.frame ? [aimed.frame] : [])
   for (const a of live.state.agents.values()) if (a.state !== "away") leaveWhenDone(a, says)
   watchWindows()
   const d = session

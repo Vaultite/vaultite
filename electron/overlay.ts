@@ -2,8 +2,9 @@
  *  going through but over a bubble or the pill (to click them); it draws web/screen.html as helper.ts says. */
 import { BrowserWindow, clipboard, ipcMain, screen, shell, type Display, type IpcMainEvent } from "electron"
 import path from "node:path"
-import { panelAt, type Point, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
+import { besidePointer, panelAt, pointerBox, type Point, reaching, type Rect, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
+import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
 export type OverlayActs = { open: (name: string, at: Point) => void; stop: () => void }
@@ -34,7 +35,7 @@ function make(d: Display) {
   // (not a window to the user: Mission Control leaves it out)
   w.setHiddenInMissionControl(true)
   w.setAlwaysOnTop(true, "screen-saver")
-  w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (drawing) sendDrawing() })
+  w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (drawing) sendDrawing(); if (feed) feedPointer(true) })
   if (url) void w.loadURL(url).catch(() => {})
   wins.set(d.id, w)
   return w
@@ -73,7 +74,7 @@ function push() {
 /** Draw `s` from the server at `base` (its screen.html); null: none, every window goes. */
 export function showOverlay(base: string | null, s?: Scene) {
   if (s) scene = s
-  if (!base) { for (const w of wins.values()) drop(w); wins.clear(); url = ""; return }
+  if (!base) { followPointer(false); for (const w of wins.values()) drop(w); wins.clear(); url = ""; return }
   const next = `${base}/screen.html`
   if (next !== url) { url = next; for (const w of wins.values()) void w.loadURL(url).catch(() => {}) }
   if (!watching) {
@@ -81,6 +82,40 @@ export function showOverlay(base: string | null, s?: Scene) {
     for (const e of ["display-added", "display-removed", "display-metrics-changed"] as const) screen.on(e as "display-added", fit)
   }
   if (wins.size !== screen.getAllDisplays().length) fit(); else push()
+}
+
+// ---------- the pointer, fed to the windows while the companion rides beside it (an exchange): a light poll, only then
+
+let feed: ReturnType<typeof setInterval> | null = null, fed = "", lastP: Point | null = null, lastT = 0
+/** The pointer's speed (points a second), smoothed: whether it heads for the box. */
+const speed = { x: 0, y: 0 }
+/** Where the companion is headed or rests while it points (the overlay's pilot says; null: beside the pointer). */
+let pilotTo: Point | null = null
+/** Feed the pointer to the overlay (on: an exchange), and its box along with it. */
+export function followPointer(on: boolean) {
+  if (on === !!feed) return
+  if (!on) { clearInterval(feed!); feed = null; fed = ""; pilotTo = null; return }
+  feed = setInterval(() => feedPointer(), 16)
+  feedPointer(true)
+}
+function feedPointer(again = false) {
+  const p = screen.getCursorScreenPoint(), now = Date.now(), key = `${p.x},${p.y}`
+  if (lastP && now > lastT) {
+    const dt = (now - lastT) / 1000, k = Math.min(1, dt / 0.08)
+    speed.x += ((p.x - lastP.x) / dt - speed.x) * k
+    speed.y += ((p.y - lastP.y) / dt - speed.y) * k
+  }
+  lastP = p; lastT = now
+  if (key !== fed || again) {
+    fed = key
+    const home = besidePointer(p, screen.getDisplayNearestPoint(p).bounds), ds = screen.getAllDisplays()
+    for (const [id, w] of wins) {
+      if (w.isDestroyed() || w.webContents.isLoading()) continue
+      const b = ds.find((d) => d.id === id)?.bounds
+      if (b) w.webContents.send("vaultite:pointer", [p.x - b.x, p.y - b.y, home.x - b.x, home.y - b.y])
+    }
+  }
+  travel(p, now)
 }
 
 // ---------- the companion's drawing (drawing.ts): each display its part, in its own points
@@ -118,6 +153,13 @@ export function overlayActs(a: OverlayActs) {
     acts?.open(m.name, { x: b.x + m.x, y: b.y + m.y })
   })
   ipcMain.on("screen:stop", (e) => { if (mine(e)) acts?.stop() })
+  // (where the companion's pilot is headed: its box goes with it)
+  ipcMain.on("screen:pilot", (e, to: unknown) => {
+    const w = mine(e)
+    if (!w) return
+    const b = w.getBounds()
+    pilotTo = Array.isArray(to) && to.length === 2 && to.every((n) => typeof n === "number" && Number.isFinite(n)) ? { x: b.x + to[0], y: b.y + to[1] } : null
+  })
   ipcMain.on("screen:draw-act", (e, a: DrawAct) => {
     if (!mine(e) || !drawing || !a || typeof a !== "object") return
     const d = drawing, act = { ...a, id: d.id }
@@ -137,16 +179,23 @@ export type PanelData = { name: string; tint: string; how: string; items: { id: 
   /** It's at work on what it was asked (its answer is on its way). */
   busy?: boolean
   /** `done` (with its `id`, to be taken once): said, for the box; `send`: sent as it is (a Talk key's). */
-  words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean } }
+  words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
+  /** What its empty field says (an answer's box: how to reply without the mouse). */
+  hint?: string }
 const WIDTH = 300, PAD = 16
-let panel: { w: BrowserWindow; name: string; at: Point; data: PanelData; height: number; menu: boolean; focus: boolean } | null = null
+/** `travels`: an exchange's box, going with the companion as it rides beside the pointer (`goal`: where it's going,
+ *  `held`: till when it holds for the pointer reaching for it). */
+let panel: { w: BrowserWindow; name: string; at: Point; data: PanelData; height: number; menu: boolean; focus: boolean; travels: boolean; goal?: Point; pos?: Point; held: number } | null = null
 let panelActs: PanelActs | null = null
+/** What the box keeps clear of besides its cursor (what it points at, its marks). */
+let avoid: Rect[] = []
+export function panelAvoid(rects: Rect[]) { avoid = rects }
 
 /** Open agent `name`'s conversation by its cursor at `at` (the screen's points); already open: it moves there. Unfocused
- *  (an answer's box), it takes the keyboard only once clicked. */
-export function openPanel(base: string, at: Point, data: PanelData, focus = true) {
+ *  (an answer's box), it takes the keyboard only once clicked; `travels`: it goes with the companion (an exchange). */
+export function openPanel(base: string, at: Point, data: PanelData, focus = true, travels = false) {
   if (panel && !panel.w.isDestroyed()) {
-    Object.assign(panel, { at, name: data.name, data, focus })
+    Object.assign(panel, { at, name: data.name, data, focus, travels })
     place()
     panel.w.webContents.send("vaultite:panel", data)
     if (focus) panel.w.focus()
@@ -155,11 +204,12 @@ export function openPanel(base: string, at: Point, data: PanelData, focus = true
   // (a panel: on a Mac one that takes the keyboard without bringing the app forward, so the app in front stays so)
   const w = new BrowserWindow({ width: WIDTH + PAD * 2, height: 160, transparent: true, frame: false, hasShadow: false, resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, show: false, type: "panel", backgroundColor: "#00000000",
-    webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } })
+    // (a click in it goes straight to its field: no first click spent bringing it forward)
+    acceptFirstMouse: true, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } })
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   w.setHiddenInMissionControl(true)
   w.setAlwaysOnTop(true, "screen-saver", 1)
-  const mine = { w, name: data.name, at, data, height: 0, menu: false, focus }
+  const mine = { w, name: data.name, at, data, height: 0, menu: false, focus, travels, held: 0 }
   panel = mine
   // (a link in its words opens in the browser, never in this window)
   w.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) void shell.openExternal(url); return { action: "deny" } })
@@ -187,15 +237,40 @@ export function closePanel() {
   if (panel && !panel.w.isDestroyed()) panel.w.close()
 }
 
+/** Where the box goes for its cursor at `at`: clear of its arrow and name, what it points at, the user's pointer. */
+function spotFor(at: Point, pointer?: Point) {
+  const area = screen.getDisplayNearestPoint(at).workArea
+  // (its flag in the overlay: its name and what it does, about this wide)
+  return panelAt(at, { width: WIDTH, height: panel!.height }, area, panel!.name.length * 7 + 70, null, [...avoid, ...marked(), ...(pointer ? [pointerBox(pointer)] : [])])
+}
+/** What the drawing up marks on screen (its spots' rects, a little wider): the box keeps off it. */
+const marked = (): Rect[] => (drawing ? spots(drawing.marks).flatMap((s) => { const r = rectOf(s, drawing!.places); return r ? [{ x: r.x - 10, y: r.y - 10, width: r.w + 20, height: r.h + 20 }] : [] }) : [])
 /** By its cursor, clear of its arrow and name, inside the screen; shown once its page knows its height. */
 function place() {
   if (!panel || !panel.height) return
-  const area = screen.getDisplayNearestPoint(panel.at).workArea
-  // (its flag in the overlay: its name and what it does, about this wide)
-  const at = panelAt(panel.at, { width: WIDTH, height: panel.height }, area, panel.name.length * 7 + 70)
+  const p = panel.travels ? screen.getCursorScreenPoint() : undefined, at = spotFor(panel.at, p)
+  if (panel.travels && panel.w.isVisible() && panel.pos) { panel.goal = at; panel.w.setSize(WIDTH + PAD * 2, panel.height + PAD * 2); return }
+  panel.pos = at; panel.goal = at
   panel.w.setBounds({ x: at.x - PAD, y: at.y - PAD, width: WIDTH + PAD * 2, height: panel.height + PAD * 2 })
   if (panel.w.isVisible()) return
   if (panel.focus) { panel.w.show(); panel.w.focus() } else panel.w.showInactive()
+}
+/** An exchange's box, each pointer tick: with the companion (beside the pointer, or where it points), gliding there;
+ *  held still while the pointer is in it or heading for it, and while it has the keyboard. */
+function travel(p: Point, now: number) {
+  const x = panel
+  if (!x || x.w.isDestroyed() || !x.travels || !x.height || !x.pos || !x.w.isVisible()) return
+  const box = { x: x.pos.x, y: x.pos.y, width: WIDTH, height: x.height }
+  if (x.w.isFocused() || x.menu || reaching(p, speed, box)) x.held = now + 400
+  if (now < x.held) return
+  x.at = pilotTo ?? besidePointer(p, screen.getDisplayNearestPoint(p).bounds)
+  x.goal = spotFor(x.at, p)
+  const dx = x.goal.x - x.pos.x, dy = x.goal.y - x.pos.y
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return
+  // (an easing step each tick: about 90 ms to get most of the way)
+  const k = 1 - Math.exp(-16 / 90)
+  x.pos = Math.hypot(dx, dy) < 1.5 ? x.goal : { x: x.pos.x + dx * k, y: x.pos.y + dy * k }
+  x.w.setPosition(Math.round(x.pos.x - PAD), Math.round(x.pos.y - PAD))
 }
 
 const ofPanel = (e: IpcMainEvent) => (panel && !panel.w.isDestroyed() && panel.w.webContents === e.sender ? panel : null)

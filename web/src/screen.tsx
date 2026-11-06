@@ -10,6 +10,7 @@ import { snippet } from "@/core/plaintext"
 import { sanitizeHtml } from "@/core/sanitize"
 import { joinText } from "../../core/dictationtext"
 import { CURSOR_SPRING, glide, type Glide } from "@/core/spring"
+import { makePilot, type PenScript, type Pilot } from "@/core/pilot"
 import { cn, followSystemTheme } from "@/lib/utils"
 // (what its flag shows, by the window's own rule: the two draw one cursor)
 import { presence, type Mark as MarkKind } from "../../plugins/core/companion/look"
@@ -21,15 +22,19 @@ type Point = { x: number; y: number }
 type Rect = { x: number; y: number; width: number; height: number }
 type Say = { id: string; text: string; question?: boolean }
 type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; target?: Rect; say?: Say }
-type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean }
+type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
+  follow?: boolean; aim?: { id: string; x: number; y: number } }
 type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null; ink: { tint: string; strokes: Point[][] } | null
   pill: { level: number; text: string; ready: boolean; hint?: boolean } | null
   /** The cursor saying its answer aloud: its level comes with the places (`At.level`). */
   speaking?: { name: string; level?: number } | null }
 /** Only the places changed (helperlogic.ts splitScene): x, y and a target's frame. */
 type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number }
-type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean } }
+type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
+  /** What its empty field says (an answer's box: how to reply without the mouse). */
+  hint?: string }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
+  onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
   panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: () => void; mic: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
@@ -54,10 +59,54 @@ function frame(t: number) {
     if (!glide(m.g, m.tx, m.ty, m.w, dt)) moving = true
     if (m.el) m.paint(m.el, m.g.x, m.g.y)
   }
+  if (flying.pilot && flyPose(t + clockOff)) moving = true
   raf = moving ? requestAnimationFrame(frame) : 0
   if (!moving) last = 0
 }
-const kick = () => { if (!raf) raf = requestAnimationFrame(frame) }
+/** The wall clock as frames count it (a drawing's beats and the pen's strokes are on it): taken again as the loop wakes. */
+let clockOff = Date.now() - performance.now()
+const clock = () => performance.now() + clockOff
+const kick = () => { if (!raf) { clockOff = Date.now() - performance.now(); raf = requestAnimationFrame(frame) } }
+
+// ---------- the summoned companion in its exchange: its pilot (core/pilot.ts) rides it beside the pointer, flies it to
+// what it points at and draws its marks with it; every display runs the same one and draws it while it's there
+
+const flying: { pilot: Pilot | null; el: HTMLElement | null; to: string; reduced: boolean } = { pilot: null, el: null, to: "", reduced: matchMedia("(prefers-reduced-motion: reduce)").matches }
+function flyPose(now: number) {
+  const pilot = flying.pilot!, pose = pilot.pose(now), el = flying.el
+  if (el) {
+    paintCursor(el, pose.x, pose.y)
+    el.style.setProperty("--pilot-scale", pose.scale.toFixed(3))
+    // (only the display it's on draws it)
+    const on = pose.x > -40 && pose.y > -40 && pose.x < innerWidth + 40 && pose.y < innerHeight + 40
+    el.style.visibility = on ? "" : "hidden"
+    const to = pose.to ? `${Math.round(pose.to.x)},${Math.round(pose.to.y)}` : ""
+    if (on && to !== flying.to) { flying.to = to; api?.pilot?.(pose.to ? [Math.round(pose.to.x), Math.round(pose.to.y)] : null) }
+  }
+  return pose.busy
+}
+function startFlying(c: Summoned) {
+  const now = clock()
+  if (!flying.pilot) {
+    flying.pilot = makePilot({ reduced: flying.reduced }); flying.to = ""
+    // (its first place: beside the pointer as the scene has it, till the feed says)
+    flying.pilot.pointer({ x: c.sx - 24, y: c.sy - 20 }, { x: c.sx, y: c.sy }, now)
+  }
+  if (c.state === "listening") flying.pilot.release(now)
+  flying.pilot.aim(c.state === "listening" ? null : c.aim ?? null, now)
+  kick()
+}
+function pointerMoved(p: [number, number, number, number]) {
+  if (!flying.pilot) return
+  flying.pilot.pointer({ x: p[0], y: p[1] }, { x: p[2], y: p[3] }, clock())
+  kick()
+}
+/** A drawing's strokes for its pen (Draw.tsx, on the display that has them). */
+function penFor(s: PenScript | null) {
+  if (!flying.pilot) return
+  flying.pilot.pen(s, clock())
+  kick()
+}
 
 /** Where `key` goes now; a new one starts where it came from (`from`), else there; `now`: there at once (the summoned
  *  one follows the pointer as it is). */
@@ -129,7 +178,8 @@ function onScene(s: Shown) {
   const was = view.s
   speakAt(s.speaking?.level ?? 0)
   for (const a of s.agents) { back(`agent:${a.name}`); aim(`agent:${a.name}`, a.sx, a.sy, AGENT, a.from) }
-  if (s.summon) { back("summon"); aim("summon", s.summon.sx, s.summon.sy, AGENT, undefined, s.summon.state === "listening") }
+  if (s.summon?.follow) { back("summon"); startFlying(s.summon) }
+  else if (s.summon) { back("summon"); aim("summon", s.summon.sx, s.summon.sy, AGENT, undefined, s.summon.state === "listening") }
   const names = new Set(s.agents.map((a) => a.name))
   // (one that became the other, summoned or its own cursor, goes at once: that one glides on from it)
   const swap = (name: string, key: string) => { const twin = s.summon?.name === name || names.has(name); if (twin) { back(key); movers.delete(key) } return !twin }
@@ -138,7 +188,9 @@ function onScene(s: Shown) {
   for (const a of gone) leave(`agent:${a.name}`, () => set({ gone: view.gone.filter((g) => g.name !== a.name) }))
   let summonGone = s.summon ? null : view.summonGone ?? was?.summon ?? null
   if (summonGone && !swap(summonGone.name, "summon")) summonGone = null
-  if (summonGone) leave("summon", () => set({ summonGone: null }))
+  if (summonGone) leave("summon", () => { set({ summonGone: null }); if (!view.s?.summon) flying.pilot = null })
+  // (its exchange over and gone: its pilot with it)
+  if (!s.summon && !summonGone) flying.pilot = null
   set({ s, gone, summonGone })
 }
 function onAt(at: At) {
@@ -150,7 +202,7 @@ function onAt(at: At) {
     if (m?.el) { if (p.length === 6) m.el.dataset.target = p.slice(2).join(); else delete m.el.dataset.target }
     aim(`agent:${a.name}`, p[0], p[1], AGENT)
   }
-  if (view.s?.summon && at.summon) aim("summon", at.summon[0], at.summon[1], AGENT, undefined, view.s.summon.state === "listening")
+  if (view.s?.summon && !view.s.summon.follow && at.summon) aim("summon", at.summon[0], at.summon[1], AGENT, undefined, view.s.summon.state === "listening")
 }
 
 // ---------- the pointer: what it's over takes it (a bubble, the pill, to click); off them, it goes through again
@@ -244,10 +296,12 @@ function Cursor({ a, gone, speaking }: { a: Agent; gone?: boolean; speaking?: bo
  *  till its own cursor takes over where it was asked. */
 function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?: boolean }) {
   const tint = `var(--${c.tint})`
-  useLayoutEffect(() => repaint("summon"), [c.words, c.state])
+  useLayoutEffect(() => { if (c.follow) { if (flying.pilot && flying.el) flyPose(clock()) } else repaint("summon") }, [c.words, c.state, c.follow])
+  // (riding with the pointer, its pilot places it each frame; else it glides as the others do)
+  const ref = c.follow ? (el: HTMLElement | null) => { flying.el = el; if (el && flying.pilot) flyPose(clock()) } : attach("summon", paintCursor)
   return (
-    <div ref={attach("summon", paintCursor)} data-gone={gone || c.leaving || undefined} data-companion-summoned={c.state} className={cn(FADES, "pointer-events-none")}>
-      <div className={cn("relative", c.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div>
+    <div ref={ref} data-gone={gone || c.leaving || undefined} data-companion-summoned={c.state} data-follow={c.follow || undefined} className={cn(FADES, "pointer-events-none")}>
+      <div className="relative origin-[3px_2px] [scale:var(--pilot-scale,1)]"><div className={cn(c.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div></div>
       <div data-flag style={{ background: tint }} className={FLAG}>
         {c.name}
         <Mark mark={speaking && c.state !== "listening" ? "speak" : c.state === "listening" ? "wave" : c.state === "thinking" ? "dots" : null} />
@@ -311,8 +365,11 @@ function Panel() {
   }), [])
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") api?.panel.close() }
+    // (given the keyboard, by a click anywhere in it or its Talk key tapped: straight into its field)
+    const focused = () => { const f = document.querySelector<HTMLInputElement>("[data-companion-popover] input"); if (f && document.activeElement !== f) f.focus() }
     addEventListener("keydown", esc)
-    return () => removeEventListener("keydown", esc)
+    addEventListener("focus", focused)
+    return () => { removeEventListener("keydown", esc); removeEventListener("focus", focused) }
   }, [])
   useLayoutEffect(() => {
     const el = box.current
@@ -329,7 +386,7 @@ function Panel() {
   const tint = `var(--${d.tint})`
   return (
     <div ref={box} className="w-fit p-4">
-      <Chat name={d.name} tint={tint} how={d.how} items={d.items} draft={text} setDraft={listening ? () => {} : setDraft} focus
+      <Chat name={d.name} tint={tint} how={d.how} items={d.items} draft={text} setDraft={listening ? () => {} : setDraft} focus placeholder={d.hint}
         send={() => { if (text.trim()) { api?.panel.send(text); setDraft("") } }} busy={d.busy} close={() => api?.panel.close()} more={(e) => api?.panel.more(e.clientX, e.clientY)}
         words={(n) => <div className="note-prose compact companion-md" dangerouslySetInnerHTML={{ __html: html(n.text ?? "") }} />}
         time={(t) => TIME.format(t)}
@@ -347,13 +404,13 @@ function Panel() {
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 function Screen() {
   const { s, gone, summonGone } = useSyncExternalStore(subscribe, () => view)
-  useEffect(() => { const a = api?.on(onScene), b = api?.onAt(onAt); return () => { a?.(); b?.() } }, [])
+  useEffect(() => { const a = api?.on(onScene), b = api?.onAt(onAt), c = api?.onPointer?.(pointerMoved); return () => { a?.(); b?.(); c?.() } }, [])
   if (!s) return null
   return (
     <>
       {s.ink && <Ink ink={s.ink} />}
       {/* (the agents' drawings, under their cursors) */}
-      <ScreenDrawings grab={grab} />
+      <ScreenDrawings grab={grab} pen={s.summon?.follow ? penFor : undefined} />
       {s.agents.map((a) => <Cursor key={a.name} a={a} speaking={s.speaking?.name === a.name} />)}
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
       {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} speaking={!!s.summon && s.speaking?.name === s.summon.name} />}

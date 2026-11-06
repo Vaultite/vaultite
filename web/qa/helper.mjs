@@ -1,6 +1,6 @@
 // The menu-bar helper (electron/helper.ts) in the desktop app, unseen: fn⌃ with no field hears nothing; ⌃⌥ held summons
 // the companion at the pointer, listening (speech from a file), and let go asks it about the window there, its answer's
-// box open by it (said aloud) and its cursor there over the screen; closing the window keeps the server and reopening takes it back.
+// box open by it (said aloud) and its cursor riding beside the pointer over the screen; closing the window keeps the server and reopening takes it back.
 // The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/helper.mjs <vault copy>
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
@@ -61,10 +61,9 @@ await said("It says milk keeps a week. Then it goes **sour**")
 const spoken = () => helper((h) => h.spoken().filter((m) => m.cmd === "say").map((m) => m.text).join(" "))
 check("its answer to an ask by voice is said aloud, in plain words, its last words after a pause", await until(async () => (await spoken()).endsWith("It says milk keeps a week. Then it goes sour"), 8000, 200), await helper((h) => h.spoken()))
 
-// ---------- its cursor over the screen, at the window it was asked about
-const at = await until(() => helper((h) => h.scene()?.agents?.[0]), 10000, 200)
-// (where the pointer was as they spoke if it was in that window, else by its title bar: the user's own pointer, so only inside it)
-check("the companion's cursor goes to that window", !!at && at.sx >= frame.x && at.sx <= frame.x + frame.width && at.sy >= frame.y && at.sy <= frame.y + frame.height, at)
+// ---------- its cursor over the screen: through the exchange, the summoned one, riding beside the pointer
+const at = await until(() => helper((h) => (h.scene()?.summon?.follow ? h.scene().summon : null)), 10000, 200)
+check("the companion's cursor rides beside the pointer through the exchange (its own place no cursor of its own)", !!at && !(await helper((h) => h.scene()?.agents?.length)), at)
 check("the overlay draws its cursor and name", !!overlay && await until(() => overlay.evaluate((n) => document.body.textContent.includes(n), at?.name ?? "?"), 5000))
 check("the overlay paints nothing else: it's see-through", !!overlay && await overlay.evaluate(() => getComputedStyle(document.documentElement).backgroundColor === "rgba(0, 0, 0, 0)" && getComputedStyle(document.body).backgroundColor === "rgba(0, 0, 0, 0)"))
 

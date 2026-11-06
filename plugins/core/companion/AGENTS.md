@@ -88,8 +88,10 @@ above that), act, run it again, and never end your turn.
   window there (`app`, `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), the display's
   picture (read the PNG: a pixel a point from `shotAt`) and what Accessibility found near it, by id. Point there by id,
   which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words
-  stream into their box by the pointer, open for the next ask (a typed one, or the key held again); Esc or moving on
-  ends it, and your cursor leaves once you're done there. An ask by voice is answered aloud as you write (the settings `voice`: `auto`, `always`, `off`; `voice_name`, Soniox's voice, Adrian; `voice_speed`), so a say there reads as spoken: the answer first, no lists or code. A tap opens that box to type in; a double tap listens
+  stream into their box by the pointer, open for the next ask (its field takes a click or a tap of the key; the key held
+  again listens); Esc or moving on ends it, and your cursor leaves once you're done there. Through the exchange your
+  cursor rides beside their pointer, the box with it; pointing (`--ax`, `--find`, `--sx`) flies it there, and a
+  drawing's marks it draws in as their pen, beat by beat; once they move on it comes back. An ask by voice is answered aloud as you write (the settings `voice`: `auto`, `always`, `off`; `voice_name`, Soniox's voice, Adrian; `voice_speed`), so a say there reads as spoken: the answer first, no lists or code. A tap opens that box to type in; a double tap listens
   hands-free. `vau docs screen`. These asks run in a session of their own (the setting `summoned_model`, Haiku), kept
   warm and short, apart from the one that watches notes; same name, colour and cursor. In an app or on a site, an ask
   carries the user's guide to it (`vau docs guides`); with none it says so, and you may offer once to write one.

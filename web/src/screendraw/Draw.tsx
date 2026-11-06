@@ -1,13 +1,14 @@
 // A drawing on one display, as a hand would make it in the companion's colour: strokes drawn as by a pen, in beats with
 // its words; labels in pills, cards on calm space, a Keep and a Clear while it's up.
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ArrowRight, Check, Copy, ExternalLink, X } from "lucide-react"
 import { beatTimes, type Mark, type PaperItem, type Rect } from "../../../plugins/core/companion/screenmarks"
-import { centre, inflate, markSpot, place, ringBox, type Placed, type Pt, type Size } from "./layout"
-import { bowLine, checkLines, crossLines, curveLine, hash, headLines, inkPath, type Line, linePath, ringLine, seeded, sketch } from "./ink"
+import { PEN_LEAD, type PenScript } from "../core/pilot"
+import { inflate, place, type Placed, type Pt, type Size } from "./layout"
+import { hash, headLines, inkPath, type Line, linePath, sketch } from "./ink"
+import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER } from "./pen"
 import type { Act, Shown } from "./index"
 
-const STAGGER = 170
 const PILL_H = 22
 
 let ctx: CanvasRenderingContext2D | null = null
@@ -21,12 +22,14 @@ export function measure(text: string, px: number, bold = false) {
 const labelOf = (m: Mark) => ("label" in m && m.label && m.type !== "button" && m.type !== "copy" && m.type !== "open" ? m.label : m.type === "scroll" ? "Scroll" : null)
 const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return l ? { w: Math.ceil(measure(l, 12.5, true)) + 18, h: PILL_H } : null }
 
-/** When each drawing was first seen: its beats count from then, whatever comes again (kept, a new place). */
-const born = new Map<string, number>()
+/** When each drawing was first seen (`t0`: its first beat, after the pen's lead), and when each mark first showed: every
+ *  part's delay counts from the drawing's clock, whatever comes again (kept, a new place, more marks). */
+const born = new Map<string, { t0: number; shown: Map<number, number>; at: number; committed?: boolean }>()
 
-export default function Draw({ d, act, grab, leaving }: { d: Shown; act: (a: Act) => void; grab: (on: boolean) => void; leaving?: boolean }) {
-  if (!born.has(d.id)) { born.set(d.id, Date.now()); if (born.size > 20) born.delete(born.keys().next().value!) }
-  const t0 = born.get(d.id)!
+/** `pen`: the companion's cursor is here to draw it (its first beat waits for it to fly there), told its strokes. */
+export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a: Act) => void; grab: (on: boolean) => void; leaving?: boolean; pen?: (s: PenScript | null) => void }) {
+  if (!born.has(d.id)) { born.set(d.id, { t0: Date.now() + (pen && d.here.home && !still() ? PEN_LEAD : 0), shown: new Map(), at: Date.now() }); if (born.size > 20) born.delete(born.keys().next().value!) }
+  const { t0, shown: showedAt } = born.get(d.id)!
   const last = Math.max(0, ...d.marks.map((m) => m.beat ?? 0)), times = useMemo(() => beatTimes(d.caption ?? "", last), [d.caption, last])
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
@@ -35,16 +38,48 @@ export default function Draw({ d, act, grab, leaving }: { d: Shown; act: (a: Act
     const id = setTimeout(() => setNow(Date.now()), t0 + next - Date.now() + 5)
     return () => clearTimeout(id)
   }, [now, times, t0])
-  const beat = times.filter((t) => t0 + t <= now).length - 1
+  // (the first beat's marks are there from the start, waiting out the pen's lead)
+  const beat = Math.max(0, times.filter((t) => t0 + t <= now).length - 1)
   const placed = useMemo(() => place(d, d.here, labelSize, measure), [d])
-  // (in each beat, one after another)
-  const order = new Map<number, number>(), counts = new Map<number, number>()
-  for (const p of placed) { const b = p.mark.beat ?? 0, k = counts.get(b) ?? 0; counts.set(b, k + 1); order.set(p.i, k * STAGGER) }
-  const shown = placed.filter((p) => (p.mark.beat ?? 0) <= beat)
   const W = d.here.width, H = d.here.height, seed = hash(d.id)
+  // (in each beat, one after another, on the drawing's clock: when each starts, and its delay from when it showed)
+  const startAt = useMemo(() => {
+    const out = new Map<number, number>(), counts = new Map<number, number>()
+    for (const p of placed) { const b = p.mark.beat ?? 0, k = counts.get(b) ?? 0; counts.set(b, k + 1); out.set(p.i, t0 + (times[b] ?? 0) + k * STAGGER) }
+    return out
+  }, [placed, times, t0])
+  const shown = placed.filter((p) => (p.mark.beat ?? 0) <= beat)
+  for (const p of shown) if (!showedAt.has(p.i)) showedAt.set(p.i, Date.now())
+  const order = new Map(shown.map((p) => [p.i, startAt.get(p.i)! - showedAt.get(p.i)!]))
+  // (the cursor's pen: the strokes of the marks here, as the ink draws them)
+  const script = useMemo(() => (pen && d.here.home ? { id: d.id, strokes: penStrokes(placed, (i) => seed + i * 97, (i) => startAt.get(i)!) } : null), [pen, d.id, d.here.home, placed, seed, startAt])
+  // (its ink starts when the browser starts its animations, which may be later than it was drawn (React holds a suspended
+  // part back a moment, then a frame): the drawing's clock, and so the pen's, set by the first one's start)
+  const root = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const b = born.get(d.id)
+    if (!b || b.committed) return
+    b.committed = true
+    let tries = 0, id = 0
+    const align = () => {
+      const el = root.current?.querySelector<SVGElement>("[data-mark-i] .sd-pen"), a = el?.getAnimations()[0], i = Number(el?.closest<SVGElement>("[data-mark-i]")?.dataset.markI)
+      if ((!a || a.startTime === null) && ++tries < 6) { id = requestAnimationFrame(align); return }
+      const was = b.shown.get(i)
+      if (!a || a.startTime === null || was === undefined) return
+      const shift = Number(a.startTime) + (Date.now() - performance.now()) - was
+      if (Math.abs(shift) < 2) return
+      b.t0 += shift
+      for (const [k, t] of b.shown) b.shown.set(k, t + shift)
+      setNow(Date.now())
+    }
+    id = requestAnimationFrame(align)
+    return () => cancelAnimationFrame(id)
+  }, [d.id])
+  useEffect(() => { if (pen) pen(leaving ? null : script) }, [pen, script, leaving])
+  useEffect(() => () => pen?.(null), [pen])
   const keepable = d.marks.some((m) => m.type === "paper" || m.type === "sticky" || m.type === "list" || m.type === "write")
   return (
-    <div data-screendraw={d.id} data-beat={beat} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
+    <div ref={root} data-screendraw={d.id} data-beat={beat} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
       {shown.filter((p) => p.mark.type === "spotlight" && p.box).map((p) => <Spotlight key={p.i} r={p.box!} W={W} H={H} delay={order.get(p.i)!} />)}
       <svg className="sd-glow absolute inset-0 overflow-visible" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         {shown.map((p) => <Strokes key={p.i} p={p} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} W={W} H={H} />)}
@@ -56,15 +91,14 @@ export default function Draw({ d, act, grab, leaving }: { d: Shown; act: (a: Act
 }
 
 const ms = (n: number) => `${Math.round(n)}ms`
-const lenOf = (l: Line) => l.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - l[i - 1][0], p[1] - l[i - 1][1]) : 0), 0)
-const durOf = (l: Line) => Math.min(650, Math.max(180, lenOf(l) * 1.3))
+/** Reduced motion: everything drawn at once, no pen to wait for. */
+const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
 /** Ink along each line, revealed as a pen draws it (a mask along the line), one line after the other. */
 function Ink({ id, lines, size = 4.5, delay, W, H }: { id: string; lines: Line[]; size?: number; delay: number; W: number; H: number }) {
-  let at = delay
+  const starts = lineStarts(lines)
   return lines.map((l, j) => {
-    const dur = durOf(l), start = at, mid = `${id}-${j}`
-    at += dur * 0.85
+    const dur = durOf(l), start = delay + starts[j], mid = `${id}-${j}`
     return (
       <g key={j}>
         <mask id={mid} maskUnits="userSpaceOnUse" x={-50} y={-50} width={W + 100} height={H + 100}>
@@ -84,36 +118,18 @@ function Sketch({ paths, delay, dur = 520, hatch = false }: { paths: { d: string
 
 /** A mark's strokes on the screen (cards draw their own). */
 function Strokes({ p, id, seed, delay, W, H }: { p: Placed; id: string; seed: number; delay: number; W: number; H: number }) {
-  const m = p.mark, r = p.box, rnd = seeded(seed), ink = (lines: Line[], size?: number) => <Ink id={id} lines={lines} size={size} delay={delay} W={W} H={H} />
+  const m = p.mark, r = p.box
   if (!r) return null
-  switch (m.type) {
-    case "ring": return ink([ringLine(ringBox(m, r), rnd)])
-    case "frame": return (
-      <g>
-        <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={8} className="sd-tintfill sd-fade" style={{ "--delay": ms(delay + 250) } as React.CSSProperties} />
-        <Sketch paths={sketch("rect", inflate(r, 6), seed, { roughness: 0.9 })} delay={delay} dur={700} />
-      </g>
-    )
-    case "underline": return ink([bowLine({ x: r.x - 4, y: r.y + r.h + 5 }, { x: r.x + r.w + 4, y: r.y + r.h + 3 + rnd() * 2 }, 2 + rnd() * 2)], 4)
-    case "strike": return ink([bowLine({ x: r.x - 5, y: r.y + r.h * 0.55 }, { x: r.x + r.w + 5, y: r.y + r.h * 0.45 }, 1.5)], 3.6)
-    case "check": return ink(checkLines(markSpot(r)), 4.6)
-    case "cross": return ink(crossLines(markSpot(r)), 4.6)
-    case "point": {
-      if (!p.arrow) return null
-      const { tip, tail } = p.arrow, shaft = bowLine(tail, tip, 7)
-      return ink([shaft, ...headLines(tip, pt(shaft[shaft.length - 4]))], 4.2)
-    }
-    case "connect": {
-      if (!p.curve) return null
-      const a = p.curve, c = curveLine(a.from, a.control, a.to)
-      return ink([c, ...headLines(a.to, pt(c[c.length - 4]))], 4.2)
-    }
-    case "scroll": {
-      const c = centre(r), v = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[m.dir], from = { x: c.x - v[0] * 28, y: c.y - v[1] * 28 }, to = { x: c.x + v[0] * 28, y: c.y + v[1] * 28 }
-      return <g className={`sd-bob-${m.dir}`}><Ink id={id} lines={[bowLine(from, to, 3), ...headLines(to, from, 12)]} size={4.4} delay={delay} W={W} H={H} /></g>
-    }
-    default: return null
-  }
+  if (m.type === "frame") return (
+    <g data-mark-i={p.i}>
+      <rect x={r.x - 6} y={r.y - 6} width={r.w + 12} height={r.h + 12} rx={8} className="sd-tintfill sd-fade" style={{ "--delay": ms(delay + 250) } as React.CSSProperties} />
+      <Sketch paths={sketch("rect", inflate(r, 6), seed, { roughness: 0.9 })} delay={delay} dur={FRAME_MS} />
+    </g>
+  )
+  const ink = markInk(p, seed)
+  if (!ink) return null
+  const lines = <Ink id={id} lines={ink.lines} size={ink.size} delay={delay} W={W} H={H} />
+  return <g data-mark-i={p.i} className={m.type === "scroll" ? `sd-bob-${m.dir}` : undefined}>{lines}</g>
 }
 const pt = (p: [number, number]): Pt => ({ x: p[0], y: p[1] })
 

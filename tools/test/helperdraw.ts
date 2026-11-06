@@ -11,7 +11,7 @@ import { WebSocketServer, type WebSocket } from "ws"
 const ROOT = path.resolve(import.meta.dirname, "../..")
 const at = (f: string) => pathToFileURL(path.join(ROOT, "electron", f)).href
 type Pt = { x: number; y: number }
-type Item = { name: string; sx: number; sy: number; from?: Pt; leaving?: boolean; state?: string; words?: string }
+type Item = { name: string; sx: number; sy: number; from?: Pt; leaving?: boolean; state?: string; words?: string; follow?: boolean; aim?: { id: string; x: number; y: number } }
 type Scene = { agents: Item[]; summon: Item | null; ink: { strokes: Pt[][] } | null }
 const scenes: Scene[] = []
 let pointer = { x: 500, y: 500 }
@@ -25,12 +25,12 @@ type Acts = { open: (name: string, at: Pt) => void }
 type PanelActs = { send: (name: string, text: string) => void; closed: (name: string) => void }
 let acts: Acts | null = null, panelActs: PanelActs | null = null
 const panels: { name: string; at: Pt; items: { id: string; kind: string }[]; how: string; focus: boolean }[] = []
-let panelShown = false, closed = 0
+let panelShown = false, closed = 0, following = false
 mock.module(at("overlay.ts"), { exports: { showOverlay: (_b: string, s?: Scene) => { if (s) scenes.push(JSON.parse(JSON.stringify(s))) }, overlayActs: (a: Acts) => { acts = a },
   onPanel: (a: PanelActs) => { panelActs = a }, openPanel: (_b: string, at: Pt, d: { name: string; items: []; how: string }, focus = true) => { panelShown = true; panels.push({ ...d, at, focus }) }, panelData() {},
   panelOpen: () => (panelShown ? panels.at(-1)?.name ?? null : null), panelFocused: () => false, panelMenuClosed() {}, closePanel() { if (panelShown) { panelShown = false; closed++; panelActs?.closed("Claude") } },
   ownWindows: () => [], panelBounds: () => (panelShown ? { x: 600, y: 300, width: 300, height: 160 } : null),
-  showDrawing() {}, drawingActs() {}, endDrawing() {} } })
+  showDrawing() {}, drawingActs() {}, endDrawing() {}, followPointer: (on: boolean) => { following = on }, panelAvoid() {} } })
 mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async () => ({}), startScreen: async () => {}, stopScreen() {}, windowShot: async () => null, displayShot: async () => null,
   fnUsage: async () => null } })
 // (the recognizer: what it heard, given when it's stopped)
@@ -137,12 +137,13 @@ pointer = { x: 500, y: 480 }
 chord(true)
 await wait(40)
 check("summoned: a shortcut's press shows nothing at first (⌃⌥→ is a window manager's)", !H.scene()!.summon, H.scene()!.summon)
-check("summoned: held, its cursor comes to the pointer, listening", await until(() => H.scene()!.summon?.state === "listening" && H.scene()!.summon?.sx === 500), H.scene()!.summon)
+check("summoned: held, its cursor comes beside the pointer, listening, riding with it (the overlay fed the pointer)",
+  await until(() => H.scene()!.summon?.state === "listening" && H.scene()!.summon?.sx === 524 && !!H.scene()!.summon?.follow) && following, [H.scene()!.summon, following])
 H.heard({ event: "ink", phase: "down", x: 470, y: 470 })
 for (let i = 1; i <= 10; i++) H.heard({ event: "ink", phase: "move", x: 470 + i * 6, y: 470 + (i % 2) })
 H.heard({ event: "ink", phase: "up", x: 530, y: 471 })
 pointer = { x: 530, y: 471 }
-check("summoned: a drag while held is ink, drawn as it goes, the cursor with it as a pen", await until(() => (H.scene()!.ink?.strokes[0]?.length ?? 0) >= 10 && H.scene()!.summon?.sx === 530), H.scene())
+check("summoned: a drag while held is ink, drawn as it goes, the cursor beside it", await until(() => (H.scene()!.ink?.strokes[0]?.length ?? 0) >= 10 && H.scene()!.summon?.sx === 554), H.scene())
 await wait(300)
 chord(false)
 check("summoned: let go, it thinks there", await until(() => H.scene()!.summon?.state === "thinking"), H.scene()!.summon)
@@ -150,18 +151,24 @@ const ask = await until(() => asks().length > 0) ? asks()[0] : null
 check("summoned: what was said goes, about the point let go at: the window there, what's under and near it, what was drawn",
   ask?.kind === "ask" && ask.text === "what's this?" && ask.window === 9 && ask.sx === 530 && ask.sy === 471 && (ask.near as { id: string }[])?.[0]?.id === "a1" &&
   (ask.ink as { shape: string }[])?.[0]?.shape === "underline" && /Send/.test(String(ask.under)), ask)
-check("summoned: its answer's box opens by it, not taking the keyboard", panels.at(-1)?.focus === false && panels.at(-1)?.at.x === 530, panels.at(-1))
+const box = panels.at(-1) as { focus: boolean; at: Pt; hint?: string } | undefined
+check("summoned: its answer's box opens by it, its field saying how to reply, not taking the keyboard", box?.focus === false && box.at.x === 554 && /tap ⌃⌥ to type, hold to talk/.test(box.hint ?? ""), box)
 scenes.length = 0
 setAgent({ path: undefined, line: undefined, app: "com.example.mail", window: 9, state: "thinking" })
-await until(() => claude().length > 0)
-check("summoned: its own cursor takes over where it was asked, one cursor", claude()[0]?.sx === 530 && claude()[0]?.sy === 471 && !scenes.at(-1)!.summon, scenes.at(-1))
+await wait(80)
+check("summoned: one cursor through the exchange, the summoned one, thinking; its place where it was asked is no pointing",
+  !claude().length && scenes.at(-1)!.summon?.state === "thinking" && !scenes.at(-1)!.summon?.aim, scenes.at(-1))
+setAgent({ sx: 496, sy: 482, frame: { x: 480, y: 470, width: 60, height: 24 } })
+check("summoned: pointing at an element, it's told to fly there", await until(() => H.scene()!.summon?.aim?.x === 496 && H.scene()!.summon?.aim?.y === 482) && !claude().length, H.scene()!.summon)
+setAgent({ state: "watching", t: Date.now() })
+check("summoned: its turn done, it rides on, waiting", await until(() => H.scene()!.summon?.state === "watching"), H.scene()!.summon)
 sock!.send(JSON.stringify({ t: "said", said: [{ id: "ask-1", kind: "ask", by: "user", agent: "Claude", text: "what's this?", t: Date.now(), seen: true }, { id: "s1", kind: "say", agent: "Claude", text: "The Send button.", t: Date.now() }] }))
 await wait(50)
 check("summoned: its words go in the box, seen there", H.asked().some((m) => m.t === "saw" && JSON.stringify(m.ids) === '["s1"]'), H.asked().slice(-3))
 H.heard({ event: "click", x: 700, y: 350 })
 check("summoned: a click in its box keeps it", closed === 0)
 H.heard({ event: "click", x: 50, y: 50 })
-check("summoned: a click elsewhere ends the exchange: the box closes", closed === 1 && !H.scene()!.ink, closed)
+check("summoned: a click elsewhere ends the exchange: the box closes, the cursor goes, the pointer no longer fed", closed === 1 && !H.scene()!.ink && !H.scene()!.summon && !following, closed)
 setAgent({ state: "watching", t: Date.now() - 7000 })
 check("summoned: done there, idle and its words gone, its cursor leaves the screen", await until(() => H.asked().some((m) => m.t === "home" && m.agent === "Claude")), H.asked().slice(-3))
 
