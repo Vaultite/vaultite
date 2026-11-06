@@ -105,7 +105,8 @@ function Talk({ page }: { page?: boolean }) {
         <HeadingButton icon={Maximize2} label="Open the Companion page" className="max-sm:size-8" data-companion-open-page
           onClick={() => void op("companion.page").catch((e) => notifyError(e, "Couldn't open its page"))} />
       </div>
-      <div ref={box} className={cn("flex flex-col gap-3 px-1", !page && "max-h-[min(62vh,560px)] overflow-y-auto max-sm:max-h-[46vh] overscroll-contain")}>
+      {/* (at its ends the wheel goes on to the panel's box: a panel shorter than the talk scrolls its ask line in) */}
+      <div ref={box} className={cn("flex flex-col gap-3 px-1", !page && "max-h-[min(62vh,560px)] overflow-y-auto max-sm:max-h-[46vh] max-sm:overscroll-contain")}>
         {!shown ? <Loading className="px-0.5 text-[13px] leading-[18px]" error={error ? "Couldn't read the companion's talk." : undefined} />
           : !items.length && !pending.length ? <p className="px-0.5 text-[13px] text-tertiary">Nothing yet today.</p>
           : items.map((x) => (x.e ? <Turn key={`e${x.e.seq}-${x.e.t}`} e={x.e} name={name} tint={tint} compact /> : <JobRow key={`j${x.j.id}`} j={x.j} />))}

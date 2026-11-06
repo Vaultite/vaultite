@@ -82,6 +82,27 @@ await panel.locator("[data-companion-open-page]").click()
 check("its page a click away", await until(async () => !!(await page.$("[data-companion-conversation] [data-companion-turn]")), 8000))
 await ctx.close()
 
+// A window too short for the talk: the panel keeps the room left (a panel that isn't rows was snapped to its heading,
+// drawing nothing), and the wheel over the talk, at its end, goes on to bring the ask line in.
+const sctx = await browser.newContext({ viewport: { width: 1280, height: 420 } })
+await sctx.addInitScript(() => { try { localStorage.setItem("vaultite.prefs", JSON.stringify({ ...JSON.parse(localStorage.getItem("vaultite.prefs") || "{}"), rightSidebar: true })) } catch { /* private */ } })
+const short = watch(await sctx.newPage(), { label: "short window" })
+await short.goto(`${B}/#file/${enc(PLAIN)}`)
+const sp = short.locator('aside[data-side="right"] [data-panel="companion:conversations"]')
+await sp.locator("[data-companion-turn]").first().waitFor({ timeout: 10000 })
+await wait(500)
+const sizes = () => sp.evaluate((p) => { const box = p.querySelector("[data-panel-scroll]"), ask = p.querySelector("[data-ask-line]")
+  return { box: box.getBoundingClientRect().height, content: box.scrollHeight, askShown: ask.getBoundingClientRect().bottom <= box.getBoundingClientRect().bottom + 1 } })
+const sz = await sizes()
+check("short window: the panel keeps its room, not just its heading", sz.content > sz.box && sz.box > 150, sz)
+// (over the talk's top in view, clear of a toast in the corner)
+const tb = await sp.locator("[data-companion-talk] > .overflow-y-auto").boundingBox()
+await short.mouse.move(tb.x + tb.width / 2, tb.y + 30)
+for (let i = 0; i < 6; i++) { await short.mouse.wheel(0, 120); await wait(120) }
+check("short window: the wheel brings the ask line in", (await sizes()).askShown, await sizes())
+await short.screenshot({ path: `${OUT}short.png` })
+await sctx.close()
+
 // The panel's tab: the talk, its line at the pane's foot.
 const tctx = await browser.newContext({ viewport: { width: 1280, height: 820 } })
 const tab = watch(await tctx.newPage(), { label: "tab" })
