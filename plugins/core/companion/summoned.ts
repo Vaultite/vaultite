@@ -20,10 +20,12 @@ Start every answer with a tag at what it's about (an element near their pointer,
 You are Vaultite's own companion: asked about Vaultite or yourself, or told what they'd like from it, look first (a quick vau search of the vault's notes on it, with Bash) and answer from what you find; a wish or a fix for the app you offer to hand off as a job, never just that you can't tell. Read nothing else unless the ask needs it: what you were given is usually enough.
 Work that takes more than a minute (research, a document, code, a long errand, writing in their notes) you hand off: handoff starts a background agent with the task and this ask's context and returns at once, its say the few words you tell them (write none before it).
 An ask may come with the user's guide to that app or site (their note): follow it. With none, after answering an ask about how something works there, you may offer once to write one; if they say yes, hand that off (its format: vau docs guides).
-Before any other tool, a few words first: they hear them while it runs. Their next ask is your next message (a follow-up goes on from the last).`
+Before any other tool, a few words first: they hear them while it runs. Run only commands you know (vau --help, vau docs say what each does): one you'd have to guess at, say you can't, or hand it off. Their next ask is your next message (a follow-up goes on from the last).`
 /** Asks a session takes before a fresh one (its history is every ask's screen and picture: kept short, it stays fast),
  *  and the pause after which the next ask starts afresh (another exchange). */
 const FRESH_ASKS = 8, FRESH_AFTER_MS = 10 * 60_000
+/** How many of a talk's last words (theirs and its) a fresh session is told. */
+const TALK_KEPT = 12
 /** Its prompt's version: a session told another is left for a fresh one. */
 const VERSION = crypto.createHash("sha256").update(SUMMONED_PROMPT).digest("hex").slice(0, 12)
 
@@ -45,6 +47,20 @@ export function summonedLane(o: {
   const keep = (k: Kept | null) => { kept = k; try { if (k) fs.writeFileSync(o.file(), JSON.stringify(k)); else fs.rmSync(o.file(), { force: true }) } catch { /* as it was */ } }
   const pending: Moment[] = []
   let given: Moment[] = []
+  /** This talk's last words, theirs and its (text only), told to a fresh session so it goes on from them: a session
+   *  is fresh every few asks, and an ask like "did you forget?" must not find it new. */
+  const talk: { who: "they" | "you"; text: string; t: number }[] = []
+  const told = (who: "they" | "you", text: string) => {
+    const x = text.trim().replace(/\s+/g, " ")
+    if (!x) return
+    talk.push({ who, text: x.length > 400 ? `${x.slice(0, 399)}…` : x, t: Date.now() })
+    talk.splice(0, Math.max(0, talk.length - TALK_KEPT))
+  }
+  /** What's said of this talk before `ms` (within its pause), for a fresh session's first ask. */
+  const recap = (ms: Moment[]) => {
+    const from = Math.min(...ms.map((m) => m.t)), before = talk.filter((x) => x.t < from - 50 && from - x.t < FRESH_AFTER_MS)
+    return before.length ? `(A fresh session of the same talk; said before, oldest first:\n${before.map((x) => `  ${x.who}: ${x.text}`).join("\n")})\n` : ""
+  }
   let turning = false, starting: Promise<unknown> | null = null, handed = false, acted = false, asking = false, unhear: (() => void) | null = null
   const newsOf = new Map<string, number>()
 
@@ -69,7 +85,7 @@ export function summonedLane(o: {
     if (said) inSummoned.run(true, () => a.say.stream?.(use, JSON.stringify({ text: said })))
     if (!end) return
     blocks.delete(use)
-    if (said) then(async () => { await a.say.run({ text: said }, use); if (tags.some((t) => t.kind !== "point")) o.caption(o.name(), said) })
+    if (said) { told("you", said); then(async () => { await a.say.run({ text: said }, use); if (tags.some((t) => t.kind !== "point")) o.caption(o.name(), said) }) }
   }
   /** A tag: its cursor flies there (point), or a mark is drawn there, with the sentence it sits in (`said` so far). */
   function tagged(t: Tag, said: string) {
@@ -100,7 +116,7 @@ export function summonedLane(o: {
     // (its words not heard as they came, a keeper of older code: said whole now, its tags acted on)
     const turn = handed && !acted && s.state === "idle" ? parseTags(s.turn?.text?.trim() ?? "") : null
     if (turn?.tags.length) for (const t of turn.tags) then(() => tagged(t, turn.said))
-    if (turn?.said) { acted = true; inSummoned.run(true, () => o.did(name, "say")); o.say(name, turn.said) }
+    if (turn?.said) { acted = true; told("you", turn.said); inSummoned.run(true, () => o.did(name, "say")); o.say(name, turn.said) }
     if (handed) o.setAgent(name, acted ? { state: "watching" } : { state: "watching", seen: true })
     if (was && handed) inSummoned.run(true, () => o.did(name, "done"))
     handed = false; asking = false
@@ -114,11 +130,11 @@ export function summonedLane(o: {
     const c = o.chat()!, model = o.model()
     if (kept) { const old = kept.id; keep(null); void c.stop(old).catch(() => {}) }
     hear()
-    const first = ms.length ? await o.text(ms) : null
+    const first = ms.length ? await o.text(ms) : null, before = ms.length ? recap(ms) : ""
     if (ms.length) give(ms)
     turning = !!first
     try {
-      const s = await c.start({ ...options(model), ...(first ? { prompt: first.text, ...(first.images.length ? { images: first.images } : {}) } : {}) })
+      const s = await c.start({ ...options(model), ...(first ? { prompt: before + first.text, ...(first.images.length ? { images: first.images } : {}) } : {}) })
       keep({ id: s.id, model, t: Date.now(), handed: ms.length, v: VERSION, ...(ms.length ? { last: Date.now() } : {}) })
       const now = c.list().find((x) => x.id === s.id)
       if (now) heard(now)
@@ -128,6 +144,7 @@ export function summonedLane(o: {
   /** Asks handed to it: its cursor thinking there till it acts. */
   function give(ms: Moment[]) {
     handed = true; acted = false; asking = true; given = ms
+    for (const m of ms) if (m.text) told("they", m.text)
     inSummoned.run(true, () => o.did(o.name(), "handed", ms.map((m) => m.seq)))
   }
   function lost(ms: Moment[], e: Error) {
@@ -149,11 +166,13 @@ export function summonedLane(o: {
       return
     }
     turning = true
+    // (its first ask, a fresh session started as they spoke: told what was said before)
+    const before = kept.handed === 0 ? recap(ms) : ""
     give(ms)
     keep({ ...kept, handed: kept.handed + ms.length, last: Date.now() })
     try {
       const { text, images } = await o.text(ms)
-      await c.send(kept.id, text, { ...options(model), ...(images.length ? { images } : {}) })
+      await c.send(kept.id, before + text, { ...options(model), ...(images.length ? { images } : {}) })
       inSummoned.run(true, () => o.did(o.name(), "sent"))
       // (resumed: its process had ended, idle a while)
       if (!s) { const now = c.list().find((x) => x.id === kept?.id); if (now) heard(now) }

@@ -18,15 +18,19 @@ export function realtimeKeys(plugin: Plugin) {
     return k ? { url: RT_WS(), key: k } : {}
   }, { lock: false, sync: false })
 
-  /** `vau voice key --provider openai`: set (checked by listing its models), removed, or whether one is set. */
+  /** `vau voice key --provider openai`: set (checked by asking for a Realtime session's client secret: free, and a key
+   *  restricted to Realtime may list no models), removed, or whether one is set. */
   return async (p: { key?: unknown; remove?: unknown }) => {
     const all = stored()
     if (p.remove) { const { openai: _, ...rest } = all; plugin.saveSecrets(Object.keys(rest).length ? rest : null); return { provider: "openai", set: false, removed: true } }
     const k = typeof p.key === "string" ? p.key.trim() : ""
     if (!k) return { provider: "openai", set: !!key() }
     if (!/^[\x21-\x7e]{20,300}$/.test(k)) throw new OpError("that isn't an OpenAI key (one line, no spaces)")
-    const r = await fetch(`${API()}/v1/models`, { headers: { Authorization: `Bearer ${k}` }, signal: AbortSignal.timeout(10_000) }).catch(() => null)
-    if (r && (r.status === 401 || r.status === 403)) throw new OpError("OpenAI refused this key: check it (and that it may use the Realtime API) in its dashboard", 400)
+    const model = String(plugin.settings().realtime_model ?? "").trim() || "gpt-realtime-2.1-mini"
+    const r = await fetch(`${API()}/v1/realtime/client_secrets`, { method: "POST", signal: AbortSignal.timeout(10_000), headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ session: { type: "realtime", model } }) }).catch(() => null)
+    if (r?.status === 401) throw new OpError("OpenAI refused this key: check it in its dashboard (API keys)", 400)
+    if (r?.status === 403) throw new OpError("OpenAI says this key may not use the Realtime API: allow it (its permissions, Realtime or Model capabilities) in its dashboard", 400)
     plugin.saveSecrets({ ...all, openai: k })
     return { provider: "openai", set: true, checked: !!r?.ok }
   }

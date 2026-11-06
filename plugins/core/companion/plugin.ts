@@ -20,7 +20,7 @@ import { screenDrawings } from "./drawings.ts"
 import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { anchorsOf, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
-import { voiceOps } from "./voice.ts"
+import { voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type Job, jobOf, jobsLine, jobsText, jobTask } from "./jobs.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -2952,9 +2952,10 @@ plugin.op({
       sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel() } : null,
       agents: [...agents.values()].map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
       notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list(),
-      realtime: pausedNow() ? { state: "paused", ...pausedNow()! } : realtimePaused.size ? { state: "on" } : null }
+      realtime: pausedNow() ? { state: "paused", ...pausedNow()! } : realtimePaused.size ? { state: "on" } : null, voice: voiceHere(plugin, setting) }
   },
   text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}.${r.summoned ? ` Summoned asks: ${r.summoned.model}${r.summoned.id ? `, session ${r.summoned.id}` : ""}.` : ""} Windows: ${r.windows}.`,
+    voiceHereText(r.voice),
     ...(r.realtime?.state === "paused" ? [`Realtime voice: paused, ${r.realtime.account === "quota" ? "the OpenAI account has no credits" : "OpenAI refused its key"} (${cut(r.realtime.why, 120)}); tries again at ${new Date(r.realtime.until).toTimeString().slice(0, 5)}.`] : []),
     ...r.agents.map((a: Agent & { live: boolean }) => {
       const s = r.sessions.find((x: { name: string }) => key(x.name) === key(a.name))

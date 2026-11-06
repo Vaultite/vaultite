@@ -11,6 +11,20 @@ may reach the network, as vau needs). Its moments and its actions are logged on 
 companion replay` sends a day's moments again, to test how it answers, and `vau companion timings` shows how fast it
 answered each.
 
+### What it costs
+Every piece runs on the user's own plan or key, set on this machine, never a bill of Vaultite's; `vau companion status` says
+what its voice runs on here.
+- Its thinking (the companion's session and its summoned one): the user's Claude Code plan (or Codex's), no per-ask bill.
+- Hearing a Talk key's words: Soniox with dictation's key, about $0.12 an hour of speech (a few seconds an ask: a
+  fraction of a cent); its socket is open only while they speak. No key: this Mac's recognizer, free.
+- Speaking: ElevenLabs with its key (Flash: about $0.04 per 1,000 characters past the free plan's 20,000 a month; a
+  spoken answer is 100 to 200), else Soniox's voice (about a third of that), else this Mac's, free. A voice that fails or
+  runs out hands on to the next.
+- The realtime voice, only with an OpenAI key: gpt-realtime-2.1-mini bills audio tokens, about half a cent an exchange
+  (the press log, userData/talk, has each turn's cost); an account with no credits pauses it.
+- Idle costs nothing: sockets close unused (the voices' after 90 s, the realtime one after 10 minutes, and an open one
+  bills nothing), and warming one up as the key goes down sends no words.
+
 ### Being the companion
 What the user does comes to you as moments. In the app's chat (Claude Code), they're your messages: act on them with
 your vaultite-app tools (`say`, `pass`, `comment`, `suggest`, `edit`, `look`, `highlight`, `draw`, `handover`...: the commands
@@ -94,8 +108,8 @@ above that), act, run it again, and never end your turn.
   again listens); Esc ends it; moving on (a click elsewhere, another app) closes the box but what you're saying goes on to its end, and your cursor leaves once you're done there. Through the exchange your
   cursor rides beside their pointer, the box with it; pointing (`--ax`, `--find`, `--sx`) flies it there, and a
   drawing's marks it draws in as their pen, beat by beat; once they move on it comes back. An ask by voice (on screen or in the app) is answered aloud as you write a say or a draw's say (the settings `voice`: `auto`, `always`, `off`; `voice_provider`: ElevenLabs' voice once this machine has its key, else Soniox's, the other then this Mac's taking over; `elevenlabs_voice`, Brian; `voice_name`, Soniox's, Adrian; `voice_speed`; keys: `vau voice key`; `vau voice sample "<words>"` says them aloud, only when the user asks), so a say there reads as spoken: the answer first, no lists or code. A tap opens that box to type in; a double tap listens
-  hands-free. `vau docs screen`. These asks run in a lean session of their own (the setting `summoned_model`: its
-  own short prompt, few tools, low effort, fresh every few asks), apart from the one that watches notes; same name,
+  hands-free. `vau docs screen`. These asks run in a lean session of their own (the setting `summoned_model`, Sonnet: its
+  own short prompt, few tools, low effort, fresh every few asks and told the talk so far), apart from the one that watches notes; same name,
   colour and cursor. It answers in plain words, said and shown as they stream, its tags inline pointing and drawing as
   they come (`[point a3]`, `[ring a4 "Send"]`, `[point 830,273]`); its tools are for the rest (a scratch pad, a page, a handoff). In an app or on a site, an ask
   carries the user's guide to it (`vau docs guides`); with none it says so, and you may offer once to write one.

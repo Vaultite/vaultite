@@ -208,7 +208,8 @@ export default async ($: VaultTest) => {
   {
     const { api, vau } = { api: $.api, vau: $.vars.vau as (...a: string[]) => Promise<{ code: number; out: string; err: string }> }
     const config = path.join(process.env.VAULTITE_LOCAL!, "config.json")
-    const rest = http.createServer((req, res) => { res.statusCode = req.headers.authorization === "Bearer sk-good-openai-key-1234567" ? 200 : 401; res.end("{}") })
+    // (a key restricted to Realtime lists no models: it's checked by a client secret asked for, free)
+    const rest = http.createServer((req, res) => { res.statusCode = req.url !== "/v1/realtime/client_secrets" || req.method !== "POST" ? 403 : req.headers.authorization === "Bearer sk-good-openai-key-1234567" ? 200 : 401; res.end("{}") })
     await new Promise<void>((done) => rest.listen(0, "127.0.0.1", done))
     process.env.VAULTITE_OPENAI_API = `http://127.0.0.1:${(rest.address() as Any).port}`
     try {
@@ -225,6 +226,9 @@ export default async ($: VaultTest) => {
         JSON.parse(fs.readFileSync(config, "utf8")).companion?.openai === "sk-good-openai-key-1234567" && k.key === "sk-good-openai-key-1234567" && /^wss:\/\/api\.openai\.com/.test(k.url), { r, k })
       const inVault = (() => { try { return execFileSync("grep", ["-rl", "sk-good-openai-key", $.VAULT], { encoding: "utf8" }) } catch { return "" } })()
       check("realtime key: nowhere in the vault", !inVault, inVault)
+      const told = await vau("companion", "status")
+      check("realtime key: companion status says what its voice runs on here, never the key", /Voice here: hears with .*; speaks with .*this Mac's; realtime on \(OpenAI gpt-realtime-2\.1-mini\)\./.test(told.out) &&
+        !told.out.includes("sk-good-openai"), told.out)
       r = await vau("voice", "key", "--provider", "openai", "--remove")
       check("realtime key --remove: gone", r.code === 0 && !(await keys()).key && !JSON.parse(fs.readFileSync(config, "utf8")).companion?.openai, r)
     } finally { rest.close(); delete process.env.VAULTITE_OPENAI_API; $.vars.stdinText = "" }

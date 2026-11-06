@@ -383,6 +383,9 @@ export default async ($: VaultTest) => {
       c.screenMoment({ kind: "ask", agent: "Claude", text: "slow: tell me all about this window", app: "com.example.mail", window: 9, sx: 500, sy: 480 })
       await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "working", 5000, 20)
       const longBefore = (await said(longId)).length
+      const recapped = (await said(warmed!)).find((e) => e.k === "user")?.text ?? ""
+      check("summoned: a fresh session's first ask is told what was said before in the talk (theirs and its), so it goes on from there",
+        /A fresh session of the same talk; said before/.test(recapped) && /they: words O botão de enviar/.test(recapped) && /you: O botão de enviar/.test(recapped), recapped.slice(0, 600))
       sc.emit("message", Buffer.from(JSON.stringify({ t: "interrupt" })))
       check("summoned: the Talk key pressed again (or Esc) mid-answer stops its turn at once, never the long session's",
         !!(await waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === warmed)?.state === "idle", 500, 20)) &&

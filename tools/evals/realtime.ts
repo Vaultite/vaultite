@@ -1,5 +1,5 @@
-// The realtime voice on the real APIs, key let go to first audio, vs the pipeline; speech by `say -o`, its words to WAVs.
-//   node tools/evals/realtime.ts [--config <data/config.json>] [--openai-key <file>] [--models a,b] [--claude: Haiku, else canned]
+// The realtime voice on the real APIs, key let go to first audio, vs the pipeline (--pipeline alone: no OpenAI key needed).
+//   node tools/evals/realtime.ts [--config <file>] [--openai-key <file>] [--models a,b] [--claude] [--summoned sonnet] [--pipeline]
 import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -18,8 +18,9 @@ const CONFIG = [opt("--config") ?? opt("--voice-keys"), process.env.VAULTITE_LOC
   .filter((f): f is string => !!f && fs.existsSync(f)).find((f) => { try { return !!JSON.parse(fs.readFileSync(f, "utf8")).companion } catch { return false } })
 const stored = CONFIG ? JSON.parse(fs.readFileSync(CONFIG, "utf8")) : {}, keyFile = opt("--openai-key")
 const KEY = keyFile ? fs.readFileSync(keyFile, "utf8").trim() : String(stored.companion?.openai ?? "")
-if (!KEY) { console.error(`no OpenAI key: none in ${CONFIG ?? "this machine's config"} (vau secret "OpenAI API key" | vau voice key --provider openai), nor --openai-key`); process.exit(2) }
-const MODELS = (opt("--models") ?? "gpt-realtime-2.1-mini").split(","), CLAUDE = argv.includes("--claude")
+const PIPELINE = argv.includes("--pipeline"), SUMMONED = opt("--summoned") ?? "sonnet"
+if (!KEY && !PIPELINE) { console.error(`no OpenAI key: none in ${CONFIG ?? "this machine's config"} (vau secret "OpenAI API key" | vau voice key --provider openai), nor --openai-key (--pipeline needs none)`); process.exit(2) }
+const MODELS = PIPELINE ? [] : (opt("--models") ?? "gpt-realtime-2.1-mini").split(","), CLAUDE = argv.includes("--claude") || PIPELINE
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-realtime-eval-")), OUT = opt("--out") ?? path.join(tmp, "out")
 fs.mkdirSync(OUT, { recursive: true })
 type Any = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -68,7 +69,7 @@ async function startClaude() {
   port = await freePort()
   server = testServer({ stdio: "ignore", env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(tmp, "local") } })
   if (!await waitFor(async () => (await fetch(`http://127.0.0.1:${port}/api/state`)).ok, 60_000)) throw new Error("the sandbox server didn't start")
-  await fetch(`http://127.0.0.1:${port}/api/config/plugin/companion`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "quiet", agent: "claude", summoned_model: "haiku" }) })
+  await fetch(`http://127.0.0.1:${port}/api/config/plugin/companion`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "quiet", agent: "claude", summoned_model: SUMMONED }) })
   ws = new WebSocket(`ws://127.0.0.1:${port}/api/companion/live?screen=1`)
   await new Promise((r, j) => { ws!.once("open", r); ws!.once("error", j) })
   ws.on("message", (d) => { const m = JSON.parse(String(d)); for (const f of heard) f(m) })
