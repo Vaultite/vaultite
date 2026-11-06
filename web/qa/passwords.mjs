@@ -66,7 +66,7 @@ const USES = { uses: [{ t: Date.now() - 120_000, entry: { title: "Harbor", usern
 await win.route("**/api/web-viewer/login-uses", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(USES) }))
 await wait(1500)
 const sheet = win.locator("dialog[open]").last()
-const toast = win.locator("[data-sonner-toast]").last()
+const toast = (text) => win.locator("[data-sonner-toast]", { hasText: text }).last()
 const rows = () => win.locator("[data-passwords-entry]").evaluateAll((els) => els.filter((e) => !e.closest("[data-kept]") && !e.hasAttribute("data-leaving")).map((e) => e.getAttribute("data-passwords-entry")))
 
 // ---------- not set up ----------
@@ -105,7 +105,7 @@ await sheet.getByRole("button", { name: "Show password" }).click()
 check("Show password reveals it", (await sheet.innerText()).includes(SECRET))
 await sheet.getByRole("button", { name: "Copy password" }).click()
 check("Copy password copies it", await until(async () => (await clipboard()) === SECRET, 2000))
-check("… and says it's cleared in 30 seconds", /cleared in 30 seconds/.test(await toast.innerText().catch(() => "")), await toast.innerText().catch(() => ""))
+check("… and says it's cleared in 30 seconds", await until(() => toast("cleared in 30 seconds").count(), 2000) > 0)
 check("its notes", /Front desk: ask for Bo/.test(await sheet.innerText()))
 await win.keyboard.press("Escape")
 
@@ -164,9 +164,9 @@ await win.locator('[data-passwords-group="all"]').click()
 // ---------- delete, Undo ----------
 await win.locator('[data-passwords-entry="Ferry"]').click()
 await sheet.locator("[data-password-delete]").click()
-check("Delete: off the list at once, with Undo", await until(async () => !(await rows()).includes("Ferry"), 3000) && /recycle bin/.test(await toast.innerText().catch(() => "")), await rows())
+check("Delete: off the list at once, with Undo", await until(async () => !(await rows()).includes("Ferry"), 3000) && await until(() => toast("to the recycle bin").count(), 2000) > 0, await rows())
 check("… in the file's recycle bin", await until(async () => (await reread()).find((e) => e.title === "Ferry")?.group === "Recycle Bin", 3000), (await reread()).map((e) => `${e.title}:${e.group}`))
-await toast.locator("[data-button]").click()
+await toast("to the recycle bin").locator("[data-button]").click()
 check("Undo puts it back in its group", await until(async () => (await reread()).find((e) => e.title === "Ferry")?.group === "Work", 5000) && await until(async () => (await rows()).includes("Ferry"), 3000))
 
 // ---------- the lock ----------
