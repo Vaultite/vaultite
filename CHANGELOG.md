@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Passwords**: your KeePass file (KeePassXC's, Strongbox's) in a tab of the desktop app (Show passwords): unlocked
+  with Touch ID or its password, its entries searched and listed by group, each with its username, password, one-time
+  code and websites to copy or open, edited or made with a password generator, deleted to the recycle bin with Undo,
+  and which agents used it; a switch lets agents use an entry they share without asking.
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
 - **The companion sees what was there as you pressed**: a toast or menu that's gone by the time you let go of ⌃⌥ still
