@@ -7,7 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, agentRefusal, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
-  type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode } from "../../../core/agents.ts"
+  type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, usedFirst } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
@@ -772,9 +772,12 @@ function lastRequest(file: string) {
 // ---------- blocks as text (GET /api/render)
 
 plugin.block("agent-limits", async (ctx) => {
-  const each = await Promise.all(agent.accountsFor(ctx.options.account).map(async (a) => ({ a, lim: await limits(a) })))
+  // (`for:` a plugin: the accounts it runs Claude Code in come first, saying for what)
+  const accts = agent.accountsFor(ctx.options.account)
+  const used = accts.length > 1 ? await agent.usedBy(ctx.options.for) : new Map<string, string[]>()
+  const each = await Promise.all(usedFirst(accts, used).map(async (a) => ({ a, lim: await limits(a) })))
   return section("Plan limits", ...each.flatMap(({ a, lim }) => {
-    const head = each.length > 1 ? `### ${a.label}` : ""
+    const head = each.length > 1 ? `### ${a.label}${a.uses ? ` (${a.uses.join(", ")})` : ""}` : ""
     if (!lim) return [head, "_No limits read yet: they come from Claude Code (signed in), its status line or the Claude app._"]
     return [head, limitRows(lim.windows), `_From the ${lim.source}, ${ago(lim.observed)}._`]
   }))

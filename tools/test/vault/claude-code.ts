@@ -190,6 +190,31 @@ export default async ($: VaultTest) => {
     check("claude accounts: an unknown one is a 404", c === 404, c)
     ;[c] = await api("GET", `claude-code/session/${sid}`)
     check("claude accounts: another account's conversation reads", c === 200, c)
+    // `for: companion`: the accounts its chat and jobs run in first, saying for what, as its settings say now.
+    const ids = (xs: Any[]) => JSON.stringify(xs?.map((a: Any) => [a.id, a.uses ?? null]))
+    write(".vaultite/plugins/companion/data.json", JSON.stringify({ agent: "claude_work", jobs_agent: "claude" }))
+    ;[, u] = await api("GET", "claude-code/limits?for=companion")
+    check("claude accounts: for a plugin, the accounts it uses come first, saying for what",
+      ids(u.accounts) === JSON.stringify([["work", ["Companion chat"]], ["default", ["Jobs"]]]), u.accounts)
+    write(".vaultite/plugins/companion/data.json", JSON.stringify({ agent: "claude_work", jobs_agent: "claude_work" }))
+    ;[, u] = await api("GET", "claude-code?days=7&for=companion")
+    check("claude accounts: one account used for both says both, the other after it",
+      ids(u.accounts) === JSON.stringify([["work", ["Companion chat", "Jobs"]], ["default", null]]), u.accounts)
+    write(".vaultite/plugins/companion/data.json", JSON.stringify({ agent: "codex", jobs_agent: "codex", mode: "off" }))
+    ;[, u] = await api("GET", "claude-code/limits?for=companion")
+    check("claude accounts: a chat on another agent, or off, isn't said; jobs not on Claude Code run in its default",
+      ids(u.accounts) === JSON.stringify([["default", ["Jobs"]], ["work", null]]), u.accounts)
+    write(".vaultite/plugins/companion/data.json", JSON.stringify({ agent: "claude_work", jobs_agent: "claude" }))
+    ;[, u] = await api("GET", "claude-code/limits")
+    const [, plainU] = await api("GET", "claude-code/limits?for=nobody")
+    check("claude accounts: without for, or for a plugin that runs none, they're as they were",
+      ids(u.accounts) === JSON.stringify([["default", null], ["work", null]]) && ids(plainU.accounts) === ids(u.accounts), [u.accounts, plainU.accounts])
+    write("Dashboards/Limits for.md", "```block-agent-limits\nagent: claude-code\nfor: companion\n```\n")
+    const [, lr] = await api("GET", "render?path=Dashboards/Limits for.md")
+    check("claude accounts: as text, for a plugin, its accounts first, saying for what",
+      String(lr).indexOf("### Work (Companion chat)") >= 0 && String(lr).indexOf("### Work (Companion chat)") < String(lr).indexOf("### Default (Jobs)") , String(lr).slice(0, 400))
+    fs.rmSync(path.join(VAULT, "Dashboards/Limits for.md"))
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/companion/data.json"))
     write(".vaultite/plugins/claude-code/data.json", JSON.stringify({ accounts: { work: { label: "Job", private: true }, default: { label: "Mine" } } }))
     ;[, u] = await api("GET", "claude-code?days=7")
     s = u.sessions.find((x: Any) => x.id === sid)

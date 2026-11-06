@@ -3,7 +3,8 @@ Every coding agent's usage is the same blocks, `agent:` naming whose (its plugin
 with a plan: claude-code, codex, cursor, grok-bot), `agent-sessions`, `agent-usage`, `agent-projects`, `agent-models`,
 and `agent-project` in a project file (it finds the project by the file's name, its `path`'s folder or its repo; not
 grok-bot, which runs in the cloud). An agent whose plugin is off draws nothing; how each one reads its data:
-`vau docs <its plugin>`.
+`vau docs <its plugin>`. `agent-limits` with `for:` a plugin that runs the agent (`for: companion`) puts the accounts
+it uses first, saying for what (Companion chat, Jobs), as its settings say now.
 ````
 ```block-agent-usage
 agent: codex

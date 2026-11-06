@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Companion page's plan limits put its accounts first**: the Claude Code accounts its chat and its jobs run in,
+  as its settings say now, come first, tinted and labelled Companion chat and Jobs, the others after them
+  (`block-agent-limits` with `for: companion`).
+
 ## 0.10.0 (2026-11-06)
 
 The companion summoned anywhere on your Mac: hold ⌃⌥ to ask about what's on screen and a realtime voice answers at

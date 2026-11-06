@@ -116,10 +116,12 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
     return { machine, label: await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}) }
   }
+  /** The Claude Code a job runs as when the handoff names none: the setting, with its account (claude_personal). */
+  const jobsAgent = () => { const own = setting("jobs_agent") || "claude"; return own.split("_")[0] === "claude" ? own : "claude" }
   /** Who works on it: the harness asked (Claude Code in the jobs' account by default), its model and effort. */
   function harnessOf(p: Record<string, unknown>) {
-    const asked = str(p.agent) || "claude", own = setting("jobs_agent") || "claude"
-    const agent = asked === "claude" && own.split("_")[0] === "claude" ? own : asked
+    const asked = str(p.agent) || "claude"
+    const agent = asked === "claude" ? jobsAgent() : asked
     const claude = agent.split("_")[0] === "claude"
     const model = str(p.model) || (claude ? setting("jobs_model") : ""), effort = str(p.effort) || (claude ? setting("jobs_effort") : "")
     const profile = parseTerminal(`${agent}-x`)?.profile ?? ""
@@ -372,7 +374,7 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
   }
 
   return {
-    list: all, cards, seen,
+    list: all, cards, seen, jobsAgent,
     line: () => jobsLine(all()),
     /** How fast the day's jobs got going, for companion timings. */
     timings: (day: string, dayOf: (t: number) => string) => jobTimings(all().filter((j) => dayOf(j.started) === day)),

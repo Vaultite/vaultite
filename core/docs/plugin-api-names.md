@@ -726,7 +726,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…
 - `UiMark`: `run` gets the click: a menu at the mark (`menuBelow`).
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
-- `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
+- `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account` (and `for`: a plugin whose accounts come first): `on` names another machine…
 - `useAgents()`
 - `useAi()`
 - `useArchivedTabs()`
@@ -1071,6 +1071,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `agentSession(k, v?)`: Whether variable `k` (=`v`) is a coding agent's own session's, which nothing it starts should inherit (Claude Code's tools also get GIT_EDITOR=true, so git never waits on an editor).
 - `AgentStart`: What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login shell, which then stays a plain shell (AgentCommand).
 - `AgentState`: A terminal's agent as the Terminals panel shows it.
+- `AgentUse`: An agent a plugin runs, as a terminal names it (claude_agent: with its account), and for what ("Companion chat"): the service "agents-used:<plugin>" answers a list.
 - `ago(s)`: An ISO time as "2 h 10 min ago", "3 days ago".
 - `argvOf(args, valued, maybe?)`: A command line's words after its program: `opt(...names)` an option's value ("" for a switch; `--x=v` too), the next word for those in `valued`, and for those in `maybe` when it isn't an option;…
 - `Asking`: What a session waits on the user for, as it said it (the service "agent-asking:<name>"): questions, or a plan.
@@ -1136,6 +1137,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `truncate(s, n?)`: Long texts cut short: a view is for reading a conversation back, not for the raw data.
 - `Turn`: How long a turn worked, as a JSONL agent's transcripts say.
 - `Usage`: What an agent's GET route answers: its tally, plan, limits and live sessions.
+- `usedFirst(accts, used)`: `accts` with what each is used for (`uses`), the ones in `used` first in its order: an agent's accounts for a plugin that runs them (agent-limits' `for:`).
 - `vauMcpServer()`: `vau mcp` as an agent's MCP server: by the Node running this server (an agent may pass its servers no PATH), told this server's address (another port isn't vau's default).
 - `winCommand(argv, env)`: How to run `argv` on Windows (spawn can't run a .cmd itself): [program, its arguments, verbatim (cmd's own quoting)], or null when there's no such program.
 - `withPath(env, ...dirs)`: `env` with `dirs` first on its PATH (Windows' Path, whatever its case: one key, not two).

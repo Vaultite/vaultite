@@ -62,13 +62,15 @@ export type LiveSession = OfAccount & {
 }
 export type Day = { date: string; cost: number; tokens: number; active_min: number; sessions: number }
 export type Share = { name: string; cost: number; tokens: number; root?: string; sessions?: number; active_min?: number; last?: string }
+/** An account's plan and limits; `uses`: what the block's `for:` plugin runs in it ("Companion chat"), those first. */
+type AccountPlan = { id: string; label: string; private?: boolean; uses?: string[]; plan: AgentUsage["plan"]; limits: AgentUsage["limits"] }
 export type AgentUsage = {
   plan: { name: string; monthly: number | null } | null
   limits: { source: string; observed: string; windows: Window[] } | null
   live: LiveSession[]; days: Day[]; projects: Share[]; models: Share[]; sessions: Session[]
   total: { cost: number; tokens: number; unpriced: number; cache_hit: number | null }
   /** Each account's plan and limits, when the plugin has several (all of them asked at once). */
-  accounts?: { id: string; label: string; private?: boolean; plan: AgentUsage["plan"]; limits: AgentUsage["limits"] }[]
+  accounts?: AccountPlan[]
   /** Servers waiting for sessions started elsewhere (Claude Code's Remote Control): name, account, since when. */
   servers?: { pid: number; name: string; account: string; accountLabel: string; started: string | null }[]
 }
@@ -77,12 +79,12 @@ const EVERY = 15_000
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 
 /** A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and
- *  `account`: `on` names another machine (" on Studio"). */
+ *  `account` (and `for`: a plugin whose accounts come first): `on` names another machine (" on Studio"). */
 export function useAgentRoute<T>(route: string, options: Record<string, unknown>, query: Record<string, string | number> = {}, version?: string) {
-  const machine = str(options.machine), account = str(options.account)
+  const machine = str(options.machine), account = str(options.account), by = str(options.for)
   const m = useMachines()?.find((x) => x.id === machine)
   const there = m?.self ? "" : machine
-  const q = new URLSearchParams(Object.entries({ ...query, ...(account ? { account } : {}) }).map(([k, v]) => [k, String(v)])).toString()
+  const q = new URLSearchParams(Object.entries({ ...query, ...(account ? { account } : {}), ...(by ? { for: by } : {}) }).map(([k, v]) => [k, String(v)])).toString()
   const { data, error } = useLive<T>(machinePath(there, q ? `${route}?${q}` : route), version)
   return { data, error: data ? null : error, on: there ? ` on ${m?.label ?? machine}` : "", machine: there }
 }
@@ -265,14 +267,36 @@ export function AgentLimits({ src, options, fm }: BlockCtx & { src: AgentSource 
           {Array.from({ length: meters }, (_, i) => <MeterSkeleton key={i} />)}
           <p className="text-[13px] text-muted-foreground"><Bar w="12em" /></p>
         </div>
-      )) : each ? (
-        <div className="space-y-5">
-          {each.map((a) => (
-            <Section key={a.id} title={a.plan ? `${a.label} · ${a.plan.name}` : a.label}><Limits src={src} lim={a.limits} /></Section>
-          ))}
-        </div>
-      ) : <Limits src={src} lim={data.limits} />}
+      )) : each ? <Accounts src={src} each={each} /> : <Limits src={src} lim={data.limits} />}
     </Panel>
+  )
+}
+
+const accountTitle = (a: AccountPlan) => (a.plan ? `${a.label} · ${a.plan.name}` : a.label)
+
+/** Each account's limits under its name; the ones the block's `for:` plugin uses first, tinted and saying for what. */
+function Accounts({ src, each }: { src: AgentSource; each: AccountPlan[] }) {
+  const used = each.filter((a) => a.uses?.length), rest = each.filter((a) => !a.uses?.length)
+  const plain = (xs: AccountPlan[]) => xs.map((a) => <Section key={a.id} title={accountTitle(a)}><Limits src={src} lim={a.limits} /></Section>)
+  if (!used.length) return <div className="space-y-5">{plain(each)}</div>
+  return (
+    <div className="space-y-5">
+      {used.map((a) => (
+        <div key={a.id} data-account-used={a.id} className="-mx-2 rounded-control px-2 pt-2 pb-3"
+          style={{ background: `color-mix(in srgb, ${src.tint} 7%, transparent)` }}>
+          <Section title={
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-foreground">{accountTitle(a)}</span>
+              {a.uses!.map((u) => (
+                <span key={u} className="rounded-full px-2 py-px text-[12px] font-medium"
+                  style={{ color: src.tint, background: `color-mix(in srgb, ${src.tint} 14%, transparent)` }}>{u}</span>
+              ))}
+            </span>
+          }><Limits src={src} lim={a.limits} /></Section>
+        </div>
+      ))}
+      {plain(rest)}
+    </div>
   )
 }
 

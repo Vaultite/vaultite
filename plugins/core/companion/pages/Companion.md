@@ -14,4 +14,5 @@ wide: true
 
 ```block-agent-limits
 agent: claude-code
+for: companion
 ```

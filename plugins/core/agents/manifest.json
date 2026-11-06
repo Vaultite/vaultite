@@ -13,6 +13,7 @@
       "options": {
         "agent": { "type": "string", "required": true, "description": "whose: an agent's plugin (claude-code, codex, cursor, grok-bot)" },
         "account": { "type": "string", "description": "one account's (its id, like default or personal); all of them when left out" },
+        "for": { "type": "string", "description": "a plugin that runs the agent (companion): the accounts it uses come first, tinted and saying for what (Companion chat, Jobs), as its settings say now" },
         "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
       }
     },

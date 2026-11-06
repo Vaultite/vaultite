@@ -5,7 +5,7 @@ import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentMeter, type AgentModels, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
+import { type AgentMeter, type AgentModels, type AgentUse, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
 import { byUser, liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
 import { joinPath, Kind, readText, requestWriter, safeName, type Vault, type Writer, writeAtomic, writeNew } from "../../../core/vault.ts"
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
@@ -2304,6 +2304,12 @@ const jobs = jobOps(plugin, {
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
   moved: (j, from) => void jobNews(j.title, j.state, from).catch(() => {}),
 })
+/** The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"):
+ *  its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first. */
+plugin.provide("agents-used:companion", (): AgentUse[] => [
+  ...(mode() === "off" ? [] : [{ agent: agentSetting(), as: "Companion chat" }]),
+  { agent: jobs.jobsAgent(), as: "Jobs" },
+])
 /** How recent their last Talk key ask must be for a job's news to be said aloud. */
 const AROUND_MS = 15 * 60_000
 /** A job's news said in its voice, one line, only while they're at this Mac (a Talk key ask to its helper lately: never

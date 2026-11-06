@@ -9,7 +9,7 @@ import { promisify } from "node:util"
 import type { DatabaseSync } from "node:sqlite"
 import { bullets, fmtMin, HTTPError, localDate, OpError, type OpCtx, type Plugin, processTable, type Request, ROOT, section, serverUrl } from "./plugins.ts"
 import { stableNode } from "./service.ts"
-import { parseTerminal } from "./terminalids.ts"
+import { KNOWN_AGENTS, parseTerminal } from "./terminalids.ts"
 import { spawnBin } from "./winbin.ts"
 /** Starting programs on Windows by name (core/winbin.ts). */
 export { spawnBin, winCommand, withPath } from "./winbin.ts"
@@ -905,6 +905,29 @@ type Words = {
 /** One of an agent's accounts: Claude Code's config folders, Hermes' homes, OpenClaw's agents. */
 export type Account = { id: string; label: string; private?: boolean }
 
+/** An agent a plugin runs, as a terminal names it (claude_agent: with its account), and for what ("Companion chat"):
+ *  the service "agents-used:<plugin>" answers a list. */
+export type AgentUse = { agent: string; as: string }
+
+/** `accts` with what each is used for (`uses`), the ones in `used` first in its order: an agent's accounts for
+ *  a plugin that runs them (agent-limits' `for:`). */
+export function usedFirst<A extends { id: string }>(accts: A[], used: Map<string, string[]>): (A & { uses?: string[] })[] {
+  const tagged = accts.map((a) => (used.has(a.id) ? { ...a, uses: used.get(a.id)! } : a))
+  return [...[...used.keys()].flatMap((id) => tagged.filter((a) => a.id === id)), ...tagged.filter((a) => !used.has(a.id))]
+}
+
+/** Which of agent `terminal`'s accounts (`all`) `uses` names, and for what: one named without an account is its first
+ *  (the default). Several uses of one account are said once each. */
+function accountUses(uses: AgentUse[], terminal: string, all: { id: string }[]) {
+  const out = new Map<string, string[]>()
+  for (const u of uses) {
+    const t = typeof u?.agent === "string" && typeof u.as === "string" ? parseTerminal(`${u.agent}-x`) : null
+    const a = t && t.agent === terminal ? (t.profile ? all.find((x) => x.id === t.profile) : all[0]) : undefined
+    if (a && !out.get(a.id)?.includes(u.as)) out.set(a.id, [...(out.get(a.id) ?? []), u.as])
+  }
+  return out
+}
+
 /** A session open now as its process tells (times in epoch ms): codingAgent adds what the usage
  *  knows of it (cost, tokens, project, model) and the app's terminal it runs in. */
 export type Live = { pid: number; id: string; status: string; kind: string; cwd: string; started: number | null; since: number | null
@@ -942,7 +965,22 @@ export type CodingAgent<A extends Account> = Words & {
 export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>) {
   const accountsFor = (id: unknown) => (a.accounts ? accountsNamed(a.accounts.all(), id, a.accounts.word) : [])
   const project = a.projectOf ?? ((cwd: string) => projectOf(cwd))
-  async function usage(days: number, account: unknown): Promise<Usage> {
+  const terminal = KNOWN_AGENTS.find((k) => k.id === a.id)?.terminal ?? a.id
+  /** Its accounts plugin `by` runs it in, and for what (its service "agents-used:<plugin>"); none: an empty map. */
+  async function usedBy(by: unknown) {
+    if (typeof by !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(by) || !a.accounts) return new Map<string, string[]>()
+    const uses = await plugin.ask<AgentUse[]>(`agents-used:${by}`, [])
+    return accountUses(Array.isArray(uses) ? uses : [], terminal, a.accounts.all())
+  }
+  /** Its plan and limits; `by` (a plugin) puts the accounts it uses first, saying for what. */
+  async function planOf(accts: A[], by: unknown) {
+    const p = await a.plan?.(accts) ?? { plan: null, limits: null }
+    const each = p.accounts as { id: string }[] | undefined
+    if (!Array.isArray(each) || each.length < 2) return p
+    const used = await usedBy(by)
+    return used.size ? { ...p, accounts: usedFirst(each, used) } : p
+  }
+  async function usage(days: number, account: unknown, by?: unknown): Promise<Usage> {
     const accts = accountsFor(account)
     const s = await a.summary(days, accts)
     const label = (id: unknown) => (accts.length > 1 ? accts.find((x) => x.id === id)?.label : undefined)
@@ -955,11 +993,11 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
         cost: u.cost ?? 0, tokens: u.tokens ?? 0, terminal: r.terminal !== undefined ? r.terminal : r.pid ? await terminalOf(plugin, r.pid) : null,
         ...(r.account ? { account: r.account } : {}), ...(label(r.account) ? { accountLabel: label(r.account) } : {}), ...(r.private ? { private: true } : {}) }
     }))
-    return { ...(await a.plan?.(accts) ?? { plan: null, limits: null }), live: busyFirst(live), ...s }
+    return { ...(await planOf(accts, by)), live: busyFirst(live), ...s }
   }
-  plugin.route("GET", a.id, async (req) => await usage(daysOf(req.query.days), req.query.account))
+  plugin.route("GET", a.id, async (req) => await usage(daysOf(req.query.days), req.query.account, req.query.for))
   // (the status bar's limits, asked every 15 s: not the sessions and costs the usage reads to answer)
-  plugin.route("GET", `${a.id}/limits`, async (req) => await a.plan?.(accountsFor(req.query.account)) ?? { plan: null, limits: null })
+  plugin.route("GET", `${a.id}/limits`, async (req) => await planOf(accountsFor(req.query.account), req.query.for))
   plugin.route("GET", `${a.id}/session/*`, async (req) => {
     const id = req.arg(0)
     const s = a.sessionId.test(id) ? await a.session(id) : null
@@ -977,7 +1015,7 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
   })
   if (a.warm) setTimeout(() => { if (plugin.loaded && !plugin.isOff()) void a.warm!() }, 2000).unref()
   usageBlocks(plugin, a, usage)
-  return { accountsFor, accountOf: (id: unknown) => (id ? accountsFor(id)[0] : a.accounts?.all()[0]) }
+  return { accountsFor, usedBy, accountOf: (id: unknown) => (id ? accountsFor(id)[0] : a.accounts?.all()[0]) }
 }
 
 /** The agent blocks every agent draws (the Coding agents plugin declares them): its sessions, usage, projects, models,
