@@ -132,17 +132,24 @@ func watchDevices() {
 
 /// The mic: the first of `want` (uids) here, else the system's input, opened again on the next should it go mid-capture.
 /// `hold`: a Bluetooth one stays open past its session till `release`, so the headset keeps its profile mid-answer.
+/// It's Core Audio's input unit alone, not an AVAudioEngine: an engine opens the system's output too, so a headset
+/// switching its profile (AirPods while another mic is picked) stopped it, and opening it again switched it back.
 final class Microphone: Source {
     static var open: [Microphone] = []
-    var engine = AVAudioEngine()
     let want: [String]
     var hold = false
     var sink: (([Float]) -> Void)?
     var device: AudioDev?
     var running = false, holding = false, reopening = false
-    var observer: NSObjectProtocol?
     var failed: ((Failure) -> Void)?
     var releaseAt: DispatchWorkItem?
+    var unit: AudioUnit?
+    var format: AVAudioFormat?
+    var resampler: Resampler?
+    var following = false
+    var reopens: [Date] = []
+    var rateListener: (AudioDeviceID, AudioObjectPropertyListenerBlock)?
+    let queue = DispatchQueue(label: "dictation.mic")
     init(want: [String]) { self.want = want }
 
     func start(_ sink: @escaping ([Float]) -> Void) throws {
@@ -164,43 +171,88 @@ final class Microphone: Source {
     func begin(why: String?) throws {
         let inputs = audioDevices().filter(\.input)
         let inId = defaultDevice(kAudioHardwarePropertyDefaultInputDevice)
-        let pick = want.lazy.compactMap { u in inputs.first { $0.uid == u } }.first ?? inputs.first { $0.id == inId }
-        engine = AVAudioEngine()
-        let input = engine.inputNode
-        if let p = pick, let unit = input.audioUnit {
-            var id = p.id
-            let err = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id, UInt32(MemoryLayout<AudioDeviceID>.size))
-            if err != noErr { emit("mic-warning", ["message": "couldn't pick \(p.name) (\(err)): the system's input"]) }
-        }
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0, let r = Resampler(from: format) else {
+        let wanted = want.lazy.compactMap { u in inputs.first { $0.uid == u } }.first
+        guard let pick = wanted ?? inputs.first(where: { $0.id == inId }) else {
             throw Failure(code: "mic", message: "There's no microphone to listen to")
         }
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] b, _ in
-            guard let sink = self?.sink else { return }
-            sink(r.samples(b))
-        }
-        observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in self?.changed("changed") }
-        engine.prepare()
-        do { try engine.start() } catch {
-            close()
-            throw Failure(code: "mic", message: "The microphone didn't start: \(error.localizedDescription)")
-        }
+        following = wanted == nil
+        do { try open(pick) } catch { teardown(); throw error }
         running = true
         if !Microphone.open.contains(where: { $0 === self }) { Microphone.open.append(self) }
         device = pick
-        var o: [String: Any] = pick.map { $0.json.merging(["bluetooth": $0.bluetooth]) { a, _ in a } } ?? ["name": "", "uid": ""]
+        var o: [String: Any] = pick.json.merging(["bluetooth": pick.bluetooth]) { a, _ in a }
         if let why { o["why"] = why }
-        if let first = want.first, !first.isEmpty, pick?.uid != first { o["missing"] = first }
+        if let first = want.first, !first.isEmpty, pick.uid != first { o["missing"] = first }
         emit("mic", o)
     }
 
-    /// The device list changed: its own device gone, it opens again on the next.
-    func check() {
-        guard running, let d = device, !audioDevices().contains(where: { $0.uid == d.uid && $0.input }) else { return }
-        changed("gone: \(d.name)")
+    /// The input unit on `d`, its samples as floats at the device's rate, each buffer to the sink off the audio thread.
+    func open(_ d: AudioDev) throws {
+        let fail = { (what: String, err: OSStatus) in Failure(code: "mic", message: "The microphone didn't start: \(what) (\(err))") }
+        var desc = AudioComponentDescription(componentType: kAudioUnitType_Output, componentSubType: kAudioUnitSubType_HALOutput,
+                                             componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0)
+        guard let comp = AudioComponentFindNext(nil, &desc) else { throw Failure(code: "mic", message: "There's no microphone to listen to") }
+        var u: AudioUnit?
+        var err = AudioComponentInstanceNew(comp, &u)
+        guard err == noErr, let u else { throw fail("no input unit", err) }
+        unit = u
+        let u32 = UInt32(MemoryLayout<UInt32>.size)
+        var on: UInt32 = 1, off: UInt32 = 0
+        err = AudioUnitSetProperty(u, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &on, u32)
+        guard err == noErr else { throw fail("input refused", err) }
+        err = AudioUnitSetProperty(u, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &off, u32)
+        guard err == noErr else { throw fail("output refused", err) }
+        var id = d.id
+        err = AudioUnitSetProperty(u, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id, UInt32(MemoryLayout<AudioDeviceID>.size))
+        guard err == noErr else { throw fail("couldn't pick \(d.name)", err) }
+        var hw = AudioStreamBasicDescription(), size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        err = AudioUnitGetProperty(u, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 1, &hw, &size)
+        guard err == noErr, hw.mSampleRate > 0, hw.mChannelsPerFrame > 0,
+              let f = AVAudioFormat(standardFormatWithSampleRate: hw.mSampleRate, channels: hw.mChannelsPerFrame), let r = Resampler(from: f) else {
+            throw Failure(code: "mic", message: "There's no microphone to listen to")
+        }
+        var client = f.streamDescription.pointee
+        err = AudioUnitSetProperty(u, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &client, size)
+        guard err == noErr else { throw fail("format refused", err) }
+        format = f
+        resampler = r
+        var cb = AURenderCallbackStruct(inputProc: { ref, flags, time, bus, frames, _ in
+            Unmanaged<Microphone>.fromOpaque(ref).takeUnretainedValue().render(flags, time, bus, frames)
+        }, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
+        err = AudioUnitSetProperty(u, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &cb, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
+        guard err == noErr else { throw fail("no callback", err) }
+        err = AudioUnitInitialize(u)
+        guard err == noErr else { throw fail("couldn't open \(d.name)", err) }
+        // (its rate changing under it, a headset going to a call's: opened again on the new one)
+        var a = address(kAudioDevicePropertyNominalSampleRate)
+        let l: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.changed("rate") }
+        if AudioObjectAddPropertyListenerBlock(d.id, &a, DispatchQueue.main, l) == noErr { rateListener = (d.id, l) }
+        err = AudioOutputUnitStart(u)
+        guard err == noErr else { throw fail("couldn't start \(d.name)", err) }
     }
-    /// Its device went or changed under it (the engine stopped): open again a moment on, on the first still here.
+
+    /// The audio thread: the unit's frames rendered into a buffer, converted and handed on in order on the mic's queue.
+    func render(_ flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>, _ time: UnsafePointer<AudioTimeStamp>, _ bus: UInt32, _ frames: UInt32) -> OSStatus {
+        guard let u = unit, let f = format, let b = AVAudioPCMBuffer(pcmFormat: f, frameCapacity: frames) else { return noErr }
+        b.frameLength = frames
+        let err = AudioUnitRender(u, flags, time, bus, frames, b.mutableAudioBufferList)
+        guard err == noErr, sink != nil, let r = resampler else { return err }
+        queue.async { [weak self] in
+            guard let sink = self?.sink else { return }
+            sink(r.samples(b))
+        }
+        return noErr
+    }
+
+    /// The device list or the defaults changed: its own device gone, or the system's input changed while it follows
+    /// it, it opens again on the next.
+    func check() {
+        guard running, let d = device else { return }
+        if !audioDevices().contains(where: { $0.uid == d.uid && $0.input }) { return changed("gone: \(d.name)") }
+        if following, let now = defaultDevice(kAudioHardwarePropertyDefaultInputDevice), now != d.id { changed("the system's input changed") }
+    }
+    /// Its device went or changed under it: open again a moment on, on the first still here (a few times at most:
+    /// one that keeps changing fails, never loops).
     func changed(_ why: String) {
         guard running, !reopening else { return }
         if holding { return close() }
@@ -208,7 +260,9 @@ final class Microphone: Source {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [self] in
             reopening = false
             guard running, !holding else { return }
+            reopens = reopens.filter { $0.timeIntervalSinceNow > -10 } + [Date()]
             teardown()
+            if reopens.count > 3 { close(); failed?(Failure(code: "mic", message: "The microphone keeps changing (\(why))")); return }
             do { try begin(why: why) } catch let f as Failure { close(); failed?(f) } catch { close(); failed?(Failure(code: "mic", message: error.localizedDescription)) }
         }
     }
@@ -236,9 +290,17 @@ final class Microphone: Source {
         close()
     }
     func teardown() {
-        if let o = observer { NotificationCenter.default.removeObserver(o); observer = nil }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        if let (id, l) = rateListener {
+            var a = address(kAudioDevicePropertyNominalSampleRate)
+            AudioObjectRemovePropertyListenerBlock(id, &a, DispatchQueue.main, l)
+        }
+        rateListener = nil
+        if let u = unit {
+            AudioOutputUnitStop(u)
+            AudioUnitUninitialize(u)
+            AudioComponentInstanceDispose(u)
+        }
+        unit = nil
     }
     func close() {
         releaseAt?.cancel()
