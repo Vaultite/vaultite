@@ -333,6 +333,8 @@ export default async ($: VaultTest) => {
       ms["machines:vault"] = () => "v1"
       stage = "working"
       calls.length = 0
+      // (its own ask over the GitHub page: an earlier block's may be no longer the last)
+      ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "research the header", app: "com.example.browser", title: "Site", screen: "https://github.com/lighthouse/site", sx: 10, sy: 20 })
       ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Research the header", say: "On it." }, agent)
       job = b
       check("handoff with nothing tying it here (the ask's GitHub page): on the always-on machine, only the page passed on", st === 200 && b.where.startsWith("Studio") && /Studio \(always on\)/.test(b.why) &&
