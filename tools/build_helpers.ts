@@ -1,4 +1,4 @@
-// The desktop app's native helpers (transcriber, dictation, screen, voice, electron/macaddons.ts' addons), built for
+// The desktop app's native helpers (transcriber, dictation, screen, voice, take-over, electron/macaddons.ts' addons), built for
 // both architectures so a Mac without Xcode's tools has them (npm run app:build), named by their sources' hash.
 import path from "node:path"
 
@@ -6,6 +6,7 @@ const { buildHelper } = await import("../plugins/core/audio-recorder/plugin.ts")
 const { buildDictation } = await import("../electron/dictation-build.ts")
 const { buildScreen } = await import("../electron/screen-build.ts")
 const { buildVoice } = await import("../electron/voice-build.ts")
+const { buildTakeover } = await import("../electron/takeover-build.ts")
 const { buildMacAddon } = await import("../electron/macaddons.ts")
 const root = path.join(import.meta.dirname, "..")
 const builds: [string, () => Promise<string>][] = [
@@ -13,6 +14,7 @@ const builds: [string, () => Promise<string>][] = [
   ["dictation", () => buildDictation(path.join(root, "electron", "bin"), ["arm64", "x86_64"])],
   ["the screen helper", () => buildScreen(path.join(root, "electron", "bin"), ["arm64", "x86_64"])],
   ["the voice helper", () => buildVoice(path.join(root, "electron", "bin"), ["arm64", "x86_64"])],
+  ["the take-over helper", () => buildTakeover(path.join(root, "electron", "bin"), ["arm64", "x86_64"])],
   ["the permissions addon", () => buildMacAddon("macpermissions", path.join(root, "electron", "bin"))],
   ["the gestures addon", () => buildMacAddon("gestures", path.join(root, "electron", "bin"))],
 ]

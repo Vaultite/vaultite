@@ -20,6 +20,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **An agent's click in a page no longer says "nothing changed" when it did**: it waits for the data the click fetched
   (an iframe moving meanwhile no longer cuts it short, nor does a page's first click), for a web component's change, and
   for a page that goes elsewhere a moment after the click, which used to hang it.
+- **The companion can do it for you in any app**: ask it over the screen and it offers ("Want me to do it while you
+  watch?"); say yes or click Do it, and it presses buttons and fills fields through Accessibility (the pointer only
+  when it must), with a border on the screen while it drives. Move the mouse or press Esc and you have it back at once;
+  it asks every time before sending, posting or deleting, and never acts in private apps or password fields.
 - **Your passwords in Vaultite**: the desktop app opens your own KeePass file (the one KeePassXC and Strongbox open),
   unlocked with Touch ID or its password. The browser fills your logins from it (a key in the address bar, or Fill
   login) and offers to save a new sign-in or update a password; each change is written into the file (its old copy

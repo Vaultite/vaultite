@@ -22,6 +22,7 @@ import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { companionVoice } from "./voice.ts"
 import { realtimeFront } from "./realtimefront.ts"
+import { stopTakeover, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard } from "./takeover.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
@@ -123,6 +124,7 @@ export function stopHelper() {
   closePanel()
   showOverlay(null)
   stopScreen()
+  stopTakeover()
   tray?.destroy()
   tray = null
   lock?.close()
@@ -278,6 +280,8 @@ const live = (() => {
       else if (m.t === "drop") state.notes.delete(String(m.id))
       // (its answer stopped in the app: Esc, its box closed)
       else if (m.t === "hush") return stopVoice()
+      // (a step in another app, or their spoken answer to its offer: takeover.ts')
+      else if (m.t === "takeover" || m.t === "takeover-answer") return takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt })
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
         for (const j of jobNews(state.jobs, jobs)) jobNotice(j)
@@ -311,11 +315,11 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "chord") return chordHeard(m)
   if (m.event === "moved") return windowMoved(m)
   // (its exchange on: a click elsewhere moves on, Esc ends it, its voice with it)
-  if (m.event === "click") { const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
+  if (m.event === "click") { if (takeoverClick(Number(m.x), Number(m.y))) return; const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
   if (m.event === "esc") return endExchange()
   if (m.event === "front") {
     // (another app in front: they moved on)
-    if (exchange && !m.vaultite && front && m.bundle !== front.bundle) moveOn()
+    if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving()) moveOn()
     front = m as unknown as AppWindowInfo
     // (another app in front may cover or uncover what the cursors point at: looked at again)
     for (const e of placed.values()) e.at = 0
@@ -718,6 +722,7 @@ function endExchange(stop = true) {
   const name = exchange?.name ?? summon?.name
   exchange = null
   if (summon) closeSummon(summon, stop ? "esc" : "over")
+  takeoverEnded()
   inAppSpots.clear()
   const a = name ? live.state.agents.get(name) : undefined
   if (a && onScreen(a) && a.state === "watching") leave(a.name)

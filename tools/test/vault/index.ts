@@ -78,6 +78,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "ai", deps: ["pages"] },
   { name: "installs", deps: ["pages","vault-plugins","cli"] },
   { name: "companion", deps: ["pages"] },
+  { name: "takeover", deps: ["pages"] },
   { name: "helper", deps: ["pages"] },
   { name: "voice", deps: ["pages", "cli"] },
   { name: "realtime", deps: ["pages", "cli"] },

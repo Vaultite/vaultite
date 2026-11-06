@@ -24,6 +24,7 @@ import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type Job, jobOf, jobsLine, jobsText, jobTask } from "./jobs.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
+import { doneText, stepOf, takeovers } from "./takeover.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
@@ -823,6 +824,8 @@ const roomMessage = (m: Record<string, unknown>) => typeof m.t === "string" && (
 /** The desktop app's helper (electron/helper.ts): it draws the agents outside the window, and says what the user asks or
  *  points at on screen; it opens no notes. */
 const screens = new Set<WebSocket>()
+/** Its steps in other apps (takeover.ts): sent to the helper the ask came from. */
+const takeover = takeovers(send, (name, sx, sy) => void resolve(target({ sx, sy }, true), name).then((t) => setAgent(name, { ...t, state: "writing", pointed: Date.now() }), () => {}))
 /** The companion's drawing over the screen (drawings.ts). */
 const screenDrawing = screenDrawings(plugin, {
   send: (m) => { for (const ws of screens) send(ws, m) },
@@ -923,13 +926,15 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
+    if (takeover.message(ws, m)) return
     // (a bubble over the screen clicked away)
     if (m.t === "hide" && typeof m.id === "string") return void hide(m.id)
     if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
     // (its Talk key pressed: its summoned session made ready while they speak)
     if (m.t === "summoning") return void lane().warm()
     // (pressed again, or Esc, mid-answer: its summoned turn stops where it is, so the next ask isn't kept waiting)
-    if (m.t === "interrupt") return void bargeIn()
+    // (its take-over's offer up: the press is their answer to it)
+    if (m.t === "interrupt") return void (takeover.offering(ws) || bargeIn())
     // (who rides with their pointer: the windows draw no cursor of its meanwhile)
     if (m.t === "riding") return void ride(ws, str(m.agent).slice(0, 80))
     // (a job opened from the menu bar: no longer news)
@@ -937,13 +942,13 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     // (a cursor's conversation opened over the screen: its says seen)
     if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
     if (m.t === "drawing-act") return void drawingAct(m, req)
-    if (m.t === "moment") screenMoment(m, req)
+    if (m.t === "moment" && !takeover.heard(ws, m)) screenMoment(m, req)
     if (m.t === "answered") screenAnswered(m)
     // (its realtime voice paused, and why, or back: for its status)
     if (m.t === "mic") mics.set(ws, str(m.mic).slice(0, 300))
     if (m.t === "realtime") { const p = m.paused as Record<string, unknown> | null; realtimePaused.set(ws, p && typeof p === "object" ? { account: str(p.account), why: str(p.why).slice(0, 300), until: Number(p.until) || 0 } : null) }
   })
-  ws.on("close", () => { screens.delete(ws); realtimePaused.delete(ws); mics.delete(ws); ride(ws, "") })
+  ws.on("close", () => { screens.delete(ws); realtimePaused.delete(ws); mics.delete(ws); takeover.closed(ws); ride(ws, "") })
 }
 /** The summoned session's turn stopped (its Talk key pressed again, Esc): only it, never the long session's. */
 function bargeIn() {
@@ -2835,28 +2840,58 @@ async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, acti
   } finally { setAgent(name, { state: acting(name) }) }
 }
 
-const ACTS = ["click", "dblclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll"]
+const ACTS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll", "focus"]
+/** A step in another app (take-over): an element their ask listed, a screen point, or (asked there) the field with the keys. */
+function onScreen(p: Record<string, unknown>, name: string) {
+  if (str(p.ax) || p.sx !== undefined) return true
+  if (str(p.pane) || str(p.el)) return false
+  const m = moments.findLast((x) => (x.kind === "ask" || x.kind === "point") && (!x.for || key(x.for) === key(name)))
+  return !!m?.summoned && !!m.app && m.app !== "private" && !m.pane && !m.ui
+}
+async function screenAct(p: Record<string, unknown>, name: string) {
+  let step: ReturnType<typeof stepOf>
+  try { step = stepOf({ action: str(p.action), ax: str(p.ax) || undefined, sx: p.sx === undefined ? undefined : Number(p.sx), sy: p.sy === undefined ? undefined : Number(p.sy),
+    value: p.value === undefined ? undefined : str(p.value), key: str(p.key) || undefined, direction: str(p.direction) || undefined }, nearBy.get(key(name)) ?? []) } catch (e) { throw new OpError((e as Error).message, 404) }
+  did(name, "act")
+  // (its cursor flies there first: the helper waits for it)
+  if (step.el || step.at) setAgent(name, { ...await resolve(target(p, true), name), state: "writing", pointed: Date.now() })
+  try {
+    const r = await takeover.act(step, { agent: name, tint: agentOf(name).tint, ask: str(p.ask) || undefined })
+    if (r.near?.length) nearBy.set(key(name), r.near)
+    return { screen: true, ...r, text: doneText(r) }
+  } finally { setAgent(name, { state: acting(name) }) }
+}
 plugin.op({
   id: "companion.act",
   cli: "companion act",
-  summary: "Act in the user's own web page, with your cursor there: click, fill, type, press a key, pick an option, scroll (refs from companion see).",
+  summary: "Act in the user's own web page, the app's UI or (asked on the screen) another app, with your cursor there: click, fill, type, press a key, pick an option, scroll.",
   help: `Their tab, before their eyes: as in their notes, act when that's what they want (they asked, or it's plainly the
 next step); a long errand goes to a page of your own instead (vau browser open --task, its tab group yours), told with a
 say. Only where its container lets agents act, never on a private page. Answers what changed on the page.
 
+In another app (take-over, an ask on the screen): an element the ask listed (--ax), a point (--sx --sy), or the field
+with the keys (neither). They're asked first (a card by the pointer, --ask its line), a yes lasting the exchange; a
+send, post or delete is asked each time. Moving the mouse or a key stops it. Answers the elements there now, by id.
+
   vau companion act --pane t5x1 click --el e12
-  vau companion act --pane t5x1 fill --el e5 --value "alice@example.com"`,
+  vau companion act --pane t5x1 fill --el e5 --value "alice@example.com"
+  vau companion act click --ax a3 --ask "Want me to turn on dark mode?"
+  vau companion act fill --ax a5 --value "Lighthouse"
+  vau companion act press --key cmd+s`,
   kind: "write",
   lock: false,
   params: { pane: PANE, ui: { ...UI, description: "instead of a page: the app's own UI, by its id (as in look), to click" },
     find: { type: "string", description: "with ui: the words of what to click in it (a pinned page's name in panel:pages:pages)" },
     action: { type: "string", required: true, enum: ACTS, description: "what to do" }, el: EL,
-    value: { type: "string", description: "the text to fill or type, or the option to select (scroll: up or down)" }, key: { type: "string", description: "the key to press (Enter, Tab, Escape)" },
+    ax: PLACE.ax, sx: PLACE.sx, sy: PLACE.sy, ask: { type: "string", description: "in another app: the line offering it, when they haven't said yes yet (Want me to...?)" },
+    value: { type: "string", description: "the text to fill or type, or the option to select (scroll: up or down)" }, key: { type: "string", description: "the key to press (Enter, Tab, Escape; in another app with modifiers: cmd+s)" },
     direction: { type: "string", enum: ["up", "down"], description: "which way to scroll" }, as: AS },
   args: ["action", "value"],
   run: async (p, ctx) => {
     const name = who(p)
     if (str(p.ui)) return actInApp(ctx, name, str(p.ui), str(p.find), str(p.action))
+    if (onScreen(p, name)) return screenAct(p, name)
+    if (p.action === "rightclick" || p.action === "focus") throw new OpError(`${String(p.action)} is for another app (--ax, --sx --sy)`)
     const id = str(p.pane) || paneFocus()?.id
     if (!id) throw new OpError("give `pane` (a web page) or `ui` (the app's own UI): the user isn't in a web page")
     if (p.action === "scroll" && !p.direction && /^(up|down)$/i.test(str(p.value))) p = { ...p, direction: str(p.value).toLowerCase(), value: undefined }
@@ -2869,8 +2904,8 @@ say. Only where its container lets agents act, never on a private page. Answers 
       return { pane: id, ...r }
     } finally { setAgent(name, { state: acting(name) }) }
   },
-  text: (r, p) => ("clicked" in r ? actInAppText(r) : actText(r, String(p.action))),
-  did: (p) => ({ action: "ui", text: `${String(p.action)} in ${p.ui ? `the app (${String(p.ui)}${p.find ? ` "${String(p.find)}"` : ""})` : "the user's page"}${p.el ? ` (${String(p.el)})` : ""}`, paths: [], by: who(p) }),
+  text: (r, p) => ("screen" in r ? r.text : "clicked" in r ? actInAppText(r) : actText(r, String(p.action))),
+  did: (p) => ({ action: "ui", text: `${String(p.action)} in ${p.ui ? `the app (${String(p.ui)}${p.find ? ` "${String(p.find)}"` : ""})` : p.ax || p.sx !== undefined ? "another app" : "the user's page"}${p.el || p.ax ? ` (${String(p.el || p.ax)})` : ""}`, paths: [], by: who(p) }),
 })
 
 // ---------- opening things before their eyes: its cursor goes where it opens, as the CLI's opens do too

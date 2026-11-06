@@ -242,7 +242,7 @@ export function pacedBeats(caption: string, beats: number, spoken: (Spoken | nul
 // ---------- kept: a drawing as an .excalidraw scene (vau docs excalidraw)
 
 /** The palette Excalidraw picks from, by the app's tint names. */
-const HEX: Record<string, string> = { orange: "#e8590c", blue: "#1971c2", purple: "#9c36b5", green: "#2f9e44", red: "#e03131", yellow: "#f08c00", pink: "#c2255c", teal: "#099268", gray: "#868e96" }
+export const HEX: Record<string, string> = { orange: "#e8590c", blue: "#1971c2", purple: "#9c36b5", green: "#2f9e44", red: "#e03131", yellow: "#f08c00", pink: "#c2255c", teal: "#099268", gray: "#868e96" }
 const INK = "#1e1e1e"
 type El = Record<string, unknown>
 
