@@ -9,7 +9,7 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 
-const { args: [VAULT], check, watch, done, skip } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT], check, watch, done, skip } = await qa(import.meta.url, { chrome: false, live: true })
 if (process.platform !== "darwin") await skip("the helper is a Mac's")
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-helper-"))
 const AUDIO = path.join(TMP, "said.aiff")

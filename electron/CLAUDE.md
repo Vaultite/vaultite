@@ -38,7 +38,8 @@
   icon shows only while a window is open. Native parts: screen.swift (the keys' tap and ink, fields, other apps' text, the display's picture), dictation, voice.swift
   (the companion's voice out: it never plays under VAULTITE_QUIET, and VOICE_OUT writes a file instead).
   Only the app the user runs (packaged, not VAULTITE_QUIET; VAULTITE_HELPER_TAP=1 by hand) hears their keys and takes the
-  one lock; a scripted copy hears a file, never the microphone. Each Talk-key press is logged (presslog.ts:
+  one lock; a scripted copy hears a file, never the microphone, and where that lock is held (the user's app runs) its QA
+  (web/qa/helper.mjs) is skipped unless VAULTITE_QA_LIVE=1. Each Talk-key press is logged (presslog.ts:
   userData/talk/talk-<day>.jsonl, a missed press's audio beside it): a press that went nowhere can be traced.
 - The realtime voice (realtimefront.ts over realtime.ts, OpenAI's WebSocket): dictation's session taps the mic for it
   (`tap`, 16 kHz, made 24 kHz), voice.ts' `stream()` plays its audio. Dictation still runs: its words are the screen

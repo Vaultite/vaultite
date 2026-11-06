@@ -4,6 +4,7 @@ import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import { createRequire } from "node:module"
 import net from "node:net"
+import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { hold } from "../../../tools/qa_slots.ts"
@@ -61,10 +62,23 @@ function args(script) {
   return argv
 }
 
+/** Whether the user's own app runs here, hearing their keys (electron/helper.ts' lock, taken only by a packaged app that
+ *  isn't scripted): a script that drives the helper, dictation or the voice then waits for VAULTITE_QA_LIVE=1. */
+export function userApp() {
+  return new Promise((done) => {
+    const c = net.connect(path.join(os.tmpdir(), "vaultite-helper.sock"))
+    c.once("connect", () => { c.destroy(); done(true) })
+    c.once("error", () => done(false))
+  })
+}
+export const LIVE_OK = process.env.VAULTITE_QA_LIVE === "1"
+
 /** One run: its arguments, Chrome (`chrome: false` for none), its checks and its pages' errors; `done()` ends it, exit 1
- *  on any failure (noErrors() checks earlier, before a cleanup that could add some). */
-export async function qa(script, { chrome = {} } = {}) {
+ *  on any failure (noErrors() checks earlier, before a cleanup that could add some). `live`: it drives the helper,
+ *  dictation or the voice, so it's skipped where the user's app runs unless VAULTITE_QA_LIVE=1. */
+export async function qa(script, { chrome = {}, live = false } = {}) {
   const argv = args(script)
+  if (live && !LIVE_OK && await userApp()) { console.log("skipped: the user's Vaultite app runs here (VAULTITE_QA_LIVE=1 runs it anyway)"); process.exit(0) }
   // (a sandbox given, run by hand: its plugins' writes answered, as tools/qa.ts' vaults are, or their ask covers the page)
   for (const a of argv) if (typeof a === "string" && fs.existsSync(path.join(a, ".vaultite/sandbox.json"))) quietGrants(a)
   await hold()
