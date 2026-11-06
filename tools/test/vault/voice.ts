@@ -9,7 +9,7 @@ export default async ($: VaultTest) => {
   const { check, tmp, sleep } = $
   // The companion's voice (electron/voice.ts): words made plain and cut as they stream, made ahead, played in order, this
   // Mac's from where the cloud stopped. Nothing plays a sound: the player writes a file, the cloud is a stand-in.
-  const { chunker, languageIn, languageOf, speakable } = await import("../../../plugins/core/companion/spoken.ts")
+  const { chunker, languageIn, languageOf, sayable, speakable } = await import("../../../plugins/core/companion/spoken.ts")
   {
     check("voice: Markdown said as plain words: no code, ids or addresses, a link by its words",
       speakable("Click **Share** (a3), then see [the guide](https://x.com/g) or https://example.com/a. Run:\n```\nnpm test\n```\nDone 🎉") ===
@@ -19,16 +19,32 @@ export default async ($: VaultTest) => {
     const c = chunker(), whole = "Sure. That's the Share button: click it, then pick who. Version 3.5 is out. It has e.g. a new look. And"
     const got: [number, string][] = []
     for (let i = 1; i <= whole.length; i++) for (const p of c.feed(whole.slice(0, i))) got.push([i, p])
-    check("voice: its first sentence goes as soon as it ends (at the next space), not a number's dot nor e.g.", got[0]?.[1] === "Sure." && got[0][0] === 6 &&
+    check("voice: its first sentence goes as soon as it ends (the next word begun), not a number's dot nor e.g.", got[0]?.[1] === "Sure." && got[0][0] === 7 &&
       got.map((g) => g[1]).join(" ") === "Sure. That's the Share button: click it, then pick who. Version 3.5 is out. It has e.g. a new look." && c.flush() === "And", got)
     const many = chunker(), ready = many.feed("One. Two is here. Three is too. Four")
     check("voice: after the first, the sentences that are all here go together", JSON.stringify(ready) === '["One.","Two is here. Three is too."]', ready)
-    const code = chunker(), inCode = code.feed("Run this:\n```\nls. a. b. \n```\nThen go. ")
+    const code = chunker(), inCode = [...code.feed("Run this:\n```\nls. a. b. \n```\nThen go. "), code.flush()]
     check("voice: never cut inside code, which isn't said", JSON.stringify(inCode) === '["Run this:","Then go."]', inCode)
+    const abbr = chunker(), months = [...abbr.feed("Foi de 30 de out. a 3 de nov. Depois, nada. E"), abbr.flush()]
+    check("voice: a dot before a lowercase word isn't a sentence's end (30 de out. a 3)", JSON.stringify(months) === '["Foi de 30 de out. a 3 de nov.","Depois, nada.","E"]', months)
     const long = chunker(), clause = long.feed(`${"word ".repeat(22)}and then, ${"more ".repeat(12)}`)
     check("voice: a long sentence is cut at a clause", clause.length === 1 && clause[0].endsWith("then,"), clause)
     check("voice: the language of its words, of the user's (Portuguese, English)", languageOf("Claro, esse botão abre a janela de compartilhar.", ["en", "pt"]) === "pt" &&
       languageOf("Sure, that button opens the share sheet.", ["pt", "en"]) === "en" && languageOf("Ok.", ["pt", "en"]) === "pt" && languageOf("Olá", ["en"]) === "en" && languageIn("Ok?") === null && languageIn("o que é isso?") === "pt")
+  }
+
+  {
+    const said = (t: string, l = "en") => sayable(t, l)
+    const cases: [string, string, string][] = [
+      ["It ran Oct 30 – Nov 3, ~2-3 AM.", "en", "It ran October 30th to November 3rd, about 2 to 3 AM."],
+      ["Due 11/05, see v0.1.209, e.g. the logs, etc.", "en", "Due November 5th, see version 0.1.209, for example the logs, et cetera."],
+      ["On 2026-11-05 it's ~40% faster vs. before, i.e. quick.", "en", "On November 5th, 2026 it's about 40% faster versus before, that is quick."],
+      ["Version 3.5 is out at 14:30; Nov 22nd ships, May 1 too", "en", "Version 3.5 is out at 14:30; November 22nd ships, May 1st too"],
+      ["Vence 05/11, uns ~2-3 dias, ex.: o log, etc.", "pt", "Vence 5 de novembro, uns 2 a 3 dias, por exemplo o log, etcetera."],
+      ["Foi de 30 de out. a 3 de nov.", "pt", "Foi de 30 de outubro a 3 de novembro."],
+    ]
+    const wrong = cases.filter(([t, l, want]) => said(t, l) !== want).map(([t, l]) => [t, said(t, l)])
+    check("voice: what a voice misreads said as words: months and dates, ranges, ~, versions, e.g. and etc. (English and Portuguese)", !wrong.length, wrong)
   }
 
   // ---------- the voice of an answer: pieces ahead, in order, the fallback, stopping
@@ -37,7 +53,7 @@ export default async ($: VaultTest) => {
   const rig = (o: { cloud?: boolean; firstMs?: number } = {}) => {
     const out: Ev[] = [], made: { n: number; text: string; to: Any; cancelled: boolean }[] = []
     const cloud = { make: (p: Any, to: Any) => { const m = { n: p.n, text: p.text, to, cancelled: false }; made.push(m); return () => { m.cancelled = true } } }
-    const v = voice({ cloud: () => (o.cloud === false ? null : cloud), hints: () => ["en", "pt"], ahead: 2, firstMs: o.firstMs ?? 5000, stallMs: 5000,
+    const v = voice({ clouds: () => (o.cloud === false ? [] : [cloud]), hints: () => ["en", "pt"], ahead: 2, firstMs: o.firstMs ?? 5000, stallMs: 5000,
       out: { pcm: (n, b) => out.push(["pcm", n, b.length]), say: (n, t, l) => out.push(["say", n, t, l]), end: (n) => out.push(["end", n]), stop: () => out.push(["stop"]) } })
     return { v, out, made }
   }
@@ -45,7 +61,7 @@ export default async ($: VaultTest) => {
   {
     const { v, out, made } = rig()
     v.start("what is this")
-    v.text("s1", "One. Two. Three. Four. Five. ")
+    v.text("s1", "One. Two. Three. Four. Five. Six")
     check("voice: the next pieces are made ahead, a few at a time", made.length === 2 && made[0].text === "One." && made[1].text === "Two. Three. Four. Five.", made.map((m) => m.text))
     made[1].to.audio(pcm(0.1)); made[1].to.end()
     check("voice: a later piece made first waits for the one before", !out.some((e) => e[1] === made[1].n), out)
@@ -57,8 +73,8 @@ export default async ($: VaultTest) => {
   {
     const { v, out, made } = rig()
     v.start()
-    v.text("s1", "Hello there. This sentence is cut off midway by a dropped socket. ")
-    v.text("s1", "Hello there. This sentence is cut off midway by a dropped socket. And this one waits. ")
+    v.text("s1", "Hello there. This sentence is cut off midway by a dropped socket. And")
+    v.text("s1", "Hello there. This sentence is cut off midway by a dropped socket. And this one waits. Then")
     made[0].to.audio(pcm(0.5)); made[0].to.end()
     // (half a second of "This sentence is cut off": its characters timed, the socket gone)
     const text = made[1].text, chars = [...text], ends = chars.map((_c, i) => (i + 1) * 0.04)
@@ -68,7 +84,7 @@ export default async ($: VaultTest) => {
     check("voice: a dropped socket mid-piece: this Mac's voice goes on from the next word its audio hadn't said", says.length === 2 &&
       says[0][1] === made[1].n && String(says[0][2]) === text.slice(text.indexOf(" ", 12)).trim() && says[1][2] === "And this one waits." && says[0][3] === "en", { says, text })
     check("voice: the pieces still being made are let go", made.slice(2).every((m) => m.cancelled), made)
-    v.text("s1", "Hello there. This sentence is cut off midway by a dropped socket. And this one waits. Then this. ")
+    v.text("s1", "Hello there. This sentence is cut off midway by a dropped socket. And this one waits. Then this. More")
     check("voice: and the rest of the answer is this Mac's", out.at(-2)?.[0] === "say" && out.at(-2)?.[2] === "Then this." && made.length === 3, out)
   }
   {
@@ -86,9 +102,29 @@ export default async ($: VaultTest) => {
     check("voice: an answer in the language its ask was in, when that's known", out.filter((e) => e[0] === "say").every((e) => e[3] === "pt") && out.some((e) => e[0] === "say"), out)
   }
   {
+    // (ElevenLabs first, Soniox when it fails, this Mac's when both have)
+    const out: Ev[] = [], made: { by: string; n: number; text: string; to: Any; cancelled: boolean }[] = []
+    const cloud = (by: string) => ({ make: (p: Any, to: Any) => { const m = { by, n: p.n, text: p.text, to, cancelled: false }; made.push(m); return () => { m.cancelled = true } } })
+    const chain = [cloud("eleven"), cloud("soniox")]
+    const v = voice({ clouds: () => chain, hints: () => ["en"], ahead: 2, firstMs: 5000, stallMs: 5000,
+      out: { pcm: (n, b) => out.push(["pcm", n, b.length]), say: (n, t, l) => out.push(["say", n, t, l]), end: (n) => out.push(["end", n]), stop: () => out.push(["stop"]) } })
+    v.start()
+    v.text("s1", "One two three four five six. Next one here. ")
+    v.end()
+    const first = made[0], text = first.text, chars = [...text], ends = chars.map((_c, i) => (i + 1) * 0.05)
+    first.to.audio(pcm(0.42), { chars, ends })
+    first.to.fail("the socket closed")
+    const next = made.filter((m) => m.by === "soniox")
+    check("voice: the first cloud voice dropped mid-piece, the next makes the rest of it from the next word, and the pieces after",
+      next.length === 2 && next[0].n === first.n && next[0].text === text.slice(8) && next[1].text === "Next one here." && made[1].cancelled, made.map((m) => [m.by, m.text, m.cancelled]))
+    next[0].to.audio(pcm(0.2)); next[0].to.fail("refused")
+    check("voice: and when that one fails too, this Mac's", out.filter((e) => e[0] === "say").length === 2 && out.filter((e) => e[0] === "pcm" && e[1] === first.n).length === 2, out)
+  }
+  {
     const { v, out, made } = rig({ firstMs: 60 })
     v.start()
     v.text("s1", "Slow. ")
+    v.end()
     await sleep(120)
     check("voice: a piece whose first audio is late is this Mac's", out.some((e) => e[0] === "say" && e[2] === "Slow.") && made[0].cancelled, out)
   }
@@ -106,6 +142,7 @@ export default async ($: VaultTest) => {
     const before = made.length
     v.start("again")
     v.text("s2", "Second answer. ")
+    v.end()
     check("voice: a new answer after it speaks again", made.length === before + 1 && made.at(-1)!.text === "Second answer.", made)
   }
 
@@ -114,7 +151,7 @@ export default async ($: VaultTest) => {
     const { prefsOf, sceneFor, splitScene } = await import("../../../electron/helperlogic.ts")
     const decls = { dictation: {}, screen: {}, companion: JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../../../plugins/core/companion/manifest.json"), "utf8")).settings }
     const def = prefsOf({}, {}, {}, decls).voice, set = prefsOf({}, { voice: "always", voice_name: "Larissa", voice_speed: 3 }, {}, decls).voice
-    check("voice: its settings, the manifest's defaults (when you speak, Adrian), a speed kept in range", def.mode === "auto" && def.name === "Adrian" && def.speed === 1 &&
+    check("voice: its settings, the manifest's defaults (when you speak; ElevenLabs' Brian first, Soniox's Adrian), a speed kept in range", def.mode === "auto" && def.name === "Adrian" && def.speed === 1 && def.provider === "auto" && def.eleven.voice === "nPczCjzI2devNBz1zQrb" && def.eleven.model === "eleven_flash_v2_5" &&
       set.mode === "always" && set.name === "Larissa" && set.speed === 1.3, { def, set })
     const d = { id: 1, bounds: { x: 0, y: 0, width: 1000, height: 800 } }
     const scene = (level: number) => sceneFor(d, { agents: [], summon: null, pill: null, speaking: { name: "Claude", level } }, { x: 1, y: 1 }, [d])
@@ -165,6 +202,71 @@ export default async ($: VaultTest) => {
     check("tts: its socket dropped mid-piece, the piece fails (and this Mac's voice takes over)", heard.some((h) => h[0] === "fail" && h[1] === 3), heard)
     c.close()
     wss.close(); server.close()
+  }
+  {
+    const { cloudVoice } = await import("../../../electron/tts.ts")
+    const server = http.createServer(), wss = new WebSocketServer({ server })
+    const got: Any[] = [], seen: { url: string; key: string }[] = []
+    wss.on("connection", (ws, req) => {
+      seen.push({ url: String(req.url), key: String(req.headers["xi-api-key"]) })
+      ws.on("message", (d) => {
+        const m = JSON.parse(String(d))
+        got.push(m)
+        if (!m.flush) return
+        const audio = Buffer.alloc(24_000).toString("base64")
+        const alignment = { chars: ["H", "i"], charStartTimesMs: [0, 100], charDurationsMs: [100, 150] }
+        ws.send(JSON.stringify({ audio, contextId: m.context_id, alignment }))
+        ws.send(JSON.stringify({ audio, contextId: m.context_id, alignment }))
+        ws.send(JSON.stringify({ audio: null, isFinal: true, contextId: m.context_id }))
+      })
+    })
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
+    const c = cloudVoice({ provider: "elevenlabs", url: `ws://127.0.0.1:${(server.address() as Any).port}`, key: "eleven-key-1", model: "eleven_flash_v2_5", voice: "nPczCjzI2devNBz1zQrb", speed: 1.1 })
+    const heard: Any[] = []
+    let timed: Any = null
+    c.make({ n: 1, text: "Hi there.", language: "en" }, { audio: (b: Buffer, t?: Any) => { heard.push(["audio", b.length]); timed = t }, end: () => heard.push(["end"]), fail: (w: string) => heard.push(["fail", w]) })
+    for (let i = 0; i < 100 && !heard.some((h) => h[0] === "end"); i++) await sleep(20)
+    const u = new URL(seen[0]?.url ?? "/", "http://x")
+    check("tts: ElevenLabs' socket for its voice and model, PCM at 24 kHz with timings, the key as a header", u.pathname === "/v1/text-to-speech/nPczCjzI2devNBz1zQrb/multi-stream-input" &&
+      u.searchParams.get("model_id") === "eleven_flash_v2_5" && u.searchParams.get("output_format") === "pcm_24000" && u.searchParams.get("sync_alignment") === "true" && seen[0].key === "eleven-key-1", seen)
+    check("tts: a context per piece, opened, its text flushed and closed, at the speed set", got[0]?.text === " " && got[0].voice_settings?.speed === 1.1 && got[1]?.text === "Hi there. " && got[1].flush === true &&
+      got[2]?.close_context === true && new Set(got.map((m) => m.context_id)).size === 1, got)
+    check("tts: its audio, then its end; each chunk's timings follow the audio before it", JSON.stringify(heard) === '[["audio",24000],["audio",24000],["end"]]' &&
+      JSON.stringify(timed?.ends) === "[0.1,0.25,0.6,0.75]", { heard, timed })
+    c.close()
+    wss.close(); server.close()
+  }
+
+  // ---------- ElevenLabs' key: this machine's, checked by a word said, never in the vault
+  {
+    const { api, vau } = { api: $.api, vau: $.vars.vau as (...a: string[]) => Promise<{ code: number; out: string; err: string }> }
+    const config = path.join(process.env.VAULTITE_LOCAL!, "config.json")
+    const asked: string[] = []
+    const rest = http.createServer((req, res) => {
+      asked.push(`${req.method} ${req.url}`)
+      res.statusCode = req.headers["xi-api-key"] === "eleven-good-key-123" ? 200 : 401
+      res.end()
+    })
+    await new Promise<void>((done) => rest.listen(0, "127.0.0.1", done))
+    process.env.VAULTITE_ELEVENLABS_API = `http://127.0.0.1:${(rest.address() as Any).port}`
+    try {
+      const keys = async () => (await api("GET", "companion/voice"))[1]
+      check("voice key: none, no ElevenLabs voice", !(await keys()).elevenlabs)
+      $.vars.stdinText = "eleven-wrong-key-456\n"
+      let r = await vau("voice", "key", "--provider", "elevenlabs")
+      check("voice key: one ElevenLabs refuses isn't kept", r.code === 1 && /refused/.test(r.err) && !(await keys()).elevenlabs, r)
+      $.vars.stdinText = "eleven-good-key-123\n"
+      r = await vau("voice", "key", "--provider", "elevenlabs")
+      $.vars.stdinText = ""
+      const k = await keys()
+      check("voice key: piped in, checked by a word said (speech alone may be allowed), kept in data/config.json", r.code === 0 && /Set the ElevenLabs key/.test(r.out) &&
+        asked.some((a) => /^POST \/v1\/text-to-speech\/\w+/.test(a)) && JSON.parse(fs.readFileSync(config, "utf8")).companion?.elevenlabs === "eleven-good-key-123" &&
+        k.elevenlabs?.key === "eleven-good-key-123" && /^wss:\/\//.test(k.elevenlabs.url), { r, asked })
+      const inVault = (() => { try { return execFileSync("grep", ["-rl", "eleven-good-key-123", $.VAULT], { encoding: "utf8" }) } catch { return "" } })()
+      check("voice key: nowhere in the vault", !inVault, inVault)
+      r = await vau("voice", "key", "--provider", "elevenlabs", "--remove")
+      check("voice key --remove: gone", r.code === 0 && !(await keys()).elevenlabs && !JSON.parse(fs.readFileSync(config, "utf8")).companion?.elevenlabs, r)
+    } finally { rest.close(); delete process.env.VAULTITE_ELEVENLABS_API; $.vars.stdinText = "" }
   }
 
   // ---------- the player (voice.swift): writes a file here, never the speakers

@@ -1,0 +1,87 @@
+// Its voice's keys and its sample (the desktop app speaks: electron/voice.ts). ElevenLabs' key is this machine's, in
+// data/config.json (`companion.elevenlabs`), never the vault's; Soniox's is dictation's.
+import { OpError, type Plugin } from "../../../core/plugins.ts"
+
+// (tests point these at a stand-in)
+const ELEVEN_WS = () => process.env.VAULTITE_ELEVENLABS_URL || "wss://api.elevenlabs.io"
+const ELEVEN_API = () => process.env.VAULTITE_ELEVENLABS_API || "https://api.elevenlabs.io"
+const SONIOX_TTS = () => process.env.VAULTITE_SONIOX_TTS_URL || "wss://tts-rt.soniox.com/tts-websocket"
+const SONIOX_MODEL = "tts-rt-v2"
+/** A stock voice any key may use: what a key is checked with. */
+const CHECK_VOICE = "nPczCjzI2devNBz1zQrb"
+export const SET_ELEVEN = `vau secret "ElevenLabs API key" | vau voice key --provider elevenlabs`
+
+export function voiceOps(plugin: Plugin) {
+  const all = () => plugin.secrets() as { companion?: { elevenlabs?: unknown }; dictation?: { soniox?: unknown } }
+  const keyOf = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
+  const eleven = () => keyOf(all().companion?.elevenlabs), soniox = () => keyOf(all().dictation?.soniox)
+
+  /** The cloud voices this machine has a key for, for its desktop app. */
+  plugin.route("GET", "companion/voice", async (req) => {
+    await plugin.ownerOnly(req, "The voice's keys")
+    const e = eleven(), s = soniox()
+    return { ...(e ? { elevenlabs: { url: ELEVEN_WS(), key: e } } : {}), ...(s ? { soniox: { url: SONIOX_TTS(), key: s, model: SONIOX_MODEL } } : {}) }
+  }, { lock: false, sync: false })
+
+  plugin.op({
+    id: "companion.voice-key",
+    cli: "voice key",
+    mcp: false,
+    owner: "The voice's keys",
+    summary: "Set this machine's key for a cloud voice the companion speaks with: ElevenLabs' (first tried once set), or Soniox's (dictation's too).",
+    help: `Kept in this machine's data/config.json, never in the vault; checked first (ElevenLabs': a word said). Pipe it in from
+vau secret, so it never lands in a transcript. With nothing piped, says whether one is set.
+
+  ${SET_ELEVEN}
+  vau voice key --provider elevenlabs --remove`,
+    kind: "write",
+    lock: false,
+    params: {
+      key: { type: "string", stdin: true, description: "the API key (piped in when left out)" },
+      provider: { type: "string", enum: ["elevenlabs", "soniox"], default: "elevenlabs", description: "whose key: elevenlabs, or soniox (the same as vau dictation key)" },
+      remove: { type: "boolean", description: "remove the key: the next voice speaks" },
+    },
+    run: async ({ key, provider, remove }, ctx) => {
+      if (ctx.who.client === "mcp") throw new OpError("not over MCP: keys stay on the user's machines (vau voice key, in a terminal)", 403)
+      if (provider === "soniox") return { provider, ...(await ctx.op("dictation.key", { ...(key ? { key } : {}), ...(remove ? { remove } : {}) })) }
+      const stored = (all().companion ?? {}) as Record<string, unknown>
+      if (remove) { const { elevenlabs: _, ...rest } = stored; plugin.saveSecrets(Object.keys(rest).length ? rest : null); return { provider: "elevenlabs", set: false, removed: true } }
+      const k = typeof key === "string" ? key.trim() : ""
+      if (!k) return { provider: "elevenlabs", set: !!eleven() }
+      if (!/^[\x21-\x7e]{16,200}$/.test(k)) throw new OpError("that isn't an ElevenLabs key (one line, no spaces)")
+      // (a key may be for speech alone, without reading voices: checked by a word said, a few characters' cost)
+      const r = await fetch(`${ELEVEN_API()}/v1/text-to-speech/${CHECK_VOICE}?output_format=pcm_16000`, { method: "POST", signal: AbortSignal.timeout(10_000),
+        headers: { "xi-api-key": k, "Content-Type": "application/json" }, body: JSON.stringify({ text: "Hi.", model_id: "eleven_flash_v2_5" }) }).catch(() => null)
+      if (r && (r.status === 401 || r.status === 403)) throw new OpError("ElevenLabs refused this key: check it (and that it may use text to speech) in its settings", 400)
+      plugin.saveSecrets({ ...stored, elevenlabs: k })
+      return { provider: "elevenlabs", set: true, checked: !!r?.ok }
+    },
+    text: (r: { provider: string; set?: boolean; removed?: boolean; checked?: boolean }) => r.provider === "soniox" ? (r.set ? "A Soniox key is set." : "No Soniox key here.")
+      : r.removed ? "Removed the ElevenLabs key: the companion speaks with Soniox's voice, else this Mac's."
+      : r.checked === undefined ? (r.set ? "An ElevenLabs key is set: the companion speaks with ElevenLabs' voice." : `No ElevenLabs key here: ${SET_ELEVEN}`)
+      : `Set the ElevenLabs key${r.checked ? "" : " (ElevenLabs didn't answer, so it isn't checked)"}: the companion speaks with ElevenLabs' voice.`,
+    did: (p) => ({ action: "settings", text: p.remove ? "Removed the ElevenLabs key" : p.key ? "Set a voice key" : "Checked for a voice key" }),
+  })
+
+  plugin.op({
+    id: "companion.voice-sample",
+    cli: "voice sample",
+    summary: "Say a sample aloud on this Mac in the companion's voice (or a provider's), for the user to hear it: only when they ask.",
+    help: `Plays through the desktop app's menu-bar helper, with the settings' voices (voice_name, elevenlabs_voice).
+
+  vau voice sample "Here's how I sound."
+  vau voice sample "Olá, tudo bem?" --provider soniox`,
+    kind: "read",
+    lock: false,
+    args: ["text"],
+    params: {
+      text: { type: "string", required: true, description: "what to say" },
+      provider: { type: "string", enum: ["elevenlabs", "soniox"], description: "whose voice (default: as answers are said)" },
+    },
+    run: async ({ text, provider }) => {
+      const r = await plugin.desktop("voice:sample", { text: String(text).slice(0, 2000), ...(provider ? { provider } : {}) }).catch((e: Error) => { throw new OpError(`it can't speak here: ${e.message}`, 409) })
+      return (r ?? { said: false }) as { said: boolean; by?: string; why?: string }
+    },
+    text: (r: { said: boolean; by?: string; why?: string }) => (r.said ? `Said it (${r.by}).` : `Didn't say it${r.why ? `: ${r.why}` : ""}.`),
+  })
+}

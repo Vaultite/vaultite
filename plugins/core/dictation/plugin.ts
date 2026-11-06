@@ -1,5 +1,5 @@
 // Soniox's key is this machine's (data/config.json, `dictation.soniox`), never the vault's: the desktop app asks for it
-// to dictate (electron/dictation.ts) and for the companion's voice (electron/voice.ts), and streams to Soniox itself.
+// to dictate (electron/dictation.ts) and for the companion's voice (companion/voice.ts), and streams to Soniox itself.
 import { OpError, Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -8,8 +8,6 @@ export const plugin = new Plugin(import.meta.url)
 const WS = () => process.env.VAULTITE_SONIOX_URL || "wss://stt-rt.soniox.com/transcribe-websocket"
 const API = () => process.env.VAULTITE_SONIOX_API || "https://api.soniox.com"
 const MODEL = "stt-rt-v6"
-const TTS = () => process.env.VAULTITE_SONIOX_TTS_URL || "wss://tts-rt.soniox.com/tts-websocket"
-const TTS_MODEL = "tts-rt-v2"
 export const SET_KEY = `vau secret "Soniox API key" | vau dictation key`
 
 const stored = () => (plugin.secrets()[plugin.id] ?? {}) as { soniox?: unknown }
@@ -25,14 +23,6 @@ plugin.route("GET", "dictation/cloud", async (req) => {
   if (!key) return engine === "soniox" ? { why: `No Soniox key on this machine (${SET_KEY})` } : {}
   const languages = Array.isArray(s.languages) ? s.languages.filter((l): l is string => typeof l === "string" && !!l.trim()).map((l) => l.trim()) : []
   return { url: WS(), key, model: MODEL, languages }
-}, { lock: false, sync: false })
-
-/** Soniox's voice, for the companion's spoken answers (the desktop app's): with this machine's key, else nothing (this
- *  Mac's own voice speaks). */
-plugin.route("GET", "dictation/speech", async (req) => {
-  await plugin.ownerOnly(req, "Dictation's key")
-  const key = keyHere()
-  return key ? { url: TTS(), key, model: TTS_MODEL } : {}
 }, { lock: false, sync: false })
 
 plugin.op({

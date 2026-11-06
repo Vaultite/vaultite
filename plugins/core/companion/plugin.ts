@@ -20,11 +20,13 @@ import { screenDrawings } from "./drawings.ts"
 import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { inSummoned, type Lane, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
+import { voiceOps } from "./voice.ts"
 import { type Job, jobOf, jobsLine, jobsText, jobTask } from "./jobs.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
+voiceOps(plugin)
 
 // The user's guides to their apps and sites (guides.ts): one loads with a summoned ask there.
 plugin.kind(new Kind({

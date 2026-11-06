@@ -194,7 +194,7 @@ const manifest = (id: string) => {
 const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("companion"), screen: manifest("screen") }
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
 let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {},
-  voice: { mode: "auto", name: "", speed: 1 } }
+  voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 } }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -1037,6 +1037,14 @@ function leaveWhenDone(a: Agent, says: Note[]) {
 const displayOf = (r: Rect) => screen.getDisplayMatching({ x: Math.round(r.x), y: Math.round(r.y), width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)) }).id
 
 // ---------- the server's calls (screen.text, screen.shot: plugins/core/screen)
+
+/** The server's calls to its voice (companion.voice-sample): a sample said aloud now, for the user to hear. */
+export async function voiceCall(name: string, args: unknown[]) {
+  const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { text?: unknown; provider?: unknown }
+  if (name !== "voice:sample" || typeof o.text !== "string" || !o.text.trim()) throw new Error(`no voice call ${name}`)
+  stopVoice()
+  return speaker.sample(o.text.slice(0, 2000), o.provider === "elevenlabs" || o.provider === "soniox" ? o.provider : undefined)
+}
 
 export async function screenCall(name: string, args: unknown[]) {
   const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { app?: unknown; window?: unknown; max?: unknown }

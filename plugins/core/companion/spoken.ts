@@ -27,6 +27,52 @@ export function speakable(md: string): string {
     .trim()
 }
 
+// ---------- what a voice misreads, said as words: dates, months, ranges, "~", versions, abbreviations
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+const ABBR: Record<string, number> = { jan: 0, feb: 1, fev: 1, mar: 2, apr: 3, abr: 3, may: 4, mai: 4, jun: 5, jul: 6, aug: 7, ago: 7, sep: 8, sept: 8, set: 8, oct: 9, out: 9, nov: 10, dec: 11, dez: 11 }
+const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`
+/** A date as said: November 5th (2026), or 5 de novembro (de 2026). */
+const dayOf = (m: number, d: number, lang: string, y?: string) => (lang === "pt" ? `${d} de ${MESES[m]}${y ? ` de ${y}` : ""}` : `${MONTHS[m]} ${ordinal(d)}${y ? `, ${y}` : ""}`)
+const ok = (m: number, d: number) => m >= 0 && m < 12 && d >= 1 && d <= 31
+
+/** `text` (plain words, in `lang`) as a voice should say it: an abbreviated month or a numeric date in words (11/05 is
+ *  November 5th in English, 11 de maio in Portuguese), a range said "to", "~" "about", a version "version". */
+export function sayable(text: string, lang = "en"): string {
+  const pt = lang === "pt", to = pt ? " a " : " to "
+  return text
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (x, y: string, m: string, d: string) => (ok(+m - 1, +d) ? dayOf(+m - 1, +d, lang, y) : x))
+    .replace(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/g, (x, a: string, b: string, y?: string) => {
+      const [m, d] = pt ? [+b - 1, +a] : [+a - 1, +b]
+      return ok(m, d) ? dayOf(m, d, lang, y) : x
+    })
+    // (Oct 30, Nov. 3; 30 de out: the month whole)
+    .replace(/\b(Jan|Feb|Fev|Mar|Apr|Abr|May|Mai|Jun|Jul|Aug|Ago|Sept?|Set|Oct|Out|Nov|Dec|Dez)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?!:)/gi, (x, mon: string, d: string) => {
+      const m = ABBR[mon.toLowerCase()]
+      return m === undefined || !ok(m, +d) || (pt && mon.toLowerCase() === "out") ? x : dayOf(m, +d, lang)
+    })
+    .replace(/\b(\d{1,2}) de (jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)(\.?)(?=[\s,.;:!?]|$)/gi, (x, d: string, mon: string, dot: string, at: number, all: string) =>
+      `${d} de ${MESES[ABBR[mon.toLowerCase()]]}${dot && at + x.length >= all.trimEnd().length ? "." : ""}`)
+    .replace(/\b(January|February|March|April|May|June|July|August|September|October|November|December) (\d{1,2})\b(?!(?:st|nd|rd|th)|:|\d)/g, (_x, mon: string, d: string) => `${mon} ${ordinal(+d)}`)
+    .replace(/(?<=\d(?:st|nd|rd|th)?|\b(?:AM|PM|am|pm))\s*[–—-]\s*(?=(?:January|February|March|April|May|June|July|August|September|October|November|December) )/g, to)
+    // (2-3 AM, 10–20%: a range)
+    .replace(/(?<![\d.\/-])(\d+(?:[.,]\d+)?)\s*[–—-]\s*(\d+(?:[.,]\d+)?)(?![\d\/-])/g, `$1${to}$2`)
+    .replace(/\b(around|about|roughly|cerca de|cerca|uns|umas)\s*~\s*/gi, "$1 ")
+    .replace(/(^|[\s(])~\s*(?=\d|\$|€|R\$)/g, `$1${pt ? "cerca de " : "about "}`)
+    .replace(/~/g, pt ? "cerca de " : "about ")
+    .replace(/\bv(\d+(?:\.\d+)+)\b/g, `${pt ? "versão" : "version"} $1`)
+    .replace(/\b(?:e\.g\.|eg\.)(?=\s|,|$)/gi, pt ? "por exemplo" : "for example")
+    .replace(/\bi\.e\.(?=\s|,|$)/gi, pt ? "isto é" : "that is")
+    .replace(/\b(?:p\.\s?ex\.|ex\.:)/gi, "por exemplo")
+    .replace(/\betc\./gi, pt ? "etcetera." : "et cetera.")
+    .replace(/\betc\b/gi, pt ? "etcetera" : "et cetera")
+    .replace(/\bvs\.?(?=\s)/gi, "versus")
+    .replace(/\bapprox\.(?=\s)/gi, "about")
+    .replace(/\s+/g, " ")
+    .replace(/\.{2,}$/, ".")
+}
+
 /** Words that end in a dot without ending a sentence. */
 const ABBREV = /(?:^|\s)(?:e\.g|i\.e|etc|vs|cf|approx|no|dr|mr|mrs|ms|sr|sra|st|av|nº|p\.ex|ex)\.$/i
 
@@ -47,7 +93,8 @@ function cuts(s: string, from: number, clause: boolean): number[] {
     const next = s[i + 1]
     if (c === "\n") { at.push(i + 1); continue }
     if (next === undefined || !/\s/.test(next)) continue
-    if (/[.!?…]/.test(c)) { if (c !== "." || !ABBREV.test(s.slice(Math.max(0, i - 6), i + 1))) at.push(i + 1) }
+    // (a dot before a lowercase word is an abbreviation's, "30 de out. a 3": seen once that word begins)
+    if (/[.!?…]/.test(c)) { if (c !== "." || (!ABBREV.test(s.slice(Math.max(0, i - 6), i + 1)) && s[i + 2] !== undefined && !/\p{Ll}/u.test(s[i + 2]))) at.push(i + 1) }
     else if (clause && /[,;:—–]/.test(c)) at.push(i + 1)
   }
   return at

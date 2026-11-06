@@ -5,8 +5,8 @@ export type Rect = { x: number; y: number; width: number; height: number }
 type Decls = Record<string, { default?: unknown }>
 /** `keys` dictate, `talk` talk to the companion (its own: a key in both talks). */
 export type Prefs = { fn: boolean; keys: string[]; talk: string[]; privateApps: string[]; dictation: Record<string, unknown>
-  /** Whether its answers are spoken (`auto`: an ask by voice), in which Soniox voice, how fast. */
-  voice: { mode: "auto" | "always" | "off"; name: string; speed: number } }
+  /** Whether its answers are spoken (`auto`: an ask by voice), by which cloud voice first, which voices, how fast. */
+  voice: { mode: "auto" | "always" | "off"; provider: "auto" | "elevenlabs" | "soniox"; name: string; eleven: { voice: string; model: string }; speed: number } }
 /** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
  *  `settings` giving the defaults. */
 export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
@@ -22,7 +22,10 @@ export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, 
     dictation: d,
     voice: {
       mode: (["auto", "always", "off"] as const).find((m) => m === val(c.voice, def(DEFAULTS.companion, "voice"))) ?? "auto",
+      provider: (["auto", "elevenlabs", "soniox"] as const).find((m) => m === val(c.voice_provider, def(DEFAULTS.companion, "voice_provider"))) ?? "auto",
       name: String(val(c.voice_name, def(DEFAULTS.companion, "voice_name") ?? "") || ""),
+      eleven: { voice: String(val(c.elevenlabs_voice, def(DEFAULTS.companion, "elevenlabs_voice") ?? "") || ""),
+        model: String(val(c.elevenlabs_model, def(DEFAULTS.companion, "elevenlabs_model") ?? "") || "") },
       speed: Math.min(1.3, Math.max(0.7, Number(val(c.voice_speed, def(DEFAULTS.companion, "voice_speed") ?? 1)) || 1)),
     },
   }

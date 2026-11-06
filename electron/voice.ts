@@ -1,5 +1,5 @@
-/** The companion's voice on this Mac (helper.ts'): voicelogic.ts cuts its answer in pieces, a cloud voice makes them
- *  (tts.ts, the server's Soniox key) and voice.swift plays them, saying what the cloud can't. One answer at a time. */
+/** The companion's voice on this Mac (helper.ts'): voicelogic.ts cuts its answer in pieces, cloud voices make them
+ *  (tts.ts, with the server's keys) and voice.swift plays them, saying what no cloud can. One answer at a time. */
 import { app } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
@@ -12,11 +12,15 @@ const SHIPPED = path.join(import.meta.dirname, "bin")
 /** Its helper goes after this long unused (its process, and the audio device with it). */
 const IDLE_MS = 10 * 60_000
 
-export type VoicePrefs = { mode: "auto" | "always" | "off"; name: string; speed: number }
-type Speech = { url: string; key: string; model: string }
+/** `provider`: the cloud voice first tried (auto: ElevenLabs' when this machine has its key, else Soniox's); `name`
+ *  Soniox's voice, `eleven` ElevenLabs' voice id and model. */
+export type VoicePrefs = { mode: "auto" | "always" | "off"; provider: Provider | "auto"; name: string; eleven: { voice: string; model: string }; speed: number }
+export type Provider = "elevenlabs" | "soniox"
+/** The server's keys for each cloud voice (companion/voice): what it has. */
+type Keys = { elevenlabs?: { url: string; key: string }; soniox?: { url: string; key: string; model: string } }
 
 export function companionVoice(o: {
-  /** The home vault's server's port: its Soniox key (dictation/speech). */
+  /** The home vault's server's port: its keys for the cloud voices (companion/voice). */
   port: () => number | null
   prefs: () => VoicePrefs
   /** The languages the user speaks, likeliest first (two letters). */
@@ -27,7 +31,10 @@ export function companionVoice(o: {
   record?: (m: Record<string, unknown>) => void
 }) {
   let child: ChildProcess | null = null, starting: Promise<ChildProcess | null> | null = null, idle: ReturnType<typeof setTimeout> | null = null
-  let speech: { at: number; port: number; s: Speech | null } | null = null, cloud: { config: string; v: CloudVoice } | null = null
+  let keys: { at: number; port: number; k: Keys } | null = null
+  const clouds = new Map<string, CloudVoice>()
+  /** A sample's provider, for that answer alone. */
+  let only: Provider | null = null
   /** Pieces sent to it and not played to their end yet. */
   const playing = new Set<number>()
   let speaking = false
@@ -75,31 +82,44 @@ export function companionVoice(o: {
     idle.unref?.()
   }
 
-  /** The server's Soniox voice (asked again after a minute; none: this Mac's). */
-  async function fetchSpeech() {
+  /** The server's keys (asked again after a minute; none: this Mac's voice). */
+  async function fetchKeys() {
     const port = o.port()
-    if (!port) return null
-    if (speech && speech.port === port && Date.now() - speech.at < 60_000) return speech.s
-    let s: Speech | null = null
+    if (!port) return
+    if (keys && keys.port === port && Date.now() - keys.at < 60_000) return
+    let k: Keys = {}
     try {
-      const r = await fetch(`http://127.0.0.1:${port}/api/dictation/speech`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
-      const j = (r.ok ? await r.json() : {}) as Partial<Speech>
-      s = j.url && j.key && j.model ? { url: j.url, key: j.key, model: j.model } : null
+      const r = await fetch(`http://127.0.0.1:${port}/api/companion/voice`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
+      if (r.ok) k = await r.json() as Keys
     } catch { /* this Mac's voice */ }
-    speech = { at: Date.now(), port, s }
-    return s
+    keys = { at: Date.now(), port, k }
   }
-  function cloudNow(): CloudVoice | null {
-    const s = speech?.s, p = o.prefs()
-    if (!s) return null
-    const c: CloudConfig = { provider: "soniox", url: s.url, key: s.key, model: s.model, voice: p.name || "Adrian", speed: p.speed }
+  /** Each provider's cloud voice, by what it's set to (one kept while that stays). */
+  function cloudOf(p: Provider): CloudVoice | null {
+    const k = keys?.k, pr = o.prefs()
+    const c: CloudConfig | null = p === "elevenlabs" ? (k?.elevenlabs ? { provider: p, url: k.elevenlabs.url, key: k.elevenlabs.key, model: pr.eleven.model || "eleven_flash_v2_5", voice: pr.eleven.voice || "nPczCjzI2devNBz1zQrb", speed: pr.speed } : null)
+      : k?.soniox ? { provider: p, url: k.soniox.url, key: k.soniox.key, model: k.soniox.model, voice: pr.name || "Adrian", speed: pr.speed } : null
+    if (!c) return null
     const config = JSON.stringify(c)
-    if (cloud?.config !== config) { cloud?.v.close(); cloud = { config, v: cloudVoice(c) } }
-    return cloud.v
+    let v = clouds.get(config)
+    if (!v) {
+      for (const [x, old] of clouds) if (x.includes(`"provider":"${p}"`)) { old.close(); clouds.delete(x) }
+      v = cloudVoice(c)
+      clouds.set(config, v)
+    }
+    return v
   }
+  /** The providers tried, in order, of those with a key: the one picked (auto: ElevenLabs'), then the other. */
+  function chain(): Provider[] {
+    if (o.record) return []
+    const p = only ?? o.prefs().provider
+    const order: Provider[] = only ? [only] : p === "soniox" ? ["soniox", "elevenlabs"] : ["elevenlabs", "soniox"]
+    return order.filter((x) => !!keys?.k[x])
+  }
+  const cloudsNow = () => chain().map(cloudOf).filter((x): x is CloudVoice => !!x)
 
   const v: Voice = voice({
-    cloud: () => (o.record ? null : cloudNow()),
+    clouds: cloudsNow,
     hints: o.hints,
     out: {
       pcm: (n, pcm) => { playing.add(n); send({ cmd: "pcm", n, data: pcm.toString("base64") }) },
@@ -111,7 +131,8 @@ export function companionVoice(o: {
 
   function quit() {
     idle = null
-    cloud?.v.close(); cloud = null
+    for (const c of clouds.values()) c.close()
+    clouds.clear()
     const c = child
     child = null
     if (c && c.exitCode === null) { c.stdin?.end(); setTimeout(() => { if (c.exitCode === null) c.kill() }, 2000) }
@@ -121,16 +142,29 @@ export function companionVoice(o: {
     /** Ready before the answer (its Talk key pressed): the key asked for, the cloud's socket and the helper up. */
     warm() {
       if (o.prefs().mode === "off") return
-      void fetchSpeech().then(() => cloudNow()?.warm())
+      void fetchKeys().then(() => cloudsNow()[0]?.warm())
       if (!o.record) void start()
     },
     /** A new answer to `asked` (the ask's words) is to be spoken: what was speaking stops. Its words wait for the
      *  key's answer (asked once a minute), so its first piece knows whether the cloud speaks. */
     begin(asked: string, lang?: string) {
       const g = ++gen
+      only = null
       v.start(asked, lang)
-      ready = fetchSpeech().then(() => {}, () => {})
+      ready = fetchKeys().then(() => {}, () => {})
       return g
+    },
+    /** `text` said now through `provider` alone (none: as answers are), for the user to hear a voice: what voice said it. */
+    async sample(text: string, provider?: Provider) {
+      const g = ++gen
+      await fetchKeys()
+      if (g !== gen) return { said: false }
+      only = provider ?? null
+      const by = chain()[0] ?? "this Mac"
+      v.start(text)
+      v.text("sample", text)
+      v.end("sample")
+      return { said: true, by }
     },
     text: (id: string, whole: string) => { const g = gen; void ready.then(() => { if (g === gen) v.text(id, whole) }) },
     end: (id?: string) => { const g = gen; void ready.then(() => { if (g === gen) v.end(id) }) },

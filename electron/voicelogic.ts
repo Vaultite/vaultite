@@ -1,6 +1,6 @@
-// The companion's voice apart from Electron (tools/test/vault/voice.ts): says cut in pieces as they stream, made by a cloud
-// voice a few ahead, played in order; what the cloud can't make (no key, offline, dropped) this Mac says, from there on.
-import { chunker, languageOf } from "../plugins/core/companion/spoken.ts"
+// The companion's voice apart from Electron (tools/test/vault/voice.ts): says cut in pieces as they stream, made by cloud
+// voices a few ahead, played in order; one that fails (offline, dropped) hands on to the next, then this Mac's, from there.
+import { chunker, languageOf, sayable } from "../plugins/core/companion/spoken.ts"
 
 /** A piece of an answer: its plain words, in its language (two letters). `n` counts every piece ever, so what a player
  *  says late of an older one is told apart. */
@@ -18,61 +18,61 @@ export type Out = { pcm: (n: number, pcm: Buffer) => void; say: (n: number, text
 export const RATE = 24_000
 const BYTES_PER_S = RATE * 2
 
-type Slot = { p: Piece; state: "wait" | "making" | "made" | "failed" | "done"; bufs: Buffer[]; fwd: number; sent: number; timed?: Timed; cancel?: () => void; timer?: ReturnType<typeof setTimeout> }
+type Slot = { p: Piece; state: "wait" | "making" | "made" | "done"; bufs: Buffer[]; fwd: number; sent: number; timed?: Timed; cancel?: () => void; timer?: ReturnType<typeof setTimeout> }
 
 export type VoiceOptions = {
   out: Out
-  /** The cloud voice now (null: none, this Mac's). */
-  cloud: () => Cloud | null
+  /** The cloud voices now, the first tried first (none: this Mac's). */
+  clouds: () => Cloud[]
   /** The languages the user speaks (two letters), the first the likeliest. */
   hints: () => string[]
   /** Pieces made ahead of the one playing. */
   ahead?: number
-  /** A piece whose first audio hasn't come by then, or whose audio stalls that long, is this Mac's. */
+  /** A piece whose first audio hasn't come by then, or whose audio stalls that long, is the next voice's. */
   firstMs?: number
   stallMs?: number
   /** What happened, for the log and tests: a piece's first audio, a fallback and why. */
-  told?: (e: { t: "audio"; n: number; ms: number } | { t: "fallback"; n: number; why: string; from: number }) => void
+  told?: (e: { t: "audio"; n: number; ms: number } | { t: "fallback"; n: number; why: string; from: number; to: number }) => void
 }
 
 /** The voice of one answer at a time: `start` begins one (silencing the last), its says' text comes as it grows (`text`)
  *  and ends (`end`); `stop` silences it. */
 export function voice(o: VoiceOptions) {
   const ahead = o.ahead ?? 3, firstMs = o.firstMs ?? 2500, stallMs = o.stallMs ?? 3000
-  let slots: Slot[] = [], head = 0, local = false, language: string | null = null, asked = "", n = 0, on = false
+  /** `tier`: the cloud voice this answer is at (past the last: this Mac's). */
+  let slots: Slot[] = [], head = 0, tier = 0, language: string | null = null, asked = "", n = 0, on = false
+  const local = () => tier >= o.clouds().length
   let says = new Map<string, ReturnType<typeof chunker>>()
 
   function add(text: string) {
     language ??= languageOf(`${asked} ${text}`, o.hints())
-    slots.push({ p: { n: ++n, text, language }, state: "wait", bufs: [], fwd: 0, sent: 0 })
-    if (!local && !o.cloud()) local = true
+    slots.push({ p: { n: ++n, text: sayable(text, language), language }, state: "wait", bufs: [], fwd: 0, sent: 0 })
     drain()
   }
 
-  /** What's at the head goes out in order: a made piece's audio, or this Mac's voice for one the cloud didn't make;
-   *  then the next few are made ahead. */
+  /** What's at the head goes out in order: a made piece's audio, or this Mac's voice for one no cloud made; then the
+   *  next few are made ahead. */
   function drain() {
     while (head < slots.length) {
       const s = slots[head]
       for (; s.fwd < s.bufs.length; s.fwd++) { o.out.pcm(s.p.n, s.bufs[s.fwd]); s.sent += s.bufs[s.fwd].length }
       if (s.state === "made") { o.out.end(s.p.n); s.state = "done"; head++; continue }
-      if (s.state === "failed" || (s.state === "wait" && local)) {
-        const rest = resume(s)
-        if (rest) o.out.say(s.p.n, rest, s.p.language)
+      if (s.state === "wait" && local()) {
+        if (s.p.text) o.out.say(s.p.n, s.p.text, s.p.language)
         o.out.end(s.p.n)
         s.state = "done"; head++
         continue
       }
       break
     }
-    if (local) return
+    if (local()) return
     let making = slots.filter((s) => s.state === "making").length
     for (let i = head; i < slots.length && making < ahead; i++) if (slots[i].state === "wait") { make(slots[i]); making++ }
   }
 
   function make(s: Slot) {
-    const cloud = o.cloud()
-    if (!cloud) return fail(s, "no cloud voice")
+    const cloud = o.clouds()[tier]
+    if (!cloud) return
     s.state = "making"
     const t0 = Date.now()
     const watch = (ms: number, why: string) => { clearTimeout(s.timer); s.timer = setTimeout(() => fail(s, why), ms) }
@@ -92,12 +92,17 @@ export function voice(o: VoiceOptions) {
     })
   }
 
-  /** The cloud failed a piece: it and every piece not made yet are this Mac's, on from where its audio got. */
+  /** A cloud failed a piece: it and every piece not made yet go to the next voice, each on from where its audio got
+   *  (what's played of it stays: the next says the rest, from the next word). */
   function fail(s: Slot, why: string) {
     if (!slots.includes(s)) return
-    local = true
-    for (const x of slots) if (x.state === "making" || x === s) { clearTimeout(x.timer); if (x.state === "making") x.cancel?.(); x.state = "failed" }
-    o.told?.({ t: "fallback", n: s.p.n, why, from: s.sent })
+    tier++
+    o.told?.({ t: "fallback", n: s.p.n, why, from: s.sent, to: tier })
+    for (const x of slots) if (x.state === "making") {
+      clearTimeout(x.timer); x.cancel?.()
+      x.p = { ...x.p, text: resume(x) }
+      Object.assign(x, { state: x.p.text ? "wait" : "made", bufs: [], fwd: 0, sent: 0, timed: undefined })
+    }
     drain()
   }
 
@@ -124,7 +129,7 @@ export function voice(o: VoiceOptions) {
 
   return {
     /** A new answer to an ask in `asked` words, or in `lang` when that's known: what was speaking stops. */
-    start(words = "", lang?: string) { silence(); asked = words; language = lang || null; local = false; on = true },
+    start(words = "", lang?: string) { silence(); asked = words; language = lang || null; tier = 0; on = true },
     /** Say `id`'s text so far (its whole text each time). */
     text(id: string, whole: string) {
       if (!on) return

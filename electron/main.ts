@@ -286,6 +286,7 @@ function serverFor(v: Known) {
 const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions().then((p) => p.macPermissions()) : null)
   : m.name === "app:updates" ? appUpdates()
   : typeof m.name === "string" && m.name.startsWith("screen:") ? (helper ? helper.screenCall(m.name, Array.isArray(m.args) ? m.args : []) : null)
+  : typeof m.name === "string" && m.name.startsWith("voice:") ? (helper ? helper.voiceCall(m.name, Array.isArray(m.args) ? m.args : []) : { said: false, why: "no menu-bar helper here" })
   : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
 
 /** Push an event to a vault's server unasked (core/desktopapp.ts onDesktopEvent): the one way the main process does. */

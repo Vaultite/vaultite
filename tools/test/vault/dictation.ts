@@ -29,14 +29,14 @@ export default async ($: VaultTest) => {
   try {
     let [st, c] = await api("GET", "dictation/cloud")
     check("dictation: no key, automatic is this Mac's", st === 200 && !c.key && !c.why, c)
-    const [, sp0] = await api("GET", "dictation/speech")
-    check("dictation: no key, the companion's voice is this Mac's", !sp0.key, sp0)
+    const [, sp0] = await api("GET", "companion/voice")
+    check("dictation: no key, the companion's voice isn't Soniox's", !sp0.soniox, sp0)
     await set({ engine: "soniox" })
     ;[, c] = await api("GET", "dictation/cloud")
     check("dictation: Soniox asked for without a key says how to set one", !c.key && /vau secret "Soniox API key" \| vau dictation key/.test(c.why), c)
     $.vars.stdinText = "wrong-key-456\n"
     let cr = await vau("dictation", "key")
-    check("dictation key: one Soniox refuses isn't kept", cr.code === 1 && /refused/.test(cr.err) && !fs.existsSync(config), cr)
+    check("dictation key: one Soniox refuses isn't kept", cr.code === 1 && /refused/.test(cr.err) && !(fs.existsSync(config) && JSON.parse(fs.readFileSync(config, "utf8")).dictation), cr)
     $.vars.stdinText = "good-key-123\n"
     cr = await vau("dictation", "key")
     $.vars.stdinText = ""
@@ -45,13 +45,13 @@ export default async ($: VaultTest) => {
     cr = await vau("dictation", "key")
     check("dictation key: nothing piped says whether one is set", cr.code === 0 && /is set/.test(cr.out), cr)
     await set({ engine: "auto", languages: ["en", "pt"] })
-    const [, sp] = await api("GET", "dictation/speech")
-    check("dictation: with the key, the companion speaks with Soniox's voice", sp.key === "good-key-123" && sp.model === "tts-rt-v2" && /^wss?:\/\//.test(sp.url), { ...sp, key: !!sp.key })
+    const [, sp] = await api("GET", "companion/voice")
+    check("dictation: with the key, the companion may speak with Soniox's voice", sp.soniox?.key === "good-key-123" && sp.soniox.model === "tts-rt-v2" && /^wss?:\/\//.test(sp.soniox.url), { ...sp.soniox, key: !!sp.soniox?.key })
     ;[st, c] = await api("GET", "dictation/cloud")
     check("dictation: with the key, automatic is Soniox's, with the languages set", st === 200 && c.key === "good-key-123" && c.url === process.env.VAULTITE_SONIOX_URL &&
       c.model === "stt-rt-v6" && JSON.stringify(c.languages) === '["en","pt"]', c)
     const remote = { headers: { "x-forwarded-for": "100.64.0.9" }, socket: { remoteAddress: "127.0.0.1" } } as Any
-    const [sr] = await api("GET", "dictation/cloud", undefined, remote), [ssr] = await api("GET", "dictation/speech", undefined, remote)
+    const [sr] = await api("GET", "dictation/cloud", undefined, remote), [ssr] = await api("GET", "companion/voice", undefined, remote)
     check("dictation: the key only for this machine's owner", sr === 403 && ssr === 403, [sr, ssr])
     await set({ engine: "parakeet" })
     ;[, c] = await api("GET", "dictation/cloud")
