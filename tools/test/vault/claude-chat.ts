@@ -121,6 +121,19 @@ export default async ($: VaultTest) => {
       o.systemPrompt?.preset === "claude_code" && /Vaultite's chat/.test(o.systemPrompt.append) && o.settingSources?.includes("project") && sdk.runs[0].said[0].text === "Say hello" &&
       o.env.CLAUDE_CODE_SESSION_ID === id && o.env.VAULTITE_AGENT === "claude" && !!o.hooks?.PostToolUse?.length,
       { ...o, env: o?.env?.CLAUDE_CONFIG_DIR, canUseTool: undefined })
+    {
+      // A lean session (the summoned companion's): its own prompt, none of the user's settings, few tools; its words told as written.
+      const sdk3 = fakeSdk(), host3 = new Host({ query: sdk3.query as Any })
+      const lean = crypto.randomUUID(), told: Any[] = [], off = host3.on((e) => { if (e.t === "partial" && e.id === lean) told.push(e) })
+      host3.start({ id: lean, resume: false, cwd: VAULT, env: {}, system: "Be brief.", builtins: ["Bash"], texts: true }, "Say hello")
+      await waitFor(() => host3.list().find((s) => s.id === lean)?.state === "idle", 5000, 50)
+      const lo = sdk3.runs[0]?.options
+      check("chat: a lean session runs with its own prompt, no settings, MCP servers or skills of the user's, only its tools",
+        lo?.systemPrompt === "Be brief." && lo.settingSources?.length === 0 && lo.strictMcpConfig === true && lo.tools?.join() === "Bash", { ...lo, env: undefined, canUseTool: undefined, hooks: undefined })
+      check("chat: its words are told as written, no tool's, by the entry they make", told.length >= 2 && told[0].name === "" && told[0].json === "Done: " && /^msg_\w+:0$/.test(told[0].use) && told.at(-1).end === "stop", told)
+      off()
+      host3.close()
+    }
     check("chat start: the mode asked is the one it runs in", o?.permissionMode === "default" && host.list().find((s) => s.id === id)?.mode === "default", o?.permissionMode)
     check("chat: the effort Claude Code applies is the session's, till one is chosen", host.list().find((s) => s.id === id)?.effort === "medium", host.list())
     let row = (await rows()).find((e) => e.session === id)

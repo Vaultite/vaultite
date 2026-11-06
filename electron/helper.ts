@@ -456,7 +456,9 @@ type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; s
   /** Its turn on the ask seen at work (from then on its state is the agent's). */
   busySeen?: boolean
   /** Its coming was cued. */
-  cued?: boolean }
+  cued?: boolean
+  /** What's at the point let go at, gathered as its words are finished (not after). */
+  place?: Promise<{ w: AppWindowInfo | null; place: Record<string, unknown> }> }
 let summon: Summon | null = null
 /** The exchange its answer is in: its box open by the point asked about (and the window there), since `since`. */
 let exchange: { name: string; p: Point; w: AppWindowInfo | null; since: number
@@ -505,7 +507,7 @@ function talkAct(a: NonNullable<TalkAction>) {
   if (a === "send") {
     // (hands-free in its box: what's in it goes; held: let go here, it thinks here)
     if (session?.into === "summon" || (starting && startingTalk)) {
-      if (summon) Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking", released: Date.now() })
+      if (summon) { Object.assign(summon, { p: screen.getCursorScreenPoint(), state: "thinking", released: Date.now() }); summon.place = gather(summon) }
       // (something to send, said or drawn: it's heard as it's let go)
       if (summon && ((session && (session.finals.length || session.pending.trim())) || trailStrokes(summon.trail, Date.now()).length)) cue("sent")
       void inkOff(); draw()
@@ -560,14 +562,21 @@ async function sendSummon(s: Summon, text: string) {
   if (!text && !ink.length) return missed(s, "nothing heard nor drawn")
   Object.assign(s, { state: "thinking" })
   draw()
-  const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
-  const place = await pointedAt(s.name, s.p, w?.window ? w : null)
+  const { w, place } = await (s.place ?? gather(s))
+  const win = w?.window && !w.vaultite && place.app !== "private" ? w : null
+  if (win?.frame) park(s.name, win.window, offsetIn(win.frame, s.p))
   stopVoice()
-  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true })
+  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true, ...(s.released ? { keyUp: s.released } : {}) })
   if (!sent) return missed(s, "Vaultite's server isn't connected", "Can't reach Vaultite")
   s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot })
   // (held again in an exchange: the same thread)
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
+}
+
+/** The window at the point let go at and what's there (pointedAt), its cursor left there only once it's asked. */
+async function gather(s: Summon) {
+  const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
+  return { w, place: await pointedAt(s.name, s.p, w?.window ? w : null, false) }
 }
 
 /** A tap: its box at the pointer, focused, to type the ask in (its answer's box already up: into its field). */
@@ -724,12 +733,12 @@ async function nearAt(p: Point) {
   return lastNear
 }
 
-/** What's at a point the user asked about: its window (the cursor left on that spot of it) and what it says, what's under
- *  the point and near it, and the display's picture. A private app's ask is only what they said: not even which app. */
-async function pointedAt(name: string, p: Point, w: AppWindowInfo | null): Promise<Record<string, unknown>> {
+/** What's at a point asked about: its window (its cursor left there, `parks`), what it says, what's under and near the
+ *  point, and the display's picture. A private app's ask is only what they said: not even which app. */
+async function pointedAt(name: string, p: Point, w: AppWindowInfo | null, parks = true): Promise<Record<string, unknown>> {
   const win = w?.window && !w.vaultite ? w : null
   if (win && hidden(win)) return { app: "private" }
-  if (win?.frame) park(name, win.window, offsetIn(win.frame, p))
+  if (parks && win?.frame) park(name, win.window, offsetIn(win.frame, p))
   const [text, shot, under, near] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 20_000 }) : null, shotAt(p), underAt(p), nearAt(p)])
   return { ...(win ? { app: win.bundle, window: win.window, title: win.title } : under ? { app: under.bundle } : {}), sx: Math.round(p.x), sy: Math.round(p.y),
     ...(text?.ok && text.text ? { screen: text.text } : {}), ...(shot ? { shot: shot.file, shotAt: shot.frame } : {}), ...(under ? { under: under.text } : {}), ...(near.length ? { near } : {}) }

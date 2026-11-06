@@ -12,6 +12,10 @@
 - Such a tool may `stream` (its input told as the model writes it, matched to its call by the tool_use id Claude Code
   puts in the call's `_meta`) and end the turn: `endsTurn` in its result (a PostToolUse hook's `continue: false`), and
   `ends` names it in CLAUDE_CODE_TERMINAL_MCP_TOOLS, else a turn ending on it with no words is nudged for some.
+- A plugin's session may be lean (`system`: its whole system prompt; `builtins`: the few Claude Code tools it has): it
+  loads none of the user's settings, CLAUDE.md, MCP servers or skills, so it starts small and answers fast (the
+  summoned companion's). `onText` hears its words as they're written. Thinking can't be turned off on Claude 5 models
+  (`quick` asks, they think anyway): a low `effort` is what keeps it short.
 - It runs the user's own `claude` (`pathToClaudeCodeExecutable`): the version their terminals run, its login and
   updates, and no 300 MB bundled binary in the packaged app (package.json leaves the SDK's platform packages out).
 - Entries (`chatlog.ts`) are keyed by the ids SDK messages and transcript lines share (a user message's uuid,
@@ -22,5 +26,6 @@
   too): the app's terminals before they start it, Claude Code run elsewhere within seconds of starting.
 - The inbox hears sessions through `inbox:session` and answers through `agent-reply:claude` / `agent-answer:claude`; a
   session ended takes replies here only if the chat ran it (`chats.json`), else the inbox resumes it as a terminal's.
-- The keeper's code is what it started with: a change to `chathost.ts`/`chatd.ts` reaches it once it has no session
-  and exits (or SIGTERM its pid, `vaultite-chatd1-<name>.sock.pid` in the runtime dir; sessions resume on their next message).
+- The keeper's code is what it started with (its `hello` says which: `codeOf`). A server that finds one running other
+  code (an update in place) ends it once no session has run for two minutes, and starts another; each session resumes on
+  its next message. (The companion's sessions never leave it empty: without this it ran its first code for days.)

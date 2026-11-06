@@ -1,5 +1,5 @@
-// The Agent SDK in a test's chat keeper, its `query` answering with no model: "call|stream|cut <tool> <json>" calls a
-// tool (streamed first; cut off half way), "slow" waits (an interrupt ends it), "list" says how it was started.
+// The Agent SDK in a test's chat keeper, answering with no model: "call|stream|cut <tool> <json>" calls a tool (streamed;
+// cut off), "words <text>" streams it as its answer, "slow" waits (an interrupt ends it), "list" says how it started.
 import crypto from "node:crypto"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
@@ -50,6 +50,16 @@ export function query({ prompt, options }: Any) {
     if (whole) ev({ type: "content_block_stop", index: 0 })
     return whole
   }
+  /** Its words written as a model's are: streamed in pieces, then the whole message and the turn's end. */
+  const write = async (text: string) => {
+    const mid = `msg_${crypto.randomUUID().slice(0, 8)}`, ev = (event: Any) => push({ type: "stream_event", event, uuid: crypto.randomUUID(), ...base })
+    ev({ type: "message_start", message: { id: mid } })
+    ev({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })
+    for (let i = 0; i < text.length; i += 5) { ev({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: text.slice(i, i + 5) } }); await pause(10) }
+    ev({ type: "content_block_stop", index: 0 })
+    push({ type: "assistant", message: { id: mid, content: [{ type: "text", text }] }, uuid: crypto.randomUUID(), ...base })
+    push({ type: "result", subtype: "success", is_error: false, duration_ms: 10, result: text, uuid: crypto.randomUUID(), ...base })
+  }
   void (async () => {
     push({ type: "system", subtype: "init", model: options.model ?? "claude-haiku-5", permissionMode: options.permissionMode ?? "default", cwd: options.cwd, ...base })
     for await (const m of prompt) {
@@ -60,10 +70,12 @@ export function query({ prompt, options }: Any) {
         push({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 10, uuid: crypto.randomUUID(), ...base })
         continue
       }
+      const written = linesOf(text).find((l) => /^words /.test(l))
+      if (written) { await write(written.slice(6)); continue }
       if (linesOf(text).some((l) => /^list\b/.test(l))) {
         const tools = options.mcpServers?.["vaultite-app"] ? (await (await mcp()).listTools()).tools : []
         const always = tools.length && tools.every((t) => t._meta?.["anthropic/alwaysLoad"] === true)
-        say(`Tools: ${tools.map((t) => t.name).join(",")}${always ? " (always loaded)" : ""}. Allowed: ${(options.allowedTools ?? []).join(",")}. Denied: ${(options.disallowedTools ?? []).join(",")}. Resumed: ${options.resume ? "yes" : "no"}. Told: ${/vaultite-app tools/.test(options.systemPrompt?.append ?? "") ? "tools" : "nothing"}. Ends: ${options.env?.CLAUDE_CODE_TERMINAL_MCP_TOOLS ?? ""}`)
+        say(`Tools: ${tools.map((t) => t.name).join(",")}${always ? " (always loaded)" : ""}. Allowed: ${(options.allowedTools ?? []).join(",")}. Denied: ${(options.disallowedTools ?? []).join(",")}. Resumed: ${options.resume ? "yes" : "no"}. Told: ${/vaultite-app tools/.test(options.systemPrompt?.append ?? "") ? "tools" : "nothing"}. Ends: ${options.env?.CLAUDE_CODE_TERMINAL_MCP_TOOLS ?? ""}. Prompt: ${typeof options.systemPrompt === "string" ? "its own" : "Claude Code's"}. Builtins: ${Array.isArray(options.tools) ? options.tools.join(",") : "all"}. Settings: ${(options.settingSources ?? []).join(",") || "none"}. Effort: ${options.effort ?? ""}`)
         continue
       }
       const calls = callsIn(text), said: string[] = []

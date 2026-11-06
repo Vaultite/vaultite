@@ -319,22 +319,29 @@ export default async ($: VaultTest) => {
       await idle(longId)
       await idle(quick!)
       const listed = (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions as Any[]
-      check("summoned: started with the companion, a session of its own on its model, its prompt cached by a turn", !!quick && quick !== longId &&
-        /^Get ready/.test((await said(quick!)).find((e) => e.k === "user")?.text ?? "") && /haiku/.test(listed.find((s) => s.id === quick)?.model ?? "") &&
+      check("summoned: started with the companion, a session of its own on its model, up with no turn (its short prompt needs none)", !!quick && quick !== longId &&
+        !(await said(quick!)).some((e) => e.k === "user") && /haiku/.test(listed.find((s) => s.id === quick)?.model ?? "") &&
         !/haiku/.test(listed.find((s) => s.id === longId)?.model ?? ""), listed)
       const shot = path.join($.tmp, "screens", "display-1-1.png")
       fs.mkdirSync(path.dirname(shot), { recursive: true })
       fs.writeFileSync(shot, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"))
       const before = (await said(longId)).length
-      c.screenMoment({ kind: "ask", agent: "Claude", text: 'call say {"text":"That is the Send button","done":true}', app: "com.example.mail", window: 9, title: "Inbox", sx: 500, sy: 480,
-        shot, shotAt: { x: 0, y: 0, width: 1600, height: 1000 }, near: [{ id: "a1", role: "button", label: "Send", frame: { x: 480, y: 470, width: 60, height: 24 } }] })
-      const answered = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "That is the Send button"), 15_000, 50)
+      const screen = ["Inbox", ...Array.from({ length: 400 }, (_, i) => `Message ${i} from Bob about the weekly digest`), "Send", "Attach"].join("\n")
+      c.screenMoment({ kind: "ask", agent: "Claude", text: 'words That is the Send button [point a1], and this sends it [ring a1 "Send"].', app: "com.example.mail", window: 9, title: "Inbox", sx: 500, sy: 480,
+        shot, shotAt: { x: 0, y: 0, width: 1600, height: 1000 }, screen, near: [{ id: "a1", role: "button", label: "Send", frame: { x: 480, y: 470, width: 60, height: 24 } }] })
+      const growing = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && /^That is the Send button/.test(n.text ?? "") && n.text !== "That is the Send button, and this sends it."), 15_000, 5)
+      const answered = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "That is the Send button, and this sends it."), 15_000, 50)
       await idle(quick!)
       const asked = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
-      check("summoned: an ask on screen is its session's message, its picture attached, answered by the companion's cursor",
+      check("summoned: an ask on screen is its session's message, its picture attached, answered in words by the companion's cursor",
         answered?.agent === "Claude" && /- ask on screen/.test(asked) && /a1 button "Send"/.test(asked) && (await said(longId)).length === before, [answered, asked])
+      check("summoned: its words show as they're written, their tags never", !!growing && !/\[/.test(growing.text), growing)
+      check("summoned: the window's text it's given is cut to what's by their pointer", asked.length < 6500 && /Send/.test(asked.split("what the window says")[1] ?? "") && /…/.test(asked), asked.length)
+      const drew = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((x: Any) => x.as === "Claude (summoned)").at(-1)
+      const acts = fs.readFileSync(fs.readdirSync(c.plugin.localDir()).filter((f) => f.startsWith("actions-")).map((f) => path.join(c.plugin.localDir(), f)).at(-1)!, "utf8")
+      check("summoned: a tag points (its cursor there) and a mark tag draws", /"op":"look"/.test(acts) && /"op":"draw"/.test(acts) && drew?.word !== undefined, drew)
       check("summoned: its answer says it answers a Talk key's ask, a typed one", answered?.answers?.t > 0 && !answered.answers.voice, answered?.answers)
-      c.screenMoment({ kind: "ask", agent: "Claude", text: 'call say {"text":"O botão de enviar","done":true}', voice: true, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "words O botão de enviar", voice: true, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
       const aloud = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "O botão de enviar"), 15_000, 50)
       check("summoned: one asked by voice says so (the desktop app says it aloud)", aloud?.answers?.voice === true && aloud.answers.t > answered.answers.t, aloud?.answers)
       await idle(quick!)
@@ -346,13 +353,15 @@ export default async ($: VaultTest) => {
       const seen = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Read it \(1 asks/.test(e.text))?.text, 15_000, 50)
       check("summoned: the display's picture comes with its message (no Read before its first word)", seen === "Read it (1 asks, 1 images)", seen)
       await idle(quick!)
-      check("summoned: an answer written as words, not said (a small model forgets its tools), is said by its cursor all the same",
+      check("summoned: words it wrote that didn't stream (a keeper of older code) are said by its cursor at its turn's end",
         !!(await waitFor(async () => (await status()).notes.some((n: Any) => n.kind === "say" && n.text === "Read it (1 asks, 1 images)"), 3000, 50)))
       const sent = (await api("POST", "ops/claude-code.chat-read", { id: quick, limit: 100 }))[1].entries.filter((e: Any) => e.k === "text").map((e: Any) => e.text)
       c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "list", summoned: true })
       const qtools = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Tools:/.test(e.text))?.text, 15_000, 50)
-      check("summoned: an ask by its Talk key in the app goes there too, with the short list of tools (no writing in notes)",
-        /\bsay\b/.test(qtools ?? "") && /\bdraw\b/.test(qtools ?? "") && !/\bedit\b|\bcomment\b|\bhandover\b/.test((qtools ?? "").split(".")[0]) && (await said(longId)).length === before, [qtools, sent])
+      check("summoned: an ask by its Talk key in the app goes there too, with the short list of tools (its words are its say; no writing in notes)",
+        /\bhandoff\b/.test(qtools ?? "") && /\bdraw\b/.test(qtools ?? "") && !/\bsay\b|\bedit\b|\bcomment\b|\bhandover\b/.test((qtools ?? "").split(".")[0]) && (await said(longId)).length === before, [qtools, sent])
+      check("summoned: a lean session: its own prompt, only Bash of Claude Code's tools, none of the user's settings, low effort",
+        /Prompt: its own\. Builtins: Bash\. Settings: none\. Effort: low/.test(qtools ?? ""), qtools)
       await idle(quick!)
       const rows = (await api("POST", "ops/companion.timings", {}))[1].rows.filter((x: Any) => x.as === "Claude (summoned)")
       check("summoned: timings tell its asks apart, with their first word", rows.some((x: Any) => x.word !== undefined), rows)

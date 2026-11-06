@@ -1,8 +1,9 @@
 // The chat sessions' keeper: a detached Node process hosting Claude Code sessions through the Agent SDK (chathost.ts),
 // so a turn running survives the server restarting or a deploy, as the terminal server's shells do (terminal/termd/).
 import fs from "node:fs"
+import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { Host, listen, relayed } from "./chathost.ts"
+import { codeOf, Host, listen, relayed } from "./chathost.ts"
 
 const SOCK = process.argv[2]
 if (!SOCK) { console.error("usage: chatd.ts <socket path> [<its files' path>]"); process.exit(2) }
@@ -18,6 +19,8 @@ const host = new Host({ query: sdk.query, mcp: relayed(sdk.createSdkMcpServer, f
 
 /** Its own files are gone (the checkout moved): it makes way once it holds no session, and the server starts another. */
 const stale = () => !fs.existsSync(SELF)
+/** Its code as it started, told to the server, which ends a keeper of other code once it's quiet (chat.ts). */
+const code = codeOf(path.dirname(SELF))
 
 /** Another one already answers at this path: leave it be. */
 async function start() {
@@ -28,7 +31,7 @@ async function start() {
     probe.on("error", () => r(false))
   })
   if (taken) { log("another one answers here: exiting"); process.exit(0) }
-  const served = listen(host, SOCK, { log, hello: () => ({ file: SELF, stale: stale() }) })
+  const served = listen(host, SOCK, { log, hello: () => ({ file: SELF, stale: stale(), code }) })
   try { fs.writeFileSync(`${FILES}.pid`, `${process.pid}\n`) } catch { /* only for stopping it by hand */ }
   log(`listening on ${SOCK} (pid ${process.pid})`)
   // No session and nobody connected for a minute (or its files gone and no session): it ends.

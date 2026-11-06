@@ -11,7 +11,7 @@ import { type AgentChatNew, type Asking, type Choice, choiceOf, findBin, HOME, T
 import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_THE_USER, type Op, type OpCtx, OpError, outliving, pipeSockets, type Plugin, runtimeDir,
   splitMachine, userSurface } from "../../../core/plugins.ts"
 import { type Entry, Reader } from "./chatlog.ts"
-import { type Answer, eachMessage, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
+import { type Answer, codeOf, eachMessage, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
 
 type Account = { id: string; dir: string; label: string; private: boolean }
 /** What the chat takes from the rest of the plugin (plugin.ts). */
@@ -36,6 +36,11 @@ export type ChatStart = { prompt?: string; cwd?: string; account?: string; model
   images?: string[]
   /** Answers without thinking first (the summoned companion's). */
   quick?: boolean
+  /** A lean session: its whole system prompt (no Claude Code's, nor chat.md, nor the user's settings, CLAUDE.md, MCP
+   *  servers or skills), and the few of Claude Code's own tools it has (none by default). */
+  system?: string; builtins?: string[]
+  /** Its words as it writes them (each text block's so far, `use` its entry id; `end` as a tool's stream says). */
+  onText?: (use: string, text: string, end?: "done" | "stop") => void
   title?: string; by?: string; tools?: ChatTool[]; inbox?: boolean
   /** Permission rules it runs without asking ("mcp__vaultite-app": its tools; "Bash(vau read:*)"), and never. */
   allowed?: string[]; denied?: string[] }
@@ -157,6 +162,9 @@ export function chats(plugin: Plugin, d: ChatDeps) {
         if (!w) throw new Error(`the chat keeper didn't start (see ${FILES}.log)`)
       }
       const { sessions } = await w.request("follow") as { sessions: Summary[] }
+      // (a keeper of other code, as one left from before an update: ended once quiet, so the change reaches its sessions)
+      const h = await w.request("hello").catch(() => ({} as Record<string, unknown>))
+      if (h.code !== codeOf(plugin.dir) && typeof h.pid === "number" && h.pid !== process.pid) retire(w, h.pid)
       for (const s of sessions) { hosted.set(s.id, s); void readAsks(w, s.id) }
       for (const s of sessions) { tellInbox(s); inform(s.id, s) }
       void recover(new Set(sessions.map((s) => s.id)))
@@ -167,6 +175,20 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     return p
   }
   const ask = async (op: string, params: Record<string, unknown> = {}) => (await keeper(!!port)).request(op, params)
+  /** When a session last ran (a turn, an ask): a keeper is ended only when none has for a while. */
+  let busyAt = Date.now()
+  /** Keeper `pid` (followed by `w`) runs other code than this server's: ended once no session ran for two minutes
+   *  (each resumes on its next message). The companion's sessions, never all gone, kept one's first code for days. */
+  function retire(w: Wire, pid: number) {
+    console.error(`chat: its keeper (pid ${pid}) runs other code: ending it once it's quiet`)
+    const t = setInterval(() => {
+      if (w.closed) return clearInterval(t)
+      if ([...hosted.values()].some((s) => s.state === "working" || s.state === "waiting" || s.state === "starting") || Date.now() - busyAt < 2 * 60_000) return
+      clearInterval(t)
+      try { process.kill(pid, "SIGTERM") } catch { /* gone */ }
+    }, 15_000)
+    t.unref?.()
+  }
   /** Whether chat sessions can run here: a server serving a port starts its keeper; an app serving none (a test's)
    *  only uses one already listening, never starting real sessions. */
   const can = () => !!port || !!wire || (!WIN && fs.existsSync(CHAT_SOCKET))
@@ -260,6 +282,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       if (e.e.k === "ask") { if (e.e.answer) asking.get(e.id)?.delete(e.e.id); else asksOf(e.id).set(e.e.id, e.e) }
       toTabs(e.id, { t: "put", e: e.e })
     } else if (e.t === "state") {
+      if (e.s.state !== "idle" && e.s.state !== "error") busyAt = Date.now()
       const was = hosted.get(e.s.id)?.state
       hosted.set(e.s.id, e.s)
       keep(e.s)
@@ -276,7 +299,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       inform(e.id, null)
     } else if (e.t === "tool") void runTool(e.id, e.call, e.name, e.args, e.use)
     else if (e.t === "partial") {
-      try { toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end) } catch (err) { console.error("chat: stream:", err) }
+      try { if (e.name) toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end); else owned.get(e.id)?.onText?.(e.use, e.json, e.end) } catch (err) { console.error("chat: stream:", err) }
     }
     else if (e.t === "did") {
       // (Activity's intake for agents' hooks, the session named by its title)
@@ -394,7 +417,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     const env = { ...await envFor(a), CLAUDE_CODE_SESSION_ID: id, VAULTITE_AGENT: "claude" }
     return { id, resume: o.resume, cwd: o.cwd || plugin.vault.path, env, claude: claudeBin(), account: a.id, by: o.by ?? "app",
       ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode || modeDefault(a.id),
-      append: [chatContext(), o.append].filter(Boolean).join("\n\n"), ...(o.title ? { title: o.title } : {}),
+      ...(o.system !== undefined ? { system: o.system, builtins: o.builtins ?? [] } : { append: [chatContext(), o.append].filter(Boolean).join("\n\n") }),
+      ...(o.onText ? { texts: true } : {}), ...(o.title ? { title: o.title } : {}),
       ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema, streams, ends }) => ({ name, description, schema, ...(streams ? { streams } : {}), ...(ends ? { ends } : {}) })) } : {}),
       ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.inbox === false ? { quiet: true } : {}), ...(o.quick ? { quick: true } : {}) }
   }

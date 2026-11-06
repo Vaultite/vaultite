@@ -47,6 +47,13 @@ export function screenDrawings(plugin: Plugin, o: {
     return now
   }
 
+  /** `agent`'s drawing up timed with `caption` now (its words whole, as they came after its marks). */
+  function recaption(agent: string, caption: string) {
+    if (!now || now.agent !== agent || now.kept || now.caption === caption) return
+    now = { ...now, caption }
+    tell()
+  }
+
   /** Take the drawing down: `agent`'s only (any, without), or by its id. */
   const clear = (by?: { agent?: string; id?: string }) => (!now || (by?.agent && now.agent !== by.agent) || (by?.id && now.id !== by.id) ? false : drop())
 
@@ -69,7 +76,7 @@ export function screenDrawings(plugin: Plugin, o: {
       if (!fs.existsSync(plugin.vault.abs(p))) return p
     }
   }
-  return { draw, clear, keep, message, current: () => now }
+  return { draw, recaption, clear, keep, message, current: () => now }
 }
 
 /** A kept drawing's name: its pad's title, else its first words, else when. */

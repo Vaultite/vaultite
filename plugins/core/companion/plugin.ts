@@ -18,7 +18,7 @@ import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from 
 import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
 import { screenDrawings } from "./drawings.ts"
 import { type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
-import { inSummoned, type Lane, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
+import { anchorsOf, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { voiceOps } from "./voice.ts"
 import { type Job, jobOf, jobsLine, jobsText, jobTask } from "./jobs.ts"
@@ -46,7 +46,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   find?: string
   /** The agent it's for (an ask to @name, an answer to its item); none (edit, open): the companion and agents that watch. */
   for?: string
-  /** How long (ms) the user had stopped typing when the app sent it: the pause they waited. */
+  /** How long (ms) the user had stopped typing when the app sent it: the pause they waited (a Talk key's ask: since
+   *  it was let go, its words finished and what's there gathered). */
   waited?: number
   /** An ask whose line they went on writing after it went: the seq of the one it continues. */
   more?: number
@@ -221,7 +222,7 @@ let nid = 0
 const log = plugin.dayLog<Moment>("moments")
 const acts = plugin.dayLog<Act>("actions")
 /** What's logged that isn't acting: its turn's bookkeeping. */
-const BOOKKEEPING = new Set(["next", "handed", "done", "again"])
+const BOOKKEEPING = new Set(["next", "handed", "sent", "done", "again"])
 const did = (as: string, op: string, seqs?: number[]) => {
   const t = Date.now(), quick = inSummoned.getStore() === true
   acts.append(t, [{ t, as: quick ? lane().as(as) : as, op, ...(seqs ? { seqs } : {}) }])
@@ -866,7 +867,10 @@ export function screenMoment(m: Record<string, unknown>, req?: IncomingMessage) 
   // (a point where nothing can be read, as the menu bar: still there, with its picture)
   if (!place.app && place.sx === undefined) return null
   if (place.near) nearBy.set(key(str(m.agent) || ownName()), place.near)
-  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, summoned: true, ...(m.voice === true ? { voice: true } : {}) }, req)
+  // (the Talk key let go `keyUp`: its words finished and what's there gathered since, as its pause)
+  const up = Number(m.keyUp), waited = Number.isFinite(up) ? Date.now() - up : NaN
+  return addMoment({ kind: m.kind, for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place, summoned: true, ...(m.voice === true ? { voice: true } : {}),
+    ...(waited >= 0 && waited < 60_000 ? { waited: Math.round(waited) } : {}) }, req)
 }
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
@@ -1550,7 +1554,9 @@ export type ChatTool = { name: string; description: string; schema: { properties
   streams?: boolean; ends?: boolean; stream?: (use: string, json: string, end?: "done" | "stop") => void }
 export type ChatHow = { cwd?: string; account?: string; model?: string; effort?: string; append?: string; title?: string; by?: string; inbox?: boolean; allowed?: string[]; denied?: string[]; tools?: ChatTool[]
   /** Pictures sent with its message (an ask's screenshot); `quick`: no thinking first. */
-  images?: string[]; quick?: boolean }
+  images?: string[]; quick?: boolean
+  /** A lean session's whole system prompt and the few Claude Code tools it has; its words as written (`onText`). */
+  system?: string; builtins?: string[]; onText?: (use: string, text: string, end?: "done" | "stop") => void }
 export type ChatState = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; error?: string; seq?: number; turn?: { text: string } | null }
 /** What claude-code exports as `chat`. */
 export type Chat = {
@@ -1622,8 +1628,16 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 // ---------- its summoned session (summoned.ts): Talk key asks, on a small model, warm, apart from this long one
 
-/** What the summoned session has: answering at the pointer, pointing, drawing, handing off. */
-const SUMMONED_TOOLS = ["say", "pass", "look", "highlight", "draw", "see", "act", "follow", "clear", "handoff"]
+/** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
+ *  reading or acting on a page, following, handing off. */
+const SUMMONED_TOOLS = ["draw", "see", "act", "follow", "clear", "handoff"]
+/** What its words and tags become. */
+const SUMMONED_ACTS = ["say", "look", "draw"]
+/** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
+const SUMMONED_BUILTINS = ["Bash"]
+/** An ask's window text it's given at most (chars), the lines by what's at their pointer first: the rest is in its
+ *  picture, and every ask's text stays in its history. */
+const SCREEN_CHARS = 4000
 /** The model summoned asks run on; "" (the setting's companion, or an agent not Claude Code's): the long session takes them. */
 const summonedModel = () => { const m = setting("summoned_model"); return onChat(agentSetting()) && m !== "companion" ? m : "" }
 /** The pictures an ask's text names, attached to its message (no Read call before its first word). */
@@ -1632,10 +1646,18 @@ let laneOf: { vault: Vault; lane: Lane } | null = null
 const lane = (): Lane => {
   if (laneOf?.vault === plugin.vault) return laneOf.lane
   const l = summonedLane({
-    file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel, fresh: freshAfter,
-    options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, quick: true, append: SUMMONED_PROMPT, title: "Companion: summoned",
-      by: "companion", inbox: false, allowed: ALLOWED, denied: ["Bash(vau companion:*)"], tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
-    text: async (ms) => ({ text: [momentsText(ms, mode(), focus(), await excerpts(apiCtx, ms)), jobsLine(jobsNow())].filter(Boolean).join("\n"), images: shotsOf(ms) }),
+    file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel,
+    // (low effort: its thinking, which can't be turned off, took 1 to 2 s of each answer at the account's high)
+    options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, effort: "low", quick: true, system: SUMMONED_PROMPT,
+      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, allowed: ALLOWED, denied: ["Bash(vau companion:*)"],
+      tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
+    acts: () => { const [say, look, draw] = toolsFor(ownName(), SUMMONED_ACTS, () => lane().busy()); return { say, look, draw } },
+    caption: (name, text) => screenDrawing.recaption(name, text),
+    text: async (ms) => {
+      const slim = ms.map((m) => (m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
+      const text = [momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobsLine(jobsNow())].filter(Boolean).join("\n")
+      return { text: text.replace(/\(point at one: --ax <id>\)/g, "(point at one: [point a1])"), images: shotsOf(ms) }
+    },
     agent: (name) => agents.get(key(name)), setAgent, did,
     say: (name, text) => { const a = agents.get(key(name)), answers = inSummoned.run(true, () => answering(name))
       keepSaid(putNote({ kind: "say", agent: name, text, ...(a?.path ? { path: a.path, line: a.line } : {}), ...(answers ? { answers } : {}) }, sayMs(text))) },
@@ -3018,9 +3040,9 @@ came (faster with speed), so you can watch what the session makes of them.
   text: (r) => `Replaying ${r.replaying} moments.`,
 })
 
-/** A moment's latency (ms): the user's pause, until it was handed (handoff), to its first action (think) and first word
- *  shown (word), from the moment to its next `next` or turn's end (total); undefined: it didn't happen. */
-export type Timing = { t: number; seq: number; kind: string; at: string; as?: string; op?: string; pause?: number; handoff?: number; think?: number; word?: number; total?: number }
+/** A moment's latency (ms): the user's pause, until handed (handoff), sent (a summoned session's message), its first
+ *  action (think) and word shown (word), to its next `next` or turn's end (total); undefined: it didn't happen. */
+export type Timing = { t: number; seq: number; kind: string; at: string; as?: string; op?: string; pause?: number; handoff?: number; sent?: number; think?: number; word?: number; total?: number }
 
 /** What's logged that isn't an action of its own. */
 const NOT_ACTS = new Set([...BOOKKEEPING, "word", "stopped"])
@@ -3039,8 +3061,8 @@ export function timings(ms: Moment[], log: Act[]): Timing[] {
     return hands.map((hi) => {
       const h = log[hi], after = log.slice(hi + 1).filter((a) => a.as === h.as)
       const done = after.find((a) => a.op === "next" || a.op === "done"), within = (a: Act) => !done || a.t <= done.t
-      const first = after.find((a) => !NOT_ACTS.has(a.op) && within(a)), word = after.find((a) => WORDS.has(a.op) && within(a))
-      return { ...r, as: h.as, handoff: h.t - m.t, ...(first ? { op: first.op, think: first.t - h.t } : {}), ...(word ? { word: word.t - h.t } : {}), ...(done ? { total: done.t - m.t } : {}) }
+      const first = after.find((a) => !NOT_ACTS.has(a.op) && within(a)), word = after.find((a) => WORDS.has(a.op) && within(a)), sent = after.find((a) => a.op === "sent" && within(a))
+      return { ...r, as: h.as, handoff: h.t - m.t, ...(sent ? { sent: sent.t - h.t } : {}), ...(first ? { op: first.op, think: first.t - h.t } : {}), ...(word ? { word: word.t - h.t } : {}), ...(done ? { total: done.t - m.t } : {}) }
     })
   })
 }
@@ -3054,7 +3076,7 @@ export function timingsText(day: string, rows: Timing[]) {
     return `${k} ${xs.length ? `${s(pct(xs, 0.5)).trim()}/${s(pct(xs, 0.9)).trim()}` : "-"}`
   }).join(", ")} (median/p90, s)`
   if (!rows.length) return `No moments on ${day}.`
-  return [`${day}, in seconds: pause (the user's, before the app sent it), handoff (until it was handed: a next, or its chat session's message), think (to the first action), word (to the first word shown), total (to the next \`next\`, or its turn's end).`,
+  return [`${day}, in seconds: pause (the user's, before the app sent it; a Talk key's, from letting it go), handoff (until it was handed: a next, or its chat session's message), think (to the first action), word (to the first word shown), total (to the next \`next\`, or its turn's end).`,
     `${"time".padEnd(8)} ${"pause".padStart(7)} ${"handoff".padStart(7)}${"think".padStart(7)}${"word".padStart(7)}  ${"total".padStart(7)}  moment`,
     ...rows.map((r) => `${time(r.t)} ${s(r.pause)} ${s(r.handoff)}${s(r.think)}${s(r.word)}  ${s(r.total)}  ${r.as ? `${r.as}: ` : ""}${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
     sum("asks and replies", rows.filter((r) => r.kind === "ask" || r.kind === "reply")), sum("all", rows),

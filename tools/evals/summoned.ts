@@ -1,4 +1,4 @@
-// The summoned companion's speed and how its answers sound aloud (a fixture's real asks, scored by score.ts spokenStyle).
+// The summoned companion's speed and how its answers (its words, tags out; says, draws) sound aloud: score.ts spokenStyle.
 //   node tools/evals/summoned.ts [--models haiku,sonnet] [--asks 4] [--fixture companion/summoned-<day>.json]   (DEBUG=1: entries)
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -6,6 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
 import { freePort, stopTerminals, testServer, waitFor } from "../test/lib.ts"
+import { parseTags } from "../../plugins/core/companion/tags.ts"
 import { spokenScore } from "./companion/score.ts"
 
 const argv = process.argv.slice(2)
@@ -73,16 +74,17 @@ try {
       }
       await new Promise((r) => setTimeout(r, 800))
     }
-    const all = (await rowsOf()).slice(seen), rows = all.slice(1), cold = all[0]
+    const all = (await rowsOf()).slice(seen), rows = all.slice(1), cold = all[0], from = out.length
     out.push(`\n${model}: its first ask, the session just up: ${sec((cold?.handoff ?? 0) + (cold?.word ?? NaN))} s to its first word`)
     // (what it said and where it pointed: by an element's id near the pointer, or a point)
     const said = ((await call("claude-code.chat-read", { id: await quick(), limit: 200 })).entries as Any[])
-      .filter((e) => e.k === "tool" && /__say$/.test(e.name)).slice(-rows.length).map((e) => (typeof e.input === "string" ? JSON.parse(e.input) : e.input) as Any)
+      .filter((e) => e.k === "text").slice(-rows.length).map((e) => { const p = parseTags(String(e.text ?? "")); return { text: p.said, at: p.tags.find((t) => t.kind === "point")?.at } })
     const firsts = rows.map((r) => (r.handoff ?? 0) + (r.word ?? NaN))
-    out.push(`${model}: then ask to first word ${firsts.map(sec).join(", ")} s (median ${sec(med(firsts))}); first action ${rows.map((r) => r.op ?? "-").join(", ")}; whole turn ${sec(med(rows.map((r) => r.total)))} s median`)
+    out.push(`${model}: then ask to first word ${firsts.map(sec).join(", ")} s (median ${sec(med(firsts))}); first action ${rows.map((r) => r.op ?? "-").join(", ")}; whole turn ${sec(med(rows.map((r) => r.total)))} s median`,
+      `${model}: medians, from the moment: handed ${sec(med(rows.map((r) => r.handoff ?? NaN)))}, sent ${sec(med(rows.map((r) => (r.handoff ?? 0) + (r.sent ?? NaN))))}, first word ${sec(med(firsts))}, first action ${sec(med(rows.map((r) => (r.handoff ?? 0) + (r.think ?? NaN))))}, turn's end ${sec(med(rows.map((r) => r.total)))} s`)
     if (!FIXTURE) {
-      for (const n of said) out.push(`  ${n.ax ? `[${n.ax}] ` : n.sx !== undefined ? `[${n.sx},${n.sy}] ` : "[-] "}${String(n.text).replace(/\s+/g, " ").slice(0, 110)}`)
-      console.log(out.slice(-2 - said.length).join("\n"))
+      for (const n of said) out.push(`  ${n.at ? `[${JSON.stringify(n.at)}] ` : "[-] "}${String(n.text).replace(/\s+/g, " ").slice(0, 110)}`)
+      console.log(out.slice(from).join("\n"))
     } else {
       // (each ask's answer as heard: its says and a drawing's words, in the turn that ask began)
       // (in the order they happened: the history and the live entries come merged, not in order)
@@ -90,6 +92,8 @@ try {
         .sort((a, b) => String(a.at).localeCompare(String(b.at))), turns: { words: string[]; pointed: boolean }[] = []
       for (const e of entries) {
         if (e.k === "user") { turns.push({ words: [], pointed: false }); continue }
+        // (its words, spoken as written: their tags point and draw)
+        if (e.k === "text" && turns.length) { const p = parseTags(String(e.text ?? "")); if (p.said) turns.at(-1)!.words.push(p.said); if (p.tags.length) turns.at(-1)!.pointed = true; continue }
         const input = (typeof e.input === "string" ? JSON.parse(e.input) : e.input) as Any, turn = turns.at(-1)
         if (!turn || e.k !== "tool" || !input) continue
         if (/__say$/.test(e.name) && input.text) turn.words.push(String(input.text))
@@ -103,7 +107,7 @@ try {
       out.push(`${model}: as speech, ${sc.clean}/${sc.of} clean, ${sc.short}/${sc.of} in 30 words or fewer; words median ${sc.words.median}, mean ${sc.words.mean}, most ${sc.words.most}; pointed in ${heard.filter((t) => t.pointed).length}/${sc.of}`,
         `${model}: faults ${Object.entries(sc.tally).sort((a, b) => b[1] - a[1]).map(([f, k]) => `${f} ${k}`).join(", ") || "none"}`)
       heard.forEach((t, i) => out.push(`  ${(ASKS[i].id ?? String(i + 1)).padEnd(16)} ${sc.rows[i].faults.length ? `[${sc.rows[i].faults.join(", ")}]` : "[clean]"} ${t.words.join(" ").replace(/\s+/g, " ")}`))
-      console.log(out.slice(-4 - heard.length).join("\n"))
+      console.log(out.slice(from).join("\n"))
     }
     if (process.env.DEBUG) console.log(((await call("claude-code.chat-read", { id: await quick(), limit: 40 })).entries as Any[]).map((e) => `${e.k}${e.name ? `:${e.name}` : ""}${e.at ? ` ${e.at}` : ""} ${JSON.stringify(e.input ?? "").slice(0, 200)}`).join("\n"))
   }

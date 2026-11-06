@@ -29,6 +29,11 @@ export type Spec = {
   quiet?: boolean
   /** No thinking before it answers (a quick one's: thinking took 1.5 s of a summoned answer's 2). */
   quick?: boolean
+  /** Its whole system prompt, in place of Claude Code's: a lean session, which loads none of the user's settings,
+   *  CLAUDE.md files, MCP servers or skills, and has only `builtins` of Claude Code's own tools. */
+  system?: string; builtins?: string[]
+  /** Its words told as they're written ("partial" with no name). */
+  texts?: boolean
 }
 
 export type State = "starting" | "working" | "waiting" | "idle" | "error"
@@ -58,8 +63,8 @@ export type Event =
   | { t: "tool"; id: string; call: string; name: string; args: unknown; use?: string }
   /** A file it edited or a command it ran, for Activity (as a terminal's hooks report). */
   | { t: "did"; id: string; tool: string; input: unknown }
-  /** A streaming tool's input as written so far (`use`: its tool_use id, which its call names too); `end`: its block is
-   *  written ("done"; the call comes), or the turn ended before ("stop"). */
+  /** A streaming tool's input as written so far (`use`: its tool_use id, which its call names too; no `name`: its words,
+   *  `texts`, by their entry id); `end`: its block is written ("done"; the call comes), or the turn ended ("stop"). */
   | { t: "partial"; id: string; use: string; name: string; json: string; end?: "done" | "stop" }
 
 /** What the host runs sessions with: the SDK's query, and an in-process MCP server of relayed tools. */
@@ -85,6 +90,13 @@ const toolUseIdOf = (extra: unknown) => {
   const u = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta?.["claudecode/toolUseId"]
   return typeof u === "string" ? u : undefined
 }
+/** The keeper's code in folder `dir` (its files', as one hash): a keeper runs what it started with. */
+export function codeOf(dir: string) {
+  const h = crypto.createHash("sha256")
+  for (const f of ["chatd.ts", "chathost.ts", "chatlog.ts"]) { try { h.update(fs.readFileSync(path.join(dir, f))) } catch { /* gone */ } h.update("\0") }
+  return h.digest("hex").slice(0, 16)
+}
+
 /** The relayed tools' names as Claude Code calls them. */
 const APP = "mcp__vaultite-app__"
 
@@ -110,8 +122,10 @@ class Session {
   /** The user stopped its turn: the result that ends it says so, not why the SDK stopped. */
   stopping = false
   stderr: string[] = []
-  /** Streaming tools' inputs being written, by their block's index in the message. */
+  /** Streaming tools' inputs (and its words, `texts`) being written, by their block's index in the message. */
   streams = new Map<number, { use: string; name: string; json: string }>()
+  /** The message being streamed: its blocks' entries are `<id>:<index>`. */
+  message = ""
   /** Relayed calls (tool_use ids) whose result ended the turn. */
   ending = new Set<string>()
   constructor(spec: Spec) {
@@ -173,8 +187,9 @@ export class Host {
       // (only so the picker can switch to it later, as the TUI's --allow-dangerously-skip-permissions does)
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true, thinking: spec.quick ? { type: "disabled" } : { type: "adaptive", display: "summarized" },
-      systemPrompt: { type: "preset", preset: "claude_code", ...(spec.append ? { append: spec.append } : {}) },
-      settingSources: ["user", "project", "local"],
+      ...(spec.system !== undefined
+        ? { systemPrompt: spec.system, settingSources: [], strictMcpConfig: true, tools: spec.builtins ?? [] }
+        : { systemPrompt: { type: "preset", preset: "claude_code", ...(spec.append ? { append: spec.append } : {}) }, settingSources: ["user", "project", "local"] }),
       ...(spec.title && !spec.resume ? { title: spec.title } : {}),
       canUseTool: this.asker(x),
       hooks: {
@@ -391,16 +406,19 @@ export class Host {
     }
     if (m.type === "result") return stop()
     if (m.type !== "stream_event" || m.parent_tool_use_id) return
-    const ev = m.event as { type: string; index?: number; content_block?: { type?: string; id?: string; name?: string }; delta?: { type?: string; partial_json?: string } }
-    if (ev.type === "message_start") return stop()
+    const ev = m.event as { type: string; index?: number; message?: { id?: string }; content_block?: { type?: string; id?: string; name?: string }
+      delta?: { type?: string; partial_json?: string; text?: string } }
+    if (ev.type === "message_start") { x.message = String(ev.message?.id ?? ""); return stop() }
     if (typeof ev.index !== "number") return
     if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
       const name = String(ev.content_block.name ?? ""), short = name.startsWith(APP) ? name.slice(APP.length) : ""
       if (short && x.spec.tools?.some((t) => t.name === short && t.streams)) x.streams.set(ev.index, { use: String(ev.content_block.id ?? ""), name: short, json: "" })
-    } else if (ev.type === "content_block_delta" && ev.delta?.type === "input_json_delta") {
-      const s = x.streams.get(ev.index)
-      if (!s || !ev.delta.partial_json) return
-      s.json += ev.delta.partial_json
+    } else if (ev.type === "content_block_start" && ev.content_block?.type === "text" && x.spec.texts) {
+      x.streams.set(ev.index, { use: `${x.message}:${ev.index}`, name: "", json: "" })
+    } else if (ev.type === "content_block_delta" && (ev.delta?.type === "input_json_delta" || ev.delta?.type === "text_delta")) {
+      const s = x.streams.get(ev.index), more = ev.delta.type === "text_delta" ? ev.delta.text : ev.delta.partial_json
+      if (!s || !more) return
+      s.json += more
       this.emit({ t: "partial", id: x.s.id, ...s })
     } else if (ev.type === "content_block_stop") {
       const s = x.streams.get(ev.index)

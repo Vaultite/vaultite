@@ -108,9 +108,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   under the pointer (a line, a pane, the app's UI). Nothing rests on screen: no docked or trailing cursor, no dragging
   it onto things (nor a follow started by that); unread answers are a badge on the menu bar icon. Dictation's key is
   fn⌃ held; double Control is no key now. Its words never cover its name or what it points at.
-- **Summoned asks are quicker**: they go to a session of their own on Haiku (Model for summoned asks), started with the
-  companion and readied as you press its Talk key, with a short prompt and the display's picture in the ask; the
-  session that watches your notes is left to it.
+- **Summoned asks are quicker**: they go to a session of their own (Model for summoned asks), started with the
+  companion and readied as you press its Talk key, the session that watches your notes left to it. It answers in plain
+  words, spoken and shown from the first ones, pointing and marking as it talks, in a lean session (its own short
+  prompt, few tools, low effort, a fresh one every few asks), with the window's text cut to what's by your pointer and
+  gathered while your words are finished: about a second from letting go to its first word, where it took four.
 - **Background jobs**: ask the companion for long work and it hands it to Opus (or Codex) and says so; the menu bar
   lists its jobs (working, done, needs you), with a badge and a notification when one ends, and a click opens it in
   Vaultite. `vau companion jobs` lists them; a follow-up goes on in the same session.
