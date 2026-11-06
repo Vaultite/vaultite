@@ -10,7 +10,7 @@ export type Rect = { x: number; y: number; width: number; height: number }
 /** An app's window as the helper tells it: its app (bundle id, name), number and title; `vaultite`: one of this app's. */
 export type AppWindowInfo = { bundle: string; name: string; pid: number; window: number; title: string; frame?: Rect | null; vaultite?: boolean }
 /** The field with the keyboard: whether words can go in (`field`), a password's (`secure`), the text before its caret. */
-export type Focus = AppWindowInfo & { field: boolean; secure?: boolean; role?: string; before?: string }
+export type Focus = AppWindowInfo & { field: boolean; editable?: boolean; secure?: boolean; role?: string; before?: string }
 
 const SHIPPED = path.join(import.meta.dirname, "bin")
 let helper: ChildProcess | null = null

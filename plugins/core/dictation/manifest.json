@@ -5,7 +5,7 @@
   "essential": true,
   "desktopApp": true,
   "name": "Dictation",
-  "description": "Speak where the cursor is (a note, a terminal, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized by Soniox in the cloud with its key, else on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. In a terminal the words go in as a paste and never press Enter. With nothing to type into, it says so and listens to nothing.",
+  "description": "Speak where the cursor is (a note, a terminal, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized by Soniox in the cloud with its key, else on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. In a terminal the words go in as a paste and never press Enter. Move to another app or tab and it keeps listening, the words in a box under the menu bar: they land in the field in front when it stops, else where you began, else on the clipboard and in your inbox.",
   "settings": {
     "engine": {
       "type": "enum",
@@ -56,7 +56,7 @@
       "type": "boolean",
       "default": true,
       "label": "Dictate anywhere",
-      "description": "on a Mac, the dictation keys dictate in any app, as ⌘J does here: into its text field, never anywhere else (the companion has keys of its own)"
+      "description": "on a Mac, the dictation keys dictate in any app, as ⌘J does here (the companion has keys of its own)"
     },
     "keys": {
       "type": "list",
@@ -64,7 +64,7 @@
       "labels": { "fn_control": "fn⌃ (fn and Control)", "fn": "fn", "right_option": "Right Option", "right_command": "Right Command" },
       "default": ["fn_control"],
       "label": "Dictation keys",
-      "description": "the keys that dictate: fn⌃ held together, or fn or a right modifier alone; a tap starts and the next stops, or hold while you speak. A key the companion talks with (its Talk keys) isn't one"
+      "description": "the keys that dictate: fn⌃ held together, or fn or a right modifier alone; a tap starts and the next stops, hold while you speak, or double tap for hands-free. A key the companion talks with (its Talk keys) isn't one"
     },
     "microphone": {
       "local": true,

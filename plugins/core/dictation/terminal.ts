@@ -26,6 +26,7 @@ export function terminalTarget(el: HTMLElement, term: TerminalInput): DictationT
   const before = () => sent ?? term.caret()?.before ?? ""
   return {
     showsPending: true,
+    owns: (e) => el.contains(e),
     pending(text) { term.pending(text ? joinText(before(), oneLine(text)) : "") },
     final(text) {
       term.pending("")

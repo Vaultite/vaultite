@@ -60,6 +60,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   starting, working, needs you, ready for review (its diff and preview link), done, failed or stopped, the same in the
   menu bar (with where it runs and what it does now), `vau companion jobs` and by voice: tell it more, stop it, or ask
   how it's going. `vau companion timings` shows how soon each job's card was up and its worker took its first step.
+- **Dictation follows you**: move to another app or tab and it keeps listening, the words showing in a box under the menu
+  bar; when it stops they land in the field in front, else where you began, else on the clipboard and in your inbox. A
+  double tap is hands-free.
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
 - **The companion sees what was there as you pressed**: a toast or menu that's gone by the time you let go of ⌃⌥ still

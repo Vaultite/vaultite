@@ -22,7 +22,7 @@ const ipc = new Map<string, (e: { sender: unknown }, m?: unknown) => void>()
 const USERDATA = fs.mkdtempSync(path.join(os.tmpdir(), "vau-helperdraw-"))
 mock.module(pathToFileURL(fs.realpathSync(path.join(ROOT, "node_modules/electron/index.js"))).href, { exports: {
   app: { on() {}, getName: () => "Vaultite", getPath: () => USERDATA, getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false, getPreferredSystemLanguages: () => ["en-US"] },
-  Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }, m?: unknown) => void) => { ipc.set(ch, fn) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
+  clipboard: { writeText() {} }, Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }, m?: unknown) => void) => { ipc.set(ch, fn) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
   screen: { getCursorScreenPoint: () => pointer, getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
 } })
 type Acts = { open: (name: string, at: Pt) => void }
@@ -47,7 +47,7 @@ let sttDrops: boolean | string = false, finishMs = 5
 // (`micBt`: the mic it hears with is a Bluetooth one, held open after; each release of it)
 let micBt = false
 const releases: number[] = []
-mock.module(at("dictation.ts"), { exports: { dictate: async (sink: Sink) => {
+mock.module(at("dictation.ts"), { exports: { freeFor() {}, handOver: () => false, onRoam() {}, dictate: async (sink: Sink) => {
   sink.tell({ type: "start" })
   const drops = sttDrops
   if (drops) setTimeout(() => { if (typeof drops === "string") sink.tell({ type: "final", text: drops }); sink.tell({ type: "error", code: "socket", message: "the connection closed" }); sink.tell({ type: "end", reason: "error" }) }, 60)

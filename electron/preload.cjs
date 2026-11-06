@@ -160,6 +160,18 @@ contextBridge.exposeInMainWorld("vaultite", {
     start: call("dictation:start"),
     stop: call("dictation:stop"),
     cancel: call("dictation:cancel"),
+    roam: call("dictation:roam"),
+    free: call("dictation:free"),
+    // (where a session that left this window lands its words: the helper asks, the page answers)
+    onLand: (fn) => {
+      const h = async (_e, q) => {
+        let r = { ok: false }
+        try { r = await fn(q) } catch { /* it took nothing */ }
+        ipcRenderer.send("vaultite:dictation-landed", { id: q.id, ...r })
+      }
+      ipcRenderer.on("vaultite:dictation-land", h)
+      return () => { ipcRenderer.removeListener("vaultite:dictation-land", h) }
+    },
     on: (fn) => {
       const h = (_e, msg) => fn(msg)
       ipcRenderer.on("vaultite:dictation", h)

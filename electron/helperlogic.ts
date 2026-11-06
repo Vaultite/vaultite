@@ -60,12 +60,13 @@ export type Summoned = { name: string; tint: string; state: "listening" | "think
   /** Listening, how loud they are (0 to 1). */
   level?: number }
 /** What the overlay draws: cursors, the companion summoned (the pointer's trail while its key is held: the overlay draws
- *  it from its feed), and the dictation pill, by its display's bottom centre (`display`: the one; else the pointer's). */
+ *  it from its feed), and dictation's box, under the menu bar of the pointer's display. */
 export type Scene = {
   agents: ScreenAgent[]
   summon: Summoned | null
-  /** `hint`: a word for a moment, nothing heard (a key pressed where it does nothing). */
-  pill: { level: number; text: string; ready: boolean; display?: number; hint?: boolean } | null
+  /** `text`: the words settled so far, `pending` those still changing; `hint`: a word for a moment, nothing heard; `free`:
+   *  hands-free, on till the next press. */
+  pill: { level: number; text: string; pending?: string; ready: boolean; free?: boolean; hint?: boolean } | null
   /** The cursor whose answer is being said aloud (its name), and how loud it is now (0 to 1). */
   speaking?: { name: string; level: number } | null
 }
@@ -79,7 +80,7 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
   const local = <T extends { sx: number; sy: number; from?: Point; target?: Rect; aim?: { id: string; x: number; y: number } }>(a: T) =>
     ({ ...a, sx: a.sx - dx, sy: a.sy - dy, ...(a.from ? { from: { x: a.from.x - dx, y: a.from.y - dy } } : {}), ...(a.target ? { target: { ...a.target, x: a.target.x - dx, y: a.target.y - dy } } : {}),
       ...(a.aim ? { aim: { ...a.aim, x: a.aim.x - dx, y: a.aim.y - dy } } : {}) })
-  const pillHere = !!s.pill && (s.pill.display !== undefined && all.some((x) => x.id === s.pill!.display) ? s.pill.display === d.id : on(pointer.x, pointer.y))
+  const pillHere = !!s.pill && (on(pointer.x, pointer.y) || !all.some((x) => inside(x, pointer.x, pointer.y)))
   return {
     width: d.bounds.width, height: d.bounds.height,
     // (the menu bar's height: what goes above a cursor stays under it)

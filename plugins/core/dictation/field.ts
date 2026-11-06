@@ -18,7 +18,8 @@ export function fieldTarget(el: HTMLElement): DictationTarget {
     final(t) {
       if (!el.isConnected) return
       if (!text) {
-        // (a contenteditable: typed where its selection is)
+        // (a contenteditable: typed where its selection is; the session having left, focused again)
+        if (document.activeElement !== el) el.focus()
         const sel = window.getSelection()
         if (document.activeElement === el) document.execCommand("insertText", false, joinText(sel?.anchorNode?.textContent?.slice(0, sel.anchorOffset) ?? "", t))
         pending = ""
@@ -36,6 +37,7 @@ export function fieldTarget(el: HTMLElement): DictationTarget {
       at = where + insert.length
     },
     end() { pending = "" },
+    owns: (e) => el === e || el.contains(e),
     rect() { return el.isConnected ? el.getBoundingClientRect() : null },
   }
 }

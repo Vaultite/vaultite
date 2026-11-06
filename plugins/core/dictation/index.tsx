@@ -2,13 +2,12 @@
 // session, electron/dictation.ts the recognizer). A tap starts and the next stops; held, it listens until let go.
 import { useEffect } from "react"
 import { Mic } from "lucide-react"
-import { definePlugin, dictation, dictationSource, fnDictation, hintDictation, listening, notify, notifyError, openPermissions, pluginSettings, pressDictation,
+import { definePlugin, dictation, dictationSource, fnDictation, hintDictation, landDictation, listening, notify, notifyError, openPermissions, pluginSettings, pressDictation,
   startDictation, typingIn, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
 import { fieldTarget } from "./field"
 import { terminalTarget, type TerminalInput } from "./terminal"
 
-/** Where the words go: the editor, terminal or field with the keyboard; with none, nowhere (talking to the companion
- *  is its Talk keys'). */
+/** Where the words go: the editor, terminal or field with the keyboard; with none, nowhere here. */
 async function targetHere(): Promise<DictationTarget | null> {
   const el = document.activeElement
   const cm = el instanceof HTMLElement ? el.closest(".cm-editor") : null
@@ -38,6 +37,8 @@ async function engineFor(engine: unknown, language: string): Promise<DictationEn
 }
 
 function failed(code: string, message?: string) {
+  // (that press stopped a session roaming)
+  if (code === "roaming") return
   if (code === "permission") return notify("Vaultite isn't allowed to use the microphone", { kind: "error", action: openPermissions ? { label: "Open settings", run: openPermissions } : undefined })
   if (code === "fallback") return notify(message ?? "Dictating on this Mac")
   if (code === "model") return notify("Parakeet's model isn't on this Mac: Handy or Hex downloads it, or pick Apple's recognizer", { kind: "error" })
@@ -46,7 +47,11 @@ function failed(code: string, message?: string) {
 
 async function begin(hold: boolean) {
   const target = await targetHere()
-  if (!target) { hintDictation("Click where the words should go, then dictate"); return false }
+  if (!target) {
+    // (the helper listens: the words in its box, for whatever field has the keyboard when it stops)
+    if (!(await dictationSource?.roam?.({ start: true, held: hold }).catch(() => false))) hintDictation("Click where the words should go, then dictate")
+    return false
+  }
   const s = pluginSettings("dictation").get()
   const language = typeof s.language === "string" ? s.language.trim() : ""
   const silence = typeof s.silence === "number" ? s.silence : 0
@@ -59,7 +64,7 @@ async function begin(hold: boolean) {
 
 /** fn while this window has the keyboard: its ⌘J (the helper dictates in other apps itself). */
 function FnKey() {
-  useEffect(() => fnDictation(begin), [])
+  useEffect(() => { const key = fnDictation(begin), landing = landDictation(targetHere); return () => { key(); landing() } }, [])
   return null
 }
 

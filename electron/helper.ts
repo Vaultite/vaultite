@@ -1,15 +1,17 @@
 /** The menu-bar helper (a Mac's; one per Mac, a lock): the app and its home vault's server kept with no window: the keys
  *  (dictation's; the companion summoned over the screen, overlay.ts), screen reading, what's in front. electron/CLAUDE.md. */
-import { app, ipcMain, Menu, Notification, nativeImage, screen, shell, Tray, type BrowserWindow, type WebContents } from "electron"
+import { app, clipboard, ipcMain, Menu, Notification, nativeImage, screen, shell, Tray, type BrowserWindow, type WebContents } from "electron"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
-import { ALONE_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
+import { ALONE_MS, HOLD_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
 import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
-import { dictate, dictating, stopFor, dictationEngines, onAudioDevices, onDictating, releaseMic, type DictationSink } from "./dictation.ts"
+import { dictate, dictating, stopFor, dictationEngines, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
+import { land, landedSaid } from "./dictationroam.ts"
+import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
@@ -56,8 +58,14 @@ let host: HelperHost | null = null
 /** A scripted copy's stand-ins for the screen helper's answers (web/qa/helper.mjs): it never reads or types into the
  *  user's apps. */
 const stubs = new Map<string, Record<string, unknown>>()
-const screenAsk = <T = Record<string, unknown>>(op: string, req: Record<string, unknown> = {}): Promise<T> =>
-  QUIET ? Promise.resolve((stubs.get(op) ?? { ok: false, why: "quiet", window: 0 }) as T) : askHelper<T>(op, req)
+/** What a scripted copy asked of them, and copied. */
+const screenAsked: Record<string, unknown>[] = []
+const screenAsk = <T = Record<string, unknown>>(op: string, req: Record<string, unknown> = {}): Promise<T> => {
+  // (web/qa/dictation-apps.mjs, by hand: a scripted copy on real windows of its own)
+  if (!QUIET || process.env.VAULTITE_QA_SCREEN) return askHelper<T>(op, req)
+  screenAsked.push({ op, ...req })
+  return Promise.resolve((stubs.get(op) ?? { ok: false, why: "quiet", window: 0 }) as T)
+}
 const windowShot = (window: number, dir: string) => (QUIET ? Promise.resolve(null) : shoot(window, dir))
 const displayShot = (p: Point, exclude: number[]) => (QUIET ? Promise.resolve(null) : shootDisplay(p, exclude, SHOTS(), shotCrop(screen.getDisplayNearestPoint(p).bounds, p)))
 let lock: net.Server | null = null
@@ -87,10 +95,13 @@ export async function startHelper(h: HelperHost) {
   host = h
   app.on("will-quit", stopHelper)
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v), presses: () => presses.read(),
-    asked: () => [...asked], spoken: () => [...spoken], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
+    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
   onScreenEvent(heard)
   ipcMain.removeAllListeners("vaultite:place")
   ipcMain.on("vaultite:place", (e, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
+  ipcMain.removeAllListeners("vaultite:dictation-landed")
+  ipcMain.on("vaultite:dictation-landed", (_e, m: { id?: unknown; ok?: boolean; elsewhere?: boolean }) => { if (typeof m?.id === "number") landAsks.get(m.id)?.(m) })
+  onRoam({ take: roamIn, stop: () => { if (session?.into !== "field") return false; stopFor(session.sink); return true } })
   onDictating(() => stopVoice())
   // (the mic it would hear with now, for its status: devices plugged, the output changed)
   onAudioDevices((d) => micTold(pickMic(prefs.dictation.microphone, d)))
@@ -357,7 +368,12 @@ type Session = { sink: DictationSink; into: "field" | "panel" | "summon"; focus:
   /** The mic it hears with is a Bluetooth one: held open after, till its answer is said (holdMic). */
   bluetooth?: boolean
   /** The summoned companion its words are for (a new press may summon another before they're done). */
-  of?: Summon }
+  of?: Summon
+  /** Hands-free (a double tap): on till the next press. */
+  free?: boolean
+  /** It began in a window of ours (a note, a terminal, a field): that page keeps where. */
+  origin?: WebContents
+  log?: Press }
 let session: Session | null = null
 /** The window's page that has this press (fn there is its ⌘J), till it's let go. */
 let page: WebContents | null = null
@@ -398,7 +414,7 @@ function chordHeard(m: Record<string, unknown>) {
 function fnHeard(m: Record<string, unknown>, byFn = true) {
   if (!prefs.fn || !host?.home()) return
   const to = page && !page.isDestroyed() ? page : null
-  if (m.other === true) { if (to) to.send("vaultite:fn", { other: true }); else act(key.other()) ; return }
+  if (m.other === true) { if (to) to.send("vaultite:fn", { other: true }); else act(key.other(Date.now())) ; return }
   if (m.down === true) {
     if (!session) page = host.focusedPage()
     if (page && !session) return void page.send("vaultite:fn", { down: true })
@@ -427,7 +443,8 @@ function act(a: FnAction, talk = false) {
     startingTalk = talk
     after = null
     void (talk ? startSummon() : begin()).finally(() => { starting = false; startingTalk = false; const then = after; after = null; if (then) act(then) })
-  } else if (starting && (a === "stop" || a === "cancel")) after = a
+  } else if (starting && (a === "stop" || a === "cancel" || a === "free")) after = a
+  else if (a === "free" && session) { session.free = true; freeFor(session.sink); session.log?.step("free"); draw() }
   else if (a === "stop" && session) stopFor(session.sink)
   else if (a === "cancel" && session) stopFor(session.sink, true)
 }
@@ -779,14 +796,35 @@ const replacements = () => {
 async function begin() {
   // (a cursor's conversation open: the words go in its box)
   if (panelFocused()) return listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true } })
-  const focus = await screenAsk<Focus>("focus")
+  // (kept: where its words go if no other field has them when it stops)
+  const focus = await screenAsk<Focus>("focus", { keep: true })
   if (dictating()) return
-  // (a window of Vaultite's that isn't a vault's, a Quick Look: it says so rather than nothing)
-  if (focus.vaultite) return hint("Click where the words should go, then dictate")
-  // (a password field gets nothing said; with no field, nothing is heard: talking to the companion is its own keys')
+  // (a password field gets nothing said; with no field it listens: one may be clicked by the time it stops)
   if (focus.field && focus.secure) return
-  if (!focus.field) return hint(prefs.talk.length ? `No text field here: ${keysSaid(prefs.talk)} talks to ${live.state.name || "the companion"}` : "No text field here")
   await listenFor({ into: "field", focus })
+}
+
+/** A window's session (or one with nowhere in it to go, `start`) carries on here, the words in the box: its page keeps
+ *  where it began. The page's key goes with it. False: it can't, and the page does as it can. */
+function roamIn(win: AppWindow, sink: DictationSink, o: Roam) {
+  if (session?.into === "field") { if (o.start) stopFor(session.sink); return !!o.start }
+  if (session || starting) return false
+  if (o.start) {
+    if (!prefs.fn) return false
+    page = null
+    if (o.held) key.down(Date.now(), false)
+    act("start")
+    return true
+  }
+  const mine: Session = { sink: { tell: (e) => told(mine, e) }, into: "field", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: false }, finals: [], pending: o.pending ?? "", level: 0, ready: true,
+    swap: replacer(replacements()), free: o.free, origin: win.webContents, log: dictations.start("dictation", "roam", { from: "window", ...(o.free ? { free: true } : {}) }) }
+  if (!handOver(sink, mine.sink)) return false
+  session = mine
+  page = null
+  // (still held: letting go stops it, however long it's been)
+  if (o.held) key.down(Date.now() - HOLD_MS, false)
+  draw()
+  return true
 }
 
 /** A word in the dictation pill's place, a moment: a key pressed where it does nothing. */
@@ -798,14 +836,16 @@ function hint(text: string) {
 }
 
 async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
-  // (a Talk key's is the companion's, whatever else listens: that ends; other keys leave a session under way alone)
+  // (a Talk key's is the companion's, whatever else listens: that ends, its words landing; other keys leave a session under way alone)
   if (dictating() && !o.talk) return
+  if (session?.into === "field") { const was = session; session = null; void finish(was, false) }
   stopVoice()
   holdEnd()
   const s = prefs.dictation, lines = replacements()
   // (held over the screen: the realtime voice hears the microphone too)
   const tap = o.into === "summon" && prefs.realtime.front === "realtime" && voiceFront.available()
-  const mine: Session = { sink: { tell: (e) => told(mine, e), ...(tap ? { audio: (b: Buffer) => voiceFront.audio(b) } : {}) }, ...o, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines) }
+  const mine: Session = { sink: { tell: (e) => told(mine, e), ...(tap ? { audio: (b: Buffer) => voiceFront.audio(b) } : {}) }, ...o, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines),
+    ...(o.into === "field" ? { log: dictations.start("dictation", "start", { front: o.focus.bundle, field: !!o.focus.field }) } : {}) }
   session = mine
   draw()
   chatChanged()
@@ -909,7 +949,14 @@ function told(s: Session, e: Record<string, unknown>) {
   else if (e.type === "speech" && s.into === "summon") voiceFront.speech()
   else if (e.type === "pending") s.pending = said(e.text)
   else if (e.type === "final") { const t = said(e.text).trim(); if (t) s.finals.push(t); s.pending = "" }
-  else if (e.type === "end") { session = null; if (s.bluetooth) holdMic(s.of?.press ?? undefined); void finish(s, e.reason === "cancel") }
+  else if (e.type === "end") {
+    session = null
+    // (cut short: what it had heard counts)
+    if ((e.reason === "error" || e.reason === "elsewhere") && s.pending.trim()) s.finals.push(s.pending.trim())
+    s.log?.step("end", { reason: String(e.reason ?? "") })
+    if (s.bluetooth) holdMic(s.of?.press ?? undefined)
+    void finish(s, e.reason === "cancel")
+  }
   draw()
   if (s.into === "panel") chatChanged()
 }
@@ -938,9 +985,56 @@ async function finish(s: Session, cancelled: boolean) {
     if (front === "held") speaker.hold()
     return sendSummon(m, text, { front: "realtime", talk: voiceFront.talk() })
   }
-  if (cancelled || !text) return
-  const r = await screenAsk<{ ok?: boolean; why?: string }>("insert", { text: joinText(s.focus.before ?? "", text) })
-  if (!r.ok && r.why === "no-field") notice("lost", "Couldn't put the words in", "The field lost the keyboard while you spoke.")
+  if (cancelled || !text) {
+    s.log?.end(cancelled ? "cancelled" : "nothing said")
+    return dropOrigin(s)
+  }
+  const to = await land(text, {
+    // (a scripted copy's window never has the keyboard: a stub says it does)
+    page: async (t) => { const p = host?.focusedPage() ?? (QUIET && stubs.has("page") ? host?.homeWindow()?.page : null); return p ? askPage(p, "here", t) : null },
+    front: () => screenAsk<Focus>("focus"),
+    insert: (t) => screenAsk("insert", { text: t }),
+    origin: (t) => backWhereItBegan(s, t),
+    copy: (t) => { if (QUIET) screenAsked.push({ op: "copy", text: t }); else clipboard.writeText(t) },
+    capture: async (t) => !!(await op("inbox.voice", { text: t, from: "Dictation", keep: true })),
+    secret: (f) => hidden(f) || hidden(s.focus),
+  })
+  s.log?.end("landed", { to: to.to, chars: text.length, ...(to.how ? { how: to.how } : {}), ...(to.to === "clipboard" ? { kept: !!to.kept } : {}) })
+  dropOrigin(s)
+  const said = landedSaid(to, s.focus.name)
+  if (said) hint(said)
+}
+const dropOrigin = (s: Session) => { if (s.origin) void askPage(s.origin, "drop") }
+
+/** What dictation logs, beside the Talk key's (no words: what happened, and where they went). */
+const dictations = pressLog(() => path.join(app.getPath("userData"), "talk"), "dictation")
+
+const landAsks = new Map<number, (r: { ok?: boolean; elsewhere?: boolean }) => void>()
+let landIds = 0
+/** A window's page, on dictated words: `here` where its keyboard is, `origin` where its session began, `drop` it's over. */
+function askPage(to: WebContents, where: "here" | "origin" | "drop", text?: string): Promise<{ ok: boolean; elsewhere?: boolean } | null> {
+  if (to.isDestroyed()) return Promise.resolve(null)
+  const id = ++landIds
+  return new Promise((done) => {
+    const late = setTimeout(() => { landAsks.delete(id); done(null) }, 1500)
+    landAsks.set(id, (r) => { clearTimeout(late); landAsks.delete(id); done({ ok: r.ok === true, elsewhere: r.elsewhere === true }) })
+    to.send("vaultite:dictation-land", { id, where, text })
+  })
+}
+/** Into the field it began in: where it is if that field lets it (in the background); else brought to the front and pasted. */
+async function backWhereItBegan(s: Session, text: string): Promise<{ ok: boolean; name?: string }> {
+  if (s.origin) return { ok: (await askPage(s.origin, "origin", text))?.ok === true }
+  if (!s.focus.field) return { ok: false }
+  const f = await screenAsk<{ ok?: boolean; before?: string; name?: string }>("kept", { do: "info" })
+  if (!f.ok) return { ok: false }
+  const words = joinText(f.before ?? "", text)
+  if ((await screenAsk<{ ok?: boolean }>("kept", { do: "insert", text: words })).ok) return { ok: true, name: f.name }
+  if (!(await screenAsk<{ ok?: boolean }>("kept", { do: "front" })).ok) return { ok: false }
+  for (let i = 0; i < 10; i++) {
+    await new Promise((r) => setTimeout(r, 100))
+    if ((await screenAsk<{ ok?: boolean }>("kept", { do: "paste", text: words })).ok) return { ok: true, name: f.name }
+  }
+  return { ok: false }
 }
 
 // ---------- its conversation: the answer's box, or a bubble clicked open (typed, or said into it)
@@ -1437,7 +1531,7 @@ function draw() {
   watchWindows()
   const d = session
   const hintNow = hinted && hinted.until > Date.now() ? hinted : null
-  const pill: Scene["pill"] = d && d.into === "field" ? { level: d.level, text: d.pending || d.finals.at(-1) || "", ready: d.ready, ...(d.focus.frame ? { display: displayOf(d.focus.frame) } : {}) }
+  const pill: Scene["pill"] = d && d.into === "field" ? { level: d.level, text: boxWords(d), pending: d.pending, ready: d.ready, ...(d.free ? { free: true } : {}) }
     : hintNow ? { level: 0, text: hintNow.text, ready: true, hint: true } : null
   lastScene = { ...handOff(agents, called), pill, speaking: speakingNow }
   showOverlay(based || null, lastScene)
@@ -1473,7 +1567,8 @@ function leaveWhenDone(a: Agent, says: Note[]) {
   left.add(once)
   leave(a.name)
 }
-const displayOf = (r: Rect) => screen.getDisplayMatching({ x: Math.round(r.x), y: Math.round(r.y), width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)) }).id
+/** What its box shows of the settled words: their end, as many as fit. */
+const boxWords = (s: Session) => s.finals.reduce((all, t) => all + joinText(all, t), "").slice(-800)
 
 // ---------- the server's calls (screen.text, screen.shot: plugins/core/screen)
 

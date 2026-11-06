@@ -1,4 +1,4 @@
-// The menu-bar helper (electron/helper.ts) in the desktop app, unseen: fn⌃ with no field hears nothing; ⌃⌥ held summons
+// The menu-bar helper (electron/helper.ts) in the desktop app, unseen (dictation's roaming: web/qa/dictation-roam.mjs): ⌃⌥ held summons
 // the companion at the pointer, listening (speech from a file), and let go asks it about the window there, its answer's
 // answer said aloud (no box) and its cursor riding beside the pointer over the screen; closing the window keeps the server and reopening takes it back.
 // The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/helper.mjs <vault copy>
@@ -31,17 +31,10 @@ check("the helper runs with the app", await helper(() => true))
 const engines = await win.evaluate((l) => window.vaultite?.dictation?.engines(l), "en-US")
 if (!engines?.apple) { await app.close(); await skip(`Apple's recognizer doesn't dictate here (${JSON.stringify(engines)})`) }
 
-// ---------- fn with no field: nothing heard, a word where the pill shows
 const frame = { x: 100, y: 120, width: 800, height: 600 }
 const win9 = { window: 9, bundle: "com.example.notes", name: "Example Notes", title: "Draft", frame }
 await helper((h, w) => { h.stub("focus", { ...w, field: false, pid: 1 }); h.stub("window", w); h.stub("at", w) }, win9)
 await wait(1500) // (its settings and the companion's socket, read as it starts)
-await helper((h) => h.heard({ event: "chord", name: "fn_control", on: true }))
-await wait(100)
-await helper((h) => h.heard({ event: "chord", name: "fn_control", on: false }))
-check("fn⌃ with no field hears nothing: a word says so", await until(() => helper((h) => !!h.scene()?.pill?.hint), 5000), await helper((h) => h.scene()))
-await wait(1500)
-check("…and asks no one", !(await helper((h) => h.asked().some((m) => m.kind === "ask"))))
 
 // ---------- ⌃⌥ held (a Talk key): the companion at the pointer, listening; let go, what was said is sent
 const chord = (on) => helper((h, o) => h.heard({ event: "chord", name: "control_option", on: o }), on)

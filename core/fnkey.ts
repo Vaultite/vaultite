@@ -1,27 +1,35 @@
 // The fn key as ⌘J in the window: a tap starts and the next stops; held, it listens until it's let go. A key pressed with
 // fn (fn+arrow, fn+F1) wasn't for dictation: what its press started is cancelled. The page's and the helper's (no Node).
 
-export const HOLD_MS = 450
-export type FnAction = "start" | "stop" | "cancel" | null
+export const HOLD_MS = 450, DOUBLE_MS = 350
+/** free: a double tap, hands-free: the session goes on till the next press. */
+export type FnAction = "start" | "stop" | "cancel" | "free" | null
 
-export function fnKey(hold = HOLD_MS) {
-  let at = 0, started = false
+export function fnKey(hold = HOLD_MS, gap = DOUBLE_MS) {
+  let at = 0, started = false, tapped = -Infinity, stopped = -Infinity
   return {
     /** fn went down; `listening`: a session is under way. */
     down(now: number, listening: boolean): FnAction {
+      if (listening && now - tapped <= gap) { tapped = -Infinity; started = false; return "free" }
+      // (the second tap of a double tap that stopped it: not a new session)
+      if (!listening && now - stopped <= gap) { stopped = -Infinity; started = false; return null }
       at = now
       started = !listening
+      tapped = -Infinity
+      if (listening) stopped = now
       return listening ? "stop" : "start"
     },
     /** fn came up: a hold ends its session, a tap leaves it listening. */
     up(now: number): FnAction {
       if (!started) return null
       started = false
-      return now - at >= hold ? "stop" : null
+      if (now - at >= hold) return "stop"
+      tapped = now
+      return null
     },
-    /** Another key went down with fn. */
-    other(): FnAction {
-      if (!started) return null
+    /** Another key went down with fn: a shortcut, if it's at once; later, they're talking and it's not for dictation. */
+    other(now: number): FnAction {
+      if (!started || now - at >= hold) return null
       started = false
       return "cancel"
     },
@@ -83,7 +91,7 @@ export function modKeys(keys: readonly string[]) {
 
 // The Talk keys' gesture (HeyClicky's): held, it listens and sends when let go; a tap opens a box to type in; a double
 // tap listens hands-free until the next double tap. A key pressed with it (a shortcut) cancels what its press started.
-export const TAP_MS = 250, DOUBLE_MS = 350
+export const TAP_MS = 250
 /** listen: its cursor at the pointer, hearing; send: what was said (and drawn) goes; type: a box to type in, nothing
  *  heard; free: hands-free, into that box; cancel: nothing goes. */
 export type TalkAction = "listen" | "send" | "type" | "free" | "cancel" | null

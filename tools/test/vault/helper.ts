@@ -14,8 +14,16 @@ export default async ($: VaultTest) => {
     const tap = [k.down(0, false), k.up(100)], again = [k.down(1000, true), k.up(1100)], held = [k.down(2000, false), k.up(2600)]
     check("fn: a tap starts and leaves it listening, the next press stops; held, it stops when let go",
       tap.join() === "start," && again.join() === "stop," && held.join() === "start,stop", { tap, again, held })
-    const combo = [k.down(3000, false), k.other(), k.up(3100)]
-    check("fn: a key pressed with it (fn+arrow) cancels what its press started, and nothing else", combo.join() === "start,cancel," && fnKey().other() === null, combo)
+    const combo = [k.down(3000, false), k.other(3050), k.up(3100)]
+    check("fn: a key pressed with it (fn+arrow) cancels what its press started, and nothing else", combo.join() === "start,cancel," && fnKey().other(0) === null, combo)
+    const talking = fnKey(450), said = [talking.down(0, false), talking.other(2000), talking.up(3000)]
+    check("fn: a key pressed long after, while held (⌘Tab while talking), leaves it listening, till let go", said.join() === "start,,stop", said)
+    const dbl = fnKey(450, 350), twice = [dbl.down(0, false), dbl.up(80), dbl.down(200, true), dbl.up(260), dbl.down(5000, true), dbl.up(5080)]
+    check("fn: a double tap goes hands-free, the next press stops", twice.join() === "start,,free,,stop,", twice)
+    const apart = fnKey(450, 350), two = [apart.down(0, false), apart.up(80), apart.down(1000, true), apart.up(1080)]
+    check("fn: two taps far apart are a start and a stop", two.join() === "start,,stop,", two)
+    const end = fnKey(450, 350), ended = [end.down(0, false), end.up(80), end.down(5000, true), end.up(5060), end.down(5200, false), end.up(5260), end.down(9000, false)]
+    check("fn: a double tap that stops doesn't start another", ended.join() === "start,,stop,,,,start", ended)
     check("fn: macOS's globe key acts too unless it's set to Do nothing", fnActsToo(null) && fnActsToo("2") && !fnActsToo("0\n"))
 
     const ALL = ["fn", "right_option", "right_command"]
@@ -104,16 +112,45 @@ export default async ($: VaultTest) => {
     const left = { id: 1, bounds: { x: 0, y: 0, width: 1000, height: 800 } }, right = { id: 2, bounds: { x: 1000, y: 0, width: 1000, height: 800 } }
     const scene = { agents: [{ name: "Claude", tint: "orange", state: "thinking", sx: 1500, sy: 100, target: { x: 1480, y: 90, width: 100, height: 20 } }],
       summon: { name: "Claude", tint: "orange", state: "listening" as const, sx: 978, sy: 266, words: "what's" },
-      pill: { level: 0.5, text: "hello", ready: true, display: 2 } }
+      pill: { level: 0.5, text: "hello", ready: true } }
     const l = sceneFor(left, scene, { x: 10, y: 10 }, [left, right]), r = sceneFor(right, scene, { x: 10, y: 10 }, [left, right])
-    check("helper: each display draws what's on it, in its own points (a target's frame); the pill on its field's display",
-      !l.agents.length && l.summon?.sx === 978 && !l.pill && r.agents[0]?.sx === 500 && r.agents[0]?.target?.x === 480 && !r.summon && r.pill?.text === "hello", { l, r })
+    check("helper: each display draws what's on it, in its own points (a target's frame); dictation's box on the pointer's",
+      !l.agents.length && l.summon?.sx === 978 && l.pill?.text === "hello" && r.agents[0]?.sx === 500 && r.agents[0]?.target?.x === 480 && !r.summon && !r.pill, { l, r })
     const riding = sceneFor(right, { ...scene, summon: { ...scene.summon, follow: true } }, { x: 10, y: 10 }, [left, right])
     check("helper: riding with the pointer, the summoned one is on every display (each draws it while it's there)", riding.summon?.sx === -22, riding.summon)
     const loud = (level: number) => splitScene(sceneFor(left, { ...scene, summon: { ...scene.summon, follow: true, level } }, { x: 10, y: 10 }, [left, right]))
     check("helper: listening, how loud they are goes with the places, not as a new scene", loud(0.2).shape === loud(0.9).shape && loud(0.9).at.hear === 0.9, loud(0.9).at)
-    const noField = sceneFor(left, { ...scene, pill: { ...scene.pill, display: 9 } }, { x: 10, y: 10 }, [left, right])
-    check("helper: with no field's display, the pill is on the pointer's", !!noField.pill)
+    const lost = sceneFor(left, scene, { x: -9999, y: -9999 }, [left, right])
+    check("helper: the pointer on no display known, dictation's box still shows", !!lost.pill, lost)
+
+    // Where dictated words land (electron/dictationroam.ts), with what's asked stood in.
+    const { land, landedSaid } = await import("../../../electron/dictationroam.ts")
+    const landing = (o: Record<string, unknown> = {}) => {
+      const did: string[] = []
+      return { did, o: { page: async () => null, front: async () => ({}), insert: async (t: string) => { did.push(`insert:${t}`); return { ok: true, how: "ax" } },
+        origin: async (t: string) => { did.push(`origin:${t}`); return { ok: false } }, copy: (t: string) => { did.push(`copy:${t}`) }, capture: async (t: string) => { did.push(`capture:${t}`); return true }, secret: () => false, ...o } as never }
+    }
+    const inPage = landing({ page: async () => ({ ok: true }) })
+    check("dictation lands: a window's own target first", (await land("hi", inPage.o)).to === "page" && !inPage.did.length, inPage.did)
+    const inField = landing({ front: async () => ({ field: true, before: "well", name: "Mail" }) })
+    const fieldTo = await land("hi", inField.o)
+    check("dictation lands: else the field in front, joined to what's before its caret", fieldTo.to === "front" && inField.did.join() === "insert: hi" && landedSaid(fieldTo, "Notes") === "In Mail" && landedSaid(fieldTo, "Mail") === "", { fieldTo, did: inField.did })
+    const secure = landing({ front: async () => ({ field: true, secure: true }), origin: async () => ({ ok: true, name: "Slack" }) })
+    const secureTo = await land("hi", secure.o)
+    check("dictation lands: never a password field; the field it started in instead", secureTo.to === "origin" && !secure.did.length && landedSaid(secureTo) === "Back in Slack", { secureTo })
+    const nowhere = landing()
+    const nowhereTo = await land("hi", nowhere.o)
+    check("dictation lands: with neither, the clipboard and the inbox: never lost", nowhereTo.to === "clipboard" && nowhereTo.kept === true && nowhere.did.join() === "origin:hi,copy:hi,capture:hi" && landedSaid(nowhereTo) === "Copied, and in your inbox", { nowhereTo, did: nowhere.did })
+    const hush = landing({ secret: () => true })
+    const hushTo = await land("hi", hush.o)
+    check("dictation lands: a private app in front: copied, not kept in the vault", hushTo.to === "clipboard" && !hushTo.kept && !hush.did.includes("capture:hi") && landedSaid(hushTo) === "Copied", { hushTo, did: hush.did })
+    const failing = landing({ insert: async () => { throw new Error("gone") }, front: async () => ({ field: true }), capture: async () => { throw new Error("no server") } })
+    const failedTo = await land("hi", failing.o)
+    check("dictation lands: a step failing goes on to the next; the clipboard always has them", failedTo.to === "clipboard" && !failedTo.kept && failing.did.includes("copy:hi") && landedSaid(failedTo) === "Copied", { failedTo })
+    const web = landing({ page: async () => ({ ok: false, elsewhere: true }), front: async () => ({ vaultite: true, editable: true }) })
+    check("dictation lands: a web pane of ours with a field: typed there", (await land("hi", web.o)).to === "front" && web.did.join() === "insert:hi", web.did)
+    const ownNot = landing({ page: async () => ({ ok: false }), front: async () => ({ vaultite: true, editable: true }) })
+    check("dictation lands: our page with no target isn't typed into by Accessibility", (await land("hi", ownNot.o)).to === "clipboard" && !ownNot.did.some((d) => d.startsWith("insert")), ownNot.did)
     const crossing = { ...scene, agents: [{ ...scene.agents[0], from: { x: 900, y: 100 } }] }
     const cl = sceneFor(left, crossing, { x: 10, y: 10 }, [left, right]), cr = sceneFor(right, crossing, { x: 10, y: 10 }, [left, right])
     check("helper: a cursor on its way from one display to another is drawn on both, each in its own points",

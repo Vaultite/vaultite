@@ -28,7 +28,7 @@ type Summoned = { name: string; tint: string; state: "listening" | "thinking" | 
   missed?: string
   follow?: boolean; aim?: { id: string; x: number; y: number }; level?: number }
 type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null
-  pill: { level: number; text: string; ready: boolean; hint?: boolean } | null
+  pill: { level: number; text: string; pending?: string; ready: boolean; free?: boolean; hint?: boolean } | null
   /** The cursor saying its answer aloud: its level comes with the places (`At.level`). */
   speaking?: { name: string; level?: number } | null }
 /** Only the places changed (helperlogic.ts splitScene): x, y and a target's frame. */
@@ -419,22 +419,32 @@ function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?:
   )
 }
 
-/** A key pressed where it does nothing: a word where the pill shows, a moment. */
-function Hint({ text }: { text: string }) {
-  return <div className="screen-in pointer-events-none fixed bottom-14 left-1/2 -translate-x-1/2"><div className="dictation-pill" data-ready><span className="dictation-pending">{text}</span></div></div>
+/** Under the menu bar: dictation's box, a word for a moment, where they stay put as you move between apps. */
+const BOX_AT = "fixed right-3 flex max-w-[380px] justify-end"
+function Hint({ text, top }: { text: string; top: number }) {
+  return <div className={cn("screen-in pointer-events-none", BOX_AT)} style={{ top: top + 8 }}><div className="dictation-pill" data-ready><span className="dictation-pending">{text}</span></div></div>
 }
 
-function Pill({ p }: { p: NonNullable<Shown["pill"]> }) {
-  const box = useRef<HTMLDivElement>(null), now = useRef(p)
+/** Dictation's box: bars while it listens, and the words as they're said (its last lines), settled ones bright. A click stops. */
+function Pill({ p, top }: { p: NonNullable<Shown["pill"]>; top: number }) {
+  const bars = useRef<HTMLDivElement>(null), now = useRef(p)
   now.current = p
   useEffect(() => {
     const pill = makePill()
     pill.el.style.position = "static"
-    box.current!.append(pill.el)
-    let raf = requestAnimationFrame(function frame(t) { raf = requestAnimationFrame(frame); pill.set(now.current.level, now.current.ready, now.current.text, t) })
+    bars.current!.append(pill.el)
+    let raf = requestAnimationFrame(function frame(t) { raf = requestAnimationFrame(frame); pill.set(now.current.level, now.current.ready, "", t) })
     return () => { cancelAnimationFrame(raf); pill.el.remove() }
   }, [])
-  return <Hold className="fixed bottom-14 left-1/2 -translate-x-1/2 cursor-default" onPointerDown={() => api?.stop()}><div ref={box} /></Hold>
+  const said = !!(p.text || p.pending)
+  return (
+    <Hold className={cn("screen-in cursor-default", BOX_AT)} style={{ top: top + 8 }} onPointerDown={() => api?.stop()}>
+      <div className="dictation-box" data-said={said ? "" : undefined}>
+        <div className="flex items-center gap-2"><div ref={bars} />{p.free && <span className="dictation-free">Hands-free</span>}</div>
+        {said && <div className="dictation-words" data-long={p.text.length + (p.pending?.length ?? 0) > 300 ? "" : undefined}><p>{p.text}{p.text && p.pending ? " " : ""}<span className="dictation-pending-words">{p.pending}</span></p></div>}
+      </div>
+    </Hold>
+  )
 }
 
 // ---------- a cursor's conversation (#panel): the window's own look (Chat.tsx), in a window that takes the keyboard
@@ -509,7 +519,7 @@ function Screen() {
       {s.agents.map((a) => <Cursor key={a.name} a={a} speaking={s.speaking?.name === a.name} />)}
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
       {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} speaking={!!s.summon && s.speaking?.name === s.summon.name} />}
-      {s.pill && (s.pill.hint ? <Hint text={s.pill.text} /> : <Pill p={s.pill} />)}
+      {s.pill && (s.pill.hint ? <Hint text={s.pill.text} top={s.top} /> : <Pill p={s.pill} top={s.top} />)}
     </>
   )
 }

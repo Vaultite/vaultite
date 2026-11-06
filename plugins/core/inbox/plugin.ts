@@ -2164,10 +2164,11 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
     from: { type: "string", description: "where it was said (Apple Watch, iPhone)" },
     audio: { type: "string", description: "the recording, base64 (a short one; any size goes as the op's input): kept as an attachment, embedded above what was said" },
     ext: { type: "string", description: "the recording's extension (m4a, webm)" },
+    keep: { type: "boolean", description: "only kept: never handed to the agent dispatch names" },
   },
   args: ["text"],
   input: "the recording, any size (instead of audio)",
-  run: async ({ text, from, audio, ext }, ctx) => {
+  run: async ({ text, from, audio, ext, keep }, ctx) => {
     const said = text.trim()
     if (!said) throw new OpError("nothing was said")
     const words = said.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().split(" ")
@@ -2185,7 +2186,7 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
     }
     const r = await ctx.api("POST", "inbox", { title, body, from: str(from).trim() || ctx.who.label, origin })
     const file = `${r.id}.md`
-    const agent = settings().dispatch
+    const agent = keep ? "" : settings().dispatch
     let terminal: string | null = null, why = ""
     // Past a few minutes of talk it's a recording left running or a meeting, not a request: kept, not handed on.
     if (agent && words.length > LONG_VOICE) why = `${words.length} words is a recording, not a request: it's in the inbox`

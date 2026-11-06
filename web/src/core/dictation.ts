@@ -5,6 +5,7 @@ import { cell } from "@/core/signal"
 import { parseReplacement, replacer } from "../../../core/dictationtext.ts"
 import { fnKey } from "../../../core/fnkey.ts"
 import { announce } from "@/core/announce"
+import { typingIn } from "@/core/commands"
 import { makePill } from "@/core/pill"
 
 export type DictationEvent =
@@ -40,6 +41,14 @@ export type DictationSource = {
   stop: () => Promise<unknown>
   cancel: () => Promise<unknown>
   on: (fn: (e: DictationEvent) => void) => () => void
+  /** This window's session carries on with the desktop app's menu-bar helper, the words in a box over the screen (`start`:
+   *  none yet, there's nowhere here to dictate). False: there's none to take it. */
+  roam?: (o: { pending?: string; held?: boolean; free?: boolean; start?: boolean }) => Promise<boolean>
+  /** Hands-free: only a press stops it. */
+  free?: () => Promise<unknown>
+  /** The helper with the words once its session stopped: `here` where this window's keyboard is, `origin` where the session
+   *  that left it began; `drop`: it's over. `elsewhere`: a web pane has the keyboard, not this page. */
+  onLand?: (fn: (q: { where: "here" | "origin" | "drop"; text?: string }) => Promise<{ ok: boolean; elsewhere?: boolean }>) => () => void
   /** The fn key (or another dictation key), as the desktop app's menu-bar helper hears it while this window has the
    *  keyboard (`other`: a key pressed with it). The Talk key never comes here: the helper's companion takes it. */
   onKey?: (fn: (k: { down?: boolean; other?: boolean }) => void) => () => void
@@ -56,6 +65,8 @@ export type DictationTarget = {
   rect: () => DOMRect | null
   /** It draws the pending words itself (an editor, a terminal); a field's are in the indicator. */
   showsPending?: boolean
+  /** This element with the keyboard is it. */
+  owns?: (el: Element) => boolean
   /** A note's editor, and the note. */
   view?: EditorView
   path?: string
@@ -68,7 +79,9 @@ export const dictationSource = source()
 /** `spokeAt`: when the utterance under way began (0: none, the user paused); `stopping`: told to stop, the microphone
  *  is off and its last words are on their way. */
 export type Dictation = { target: DictationTarget; hold: boolean; speaking: boolean; spokeAt: number; pending: string; level: number; ready: boolean
-  stopping?: boolean }
+  stopping?: boolean
+  /** Hands-free (a double tap): only a press stops it. */
+  free?: boolean }
 const now = cell<Dictation | null>(null)
 /** The session under way, or null. */
 export const dictation = () => now.get()
@@ -131,8 +144,10 @@ export async function startDictation(target: DictationTarget, o: { engine: Dicta
   const said = (t: string) => swap.reduce((x, [re, to]) => x.replace(re, to), t)
   now.set({ target, hold: !!o.hold, speaking: false, spokeAt: 0, pending: "", level: 0, ready: false })
   unsub = src.on((e) => heard(e.type === "pending" || e.type === "final" ? { ...e, text: said(e.text) } : e, mine, failed))
-  // (the window left for another app: what's said there isn't for this note)
+  // (the window left, or another field took the keyboard: the session follows the user)
+  refused = false
   addEventListener("blur", away)
+  addEventListener("focusin", moved)
   indicator.show()
   tell({ type: "start" })
   const words = (o.replacements ?? []).map(parseReplacement).filter((x) => !!x).map((x) => x[0])
@@ -171,7 +186,7 @@ export async function stopDictation(cancel = false) {
     // (it shows stopped at once; the words still coming go in as they arrive, and a helper that never ends is let go)
     now.set({ ...d, stopping: true, speaking: false })
     indicator.hide()
-    removeEventListener("blur", away)
+    unlisten()
     const mine = session
     setTimeout(() => { if (session === mine && now.get()?.stopping) finish() }, 30_000)
   }
@@ -179,17 +194,62 @@ export async function stopDictation(cancel = false) {
   await (cancel ? dictationSource?.cancel() : dictationSource?.stop())?.catch(() => {})
 }
 
-const away = () => void stopDictation()
+// ---------- it follows the user: out of where it began, the helper has the session and the words wait in its box
 
-function finish() {
+/** Where a session that left began, till its words have landed. */
+let left: DictationTarget | null = null
+let roaming = false, refused = false
+/** The session leaves here for the helper's box; `or`, what it does with no helper to take it. */
+async function roam(or: () => void) {
+  const d = now.get(), src = dictationSource
+  if (!d || d.stopping || roaming) return
+  if (refused || !src?.roam) return or()
+  roaming = true
+  const mine = session
+  const ok = await src.roam({ pending: d.pending, held: d.hold, free: d.free }).catch(() => false)
+  roaming = false
+  if (session !== mine || !now.get()) return
+  if (!ok) { refused = true; return or() }
+  d.target.pending("")
+  tell({ type: "end", reason: "elsewhere" })
+  left?.end()
+  left = d.target
+  finish(false)
+}
+const away = () => void roam(() => void stopDictation())
+/** Another place to type has the keyboard: the words go there when it stops, not where it began. */
+const moved = (e: FocusEvent) => {
+  const el = e.target, d = now.get()
+  if (d?.target.owns && el instanceof HTMLElement && !d.target.owns(el) && (typingIn(el) || !!el.closest(".cm-editor, [data-term-input]"))) void roam(() => {})
+}
+const unlisten = () => { removeEventListener("blur", away); removeEventListener("focusin", moved) }
+
+/** Answer the helper when it lands a session's words (`here`: what has this window's keyboard). Returns how to stop. */
+export function landDictation(here: () => Promise<DictationTarget | null>) {
+  return dictationSource?.onLand?.(async ({ where, text = "" }) => {
+    if (where === "drop") { left?.end(); left = null; return { ok: true } }
+    if (where === "origin") {
+      if (!left?.rect()) return { ok: false }
+      left.final(text)
+      return { ok: true }
+    }
+    const has = document.hasFocus(), t = has ? await here() : null
+    if (!t) return { ok: false, elsewhere: !has }
+    t.final(text)
+    if (t !== left) t.end()
+    return { ok: true }
+  }) ?? (() => {})
+}
+
+function finish(endTarget = true) {
   const d = now.get()
-  removeEventListener("blur", away)
+  unlisten()
   unsub?.()
   unsub = null
   if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null }
   now.set(null)
   indicator.hide()
-  d?.target.end()
+  if (endTarget) d?.target.end()
 }
 
 // ---------- the pill: by where the words go, its bars following the voice (a click stops)
@@ -201,14 +261,16 @@ const indicator = (() => {
     const d = now.get(), el = pill?.el
     if (!d || !pill || !el || d.stopping) return
     const r = d.target.rect()
-    if (!r) { void stopDictation(true); return }
-    // (its tab hidden: the words still go there, the pill waits)
-    el.style.visibility = r.x || r.y || r.width || r.height ? "" : "hidden"
+    if (!r) { void roam(() => void stopDictation(true)); return }
+    // (its tab hidden: with no helper the words still go there, the pill waits)
+    const shown = !!(r.x || r.y || r.width || r.height)
+    if (!shown) void roam(() => {})
+    el.style.visibility = shown ? "" : "hidden"
     const w = el.offsetWidth, h = el.offsetHeight
     const x = Math.max(8, Math.min(innerWidth - w - 8, r.left - (d.target.showsPending ? 11 : 0)))
     const below = r.bottom + 6 + h <= innerHeight - 8
     el.style.transform = `translate(${Math.round(x)}px, ${Math.round(below ? r.bottom + 6 : r.top - h - 6)}px)`
-    pill.set(d.speaking || d.level > 0.35 ? d.level : d.level * 0.4, d.ready, d.target.showsPending ? "" : d.pending, t)
+    pill.set(d.speaking || d.level > 0.35 ? d.level : d.level * 0.4, d.ready, (d.target.showsPending ? "" : d.pending) || (d.free ? "Hands-free" : ""), t)
   }
   return {
     show() {
@@ -282,19 +344,26 @@ export async function pressDictation(begin: (hold: boolean) => Promise<boolean>)
  *  go; with another key what it started is dropped. Returns how to stop hearing it. */
 export function fnDictation(begin: (hold: boolean) => Promise<boolean>) {
   const key = fnKey()
-  let starting: Promise<boolean> | null = null, after: "stop" | "cancel" | "tap" | null = null
-  const end = (how: "stop" | "cancel" | "tap") => {
-    if (how === "tap") { const d = now.get(); if (d && !d.stopping) now.set({ ...d, hold: false }); return }
+  let starting: Promise<boolean> | null = null, after: "stop" | "cancel" | "tap" | "free" | null = null
+  const end = (how: "stop" | "cancel" | "tap" | "free") => {
+    if (how === "tap" || how === "free") {
+      const d = now.get()
+      if (!d || d.stopping) return
+      now.set({ ...d, hold: false, ...(how === "free" ? { free: true } : {}) })
+      if (how === "free") void dictationSource?.free?.()
+      return
+    }
     void stopDictation(how === "cancel")
   }
   return dictationSource?.onKey?.((k) => {
-    const a = k.other ? key.other() : k.down ? key.down(performance.now(), listening()) : key.up(performance.now())
-    const how = a === "stop" || a === "cancel" ? a : a === null && k.down === false ? "tap" : null
+    const t = performance.now()
+    const a = k.other ? key.other(t) : k.down ? key.down(t, listening() || !!starting) : key.up(t)
+    const how = a === "stop" || a === "cancel" || a === "free" ? a : a === null && k.down === false ? "tap" : null
     if (a === "start") {
       after = null
       const s = (starting = begin(true))
       void s.then((ok) => { if (starting !== s) return; starting = null; if (ok && after) end(after) })
-    } else if (how && starting) after = how
+    } else if (how && starting) { if (how !== "tap" || after !== "free") after = how }
     else if (how) end(how)
   }) ?? (() => {})
 }

@@ -764,7 +764,7 @@ final class Soniox: NSObject, Engine, URLSessionWebSocketDelegate, @unchecked Se
 final class Session: @unchecked Sendable {
     let work = DispatchQueue(label: "dictation.work")
     let source: Source
-    let silenceMs: Double
+    var silenceMs: Double
     var engine: Engine?
     var backlog: [[Float]] = []
     var ended = false
@@ -1022,6 +1022,8 @@ func handle(_ cmd: [String: Any]) {
         old.stop("cancel")
     case "stop": current?.stop("stop")
     case "cancel": current?.stop("cancel")
+    // (hands-free: only a press stops it)
+    case "free": if let s = current { s.work.async { s.silenceMs = 0 } }
     // (the answer said: the Bluetooth mic held after its session closes)
     case "release": held?.release()
     case "devices": tellDevices()

@@ -1,15 +1,19 @@
 ## Dictation
 In the Mac desktop app, ⌘J (`dictation:start`) dictates where the cursor is: a note's editor, a terminal, or a field (the
-Ask box, a chat's input); with none, it says so in the pill's place and hears nothing. The dictation keys do the same in the window, and in any
-other app (`fn`, Dictate anywhere, on by default): into its field, never elsewhere (talking to the companion is its own
-Talk keys', the companion's setting `keys`: a key in both talks). `keys` picks them: `fn_control` (fn⌃ held together,
-the default), or `fn`, `right_option`, `right_command` alone (with another key it's only what it always was): a tap
-starts and the next stops; held, it listens until it's let go.
+Ask box, a chat's input). The dictation keys do the same in the window and in any other app (`fn`, Dictate anywhere, on
+by default); talking to the companion is its own Talk keys' (the companion's setting `keys`: a key in both talks). `keys`
+picks them: `fn_control` (fn⌃ held together, the default), or `fn`, `right_option`, `right_command` alone (with another
+key it's only what it always was): a tap starts and the next stops; held, it listens until it's let go; a double tap is
+hands-free, past the setting `silence`, until the next press.
 Words not settled yet show dimmed by the cursor, never in the file; at each pause they settle and are typed in as the
 user's own input (`userEvent` `input.dictation`), so the note only ever holds final text. In a terminal (a shell, Claude
 Code) each settled chunk is pasted at its cursor, bracketed when its program asked, on one line (a line break said is a
-space) and never with an Enter: nothing runs until the user presses it. Browsers and phones don't have
-it.
+space) and never with an Enter: nothing runs until the user presses it. Browsers and phones don't have it.
+It follows the user: with the menu-bar helper, leaving where it began (another app, tab or field; or begun with nowhere
+to type) moves the session to a box under the menu bar, where the words show as they're said. When it stops they land in
+the field in front, else the one it began in, else on the clipboard and in the inbox (`from: Dictation`; only the
+clipboard when a private app is in front), so said words are never lost. A password field hears nothing. Without the
+helper (Vaultite Dev), leaving the window stops it. Each session's way is in `talk/dictation-<day>.jsonl`, no words.
 - Settings (`.vaultite/plugins/dictation/data.json`): `engine` `auto` | `soniox` | `apple` | `parakeet`; `language` (Apple's,
   `pt-BR`; the Mac's when left out); `languages` (Soniox's hints, `[en, pt]`; the language and the Mac's when left out); `silence` (seconds without speech before a tapped dictation stops; 0, the default,
   never); `replacements`, lines of "said: written" (`at Claude: @claude`), whose said words the recognizer listens for (as it does for Vaultite's own words, the agents' names and the newest notes' names; a plugin adds its own with the service `dictation:terms`);

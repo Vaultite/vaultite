@@ -1446,6 +1446,17 @@ html[data-translucent][data-translucent-pages] {
   transition: transform 80ms linear; }
 .dictation-pill:not([data-ready]) .dictation-bars { opacity: 0.5; }
 .dictation-pending { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: 0.75; }
+/* Dictation's box over the screen (screen.tsx): the bars, then the words as they're said, the newest always showing. */
+.dictation-box { display: flex; flex-direction: column; gap: 4px; min-width: 0; border-radius: 12px; background: var(--foreground); color: var(--background);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.22); font-size: 13.5px; line-height: 19px; }
+.dictation-box[data-said] { width: 340px; padding: 6px 10px 8px; }
+.dictation-box .dictation-pill { box-shadow: none; padding: 0; background: none; color: inherit; }
+.dictation-box:not([data-said]) { padding: 0 9px; }
+.dictation-free { font-size: 11.5px; opacity: 0.65; }
+.dictation-words { display: flex; flex-direction: column-reverse; max-height: calc(19px * 7); overflow: hidden; overflow-wrap: anywhere; }
+.dictation-words[data-long] { mask-image: linear-gradient(to bottom, transparent, black 14px); }
+.dictation-words p { margin: 0; }
+.dictation-pending-words { opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) { .dictation-bars i { transition: none; } }
 
 /* The welcome card's backdrop (components/Welcome.tsx): a light dim, none on the look page, where the app behind is the

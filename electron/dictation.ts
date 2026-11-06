@@ -198,12 +198,24 @@ export const releaseMic = () => { heldMic = ""; send({ cmd: "release" }) }
 export const micHeld = () => heldMic
 /** Stop (what was heard turns final) or cancel `sink`'s session; another's is left alone. */
 export const stopFor = (sink: DictationSink, cancel = false) => { if (owner === sink) send({ cmd: cancel ? "cancel" : "stop" }) }
+/** Hands-free: its session stops only when told, whatever the setting `silence`. */
+export const freeFor = (sink: DictationSink) => { if (owner === sink) send({ cmd: "free" }) }
+/** The session under way goes on for `to`, with what it hears from now. */
+export const handOver = (from: DictationSink, to: DictationSink) => { if (owner !== from) return false; owner = to; return true }
+/** `pending`: its words not settled yet; `held`: its key is down; `free`: hands-free; `start`: none under way, there's nowhere to dictate in the window. */
+export type Roam = { pending?: string; held?: boolean; free?: boolean; start?: boolean }
+/** Who takes a window's session when it leaves it (the menu-bar helper), and stops one it has. */
+let roamer: { take: (win: AppWindow, sink: DictationSink, o: Roam) => boolean; stop: () => boolean } | null = null
+export const onRoam = (r: NonNullable<typeof roamer>) => { roamer = r }
 export const dictating = () => owner
 export { engines as dictationEngines }
 
 export const dictationHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
   "dictation:engines": (_win, language) => engines(typeof language === "string" ? language : ""),
-  "dictation:start": (win, o) => dictate(sinkOf(win), (o && typeof o === "object" ? o : {}) as DictateOptions),
+  // (one under way with the helper, roaming: this press stops it, as in the window it began in)
+  "dictation:start": (win, o) => (roamer?.stop() ? { ok: false, code: "roaming" } : dictate(sinkOf(win), (o && typeof o === "object" ? o : {}) as DictateOptions)),
+  "dictation:roam": (win, o) => roamer?.take(win, sinkOf(win), (o && typeof o === "object" ? o : {}) as Roam) ?? false,
+  "dictation:free": (win) => freeFor(sinkOf(win)),
   "dictation:stop": (win) => stopFor(sinkOf(win)),
   "dictation:cancel": (win) => stopFor(sinkOf(win), true),
 }

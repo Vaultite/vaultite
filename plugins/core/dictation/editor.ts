@@ -70,6 +70,7 @@ export function editorTarget(view: EditorView): DictationTarget | null {
     view,
     path: view.state.facet(pathOf),
     showsPending: true,
+    owns: (e) => view.dom.contains(e),
     pending(text) {
       const s = here()
       if (!s) return

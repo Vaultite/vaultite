@@ -195,8 +195,10 @@ func wake(_ pid: pid_t) {
   AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
 }
 func focused() -> AXUIElement? {
-  if let a = NSWorkspace.shared.frontmostApplication { wake(a.processIdentifier) }
-  return attr(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute)
+  let a = NSWorkspace.shared.frontmostApplication
+  if let a { wake(a.processIdentifier) }
+  // (the system-wide answer fails on some Macs and for some apps; the app in front still knows)
+  return attr(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute) ?? a.flatMap { attr(AXUIElementCreateApplication($0.processIdentifier), kAXFocusedUIElementAttribute) }
 }
 func settable(_ el: AXUIElement, _ name: String) -> Bool { var b: DarwinBoolean = false; return AXUIElementIsAttributeSettable(el, name as CFString, &b) == .success && b.boolValue }
 func editable(_ el: AXUIElement) -> Bool {
@@ -215,7 +217,10 @@ func before(_ el: AXUIElement) -> String? {
   let ns = value as NSString, at = min(max(0, r.location), ns.length)
   return ns.substring(with: NSRange(location: max(0, at - 40), length: at - max(0, at - 40)))
 }
-func focus() -> [String: Any] {
+/** The field a dictation started in, for its words should nothing else take them. */
+var kept: AXUIElement?
+func focus(keep: Bool = false) -> [String: Any] {
+  if keep { kept = nil }
   guard let el = focused() else {
     var m = NSWorkspace.shared.frontmostApplication.map { appInfo($0.processIdentifier) } ?? [:]
     m["field"] = false
@@ -224,7 +229,10 @@ func focus() -> [String: Any] {
   let pid = pidOf(el)
   var m = appInfo(pid)
   let w = windowOf(el)
-  m["field"] = editable(el) && pid != vaultitePid
+  let open = editable(el)
+  if keep && open && pid != vaultitePid && !secure(el) { kept = el }
+  m["editable"] = open
+  m["field"] = open && pid != vaultitePid
   m["secure"] = secure(el)
   m["role"] = attr(el, kAXRoleAttribute) as String? ?? ""
   m["frame"] = rectJSON(frame(el))
@@ -240,13 +248,42 @@ func focus() -> [String: Any] {
 func insert(_ text: String) -> [String: Any] {
   guard let el = focused(), editable(el) else { return ["ok": false, "why": "no-field"] }
   if secure(el) { return ["ok": false, "why": "secure"] }
-  let was: String? = attr(el, kAXValueAttribute)
-  if was != nil, AXUIElementSetAttributeValue(el, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success,
-     let now: String = attr(el, kAXValueAttribute), now != was, now.contains(text) {
-    return ["ok": true, "how": "ax"]
-  }
+  if setSelected(el, text) { return ["ok": true, "how": "ax"] }
   paste(text)
   return ["ok": true, "how": "paste"]
+}
+/** Set as the field's selected text, checked by its value: it needn't be in front. */
+func setSelected(_ el: AXUIElement, _ text: String) -> Bool {
+  let was: String? = attr(el, kAXValueAttribute)
+  guard was != nil, AXUIElementSetAttributeValue(el, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success,
+        let now: String = attr(el, kAXValueAttribute), now != was, now.contains(text) else { return false }
+  return true
+}
+/** The kept field: `info`, what precedes its caret; `insert` with it where it is; else `front`, then `paste` once it has the keyboard. */
+func keptField(_ what: String, _ text: String) -> [String: Any] {
+  guard let el = kept, (attr(el, kAXRoleAttribute) as String?) != nil else { kept = nil; return ["ok": false, "why": "gone"] }
+  let pid = pidOf(el)
+  switch what {
+  case "info":
+    var m = appInfo(pid)
+    m["ok"] = true
+    if let b = before(el) { m["before"] = b }
+    return m
+  case "insert": return setSelected(el, text) ? ["ok": true, "how": "ax"] : ["ok": false, "why": "front"]
+  case "front":
+    // (asked of it by Accessibility: macOS may refuse a background process's `activate`)
+    AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    NSRunningApplication(processIdentifier: pid)?.activate()
+    if let w = windowOf(el) { AXUIElementPerformAction(w, kAXRaiseAction as CFString) }
+    AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    return ["ok": true]
+  case "paste":
+    // (a field of that window: web apps' fields don't always keep their element when focused again)
+    guard let now = focused(), pidOf(now) == pid, editable(now), !secure(now), windowOf(now).flatMap({ wid($0) }) == windowOf(el).flatMap({ wid($0) }) else { return ["ok": false, "why": "not-focused"] }
+    paste(text)
+    return ["ok": true, "how": "paste"]
+  default: return ["ok": false, "why": "unknown"]
+  }
 }
 func paste(_ text: String) {
   let pb = NSPasteboard.general
@@ -494,7 +531,8 @@ func handle(_ req: [String: Any]) -> [String: Any] {
     let all = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     return ["windows": all.map { w -> [String: Any] in var m = appInfo(pid_t(w[kCGWindowOwnerPID as String] as? Int ?? 0)); m["window"] = w[kCGWindowNumber as String] as? Int ?? 0; return m }]
   case "near": return near(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["radius"] as? Double ?? 260, req["max"] as? Int ?? 30)
-  case "focus": return focus()
+  case "focus": return focus(keep: req["keep"] as? Bool ?? false)
+  case "kept": return keptField(req["do"] as? String ?? "", req["text"] as? String ?? "")
   case "insert": return insert(req["text"] as? String ?? "")
   case "front": lastFront = ""; sayFront(); return ["ok": true]
   case "at": return windowAt(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)

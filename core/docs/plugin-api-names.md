@@ -339,6 +339,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `kindIcon(path)`: The icon for a file that isn't a note (notes take their plugin's).
 - `KV({ label, children })`: A label and its value, in a Group.
 - `laidOut(el)`: Where an element is laid out, without the slide a drag's preview gives it (core/slide.ts): hits are worked out on that, so what makes way doesn't move what's under the pointer.
+- `landDictation(here)`: Answer the helper when it lands a session's words (`here`: what has this window's keyboard).
 - `Layout`: A block's place on a dashboard's grid: COMMON's `wide` and `stack`.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
 - `Link`: A link as drawn Markdown names it: a [[link]]'s target, a Markdown link's address, or a #tag.
