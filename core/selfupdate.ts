@@ -56,23 +56,35 @@ export const CI_WORKFLOW = ".github/workflows/ci.yml"
 /** "owner/repo" of a GitHub remote's url, or null. */
 export const githubRepo = (url: string) => /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url.trim())?.[1] ?? null
 
-/** Whether CI's runs on `sha` passed, from GitHub's API (the gh CLI when it's signed in, else anonymously: the repo is
- *  public). */
-async function githubCi(repo: string, sha: string): Promise<CiResult> {
-  const api = `repos/${repo}/actions/runs?head_sha=${sha}&per_page=50`
-  let body: { workflow_runs?: { path?: string; event?: string; status?: string; conclusion?: string | null }[] }
+type Run = { path?: string; event?: string; status?: string; conclusion?: string | null; head_sha?: string }
+/** GitHub's API (the gh CLI when it's signed in, else anonymously: the repo is public): its workflow runs, or why not. */
+async function githubRuns(api: string): Promise<Run[] | string> {
+  let body: { workflow_runs?: Run[] }
   try {
     body = JSON.parse((await exec("gh", ["api", api], { timeout: 30_000 })).stdout)
   } catch {
     const r = await fetch(`https://api.github.com/${api}`, { headers: { accept: "application/vnd.github+json", "user-agent": "vaultite" }, signal: AbortSignal.timeout(30_000) })
-    if (!r.ok) return { ok: null, why: `GitHub answered ${r.status} about CI` }
+    if (!r.ok) return `GitHub answered ${r.status} about CI`
     body = await r.json() as typeof body
   }
-  return ciOf(body.workflow_runs ?? [])
+  return body.workflow_runs ?? []
+}
+
+/** CI's verdicts for one look: the branch's latest runs in one call, a commit not among them asked of on its own (one
+ *  call each: the anonymous API allows 60 an hour). */
+function githubCi(branch: string) {
+  let latest: Promise<Run[] | string> | null = null
+  return async (repo: string, sha: string): Promise<CiResult> => {
+    latest ??= githubRuns(`repos/${repo}/actions/workflows/${path.basename(CI_WORKFLOW)}/runs?branch=${branch}&per_page=100`)
+    const all = await latest, mine = typeof all === "string" ? [] : all.filter((r) => r.head_sha === sha)
+    if (mine.length) return ciOf(mine)
+    const own = await githubRuns(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=50`)
+    return typeof own === "string" ? { ok: null, why: own } : ciOf(own)
+  }
 }
 
 /** CI's verdict from a commit's workflow runs: one of the push or nightly runs passed; red only when they all failed. */
-export function ciOf(runs: { path?: string; event?: string; status?: string; conclusion?: string | null }[]): CiResult {
+export function ciOf(runs: Run[]): CiResult {
   const ours = runs.filter((r) => (r.path ?? "").startsWith(CI_WORKFLOW) && (r.event === "push" || r.event === "schedule"))
   if (ours.some((r) => r.status === "completed" && r.conclusion === "success")) return { ok: true, why: "CI passed" }
   if (!ours.length) return { ok: null, why: "CI hasn't run on it yet" }
@@ -125,13 +137,20 @@ export async function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
       if (await ancestor(remote, head)) return set(running === head ? "current" : "waiting", `ahead of origin/${o.branch}: it runs once pushed and CI passed`)
       return kept.error?.commit === remote ? set("failed", kept.error.message, remote) : fail(remote, `the checkout and origin/${o.branch} have diverged: it can't fast-forward`)
     }
-    const next = remote
-    if (kept.error?.commit === next) return set("failed", kept.error.message, next)
-    if (await git("status", "--porcelain", "--untracked-files=no")) return set("waiting", "the checkout has uncommitted changes", next)
+    if (kept.error?.commit === remote) return set("failed", kept.error.message, remote)
+    if (await git("status", "--porcelain", "--untracked-files=no")) return set("waiting", "the checkout has uncommitted changes", remote)
     const repo = githubRepo(await git("config", "--get", "remote.origin.url"))
-    if (!repo) return set("waiting", "origin isn't on GitHub, so CI can't be checked", next)
-    const ci = await (o.ci ?? githubCi)(repo, next)
-    if (ci.ok !== true) return set("waiting", `${ci.why} (${short(next)})`, next)
+    if (!repo) return set("waiting", "origin isn't on GitHub, so CI can't be checked", remote)
+    const ciOn = o.ci ?? githubCi(o.branch), tip = await ciOn(repo, remote)
+    // The tip not passed yet (a branch pushed to faster than CI runs never has): the newest commit after this one that did
+    let next = remote
+    if (tip.ok !== true) {
+      const since = (await git("rev-list", "--first-parent", "--max-count=40", `${head}..${remote}`)).split("\n").filter(Boolean).slice(1)
+      let passed: string | undefined
+      for (const c of since) if (c === kept.error?.commit) break; else if ((await ciOn(repo, c)).ok === true) { passed = c; break }
+      if (!passed) return set("waiting", `${tip.why} (${short(remote)})`, remote)
+      next = passed
+    }
     const busy = await o.busy()
     if (busy) return set("waiting", `busy: ${busy}`, next)
 

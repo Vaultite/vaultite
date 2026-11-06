@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A server following a branch keeps up with a busy one**: when the newest commit hasn't passed CI yet (pushes coming
+  faster than CI runs), `vau service`'s updates take the newest one that has, rather than waiting for a quiet moment.
 - **A finished agent's tab never starts it again after a restart**: a session you ended stays ended when its tab comes
   back after Vaultite restarts (a deploy), rather than resuming the conversation by itself.
 - **A reply to a handed-off agent is never cut off**: replying from the Inbox before its turn ended no longer lets that

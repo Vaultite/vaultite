@@ -32,9 +32,10 @@ git(server, "config", `url.${origin}.insteadOf`, GH)
 const head = () => git(server, "rev-parse", "HEAD")
 
 let ci: CiResult = { ok: true, why: "CI passed" }, busy: string | null = null, restarts = 0, failBuild = false
+let verdicts = new Map<string, CiResult>() // (a commit's own, else `ci`)
 const npmCalls: string[] = []
 const o: UpdaterOptions = { root: server, branch: "main", stateFile: path.join(tmp, "state", "selfupdate.json"),
-  busy: async () => busy, restart: () => { restarts++ }, ci: async (repo) => (repo === "Alice/lighthouse" ? ci : { ok: false, why: `asked ${repo}` }),
+  busy: async () => busy, restart: () => { restarts++ }, ci: async (repo, sha) => (repo === "Alice/lighthouse" ? verdicts.get(sha) ?? ci : { ok: false, why: `asked ${repo}` }),
   npm: async (args) => { npmCalls.push(args.join(" ")); if (failBuild && args[0] === "run") throw new Error("vite build failed") } }
 const look = () => U.checkForUpdate(o)
 
@@ -52,6 +53,20 @@ await section("up to date, then a web-only update", async () => {
   const u = await look()
   check("updates: fast-forwards and builds, no install (the lock didn't change)", u.state === "current" && head() === next && JSON.stringify(npmCalls) === '["run build"]', { u, npmCalls })
   check("the web app only: no restart", restarts === 0 && u.last?.restarted === false && u.last.from === first && u.last.to === next, u)
+})
+
+await section("pushed to faster than CI runs: the newest commit that passed", async () => {
+  const passed: CiResult = { ok: true, why: "CI passed" }
+  const a = commit({ "web/src/a.ts": "a" }, "feat(web): a"), b = commit({ "web/src/b.ts": "b" }, "feat(web): b")
+  const c = commit({ "web/src/c.ts": "c" }, "feat(web): c")
+  verdicts = new Map([[a, passed], [b, passed], [c, { ok: null, why: "CI is running on it" }]])
+  const u = await look()
+  check("updates to the newest that passed, not the tip CI still runs on", u.state === "current" && head() === b, u)
+  const w = await look()
+  check("…then waits for the tip", w.state === "waiting" && /CI is running/.test(w.why) && w.next === c && head() === b, w)
+  verdicts.set(c, passed)
+  check("…and takes it once it passed", (await look()).state === "current" && head() === c)
+  verdicts = new Map()
 })
 
 await section("merged in the checkout itself (a squash merge on this machine): run once pushed", async () => {
