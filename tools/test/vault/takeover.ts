@@ -96,6 +96,18 @@ export default async ($: VaultTest) => {
   from({ t: "moment", kind: "ask", text: "no", app: "com.example.mail", sx: 1, sy: 1 })
   ;[st, r] = await no
   check("takeover: a no comes back as theirs, for it to tell them how instead", st === 200 && r.ok === false && r.why === "declined", r)
+  // (an offer waits while they could still answer it; their next ask instead moves on from it, and stays an ask)
+  const other = api("POST", "ops/companion.act", { action: "click", sx: 400, sy: 300 })
+  await waitFor(() => steps().length >= 5, 3000, 10)
+  await new Promise((done) => setTimeout(done, 30))
+  const seqOther = ask()?.seq ?? 0
+  from({ t: "moment", kind: "ask", text: "what does this button do?", app: "com.example.mail", sx: 1, sy: 1 })
+  ;[st, r] = await other
+  check("takeover: an offer waits minutes for their answer, not seconds, and the act's wait on the server is the helper's own",
+    L.OFFER_MS >= 5 * 60_000 && helper.got.filter((m: Any) => m.t === "takeover-answer").length >= 2, L.OFFER_MS)
+  check("takeover: their next ask while an offer waits moves on from it (withdrawn, act told why) and is kept as an ask",
+    st === 200 && r.ok === false && helper.got.findLast((m: Any) => m.t === "takeover-answer")?.asked === true && ask()?.seq === seqOther + 2 && /asked something else/.test(L.declined.asked),
+    [r, helper.got.filter((m: Any) => m.t === "takeover-answer"), seqOther])
   // (no helper: says so; the pane path untouched)
   helper.emit("close")
   ;[st, r] = await api("POST", "ops/companion.act", { action: "click", sx: 1, sy: 1 })

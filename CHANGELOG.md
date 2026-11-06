@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's take-over offer waits for your answer**: it stays by your pointer until you click Do it or Not now,
+  say yes or no, press Esc, click elsewhere or ask something else, instead of going after 30 seconds, even mid-sentence.
 - **The Talk key's companion answers every ask**: one it handled with a tool alone (closing a job, following a pane)
   now gets a few words of what it did, and a turn that ends with nothing said tells you so, instead of silence.
 - **The Talk key's companion opens its own page where you say**: asked to show your talk with it, it opens the

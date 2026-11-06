@@ -67,6 +67,17 @@ export const HAND_MS = 1500
 /** What's left of that grace when the guard goes on (a spoken yes, or one long ago: none). */
 export const handGrace = (clickedAt: number, now: number) => (clickedAt > 0 ? Math.max(0, HAND_MS - (now - clickedAt)) : 0)
 
+/** An offer waits while they could still answer: till Do it, Not now, Esc, a click elsewhere, another app, or their
+ *  next ask (`asked`); OFFER_MS ends only one forgotten on screen (`forgotten`). */
+export const OFFER_MS = 10 * 60_000
+export type Answer = "yes" | "no" | "asked" | "forgotten"
+/** What act answers for an offer that ended without their yes. */
+export const declined: Record<Exclude<Answer, "yes">, string> = {
+  no: "they didn't say yes: don't do it; tell them how in a few words instead, or ask again only if they ask you to",
+  asked: "they asked something else before answering (your next message): don't do it; answer that, and offer again only if they still want it",
+  forgotten: "no answer for minutes, the offer is gone: don't do it; offer again only if they ask you to",
+}
+
 /** Whether their yes still holds after the driving ends this way: a step done keeps it, them taking over or the
  *  exchange ending doesn't. */
 export const keepsYes = (why: string) => why === "done"

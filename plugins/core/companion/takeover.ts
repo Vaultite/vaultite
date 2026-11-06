@@ -41,27 +41,31 @@ export function doneText(r: Done): string {
   return `Done${how}.${now}${near}`
 }
 
+/** How long a step may take on the helper (typing a long text), past its offer's wait (which the helper says). */
+const STEP_MS = 120_000
+
 /** The helpers' take-overs: which helper an ask came from (its steps go there), the steps waiting on each, its offers. */
 export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent: string, sx: number, sy: number) => void) {
-  const waiting = new Map<string, { ws: WebSocket; done: (r: Done) => void }>()
+  const waiting = new Map<string, { ws: WebSocket; done: (r: Done) => void; wait: (ms: number) => void }>()
   const offering = new Set<WebSocket>()
   let from: WebSocket | null = null, n = 0
   return {
-    /** A moment came from this helper: its steps go there. A yes or a no while its offer waits answers it (true). */
+    /** A moment came from this helper: its steps go there. A yes or a no while its offer waits answers it (true); any
+     *  other ask moves on from it (the offer goes, the ask goes on: act answers so, and its turn reaches the ask). */
     heard(ws: WebSocket, m: Record<string, unknown>): boolean {
       from = ws
-      if (!offering.has(ws) || m.kind !== "ask" || typeof m.text !== "string") return false
-      const yes = answerOf(m.text)
-      if (yes === null) return false
+      if (!offering.has(ws) || (m.kind !== "ask" && m.kind !== "point")) return false
+      const yes = typeof m.text === "string" ? answerOf(m.text) : null
       offering.delete(ws)
-      send(ws, { t: "takeover-answer", yes })
-      return true
+      send(ws, yes === null ? { t: "takeover-answer", yes: false, asked: true } : { t: "takeover-answer", yes })
+      return yes !== null
     },
     /** Its offer is up: a Talk key's press then is its answer, not a barge-in. */
     offering: (ws: WebSocket) => offering.has(ws),
     /** The helper's own messages: an offer shown, a step done (true: handled). */
     message(ws: WebSocket, m: Record<string, unknown>): boolean {
-      if (m.t === "takeover-asking") { offering.add(ws); return true }
+      // (its offer up, waiting as long as the helper's does: their answer may take a while)
+      if (m.t === "takeover-asking") { offering.add(ws); if (typeof m.id === "string" && Number.isFinite(m.ms)) waiting.get(m.id)?.wait(Number(m.ms) + STEP_MS); return true }
       if (m.t === "takeover-at") { if (typeof m.agent === "string" && Number.isFinite(m.sx) && Number.isFinite(m.sy)) fly(m.agent, Number(m.sx), Number(m.sy)); return true }
       if (m.t !== "takeover-done" || typeof m.id !== "string") return false
       offering.delete(ws)
@@ -82,9 +86,10 @@ export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent:
       if (!ws || ws.readyState !== ws.OPEN) return Promise.resolve({ ok: false, why: "none", text: "no Mac's helper asked: acting on the screen works only on an ask made there (the Talk key)" })
       const id = `to${++n}`
       return new Promise((done) => {
-        // (an offer waits up to 30 s, typing a long text a while more)
-        const late = setTimeout(() => { if (waiting.delete(id)) done({ ok: false, why: "timeout", text: "the helper didn't answer in time" }) }, 120_000)
-        waiting.set(id, { ws, done: (r) => { clearTimeout(late); done(r) } })
+        let late: ReturnType<typeof setTimeout> | undefined
+        const wait = (ms: number) => { clearTimeout(late); late = setTimeout(() => { if (waiting.delete(id)) done({ ok: false, why: "timeout", text: "the helper didn't answer in time" }) }, ms) }
+        wait(STEP_MS)
+        waiting.set(id, { ws, done: (r) => { clearTimeout(late); done(r) }, wait })
         send(ws, { t: "takeover", id, agent: who.agent, tint: who.tint, step, apps, sites, ...(who.ask ? { ask: who.ask } : {}) })
       })
     },
