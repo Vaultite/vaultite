@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The browser fills your own logins and saves new ones**: on a sign-in page your passwords have the site for, a key in
+  the address bar (or Fill login) fills it, unlocking them first; a sign-in they don't have is offered to save, a new
+  password to update. Agents never see what's filled, and their own sign-ins are never offered.
 - **Updates of Vaultite Main go in whole**: the new app is copied and checked beside the old one before it quits, swapped
   in only once nothing opened the old one again, and a server still on the replaced version restarts onto the new one.
 - **The companion sees what was there as you pressed**: a toast or menu that's gone by the time you let go of ⌃⌥ still

@@ -64,7 +64,7 @@ const sum = (s: string) => crypto.createHash("sha256").update(s).digest("base64"
 /** Whether the app filled `password` into page `wc` in the last minutes. */
 export const filledLately = (wc: WebContents, password: string) => { const m = lately.get(wc); return !!m && Date.now() - m.at < LATELY_MS && m.sums.has(sum(password)) }
 
-/** A login to fill: its name (for errors), the addresses it's for, and its secrets. */
+/** A login to fill: its name (for errors) and the addresses it's for. */
 export type Login = { title: string; urls: string[] }
 export type FillOpts = { submit?: boolean
   /** Called once it starts typing (an agent's: what it's doing, for its pointer and the pages' list). */
