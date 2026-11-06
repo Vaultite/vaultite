@@ -27,7 +27,7 @@ type Row = {
   shared: boolean                  // in a group exported to agents (a KeeShare export), so agents can use it at all
   expired: boolean; otp: boolean; modified: number /* ms */
 }
-type Full = Row & { password: string; notes: string; otp: string /* raw otp field, "" if none */; code: string | null /* the current one-time code */ }
+type Full = Row & { password: string; notes: string; otpUri: string /* raw otp field, "" if none */; code: string | null /* the current one-time code */ }
 type Change = { id?: string; group?: string; title: string; username: string; password: string; urls: string[]; tags: string[]; notes: string; otp?: string }
 
 "passwords:status"            () => Status

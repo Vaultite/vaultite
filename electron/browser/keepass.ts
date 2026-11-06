@@ -23,19 +23,26 @@ export type Secrets = { username: string; password: string; otp: Otp | "steam" |
 export type Database = { entries: Entry[]; secrets: (id: string) => Secrets | null }
 
 const text = (v: unknown) => (v instanceof ProtectedValue ? v.getText() : typeof v === "string" ? v : "")
-const fieldsOf = (e: KdbxEntry) => Object.fromEntries([...e.fields].map(([k, v]) => [k, text(v)]))
+export const fieldsOf = (e: KdbxEntry) => Object.fromEntries([...e.fields].map(([k, v]) => [k, text(v)]))
 
-/** The file opened with its password: its entries (the recycle bin's left out). Errors say what's wrong, never more (no
- *  library text, which might quote the file). */
-export async function openDatabase(data: Uint8Array, password: string): Promise<Database> {
-  let db: Kdbx
+/** An entry's addresses: URL, then KeePassXC's further ones (KP2A_URL, KP2A_URL_1...). */
+export const urlsOf = (f: Record<string, string>) => Object.entries(f).filter(([k, v]) => (k === "URL" || /^KP2A_URL(_\d+)?$/.test(k)) && v.trim()).map(([, v]) => v.trim())
+
+/** A KeePass file opened with its password. Errors say what's wrong, never more (no library text, which might quote the
+ *  file). */
+export async function loadKdbx(data: Uint8Array, password: string): Promise<Kdbx> {
   try {
-    db = await Kdbx.load(new Uint8Array(data).buffer, new Credentials(ProtectedValue.fromString(password)))
+    return await Kdbx.load(new Uint8Array(data).buffer, new Credentials(ProtectedValue.fromString(password)))
   } catch (e) {
     const code = e instanceof KdbxError ? e.code : ""
     throw new Error(code === "InvalidKey" ? "the password doesn't open it" : code === "Unsupported" ? "it's a KeePass file this app can't read (a key file or a hardware key?)"
       : "it isn't a KeePass database (.kdbx), or it's damaged")
   }
+}
+
+/** The file opened with its password: its entries (the recycle bin's left out). */
+export async function openDatabase(data: Uint8Array, password: string): Promise<Database> {
+  const db = await loadKdbx(data, password)
   const bin = db.meta.recycleBinUuid?.id
   const found: KdbxEntry[] = []
   const walk = (g: KdbxGroup) => {
@@ -51,7 +58,7 @@ export async function openDatabase(data: Uint8Array, password: string): Promise<
       const f = fieldsOf(e)
       return {
         id: e.uuid.id, title: f.Title ?? "", username: f.UserName ?? "",
-        urls: Object.entries(f).filter(([k, v]) => (k === "URL" || /^KP2A_URL(_\d+)?$/.test(k)) && v.trim()).map(([, v]) => v.trim()),
+        urls: urlsOf(f),
         free: e.tags.some((t) => t.trim().toLowerCase() === FREE_TAG),
         expired: !!e.times.expires && !!e.times.expiryTime && e.times.expiryTime.getTime() < now,
         otp: otpOf(f) !== null,

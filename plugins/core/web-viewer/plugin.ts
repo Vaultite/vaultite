@@ -476,12 +476,21 @@ they did it (--text, --url). Never ask for their password: they type it themselv
 
 // ---------- logging in with the user's passwords for agents (electron/browser/logins.ts fills; agents never see one) ----------
 
-type Shown = { title: string; username: string }
+type Shown = { id?: string; title: string; username: string }
 type Login = Page & { status: "filled" | "choose" | "approval" | "waiting"; site: string; entry?: Shown; entries?: Shown[]; filled?: string[]
   submitted?: boolean; approved?: string; navigated?: boolean; grant?: string; ask?: string; approve?: string | null }
 /** How long a login waits for the user's yes before saying it waits. */
 const APPROVAL_WAIT = 60_000
 const as = (e: Shown) => (e.username ? `${e.title} (${e.username})` : e.title)
+
+/** Which agent used which of the user's logins, and when: for the Passwords page, every machine's (shared). */
+type Use = { t: number; entry: Shown; site: string; agent: string; task?: string; status: string; approved?: string; machine?: string }
+const USES = "login-uses"
+function loginUses(): Use[] { const u = plugin.kept(USES); return Array.isArray(u) ? u as Use[] : [] }
+function loginUsed(u: Omit<Use, "t" | "machine">) {
+  plugin.keep(USES, [{ ...u, t: Date.now(), machine: os.hostname().replace(/\.local$/, "") }, ...loginUses()].slice(0, 500), { shared: true })
+}
+plugin.route("GET", "web-viewer/login-uses", async (req) => { await plugin.ownerOnly(req, "Agents' logins"); return { uses: loginUses() } }, { sync: false })
 
 plugin.op({
   id: "web-viewer.login",
@@ -514,8 +523,9 @@ the site's pages, load the page again (browser go <tab> reload) before logging i
   run: async (p, ctx) => {
     const who = await by(ctx, p), asked = { entry: p.entry ?? "", submit: p.submit === true }
     const drop = (r: Login) => { if (r.ask) plugin.service("inbox:drop")?.("browser", `login-${r.ask}`) }
+    const used = (r: Login, status: string) => { if (r.entry) loginUsed({ entry: r.entry, site: r.site, agent: ctx.who.label, task: p.task, status, approved: r.approved }) }
     const r = await ask<Login>("agent:login", p.tab, asked, who)
-    if (r.status !== "approval") { if (r.status === "filled") drop(r); return r }
+    if (r.status !== "approval") { if (r.status === "filled") { drop(r); used(r, "filled") } return r }
     // The user's yes is their passkey's, on a page the desktop app checks: the Inbox only tells them (their phone), and
     // nothing here, nor any agent, can say it for them.
     if (!r.approve) {
@@ -525,12 +535,13 @@ the site's pages, load the page again (browser go <tab> reload) before logging i
       body: `As ${as(r.entry!)}, from the passwords for agents, in browser tab ${p.tab}${p.task ? ` (${p.task})` : ""}. Approve it with your passkey (it never sees the password): ${r.approve}`,
       link: r.approve })
     const state = await ask<string>("agent:login-wait", r.grant, APPROVAL_WAIT)
-    if (state === "waiting") return { tab: r.tab, url: r.url, title: r.title, status: "waiting" as const, site: r.site, entry: r.entry }
+    if (state === "waiting") { used(r, "waiting for the user"); return { tab: r.tab, url: r.url, title: r.title, status: "waiting" as const, site: r.site, entry: r.entry } }
     drop(r)
+    if (state === "denied") used(r, "denied")
     if (state === "denied") throw new OpError(`the user said no to logging in to ${r.site} as ${as(r.entry!)}: don't try again`, 403)
     if (state !== "approved") throw new OpError("the request for the user's yes is gone: run it again to ask again", 409)
     const done = await ask<Login>("agent:login", p.tab, asked, who)
-    if (done.status === "filled") drop(done)
+    if (done.status === "filled") { drop(done); used(done, "filled") }
     return done
   },
   text: (r: Login) => r.status === "choose"

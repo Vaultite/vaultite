@@ -267,7 +267,7 @@ async function focus(p: EnginePage, id: number) {
 // ---------- the call ----------
 
 type Opts = { entry?: unknown; submit?: unknown }
-const shown = (e: Entry) => ({ title: e.title, username: e.username })
+const shown = (e: Entry) => ({ id: e.id, title: e.title, username: e.username })
 const named = (e: Entry) => (e.username ? `${e.title} (${e.username})` : e.title)
 
 async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>) {
