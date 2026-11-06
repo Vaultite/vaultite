@@ -10,6 +10,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   at work in (or asking you something on) waits for its tab, instead of being closed with its work and its ask.
 - **Do it**: an open task line (hover it; on a phone, the caret's line) or a suggestion in the inbox has a Do it that hands
   it to a worker: the line goes in progress and the worker ticks it (`vau companion do`, `vau inbox add --do`).
+- **Browser tabs' pages are no longer lost or left behind**: after a deploy's reload, a page an agent is
+  at work in (or asking you something on) waits for its tab, instead of being closed with its work and its ask. A tab closed
+  while its page was still opening no longer leaves a hidden page behind, and a restored tab whose page failed to
+  load no longer stays without its title.
 - **Extensions can tell an agent's tab**: in Vaultite's browser `tabs.get` says `vaultiteAgent` on an agent's page, so a
   site blocker can leave agents alone and still hold the user's tabs.
 - **Mini-apps go anywhere**: any file can be drawn in a sidebar (a file's menu, Show in the sidebar; `vau panels right

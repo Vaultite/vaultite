@@ -432,9 +432,11 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   const wc = view.webContents
   if (taken) wc.once("did-navigate", () => { wc.navigationHistory.clear(); p.blankBehind = false })
   // (its address mid-restore is any of its entries': the tab mustn't follow it till it's at its own)
+  let restored = () => {}
   if (kept) {
     p.restoring = true
-    const done = () => { if (wc.navigationHistory.getActiveIndex() < kept.index) return; p.restoring = false; wc.off("did-navigate", done); sendState(p) }
+    restored = () => { if (!p.restoring) return; p.restoring = false; wc.off("did-navigate", done); if (!wc.isDestroyed()) sendState(p) }
+    const done = () => { if (wc.navigationHistory.getActiveIndex() >= kept.index) restored() }
     wc.on("did-navigate", done)
   }
   // (its window as it is now: a tab moved to another window takes its page along, `moveTo`)
@@ -728,10 +730,13 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   })
 
   if (kept) {
-    // (restoring loads its entry at `index`, its address: the only load, never an earlier page's cut short. A restore's
-    // promise can fail, ERR_ABORTED, with the page on its way in: loaded afresh only if nothing came)
-    const restored = wc.navigationHistory.restore({ entries: kept.entries, index: kept.index })
-    void restored.catch(() => { if (!wc.isDestroyed() && !wc.getURL() && !wc.isLoading()) void wc.loadURL(url).catch(() => {}) })
+    // (its entry at `index` is the only load. Failed (ERR_ABORTED) with the page on its way, loaded afresh only if nothing
+    // came; either way restoring ends with that load: an error page never reaches `index`)
+    void wc.navigationHistory.restore({ entries: kept.entries, index: kept.index }).then(restored, () => {
+      if (wc.isDestroyed()) return
+      if (!wc.getURL() && !wc.isLoading()) void wc.loadURL(url).catch(() => {})
+      if (wc.isLoading()) wc.once("did-stop-loading", restored); else restored()
+    })
   } else if (!adopt) void wc.loadURL(url).catch(() => { /* did-fail-load says why */ })
   return p
 }
@@ -1215,15 +1220,20 @@ const cloud = {
   "web:cloud-act": async (win: AppWindow, action: unknown, id: unknown, value: unknown) => (await cloudNow())["web:cloud-act"](win, action, id, value),
 }
 
+/** When each window's tabs closed (the last minute): a page asked for before, still opening, isn't made. */
+const closedTabs = new WeakMap<AppWindow, Map<string, number>>()
 /** The IPC handlers (main.ts checks the asking page is a vault window's and gives its AppWindow). */
 export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
   // (a tab's page is the tab's: shown again, it's the same one, wherever it went since)
   "web:open": async (win, url, rect, profile, tab) => {
+    const asked = Date.now()
     await Promise.all([engineLoaded(), restore()])
     const u = str(url), prof = profileOf(profile), owner = tabOf(tab)
     if (!shows(u)) throw new Error("only http and https pages")
     await readySession(prof)
     if (!mayOpen(prof)) throw new Error("this container is locked")
+    // (its tab closed while the browser was still loading: a page made now would live on hidden, with no tab)
+    if (owner && (closedTabs.get(win)?.get(owner) ?? 0) >= asked) throw new Error("its tab closed")
     const { reuse, end: other } = claim(pages.values(), win, owner, prof)
     // (the tab moved to another container: its history as it is now, for Back to go where it went before)
     for (const x of other) { keepPast(x); end(x) }
@@ -1286,6 +1296,10 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   // (`moved`: its tab went on in another of this vault's windows, which takes its page as it shows it, `adopt`)
   "web:close": (win, tab, moved) => {
     if (moved !== true) {
+      const closed = closedTabs.get(win) ?? new Map<string, number>()
+      closedTabs.set(win, closed)
+      if (tabOf(tab)) closed.set(tabOf(tab), Date.now())
+      for (const [t, at] of closed) if (Date.now() - at > 60_000) closed.delete(t)
       // (an agent's own page outlives its tab: back to the background, the agent's still, before the tab's pages end;
       // the call runs at once, its feature loaded, and leaves a page that isn't an agent's in its tab)
       for (const p of pages.values()) if (p.win === win && p.tab && p.tab === tabOf(tab) && pageKept(p.id)) void engineCall(win, "agents:own", [p.id, ""]).catch(() => {})
