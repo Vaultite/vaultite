@@ -3,7 +3,7 @@
 import path from "node:path"
 import fs from "node:fs"
 import { WebSocket } from "ws"
-import { type Any, check, sleep, skip, section, summary, waitFor } from "./test/lib.ts"
+import { check, exit, section, skip, sleep, summary, type Any, waitFor } from "./test/lib.ts"
 import { BASE, LIVE, PORT, api, REPO, TMP, VAULT, agentPath, endAndCheck, fakesPath, hideFake, makeVault, mcpTools, rand, run, screenHas, serverLog,
   setEnv, shellFake, startServer, stopBackends, stopServer, term, which } from "./test/agentkit.ts"
 
@@ -144,4 +144,4 @@ await run(async () => {
   if (LIVE) await livePart()
   else skip("live agents", "set VAULTITE_AGENT_LIVE=1 to run the real agents")
 })
-process.exit(summary("agents", t0))
+await exit(summary("agents", t0))

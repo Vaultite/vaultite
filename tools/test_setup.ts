@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { check, summary } from "./test/lib.ts"
+import { check, exit, summary } from "./test/lib.ts"
 const t0 = Date.now()
 
 const S = await import("../electron/setup.ts")
@@ -228,4 +228,4 @@ check("service: the node on PATH when it's this one (outlives a Homebrew upgrade
   SV.stableNode(realNode, "/nowhere") === realNode)
 
 fs.rmSync(tmp, { recursive: true, force: true })
-process.exit(summary("setup", t0))
+await exit(summary("setup", t0))

@@ -4,7 +4,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import type { ChildProcess } from "node:child_process"
-import { type Any, check, freePort, stopTerminals, summary, tempDir, testServer, waitFor } from "./test/lib.ts"
+import { check, exit, freePort, stopTerminals, summary, tempDir, testServer, type Any, waitFor } from "./test/lib.ts"
 
 const t0 = Date.now()
 setTimeout(() => { console.error("shared: timed out after 4 min"); process.exit(1) }, 240_000).unref()
@@ -117,4 +117,4 @@ try {
 }
 const failed = (await import("./test/lib.ts")).results.some((r) => r.status === "FAIL")
 if (failed) for (const [port, log] of Object.entries(logs)) console.log(`\n---- server ${port === String(pa) ? "alpha" : "beta"}'s output, its last lines:\n${log.split("\n").filter((l) => !/" 200 \d+ms$/.test(l)).slice(-40).join("\n")}`)
-process.exit(summary("shared", t0))
+await exit(summary("shared", t0))

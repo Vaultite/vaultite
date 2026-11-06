@@ -3,7 +3,7 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { check, summary, tempDir } from "./test/lib.ts"
+import { check, exit, summary, tempDir } from "./test/lib.ts"
 const t0 = Date.now()
 
 const S = await import("../core/sandbox.ts")
@@ -119,4 +119,4 @@ check("sandbox: the workout logs are found", gym.total > 10, gym.total)
 const [, logs] = await api("GET", `query?q=${encodeURIComponent(JSON.stringify({ type: "log", view: "calendar", date: "date", month: S.addDays(S.localToday(), -15).slice(0, 7) }))}`)
 check("sandbox: a calendar month has logs", logs.total > 10, logs.total)
 
-process.exit(summary("sandbox", t0))
+await exit(summary("sandbox", t0))

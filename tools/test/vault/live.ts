@@ -50,6 +50,8 @@ export default async ($: VaultTest) => {
   {
     // While the watcher hears nothing, the app's reads don't walk the vault; an agent's always do (it may have just
     // written a file the watcher hasn't told of yet).
+    // (a folder an area before this one deleted is let go of only seconds later, walking till then: past that first)
+    await wait(() => !vault.waiting(), 10_000)
     const sync = vault.sync
     let walks = 0
     vault.sync = function () { walks++; return sync.call(this) }

@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { check, section, summary, tempDir } from "./test/lib.ts"
+import { check, exit, section, summary, tempDir } from "./test/lib.ts"
 import type { CiResult, UpdaterOptions } from "../core/selfupdate.ts"
 import { gitEnv } from "../core/gitenv.ts"
 const t0 = Date.now()
@@ -128,4 +128,4 @@ const inDecoy = (...args: string[]) => execFileSync("git", ["--git-dir", decoy, 
 check("no git run here touched the repository GIT_DIR named", !inDecoy("for-each-ref").trim() && /^count: 0$/m.test(inDecoy("count-objects", "-v"))
   && inDecoy("config", "core.bare").trim() === "true" && !fs.existsSync(path.join(decoy, "index")))
 
-process.exit(summary("selfupdate", t0))
+await exit(summary("selfupdate", t0))
