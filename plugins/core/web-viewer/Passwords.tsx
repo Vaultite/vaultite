@@ -94,6 +94,7 @@ export function LockScreen({ status }: { status: NonNullable<Status> }) {
         </form>
         {error && <p className="-mt-1 text-[13px] text-[var(--red)]" role="alert" data-passwords-unlock-error>{error}</p>}
       </div>
+      <Button look="quiet" size="small" className="mt-6" onClick={() => void chooseFile()}>Use another file…</Button>
     </Centered>
   )
 }

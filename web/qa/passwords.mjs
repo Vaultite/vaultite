@@ -3,7 +3,7 @@
 // searched, an entry's sheet (masked password, reveal, its code, agents' uses of it), edited with the generator and
 // the agent-free switch, a new one, deleted with Undo, locked and unlocked, and what's written read back from the file.
 // WRITES: the throwaway vault only (and the made-up file in a temporary folder).
-//   node web/qa/passwords.mjs <vault copy>
+//   node web/qa/passwords.mjs <vault copy> [<folder for its pictures>]
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"
@@ -11,7 +11,7 @@ import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 import { otpOf, totp } from "../../electron/browser/keepass.ts"
 
-const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT, SHOTS], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-passwords-"))
 
 // ---------- a made-up main file ----------
@@ -60,6 +60,7 @@ await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ BaseWindow }) => { BaseWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: 1300, height: 860 }) })
 const engine = (name, ...args) => win.evaluate(([n, a]) => window.vaultite.web.engine(n, ...a), [name, args])
+const shot = async (name) => { if (SHOTS) { fs.mkdirSync(SHOTS, { recursive: true }); await wait(400); await win.screenshot({ path: path.join(SHOTS, `passwords-${name}.png`) }) } }
 const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText())
 // (agents' uses: made up, as the server would answer)
 const USES = { uses: [{ t: Date.now() - 120_000, entry: { title: "Harbor", username: "alice@example.com" }, site: "harbor.example.org", agent: "Claude Code", status: "filled", approved: "the user's passkey (iPhone)", machine: "m1" }] }
@@ -72,6 +73,7 @@ const rows = () => win.locator("[data-passwords-entry]").evaluateAll((els) => el
 // ---------- not set up ----------
 const ran = await fetch(`${origin}/api/ops/ui.command`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "web:passwords" }) }).then((r) => r.json()).catch((e) => ({ error: String(e) }))
 check("Show passwords opens the tab: not set up, it asks for the file", await until(() => win.locator("[data-passwords-setup] [data-passwords-choose]").isVisible(), 8000), ran)
+await shot("setup")
 
 // (the OS file dialog can't be driven here: the file and its password as Choose and its dialog give them)
 const set = await engine("passwords:set", DB, PW)
@@ -82,6 +84,7 @@ check("its groups at the side: all, Work, Agents, the recycle bin, agents' login
   await win.locator("[data-passwords-groups]").innerText().catch(() => ""))
 check("the shared entry is marked for agents", await win.locator('[data-passwords-entry="Harbor"] [data-passwords-mark="shared"]').count() === 1)
 check("no password in the list", !(await win.locator("[data-passwords-list]").innerText()).includes(SECRET))
+await shot("list")
 
 // ---------- search and groups ----------
 const search = win.locator('[data-passwords] input[type="search"]')
@@ -107,6 +110,7 @@ await sheet.getByRole("button", { name: "Copy password" }).click()
 check("Copy password copies it", await until(async () => (await clipboard()) === SECRET, 2000))
 check("… and says it's cleared in 30 seconds", await until(() => toast("cleared in 30 seconds").count(), 2000) > 0)
 check("its notes", /Front desk: ask for Bo/.test(await sheet.innerText()))
+await shot("entry")
 await win.keyboard.press("Escape")
 
 await win.locator('[data-passwords-entry="Harbor"]').click()
@@ -123,6 +127,7 @@ check("Generate makes a 20-character password, shown", generated.length === 20 &
 await sheet.getByRole("switch", { name: "Digits" }).click()
 const noDigits = await sheet.locator('[data-password-field="password"]').inputValue()
 check("… a kind turned off makes another without it", noDigits !== generated && !/\d/.test(noDigits), noDigits)
+await shot("edit")
 await sheet.getByRole("switch", { name: "Agents can use it without asking" }).click()
 await sheet.locator('[data-password-field="username"]').fill("harbor@example.org")
 await sheet.locator("[data-password-save]").click()
@@ -177,6 +182,7 @@ check("Lock: the lock screen, its file named, nothing listed", await until(() =>
 await win.locator("[data-passwords-password]").fill("not it")
 await win.locator("[data-passwords-password]").press("Enter")
 check("a wrong password says so", await until(() => win.locator("[data-passwords-unlock-error]").isVisible(), 3000), await win.locator("[data-passwords-unlock-error]").innerText().catch(() => ""))
+await shot("locked")
 await win.locator("[data-passwords-password]").fill(PW)
 await win.locator("[data-passwords-password]").press("Enter")
 check("its password unlocks it", await until(async () => (await rows()).length === 4, 5000), await rows())
