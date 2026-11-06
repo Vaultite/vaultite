@@ -7,7 +7,8 @@ import type { Exchange, PressLine, Spent } from "./conversation"
 import { getState, subscribe } from "./live"
 import { Arrow } from "./Overlay"
 
-type JobCard = { id: string; title: string; agent?: string; state: string; link: string | null; at: number; result?: string; where?: string; now?: string; ended?: number }
+/** jobs.ts' JobCard, `at` its start (companion conversation). */
+type JobCard = { id: string; title: string; state: string; link: string | null; at: number; result?: string; where?: string; now?: string; ended?: number }
 type Day = { day: string; exchanges: Exchange[]; spent: Spent[]; jobs: JobCard[] }
 type UsageRow = { service: string; today: Spent; week: Spent; left?: { used: number; limit: number; resets?: number; unit: string }; billing?: string }
 
@@ -38,11 +39,11 @@ const nameOf = (s: string) => SERVICE[s] ?? s.charAt(0).toUpperCase() + s.slice(
 /** A job's state as a mark and a word, the same everywhere (jobs.ts' lifecycle). */
 const STATES: Record<string, { icon: typeof CircleDot; tint: string; word: string }> = {
   starting: { icon: CircleDashed, tint: "var(--muted-foreground)", word: "Starting" },
-  working: { icon: CircleDot, tint: "var(--blue)", word: "Working" }, running: { icon: CircleDot, tint: "var(--blue)", word: "Working" },
+  working: { icon: CircleDot, tint: "var(--blue)", word: "Working" },
   "needs you": { icon: CirclePause, tint: "var(--orange)", word: "Needs you" },
-  "ready for review": { icon: CircleCheck, tint: "var(--purple)", word: "Ready for review" }, review: { icon: CircleCheck, tint: "var(--purple)", word: "Ready for review" },
+  "ready for review": { icon: CircleCheck, tint: "var(--purple)", word: "Ready for review" },
   done: { icon: CircleCheck, tint: "var(--green)", word: "Done" }, failed: { icon: CircleAlert, tint: "var(--red)", word: "Failed" },
-  stopped: { icon: CircleStop, tint: "var(--muted-foreground)", word: "Stopped" }, cancelled: { icon: CircleStop, tint: "var(--muted-foreground)", word: "Stopped" },
+  stopped: { icon: CircleStop, tint: "var(--muted-foreground)", word: "Stopped" },
 }
 
 /** ```block-companion-conversation: the day's asks and answers, jobs inline, oldest first. */
@@ -155,9 +156,9 @@ function Job({ j }: { j: JobCard }) {
         {j.link && <Button look="quiet" size="small" onClick={() => openTab(j.link!)}>Open</Button>}
       </div>
       <div className="text-[13px] text-muted-foreground">
-        {st.word}{j.where ? ` · ${j.where}` : j.agent ? ` · ${j.agent}` : ""} · {long < 1 ? "under a minute" : `${Math.round(long)} min`}
+        {st.word}{j.where ? ` · ${j.where}` : ""} · {long < 1 ? "under a minute" : `${Math.round(long)} min`}
       </div>
-      {(j.now || j.result) && <div className="line-clamp-3 text-[13px] leading-[18px] select-text">{j.now && !/done|failed|stopped|cancelled/.test(j.state) ? j.now : j.result}</div>}
+      {(j.now || j.result) && <div className="line-clamp-3 text-[13px] leading-[18px] select-text">{j.now && !/done|failed|stopped|review/.test(j.state) ? j.now : j.result}</div>}
     </div>
   )
 }

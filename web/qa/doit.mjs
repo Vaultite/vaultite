@@ -13,7 +13,7 @@ const api = apiAt(B)
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 watch(page)
 const asked = []
-await page.route("**/api/ops/companion.do", (r) => { asked.push(r.request().postDataJSON()); return r.fulfill({ json: { id: "j1", title: "Compare the two flights", agent: "claude", state: "running", link: "view:claude-session/x", unseen: false, at: 1 } }) })
+await page.route("**/api/ops/companion.do", (r) => { asked.push(r.request().postDataJSON()); return r.fulfill({ json: { id: "j1", title: "Compare the two flights", state: "starting", link: "view:terminal/claude-x", unseen: false, at: 1, started: 1, where: "M4, vault, Claude Code Opus", now: "", took: "0 s", result: "" } }) })
 await page.goto(`${B}#file/${encodeURIComponent("QA/Errands.md")}`)
 await page.waitForSelector(".cm-line", { timeout: 20000 })
 const buttons = page.locator(".cm-do-it")
