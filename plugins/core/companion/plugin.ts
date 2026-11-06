@@ -2324,6 +2324,15 @@ export function openTaskLine(src: string, line: number, text: string) {
   return all.length === 1 ? all[0] : -1
 }
 
+const queues = new Map<string, Promise<unknown>>()
+/** `fn` once the last one under `key` has ended, however it ended. */
+function oneAtATime<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (queues.get(key) ?? Promise.resolve()).then(fn, fn), tail = run.catch(() => {})
+  queues.set(key, tail)
+  void tail.then(() => { if (queues.get(key) === tail) queues.delete(key) })
+  return run
+}
+
 plugin.op({
   id: "companion.do",
   cli: "companion do",
@@ -2340,8 +2349,10 @@ starts at once through companion handoff.
   run: async (p, ctx) => {
     const rel = str(p.path), words = str(p.text).trim()
     if (!rel && !words) throw new OpError("say what: a note's path and line, or the task's text")
-    let line = "", at = 0, mark: { old: string; new: string } | null = null
-    if (rel) {
+    // (set inside the queue: typed so it isn't read as always null after it)
+    let line = "", at = 0, mark = null as { old: string; new: string } | null
+    // (one tap at a time per note: two edits alike both merge, so two that read it open would both start a worker)
+    if (rel) await oneAtATime(`do:${rel}`, async () => {
       const src = fs.readFileSync(plugin.vault.abs(rel), "utf8"), i = openTaskLine(src, Number(p.line) || 0, words), lines = src.split("\n")
       if (i < 0) throw new OpError(`no open task ${words ? `"${cut(words, 60)}" ` : ""}at line ${p.line} of ${rel}`, 404)
       line = lines[i]
@@ -2352,7 +2363,7 @@ starts at once through companion handoff.
       for (let k = i - 1; k >= 0 && src.indexOf(before + line) !== src.lastIndexOf(before + line); k--) before = `${lines[k]}\n${before}`
       mark = { old: before + line, new: before + line.replace("[ ]", "[/]") }
       await ctx.op("file.edit", { path: rel, ...mark }).catch(() => { throw new OpError(`that task was just handed over, or changed: ${cut(line.trim(), 60)}`, 409) })
-    }
+    })
     const said = rel ? line.replace(/^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s+/, "") : words
     const task = rel
       ? [`Do this task from the note ${rel} (line ${at}): ${said}`, "Read the note first: it's the context. When it's fully done, mark the line done (tasks_complete, or `[x]` with vau edit). If it needs the user (a decision, a sign-in, anything outward like a post or a message), leave it open and say what you need."].join("\n\n")
