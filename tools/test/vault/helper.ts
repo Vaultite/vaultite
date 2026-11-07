@@ -266,12 +266,16 @@ export default async ($: VaultTest) => {
     const tinted = { w: 8, h: 8, px: new Uint8Array(64).fill(110) }, other = { w: 8, h: 8, px: Uint8Array.from({ length: 64 }, (_, i) => (i % 2 ? 250 : 10)) }
     check("mark watch: a hover's tint or a few pixels isn't a change; something else there is", !mw.differs(px(100), tinted) && !mw.differs(px(100), { w: 8, h: 8, px: Uint8Array.from({ length: 64 }, (_, i) => (i < 5 ? 255 : 100)) }) && mw.differs(px(100), other))
     const w = mw.makeWatch(), still = areas[2], seq = (a: typeof still, ss: ReturnType<typeof px>[]) => ss.map((x) => w.saw(a, x))
-    check("mark watch: an unanchored mark's area that changes and stays changed (twice running) is changed; a flicker isn't",
-      seq(still, [px(100), px(100), other, px(100), other, other]).join() === ",,,,,changed", seq)
+    check("mark watch: an area that changes from how it was as the mark came, and holds, is changed; a flicker is only moving",
+      seq(still, [px(100), px(100), other, px(100), other, other]).join() === ",,moving,,moving,changed", seq)
+    const e = mw.makeWatch()
+    check("mark watch: a change as soon as the mark comes still counts (its first picture is the one it's compared with)", [px(100), other, other].map((x) => e.saw(still, x)).join() === ",moving,changed")
     const v = mw.makeWatch(), noisy = Array.from({ length: 9 }, (_, i) => px(i % 2 ? 0 : 250))
-    check("mark watch: an area never still (a video) is let be once it hasn't settled", noisy.map((x) => v.saw(still, x)).every((r) => r === null))
+    check("mark watch: an area never still (a video) is never changed", noisy.map((x) => v.saw(still, x)).every((r) => r !== "changed"))
     const a1 = mw.watchedAreas([layer], things)[0], aw = mw.makeWatch()
-    check("mark watch: an anchored mark's change is a look for its thing", [px(100), px(100), other].map((x) => aw.saw(a1, x)).join() === ",,look")
+    check("mark watch: an anchored mark's area is told the same way (the helper looks for its thing)", [px(100), px(100), other, other].map((x) => aw.saw(a1, x)).join() === ",,moving,changed")
+    aw.settled(a1)
+    check("mark watch: settled where its thing is now, that's how it looks", aw.saw(a1, other) === null)
     const scrolled = [{ ...things[0], frame: { ...things[0].frame, y: 40 } }, things[1]], relabelled = [things[1]]
     const moved = mw.followed(a1, scrolled), again = mw.followed(a1, scrolled), gone = mw.followed(a1, relabelled)
     check("mark watch: its thing found again moved says by how much (then where it is now), found where it was stays, not found is gone",

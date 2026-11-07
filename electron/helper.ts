@@ -113,7 +113,8 @@ export async function startHelper(h: HelperHost) {
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v?: Record<string, unknown> | null) => (v == null ? stubs.delete(op) : stubs.set(op, v)), presses: () => presses.read(),
     asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
-    teach: (text: string) => teachHeard(text, Date.now()), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene } })
+    teach: (text: string) => teachHeard(text, Date.now()), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene,
+    layers: () => layersUp, watched: () => areas, near: (x: number, y: number) => nearAt({ x, y }) } })
   onScreenEvent(heard)
   ipcMain.removeAllListeners("vaultite:place")
   ipcMain.on("vaultite:place", (e, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
@@ -1577,19 +1578,24 @@ const penHeard = () => penSounds(!QUIET && prefs.sounds && !quietForCall())
 
 // ---------- the screen under the marks (markwatch.ts): sampled only while a mark that points is up
 
-const watch = makeWatch(), anchored = new Map<string, On | null>(), lookedAt = new Map<string, number>()
-let areas: Area[] = [], sampling: ReturnType<typeof setInterval> | null = null, sampleBusy = false
+const watch = makeWatch(), anchored = new Map<string, On | null>(), lookedAt = new Map<string, number>(), followedTo = new Set<string>()
+let areas: Area[] = [], sampling: ReturnType<typeof setInterval> | null = null, sampleBusy = false, sampleAgain = false, layersUp: Drawing[] = []
 function layersChanged(ls: Drawing[]) {
+  layersUp = ls
   areas = watchedAreas(ls, lastNear, anchored)
   watch.keep(new Set(areas.map((a) => a.key)))
   const alive = new Set(areas.map((a) => `${a.layer}/${a.mark}`))
   for (const k of anchored.keys()) if (!alive.has(k)) anchored.delete(k)
+  for (const k of followedTo) if (!alive.has(k)) followedTo.delete(k)
   for (const k of lookedAt.keys()) if (!areas.some((a) => a.key === k)) lookedAt.delete(k)
+  // (a new mark's first picture at once: what's compared with is the screen as it came)
+  if (areas.some((a) => !watch.has(a.key))) void sampleMarks()
   if (areas.length && !sampling) sampling = setInterval(() => void sampleMarks(), SAMPLE_MS)
   if (!areas.length && sampling) { clearInterval(sampling); sampling = null }
 }
 async function sampleMarks() {
-  if (sampleBusy || !areas.length) return
+  if (sampleBusy) { sampleAgain = true; return }
+  if (!areas.length) return
   sampleBusy = true
   try {
     const now = areas
@@ -1600,18 +1606,26 @@ async function sampleMarks() {
     const add = <T,>(m: Map<string, T[]>, k: string, v: T) => { m.set(k, [...(m.get(k) ?? []), v]); }
     for (const [i, a] of now.entries()) {
       const s = sampleFrom(r.samples?.[i]), said = s && watch.saw(a, s)
-      if (said === "changed") { add(gone, a.layer, a.mark); told.add(a.key); continue }
-      if (said !== "look" || Date.now() - (lookedAt.get(a.key) ?? 0) < 900) continue
-      lookedAt.set(a.key, Date.now())
-      const f = thingFollowed(a, await axThings({ x: a.rect.x + a.rect.w / 2, y: a.rect.y + a.rect.h / 2 }, 1500, 250))
-      if (f.kind === "stayed") watch.stayed(a)
-      else { if (f.kind === "moved") add(moves, a.layer, { mark: a.mark, dx: f.dx, dy: f.dy }); else add(gone, a.layer, a.mark); told.add(a.key) }
+      if (!said) continue
+      // (on a thing: it moved, the mark follows, even mid-scroll; anything else held there, it fades)
+      if (a.on && (said === "changed" || Date.now() - (lookedAt.get(a.key) ?? 0) >= 900)) {
+        lookedAt.set(a.key, Date.now())
+        const f = thingFollowed(a, await axThings({ x: a.rect.x + a.rect.w / 2, y: a.rect.y + a.rect.h / 2 }, 1500, 250))
+        const id = `${a.layer}/${a.mark}`
+        if (f.kind === "moved") { add(moves, a.layer, { mark: a.mark, dx: f.dx, dy: f.dy }); told.add(a.key); followedTo.add(id); continue }
+        // (just followed there: its first picture was mid-move, this is how its place looks)
+        if (f.kind === "stayed" && said === "changed" && followedTo.delete(id)) { watch.settled(a); continue }
+      }
+      if (said === "changed") { add(gone, a.layer, a.mark); told.add(a.key) }
     }
     // (told once: the server's answer brings the layer back as it is now)
     if (told.size) areas = areas.filter((a) => !told.has(a.key))
     for (const [id, marks] of gone) live.say({ t: "drawing-act", id, kind: "changed", marks: [...new Set(marks)] })
     for (const [id, ms] of moves) live.say({ t: "drawing-act", id, kind: "moved", moves: ms.filter((m, i) => ms.findIndex((x) => x.mark === m.mark) === i) })
-  } finally { sampleBusy = false }
+  } finally {
+    sampleBusy = false
+    if (sampleAgain) { sampleAgain = false; if (areas.some((a) => !watch.has(a.key))) void sampleMarks() }
+  }
 }
 
 /** The drawing up, as the server sent it; the sentences of the answer said aloud so far, as heard (any voice's), and

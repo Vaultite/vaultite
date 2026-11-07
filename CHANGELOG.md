@@ -34,8 +34,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   showing its cursor and each step; every step is read back, and one it can't confirm it offers to do in front.
 - **The companion's pen draws like a hand**: rings take the shape of what they circle (a rounded box round a row or a
   button, an ellipse round an icon), its cursor gets to each far mark before the ink starts there, and you can hear
-  the pen faintly as it draws (off with Sounds). What it points at fades once the screen there changes, and a mark on
-  a button or a row follows it as you scroll.
+  the pen faintly as it draws (off with Sounds). What it points at fades once the screen there changes (another
+  page, a window over it, even as it's drawn), and a mark on a button or a row follows it as you scroll.
 - **The companion shows pictures and videos, draws any shape, and diagrams like Excalidraw**: ask for your latest
   screenshot (or a vault file, a file of yours, a link) and it's a card by its cursor, a video muted and looped,
   pressed to hear it; it draws logos and animals from path data, clean or sketched, and diagrams of boxes, diamonds

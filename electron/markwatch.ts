@@ -1,5 +1,5 @@
-// The screen under the companion's marks (helper.ts samples it, small and grey, while a mark that points is up): changed
-// for good, a mark on a thing follows it (found again by Accessibility), the rest fade. No Electron: tested alone.
+// The screen under the companion's marks (helper.ts samples it, small and grey, while a mark that points is up): a mark
+// on a thing that moved follows it (found again by Accessibility); changed for good there, a mark fades. No Electron.
 import { anchorOf, type Anchor, refind, type Seen } from "../plugins/core/companion/anchor.ts"
 import { type Drawing, lifeOf, type Rect, rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 
@@ -72,40 +72,26 @@ export function differs(a: Sample, b: Sample, by = 28, share = 0.12) {
   return false
 }
 
-/** What an area's samples say: `changed` (something else there, twice running), `look` (anchored: find its thing again)
- *  or nothing. One never still (a video, a spinner) is let be after `SETTLE` samples. */
-type Watch = { base: Sample | null; last: Sample; tries: number; off: number; still: number; volatile: boolean }
-const SETTLE = 6
+/** What an area's samples say against its first (the screen as the mark came): `changed`, something else there and
+ *  held (two samples running alike), or `moving`, in flux (a scroll, a video), or nothing. */
+type Watch = { base: Sample; last: Sample }
 export function makeWatch() {
   const by = new Map<string, Watch>()
   return {
     /** Area `a`'s new sample. */
-    saw(a: Area, s: Sample): "changed" | "look" | null {
+    saw(a: Area, s: Sample): "changed" | "moving" | null {
       const w = by.get(a.key)
-      if (!w) { by.set(a.key, { base: null, last: s, tries: 1, off: 0, still: 0, volatile: false }); return null }
-      if (w.volatile) return null
-      const moved = differs(w.last, s)
+      if (!w) { by.set(a.key, { base: s, last: s }); return null }
+      const moving = differs(w.last, s)
       w.last = s
-      if (!w.base) {
-        // (settling: its first picture once it holds still)
-        if (!moved) { w.base = s; return null }
-        if (++w.tries >= SETTLE) w.volatile = true
-        return a.on && w.tries >= 2 ? "look" : null
-      }
-      if (!differs(w.base, s)) { w.off = 0; return null }
-      if (a.on) return moved || w.off++ === 0 ? "look" : null
-      return ++w.off >= 2 ? "changed" : null
+      if (!differs(w.base, s)) return null
+      return moving ? "moving" : "changed"
     },
-    /** Area `a`'s thing found where it was: what changed there is the thing's own (its label, a hover), so that's what
-     *  it looks like now; again and again (it plays a video), it's let be. */
-    stayed(a: Area) {
-      const w = by.get(a.key)
-      if (!w) return
-      w.base = w.last; w.off = 0
-      if (++w.still >= 3) w.volatile = true
-    },
+    /** Area `a` as it is now is how it looks (its mark just followed its thing there, mid-scroll as it came). */
+    settled(a: Area) { const w = by.get(a.key); if (w) w.base = w.last },
     /** Forget the areas not in `keys` (their marks went, moved or changed). */
     keep(keys: Set<string>) { for (const k of by.keys()) if (!keys.has(k)) by.delete(k) },
+    has: (key: string) => by.has(key),
     size: () => by.size,
   }
 }
