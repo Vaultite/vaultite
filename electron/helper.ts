@@ -12,6 +12,9 @@ import { joinText } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, expectedWords, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
 import { land, landedSaid } from "./dictationroam.ts"
+import { followField, type Followed } from "./dictationfix.ts"
+import { learnedList, type Teach } from "../plugins/core/dictation/learn.ts"
+import type { Entry } from "../plugins/core/dictation/words.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { macAddon } from "./macaddons.ts"
@@ -457,6 +460,7 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "input") return void inputHeard(m)
   if (m.event === "key" && typeof m.key === "string") return void keyHeard(m.key)
   if (m.event === "typed") return typedHeard()
+  if (m.event === "follow") return followHeard(m)
   if (m.event === "front") {
     // (another app in front: they moved on)
     if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving() && Date.now() > openedUntil) moveOn()
@@ -1043,10 +1047,10 @@ function sayHere(text: string, card = false) {
 }
 /** A word in the dictation pill's place, a moment: a key pressed where it does nothing. */
 let hinted: { text: string; until: number } | null = null
-function hint(text: string) {
-  hinted = { text, until: Date.now() + 2200 }
+function hint(text: string, ms = 2200) {
+  hinted = { text, until: Date.now() + ms }
   draw()
-  setTimeout(draw, 2250)
+  setTimeout(draw, ms + 50)
 }
 
 async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of" | "free">) {
@@ -1374,6 +1378,7 @@ async function finish(s: Session, cancelled: boolean) {
     if (s.failed) hint(`Dictation stopped: ${s.failed}`)
     return dropOrigin(s)
   }
+  following?.done()
   const to = await land(text, {
     // (a scripted copy's window never has the keyboard: a stub says it does)
     page: async (t) => { const p = host?.focusedPage() ?? (QUIET && stubs.has("page") ? host?.homeWindow()?.page : null); return p ? askPage(p, "here", t) : null },
@@ -1389,6 +1394,46 @@ async function finish(s: Session, cancelled: boolean) {
   const said = landedSaid(to, s.focus.name)
   if (s.failed) hint(`Dictation stopped: ${s.failed}`)
   else if (said) hint(said)
+  // (a private app's field is never read: not where they began, nor in front)
+  if (to.text && !hidden(s.focus) && !(to.to === "front" && hidden(front)) && (to.to === "front" || (to.to === "origin" && !s.origin))) void followFix(to.text, to.to === "front" ? "front" : "kept", to.how === "paste")
+}
+
+// ---------- dictation that learns, in other apps: the field its words went into followed a minute for the user's fixes
+
+/** The field followed now (screen.swift `follow` tells its text as it changes). */
+let following: Followed | null = null
+let follows = 0
+/** What's learned goes in the dictionary, said in the dictation box's place (the user is in another app). */
+const teachHere: Teach = {
+  add: async (e) => ((await op("dictation.add", { ...e, fixed: true })).added as Entry | null) ?? null,
+  remove: (e) => op("dictation.remove", { ...e }),
+  told: (added) => hint(`Added ${learnedList(added)} to your dictionary`, 4000),
+}
+/** Follow the words `said` just put in the field (`from`: the focused one, or the kept one they went back to); a
+ *  paste lands a moment later, so it's looked for a few times. A field that doesn't say its text, or a private app's: not. */
+async function followFix(said: string, from: "front" | "kept", pasted: boolean) {
+  const id = ++follows
+  for (let i = 0; i < (pasted ? 6 : 2); i++) {
+    await new Promise((r) => setTimeout(r, pasted ? 250 : 50))
+    if (id !== follows || session) return
+    const r = await screenAsk<{ ok?: boolean; value?: unknown; caret?: unknown; bundle?: string; name?: string }>("follow", { do: "start", from }).catch(() => null)
+    if (!r?.ok || typeof r.value !== "string") return
+    if (hidden(r)) return void screenAsk("follow", { do: "stop" }).catch(() => {})
+    const f = followField(said, r.value, typeof r.caret === "number" ? r.caret : -1, teachHere, () => {
+      if (following !== f) return
+      following = null
+      void screenAsk("follow", { do: "stop" }).catch(() => {})
+    })
+    if (f) { following = f; return }
+  }
+  void screenAsk("follow", { do: "stop" }).catch(() => {})
+}
+/** screen.swift on the field followed: its text changed, or it's over (its window left, the field gone). */
+function followHeard(m: Record<string, unknown>) {
+  const f = following
+  if (!f) return
+  if (typeof m.value === "string") return f.changed(m.value)
+  f.done()
 }
 const dropOrigin = (s: Session) => { if (s.origin) void askPage(s.origin, "drop") }
 
@@ -1408,17 +1453,17 @@ function askPage(to: WebContents, where: "here" | "origin" | "drop", text?: stri
   })
 }
 /** Into the field it began in: where it is if that field lets it (in the background); else brought to the front and pasted. */
-async function backWhereItBegan(s: Session, text: string): Promise<{ ok: boolean; name?: string }> {
+async function backWhereItBegan(s: Session, text: string): Promise<{ ok: boolean; name?: string; text?: string; how?: string }> {
   if (s.origin) return { ok: (await askPage(s.origin, "origin", text))?.ok === true }
   if (!s.focus.field) return { ok: false }
   const f = await screenAsk<{ ok?: boolean; before?: string; name?: string }>("kept", { do: "info" })
   if (!f.ok) return { ok: false }
   const words = joinText(f.before ?? "", text)
-  if ((await screenAsk<{ ok?: boolean }>("kept", { do: "insert", text: words })).ok) return { ok: true, name: f.name }
+  if ((await screenAsk<{ ok?: boolean }>("kept", { do: "insert", text: words })).ok) return { ok: true, name: f.name, text: words, how: "ax" }
   if (!(await screenAsk<{ ok?: boolean }>("kept", { do: "front" })).ok) return { ok: false }
   for (let i = 0; i < 10; i++) {
     await new Promise((r) => setTimeout(r, 100))
-    if ((await screenAsk<{ ok?: boolean }>("kept", { do: "paste", text: words })).ok) return { ok: true, name: f.name }
+    if ((await screenAsk<{ ok?: boolean }>("kept", { do: "paste", text: words })).ok) return { ok: true, name: f.name, text: words, how: "paste" }
   }
   return { ok: false }
 }

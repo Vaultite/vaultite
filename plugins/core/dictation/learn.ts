@@ -1,5 +1,5 @@
 // Dictation that learns: the user fixing a word they just dictated ("for saint" to "Vorssaint") teaches dictation it.
-// Only a misheard word's fix counts: not rewording, nor grammar, nor a word any recognizer already knows.
+// Only a misheard word's fix counts, not rewording or grammar. No DOM: the helper uses it for other apps (dictationfix.ts).
 import type { Entry } from "./words.ts"
 
 const WORD = /[@#]?[\p{L}\p{N}](?:[\p{L}\p{N}'’_.+-]*[\p{L}\p{N}])?/gu
@@ -123,3 +123,71 @@ export class TypedLine {
     return true
   }
 }
+
+/** How long words just said are watched, and how long the user's let them be before what they changed is read. */
+export const WATCH_MS = 60_000, SETTLE_MS = 2000
+
+export type Watch = {
+  /** The user changed them (or typed in them): read once they've stopped. */
+  edited(): void
+  /** Done with them (Enter, another dictation there, the field gone): read now if they were changed, then stop. */
+  done(): void
+}
+/** What a watch does with what it learns: the dictionary's ops, and saying so (with its Undo). */
+export type Teach = {
+  add(e: Entry): Promise<Entry | null>
+  remove(e: Entry): Promise<unknown>
+  told(added: Entry[], undo: () => Promise<void>): void
+}
+
+/** Watch `said`, as `read` gives it now (null: lost, as when the user went elsewhere); `over` once it's stopped. */
+export function watchWith(said: string, read: () => string | null, teach: Teach, over?: () => void): Watch {
+  let changed = false, ended = false, timer: ReturnType<typeof setTimeout> | null = null
+  /** What this watch taught, so a word still being typed ("Vorss") is replaced when it's finished ("Vorssaint"). */
+  let taught: Entry[] = []
+  const stop = () => { if (!ended) { ended = true; over?.() } if (timer) clearTimeout(timer); timer = null }
+  // (a minute from the dictation, or from the last change: a fix still settling is read then, the last time)
+  const expiring = () => setTimeout(() => { const was = !!timer; stop(); if (was) settled() }, WATCH_MS)
+  let expire = expiring()
+  // (one read at a time: two overlapping would both teach the same fix)
+  let learning: Promise<void> = Promise.resolve()
+  const settled = () => { learning = learning.then(learn).catch(() => {}) }
+  const learn = async () => {
+    const now = read()
+    if (now === null) return stop()
+    const fixes = corrections(said, now)
+    const gone = taught.filter((t) => !fixes.some((f) => f.word === t.word))
+    taught = taught.filter((t) => !gone.includes(t))
+    for (const e of gone) await teach.remove(e).catch(() => {})
+    const added: Entry[] = []
+    for (const e of fixes.filter((f) => !taught.some((t) => t.word === f.word))) {
+      const r = await teach.add(e).catch(() => null)
+      if (r) { added.push(r); taught.push(r) }
+    }
+    if (!added.length) return
+    teach.told(added, async () => {
+      taught = taught.filter((t) => !added.some((a) => a.word === t.word && (a.said ?? "") === (t.said ?? "")))
+      await Promise.all(added.map((e) => teach.remove(e)))
+    })
+  }
+  return {
+    edited() {
+      if (ended) return
+      changed = true
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => { timer = null; settled() }, SETTLE_MS)
+      clearTimeout(expire)
+      expire = expiring()
+    },
+    done() {
+      if (ended) return
+      const was = changed && !!timer
+      stop()
+      clearTimeout(expire)
+      if (was) settled()
+    },
+  }
+}
+
+/** What's said of words learned: “Kaio” and “Vorssaint”. */
+export const learnedList = (es: Entry[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(es.map((e) => `“${e.word}”`))

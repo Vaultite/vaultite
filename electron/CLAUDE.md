@@ -50,7 +50,9 @@
   the recognizer that heard it (`soniox`, else this Mac's with `why`), `stt-fallback` one failing mid-press; its `mic`
   and `micWhy` the input device and why, `mic-change` one that went mid-press.
 - A dictation that leaves its window moves to the helper (dictation.ts `handOver`, the page keeps where it began till its
-  words land: web core/dictation.ts): it's the helper's overlay that shows over every app. dictationroam.ts picks where they land.
+  words land: web core/dictation.ts): it's the helper's overlay that shows over every app. dictationroam.ts picks where they land;
+  dictationfix.ts follows another app's field they went into for the user's fixes (screen.swift `follow`, polled: apps
+  don't all post AX value changes), learned as in the window (plugins/core/dictation/learn.ts).
 - The realtime voice (realtimefront.ts over realtime.ts, OpenAI's WebSocket): dictation's session taps the mic for it
   (`tap`, 16 kHz, made 24 kHz), voice.ts' `stream()` plays its audio. It only gives the first sound: dictation still runs,
   and its words go to the summoned session at once, as on the pipeline (a screen answer is never slower for it); that

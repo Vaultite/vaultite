@@ -196,6 +196,40 @@ export default async ($: VaultTest) => {
     check("dictation lands: a web pane of ours with a field: typed there", (await land("hi", web.o)).to === "front" && web.did.join() === "insert:hi", web.did)
     const ownNot = landing({ page: async () => ({ ok: false }), front: async () => ({ vaultite: true, editable: true }) })
     check("dictation lands: our page with no target isn't typed into by Accessibility", (await land("hi", ownNot.o)).to === "clipboard" && !ownNot.did.some((d) => d.startsWith("insert")), ownNot.did)
+    check("dictation lands: what went into another app's field is told, to follow it; not into a pane of ours", fieldTo.text === " hi" && !(await land("hi", landing({ page: async () => ({ ok: false, elsewhere: true }), front: async () => ({ vaultite: true, editable: true }) }).o)).text &&
+      (await land("hi", landing({ origin: async () => ({ ok: true, name: "Slack", text: " hi", how: "paste" }) }).o)).how === "paste", fieldTo)
+
+    // Dictation learning in other apps (electron/dictationfix.ts): the words found again in the field's text as it changes
+    const { placeOf, followField } = await import("../../../electron/dictationfix.ts")
+    check("learn in apps: the words said are found by the caret, else nearest it, else not at all",
+      JSON.stringify(placeOf("So: hi there", " hi", 6)) === '{"before":"So:","after":" there"}' && placeOf("hi, hi, hi", "hi", 9)?.before === "hi, hi, " &&
+      placeOf("hi, hi, hi", "hi", 7)?.before === "hi, " && placeOf("hi then hi", "hi")?.before === "hi then " && placeOf("autocorrected", " hi", 3) === null && placeOf("x", "  ") === null)
+    const taught: string[] = [], told: string[] = []
+    const teach = { add: async (e: { word: string; said?: string }) => { taught.push(`${e.said}>${e.word}`); return e }, remove: async () => {}, told: (es: { word: string }[]) => { told.push(es.map((e) => e.word).join()) } }
+    const settle = () => new Promise((r) => setTimeout(r, 30))
+    let over = 0
+    const words = " we met Kyle at the Lighthouse office today"
+    const f = followField(words, `Notes:${words}`, 6 + words.length, teach, () => over++)!
+    f.changed(`Notes: we met Ka at the Lighthouse office today`)
+    f.changed(`Notes: we met Kaio at the Lighthouse office today and more`)
+    f.done(); await settle()
+    check("learn in apps: a word fixed in the field (typed more after it too) is learned when it's done, once; then it's over",
+      taught.join() === "Kyle>Kaio" && told.join() === "Kaio" && over === 1, { taught, told, over })
+    taught.length = 0
+    for (const before of ["Notes:", ""]) {
+      const sent = followField(words, before + words, -1, teach, () => {})!
+      sent.changed(before + words.replace("Kyle", "Kaio"))
+      sent.changed("")
+    }
+    await settle()
+    check("learn in apps: a message sent (the field cleared) right after the fix: the fix still counts, the words alone in it too", taught.join() === "Kyle>Kaio,Kyle>Kaio", taught)
+    taught.length = 0
+    const before = followField(words, `Notes:${words}`, -1, teach, () => {})!
+    before.changed(`Draft notes: we met Kyle at the Lighthouse office today`); await settle()
+    const untouched = followField(words, `Notes:${words}`, -1, teach, () => {})!
+    untouched.changed(`Notes:${words}`); untouched.done(); await settle()
+    check("learn in apps: an edit before the words loses them; words left as said teach nothing; words not there, nothing followed",
+      !taught.length && followField(words, "Notes: something else", -1, teach, () => {}) === null, taught)
     const crossing = { ...scene, agents: [{ ...scene.agents[0], from: { x: 900, y: 100 } }] }
     const cl = sceneFor(left, crossing, { x: 10, y: 10 }, [left, right]), cr = sceneFor(right, crossing, { x: 10, y: 10 }, [left, right])
     check("helper: a cursor on its way from one display to another is drawn on both, each in its own points",

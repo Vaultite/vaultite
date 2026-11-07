@@ -24,7 +24,10 @@ helper (Vaultite Dev), leaving the window stops it. Each session's way is in `ta
   then Vaultite's, the agents' names (a plugin adds its own: the service `dictation:terms`), the people's and projects'
   names and the newest notes'; Parakeet takes no hints, only the replacements. Fixing a word just dictated (in a note, a
   terminal or a field, within a minute) adds it, with a toast and its Undo; the same word misheard again adds what it
-  was misheard as. A word taken out isn't learned again. `vau dictation add|remove|words`.
+  was misheard as. A word taken out isn't learned again. In another app (the helper's), the field its words went into
+  is followed through Accessibility a minute while its window is in front (never a password field or a private app's;
+  one that doesn't say its text is skipped), and what's learned is said in the dictation box's place (`vau dictation
+  remove` undoes it). `vau dictation add|remove|words`.
 - The mic (dictation, the Talk key and the realtime voice alike): a Bluetooth headset's own mic drops it to its call
   profile (24 kHz sound both ways) and back ~2 s after it closes, cutting what plays. So `auto` hears with the system's
   input unless the output is Bluetooth and that input is too: then the built-in mic, else a wired one. `default` is

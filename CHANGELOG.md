@@ -13,6 +13,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   with Keep the last 30 s of screen off (still the default) says so in one line, aloud and on a card by your pointer;
   its Turn it on, or a spoken yes, turns it on from that moment and says the seconds before weren't kept. Agents offer
   the same (`vau screen keep`).
+- **Dictation learns from fixes in other apps too**: fix a word just dictated into Slack, Mail or a browser's field
+  and it's added to your dictionary, said where the dictation box was. Only that field is read, only while its window
+  is in front, for a minute; never a password field or a private app's, and nothing is kept but the word.
 - **Vault plugins import a set list of npm packages** (plugin API 10): React, Lucide, CodeMirror's, Excalidraw, YAML
   and the others `vau docs plugin-api` lists, at the versions the app ships: what an app update keeps for them. One
   importing another package is told to copy that library into its own folder.

@@ -308,6 +308,48 @@ func keptField(_ what: String, _ text: String) -> [String: Any] {
   default: return ["ok": false, "why": "unknown"]
   }
 }
+/** The field words just went into (the focused one, or the kept one they went back to), followed a while for the
+ *  user's fixes: its text told as it changes, only while its window is in front; never a password field's. */
+var followed: (el: AXUIElement, pid: pid_t, window: Int, value: String, since: Date, seen: Bool)?
+var followTimer: Timer?
+let FOLLOW_MOST = 100_000
+func followedValue(_ el: AXUIElement) -> String? {
+  guard !secure(el), let v: String = attr(el, kAXValueAttribute), (v as NSString).length <= FOLLOW_MOST else { return nil }
+  return v
+}
+func unfollow() { followTimer?.invalidate(); followTimer = nil; followed = nil }
+func follow(_ what: String, from: String) -> [String: Any] {
+  if what != "start" { unfollow(); return ["ok": true] }
+  unfollow()
+  guard let el = from == "kept" ? kept : focused(), editable(el), pidOf(el) != vaultitePid, let w = windowOf(el).flatMap({ wid($0) }) else { return ["ok": false, "why": "no-field"] }
+  // (a field that doesn't say its text (a canvas, a terminal), or a password's: nothing to follow)
+  guard let v = followedValue(el) else { return ["ok": false, "why": secure(el) ? "secure" : "no-text"] }
+  var caret = -1
+  if let rv: AXValue = attr(el, kAXSelectedTextRangeAttribute) { var r = CFRange(); AXValueGetValue(rv, .cfRange, &r); caret = r.location }
+  followed = (el, pidOf(el), w, v, Date(), false)
+  followTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in followTick() }
+  var m = appInfo(pidOf(el))
+  m["ok"] = true; m["value"] = v; m["caret"] = caret; m["window"] = w
+  return m
+}
+/** Its text again, told when it changed, while its window is in front (words gone back to a field behind wait for it to
+ *  come); left once it was, the field gone or now a password's, or long past what's asked of it: over. */
+func followTick() {
+  guard var f = followed else { return unfollow() }
+  let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+  let win: AXUIElement? = front == f.pid ? attr(AXUIElementCreateApplication(f.pid), kAXFocusedWindowAttribute) : nil
+  let here = win.flatMap({ wid($0) }) == f.window
+  let why = (attr(f.el, kAXRoleAttribute) as String?) == nil ? "gone" : secure(f.el) ? "secure" : !here && f.seen ? "left" : Date().timeIntervalSince(f.since) > 300 ? "time" : nil
+  if let why { unfollow(); return send(["event": "follow", "over": why]) }
+  if !here { return }
+  f.seen = true
+  guard let v = followedValue(f.el) else { unfollow(); return send(["event": "follow", "over": "no-text"]) }
+  let changed = v != f.value
+  f.value = v
+  followed = f
+  if changed { send(["event": "follow", "value": v]) }
+}
+
 func paste(_ text: String) {
   let pb = NSPasteboard.general
   let saved: [[NSPasteboard.PasteboardType: Data]] = (pb.pasteboardItems ?? []).map { item in
@@ -682,6 +724,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "focus": return focus(keep: req["keep"] as? Bool ?? false)
   case "kept": return keptField(req["do"] as? String ?? "", req["text"] as? String ?? "")
   case "insert": return insert(req["text"] as? String ?? "")
+  case "follow": return follow(req["do"] as? String ?? "", from: req["from"] as? String ?? "front")
   case "front": lastFront = ""; sayFront(); return ["ok": true]
   case "at": return windowAt(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)
   case "under": return under(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0)
