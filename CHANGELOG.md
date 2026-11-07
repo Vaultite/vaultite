@@ -12,6 +12,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **An Agents panel shows every agent on every machine**: terminals, chats and cloud sessions in one list in the right
   sidebar, the ones that need you first, then the ones working, then the ones done, each with its machine; a click
   opens it in its terminal or its chat.
+- **Agents' clicks are faster when nobody watches**: the pointer's glide before a click or fill is waited for only while
+  someone sees the page (its tab or the agents card on a Mac someone is at, or a live view from another device).
 - **Terminals run on libghostty-vt 1.0**: Ghostty's first stable release of its terminal engine, in place of a
   pre-release build: a bit faster on fast output, with the same screens, copy and search.
 - **A job's ready card stays up to be read**: "Ready to show you …" comes at your next pause and stays 15 seconds

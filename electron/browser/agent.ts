@@ -1,6 +1,6 @@
 // Agents in the browser, asked by the vault's server (plugins/core/web-viewer/plugin.ts): a page's accessibility tree with
 // refs, real input on them over the DevTools protocol (no page scripts), scripts of those in a sandbox; access checked here.
-import { app, type WebContents } from "electron"
+import { app, powerMonitor, type WebContents } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -351,19 +351,26 @@ async function describe(p: EnginePage, id: number) {
 
 /** Where each page's pointer last was, so a new document's starts there. */
 const pointers = new WeakMap<WebContents, { x: number; y: number }>()
-/** Pages someone watches live (live.ts): the pointer gets there before the agent acts, as on a page on screen. */
-const watched = new Set<number>()
-export const setWatched = (id: number, on: boolean) => { if (on) watched.add(id); else watched.delete(id) }
+/** Pages watched live (live.ts), from another device ("elsewhere": a phone, another Mac) or this Mac's window ("here"). */
+const watched = new Map<number, "elsewhere" | "here">()
+export const setWatched = (id: number, by: "elsewhere" | "here" | null) => { if (by) watched.set(id, by); else watched.delete(id) }
+/** No input on this Mac this long (or its screen locked): nobody sees its window. The M1's screen never sleeps. */
+const AWAY_S = 5 * 60
+const someoneHere = () => process.env.VAULTITE_PRESENCE ? process.env.VAULTITE_PRESENCE !== "away"
+  : !["idle", "locked"].includes(powerMonitor.getSystemIdleState(AWAY_S))
+/** Someone sees page `p` now: the pointer gets there before the agent acts. Unseen, it acts at once. */
+const watching = (p: EnginePage) => watched.get(p.id) === "elsewhere"
+  || ((watched.has(p.id) || (p.visible() && p.win.isVisible() && !p.win.isMinimized())) && someoneHere())
 export const GLIDE_MS = 320
 /** The agent's pointer to x, y (null: where it is, the page lit as at work), `clicked` with a ring; once there when the
- *  page is seen (on screen or watched live), so the act follows it. */
+ *  page is seen (`watching`), so the act follows it. */
 async function pointTo(p: EnginePage, who: string, x: number | null, y: number | null, clicked = false) {
   const from = pointers.get(p.wc) ?? { x: 160, y: 120 }
   if (x !== null && y !== null) pointers.set(p.wc, { x, y })
   const args = [x === null ? null : Math.round(x), y === null ? null : Math.round(y), from, who || "Agent", clicked].map((v) => JSON.stringify(v)).join(", ")
   const { POINTER } = await import("./agentrun.ts")
   await p.wc.executeJavaScriptInIsolatedWorld(1010, [{ code: `(${POINTER})(${args})` }]).catch(() => {})
-  if (x !== null && (p.visible() || watched.has(p.id))) await new Promise((r) => setTimeout(r, GLIDE_MS))
+  if (x !== null && watching(p)) await new Promise((r) => setTimeout(r, GLIDE_MS))
 }
 /** Who's acting in each page now (`actIn` sets it), for the pointer's name. */
 const actor = new WeakMap<WebContents, string>()

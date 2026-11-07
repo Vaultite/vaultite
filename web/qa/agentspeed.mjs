@@ -1,6 +1,7 @@
 // How long agents' browser calls take (electron/browser/agent.ts), each timed several times on a made-up local site: the
 // floor of each op (what the app adds, not the site), p50 and max. Prints a table; checks nothing but that they work.
-// The agents' card watches the page (as while the window's on screen), so a pointer's act includes its glide (GLIDE_MS).
+// The agents' card watches the page, so a pointer's act includes its glide (GLIDE_MS) while someone's at this Mac:
+// VAULTITE_PRESENCE=away times it with nobody there (no glide), =here with someone (else this Mac's idle time decides).
 // RUNS=<n> times each (8); REAL="<url> <url>" also times going to real sites (their own load and drawing included).
 // WRITES: the throwaway vault only.
 //   node web/qa/agentspeed.mjs <vault copy>

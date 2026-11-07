@@ -85,7 +85,6 @@ async function start(p: EnginePage) {
       if (f.data !== w.cast) offer(w, (w.cast = f.data))
     } }
   watches.set(p.id, w)
-  setWatched(p.id, true)
   try {
     await p.wake()
     await measure(w)
@@ -109,6 +108,7 @@ async function still(w: Watch) {
 async function tick(w: Watch) {
   for (const [k, at] of w.by) if (Date.now() - at > RENEW_MS) w.by.delete(k)
   if (w.p.wc.isDestroyed() || !w.by.size) return stop(w.p.id)
+  watchedAs(w)
   const s = JSON.stringify({ ...stateOf(w.p), w: w.css.w, h: w.css.h })
   if (s !== w.state) { w.state = s; if (w.by.has(SERVER)) tellServer(w.p.win, "live:state", JSON.parse(s)) }
   if (Date.now() - Math.max(w.sent, w.checked) > STILL_MS) await still(w)
@@ -118,7 +118,7 @@ function stop(id: number, gone = false) {
   const w = watches.get(id)
   if (!w) return
   watches.delete(id)
-  setWatched(id, false)
+  setWatched(id, null)
   clearInterval(w.tick)
   if (w.trailing) clearTimeout(w.trailing)
   if (gone && w.by.has(SERVER)) tellServer(w.p.win, "live:gone", { tab: id })
@@ -194,13 +194,17 @@ handle("agent:live:tabs", () => allPages().filter((p) => !p.wc.isDestroyed() && 
 async function watch(p: EnginePage, who: string) {
   const w = watches.get(p.id) ?? await start(p)
   w.by.set(who, Date.now())
+  watchedAs(w)
   return w
 }
+/** Tells agent.ts who watches: another device's viewer (the server's) always sees it, this window's only with someone here. */
+const watchedAs = (w: Watch) => setWatched(w.p.id, w.by.has(SERVER) ? "elsewhere" : "here")
 function unwatch(id: number, who: string) {
   const w = watches.get(id)
   if (!w) return
   w.by.delete(who)
   if (!w.by.size) stop(id)
+  else watchedAs(w)
 }
 handle("agent:live:watch", async (_win, tab) => {
   const p = pageOf(tab)
