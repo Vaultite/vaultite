@@ -23,6 +23,7 @@ const USERDATA = fs.mkdtempSync(path.join(os.tmpdir(), "vau-helperdraw-"))
 mock.module(pathToFileURL(fs.realpathSync(path.join(ROOT, "node_modules/electron/index.js"))).href, { exports: {
   app: { on() {}, getName: () => "Vaultite", getPath: () => USERDATA, getLoginItemSettings: () => ({ openAtLogin: false }), setLoginItemSettings() {}, isPackaged: false, getPreferredSystemLanguages: () => ["en-US"] },
   clipboard: { writeText() {} }, Menu: { buildFromTemplate() {} }, ipcMain: { on: (ch: string, fn: (e: { sender: unknown }, m?: unknown) => void) => { ipc.set(ch, fn) }, removeAllListeners() {} }, Notification: class { static isSupported() { return false } }, nativeImage: { createFromPath: () => ({ setTemplateImage() {}, isEmpty: () => true }) }, shell: {}, Tray: class {},
+  systemPreferences: { getMediaAccessStatus: () => "not-determined" },
   screen: { getCursorScreenPoint: () => pointer, getDisplayMatching: () => display, getDisplayNearestPoint: () => display, getAllDisplays: () => [display] },
 } })
 type Acts = { open: (name: string, at: Pt) => void }

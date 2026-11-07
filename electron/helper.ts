@@ -1,6 +1,6 @@
 /** The menu-bar helper (a Mac's; one per Mac, a lock): the app and its home vault's server kept with no window: the keys
  *  (dictation's; the companion summoned over the screen, overlay.ts), screen reading, what's in front. electron/CLAUDE.md. */
-import { app, clipboard, ipcMain, Menu, Notification, nativeImage, screen, shell, Tray, type BrowserWindow, type WebContents } from "electron"
+import { app, clipboard, ipcMain, Menu, Notification, nativeImage, screen, shell, systemPreferences, Tray, type BrowserWindow, type WebContents } from "electron"
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
@@ -34,6 +34,8 @@ import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { companionVoice } from "./voice.ts"
 import { realtimeFront } from "./realtimefront.ts"
+import { countText, type WalkPlace } from "../plugins/core/companion/walks.ts"
+import { endWalk, startWalk, stopWalk, walkAct, walkCall, walkFilms, walkFinal, walkHeard, walkHost, walkListening, walkListens, walkOn, walkPending, walkScene } from "./walk.ts"
 import { stopTakeover, takeoverBehind, takeoverCaption, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard } from "./takeover.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
@@ -105,7 +107,8 @@ export async function startHelper(h: HelperHost) {
   host = h
   app.on("will-quit", stopHelper)
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v), presses: () => presses.read(),
-    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems() } })
+    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
+    walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) } } })
   onScreenEvent(heard)
   ipcMain.removeAllListeners("vaultite:place")
   ipcMain.on("vaultite:place", (e, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
@@ -115,12 +118,17 @@ export async function startHelper(h: HelperHost) {
   onDictating(() => stopVoice())
   // (the mic it would hear with now, for its status: devices plugged, the output changed)
   onAudioDevices((d) => micTold(pickMic(prefs.dictation.microphone, d)))
-  overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) }, region: regionMoved, regionAct })
+  overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) }, region: regionMoved, regionAct, walkAct })
   timelineHost({ exclude: excluded, bundles: () => prefs.privateApps, holding: recordingNow, privateNow: () => hidden(front),
     clicks: (on) => void screenAsk("clicks", { on }).catch(() => {}) })
   captureHost({ exclude: excluded, bundles: () => prefs.privateApps, hint, draw,
     placeAt: async (p) => { const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null); return { ...await pointedAt(live.state.name, p, w?.window ? w : null, false), ...(w?.frame ? { frame: w.frame } : {}) } },
     deliver: async (c) => String((await op("companion.capture", c)).said ?? "Sent") })
+  walkHost({ draw, listening: (on) => { if (!on && session?.into === "walk") stopFor(session.sink); walkTick() },
+    allowed: () => (QUIET ? stubs.get("screen-access")?.granted === true : systemPreferences.getMediaAccessStatus("screen") === "granted"),
+    placeAt: walkPlace,
+    still: async (p, crop, file) => { if (QUIET) return false; const r = await shootDisplay(p, await excluded(), path.dirname(file), crop).catch(() => null); if (!r) return false; fs.renameSync(r.file, file); return true },
+    deliver: async (w) => String((await op("companion.walk-send", w)).said ?? "Sent") })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   watchLayers(layersChanged)
   knockHost({ say: (m) => live.say(m), talking: () => !!session || !!panelOpen() || !!speakingNow || speaker.saying() || voiceFront.speaking() || (!!summon && ACTIVE.has(summon.m.phase)) || (!!exchange && going(exchange)),
@@ -160,6 +168,7 @@ export function stopHelper() {
   stopScreen()
   stopTakeover()
   stopCapture()
+  stopWalk()
   keepTimeline(false)
   quitRecorder()
   tray?.destroy()
@@ -202,6 +211,9 @@ function menuItems(): Electron.MenuItemConstructorOptions[] {
     // (the screen kept in memory for "that, just now": said while it is, and turned off here)
     { label: timelineOn() ? "Keeping the last 30 s of screen" : "Keep the last 30 s of screen", icon: icon("history"), sublabel: timelineOn() ? "In memory only, till you send it" : undefined,
       type: "checkbox", checked: prefs.timeline, enabled: !!home, click: setting("plugin/companion", { timeline: !prefs.timeline }) },
+    // (a QA walk: started and ended here too, as by voice)
+    walkOn() ? { label: "End the QA walk", icon: icon("footprints"), sublabel: walkScene()?.state === "sending" ? "Sending…" : `${countText(walkScene()?.count ?? 0)}: sent as a job per project`, enabled: walkScene()?.state !== "sending", click: () => void endWalk(true) }
+      : { label: "Start a QA walk", icon: icon("footprints"), sublabel: "Talk as you go; say done to send", enabled: !!home && !!name, click: () => void startWalk() },
     // (what it handed off: a click opens its tab in Vaultite)
     ...(jobs.length ? [{ type: "separator" as const }, { label: jobsHeader(jobs), type: "header" as const },
       ...jobs.map((j) => ({ label: j.title || "A job", sublabel: jobSublabel(j), icon: jobIcon(j.state), enabled: !!j.link, click: () => void openJob(j) }))] : []),
@@ -300,9 +312,9 @@ async function refresh() {
   ringFollows()
   draw()
 }
-/** The screen's timeline kept in memory only while asked for (the setting), the companion on, and this the app that
- *  hears the keys. */
-const ringFollows = () => keepTimeline(((LIVE && !QUIET) || (QUIET && captureReal)) && prefs.timeline && !!live.state.name && live.state.mode !== "off")
+/** The screen's timeline kept in memory only while asked for (the setting, or a QA walk: its video only with screen
+ *  recording allowed), the companion on, and this the app that hears the keys. */
+const ringFollows = () => keepTimeline(((LIVE && !QUIET) || (QUIET && captureReal)) && (prefs.timeline || walkOn()) && !!live.state.name && live.state.mode !== "off", prefs.timeline || walkFilms())
 
 type Agent = { name: string; tint: string; state: string; t?: number; seen?: boolean; why?: string; app?: string; window?: number; find?: string; sx?: number; sy?: number; display?: number; path?: string
   /** Its place in the app, off a note: a pane (a terminal's row), the app's UI; a note's line. */
@@ -433,9 +445,9 @@ function notice(key: string, title: string, body: string, link?: string, once?: 
 // ---------- the dictation keys: dictation anywhere
 
 const key = fnKey()
-/** The helper's own session: words into another app's field, into a cursor's conversation, or the companion summoned
- *  (`summon`: its words by its cursor, sent when let go); `talk`: a Talk key's, sent when it stops. */
-type Session = { sink: DictationSink; into: "field" | "panel" | "summon"; focus: Focus; finals: string[]; pending: string; level: number; ready: boolean
+/** The helper's own session: words into a field, a cursor's conversation, the companion summoned (`summon`: sent when
+ *  let go) or a QA walk (`walk`: hands-free, each sentence an item); `talk`: a Talk key's, sent when it stops. */
+type Session = { sink: DictationSink; into: "field" | "panel" | "summon" | "walk"; focus: Focus; finals: string[]; pending: string; level: number; ready: boolean
   talk?: boolean
   /** The mic it hears with is a Bluetooth one: held open after, till its answer is said (holdMic). */
   bluetooth?: boolean
@@ -761,8 +773,9 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
  *  there, never an ask. */
 function captured(s: Summon, text: string) {
   if (text && !s.told) { s.told = true; happened({ t: s.at, kind: "said", text }) }
-  // (a short answer to a knock by the notch is answered there ("not now", "show me"); words over a session there are its)
-  const why = !text ? "" : captureHeard(text, s.at) ? "capture" : knockSaid(text) ? "knock" : toPresence(text, s.p) ? "session" : ""
+  // (the app's: a QA walk's words, capture's, a short answer to a knock by the notch ("not now"), words over a session
+  // there)
+  const why = !text ? "" : walkHeard(text, s.at) ? "walk" : captureHeard(text, s.at) ? "capture" : knockSaid(text) ? "knock" : toPresence(text, s.p) ? "session" : ""
   if (!why) return false
   voiceFront.stop()
   s.press?.end(why)
@@ -950,9 +963,11 @@ function hint(text: string) {
   setTimeout(draw, 2250)
 }
 
-async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
+async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of" | "free">) {
   // (a Talk key's is the companion's, whatever else listens: that ends, its words landing; other keys leave a session under way alone)
-  if (dictating() && !o.talk) return
+  // (a QA walk's listening gives way to any press, and comes back once it's done)
+  if (session?.into === "walk") { const was = session; session = null; walkListening(false); stopFor(was.sink) }
+  if (dictating() && !o.talk && !(o.into === "walk" && !session)) return
   if (session?.into === "field") { const was = session; session = null; void finish(was, false) }
   stopVoice()
   holdEnd()
@@ -1127,13 +1142,18 @@ const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "
 /** The page's elements near the point (CSS px of its window) as an ask's, in screen points, by id: what `--ax` and a
  *  drawing's `el` point at, as in another app. */
 function pageNear(els: unknown[]): (Near & { id: string })[] {
+  const t = pageThings(els)
+  if (t) lastNear = t
+  return lastNear
+}
+/** The page's elements (CSS px of its window) in screen points, by id; null with no window. */
+function pageThings(els: unknown[]): (Near & { id: string })[] | null {
   const w = host?.homeWindow(), b = w?.bounds
-  if (!w || !b) return lastNear
-  lastNear = els.slice(0, 40).flatMap((e) => {
+  if (!w || !b) return null
+  return els.slice(0, 40).flatMap((e) => {
     const t = thingFrom(e), f = t?.frame
     return t && f ? [{ ...t, frame: { x: Math.round(b.x + f.x * w.zoom), y: Math.round(b.y + f.y * w.zoom), width: Math.round(f.width * w.zoom), height: Math.round(f.height * w.zoom) } }] : []
   }).map((e, i) => ({ ...e, id: `a${i + 1}` }))
-  return lastNear
 }
 /** The home window's page answering inAppAt: only what a place has (its elements near, as they are). */
 function placeTold(from: WebContents, m: { id?: unknown; place?: unknown }) {
@@ -1144,8 +1164,66 @@ function placeTold(from: WebContents, m: { id?: unknown; place?: unknown }) {
   placeAsked.get(m.id)?.(place && Object.keys(place).length ? place : null)
 }
 
+// ---------- a QA walk (walk.ts): its own hands-free session, giving way to every press, dictation and spoken answer
+
+/** A QA walk's session: its words go to the walk, never into a field or an ask. */
+function walkTold(s: Session, e: Record<string, unknown>) {
+  if (e.type === "start") { s.ready = true; walkListening(true) }
+  else if (e.type === "level") s.level = Number(e.v) || 0
+  else if (e.type === "pending") { s.pending = String(e.text ?? ""); walkPending(s.pending) }
+  else if (e.type === "final") { s.pending = ""; walkFinal(String(e.text ?? "")) }
+  else if (e.type === "end") {
+    session = null
+    // (cut short: what it had heard counts)
+    if (s.pending.trim()) walkFinal(s.pending)
+    walkListening(false)
+    walkTick()
+  }
+}
+let walkTimer: ReturnType<typeof setInterval> | null = null, walkRetry = 0, walkFails = 0
+/** While a walk is on, it listens whenever nothing else has the microphone and nothing is said aloud (its answers
+ *  would be heard as items); a press, a dictation or a spoken answer pauses it, and it comes back after. */
+function walkTick() {
+  const want = walkListens() && (!QUIET || !!process.env.VAULTITE_DICTATION_FILE)
+  if (!want) {
+    if (walkTimer) clearInterval(walkTimer)
+    walkTimer = null
+    if (session?.into === "walk") stopFor(session.sink)
+    return
+  }
+  walkTimer ??= setInterval(walkTick, 700)
+  const talking = !!speakingNow || speaker.saying() || voiceFront.speaking() || (!!summon && !["open", "missed", "closed"].includes(summon.m.phase))
+  if (session?.into === "walk") { if (talking) stopFor(session.sink); return }
+  if (talking || session || dictating() || starting || Date.now() < walkRetry) return
+  void listenWalk()
+}
+async function listenWalk() {
+  walkRetry = Date.now() + 1500
+  await listenFor({ into: "walk", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: false }, free: true })
+  if (session?.into === "walk") { freeFor(session.sink); walkFails = 0; return }
+  // (the mic didn't start: tried again a little later, and the walk ends with what it has after a few)
+  walkRetry = Date.now() + 5000
+  if (++walkFails >= 3) { walkFails = 0; void endWalk(true, "the microphone didn't start") }
+}
+/** What a walk's item was over (never the display's picture: that's walk.ts', only with screen recording allowed). */
+async function walkPlace(p: Point): Promise<{ place: WalkPlace; near: Thing[]; window?: Rect; private?: boolean }> {
+  const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null)
+  const win = w?.window && !w.vaultite ? w : null
+  if (win && hidden(win)) return { place: { appName: "a private app" }, near: [], private: true }
+  const [text, under, near, inApp] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 3000 }).catch(() => null) : null, underAt(p),
+    w?.vaultite ? null : screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius: 160, max: 30, ...(win ? { window: win.window } : {}) }).catch(() => null),
+    w?.vaultite ? inAppAt(p) : null])
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined)
+  const place: WalkPlace = { ...(win ? { app: win.bundle, appName: win.name, title: win.title } : w?.vaultite ? { vaultite: true, appName: app.getName(), title: w.title } : under ? { app: under.bundle, appName: under.name } : {}),
+    ...(text?.ok && text.text ? { screen: text.text } : {}), ...(under ? { under: under.text } : {}),
+    ...(inApp ? Object.fromEntries(Object.entries({ path: str(inApp.path), line: typeof inApp.line === "number" ? inApp.line : undefined, ui: str(inApp.ui), under: str(inApp.under) }).filter(([, v]) => v !== undefined)) : {}) }
+  const things = inApp && Array.isArray(inApp.near) ? pageThings(inApp.near) ?? [] : (near?.elements ?? []).flatMap((e) => thingFrom(e) ?? [])
+  return { place, near: things, ...(w?.frame ? { window: w.frame } : {}) }
+}
+
 function told(s: Session, e: Record<string, unknown>) {
   if (session !== s) return
+  if (s.into === "walk") return walkTold(s, e)
   const said = (t: unknown) => String(t ?? "")
   if (s.into === "summon" && (e.type === "start" || e.type === "error" || e.type === "end" || e.type === "fallback"))
     s.of?.press?.step(`stt-${e.type}`, { ...(e.reason ? { reason: e.reason } : {}), ...(e.code ? { code: e.code } : {}), ...(e.message ? { message: String(e.message).slice(0, 200) } : {}),
@@ -1309,6 +1387,7 @@ function chatChanged(done?: PanelData["words"]) {
 /** An ask typed (or said) in its conversation: about the point of its exchange, else where its cursor is on screen,
  *  else the pointer. */
 async function askFrom(name: string, text: string) {
+  if (walkHeard(text)) { saidInBox = 0; return }
   const a = live.state.agents.get(name), x = exchange?.name === name ? exchange : null
   const p = x?.p ?? (a && onScreen(a) ? drawnAt.get(keyOf(a)) : undefined) ?? screen.getCursorScreenPoint()
   const w = x ? x.w : await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null)
@@ -1890,7 +1969,7 @@ function draw() {
   const hintNow = hinted && hinted.until > Date.now() ? hinted : null
   const pill: Scene["pill"] = d && d.into === "field" ? { level: d.level, text: boxWords(d), pending: d.pending, ready: d.ready, ...(d.free ? { free: true } : {}) }
     : hintNow ? { level: 0, text: hintNow.text, ready: true, hint: true } : null
-  lastScene = { ...handOff(agents, called), pill, speaking: speakingNow, region: regionScene(), behind: takeoverBehind() }
+  lastScene = { ...handOff(agents, called), pill, speaking: speakingNow, region: regionScene(), behind: takeoverBehind(), walk: walkScene() }
   ringFollows()
   showOverlay(based || null, lastScene)
   badge()
@@ -1990,6 +2069,7 @@ async function changedCall(a: unknown) {
 export async function screenCall(name: string, args: unknown[]) {
   if (name === "screen:timeline") return timelineCall(args[0])
   if (name === "screen:changed") return changedCall(args[0])
+  if (name === "screen:walk") return walkCall(String((args[0] as { do?: unknown } | undefined)?.do ?? "status"))
   const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { app?: unknown; window?: unknown; max?: unknown }
   const window = Number.isInteger(o.window) ? o.window as number : 0, bundle = typeof o.app === "string" ? o.app : ""
   // (whose window it is first: a private app's is never read)

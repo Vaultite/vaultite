@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **QA walks**: say "start a QA walk" with the Talk key, then go around any app talking; each sentence is noted with
+  the thing under your pointer and a frame of it, "scratch that" drops the last, and "done" sends them as one job per
+  project (Vaultite, your site...), all kept in Captures. A chip under the menu bar counts them.
 - **Live editing**: once a job works on a page (a preview or a note), what you ask over it with the Talk key goes
   straight to that job as you say it, ask after ask, with no wait for the companion; when the page reloads, the
   change is ringed. "Undo that" takes back exactly the last ask's change, never your own edits or other asks'.

@@ -6,9 +6,11 @@ export type Happened = { t: number } & (
   | { kind: "app"; app: string; name: string; title?: string; private?: boolean }
   | { kind: "click"; x: number; y: number; under?: string }
   | { kind: "said"; text: string }
-  | { kind: "box"; rect: Rect | null })
+  | { kind: "box"; rect: Rect | null }
+  /** The thing the pointer rested on as they said something (a QA walk's item): its role, name and what it's in. */
+  | { kind: "thing"; x: number; y: number; thing: string })
 export type Kind = Happened["kind"]
-export const KINDS: Kind[] = ["pointer", "app", "click", "said", "box"]
+export const KINDS: Kind[] = ["pointer", "app", "click", "said", "box", "thing"]
 /** How far back it reaches (ms), and the most it keeps: bounded however busy. */
 export const KEEP_MS = 30_000, MOST = 6000
 
@@ -55,6 +57,7 @@ export function timelineLines(h: Happened[], from: number) {
     if (e.kind === "app") return `${at(e.t)} ${e.private ? "a private app" : `${e.name}${e.title ? ` "${e.title}"` : ""}`} in front`
     if (e.kind === "click") return `${at(e.t)} clicked at ${Math.round(e.x)},${Math.round(e.y)}${e.under ? `: ${e.under}` : ""}`
     if (e.kind === "said") return `${at(e.t)} said ${JSON.stringify(e.text)}`
+    if (e.kind === "thing") return `${at(e.t)} pointing at ${e.thing} (${Math.round(e.x)},${Math.round(e.y)})`
     return `${at(e.t)} ${e.rect ? `box at ${e.rect.x},${e.rect.y} ${e.rect.width}×${e.rect.height}` : "box closed"}`
   })
 }

@@ -130,6 +130,12 @@ above that), act, run it again, and never end your turn.
 - Their box: held, a drag draws a box that stays on screen (an ask carries it: `their box`). "Record this", "stop" and
   "that, just now" are the app's, never asks: it sends the clip, its frames and their words to the job on that surface
   (else a new job when they said what to do, else Captures) and says where. Its last 30 s: `screen timeline`.
+- A QA walk: "start a QA walk" (with the Talk key, in its box, or the menu bar's Start a QA walk) is the app's, never an
+  ask; so are "scratch that", "done" and "cancel the walk" while one is on. It listens hands-free (giving way to a press,
+  a dictation or your voice), each sentence an item: their words, the thing their pointer rested on as they said it
+  (role, name, what it's in), a frame and a short clip when screen recording is allowed (never asked for). Done sends a
+  job per project (the vault's project notes by site or app, else a preview's or an editor's repo) and keeps it all in
+  Captures. Asked by typing to start or end one: `companion walk start|done|scratch|cancel` (no `do`: how it goes).
 - Their clicks: held, a plain click (let go within a few points) still goes to the app, and the ask says what it was
   (`they clicked as they spoke`); hands-free, the mouse and keys are never the companion's. Words between your tool
   calls with no tag aren't said (narration); your answer and each walkthrough step carry a tag and are.

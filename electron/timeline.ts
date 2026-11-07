@@ -26,16 +26,26 @@ const RING = KEEP_MS + 2000
 
 export function timelineHost(x: TimelineHost) { host = x }
 export const timelineOn = () => wanted
+/** Whether its video is kept now (a clip can be made of it). */
+export const timelineFilmed = () => wanted && filmed && videoOn()
 
-/** On (the setting, the companion on, the app that hears the keys) or off (everything kept forgotten). */
-export function keepTimeline(on: boolean) {
-  if (on && wanted) { if (!videoOn() && Date.now() - asked > 60_000) void startVideo(); return }
+/** Whether the video is kept with it: off, only what happened is (a QA walk without screen recording). */
+let filmed = true
+/** On (the setting, the companion on, the app that hears the keys; or a QA walk) or off (everything kept forgotten);
+ *  `video` false keeps what happened without the screen's video. */
+export function keepTimeline(on: boolean, video = true) {
+  if (on && wanted) {
+    if (video !== filmed) { filmed = video; if (!video && !host?.holding()) void stopVideo() }
+    if (filmed && !videoOn() && Date.now() - asked > 60_000) void startVideo()
+    return
+  }
   if (on === wanted) return
   wanted = on
+  filmed = video
   if (on) {
     sampler = setInterval(samplePointer, 100)
     host?.clicks(true)
-    void startVideo()
+    if (filmed) void startVideo()
   } else {
     if (sampler) clearInterval(sampler)
     sampler = null
@@ -52,7 +62,7 @@ async function startVideo(p = screen.getCursorScreenPoint()) {
 }
 /** What's left out of the video looked at again (another app in front, our windows changed), on the display at `p`. */
 export function timelineRefollow(p?: { x: number; y: number }) {
-  if (wanted && videoOn() && !host?.holding()) void startVideo(p)
+  if (wanted && filmed && videoOn() && !host?.holding()) void startVideo(p)
 }
 
 /** Something that happened, kept while it's on (never while a private app is in front, but that it came). */
@@ -79,6 +89,7 @@ export async function queryTimeline(q: Query & { clip?: boolean; box?: Rect; box
   if ("why" in r) return { ok: false, why: r.why }
   const events = within(h, r, q.kinds)
   if (!q.clip) return { ok: true, ...r, events }
+  if (!filmed) return { ok: true, ...r, events, clipWhy: "the screen isn't kept: Vaultite has no screen recording" }
   const boxes: BoxAt[] = q.boxes?.length ? q.boxes : [{ t: r.from, rect: q.box ?? boxThen(r.from) ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).bounds }]
   const clip = await saveClip(r.from, r.to, boxes)
   return { ok: true, ...r, events, ...("why" in clip ? { clipWhy: clip.why } : { clip }) }

@@ -28,6 +28,7 @@ import { type JobState, jobSpoken, jobTimingsText, jobTold } from "./jobs.ts"
 import { knockOps } from "./knockops.ts"
 import { captureOps } from "./captures.ts"
 import { liveEdits } from "./liveedit.ts"
+import { walkOps } from "./walkops.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide, sitesOf } from "./guides.ts"
@@ -2665,6 +2666,7 @@ const liveEditing = liveEdits(plugin, {
   fallback: (m) => void handOut(m),
   desktop: (name, args) => plugin.desktop(name, args),
 })
+walkOps(plugin, jobs)
 /** The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"):
  *  its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first. */
 plugin.provide("agents-used:companion", (): AgentUse[] => [

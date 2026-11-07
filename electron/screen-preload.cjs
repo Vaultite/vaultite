@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
   // (the user's box: moved or resized here, in this display's points; a button on it pressed)
   region: (r) => ipcRenderer.send("screen:region", r),
   regionAct: (what) => ipcRenderer.send("screen:region-act", what),
+  walkAct: (what) => ipcRenderer.send("screen:walk-act", what),
   // (the companion's drawings: this display's, and what the user presses on them)
   draw: {
     on(fn) {

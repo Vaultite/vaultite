@@ -23,6 +23,8 @@ import { type DrawBridge, ScreenDrawings } from "./screendraw"
 import { Region, REGION_STYLE } from "./screenregion"
 import { Island, ISLAND_STYLE } from "./screenisland"
 import type { RegionScene } from "../../plugins/core/companion/clips"
+import type { WalkScene } from "../../plugins/core/companion/walks"
+import { WalkChip } from "./screenwalk"
 
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; width: number; height: number }
@@ -39,7 +41,9 @@ type Shown = { width: number; height: number; top: number; agents: Agent[]; summ
   speaking?: { name: string; level?: number } | null
   /** The user's box, in this display's points. */
   region?: RegionScene | null
-  behind?: Behind | null }
+  behind?: Behind | null
+  /** A QA walk's chip. */
+  walk?: WalkScene | null }
 /** A step in a window behind theirs (electron/takeover.ts' BehindCard): its live picture, the cursor in it (fractions of
  *  the window), what it does; `edge`: the room the Dock takes at this display's corner. */
 type Behind = { agent: string; tint: string; app: string; title: string; img: string; aspect: number; cursor: Point | null; caption: string
@@ -55,7 +59,7 @@ type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) =
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
   onCue?: (fn: (name: Cue) => void) => () => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
-  region?: (r: Rect) => void; regionAct?: (what: string) => void
+  region?: (r: Rect) => void; regionAct?: (what: string) => void; walkAct?: (what: string) => void
   panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: (esc?: boolean) => void; mic: () => void; play?: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
@@ -608,7 +612,9 @@ function Screen() {
       {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} speaking={!!s.summon && s.speaking?.name === s.summon.name} />}
       {s.region && <Region r={s.region} top={s.top} grab={grab} moved={(r) => api?.region?.(r)} act={(w) => api?.regionAct?.(w)} />}
       {(s.behind ?? behindGone) && <BehindCard b={(s.behind ?? behindGone)!} gone={!s.behind} />}
-      {s.pill && (s.pill.hint ? <Hint text={s.pill.text} top={s.top} /> : <Pill p={s.pill} top={s.top} />)}
+      {s.walk && <WalkChip w={s.walk} top={s.top} grab={grab} act={(w) => api?.walkAct?.(w)} />}
+      {/* (under a walk's chip, which keeps their place) */}
+      {s.pill && (s.pill.hint ? <Hint text={s.pill.text} top={s.top + (s.walk ? 36 : 0)} /> : <Pill p={s.pill} top={s.top + (s.walk ? 36 : 0)} />)}
     </>
   )
 }
