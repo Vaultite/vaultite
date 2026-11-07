@@ -100,7 +100,7 @@ export class Mirror {
       const c = this.copied.get(p)
       if (c && c.hash === v.blob) { if (c.node !== v.node) this.copied.set(p, { ...c, node: v.node }); continue }
       const abs = this.abs(p), tmp = `${abs}.sync-part`
-      const src = folder.hash(p) === v.blob ? folder.abs(p) : store.hasBlob(v.blob) ? store.blobPath(v.blob) : null
+      const src = folder.hash(p) === v.blob ? folder.abs(p) : store.blobFile(v.blob)
       if (!src) continue
       try {
         fs.mkdirSync(path.dirname(abs), { recursive: true })

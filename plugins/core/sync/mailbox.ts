@@ -39,7 +39,8 @@ export class Mailbox {
         if (!b || !e.node.device && !e.node.parents.length || e.node.size > BLOB_MAX) continue
         const to = path.join(dir, "blobs", b)
         if (fs.existsSync(to)) continue
-        const from = store.blobPath(b)
+        const from = store.blobFile(b)
+        if (!from) continue
         try { fs.copyFileSync(from, `${to}.tmp`, fs.constants.COPYFILE_FICLONE); fs.renameSync(`${to}.tmp`, to) } catch { /* not here: a peer has it */ }
       }
       const name = segName(part[0].seq, part[part.length - 1].seq)

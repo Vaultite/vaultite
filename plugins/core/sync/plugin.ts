@@ -126,7 +126,7 @@ export class SyncSet {
     if (this.shadow) this.timers.push(setInterval(() => void this.compare().catch((e) => this.note(`compare: ${(e as Error).message}`)), COMPARE_MS))
     for (const t of this.timers) t.unref?.()
     // (its own look first, so a device starting fresh makes the versions every device makes alike)
-    void this.run(() => this.stepNow()).then(() => this.exchangeAll()).then(() => this.mail())
+    void this.run(() => this.stepNow()).then(() => this.compact()).then(() => this.exchangeAll()).then(() => this.mail())
   }
   close() {
     this.closed = true
@@ -179,6 +179,13 @@ export class SyncSet {
     return r
   }
   heldTold = false
+  /** Big blobs copied before they could be pointed at (a store from before): pointed at their files now. */
+  compact() {
+    for (const [p, t] of this.replica.seen) {
+      const st = t.size >= 1 << 20 ? this.input.stat(p) : null
+      if (st && st.size === t.size && st.mtime === t.mtime) this.store.placed(t.hash, this.input, p)
+    }
+  }
   /** What the hub does after a change: the copy. */
   private after() {
     if (this.mirror && this.isHub()) void this.run(() => this.copy())
@@ -436,7 +443,8 @@ plugin.route("GET", "sync/blob", async (req) => {
   await plugin.ownerOnly(req, "Device sync")
   const s = setOf(req.query.set), h = String(req.query.hash ?? "")
   if (!/^[0-9a-f]{64}$/.test(h)) throw new HTTPError(400, "hash: a blob's sha-256")
-  if (s.store.hasBlob(h)) return new FileAnswer(s.store.blobPath(h), "application/octet-stream")
+  const file = s.store.blobFile(h)
+  if (file) return new FileAnswer(file, "application/octet-stream")
   for (const [p, t] of s.replica.wrote) if (t.hash === h && s.folder.hash(p) === h) return new FileAnswer(s.folder.abs(p), "application/octet-stream")
   throw new HTTPError(404, "no such blob here")
 }, { lock: false, sync: false })

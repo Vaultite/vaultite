@@ -55,6 +55,8 @@ export interface Store {
   keepFile?(h: string, folder: Folder, path: string): boolean
   /** A blob's own file, to copy from (Folder.copyIn). */
   blobFile?(h: string): string | null
+  /** A blob was just written into the folder there (it may keep it as that file, not twice). */
+  placed?(h: string, folder: Folder, path: string): void
 }
 
 export const sha = (b: Uint8Array | string) => crypto.createHash("sha256").update(b).digest("hex")
@@ -618,7 +620,7 @@ export class Replica {
         if (now && now.path !== h.path && now.hash === h.blob) st = this.folder.move(now.path, h.path)
         else {
           const file = h.size > 1 << 20 && this.folder.copyIn ? this.store.blobFile?.(h.blob!) : null
-          if (file) st = this.folder.copyIn!(h.path, file, h.blob!)
+          if (file) { st = this.folder.copyIn!(h.path, file, h.blob!); if (st) this.store.placed?.(h.blob!, this.folder, h.path) }
           else {
             const bytes = this.store.blob(h.blob!)
             if (!bytes) continue

@@ -5,6 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { type Entry, type FileStat, type Folder, norm, sha, type Store, unsynced } from "./engine.ts"
 
+const BIG = 1 << 20
 const rel = (root: string, abs: string) => norm(path.relative(root, abs).split(path.sep).join("/"))
 
 export class DiskFolder implements Folder {
@@ -145,13 +146,32 @@ export class DiskStore implements Store {
     this.pending = null
   }
   blobPath(h: string) { return path.join(this.dir, "blobs", h.slice(0, 2), h) }
-  hasBlob(h: string) { return fs.existsSync(this.blobPath(h)) }
-  blob(h: string) {
+  /** A big file's bytes kept where they are (a file in the folder) rather than copied: iCloud Drive's files can't be
+   *  cloned, and media twice over is gigabytes. Good while that file is as it was; then that version is gone. */
+  private pointer(h: string): string | null {
     try {
-      const b = new Uint8Array(fs.readFileSync(this.blobPath(h)))
-      if (sha(b) === h) return b
-      fs.rmSync(this.blobPath(h), { force: true }) // (a linked copy changed under it: not that version any more)
-    } catch { /* none */ }
+      const at = JSON.parse(fs.readFileSync(`${this.blobPath(h)}.at`, "utf8")) as { path: string; size: number; mtime: number }
+      const st = fs.statSync(at.path)
+      if (st.size === at.size && Math.round(st.mtimeMs) === at.mtime) return at.path
+    } catch { /* none, or gone */ }
+    return null
+  }
+  private point(h: string, abs: string) {
+    const st = fs.statSync(abs), to = `${this.blobPath(h)}.at`
+    fs.mkdirSync(path.dirname(to), { recursive: true })
+    fs.writeFileSync(`${to}.tmp`, JSON.stringify({ path: abs, size: st.size, mtime: Math.round(st.mtimeMs) }))
+    fs.renameSync(`${to}.tmp`, to)
+  }
+  hasBlob(h: string) { return fs.existsSync(this.blobPath(h)) || this.pointer(h) !== null }
+  blob(h: string) {
+    for (const p of [this.blobPath(h), this.pointer(h)]) {
+      if (!p) continue
+      try {
+        const b = new Uint8Array(fs.readFileSync(p))
+        if (sha(b) === h) return b
+        if (p === this.blobPath(h)) fs.rmSync(p, { force: true }) // (a linked copy changed under it: not that version any more)
+      } catch { /* none */ }
+    }
     return null
   }
   putBlob(h: string, b: Uint8Array) {
@@ -161,19 +181,29 @@ export class DiskStore implements Store {
     fs.writeFileSync(`${p}.tmp`, b)
     fs.renameSync(`${p}.tmp`, p)
   }
-  /** A clone on APFS (no space until one changes); elsewhere a hard link, checked by hash when read. */
+  /** A clone on APFS (no space until one changes), a hard link elsewhere (checked by hash when read); a big file that
+   *  can be neither (iCloud Drive's), pointed at where it is. */
   keepFile(h: string, folder: Folder, p: string) {
     if (!(folder instanceof DiskFolder)) return false
     const to = this.blobPath(h)
-    if (fs.existsSync(to)) return true
+    if (fs.existsSync(to) || this.pointer(h)) return true
     fs.mkdirSync(path.dirname(to), { recursive: true })
     try {
       if (process.platform === "darwin") fs.copyFileSync(folder.abs(p), `${to}.tmp`, fs.constants.COPYFILE_FICLONE_FORCE)
       else fs.linkSync(folder.abs(p), `${to}.tmp`)
       fs.renameSync(`${to}.tmp`, to)
       return true
-    } catch { fs.rmSync(`${to}.tmp`, { force: true }); return false }
+    } catch { fs.rmSync(`${to}.tmp`, { force: true }) }
+    try { if (fs.statSync(folder.abs(p)).size >= BIG) { this.point(h, folder.abs(p)); return true } } catch { /* gone */ }
+    return false
   }
-  blobFile(h: string) { const p = this.blobPath(h); return fs.existsSync(p) ? p : null }
+  /** A big blob now also in the folder (written there): kept as a pointer to it, not twice. */
+  placed(h: string, folder: Folder, p: string) {
+    if (!(folder instanceof DiskFolder)) return
+    try { if (fs.statSync(this.blobPath(h)).size < BIG) return } catch { return }
+    this.point(h, folder.abs(p))
+    fs.rmSync(this.blobPath(h), { force: true })
+  }
+  blobFile(h: string) { const p = this.blobPath(h); return fs.existsSync(p) ? p : this.pointer(h) }
   blobSize(h: string) { try { return fs.statSync(this.blobPath(h)).size } catch { return -1 } }
 }
