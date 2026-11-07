@@ -1,3 +1,5 @@
+import fs from "node:fs"
+import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 
@@ -256,5 +258,26 @@ export default async ($: VaultTest) => {
       /didn't|but "Advanced" is still folded/.test(T.doneText({ ok: true, effect: still })) && T.doneText({ ok: true, how: "ax", effect: opened }).startsWith("Done (through Accessibility): \"Advanced\" is open now"))
     const plain = { ...before, role: "button", state: {} }
     check("takeover: a plain button with nothing near it changed isn't called a failure", T.effectOf("click", { ok: true, before: plain, target: plain, near }, near)?.ok === true)
+  }
+
+  {
+    // The Mac helpers' line protocol (electron/linehelper.ts), with a stand-in helper: answers, events, a timeout, a death.
+    const { lineHelper } = await import("../../../electron/linehelper.ts")
+    const bin = path.join($.tmp, "line-helper")
+    fs.writeFileSync(bin, `#!${process.execPath}\nrequire("node:readline").createInterface({ input: process.stdin }).on("line", (l) => { const m = JSON.parse(l)
+  if (m.op === "die") process.exit(1); if (m.op === "slow") return; if (m.op === "event") process.stdout.write(JSON.stringify({ event: "x" }) + "\\n")
+  process.stdout.write(JSON.stringify({ id: m.id, ok: true, pid: process.pid }) + "\\n") })\n`)
+    fs.chmodSync(bin, 0o755)
+    const events: unknown[] = []
+    let exits = 0
+    const h = lineHelper({ binary: async () => bin, event: (m) => events.push(m), exited: () => exits++ })
+    const a = await h.ask<{ ok?: boolean; pid?: number }>({ op: "hi" }), e = await h.ask({ op: "event" }), slow = await h.ask<{ why?: string }>({ op: "slow" }, 200)
+    check("mac helpers: an ask is answered, an event heard, a slow one times out", a.ok === true && (e as Any).ok === true && events.length === 1 && slow.why === "timeout", { a, events, slow })
+    const pending = h.ask<{ why?: string }>({ op: "slow" }, 5000), died = await h.ask<{ why?: string }>({ op: "die" }, 5000), lost = await pending
+    const again = await h.ask<{ ok?: boolean; pid?: number }>({ op: "hi" })
+    check("mac helpers: one that dies answers what it held, and the next ask starts another", died.why === "helper" && lost.why === "helper" && exits === 1 && again.ok === true && again.pid !== a.pid, { died, lost, exits, again })
+    h.quit()
+    const gone = lineHelper({ binary: async () => path.join($.tmp, "no-such-helper"), exited: () => exits++ })
+    check("mac helpers: one that can't start answers so, nothing thrown", (await gone.ask<{ why?: string }>({ op: "hi" }, 3000)).why === "helper" && !gone.running())
   }
 }
