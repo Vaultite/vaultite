@@ -8,6 +8,8 @@ import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
+  // (the companion acting: its own tool call, not any agent's vau)
+  const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
   const { app, api, check } = $
   const L = await import("../../../plugins/core/companion/liveedit.ts")
   const U = await import("../../../plugins/core/companion/unedit.ts")
@@ -141,7 +143,7 @@ export default async ($: VaultTest) => {
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion", jobs_agent: "claude" })
       c.screenMoment({ kind: "ask", agent: "Claude", text: "make me a landing page", ...over })
-      const [st, b] = await api("POST", "ops/companion.handoff", { task: "Make a landing page", cwd: repo }, agent)
+      const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make a landing page", cwd: repo }, agent))
       job = b.id
       turn = { text: "Made it.", files: [], at: Date.now() + 1500, final: true }
       const ready = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job }))[1]; return !["starting", "working"].includes(r.state) && r }, 10000, 100)
@@ -151,7 +153,7 @@ export default async ($: VaultTest) => {
       const typed = await waitFor(() => /Live edit L1: [^\n]*make the title say Hi/.test(told()) && fs.readFileSync(page, "utf8").includes("Hi") && told(), 8000, 50)
       check("live edit: the next ask over that page goes straight into its worker's terminal, tagged, no turn of the companion's first",
         !!typed && m?.live === job && fs.readFileSync(page, "utf8") === "<h1>Hi</h1>\n", [told(), m])
-      const [hs, hb] = await api("POST", "ops/companion.handoff", { task: "Make the title say Hi", job }, agent)
+      const [hs, hb] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make the title say Hi", job }, agent))
       check("live edit: the companion handing the same ask on is refused: the job has it", hs === 409 && /already went straight to the job/.test(hb.error), [hs, hb])
       turn = { text: "Title says Hi now.", files: [page], at: Date.now() + 1000, final: true }
       const said = await waitFor(async () => (await says()).includes("Title says Hi now."), 10000, 100)
@@ -187,7 +189,7 @@ export default async ($: VaultTest) => {
       await api("PATCH", "config/plugin/companion", { mode: "off", agent: null, summoned_model: null, jobs_agent: null })
       sc.emit("close")
       Object.assign(cc, was)
-      if (job) await api("POST", "ops/companion.job-stop", { id: job }, agent).catch(() => {})
+      if (job) await asItsTool(() => api("POST", "ops/companion.job-stop", { id: job }, agent)).catch(() => {})
       fs.rmSync(tmp, { recursive: true, force: true })
     }
   }

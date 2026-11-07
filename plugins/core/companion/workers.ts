@@ -10,9 +10,12 @@ import { cardOf, choiceIn, endEvent, landTask, mergedSaid, followTask, gist, typ
 import type { Moment } from "./plugin.ts"
 import { branchOf, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
 
-/** What the plugin gives the jobs: the ask a handoff came from, its say, its action log, who an `as` names. */
+/** What the plugin gives the jobs: the ask a handoff came from, whose a call is, its say, its action log, who an `as` names. */
 export type JobDeps = {
   askOf: (name: string) => Moment | undefined
+  /** Whether a call as agent `name` is its own (its tool's, its terminal's, the user's in the app): only that one speaks
+   *  in its voice and carries its ask, never another agent's vau or a script's. */
+  own: (name: string, ctx: OpCtx) => boolean
   say: (ctx: OpCtx, name: string, text: string) => Promise<unknown>
   did: (name: string, op: string) => void
   who: (p: Record<string, unknown>) => string
@@ -492,7 +495,8 @@ works in its own git worktree and branch beside the checkout (repo-<job id>, bra
 checkout itself, and ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they
 say so; Keep and merge (or land) lands it from that worktree and removes it. Every
 handoff announces itself in one short line ("Handed that off to a background agent."; a follow-up, "Passed that on to its job.");
-say replaces it, still one short line, only when they need more (a question, an unexpected place). End your turn. job: a follow-up or a correction to one of yours (companion
+say replaces it, still one short line, only when they need more (a question, an unexpected place). End your turn. From
+another agent or a script (not the companion), nothing is said and no ask of the user's goes with it: task is all it has. job: a follow-up or a correction to one of yours (companion
 jobs), typed into its terminal; anything about its result ("merge it", "try X too") goes to it too, done or closed (it
 resumes), with land for their word to merge it. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
 
@@ -516,27 +520,28 @@ resumes), with land for their word to merge it. A folder the jobs may never run 
     run: async (p, ctx) => {
       const name = d.who(p), task = str(p.task).trim()
       if (!task) throw new OpError("task: what to do")
+      // (another agent's vau or a script, as the companion by its `who`: not its words, nor its user's ask)
+      const own = d.own(name, ctx), ask = own ? d.askOf(name) : undefined
+      const told = async (line: string) => { if (own) { d.did(name, "handoff"); await d.say(ctx, name, str(p.say).trim() || line) } }
       // (an ask live editing sent straight to the job on its page: it has it already)
-      const sent = d.askOf(name)?.live
+      const sent = ask?.live
       if (sent) throw new OpError(`this ask already went straight to the job ${sent} working on that page (live editing), which does it: end your turn`, 409)
       if (str(p.job)) {
         const j = jobOf(str(p.job))
         // (their ask goes with it once: one the job was already given isn't told again)
-        const m = d.askOf(name), fresh = m && m.t > (j.asked ?? 0) ? m : undefined
+        const m = ask, fresh = m && m.t > (j.asked ?? 0) ? m : undefined
         const unsureWhy = ctx.who.agent ? unsure(j, m, str(p.which)) : ""
         if (unsureWhy) throw new OpError(unsureWhy, 409)
         if (p.land === true) await land(ctx, j, followTask(task, fresh), task)
         else await steer(ctx, j, followTask(task, fresh))
         if (fresh) j.asked = fresh.t
         if (str(p.title).trim()) await retitle(ctx, j, str(p.title))
-        d.did(name, "handoff")
-        await d.say(ctx, name, str(p.say).trim() || (p.land === true ? "Told its job to merge it." : "Passed that on to its job."))
+        await told(p.land === true ? "Told its job to merge it." : "Passed that on to its job.")
         return cardOf(j)
       }
-      const j = await begin(ctx, task, d.askOf(name), p)
-      d.did(name, "handoff")
-      // (every handoff says so in a line, a routine one too: else it looked like nothing happened)
-      await d.say(ctx, name, str(p.say).trim() || "Handed that off to a background agent.")
+      const j = await begin(ctx, task, ask, p)
+      // (every handoff of its own says so in a line, a routine one too: else it looked like nothing happened)
+      await told("Handed that off to a background agent.")
       return { ...cardOf(j), why: j.where.why }
     },
     text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`,
@@ -578,7 +583,7 @@ its terminal (companion job-open).
       let by = ctx.who
       if (!userSurface(ctx.who)) {
         // (an agent answers only with the user's own words, said after it began waiting: never yes on its own)
-        const m = d.askOf(d.who(p)), said = plainWords(str(p.said))
+        const m = d.own(d.who(p), ctx) ? d.askOf(d.who(p)) : undefined, said = plainWords(str(p.said))
         if (!m?.text || m.t < w.at || Date.now() - m.t > ASKED_MS || !said || !` ${plainWords(m.text)} `.includes(` ${said} `)) throw new OpError(NOT_THEIRS, 403)
         by = BY_THEIR_WORD
       }
@@ -677,7 +682,7 @@ in one short line, merge it or close it as it is (each a button).
       const j = jobOf(str(p.id))
       // (an agent's: the user's own stop, from the app or their shell, is theirs)
       if (ctx.who.agent) {
-        const m = d.askOf(d.who(p)), why = unsure(j, m, str(p.which))
+        const m = d.own(d.who(p), ctx) ? d.askOf(d.who(p)) : undefined, why = unsure(j, m, str(p.which))
         if (why) throw new OpError(why, 409)
         // (closing what they haven't decided on is theirs: "keep it" with nothing shown once closed an unmerged job)
         const said = plainWords(str(p.said))

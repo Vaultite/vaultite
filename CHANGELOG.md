@@ -16,6 +16,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Every coding job works in its own worktree**: a job never edits or switches the checkout it was asked over (on an
   always-on machine, its live server's); its change reaches main only by Keep and merge, landed from its worktree,
   which is then removed.
+  which is then removed.
+- **Only the companion's own handoffs speak for it**: a job another agent or a script starts says nothing in the
+  companion's voice, isn't filed under your last ask, and its worker gets just its task, not your words from earlier.
 
 ## 0.12.0 (2026-11-07)
 

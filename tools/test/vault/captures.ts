@@ -8,6 +8,8 @@ import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
+  // (the companion acting: its own tool call, not any agent's vau)
+  const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
   const { VAULT, api, app, check } = $
   // Region capture: what a Talk key's words ask of it, the box and its moves, and where a clip goes (companion.capture).
   const C = await import("../../../plugins/core/companion/clips.ts")
@@ -128,7 +130,7 @@ export default async ($: VaultTest) => {
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion" })
       c.screenMoment({ kind: "ask", agent: "Claude", text: "make the heading blue", app: "com.example.browser", title: "Site", screen: `Address and search bar: localhost:${port}/about`, sx: 10, sy: 20 })
-      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Make the heading blue" }, agent)
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make the heading blue" }, agent))
       ids.push(b.id)
       const job = b
       ;[st, b] = await api("POST", "ops/companion.capture", capture({ narration: [{ t: 0, text: "it flickers" }, { t: 1800, text: "there" }], place: { app: "com.example.browser", title: "Site", url: `http://localhost:${port}/about` } }), asApp)
@@ -143,7 +145,7 @@ export default async ($: VaultTest) => {
         st === 200 && b.said === "Started a job: The toast flashes twice" && /^the toast flashes twice[^]*The clip: [^]*clip\.mp4/.test(fresh?.prompt ?? ""), [st, b, fresh?.prompt])
     } finally {
       server.kill()
-      for (const id of ids.filter(Boolean)) await api("POST", "ops/companion.job-stop", { id }, agent).catch(() => {})
+      for (const id of ids.filter(Boolean)) await asItsTool(() => api("POST", "ops/companion.job-stop", { id }, agent)).catch(() => {})
       Object.assign(cc, was)
       for (const k of Object.keys(cc)) if (!(k in was)) delete cc[k]
       sc.emit("close")

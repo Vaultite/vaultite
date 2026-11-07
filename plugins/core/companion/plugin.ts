@@ -1981,6 +1981,17 @@ const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
 const ALLOWED = ["mcp__vaultite-app", ...ALLOW.filter((c) => c !== "vau companion").map((c) => `Bash(${c}:*)`)]
 const AS_TOOL = whoOf("cli", "claude-code")
+/** The agent whose own tool runs now (its chat or summoned session's, by key): AS_TOOL is any agent's vau too. */
+const itsTool = new AsyncLocalStorage<string>()
+/** Run `fn` as agent `name`'s own tool call, as toolsFor does (the tests' way to act as the companion). */
+export const asItsTool = <T>(fn: () => T, name = ownName()) => itsTool.run(key(name), fn)
+/** Whether a call as agent `name` is its own: its tool's, its session's terminal's (a Codex or OpenCode companion's vau)
+ *  or the user's in the app; not another agent's vau, nor a script's, which may name it all the same. */
+function itsOwn(name: string, ctx: OpCtx) {
+  if (itsTool.getStore() === key(name) || ctx.who.client?.startsWith("app/")) return true
+  const w = requestWriter.getStore(), from = [w?.terminal, w?.session].filter(Boolean)
+  return from.length > 0 && sessions().some((s) => from.includes(s.id) && key(s.name) === key(name))
+}
 /** The API as excerpts reads notes with, for a chat session's moments. */
 const apiCtx = { api: (method: string, route: string, body?: unknown) => plugin.host.api(method, route, body) } as unknown as OpCtx
 /** An ops context for work the app does itself, as request `from` would (live edits, a proof's Keep). */
@@ -2006,7 +2017,7 @@ function toolsFor(name: string, list = TOOLS, busy = () => turning.has(key(name)
       run: async (args: unknown, use?: string) => {
         const { done, ...given } = (args && typeof args === "object" ? args : {}) as Record<string, unknown>
         try {
-          const r = await toolUse.run(use, () => plugin.host.call(op.id, { ...given, ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: `companion ${short}` }))
+          const r = await toolUse.run(use, () => asItsTool(() => plugin.host.call(op.id, { ...given, ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: `companion ${short}` }), name))
           // (what it answered, ids and all, for the talk a fresh session is told: "the one you just opened")
           if (!QUIET_RESULTS.has(short) && r.text) did(name, "result", undefined, `${short}: ${String(r.text).slice(0, 400)}`)
           // (not its last call: its turn goes on, and its cursor shows it busy, a bubble or not, until it ends)
@@ -2715,7 +2726,7 @@ fades, which means "stay quiet". What they'd want in the note tomorrow goes in i
 /** The ask agent `name` is answering: its summoned session's turn's, else its last. */
 const askOf = (name: string) => (inSummoned.getStore() ? lane().last() : moments).findLast((m) => (m.kind === "ask" || m.kind === "point") && (m.for ? key(m.for) === key(name) : isMain(name)))
 const jobs = jobOps(plugin, {
-  askOf,
+  askOf, own: itsOwn,
   say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
   // (a talk's turn is said by the job's cursor, a live edit's told by its ring; a job just ready knocks, its proof to

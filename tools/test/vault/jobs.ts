@@ -8,6 +8,8 @@ import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
+  // (the companion acting: its own tool call, not any agent's vau)
+  const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
   const { VAULT, api, app, check, read, write } = $
   const J = await import("../../../plugins/core/companion/jobs.ts")
   const W = await import("../../../plugins/core/companion/where.ts")
@@ -159,7 +161,7 @@ export default async ($: VaultTest) => {
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion", jobs_agent: "claude_personal", jobs_never: [`${tmp}/Work: Work runs elsewhere`] })
       c.screenMoment({ kind: "ask", agent: "Claude", text: "make the heading blue", app: "com.example.browser", title: "Site", screen: `https://github.com/lighthouse/site`, sx: 10, sy: 20 })
-      let [st, b] = await api("POST", "ops/companion.handoff", { task: "Make the heading blue", say: "On it: a session in site.", cwd: repo }, agent)
+      let [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make the heading blue", say: "On it: a session in site.", cwd: repo }, agent))
       card = b
       check("handoff: a job starting in a terminal, in the folder asked, as the jobs' account on Opus, high, auto; the companion says so",
         st === 200 && b.state === "starting" && /^view:terminal\/claude_personal-/.test(b.link) && b.where.includes("site") && b.where.includes("Personal") && b.where.includes("Claude Code Opus") &&
@@ -192,7 +194,7 @@ export default async ($: VaultTest) => {
         ;[pst, pb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
         // (an agent shows a job only when their ask is to see it, and closes one ready for review only on their word)
         const [ast, ab] = await api("POST", "ops/companion.job-show", { id: card.id }, agent)
-        const [cst, cb] = await api("POST", "ops/companion.job-stop", { id: card.id }, agent)
+        const [cst, cb] = await asItsTool(() => api("POST", "ops/companion.job-stop", { id: card.id }, agent))
         check("proof: an agent's Show me without their words asking to see it is refused; its stop of a job ready for review too",
           ast === 403 && /only when their ask is to see/.test(ab.error) && cst === 403 && /closed only on their own word/.test(cb.error) &&
           (await api("POST", "ops/companion.job", { id: card.id }))[1].state === "ready for review", [ast, ab, cst, cb])
@@ -255,7 +257,7 @@ export default async ($: VaultTest) => {
         check("job-open --split right: its terminal in a pane beside, not a new tab", opened.at(-1) === `ui.open ${JSON.stringify({ path: card.link, split: "right" })}`, opened)
       }
       turn = null
-      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Use the darker blue", job: card.id }, agent)
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Use the darker blue", job: card.id }, agent))
       const told = await waitFor(() => fs.existsSync(path.join(repo, "told.txt")) && fs.readFileSync(path.join(repo, "told.txt"), "utf8").trim(), 10000, 100)
       check("handoff --job: typed into its worker's terminal, which goes on; with no say, it still says so in a line", st === 200 && told === "Use the darker blue" &&
         (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Passed that on to its job."), [st, b, told])
@@ -265,16 +267,45 @@ export default async ($: VaultTest) => {
         J.followTask("Darker", undefined) === "Darker")
       const asks = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r.state === "needs you" && r }, 10000, 100)
       check("jobs: a permission it waits on is needs you, saying what", !!asks && /waits on a permission: Bash\(rm -rf build\)/.test(asks.now), asks)
-      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "go on", say: "Telling it.", job: card.id }, agent)
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "go on", say: "Telling it.", job: card.id }, agent))
       check("handoff --job: never typed into a permission it waits on (only the user answers it)", st === 409 && /permission/.test(b.error), [st, b])
-      ;[st, b] = await api("POST", "ops/companion.job-stop", { id: card.id }, agent)
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.job-stop", { id: card.id }, agent))
       check("job-stop: stopped, its terminal ended", st === 200 && b.state === "stopped" &&
         !!(await waitFor(async () => !(await api("GET", "terminals/sessions"))[1].sessions.some((s: Any) => card.link.endsWith(s.id)), 5000, 100)), [st, b])
+      // Not the companion's: another agent's vau (an inbox-resumed session, a job) and a script share its `who`, never its voice or ask.
+      {
+        const script = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli" } } as unknown as IncomingMessage
+        const says = async () => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").length
+        c.screenMoment({ kind: "ask", agent: "Claude", text: "download this video please", app: "com.example.browser", title: "Clips", sx: 10, sy: 20 })
+        const was = await says(), ended: string[] = []
+        for (const [by, task] of [[agent, "Skip the pointer when unwatched"], [script, "Sync the design hub"]] as const) {
+          const [st, b] = await api("POST", "ops/companion.handoff", { task, say: "Handed that off.", cwd: repo }, by)
+          ended.push(b.id)
+          const prompt = said.at(-1)?.prompt ?? ""
+          check(`handoff from ${by === agent ? "another agent's vau" : "a script"}: its task alone, without the companion's latest ask; nothing said in its voice`,
+            st === 200 && prompt.includes(task) && !prompt.includes("download this video") && !/through their companion/.test(prompt) && await says() === was, [st, b, prompt])
+        }
+        const [, conv] = await api("POST", "ops/companion.conversation", {})
+        const ex = (conv.exchanges as Any[]).findLast((e) => e.text === "download this video please")
+        check("handoff not the companion's: nothing filed under the user's ask in its conversation", !!ex && !ex.did.includes("handoff") && !ex.said.length, ex)
+        // (a Codex companion's vau, from its own session's terminal: its own)
+        const cp = app.plugins.find((x) => x.id === "companion")!, sess = path.join(cp.localDir(), "session-ada.json")
+        fs.writeFileSync(sess, JSON.stringify({ id: "codex-adatest1", name: "Ada", t: Date.now() }))
+        try {
+          c.screenMoment({ kind: "ask", agent: "Ada", text: "fix the footer", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
+          const fromIts = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "codex", "x-vaultite-terminal": "codex-adatest1" } } as unknown as IncomingMessage
+          const [st, b] = await api("POST", "ops/companion.handoff", { task: "Fix the footer", as: "Ada", cwd: repo }, fromIts)
+          ended.push(b.id)
+          check("handoff from a terminal companion's own session: it says so, and its ask goes with it", st === 200 && /fix the footer/.test(said.at(-1)?.prompt ?? "") &&
+            (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.agent === "Ada" && n.text === "Handed that off to a background agent."), [st, b, said.at(-1)?.prompt])
+        } finally { fs.rmSync(sess, { force: true }) }
+        for (const id of ended.filter(Boolean)) await asItsTool(() => api("POST", "ops/companion.job-stop", { id }, agent)).catch(() => {})
+      }
       fs.mkdirSync(path.join(tmp, "Work"), { recursive: true })
-      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Fix it", say: "On it.", cwd: path.join(tmp, "Work") }, agent)
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix it", say: "On it.", cwd: path.join(tmp, "Work") }, agent))
       check("handoff: a folder jobs never run in is refused, saying why", st === 403 && /Work runs elsewhere/.test(b.error), [st, b])
       const before = (await api("POST", "ops/companion.jobs", {}))[1].jobs.length
-      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Fix it", cwd: "~/no-such-repo-here" }, agent)
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix it", cwd: "~/no-such-repo-here" }, agent))
       check("handoff: a folder that isn't here (nor on a machine jobs prefer) is refused at once, no job left failed",
         st === 404 && /there's no folder ~\/no-such-repo-here/.test(b.error) && /Leave cwd out/.test(b.error) && (await api("POST", "ops/companion.jobs", {}))[1].jobs.length === before, [st, b])
       // Do it: a task line handed over, in progress; a line that isn't an open task; one that moved; only words.
@@ -308,8 +339,8 @@ export default async ($: VaultTest) => {
       matchSocket(app.plugins, ["companion", "live"])![1].fn(pwin as Any, helperReq, { wild: [], query: {} })
       pwin.emit("message", JSON.stringify({ t: "where", open: [], shown: [], focus: null, at: Date.now(), active: true, panes: [{ id: "pjob", to: b.link, title: "Tidy the trip note", tab: "t1" }], pane: "pjob" }))
       c.addMoment({ kind: "ask", for: "Claude", text: "so let's merge the heading one", pane: "pjob" })
-      const [ust, ub] = await api("POST", "ops/companion.handoff", { task: "merge it", job: card.id, land: true }, agent)
-      const [wst, wb] = await api("POST", "ops/companion.handoff", { task: "merge it", job: card.id, land: true, which: "the heading one" }, agent)
+      const [ust, ub] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "merge it", job: card.id, land: true }, agent))
+      const [wst, wb] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "merge it", job: card.id, land: true, which: "the heading one" }, agent))
       check("handoff --job: their ask over another job's terminal asks which (both named), unless their words name it", ust === 409 && /their ask was over the job "Tidy the trip note"/.test(ub.error) &&
         /\("Make the heading blue, or Tidy the trip note\?"\)/.test(ub.error) && !/their ask was over/.test(wb.error ?? ""), [ust, ub, wst, wb])
       pwin.emit("close")
@@ -340,7 +371,7 @@ export default async ($: VaultTest) => {
     const job = async (id: string) => (await api("POST", "ops/companion.job", { id }))[1]
     const hand = async (how: string) => {
       then = how
-      const [st, b] = await api("POST", "ops/companion.handoff", { task: "Ship it", say: "On it.", cwd: plain }, agent)
+      const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Ship it", say: "On it.", cwd: plain }, agent))
       if (st !== 200) return { st, b }
       ids.push(b.link.split("/").pop())
       await waitFor(async () => (await job(b.id)).state === "working", 10000, 100)
@@ -382,7 +413,7 @@ export default async ($: VaultTest) => {
     let first = ""
     Wk.tidyAfter(0)
     try {
-      const [st, b] = await api("POST", "ops/companion.handoff", { task: "Write the summary", cwd: plain }, agent)
+      const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Write the summary", cwd: plain }, agent))
       first = b.link.split("/").pop()
       const done = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r }, 15000, 200)
       check("jobs: done while it runs something in the background, its terminal stays", st === 200 && !!done && await runs(first) && !done.closed, done)
@@ -391,7 +422,7 @@ export default async ($: VaultTest) => {
       check("jobs: done a while, its terminal closes by itself; it stays done, its result and questions kept, resuming from its card",
         !!closed && closed.state === "done" && closed.terminal === "resume-claude-sess-tidy" && /Wrote the summary/.test(closed.result?.text ?? "") &&
         closed.last?.asks?.[0] === "Should I add it to Today?" && !!(await waitFor(async () => !(await runs(first)), 5000, 100)), closed)
-      const [st2, b2] = await api("POST", "ops/companion.handoff", { task: "Yes, add it", job: b.id, title: "Summary on Today" }, agent)
+      const [st2, b2] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Yes, add it", job: b.id, title: "Summary on Today" }, agent))
       const resumed = started.at(-1)
       check("handoff --job on a closed job: its conversation resumed with the follow-up, renamed as asked",
         st2 === 200 && b2.state === "working" && b2.title === "Summary on Today" && b2.link === "view:terminal/resume-claude-sess-tidy" && resumed?.resume === "sess-tidy" &&
@@ -434,14 +465,14 @@ setTimeout(draw, 300)
     let id = ""
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion" })
-      const [st, b] = await api("POST", "ops/companion.handoff", { task: "Fix the site's header", cwd: plain }, agent)
+      const [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the site's header", cwd: plain }, agent))
       id = b.link?.split("/").pop() ?? ""
       const trust = await waitFor(async () => { const r = await job(b.id); return r.state === "needs you" && r.waits && r }, 15000, 200)
       check("jobs: a worker stopped on its folder's trust prompt needs you, with the prompt's question and its choices (Yes first)", st === 200 && !!trust &&
         /^Trust this folder\?/.test(trust.waits.question) && trust.waits.choices.join() === "Yes, I trust this folder,No, exit" && trust.waits.kind === "permission", trust)
       const [, list] = await api("POST", "ops/companion.jobs", {})
       check("jobs: its card carries what it waits on, for its notification's buttons", list.jobs[0]?.waits?.choices?.[0] === "Yes, I trust this folder", list.jobs[0]?.waits)
-      let [s2, r2] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "yes", said: "yes" }, agent)
+      let [s2, r2] = await asItsTool(() => api("POST", "ops/companion.job-answer", { id: b.id, choice: "yes", said: "yes" }, agent))
       check("job-answer: an agent can't answer it without the user's words in an ask after it began waiting", s2 === 403, [s2, r2])
       ;[s2, r2] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "Yes, I trust this folder" }, asApp)
       const first = await waitFor(() => fs.existsSync(chosen) && fs.readFileSync(chosen, "utf8"), 5000, 50)
@@ -450,10 +481,10 @@ setTimeout(draw, 300)
       const imports = await waitFor(async () => { const r = await job(b.id); return r.state === "needs you" && /imports/.test(r.waits?.question ?? "") && r }, 15000, 200)
       check("jobs: its imports prompt next is what it waits on now", !!imports && imports.waits.choices[0] === "Yes, allow external imports", imports)
       c.screenMoment({ kind: "ask", agent: "Claude", text: "Yes, allow them. Thanks", voice: true, app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
-      ;[s2, r2] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "no", said: "no" }, agent)
+      ;[s2, r2] = await asItsTool(() => api("POST", "ops/companion.job-answer", { id: b.id, choice: "no", said: "no" }, agent))
       check("job-answer: words the user didn't say aren't theirs", s2 === 403 && !fs.readFileSync(chosen, "utf8").includes("disable"), [s2, r2])
       const [, jobsNow] = await api("POST", "ops/companion.job", { id: b.id })
-      ;[s2, r2] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "yes", said: "yes, allow them" }, agent)
+      ;[s2, r2] = await asItsTool(() => api("POST", "ops/companion.job-answer", { id: b.id, choice: "yes", said: "yes, allow them" }, agent))
       const both = await waitFor(() => { const t = fs.readFileSync(chosen, "utf8"); return t.split("\n").length > 2 && t }, 5000, 50)
       check("job-answer by voice: the companion answers with the user's word in their ask, its choice pressed in the terminal", s2 === 200 && r2.answered === "Yes, allow external imports" &&
         both === "Yes, I trust this folder\nYes, allow external imports\n", [s2, r2, both, jobsNow.waits])
@@ -499,7 +530,7 @@ setTimeout(draw, 300)
     const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
     let job: Any = null
     try {
-      let [st, b] = await api("POST", "ops/companion.handoff", { task: "Fix the header", machine: "studio", cwd: "~/Projects/site" }, agent)
+      let [st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the header", machine: "studio", cwd: "~/Projects/site" }, agent))
       job = b
       const start = calls.find((c) => c.op === "terminal.start")
       check("handoff: a routine one (no say) still announces itself in one short line",
@@ -525,7 +556,7 @@ setTimeout(draw, 300)
       await api("PATCH", "config/plugin/companion", { mode: "quiet" })
       await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].mode !== "off", 5000, 50)
       ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "research the header", app: "com.example.browser", title: "Site", screen: "https://github.com/lighthouse/site", sx: 10, sy: 20 })
-      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Research the header", say: "On it." }, agent)
+      ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Research the header", say: "On it." }, agent))
       job = b
       check("handoff with nothing tying it here (the ask's GitHub page): on the always-on machine, only the page passed on", st === 200 && b.where.startsWith("Studio") && /Studio \(always on\)/.test(b.why) &&
         JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }), [st, b, calls])
@@ -546,7 +577,7 @@ setTimeout(draw, 300)
         const ask = async () => {
           ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "make the header blue", app: "com.example.browser", title: "Site", screen: `localhost:${port}/about`, sx: 10, sy: 20 })
           calls.length = 0
-          const r = await api("POST", "ops/companion.handoff", { task: "Make the header blue", say: "On it." }, agent)
+          const r = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make the header blue", say: "On it." }, agent))
           if (!String(r[1].link ?? "").includes("@")) ours.push(String(r[1].link ?? "").split("/").pop()!)
           return r
         }
@@ -561,12 +592,12 @@ setTimeout(draw, 300)
             st === 200 && b.link.endsWith("@studio") && /all pushed: as asked, on Studio \(always on\), previewed there/.test(b.why) &&
             JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }) && start?.p.cwd === "/home/alice/Projects/site" &&
             new RegExp(`asked over the preview http://localhost:${port} on [^]*Studio's own preview[^]*say it's on Studio`).test(start?.p.prompt ?? ""), [st, b, start?.p])
-          await api("POST", "ops/companion.job-stop", { id: b.id }, agent)
+          await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent))
           fs.appendFileSync(path.join(repo, "index.html"), "<p>wip</p>\n")
           ;[st, b] = await ask()
           check("handoff over a preview here with uncommitted changes: it stays here, its why saying they'd be lost by moving",
             st === 200 && !b.link.includes("@") && /1 uncommitted change, not yet pushed, would be lost on Studio: here\)$/.test(b.why) && !calls.some((c) => c.op === "companion.where"), [st, b, calls])
-          await api("POST", "ops/companion.job-stop", { id: b.id }, agent)
+          await asItsTool(() => api("POST", "ops/companion.job-stop", { id: b.id }, agent))
           g("checkout", "--", "index.html")
           farHas = false
           ;[st, b] = await ask()

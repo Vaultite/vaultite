@@ -7,6 +7,8 @@ import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
+  // (the companion acting: its own tool call, not any agent's vau)
+  const { asItsTool } = await import("../../../plugins/core/companion/plugin.ts")
   const { app, api, check } = $
   const T = await import("../../../plugins/core/companion/talks.ts")
   const S = await import("../../../plugins/core/companion/spoken.ts")
@@ -46,7 +48,7 @@ export default async ($: VaultTest) => {
     try {
       await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion", jobs_agent: "claude" })
       c.screenMoment({ kind: "ask", agent: "Claude", text: "write up the landing page plan", ...over })
-      const [, b] = await api("POST", "ops/companion.handoff", { task: "Make a landing page", cwd: tmp }, agent)
+      const [, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make a landing page", cwd: tmp }, agent))
       job = b.id
       turn = { text: "Wrote it.", files: [], at: Date.now() + 1500, final: true }
       await waitFor(async () => !["starting", "working"].includes((await api("POST", "ops/companion.job", { id: job }))[1].state), 10000, 100)
@@ -79,7 +81,7 @@ export default async ($: VaultTest) => {
       await api("PATCH", "config/plugin/companion", { mode: "off", summoned_model: "haiku" })
       sc.emit("close")
       Object.assign(cc, was)
-      if (job) await api("POST", "ops/companion.job-stop", { id: job }, agent).catch(() => {})
+      if (job) await asItsTool(() => api("POST", "ops/companion.job-stop", { id: job }, agent)).catch(() => {})
       fs.rmSync(tmp, { recursive: true, force: true })
     }
   }
