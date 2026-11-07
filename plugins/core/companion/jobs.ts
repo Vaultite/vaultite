@@ -48,6 +48,8 @@ export type Job = {
   session?: string; exited?: number; closed?: number
   /** The user typed in its terminal: theirs now, never closed by itself. */
   held?: boolean
+  /** What the ask it came from was over (surfaceOf): asks there later go straight to it (liveedit.ts). */
+  on?: string
   last?: Last
   waits?: Waits
   /** What it's doing now, one line (its agent's status, its terminal's title, what it asks). */

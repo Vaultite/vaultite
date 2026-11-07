@@ -174,6 +174,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-asking:claude` (claude-code): What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's.
 - `agent-asks:claude` (claude-code)
 - `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.
+- `agent-edits:claude` (claude-code): The files a session changed after each message it was told and each of its words (the service "agent-edits:claude": the companion takes a live edit's back): the session in `terminal` when `session` isn't given, from `from` on.
 - `agent-meters:claude` (claude-code)
 - `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session ids. No meters: its rollouts don't say when a prompt cache expires.
 - `agent-mode:claude` (claude-code): The permission mode a session runs in now (the service "agent-mode:claude": what a subagent it delegates to may have at most): the chat's, else its transcript's last. The session in `terminal` when `session` isn't given; null: unknown.

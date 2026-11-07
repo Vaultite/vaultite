@@ -32,6 +32,15 @@ export function urlsIn(o: Over): URL[] {
   return [...new Set(found)].flatMap((s) => { try { return [new URL(/^https?:/.test(s) ? s : `http://${s}`)] } catch { return [] } })
 }
 
+/** What an ask is over, as one surface a job can work on: a note, else a page's site (a preview's address, the app's);
+ *  "" none (a GitHub page is a repo's, not one page). */
+export function surfaceOf(m: (Over & { path?: string }) | undefined) {
+  if (!m) return ""
+  if (m.path) return `note:${m.path}`
+  const u = urlsIn({ url: m.url, title: m.title, under: m.under, screen: m.screen }).find((x) => x.hostname !== "github.com" && /^https?:$/.test(x.protocol))
+  return u ? `site:${u.origin}` : ""
+}
+
 /** The local port a Tailscale Serve name's port proxies to here (`tailscale serve status`), or 0. */
 export function servedPort(status: unknown, host: string, port: string): number {
   const web = ((status ?? {}) as { Web?: Record<string, { Handlers?: Record<string, { Proxy?: string }> }> }).Web ?? {}

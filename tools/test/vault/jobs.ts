@@ -457,6 +457,7 @@ setTimeout(draw, 300)
           ;[st, b] = await ask()
           check("handoff over a preview here with uncommitted changes: it stays here, its why saying they'd be lost by moving",
             st === 200 && !b.link.includes("@") && /1 uncommitted change, not yet pushed, would be lost on Studio: here\)$/.test(b.why) && !calls.some((c) => c.op === "companion.where"), [st, b, calls])
+          await api("POST", "ops/companion.job-stop", { id: b.id }, agent)
           g("checkout", "--", "index.html")
           farHas = false
           ;[st, b] = await ask()

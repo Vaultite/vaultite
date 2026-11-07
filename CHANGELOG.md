@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Live editing**: once a job works on a page (a preview or a note), what you ask over it with the Talk key goes
+  straight to that job as you say it, ask after ask, with no wait for the companion; when the page reloads, the
+  change is ringed. "Undo that" takes back exactly the last ask's change, never your own edits or other asks'.
 - **Sessions by the notch**: agents working in the background (terminals, jobs) show as small faces beside the notch
   (top centre on a Mac without one; right of Vorssaint's island when it's there), each working, needing you or done.
   When one asks for you (`vau companion knock`), its line comes up there at a pause, never while anyone talks: say or

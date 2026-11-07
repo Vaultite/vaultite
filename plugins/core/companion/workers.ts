@@ -8,7 +8,7 @@ import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, t
 import { cardOf, choiceIn, endEvent, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
   step, type Waits, type Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
-import { branchOf, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, tilde, urlsIn, watched } from "./where.ts"
+import { branchOf, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
 
 /** What the plugin gives the jobs: the ask a handoff came from, its say, its action log, who an `as` names. */
 export type JobDeps = {
@@ -19,6 +19,8 @@ export type JobDeps = {
   cards: (cards: JobCard[]) => void
   /** Job `j` moved on from `from` (its news told aloud, where the user is). */
   moved?: (j: Job, from: string) => void
+  /** Whether its terminal stays up when done: asks on its page go straight to it (live editing). */
+  warm?: (j: Job) => boolean
   /** Whether a window shows `link` in its shown tab. */
   onScreen?: (link: string) => boolean
   as: object
@@ -319,7 +321,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Job `j` done a while (`s`: its worker now): its terminal closed, unless its worker isn't at rest, still runs
    *  something in the background, was typed in by the user or is in front of them. Its conversation resumes. */
   async function tidy(j: Job, s: Seen) {
-    if (!s.running || j.held || Date.now() - Math.max(j.at, opened.get(j.id) ?? 0) < grace || (s.state !== "idle" && s.state !== "done")) return false
+    if (!s.running || j.held || d.warm?.(j) || Date.now() - Math.max(j.at, opened.get(j.id) ?? 0) < grace || (s.state !== "idle" && s.state !== "done")) return false
     const t = await seenOf(j, true, false).catch(() => null)
     if (t?.turn?.session) j.session ??= t.turn.session
     if (!t?.running || t.turn?.background || !resumeOf(j) || d.onScreen?.(linkOf(j))) return false
@@ -384,7 +386,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** A follow-up or correction to job `j`, typed into its worker's terminal (the user's own words, as if they typed);
    *  its terminal closed or ended, its conversation resumed with it. */
-  async function steer(ctx: OpCtx, j: Job, text: string) {
+  async function steer(ctx: OpCtx, j: Job, text: string, shown = text) {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
     const s = await seenOf(j).catch(() => null)
     if (s && !s.running) {
@@ -398,7 +400,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     }
     move(j, "told")
     j.turn = Date.now()
-    j.now = `Told: ${gist(text, 120)}`
+    j.now = `Told: ${gist(shown, 120)}`
     resting.delete(j.id)
     changed()
   }
@@ -409,7 +411,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const where: Where = { ...await route(m, p), ...harnessOf(p) }
     const told = typeof task === "string" ? task : await task(where)
     const now = Date.now(), title = (str(p.title).trim() || told.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
-    const j: Job = { id: newId(), title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now, seen: false, log: [] }
+    const on = surfaceOf(m)
+    const j: Job = { id: newId(), title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), ...(on ? { on } : {}), started: now, turn: now, at: now, seen: false, log: [] }
     all().unshift(j)
     try {
       const r = await ctx.op("terminal.start", { agent: where.agent, prompt: jobTask(told, m, !!where.repo, where.moved ? { from: where.moved, on: where.label } : undefined), name: title, cwd: where.cwd,
@@ -457,6 +460,9 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
     run: async (p, ctx) => {
       const name = d.who(p), task = str(p.task).trim()
       if (!task) throw new OpError("task: what to do")
+      // (an ask live editing sent straight to the job on its page: it has it already)
+      const sent = d.askOf(name)?.live
+      if (sent) throw new OpError(`this ask already went straight to the job ${sent} working on that page (live editing), which does it: end your turn`, 409)
       if (str(p.job)) {
         const j = jobOf(str(p.job))
         // (their ask goes with it once: one the job was already given isn't told again)
@@ -643,11 +649,15 @@ its terminal (companion job-open).
 
   return {
     list: all, cards, seen, jobsAgent, begin,
-    /** Job `id` told `text`, typed into its terminal (its conversation resumed if it closed). */
-    tell: (ctx: OpCtx, id: string, text: string) => steer(ctx, jobOf(id), text),
+    /** Job `id` told `text`, typed into its terminal (its conversation resumed if it closed); its card shows `shown`. */
+    tell: (ctx: OpCtx, id: string, text: string, shown?: string) => steer(ctx, jobOf(id), text, shown),
     /** Where an ask over `o` would run here (its folder, repo, the preview it's on). */
     placeHere: (o: Over) => placeHere(o, ""),
     line: () => jobsLine(all()),
+    /** Op `id` run on another machine (a job's: where its worker's files are). */
+    atMachine,
+    /** Its card and its news told again (live editing moved it). */
+    changed,
     /** How fast the day's jobs got going, for companion timings. */
     timings: (day: string, dayOf: (t: number) => string) => jobTimings(all().filter((j) => dayOf(j.started) === day)),
   }

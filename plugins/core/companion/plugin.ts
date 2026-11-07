@@ -27,6 +27,7 @@ import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type JobState, jobSpoken, jobTimingsText, jobTold } from "./jobs.ts"
 import { knockOps } from "./knockops.ts"
 import { captureOps } from "./captures.ts"
+import { liveEdits } from "./liveedit.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide, sitesOf } from "./guides.ts"
@@ -72,6 +73,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** Asked with its Talk key (over the screen, Vaultite's windows too: the helper's): its summoned session's (summoned.ts); `voice`:
    *  said, not typed (its answer is said aloud, the desktop app's voice.ts). */
   summoned?: boolean; voice?: boolean
+  /** Sent straight to the job working on its page (live editing, liveedit.ts): that job's id; `shotWindow`, the window
+   *  under their pointer (Vaultite's own too), pictured before and after its change. */
+  live?: string; shotWindow?: number
   /** A tour's step handed to the model (tours.ts): the player's words, never the user's, so it's no ask in their box. */
   tour?: boolean
   /** Asked through the realtime voice (the desktop app's realtimefront.ts): it already told them it's looking and says
@@ -316,8 +320,9 @@ function addressee(name?: string) {
   if (isMain(name) || key(name) === "companion" || key(name) === key(nameOf(agentSetting()))) return ownName()
   return session(name) || profileOf(name, offered()) ? a?.name ?? nameOf(key(name)) : ownName()
 }
-/** Whether `name` gets moment `m`: its own, and edit and open for the companion and agents that watch. */
-const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) && !(m.summoned && isMain(name) && lane().on()) : isMain(name) || watching.has(key(name)))
+/** Whether `name` gets moment `m`: its own, and edit and open for the companion and agents that watch; an ask sent
+ *  live is its job's, no session's, unless handed back. */
+const meantFor = (m: Moment, name: string) => !m.live && (m.for ? key(m.for) === key(name) && !(m.summoned && isMain(name) && lane().on()) : isMain(name) || watching.has(key(name)))
 
 /** Where the user is: the window they used last that has a note (`next`, and the ops' default place, both say this). */
 export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).find((w) => w.focus)?.focus ?? null
@@ -363,27 +368,36 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   // (a new ask: what the last answer pointed with goes, a Talk key's too, so a mark it corrects is replaced, not
   // stacked; its cards stay, for a follow-up to change in place; a tour playing for it stops too: they moved on)
   if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.settle(full.for); tours.interrupt(full.for) }
+  // (a Talk key's ask over a page a job works on: straight to that job, live editing)
+  if (full.summoned && full.for && isMain(full.for) && liveEditing.take(full, from)) return full
+  handOut(full, from)
+  return full
+}
+
+/** Moment `full`, kept, given to whoever takes it: its Talk key's session, else the agents it's for (waking one that
+ *  isn't running, as the window's request `from`). */
+function handOut(m: Moment, from?: IncomingMessage) {
   // (its Talk key's: the summoned session's, which runs warm apart from the long one)
-  if (lane().takes(full)) {
-    setAgent(full.for!, { state: "thinking", ...placeOf(m) })
-    lane().take(full)
-    return full
+  if (lane().takes(m)) {
+    setAgent(m.for!, { state: "thinking", ...placeOf(m) })
+    lane().take(m)
+    return m
   }
   // (an open wakes no one: it rides along with the next moment, and the cursors free to follow go there now; so do the
   // user's corrections, a bubble closed or words moved)
   if (m.kind === "open") {
-    for (const a of agents.values()) if (meantFor(full, a.name) && a.state === "watching" && live(a.name) && !handed.has(key(a.name)))
-      setAgent(a.name, { path: full.path, line: full.line, x: full.x, y: full.y, find: undefined, state: "watching" }, true)
-  } else if (wakes(full)) {
-    for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
-    for (const s of sessions()) if (isChat(s.id) && meantFor(full, s.name)) void pump(s.name)
+    for (const a of agents.values()) if (meantFor(m, a.name) && a.state === "watching" && live(a.name) && !handed.has(key(a.name)))
+      setAgent(a.name, { path: m.path, line: m.line, x: m.x, y: m.y, find: undefined, state: "watching" }, true)
+  } else if (wakes(m)) {
+    for (const [k, wake] of waiters) if (meantFor(m, k)) { waiters.delete(k); wake([m]) }
+    for (const s of sessions()) if (isChat(s.id) && meantFor(m, s.name)) void pump(s.name)
   }
   // (one starting shows that until its first `next` takes it)
-  if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(full.for))?.state !== "starting") {
-    setAgent(full.for, { state: "thinking", ...placeOf(m) })
-    if (from) void wake(full, from)
+  if (m.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(m.for))?.state !== "starting") {
+    setAgent(m.for, { state: "thinking", ...placeOf(m) })
+    if (from) void wake(m, from)
   }
-  return full
+  return m
 }
 
 const waking = new Set<string>()
@@ -1053,7 +1067,7 @@ function screenPlace(m: Record<string, unknown>) {
   const clicks = Array.isArray(m.clicks) ? m.clicks.slice(0, 8).flatMap((c: Record<string, unknown>) => { const x = Number(c?.sx), y = Number(c?.sy)
     return Number.isFinite(x) && Number.isFinite(y) ? [{ sx: Math.round(x), sy: Math.round(y), ...(str(c.under) ? { under: str(c.under).slice(0, 300) } : {}) }] : [] }) : []
   const at = rect(m.shotAt), displays = Array.isArray(m.displays) ? m.displays.slice(0, 8).map(rect).filter((d): d is Rect => !!d && d.width > 0 && d.height > 0) : []
-  return { ...(str(m.app) ? { app: str(m.app).slice(0, 200), ...(str(m.appName) ? { appName: str(m.appName).slice(0, 120) } : {}) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
+  return { ...(str(m.app) ? { app: str(m.app).slice(0, 200), ...(str(m.appName) ? { appName: str(m.appName).slice(0, 120) } : {}) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(Number.isInteger(Number(m.shotWindow)) && Number(m.shotWindow) > 0 ? { shotWindow: Number(m.shotWindow) } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
     ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     ...(OWN_SHOT.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
@@ -1949,7 +1963,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "conversation", "tour", "tour-save"]
+const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "live-undo", "conversation", "tour", "tour-save"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -2630,12 +2644,27 @@ const jobs = jobOps(plugin, {
   askOf,
   say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
-  moved: (j, from) => void jobNews(j.title, j.state, from).catch(() => {}),
+  // (a live edit's turn ending is told by its ring, not its news)
+  moved: (j, from) => void (liveEditing.moved(j, from) || jobNews(j.title, j.state, from).catch(() => {})),
+  warm: (j) => liveEditing.warm(j),
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
 captureOps(plugin, jobs)
 // Knocks: background sessions asking for the user, one line at a pause, and their presences by the notch (knocks.ts).
 const knocks = knockOps(plugin, { toScreens, listening: () => screens.size > 0, jobs: () => jobs.list(), off: () => mode() === "off", hidden: () => plugin.settings().island === false })
+const liveEditing = liveEdits(plugin, {
+  jobs,
+  ctx: (from) => ({ ...apiCtx, op: async (id: string, p?: Record<string, unknown>) => (await plugin.runOp(id, p ?? {}, undefined, from)).result }) as unknown as OpCtx,
+  say: async (name, text, m) => {
+    did(name, "say", undefined, text)
+    keepSaid(putNote({ kind: "say", agent: name, text, ...placeOf(m) as Partial<Note>, ...(m.summoned ? { answers: answersOf(m) } : {}) }, sayMs(text)))
+    setAgent(name, { state: "watching" })
+  },
+  seen: (name, why, m) => setAgent(name, { state: "watching", seen: true, why, ...placeOf(m) }),
+  ring: (name, boxes) => screenDrawing.draw(name, boxes.map((b) => ({ type: "ring", at: [b.x, b.y, b.w, b.h] }))),
+  fallback: (m) => void handOut(m),
+  desktop: (name, args) => plugin.desktop(name, args),
+})
 /** The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"):
  *  its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first. */
 plugin.provide("agents-used:companion", (): AgentUse[] => [

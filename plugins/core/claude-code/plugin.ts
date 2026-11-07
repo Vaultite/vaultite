@@ -12,6 +12,7 @@ import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
 import { chats } from "./chat.ts"
+import { type EditSpan, editSpans } from "./edits.ts"
 import { dialogOn } from "./dialog.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
 import { teleports } from "./teleport.ts"
@@ -594,6 +595,17 @@ plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   // (a chat's turn as its keeper says it, the files from its transcript)
   if (now) return { ...now, files: t ? lastTurn(t.talk.entries).files : [] }
   return t ? { session: sid, ...lastTurn(t.talk.entries), background: t.talk.background.size } : null
+})
+
+/** The files a session changed after each message it was told and each of its words (the service "agent-edits:claude":
+ *  the companion takes a live edit's back): the session in `terminal` when `session` isn't given, from `from` on. */
+plugin.provide("agent-edits:claude", async (terminal: string, session = "", from = ""): Promise<EditSpan[] | null> => {
+  const sid = session || await sessionIn(terminal)
+  const found = sid ? sessionFile(sid) : null
+  if (!found) return null
+  const text = await fs.promises.readFile(found.file, "utf8").catch(() => "")
+  const spans = editSpans(text.split("\n")), first = from ? spans.findIndex((s) => s.prompt?.includes(from)) : 0
+  return first < 0 ? [] : spans.slice(first)
 })
 
 /** What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog

@@ -29,6 +29,7 @@ import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHe
 import { type Drawing, elementPlaces } from "./drawing.ts"
 import { byLabel, type Heard, heardBeats } from "../plugins/core/companion/screenmarks.ts"
 import { thingFrom, type Thing } from "../plugins/core/companion/uimodel.ts"
+import { changedBoxes } from "../plugins/core/companion/framediff.ts"
 import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { companionVoice } from "./voice.ts"
@@ -1105,7 +1106,7 @@ async function pointedAt(name: string, p: Point, w: AppWindowInfo | null, parks 
   const app = win ? { app: win.bundle, ...(win.name ? { appName: win.name } : {}), window: win.window, title: win.title } : under ? { app: under.bundle, ...(under.name ? { appName: under.name } : {}) } : {}
   return { ...there, ...app, sx: Math.round(p.x), sy: Math.round(p.y),
     ...(text?.ok && text.text ? { screen: text.text } : {}), ...(shot ? { shot: shot.file, shotAt: shot.frame } : {}), ...(under ? { under: under.text } : {}), ...(near.length ? { near } : {}),
-    ...(floating.length ? { floating } : {}), displays: screen.getAllDisplays().map((d) => d.bounds) }
+    ...(floating.length ? { floating } : {}), ...(w?.window ? { shotWindow: w.window } : {}), displays: screen.getAllDisplays().map((d) => d.bounds) }
 }
 
 /** What's at a screen point of the home vault's window, as its page knows it (a note's line, a pane's row, the app's UI):
@@ -1959,8 +1960,36 @@ async function timelineCall(a: unknown) {
   return queryTimeline({ last: num(o.last), from: num(o.from), to: num(o.to), said: typeof o.said === "string" ? o.said : undefined,
     kinds: Array.isArray(o.kinds) ? o.kinds.map(String) as never : undefined, clip: o.clip === true, ...(box ? { box } : {}) })
 }
+/** What changed in a window since its picture `before` (companion.live: an ask's change once its page reloads): pictures
+ *  taken till two agree (its reload and animations done, `settle` ms at most), the boxes that differ in screen points. */
+async function changedCall(a: unknown) {
+  const o = (a && typeof a === "object" ? a : {}) as { before?: unknown; window?: unknown; settle?: unknown }
+  const before = typeof o.before === "string" ? path.resolve(o.before) : "", window = Number.isInteger(o.window) ? o.window as number : 0
+  // (only its own pictures are read)
+  if (!before.startsWith(SHOTS() + path.sep) || !fs.existsSync(before) || !window) return { ok: false, why: "no-window" }
+  const w = await screenAsk<AppWindowInfo>("window", { window, bundle: "" })
+  if (!w.window || !w.frame) return { ok: false, why: "no-window" }
+  if (hidden(w)) return { ok: false, why: "private" }
+  const bitmap = (f: string) => { const i = nativeImage.createFromPath(f), z = i.getSize(); return { px: new Uint8Array(i.toBitmap()), ...z } }
+  const end = Date.now() + Math.min(Number(o.settle) || 4000, 10_000)
+  let last: ReturnType<typeof bitmap> | null = null
+  for (;;) {
+    const f = await windowShot(w.window, SHOTS())
+    if (!f) return { ok: false, why: "no picture: Vaultite needs screen recording (System Settings, Privacy & Security)" }
+    const now = bitmap(f)
+    const still = !!last && last.width === now.width && last.height === now.height && !changedBoxes(last.px, now.px, now.width, now.height).boxes.length
+    last = now
+    if (still || Date.now() > end) break
+    await new Promise((r) => setTimeout(r, 350))
+  }
+  const was = bitmap(before), scale = last.width / w.frame.width
+  if (was.width !== last.width || was.height !== last.height) return { ok: true, boxes: [], whole: true }
+  const c = changedBoxes(was.px, last.px, last.width, last.height)
+  return { ok: true, whole: c.whole, boxes: c.boxes.map((b) => ({ x: Math.round(w.frame!.x + b.x / scale), y: Math.round(w.frame!.y + b.y / scale), w: Math.round(b.w / scale), h: Math.round(b.h / scale) })) }
+}
 export async function screenCall(name: string, args: unknown[]) {
   if (name === "screen:timeline") return timelineCall(args[0])
+  if (name === "screen:changed") return changedCall(args[0])
   const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { app?: unknown; window?: unknown; max?: unknown }
   const window = Number.isInteger(o.window) ? o.window as number : 0, bundle = typeof o.app === "string" ? o.app : ""
   // (whose window it is first: a private app's is never read)
