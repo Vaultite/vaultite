@@ -161,14 +161,18 @@ export async function startHelper(h: HelperHost) {
     tray.on("click", () => tray?.popUpContextMenu(Menu.buildFromTemplate(menuItems())))
     login(h.prefs().login ?? app.isPackaged)
   }
-  setInterval(() => void refresh(), 10_000).unref()
+  refreshing = setInterval(() => void refresh(), 10_000)
+  refreshing.unref()
   await refresh()
   return true
 }
 
+let refreshing: ReturnType<typeof setInterval> | null = null
 export function stopHelper() {
   if (!host) return
   host = null
+  for (const t of [refreshing, sampling, freeTimer, holding]) if (t) clearInterval(t)
+  refreshing = sampling = freeTimer = holding = null
   followCalls(false)
   voiceFront.close()
   speaker.quit()
