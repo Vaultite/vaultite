@@ -439,6 +439,17 @@ export default async ($: VaultTest) => {
     me.text.insert(me.text.length, "after it came back\n")
     await both()
     check("bridge: ...and typed there", fs.readFileSync(path.join(HOST, "Shared/S.md"), "utf8").includes("after it came back") && read("Shared/S.md") === "# S\n\nhost line\n")
+    // Device sync's hub: every note is typed in its rooms (folder ""), not only a shared folder's.
+    shared = [""]
+    write("Notes/Any.md", "# Any\n"); fs.mkdirSync(path.join(HOST, "Notes"), { recursive: true }); fs.writeFileSync(path.join(HOST, "Notes/Any.md"), "# Any\n")
+    const h = me.got.length
+    await there.refresh()
+    me.say({ t: "y-open", path: "Notes/Any.md" })
+    await both()
+    check("bridge: with sync's hub, any note is typed in its rooms", me.got.slice(h).some((m) => m.t === "y-state" && m.remote && m.path === "Notes/Any.md")
+      && !co.list().some((r: Any) => r.path === "Notes/Any.md"), me.got.slice(h).map((m) => [m.t, m.path]))
+    me.say({ t: "y-close", path: "Notes/Any.md" })
+    await both()
     eve.ws.close()
     me.ws.close()
     await both()

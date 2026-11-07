@@ -1,5 +1,5 @@
-// A note in a folder another machine of the vault shares is typed in its rooms, with its guests (a socket per window):
-// it writes the file, this machine doesn't meanwhile. Gone, or no longer sharing it: the note is this one's (`y-gone`).
+// A note another machine types in is typed in its rooms (a socket per window): one sharing its folder, with its guests, or
+// device sync's hub for every note (folder ""). It writes the file meanwhile. Gone: the note is this one's (`y-gone`).
 import type { RawData, WebSocket } from "ws"
 import { type Machine, machineSocket, type Plugin } from "../../../core/plugins.ts"
 
@@ -21,7 +21,7 @@ export function bridges(plugin: Plugin, local: (ws: WebSocket, m: Record<string,
   /** The machine whose rooms `path` is typed in: one sharing its folder (none when this one shares it too). */
   function hostFor(path: string) {
     const ours = (plugin.service("share:folders")?.() ?? []) as string[]
-    const inside = (f: string) => path.startsWith(f + "/")
+    const inside = (f: string) => f === "" || path.startsWith(f + "/")
     if (ours.some(inside)) return null
     return hosts.find((h) => (down.get(h.m.id) ?? 0) < Date.now() && h.folders.some(inside)) ?? null
   }
@@ -80,7 +80,11 @@ export function bridges(plugin: Plugin, local: (ws: WebSocket, m: Record<string,
     }
   }
 
-  const hostsNow = () => plugin.ask<Host[]>("share:hosts", [], true)
+  // (folders shared first, then device sync's hub, whose rooms every note is typed in when this machine isn't it)
+  const hostsNow = async () => {
+    const [shared, hub] = await Promise.all([plugin.ask<Host[]>("share:hosts", [], true), plugin.ask<Host | null>("sync:rooms", null)])
+    return hub && !shared.some((h) => h.m.id === hub.m.id) ? [...shared, hub] : shared
+  }
 
   // (asked only while notes are open: the first one opened after a while asks, and moves there if it's shared)
   async function refresh() {

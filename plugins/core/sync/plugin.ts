@@ -516,6 +516,15 @@ plugin.provide("sync:settle", async (rel: string, id: string) => {
   return 1
 })
 
+/** Where this machine's windows type a note together with the others' (companion's bridge.ts): the hub's rooms, for every
+ *  note, while this machine syncs the vault it serves and isn't the hub; null otherwise (its own rooms). */
+plugin.provide("sync:rooms", async () => {
+  const s = servedSet()
+  if (!s || s.isHub()) return null
+  const m = await plugin.ask<{ id: string; url: string; online: boolean } | null>("machines:machine", null, s.hub())
+  return m?.online && m.url ? { m, folders: [""] } : null
+})
+
 /** The hub this vault's settings name (vau sync hub), or null: Machines' first then. */
 plugin.provide("sync:hub", () => { const h = plugin.settings({}).hub; return typeof h === "string" && h ? h : null })
 
