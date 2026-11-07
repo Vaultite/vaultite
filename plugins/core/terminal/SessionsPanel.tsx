@@ -55,7 +55,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
 
 const copy = (text: string, what: string) => () => void copyText(text).then(() => notify(`Copied the ${what}`, { id: "copied" }), (e) => notifyError(e))
 /** A session's menu: its ids (its agent's own when it says, what `claude --resume` takes), its agent's conversation, End. */
-function menuOf(s: Session, a: Agent | null): MenuItem[] {
+export function menuOf(s: Session, a: Agent | null): MenuItem[] {
   const conversation = a?.session && s.session && `view:${a.session}/${onMachine(s.session, s.machine)}`
   return [
     ...(s.session ? [{ label: "Copy session ID", icon: Copy, run: copy(s.session, "session ID") }] : []),

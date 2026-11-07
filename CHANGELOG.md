@@ -9,6 +9,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Vault plugins import a set list of npm packages** (plugin API 10): React, Lucide, CodeMirror's, Excalidraw, YAML
   and the others `vau docs plugin-api` lists, at the versions the app ships: what an app update keeps for them. One
   importing another package is told to copy that library into its own folder.
+- **An Agents panel shows every agent on every machine**: terminals, chats and cloud sessions in one list in the right
+  sidebar, the ones that need you first, then the ones working, then the ones done, each with its machine; a click
+  opens it in its terminal or its chat.
 - **Terminals run on libghostty-vt 1.0**: Ghostty's first stable release of its terminal engine, in place of a
   pre-release build: a bit faster on fast output, with the same screens, copy and search.
 - **A job's ready card stays up to be read**: "Ready to show you …" comes at your next pause and stays 15 seconds

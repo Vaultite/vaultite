@@ -268,6 +268,11 @@ export default async ($: VaultTest) => {
       const [sa, all] = await api("POST", "ops/claude-code.chat-list", { machine: "all" })
       const [sn] = await api("POST", "ops/claude-code.chat-list", { machine: "nowhere" })
       check("chat list: machine all has this machine's too; a machine that isn't one says so", sa === 200 && all.sessions.some((s: Any) => s.id === id) && sn === 404, [sa, all, sn])
+      // The Agents panel's list: the same, every machine's, a turn's words cut short.
+      const [sc, chats] = await api("GET", "claude-code/chats")
+      const mine = chats?.sessions?.find((s: Any) => s.id === id)
+      check("chats route: every machine's sessions, as chat list says, the last turn's words cut to a row's", sc === 200 && mine?.state === "idle" &&
+        (mine.turn?.prompt ?? "").length <= 200 && (mine.turn?.text ?? "").length <= 200, [sc, mine])
     }
 
     // A resume or fork that gives the session a new id, told with its thread: still one row, following the new id.

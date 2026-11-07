@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentProps } from "react"
 import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, notifyError, op, openFile, openView, pageOf, sessionTitle, type AgentSource } from "@vaultite"
 import { ClaudeIcon } from "./ClaudeIcon"
 import { chatTitle, NEW } from "./titles"
+import { useChatRuns } from "./runs"
 
 // The chat is its own chunk, loaded once the app is idle on a computer, else when a chat tab first draws. Not lazy:
 // React holds what suspended back ~300 ms; and one element whether loaded or not, so its arrival doesn't remount it.
@@ -50,6 +51,8 @@ export default definePlugin(agentPlugin(SRC, {
     render: ({ arg, setArg }) => <ChatView id={arg} setArg={setArg} /> },
   // A question about a file (a live answer's follow-up): a new chat with it.
   ask: (question, file) => void askChat(question, file),
+  // Its chats, every machine's, in the Agents panel with every other agent.
+  agentRuns: useChatRuns,
   commands: [
     { id: "claude-code:chat", name: "New Claude Code chat", words: "new", icon: ClaudeIcon, run: () => newChat() },
     { id: "terminal:claude-where", name: "Open Claude Code in an account or on a machine…", run: () => void chooseWhere() },

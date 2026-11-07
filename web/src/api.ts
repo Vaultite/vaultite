@@ -26,7 +26,7 @@ export { definePlugin, detailPath } from "@/core/define"
 export { API_VERSION, APP_VERSION } from "../../core/version.ts"
 /** What a pinned entry is: a file, a heading in a note ("Notes/Idea.md#Plan"), a search ("search:<query>"). */
 export { pinKind, placePin, SEARCH as PIN_SEARCH, VIEW as PIN_VIEW } from "../../core/pins.ts"
-export type { AgentDef, AmbientItem, BlockCtx, DoTask, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, ReadingBlock, ReadingBlocks, ReadingDrawn, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TabButton, TimelineKind, ViewCtx, ViewDef, WebContainer, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
+export type { AgentDef, AgentRun, AmbientItem, BlockCtx, DoTask, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, ReadingBlock, ReadingBlocks, ReadingDrawn, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TabButton, TimelineKind, ViewCtx, ViewDef, WebContainer, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
@@ -143,6 +143,9 @@ export type { Sidebars } from "@/core/plugins"
 export { useViewsVersion, viewsChanged } from "@/core/plugins"
 export { devicePref } from "@/core/prefs"
 export { aiOn, setAi, useAi } from "@/core/ai"
+// Every coding agent on every machine, merged from the plugins' `agentRuns` (the Agents panel).
+export { orderRuns } from "@/core/agentorder"
+export { useAgentRuns } from "@/core/agentruns"
 // A value module state keeps, that hooks and subscribers follow (safe while a module loads).
 export { cell, type Cell } from "@/core/signal"
 /** Taps answered at once: rows taken off a list before the write is done, a button's slow action, a value just chosen. */

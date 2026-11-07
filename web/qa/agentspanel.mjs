@@ -1,0 +1,130 @@
+// The Agents panel (the terminals socket, the chats route and the machines stood in for): offered once in the right
+// sidebar, every agent in one list (needs you, working, done), each kind's icon and machine, the filter, a click opening
+// a terminal's tab or a chat's, and the same list in a phone's drawer. Writes the sidebars: throwaway server only.
+//   node web/qa/agentspanel.mjs <base url> [out dir]
+import { mkdirSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import path from "node:path"
+import { qa, until, wait } from "./lib/qa.mjs"
+const { args: [B, OUT = "/tmp/agentspanel-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+mkdirSync(OUT, { recursive: true })
+const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a], { encoding: "utf8" })
+// (Machines on, whatever the sandbox has: its machines name the rows; the panel hidden, to be offered)
+vau("plugin", "on", "machines")
+vau("panels", "hide", "agents", "--vault")
+await wait(1000)
+
+const now = Date.now(), id = `qa${now.toString(36)}`
+const MACHINES = [
+  { id: "home", label: "M1", url: "http://home.invalid", online: true, self: true, plugins: ["claude-code", "terminal"] },
+  { id: "laptop", label: "M4", url: "http://laptop.invalid", online: true, self: false, plugins: ["claude-code", "terminal"] },
+  { id: "box", label: "Mini PC", url: "http://box.invalid", online: true, self: false, plugins: ["terminal"] },
+]
+const term = (n, more) => ({ id: `claude-${id}${n}`, agent: "claude", process: "claude", busy: true, clients: 1, started: now - 60000 * (9 - n), backend: "vaultite", ...more })
+const T = {
+  asks: term(1, { state: "blocked", kind: "permission", msg: "Run npm test?", title: "Fix the upload test" }),
+  works: term(2, { state: "working", title: "Write the release notes", machine: "laptop", machineLabel: "M4" }),
+  rests: term(3, { state: "idle", title: "Tidy the Lighthouse README", machine: "box", machineLabel: "Mini PC", session: "took-over" }),
+}
+const shell = { id: `${id}9`, agent: null, process: "zsh", busy: false, clients: 1, started: now, backend: "vaultite" }
+const chat = (cid, more) => ({ id: cid, cwd: "/Users/alice/lighthouse", by: "app", started: now - 600000, at: now - 300000, asks: [], turn: null, model: "", effort: "", mode: "auto", account: "default", seq: 0, told: 0, ...more })
+const C = {
+  asks: chat("c-asks", { state: "waiting", title: "Plan the Lighthouse launch", asks: ["a1"], at: now - 120000 }),
+  works: chat("c-works@laptop", { state: "working", title: "Summarize Alice's notes", turn: { prompt: "Summarize Alice's notes from this week", text: "" } }),
+  rests: chat("c-rests", { state: "idle", title: "Companion", by: "companion", at: now - 3600000 }),
+  // the session a terminal took over: shown once, as the terminal
+  dup: chat("took-over@box", { state: "idle", title: "Tidy the Lighthouse README" }),
+}
+const LIST = JSON.stringify({ t: "sessions", list: [...Object.values(T), shell] })
+
+async function standIn(page) {
+  await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => ws.send(LIST))
+  await page.routeWebSocket(/\/api\/terminal\/[^/?]+/, (ws) => {
+    ws.send(JSON.stringify({ t: "attached", fresh: false, tmux: false, scrollback: 1000 }))
+    ws.send(JSON.stringify({ t: "size", cols: 80, rows: 24 }))
+  })
+  await page.routeWebSocket(/\/api\/claude-code\/chat\/[^/?]+$/, (ws) => ws.send(JSON.stringify({ t: "hello", found: true, s: C.works, title: C.works.title,
+    cwd: C.works.cwd, account: "default", model: "", effort: "", tui: null, driven: "", history: { entries: [], start: 0 }, live: [] })))
+  await page.route(/\/api\/claude-code\/chats(\?.*)?$/, (r) => r.fulfill({ json: { sessions: Object.values(C) } }))
+  await page.route(/\/api\/machines(\?.*)?$/, (r) => r.fulfill({ json: MACHINES }))
+}
+const rowsOf = (page, scope) => page.$$eval(`${scope} [data-agent-run]`, (els) => els.map((e) => ({
+  id: e.dataset.agentRun, kind: e.dataset.kind, state: e.dataset.state, text: e.innerText.trim().replace(/\s+/g, " "),
+  where: e.querySelector("[data-agent-where]")?.textContent ?? "", dot: e.querySelector("[data-dot]")?.dataset.dot ?? null, bold: e.className.includes("font-semibold") })))
+
+// ---------- desktop: offered in the right sidebar, in its order ----------
+const D = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
+await standIn(D)
+await D.goto(B)
+await D.waitForSelector("[role=tree]", { timeout: 60000 })
+const shown = await until(async () => !!(await D.$("[data-agents-panel] [data-agent-run]")), 15000)
+const sides = await until(() => /Right sidebar:\n\s+1\. agents:agents/.test(vau("panels", "--vault")), 5000)
+check("Agents: offered once an agent runs, at the top of the right sidebar", shown && sides, vau("panels", "--vault").split("\nHidden")[0])
+await until(async () => (await rowsOf(D, "[data-agents-panel]")).length === 6, 10000)
+const rows = await rowsOf(D, "[data-agents-panel]")
+const order = rows.map((r) => r.id)
+const want = [`terminal:${T.asks.id}`, "chat:c-asks", `terminal:${T.works.id}`, "chat:c-works@laptop", `terminal:${T.rests.id}`, "chat:c-rests"]
+check("Agents: needs you, then working, then done, terminals and chats in one list (a chat a terminal took over once)", JSON.stringify(order) === JSON.stringify(want), order)
+const groups = await D.$$eval("[data-agents-panel] [data-agent-group]", (els) => els.map((e) => [e.dataset.agentGroup, e.firstElementChild?.textContent]))
+check("Agents: under Needs you, Working and Done", JSON.stringify(groups) === JSON.stringify([["needs", "Needs you · 2"], ["working", "Working · 2"], ["done", "Done"]]), groups)
+const by = Object.fromEntries(rows.map((r) => [r.id, r]))
+check("Agents: each row's kind (terminal or chat) and machine", JSON.stringify(rows.map((r) => [r.kind, r.where])) === JSON.stringify([
+  ["terminal", "M1"], ["chat", "M1"], ["terminal", "M4"], ["chat", "M4"], ["terminal", "Mini PC"], ["chat", "M1"]]), rows.map((r) => [r.kind, r.where]))
+check("Agents: its state as the dot (ask, working, none at rest), the ones that need you bold",
+  JSON.stringify(rows.map((r) => [r.dot, r.bold])) === JSON.stringify([["ask", true], ["ask", true], ["working", false], ["working", false], [null, false], [null, false]]), rows.map((r) => [r.dot, r.bold]))
+check("Agents: what each is doing", by[`terminal:${T.works.id}`]?.text.includes("Write the release notes") && by["chat:c-works@laptop"]?.text.includes("Summarize Alice's notes"), rows)
+await D.locator("[data-agents-panel]").screenshot({ path: `${OUT}panel.png` })
+
+// ---------- the filter ----------
+const filter = D.locator("[data-agents-panel] [data-agent-filter]")
+check("Agents: a filter on its heading, All to start", (await filter.innerText().catch(() => "")).trim() === "All")
+await filter.click()
+await D.getByRole("menuitemcheckbox", { name: /^Chats/ }).or(D.getByRole("menuitem", { name: /^Chats/ })).or(D.getByRole("menuitemradio", { name: /^Chats/ })).first().click()
+await wait(300)
+const chats = await rowsOf(D, "[data-agents-panel]")
+check("Agents: Chats shows only the chats", chats.length === 3 && chats.every((r) => r.kind === "chat"), chats.map((r) => r.id))
+await filter.click()
+await D.getByRole("menuitemcheckbox", { name: /^All/ }).or(D.getByRole("menuitem", { name: /^All/ })).or(D.getByRole("menuitemradio", { name: /^All/ })).first().click()
+await wait(300)
+check("Agents: All shows every one again", (await rowsOf(D, "[data-agents-panel]")).length === 6)
+
+// ---------- a click opens it in its own place ----------
+const active = () => D.$eval("[data-tab-bar] [data-tab-id][aria-selected=true], [data-tab-bar] [data-tab-id][data-active]", (e) => e.dataset.tabId).catch(() => "")
+const hash = () => D.evaluate(() => decodeURIComponent(location.hash))
+await D.click(`[data-agent-run="terminal:${T.works.id}"]`)
+await wait(800)
+check("Agents: a terminal's row opens its terminal tab", (await hash()).includes(`terminal/${T.works.id}`), await hash())
+check("Agents: its row is the active one then", !!(await D.$(`[data-agents-panel] [data-agent-run="terminal:${T.works.id}"].font-medium`)), await active())
+await D.click(`[data-agent-run="chat:c-works@laptop"]`)
+await wait(800)
+check("Agents: a chat's row opens its chat tab", (await hash()).includes("claude-session/c-works@laptop"), await hash())
+await D.screenshot({ path: `${OUT}desktop.png` })
+
+// ---------- as a tab ----------
+await D.goto("about:blank")
+await D.goto(`${B}#view/agents`)
+await D.waitForSelector("[data-agents-view] [data-agent-run]", { timeout: 15000 })
+await wait(500)
+const seg = await D.$$eval("[data-agents-view] [role=radio]", (els) => els.map((e) => e.textContent))
+check("Agents tab: All, Terminals and Chats to pick from, with counts", JSON.stringify(seg) === JSON.stringify(["All", "Terminals3", "Chats3"]), seg)
+const step = await D.$eval(`[data-agents-view] [data-agent-run="terminal:${T.asks.id}"] [data-agent-step]`, (e) => e.textContent).catch(() => "")
+check("Agents tab: what it asks spelled out", step === "Run npm test?", step)
+await D.screenshot({ path: `${OUT}tab.png` })
+await D.close()
+
+// ---------- a phone: the same list in its drawer ----------
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
+const P = watch(await ctx.newPage(), { ignore: /favicon|Failed to load resource|WebSocket/ })
+await standIn(P)
+await P.goto(B)
+await wait(2000)
+// (the right sidebar's panels are the right drawer's)
+await P.locator("[data-phone-header] button[aria-label='Open right sidebar']").tap()
+await wait(800)
+const phone = await rowsOf(P, "[data-phone-drawer] [data-agents-panel]").catch(() => [])
+check("phone: the drawer lists them in the same order", JSON.stringify(phone.map((r) => r.id)) === JSON.stringify(want), phone.map((r) => r.id))
+const tall = await P.$eval("[data-phone-drawer] [data-agent-run]", (e) => e.getBoundingClientRect().height).catch(() => 0)
+check("phone: rows at the sidebar's phone size (40px)", tall >= 39.5, tall)
+await P.locator("[data-phone-drawer] [data-agents-panel]").screenshot({ path: `${OUT}phone.png` }).catch(() => P.screenshot({ path: `${OUT}phone.png` }))
+await ctx.close()
+await done()

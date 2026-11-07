@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Search, Server, SquareTerminal, SquareX } from "lucide-react"
 import { agentOfTerminal, aiOn, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView, severalMachines,
-  PageHeader, Panel, SettingRow, useAi, useLive, viewsChanged } from "@vaultite"
+  devicePref, offerPanel, PageHeader, Panel, panelSide, SettingRow, useAi, useLive, viewsChanged } from "@vaultite"
 import { agentIn, autoLabel, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
+import { useTerminalRuns } from "./runs"
 import { AskBox, openAsk } from "./AskBox"
 import { vtModule } from "./vt/wasm"
 
@@ -33,6 +34,9 @@ function Preview() {
 
 /** While a terminal tab is open, follow the sessions list so tabs show each session's name, colour and state; on a
  *  computer, also preload the terminal's chunk once idle. */
+const AGENTS = "agents:agents"
+const offered = devicePref<boolean>("agents:offered", false)
+
 function SessionNames() {
   const layout = useSyncExternalStore(onTabLayoutChange, getTabLayout)
   const any = JSON.stringify(layout).includes('"view:terminal/')
@@ -42,6 +46,18 @@ function SessionNames() {
     let was = ""
     return subscribeSessions(() => { const k = tabsKey(); if (k !== was) { was = k; viewsChanged() } })
   }, [any])
+  // The Agents panel offered once per device, at the top of the right sidebar, when an agent first runs (a setup saved
+  // before the panel existed doesn't list it); hidden after, it stays hidden.
+  useEffect(() => {
+    if (offered.get()) return
+    const offer = () => {
+      if (offered.get() || !aiOn() || !(getSessions().list ?? []).some((s) => agentIn(s))) return
+      offered.set(true)
+      if (!panelSide(AGENTS)) offerPanel(AGENTS, "right", panelSide("terminal:sessions") === "right" ? "terminal:sessions" : null)
+    }
+    offer()
+    return subscribeSessions(offer)
+  }, [])
   useEffect(() => {
     if (matchMedia("(pointer: coarse)").matches) return
     const load = () => void preload().catch(() => { chunk = null })
@@ -184,6 +200,8 @@ export default definePlugin({
       }
     }),
   },
+  // Its sessions running an agent, in the Agents panel with every other agent.
+  agentRuns: useTerminalRuns,
   // Every running shell in the sidebar, live.
   ambient: { agents: { title: "Agents at work", sort: 20, render: () => <AgentsAtWork /> } },
   sidebar: { sessions: { title: "Terminals", names: ["terminals", "terminal", "shells"], heading: false, sort: 30, view: "terminals", render: (ctx) => <Sessions {...ctx} /> } },

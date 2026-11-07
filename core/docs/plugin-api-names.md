@@ -30,6 +30,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `agentPlugin(src, o)`: A coding agent plugin's definition: its blocks, a session's view, its agent in Terminal, the commands opening it (literal: the server reads them), demo usage.
 - `AgentProject({ src, … })`: In a project file: that project's last 30 days and its sessions (`project: Name` for another).
 - `AgentProjects(ctx)`
+- `AgentRun`: A coding agent somewhere, as the Agents panel lists every plugin's together (a plugin's `agentRuns`).
 - `AgentSession({ src, id })`
 - `AgentSessionPage`
 - `AgentSessions({ src, options, fm })`: What's open now (working or idle), then the latest sessions (`recent: 5`).
@@ -410,7 +411,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NotifyOptions`
 - `numberText(n)`: A number as text (1,234.5): n.toLocaleString(), with the formatter kept.
 - `offeredCommand(id)`: A command by its id, if it's registered and offered now (a menu made of commands: the editor's).
-- `offerPanel(key, side)`: Bring a panel into a sidebar without opening the sidebar (a closed one shows it in its rail): unfolded, and at the end of `side` if it's in neither.
+- `offerPanel(key, side, before?)`: Bring a panel into a sidebar unasked, the sidebar left closed: unfolded, at `side`'s end (or before `before`) if it's in neither.
 - `offerPicture(el, draw)`: `el` gives copies of the page its picture as it is now (`draw`; null: copy it as it is), for what a copy can't show of it: a WebGL canvas reads back empty once shown.
 - `offPlugin(f, disabled?)`: Left out of lists of pages (the sidebar's): a page whose plugin (its `plugin:`, the one that brought it) is off.
 - `offText(p, disabled?)`: Why a plugin that isn't on isn't ("People map needs People, which is off"): its own switch said off would send the user to a switch that's on.
@@ -459,6 +460,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openView(to, opts?)`: Open a plugin's view, shown once: a pane that has it shows it (no two terminal panes fighting over its size), else a new tab or the pane to the right.
 - `openWebLink(url, how?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
+- `orderRuns(list)`: The panel's order: needs you, then working, then at rest; the ones at rest newest first, the others oldest first (as they started: a new one doesn't push the rest down).
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).
 - `PageCtx`: What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are off.
 - `PageHeader({ title, subtitle, section, tabs, children, className })`: A page's large title, on desktop right under its tab's bar (ViewBar), like a file's.
@@ -731,6 +733,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `UiMark`: `run` gets the click: a menu at the mark (`menuBelow`).
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account` (and `for`: a plugin whose accounts come first): `on` names another machine…
+- `useAgentRuns(on?)`: Every agent the plugins that are on know of, in order, and whether some haven't said yet (`loading`).
 - `useAgents()`
 - `useAi()`
 - `useArchivedTabs()`

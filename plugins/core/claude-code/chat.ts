@@ -664,7 +664,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     } })
   }
   /** An op of this plugin run on another machine (a call passed on from one runs where it's sent). */
-  async function onMachine(ctx: OpCtx, m: Machine, op: string, body: Record<string, unknown>) {
+  async function onMachine(ctx: { who: { client: string | null } }, m: Machine, op: string, body: Record<string, unknown>) {
     if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
     if (!m.online) throw new OpError(`${m.label} is offline`, 502)
     let r: Response
@@ -797,6 +797,38 @@ after an approved plan (acceptEdits, default...).`,
     text: (r) => `Now ${d.modelName(r.model) || "its model"}${r.effort ? `, ${r.effort} effort` : ""}, ${MODE_LABELS[r.mode as Mode] ?? r.mode}.`,
   })
 
+  /** The sessions running in the app's chat here, on machine `at`, or on every machine (`all`): another's are <id>@<machine>. */
+  async function chatList(at: string, ctx: { who: { client: string | null } }): Promise<{ sessions: Listed[]; away?: Record<string, string> }> {
+    const here = async () => {
+      await keeper(false).catch(() => null)
+      return [...hosted.values()].map((s) => ({ ...s, title: titleOf(s.id) }))
+    }
+    if (at && at !== "all") {
+      const m = await plugin.ask<Machine | null>("machines:machine", null, at)
+      if (!m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
+      if (m.self) return { sessions: await here() }
+      const r = await onMachine(ctx, m, "claude-code.chat-list", {}) as { sessions: Listed[] }
+      return { sessions: r.sessions.map((s) => ({ ...s, id: `${s.id}@${m.id}` })) }
+    }
+    const sessions: Listed[] = await here()
+    if (at !== "all") return { sessions }
+    const others = (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("claude-code"))
+    const away: Record<string, string> = {}
+    await Promise.all(others.map((m) => onMachine(ctx, m, "claude-code.chat-list", {}).then(
+      (r) => { sessions.push(...(r.sessions as Listed[]).map((s) => ({ ...s, id: `${s.id}@${m.id}` }))) },
+      (e: Error) => { away[m.id] = e.message })))
+    return { sessions, ...(Object.keys(away).length ? { away } : {}) }
+  }
+
+  // Every machine's chats, for the Agents panel (polled while it shows): a route, so a look isn't an op call in Activity.
+  plugin.route("GET", "claude-code/chats", async (req) => {
+    await plugin.ownerOnly(req, OWNER)
+    const client = req.http?.headers["x-vaultite-client"]
+    const r = await chatList("all", { who: { client: typeof client === "string" ? client : null } })
+    // (a turn's words cut to what a row can say: a list polled every few seconds)
+    return { ...r, sessions: r.sessions.map((s) => ({ ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error } })) }
+  }, { sync: false })
+
   plugin.op({
     id: "claude-code.chat-list", cli: "chat list", mcp: "chat_list", owner: OWNER, kind: "read", lock: false,
     summary: "The Claude Code sessions running in the app's chat now: each one's state, what it asks, folder, model and mode; machine all: every machine's.",
@@ -807,28 +839,7 @@ Machines (its sessions are <id>@<machine>), all every machine's.
   vau chat list
   vau chat list --machine all`,
     params: { machine: { type: "string", description: "another of the Machines, by its id (studio), or all: every machine's" } },
-    run: async ({ machine }, ctx) => {
-      const at = String(machine ?? "")
-      const here = async () => {
-        await keeper(false).catch(() => null)
-        return [...hosted.values()].map((s) => ({ ...s, title: titleOf(s.id) }))
-      }
-      if (at && at !== "all") {
-        const m = await plugin.ask<Machine | null>("machines:machine", null, at)
-        if (!m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
-        if (m.self) return { sessions: await here() }
-        const r = await onMachine(ctx, m, "claude-code.chat-list", {}) as { sessions: Listed[] }
-        return { sessions: r.sessions.map((s) => ({ ...s, id: `${s.id}@${m.id}` })) }
-      }
-      const sessions: Listed[] = await here()
-      if (at !== "all") return { sessions }
-      const others = (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("claude-code"))
-      const away: Record<string, string> = {}
-      await Promise.all(others.map((m) => onMachine(ctx, m, "claude-code.chat-list", {}).then(
-        (r) => { sessions.push(...(r.sessions as Listed[]).map((s) => ({ ...s, id: `${s.id}@${m.id}` }))) },
-        (e: Error) => { away[m.id] = e.message })))
-      return { sessions, ...(Object.keys(away).length ? { away } : {}) }
-    },
+    run: ({ machine }, ctx) => chatList(String(machine ?? ""), ctx),
     text: (r) => (r.sessions.length ? r.sessions.map(line).join("\n") : "No chat sessions are running.") +
       Object.entries((r.away ?? {}) as Record<string, string>).map(([k, v]) => `\n${k}: ${v}`).join(""),
   })

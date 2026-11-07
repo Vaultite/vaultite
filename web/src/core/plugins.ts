@@ -557,10 +557,10 @@ export function dockAtEnd(key: string, side: Side) {
   changeSidebars((s) => setCollapsed(placePanel(s, key, { side, before: null }), key, false))
   if (side === "left" ? !getPrefs().sidebar : !getPrefs().rightSidebar) void setPrefs(side === "left" ? { sidebar: true } : { rightSidebar: true })
 }
-/** Bring a panel into a sidebar without opening the sidebar (a closed one shows it in its rail): unfolded, and at the
- *  end of `side` if it's in neither. For what a plugin shows unasked; revealPanel is for what the user asked to see. */
-export function offerPanel(key: string, side: Side) {
-  changeSidebars((s) => setCollapsed(sideIn(s, key) ? s : placePanel(s, key, { side, before: null }), key, false))
+/** Bring a panel into a sidebar unasked, the sidebar left closed: unfolded, at `side`'s end (or before `before`) if
+ *  it's in neither. revealPanel is for what the user asked to see. */
+export function offerPanel(key: string, side: Side, before: string | null = null) {
+  changeSidebars((s) => setCollapsed(sideIn(s, key) ? s : placePanel(s, key, { side, before: before && s[side].includes(before) ? before : null }), key, false))
 }
 /** The sidebars as they come, each panel where its plugin puts it (folds and heights kept). Returns its undo. */
 export function restoreSidebars() {

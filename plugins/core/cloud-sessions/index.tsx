@@ -4,6 +4,7 @@ import { activeFile, choose, currentFile, definePlugin, devicePref, isViewOpen, 
 import { getCloud, hasCloud, newSession, openSession, pickedNow, pickedOf, repoOf, settings, shownAccounts, STATUS, statusOf, subscribeCloud } from "./cloud"
 import { CloudList, CloudPanel } from "./CloudPanel"
 import { CloudView } from "./CloudPage"
+import { useCloudRuns } from "./runs"
 
 const isNote = (p: string) => /\.md$/i.test(p) && !p.startsWith(".")
 const here = () => { const f = currentFile() || activeFile()?.path || ""; return isNote(f) ? f : "" }
@@ -84,6 +85,8 @@ export default definePlugin({
       })
     },
   },
+  // Its sessions in the Agents panel with every other agent.
+  agentRuns: useCloudRuns,
   preview: () => <Preview />,
 })
 

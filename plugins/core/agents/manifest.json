@@ -4,7 +4,7 @@
   "category": "ai-apps",
   "alwaysOn": true,
   "name": "Coding agents",
-  "description": "One set of blocks for every coding agent: its plan's limits, its sessions, its usage by day, project and model, and one project's. A block's `agent:` names whose (claude-code, codex...): each agent's plugin draws them, read from that agent's own files, and with that plugin off its blocks are off too.",
+  "description": "The Agents panel: every coding agent on every machine in one list (terminals, chats, cloud sessions), the ones that need you first. And one set of blocks for every coding agent: its plan's limits, its sessions, its usage by day, project and model, and one project's. A block's `agent:` names whose (claude-code, codex...): each agent's plugin draws them, read from that agent's own files, and with that plugin off its blocks are off too.",
   "blocks": {
     "agent-limits": {
       "description": "an agent's plan limits (the session, the week, a month's included usage): how much is used and when each renews",

@@ -174,6 +174,40 @@ export type FormatCtx = { store: Store; path: string
   height?: number
   /** Embedded: what follows its name in the embed (`![[Books.base#Reading]]`: "Reading"), and the file it's in. */
   subpath?: string; host?: string }
+/** A coding agent somewhere, as the Agents panel lists every plugin's together (a plugin's `agentRuns`). */
+export type AgentRun = {
+  /** Unique among every plugin's ("chat:<id>", "terminal:<id>"). */
+  id: string
+  /** How it runs: in a terminal (typed in, it outlives the app), a chat (the app runs it headless, talked to through its
+   *  chat tab), or in the cloud (claude.ai: cloud and Remote Control sessions). */
+  kind: "terminal" | "chat" | "cloud"
+  /** What it's doing: its title, else what it is ("Claude Code"). */
+  title: string
+  /** Where it stands in its own words, when it says (what it asks, its last step). */
+  step?: string
+  /** needs: waiting on the user (a permission, a question, an answer unread); working; done: at rest. */
+  state: "needs" | "working" | "done"
+  /** At rest after a failure. */
+  failed?: boolean
+  /** An answer the user hasn't read. */
+  unread?: boolean
+  /** The machine it runs on, by id ("" or none: the one serving the app), and its name when the plugin knows it; `where`
+   *  alone for what isn't a machine ("Cloud"). */
+  machine?: string
+  where?: string
+  /** Its agent ("Claude Code") and the agent's colour. */
+  agent?: string; tint?: string
+  /** Its agent's own session id: the same session listed twice (a chat a terminal took over) shows once, the terminal. */
+  session?: string
+  /** When it last changed (ms), else when it started (`started`): the ones at rest, newest first. */
+  at: number; started?: boolean
+  /** The tab it opens ("view:terminal/<id>"): its own tab if one shows it, else a new one. */
+  to?: string
+  /** Or what a click does (a cloud session's page); `newTab` with ⌘ or a middle-click. */
+  open?: (newTab: boolean) => void
+  /** Its right-click menu, its plugin's (End session, Archive). */
+  menu?: () => MenuItem[]
+}
 /** A kind of entry in a timeline (a `## Timeline` section a file's kind draws: a person's): how its rows look. */
 export type TimelineKind = { label: string; icon: LucideIcon; tint?: string }
 export type SearchDoc = {
@@ -628,6 +662,9 @@ export type PluginDef = {
   /** Things it finds that aren't in the store (running terminals): `docs` is asked whenever search looks, and
    *  `subscribe` says when they change while search is open. */
   searchLive?: { docs: () => SearchDoc[]; subscribe: (changed: () => void) => () => void }
+  /** Its coding agents at work, for the Agents panel: a hook, called only while the panel shows, giving every one it knows
+   *  of now (null: not known yet). Keep the list's object while nothing changed (useMemo): the panel redraws on a new one. */
+  agentRuns?: () => AgentRun[] | null
   /** What the quick switcher finds by the query itself, too many to index (the browsing history). */
   searchQuery?: {
     /** Things matching it, asked a moment after typing stops (the last answer wins), listed under `section`. */

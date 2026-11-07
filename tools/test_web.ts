@@ -3366,6 +3366,19 @@ await section("pagers", async () => {
   check("pagers: a spring started at a flick's speed is further along early, and still lands without overshooting", fast.at(0.05) > rest.at(0.05) && Array.from({ length: 60 }, (_, i) => fast.at(i / 100)).every((x) => x <= 1.0001), [rest.at(0.05), fast.at(0.05)])
 })
 
+await section("agents panel order", async () => {
+  const { orderRuns }: Any = await web("core/agentorder.ts")
+  const run = (id: string, state: string, at: number, more: Any = {}) => ({ id, kind: "terminal", title: id, state, at, ...more })
+  const list = [
+    run("done-old", "done", 1), run("work-late", "working", 50), run("needs", "needs", 40), run("done-new", "done", 90), run("work-early", "working", 10),
+    run("chat-dup", "done", 95, { kind: "chat", session: "s1", machine: "m4" }), run("term-dup", "working", 20, { session: "s1", machine: "m4" }),
+    run("chat-elsewhere", "done", 80, { kind: "chat", session: "s1", machine: "m1" }),
+  ]
+  const ids = orderRuns(list).map((r: Any) => r.id)
+  check("agents panel: needs you, working (oldest first), then done (newest first); a session a terminal has shows once, as it, per machine",
+    JSON.stringify(ids) === JSON.stringify(["needs", "work-early", "term-dup", "work-late", "done-new", "chat-elsewhere", "done-old"]), ids)
+})
+
 await section("companion reach", async () => {
   const r: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/reach.ts")).href)
   const home = os.homedir(), at = (v: string) => r.screenshotDir(() => v), none = r.screenshotDir(() => { throw new Error("not set") })
