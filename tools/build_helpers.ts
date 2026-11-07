@@ -18,6 +18,7 @@ const builds: [string, () => Promise<string>][] = [
   ["the capture helper", () => captureSwift.build(path.join(root, "electron", "bin"), ["arm64", "x86_64"])],
   ["the permissions addon", () => buildMacAddon("macpermissions", path.join(root, "electron", "bin"))],
   ["the gestures addon", () => buildMacAddon("gestures", path.join(root, "electron", "bin"))],
+  ["the menus addon", () => buildMacAddon("menus", path.join(root, "electron", "bin"))],
 ]
 for (const [name, build] of builds) {
   try {

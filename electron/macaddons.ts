@@ -1,12 +1,12 @@
-// The Mac's addons, code run in the app's own process (macpermissions.m, gestures.m), built for the app (build_helpers)
-// or on first use from a checkout. No Electron here: the build tool and the tests load this in plain Node.
+// The Mac's addons, code run in the app's own process (macpermissions.m, gestures.m, menus.m), built for the app
+// (build_helpers) or on first use from a checkout. No Electron here: the build tool and the tests load this in plain Node.
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 
 /** Each addon, by its source's name, and the frameworks it links. */
-const FRAMEWORKS = { macpermissions: ["AppKit", "CoreLocation", "IOKit"], gestures: ["AppKit"] }
+const FRAMEWORKS = { macpermissions: ["AppKit", "CoreLocation", "IOKit"], gestures: ["AppKit"], menus: ["AppKit"] }
 export type MacAddonName = keyof typeof FRAMEWORKS
 
 const source = (name: MacAddonName) => path.join(import.meta.dirname, `${name}.m`)

@@ -14,6 +14,7 @@ import { dictate, dictating, stopFor, dictationEngines, expectedWords, freeFor, 
 import { land, landedSaid } from "./dictationroam.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
+import { macAddon } from "./macaddons.ts"
 import { type Call, callFrom, callSaid, type MicUser } from "./calllogic.ts"
 import { hideFromShares, overlayNumbers } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
@@ -160,6 +161,9 @@ export async function startHelper(h: HelperHost) {
     icon.setTemplateImage(true)
     tray = new Tray(icon)
     tray.setToolTip(app.getName())
+    // (its section headers, Companion and Jobs, read as bold titles: menus.m)
+    void macAddon("menus", path.join(app.getPath("userData"), "bin")).then((m) => m.call({ cmd: "boldHeaders" }))
+      .catch((e) => console.warn(`vaultite: the menu's headers stay AppKit's (${(e as Error).message})`))
     tray.on("click", () => tray?.popUpContextMenu(Menu.buildFromTemplate(menuItems())))
     login(h.prefs().login ?? app.isPackaged)
   }

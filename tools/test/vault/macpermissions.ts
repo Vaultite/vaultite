@@ -47,5 +47,9 @@ export default async ($: VaultTest) => {
     let bare = ""
     try { gestures.call({ cmd: "pass", on: true }) } catch (e) { bare = (e as Error).message }
     check("gestures: a pass names its window", bare.includes("window"), bare)
+    // The menus addon (electron/menus.m): the menu bar menu's section headers drawn bold, on from then on.
+    const menus = loadMacAddon(await buildMacAddon("menus", path.join(tmp, "menus")))
+    const bold = [menus.call({ cmd: "boldHeaders" }), menus.call({ cmd: "boldHeaders" })]
+    check("menus: bold headers on, twice the same", bold.every((r) => r.on === true), bold)
   }
 }
