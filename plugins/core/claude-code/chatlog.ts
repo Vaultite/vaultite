@@ -80,6 +80,30 @@ export function questionsOf(input: unknown): Question[] {
 type Json = any
 
 const INTERRUPTED = /^\[Request interrupted by user/
+/** A user line that isn't the user's: a background task's notice, another session's or a teammate's message. */
+const NOT_SAID = /^(?:<(?:agent-message|cross-session-message|teammate-message|task-notification)\b|Another Claude session sent a message)/
+
+/** The user's own latest message in a transcript's lines (typed or queued mid-turn, not a notice or another session's
+ *  message, nor a subagent's prompt): what an agent may quote as their word (the companion's job-stop). */
+export function userSaid(lines: string[]): { text: string; at: number } | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes('"user"') && !lines[i].includes("queued_command")) continue
+    let m: Json
+    try { m = JSON.parse(lines[i]) } catch { continue }
+    if (!m || typeof m !== "object" || m.isMeta || m.isSidechain || m.isSynthetic) continue
+    const q = m.type === "attachment" && m.attachment?.type === "queued_command" && m.attachment.commandMode === "prompt" ? m.attachment : null
+    if (!q && (m.type !== "user" || m.parent_tool_use_id)) continue
+    // (newer transcripts say where a prompt came from: only a person's is theirs)
+    const origin = m.origin?.kind
+    if (typeof origin === "string" && origin !== "human") continue
+    const content = q ? q.prompt : m.message?.content
+    if (Array.isArray(content) && content.some((c: Json) => c?.type === "tool_result")) continue
+    const text = userText(content)
+    if (!text || NOT_SAID.test(text) || INTERRUPTED.test(text)) continue
+    return { text, at: Date.parse(String(q?.timestamp ?? m.timestamp ?? "")) || 0 }
+  }
+  return null
+}
 
 /** A conversation read so far: `feed` takes one SDK message or transcript line and answers the entries it changed. */
 export class Reader {

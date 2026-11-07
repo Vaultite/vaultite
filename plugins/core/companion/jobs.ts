@@ -150,7 +150,7 @@ export function gist(text: string, n = 140) {
 export const questionsIn = (text: string) => text.trim().split(/\n\s*\n/).slice(-2).join("\n").replace(/"[^"\n]*"|“[^”\n]*”/g, "\"\"").split("\n")
   .flatMap((l) => plain(l).match(/[^.!?]*[A-Za-z][^.!?]*\?/g) ?? []).map((q) => cut(q.trim(), 200)).filter((q) => q.split(" ").length >= 3).slice(-3)
 /** The marker of a worker's first message (jobTask's): what it's told after is a follow-up. */
-const HANDED = "You're a job they handed off"
+export const HANDED = "You're a job they handed off"
 /** Its worker's latest turn as read (`asks`: the questions it waits on, else those its last answer ends with). */
 export function lastOf(t: { text: string; at: number; final?: boolean; prompt?: string; background?: number }, asks?: string[]): Last {
   const told = t.prompt && !t.prompt.includes(HANDED) ? cut(plain(t.prompt), 300) : ""

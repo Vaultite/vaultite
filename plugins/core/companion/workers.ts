@@ -3,10 +3,11 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
-import { agentName, parseTerminal } from "../../../core/agents.ts"
+import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, endEvent, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
+import { cardOf, choiceIn, endEvent, HANDED, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
+import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
 import { branchOf, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
 
@@ -40,6 +41,8 @@ export type Seen = { running: boolean; state?: string; kind?: string; msg?: stri
   context?: { tokens: number; window: number } }
 
 const KEEP = 40, KEEP_DAYS = 7
+/** How long after the user's ask the companion's handoff is still its answer (its words and place go with it). */
+const ANSWERING_MS = 10 * 60_000
 /** How long a job done keeps its terminal: follow-ups mostly come within a minute or two, and still find it running. */
 let grace = 120_000
 /** Another grace (the tests'). */
@@ -54,7 +57,7 @@ export async function diffSince(cwd: string, base: string) {
   const n = fresh.split("\n").filter(Boolean).length, c = Number(commits.trim()) || 0
   return [m ? `${m[1]} file${m[1] === "1" ? "" : "s"} changed, +${m[2] ?? 0} -${m[3] ?? 0}` : "", n ? `${n} new file${n > 1 ? "s" : ""}` : "", c ? `${c} commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")
 }
-const NOT_THEIRS = "only on the user's own words: answer it while answering their ask that names the choice (made after it began waiting), with said quoting them; else ask them which"
+const NOT_THEIRS = "only on the user's own words: answer it while answering their ask (Talk key) or their message to you that names the choice (made after it began waiting), with said quoting them; else ask them which"
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 const sameDir = (a: string, b: string) => { try { return fs.realpathSync(a) === fs.realpathSync(b) } catch { return false } }
@@ -518,7 +521,8 @@ checkout itself, and ends ready for review (its diff, a preview's link): nothing
 say so; Keep and merge (or land) lands it from that worktree and removes it. Every
 handoff announces itself in one short line ("Handed that off to a background agent."; a follow-up, "Passed that on to its job.");
 say replaces it, still one short line, only when they need more (a question, an unexpected place). End your turn. From
-another agent or a script (not the companion), nothing is said and no ask of the user's goes with it: task is all it has. job: a follow-up or a correction to one of yours (companion
+another agent or a script (not the companion), nothing is said and no ask of the user's goes with it: task is all it has
+(nor from the companion, an ask long past: only the one it answers). job: a follow-up or a correction to one of yours (companion
 jobs), typed into its terminal; anything about its result ("merge it", "try X too") goes to it too, done or closed (it
 resumes), with land for their word to merge it. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
 
@@ -543,7 +547,8 @@ resumes), with land for their word to merge it. A folder the jobs may never run 
       const name = d.who(p), task = str(p.task).trim()
       if (!task) throw new OpError("task: what to do")
       // (another agent's vau or a script, as the companion by its `who`: not its words, nor its user's ask)
-      const own = d.own(name, ctx), ask = own ? d.askOf(name) : undefined
+      // (and only the ask its turn answers: one long past isn't what it hands off now)
+      const own = d.own(name, ctx), latest = own ? d.askOf(name) : undefined, ask = latest && Date.now() - latest.t <= ANSWERING_MS ? latest : undefined
       const told = async (line: string) => { if (own) { d.did(name, "handoff"); await d.say(ctx, name, str(p.say).trim() || line) } }
       // (an ask live editing sent straight to the job on its page: it has it already)
       const sent = ask?.live
@@ -574,16 +579,54 @@ resumes), with land for their word to merge it. A folder the jobs may never run 
   const CLOSES = /\b(close|stop|drop|cancel|discard|scrap|abandon|kill|end|forget|done with|don'?t need|throw)\b/
   /** How recent the user's ask must be for the companion to answer a job's prompt with it. */
   const ASKED_MS = 3 * 60_000
+  /** How recent their own message to an agent (typed in its session) must be: its turn may read and check a while first. */
+  const TYPED_MS = 15 * 60_000
   const plainWords = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+  const holds = (text: string, said: string) => !!said && ` ${plainWords(text)} `.includes(` ${said} `)
+  const cut = (s: string, n: number) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t }
   /** The user answering through their companion: their own word, which only they may give (inbox.answer). */
   const BY_THEIR_WORD = { ...whoOf("app/companion", null), label: "the user, through their companion" }
+  /** Who may have typed a terminal's input as the user: the app's surfaces (their tab, the inbox's reply), never an agent's vau. */
+  const theirs = (by: string) => by === "the user" || by.startsWith("app/") || by.startsWith("machine/") || by === "iphone" || by === "watch"
+
+  /** The user's own latest message in the calling agent's conversation (its terminal's or chat's session, from its
+   *  transcript), and who typed it into its terminal when it wasn't them; null when the call has no session it can read. */
+  async function typedTo(ctx: OpCtx): Promise<{ text: string; at: number; sentBy: string } | null> {
+    const w = requestWriter.getStore(), terminal = w?.terminal ?? "", session = w?.session ?? ""
+    if (!terminal && !session) return null
+    const agent = parseTerminal(terminal)?.agent ?? KNOWN_AGENTS.find((k) => k.id === ctx.who.agent)?.terminal ?? ""
+    const said = agent ? await plugin.ask<{ text: string; at: number } | null>(`agent-said:${agent}`, null, terminal, session).catch(() => null) : null
+    if (!said?.text) return null
+    // (typed into its terminal by an op, another agent's vau: it reads as typed, but isn't theirs)
+    const sq = (s: string) => s.replace(/…$/, "").replace(/\s+/g, " ").trim().slice(0, 120)
+    const r = terminal ? await ctx.api("GET", `terminals/${encodeURIComponent(terminal)}/inputs`).catch(() => null) as { inputs?: { by: string; text?: string }[] } | null : null
+    const sent = (r?.inputs ?? []).findLast((x) => !!x.text && sq(x.text) === sq(said.text))
+    // (a job's worker: its task is the companion's handoff, not their message)
+    return { text: said.text, at: said.at, sentBy: said.text.includes(HANDED) ? "the companion, as your job's task" : sent && !theirs(sent.by) ? sent.by : "" }
+  }
+  /** Whether `said` quotes the user's own word given after `since`: their Talk key ask `m`, else their latest message to
+   *  the calling agent (`closes`: words that close a job). Who said it, or why it isn't theirs. */
+  async function theirWord(ctx: OpCtx, m: Moment | undefined, said: string, o: { since?: number; closes?: boolean } = {}): Promise<{ by: string } | { why: string }> {
+    const since = o.since ?? 0
+    if (!said) return { why: "said is missing: quote their words, as they said them" }
+    if (o.closes && !CLOSES.test(said)) return { why: `"${said}" doesn't close it: quote their words that do ("close it", "drop it")` }
+    if (m?.text && m.t >= since && Date.now() - m.t <= ASKED_MS && holds(m.text, said)) return { by: "the user, through their companion" }
+    const t = await typedTo(ctx)
+    if (!t) return { why: m?.text ? `"${said}" isn't in their latest ask to the companion, and your session's messages can't be read (only a Claude Code session's)` : "no message of theirs to quote: their ask to the companion, or their latest message in your session (a Claude Code session's, read from its transcript)" }
+    if (t.sentBy) return { why: `their latest message in your session was typed into its terminal by ${t.sentBy}, not by them` }
+    if (!holds(t.text, said)) return { why: `"${said}" isn't in their latest message to you ("${cut(t.text, 80)}")` }
+    if (t.at && t.at < since) return { why: "their latest message to you came before it began waiting: ask them" }
+    if (Date.now() - t.at > TYPED_MS) return { why: `their latest message to you is ${Math.round((Date.now() - t.at) / 60_000)} min old: ask them again` }
+    return { by: "the user, in their message to you" }
+  }
   plugin.op({
     id: "companion.job-answer",
     cli: "companion job-answer",
     summary: "Answer what a job's worker waits on (trust its folder, a permission, its question) with the user's choice, pressed in its terminal as its notification's buttons do: only on their own clear words.",
     help: `choice: one of the choices companion job lists for it (its words or number; yes or no for a permission). The
 terminal's menu cursor is moved onto it and checked there before Enter (trust and imports default to No). From an agent
-(you), only while answering the user's ask that names it, made after it began waiting, with said quoting their words:
+(you), only while answering the user's ask (their Talk key's, or their latest message in your session, read from
+its transcript) that names it, made after it began waiting, with said quoting their words:
 never on your own, nor guessed from a vague ask (unsure: ask them which). A question in several parts is answered in
 its terminal (companion job-open).
 
@@ -592,7 +635,7 @@ its terminal (companion job-open).
     lock: false,
     params: { id: { type: "string", required: true, description: "the job's id (or the end of it)" },
       choice: { type: "string", required: true, description: "the choice: its words or number, or yes / no for a permission" },
-      said: { type: "string", description: "from an agent: the user's words in their ask that name the choice, as they said them" }, as: d.as },
+      said: { type: "string", description: "from an agent: the user's words that name the choice, as they said them (their ask, or their latest message to you)" }, as: d.as },
     args: ["id", "choice"],
     run: async (p, ctx) => {
       const j = jobOf(str(p.id))
@@ -605,9 +648,10 @@ its terminal (companion job-open).
       let by = ctx.who
       if (!userSurface(ctx.who)) {
         // (an agent answers only with the user's own words, said after it began waiting: never yes on its own)
-        const m = d.own(d.who(p), ctx) ? d.askOf(d.who(p)) : undefined, said = plainWords(str(p.said))
-        if (!m?.text || m.t < w.at || Date.now() - m.t > ASKED_MS || !said || !` ${plainWords(m.text)} `.includes(` ${said} `)) throw new OpError(NOT_THEIRS, 403)
-        by = BY_THEIR_WORD
+        const m = d.own(d.who(p), ctx) ? d.askOf(d.who(p)) : undefined
+        const word = await theirWord(ctx, m, plainWords(str(p.said)), { since: w.at })
+        if ("why" in word) throw new OpError(`${NOT_THEIRS} (${word.why})`, 403)
+        by = { ...BY_THEIR_WORD, label: word.by }
       }
       // (its row in the inbox, the answer's way in: a prompt just changed may take its terminal's next word to reopen it)
       type Row = { id: string; kind: string; state: string; terminal?: string }
@@ -688,8 +732,9 @@ its terminal (companion job-open).
     id: "companion.job-stop",
     cli: "companion job-stop",
     summary: "Stop a job (its worker's terminal ends; its conversation stays, to resume); one ready for review is closed as done, only on the user's own word.",
-    help: `A job ready for review (or merging what they kept) is closed by an agent only with said quoting their ask's words
-that close it ("close it", "drop it"): never as a fallback for "keep it", nor on your own. Unsure what they want: ask
+    help: `A job ready for review (or merging what they kept) is closed by an agent only with said quoting the user's words
+that close it ("close it", "drop it"): their ask to the companion, or their latest message in your own session (typed
+by them, read from its transcript). Never as a fallback for "keep it", nor on your own. Unsure what they want: ask
 in one short line, merge it or close it as it is (each a button).
 
   vau companion job-stop jd3k2h1g
@@ -697,25 +742,27 @@ in one short line, merge it or close it as it is (each a button).
     kind: "write",
     lock: false,
     params: { id: { type: "string", required: true, description: "the job's id (or the end of it)" },
-      said: { type: "string", description: "from an agent, for a job ready for review: the user's words in their ask that close it, as they said them" },
+      said: { type: "string", description: "from an agent, for a job ready for review: the user's words that close it, as they said them (their ask, or their latest message to you)" },
       which: { type: "string", description: "their words naming that job, when their ask was over another job's terminal" }, as: d.as },
     args: ["id"],
     run: async (p, ctx) => {
       const j = jobOf(str(p.id))
+      let byWord = ""
       // (an agent's: the user's own stop, from the app or their shell, is theirs)
       if (ctx.who.agent) {
         const m = d.own(d.who(p), ctx) ? d.askOf(d.who(p)) : undefined, why = unsure(j, m, str(p.which))
         if (why) throw new OpError(why, 409)
         // (closing what they haven't decided on is theirs: "keep it" with nothing shown once closed an unmerged job)
-        const said = plainWords(str(p.said))
-        if ((j.state === "ready for review" || (j.land && j.land.at === undefined)) &&
-          (!m?.text || Date.now() - m.t > ASKED_MS || !CLOSES.test(said) || !` ${plainWords(m.text)} `.includes(` ${said} `)))
-          throw new OpError(`"${j.title}" is ready for review: it's closed only on their own word (said quoting it: "close it"). Else ask them in one short line, merge it or close it as it is, each a button`, 403)
+        if (j.state === "ready for review" || (j.land && j.land.at === undefined)) {
+          const word = await theirWord(ctx, m, plainWords(str(p.said)), { closes: true })
+          if ("why" in word) throw new OpError(`"${j.title}" is ready for review: it's closed only on their own word (said quoting it: "close it"). Not this time: ${word.why}. Else ask them in one short line, merge it or close it as it is, each a button`, 403)
+          byWord = word.by
+        }
       }
       await close(ctx, j)
-      return cardOf(j)
+      return { ...cardOf(j), ...(byWord ? { word: byWord } : {}) }
     },
-    text: (r) => `${r.state === "done" ? "Closed" : "Stopped"} "${r.title}" (${r.id}): ${r.state}.`,
+    text: (r) => `${r.state === "done" ? "Closed" : "Stopped"} "${r.title}" (${r.id}): ${r.state}${r.word ? `, on the word of ${r.word}` : ""}.`,
     did: (p) => ({ action: "run", text: `Stopped the job ${p.id}`, by: d.who(p) }),
   })
 

@@ -11,6 +11,7 @@ import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, ty
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
+import { userSaid } from "./chatlog.ts"
 import { chats } from "./chat.ts"
 import { type EditSpan, editSpans } from "./edits.ts"
 import { dialogOn } from "./dialog.ts"
@@ -595,6 +596,16 @@ plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   // (a chat's turn as its keeper says it, the files from its transcript)
   if (now) return { ...now, files: t ? lastTurn(t.talk.entries).files : [] }
   return t ? { session: sid, ...lastTurn(t.talk.entries), background: t.talk.background.size } : null
+})
+
+/** The user's own latest message in a session ("agent-said:claude": an agent quoting their word, the companion's
+ *  job-stop), not a notice or another session's message; the session in `terminal` when `session` isn't given. */
+plugin.provide("agent-said:claude", async (terminal: string, session = "") => {
+  const sid = session || await sessionIn(terminal)
+  const found = sid ? sessionFile(sid) : null
+  const text = found ? await fs.promises.readFile(found.file, "utf8").catch(() => "") : ""
+  const said = text ? userSaid(text.split("\n")) : null
+  return said ? { session: sid, ...said } : null
 })
 
 /** The files a session changed after each message it was told and each of its words (the service "agent-edits:claude":
