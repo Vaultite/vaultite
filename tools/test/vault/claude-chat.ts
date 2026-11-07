@@ -36,6 +36,11 @@ export function fakeSdk() {
         else if (/question/.test(text)) run.question = await ask("AskUserQuestion", { questions: [{ question: "Tea or coffee?", header: "Drink", multiSelect: false,
           options: [{ label: "Tea", description: "Hot leaves" }, { label: "Coffee", description: "Roasted beans" }] }] })
         else if (/plan/.test(text)) run.plan = await ask("ExitPlanMode", { plan: "## Plan\n1. Do it" })
+        else if (/background/.test(text)) {
+          // (a Monitor left running when the turn ends; `background()` ends it)
+          push({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "bwatch", task_type: "monitor", description: "QA finishing" }, { task_id: "live", task_type: "monitor", description: "watcher", ambient: true }], ...base })
+          run.background = () => push({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "live", task_type: "monitor", description: "watcher", ambient: true }], ...base })
+        }
         else if (/slow/.test(text)) {
           await new Promise<void>((r) => { run.stop = r })
           push({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 50, errors: ["Interrupted"], uuid: crypto.randomUUID(), ...base })
@@ -133,6 +138,20 @@ export default async ($: VaultTest) => {
       check("chat: its words are told as written, no tool's, by the entry they make", told.length >= 2 && told[0].name === "" && told[0].json === "Done: " && /^msg_\w+:0$/.test(told[0].use) && told.at(-1).end === "stop", told)
       off()
       host3.close()
+    }
+    {
+      // An idle session's process ends after a while, but not while something it started runs in the background.
+      const sdk4 = fakeSdk(), host4 = new Host({ query: sdk4.query as Any })
+      host4.idleMs = 150
+      const bg = crypto.randomUUID()
+      host4.start({ id: bg, resume: false, cwd: VAULT, env: {} }, "Watch the QA run in the background")
+      await waitFor(() => host4.list().find((s) => s.id === bg)?.state === "idle", 5000, 50)
+      await new Promise((r) => setTimeout(r, 500))
+      check("chat: an idle session waiting on its background task keeps running", host4.list().some((s) => s.id === bg), host4.list())
+      sdk4.runs[0].background()
+      const ended = await waitFor(() => !host4.list().some((s) => s.id === bg), 3000, 50)
+      check("chat: once its background task is done (an ambient one doesn't count), the idle wait ends it", !!ended, host4.list())
+      host4.close()
     }
     check("chat start: the mode asked is the one it runs in", o?.permissionMode === "default" && host.list().find((s) => s.id === id)?.mode === "default", o?.permissionMode)
     check("chat: the effort Claude Code applies is the session's, till one is chosen", host.list().find((s) => s.id === id)?.effort === "medium", host.list())
@@ -245,6 +264,11 @@ export default async ($: VaultTest) => {
       took && sdk.runs[0].said.at(-1)?.text === "One more thing" && !none && !(await reply("9f9f9f9f-0000-4000-8000-000000000000", "hi")), [took, none])
     ;[st, b] = await api("POST", "ops/claude-code.chat-list", {})
     check("chat list: the session, its state", st === 200 && b.sessions.some((s: Any) => s.id === id && s.state === "idle"), b)
+    {
+      const [sa, all] = await api("POST", "ops/claude-code.chat-list", { machine: "all" })
+      const [sn] = await api("POST", "ops/claude-code.chat-list", { machine: "nowhere" })
+      check("chat list: machine all has this machine's too; a machine that isn't one says so", sa === 200 && all.sessions.some((s: Any) => s.id === id) && sn === 404, [sa, all, sn])
+    }
 
     // A resume or fork that gives the session a new id, told with its thread: still one row, following the new id.
     {

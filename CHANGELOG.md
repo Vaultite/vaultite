@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A chat session waiting on background work keeps running**: a Claude Code session the app runs (a chat tab, a
+  companion's job, one an inbox reply resumed) was ended after 20 minutes idle even while a Monitor or a background
+  command it started still ran, so what it waited for never came back to it; it now waits for them. `vau chat list
+  --machine all` lists every machine's such sessions, and agents in terminals are told they exist.
 - **Telling a job more is quicker and loses nothing**: the companion hands on your own words, where you were and your
   screen's picture with a short note, instead of retelling your ask first (seconds slower, and slips crept in).
 - **The companion walks you through a screen in step with its voice**: each mark lands as its words are heard, with any

@@ -104,7 +104,8 @@ export function codeOf(dir: string) {
 /** The relayed tools' names as Claude Code calls them. */
 const APP = "mcp__vaultite-app__"
 
-/** Minutes a session sits idle (no turn, nothing asked) before its claude process ends; the next message resumes it. */
+/** Minutes a session sits idle (no turn, nothing asked, nothing running in the background) before its claude process
+ *  ends; the next message resumes it. */
 const IDLE = 20 * 60_000
 /** Entries a session keeps (the newest): the rest is in its transcript. */
 const KEEP = 1500
@@ -123,6 +124,9 @@ class Session {
   asks = new Map<string, Pending>()
   s: Summary
   idle: ReturnType<typeof setTimeout> | null = null
+  /** Its background tasks running now (a Monitor, a shell, a subagent; not ambient ones), as its process last said
+   *  (background_tasks_changed): ending it would kill them, and the turn their end starts. */
+  background = 0
   /** The user stopped its turn: the result that ends it says so, not why the SDK stopped. */
   stopping = false
   stderr: string[] = []
@@ -154,6 +158,8 @@ export class Host {
   private listeners = new Set<(e: Event) => void>()
   private calls = new Map<string, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout>; e: Extract<Event, { t: "tool" }> }>()
   log: (...a: unknown[]) => void
+  /** How long a session sits idle before its process ends (tests shorten it). */
+  idleMs = IDLE
   constructor(sdk: Sdk, log: (...a: unknown[]) => void = () => {}) { this.sdk = sdk; this.log = log }
 
   on(fn: (e: Event) => void) { this.listeners.add(fn); return () => { this.listeners.delete(fn) } }
@@ -387,6 +393,11 @@ export class Host {
     } else if (m.type === "system" && m.subtype === "status" && m.permissionMode && m.permissionMode !== x.s.mode) {
       x.s.mode = m.permissionMode as Mode
       this.emit({ t: "state", s: x.s })
+    } else if (m.type === "system" && m.subtype === "background_tasks_changed") {
+      const was = x.background
+      x.background = m.tasks.filter((t) => !t.ambient).length
+      // (its last one done while idle: the wait starts now)
+      if (was && !x.background && x.s.state === "idle") this.idleTimer(x, true)
     }
     if (m.type === "assistant" && !m.parent_tool_use_id) {
       const u = m.message.usage as { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined
@@ -468,7 +479,7 @@ export class Host {
     if (x.idle) clearTimeout(x.idle)
     x.idle = null
     if (!on) return
-    x.idle = setTimeout(() => { if (x.s.state === "idle" && !x.asks.size && !x.queue.length) this.end(x) }, IDLE)
+    x.idle = setTimeout(() => { if (x.s.state === "idle" && !x.asks.size && !x.queue.length && !x.background) this.end(x) }, this.idleMs)
     x.idle.unref?.()
   }
 

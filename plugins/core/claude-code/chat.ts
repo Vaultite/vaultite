@@ -652,20 +652,27 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       const m = at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
       if (!at || m?.self) return def.run({ ...p, id: sid }, ctx)
       if (!m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
-      if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
-      if (!m.online) throw new OpError(`${m.label} is offline`, 502)
-      let r: Response
-      try {
-        r = await fetch(`${m.url}/api/ops/${def.id}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
-          body: JSON.stringify({ ...p, id: sid }), signal: AbortSignal.timeout(30000) })
-      } catch { throw new OpError(`${m.label} doesn't answer`, 502) }
-      const out = await r.json().catch(() => ({})) as Record<string, unknown>
-      if (!r.ok) throw new OpError(`${m.label}: ${String(out.error ?? `answered ${r.status}`)}`, r.status)
+      const out = await onMachine(ctx, m, def.id, { ...p, id: sid })
       return { ...out, ...(typeof out.id === "string" ? { id: `${out.id}@${m.id}` } : {}) }
     } })
   }
+  /** An op of this plugin run on another machine (a call passed on from one runs where it's sent). */
+  async function onMachine(ctx: OpCtx, m: Machine, op: string, body: Record<string, unknown>) {
+    if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
+    if (!m.online) throw new OpError(`${m.label} is offline`, 502)
+    let r: Response
+    try {
+      r = await fetch(`${m.url}/api/ops/${op}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(30000) })
+    } catch { throw new OpError(`${m.label} doesn't answer`, 502) }
+    const out = await r.json().catch(() => ({})) as Record<string, unknown>
+    if (!r.ok) throw new OpError(`${m.label}: ${String(out.error ?? `answered ${r.status}`)}`, r.status)
+    return out
+  }
   const OWNER = "Claude Code's chat"
-  const line = (s: Summary) => `- ${s.id} · ${s.state}${s.asks.length ? " (asks)" : ""} · ${titleOf(s.id) || path.basename(s.cwd)} · ${d.modelName(s.model) || "default model"} · ${MODE_LABELS[s.mode] ?? s.mode}`
+  /** A session as chat-list gives it: its title too (another machine's knows its own). */
+  type Listed = Summary & { title?: string }
+  const line = (s: Listed) => `- ${s.id} · ${s.state}${s.asks.length ? " (asks)" : ""} · ${s.title || titleOf(s.id) || path.basename(s.cwd)} · ${d.modelName(s.model) || "default model"} · ${MODE_LABELS[s.mode] ?? s.mode}${s.account ? ` · ${s.account}` : ""}`
   const theUser = (ctx: OpCtx) => { if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403) }
 
   /** Open its tab in the user's window: theirs at once, an agent's behind their tab with a toast. */
@@ -785,12 +792,38 @@ after an approved plan (acceptEdits, default...).`,
 
   plugin.op({
     id: "claude-code.chat-list", cli: "chat list", mcp: "chat_list", owner: OWNER, kind: "read", lock: false,
-    summary: "The Claude Code sessions running in the app's chat now: each one's state, what it asks, folder, model and mode.",
-    run: async () => {
-      await keeper(false).catch(() => null)
-      return { sessions: [...hosted.values()].map((s) => ({ ...s, title: titleOf(s.id) })) }
+    summary: "The Claude Code sessions running in the app's chat now: each one's state, what it asks, folder, model and mode; machine all: every machine's.",
+    help: `Claude Code sessions the app runs itself, through the Agent SDK, not in a terminal: chat tabs, the companion, and the
+sessions a companion's job or an inbox reply resumes. So vau terminal doesn't list them. machine names another of the
+Machines (its sessions are <id>@<machine>), all every machine's.
+
+  vau chat list
+  vau chat list --machine all`,
+    params: { machine: { type: "string", description: "another of the Machines, by its id (studio), or all: every machine's" } },
+    run: async ({ machine }, ctx) => {
+      const at = String(machine ?? "")
+      const here = async () => {
+        await keeper(false).catch(() => null)
+        return [...hosted.values()].map((s) => ({ ...s, title: titleOf(s.id) }))
+      }
+      if (at && at !== "all") {
+        const m = await plugin.ask<Machine | null>("machines:machine", null, at)
+        if (!m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
+        if (m.self) return { sessions: await here() }
+        const r = await onMachine(ctx, m, "claude-code.chat-list", {}) as { sessions: Listed[] }
+        return { sessions: r.sessions.map((s) => ({ ...s, id: `${s.id}@${m.id}` })) }
+      }
+      const sessions: Listed[] = await here()
+      if (at !== "all") return { sessions }
+      const others = (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("claude-code"))
+      const away: Record<string, string> = {}
+      await Promise.all(others.map((m) => onMachine(ctx, m, "claude-code.chat-list", {}).then(
+        (r) => { sessions.push(...(r.sessions as Listed[]).map((s) => ({ ...s, id: `${s.id}@${m.id}` }))) },
+        (e: Error) => { away[m.id] = e.message })))
+      return { sessions, ...(Object.keys(away).length ? { away } : {}) }
     },
-    text: (r) => (r.sessions.length ? r.sessions.map(line).join("\n") : "No chat sessions are running."),
+    text: (r) => (r.sessions.length ? r.sessions.map(line).join("\n") : "No chat sessions are running.") +
+      Object.entries((r.away ?? {}) as Record<string, string>).map(([k, v]) => `\n${k}: ${v}`).join(""),
   })
 
   onMachines({

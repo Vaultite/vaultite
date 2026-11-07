@@ -166,7 +166,8 @@ id> an agent's session resumed in its folder, anything else a shell or a command
 session id (what it resumes; Claude Code's names its transcript), when the agent says. machine names another of the
 Machines (its terminals are <id>@<machine>), all every machine's; ended adds the ones that ended in the last hour, with
 how. After the sessions, the tabs whose terminal is gone: an agent's (it won't start again by itself: it says its
-session ended, with Restart; terminal.tidy closes them) or a shell's (a new shell when shown).
+session ended, with Restart; terminal.tidy closes them) or a shell's (a new shell when shown). Claude Code sessions the
+app runs in its chat (the companion's, its jobs', inbox replies') aren't terminals: vau chat list --machine all.
 
 Every terminal op names a terminal by its id, its name (terminal.rename) or the end of its id, and @<machine> for
 another machine's: vau terminal get|capture|wait|send|key|rename|end, and start, open, run, ask to make one; vau

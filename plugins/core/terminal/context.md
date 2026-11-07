@@ -8,7 +8,8 @@ To tell the user something happened (a long task finished, a file they should lo
 their pick (nothing when they dismiss it).
 Other terminals (a long command, another agent, another machine's) are driven with `vau terminal`: `start` one in the
 background (`--command`, `--agent`), `send` it text (`--wait`: until its agent's turn ends), `wait` for it, `capture`
-its screen and history (`vau terminal --help`); never sleep and poll a screen for it.
+its screen and history (`vau terminal --help`); never sleep and poll a screen for it. Claude Code also runs outside
+terminals, in the app's chat (a companion's job, a session an inbox reply resumed): `vau chat list --machine all`.
 This shell lives in Vaultite's terminal server, not the app: quitting or restarting the app or its server (to install a
 build) doesn't end it. Asked to close or end yourself: `vau terminal end` (no id: this one), as your very last step;
 your session ends and its tab closes.
