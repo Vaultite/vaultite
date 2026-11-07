@@ -344,9 +344,8 @@ function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act:
   )
 }
 
-/** A picture or a video by the cursor (or where it was put): a picture opens full size when pressed; a video plays
- *  muted a few times round, then rests (its bar plays it again), pressed it's heard, and its bar scrubs. One that can't
- *  load (in 15 s) says so. */
+/** A picture or a video by the cursor (or where it was put): a picture opens full size when pressed; a video plays muted
+ *  a few times round, then rests; pressed it's heard, its bar plays and scrubs. One that can't load (in 15 s) says so. */
 function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx: CardCtx }) {
   const [state, setState] = useState<"loading" | "ok" | "failed">("loading"), v = useRef<HTMLVideoElement>(null)
   const [muted, setMuted] = useState(true), [playing, setPlaying] = useState(true), [at, setAt] = useState(0), [dur, setDur] = useState(0)

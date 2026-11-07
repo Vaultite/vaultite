@@ -1,7 +1,5 @@
-// The island by the notch (electron/island.ts): background sessions as faces on black running on from the notch (top
-// centre with none); a knock shows its line with "Not now"; a hover lists them, each to open, put off or ignore. A QA
-// walk or a lesson (electron/walk.ts, teach.ts) leads it while on: its count, a word as each item is noted, and in the
-// list its undo, Done and discard.
+// The island by the notch (electron/island.ts): sessions as faces running on from the notch, a knock's line with Not now,
+// a QA walk or lesson leading while on (walk.ts, teach.ts); a hover lists them, each with its buttons.
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Check, Undo2, X } from "lucide-react"
 import { cn } from "@/lib/utils"

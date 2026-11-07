@@ -9,9 +9,8 @@ export function penLevel(speed: number) {
   return Math.sqrt(Math.min(1, (speed - 40) / 1600))
 }
 
-/** A pen's voice on an audio context `make` gives when first needed: `ink(speed)` each frame it draws, `lift()` when
- *  it doesn't. Its noise stops a moment after it lifts, then `rested()`: the context is shared (the cues'), its owner
- *  suspends it. */
+/** A pen's voice on an audio context `make` gives: `ink(speed)` each frame it draws, `lift()` when it doesn't. Quiet a
+ *  moment after it lifts, it tells `rested()`: the context is the cues' too, and its owner suspends it. */
 export function penSound(make: () => AudioContext, rested: () => void = () => {}) {
   let ctx: AudioContext | null = null, gain: GainNode | null = null, band: BiquadFilterNode | null = null, src: AudioBufferSourceNode | null = null
   let sleep: ReturnType<typeof setTimeout> | null = null
