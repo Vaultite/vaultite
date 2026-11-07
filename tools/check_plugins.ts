@@ -447,6 +447,22 @@ for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(t
   }
 }
 
+// What npm installs (.npmrc runs no install scripts): each package that has one is reviewed in allowScripts (false: not
+// run, as npm 12 reads it), and every package comes from the registry with its hash, so a new one can't slip in unseen.
+{
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
+  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8")) as { packages: Record<string, { version?: string; resolved?: string; integrity?: string; hasInstallScript?: boolean; link?: boolean; inBundle?: boolean }> }
+  const reviewed = pkg.allowScripts ?? {}, OFF_REGISTRY = new Set(["xlsx"])
+  for (const [where, p] of Object.entries(lock.packages)) {
+    if (!where || p.link || p.inBundle) continue
+    const name = where.slice(where.lastIndexOf("node_modules/") + 13)
+    if (p.hasInstallScript && !(name in reviewed)) problems.push(`package-lock.json: ${name}@${p.version} has an install script: review it, then list it in package.json's allowScripts (false unless the app needs it run)`)
+    if (!OFF_REGISTRY.has(name) && !p.resolved?.startsWith("https://registry.npmjs.org/")) problems.push(`package-lock.json: ${name}@${p.version} isn't from the npm registry (${p.resolved ?? "no address"})`)
+    if (!p.integrity) problems.push(`package-lock.json: ${name}@${p.version} has no integrity hash`)
+  }
+  for (const [name, v] of Object.entries(reviewed)) if (v !== false) problems.push(`package.json: allowScripts ${name} is ${JSON.stringify(v)}: the app runs no install scripts (.npmrc), so it's false`)
+}
+
 if (warnings.length) console.log(`Warnings (vault plugins: they still load):\n${warnings.join("\n")}\n`)
 console.log(problems.join("\n") || `ok: ${found.size} plugins, every block declared and drawn as text; every operation checked`)
 process.exit(problems.length ? 1 : 0)
