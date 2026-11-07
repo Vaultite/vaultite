@@ -249,14 +249,19 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
       if (!tour.steps.length) throw new OpError("nothing to save: no steps")
       const job = typeof p.job === "string" ? p.job.trim() : ""
       if (job && !/^[\w-]{1,40}$/.test(job)) throw new OpError(`job: a job's id (j3k9x2a), not ${job}`)
-      const path = job ? `Guides/Proofs/${title}.md` : `Guides/${title}.md`
+      // (a proof of another job by that title is left alone; this job's own is saved over, its pictures too)
+      const theirs = (rel: string) => { try { return !new RegExp(`^job: ${job}$`, "m").test(fs.readFileSync(plugin.vault.abs(rel), "utf8")) } catch { return false } }
+      let base = job ? `Guides/Proofs/${title}` : `Guides/${title}`
+      for (let n = 2; job && theirs(`${base}.md`); n++) base = `Guides/Proofs/${title} ${n}`
+      const path = `${base}.md`
       // (a before picture outside the vault comes into it, beside its proof: it plays wherever the vault is)
       const steps = await Promise.all(tour.steps.map(async (st) => {
         if (!st.before || !nodePath.isAbsolute(st.before.replace(/^~(?=\/)/, os.homedir()))) return st
         const from = st.before.replace(/^~(?=\/)/, os.homedir()), ext = nodePath.extname(from).toLowerCase()
         if (!/^\.(png|jpe?g|gif|webp|heic)$/.test(ext) || !fs.existsSync(from)) throw new OpError(`step ${st.n}: before: ${st.before} isn't a picture here (png, jpg, gif, webp)`)
-        const rel = `Guides/Proofs/${title}/before ${st.n}${ext}`
-        await ctx.api("POST", "folder", { path: `Guides/Proofs/${title}` }).catch(() => {})
+        const rel = `${base}/before ${st.n}${ext}`
+        await ctx.api("POST", "folder", { path: base }).catch(() => {})
+        if (fs.existsSync(plugin.vault.abs(rel))) await ctx.api("DELETE", `file?path=${encodeURIComponent(rel)}`)
         await ctx.api("POST", "upload", { path: rel, bytes: fs.createReadStream(from) })
         return { ...st, before: rel }
       }))

@@ -165,6 +165,8 @@ export default async ($: VaultTest) => {
           knock?.line === "Ready to show you: Make the heading blue" && knock.urgency === "normal" && knock.from === card.link.split("/").pop() && said[0]?.prompt.includes(`--job ${card.id}`), [knock, said[0]?.prompt.slice(-900)])
         let [pst, pb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
         check("proof: tour-save --job keeps it in Guides/Proofs, as that job's", pst === 200 && pb.path === "Guides/Proofs/The blue heading.md" && read(pb.path).includes(`job: ${card.id}`), [pst, pb])
+        const [ost, ob] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: "other1", text: "1. Blue [ring \"Lighthouse\"]." }, agent)
+        check("proof: another job's proof by the same title is saved beside it, never over it", ost === 200 && ob.path === "Guides/Proofs/The blue heading 2.md" && read(pb.path).includes(`job: ${card.id}`), [ost, ob])
         ;[pst, pb] = await api("POST", "ops/companion.job-show", { id: card.id })
         const plainly = await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && /can't show it here/.test(n.text)), 5000, 50)
         const asked = await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && n.text === "Keep it, or is it still broken?"), 5000, 50)

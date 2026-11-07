@@ -73,30 +73,33 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     playing = { job: j.id, ctl: mine }
     d.showing({ voice })
     try {
-      if (!proof) return await plain(j, `It didn't leave a tour to show you, so here's what it says it did. ${summaryOf(j)}`)
-      if (proof.problems.length) return await plain(j, `Its tour doesn't play (${proof.problems[0]}), so here's what it says it did. ${summaryOf(j)}`)
+      if (!proof) return await plain(j, mine, `It didn't leave a tour to show you, so here's what it says it did. ${summaryOf(j)}`)
+      if (proof.problems.length) return await plain(j, mine, `Its tour doesn't play (${proof.problems[0]}), so here's what it says it did. ${summaryOf(j)}`)
       const t = proof.tour, there = j.on?.startsWith("note:") ? j.on.slice(5) : t.site.length ? j.result?.link ?? j.where.preview ?? "" : ""
       if (there) { await d.open(there).catch(() => {}); await new Promise((r) => setTimeout(r, SETTLE_MS)) }
+      if (mine.stopped) return
       const s = d.screen(name, t)
-      if (!s) return await plain(j, `I can't show it here: there's no window of yours to show it on. ${summaryOf(j)}`)
+      if (!s) return await plain(j, mine, `I can't show it here: there's no window of yours to show it on. ${summaryOf(j)}`)
       const r = await d.tours.show(name, s, t)
-      d.clear()
+      // (stopped by another proof or a new ask: what's up now is theirs, not this one's to clear)
       if (mine.stopped || r.ended === "stopped") return
+      d.clear()
       if (r.ended === "lost") {
         const why = r.steps.at(-1)?.why?.replace(/^not found: /, "") ?? "what it changed"
-        return await plain(j, `I can't find ${why} on your screen now, so I can't show you that part. ${summaryOf(j)}`)
+        return await plain(j, mine, `I can't find ${why} on your screen now, so I can't show you that part. ${summaryOf(j)}`)
       }
-      await choose(j)
+      await choose(j, mine)
     } finally {
-      if (playing?.ctl === mine) playing = null
-      d.showing(null)
+      if (playing?.ctl === mine) { playing = null; d.showing(null) }
     }
   }
-  async function plain(j: Job, text: string) {
+  async function plain(j: Job, mine: { stopped: boolean }, text: string) {
+    if (mine.stopped) return
     await d.say(text)
-    await choose(j)
+    await choose(j, mine)
   }
-  async function choose(j: Job) {
+  async function choose(j: Job, mine: { stopped: boolean }) {
+    if (mine.stopped) return
     pending = { job: j.id, until: Date.now() + CHOOSE_MS }
     if (!(await d.choices(j).catch(() => false))) await d.say("Keep it, or is it still broken?", { ask: true })
   }
@@ -171,16 +174,15 @@ or word, the app's. Its worker saves the tour: companion tour-save "<the change>
       if (p.tell) {
         pending = null
         void d.jobs.tell(ctx, p.job, `The user looked at what you made and it's still broken. They said: ${JSON.stringify(text.slice(0, 2000))}`, text)
-          .then(() => d.say("Sent to the job."), (e) => d.say(`It didn't reach the job: ${(e as Error).message}`))
+          .then(() => d.say("Sent to the job."), (e) => d.say(`It didn't reach the job: ${(e as Error).message}`)).catch(() => {})
         return true
       }
       const c = choiceSaid(text)
       if (!c) { pending = null; d.clear(); return false }
-      void chose(ctx, c).catch((e) => d.say((e as Error).message))
+      void chose(ctx, c).catch((e) => d.say((e as Error).message)).catch(() => {})
       return true
     },
-    /** A proof playing now stops (Esc, a new ask). */
+    /** A proof playing now stops (a new ask: they moved on). */
     stop: () => { if (playing) playing.ctl.stopped = true },
-    pending: () => pending,
   }
 }

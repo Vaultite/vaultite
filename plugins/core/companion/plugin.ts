@@ -373,7 +373,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   keepAsked(full)
   // (a new ask: what the last answer pointed with goes, a Talk key's too, so a mark it corrects is replaced, not
   // stacked; its cards stay, for a follow-up to change in place; a tour playing for it stops too: they moved on)
-  if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.settle(full.for); tours.interrupt(full.for) }
+  if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.settle(full.for); tours.interrupt(full.for); if (isMain(full.for)) proofs.stop() }
   // (a Talk key's ask over a page a job works on: straight to that job, live editing)
   if (full.summoned && full.for && isMain(full.for) && liveEditing.take(full, from)) return full
   handOut(full, from)
