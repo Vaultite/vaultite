@@ -48,7 +48,12 @@ export default async ($: VaultTest) => {
       { t: 80_000, kind: "pointer", x: 1, y: 1 }, { t: 80_100, kind: "pointer", x: 2, y: 2 }, { t: 80_400, kind: "pointer", x: 3, y: 3 }, { t: 85_000, kind: "click", x: 5, y: 5, under: 'Safari: button "Close"' },
       { t: 90_000, kind: "said", text: "Blinks again" }]
     const k = T.kept(h, now)
-    check("timeline: what's kept is the last 30 s, the app in front as it began first", k[0].kind === "app" && k[0].t === 70_000 && k.length === 7 && !k.some((e: Any) => e.t === 60_000), k)
+    check("timeline: what's kept is the last 30 s, what was done (the app in front) for minutes", k[0].kind === "app" && k[0].t === 50_000 && k.length === 7 && !k.some((e: Any) => e.t === 60_000), k)
+    const acts = T.kept([{ t: now - 400_000, kind: "app", app: "z", name: "Z" }, { t: now - 200_000, kind: "pointer", x: 0, y: 0 }, { t: now - 200_000, kind: "click", x: 0, y: 0 }, { t: now - 100_000, kind: "key", key: "cmd+s" }] as Any[], now)
+    check("timeline: clicks, keys and fields kept for five minutes, the pointer not; the app before them stamped as they begin",
+      acts.length === 3 && acts[0].kind === "app" && acts[0].t === now - T.ACTS_MS && acts[1].kind === "click" && acts[2].kind === "key", acts)
+    check("timeline: a stretch of only what was done reaches its minutes, the app in front as it began first", (T.rangeOf(acts, { last: 250, kinds: ["click", "key"] }, now) as Any).from === now - 250_000 &&
+      (T.rangeOf(acts, { last: 250 }, now) as Any).from === now - T.KEEP_MS && T.within(k, { from: 75_000, to: now }, ["app", "said"])[0].kind === "app" && T.within(k, { from: 75_000, to: now }, ["app", "said"])[0].t === 75_000)
     const big = Array.from({ length: T.MOST + 100 }, (_, i) => ({ t: now - 1000 + i / 10, kind: "pointer", x: i, y: 0 })) as Any[]
     check("timeline: however busy, it keeps at most its bound", T.kept(big, now).length === T.MOST)
     const said = T.rangeOf(k, { said: "it blinks" }, now) as Any, last = T.rangeOf(k, { last: 20 }, now) as Any, none = T.rangeOf(k, { said: "toast" }, now) as Any

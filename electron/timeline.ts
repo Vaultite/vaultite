@@ -2,7 +2,7 @@
  *  the box and the video, kept in memory only while the setting and the companion are on; read with screen.timeline. */
 import { screen } from "electron"
 import type { BoxAt, Rect } from "../plugins/core/companion/clips.ts"
-import { type Happened, KEEP_MS, kept, MOST, type Query, rangeOf, within } from "../plugins/core/screen/timeline.ts"
+import { ACTS_MS, type Happened, KEEP_MS, kept, MOST, type Query, rangeOf, within } from "../plugins/core/screen/timeline.ts"
 import { type Clip, holdVideo, saveClip, stopVideo, videoAt, videoOn } from "./recorder.ts"
 
 /** What helper.ts lends it. */
@@ -69,7 +69,7 @@ export function timelineRefollow(p?: { x: number; y: number }) {
 export function happened(e: Happened) {
   if (!wanted || (host?.privateNow() && e.kind !== "app" && e.kind !== "said")) return
   h.push(e)
-  if (h.length > MOST + 500 || e.t - h[0].t > KEEP_MS + 10_000) h = kept(h, e.t)
+  if (h.length > MOST + 500 || e.t - h[0].t > ACTS_MS + 10_000) h = kept(h, e.t)
 }
 let lastP = { x: NaN, y: NaN }
 function samplePointer() {

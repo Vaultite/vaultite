@@ -148,4 +148,6 @@ export const countText = (n: number) => (n === 1 ? "1 item" : `${n} items`)
 
 /** The walk's chip over the screen (electron/walk.ts): on and listening, paused (they're talking to the companion,
  *  dictating, or it speaks), sending, or a line for a moment once it's over (`told`). `note`: a word for a moment. */
-export type WalkScene = { state: "on" | "paused" | "sending" | "told"; count: number; since: number; clips: boolean; note?: string }
+export type WalkScene = { state: "on" | "paused" | "sending" | "told"; count: number; since: number; clips: boolean; note?: string
+  /** A lesson's chip (electron/teach.ts: "watch me"), in the walk's place: its steps, Done makes it, × forgets it. */
+  of?: "lesson" }

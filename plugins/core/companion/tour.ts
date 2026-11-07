@@ -74,15 +74,17 @@ export function parseTour(fm: Record<string, unknown>, body: string, stem: strin
   return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, steps, anchors }, problems]
 }
 
-/** A tour as its file says it. */
-export function tourText(t: Tour) {
+/** A step's line in a tour's file: `n. words [tags] (wait: …) (do: …)`. */
+export const stepLine = (s: Step, n: number) => `${n}. ${[s.text, s.wait ? `(wait: ${conditionText(s.wait)})` : "", s.do?.length ? `(do: ${s.do.map(doText).join("; ")})` : ""].filter(Boolean).join(" ")}`
+/** A tour as its file says it (`extra`: more frontmatter, first). */
+export function tourText(t: Tour, extra: Record<string, string> = {}) {
   const yaml = (v: unknown) => JSON.stringify(v)
-  const fm = ["---", "type: tour", ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : [])]
+  const plain = (v: string) => (/^[\w./@ -]+$/.test(v) && !/^\s|\s$|: /.test(v) ? v : yaml(v))
+  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : [])]
   const anchors = Object.entries(t.anchors).filter(([, a]) => Object.keys(a).length)
   if (anchors.length) fm.push("anchors:", ...anchors.map(([k, a]) => `  ${yaml(k)}: ${yaml(a)}`))
   fm.push("---")
-  const lines = t.steps.map((s, i) => `${i + 1}. ${[s.text, s.wait ? `(wait: ${conditionText(s.wait)})` : "", s.do?.length ? `(do: ${s.do.map(doText).join("; ")})` : ""].filter(Boolean).join(" ")}`)
-  return `${fm.join("\n")}\n${lines.join("\n")}\n`
+  return `${fm.join("\n")}\n${t.steps.map((s, i) => stepLine(s, i + 1)).join("\n")}\n`
 }
 
 /** The elements an ask came with (a3: its words, role and place), and where it was. */
@@ -146,6 +148,8 @@ export function anchorFor(t: Pick<Tour, "anchors" | "app" | "site">, s: Spot): A
   return null
 }
 
+/** How long a target that isn't there is looked for before the model is asked (a page loading). */
+const COMING_MS = 5000
 /** How long a target that's off screen is waited for to come into view (scrolled to). */
 const INTO_VIEW_MS = 30_000
 /** A step's wait in this mode: guide waits for what do would have done (a click he makes), do does what guide waits
@@ -182,8 +186,14 @@ export async function play(t: Tour, mode: Mode, fx: Fx, signal?: AbortSignal, fr
       // (a step with no words that does a click still shows where)
       const own = [...(step.do ?? []), ...does], tags = step.tags.length || !own.some((d) => d.text) ? step.tags : own.filter((d, i) => d.text && own.findIndex((x) => x.text === d.text) === i).map((d): Tag => ({ kind: "point", at: { find: d.text! }, offset: 0 }))
       const spots = tags.flatMap((g) => [g.at, ...(g.to ? [g.to] : [])])
-      const aims = await aimAll(t, spots, fx)
-      const missing = spots.flatMap((s, i) => (aims[i] && !aims[i]!.ok ? [labelOf(s)] : []))
+      const missingIn = (a: (Aim | null)[]) => spots.flatMap((s, i) => (a[i] && !a[i]!.ok ? [labelOf(s)] : []))
+      let aims = await aimAll(t, spots, fx), missing = missingIn(aims)
+      // (a thing not there yet, the page still coming after the step before: looked for again a few seconds first)
+      for (let waited = 0; missing.length && waited < COMING_MS && !signal?.aborted; waited += 500) {
+        await fx.sleep(500)
+        aims = await aimAll(t, spots, fx)
+        missing = missingIn(aims)
+      }
       let how: Played["how"] = "played"
       if (missing.length) {
         if (!(await fx.fallback(step, missing).catch(() => false))) { out.push({ n: step.n, how: "lost", ms: Date.now() - t0, why: `not found: ${missing.join(", ")}` }); return { ended: "lost", steps: out } }

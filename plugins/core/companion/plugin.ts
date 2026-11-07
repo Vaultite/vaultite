@@ -29,6 +29,7 @@ import { knockOps } from "./knockops.ts"
 import { captureOps } from "./captures.ts"
 import { liveEdits } from "./liveedit.ts"
 import { walkOps } from "./walkops.ts"
+import { teachOps } from "./teachops.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide, sitesOf } from "./guides.ts"
@@ -2651,6 +2652,7 @@ const jobs = jobOps(plugin, {
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
 captureOps(plugin, jobs)
+teachOps(plugin)
 // Knocks: background sessions asking for the user, one line at a pause, and their presences by the notch (knocks.ts).
 const knocks = knockOps(plugin, { toScreens, listening: () => screens.size > 0, jobs: () => jobs.list(), off: () => mode() === "off", hidden: () => plugin.settings().island === false })
 const liveEditing = liveEdits(plugin, {

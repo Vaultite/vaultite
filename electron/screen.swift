@@ -132,6 +132,21 @@ var exchange = false
 var clicks = false
 /** While a companion's wait listens (`inputs`): clicks, and that a key was typed (never which), told as they happen. */
 var inputs = false
+/** While the timeline keeps what's done (a lesson's steps): shortcuts and Return, Tab, Esc by name, other keys only that
+ *  one was typed (never which). */
+var keys = false
+func keyName(_ e: CGEvent) -> String? {
+  let code = e.getIntegerValueField(.keyboardEventKeycode), f = e.flags
+  let named: [Int64: String] = [36: "enter", 76: "enter", 48: "tab", 53: "esc"]
+  var mods: [String] = []
+  if f.contains(.maskControl) { mods.append("ctrl") }
+  if f.contains(.maskAlternate) { mods.append("alt") }
+  if f.contains(.maskShift) { mods.append("shift") }
+  if f.contains(.maskCommand) { mods.append("cmd") }
+  if let n = named[code] { return (mods + [n]).joined(separator: "+") }
+  guard f.contains(.maskCommand) || f.contains(.maskControl), let c = NSEvent(cgEvent: e)?.charactersIgnoringModifiers?.lowercased(), c.count == 1, c.unicodeScalars.allSatisfy({ $0.isASCII && $0.value >= 32 }) else { return nil }
+  return (mods + [c == " " ? "space" : c]).joined(separator: "+")
+}
 var filtering = false
 func mouse(_ type: CGEventType, _ e: CGEvent) -> Bool {
   let p = e.location
@@ -182,6 +197,7 @@ let tapThread = Thread {
     if type == .leftMouseDown && mouse(type, e) { return nil }
     if type == .keyDown && exchange && e.getIntegerValueField(.keyboardEventKeycode) == 53 { send(["event": "esc"]) }
     if type == .keyDown && inputs { send(["event": "input", "kind": e.getIntegerValueField(.keyboardEventKeycode) == 53 ? "esc" : "type"]) }
+    if type == .keyDown && keys { if let k = keyName(e) { send(["event": "key", "key": k]) } else { send(["event": "typed"]) } }
     tapped(type, e)
     return Unmanaged.passUnretained(e)
   }
@@ -700,6 +716,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "exchange": exchange = req["on"] as? Bool ?? false; return ["ok": true]
   case "clicks": clicks = req["on"] as? Bool ?? false; return ["ok": true]
   case "inputs": inputs = req["on"] as? Bool ?? false; return ["ok": true]
+  case "keys": keys = req["on"] as? Bool ?? false; return ["ok": true]
   case "notch":
     // (each display, top-left origin, and its camera's notch: the top between the menu bar's two sides, where one has it)
     let h = NSScreen.screens.first?.frame.height ?? 0

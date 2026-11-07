@@ -14,6 +14,8 @@ the display's picture and what's near the pointer), or you ask.
   ask stop it, at once; a click elsewhere or another app in front don't.
 - Private apps (`private_apps`, names or bundle ids) are never read, pictured or titled: their calls are refused.
 - `screen.timeline` (`vau screen timeline --last 20`, `--said "<their words>"`, `--clip`): what happened in the last 30 s
-  on one clock (the pointer, the app in front, clicks and what was clicked, their Talk key words, their box, the thing
-  pointed at as a QA walk's item was said), its video with `--clip` (read its frames). Kept only while the companion's
-  setting `timeline` is on or a QA walk is (its video only with screen recording allowed); else it says so.
+  on one clock (the pointer, the app in front, clicks and the thing clicked, shortcuts, what a field says once typed in,
+  their Talk key words, their box, the thing pointed at as a QA walk's item was said), its video with `--clip` (read its
+  frames). What was done (`--kinds app click key field said`) reaches 5 minutes. Kept only while the companion's setting
+  `timeline` is on, a QA walk is, or it's watching a lesson ("watch me"; the video only with screen recording allowed);
+  else it says so. Never a private app's, a password field's, or what looks like a key.

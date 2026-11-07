@@ -66,6 +66,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "captures", deps: ["pages","cli"] },
   { name: "liveedit", deps: ["pages","cli"] },
   { name: "walks", deps: ["pages","cli"] },
+  { name: "teach", deps: ["pages","cli"] },
   { name: "ai-import", deps: ["settings","pages","ops"] },
   { name: "day-planner", deps: ["pages"] },
   { name: "linter", deps: ["pages"] },

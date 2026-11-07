@@ -1,9 +1,11 @@
 // Tours, anchors and waits on the server (companion tour, tour-save, anchor, wait) over a screen plugin.ts lends:
 // Vaultite's window, or the app an ask was over through the Mac's helper. The rules are tour.ts', anchor.ts', condition.ts'.
-import { OpError, type Plugin } from "../../../core/plugins.ts"
-import { joinPath, Kind, safeName } from "../../../core/vault.ts"
+import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
+import { joinPath, Kind, parseText, safeName } from "../../../core/vault.ts"
 import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type Where } from "./anchor.ts"
 import { type Condition, conditionText, type Input, parseCondition, watch } from "./condition.ts"
+import { playedThrough, promoted, skillName } from "./teach.ts"
+import { noteText, writeNote } from "./teachops.ts"
 import { type Aim, type Do, type Fx, type Mode, MODES, parseTour, play, type Result, type Step, type Tour, tourFromAnswer, tourText } from "./tour.ts"
 import type { Condition as Check, Rect } from "./uimodel.ts"
 
@@ -87,8 +89,9 @@ export function toursOf(plugin: Plugin, o: {
     try { return await watch(c, envOf(s), o2) } finally { if (ins) s.inputs(false) }
   }
 
-  /** Play `tour` for agent `name` on its screen in `mode`, from step `from`. */
-  function start(name: string, s: Screen, tour: Tour, mode: Mode, from = 1) {
+  /** Play `tour` for agent `name` on its screen in `mode`, from step `from`; a draft (`file`) that plays through is
+   *  promoted (teach.ts). */
+  function start(name: string, s: Screen, tour: Tour, mode: Mode, from = 1, file?: { path: string; ctx: OpCtx }) {
     playing.get(name)?.ctl.abort()
     const ctl = new AbortController(), began = Date.now()
     const found = new Map<Rect, Seen>()
@@ -114,21 +117,37 @@ export function toursOf(plugin: Plugin, o: {
     }
     const done = play(tour, mode, fx, ctl.signal, from).then((r) => {
       console.log(`companion tour "${tour.title}" (${mode}): ${r.ended} after ${r.steps.length} steps in ${Math.round((Date.now() - began) / 1000)} s${r.steps.some((x) => x.how === "model") ? `, the model played ${r.steps.filter((x) => x.how === "model").map((x) => x.n).join(", ")}` : ""}`)
+      if (file && from === 1 && playedThrough(r)) void promote(file.ctx, file.path).catch((e) => console.log(`companion tour: ${file.path} played through but stays a draft: ${(e as Error).message}`))
       return r
     }).finally(() => { if (playing.get(name)?.ctl === ctl) playing.delete(name) })
     playing.set(name, { title: tour.title, mode, ctl, done, step: from })
     return done
   }
 
-  /** A tour by its path, its title or its name. */
-  const tourAt = (path: string): Tour => {
+  async function promote(ctx: OpCtx, path: string) {
+    const next = promoted(await noteText(plugin, ctx, path), Date.now())
+    if (next) { await writeNote(plugin, ctx, path, next); console.log(`companion tour: ${path} played through, no longer a draft`) }
+  }
+  /** A tour by its path, its title or its name: a type: tour note in Guides/, or any note whose steps are one (a skill's
+   *  SKILL.md a lesson made). Its path too, for a draft to be promoted. */
+  const tourAt = async (path: string, ctx: OpCtx): Promise<{ tour: Tour; path: string }> => {
     const all = plugin.vault.shared("tours") as unknown as readonly { id: string; title: string; body: string; app?: string[]; site?: string[]; anchors?: unknown }[]
     const want = path.replace(/\.md$/i, "").toLowerCase(), t = all.find((x) => x.id.replace(/\.md$/i, "").toLowerCase() === want)
       ?? all.find((x) => x.title.toLowerCase() === want.replace(/^.*\//, "")) ?? all.find((x) => x.id.toLowerCase().endsWith(`/${want.replace(/^.*\//, "")}`))
-    if (!t) throw new OpError(`no tour ${path}${all.length ? ` (tours: ${all.slice(0, 12).map((x) => x.title).join(", ")})` : " (a tour is a type: tour note in Guides/)"}`, 404)
-    const [tour, problems] = parseTour(t as unknown as Record<string, unknown>, t.body, t.title)
-    if (problems.length) throw new OpError(`${t.id}: ${problems.join("; ")}`)
-    return tour
+    let fm: Record<string, unknown>, body: string, at: string, title: string
+    if (t) [fm, body, at, title] = [t as unknown as Record<string, unknown>, t.body, t.id, t.title]
+    else {
+      // (a skill by its folder, or by its title: "run Share the page")
+      const tries = /\.md$/i.test(path) ? [path] : /(^|\/)\.agents\/skills\/[^/]+$/.test(path) ? [`${path}/SKILL.md`] : [`${path}.md`, `.agents/skills/${skillName(path)}/SKILL.md`]
+      let file = tries[0], text = ""
+      for (const f of tries) if ((text = await noteText(plugin, ctx, f))) { file = f; break }
+      if (!text) throw new OpError(`no tour ${path}${all.length ? ` (tours: ${all.slice(0, 12).map((x) => x.title).join(", ")})` : " (a tour is a type: tour note in Guides/)"}`, 404)
+      ;[fm, body] = parseText(text)
+      ;[at, title] = [file, typeof fm.name === "string" ? fm.name : file.replace(/^.*\//, "").replace(/\.md$/i, "")]
+    }
+    const [tour, problems] = parseTour(fm, body, title)
+    if (problems.length) throw new OpError(`${at}: ${problems.join("; ")}`)
+    return { tour: /^(?:.*\/)?SKILL\.md$/i.test(at) ? { ...tour, title: body.match(/^#\s+(.+)$/m)?.[1]?.trim() || tour.title } : tour, path: at }
   }
   const resultText = (t: string, r: Result) => {
     const lines = r.steps.map((s) => `  ${s.n}. ${s.how}${s.waited ? ` (waited ${Math.round(s.waited.ms / 100) / 10} s: ${s.waited.why}${s.waited.by ? `, ${s.waited.by}` : ""})` : ""}${s.why ? `: ${s.why}` : ""}`)
@@ -163,15 +182,15 @@ Its format: vau docs tours.`,
       as: { type: "string", description: "the agent (another than the companion)" },
     },
     args: ["path"],
-    run: async (p) => {
+    run: async (p, ctx) => {
       const name = o.who(p)
       if (p.stop) { const x = playing.get(name); x?.ctl.abort(); return { stopped: x?.title ?? null } }
       if (typeof p.path !== "string" || !p.path.trim()) {
         const x = playing.get(name)
         return { playing: x ? { title: x.title, mode: x.mode, step: x.step } : null }
       }
-      const tour = tourAt(p.path.trim()), mode = (MODES as readonly string[]).includes(String(p.mode)) ? p.mode as Mode : "guide"
-      const done = start(name, screenFor(name), tour, mode, Number(p.from) || 1)
+      const { tour, path } = await tourAt(p.path.trim(), ctx), mode = (MODES as readonly string[]).includes(String(p.mode)) ? p.mode as Mode : "guide"
+      const done = start(name, screenFor(name), tour, mode, Number(p.from) || 1, { path, ctx })
       if (!p.wait) return { title: tour.title, mode, steps: tour.steps.length }
       return { title: tour.title, mode, steps: tour.steps.length, result: await done }
     },

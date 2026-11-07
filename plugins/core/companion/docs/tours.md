@@ -38,3 +38,16 @@ anchors:                     # optional, written by tour-save: what tells a targ
 An ask's ids (a3) mean only that ask's list. `vau companion anchor --keep a3` keeps one as k1: its app, role, words,
 what it's in and where in its window, found again by those after a scroll, a move or a new label (then the same kind in
 the same place), and said gone when it is. `vau companion anchor k1` says where it is now.
+
+### Lessons: teach by showing
+"Watch me add a deploy key" (the Talk key) starts a lesson: a chip under the menu bar counts its steps while it
+listens hands-free; "that's it" (or the chip's Done) ends it. Each click, typing in a field (its value once still) and
+shortcut is a step on the thing it acted on, kept as an anchor (role, words, what it's in, where in its window), so
+it plays after the screen moved or relabelled; what they said as they did it is the step's words ("now I open
+settings": "Now open settings."). Passwords and what looks like a key are never kept: that step waits for them to type it.
+- What it becomes: what they asked for ("make it a skill", "as a tour"), else a tour when they explained what's where,
+  else a skill: `Guides/<title>.md`, or `.agents/skills/<name>/SKILL.md` (its steps a tour: `companion tour <it> --mode
+  do`). Either is a draft (`status: draft`) till it plays to the end with every step found, then it's kept (`tested:`).
+- "Make what I just did a skill" (or a tour): from the timeline's last five minutes, back to a minute's pause; only
+  while the setting Keep a timeline is on (else it says so). `vau companion teach [--as skill] [--title …]` does the same.
+- A target not there yet (a page still loading) is looked for again a few seconds before the model is asked.

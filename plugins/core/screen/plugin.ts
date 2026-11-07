@@ -77,7 +77,7 @@ plugin.op({
 const time = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() ? Date.parse(v) : undefined)
 plugin.op({
   id: "screen.timeline", cli: "screen timeline", owner: "the screen", kind: "read", lock: false,
-  summary: "What happened on the user's Mac in the last 30 s, on one clock: the pointer, the app in front, clicks (what was clicked), what they said to the companion, their box; with clip, its video saved now.",
+  summary: "What happened on the user's Mac lately, on one clock: the pointer and their box (the last 30 s), the app in front, clicks (what was clicked), shortcuts, fields typed into and what they said to the companion (5 minutes); with clip, its video saved now.",
   help: `Kept in memory by the desktop app only while the companion is on and its setting timeline (Keep a timeline of the
 last seconds) is: nothing before that, nothing on disk till asked, never a private app. A stretch is the last seconds
 (last), a time range (from, to), or from when they last said some words (said) on. With clip, its video (the display
@@ -87,10 +87,10 @@ under the pointer, or box: screen points) is saved as an MP4 on this Mac with a 
   vau screen timeline --said "it blinks" --clip
   vau screen timeline --last 10 --kinds click --kinds said`,
   params: {
-    last: { type: "number", minimum: 1, maximum: 30, description: "the last seconds" },
+    last: { type: "number", minimum: 1, maximum: 300, description: "the last seconds (past 30, only what was done: kinds app, click, key, field, said)" },
     from: { type: "string", description: "from when (ISO time, or ms since 1970)" }, to: { type: "string", description: "till when (default: now)" },
     said: { type: "string", description: "from when they last said these words to the companion (its Talk key) on" },
-    kinds: { type: "array", items: { type: "string", enum: KINDS }, description: "only these (pointer, app, click, said, box)" },
+    kinds: { type: "array", items: { type: "string", enum: KINDS }, description: "only these (pointer, app, click, key, field, said, box, thing)" },
     clip: { type: "boolean", description: "its video too, saved now" },
     box: { type: "object", description: "the clip's crop: { x, y, width, height } in screen points (default: the user's box then, else the display)" },
   },

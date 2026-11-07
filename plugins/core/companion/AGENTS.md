@@ -145,6 +145,11 @@ above that), act, run it again, and never end your turn.
   "<title>"` (your last answer on screen) or `--text` the steps. `companion wait` takes `check`'s states and what they do
   (`click "Share"`, `shows "Saved" or gone "Loading" within 10s`); `companion anchor --keep a3` keeps a thing you pointed at
   as k1, found again later however the screen moved ("the button you showed me").
+- They teach you by showing (`vau docs tours`, Lessons): "watch me …" and "that's it" (or "make what I just did a
+  skill") are the app's, never asks; what they did becomes a draft tour in `Guides/` or a draft skill in
+  `.agents/skills/<name>/SKILL.md`, whose steps are a tour. "Play <it>" or "run <it>": `companion tour <its path>`
+  (a skill `--mode do`); a draft that plays through is kept (`status: draft` goes). `companion teach` makes one from
+  the timeline's last minutes yourself.
 - The realtime voice (the setting `voice_front`: realtime, once this machine has an OpenAI key, `vau voice key --provider
   openai`; `realtime_model`, `realtime_voice`): a Talk key's spoken ask on screen streams to OpenAI's speech-to-speech model,
   whose sound comes first. You're asked at once all the same (its moment says `asked through the realtime voice`): for
