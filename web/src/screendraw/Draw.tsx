@@ -107,9 +107,13 @@ export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = fal
   const bounds = { x: 0, y: d.here.top ?? 0, w: W, h: H - (d.here.top ?? 0) }
   const card = (p: Placed): CardCtx => {
     const id = p.mark.id ?? String(p.i), off = moved[id] ?? { x: 0, y: 0 }
-    return { off, bounds, grab, move: (o) => setMoved((m) => ({ ...m, [id]: o })), open: setFull,
+    // (a choice's card is all its answers: dismissed, they all go)
+    const ids = p.answers ? p.answers.map((a, i) => a.id ?? `${p.i + i}`) : [id]
+    const away = !!leaving || !!d.hidden || !!p.mark.gone || ids.some((x) => hidden.has(x))
+    return { off, bounds, grab, move: (o) => setMoved((m) => ({ ...m, [id]: o })), open: setFull, agent: d.agent, question: d.question, away,
       natural: (px) => setNaturals((n) => (n[id]?.[0] === px[0] && n[id]?.[1] === px[1] ? n : { ...n, [id]: px })),
-      dismiss: () => { setHidden((h) => new Set(h).add(id)); act({ kind: "dismiss", id: d.id, mark: id }) } }
+      media: (state) => act({ kind: "media", id: d.id, mark: id, ...state }),
+      dismiss: () => { setHidden((h) => new Set([...h, ...ids])); for (const mark of ids) act({ kind: "dismiss", id: d.id, mark }) } }
   }
   return (
     <div ref={root} data-screendraw={d.id} data-beat={beat} data-agent={d.agent} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : d.hidden ? "sd-hidden" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
@@ -266,7 +270,13 @@ function Press({ children, className, style, onClick, grab, label }: { children:
 }
 
 /** What a card gets from its drawing: where the user dragged it, the screen it stays on, and its hands. */
-type CardCtx = { off: Pt; bounds: Rect; grab: (on: boolean) => void; move: (off: Pt) => void; dismiss: () => void; open: (m: Media) => void; natural: (px: [number, number]) => void }
+type CardCtx = { off: Pt; bounds: Rect; grab: (on: boolean) => void; move: (off: Pt) => void; dismiss: () => void; open: (m: Media) => void; natural: (px: [number, number]) => void
+  /** A video as the user left it (its speaker, its play), told the server so what's up says so. */
+  media: (state: { sound?: boolean; paused?: boolean }) => void
+  /** Whose drawing, and the question its answers came with. */
+  agent: string; question?: string
+  /** Going or hidden (dismissed, erased, its layer hidden or taken down): a video stops at once, never heard unseen. */
+  away: boolean }
 
 /** A card's place on the screen: the user can drag it anywhere on it (by any part that isn't a control) or dismiss it
  *  (its × on hover). It takes the pointer while it's under it, and through a drag. */
@@ -326,6 +336,7 @@ function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act:
   )
   if (m.type === "paper") return <Paper m={m} c={c} delay={delay} seed={seed} id={id} />
   if (m.type === "image" || m.type === "video") return <MediaCard m={m} c={c} delay={delay} ctx={ctx} />
+  if (p.answers) return <Choices answers={p.answers} c={c} delay={delay} ctx={ctx} act={act} />
   // (actions: copy, open, the next step)
   const run = () => {
     const a = m.type === "copy" ? { copy: m.text } : m.type === "open" ? { open: m.url } : m.type === "button" ? m.do : null
@@ -342,11 +353,11 @@ function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act:
   )
 }
 
-/** A picture or a video by the cursor (or where it was put): a picture opens full size when pressed; a video plays muted
- *  a few times round, then rests; pressed it's heard, its bar plays and scrubs. One that can't load (in 15 s) says so. */
+/** A picture (pressed: full size) or a video (muted a few rounds, heard once round by its speaker or the agent's word;
+ *  pressed, it plays or pauses; what they do is told back) by the cursor or where put; one that can't load says so. */
 function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx: CardCtx }) {
   const [state, setState] = useState<"loading" | "ok" | "failed">("loading"), v = useRef<HTMLVideoElement>(null)
-  const [muted, setMuted] = useState(true), [playing, setPlaying] = useState(true), [at, setAt] = useState(0), [dur, setDur] = useState(0)
+  const [muted, setMuted] = useState(!m.sound), [playing, setPlaying] = useState(!m.paused), [at, setAt] = useState(0), [dur, setDur] = useState(0)
   // (laid over the thing: its whole box, its caption a tab inside it)
   const h = c.h - (m.caption && !m.over ? CAPTION_H : 0), name = m.name ?? m.src.split("/").pop()
   const failed = state === "failed" || !m.url
@@ -364,28 +375,85 @@ function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx
   // (a picture that never comes: no shimmer left running)
   useEffect(() => { if (m.type !== "image" || state !== "loading") return; const t = setTimeout(() => setState((s) => (s === "loading" ? "failed" : s)), LOAD_MS); return () => clearTimeout(t) }, [m.type, m.url, state])
   const rounds = useRef(0)
+  // (its first play started here too, so one the page won't start with sound still plays, muted)
+  useEffect(() => { const e = v.current; if (e && !m.paused) play(e) }, [m.url])
+  // (played again: from the start once it had rested; a sound the page may not start on its own plays muted instead)
+  const play = (e: HTMLVideoElement) => {
+    rounds.current = 0
+    if (e.ended) e.currentTime = 0
+    e.play().catch(() => { if (!e.muted) { e.muted = true; setMuted(true); ctx.media({ sound: false }); void e.play().catch(() => {}) } })
+  }
+  // (the agent's word, as it changes: heard or muted, played or paused; the user's presses are told back, so they agree)
+  const said = useRef({ sound: !!m.sound, paused: !!m.paused })
+  useEffect(() => {
+    const e = v.current, was = said.current
+    said.current = { sound: !!m.sound, paused: !!m.paused }
+    if (!e) return
+    if (!!m.sound !== was.sound) { setMuted(!m.sound); e.muted = !m.sound; if (m.sound && !m.paused && e.paused) play(e) }
+    if (!!m.paused !== was.paused) { if (m.paused) e.pause(); else if (e.paused) play(e) }
+  }, [m.sound, m.paused])
+  // (shown again, a video it stopped plays on)
+  const stoppedAway = useRef(false)
+  useEffect(() => {
+    const e = v.current
+    if (!e) return
+    if (ctx.away && !e.paused) { stoppedAway.current = true; e.pause() } else if (!ctx.away && stoppedAway.current) { stoppedAway.current = false; void e.play().catch(() => {}) }
+  }, [ctx.away])
+  const toggleSound = () => { const e = v.current, on = muted; setMuted(!on); if (e) { e.muted = !on; if (on && e.paused) { play(e); ctx.media({ sound: true, paused: false }); return } } ctx.media({ sound: on }) }
+  const togglePlay = () => { const e = v.current; if (!e) return; if (e.paused) { play(e); ctx.media({ paused: false }) } else { e.pause(); ctx.media({ paused: true }) } }
   return (
-    <div data-mark={m.type} data-state={failed ? "failed" : state} data-over={m.over ? "" : undefined} className={`sd-card sd-media ${m.over ? "sd-over" : "sd-pop"}`} style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
+    <div data-mark={m.type} data-state={failed ? "failed" : state} data-over={m.over ? "" : undefined} data-sound={m.type === "video" ? (muted ? "off" : "on") : undefined} data-playing={m.type === "video" ? (playing ? "" : undefined) : undefined}
+      className={`sd-card sd-media ${m.over ? "sd-over" : "sd-pop"}`} style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
       <div className="sd-media-box relative" style={{ height: h }}>
         {failed ? <div role="alert" className="sd-media-failed"><ImageOff className="size-5" strokeWidth={1.8} /><span>Couldn't load {name}</span></div>
           : m.type === "image"
             ? <img src={m.url} alt={m.caption ?? name ?? ""} draggable={false} className={`size-full ${m.over ? "object-fill" : "cursor-zoom-in object-contain"}`}
               onLoad={(e) => { setState("ok"); ctx.natural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight]) }} onError={() => setState("failed")} onClick={() => { if (!m.over) ctx.open(m) }} />
             : <>
-              <video ref={v} src={m.url} muted={muted} autoPlay playsInline className="size-full cursor-pointer object-contain"
-                onEnded={(e) => { if (++rounds.current < ROUNDS) void e.currentTarget.play() }}
+              <video ref={v} src={m.url} muted={muted} autoPlay={!m.paused} playsInline className="size-full cursor-pointer object-contain"
+                // (heard, it plays once round; muted, a few times, then rests: resting is told as paused, so "play it" plays it)
+                onEnded={(e) => { if (muted && ++rounds.current < ROUNDS) void e.currentTarget.play(); else ctx.media({ paused: true }) }}
                 onLoadedMetadata={(e) => loaded(e.currentTarget)}
                 onTimeUpdate={(e) => { setAt(e.currentTarget.currentTime); if (!dur && Number.isFinite(e.currentTarget.duration)) setDur(e.currentTarget.duration) }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setState("failed")}
-                onClick={() => setMuted((x) => !x)} />
+                onClick={togglePlay} />
+              {state === "ok" && !playing && <button type="button" data-nodrag aria-label="Play" className="sd-media-big" onClick={togglePlay}><Play className="size-5" fill="currentColor" /></button>}
+              {state === "ok" && <button type="button" data-nodrag aria-label={muted ? "Unmute" : "Mute"} className="sd-media-sound" onClick={toggleSound}>
+                {muted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}</button>}
               <div data-nodrag className="sd-media-bar">
-                <button type="button" aria-label={playing ? "Pause" : "Play"} onClick={() => { const e = v.current; if (e) { rounds.current = 0; void (e.paused ? e.play() : e.pause()) } }}>{playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}</button>
+                <button type="button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay}>{playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}</button>
                 <input type="range" aria-label="Scrub" min={0} max={dur || 1} step={0.05} value={at} onChange={(e) => { const x = Number(e.target.value); setAt(x); if (v.current) v.current.currentTime = x }} />
-                <button type="button" aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted((x) => !x)}>{muted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}</button>
+                <span className="sd-media-time">{clock(at)} / {clock(dur)}</span>
               </div>
             </>}
         {state === "loading" && !failed && <div className="sd-media-wait" />}
       </div>
       {m.caption && (m.over ? <div className="sd-over-tab">{m.caption}</div> : <div className="sd-media-caption truncate">{m.caption}</div>)}
+    </div>
+  )
+}
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
+
+/** A choice the companion asks: its question atop (who asks it), a row per answer saying what it sends; pressed, that
+ *  one's asked for them, the others step back, and the card goes with the exchange. */
+function Choices({ answers, c, delay, ctx, act }: { answers: Extract<Mark, { type: "button" }>[]; c: Rect; delay: number; ctx: CardCtx; act: (a: Act) => void }) {
+  const [picked, setPicked] = useState<number | null>(null)
+  return (
+    <div data-choices role="group" aria-label={ctx.question ?? "Choose one"} className="sd-card sd-choices sd-pop" style={{ width: c.w, "--delay": ms(delay) } as React.CSSProperties}>
+      <div className="sd-choices-who">{ctx.question ? `${ctx.agent} asks` : ctx.agent}</div>
+      {ctx.question ? <div className="sd-choices-q">{ctx.question}</div> : <div className="h-1" />}
+      <div className="flex flex-col gap-1">
+        {answers.map((a, i) => {
+          const ask = "ask" in a.do ? a.do.ask : a.label
+          return (
+            <button key={a.id ?? i} type="button" data-nodrag data-answer={a.id} disabled={picked !== null} data-picked={picked === i ? "" : undefined}
+              className="sd-answer sd-fade" style={{ "--delay": ms(delay + 120 + i * 90) } as React.CSSProperties}
+              onClick={() => { setPicked(i); act({ kind: "ask", text: ask }) }}>
+              {picked === i ? <Check className="size-3.5 shrink-0" strokeWidth={2.6} /> : <ArrowRight className="size-3.5 shrink-0" strokeWidth={2.4} />}
+              <span className="min-w-0 flex-1"><span className="block truncate">{a.label}</span>{ask !== a.label && <span className="sd-answer-sub">{ask}</span>}</span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

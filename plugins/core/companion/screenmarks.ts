@@ -37,7 +37,9 @@ export type Size = "s" | "m" | "l"
  *  "screenshot": their latest); the rest the server's, as it found it: where the overlay loads it, its name, its pixels. */
 export type Media = { type: "image" | "video"; at?: Spot; src: string; caption?: string; size?: Size; url?: string; name?: string; px?: [number, number]
   /** Laid over its spot, its size (a before picture over the thing as it is now), not beside it. */
-  over?: boolean }
+  over?: boolean
+  /** A video heard (only when they asked for its sound), or held still (stopped): the agent's word or the user's press. */
+  sound?: boolean; paused?: boolean }
 export type Mark = Base & (
   | { type: "point" | "ring" | "frame"; at: Spot; label?: string }
   | { type: "underline" | "strike" | "check" | "cross" | "spotlight"; at: Spot }
@@ -62,7 +64,9 @@ export type Drawing = { id: string; agent: string; tint: string; t: number; mark
   /** From an exchange before (a new ask came since): its cards stay up to be changed by id; new marks replace it. */
   past?: boolean
   /** Hidden for now (companion layer --hide): kept as it is, drawn again when shown. */
-  hidden?: boolean }
+  hidden?: boolean
+  /** The question its answers (buttons that ask) came with: shown atop them. */
+  question?: string }
 export type Spoken = { at: number; dur: number }
 
 export const MARK_TYPES: MarkType[] = ["point", "ring", "frame", "underline", "strike", "connect", "num", "check", "cross", "spotlight", "scroll", "write", "paper", "sticky", "list", "button", "copy", "open", "image", "video"]
@@ -77,9 +81,9 @@ export const VIDEO_EXT = /\.(mp4|m4v|mov|webm)$/i
 /** The vocabulary in a few lines, for the op's help and the docs. */
 export const VOCABULARY = `Spots: {"el": "<id>"} (an element of the ask: snaps to its frame; the best), {"find": "<words>"} (the thing on the screen saying them now, by their pointer), {"pane": "<id>"} or {"ui": "tab:<id>"} in the app; [x, y, w, h] or [x, y] in screen points only for what has none (a bare point snaps to a frame round what they drew there, else to the element there).
 On the screen: point, ring, frame (a thing or an area boxed, the whole of it: what it is), underline, strike, check, cross, spotlight {at, label?}; num {at, n}; scroll {at, dir}; connect {from, to, label?}.
-Cards (by your cursor unless at says: an area "top-left" | "top" | "top-right" | "left" | "centre" | "right" | "bottom-left" | "bottom" | "bottom-right", a point [x, y] for its top left, or a spot it goes beside; the user can drag or dismiss one): write {text, size: s|m|l}; sticky {text, title?}; list {items, title?, numbered?}; image or video {src, caption?, size?: s|m|l, over?: true (laid over its spot, its size: a before picture over the thing)}: src a vault path, a file of this Mac (~/...), an app (/Applications/Name.app: its icon), an https address, or "screenshot" (their latest screenshot; a video: their latest screen recording); a video plays muted, looped.
+Cards (by your cursor unless at says: an area "top-left" | "top" | "top-right" | "left" | "centre" | "right" | "bottom-left" | "bottom" | "bottom-right", a point [x, y] for its top left, or a spot it goes beside; the user can drag or dismiss one): write {text, size: s|m|l}; sticky {text, title?}; list {items, title?, numbered?}; image or video {src, caption?, size?: s|m|l, over?: true (laid over its spot, its size: a before picture over the thing)}: src a vault path, a file of this Mac (~/...), an app (/Applications/Name.app: its icon), an https address, or "screenshot" (their latest screenshot; a video: their latest screen recording); a video plays muted a few times round, with sound: true only when they ask to hear it, paused: true stopped. A video card up is changed in place, never opened again in a player: "unmute it", "with sound" {"op": "change", "id", "sound": true}; "mute it" sound false; "stop it", "pause it" paused true; "play it" paused false (it plays from the start once it had rested).
 paper {w, h, title?, grid?, items}: a pad, its items in its own units (0,0 its top left), Excalidraw's: rect|ellipse|diamond {x,y,w,h,label?}, arrow|line {from, to, label?} (an end [x,y], or a shape's id: bound to it), text {x,y,text,size?}, path {points} (freehand), chart {kind: bar|line, x,y,w,h, values, labels?}, svg {paths: [{d, color?, fill?, width?}], x?,y?,w?,h? (its box, the pad's by default), viewBox?, style?: clean|sketch} (path data only: a logo, an animal, any shape, fitted into its box). Each item may say id (to change it later), color and fill (black, gray, red, pink, purple, violet, blue, cyan, teal, green, yellow, orange, ink, tint or #hex; fill none).
-Actions: copy {text}, open {url}, button {label, do: {copy}|{open}|{ask: "<follow-up>"}}.
+Actions: copy {text}, open {url}, button {label, do: {copy}|{open}|{ask: "<follow-up>"}}. Buttons that ask (a choice: one per answer, no at) come as one card with your question by their pointer, each answer saying what it sends; they go once one's pressed or they ask again. Their question is in your say, always: it's said and shown with them.
 Every mark may say beat: the sentence of your words (0 the first) it appears with; id: its name for draw actions; life: ask (until their next ask: what points, by default; it fades sooner if the screen under it changes, and one on an element follows it as it moves), dismiss (until dismissed: cards, by default) or screen (until the screen under it changes).`
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
@@ -130,8 +134,12 @@ function checkMark(m: unknown): Mark {
     case "copy": return { ...base, type, ...card(), text: words(m.text, "text", MOST.copy), ...label() }
     case "open": return { ...base, type, ...card(), url: url(m.url), ...label() }
     // (where it loads from is the server's to find: url, name and px given are dropped)
-    case "image": case "video": return { ...base, type, ...card(), src: words(m.src ?? m.path ?? m.url, "src", 2000), ...size(m.size),
-      ...(m.caption === undefined ? {} : { caption: words(m.caption, "caption", MOST.text) }), ...(m.over === true ? { over: true } : {}) }
+    case "image": case "video": {
+      for (const k of ["sound", "paused"] as const) if (m[k] !== undefined && (typeof m[k] !== "boolean" || type !== "video")) throw new Error(`${k}: true or false, a video's`)
+      return { ...base, type, ...card(), src: words(m.src ?? m.path ?? m.url, "src", 2000), ...size(m.size),
+        ...(m.caption === undefined ? {} : { caption: words(m.caption, "caption", MOST.text) }), ...(m.over === true ? { over: true } : {}),
+        ...(m.sound === true ? { sound: true } : {}), ...(m.paused === true ? { paused: true } : {}) }
+    }
     case "paper": {
       const w = m.w === undefined ? PAPER.w : m.w, h = m.h === undefined ? PAPER.h : m.h
       if (!num(w) || !num(h) || (w as number) < 80 || (h as number) < 60 || (w as number) > MOST.paper[0] || (h as number) > MOST.paper[1]) throw new Error(`w, h: its size, 80x60 to ${MOST.paper.join("x")} (default ${PAPER.w}x${PAPER.h})`)
@@ -290,7 +298,9 @@ export const PALETTE: Record<string, [string, string]> = {
 }
 
 /** How long `m` stays: as it says, else a card until it's dismissed, what points until the next ask. */
-export const lifeOf = (m: Mark): Life => m.life ?? (CARDS.has(m.type) ? "dismiss" : "ask")
+export const lifeOf = (m: Mark): Life => m.life ?? (CARDS.has(m.type) && !isAnswer(m) ? "dismiss" : "ask")
+/** A button that answers the question it came with (a choice's): no place of its own, it goes with its question. */
+export const isAnswer = (m: Mark): m is Extract<Mark, { type: "button" }> => m.type === "button" && "ask" in m.do && !m.at
 
 /** The places a drawing's marks name that the app must find: panes and UI ("pane:t3", "ui:tab:t3"). */
 export function appPlaces(marks: Mark[]) {
@@ -506,7 +516,7 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
       } else if (op === "change") {
         const { mark, item } = find(a.id)
         const keys = Object.keys(a).filter((k) => k !== "op" && k !== "id")
-        if (!keys.length) throw new Error("what changes: label, text, color, fill, w, h, size, caption, title")
+        if (!keys.length) throw new Error("what changes: label, text, color, fill, w, h, size, caption, title, a video's sound or paused")
         if (item) {
           const pad = mark as Extract<Mark, { type: "paper" }>
           const { op: _op, ...change } = a
@@ -520,6 +530,8 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
           const next = checkMark({ ...mark, ...rest })
           // (another source is found again)
           if ((mark.type === "image" || mark.type === "video") && rest.src !== undefined) { delete mark.url; delete mark.name; delete mark.px; added.push(mark) }
+          // (what the change turned off goes: sound false, paused false; where its media loads from is the server's)
+          for (const k of Object.keys(mark)) if (!(k in next) && !SERVERS.has(k)) delete (mark as Record<string, unknown>)[k]
           Object.assign(mark, next); touch(mark.id)
         }
       } else if (op === "delete") {
@@ -535,6 +547,7 @@ export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { 
   return { marks: out, added, touched }
 }
 const bad = (why: string): never => { throw new Error(why) }
+const SERVERS = new Set(["url", "name", "px", "gone"])
 const spotOf = (v: unknown) => spot(v, "at")
 /** An item's box on its pad (a bound end at its shape's centre). */
 export function itemBox(it: PaperItem, items: PaperItem[] = []): Rect {
@@ -572,7 +585,8 @@ export function drawingText(d: Drawing) {
   const lines = d.marks.filter(live).map((m) => {
     const name = `${m.id ?? "?"} ${m.type}`
     if (m.type === "paper") return [`- ${name}${m.title ? ` ${q(m.title)}` : ""} ${m.w}x${m.h}${at(m.at)}:`, ...m.items.filter(live).map((i) => `    ${item(i, m.items)}`)].join("\n")
-    if (m.type === "image" || m.type === "video") return `- ${name} ${m.name ?? m.src}${m.caption ? ` ${q(m.caption)}` : ""}${at(m.at)}`
+    if (m.type === "image" || m.type === "video") return `- ${name} ${m.name ?? m.src}${m.caption ? ` ${q(m.caption)}` : ""}${at(m.at)}${m.type === "video" ? ` (${m.paused ? "paused" : "playing"}, ${m.sound ? "with sound" : "muted"})` : ""}`
+    if (m.type === "button" && "ask" in m.do) return `- ${name} ${q(m.label)}${m.do.ask !== m.label ? ` (an answer: sends ${q(m.do.ask)})` : " (an answer)"}`
     const words = "label" in m && m.label ? ` ${q(m.label)}` : "text" in m ? ` ${q(m.text)}` : "title" in m && m.title ? ` ${q(m.title)}` : ""
     return `- ${name}${words}${"at" in m ? at(m.at) : ""}`
   })

@@ -20,7 +20,7 @@ import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Targ
 import { AUTO_RULES, NEVER_READ, NEVER_RUN, readableDirs } from "./reach.ts"
 import { screenDrawings } from "./drawings.ts"
 import { screenMedia } from "./media.ts"
-import { bestFound, byLabel, checkMarks, type Found, type Mark, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
+import { bestFound, byLabel, checkMarks, type Found, isAnswer, type Mark, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
@@ -1270,6 +1270,7 @@ function drawingAct(m: Record<string, unknown>, req: IncomingMessage) {
   if (m.kind === "clear") return void screenDrawing.clear({ id: d.id })
   if (m.kind === "settle") return void screenDrawing.settle(d.agent)
   if (m.kind === "dismiss" && typeof m.mark === "string") return void screenDrawing.dismiss(d.id, m.mark)
+  if (m.kind === "media" && typeof m.mark === "string") return void screenDrawing.media(d.id, m.mark, { ...(typeof m.sound === "boolean" ? { sound: m.sound } : {}), ...(typeof m.paused === "boolean" ? { paused: m.paused } : {}) })
   if (m.kind === "keep") return void plugin.runOp("companion.save-drawing", { id: d.id, places: m.places ?? {} }, YOU, req).catch((e) => console.error(`companion: keep: ${(e as Error).message}`))
   const a = agents.get(key(d.agent)), r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
   if (m.kind === "ask" && str(m.text)) addMoment({ kind: "ask", for: d.agent, text: str(m.text).slice(0, 2000), ...(a?.app ? { app: a.app } : {}),
@@ -3739,7 +3740,9 @@ file or a picture from the web, an image or video card.
 actions without a path: what's up changed in place, by the ids the ask listed (or your marks gave): {"op": "add",
 "type": "rect" | ..., "in": "<pad id>", ...an item} (to the last pad without in), {"op": "add", "mark": {...a mark}},
 {"op": "move", "id", "dx", "dy"} (or x, y; a card {"op": "move", "id", "at": "top-left"}), {"op": "change", "id",
-"color", "fill", "label", "text", "w", "h", "caption"...}, {"op": "delete", "id"} (erased, its pen run backward).
+"color", "fill", "label", "text", "w", "h", "caption"...; a video's "sound", "paused"}, {"op": "delete", "id"} (erased, its pen run backward).
+
+  vau companion draw --actions '[{"op":"change","id":"video5","sound":true}]' --say "Here it is with sound."
 
   vau companion draw --actions '[{"op":"change","id":"home","fill":"blue"},{"op":"add","type":"rect","id":"err","x":170,"y":0,"w":90,"h":24,"label":"Retry"},
     {"op":"add","type":"arrow","from":"ok","to":"err","label":"no"},{"op":"delete","id":"old"}]'
@@ -3793,7 +3796,8 @@ async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
   })
   const r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
   const at = r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : {}
-  if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...at, ...(p.as ? { as: p.as } : {}) })
+  // (a choice's question: asked, as a question is)
+  if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...at, ...(d.marks.some(isAnswer) ? { ask: true } : {}), ...(p.as ? { as: p.as } : {}) })
   else if (r) setAgent(name, { ...at, state: acting(name) })
   return { screen: d.id, marks: (p.marks as unknown[]).length - unshown.length, ...(unshown.length ? { unshown } : {}) }
 }

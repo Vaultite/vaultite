@@ -8,7 +8,9 @@ import type { Here } from "./layout"
 /** A layer as this display gets it: `here`, where the display is and whether it has the cards. */
 export type Shown = Drawing & { here: Here }
 /** What the user pressed: Clear, Keep (with the places as found here), a mark's action, or a card's × (`mark`, its id). */
-export type Act = { id?: string; kind: "clear" | "keep" | "copy" | "open" | "ask" | "dismiss"; text?: string; url?: string; places?: Record<string, Rect>; mark?: string }
+export type Act = { id?: string; kind: "clear" | "keep" | "copy" | "open" | "ask" | "dismiss" | "media"; text?: string; url?: string; places?: Record<string, Rect>; mark?: string
+  /** A video card as the user left it (its speaker, its play). */
+  sound?: boolean; paused?: boolean }
 export type DrawBridge = { on: (fn: (d: Shown[] | Shown | null) => void) => () => void; act: (a: Act) => void }
 
 const Draw = lazy(() => import("./Draw"))
@@ -68,7 +70,8 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 .sd-shell { cursor: grab; } .sd-shell:active { cursor: grabbing; }
 .sd-x { position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity .15s;
   background: var(--background); color: var(--foreground); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 18%, transparent), 0 2px 6px rgba(0,0,0,.22); }
-.sd-shell:hover > .sd-x, .sd-x:focus-visible { opacity: 1; }
+.sd-shell:hover > .sd-x, .sd-x:focus-visible { opacity: 1; } .sd-x:hover { background: color-mix(in srgb, var(--foreground) 10%, var(--background)); }
+.sd-root button:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
 .sd-media { overflow: hidden; }
 /* a before picture over the thing as it is now: no lift, a quick fade in and out as it flips, its caption a tab */
 .sd-card.sd-over { position: relative; overflow: visible; background: transparent; border-radius: 4px; box-shadow: 0 0 0 2px var(--tint); animation: sd-in .18s ease-out both; }
@@ -83,7 +86,26 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 .sd-media-caption { height: ${30}px; line-height: ${30}px; padding: 0 12px; font-size: 13px; font-weight: 500; }
 .sd-media-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-radius: 999px; cursor: default;
   background: rgba(0,0,0,.55); color: white; opacity: 0; transition: opacity .15s; }
-.sd-shell:hover .sd-media-bar { opacity: 1; }
+.sd-shell:hover .sd-media-bar, .sd-media-bar:focus-within, .sd-media:not([data-playing]) .sd-media-bar { opacity: 1; }
+.sd-media-time { font-size: 11px; font-variant-numeric: tabular-nums; opacity: .85; white-space: nowrap; }
+/* its sound, always on it: muted says so, so a press to hear it is never hidden */
+.sd-media-sound { position: absolute; top: 8px; left: 8px; height: 26px; min-width: 26px; display: grid; place-items: center; border-radius: 999px; cursor: pointer;
+  background: rgba(0,0,0,.55); color: white; box-shadow: 0 0 0 1px rgba(255,255,255,.18); transition: background .15s; }
+.sd-media-sound:hover { background: rgba(0,0,0,.75); }
+.sd-media[data-sound=on] .sd-media-sound { background: var(--tint); }
+.sd-media-big { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 999px; cursor: pointer;
+  background: rgba(0,0,0,.55); color: white; box-shadow: 0 0 0 1px rgba(255,255,255,.2), 0 4px 14px rgba(0,0,0,.3); }
+.sd-media-big:hover { background: rgba(0,0,0,.75); }
+/* a choice: the question asked, its answers under it, as the companion's question bubble is drawn */
+.sd-choices { padding: 12px; background: color-mix(in srgb, var(--tint) 9%, var(--background)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tint) 70%, transparent), 0 10px 30px rgba(0,0,0,.2); }
+.sd-choices-who { font-size: 11.5px; font-weight: 600; line-height: 20px; color: var(--tint); }
+.sd-choices-q { font-size: 14px; font-weight: 600; line-height: 20px; margin-bottom: 8px; }
+.sd-answer { width: 100%; min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; text-align: left; cursor: pointer;
+  background: var(--background); color: var(--foreground); font-size: 13.5px; font-weight: 600; line-height: 18px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--tint) 35%, transparent); transition: background .12s, opacity .2s; }
+.sd-answer svg { color: var(--tint); }
+.sd-answer:hover:not(:disabled) { background: color-mix(in srgb, var(--tint) 14%, var(--background)); }
+.sd-answer:disabled { cursor: default; opacity: .45; } .sd-answer[data-picked] { opacity: 1; box-shadow: 0 0 0 1.5px var(--tint); }
+.sd-answer-sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; font-weight: 400; line-height: 17px; color: color-mix(in srgb, var(--foreground) 62%, transparent); overflow: hidden; }
 .sd-media-bar button { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; cursor: pointer; } .sd-media-bar button:hover { background: rgba(255,255,255,.18); }
 .sd-media-bar input { flex: 1; min-width: 0; accent-color: var(--tint); cursor: pointer; }
 .sd-lightbox { background: rgba(0,0,0,.6); animation: sd-fade .2s ease-out both; opacity: 0; }

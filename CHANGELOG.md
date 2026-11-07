@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's video and choice cards answer to you**: a video card shows its speaker, plays muted until you ask
+  for sound ("unmute it", or its speaker), and pauses or plays on a press or your word, the companion changing that card
+  rather than opening another player; hidden or dismissed, it stops. A choice comes as one card by your pointer, its
+  question atop answers that say what each sends, and its question is always said.
 - **Agents you type to can close a job on your word**: "close it" typed to a terminal agent now closes a job ready for
   review (read from that agent's own conversation, not words another agent typed into it), and a refusal says why. A
   job the companion hands off long after your last ask no longer carries that ask.

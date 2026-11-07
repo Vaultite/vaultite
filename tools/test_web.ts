@@ -3550,6 +3550,22 @@ await section("screen drawings", async () => {
   check("screen drawings: a card goes where it's put: an area's corner, beside a thing (never over it), a point, by the cursor; on screen, at most its share of the display",
     tr.x + tr.w === 1440 - 24 && tr.y === 25 + 24 && !lay.overlaps(beside, { x: 600, y: 300, w: 120, h: 40 }) && pt.x === 100 && pt.y === 700 &&
     vid.w <= 1440 * 0.4 + 1 && vid.h <= 875 * 0.45 + 1 && putCards.every((p: Any) => lay.inside(p.card, { x: 0, y: 25, w: 1440, h: 875 })), putCards.map((p: Any) => p.card))
+  // ---- a video's sound and play, and a choice's answers
+  const vids = sm.checkMarks([{ type: "video", id: "v", src: "y.mp4", sound: true, paused: false }])
+  check("screen drawings: a video may be heard (only said so) or paused; sound is a video's",
+    vids[0].sound === true && vids[0].paused === undefined && /sound: true or false, a video's/.test(err([{ type: "image", src: "x.png", sound: true }])) && /paused/.test(err([{ type: "video", src: "y.mp4", paused: "yes" }])), vids)
+  const muted = sm.editMarks(sm.editMarks(vids, [{ op: "change", id: "v", paused: true }]).marks, [{ op: "change", id: "v", sound: false, paused: false }]).marks[0]
+  check("screen drawings: a video changed in place: what's turned off goes, not left as it was", muted.sound === undefined && muted.paused === undefined && muted.src === "y.mp4", muted)
+  const ch = sm.checkMarks([{ type: "button", id: "a", label: "A", do: { ask: "Pick A" } }, { type: "button", id: "b", label: "B", do: { ask: "B" } }, { type: "button", label: "Copy", do: { copy: "x" } }, { type: "button", label: "Here", do: { ask: "x" }, at: [10, 10] }])
+  check("screen drawings: buttons that ask with no place are a choice's answers, gone at the next ask; others are cards",
+    ch.map((m: Any) => sm.isAnswer(m)).join() === "true,true,false,false" && sm.lifeOf(ch[0]) === "ask" && sm.lifeOf(ch[2]) === "dismiss", ch)
+  const upV = sm.drawingText({ id: "d", agent: "C", tint: "orange", t: 0, marks: [...vids, ch[0], ch[1]] })
+  check("screen drawings: what's up says a video's state and what each answer sends", upV.includes("v video y.mp4 (playing, with sound)") && upV.includes("a button \"A\" (an answer: sends \"Pick A\")") && upV.includes("b button \"B\" (an answer)"), upV)
+  const chosen = lay.place({ id: "d", agent: "C", tint: "orange", t: 0, question: "Which one should take it?", places: {}, marks: [...sm.checkMarks([{ type: "video", id: "v", src: "y.mp4" }]), ch[0], ch[1]] }, here1, size)
+  const qCard = chosen.find((p: Any) => p.answers)?.card, ptr = here1.pointer
+  check("screen drawings: a choice is one card with all its answers, by the pointer (beside it, not under it), placed before other cards",
+    chosen.filter((p: Any) => p.card && p.mark.type === "button").length === 1 && chosen.find((p: Any) => p.answers).answers.length === 2 && Math.hypot(qCard.x + qCard.w / 2 - ptr.x, qCard.y + qCard.h / 2 - ptr.y) < qCard.w / 2 + 80 &&
+    !(ptr.x >= qCard.x && ptr.x <= qCard.x + qCard.w && ptr.y >= qCard.y && ptr.y <= qCard.y + qCard.h) && !lay.overlaps(qCard, chosen[0].card), chosen.map((p: Any) => p.card))
   const shot = lay.mediaSize({ type: "image", src: "s", px: [2880, 1800] }, 1440, 875), tiny = lay.mediaSize({ type: "image", src: "s", px: [32, 32], caption: "x" }, 1440, 875)
   check("screen drawings: a picture's size: a Retina screenshot fitted to its share; a tiny one at least 160 wide, with room for its caption", shot.w <= 432 && Math.abs(shot.w / shot.h - 1.6) < 0.02 && tiny.w === 160 && tiny.h === 160 + lay.CAPTION_H, { shot, tiny })
   // ---- marks anchor to what's meant: words to find, and a guessed pixel snapped to what's there

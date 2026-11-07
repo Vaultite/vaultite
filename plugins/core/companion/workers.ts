@@ -508,7 +508,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const w = plainWords(which)
     if (w && m?.text && ` ${plainWords(m.text)} `.includes(` ${w} `)) return ""
     const short = (x: Job) => x.title.split(/\s+/).slice(0, 4).join(" ")
-    return `their ask was over the job "${over.title}" (${over.id}), not "${j.title}" (${j.id}): unless their words name the one they mean (then which: those words), ask them which in one short line ("${short(j)}, or ${short(over)}?"), each a button (draw: a button each, its ask the job's name)`
+    return `their ask was over the job "${over.title}" (${over.id}), not "${j.title}" (${j.id}): unless their words name the one they mean (then which: those words), ask them which in one short line ("${short(j)}, or ${short(over)}?"), each a button (draw: a button each, its ask the job's name, the question in its say)`
   }
 
   /** A new job doing `task` (told where it runs: what it's given may depend on it), placed by the ask it came from (`m`)

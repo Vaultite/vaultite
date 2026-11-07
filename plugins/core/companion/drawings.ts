@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { appPlaces, checkMarks, type Drawing, drawingText, editMarks, findsOf, idsIn, type KeptFile, type Mark, type Media, pruned, type Rect, sentences, snapMarks, type Spot, spots,
-  toExcalidraw, unshown, lifeOf } from "./screenmarks.ts"
+  toExcalidraw, unshown, lifeOf, isAnswer } from "./screenmarks.ts"
 import { fileTitle } from "./names.ts"
 
 /** A drawing left up this long with nothing new goes by itself. */
@@ -75,6 +75,23 @@ export function screenDrawings(plugin: Plugin, o: {
     const left = ms.flatMap((m, i) => (why[i] ? [`the ${m.type} ${why[i]}`] : []))
     return { marks: ms.filter((_, i) => !why[i]), places, left }
   }
+  /** A choice's question, shown with its answers: the last question of its say (or of the words said with it), else all
+   *  of it. Answers with no words are refused: buttons that came alone, unsaid, went unnoticed. */
+  function asking(ms: Mark[], say?: string): { question?: string } {
+    if (!ms.some(isAnswer)) return {}
+    if (!say?.trim()) throw new OpError("a choice's buttons come with its question, said and shown with them: put it in say (\"Which one, the watcher or the video cards?\"), never buttons alone")
+    return { question: sentences(say).findLast((x) => x.trim().endsWith("?"))?.trim() ?? say.trim() }
+  }
+  /** One of `id`'s videos as the user left it (its speaker or play pressed on the card): kept, so what's up says so. */
+  function media(id: string, mark: string, state: { sound?: boolean; paused?: boolean }) {
+    const now = byId(id), m = now?.marks.find((x) => x.id === mark)
+    if (!now || m?.type !== "video") return false
+    const next = { ...m }
+    for (const k of ["sound", "paused"] as const) if (typeof state[k] === "boolean") { if (state[k]) next[k] = true; else delete next[k] }
+    if (!!next.sound === !!m.sound && !!next.paused === !!m.paused) return false
+    up({ ...now, marks: now.marks.map((x) => (x === m ? next : x)) })
+    return true
+  }
   /** Every mark and pad item named, so a later ask can change it by id. */
   function named(ms: Mark[], taken: Set<string>) {
     const next = (p: string) => { let id; do id = `${p}${++n}`; while (taken.has(id)); taken.add(id); return id }
@@ -89,6 +106,7 @@ export function screenDrawings(plugin: Plugin, o: {
   async function draw(agent: string, marks: unknown, say?: string) {
     let ms: Mark[]
     try { ms = checkMarks(marks) } catch (e) { throw new OpError((e as Error).message) }
+    asking(ms, say ?? o.words(agent))
     const now = layers.get(agent), adding = !!now && !now.kept && !now.past
     const taken = adding ? idsIn(now!.marks) : new Set<string>()
     const twice = ms.flatMap((m) => [m.id, ...(m.type === "paper" ? m.items.map((i) => i.id) : [])]).filter((id): id is string => !!id && taken.has(id))
@@ -96,9 +114,9 @@ export function screenDrawings(plugin: Plugin, o: {
     const got = await placed(agent, ms)
     if (!got.marks.length) throw new OpError(`${got.left.join("; ")}, so nothing was drawn and they saw no mark: use an element's id, the words exactly as their screen shows them, or a box on their screen; don't go on as if they saw it`, 409)
     ms = named(got.marks, new Set([...taken, ...idsIn(got.marks)]))
-    const caption = say ?? o.words(agent)
-    if (adding) up({ ...now!, marks: pruned([...now!.marks, ...ms]).slice(-40), places: { ...now!.places, ...got.places }, hidden: undefined, ...(caption ? { caption } : {}) })
-    else up({ id: `d${Date.now().toString(36)}${++n}`, agent, tint: o.tint(agent), t: Date.now(), marks: ms, places: got.places, ...(caption ? { caption } : {}) })
+    const caption = say ?? o.words(agent), q = asking(ms, caption)
+    if (adding) up({ ...now!, marks: pruned([...now!.marks, ...ms]).slice(-40), places: { ...now!.places, ...got.places }, hidden: undefined, ...(caption ? { caption } : {}), ...q })
+    else up({ id: `d${Date.now().toString(36)}${++n}`, agent, tint: o.tint(agent), t: Date.now(), marks: ms, places: got.places, ...(caption ? { caption } : {}), ...q })
     return { drawing: layers.get(agent)!, unshown: got.left }
   }
 
@@ -109,6 +127,7 @@ export function screenDrawings(plugin: Plugin, o: {
     if (!now) throw new OpError("nothing of yours is drawn on the screen now (another session's layer is its own): draw it with marks", 409)
     let made: ReturnType<typeof editMarks>
     try { made = editMarks(pruned(now.marks), actions) } catch (e) { throw new OpError((e as Error).message) }
+    const q = asking(made.added, say ?? o.words(agent))
     // (what's added or moved: its places found, its media too; one that can't show is refused, nothing changed)
     const got = await placed(agent, made.marks.filter((m) => !m.gone), now.places)
     if (got.left.length) throw new OpError(`${got.left.join("; ")}: nothing was changed`, 409)
@@ -116,7 +135,7 @@ export function screenDrawings(plugin: Plugin, o: {
     const marks = named(made.marks.map((m) => (m.id && found.has(m.id) ? found.get(m.id)! : m)), idsIn(made.marks))
     const caption = say ?? o.words(agent)
     // (its words are this exchange's: what's added comes with them, the rest stays drawn)
-    up({ ...now, marks, places: got.places, past: false, kept: undefined, hidden: undefined, ...(caption ? { caption } : {}) })
+    up({ ...now, marks, places: got.places, past: false, kept: undefined, hidden: undefined, ...(caption ? { caption } : {}), ...q })
     return { drawing: layers.get(agent)!, touched: made.touched }
   }
 
@@ -210,9 +229,9 @@ export function screenDrawings(plugin: Plugin, o: {
     const now = layers.get(agent)
     if (!now) return ""
     const body = drawingText({ ...now, marks: pruned(now.marks) })
-    return body && `Still on their screen, your layer${now.hidden ? " (hidden now)" : ""}${now.kept ? ` (kept in ${now.kept})` : ""}: change it in place by id with draw actions (add, move, change, delete erases it), and only when the ask is about it; new marks replace it, clear takes it down.\n${body}`
+    return body && `Still on their screen, your layer${now.hidden ? " (hidden now)" : ""}${now.kept ? ` (kept in ${now.kept})` : ""}: change it in place by id with draw actions (add, move, change, delete erases it), and only when the ask is about it; new marks replace it, clear takes it down.${now.marks.some((m) => m.type === "video" && !m.gone) ? " A video here is played, paused, heard or muted there (change: paused, sound), never opened again in a player; one they may mean besides (a player pane, another card): say which you changed." : ""}\n${body}`
   }
-  return { draw, edit, settle, changed, moved, recaption, clear, dismiss, toggle, keep, text, messages, byId, layer: (agent: string) => layers.get(agent) ?? null, all: () => [...layers.values()] }
+  return { draw, edit, settle, changed, moved, recaption, clear, dismiss, media, toggle, keep, text, messages, byId, layer: (agent: string) => layers.get(agent) ?? null, all: () => [...layers.values()] }
 }
 
 /** A kept drawing's name: its pad's title, else its first words, else when. */

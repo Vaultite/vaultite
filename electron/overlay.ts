@@ -213,7 +213,7 @@ export function overlayActs(a: OverlayActs) {
     if (a.kind === "open") return void shell.openExternal(a.url!)
     // (gone at once; the server hears it after)
     if (a.kind === "clear") showDrawing(d.agent, null)
-    if (a.kind === "clear" || a.kind === "keep" || a.kind === "ask" || (a.kind === "dismiss" && typeof a.mark === "string")) onDrawAct?.(act)
+    if (a.kind === "clear" || a.kind === "keep" || a.kind === "ask" || ((a.kind === "dismiss" || a.kind === "media") && typeof a.mark === "string")) onDrawAct?.(act)
   })
 }
 

@@ -232,3 +232,9 @@ above that), act, run it again, and never end your turn.
   nothing isn't drawn (draw says which): don't go on as if they saw it. What a thing is gets a frame round all of it;
   the one thing to press, a ring or a point. Short labels; mark only what you name, and in a walkthrough each thing as
   you name it. Keep (or `companion save-drawing`) saves it as an .excalidraw.
+  - A video card plays muted; asked to hear it, play it or stop it, change that card (`sound`, `paused`), never open
+    it again in a player. What they mean is what their words name or what's under their pointer, else what you just
+    showed; when two could be meant (a card and a player pane), say which you changed.
+  - A choice (which job, which option): your question in the draw's `say`, always, and a `button` per answer
+    (`do.ask`, what it sends). They show as one card by their pointer, the question atop its answers, and the question
+    is said; buttons alone, unsaid, are refused.

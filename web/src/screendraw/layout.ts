@@ -1,6 +1,6 @@
 // Where a drawing's parts go on one display (no DOM): labels beside what they name, never over it and on screen; cards on
 // calm space, clear of what's marked; arrows bent between two things.
-import { type Area, CARDS, type Drawing, type Mark, type Media, PAPER, type Rect, rectOf, type Spot } from "../../../plugins/core/companion/screenmarks"
+import { type Area, CARDS, type Drawing, isAnswer, type Mark, type Media, PAPER, type Rect, rectOf, type Spot } from "../../../plugins/core/companion/screenmarks"
 
 export type Size = { w: number; h: number }
 export type Pt = { x: number; y: number }
@@ -135,7 +135,9 @@ export type Here = { width: number; height: number; origin: Pt; home: boolean; p
   sound?: boolean }
 /** A mark as drawn here: its target (`box`, a connect's `to`), what its ink covers, its card, its label, its arrow. */
 export type Placed = { i: number; mark: Mark; box: Rect | null; to?: Rect | null; ink?: Rect; card?: Rect; label?: Rect
-  arrow?: { tip: Pt; tail: Pt }; curve?: ReturnType<typeof arrowPath> }
+  arrow?: { tip: Pt; tail: Pt }; curve?: ReturnType<typeof arrowPath>
+  /** A choice's answers, on its first's card (the rest have none), its question atop. */
+  answers?: Extract<Mark, { type: "button" }>[] }
 
 /** How much of a display a picture or video takes at most, by its size (s, m, l): width and height. */
 const MEDIA_MOST = { s: [0.22, 0.26], m: [0.3, 0.36], l: [0.4, 0.45] } as const
@@ -154,6 +156,25 @@ export function areaRect(a: Area, size: Size, bounds: Rect, margin = 24): Rect {
   const cx = bounds.x + (bounds.w - size.w) / 2, cy = bounds.y + (bounds.h - size.h) / 2
   const x = /left/.test(a) ? l : /right/.test(a) ? r : cx, y = /^top/.test(a) ? t : /^bottom/.test(a) ? b : cy
   return clampInto({ x, y, ...size }, bounds)
+}
+
+/** A choice's card: its question atop, a row per answer (its label, and what it sends when that says more). */
+export const CHOICE = { w: [240, 360] as const, pad: 12, head: 20, q: 14, row: 34, sub: 17, gap: 4 }
+export function choicesSize(question: string, answers: Extract<Mark, { type: "button" }>[], measure: (text: string, px: number, bold?: boolean) => number = rough): Size {
+  const subs = answers.filter((a) => "ask" in a.do && a.do.ask !== a.label)
+  const want = Math.max(measure(question, CHOICE.q, true) + CHOICE.pad * 2, ...answers.map((a) => measure(a.label, 13.5, true) + 60), ...subs.map((a) => measure("ask" in a.do ? a.do.ask : "", 12) + 60))
+  const w = Math.round(Math.min(CHOICE.w[1], Math.max(CHOICE.w[0], want)))
+  // (its question wraps; what an answer sends, to two lines)
+  const qLines = question ? lines(question, w - CHOICE.pad * 2 + 24, CHOICE.q, measure) * 20 + 8 : 4
+  const subLines = subs.reduce((n, a) => n + Math.min(2, lines("ask" in a.do ? a.do.ask : "", w - 60 + 24, 12, measure)), 0)
+  return { w, h: CHOICE.pad * 2 + CHOICE.head + qLines + answers.length * (CHOICE.row + CHOICE.gap) + subLines * CHOICE.sub }
+}
+/** By their pointer, where the companion asks: left of it first (its own cursor and words ride to its right), else
+ *  below it, else above; clear of the other cards. */
+export function besidePointer(p: Pt, size: Size, bounds: Rect, taken: Rect[]): Rect | null {
+  const tries = [{ x: p.x - 18 - size.w, y: p.y - 24 }, { x: p.x - 18 - size.w, y: p.y - size.h + 24 }, { x: p.x + 28, y: p.y + 48 }, { x: p.x - size.w / 2, y: p.y + 48 },
+    { x: p.x - size.w / 2, y: p.y - 24 - size.h }, { x: p.x + 28, y: p.y - 24 - size.h }].map((t) => ({ ...t, ...size }))
+  return tries.find((r) => inside(r, bounds) && !taken.some((x) => overlaps(r, inflate(x, 8)))) ?? null
 }
 
 /** A card's size before it's measured (the renderer measures its text: `measure` gives that). */
@@ -207,9 +228,19 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
   const avoid = [...marked, ...inks], taken: Rect[] = []
   const near = here.pointer ? { x: here.pointer.x - here.origin.x, y: here.pointer.y - here.origin.y } : marked.length ? centre(marked[0]) : { x: here.width * 0.7, y: here.height * 0.35 }
   let at = near
-  for (const p of out) {
+  // (a choice's answers: one card, by the pointer, where its question is asked)
+  const answers = out.filter((p) => isAnswer(p.mark)), first = answers[0]
+  if (first) first.answers = answers.map((p) => p.mark as Extract<Mark, { type: "button" }>)
+  // (it first: the room by the pointer is its)
+  for (const p of first ? [first, ...out.filter((x) => x !== first)] : out) {
     const m = p.mark
-    if (!CARDS.has(m.type)) continue
+    if (!CARDS.has(m.type) || (isAnswer(m) && p !== first)) continue
+    if (p === first) {
+      const size = choicesSize(d.question ?? "", p.answers!, measure), at = here.pointer && { x: here.pointer.x - here.origin.x, y: here.pointer.y - here.origin.y }
+      p.card = (at && besidePointer(at, size, bounds, taken)) || calmSpot(size, bounds, [...avoid, ...content], near, 24, 60, taken)
+      taken.push(p.card)
+      continue
+    }
     const size = m.type === "image" || m.type === "video" ? mediaSize(m, here.width, here.height - (here.top ?? 0), m.id ? naturals[m.id] : undefined) : cardSize(m, measure)
     const area = "at" in m && m.at && "area" in m.at ? m.at.area : null
     if (p.box && (m.type === "image" || m.type === "video") && m.over && p.box.w && p.box.h) p.card = { ...p.box }

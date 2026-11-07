@@ -110,7 +110,7 @@ check("labels never overlap each other", !clash.length, clash)
 const strokes = [{ x: 264, y: 236, w: 232, h: 18 }, { x: 264, y: 172, w: 172, h: 20 }, { x: 960, y: 116, w: 36, h: 36 }, { x: 960, y: 216, w: 36, h: 36 }]
 const onInk = labels.filter((l) => strokes.some((k) => hit(l, k)))
 check("labels keep off the other marks' strokes", !onInk.length, onInk)
-const cards = await rects(light, "[data-mark=write], .sd-chip")
+const cards = await rects(light, "[data-mark=write], .sd-chip, [data-choices]")
 const marked = [SCREEN.share, SCREEN.row1, SCREEN.row2, SCREEN.row3, { x: 16, y: 104, w: 216, h: 126 }, SCREEN.sent]
 const things = Object.values(ELEMENTS)
 check("cards go on calm space: clear of everything on screen, marked or not, on screen", cards.length === 3 && cards.every((c) => onScreen(c) && ![...marked, ...things].some((m) => hit(c, m))), cards)
@@ -332,9 +332,37 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
     shot[0].w <= W * 0.4 + 1 && onScreen(shot[0]), shot)
   check("video: by the cursor (the default), playing muted (a few times round, then it rests), on screen", clip.length === 1 && onScreen(clip[0]) && Math.hypot(clip[0].x + clip[0].w / 2 - 640, clip[0].y + clip[0].h / 2 - 500) < 520 && v.muted && !v.loop && v.playing, { clip, v })
   check("a picture that can't load says so, never a blank card", lost === "Couldn't load missing.png", lost)
+  // (its sound: a speaker always on it, muted saying so; pressed, heard, the server told)
+  const vid = () => page.evaluate(() => { const e = document.querySelector("[data-mark=video] video"); return { muted: e.muted, paused: e.paused, sound: document.querySelector("[data-mark=video]").dataset.sound, big: !!document.querySelector("[data-mark=video] .sd-media-big") } })
+  const speaker = await page.evaluate(() => { const b = document.querySelector("[data-mark=video] .sd-media-sound"); return b && { label: b.getAttribute("aria-label"), opacity: getComputedStyle(b).opacity } })
+  check("video: its speaker shows without hovering, saying it's muted", speaker?.label === "Unmute" && speaker.opacity === "1", speaker)
+  await page.click("[data-mark=video] .sd-media-sound")
+  const heard = await vid(), told = await page.evaluate(() => window.__acts.filter((a) => a.kind === "media"))
+  check("video: its speaker pressed, it's heard, and the server's told", !heard.muted && heard.sound === "on" && told.at(-1)?.sound === true && told.at(-1)?.mark === "clip", { heard, told })
+  await page.click("[data-mark=video] .sd-media-sound")
+  check("...pressed again, muted", (await vid()).muted)
+  // (pressed, it pauses, a play button over it; pressed there, it plays)
   await page.click("[data-mark=video] video")
-  check("video: pressed, it's heard", await page.evaluate(() => !document.querySelector("[data-mark=video] video").muted))
-  await page.click("[data-mark=video] video")
+  const stopped = await until(async () => { const x = await vid(); return x.big && x }, 2000) || await vid(), toldP = await page.evaluate(() => window.__acts.filter((a) => a.kind === "media").at(-1))
+  check("video: pressed, it pauses, a play button over it, the server told", stopped.paused && stopped.big && toldP?.paused === true, { stopped, toldP })
+  await page.click("[data-mark=video] .sd-media-big")
+  check("...its play button pressed, it plays", !(await vid()).paused)
+  // (the agent's word, in place: heard, then stopped, then played)
+  const withMark = (extra) => ({ ...D, marks: D.marks.map((m) => (m.id === "clip" ? { ...m, ...extra } : m)) })
+  await show(page, withMark({ sound: true }), { pointer: { x: 640, y: 500 } })
+  const said = await until(async () => { const x = await vid(); return !x.muted && !x.paused && x.sound === "on" && x }, 3000)
+  check("video: the agent unmutes it (sound: true): heard, playing, the same card", !!said, await vid())
+  await show(page, withMark({ sound: true, paused: true }), { pointer: { x: 640, y: 500 } })
+  check("video: the agent stops it (paused: true)", !!(await until(async () => (await vid()).paused, 3000)))
+  await show(page, withMark({}), { pointer: { x: 640, y: 500 } })
+  const back = await until(async () => { const x = await vid(); return x.muted && !x.paused && x }, 3000)
+  check("video: muted and played again (sound, paused gone)", !!back, await vid())
+  // (its layer hidden, it stops at once: never heard unseen; shown again, it plays on)
+  await show(page, { ...withMark({ sound: true }), hidden: true }, { pointer: { x: 640, y: 500 } })
+  check("video: hidden, it stops at once", !!(await until(async () => (await vid()).paused, 2000)))
+  await show(page, withMark({ sound: true }), { pointer: { x: 640, y: 500 } })
+  check("...shown again, it plays on", !!(await until(async () => !(await vid()).paused, 2000)))
+  await show(page, withMark({}), { pointer: { x: 640, y: 500 } })
   await page.click("[data-mark=image] img")
   await page.waitForSelector("[data-lightbox]")
   const big = await rects(page, "[data-lightbox] img")
@@ -354,6 +382,34 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
   const acts = await page.evaluate(() => window.__acts.filter((a) => a.kind === "dismiss"))
   check("a card's × dismisses it: gone at once, the server told which", acts.length === 1 && acts[0].mark === "lost" && acts[0].id === "dmedia" && !!faded, acts)
   await page.screenshot({ path: path.join(SHOTS, "screendraw-media.png") })
+  await page.close()
+}
+
+// ---- a choice: its question atop its answers, one card by the pointer; pressed, that one's asked
+for (const dark of [false, true]) {
+  const page = await open(dark)
+  const Q = { id: "dq", agent: "Claude", tint: "orange", t: Date.now(), places: ELEMENTS, caption: "Two jobs could take it. Which job should get the card polish?", question: "Which job should get the card polish?", marks: [
+    { type: "button", id: "a1", label: "Video cards", do: { ask: "Add the card polish to the video cards job" } },
+    { type: "button", id: "a2", label: "Companion watcher", do: { ask: "Companion watcher" } }] }
+  await show(page, Q, { pointer: { x: 900, y: 420 } })
+  await page.waitForSelector("[data-choices]")
+  await page.waitForTimeout(700)
+  const card = (await rects(page, "[data-choices]"))[0], rows = await page.evaluate(() => [...document.querySelectorAll("[data-answer]")].map((b) => ({ id: b.dataset.answer, text: b.textContent })))
+  const q = await page.evaluate(() => document.querySelector(".sd-choices-q")?.textContent)
+  check(`choice (${dark ? "dark" : "light"}): one card, its question atop its answers, each saying what it sends when that says more`, (await page.$$("[data-card]")).length === 1 && q === "Which job should get the card polish?" && rows.length === 2 &&
+    rows[0].text === "Video cardsAdd the card polish to the video cards job" && rows[1].text === "Companion watcher", { q, rows })
+  check(`choice (${dark ? "dark" : "light"}): by the pointer, never far off on the screen`, onScreen(card) && Math.hypot(card.x + card.w / 2 - 900, card.y + card.h / 2 - 420) < card.w / 2 + 140 && !(900 > card.x && 900 < card.x + card.w && 420 > card.y && 420 < card.y + card.h), card)
+  await page.screenshot({ path: path.join(SHOTS, `screendraw-choice-${dark ? "dark" : "light"}.png`) })
+  if (!dark) {
+    await page.click("[data-answer=a1]")
+    const asks = await page.evaluate(() => window.__acts.filter((a) => a.kind === "ask")), after = await page.evaluate(() => [...document.querySelectorAll("[data-answer]")].map((b) => ({ dis: b.disabled, picked: b.hasAttribute("data-picked") })))
+    check("choice: pressed, that answer's asked; it's ticked, the others step back", asks.length === 1 && asks[0].text === "Add the card polish to the video cards job" && asks[0].id === "dq" && after[0].picked && after.every((x) => x.dis), { asks, after })
+  } else {
+    await page.hover("[data-choices]")
+    await page.click("[data-card] .sd-x")
+    const gone = await page.evaluate(() => window.__acts.filter((a) => a.kind === "dismiss").map((a) => a.mark).join())
+    check("choice: its x dismisses all its answers", gone === "a1,a2", gone)
+  }
   await page.close()
 }
 
