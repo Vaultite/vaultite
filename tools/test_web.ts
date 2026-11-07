@@ -3376,7 +3376,7 @@ await section("companion reach", async () => {
   const inside = r.readableDirs(path.join(home, "Pictures/Screenshots")), outside = r.readableDirs(path.join(home, "Shots"))
   check("companion reach: the desktop, downloads and pictures besides code and documents; a screenshots folder elsewhere joins them",
     ["Projects", "Documents", "Desktop", "Downloads", "Pictures"].every((d) => inside.dirs.includes(path.join(home, d))) && inside.dirs.length === 5 && outside.dirs.at(-1) === path.join(home, "Shots"), [inside, outside])
-  check("companion reach: its prompt names the folders, screenshots' too", /~\/Desktop/.test(r.readableText(inside)) && /screenshots are saved to ~\/Pictures\/Screenshots/.test(r.readableText(inside)), r.readableText(inside))
+  check("companion reach: its prompt names the folders, screenshots' too", /~[\\/]Desktop/.test(r.readableText(inside)) && /screenshots are saved to ~[\\/]Pictures[\\/]Screenshots/.test(r.readableText(inside)), r.readableText(inside))
 })
 
 await section("screen drawings", async () => {
