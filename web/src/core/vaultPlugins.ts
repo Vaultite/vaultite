@@ -16,8 +16,8 @@ import { safeToReload } from "@/core/unsaved"
 import { API_VERSION } from "../../../core/version.ts"
 
 // The modules the app's plugins export (their manifests' `exports`), for vault plugins that require them
-// (@plugins/logs/sections): loaded when asked.
-const repo = import.meta.glob(["../../../plugins/core/*/**/*.{ts,tsx}", "!../../../plugins/**/plugin.ts", "!../../../plugins/**/import.ts", "!../../../plugins/**/cli.ts"])
+// (@plugins/logs/sections): loaded when asked. (A worker isn't one: as a module it'd be a second, unused build of it.)
+const repo = import.meta.glob(["../../../plugins/core/*/**/*.{ts,tsx}", "!../../../plugins/**/plugin.ts", "!../../../plugins/**/import.ts", "!../../../plugins/**/cli.ts", "!../../../plugins/**/*.worker.ts"])
 const manifests = import.meta.glob<{ exports?: string[] }>("../../../plugins/core/*/manifest.json", { eager: true, import: "default" })
 /** Each vault plugin's bundle version in the state being loaded: a plugin's modules come from its bundle (`__exports`). */
 const versions = new Map<string, string>()

@@ -1,7 +1,7 @@
 /**
  * Made-up Office files and books for the tests (tools/test_vault.ts): the smallest .docx, .pptx and .epub that hold
  * what their plugins read as text (headings, lists, tables, slides in the deck's order, speaker notes, chapters in the
- * spine's order), a real .xlsx written by SheetJS, and audiobooks' tags (an .m4b's atoms, an .mp3's ID3: title, author,
+ * spine's order), real workbooks written by SheetJS, and audiobooks' tags (an .m4b's atoms, an .mp3's ID3: title, author,
  * chapters, cover). Nothing about anyone.
  */
 import { createRequire } from "node:module"
@@ -63,15 +63,23 @@ export function epub(): Buffer {
   })
 }
 
-/** A workbook of two sheets, a number formatted as money. */
-export function xlsx(): Buffer {
-  const X = createRequire(import.meta.url)("xlsx") as typeof import("xlsx")
+/** A workbook of two sheets, a number formatted as money, as `bookType` saves it. */
+export function xlsx(bookType: "xlsx" | "xlsb" | "xls" | "ods" = "xlsx"): Buffer {
+  const X = createRequire(import.meta.url)("../../../plugins/core/spreadsheets/xlsx/xlsx.mjs") as typeof import("../../../plugins/core/spreadsheets/xlsx/xlsx.mjs")
   const book = X.utils.book_new()
   const budget = X.utils.aoa_to_sheet([["Item", "Amount"], ["Lamp oil", 42.5], ["Paint", 18]])
   budget.B2.z = "$#,##0.00"
   X.utils.book_append_sheet(book, budget, "Budget")
   X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([["Visitor", "Day"], ["Bob Lee", "Monday"]]), "Visitors")
-  return X.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer
+  return X.write(book, { type: "buffer", bookType, compression: true }) as Buffer
+}
+
+/** That workbook damaged: its sheet's deflate data a stored block running past the file's end, then nothing (SheetJS
+ *  0.20.3 as released read zeros there forever). */
+export function brokenXlsx(): Buffer {
+  const file = xlsx(), at = file.indexOf("xl/worksheets/sheet1.xml")
+  file.set([0, 0xff, 0xff, 0, 0], at + 24 + file.readUInt16LE(at - 2))
+  return file
 }
 
 // ---------- audiobooks: only their tags (no sound), as the player's meta.ts reads them

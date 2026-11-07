@@ -16,6 +16,8 @@ This product includes third-party software and assets:
   measurement, key sequences and glyph atlas in plugins/core/terminal/vt/ follow its behaviour.
 - kdbxweb (https://github.com/keeweb/kdbxweb, at 7601e45d), MIT License, Copyright (C) 2021-2025 Antelle:
   electron/browser/kdbx/ is it, changed (PROVENANCE.md there), and tools/fixtures/kdbx/ its test files.
+- SheetJS Community Edition 0.20.3 (https://sheetjs.com), Apache License 2.0, Copyright (C) 2012-present SheetJS LLC:
+  plugins/core/spreadsheets/xlsx/ is its release build, with the patches its PROVENANCE.md lists (LICENSE there).
 - Colour palettes in web/src/themes/, each under the licence listed in web/src/themes/LICENSES.md.
 
 Obsidian is a trademark of Dynalist Inc. Vaultite is not affiliated with or endorsed by Dynalist Inc.; the name is used

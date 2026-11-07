@@ -1,21 +1,54 @@
 // A workbook drawn like Excel's grid (sticky headers, saved widths and merges, Excel's formats), read-only: it's edited
-// in its own app. Embedded, the grid's first rows only.
+// in its own app. Embedded, the grid's first rows only. SheetJS reads it in a worker (read.worker.ts).
 import { useEffect, useMemo, useState } from "react"
-import * as XLSX from "xlsx"
+import type { CellObject, WorkBook, WorkSheet } from "./xlsx/xlsx.mjs"
 import { cn, FilterField, Loading, numberText, errorText } from "@vaultite"
 
 /** Rows drawn until the user asks for all of them (and in an embed, ever). */
 const PAGE = 500, EMBED_ROWS = 60
+/** Longer than this reading a workbook, its worker is stopped (a real one takes seconds). */
+const READ_MS = 60_000
 
-type Sheet = { name: string; ws: XLSX.WorkSheet }
-type Grid = { rows: number; cols: number; cell: (r: number, c: number) => XLSX.CellObject | undefined
+type Sheet = { name: string; ws: WorkSheet }
+type Grid = { rows: number; cols: number; cell: (r: number, c: number) => CellObject | undefined
   widths: (number | undefined)[]; spans: Map<string, [number, number]>; covered: Set<string> }
 
-function gridOf(ws: XLSX.WorkSheet): Grid {
+/** A column's letters, as Excel names it (0 is A, 26 is AA). */
+function colName(c: number) {
+  let s = ""
+  for (let n = c + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s
+  return s
+}
+/** A cell's index from its A1 name (rows and columns from 0); a range's ends ("A1:D20", or one cell). */
+function cellAt(a: string) {
+  const m = /^\$?([A-Z]+)\$?(\d+)$/i.exec(a)
+  if (!m) return { r: 0, c: 0 }
+  let c = 0
+  for (const ch of m[1].toUpperCase()) c = c * 26 + ch.charCodeAt(0) - 64
+  return { r: Number(m[2]) - 1, c: c - 1 }
+}
+const rangeOf = (ref: string) => { const [s, e = s] = ref.split(":"); return { s: cellAt(s), e: cellAt(e) } }
+
+/** The workbook at `buf`, read by SheetJS in a worker that's stopped when it's done, too slow or no longer wanted. */
+function readBook(buf: ArrayBuffer, signal: AbortSignal): Promise<WorkBook> {
+  return new Promise((done, fail) => {
+    if (signal.aborted) return fail(new DOMException("Aborted", "AbortError"))
+    const w = new Worker(new URL("./read.worker.ts", import.meta.url), { type: "module" })
+    const end = (then: () => void) => { clearTimeout(timer); signal.removeEventListener("abort", stop); w.terminate(); then() }
+    const stop = () => end(() => fail(new DOMException("Aborted", "AbortError")))
+    const timer = setTimeout(() => end(() => fail(new Error("it took over a minute"))), READ_MS)
+    signal.addEventListener("abort", stop)
+    w.onmessage = (e: MessageEvent<{ book?: WorkBook; error?: string }>) => end(() => (e.data.book ? done(e.data.book) : fail(new Error(e.data.error))))
+    w.onerror = (e) => { e.preventDefault(); end(() => fail(new Error(e.message))) }
+    w.postMessage(buf, [buf])
+  })
+}
+
+function gridOf(ws: WorkSheet): Grid {
   const ref = ws["!ref"]
-  const range = ref ? XLSX.utils.decode_range(ref) : { s: { r: 0, c: 0 }, e: { r: -1, c: -1 } }
-  const dense = (ws as { "!data"?: XLSX.CellObject[][] })["!data"]
-  const cell = (r: number, c: number) => dense ? dense[r]?.[c] : ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined
+  const range = ref ? rangeOf(ref) : { s: { r: 0, c: 0 }, e: { r: -1, c: -1 } }
+  const dense = (ws as { "!data"?: CellObject[][] })["!data"]
+  const cell = (r: number, c: number) => dense ? dense[r]?.[c] : ws[`${colName(c)}${r + 1}`] as CellObject | undefined
   // Trailing empty rows and columns inside the saved range (formatting only) aren't drawn.
   let rows = range.e.r + 1, cols = range.e.c + 1
   const filled = (r: number, c: number) => { const x = cell(r, c); return !!x && x.v !== undefined && x.v !== null && x.v !== "" }
@@ -33,18 +66,19 @@ function gridOf(ws: XLSX.WorkSheet): Grid {
   return { rows, cols, cell, widths, spans, covered }
 }
 
-const text = (x: XLSX.CellObject | undefined) => (!x || x.v === undefined || x.v === null ? "" : x.w ?? String(x.v))
+const text = (x: CellObject | undefined) => (!x || x.v === undefined || x.v === null ? "" : x.w ?? String(x.v))
 
 export default function Workbook({ url, embed, sheet: only }: { url: string; embed?: boolean; sheet?: string }) {
-  const [book, setBook] = useState<XLSX.WorkBook | null>(null)
+  const [book, setBook] = useState<WorkBook | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    let on = true
+    const ask = new AbortController()
     setError(null)
-    fetch(url).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.statusText))))
-      .then((buf) => { if (on) setBook(XLSX.read(buf, { type: "array", dense: true, cellDates: true })) })
-      .catch((e) => { if (on) setError(errorText(e, "This workbook couldn't be read")) })
-    return () => { on = false }
+    fetch(url, { signal: ask.signal }).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.statusText))))
+      .then((buf) => readBook(buf, ask.signal))
+      .then((b) => { if (!ask.signal.aborted) setBook(b) })
+      .catch((e) => { if (!ask.signal.aborted) setError(errorText(e, "This workbook couldn't be read")) })
+    return () => ask.abort()
   }, [url])
   const sheets = useMemo<Sheet[]>(() => !book ? [] : book.SheetNames
     .filter((_, i) => !book.Workbook?.Sheets?.[i]?.Hidden)
@@ -73,7 +107,7 @@ export default function Workbook({ url, embed, sheet: only }: { url: string; emb
   )
 }
 
-function SheetGrid({ ws, embed }: { ws: XLSX.WorkSheet; embed?: boolean }) {
+function SheetGrid({ ws, embed }: { ws: WorkSheet; embed?: boolean }) {
   const grid = useMemo(() => gridOf(ws), [ws])
   const [q, setQ] = useState("")
   const [all, setAll] = useState(false)
@@ -114,7 +148,7 @@ function SheetGrid({ ws, embed }: { ws: XLSX.WorkSheet; embed?: boolean }) {
               <th className="sticky top-0 left-0 z-[3] border-r-[0.5px] border-b-[0.5px] border-border bg-card" />
               {grid.widths.map((w, c) => (
                 <th key={c} scope="col" className={cn("sticky top-0 z-[2] border-r-[0.5px] border-b-[0.5px] border-border bg-card px-1 py-0.5 text-center text-[12px] font-medium text-muted-foreground", w === 0 && "hidden")}>
-                  {XLSX.utils.encode_col(c)}
+                  {colName(c)}
                 </th>
               ))}
             </tr>

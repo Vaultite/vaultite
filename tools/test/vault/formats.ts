@@ -1,4 +1,6 @@
+import crypto from "node:crypto"
 import fs from "node:fs"
+import { createRequire } from "node:module"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
@@ -30,6 +32,40 @@ export default async ($: VaultTest) => {
     const sheet = workbookMarkdown(fx.xlsx())
     check("xlsx: each sheet a table, values as Excel shows them",
       sheet.includes("## Budget\n| Item | Amount |\n| --- | --- |\n| Lamp oil | $42.50 |") && sheet.includes("## Visitors") && sheet.includes("| Bob Lee | Monday |"), sheet)
+    for (const type of ["xlsb", "xls", "ods"] as const) {
+      const md = workbookMarkdown(fx.xlsx(type))
+      check(`${type}: read as the same sheets`, md.includes("## Budget\n| Item | Amount |") && /\| Lamp oil \| \$?42\.50? \|/.test(md) && md.includes("| Bob Lee | Monday |"), md)
+    }
+
+    // SheetJS is ours (plugins/core/spreadsheets/xlsx): the release PROVENANCE.md names plus its marked lines, and a broken
+    // or crafted file fails at once, where 0.20.3 as released looped forever or ran out of memory (its patches).
+    const XD = path.join(import.meta.dirname, "../../../plugins/core/spreadsheets/xlsx")
+    const lib = fs.readFileSync(path.join(XD, "xlsx.mjs"), "utf8")
+    const released = crypto.createHash("sha256").update(lib.split("\n").filter((l) => !l.includes("// vaultite: ")).join("\n")).digest("hex")
+    check("SheetJS: the release PROVENANCE.md names, but for the lines marked as ours",
+      fs.readFileSync(path.join(XD, "PROVENANCE.md"), "utf8").includes(released) && lib.split("// vaultite: ").length - 1 === 6, released)
+    const X = createRequire(import.meta.url)(path.join(XD, "xlsx.mjs")) as typeof import("../../../plugins/core/spreadsheets/xlsx/xlsx.mjs")
+    const fails = (file: Buffer) => { try { return `read: ${workbookMarkdown(file).slice(0, 80)}` } catch (e) { return String((e as Error).message ?? e) } }
+    check("a broken workbook fails, never reads as something", /Corrupt|Unsupported|Bad /.test(fails(fx.xlsx().subarray(0, 300))) &&
+      /Corrupt|Unsupported/.test(fails(Buffer.from(`PK\x03\x04${"\x07".repeat(200)}`, "latin1"))), [fails(fx.xlsx().subarray(0, 300))])
+    const cut = fx.brokenXlsx()
+    check("SheetJS patch 1: a cut deflate stream ends the read", fails(cut) === "Truncated or corrupt ZIP data", fails(cut))
+    const huge = fx.xlsx()
+    for (let i = 0; i < huge.length - 4; i++) {
+      if (huge.readUInt32LE(i) === 0x04034b50) huge.writeUInt32LE(0xfffffff0, i + 22)
+      if (huge.readUInt32LE(i) === 0x02014b50) huge.writeUInt32LE(0xfffffff0, i + 24)
+    }
+    const rss = process.memoryUsage().rss
+    check("SheetJS patch 2: entries claiming 4 GB read as what they hold, without the 4 GB",
+      fails(huge).includes("| Lamp oil | $42.50 |") && process.memoryUsage().rss - rss < 500e6, fails(huge))
+    const bin = X.CFB.read(fx.xlsx("xlsb"), { type: "buffer" }), ws = X.CFB.find(bin, "/xl/worksheets/sheet1.bin")
+    ws.content = Buffer.concat([Buffer.from([0x33, 4, 0xff, 0xff, 0xff, 0x7f]), Buffer.from(ws.content)]) // BrtMdb: 2^31 entries in 4 bytes
+    const many = workbookMarkdown(Buffer.from(X.CFB.write(bin, { type: "buffer", fileType: "zip" })))
+    check("SheetJS patch 3: a corrupt count stops at its record's end (that sheet empty, the others read)",
+      many.includes("## Budget\n_(empty sheet)_") && many.includes("| Bob Lee | Monday |"), many)
+    const rec = (type: number, data: number[]) => { const b = Buffer.alloc(4 + data.length); b.writeUInt16LE(type); b.writeUInt16LE(data.length, 2); b.set(data, 4); return b }
+    const nan = Buffer.concat([rec(0x0009, [2, 0, 0x10, 0]), rec(0x0006, Array(16).fill(0)), rec(0x000a, [])]) // BIFF2: a Formula record with no formula
+    check("SheetJS patch 4: a formula record shorter than its formula fails", fails(nan) === "Corrupt formula", fails(nan))
 
     fs.mkdirSync(path.join(VAULT, "Shelf"), { recursive: true })
     fs.writeFileSync(path.join(VAULT, "Shelf/Lease.docx"), fx.docx())

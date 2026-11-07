@@ -19,6 +19,8 @@ else {
   writeFileSync(`${VAULT}/${DIR}/Lease.docx`, fx.docx())
   writeFileSync(`${VAULT}/${DIR}/Pitch.pptx`, fx.pptx())
   writeFileSync(`${VAULT}/${DIR}/Budget.xlsx`, fx.xlsx())
+  writeFileSync(`${VAULT}/${DIR}/Budget.xls`, fx.xlsx("xls"))
+  writeFileSync(`${VAULT}/${DIR}/Broken.xlsx`, fx.brokenXlsx())
   writeFileSync(`${VAULT}/${DIR}/Log.epub`, fx.epub())
   try {
     execFileSync("sips", ["-s", "format", "heic", new URL("../public/icon-512.png", import.meta.url).pathname, "--out", `${VAULT}/${DIR}/Photo.heic`], { stdio: "ignore" })
@@ -52,6 +54,12 @@ const ok = (k, v) => { out[k] = v }
   } else {
     await page.locator("[data-workbook] [role=tab]", { hasText: "Visitors" }).click(); await wait(300)
     ok("xlsxOtherSheet", await page.locator("[data-sheet-grid] td", { hasText: "Bob Lee" }).count())
+    // (an old .xls reads as the others; a damaged workbook says so at once, the app still answering)
+    await open("Budget.xls")
+    ok("xlsMoney", await page.locator("[data-sheet-grid] td", { hasText: "$42.50" }).count())
+    await open("Broken.xlsx", 1500)
+    ok("xlsxBroken", await page.getByText("This workbook couldn't be read").count())
+    ok("xlsxBrokenAnswers", await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(true)))))
   }
 
   await open("Lease.docx", 3500)
@@ -119,6 +127,8 @@ check("workbook: its sheets are tabs", out.xlsxTabs.length >= 2, out.xlsxTabs)
 if (made) check("workbook: the filter keeps the matching rows", out.xlsxFiltered.some((r) => r.includes("Lamp oil")) && !out.xlsxFiltered.some((r) => r.includes("Paint")), out.xlsxFiltered)
 else check("workbook: the filter keeps the matching rows", out.xlsxFiltered.length >= 1, out.xlsxFiltered)
 if (made) check("workbook: another sheet's tab shows it", out.xlsxOtherSheet >= 1, out.xlsxOtherSheet)
+if (made) check("workbook: an old .xls is drawn too", out.xlsMoney >= 1, out.xlsMoney)
+if (made) check("workbook: a damaged one says it couldn't be read, at once", out.xlsxBroken >= 1 && out.xlsxBrokenAnswers === true, out.xlsxBroken)
 else check("workbook: a merged cell spans its columns", out.xlsxSummaryMerged >= 1, out.xlsxSummaryMerged)
 check("document: its pages are drawn", out.docxPages >= 1, out.docxPages)
 check("document: its text is there", out.docxText, out.docxText)

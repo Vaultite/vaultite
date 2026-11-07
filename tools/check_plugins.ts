@@ -364,8 +364,10 @@ fs.rmSync(SCRATCH, { recursive: true, force: true })
 
 // Comments are at most 2 lines (CLAUDE.md): consecutive `//` lines or one `/* */` block; directives don't count.
 const DIRECTIVE = /^\/\/\s*(eslint-|@ts-|prettier-|#region|#endregion)|^\/\/\//
+// (third-party code kept as released, its PROVENANCE.md beside it: not ours to restyle; .oxlintrc.json skips it too)
+const VENDORED = new Set(["plugins/core/spreadsheets/xlsx/xlsx.mjs"].map((f) => path.join(ROOT, f)))
 const sources = ["core", "web/src", "plugins", "electron", "bin", "tools/test", "tools/evals", "tools/perf"].flatMap((d) => walk(path.join(ROOT, d)))
-  .concat(path.join(ROOT, "server.ts"), fs.readdirSync(path.join(ROOT, "tools")).map((n) => path.join(ROOT, "tools", n)))
+  .concat(path.join(ROOT, "server.ts"), fs.readdirSync(path.join(ROOT, "tools")).map((n) => path.join(ROOT, "tools", n))).filter((f) => !VENDORED.has(f))
 for (const f of sources.filter((f) => /\.(ts|tsx|mjs)$/.test(f))) {
   const lines = fs.readFileSync(f, "utf8").split("\n")
   let start = 0, n = 0, block = false
@@ -434,7 +436,7 @@ for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(t
   const BUILT = new Set(["electron", "builder-util", "@electron/fuses"])
   const { builtinModules } = await import("node:module")
   const runs = ["core", "plugins", "electron", "bin"].flatMap((d) => walk(path.join(ROOT, d))).concat(path.join(ROOT, "server.ts"))
-    .filter((f) => /\.(ts|mts|js|mjs|cjs)$/.test(f) && !/\.(test|d)\.ts$|\/(test|qa)\//.test(f))
+    .filter((f) => /\.(ts|mts|js|mjs|cjs)$/.test(f) && !/\.test\.ts$|\.d\.m?ts$|\/(test|qa)\//.test(f))
   for (const f of runs) {
     const text = fs.readFileSync(f, "utf8")
     for (const m of text.matchAll(/(?:^|[^.\w$])(?:import\s+(?!type\b)(?:[^"'`;]*?\sfrom\s*)?|import\s*\(\s*|require\s*\(\s*|export\s+(?!type\b)[^"'`;]*?\sfrom\s*)["']([^"'./][^"']*)["']/gm)) {
@@ -455,12 +457,12 @@ for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(t
   // (what vault plugins may import is the plugin API: it ships, and what the app hands them is on it)
   for (const n of PLUGIN_PACKAGES) if (!pkg.dependencies?.[n]) problems.push(`package.json: ${n} is one of the packages vault plugins import (core/rules.ts PLUGIN_PACKAGES): it goes in dependencies`)
   for (const n of [...SHARED, ...SHARED_EDITOR]) if (n !== "@vaultite" && !listedPackage(n)) problems.push(`core/rules.ts: ${n}, which the app hands vault plugins, isn't in PLUGIN_PACKAGES`)
-  const reviewed = pkg.allowScripts ?? {}, OFF_REGISTRY = new Set(["xlsx"])
+  const reviewed = pkg.allowScripts ?? {}
   for (const [where, p] of Object.entries(lock.packages)) {
     if (!where || p.link || p.inBundle) continue
     const name = where.slice(where.lastIndexOf("node_modules/") + 13)
     if (p.hasInstallScript && !(name in reviewed)) problems.push(`package-lock.json: ${name}@${p.version} has an install script: review it, then list it in package.json's allowScripts (false unless the app needs it run)`)
-    if (!OFF_REGISTRY.has(name) && !p.resolved?.startsWith("https://registry.npmjs.org/")) problems.push(`package-lock.json: ${name}@${p.version} isn't from the npm registry (${p.resolved ?? "no address"})`)
+    if (!p.resolved?.startsWith("https://registry.npmjs.org/")) problems.push(`package-lock.json: ${name}@${p.version} isn't from the npm registry (${p.resolved ?? "no address"})`)
     if (!p.integrity) problems.push(`package-lock.json: ${name}@${p.version} has no integrity hash`)
   }
   for (const [name, v] of Object.entries(reviewed)) if (v !== false) problems.push(`package.json: allowScripts ${name} is ${JSON.stringify(v)}: the app runs no install scripts (.npmrc), so it's false`)

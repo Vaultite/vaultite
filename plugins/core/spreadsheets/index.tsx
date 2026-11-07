@@ -1,5 +1,5 @@
-// Spreadsheets open read-only as a grid with a tab per sheet (Workbook.tsx, its own chunk with SheetJS) and embed as
-// rows (`#Sheet` for one). Off, a workbook is a file card.
+// Spreadsheets open read-only as a grid with a tab per sheet (Workbook.tsx, its own chunk; SheetJS in its worker's)
+// and embed as rows (`#Sheet` for one). Off, a workbook is a file card.
 import { lazy, Suspense } from "react"
 import { FileSpreadsheet } from "lucide-react"
 import { definePlugin, Loading, type FileFormat } from "@vaultite"
