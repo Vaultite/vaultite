@@ -69,7 +69,7 @@ check("the box stays for the next one", !!(await region()) && !(await region()).
 // ---------- Just now: the last seconds, kept in memory, sent the same way
 await wait(1000)
 await overlay.evaluate(() => document.querySelector('[aria-label^="Send the last"]').click())
-check("Just now sends the last seconds kept, saved beside the first", await until(() => notes().length === 2, 120000, 300), notes())
+check("Just now sends the last seconds kept, saved beside the first", await until(() => notes().length === 2, 120000, 300), { notes: notes(), said: await hint() })
 // ---------- the timeline, as agents ask it (vau screen timeline): the box, the clicks, on one clock
 await helper((h) => h.heard({ event: "click", x: 320, y: 260, exchange: false }))
 const port = new URL(win.url()).port

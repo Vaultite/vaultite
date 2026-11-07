@@ -19,7 +19,10 @@ export async function saveFiles(ctx: OpCtx, base: string, files: { from: string;
   if (files.length) await ctx.api("POST", "folder", { path: base }).catch(() => {})
   const out: string[] = []
   for (const f of files) {
-    const rel = `${base}/${f.name}`, bytes = fs.createReadStream(f.from)
+    const rel = `${base}/${f.name}`
+    // (two of a clip's frames can round to one name, "2.5s.png": saved once, else its upload is refused)
+    if (out.includes(rel)) { out.push(rel); continue }
+    const bytes = fs.createReadStream(f.from)
     // (refused, it's never read: closed all the same)
     try { await ctx.api("POST", "upload", { path: rel, bytes }) } finally { bytes.destroy() }
     out.push(rel)

@@ -97,10 +97,10 @@ export default async ($: VaultTest) => {
     fs.writeFileSync(path.join(made, "frames", "1.5s.png"), Buffer.from("png"))
     const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
     const capture = (more: Any) => ({ kind: "recording", clip: path.join(made, "clip.mp4"), ms: 3000, width: 400, height: 300, box: { x: 10, y: 10, width: 200, height: 150 }, at: new Date(2026, 10, 6, 20, 0, 0).getTime(),
-      frames: [{ t: 0, file: path.join(made, "frames", "0.0s.png") }, { t: 1500, file: path.join(made, "frames", "1.5s.png") }], narration: [], place: { app: "com.example.browser", title: "Lighthouse" }, ...more })
+      frames: [{ t: 0, file: path.join(made, "frames", "0.0s.png") }, { t: 1500, file: path.join(made, "frames", "1.5s.png") }, { t: 1530, file: path.join(made, "frames", "1.5s.png") }], narration: [], place: { app: "com.example.browser", title: "Lighthouse" }, ...more })
     let [st, b] = await api("POST", "ops/companion.capture", capture({}), asApp)
     const note = b.note && fs.existsSync(path.join(VAULT, b.note)) ? fs.readFileSync(path.join(VAULT, b.note), "utf8") : ""
-    check("capture: nothing working on it and nothing said: saved in Captures, its clip, frames and a note embedding them",
+    check("capture: nothing working on it and nothing said: saved in Captures, its clip, frames (one of a name) and a note embedding them",
       st === 200 && b.note === "Captures/2026-11-06 20.00.00 Lighthouse.md" && /^Saved in Captures/.test(b.said) &&
       fs.readFileSync(path.join(VAULT, "Captures/2026-11-06 20.00.00 Lighthouse/clip.mp4"), "utf8") === "not really a video" &&
       fs.existsSync(path.join(VAULT, "Captures/2026-11-06 20.00.00 Lighthouse/1.5s.png")) && /tags: \[capture\]/.test(note) &&
