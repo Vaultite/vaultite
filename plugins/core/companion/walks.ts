@@ -143,11 +143,11 @@ export function walkJobText(label: string, items: WalkItem[], at: number, note: 
     `The whole walk is in their vault: ${note}`].join("\n")
 }
 
-/** A walk's chip: "3 items". */
+/** A walk's count: "3 items". */
 export const countText = (n: number) => (n === 1 ? "1 item" : `${n} items`)
 
-/** The walk's chip over the screen (electron/walk.ts): on and listening, paused (they're talking to the companion,
+/** The walk on the island by the notch (electron/walk.ts): on and listening, paused (they're talking to the companion,
  *  dictating, or it speaks), sending, or a line for a moment once it's over (`told`). `note`: a word for a moment. */
 export type WalkScene = { state: "on" | "paused" | "sending" | "told"; count: number; since: number; clips: boolean; note?: string
-  /** A lesson's chip (electron/teach.ts: "watch me"), in the walk's place: its steps, Done makes it, × forgets it. */
+  /** A lesson (electron/teach.ts: "watch me"), in the walk's place: its steps, Done makes it, × forgets it. */
   of?: "lesson" }

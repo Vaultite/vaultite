@@ -6,11 +6,14 @@ import { overlayWindow } from "./overlaywin.ts"
 import { quiet } from "./quiet.ts"
 import { islandSpot, islandsOn, type OtherWindow, type Rect, roomAt, type Spot, windowAt } from "./islandlogic.ts"
 import type { Knock, Presence } from "../plugins/core/companion/knocks.ts"
+import type { WalkScene } from "../plugins/core/companion/walks.ts"
 
-/** What the page draws: the presences, the knock showing (`left`: ms of its grace left), where it sits in its window. */
-export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; spot: Spot; left: number; width: number }
-/** What the user does there: opens a session (a presence's id), puts a knock off, ignores it (`mute`: its session). */
-export type IslandActs = { open: (id: string) => void; later: (knock: string) => void; ignore: (knock: string, mute: boolean) => void; hover?: (on: boolean) => void }
+/** What the page draws: the presences, the knock showing (`left`: ms of its grace left), a QA walk or lesson on, where it
+ *  sits in its window. */
+export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; walk: WalkScene | null; spot: Spot; left: number; width: number }
+/** What the user does there: opens a session (a presence's id), puts a knock off, ignores it (`mute`: its session), a
+ *  walk's buttons (scratch, done, cancel). */
+export type IslandActs = { open: (id: string) => void; later: (knock: string) => void; ignore: (knock: string, mute: boolean) => void; walk: (what: string) => void; hover?: (on: boolean) => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
 /** Its window's size: room for the knock's line and, below the bar, the list a hover opens. */
@@ -20,6 +23,8 @@ let url = ""
 let last: Omit<IslandData, "spot" | "left" | "width"> | null = null
 let spot: Spot | null = null
 let acts: IslandActs | null = null
+/** What its page was sent last: the same again isn't sent (the helper ticks while sessions show). */
+let sent = ""
 /** Where each session shows in it (its face, its row, a knock's line), in the window's points. */
 let faces: (Rect & { id: string })[] = []
 
@@ -39,6 +44,7 @@ export function islandActs(a: IslandActs) {
     if (m.act === "open") acts?.open(m.id)
     else if (m.act === "later") acts?.later(m.id)
     else if (m.act === "ignore") acts?.ignore(m.id, m.mute === true)
+    else if (m.act === "walk") acts?.walk(m.id)
   })
 }
 
@@ -47,7 +53,7 @@ function make() {
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false } }, 2)
   w.setIgnoreMouseEvents(true, { forward: true })
   quiet(w)
-  w.webContents.on("did-finish-load", () => send())
+  w.webContents.on("did-finish-load", () => { sent = ""; send() })
   w.on("closed", () => { if (win === w) win = null })
   if (url) void w.loadURL(url).catch(() => {})
   return w
@@ -55,11 +61,11 @@ function make() {
 
 function send() {
   if (!win || win.isDestroyed() || win.webContents.isLoading() || !last || !spot) return
-  const d = screen.getDisplayMatching({ x: spot.x, y: spot.y, width: 1, height: 1 })
-  const b = windowAt(spot, d, W, H)
+  const b = windowAt(spot, screen.getDisplayMatching({ x: spot.x, y: spot.y, width: 1, height: 1 }), W, H)
   const at = win.getBounds()
   if (at.x !== b.x || at.y !== b.y) win.setBounds(b)
-  win.webContents.send("vaultite:island", { ...last, spot, left: spot.x - b.x, width: W } satisfies IslandData)
+  const d = { ...last, spot, left: spot.x - b.x, width: W } satisfies IslandData, text = JSON.stringify(d)
+  if (text !== sent) { sent = text; win.webContents.send("vaultite:island", d) }
 }
 
 /** Whether its page is up (made now, unseen, if it isn't): a knock's grace starts only once it can be drawn. */
@@ -76,7 +82,7 @@ export function showIsland(base: string | null, d: Omit<IslandData, "spot" | "le
   if (!base) { win?.destroy(); win = null; url = ""; return }
   const next = `${base}/screen.html#island`
   if (next !== url) { url = next; if (win && !win.isDestroyed()) void win.loadURL(url).catch(() => {}) }
-  const shown = !!d && !!s && !s.hidden && (d.presences.length > 0 || !!d.knock)
+  const shown = !!d && !!s && !s.hidden && (d.presences.length > 0 || !!d.knock || !!d.walk)
   if (!shown) { if (win && !win.isDestroyed() && win.isVisible()) { win.hide(); win.setIgnoreMouseEvents(true, { forward: true }) } return }
   last = d; spot = s
   if (!win || win.isDestroyed()) win = make()

@@ -2,7 +2,6 @@
 import { arrowBox, boxAt, flagBox } from "../plugins/core/companion/boxes.ts"
 import { jobTold } from "../plugins/core/companion/jobs.ts"
 import type { RegionScene } from "../plugins/core/companion/clips.ts"
-import type { WalkScene } from "../plugins/core/companion/walks.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 type Decls = Record<string, { default?: unknown }>
@@ -97,8 +96,6 @@ export type Scene = {
   region?: RegionScene | null
   /** A step behind their windows (takeover.ts' card): drawn on the main display only. */
   behind?: BehindCard | null
-  /** A QA walk's chip (walk.ts), on the display with the pointer. */
-  walk?: WalkScene | null
 }
 /** takeover.ts' BehindCard, told again here: that file needs Electron, this one never does. */
 export type BehindCard = { agent: string; tint: string; app: string; title: string; img: string; aspect: number
@@ -129,7 +126,6 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
     // (on each display it crosses, in its points)
     region: s.region && overlaps(s.region.rect, d.bounds) ? { ...s.region, rect: { ...s.region.rect, x: s.region.rect.x - dx, y: s.region.rect.y - dy } } : null,
     behind: s.behind && main ? { ...s.behind, edge } : null,
-    walk: s.walk && (on(pointer.x, pointer.y) || !all.some((x) => inside(x, pointer.x, pointer.y))) ? s.walk : null,
   }
 }
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height

@@ -39,7 +39,7 @@ export function teachHost(h: TeachHost) { host = h }
 export const watching = () => !!lesson
 /** Shortcuts and fields are kept while what's done is: the timeline on, or a lesson. */
 export const keepsActs = () => !!lesson || timelineOn()
-/** A lesson as its chip shows it (the QA walk's, screenwalk.tsx): listening or not, its steps so far, making it. */
+/** A lesson as the island shows it (as a QA walk, screenisland.tsx): listening or not, its steps so far, making it. */
 export function lessonScene(): WalkScene | null {
   if (!lesson && !saving) return null
   return { of: "lesson", state: saving ? "sending" : listeningNow ? "on" : "paused", count: steps, since: lesson?.since ?? Date.now(), clips: false }
@@ -124,7 +124,7 @@ async function finish(as?: As, byChip = false) {
   const r = await queryTimeline({ from: l.since, kinds: DOING }), now = Date.now()
   stop()
   if (!r.ok) return host.hint(`Couldn't keep what you showed me: ${r.why}`)
-  // (Done pressed on its chip: that click isn't a step)
+  // (Done pressed on the island: that click isn't a step)
   const acts = (r.events as Act[]).filter((a) => !(byChip && a.kind === "click" && a.t > now - 1500))
   await deliver({ acts, ...(l.about ? { about: l.about } : {}), ...(as ?? l.as ? { as: as ?? l.as } : {}) })
 }

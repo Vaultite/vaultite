@@ -1,5 +1,5 @@
 // Teach by showing (electron/teach.ts) in the desktop app, unseen: "watch me share the page" as a Talk key's words
-// starts a lesson, its chip counting steps; a click on a button, typing in a field and Return are its steps on their
+// starts a lesson, the island counting steps; a click on a button, typing in a field and Return are its steps on their
 // things, words heard hands-free its narration; "that's it" makes a draft skill. The screen is stubbed (a scripted copy
 // hears no microphone and reads no Accessibility).   WRITES: throwaway vault only.   node web/qa/teach.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -37,11 +37,13 @@ const lesson = () => helper((h) => h.lesson())
 const hint = () => helper((h) => h.scene()?.pill?.text ?? "")
 const skill = path.join(VAULT, ".agents", "skills", "share-the-page", "SKILL.md")
 
-// ---------- "watch me": on, its chip shows
+// ---------- "watch me": on, the island shows it
 check("\"watch me\" is the app's, never an ask", await helper((h) => h.teach("can you watch the build for me")) === false && await helper((h) => h.teach("Watch me share the page.")) === true)
-check("…a lesson is on: its chip counts steps", await until(async () => (await lesson())?.of === "lesson" && (await lesson())?.count === 0, 5000, 100), await lesson())
-const overlay = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html")), 10000)
-check("the overlay draws its chip: Watching, 0 steps, Done", !!overlay && await until(() => overlay.evaluate(() => /Watching\s*0 steps/.test(document.querySelector("[data-walk]")?.textContent ?? "") &&
+check("…a lesson is on, counting steps", await until(async () => (await lesson())?.of === "lesson" && (await lesson())?.count === 0, 5000, 100), await lesson())
+const island = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html#island")), 10000)
+check("the island leads with it: Watching, 0", !!island && await until(() => island.evaluate(() => /Watching\s*0/.test(document.querySelector("[data-walk]")?.textContent ?? "")), 5000))
+await island?.locator("[data-island]").hover()
+check("…a hover lists it: 0 steps, Done, no undo", !!island && await until(() => island.evaluate(() => /0 steps/.test(document.querySelector("[data-walk-row]")?.textContent ?? "") &&
   !!document.querySelector('[aria-label="Done: make it a tour or a skill"]') && !document.querySelector('[aria-label="Scratch the last item"]')), 5000))
 
 // ---------- a click on the button, typing in the field, Return; their words as they go
@@ -56,24 +58,26 @@ await helper((h) => h.heard({ event: "key", key: "enter" }))
 check("typing in a field, read once still, and Return", await until(async () => (await lesson())?.count === 2, 5000, 100), await lesson())
 await wait(200)
 fs.mkdirSync(SHOTS, { recursive: true })
-await overlay.locator("[data-walk]").screenshot({ path: path.join(SHOTS, "teach-chip.png") }).catch(() => {})
+await island.screenshot({ path: path.join(SHOTS, "teach-island.png"), omitBackground: true }).catch(() => {})
 
-// ---------- "that's it": a draft skill, the chip gone
+// ---------- "that's it": a draft skill, the island lets it go
 await helper((h) => h.teachSaid("That's it."))
 check("\"that's it\" makes a draft skill", await until(() => fs.existsSync(skill), 20000, 200), await hint())
 const text = fs.existsSync(skill) ? fs.readFileSync(skill, "utf8") : ""
 check("…its steps their words on the things acted on, what each does, a draft",
   /^status: draft$/m.test(text) && /^app: com\.example\.browser$/m.test(text) && text.includes(`1. First, open the share menu. [ring "Share"] (do: click "Share")`) &&
   text.includes(`(do: type "hello there" in "Message"; press enter)`) && /"Share": \{"role":"button","inside":\["Toolbar"\]/.test(text), text.slice(text.indexOf("## Steps")))
-check("…the chip gone, a word on where it went", await until(async () => !(await lesson()) && /Saved a draft skill, Share the page/.test(await hint()), 5000, 100), [await lesson(), await hint()])
+check("…the lesson gone, a word on where it went", await until(async () => !(await lesson()) && /Saved a draft skill, Share the page/.test(await hint()), 5000, 100), [await lesson(), await hint()])
 
-// ---------- from the last minutes: only with the timeline kept; a lesson forgotten by its chip's ×
+// ---------- from the last minutes: only with the timeline kept; a lesson forgotten by its ×
 await helper((h) => h.teach("make what I just did a skill"))
 check("\"make what I just did a skill\" with no timeline kept says how", await until(async () => /I wasn't watching/.test(await hint()), 3000, 100), await hint())
 await helper((h) => h.teach("watch me"))
 await until(async () => (await lesson())?.of === "lesson", 3000, 100)
-await overlay.evaluate(() => document.querySelector('[aria-label="Stop watching and forget it"]')?.click())
-check("its chip's × forgets the lesson", await until(async () => !(await lesson()) && /Forgot that lesson/.test(await hint()), 3000, 100), await hint())
+await island.locator("[data-island]").hover()
+await until(() => island.evaluate(() => !!document.querySelector('[aria-label="Stop watching and forget it"]')), 3000)
+await island.evaluate(() => document.querySelector('[aria-label="Stop watching and forget it"]')?.click())
+check("its × forgets the lesson", await until(async () => !(await lesson()) && /Forgot that lesson/.test(await hint()), 3000, 100), await hint())
 
 await app.close()
 fs.rmSync(TMP, { recursive: true, force: true })

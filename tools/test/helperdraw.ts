@@ -38,7 +38,7 @@ mock.module(at("overlay.ts"), { exports: { showOverlay: (_b: string, s?: Scene) 
   showDrawing() {}, dropDrawings() {}, drawingActs() {}, watchLayers() {}, penSounds() {}, drawingUp: () => false, endDrawing() {}, cue() {}, followPointer: (on: boolean, moved?: (p: Pt, t: number) => void) => { following = on; fed = on ? moved ?? null : null }, panelAvoid() {} } })
 // (take-over: its windows and native part, apart: tools/test/vault/takeover.ts has its rules)
 mock.module(at("overlaywin.ts"), { exports: { overlayWindow() { throw new Error("no windows here") }, hideFromShares() {}, hiddenFromShares: () => true } })
-mock.module(at("knockhelper.ts"), { exports: { islandNow: () => ({}), knockHost() {}, knockSaid: () => false, knocksHeard() {}, stopKnocks() {}, toPresence: () => false } })
+mock.module(at("knockhelper.ts"), { exports: { islandNow: () => ({}), knockHost() {}, knockSaid: () => false, knocksHeard() {}, stopKnocks() {}, toPresence: () => false, walkShown() {} } })
 mock.module(at("takeover.ts"), { exports: { takeoverHeard() {}, takeoverEnded() {}, takeoverClick: () => false, takeoverDriving: () => false, takeoverCaption: () => null, takeoverBehind: () => null, stopTakeover() {} } })
 mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async () => ({}), startScreen: async () => {}, stopScreen() {}, windowShot: async () => null, displayShot: async () => null,
   fnUsage: async () => null } })

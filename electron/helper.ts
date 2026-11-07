@@ -21,7 +21,7 @@ import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bi
 import { REAL as captureReal, captureHeard, captureHost, recordFor, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
-import { islandNow, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence } from "./knockhelper.ts"
+import { islandNow, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence, walkShown } from "./knockhelper.ts"
 import type { Presence } from "../plugins/core/companion/knocks.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, dropDrawings, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, penSounds, showDrawing, showOverlay, watchLayers, type PanelData } from "./overlay.ts"
 import { type Area, followed as thingFollowed, makeWatch, type On, SAMPLE_MS, sampleFrom, sampleSize, watchedAreas } from "./markwatch.ts"
@@ -120,7 +120,7 @@ export async function startHelper(h: HelperHost) {
   onDictating(() => stopVoice())
   // (the mic it would hear with now, for its status: devices plugged, the output changed)
   onAudioDevices((d) => micTold(pickMic(prefs.dictation.microphone, d)))
-  overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) }, region: regionMoved, regionAct, walkAct: (what) => (watching() ? lessonAct(what) : walkAct(what)) })
+  overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) }, region: regionMoved, regionAct })
   timelineHost({ exclude: excluded, bundles: () => prefs.privateApps, holding: recordingNow, privateNow: () => hidden(front),
     clicks: (on) => void screenAsk("clicks", { on }).catch(() => {}) })
   captureHost({ exclude: excluded, bundles: () => prefs.privateApps, hint, draw,
@@ -139,7 +139,8 @@ export async function startHelper(h: HelperHost) {
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   watchLayers(layersChanged)
   knockHost({ say: (m) => live.say(m), talking: () => !!session || !!panelOpen() || !!speakingNow || speaker.saying() || voiceFront.speaking() || (!!summon && ACTIVE.has(summon.m.phase)) || (!!exchange && going(exchange)),
-    base: () => (live.state.mode === "off" ? null : based || null), ask: (o, r) => screenAsk(o, r ?? {}), cue: (n) => cue(n),
+    base: () => (live.state.mode === "off" && !walkOn() && !watching() ? null : based || null), ask: (o, r) => screenAsk(o, r ?? {}), cue: (n) => cue(n),
+    walk: (what) => (watching() ? lessonAct(what) : walkAct(what)),
     speak: (text) => { if (prefs.voice.mode !== "off" && !quietForCall()) void voiceCall("voice:sample", [{ text, after: true }]).catch(() => {}) },
     open: (p) => void openPresence(p), hint,
     send: (id, text) => op("terminal.send", { id, text }).then(() => true, () => false), ...(QUIET ? { still: () => Number(process.env.VAULTITE_QA_STILL ?? 2000) } : {}) })
@@ -2002,7 +2003,9 @@ function draw() {
   const hintNow = hinted && hinted.until > Date.now() ? hinted : null
   const pill: Scene["pill"] = d && d.into === "field" ? { level: d.level, text: boxWords(d), pending: d.pending, ready: d.ready, ...(d.free ? { free: true } : {}) }
     : hintNow ? { level: 0, text: hintNow.text, ready: true, hint: true } : null
-  lastScene = { ...handOff(agents, called), pill, speaking: speakingNow, region: regionScene(), behind: takeoverBehind(), walk: walkScene() ?? lessonScene() }
+  lastScene = { ...handOff(agents, called), pill, speaking: speakingNow, region: regionScene(), behind: takeoverBehind() }
+  // (a QA walk or a lesson shows on the island by the notch)
+  walkShown(walkScene() ?? lessonScene())
   ringFollows()
   showOverlay(based || null, lastScene)
   badge()

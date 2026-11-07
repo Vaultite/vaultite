@@ -11,9 +11,7 @@ import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
 export type OverlayActs = { open: (name: string, at: Point) => void; stop: () => void
   /** Their box moved or resized (screen points), or one of its buttons pressed (record, stop, replay, close). */
-  region?: (r: Rect) => void; regionAct?: (what: string) => void
-  /** A QA walk's chip pressed (done, scratch, cancel). */
-  walkAct?: (what: string) => void }
+  region?: (r: Rect) => void; regionAct?: (what: string) => void }
 /** What the user does in a cursor's conversation: asks (typed), the microphone, More (its menu), and it closed (`esc`:
  *  by Esc in it; else clicked away, its close, or closed by the helper). */
 export type PanelActs = { send: (name: string, text: string) => void; mic: () => void
@@ -27,7 +25,7 @@ let scene: Scene = { agents: [], summon: null, pill: null }
 let acts: OverlayActs | null = null
 let watching = false
 
-const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.pill && !x.region && !x.behind && !x.walk && !layers.size
+const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.pill && !x.region && !x.behind && !layers.size
 /** What each window was sent last (its scene's shape and places), and its hiding once it's had nothing to draw a while. */
 const sent = new Map<BrowserWindow, { shape: string; at: string }>()
 const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()
@@ -188,7 +186,6 @@ export function overlayActs(a: OverlayActs) {
     acts?.region?.({ x: Math.round(b.x + Number(o.x)), y: Math.round(b.y + Number(o.y)), width: Math.round(Number(o.width)), height: Math.round(Number(o.height)) })
   })
   ipcMain.on("screen:region-act", (e, what: unknown) => { if (mine(e) && typeof what === "string") acts?.regionAct?.(what) })
-  ipcMain.on("screen:walk-act", (e, what: unknown) => { if (mine(e) && typeof what === "string") acts?.walkAct?.(what) })
   // (where the companion's pilot is headed: its box goes with it)
   ipcMain.on("screen:pilot", (e, to: unknown) => {
     const w = mine(e)

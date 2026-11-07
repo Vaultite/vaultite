@@ -78,12 +78,12 @@ check("…and the island lets it go", await until(() => island.evaluate(() => !d
 // ---------- another app's island wide over the notch: ours to its right, apart
 await helper((h, a) => h.stub("windows", { windows: [a] }), { ...vors(display.x + 560, 350) })
 const islandBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds())
-// (its window list is read again every 2 s)
-const moved = await until(async () => { const b = await islandBounds(); return b?.x === display.x + 560 + 350 + 6 - 330 ? b : null }, 8000) ?? await islandBounds()
+// (its window list is read again every 2 s with the pointer near the top, else every 10 s)
+const moved = await until(async () => { const b = await islandBounds(); return b?.x === display.x + 560 + 350 + 6 - 330 ? b : null }, 14000) ?? await islandBounds()
 check("Vorssaint wide: ours sits right of it", moved?.x === display.x + 560 + 350 + 6 - 330, moved)
 await helper((h, a) => h.stub("windows", { windows: [a] }), { ...vors(display.x + 480, 510, 300) })
 const visible = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.isVisible())
-check("Vorssaint opened down: ours steps aside", await until(async () => (await visible()) === false, 8000))
+check("Vorssaint opened down: ours steps aside", await until(async () => (await visible()) === false, 14000))
 
 await app.close()
 fs.rmSync(TMP, { recursive: true, force: true })

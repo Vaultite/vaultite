@@ -4,6 +4,7 @@ import { powerMonitor, screen } from "electron"
 import { actOn, graceOver, GRACE_MS, HEARD_MS, type Knock, type KnockAct, knockReply, over, pick, type Presence } from "../plugins/core/companion/knocks.ts"
 import { islandActs, islandReady, presenceAt, showIsland, spotNow } from "./island.ts"
 import type { OtherWindow, Rect, Spot } from "./islandlogic.ts"
+import type { WalkScene } from "../plugins/core/companion/walks.ts"
 
 export type KnockHost = {
   /** Tell the server (the companion's socket). */
@@ -25,6 +26,8 @@ export type KnockHost = {
   hint: (text: string) => void
   /** How long the user's been still (ms): a scripted copy stands one in. */
   still?: () => number
+  /** A QA walk's or a lesson's button pressed on the island: scratch, done, cancel. */
+  walk: (what: string) => void
 }
 
 let host: KnockHost | null = null
@@ -38,6 +41,8 @@ let others: OtherWindow[] = [], othersAt = 0, asking = false
 let hovering = 0
 let spot: Spot | null = null
 let lastTick = 0
+/** A QA walk or lesson on (walk.ts, teach.ts): it leads the island while it lasts. */
+let walk: WalkScene | null = null, walkSaid = ""
 
 export function knockHost(h: KnockHost) {
   host = h
@@ -50,6 +55,7 @@ export function knockHost(h: KnockHost) {
     },
     later: (id) => act(id, "later"),
     ignore: (id, mute) => act(id, "ignore", mute),
+    walk: (what) => host?.walk(what),
     hover: (on) => {
       const k = knocks.find((x) => x.state === "showing")
       // (the grace left as it was when they came over it)
@@ -63,8 +69,16 @@ export function knockHost(h: KnockHost) {
 export function stopKnocks() {
   if (timer) clearTimeout(timer)
   timer = null
-  knocks = []; presences = []
+  knocks = []; presences = []; walk = null; walkSaid = ""
   showIsland(null, null, null)
+}
+
+/** The walk or lesson as it is now (the helper's each draw): the island drawn again when it changed. */
+export function walkShown(w: WalkScene | null) {
+  const text = JSON.stringify(w)
+  if (text === walkSaid) return
+  walk = w; walkSaid = text
+  tick()
 }
 
 /** The server's knocks and presences, as it sends them on each change. */
@@ -107,21 +121,23 @@ function tick() {
     return
   }
   const showing = k?.state === "showing" ? k : null
-  const live = presences.length > 0 || !!showing
+  const live = presences.length > 0 || !!showing || !!walk
   if (live) void place()
   const left = showing ? (hovering ? GRACE_MS - (hovering - (showing.shown ?? hovering)) : GRACE_MS - (now - (showing.shown ?? now))) : 0
   const tint = showing ? presences.find((p) => p.knock === showing.id)?.tint ?? "orange" : "orange"
-  showIsland(host.base(), live ? { presences, knock: showing ? { ...showing, tint, left: Math.max(0, left) } : null } : null, spot)
+  showIsland(host.base(), live ? { presences, knock: showing ? { ...showing, tint, left: Math.max(0, left) } : null, walk } : null, spot)
   // (quick while one shows, its grace counting; else at a walk while any wait or show)
   const waiting = knocks.some((x) => !over(x) && x.state !== "told")
   if (showing || waiting || live) timer = setTimeout(tick, showing ? 200 : 1000)
 }
 
-/** Where the island goes now: the pointer's display, its notch and the islands of other apps there. */
+/** Where the island goes now: the pointer's display, its notch and the islands of other apps there; other apps' windows
+ *  read again every 2 s while the pointer is near the top (another island opens under it) or a knock shows, else 10 s. */
 async function place() {
   if (!host || asking) return
-  const now = Date.now()
-  if (notches && now - othersAt < 2000) { spot = spotNow(notches, others); return }
+  const now = Date.now(), p = screen.getCursorScreenPoint(), top = screen.getDisplayNearestPoint(p).bounds.y
+  const fresh = p.y - top < 200 || knocks.some((k) => k.state === "showing") ? 2000 : 10_000
+  if (notches && now - othersAt < fresh) { spot = spotNow(notches, others); return }
   asking = true
   const first = !spot
   try {
@@ -163,4 +179,4 @@ export function toPresence(text: string, at: { x: number; y: number }) {
 }
 
 /** What a scripted copy's island shows (web/qa/helper.mjs). */
-export const islandNow = (at?: { x: number; y: number }) => ({ knocks, presences, spot, showing: knocks.find((k) => k.state === "showing")?.id ?? null, ...(at ? { at: presenceAt(at) } : {}) })
+export const islandNow = (at?: { x: number; y: number }) => ({ knocks, presences, walk, spot, showing: knocks.find((k) => k.state === "showing")?.id ?? null, ...(at ? { at: presenceAt(at) } : {}) })
