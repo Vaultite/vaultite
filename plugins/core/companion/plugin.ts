@@ -27,7 +27,10 @@ import { type JobState, jobSpoken, jobTimingsText, jobTold } from "./jobs.ts"
 import { captureOps } from "./captures.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
-import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
+import { type Guide, guideFor, guideLines, parseGuide, sitesOf } from "./guides.ts"
+import { type Screen, toursOf } from "./tours.ts"
+import type { Seen } from "./anchor.ts"
+import { markOf, type Spot, type Tag } from "./tags.ts"
 import { doneText, effectOf, isBrowser, macOpen, nearText, stepOf, takeovers } from "./takeover.ts"
 import { check as checkOn, listView, parseCondition, thingFrom, thingText, type Verdict } from "./uimodel.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -67,6 +70,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** Asked with its Talk key (over the screen, Vaultite's windows too: the helper's): its summoned session's (summoned.ts); `voice`:
    *  said, not typed (its answer is said aloud, the desktop app's voice.ts). */
   summoned?: boolean; voice?: boolean
+  /** A tour's step handed to the model (tours.ts): the player's words, never the user's, so it's no ask in their box. */
+  tour?: boolean
   /** Asked through the realtime voice (the desktop app's realtimefront.ts): it already told them it's looking and says
    *  the answer itself; `talk`, what was said with it before. */
   front?: "realtime"; talk?: string[]
@@ -354,7 +359,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
   keepAsked(full)
   // (a new ask: the last answer's drawing goes, a Talk key's too, so a mark it corrects is replaced, not stacked)
-  if (full.for && (m.kind === "ask" || m.kind === "point")) screenDrawing.clear({ agent: full.for })
+  // (a tour playing for it stops too: they moved on; its own step handed to the model goes on with it)
+  if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.clear({ agent: full.for }); tours.interrupt(full.for) }
   // (its Talk key's: the summoned session's, which runs warm apart from the long one)
   if (lane().takes(full)) {
     setAgent(full.for!, { state: "thinking", ...placeOf(m) })
@@ -770,7 +776,7 @@ const askRows = new Map<number, string>()
 /** What the user asked an agent (an ask, a reply to its bubble), kept with its says: the popover shows both. Asks in
  *  a comment's thread stay in the thread. */
 function keepAsked(m: Moment) {
-  if (!m.for || !m.text?.trim() || !((m.kind === "ask" && !m.item) || (m.kind === "reply" && m.bubble))) return
+  if (!m.for || m.tour || !m.text?.trim() || !((m.kind === "ask" && !m.item) || (m.kind === "reply" && m.bubble))) return
   const id = askRows.get(m.more ?? m.seq) ?? `ask-${m.seq}`, text = m.text.trim()
   askRows.set(m.seq, id)
   if (askRows.size > 200) askRows.delete(askRows.keys().next().value!)
@@ -864,6 +870,111 @@ const screenDrawing = screenDrawings(plugin, {
   },
   displays: (a) => (screens.size ? (askOf(a)?.displays ?? []).map((d) => ({ x: d.x, y: d.y, w: d.width, h: d.height })) : null),
 })
+// ---------- tours (tours.ts): played on the screen of each agent's last ask, without the model
+
+const tours = toursOf(plugin, { screen: (name) => screenOf(name), who: (p) => who(p) })
+/** The window used last: where a tour over Vaultite plays. */
+const lastWindow = () => [...windows.entries()].sort((a, b) => b[1].at - a[1].at)[0]?.[0]
+/** A thing as Vaultite's window lists it (tourwindow.ts): `within`, the data-ui around one that has none. */
+type Shown = Seen & { within?: string }
+/** Agent `name`'s screen for a tour: the app its last ask was over (the Mac's helper reads it), else Vaultite's window. */
+function screenOf(name: string): Screen | null {
+  const ask = askOf(name), away = ask ? awayIn([ask]) : ""
+  if (away === "a private app") return null
+  const call = (op: string, p: Record<string, unknown>) => plugin.host.call(op, { ...p, ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: "companion tour" })
+  const mid = (s: Seen) => ({ sx: Math.round(s.frame.x + s.frame.width / 2), sy: Math.round(s.frame.y + s.frame.height / 2) })
+  const spot = (s: Seen): Spot => ({ sx: s.frame.x, sy: s.frame.y, w: s.frame.width, h: s.frame.height })
+  const sayIt = async (text: string) => { await call("companion.say", { text }) }
+  /** Draw's marks for a step's, at the frames found (a point is its cursor's, not a mark). */
+  const drawnOf = (marks: Parameters<Screen["show"]>[1]) => marks.filter((m) => m.at).flatMap((m) => {
+    const x = m.kind === "point" ? null : markOf({ kind: m.kind as Tag["kind"], at: spot(m.at!), ...(m.to ? { to: spot(m.to) } : {}), ...(m.label ? { label: m.label } : {}), ...(m.n !== undefined ? { n: m.n } : {}), ...(m.dir ? { dir: m.dir } : {}), offset: 0 })
+    return x ? [x] : []
+  })
+  const overScreen = () => screens.size > 0 && !!askOf(name)?.displays?.length
+  async function show(text: string, marks: Parameters<Screen["show"]>[1]) {
+    const placed = marks.filter((m) => m.at)
+    if (overScreen() && placed.length) {
+      // (over the screen: marks at the frames found, a point its cursor there)
+      const drawn = drawnOf(placed)
+      const point = placed.find((m) => m.kind === "point")
+      if (point) await call("companion.look", mid(point.at!))
+      if (drawn.length) return void await call("companion.draw", { marks: drawn, ...(text ? { say: text } : {}) })
+      if (text) await call("companion.say", { text, ...(point ? mid(point.at!) : {}) })
+      return
+    }
+    // (in Vaultite's window: its cursor and bubble at the thing, by its data-ui id, else its words in the UI around it)
+    const places = placed.flatMap((m) => { const s = m.at as Shown; return s.ui ? [{ ui: s.ui }] : s.within ? [{ ui: s.within, find: s.label }] : [] })
+    for (const p of places.slice(1)) await call("companion.highlight", p).catch(() => {})
+    if (text) await call("companion.say", { text, ...(places[0] ?? {}) })
+    else if (places[0]) await call("companion.look", places[0])
+  }
+  async function act(d: Parameters<Screen["act"]>[0], at: Seen | null) {
+    try {
+      if (away) {
+        const step = d.action === "click" ? { action: "click" } : d.action === "type" ? { action: "type", value: d.value ?? "" } : d.action === "press" ? { action: "press", key: d.key } : { action: "scroll", direction: d.dir ?? "down" }
+        const r = (await call("companion.act", { ...step, ...(at ? mid(at) : {}) })).result as { ok?: boolean; text?: string }
+        return r?.ok === false ? { ok: false, why: r.text ?? "it didn't work" } : { ok: true }
+      }
+      if (d.action !== "click") return { ok: false, why: `in Vaultite's own UI it only clicks: ${d.action} isn't something it can do there, so the user does it` }
+      const s = at as Shown | null
+      if (!s) return { ok: false, why: "nothing to click: name it by its words" }
+      await call("companion.act", { action: "click", ...(s.ui ? { ui: s.ui } : { ...(s.within ? { ui: s.within } : {}), find: s.label }) })
+      return { ok: true }
+    } catch (e) { return { ok: false, why: (e as Error).message } }
+  }
+  /** The step as an ask of its model's (the summoned session's, else its own), where the last ask was: whether it said or showed something. */
+  async function fallback(tour: Parameters<Screen["fallback"]>[0], step: Parameters<Screen["fallback"]>[1], missing: string[]) {
+    const t0 = Date.now(), last = askOf(name)
+    const place = Object.fromEntries((["app", "window", "title", "sx", "sy", "path", "line", "pane", "ui", "url", "displays"] as const).flatMap((k) => (last?.[k] !== undefined ? [[k, last[k]]] : [])))
+    const text = `(A step of their tour "${tour.title}", played for them, not their words. Step ${step.n}: ${step.text}\nNot found on their screen now: ${missing.map((x) => JSON.stringify(x)).join(", ")}. Say this step yourself, its tag on that thing as it shows now; if it isn't there, tell them so in a few words.)`
+    const m = addMoment({ kind: "ask", for: name, summoned: true, tour: true, text, ...place })
+    if (!m) return false
+    const spoke = () => [...notes.values(), ...said].some((n) => n.kind === "say" && key(n.agent) === key(name) && n.t >= t0) || (agents.get(key(name))?.pointed ?? 0) >= t0
+    const busy = () => (lane().takes(m) ? lane().busy() : turning.has(key(name)))
+    let began = false
+    for (const end = t0 + 90_000; Date.now() < end;) {
+      await new Promise((ok) => setTimeout(ok, 300))
+      if (busy()) began = true
+      else if (began || spoke()) break
+    }
+    return spoke()
+  }
+  const inputs = (on: boolean) => { for (const ws of [...windows.keys(), ...screens]) send(ws, { t: "inputs", on }) }
+  /** Its marks drawn again where their things are now, unsaid; one off screen left out till it's back. In Vaultite's
+   *  window without the helper's drawing, the bubble finds its place again by itself. */
+  async function follow(marks: Parameters<Screen["show"]>[1]) {
+    if (!overScreen()) return
+    const drawn = drawnOf(marks)
+    screenDrawing.clear({ agent: name })
+    if (drawn.length) await call("companion.draw", { marks: drawn }).catch(() => {})
+  }
+  if (away) {
+    if (!screens.size) return null
+    const site = sitesOf(ask!)[0]
+    const read = async () => { const r = await takeover.things(); return r.ok ? r.things ?? [] : null }
+    return {
+      things: async () => { const t = await read(); return t && { where: { app: ask!.app, ...(site ? { site } : {}) }, things: t } },
+      holds: async (c, before) => { const t = await read(); return !!t && checkOn(c, listView(t), before).ok },
+      snapshot: async () => listView((await read()) ?? []).snapshot(),
+      show, say: sayIt, act, fallback, inputs, ...(overScreen() ? { follow } : {}),
+    }
+  }
+  if (!lastWindow()) return null
+  const fromWindow = async <T,>(m: object): Promise<T | null> => {
+    const ws = lastWindow(), reply: Record<string, unknown> = {}
+    if (!ws) return null
+    return (await askWindow(ws, m, 3000, reply).catch(() => false)) ? reply as T : null
+  }
+  return {
+    things: async () => {
+      const r = await fromWindow<{ window?: Rect; things?: Shown[] }>({ t: "things" })
+      return r?.things ? { where: { app: "vaultite", ...(r.window ? { window: r.window } : {}) }, things: r.things } : null
+    },
+    holds: async (c, before) => (await fromWindow<{ verdict?: Verdict }>({ t: "check", condition: c, ...(before !== undefined ? { before } : {}) }))?.verdict?.ok === true,
+    snapshot: async () => (await fromWindow<{ snapshot?: string }>({ t: "snapshot" }))?.snapshot ?? "",
+    show, say: sayIt, act, fallback, inputs, ...(overScreen() ? { follow } : {}),
+  }
+}
 const rectOfNear = (e: Near): ScreenRect => ({ x: e.frame.x, y: e.frame.y, w: e.frame.width, h: e.frame.height, label: e.label })
 /** Where the window used last has `places` now (locate.ts), in screen points; words found nearest `near`. */
 async function windowRects(places: string[], near?: { x: number; y: number }): Promise<Record<string, ScreenRect & { q?: number }>> {
@@ -996,6 +1107,8 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
     if (takeover.message(ws, m)) return
+    // (a wait listening: what they click and type in other apps)
+    if (m.t === "input") return void tours.input(m)
     // (a bubble over the screen clicked away)
     if (m.t === "hide" && typeof m.id === "string") return void hide(m.id)
     if (m.t === "home" && typeof m.agent === "string") return void comeBack(m.agent)
@@ -1077,6 +1190,7 @@ plugin.socket("companion/live", (ws, req, { query }) => {
     }
     const w = windows.get(ws)
     if (!w) return
+    if (m.t === "input") return void tours.input(m)
     if (m.t === "where") {
       w.open = Array.isArray(m.open) ? m.open.filter((p): p is string => typeof p === "string") : w.open
       w.shown = Array.isArray(m.shown) ? m.shown.filter((p): p is string => typeof p === "string") : w.shown
@@ -1740,13 +1854,13 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "tour", "tour-save"]
 /** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
 const QUIET_RESULTS = new Set(["see", "check", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "tour"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1804,7 +1918,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "conversation"]
+const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "conversation", "tour", "tour-save"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -1859,6 +1973,12 @@ const lane = (): Lane => {
       return r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : null
     },
     caption: (name, text) => screenDrawing.recaption(name, text),
+    answered: (name, text) => {
+      const ask = askOf(name), away = ask ? awayIn([ask]) : "", site = ask ? sitesOf(ask)[0] : undefined
+      if (away === "a private app") return
+      tours.answered(name, text, { near: (nearBy.get(key(name)) ?? []).map((e) => ({ id: e.id, role: e.role, label: e.label, frame: e.frame, inside: e.inside })),
+        app: away || "vaultite", ...(site ? { site } : {}) })
+    },
     text: async (ms) => {
       const slim = ms.map((m) => inPicture(m.screen ? { ...m, screen: screenNear(m.screen, anchorsOf(m), SCREEN_CHARS) } : m))
       // (when it is, as a friend beside them would know: "this morning", "last night" in the talk make sense)
@@ -2318,6 +2438,13 @@ export function awayIn(ms: Moment[]) {
 /** An app on screen as an agent reads it: its name, then its bundle id. */
 export const appIn = (m: { app?: string; appName?: string }) => (m.appName && m.appName !== m.app ? `${m.appName} (${m.app})` : m.app ?? "")
 
+/** The tours (type: tour notes) for where moment `m` was: its site's or its app's, Vaultite's own when in its window. */
+function toursHere(m: Moment) {
+  const all = plugin.vault.shared("tours") as unknown as readonly { id: string; app?: string[]; site?: string[] }[]
+  const hosts = sitesOf(m), app = (awayIn([m]) || "vaultite").toLowerCase()
+  return all.filter((t) => hosts.some((h) => siteIn(h, t.site ?? [])) || (t.app ?? []).some((a) => a.toLowerCase() === app)).slice(0, 8).map((t) => (/\.md$/i.test(t.id) ? t.id : `${t.id}.md`))
+}
+
 /** Moments as an agent reads them. */
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = [], aware = "") {
   const guided = new Set<string>()
@@ -2379,6 +2506,11 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
       const g = guideFor(guides(), m)
       if (g && !guided.has(g.id)) { guided.add(g.id); out.push(...guideLines(g)) }
       else if (!g && m.app && m.app !== "private") out.push(`  no guide to ${m.app} yet (Guides/)`)
+    }
+    // (and the tours there, Vaultite's own when it wasn't another app: one line, once a message)
+    if (m.summoned && !m.tour && (m.kind === "ask" || m.kind === "point") && m.app !== "private" && !guided.has("tours")) {
+      const here = toursHere(m)
+      if (here.length) { guided.add("tours"); out.push(`  their tours here (companion tour): ${here.join(", ")}`) }
     }
   }
   for (const e of notes) {

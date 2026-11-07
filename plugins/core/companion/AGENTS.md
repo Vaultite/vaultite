@@ -133,6 +133,12 @@ above that), act, run it again, and never end your turn.
 - Their clicks: held, a plain click (let go within a few points) still goes to the app, and the ask says what it was
   (`they clicked as they spoke`); hands-free, the mouse and keys are never the companion's. Words between your tool
   calls with no tag aren't said (narration); your answer and each walkthrough step carry a tag and are.
+- Tours (`vau docs tours`): a walkthrough kept as a `type: tour` note in `Guides/`, its steps your words and tags with
+  `(wait: click)` and `(do: click "Send")`, played without you (`companion tour <note> --mode show|guide|do`), each target
+  found again where it is now; one not found comes to you as an ask for that step. "Save that as a tour": `tour-save
+  "<title>"` (your last answer on screen) or `--text` the steps. `companion wait` takes `check`'s states and what they do
+  (`click "Share"`, `shows "Saved" or gone "Loading" within 10s`); `companion anchor --keep a3` keeps a thing you pointed at
+  as k1, found again later however the screen moved ("the button you showed me").
 - The realtime voice (the setting `voice_front`: realtime, once this machine has an OpenAI key, `vau voice key --provider
   openai`; `realtime_model`, `realtime_voice`): a Talk key's spoken ask on screen streams to OpenAI's speech-to-speech model,
   whose sound comes first. You're asked at once all the same (its moment says `asked through the realtime voice`): for

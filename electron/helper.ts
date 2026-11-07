@@ -325,6 +325,8 @@ const live = (() => {
       else if (m.t === "find") return void findIn(m)
       // (every thing in the window asked about, in the UI model's shape: a check or an anchor reads them)
       else if (m.t === "things") return void axThings(nearPoint ?? screen.getCursorScreenPoint()).then((things) => live.say({ t: "takeover-done", id: m.id, ok: true, things }))
+      // (a companion's wait listening: clicks and typing, told to the server as they happen)
+      else if (m.t === "inputs") return void screenAsk("inputs", { on: m.on === true }).catch(() => {})
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
         for (const j of jobNews(state.jobs, jobs, prefs.jobNews)) jobNotice(j)
@@ -363,6 +365,7 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "click" && m.held) { void clicked(Number(m.x), Number(m.y)); return heldClick({ x: Number(m.x), y: Number(m.y) }) }
   if (m.event === "click") { void clicked(Number(m.x), Number(m.y)); if (m.exchange === false) return; if (takeoverClick(Number(m.x), Number(m.y))) return; const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
   if (m.event === "esc") return endExchange()
+  if (m.event === "input") return void inputHeard(m)
   if (m.event === "front") {
     // (another app in front: they moved on)
     if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving() && Date.now() > openedUntil) moveOn()
@@ -991,6 +994,17 @@ async function nearIn(f: Rect, window: number) {
   nearWindow = window
   lastNear = (await axThings(nearPoint, Math.max(f.width, f.height), 40, window)).map((e, i) => ({ ...e, id: `a${i + 1}` }))
   return lastNear
+}
+
+/** A click or a key while a companion's wait listens: a click with what's under it (never in a private app or
+ *  Vaultite's own window, which tells its own); a key only that one was typed. */
+let typedAt = 0
+async function inputHeard(m: Record<string, unknown>) {
+  if (m.kind === "type") { if (Date.now() - typedAt < 300) return; typedAt = Date.now() }
+  if (m.kind !== "click") return void live.say({ t: "input", kind: m.kind })
+  const x = Number(m.x), y = Number(m.y), u = await screenAsk<Under>("under", { x, y }).catch(() => null)
+  if (u?.vaultite || (u?.ok && hidden(u))) return
+  live.say({ t: "input", kind: "click", x, y, ...(u?.ok && u.label ? { label: u.label, role: u.role } : {}) })
 }
 
 /** The element saying a mark's words in the window the last ask was over: its whole Accessibility tree, not only by

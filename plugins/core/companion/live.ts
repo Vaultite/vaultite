@@ -8,6 +8,8 @@ import type { Change, Hunk } from "./text.ts"
 export type Mode = "off" | "quiet" | "pair"
 import type { Target } from "./places.ts"
 import { locate } from "./locate.ts"
+import { listenInputs } from "./inputs.ts"
+import { windowCheck, windowSnapshot, windowThings } from "./tourwindow.ts"
 export type { Target } from "./places.ts"
 /** listening: this window's own, the user dictating where it is (`hear`) while it's free; the server never says it. */
 /** Where a page's element is in its page (CSS px, at its zoom): the server's word for a place's `el`. */
@@ -259,6 +261,12 @@ function open() {
     else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
     // (where its places are on the screen, for a drawing over it)
     else if (m.t === "locate") say({ t: "done", rid: m.rid, ok: true, rects: locate(m.places, m.near) })
+    // (a companion's wait listening: what the user clicks and types here)
+    else if (m.t === "inputs") listenInputs(m.on === true, say)
+    // (a tour playing here: what's in the window, one state checked, what it shows now)
+    else if (m.t === "things") say({ t: "done", rid: m.rid, ok: true, ...windowThings() })
+    else if (m.t === "check") say({ t: "done", rid: m.rid, ok: true, verdict: windowCheck(m.condition as Parameters<typeof windowCheck>[0], typeof m.before === "string" ? m.before : undefined) })
+    else if (m.t === "snapshot") say({ t: "done", rid: m.rid, ok: true, snapshot: windowSnapshot() })
   }
 }
 

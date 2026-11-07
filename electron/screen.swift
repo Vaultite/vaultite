@@ -129,6 +129,8 @@ func replay(_ events: [CGEvent]) {
 var exchange = false
 /** Clicks told anyway, for the timeline (helper.ts keeps them only while it's on). */
 var clicks = false
+/** While a companion's wait listens (`inputs`): clicks, and that a key was typed (never which), told as they happen. */
+var inputs = false
 var filtering = false
 func mouse(_ type: CGEventType, _ e: CGEvent) -> Bool {
   let p = e.location
@@ -163,6 +165,7 @@ func mouse(_ type: CGEventType, _ e: CGEvent) -> Bool {
     return true
   }
   if type == .leftMouseDown && (exchange || clicks) { send(["event": "click", "x": p.x, "y": p.y, "exchange": exchange]) }
+  if type == .leftMouseDown && inputs { send(["event": "input", "kind": "click", "x": p.x, "y": p.y]) }
   return false
 }
 var tap: CFMachPort?
@@ -177,6 +180,7 @@ let tapThread = Thread {
     if type == .leftMouseDragged || type == .leftMouseUp { return mouse(type, e) ? nil : Unmanaged.passUnretained(e) }
     if type == .leftMouseDown && mouse(type, e) { return nil }
     if type == .keyDown && exchange && e.getIntegerValueField(.keyboardEventKeycode) == 53 { send(["event": "esc"]) }
+    if type == .keyDown && inputs { send(["event": "input", "kind": e.getIntegerValueField(.keyboardEventKeycode) == 53 ? "esc" : "type"]) }
     tapped(type, e)
     return Unmanaged.passUnretained(e)
   }
@@ -610,6 +614,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "ink": inkOn = req["on"] as? Bool ?? false; if !inkOn { inking = false }; return ["ok": true, "ink": filtering]
   case "exchange": exchange = req["on"] as? Bool ?? false; return ["ok": true]
   case "clicks": clicks = req["on"] as? Bool ?? false; return ["ok": true]
+  case "inputs": inputs = req["on"] as? Bool ?? false; return ["ok": true]
   case "windows":
     // (on screen, every layer: what a display's picture would show, by whose; metadata only)
     let all = onScreen()

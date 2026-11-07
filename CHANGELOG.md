@@ -36,6 +36,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The companion knows another app's floating panel**: asked over a tray, a palette or the Dock, it reads that app
   (by its name, not only its bundle id) instead of the Vaultite window behind it, and an ask elsewhere on the screen
   says which apps' panels float over it, so "what's this thing?" gets the app's real name rather than a guess.
+- **Tours**: "save that as a tour" keeps a walkthrough the companion just gave as a note in Guides/, and it plays back
+  fast without the model (`vau companion tour`): show me, guide me (it waits for your click or typing), or do it. Each
+  step finds its target again where it is now, asks you to scroll when it's off screen, and asks the model only when it's
+  gone. The same language waits and checks (`vau companion wait 'click "Share"'`, `companion check`), and things it
+  pointed at stay findable (`companion anchor`).
 - **The companion opens a sidebar panel when asked**: "open files" unfolds the Files panel (its sidebar shown if
   closed), and it's told the panel's rows so it can point at them; a click there used to land on nothing. Its summoned
   session may also look in your Desktop, Downloads, Pictures and screenshots folder, and when it can't look somewhere it
