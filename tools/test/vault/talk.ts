@@ -75,7 +75,8 @@ export default async ($: VaultTest) => {
       const [os2] = await api("POST", "ops/companion.talk", { off: true }, agent)
       check("talk: ending a talk when none is on says so", os2 === 409)
     } finally {
-      await api("PATCH", "config/plugin/companion", { mode: "off" })
+      // (its settings back as the next tests expect: a summoned ask after it starts no session of the companion's)
+      await api("PATCH", "config/plugin/companion", { mode: "off", summoned_model: "haiku" })
       sc.emit("close")
       Object.assign(cc, was)
       if (job) await api("POST", "ops/companion.job-stop", { id: job }, agent).catch(() => {})
