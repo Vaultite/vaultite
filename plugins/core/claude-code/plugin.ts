@@ -749,15 +749,26 @@ plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMet
     }
     const found = meters && sessionFile(sid, true), m = found && lastRequest(found.file)
     if (!m) { out.push({ terminal, session: sid }); continue }
-    let window = 0
-    // A status line may write to ~/.claude whatever account runs it: a session id is the same in either.
-    for (const dir of new Set([a.dir, path.join(HOME, ".claude")])) {
-      try { window = Number(JSON.parse(fs.readFileSync(path.join(dir, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0 } catch { /* none */ }
-      if (window) break
-    }
-    out.push({ terminal, session: sid, ...m, window: window || (m.tokens > 200_000 ? 1_000_000 : 200_000) })
+    out.push({ terminal, session: sid, ...m, window: windowOf(a.dir, sid, m.tokens) })
   }
   return out
+})
+
+/** A session's context window: its status line's, else 200k (1M once exceeded). */
+function windowOf(dir: string, sid: string, tokens: number) {
+  // A status line may write to ~/.claude whatever account runs it: a session id is the same in either.
+  for (const d of new Set([dir, path.join(HOME, ".claude")])) {
+    try { const w = Number(JSON.parse(fs.readFileSync(path.join(d, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0; if (w) return w } catch { /* none */ }
+  }
+  return tokens > 200_000 ? 1_000_000 : 200_000
+}
+
+/** How full a session's context is now: its last request's tokens and its window ("agent-context:claude": a job taking
+ *  live edits starts fresh before it compacts). The session in `terminal` when `session` isn't given. */
+plugin.provide("agent-context:claude", async (terminal: string, session = ""): Promise<{ tokens: number; window: number } | null> => {
+  const sid = session || await sessionIn(terminal)
+  const found = sid ? sessionFile(sid) : null, m = found && lastRequest(found.file)
+  return m ? { tokens: m.tokens, window: windowOf(found.account.dir, sid, m.tokens) } : null
 })
 
 /** A transcript's last request: what it read, when, and its cache's TTL (an hour when the tail wrote 1 h cache). */

@@ -82,6 +82,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** Sent straight to the job working on its page (live editing, liveedit.ts): that job's id; `shotWindow`, the window
    *  under their pointer (Vaultite's own too), pictured before and after its change. */
   live?: string; shotWindow?: number
+  /** A question asked over a page a job works on, so the companion's, not sent live: that job's id (its work to read). */
+  pageJob?: string
   /** A tour's step handed to the model (tours.ts): the player's words, never the user's, so it's no ask in their box. */
   tour?: boolean
   /** Asked through the realtime voice (the desktop app's realtimefront.ts): it already told them it's looking and says
@@ -2573,6 +2575,14 @@ function toursHere(m: Moment) {
   return all.filter((t) => hosts.some((h) => siteIn(h, t.site ?? [])) || (t.app ?? []).some((a) => a.toLowerCase() === app)).slice(0, 8).map((t) => (/\.md$/i.test(t.id) ? t.id : `${t.id}.md`))
 }
 
+/** What a question over a job's page says of it: the job, what it was asked there live, what it said last. */
+function pageJobLine(id: string) {
+  const j = jobs.list().find((x) => x.id === id)
+  if (!j) return `  over the page job ${id} works on: their changes there go to it; this question is yours`
+  const asked = liveEditing.asksText(id), said = (j.last?.text ?? j.result?.text ?? "").replace(/\s+/g, " ").trim()
+  return `  over the page job ${id} "${cut(j.title, 60)}" (${j.state}) works on: their changes there go to it, this question is yours, answer it now${asked ? `; asked live there: ${asked}` : ""}${said ? `; it said last: ${JSON.stringify(cut(said, 300))}` : ""}; more of its work (its diff, files, what it was told): companion job ${id}`
+}
+
 /** Moments as an agent reads them. */
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = [], aware = "") {
   const guided = new Set<string>()
@@ -2620,6 +2630,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.shot) out.push(`  its picture: ${m.shot}${m.shotAt ? ` (the screen around their pointer, cropped: what its edges cut is whole on their screen; a pixel a point: its top left is sx ${m.shotAt.x}, sy ${m.shotAt.y}, so its pixel x, y is sx ${m.shotAt.x} + x, sy ${m.shotAt.y} + y${m.sx !== undefined ? `; their pointer at ${m.sx - m.shotAt.x}, ${m.sy! - m.shotAt.y} in it` : ""})` : ""}`)
     if (m.shotDown) out.push(`  its picture as the key went down: ${m.shotDown} (the screen changed while they spoke: what they meant may be only in this one${m.shotDownAt ? `; its top left is sx ${m.shotDownAt.x}, sy ${m.shotDownAt.y}` : ""})`)
     if (m.notices) out.push(`  Vaultite's toasts of the last minute (gone from the picture, maybe): ${m.notices}`)
+    if (m.pageJob) out.push(pageJobLine(m.pageJob))
     if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)

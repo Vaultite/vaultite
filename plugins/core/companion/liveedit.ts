@@ -1,5 +1,5 @@
-// Live editing: Talk key asks over a page a job works on go straight into its warm terminal; once the page reloads
-// what changed is ringed, and "undo that" takes back exactly that ask's edits (its worker's own). Ops: live-undo, unedit.
+// Live editing: Talk key asks for a change over a page a job works on go into its warm terminal (a question, to the
+// companion); what changed is ringed, "undo that" takes back that ask's edits, a worker grown large starts fresh.
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
@@ -13,10 +13,15 @@ import { type FileEdit, unedit } from "./unedit.ts"
 
 /** One ask sent live: its tag in the worker's terminal (how its edits are found again), its window and that window's
  *  picture before (what's ringed is what differs once it's done), whether it was ringed or undone. */
-type LiveAsk = { tag: string; t: number; text: string; window?: number; shot?: string; sent?: number; rung?: boolean; undone?: boolean }
-type Live = { n: number; asks: LiveAsk[]; notes: string[]; at: number }
+type LiveAsk = { tag: string; t: number; text: string; window?: number; shot?: string; sent?: number; rung?: boolean; undone?: boolean
+  /** Its worker said it wasn't its (the companion took it). */
+  handed?: boolean }
+/** `fresh`: the first tag of its worker's current conversation (one started fresh: what came before isn't in it). */
+type Live = { n: number; asks: LiveAsk[]; notes: string[]; at: number; fresh?: number }
 
 type Jobs = { list: () => Job[]; find: (id: string) => Job; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void>
+  fresh: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void>
+  context: (j: Job) => Promise<{ tokens: number; window: number } | null>
   atMachine: (machine: string, id: string, body: object, seconds?: number) => Promise<Record<string, unknown>> }
 export type LiveDeps = {
   jobs: Jobs
@@ -44,6 +49,35 @@ const UNDO = /^(?:(?:ok(?:ay)?|no|hmm|actually|wait)[,.!]?\s+)?(?:please\s+)?(?:
 export const isUndo = (text: string | undefined) => !!text && UNDO.test(text.trim().replace(/\s+/g, " "))
 /** What a worker answers when an ask isn't about its page: the companion takes it instead. */
 const NOT_MINE = "(not for me)"
+/** A worker's context past this (tokens, or this share of its window) starts fresh before its next ask: each ask grows
+ *  it, slowing every turn, and compacting would happen mid-ask, while they watch. */
+const FRESH_TOKENS = 120_000, FRESH_SHARE = 0.6
+
+// Which asks are questions: a clear one goes to the companion (fast, and it can read the job); a change, or anything
+// unclear, to the job. (Words, not a model: it's decided before anyone's turn, and a guess here costs a round trip.)
+const LEAD = /^(?:(?:ok(?:ay)?|so|hey|hi|hmm+|um+|uh+|well|and|but|actually|wait|sorry|quick question|question|one thing|also)[,.!:]?\s+)+/i
+const ASKING = /^(?:what|what's|whats|which|who|who's|whose|where|where's|when|why|how|how's)\b|^(?:is|isn't|are|aren't|am|was|were|does|doesn't|do|did|has|have|had|can i|could i|should i|may i|will (?:this|that|it|they|i)|would (?:this|that|it|i))\b|^(?:explain|tell me|describe|remind me (?:what|how|why|where|which)|show me (?:what|how|where|which))\b|^(?:can|could|would|will) you (?:tell|explain|show|remind) me\b/i
+/** A question that's a change put politely ("can you", "what if", "why isn't it"): the job's. */
+const PROPOSING = /^(?:what if|how about|why not|why (?:isn't|isnt|doesn't|doesnt|won't|wont|can't|cant|is it not|does it not|is there no)|is it possible|is there a way|can (?:you|we)|could (?:you|we)|would you|will you|would it be|should (?:we|it|this|that))\b(?! (?:tell|explain|show|remind) me\b)/i
+const CHANGING = /\b(?:make|move|change|add|remove|delete|drop|put|turn|swap|replace|rename|resize|shrink|grow|enlarge|fix|cent(?:er|re)|align|hide|tweak|adjust|increase|decrease|reduce|bump|raise|lower|bigger|smaller|larger|wider|narrower|taller|shorter|darker|lighter|bolder|instead|undo|revert|redo)\b/i
+/** Whether `text` is plainly a question (what, how, is it...), not a change asked as one ("can you make it blue?"). */
+export function isQuestion(text: string | undefined) {
+  const t = (text ?? "").trim().replace(/\s+/g, " ").replace(LEAD, "").replace(/^please\s+/i, "")
+  return !!t && ASKING.test(t) && !PROPOSING.test(t) && !CHANGING.test(t)
+}
+
+/** A worker's prompt when it starts fresh: what the job is, its page and folder, the asks it took so far (what's undone),
+ *  then the next ask, so it goes on without its old conversation. */
+export function freshText(j: Pick<Job, "title" | "on" | "where" | "result">, asks: Pick<LiveAsk, "tag" | "text" | "undone">[], next: string) {
+  const w = j.where, page = j.on?.replace(/^(?:site|note):/, "") || w.preview || ""
+  const done = asks.map((a) => `${a.tag} "${a.text}"${a.undone ? " (they undid it)" : ""}`).join("; ")
+  return [`You're taking over a job they handed off, "${j.title}", from a worker whose conversation grew long: you start fresh, with this summary.`,
+    page ? `They watch its page, ${page}, and ask for changes to it one at a time by voice (live editing).` : "",
+    w.tree ? `Work in its git worktree ${w.tree} (branch ${w.branch}), beside ${w.cwd}, which you never edit${w.base ? `; what it changed so far: git -C ${w.tree} diff ${w.base}` : ""}.` : w.cwd ? `It works in ${w.cwd}.` : "",
+    done ? `Their live asks so far, oldest first: ${done}.` : "",
+    j.result?.text && !j.result.text.includes(NOT_MINE) ? `Its last words: ${gist(j.result.text.replace(/\s+/g, " "), 300)}` : "",
+    "Read only what the next ask needs.", next].filter(Boolean).join(" ")
+}
 
 type Span = { prompt?: string; said?: string; edits: FileEdit[] }
 /** The edits a worker made for live ask `tag`: from where it's told it, or says it's on it ("L2:", how it's asked to
@@ -133,6 +167,8 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
       void undoNow(d.ctx(from), j, m).catch((e) => d.say(name, (e as Error).message, m)).catch(() => {})
       return true
     }
+    // (a plain question is the companion's, quicker than the job's next turn: it's told the job, to read its work)
+    if (isQuestion(m.text)) { m.pageJob = j.id; return false }
     // (one waiting on a prompt answers that first: the companion tells them, and answers it on their word)
     if (j.state === "needs you") return false
     m.live = j.id
@@ -148,10 +184,18 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
       // (its picture taken as it's told: a worker reads and thinks a while before its first change)
       const before = window ? shot(window) : Promise.resolve("")
       await started(j)
+      // (only between turns: one mid-ask isn't cut off)
+      const anew = !busy(j) && await large(j)
       const s2 = state(), r2 = recOf(s2, j.id), notes = r2.notes.splice(0), a = r2.asks.find((x) => x.tag === ask.tag)
       // (sent as it's typed: its terminal answering takes a while, and an undo meanwhile is for this one)
       if (a) a.sent = Date.now()
-      try { await d.jobs.tell(d.ctx(from), j.id, liveText(ask.tag, m, notes), m.text) } catch (e) { if (a) delete a.sent; r2.notes.unshift(...notes); throw e }
+      try {
+        if (anew) {
+          const before = r2.asks.filter((x) => x.sent && !x.handed && x.tag !== ask.tag)
+          await d.jobs.fresh(d.ctx(from), j.id, freshText(j, before, liveText(ask.tag, m, [])), m.text)
+          r2.fresh = Number(ask.tag.slice(1))
+        } else await d.jobs.tell(d.ctx(from), j.id, liveText(ask.tag, m, notes), m.text)
+      } catch (e) { if (a) delete a.sent; r2.notes.unshift(...notes); throw e }
       if (a) a.shot = await before
       save(s2)
     }).catch((e) => {
@@ -160,6 +204,11 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
       d.fallback(m)
     })
     return true
+  }
+  /** Whether job `j`'s worker's context is large enough to start it fresh (its agent saying how full it is). */
+  async function large(j: Job) {
+    const c = await d.jobs.context(j).catch(() => null)
+    return !!c && c.tokens >= Math.min(FRESH_TOKENS, c.window * FRESH_SHARE)
   }
   /** Until job `j` has begun (a prompt typed while its agent starts can be lost); one needing them meanwhile throws. */
   async function started(j: Job) {
@@ -195,7 +244,7 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
   async function settled(j: Job, asks: LiveAsk[]) {
     const last = asks.at(-1)!, m = moments.get(`${j.id}/${last.tag}`), name = m?.for
     const said = (j.last?.text ?? j.result?.text ?? "").trim()
-    if (m && said.includes(NOT_MINE)) { delete m.live; return d.fallback(m) }
+    if (m && said.includes(NOT_MINE)) { last.handed = true; save(state()); delete m.live; return d.fallback(m) }
     const first = asks.find((a) => a.shot && a.window)
     const boxes = await changedSince(first?.shot, first?.window)
     if (!name || !m) return
@@ -228,7 +277,8 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
   async function undoIn(ctx: OpCtx, j: Job, only?: string) {
     if (busy(j) && !only) return { said: "It's still on that one: say undo once it's done.", undone: "" }
     const s = state(), rec = s.jobs[j.id]
-    const tags = only ? [only] : (rec?.asks ?? []).filter((a) => a.sent && !a.undone).map((a) => a.tag).reverse()
+    // (an ask from before it started fresh is in a conversation it no longer reads: no edits to take back there)
+    const tags = only ? [only] : (rec?.asks ?? []).filter((a) => a.sent && !a.undone && Number(a.tag.slice(1)) >= (rec.fresh ?? 0)).map((a) => a.tag).reverse()
     if (!tags.length) return { said: "There's nothing of mine to undo there.", undone: "" }
     const body = { terminal: j.terminal, session: j.session ?? "", agent: j.where.agent, cwd: j.where.cwd, tags }
     const r = (j.where.machine ? await d.jobs.atMachine(j.where.machine, "companion.unedit", body, 20) : await ctx.op("companion.unedit", body)) as Unedited
@@ -313,6 +363,8 @@ when what it wrote changed since, it changes nothing and says why.
 
   return {
     take, moved, jobOn,
+    /** What a question over job `id`'s page tells the companion of it: its live asks so far, newest last. */
+    asksText: (id: string) => (state().jobs[id]?.asks ?? []).filter((a) => a.sent && !a.handed).slice(-8).map((a) => `${a.tag} "${a.text}"${a.undone ? " (undone)" : a.rung ? "" : " (working on it)"}`).join(", "),
     /** Whether job `j` was asked live lately: its terminal stays up for the next. */
     warm: (j: Job) => Date.now() - (state().jobs[j.id]?.at ?? 0) < WARM_MS,
   }

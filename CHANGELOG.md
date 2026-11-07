@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Questions over a job's page get a quick answer**: live editing sends only changes ("make this blue") and unclear
+  asks to the job; a plain question ("what does this button do?") goes to the companion, which knows what the job did
+  there. A job taking a long run of edits starts fresh with a summary instead of slowing down or compacting mid-ask.
 - **Vault plugins import a set list of npm packages** (plugin API 10): React, Lucide, CodeMirror's, Excalidraw, YAML
   and the others `vau docs plugin-api` lists, at the versions the app ships: what an app update keeps for them. One
   importing another package is told to copy that library into its own folder.

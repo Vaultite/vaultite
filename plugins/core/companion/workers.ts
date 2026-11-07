@@ -35,7 +35,9 @@ export type JobDeps = {
 export type Seen = { running: boolean; state?: string; kind?: string; msg?: string; title?: string; typed?: number; asks?: string[]; waits?: Omit<Waits, "at">
   turn?: { text: string; files: string[]; at: number; final: boolean; session?: string; prompt?: string; background?: number } | null; diff?: string
   /** How its terminal ended, when it did and that's known. */
-  exit?: { code: number; signal: number; lost?: boolean } }
+  exit?: { code: number; signal: number; lost?: boolean }
+  /** How full its agent's context is (its last request's tokens, its window), when asked and its agent says. */
+  context?: { tokens: number; window: number } }
 
 const KEEP = 40, KEEP_DAYS = 7
 /** How long a job done keeps its terminal: follow-ups mostly come within a minute or two, and still find it running. */
@@ -194,7 +196,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** Its terminal here as it is: running (else how it ended), its state, title, and with `turn` its last turn (its
    *  `session`'s, which outlives the terminal) and the diff since `base`. */
-  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string } = {}): Promise<Seen> {
+  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string; context?: boolean } = {}): Promise<Seen> {
     const running = await plugin.ask<boolean>("terminal:runs", false, id)
     const st = await plugin.ask<{ state?: string; kind?: string; msg?: string } | null>("terminal:state", null, id)
     const info = running ? await plugin.ask<{ title?: string; typed?: number } | null>("terminal:info", null, id) : null
@@ -202,13 +204,14 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const agent = parseTerminal(id)?.agent ?? ""
     type Turn = { text?: string; files?: string[]; at?: number; final?: boolean; session?: string; prompt?: string; background?: number }
     const turn = o.turn && agent ? await plugin.ask<Turn | null>(`agent-turn:${agent}`, null, id, o.session ?? "") : null
+    const context = o.context && running && agent ? await plugin.ask<Seen["context"] | null>(`agent-context:${agent}`, null, id, o.session ?? "").catch(() => null) : null
     type Q = { question?: string; multi?: boolean; options?: { label?: string }[] }
     const blocked = running && agent && st?.state === "blocked"
     const asking = blocked && st?.kind === "question" ? await plugin.ask<{ questions?: Q[] } | null>(`agent-asking:${agent}`, null, id, o.session ?? "").catch(() => null) : null
     const asks = o.turn ? (asking?.questions ?? []).map((q) => str(q.question)).filter(Boolean) : []
     const waits = blocked ? await waitsOf(id, st, asking?.questions) : null
     return { running, ...(st?.state ? { state: st.state } : {}), ...(st?.kind ? { kind: st.kind } : {}), ...(st?.msg ? { msg: st.msg } : {}), ...(info?.title ? { title: info.title } : {}),
-      ...(info?.typed ? { typed: info.typed } : {}), ...(asks.length ? { asks } : {}), ...(waits ? { waits } : {}),
+      ...(info?.typed ? { typed: info.typed } : {}), ...(asks.length ? { asks } : {}), ...(waits ? { waits } : {}), ...(context?.tokens ? { context } : {}),
       ...(exit ? { exit: { code: exit.code, signal: exit.signal, ...(exit.lost ? { lost: true } : {}) } } : {}),
       ...(o.turn ? { turn: turn ? { text: str(turn.text), files: turn.files ?? [], at: turn.at ?? 0, final: turn.final !== false && !!turn.text, ...(turn.session ? { session: turn.session } : {}),
         ...(turn.prompt ? { prompt: turn.prompt } : {}), ...(turn.background ? { background: turn.background } : {}) } : null } : {}),
@@ -359,13 +362,32 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const s = await seenOf(j).catch(() => null)
     if (!s || s.running) return false
     if (!j.session) throw new OpError(`${j.id}'s terminal ended and its conversation isn't known: hand it off again`, 409)
+    await startIn(ctx, j, prompt, j.session)
+    return true
+  }
+  /** Job `j`'s worker in a new terminal, told `prompt` first: its conversation `session` resumed, else a new one. */
+  async function startIn(ctx: OpCtx, j: Job, prompt: string, session?: string) {
     const w = j.where
-    const r = await ctx.op("terminal.start", { agent: w.agent, session: j.session, ...(prompt ? { prompt } : {}), name: j.title, cwd: w.cwd, ...(w.model ? { model: w.model } : {}),
+    const r = await ctx.op("terminal.start", { agent: w.agent, ...(session ? { session } : {}), ...(prompt ? { prompt } : {}), name: j.title, cwd: w.cwd, ...(w.model ? { model: w.model } : {}),
       ...(w.effort ? { effort: w.effort } : {}), ...(w.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(w.machine ? { machine: w.machine } : {}) }) as { id: string }
     j.terminal = r.id.split("@")[0]
     delete j.exited; delete j.closed
     opened.set(j.id, Date.now())
-    return true
+  }
+  /** Job `j`'s worker started over in a new conversation, told `text` first (its old one's context grown large: live
+   *  editing's summary and next ask), then its old terminal ended. Its card shows `shown`. */
+  async function fresh(ctx: OpCtx, j: Job, text: string, shown = text) {
+    if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
+    const old = terminalOf(j), was = await seenOf(j).catch(() => null)
+    // (the new one's first: the old one's end then finds no job of its, so it can't move this one or claim its terminal)
+    await startIn(ctx, j, text)
+    delete j.session
+    if (was?.running) await ctx.op("terminal.end", { id: old }).catch(() => {})
+    move(j, "told")
+    j.turn = Date.now()
+    j.now = `Started fresh: ${gist(shown, 120)}`
+    resting.delete(j.id)
+    changed()
   }
   /** Its worker's session, once it says (its transcript is what's read after its terminal ends). */
   const tried = new Map<string, number>()
@@ -720,9 +742,9 @@ in one short line, merge it or close it as it is (each a button).
     params: { id: { type: "string", required: true, description: "its terminal's id" }, turn: { type: "boolean", description: "its last turn and the diff too" },
       session: { type: "string", description: "its agent's session (its turn read from it, the terminal ended or not)" },
       cwd: { type: "string", description: "its folder (the diff's)" }, base: { type: "string", description: "the commit the diff counts from" },
-      tree: { type: "string", description: "its own worktree: the diff's once it exists" } },
+      tree: { type: "string", description: "its own worktree: the diff's once it exists" }, context: { type: "boolean", description: "how full its agent's context is too" } },
     args: ["id"],
-    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base), tree: str(p.tree) }),
+    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base), tree: str(p.tree), context: p.context === true }),
   })
 
   /** Jobs the user opened: no longer news. */
@@ -738,6 +760,11 @@ in one short line, merge it or close it as it is (each a button).
     find: jobOf,
     /** Job `id` told `text`, typed into its terminal (its conversation resumed if it closed); its card shows `shown`. */
     tell: (ctx: OpCtx, id: string, text: string, shown?: string) => steer(ctx, jobOf(id), text, shown),
+    /** Job `id`'s worker in a new conversation, told `text` first; its old terminal ended. */
+    fresh: (ctx: OpCtx, id: string, text: string, shown?: string) => fresh(ctx, jobOf(id), text, shown),
+    /** How full job `j`'s worker's context is now, null when its agent doesn't say or its terminal is gone. */
+    context: async (j: Job) => (await (j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, context: true, ...(j.session ? { session: j.session } : {}) }, 10) as Promise<Seen>
+      : seenHere(j.terminal, { context: true, ...(j.session ? { session: j.session } : {}) })).catch(() => null))?.context ?? null,
     /** They kept job `id`'s change: its worker told to merge it, the job closed once it says it merged. */
     land: (ctx: OpCtx, id: string) => land(ctx, jobOf(id)),
     /** Job `id` closed by the user (done when ready for review). */
