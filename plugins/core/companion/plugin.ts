@@ -2976,7 +2976,7 @@ function onScreen(p: Record<string, unknown>, name: string) {
 async function screenAct(p: Record<string, unknown>, name: string) {
   let step: ReturnType<typeof stepOf>
   try { step = stepOf({ action: str(p.action), ax: str(p.ax) || undefined, sx: p.sx === undefined ? undefined : Number(p.sx), sy: p.sy === undefined ? undefined : Number(p.sy),
-    value: p.value === undefined ? undefined : str(p.value), key: str(p.key) || undefined, direction: str(p.direction) || undefined }, nearBy.get(key(name)) ?? []) } catch (e) { throw new OpError((e as Error).message, 404) }
+    value: p.value === undefined ? undefined : str(p.value), key: str(p.key) || undefined, direction: str(p.direction) || undefined, doing: str(p.doing) || undefined }, nearBy.get(key(name)) ?? []) } catch (e) { throw new OpError((e as Error).message, 404) }
   did(name, "act")
   // (its cursor flies there first: the helper waits for it)
   if (step.el || step.at) setAgent(name, { ...await resolve(target(p, true), name), state: "writing", pointed: Date.now() })
@@ -2997,12 +2997,13 @@ say. Only where its container lets agents act, never on a private page. Answers 
 
 In another app (take-over, an ask on the screen): an element the ask listed (--ax), a point (--sx --sy), or the field
 with the keys (neither). They're asked first (a card by the pointer, --ask its line), a yes lasting the exchange; a
-send, post or delete is asked each time. Moving the mouse or a key stops it. Answers the elements there now, by id.
+send, post or delete is asked each time. Your cursor says what it does (--doing, else made from the step); their mouse
+or keys pause a step that needs them, a click or Esc stops it. Answers the elements there now, by id.
 
   vau companion act --pane t5x1 click --el e12
   vau companion act --pane t5x1 fill --el e5 --value "alice@example.com"
   vau companion act click --ax a3 --ask "Want me to turn on dark mode?"
-  vau companion act fill --ax a5 --value "Lighthouse"
+  vau companion act fill --ax a5 --value "Lighthouse" --doing "Typing the title"
   vau companion act press --key cmd+s`,
   kind: "write",
   lock: false,
@@ -3010,6 +3011,7 @@ send, post or delete is asked each time. Moving the mouse or a key stops it. Ans
     find: { type: "string", description: "the words of what to click in the app's UI (a pinned page's name in panel:pages:pages); alone, anywhere in the app's window" },
     action: { type: "string", required: true, enum: ACTS, description: "what to do" }, el: EL,
     ax: PLACE.ax, sx: PLACE.sx, sy: PLACE.sy, ask: { type: "string", description: "in another app: the line offering it, when they haven't said yes yet (Want me to...?)" },
+    doing: { type: "string", description: "in another app: a few words by your cursor for this step (Typing the title); else made from the step" },
     value: { type: "string", description: "the text to fill or type, or the option to select (scroll: up or down)" }, key: { type: "string", description: "the key to press (Enter, Tab, Escape; in another app with modifiers: cmd+s)" },
     direction: { type: "string", enum: ["up", "down"], description: "which way to scroll" }, as: AS },
   args: ["action", "value"],

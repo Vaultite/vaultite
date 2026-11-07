@@ -23,8 +23,10 @@ import { type DrawBridge, ScreenDrawings } from "./screendraw"
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; width: number; height: number }
 type Say = { id: string; text: string; question?: boolean }
-type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; target?: Rect; say?: Say }
-type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching" | "missed"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
+/** Driving another app: what it does now (its caption), `paused` while it waits for their hands (helperlogic.ts'). */
+type Doing = { doing?: string; paused?: boolean }
+type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; target?: Rect; say?: Say } & Doing
+type Summoned = Doing & { name: string; tint: string; state: "listening" | "thinking" | "watching" | "missed"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
   missed?: string
   follow?: boolean; aim?: { id: string; x: number; y: number }; level?: number }
 type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null
@@ -375,11 +377,11 @@ function Cursor({ a, gone, speaking }: { a: Agent; gone?: boolean; speaking?: bo
     <div ref={attach(key, paintCursor)} data-gone={gone || a.leaving || undefined} data-leaving={a.leaving || undefined} data-target={targetOf(a)}
       className={cn(FADES, "pointer-events-none", shown.dim && "opacity-55")}>
       <div className={cn("relative", shown.bob && "companion-bob")}><Arrow tint={tint} /></div>
-      <div data-flag style={{ background: tint }} className={cn(FLAG, !shown.flag && !speaking && "opacity-0")}>
+      <div data-flag style={{ background: tint }} className={cn(FLAG, !shown.flag && !speaking && !a.doing && "opacity-0")}>
         {a.name}
-        {shown.words && !speaking && <span className="font-medium opacity-85">{shown.words}</span>}
-        <Mark mark={speaking ? "speak" : shown.mark} at={a.t} />
-        {shown.why && <span className="max-w-[220px] truncate font-medium opacity-90">{shown.why}</span>}
+        {shown.words && !speaking && !a.doing && <span className="font-medium opacity-85">{shown.words}</span>}
+        <Mark mark={speaking ? "speak" : a.doing ? null : shown.mark} at={a.t} />
+        {a.doing ? <Doing d={a} /> : shown.why && <span className="max-w-[220px] truncate font-medium opacity-90">{shown.why}</span>}
       </div>
       {a.say && (
         <Hold onPointerDown={(e) => { if (e.button === 0) open(a.name, key) }} onHover={setHover} data-bubble
@@ -410,13 +412,19 @@ function Summon({ c, gone, speaking }: { c: Summoned; gone?: boolean; speaking?:
         {c.name}
         {/* (a press that went nowhere says so, never silence) */}
         {c.state === "missed" && c.missed && <span data-companion-missed className="font-medium opacity-90">{c.missed}</span>}
-        <Mark mark={speaking && c.state !== "listening" ? "speak" : c.state === "listening" ? (c.level === undefined ? "wave" : "hear") : c.state === "thinking" ? "dots" : null} />
+        {c.doing && c.state !== "listening" && <Doing d={c} />}
+        <Mark mark={speaking && c.state !== "listening" ? "speak" : c.state === "listening" ? (c.level === undefined ? "wave" : "hear") : c.state === "thinking" && !c.doing ? "dots" : null} />
       </div>
       {c.words && <div data-bubble className={cn(WORDS, "bg-background")} style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
         <span className="line-clamp-[8] text-foreground/80">{c.words}</span>
       </div>}
     </div>
   )
+}
+
+/** What it does in another app, by its name (Clicking Files), or that it waits while their hands are on the mouse. */
+function Doing({ d }: { d: Doing }) {
+  return <span key={d.doing} data-companion-doing={d.paused ? "paused" : "doing"} className={cn("screen-in max-w-[260px] truncate font-medium", d.paused ? "opacity-75 italic" : "opacity-90")}>{d.doing}</span>
 }
 
 /** Under the menu bar: dictation's box, a word for a moment, where they stay put as you move between apps. */

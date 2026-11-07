@@ -58,7 +58,9 @@ export function pointIn(r: Rect, element: boolean) {
 /** An agent's cursor at a point of the screen (global points): its bubble, its state (`t`: when it last acted); `from`:
  *  glided in from; `leaving`: into the app's window; `target`: what it points at, which its words never cover. */
 export type ScreenAgent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean
-  target?: Rect; say?: { id: string; text: string; question?: boolean } }
+  target?: Rect; say?: { id: string; text: string; question?: boolean } } & Doing
+/** Driving another app (take-over): what it does now (its caption), `paused` while it waits for their hands. */
+export type Doing = { doing?: string; paused?: boolean }
 export type Point = { x: number; y: number }
 /** The companion called up by a Talk key, listening (its words as they come) or thinking; `follow`: in its exchange, it
  *  rides beside the pointer on every display (the overlay's feed); `aim`: what it points at, which it flies to. */
@@ -67,7 +69,7 @@ export type Summoned = { name: string; tint: string; state: "listening" | "think
   missed?: string
   follow?: boolean; aim?: { id: string; x: number; y: number }
   /** Listening, how loud they are (0 to 1). */
-  level?: number }
+  level?: number } & Doing
 /** What the overlay draws: cursors, the companion summoned (the pointer's trail while its key is held: the overlay draws
  *  it from its feed), and dictation's box, under the menu bar of the pointer's display. */
 export type Scene = {

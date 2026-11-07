@@ -33,7 +33,25 @@ export default async ($: VaultTest) => {
   const ops = (plan: Any[][]) => plan.map((a) => a.map((c: Any) => c.op).join("+")).join(" | ")
   check("takeover: a click presses its element (Accessibility) before the pointer; a point is only clicked",
     ops(L.plan({ action: "click", el }, mail)) === "press | click" && ops(L.plan({ action: "click", at: { x: 5, y: 6 } }, mail)) === "click" &&
-    L.plan({ action: "click", el }, mail)[1][0].x === 140 && ops(L.plan({ action: "dblclick", el }, mail)) === "click", L.plan({ action: "click", el }, mail))
+    L.plan({ action: "click", el }, mail)[1][0].x === 140 && ops(L.plan({ action: "dblclick", el }, mail)) === "press | click" &&
+    L.plan({ action: "dblclick", el }, mail)[0][0].action === "AXOpen", L.plan({ action: "click", el }, mail))
+  const scrolled = L.plan({ action: "scroll", direction: "down" }, { ...mail, frame: { x: 0, y: 40, width: 900, height: 24 } })[0][0]
+  check("takeover: a point is acted at itself, not the middle of what's there; a scroll with no place goes where their pointer is",
+    L.plan({ action: "click", at: { x: 5, y: 6 } }, { ...mail, frame: { x: 0, y: 0, width: 1400, height: 900 } })[0][0].x === 5 &&
+    scrolled.op === "scroll" && scrolled.x === undefined && Number(scrolled.dy) < 0 && L.spotOf({ action: "scroll" }, mail) === null &&
+    L.plan({ action: "scroll", el, direction: "up" }, mail)[0][0].x === 140 && Number(L.plan({ action: "scroll", el, direction: "up" }, mail)[0][0].dy) > 0, scrolled)
+  check("takeover: a step through Accessibility needs nothing of their hands; the pointer and the keys wait for them",
+    L.kindOf("press") === "ax" && L.kindOf("set") === "ax" && L.kindOf("focus") === "ax" && L.kindOf("click") === "pointer" && L.kindOf("scroll") === "pointer" &&
+    L.kindOf("hover") === "pointer" && L.kindOf("type") === "keys" && L.kindOf("key") === "keys" && L.types({ action: "fill" }) && !L.types({ action: "click" }))
+  check("takeover: each step's caption says what it does, its own words first, at most 52 characters",
+    L.intentOf({ action: "click", el: { ...el, label: "Files" } }, mail) === "Clicking Files" && L.intentOf({ action: "fill", el: { ...el, label: "Title" }, value: "x" }, mail) === "Typing in Title" &&
+    L.intentOf({ action: "type", value: "Lighthouse" }, mail) === 'Typing "Lighthouse"' && L.intentOf({ action: "press", key: "cmd+s" }, mail) === "Pressing ⌘S" &&
+    L.intentOf({ action: "scroll", direction: "up" }, mail) === "Scrolling up" && L.intentOf({ action: "click", at: { x: 1, y: 2 } }, { ...mail, label: "" }) === "Clicking here" &&
+    L.intentOf({ action: "fill", el, value: "x", doing: "Typing the title" }, mail) === "Typing the title" && L.intentOf({ action: "click", el, doing: "x".repeat(80) }, mail).length === 52 &&
+    L.intentOf({ action: "click", el: { ...el, label: "A very long label that goes on and on past thirty" } }, mail) === "Clicking here")
+  check("takeover: a pause is said, and only a click, Esc or typing where it types stops it",
+    L.pausedLine("mouse") === "Paused, you're using the mouse" && /typing/.test(L.pausedLine("keys")) && /clicked/.test(L.tookText("user-click")) && /Esc/.test(L.tookText("user-esc")) &&
+    /typing where it was typing/.test(L.tookText("user-typing")) && /kept using/.test(L.tookText("paused")) && L.REST_MS === 1000)
   check("takeover: fill sets a native field's value, a web page's is typed (focused, all selected first)",
     ops(L.plan({ action: "fill", el, value: "x" }, { ...mail, valueSettable: true })) === "set | focus+key+type | click+key+type" &&
     ops(L.plan({ action: "fill", el, value: "x" }, { ...mail, valueSettable: true, web: true })) === "focus+key+type | click+key+type" &&
@@ -49,7 +67,7 @@ export default async ($: VaultTest) => {
   check("takeover: a private site (the page its window shows) is refused like a private app",
     /private/.test(L.refusal({ action: "click", el }, { ...mail, url: "https://diary.example.com/today" }, (a) => /diary\.example\.com/.test(a.url ?? "")) ?? ""))
   check("takeover: their yes outlasts a step's end, not their taking over or the exchange ending",
-    L.keepsYes("done") && !L.keepsYes("user-mouse") && !L.keepsYes("user-esc") && !L.keepsYes("ended") && !L.keepsYes("another") && !L.keepsYes("quit"))
+    L.keepsYes("done") && !L.keepsYes("user-click") && !L.keepsYes("user-typing") && !L.keepsYes("user-esc") && !L.keepsYes("ended") && !L.keepsYes("another") && !L.keepsYes("quit"))
   check("takeover: their hand coming off Do it isn't taking over; a spoken or an old yes has no grace",
     L.handGrace(10_000, 10_200) === L.HAND_MS - 200 && L.handGrace(10_000, 10_000 + L.HAND_MS + 1) === 0 && L.handGrace(0, 10_000) === 0)
 
@@ -75,6 +93,8 @@ export default async ($: VaultTest) => {
   check("takeover: act --ax sends the helper the element's step and its offer, its cursor flown there first",
     st === 200 && s1?.step.action === "click" && s1.step.el.label === "Save" && s1.step.el.frame.width === 80 && s1.ask === "Want me to save it?" && s1.agent === "Claude" && Array.isArray(s1.apps) && Array.isArray(s1.sites) && me?.sx !== undefined, [st, r, s1, me])
   check("takeover: it answers how it went and what's there now, by fresh ids", /^Done \(through Accessibility\)\. Now in Mail, "Draft"\.\nNear it now/.test(r.text) && /a1 menu item "Save as"/.test(r.text), r)
+  check("takeover: a scroll that moved nothing says so, not done", /^Scrolled \(with the pointer\), but nothing there moved/.test(T.doneText({ ok: true, how: "point", moved: false })) && /^Done/.test(T.doneText({ ok: true, how: "point" })))
+  check("takeover: its words for the caption go with the step (--doing), at most 52", T.stepOf({ action: "fill", ax: "a2", value: "x", doing: " Typing the title " }, near).doing === "Typing the title" && !("doing" in T.stepOf({ action: "click", ax: "a1" }, near)))
   ;[st, r] = await api("POST", "ops/companion.act", { action: "click", ax: "a2" })
   check("takeover: the next step points by the last step's ids", st === 404 && /no element a2/.test(r.error), [st, r])
   // (an ask there, no element: the field with the keys)

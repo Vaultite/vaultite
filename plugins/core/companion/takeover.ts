@@ -5,10 +5,12 @@ import type { WebSocket } from "ws"
 type Rect = { x: number; y: number; width: number; height: number }
 export type Near = { id: string; role: string; label: string; frame: Rect }
 /** What act was told, on the screen. */
-export type ScreenAct = { action: string; ax?: string; sx?: number; sy?: number; value?: string; key?: string; direction?: string; ask?: string }
+export type ScreenAct = { action: string; ax?: string; sx?: number; sy?: number; value?: string; key?: string; direction?: string; ask?: string; doing?: string }
 export type Done = { ok: boolean; why?: string; text?: string; how?: string; near?: Near[]; app?: string; title?: string
   /** A find's: the element saying the words, in the window asked about. */
-  found?: Near }
+  found?: Near
+  /** A scroll's: false when nothing there moved (at its end, or not what scrolls). */
+  moved?: boolean }
 
 /** Their spoken answer to an offer: no at any no word in it ("please stop", "sure, not that one"), yes only when it's
  *  yes words alone, else neither (an ask of its own). */
@@ -22,9 +24,10 @@ export function answerOf(words: string): boolean | null {
 }
 
 /** The step the helper is sent, from act's params and the ask's elements (`near`). */
-export function stepOf(p: ScreenAct, near: Near[]): { action: string; el?: { frame: Rect; role: string; label: string }; at?: { x: number; y: number }; value?: string; key?: string; direction?: string } {
+export function stepOf(p: ScreenAct, near: Near[]): { action: string; el?: { frame: Rect; role: string; label: string }; at?: { x: number; y: number }; value?: string; key?: string; direction?: string; doing?: string } {
   const action = p.action === "select" ? "click" : p.action
-  const base = { action, ...(p.value !== undefined ? { value: p.value } : {}), ...(p.key ? { key: p.key } : {}), ...(p.direction ? { direction: p.direction } : {}) }
+  const base = { action, ...(p.value !== undefined ? { value: p.value } : {}), ...(p.key ? { key: p.key } : {}), ...(p.direction ? { direction: p.direction } : {}),
+    ...(p.doing?.trim() ? { doing: p.doing.trim().slice(0, 52) } : {}) }
   if (p.ax) {
     const e = near.find((x) => x.id === p.ax)
     if (!e) throw new Error(`no element ${p.ax} near their pointer: the ids are the last ask's (or the last step's) near list`)
@@ -39,6 +42,7 @@ export function doneText(r: Done): string {
   if (!r.ok) return r.text ?? `It didn't work (${r.why ?? "no answer"}).`
   const how = r.how === "ax" ? " (through Accessibility)" : r.how === "point" ? " (with the pointer)" : r.how === "key" ? " (with the keys)" : ""
   const now = r.app ? ` Now in ${r.app}${r.title ? `, "${r.title}"` : ""}.` : ""
+  if (r.moved === false) return `Scrolled${how}, but nothing there moved: it's at its end, or that part doesn't scroll (point at what to scroll).${now}`
   const near = r.near?.length ? `\nNear it now (act or point by id):\n${r.near.slice(0, 20).map((e) => `  ${e.id} ${e.role} ${JSON.stringify(e.label)} at ${e.frame.x},${e.frame.y} ${e.frame.width}×${e.frame.height}`).join("\n")}` : ""
   return `Done${how}.${now}${near}`
 }

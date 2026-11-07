@@ -5,7 +5,9 @@ export type Rect = { x: number; y: number; width: number; height: number }
 /** A step the companion asked for: at an element an ask listed (`el`), a screen point (`at`), or the field with the
  *  keyboard (neither). */
 export type Step = { action: string; el?: { frame: Rect; role?: string; label?: string }; at?: { x: number; y: number }
-  value?: string; key?: string; direction?: "up" | "down" }
+  value?: string; key?: string; direction?: "up" | "down"
+  /** What it's doing, in a few words (Typing the title): its cursor's caption; else made from the step. */
+  doing?: string }
 /** What takeover.swift found there (`probe`). */
 export type Probe = { ok: boolean; why?: string; bundle?: string; name?: string; pid?: number; vaultite?: boolean; role?: string; roleName?: string; subrole?: string
   secure?: boolean; label?: string; frame?: Rect | null; actions?: string[]; valueSettable?: boolean; checked?: boolean; web?: boolean; window?: number; title?: string
@@ -82,8 +84,11 @@ export const declined: Record<Exclude<Answer, "yes">, string> = {
  *  exchange ending doesn't. */
 export const keepsYes = (why: string) => why === "done"
 
-/** The middle of where a step goes: its element's (a button's text-sized middle), else its point. */
+/** Where a step goes: its element's middle, a point itself (never the middle of what's hit there: a page's), else the
+ *  field with the keys' middle; a scroll with no place goes where their pointer is (null). */
 export function spotOf(step: Step, there?: Probe): { x: number; y: number } | null {
+  if (step.action === "scroll" && !step.el && !step.at) return null
+  if (step.at && !step.el) return step.at
   const f = step.el?.frame ?? there?.frame
   if (f) return { x: Math.round(f.x + f.width / 2), y: Math.round(f.y + f.height / 2) }
   return step.at ?? null
@@ -99,7 +104,8 @@ export function plan(step: Step, there: Probe): Call[][] {
   switch (step.action) {
     // (a button's words are pressed as their button: takeover.swift looks up its parents)
     case "click": return [...(step.el ? [[{ op: "press", ...el }]] : []), ...pointer({ op: "click", ...at })]
-    case "dblclick": return pointer({ op: "click", ...at, count: 2 })
+    // (an item's double-click is its open: Finder's, a list's)
+    case "dblclick": return [...(step.el ? [[{ op: "press", ...el, action: "AXOpen" }]] : []), ...pointer({ op: "click", ...at, count: 2 })]
     case "rightclick": return [...(step.el ? [[{ op: "press", ...el, action: "AXShowMenu" }]] : []), ...pointer({ op: "click", ...at, right: true })]
     case "hover": return pointer({ op: "hover", ...at })
     case "focus": return focus.length ? focus : [[]]
@@ -114,7 +120,55 @@ export function plan(step: Step, there: Probe): Call[][] {
     }
     case "type": return focus.length ? focus.map((pre) => [...pre, { op: "type", text: step.value }]) : [[{ op: "type", text: step.value }]]
     case "press": return focus.length ? focus.map((pre) => [...pre, { op: "key", key: step.key }]) : [[{ op: "key", key: step.key }]]
-    case "scroll": return pointer({ op: "scroll", ...at, dy: step.direction === "up" ? 400 : -400 })
+    // (its scroll bar through Accessibility first, takeover.swift's; with no place, where their pointer is: it doesn't move)
+    case "scroll": return [[{ op: "scroll", ...(at ?? {}), dy: step.direction === "up" ? 400 : -400 }]]
   }
   return []
+}
+
+/** What a call needs of the Mac: Accessibility only (their hands don't matter), the pointer, or the keys. */
+export type Kind = "ax" | "pointer" | "keys"
+export const kindOf = (op: string): Kind => (["click", "hover", "scroll"].includes(op) ? "pointer" : ["key", "type"].includes(op) ? "keys" : "ax")
+/** Whether a step types (their typing then goes where it types, and stops it). */
+export const types = (step: Step) => ["fill", "type", "press"].includes(step.action)
+
+/** How long they must be still before a step with the pointer or the keys goes on, and how long it waits for that. */
+export const REST_MS = 1000, PAUSED_MS = 45_000
+/** Its cursor's caption while it waits for their hands. */
+export const pausedLine = (hands: "mouse" | "keys") => (hands === "mouse" ? "Paused, you're using the mouse" : "Paused, you're typing")
+/** Its cursor's caption for a step (Clicking Files, Typing in Title): its own words, else made from the step. */
+export function intentOf(step: Step, there?: Probe): string {
+  const own = step.doing?.trim()
+  if (own) return cap(own)
+  const raw = (step.el?.label || (step.el || step.at ? there?.label : "") || "").replace(/\s+/g, " ").trim()
+  const name = raw && raw.length <= 30 ? raw : "", on = name ? ` ${name}` : ""
+  const words = (step.value ?? "").replace(/\s+/g, " ").trim()
+  switch (step.action) {
+    case "click": case "select": return cap(`Clicking${on || " here"}`)
+    case "dblclick": return cap(`Opening${on || " it"}`)
+    case "rightclick": return cap(`Opening the menu${name ? ` of ${name}` : ""}`)
+    case "hover": return cap(`Pointing at${on || " it"}`)
+    case "fill": return cap(name ? `Typing in ${name}` : "Filling it in")
+    case "type": return cap(words && words.length <= 24 ? `Typing "${words}"` : name ? `Typing in ${name}` : "Typing")
+    case "press": return cap(`Pressing ${keyName(step.key ?? "")}`)
+    case "check": return cap(`Checking${on || " it"}`)
+    case "uncheck": return cap(`Unchecking${on || " it"}`)
+    case "scroll": return step.direction === "up" ? "Scrolling up" : "Scrolling down"
+    case "focus": return cap(`Going to${on || " the field"}`)
+  }
+  return ""
+}
+/** A caption is at most 52 characters, as Figma's are. */
+const cap = (s: string) => (s.length > 52 ? `${s.slice(0, 51).trimEnd()}…` : s)
+const KEY_NAMES: Record<string, string> = { cmd: "⌘", command: "⌘", meta: "⌘", ctrl: "⌃", control: "⌃", alt: "⌥", option: "⌥", opt: "⌥", shift: "⇧", enter: "Return", return: "Return",
+  esc: "Esc", escape: "Esc", backspace: "Delete", delete: "Delete", tab: "Tab", space: "Space", pagedown: "Page Down", pageup: "Page Up" }
+const keyName = (combo: string) => combo.split("+").map((k) => KEY_NAMES[k.trim().toLowerCase()] ?? (k.trim().length === 1 ? k.trim().toUpperCase() : k.trim())).join("")
+
+/** What act answers when it stopped because of them (`why`: user-click, user-esc, user-typing), or waited too long. */
+export function tookText(why: string): string {
+  if (why === "user-click") return "they clicked, so it stopped there: don't act again unless they ask"
+  if (why === "user-esc") return "they pressed Esc, so it stopped: don't act again unless they ask"
+  if (why === "user-typing") return "they started typing where it was typing, so it stopped: don't act again unless they ask"
+  if (why === "paused") return "they kept using the mouse or keys, so it stopped waiting for them: ask whether to go on"
+  return "the exchange ended: stop"
 }

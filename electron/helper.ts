@@ -24,7 +24,7 @@ import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { companionVoice } from "./voice.ts"
 import { realtimeFront } from "./realtimefront.ts"
-import { stopTakeover, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard } from "./takeover.ts"
+import { stopTakeover, takeoverCaption, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard } from "./takeover.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
@@ -299,7 +299,7 @@ const live = (() => {
       // (its answer stopped in the app: Esc, its box closed)
       else if (m.t === "hush") return stopVoice()
       // (a step in another app, or their spoken answer to its offer: takeover.ts')
-      else if (m.t === "takeover" || m.t === "takeover-answer") return takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt })
+      else if (m.t === "takeover" || m.t === "takeover-answer") return takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt, redraw: draw })
       // (a web page asked for in their browser: opened there)
       else if (m.t === "open-url") return openIn(m)
       // (words a mark names, found in the window asked about)
@@ -1579,6 +1579,8 @@ function draw() {
   const says = [...live.state.notes.values()].filter((n) => n.kind === "say" && !n.dismissed)
   const s = summon
   let aimed: { id: string; x: number; y: number; frame?: Rect } | null = null
+  // (driving another app: what it does now, or that it waits for their hands, by its cursor)
+  const tc = takeoverCaption(), doing = (name: string) => (tc?.agent === name ? { doing: tc.text, ...(tc.paused ? { paused: true } : {}) } : {})
   for (const a of live.state.agents.values()) {
     if (a.state === "away") continue
     // (summoned: one cursor, the summoned one, which flies to what its own place points at, on screen or in the window)
@@ -1596,7 +1598,7 @@ function draw() {
     // (its conversation open: its words are there)
     const say = panelOpen() === a.name ? undefined : says.filter((n) => n.agent === a.name).at(-1)
     const target = a.frame ?? e.target
-    agents.push({ name: a.name, tint: a.tint, state: a.state, sx: p.x, sy: p.y, t: a.t, ...(a.seen ? { seen: true } : {}), ...(a.why ? { why: a.why } : {}), ...(target ? { target } : {}),
+    agents.push({ name: a.name, tint: a.tint, state: a.state, sx: p.x, sy: p.y, t: a.t, ...(a.seen ? { seen: true } : {}), ...(a.why ? { why: a.why } : {}), ...(target ? { target } : {}), ...doing(a.name),
       ...(say?.text ? { say: { id: say.id, text: say.text, ...(say.question ? { question: true } : {}) } } : {}) })
   }
   // (held: it rides beside the pointer through the exchange, the overlay fed the pointer; a press that's a shortcut
@@ -1612,7 +1614,7 @@ function draw() {
   const state = !s ? "watching" : listening ? "listening" : ph === "missed" || ph === "failed" ? "missed" : busy || (s && waiting(s)) ? "thinking" : "watching"
   const home = s && besidePointer(s.p, screen.getDisplayNearestPoint(s.p).bounds)
   const called: Scene["summon"] = s && home && (!listening || Date.now() - s.at > 120)
-    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...(state === "missed" && s.missed ? { missed: s.missed } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
+    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...doing(s.name), ...(state === "missed" && s.missed ? { missed: s.missed } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
   followPointer(!!called, trailed)
   // (it came: a soft cue, once a press)
   if (called && s && !s.cued) { s.cued = true; if (listening) cue("listen") }

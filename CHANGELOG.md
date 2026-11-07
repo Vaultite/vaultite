@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Moving your mouse no longer cancels the companion's take-over**: steps it does through Accessibility ignore your
+  mouse; one that needs the real pointer or keys waits while you use them ("Paused, you're using the mouse" by its
+  cursor), looks again once you've been still a second, and carries on. A click, Esc, or typing where it types stops
+  it. Each step says what it does by its cursor ("Clicking Files"), the pointer glides from yours, and comes back where
+  you left it when done. A scroll goes where your pointer is and says when nothing moved; a click at a point lands on it.
 - **The companion opens a sidebar panel when asked**: "open files" unfolds the Files panel (its sidebar shown if
   closed), and it's told the panel's rows so it can point at them; a click there used to land on nothing. Its summoned
   session may also look in your Desktop, Downloads, Pictures and screenshots folder, and when it can't look somewhere it

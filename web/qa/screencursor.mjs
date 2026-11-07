@@ -146,6 +146,21 @@ const opened = await calls("open")
 check("its bubble clicked opens the conversation at once, by its tip", opened.length === 1 && opened[0][1] === "Claude" && opened[0][2] === 400 && opened[0][3] === 500, opened)
 await scene([])
 
+// driving another app: its caption by its name, and a pause said as one (electron/takeover.ts' takeoverCaption)
+await scene([A(300, 300, { state: "writing", doing: "Clicking Files" })])
+await page.waitForTimeout(80)
+const doing = () => page.evaluate(() => [...document.querySelectorAll("[data-companion-doing]")].map((e) => [e.dataset.companionDoing, e.textContent, getComputedStyle(e.closest("[data-flag]")).opacity]))
+check("driving, its flag says what it does", JSON.stringify(await doing()) === '[["doing","Clicking Files","1"]]', await doing())
+await scene([A(300, 300, { state: "writing", doing: "Paused, you're using the mouse", paused: true })])
+await page.waitForTimeout(80)
+check("their hands on the mouse, it says it's paused", JSON.stringify((await doing()).map((d) => d.slice(0, 2))) === `[["paused","Paused, you're using the mouse"]]`, await doing())
+await scene([], { name: "Claude", tint: "orange", state: "thinking", sx: 400, sy: 300, follow: false, doing: "Typing the title" })
+await page.waitForTimeout(80)
+check("summoned, its caption shows too, no dots with it", JSON.stringify((await doing()).map((d) => d.slice(0, 2))) === '[["doing","Typing the title"]]' &&
+  !(await page.evaluate(() => !!document.querySelector("[data-companion-summoned] .companion-dots"))), await doing())
+if (process.env.SHOTS) await page.screenshot({ path: path.join(process.env.SHOTS, "doing.png") })
+await scene([])
+
 // the conversation (#panel): the window's own look, a box that takes the keyboard, words said into it
 const panel = watch(await browser.newPage({ viewport: { width: 400, height: 600 } }))
 await panel.route("http://screen.test/**", (r) => {

@@ -1,5 +1,5 @@
 // Take-over (electron/takeover.ts): elements pressed or set through Accessibility, clicks, typing and keys, and a
-// guard telling when the user moves the mouse or presses a key. JSON lines in and out; stdin closing ends it.
+// guard telling when the user stops it (a click, Esc) or has their hands on the mouse or keys. JSON lines in and out.
 import AppKit
 import ApplicationServices
 
@@ -140,23 +140,56 @@ func describe(_ el: AXUIElement) -> [String: Any] {
   return m
 }
 
-// ---------- the user taking it back: any mouse move, click or key that isn't ours
+// ---------- the user, while it drives: a click or Esc stops it, so does typing where it types; their mouse or other
+// keys only mark their hands busy (`busy`, then `rested` once still), and a step needing the pointer or keys waits
 
-var guarding = false, stopped = false, moved = 0.0
-/** Until when a mouse move isn't theirs taking over (their hand coming off Do it); a click or a key still is. */
+var guarding = false, stopped: String? = nil
+/** Their hands on the mouse or keys, since when; small moves add up (`moved`) before they count. */
+var busy = false, lastActive = 0.0, moved = 0.0, lastNudge = 0.0, modsHeld = false, resting = false
+/** How long still they must be before a step goes on (ms), and whether the step now types (their typing then stops it). */
+var restMs = 1000.0, keysStep = false
+/** Until when a mouse move isn't theirs taking over (their hand coming off Do it). */
 var graceUntil = 0.0
+/** Their pointer as they left it (given back when it's done), and whether they've moved it since it last moved it. */
+var home: CGPoint? = nil, theirsSince = false
 var guardTap: CFMachPort?
 let guardLock = NSLock()
-func userDid(_ why: String) {
+let restQueue = DispatchQueue(label: "takeover.rest")
+func userStop(_ why: String) {
   guardLock.lock()
-  let first = guarding && !stopped
-  if first { stopped = true }
+  let first = guarding && stopped == nil
+  if first { stopped = why }
   guardLock.unlock()
   if first { send(["event": "user", "why": why]) }
 }
+func active(_ why: String, mouse: Bool) {
+  guardLock.lock()
+  guard guarding, stopped == nil else { guardLock.unlock(); return }
+  lastActive = CFAbsoluteTimeGetCurrent()
+  if mouse { theirsSince = true }
+  let first = !busy, schedule = !resting
+  busy = true; resting = true
+  guardLock.unlock()
+  if first { send(["event": "busy", "why": why]) }
+  if schedule { restCheck(after: restMs) }
+}
+func restCheck(after ms: Double) {
+  restQueue.asyncAfter(deadline: .now() + ms / 1000) {
+    guardLock.lock()
+    let quiet = (CFAbsoluteTimeGetCurrent() - lastActive) * 1000
+    let rested = guarding && busy && !modsHeld && quiet >= restMs
+    var again: Double? = nil
+    if rested { busy = false; moved = 0; resting = false }
+    else if guarding && busy { again = modsHeld ? 200 : max(50, restMs - quiet) }
+    else { resting = false }
+    guardLock.unlock()
+    if rested { send(["event": "rested"]) }
+    if let again { restCheck(after: again) }
+  }
+}
 func guardStarted() -> Bool {
   if guardTap != nil { return true }
-  let types: [CGEventType] = [.mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown, .leftMouseDragged, .rightMouseDragged, .scrollWheel, .keyDown, .flagsChanged]
+  let types: [CGEventType] = [.mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel, .keyDown, .flagsChanged]
   let mask = types.reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) }
   let ready = DispatchSemaphore(value: 0)
   Thread {
@@ -164,14 +197,28 @@ func guardStarted() -> Bool {
       if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput { if guarding, let t = guardTap { CGEvent.tapEnable(tap: t, enable: true) }; return Unmanaged.passUnretained(e) }
       if !guarding || e.getIntegerValueField(.eventSourceUserData) == MARK { return Unmanaged.passUnretained(e) }
       switch type {
-      case .mouseMoved, .leftMouseDragged, .rightMouseDragged:
-        // (a nudge isn't taking over: a few points' drift from a desk's knock still is ours)
-        if CFAbsoluteTimeGetCurrent() < graceUntil { break }
+      case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+        let now = CFAbsoluteTimeGetCurrent()
+        if now < graceUntil { break }
+        // (a nudge isn't their hand on it: a few points' drift from a desk's knock still is ours)
+        guardLock.lock()
+        if (now - lastNudge) * 1000 > restMs { moved = 0 }
+        lastNudge = now
         moved += abs(e.getDoubleValueField(.mouseEventDeltaX)) + abs(e.getDoubleValueField(.mouseEventDeltaY))
-        if moved > 6 { userDid("mouse") }
-      case .keyDown: userDid(e.getIntegerValueField(.keyboardEventKeycode) == 53 ? "esc" : "key")
-      case .flagsChanged: userDid("key")
-      default: userDid("mouse")
+        let over = moved > 6
+        guardLock.unlock()
+        if over { active("mouse", mouse: true) }
+      case .scrollWheel: active("mouse", mouse: true)
+      case .leftMouseDown, .rightMouseDown, .otherMouseDown: userStop("click")
+      case .keyDown:
+        if e.getIntegerValueField(.keyboardEventKeycode) == 53 { userStop("esc"); break }
+        // (typing while it types goes where it types: theirs; a shortcut, or a key while it points, only waits)
+        guardLock.lock(); let into = keysStep; guardLock.unlock()
+        if into && e.flags.intersection([.maskCommand, .maskControl]).isEmpty { userStop("typing") } else { active("keys", mouse: false) }
+      case .flagsChanged:
+        guardLock.lock(); modsHeld = !e.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]).isEmpty; guardLock.unlock()
+        active("keys", mouse: false)
+      default: break
       }
       return Unmanaged.passUnretained(e)
     }
@@ -188,19 +235,45 @@ func guardStarted() -> Bool {
   _ = ready.wait(timeout: .now() + 3)
   return guardTap != nil
 }
-func halted() -> Bool { guardLock.lock(); defer { guardLock.unlock() }; return stopped }
+func halted() -> Bool { guardLock.lock(); defer { guardLock.unlock() }; return stopped != nil }
+/** Why a step with the pointer or the keys can't go on now: stopped ("user"), or their hands on it ("busy"). */
+func interrupted() -> String? { guardLock.lock(); defer { guardLock.unlock() }; return stopped != nil ? "user" : busy ? "busy" : nil }
+func setGuard(_ on: Bool, grace: Double, rest: Double) {
+  guardLock.lock()
+  guarding = on; stopped = nil; busy = false; moved = 0; lastActive = 0; modsHeld = false; keysStep = false; home = nil; theirsSince = false
+  graceUntil = CFAbsoluteTimeGetCurrent() + grace / 1000
+  if rest > 0 { restMs = rest }
+  guardLock.unlock()
+}
 
-// ---------- posting: the pointer, clicks, typing, keys, the wheel; each marked ours
+// ---------- posting: the pointer (gliding from where it is), clicks, typing, keys, the wheel; each marked ours
 
 let source = CGEventSource(stateID: .privateState)
 func post(_ e: CGEvent?) { guard let e else { return }; e.setIntegerValueField(.eventSourceUserData, value: MARK); e.post(tap: .cghidEventTap) }
 func pause(_ ms: Double) { Thread.sleep(forTimeInterval: ms / 1000) }
 func pointer() -> CGPoint { CGEvent(source: nil)?.location ?? .zero }
 func moveTo(_ p: CGPoint) { post(CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)) }
-func click(_ p: CGPoint, _ count: Int, _ right: Bool) {
+/** The pointer glides from where it is to `to` (seen going, never a jump); false when their hands came on it on the way.
+ *  Their pointer as they left it is kept to give back (`own`: not when it's the giving back). */
+func glide(_ to: CGPoint, own: Bool = true) -> Bool {
+  let from = pointer()
+  if own { guardLock.lock(); if home == nil || theirsSince { home = from }; theirsSince = false; guardLock.unlock() }
+  let dist = hypot(to.x - from.x, to.y - from.y)
+  let n = dist < 2 ? 1 : max(2, Int(min(320, 90 + dist * 0.25) / 8))
+  for i in 1...n {
+    if interrupted() != nil { return false }
+    let t = Double(i) / Double(n), k = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+    moveTo(CGPoint(x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k))
+    if i < n { pause(8) }
+  }
+  return true
+}
+/** nil once clicked; else why not (their hands came on it first: nothing pressed). */
+func click(_ p: CGPoint, _ count: Int, _ right: Bool) -> String? {
   let (down, up, button): (CGEventType, CGEventType, CGMouseButton) = right ? (.rightMouseDown, .rightMouseUp, .right) : (.leftMouseDown, .leftMouseUp, .left)
-  moveTo(p)
+  if !glide(p) { return interrupted() ?? "busy" }
   pause(40)
+  if let no = interrupted() { return no }
   for n in 1...max(1, count) {
     for t in [down, up] {
       let e = CGEvent(mouseEventSource: source, mouseType: t, mouseCursorPosition: p, mouseButton: button)
@@ -209,6 +282,7 @@ func click(_ p: CGPoint, _ count: Int, _ right: Bool) {
       pause(t == down ? 30 : 60)
     }
   }
+  return nil
 }
 let KEYS: [String: CGKeyCode] = ["return": 36, "enter": 36, "tab": 48, "space": 49, "delete": 51, "backspace": 51, "escape": 53, "esc": 53,
   "forwarddelete": 117, "home": 115, "end": 119, "pageup": 116, "pagedown": 121, "left": 123, "right": 124, "down": 125, "up": 126,
@@ -232,9 +306,10 @@ func key(_ combo: String) -> Bool {
   }
   return true
 }
-/** Words typed as a person would (a new line is Return, a tab Tab), a few characters an event; stops once they take over. */
-func type(_ text: String) -> Bool {
-  var chunk: [UniChar] = []
+/** Words typed as a person would (a new line is Return, a tab Tab), a few characters an event, till their hands come on
+ *  it: how much went (UTF-16 units, so the rest is typed from there), and why it stopped (nil: all of it). */
+func type(_ text: String) -> (typed: Int, why: String?) {
+  var chunk: [UniChar] = [], sent = 0
   let flush = {
     guard !chunk.isEmpty else { return }
     for down in [true, false] {
@@ -242,24 +317,57 @@ func type(_ text: String) -> Bool {
       e?.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
       post(e)
     }
+    sent += chunk.count
     chunk = []
     pause(12)
   }
   for ch in text {
-    if halted() { return false }
-    if ch == "\n" || ch == "\r\n" || ch == "\t" { flush(); _ = key(ch == "\t" ? "tab" : "return"); continue }
+    if let no = interrupted() { return (sent, no) }
+    if ch == "\n" || ch == "\r\n" || ch == "\t" { flush(); _ = key(ch == "\t" ? "tab" : "return"); sent += ch.utf16.count; continue }
     let u = Array(String(ch).utf16)
     if chunk.count + u.count > 16 { flush() }
     chunk += u
   }
   flush()
-  return !halted()
+  return (sent, interrupted())
 }
-func scroll(_ p: CGPoint, _ dy: Int32, _ dx: Int32) {
-  moveTo(p)
+/** The element at `p` and its frame (what's seen there: told apart before and after a scroll). */
+func hitAt(_ p: CGPoint) -> (AXUIElement, CGRect)? {
+  var hit: AXUIElement?
+  guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(p.x), Float(p.y), &hit) == .success, let el = hit, pidOf(el) != vaultitePid,
+        let f = frame(el) else { return nil }
+  return (el, f)
+}
+/** Scrolled through Accessibility: the scroll area at `p` (or one up from what's there) moved by its bar; nil when
+ *  there's none to move that way (a web page's), "end" when it's already at its end. */
+func scrollAX(_ p: CGPoint, _ dy: Double) -> String? {
+  guard var e = hitAt(p)?.0 else { return nil }
+  for _ in 0..<14 {
+    if (attr(e, kAXRoleAttribute) as String?) == kAXScrollAreaRole, let bar: AXUIElement = attr(e, kAXVerticalScrollBarAttribute),
+       settable(bar, kAXValueAttribute), let v: NSNumber = attr(bar, kAXValueAttribute), let area = frame(e) {
+      let contents: [AXUIElement] = attr(e, kAXContentsAttribute) ?? [], tall = contents.compactMap { frame($0)?.height }.max() ?? 0
+      guard tall > area.height + 1 else { return "end" }
+      let to = min(1, max(0, v.doubleValue - dy / (tall - area.height)))
+      if abs(to - v.doubleValue) < 0.0005 { return "end" }
+      _ = AXUIElementSetAttributeValue(bar, kAXValueAttribute as CFString, NSNumber(value: to))
+      let now: NSNumber? = attr(bar, kAXValueAttribute)
+      return now.map { abs($0.doubleValue - v.doubleValue) > 0.0001 } == true ? "ok" : nil
+    }
+    guard let up: AXUIElement = attr(e, kAXParentAttribute) else { return nil }
+    e = up
+  }
+  return nil
+}
+/** The wheel at `p` (gliding there first), or where their pointer is (nil: it doesn't move); nil once done, else why not. */
+func scroll(_ p: CGPoint?, _ dy: Int32, _ dx: Int32) -> String? {
+  if let p, !glide(p) { return interrupted() ?? "busy" }
   pause(30)
   // (in a few steps, so a page that eases its scroll follows)
-  for _ in 0..<4 { post(CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2, wheel1: dy / 4, wheel2: dx / 4, wheel3: 0)); pause(16) }
+  for _ in 0..<8 {
+    if let no = interrupted() { return no }
+    post(CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2, wheel1: dy / 8, wheel2: dx / 8, wheel3: 0)); pause(16)
+  }
+  return nil
 }
 func point(_ req: [String: Any]) -> CGPoint { CGPoint(x: req["x"] as? Double ?? 0, y: req["y"] as? Double ?? 0) }
 /** Why the keys can't go where they'd land now (a password field, Vaultite's own window), checked at each step. */
@@ -269,6 +377,22 @@ func keysRefused() -> String? {
 }
 /** Why the pointer can't act at `p`: Vaultite's own window there. */
 func pointRefused(_ p: CGPoint) -> String? { windowUnder(p)?.pid == vaultitePid ? "vaultite" : nil }
+/** Its press through Accessibility: `action` on it or a parent, else (a list's row, a sidebar's item) selecting it. */
+func pressed(_ el: AXUIElement, _ action: String) -> [String: Any] {
+  if let d = doer(el, action) { return ["ok": AXUIElementPerformAction(d, action as CFString) == .success, "how": "ax", "frame": rectJSON(frame(d))] }
+  if action == "AXPress" {
+    var e: AXUIElement? = el
+    for _ in 0..<4 {
+      guard let x = e else { break }
+      if settable(x, kAXSelectedAttribute) {
+        let ok = AXUIElementSetAttributeValue(x, kAXSelectedAttribute as CFString, kCFBooleanTrue) == .success && (attr(x, kAXSelectedAttribute) as Bool?) == true
+        return ["ok": ok, "how": "ax", "frame": rectJSON(frame(x))]
+      }
+      e = attr(x, kAXParentAttribute)
+    }
+  }
+  return ["ok": false, "why": "no-action", "frame": rectJSON(frame(el))]
+}
 
 // ---------- requests
 
@@ -276,16 +400,22 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   switch req["op"] as? String ?? "" {
   case "trusted": return ["trusted": AXIsProcessTrusted()]
   case "pointer": let p = pointer(); return ["ok": true, "x": p.x, "y": p.y]
-  // (the pointer put back where it was: no event, so nothing below sees a move)
-  case "warp": CGWarpMouseCursorPosition(point(req)); CGAssociateMouseAndMouseCursorPosition(1); return ["ok": true]
   case "guard":
     let on = req["on"] as? Bool ?? false
     if on && !guardStarted() { return ["ok": false, "why": "tap"] }
-    let grace = on ? (req["grace"] as? Double ?? 0) : 0
-    guardLock.lock(); guarding = on; stopped = false; moved = 0; graceUntil = CFAbsoluteTimeGetCurrent() + grace / 1000; guardLock.unlock()
+    setGuard(on, grace: on ? (req["grace"] as? Double ?? 0) : 0, rest: req["rest"] as? Double ?? 0)
     // (off, it sees nothing: no tap between the user and their apps but while it drives)
     if let t = guardTap { CGEvent.tapEnable(tap: t, enable: on) }
     return ["ok": true]
+  // (the step now types, or not: their typing then is into its field, and stops it)
+  case "expect": guardLock.lock(); keysStep = req["keys"] as? Bool ?? false; guardLock.unlock(); return ["ok": true]
+  // (done: their pointer glides back where they left it, unless they've had it since; then the guard goes off)
+  case "release":
+    guardLock.lock(); let back = (req["back"] as? Bool ?? false) && !theirsSince && !busy && stopped == nil ? home : nil; guardLock.unlock()
+    let went = back.map { hypot($0.x - pointer().x, $0.y - pointer().y) >= 2 && glide($0, own: false) } ?? false
+    setGuard(false, grace: 0, rest: 0)
+    if let t = guardTap { CGEvent.tapEnable(tap: t, enable: false) }
+    return ["ok": true, "back": went]
   case "probe":
     guard let el = target(req) else { return ["ok": false, "why": "gone"] }
     return describe(el)
@@ -306,32 +436,43 @@ func handle(_ req: [String: Any]) -> [String: Any] {
       let ok = AXUIElementSetAttributeValue(el, kAXValueAttribute as CFString, value as CFTypeRef) == .success && (attr(el, kAXValueAttribute) as String?) == value
       return ["ok": ok, "how": "ax", "frame": rectJSON(frame(el))]
     default:
-      let named = req["action"] as? String ?? "", action = ["AXPress", "AXShowMenu", "AXConfirm", "AXPick", "AXIncrement", "AXDecrement"].contains(named) ? named
+      let named = req["action"] as? String ?? "", action = ["AXPress", "AXShowMenu", "AXConfirm", "AXPick", "AXIncrement", "AXDecrement", "AXOpen"].contains(named) ? named
         : req["op"] as? String == "confirm" ? "AXConfirm" : req["op"] as? String == "pick" ? "AXPick" : "AXPress"
-      guard let d = doer(el, action) else { return ["ok": false, "why": "no-action", "frame": rectJSON(frame(el))] }
-      let ok = AXUIElementPerformAction(d, action as CFString) == .success
-      return ["ok": ok, "how": "ax", "frame": rectJSON(frame(d))]
+      return pressed(el, action)
     }
   case "click":
-    if halted() { return ["ok": false, "why": "user"] }
+    if let no = interrupted() { return ["ok": false, "why": no] }
     if let no = pointRefused(point(req)) { return ["ok": false, "why": no] }
-    click(point(req), req["count"] as? Int ?? 1, req["right"] as? Bool ?? false)
-    return ["ok": !halted(), "how": "point"]
+    if let no = click(point(req), req["count"] as? Int ?? 1, req["right"] as? Bool ?? false) { return ["ok": false, "why": no] }
+    return ["ok": true, "how": "point"]
   case "hover":
+    if let no = interrupted() { return ["ok": false, "why": no] }
     if let no = pointRefused(point(req)) { return ["ok": false, "why": no] }
-    moveTo(point(req)); return ["ok": true, "how": "point"]
+    return glide(point(req)) ? ["ok": true, "how": "point"] : ["ok": false, "why": interrupted() ?? "busy"]
   case "scroll":
-    if let no = pointRefused(point(req)) { return ["ok": false, "why": no] }
-    scroll(point(req), Int32(req["dy"] as? Double ?? 0), Int32(req["dx"] as? Double ?? 0))
-    return ["ok": !halted(), "how": "point"]
-  case "key":
     if halted() { return ["ok": false, "why": "user"] }
+    // (where it's asked, else where their pointer is: it scrolls what they look at, the pointer staying theirs)
+    let at = req["x"] != nil ? point(req) : nil, p = at ?? pointer(), dy = req["dy"] as? Double ?? 0
+    if let no = pointRefused(p) { return ["ok": false, "why": no] }
+    let ax = req["dx"] as? Double ?? 0 == 0 ? scrollAX(p, dy) : nil
+    if ax == "ok" { return ["ok": true, "how": "ax"] }
+    if ax == "end" { return ["ok": true, "how": "ax", "moved": false] }
+    if let no = interrupted() { return ["ok": false, "why": no] }
+    // (what's seen there before and after: a scroll that moved nothing says so)
+    let probes = [p, CGPoint(x: p.x, y: p.y - 120), CGPoint(x: p.x, y: p.y + 120)].compactMap(hitAt)
+    if let no = scroll(at, Int32(dy), Int32(req["dx"] as? Double ?? 0)) { return ["ok": false, "why": no] }
+    pause(250)
+    let moved = probes.isEmpty ? nil : probes.contains { el, was in frame(el).map { abs($0.minY - was.minY) >= 1 || abs($0.minX - was.minX) >= 1 } ?? true }
+    return ["ok": true, "how": "point", "moved": moved as Any? ?? NSNull()]
+  case "key":
+    if let no = interrupted() { return ["ok": false, "why": no] }
     if let no = keysRefused() { return ["ok": false, "why": no] }
     return key(req["key"] as? String ?? "") ? ["ok": true, "how": "key"] : ["ok": false, "why": "key"]
   case "type":
-    if halted() { return ["ok": false, "why": "user"] }
+    if let no = interrupted() { return ["ok": false, "why": no] }
     if let no = keysRefused() { return ["ok": false, "why": no] }
-    return type(req["text"] as? String ?? "") ? ["ok": true, "how": "key"] : ["ok": false, "why": "user"]
+    let (typed, why) = type(req["text"] as? String ?? "")
+    return why == nil ? ["ok": true, "how": "key"] : ["ok": false, "why": why!, "typed": typed]
   default: return ["error": "unknown op"]
   }
 }
