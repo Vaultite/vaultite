@@ -64,6 +64,12 @@ async function launch() {
   watch(win, { console: true, fail: false })
   await win.waitForSelector("[role=tree]", { timeout: 60000 })
   origin = new URL(win.url()).origin
+  // (the skip link takes the keyboard only from a Tab: anything else putting it there shows "Skip to content" at the top)
+  await win.evaluate(() => {
+    let tabbed = 0
+    addEventListener("keydown", (e) => { if (e.key === "Tab") tabbed = Date.now() }, true)
+    addEventListener("focusin", (e) => { if (e.target.matches?.("[data-skip-link]") && Date.now() - tabbed > 1000) (window.__skipFocus ??= []).push(window.__step ?? "?") }, true)
+  })
   await app.evaluate(({ app: a, BaseWindow, BrowserWindow, shell }, dl) => {
     globalThis.__opened = []
     shell.openExternal = async (u) => { globalThis.__opened.push(u) }
@@ -78,7 +84,9 @@ async function launch() {
 }
 await launch()
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-const menuClick = (label) => app.evaluate(({ Menu, BaseWindow, BrowserWindow }, label) => {
+const skipped = () => win.evaluate(() => window.__skipFocus ?? [])
+const menuClick = async (label) => { await win.evaluate((l) => { window.__step = l }, label); await menuClick_(label) }
+const menuClick_ = (label) => app.evaluate(({ Menu, BaseWindow, BrowserWindow }, label) => {
   const find = (items) => { for (const i of items) { if (i.label === label) return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
   find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow) && x.webContents))
 }, label)
@@ -111,7 +119,11 @@ const menuLabels = (items) => app.evaluate((_e, sub) => { const at = sub ? globa
 const pick = (label, sub) => app.evaluate((_e, [label, sub]) => { const at = sub ? globalThis.__menu.find((i) => i.label === sub).submenu : globalThis.__menu; at.find((i) => i.label === label).click() }, [label, sub])
 const at = (p) => `${SITE}${p}`
 /** Show the tab of an address (the first). */
-const showTab = async (to) => { const t = await tabs(); await win.locator(`[data-tab-strip] [data-tab-id="${t.ids[t.list.indexOf(to)]}"] [role=tab]`).first().click() }
+const showTab = async (to) => {
+  const t = await tabs()
+  await win.locator(`[data-tab-strip] [data-tab-id="${t.ids[t.list.indexOf(to)]}"] [role=tab]`).first().click({ timeout: 10000 })
+    .catch(async (e) => { throw new Error(`${e.message.split("\n")[0]} (skip link focused after: ${JSON.stringify(await skipped())}, active: ${await win.evaluate(() => document.activeElement?.outerHTML.slice(0, 80))})`) })
+}
 async function openOpener() {
   await ui({ action: "open", path: at("/opener"), newTab: true })
   check("(the opener's page is shown)", await until(async () => (await shownUrl()) === at("/opener"), 30000), await pages())
@@ -308,6 +320,7 @@ await until(async () => (await shownUrl()) === at("/two"), 8000)
 await menuClick("Close tab")
 await wait(2500) // (the page histories are written a moment later)
 // (a playground vault starts afresh on another port: what the app keeps in localStorage is carried over)
+check("closing pages and tabs: the skip link never took the keyboard with no Tab", !(await skipped()).length, await skipped())
 const kept = await win.evaluate(() => ["vaultite.tabs.closed"].map((k) => [k, localStorage.getItem(k)]))
 await app.close()
 await launch()
@@ -320,6 +333,7 @@ check("… with its page's history", await until(() => hadPast("/opener", "/two"
 await menuClick("Reopen closed tab")
 check("… and again, the one closed before", await until(async () => (await shownUrl()) === at("/three"), 15000), [await tabs(), await pages()])
 
+check("… and the skip link never took the keyboard with no Tab", !(await skipped()).length, await skipped())
 await app.close()
 server.close()
 fs.rmSync(TMP, { recursive: true, force: true })
