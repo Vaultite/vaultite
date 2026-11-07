@@ -27,7 +27,7 @@ const OPENER = page("Lighthouse", `<h1>Lighthouse</h1>
 <a id="dl" href="/file.txt" target="_blank">the log book</a>
 <button id="pop" onclick="window.kid = window.open('/child')">Open the child</button>
 <button id="popclose" onclick="window.open('/closer')">Open one that closes itself</button>
-<button id="signin" onclick="window.open('/child', 'signin', 'width=420,height=500')">Sign in</button>
+<button id="signin" onclick="window.open('//localhost:' + location.port + '/child', 'signin', 'width=420,height=500')">Sign in with another site</button>
 <script>addEventListener("message", (e) => { document.title = "got " + e.data })</script>`)
 const server = http.createServer((req, res) => {
   const u = req.url ?? "/"
@@ -68,7 +68,7 @@ async function launch() {
     globalThis.__opened = []
     shell.openExternal = async (u) => { globalThis.__opened.push(u) }
     a.setPath("downloads", dl)
-    const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow)); w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus()
+    const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow) && x.webContents); w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus()
   }, DOWNLOADS)
   // (the link menu's native menu isn't drawn: its items are kept as the right-click made them)
   await app.evaluate(({ Menu }) => {
@@ -80,11 +80,11 @@ await launch()
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const menuClick = (label) => app.evaluate(({ Menu, BaseWindow, BrowserWindow }, label) => {
   const find = (items) => { for (const i of items) { if (i.label === label) return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
-  find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow)))
+  find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow) && x.webContents))
 }, label)
 /** The web pages over the window: address, title, shown, contents id. */
 const pages = () => app.evaluate(({ BaseWindow, BrowserWindow }) => {
-  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow))
+  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow) && x.webContents)
   return w.contentView.children.filter((v) => v.webContents && v.webContents !== w.webContents)
     .map((v) => ({ url: v.webContents.getURL(), title: v.webContents.getTitle(), visible: v.getVisible() && v.getBounds().x > -1000, wc: v.webContents.id }))
 })
@@ -100,7 +100,7 @@ const tabs = () => win.evaluate(() => {
 const paneCount = () => win.locator("[data-pane-area] > section[data-pane-frame]:not([data-away])").count()
 /** A click in the visible page as a person's (real input), with modifiers or another button. */
 const clickInPage = (sel, modifiers = [], button = "left") => app.evaluate(async ({ BaseWindow, BrowserWindow }, [sel, modifiers, button]) => {
-  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow))
+  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow) && x.webContents)
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && x.getBounds().x > -1000)
   const [x, y] = (await v.webContents.executeJavaScript(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getClientRects()[0]; return [r.left + 20, r.top + r.height / 2] })()`)).map(Math.round)
   v.webContents.sendInputEvent({ type: "mouseMove", x, y, modifiers })
@@ -181,8 +181,9 @@ check("Open link in container › Work: a tab behind, in Work", await until(asyn
 await rightClick("#b")
 await pick("Open link to the side")
 check("Open link to the side: in a pane beside", await until(async () => (await paneCount()) === 2 && (await shownUrl()) !== undefined, 8000), await paneCount())
-await menuClick("Close pane").catch(() => {})
-await until(async () => (await paneCount()) === 1, 5000)
+// (⌘W in a split closes just the focused pane: the one the link opened)
+await menuClick("Close tab")
+check("… ⌘W closes that pane, the page's own stays", await until(async () => (await paneCount()) === 1 && (await tabs()).active === at("/opener"), 5000), [await paneCount(), await tabs()])
 await showTab(at("/opener"))
 await until(async () => (await shownUrl()) === at("/opener"), 8000)
 
@@ -243,8 +244,10 @@ for (const t of await theirs()) await op("close", { tab: t.tab })
 // ---------- a sized popup (signing in with another site): a window titled with its site, closed with its page ----------
 await openOpener()
 await clickInPage("#signin")
-const popup = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w.webContents.getURL().includes("/child")).map((w) => w.getTitle()))
-check("a sized popup: a window of its own, titled with its site", await until(async () => (await popup())[0] === "127.0.0.1", 10000), await popup())
+// (a window of its own: a BaseWindow, its page a view in it, popup.ts; the app's windows have their own webContents)
+const popup = () => app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().filter((w) => !w.isDestroyed() && !w.webContents
+  && w.contentView.children.some((v) => v.webContents?.getURL().includes("/child"))).map((w) => w.getTitle()))
+check("a sized popup: a window of its own, titled with its site", await until(async () => (await popup())[0] === "localhost", 10000), await popup())
 check("… which reaches its page", await until(async () => (await pages()).some((p) => p.title === "got hi"), 5000), await pages())
 await menuClick("Close tab")
 check("… and closes with it", await until(async () => (await popup()).length === 0, 8000), await popup())
@@ -270,7 +273,7 @@ check("… their pages too", (await pages()).filter((p) => [at("/one"), at("/two
 await openOpener()
 // (under Playwright a page navigates in its own frame, not one swapped in: main.ts, RenderDocument)
 const frameShown = () => app.evaluate(({ BaseWindow, BrowserWindow }) => {
-  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow))
+  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow) && x.webContents)
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && x.getBounds().x > -1000)
   return v && `${v.webContents.id}:${v.webContents.mainFrame.routingId}`
 })
@@ -284,7 +287,7 @@ await menuClick("Reopen closed tab")
 check("⌘⇧T: the tab back at its page", await until(async () => (await shownUrl()) === at("/one"), 10000), await pages())
 /** The shown page's history (its addresses, where it is), and Back in it. */
 const past = () => app.evaluate(({ BaseWindow, BrowserWindow }) => {
-  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow))
+  const w = BaseWindow.getAllWindows().find((x) => !(x instanceof BrowserWindow) && x.webContents)
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && x.getBounds().x > -1000)
   return v ? { urls: v.webContents.navigationHistory.getAllEntries().map((e) => e.url), at: v.webContents.navigationHistory.getActiveIndex() } : null
 })

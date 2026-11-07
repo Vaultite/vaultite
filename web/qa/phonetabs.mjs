@@ -314,6 +314,10 @@ try {
   check("tab list: ...named by both its panes, marked as holding 2", / · /.test(await splitCard.locator("[data-tab-card] > button").first().getAttribute("aria-label").catch(() => "")) && (await splitCard.locator("[data-card-panes]").getAttribute("data-card-panes").catch(() => "")) === "2",
     [await splitCard.locator("[data-tab-card] > button").first().getAttribute("aria-label").catch(() => null), await splitCard.locator("[data-card-panes]").getAttribute("data-card-panes").catch(() => null)])
   await P.screenshot({ path: `${OUT}phone-list-split.png` })
+  // The split's new pane closed on the desktop (⌥⇧⌘W, its focused one): one card again, as before it. (What follows is
+  // about tabs outside a split: in one, a new tab is one of the focused pane's own, as on a computer.)
+  await D.keyboard.press("ControlOrMeta+Alt+Shift+KeyW")
+  check("tab list: the desktop closes the split's pane, the phone's card is a tab of one", !!(await until(async () => !(await splitCard.count()) && (await P.locator("[data-tab-row]").count()) === left, 6000)), await P.locator("[data-tab-row]").count())
   await P.keyboard.press("Escape"); await P.goBack().catch(() => {}); await wait(300)
   await P.goto(`${B}${hash("Three")}`); await P.waitForSelector("[data-phone-bar]"); await wait(500)
 
