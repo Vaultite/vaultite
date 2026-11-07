@@ -108,11 +108,17 @@ const entryOf = (p: Record<string, unknown>): Entry => {
   if (/[\n:]\s/.test(word) || said.includes(": ")) throw new OpError("a word, without \": \" (what's said goes in `said`)")
   return said && said.toLowerCase() !== word.toLowerCase() ? { word, said } : { word }
 }
+/** The changes in order: two fixes at once (a word and the next) each read what the last one saved. */
+let changing: Promise<unknown> = Promise.resolve()
 /** The dictionary changed by `change`, saved when it did: made (Dictionary.md) when there's none yet. */
-async function changeDictionary(change: (body: string) => { body: string; did: boolean }) {
-  const old = note(), r = change(String(old?.body ?? ""))
-  const saved = r.did ? await plugin.vault.save("dictionary", { body: r.body }, old?.id ?? null) : old
-  return { path: saved ? `${saved.id}.md` : null, did: r.did }
+function changeDictionary(change: (body: string) => { body: string; did: boolean }) {
+  const next = changing.then(async () => {
+    const old = note(), r = change(String(old?.body ?? ""))
+    const saved = r.did ? await plugin.vault.save("dictionary", { body: r.body }, old?.id ?? null) : old
+    return { path: saved ? `${saved.id}.md` : null, did: r.did }
+  })
+  changing = next.catch(() => {})
+  return next
 }
 const named = (e: Entry) => (e.said ? `"${e.said}" as ${e.word}` : e.word)
 

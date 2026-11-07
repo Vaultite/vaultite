@@ -50,6 +50,9 @@ export default async ($: VaultTest) => {
     check("dictation: the dictionary's words come first, then Vaultite's, the people's and projects' names",
       c.terms[0] === "Vorssaint" && c.terms[1] === "Olimpicos" && ["Alice Park", "Lighthouse", "@claude"].every((w, i) => i === 2 ? !c.terms.includes(w) : c.terms.includes(w)) && c.terms.includes("at Claude"), c.terms)
     check("dictation: what's written for what's said, Vaultite's then the dictionary's", JSON.stringify(c.replacements) === '[["at Claude","@claude"],["Olympicos","Olimpicos"]]', c.replacements)
+    await Promise.all(["Lighthouse", "Alice Park"].map((word) => api("POST", "ops/dictation.add", { word })))
+    check("dictation add: two at once both kept", dict().includes("- Lighthouse\n") && dict().includes("- Alice Park\n"), dict())
+    for (const word of ["Lighthouse", "Alice Park"]) await api("POST", "ops/dictation.remove", { word })
     const fixed = (word: string, said: string) => api("POST", "ops/dictation.add", { word, said, fixed: true })
     let [, fr] = await fixed("Kaio", "Kyle")
     check("dictation: a fix teaches the word first", JSON.stringify(fr.added) === '{"word":"Kaio"}' && dict().includes("- Kaio\n") && !dict().includes("Kyle"), fr)
