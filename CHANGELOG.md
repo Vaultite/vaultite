@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Sessions by the notch**: agents working in the background (terminals, jobs) show as small faces beside the notch
+  (top centre on a Mac without one; right of Vorssaint's island when it's there), each working, needing you or done.
+  When one asks for you (`vau companion knock`), its line comes up there at a pause, never while anyone talks: say or
+  click "Not now" and it comes back at your next break, "show me" opens it.
 - **The companion stays out of screen shares and keeps quiet on calls**: its cursors, drawings, cards and boxes never
   show in a screen share, a recording or a screenshot (only you see them). While another app has the mic (a call in
   Zoom, FaceTime, Meet, Slack or Discord, a recording), its answers show in its box with a play button instead of being

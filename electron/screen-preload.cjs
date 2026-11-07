@@ -43,6 +43,18 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
     },
     act: (a) => ipcRenderer.send("screen:draw-act", a),
   },
+  // (the sessions by the notch and a knock's line: screen.html#island)
+  island: {
+    on(fn) {
+      const h = (_e, m) => fn(m)
+      ipcRenderer.on("vaultite:island", h)
+      return () => { ipcRenderer.removeListener("vaultite:island", h) }
+    },
+    grab: (on) => ipcRenderer.send("island:grab", !!on),
+    act: (act, id, mute) => ipcRenderer.send("island:act", { act, id, mute: mute === true }),
+    // (where each session shows in it, in its points: a Talk key held over one talks to it)
+    faces: (list) => ipcRenderer.send("island:faces", list),
+  },
   // (a cursor's conversation, its own window: screen.html#panel)
   panel: {
     on(fn) {

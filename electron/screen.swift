@@ -700,6 +700,19 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "exchange": exchange = req["on"] as? Bool ?? false; return ["ok": true]
   case "clicks": clicks = req["on"] as? Bool ?? false; return ["ok": true]
   case "inputs": inputs = req["on"] as? Bool ?? false; return ["ok": true]
+  case "notch":
+    // (each display, top-left origin, and its camera's notch: the top between the menu bar's two sides, where one has it)
+    let h = NSScreen.screens.first?.frame.height ?? 0
+    return ["screens": NSScreen.screens.map { s -> [String: Any] in
+      let f = s.frame, top = h - f.maxY
+      var m: [String: Any] = ["frame": rectJSON(CGRect(x: f.minX, y: top, width: f.width, height: f.height))]
+      if #available(macOS 12.0, *), s.safeAreaInsets.top > 0, let l = s.auxiliaryTopLeftArea, let r = s.auxiliaryTopRightArea, r.minX > l.maxX {
+        // (the sides come in the display's own points on some systems, the screen's on others)
+        let off = (f.minX...f.maxX).contains(l.maxX) && f.minX != 0 ? 0 : f.minX
+        m["notch"] = rectJSON(CGRect(x: off + l.maxX, y: top, width: r.minX - l.maxX, height: s.safeAreaInsets.top))
+      }
+      return m
+    }]
   case "windows":
     // (on screen, every layer: what a display's picture would show, by whose; metadata only)
     let all = onScreen()

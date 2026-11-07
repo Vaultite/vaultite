@@ -21,6 +21,8 @@ import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bi
 import { REAL as captureReal, captureHeard, captureHost, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
+import { islandNow, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence } from "./knockhelper.ts"
+import type { Presence } from "../plugins/core/companion/knocks.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, dropDrawings, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, penSounds, showDrawing, showOverlay, watchLayers, type PanelData } from "./overlay.ts"
 import { type Area, followed as thingFollowed, makeWatch, type On, SAMPLE_MS, sampleFrom, sampleSize, watchedAreas } from "./markwatch.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
@@ -102,7 +104,7 @@ export async function startHelper(h: HelperHost) {
   host = h
   app.on("will-quit", stopHelper)
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v), presses: () => presses.read(),
-    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, badge: () => badged, menu: () => menuItems() } })
+    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems() } })
   onScreenEvent(heard)
   ipcMain.removeAllListeners("vaultite:place")
   ipcMain.on("vaultite:place", (e, m: { id?: unknown; place?: unknown }) => placeTold(e.sender, m))
@@ -120,6 +122,11 @@ export async function startHelper(h: HelperHost) {
     deliver: async (c) => String((await op("companion.capture", c)).said ?? "Sent") })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   watchLayers(layersChanged)
+  knockHost({ say: (m) => live.say(m), talking: () => !!session || !!panelOpen() || !!speakingNow || speaker.saying() || voiceFront.speaking() || (!!summon && ACTIVE.has(summon.m.phase)) || (!!exchange && going(exchange)),
+    base: () => (live.state.mode === "off" ? null : based || null), ask: (o, r) => screenAsk(o, r ?? {}), cue: (n) => cue(n),
+    speak: (text) => { if (prefs.voice.mode !== "off" && !quietForCall()) void voiceCall("voice:sample", [{ text, after: true }]).catch(() => {}) },
+    open: (p) => void openPresence(p), hint,
+    send: (id, text) => op("terminal.send", { id, text }).then(() => true, () => false), ...(QUIET ? { still: () => Number(process.env.VAULTITE_QA_STILL ?? 2000) } : {}) })
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu, play: playQuiet,
     // (Esc in its box ends the exchange; the box closed otherwise (clicked away, its close) leaves what it says going on)
     closed: (_name, why) => { if (session?.into === "panel") stopFor(session.sink, true); if (why === "esc") endExchange(); else moveOn(); draw() } })
@@ -146,6 +153,7 @@ export function stopHelper() {
   voiceFront.close()
   speaker.quit()
   live.close()
+  stopKnocks()
   closePanel()
   showOverlay(null)
   stopScreen()
@@ -216,6 +224,17 @@ async function openJob(j: HelperJob) {
   // (a window just opening has no page to open it in yet)
   for (let i = 0; i < 20; i++) {
     if (await op("companion.job-open", { id: j.id }).catch(() => op("ui.open", { path: j.link })).then(() => true, () => false)) return
+    await new Promise((r) => setTimeout(r, 500))
+  }
+}
+/** A session by the notch opened: its terminal in Vaultite, or what its knock names. */
+async function openPresence(p: Presence) {
+  if (!host) return
+  host.openHome()
+  const go = () => (p.terminal ? op("terminal.open", { id: p.terminal }) : p.open ? op("ui.open", { path: p.open }) : Promise.resolve({}))
+  // (a window just opening has no page to open it in yet)
+  for (let i = 0; i < 20; i++) {
+    if (await go().then(() => true, () => false)) return
     await new Promise((r) => setTimeout(r, 500))
   }
 }
@@ -342,6 +361,7 @@ const live = (() => {
       else if (m.t === "things") return void axThings(nearPoint ?? screen.getCursorScreenPoint()).then((things) => live.say({ t: "takeover-done", id: m.id, ok: true, things }))
       // (a companion's wait listening: clicks and typing, told to the server as they happen)
       else if (m.t === "inputs") return void screenAsk("inputs", { on: m.on === true }).catch(() => {})
+      else if (m.t === "knocks") return knocksHeard(m)
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
         for (const j of jobNews(state.jobs, jobs, prefs.jobNews)) jobNotice(j)
@@ -740,10 +760,12 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
  *  there, never an ask. */
 function captured(s: Summon, text: string) {
   if (text && !s.told) { s.told = true; happened({ t: s.at, kind: "said", text }) }
-  if (!text || !captureHeard(text, s.at)) return false
+  // (a short answer to a knock by the notch is answered there ("not now", "show me"); words over a session there are its)
+  const why = !text ? "" : captureHeard(text, s.at) ? "capture" : knockSaid(text) ? "knock" : toPresence(text, s.p) ? "session" : ""
+  if (!why) return false
   voiceFront.stop()
-  s.press?.end("capture")
-  closeSummon(s, "capture")
+  s.press?.end(why)
+  closeSummon(s, why)
   draw()
   return true
 }
@@ -825,7 +847,7 @@ function answerArrived() {
   cue("answer")
 }
 /** A soft cue (the companion's `sounds`; a scripted copy only notes it). */
-function cue(name: "listen" | "sent" | "answer" | "missed") {
+function cue(name: "listen" | "sent" | "answer" | "missed" | "knock") {
   // (on a call, none: the call would hear them)
   if (QUIET) return void asked.push({ cue: name, ...(quietForCall() ? { quiet: true } : {}) })
   if (prefs.sounds && !quietForCall()) playCue(name)

@@ -5,6 +5,7 @@ import path from "node:path"
 import { besidePointer, grownAt, panelAt, pointerBox, type Point, reaching, type Rect, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
 import { overlayWindow } from "./overlaywin.ts"
+import { islandWindow } from "./island.ts"
 import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
@@ -263,7 +264,7 @@ export const panelOpen = () => (panel && !panel.w.isDestroyed() ? panel.name : n
 /** Where it is on screen (its words' box, not the room around it), or null. */
 export const panelBounds = () => { if (!panel || panel.w.isDestroyed() || !panel.w.isVisible()) return null; const b = panel.w.getBounds(); return { x: b.x + PAD, y: b.y + PAD, width: b.width - PAD * 2, height: b.height - PAD * 2 } }
 /** The windows that are ours on screen (the overlay's, the conversation): a display's picture leaves them out. */
-export const ownWindows = () => [...wins.values(), ...(panel && !panel.w.isDestroyed() ? [panel.w] : [])]
+export const ownWindows = () => [...wins.values(), ...(panel && !panel.w.isDestroyed() ? [panel.w] : []), ...(islandWindow() ? [islandWindow()!] : [])]
   .map((w) => Number(/^window:(\d+)/.exec(w.getMediaSourceId())?.[1] ?? 0)).filter((n) => n > 0)
 export const panelFocused = () => !!panel && !panel.w.isDestroyed() && panel.w.isFocused()
 export function closePanel(esc = false) {

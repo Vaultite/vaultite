@@ -21,6 +21,7 @@ import { arrowBox, boxAt, flagBox } from "../../plugins/core/companion/boxes"
 import { Chat, type ChatItem } from "../../plugins/core/companion/Chat"
 import { type DrawBridge, ScreenDrawings } from "./screendraw"
 import { Region, REGION_STYLE } from "./screenregion"
+import { Island, ISLAND_STYLE } from "./screenisland"
 import type { RegionScene } from "../../plugins/core/companion/clips"
 
 type Point = { x: number; y: number }
@@ -651,6 +652,6 @@ const STYLE = `
 @keyframes behind-tap { from { opacity: .7; scale: .3; } to { opacity: 0; scale: 1.3; } }
 @media (prefers-reduced-motion: reduce) { .companion-miss, .companion-glow, .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen, .behind-in, .behind-tap { animation: none !important; } }
 `
-document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE + REGION_STYLE }))
+document.head.append(Object.assign(document.createElement("style"), { textContent: location.hash === "#island" ? ISLAND_STYLE : STYLE + REGION_STYLE }))
 document.documentElement.style.background = "transparent"
-createRoot(document.getElementById("root")!).render(<StrictMode>{location.hash === "#panel" ? <Panel /> : <Screen />}</StrictMode>)
+createRoot(document.getElementById("root")!).render(<StrictMode>{location.hash === "#panel" ? <Panel /> : location.hash === "#island" ? <Island /> : <Screen />}</StrictMode>)

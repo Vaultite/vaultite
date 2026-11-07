@@ -25,6 +25,7 @@ import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMP
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type JobState, jobSpoken, jobTimingsText, jobTold } from "./jobs.ts"
+import { knockOps } from "./knockops.ts"
 import { captureOps } from "./captures.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
@@ -1125,6 +1126,7 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
   send(ws, snapshot())
   for (const m of screenDrawing.messages()) send(ws, m)
   send(ws, { t: "jobs", jobs: jobs.cards() })
+  knocks.hello()
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
@@ -1145,6 +1147,7 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "job-seen" && Array.isArray(m.ids)) return void jobs.seen(m.ids.filter((x): x is string => typeof x === "string").slice(0, 30))
     // (a cursor's conversation opened over the screen: its says seen)
     if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
+    if (m.t === "knock") return void knocks.heard(m)
     if (m.t === "drawing-act") return void drawingAct(m, req)
     if (m.t === "moment" && !takeover.heard(ws, m)) screenMoment(m, req)
     if (m.t === "answered") screenAnswered(m)
@@ -2631,6 +2634,8 @@ const jobs = jobOps(plugin, {
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
 captureOps(plugin, jobs)
+// Knocks: background sessions asking for the user, one line at a pause, and their presences by the notch (knocks.ts).
+const knocks = knockOps(plugin, { toScreens, listening: () => screens.size > 0, jobs: () => jobs.list(), off: () => mode() === "off", hidden: () => plugin.settings().island === false })
 /** The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"):
  *  its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first. */
 plugin.provide("agents-used:companion", (): AgentUse[] => [
