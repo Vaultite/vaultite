@@ -6,6 +6,7 @@ import { AmbientButton, backDetail, definePlugin, getStore, onTabLayoutChange, n
 import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, markUnread, onFresh, pinEvents, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
+import { DecisionsBlock } from "./DecisionRows"
 import { byKey, doneByKey, fileTo, keysOnThreads, press, stepSheet, GateSheet, keysOnInbox, pinByKey, readByKey, replyByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, ItemBar, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, tabButtonsOf, toReview, useBack, useCount } from "./Inbox"
 import { snoozed, snoozeMs } from "./snooze"
 import { settings, type Settings } from "./settings"
@@ -95,12 +96,11 @@ function Preview() {
   return (
     <Panel title="Inbox" icon={InboxIcon} tint="var(--inbox)">
       <p className="text-[15px] leading-[20px] text-muted-foreground">
-        What your agents tell you, in one place. Each session of Claude Code or another coding agent is one thread: when it
-        needs you (it asks something, wants an approval, answered or reported with something to read), it's in the inbox
-        with a toast (and a system notification, while the app is in the background), and stays there until you mark it
-        done or reply and it finishes with nothing more for you. A turn done with nothing for you goes in quietly. Results
-        to read later, like an agent's research or a clipped page, land in the Inbox folder, to mark done (into
-        Inbox/.archive/) or file away.
+        What your agents need you to decide, in one place. Each question an agent asks is its own item, its options as
+        buttons and the default it takes if you don't answer: the ones it waits on come first, with a toast and a push to
+        your phone; the ones where it went with the default already wait quietly, and Accept all defaults takes them all.
+        What agents finish goes in the morning brief, one line each; their progress shows on their own rows. Results to
+        read later, like research or a clipped page, land in the Inbox folder too.
       </p>
     </Panel>
   )
@@ -110,6 +110,10 @@ function mock(): Partial<Store> {
   const at = (min: number) => new Date(Date.now() - min * 60000).toISOString().slice(0, 19).replace("T", " ")
   return {
     inbox: [
+      { id: "Inbox/Deploy account", title: "Deploy account", status: "new", from: "Claude Code", source: "", created: at(12), body: "",
+        question: "Which account should tonight's deploy use?", options: ["Work", "Personal"], default: "Personal", blocking: true },
+      { id: "Inbox/Quieter island", title: "Quieter island", status: "new", from: "Codex", source: "", created: at(95), body: "The spinner shows only on hover now.",
+        question: "Keep the quieter island by the notch?", options: ["Keep", "Go back"], default: "Keep", blocking: false },
       { id: "Inbox/Plant care apps compared", title: "Plant care apps compared", status: "new", from: "Claude", source: "", created: at(40), body: "" },
       { id: "Inbox/A field guide to tiling window managers", title: "A field guide to tiling window managers", status: "new", from: "Web clipper",
         source: "https://example.com/tiling", created: at(180), body: "" },
@@ -148,7 +152,7 @@ export default definePlugin({
     [SESSION_DETAIL]: { title: (_s, [id]) => sessionTitle(id), render: (_s, [id]) => <SessionSheet id={id} /> },
     [SNOOZE_DETAIL]: { title: () => "Snooze until", render: (_s, keys) => <SnoozeSheet keys={keys} /> },
   },
-  blocks: { inbox: ({ store, options }) => <InboxBlock store={store} options={options} />, reply: (ctx) => <ReplyBlock {...ctx} /> },
+  blocks: { inbox: ({ store, options }) => <InboxBlock store={store} options={options} />, reply: (ctx) => <ReplyBlock {...ctx} />, decisions: (ctx) => <DecisionsBlock {...ctx} /> },
   files: { types: ["inbox"], folders: ["Inbox"], icon: InboxIcon, tint: "var(--inbox)" },
   // (an item to review, where it's open: Settle and Snooze on its tab's hover and in its file bar)
   tabButtons: tabButtonsOf,

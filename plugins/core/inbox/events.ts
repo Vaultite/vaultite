@@ -1,5 +1,6 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
+import { useMemo } from "react"
 import { agentsOn, canRunAgents, cell, clickOpening, del, detailPath, fetchMachines, focusedPane, get, getTabLayout, shownTab, isDesktop, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openView, openWebLink, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
 import { snoozed, snoozeMs } from "./snooze"
 import { isMessage, waitsOnYou } from "./threads"
@@ -224,4 +225,19 @@ export function openEvent(e: InboxEvent) {
 export function focusedTarget(layout: TabLayout = getTabLayout()): string {
   const t = shownTab(layout)
   return t ? focusedPane(t).to : ""
+}
+
+/** What sessions said of their progress (inbox.progress), by terminal and by session: the Agents panel's rows show it
+ *  as their step while they're on it. */
+export function useProgress(): Map<string, string> {
+  const { events } = useEvents()
+  return useMemo(() => {
+    const m = new Map<string, string>()
+    for (const e of events) {
+      if (e.kind !== "session" || e.state === "done" || !e.progress) continue
+      if (e.terminal) m.set(e.terminal, e.progress)
+      if (e.session) m.set(e.session, e.progress)
+    }
+    return m
+  }, [events])
 }

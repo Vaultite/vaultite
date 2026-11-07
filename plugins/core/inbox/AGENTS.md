@@ -1,6 +1,43 @@
 ## Inbox (`Inbox/<Title>.md`, and events)
-Something for the user to read later (research, a summary): `vau inbox add "<title>" --tldr "<in short>" --body
-"<markdown>"` (MCP's `inbox_add`). A long task finished: `vau notify "<text>"`.
+The inbox is for decisions: what only the user can settle. Each question is its own item, with its options and the
+default you take if they don't answer; never a question in prose (a "Your call" list in a report goes unanswered).
+- A question: `vau inbox ask "<question>" --options "<a>" "<b>" --default "<a>" [--blocking] [--why "<context>"]`.
+  blocking: you're stopped on it (it comes first, toasts and pushes to the phone); else you went with the default already
+  and it reads "Went with X; change it?", quietly. The same question open already (yours or another agent's) is that one.
+- The end of a task: `vau inbox report` (below), its questions as `--decision`.
+- Progress (a check-in, still working, a step done): `vau inbox progress "<line>"`, on your session's own row (the Agents
+  panel, the inbox's Working), each line replacing the last. Never a report or a result.
+- Something for the user to read later (research, a summary): `vau inbox add "<title>" --tldr "<in short>" --body
+  "<markdown>"` (MCP's `inbox_add`). A long task finished: `vau notify "<text>"`.
+
+**Decisions**: a file in `Inbox/` each (`type: inbox` with a `question`), drawn with its buttons (a `decisions` block):
+````
+---
+type: inbox
+status: new                 # new: open; done once answered or closed (archived into Inbox/.archive/)
+from: Claude Code
+created: '2026-10-01 18:00:00'
+question: Ship the new sidebar to the phone too?
+options: [Ship it, Not yet]
+default: Not yet            # what its agent takes (or took) if the user doesn't answer
+blocking: true              # its agent waits on it; absent: it went with the default already
+report: '[[Fix done · Sidebar scrolls again]]'   # the report that asked it; also: other reports that asked it too
+answer: Ship it             # set by vau inbox decide, with answered (when)
+closed: The sidebar was replaced in 3f2a1c       # instead of an answer: why it no longer matters
+agent: claude               # the session its answer goes to (session, terminal, machine)
+---
+
+```block-decisions
+```
+
+Its context: one or two plain sentences.
+````
+- The user answers (`vau inbox decide <path> "<option>"`, `--default`, `--defaults` for Accept all defaults, `--moot
+  "<why>"`, `--undo`): only with their own answer, never for them. Its agent is told (one reply per session, into its
+  report) when it waits on it or the user changed the default it took; a default kept goes nowhere.
+- Later work settles a question: name it in your report (`--settles <path>`), and it closes saying so; a small model also
+  reads each new report and answer against what's open and closes what they clearly settle, and merges a question asked
+  again in other words. `vau inbox decisions` lists what's open.
 
 **Results**: a file in `Inbox/` for the user to review, then settle (archive) or file into a folder:
 ````
@@ -24,22 +61,26 @@ What it says, as Markdown.
 - Pin (`vau inbox pin <path|event id>`, `--off` unpins): kept on top under Pinned whatever it waits on, until it's settled.
 - Hold (`vau inbox hold 30m --label "Practice guitar"`, or 07:30, off): nothing is told (toasts, the Mac's and the phone's
   notifications) until then, on every machine; what came is unread, summed up in one line when it ends.
-- **A TL;DR on top** of every result you write (`--tldr`): what it says and what you need from the user, in two or
-  three plain sentences.
+- **A TL;DR on top** of every result you write (`--tldr`): what it says, in a line or two of plain words.
 - **A report** ends a task you were handed to do alone (a voice note, a note handed to you: Dispatch, a schedule):
-  `vau inbox report "<title>" --work <feature|fix|change|research|plan|answer> --tldr "<in short>" --summary "<markdown>"`
-  (`--help` for the rest). It names your session (from VAULTITE_TERMINAL and CLAUDE_CODE_SESSION_ID) and ends with a
-  reply box. Write it to stand alone: what was asked (link the note), what you did, where (files, repo, branch, commit),
-  what's left; a new session may pick it up without your context. Report last: your terminal ends when that turn does.
-  The user's reply is typed into your terminal if it still runs, else resumes your session while its prompt cache lasts,
-  else starts a new one told to read the report; that session's next report goes on in the same file (one file per
-  exchange). The report is your session's thread in the inbox (one row: the file is its record, not a second item).
+  `vau inbox report "<title>" --work <feature|fix|change|research|plan|answer> --tldr "<one line>" --summary
+  "<markdown>" --decision "<question>? | <option>* | <option>"` (`*` the default; `--help` for the rest). It's a record,
+  not an inbox item: archived as it comes (`work:` says what kind), listed in one line in the morning brief (`vau inbox
+  reports`) and under Reports today. Only a failure (`--state stuck`), something that went out publicly (`--public`) or
+  the daily digest itself (`--digest`) stays in the inbox, told. Its shape: a one-line TL;DR, its decisions (drawn with
+  their buttons), screenshots, then the details folded (at most about 1,500 words): what was asked (link the note), what
+  you did, where (files, repo, branch, commit), what's left; a new session may pick it up without your context. It names
+  your session (from VAULTITE_TERMINAL and CLAUDE_CODE_SESSION_ID) and ends with a reply box. Report last: your terminal
+  ends when that turn does. The user's answers and replies are typed into your terminal if it still runs, else resume your
+  session while its prompt cache lasts, else start a new one told to read the report; that session's next report goes
+  on in the same file (one file per exchange).
 
 **Threads**: each coding agent's session is one thread, its event (kept on the machine it runs on, not in the vault),
 with a `state`:
 - `open`, it needs the user: it asks (a permission, a question, any dialog it shows, to sign in, a plan to approve), its
   turn ended with something for them (a question, an answer to read, a failure: judged from its last message, by a small
-  model when its words don't settle it), or it reported (`vau inbox report`). It's told then (toast, the phone and watch).
+  model when its words don't settle it), or its report is one the inbox keeps (a failure, public, the digest). It's told
+  then (toast, the phone and watch). A report that isn't leaves its thread done, quietly.
 - `working`: the user answered (a reply, Approve, a pick, a prompt in its terminal) and its agent is on it. Its next turn
   ends open again when it has something for them, else done.
 - `done`: the user settled it (`vau inbox settle <id>`, which archives its report too), or a turn after their answer

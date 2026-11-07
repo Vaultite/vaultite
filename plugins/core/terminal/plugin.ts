@@ -392,6 +392,9 @@ function hooksText(id: string) {
 // --- a terminal's state (state.ts): one Term each, every source an event (OSC 7501, hooks, its screen, its agent, its
 // backend, its program in front or gone: lookAtBusy, its end). The list, terminal.wait and the Inbox read only it.
 
+/** What its agent last said of its progress (the Inbox's inbox.progress), or null. */
+const progressOf = (id: string): string | null => { try { return (plugin.service("inbox:progress") as ((t: string) => string | null) | null)?.(id) ?? null } catch { return null } }
+
 /** A change of a terminal's state, as the service "inbox:state" hears it (`was`: the state told before). `msg` is the
  *  program's text: untrusted. */
 export type StateChange = { terminal: string; agent: string; state: SessionState; kind?: Kind; msg?: string; from: Source; was?: SessionState; at: number }
@@ -1273,6 +1276,7 @@ async function readList(): Promise<Listed[]> {
         title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
         ...(x.cwd ? { cwd: x.cwd } : {}), ...(x.command ? { command: x.command } : {}), ...(x.cols ? { cols: x.cols, rows: x.rows } : {}), ...(x.activity ? { activity: x.activity } : {}),
         ...(now ? { state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}),
+        ...(progressOf(x.id) ? { progress: progressOf(x.id)! } : {}),
         ...(t?.starting ? { starting: true as const } : {}),
         ...(noteOf(x.id) ? { note: noteOf(x.id) } : {}),
         ...(nameOf(x.id) ? { name: nameOf(x.id) } : {}),

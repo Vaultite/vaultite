@@ -826,7 +826,11 @@ after an approved plan (acceptEdits, default...).`,
     const client = req.http?.headers["x-vaultite-client"]
     const r = await chatList("all", { who: { client: typeof client === "string" ? client : null } })
     // (a turn's words cut to what a row can say: a list polled every few seconds)
-    return { ...r, sessions: r.sessions.map((s) => ({ ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error } })) }
+    const progress = plugin.service("inbox:progress") as ((t: string, s: string) => string | null) | null
+    return { ...r, sessions: r.sessions.map((s) => {
+      const said = progress?.("", splitMachine(s.id)[0]) ?? null
+      return { ...s, turn: s.turn && { prompt: s.turn.prompt.slice(0, 200), text: s.turn.text.slice(-200), error: s.turn.error }, ...(said ? { progress: said } : {}) }
+    }) }
   }, { sync: false })
 
   plugin.op({

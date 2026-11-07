@@ -10,6 +10,7 @@ import {
   type Machine, NOT_THE_USER, type OpCtx, type Request, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
+import { answerOf, type DecisionSpec, sameQuestion, specOf } from "./decisions.ts"
 import { judge, type Need, type Turn } from "./needs.ts"
 import * as push from "./push.ts"
 import { parseUntil, snoozed, snoozeMs, stampOf, whenText } from "./snooze.ts"
@@ -36,10 +37,17 @@ plugin.kind(new Kind({
       source: truthy(fm.source) ? str(fm.source) : "", created: fm.created ?? null, updated: fm.updated ?? null, origin: truthy(fm.origin) ? str(fm.origin) : "",
       agent: truthy(fm.agent) ? str(fm.agent) : "", session: truthy(fm.session) ? str(fm.session) : "", terminal: truthy(fm.terminal) ? str(fm.terminal) : "",
       machine: truthy(fm.machine) ? str(fm.machine) : "", snoozed: truthy(fm.snoozed) ? str(fm.snoozed) : null, pinned: fm.pinned === true, do: truthy(fm.do) ? str(fm.do) : "", body,
+      work: truthy(fm.work) ? str(fm.work) : "",
+      ...decisionOf(fm), ...(tldrOf(body) ? { tldr: tldrOf(body) } : {}),
     }, STATUSES.includes(status) ? [] : [`status \`${status}\` isn't one of \`new\` or \`done\``]]
   },
   render: (r) => [{ status: r.status || "new", from: r.from || null, source: r.source || null, created: r.created, updated: r.updated || null, origin: r.origin || null,
-    agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null, pinned: r.pinned === true || null, do: r.do || null }, r.body || ""],
+    agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null, pinned: r.pinned === true || null, do: r.do || null,
+    work: r.work || null, question: r.question || null, options: truthy(r.question) && Array.isArray(r.options) ? r.options : null, default: r.question ? r.default || null : null,
+    blocking: r.question ? r.blocking === true : null, answer: r.answer || null, answered: r.answered || null, closed: r.closed || null, report: r.report || null,
+    also: Array.isArray(r.also) && r.also.length ? r.also : null }, r.body || ""],
+  // (a decision's file draws its question and its answers on top)
+  blocks: (fm) => (truthy(fm.question) ? ["decisions"] : []),
   // Done is archived and archived is done: one state, the file in Inbox/.archive/ (out of the way), whichever key said
   // so. Taking either back (Back to review, Undo, the same page added again) makes it new, out of the archive.
   prepare(r, old) {
@@ -63,8 +71,22 @@ plugin.kind(new Kind({
   },
   // Where it came from (a page's address): adding the same page again updates it.
   key: (r) => (truthy(r.source) ? str(r.source) : null),
-  stamps: ["created", "updated", "snoozed"],
+  stamps: ["created", "updated", "snoozed", "answered"],
 }))
+
+/** A decision's fields as its frontmatter has them (decisions.ts), or none. */
+function decisionOf(fm: Item): Item {
+  if (!truthy(fm.question)) return {}
+  const list = (v: unknown) => (Array.isArray(v) ? v.map(str).filter(Boolean) : truthy(v) ? [str(v)] : [])
+  return { question: str(fm.question), options: list(fm.options), default: str(fm.default), blocking: fm.blocking === true, answer: truthy(fm.answer) ? str(fm.answer) : "",
+    answered: truthy(fm.answered) ? str(fm.answered) : null, closed: truthy(fm.closed) ? str(fm.closed) : "", report: truthy(fm.report) ? str(fm.report) : "", also: list(fm.also) }
+}
+
+/** A result's TL;DR, its `> [!tldr]` callout as one line (kept when the state leaves an archived body out). */
+export function tldrOf(body: string) {
+  const m = /^> \[!tldr\][^\n]*\n((?:>.*(?:\n|$))+)/m.exec(body)
+  return m ? m[1].split("\n").map((l) => l.replace(/^>\s?/, "").trim()).filter(Boolean).join(" ").slice(0, 400) : ""
+}
 
 // The app's results: an archived one without its body (a kept inbox's reports were most of a big vault's first load;
 // no list reads an archived body, and its file keeps it), the same objects while their files are (core/statepatch.ts).
@@ -153,6 +175,8 @@ export type InboxEvent = {
   pinned?: boolean
   /** The session that delegated this one its task (Delegation), by its name then: the thread says "from" it. */
   parent?: { title: string; agent: string; terminal?: string; session?: string }
+  /** Its latest progress line (inbox.progress), each replacing the last: on its row, never told. */
+  progress?: string
 }
 
 /** This vault's folder here: <LOCAL>/inbox/<vault key>/ (made when an event is saved). */
@@ -1098,7 +1122,7 @@ async function turnEnded(who: Who, h: Heard, since: number) {
   text = (text ?? h.msg ?? "").trim()
   // Its report (inbox.report) this turn is what it had to say: the row is the report's.
   const row = list().find(rowOf(who))
-  if (row?.ask === "report" && row.state === "open" && row.t >= since - 2000) return void endHanded(who.terminal)
+  if (row?.ask === "report" && row.state !== "working" && row.t >= since - 2000) return void endHanded(who.terminal)
   const body = text ? (text.length > BODY ? `${text.slice(0, BODY)}\n\n…` : text) : undefined
   // A subagent's turn is its parent's to read; a session whose subagents still work hears from them, so it's on it.
   const line = await lineageOf(who)
@@ -1304,7 +1328,7 @@ inbox.snooze take it). done: the latest done ones too.
     const l = lists(ev.events as InboxEvent[], asResults(items ?? []))
     const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
     const cut = <T>(xs: T[]) => xs.slice(0, limit)
-    return { pinned: [...l.pinned.events, ...l.pinned.results.map(row)], needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
+    return { decisions: cut(l.decisions.map(decisionRow)), pinned: [...l.pinned.events, ...l.pinned.results.map(row)], needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
       snoozed: [...l.snoozed.results.map((r) => ({ ...row(r), until: str(r.snoozed) })),
         ...l.snoozed.events.map((e) => ({ id: e.id, title: e.title, until: stampOf(new Date(e.snoozed!)) }))],
       done: done ? cut(l.done.events) : l.done.events.length }
@@ -1314,14 +1338,16 @@ inbox.snooze take it). done: the latest done ones too.
     const line = (e: InboxEvent) => `  ${localTime(e.t)}  ${e.read ? " " : "*"} ${e.title}${e.state === "open" && e.ask ? ` [${NEEDS[e.ask] ?? e.ask}]` : ""}` +
       `${e.preview || e.body ? `: ${clip(e.preview || e.body, 160)}` : ""}${e.machineLabel ? ` (on ${e.machineLabel})` : ""}  (${e.id})`
     const list = (title: string, xs: string[]) => { if (xs.length) out.push(`${out.length ? "\n" : ""}${title}:`, ...xs) }
+    list("Decisions", r.decisions.map((d: Item) => `  ${d.blocking ? "[waits on you]" : `[went with ${d.default}]`} ${d.question}  (${d.path})`))
     list("Pinned", r.pinned.map((x: Item) => (x.path ? `  ${x.path}${x.from ? `  (from ${x.from})` : ""}` : line(x as InboxEvent))))
     list("Needs you", r.needs.map(line))
     list("To review", r.results.map((x: Item) => `  ${x.path}${x.from ? `  (from ${x.from})` : ""}`))
-    list("Working on it", r.working.map(line))
+    list("Working on it", r.working.map((e: InboxEvent) => (e.progress ? line({ ...e, preview: e.progress }) : line(e))))
     list("Messages", r.messages.map(line))
     list("Snoozed", r.snoozed.map((x: Item) => `  until ${x.until}  ${x.path ?? `${x.title}  (${x.id})`}`))
     if (Array.isArray(r.done)) list("Settled", r.done.map(line))
     else if (r.done) out.push(`${out.length ? "\n" : ""}Settled: ${r.done} (vau inbox --done lists them).`)
+    if (r.decisions.length) out.push(`\nAnswer one: vau inbox decide <path> <answer> (vau inbox decisions has their options).`)
     return out.length ? out.join("\n") : "Nothing new."
   },
 })
@@ -1379,6 +1405,11 @@ const subjectOf = (title: string) => {
 
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i
 const REPLY_BLOCK = "```block-reply\n```"
+const DECISIONS_BLOCK = "```block-decisions\n```"
+/** A report's details at most (about 1,500 words): a report reads in a minute; files hold the rest. */
+const SUMMARY_MAX = 10_000
+/** Markdown folded under a title (a callout that starts closed). */
+const folded = (title: string, md: string) => `> [!info]- ${title}\n${md.trim().split(/\r?\n/).map((l) => `> ${l}`.trimEnd()).join("\n")}`
 
 /** The agent a terminal runs, by its id (claude-k3j2h1g0, claude_personal-k3j2h1g0, resume-claude-<session>). */
 const agentOfTerminal = (t: string) => parseTerminal(t)?.agent ?? ""
@@ -1457,35 +1488,429 @@ async function replyPlan(r: Item, live: (id: string) => boolean, want = ""): Pro
   return null
 }
 
+// ---------- decisions: what an agent asks the user, a file each (decisions.ts), the answer sent back to its session
+
+/** Decisions not dealt with yet: open, not archived (snoozed ones too). */
+const openDecisions = () => plugin.vault.items("inbox").filter((r) => truthy(r.question) && str(r.status) === "new" && !isArchived(r))
+/** A file's name as a link names it (Inbox/.archive/Fix done · A -> Fix done · A). */
+const baseOf = (p: string) => path.posix.basename(p.replace(/\.md$/i, ""))
+const linkTo = (p: string) => /^\[\[([^\]|#]+)/.exec(p.trim())?.[1]?.trim() ?? p.trim()
+/** The result a decision's `report` (or an `also`) links to, wherever it is now. */
+const reportOf = (link: string) => {
+  const name = baseOf(linkTo(link))
+  return name ? plugin.vault.items("inbox").find((r) => baseOf(str(r.id)) === name && !truthy(r.question)) : undefined
+}
+
+/** Who asks: the session to send the answer to, and who the user sees it's from. */
+type Asker = { agent: string; session: string; terminal: string; machine: string | null; from: string }
+const askerFields = (w: Asker) => ({ ...(w.agent ? { agent: w.agent } : {}), ...(w.session ? { session: w.session } : {}), ...(w.terminal ? { terminal: w.terminal } : {}),
+  ...(w.machine ? { machine: w.machine } : {}) })
+
+/** A decision that waits on the user is told (toast, notifications) by an event linking its file: not listed apart, done
+ *  once the file is archived, and not its session's (whose row is its thread). */
+function tellDecision(r: Item, w: Asker) {
+  const options = (r.options as string[]) ?? []
+  addEvent({ source: w.agent || "vau", kind: "waiting", state: "open", ask: "question", title: str(r.question), link: `${r.id}.md`,
+    body: options.map((o) => (o === r.default ? `${o} (default)` : o)).join(" · ") })
+}
+
+/** Ask the user `specs`: each a file, or merged into the same question already open (from another agent or note: its
+ *  report added to `also`, waiting if this one waits). `report`: the report asking them (its basename). */
+async function askAll(ctx: OpCtx, specs: DecisionSpec[], w: Asker, report: string) {
+  await plugin.vault.sync()
+  const out: { path: string; question: string; merged: boolean; blocking: boolean }[] = []
+  for (const d of specs) {
+    const same = openDecisions().find((r) => sameQuestion(str(r.question), d.question)) ??
+      out.map((x) => resultAt(x.path)).find((r) => r && sameQuestion(str(r.question), d.question))
+    if (same) {
+      const link = report ? `[[${report}]]` : ""
+      const also = (same.also as string[] | undefined) ?? []
+      const more = link && baseOf(linkTo(str(same.report))) !== report && !also.some((l) => baseOf(linkTo(l)) === report)
+      const waits = d.blocking && same.blocking !== true
+      if (more || waits) await ctx.api("PUT", `inbox/${encodeURIComponent(same.id)}`, { ...(more ? { also: [...also, link] } : {}), ...(waits ? { blocking: true } : {}) })
+      if (waits) tellDecision({ ...same, blocking: true }, w)
+      out.push({ path: `${same.id}.md`, question: str(same.question), merged: true, blocking: waits || same.blocking === true })
+      continue
+    }
+    const r = await ctx.api("POST", "inbox", { title: d.title, body: d.why, from: w.from, question: d.question, options: d.options, default: d.default, blocking: d.blocking,
+      ...(report ? { report: `[[${report}]]` } : {}), ...askerFields(w) }) as Item
+    if (d.blocking) tellDecision(r, w)
+    out.push({ path: `${r.id}.md`, question: d.question, merged: false, blocking: d.blocking })
+  }
+  knockSoon(out.some((x) => x.blocking))
+  const fresh = out.filter((x) => !x.merged).map((x) => x.path)
+  if (fresh.length) track(mergeAlike(ctx, fresh))
+  return out
+}
+
+/** The same question said another way ("Keep the quieter island?", "Should the island stay quieter?"): a small model
+ *  matches new decisions against the open ones, and a match is merged into the one asked first, saying so. */
+async function mergeAlike(ctx: OpCtx, made: string[]) {
+  const sample = plugin.service("sample") as ((a: SampleAsk) => Promise<{ text: string }>) | null
+  const fresh = made.map(resultAt).filter((r): r is Item => !!r && str(r.status) === "new")
+  const open = openDecisions().filter((r) => !fresh.some((f) => f.id === r.id)).slice(0, 40)
+  if (!sample || !fresh.length || !open.length) return
+  const L = "ABCDEFGHIJ"
+  const prompt = `New questions:\n${fresh.slice(0, 10).map((r, i) => `${L[i]}. ${str(r.question)} (options: ${((r.options as string[]) ?? []).join(" / ")})`).join("\n")}\n\n` +
+    `Questions already open:\n${open.map((r, i) => `${i + 1}. ${str(r.question)} (options: ${((r.options as string[]) ?? []).join(" / ")})`).join("\n")}`
+  let text = ""
+  try {
+    text = (await sample({ tier: "quick", signal: AbortSignal.timeout(60_000), prompt,
+      system: "You keep a user's open questions free of duplicates. A new question is a duplicate when it asks for the same decision as an open one, whatever the wording: answering one would answer the other. Different parts of a feature, or related but separate choices, aren't. Reply with one line per duplicate, \"<letter>: <number>\", or the word NONE." })).text
+  } catch { return }
+  for (const m of text.matchAll(/^\s*([A-J])\s*[:=-]\s*(\d+)/gm)) {
+    const r = fresh[L.indexOf(m[1])], into = open[Number(m[2]) - 1]
+    if (!r || !into || str(into.status) !== "new") continue
+    const link = str(r.report)
+    const also = [...((into.also as string[] | undefined) ?? []), ...(link && baseOf(linkTo(link)) !== baseOf(linkTo(str(into.report))) ? [link] : [])]
+    await ctx.api("PUT", `inbox/${encodeURIComponent(into.id)}`, { also, ...(r.blocking === true && into.blocking !== true ? { blocking: true } : {}) }).catch(() => {})
+    await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", closed: `Same as [[${baseOf(str(into.id))}]]` }).catch(() => {})
+  }
+}
+
+/** The decisions given to an op (an object each, or "Question? | Option* | Option"), checked: an OpError says what's wrong. */
+function specsOf(given: unknown, blocking: boolean): DecisionSpec[] {
+  const xs = Array.isArray(given) ? given : given === undefined || given === null || given === "" ? [] : [given]
+  try { return xs.map((x) => specOf(x, blocking)) } catch (e) { throw new OpError(`decision: ${(e as Error).message}`) }
+}
+
+/** The sessions a decision's answer goes to: its report's (the reply goes on in it), else its own; and those of the
+ *  reports that asked it too. Each once, by the file the reply goes into. */
+function answerTargets(d: Item): string[] {
+  const out: string[] = [], seen = new Set<string>()
+  for (const r of [reportOf(str(d.report)) ?? d, ...((d.also as string[] | undefined) ?? []).map(reportOf)]) {
+    const key = r ? str(r.session) || str(r.terminal) : ""
+    if (!r || !key || seen.has(key)) continue
+    seen.add(key)
+    out.push(`${r.id}.md`)
+  }
+  return out
+}
+
+/** What its agent is told of an answer: a decision it waits on, or a default it took that the user changed; nothing
+ *  when they kept the default it took. */
+const toldOf = (d: Item, answer: string) => d.blocking === true
+  ? `"${str(d.question)}": ${answer}`
+  : answer !== str(d.default) ? `"${str(d.question)}": you went with "${str(d.default)}"; the user wants "${answer}" instead, so change it` : ""
+
+/** Answers to the sessions that asked, one reply each (inbox.reply: typed in, resumed, or a new session reading the
+ *  report). Never fails the answer: what couldn't be sent is said. */
+async function sendAnswers(ctx: OpCtx, answered: { d: Item; answer: string }[]) {
+  const by = new Map<string, string[]>()
+  for (const { d, answer } of answered) {
+    const line = toldOf(d, answer)
+    if (line) for (const to of answerTargets(d)) by.set(to, [...by.get(to) ?? [], line])
+  }
+  const sent: string[] = [], failed: string[] = []
+  for (const [to, lines] of by) {
+    const text = `The user decided${lines.length > 1 ? ` ${lines.length} of your questions` : ""}: ${lines.map((l, i) => (lines.length > 1 ? `${i + 1}. ${l}` : l)).join(" ")}`
+    try { await ctx.op("inbox.reply", { to, text }); sent.push(to) } catch (e) { failed.push(`${to}: ${(e as Error).message}`) }
+  }
+  return { sent, failed }
+}
+
+/** Open decisions that later work settled (a report, another answer) close themselves, saying why: a small model reads
+ *  what was done against them, and only what it clearly settles goes. Runs after its op has answered. */
+async function closeSettled(ctx: OpCtx, said: string, by: string, skip: Set<string>) {
+  const sample = plugin.service("sample") as ((a: SampleAsk) => Promise<{ text: string }>) | null
+  const open = openDecisions().filter((r) => !skip.has(str(r.id))).slice(0, 30)
+  if (!sample || !open.length || !said.trim()) return
+  const prompt = `What was just done or decided (${by}):\n<done>\n${said.slice(0, 6000)}\n</done>\n\nQuestions still open for the user:\n` +
+    open.map((r, i) => `${i + 1}. ${str(r.question)} (options: ${((r.options as string[]) ?? []).join(" / ")})`).join("\n")
+  let text = ""
+  try {
+    text = (await sample({ tier: "quick", signal: AbortSignal.timeout(60_000), prompt,
+      system: "You keep a user's list of open questions tidy. A question is settled when what was just done answers it, does what it asks or decides it, or makes it moot (the thing it's about was removed or replaced). Only clear cases: when unsure, leave it open. Reply with one line per settled question, \"<number>: <why, in a few plain words>\", or the word NONE." })).text
+  } catch { return }
+  for (const m of text.matchAll(/^\s*(\d+)\s*[:.)-]\s*(.+)$/gm)) {
+    const r = open[Number(m[1]) - 1]
+    if (!r || str(r.status) !== "new") continue
+    await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", closed: clip(`Settled by ${by}: ${m[2]}`, 300) }).catch(() => {})
+  }
+}
+
+// The companion says what's waiting at a pause (a knock by the notch), once a burst of decisions has come: told again
+// only when there are more than it said.
+let knockTimer: ReturnType<typeof setTimeout> | null = null
+let knocked = 0, knockWaits = false
+function knockSoon(waits: boolean) {
+  knockWaits ||= waits
+  if (knockTimer) clearTimeout(knockTimer)
+  knockTimer = setTimeout(() => { knockTimer = null; void knockNow().catch(() => {}) }, 20_000)
+  knockTimer.unref?.()
+}
+plugin.onUnload(() => { if (knockTimer) clearTimeout(knockTimer) })
+const NUMBERS = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
+async function knockNow() {
+  const open = openDecisions().filter((r) => !snoozed(str(r.snoozed)))
+  const waits = knockWaits
+  knockWaits = false
+  if (open.length <= knocked && !waits) { knocked = open.length; return }
+  knocked = open.length
+  if (!open.length || holdNow()) return
+  const n = open.length
+  const line = n === 1 ? `A decision waiting: ${str(open[0].question)}` : `${NUMBERS[n] ?? n} decisions waiting`
+  await plugin.runOp("companion.knock", { line: clip(line, 140), who: "Inbox", open: "view:inbox", urgency: waits ? "high" : "low", for: waits ? "1h" : "4h" })
+}
+
+/** A decision by its path (Inbox/<Title>.md, with or without .md, archived or not) or its file's name. */
+function decisionAt(p: string): Item | undefined {
+  const r = resultAt(p) ?? (() => { const n = baseOf(p); return plugin.vault.items("inbox").find((x) => truthy(x.question) && baseOf(str(x.id)) === n) })()
+  return r && truthy(r.question) ? r : undefined
+}
+
+const decisionRow = (r: Item) => ({ path: `${r.id}.md`, question: str(r.question), options: (r.options as string[]) ?? [], default: str(r.default), blocking: r.blocking === true,
+  from: str(r.from) || null, report: str(r.report) || null, why: previewOf(str(r.body).replace(/```[\s\S]*?```/g, "")).slice(0, 300) || null, created: r.created ?? null,
+  ...(str(r.answer) ? { answer: str(r.answer), answered: r.answered ?? null } : {}), ...(str(r.closed) ? { closed: str(r.closed) } : {}),
+  ...(snoozed(str(r.snoozed)) ? { snoozed: str(r.snoozed) } : {}) })
+
+plugin.op({
+  id: "inbox.decisions",
+  cli: "inbox decisions",
+  summary: "The decisions waiting on the user: each question an agent asked, its options and the default it takes; the ones an agent waits on first.",
+  help: `Each is a file in Inbox/ (vau docs inbox): a question, its options, its default, and whether its agent waits on it
+(blocking) or already went with the default. The user answers with vau inbox decide; recent: the last day's answered and
+closed ones too. The companion walks the user through these by voice.
+
+  vau inbox decisions
+  vau inbox decisions --recent`,
+  kind: "read",
+  params: { recent: { type: "boolean", description: "the last day's answered and closed ones too" } },
+  run: async ({ recent }) => {
+    await plugin.vault.sync()
+    const open = sortBy(openDecisions(), (r) => `${r.blocking === true ? 1 : 0}${latest(r)}`, true)
+    const since = stampOf(new Date(Date.now() - DAY))
+    const past = recent ? plugin.vault.items("inbox").filter((r) => truthy(r.question) && str(r.status) === "done" && str(r.answered || r.modified || "") >= since) : []
+    return { decisions: open.map(decisionRow), ...(recent ? { recent: past.map(decisionRow) } : {}) }
+  },
+  text: (r) => {
+    const line = (d: Item, i: number) => `${i + 1}. ${d.blocking ? "[waits on you] " : `[went with ${d.default}] `}${d.question}\n   ${(d.options as string[]).map((o) => (o === d.default ? `${o} (default)` : o)).join(" · ")}` +
+      `${d.why ? `\n   ${d.why}` : ""}\n   ${d.path}${d.from ? ` · from ${d.from}` : ""}${d.snoozed ? ` · snoozed until ${d.snoozed}` : ""}`
+    const out = [r.decisions.length ? `Waiting on the user (${r.decisions.length}):\n${r.decisions.map(line).join("\n")}` : "No decision waits on the user."]
+    if (r.recent?.length) out.push(`Dealt with in the last day:\n${r.recent.map((d: Item) => `  ${d.question}: ${d.answer ? `answered ${d.answer}` : `closed (${d.closed})`}  (${d.path})`).join("\n")}`)
+    return out.join("\n\n")
+  },
+})
+
+plugin.op({
+  id: "inbox.ask",
+  cli: "inbox ask",
+  owner: "files on this machine",
+  lock: false,
+  summary: "Ask the user one decision: a question with its options as buttons and the default you take if they don't answer; their answer comes back to this session.",
+  help: `A file in Inbox/ the user answers with a tap (or by voice, through the companion). blocking: you're stopped on
+it (it comes first, with a toast and a push to the phone); else you've gone with the default already, and it reads "Went
+with X; change it?", quietly. The same question open already (from another agent or report) is that one, not a second.
+Ending a task, ask them in your report instead (vau inbox report --decision). The answer is typed into this session (or
+resumes it): a default they kept isn't sent.
+
+  vau inbox ask "Ship the new sidebar to the phone too?" --options "Yes, ship it" "Not yet" --default "Not yet" --blocking
+  vau inbox ask "Keep the quieter island?" --options Keep "Go back" --default Keep --why "The spinner shows only on hover now."`,
+  kind: "write",
+  params: {
+    question: { type: "string", required: true, description: "the question, one sentence that stands alone (the user may not remember the task)" },
+    options: { type: "array", items: { type: "string" }, commas: false, required: true, description: "2 to 6 short answers, the buttons" },
+    default: { type: "string", required: true, description: "the option you take (or took) if the user doesn't answer" },
+    blocking: { type: "boolean", description: "you wait on it: it comes first and pushes to the phone (default: you went with the default already)" },
+    why: { type: "string", description: "one or two plain sentences of context: what each choice means" },
+    title: { type: "string", description: "its file's name, a few words (default: the question's)" },
+    report: { type: "string", description: "the report it's about (Inbox/<Title>.md)" },
+    from: { type: "string", description: "who asks (default: you, as the server knows the caller)" },
+    terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL)" },
+    session: { type: "string", env: "CLAUDE_CODE_SESSION_ID", description: "your session's id, for the answer (filled in from CLAUDE_CODE_SESSION_ID)" },
+    agent: { type: "string", env: "VAULTITE_AGENT", description: "who you are (claude, codex): from VAULTITE_AGENT, else the terminal's id" },
+  },
+  args: ["question"],
+  run: async (p, ctx) => {
+    const [spec] = specsOf([{ question: p.question, options: p.options, default: p.default, blocking: p.blocking === true, why: p.why, title: p.title }], false)
+    const terminal = TERMINAL.test(str(p.terminal).trim()) ? str(p.terminal).trim() : ""
+    const session = clip(p.session, 120), agent = clip(p.agent, 40).toLowerCase() || agentOfTerminal(terminal)
+    const rep = str(p.report).trim() ? reportOf(str(p.report)) : undefined
+    if (str(p.report).trim() && !rep) throw new OpError(`no report ${p.report} in the inbox`, 404)
+    const w: Asker = { agent, session, terminal, machine: terminal || session ? await selfMachine() : null, from: str(p.from).trim() || (agent ? agentLabel(agent) : ctx.who.label) }
+    const [made] = await askAll(ctx, [spec], w, rep ? baseOf(str(rep.id)) : "")
+    return { ...made, session: !!(terminal || session) }
+  },
+  text: (r) => (r.merged ? `The same question was open already: ${r.path} (it says you asked it too).` : `Asked: ${r.path}${r.blocking ? " (it comes first, with a push to the phone)" : ""}.`) +
+    (r.session ? " Their answer comes back to this session." : ""),
+  did: (p) => ({ action: "create", text: `Asked ${quoted(p.question)}` }),
+})
+
+plugin.op({
+  id: "inbox.decide",
+  cli: "inbox decide",
+  owner: "the terminal",
+  lock: false,
+  summary: "Answer a decision for the user (their pick, by its option's words or number), accept its default, accept every default at once, or close one that's moot.",
+  help: `The user's answer, as their buttons give it (or their words to the companion): the decision is archived with its
+answer, and its agent told when it waits on it or the user changed a default it took (one reply per session, into its
+report). A default they keep isn't sent: the agent went with it already. moot closes one that later work settled, saying
+why; undo opens it again. Only with the user's own answer: never decide for them.
+
+  vau inbox decide "Inbox/Keep the quieter island.md" "Go back"
+  vau inbox decide "Inbox/Keep the quieter island.md" 2
+  vau inbox decide "Inbox/Keep the quieter island.md" --default
+  vau inbox decide --defaults                     every open decision's default (Accept all defaults)
+  vau inbox decide "Inbox/Faces by the notch.md" --moot "The island was removed in 3f2a1c"`,
+  kind: "write",
+  params: {
+    item: { type: "string", description: "the decision (Inbox/<Title>.md, vau inbox decisions lists them)" },
+    answer: { type: "string", description: "the user's answer: an option's words or its number; other words are their own answer" },
+    default: { type: "boolean", description: "accept its default" },
+    defaults: { type: "boolean", description: "accept the default of every open decision (not snoozed ones)" },
+    moot: { type: "string", description: "close it without an answer: why it no longer matters" },
+    undo: { type: "boolean", description: "open it again (its answer taken back; its agent isn't told)" },
+  },
+  args: ["item", "answer"],
+  run: async (p, ctx) => {
+    await plugin.vault.sync()
+    const all = p.defaults === true
+    const items = all ? openDecisions().filter((r) => !snoozed(str(r.snoozed))) : (() => {
+      const r = decisionAt(str(p.item).trim())
+      if (!str(p.item).trim()) throw new OpError("`item`: the decision (vau inbox decisions lists them), or --defaults for all")
+      if (!r) throw new OpError(`no decision ${p.item} (vau inbox decisions lists them)`, 404)
+      return [r]
+    })()
+    if (p.undo === true) {
+      const r = items[0]
+      const back = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "new", archived: false, answer: null, answered: null, closed: null }) as Item
+      return { decided: [{ path: `${back.id}.md`, question: str(back.question), reopened: true }], sent: [], failed: [] }
+    }
+    const moot = str(p.moot).trim()
+    if (!all && !moot && p.default !== true && !str(p.answer).trim()) throw new OpError("`answer`: the user's pick (an option's words or number), --default, or --moot \"<why>\"")
+    const done: { d: Item; answer: string }[] = [], rows: Item[] = []
+    for (const r of items) {
+      if (str(r.status) !== "new" || isArchived(r)) throw new OpError(`${r.id}.md was dealt with already${str(r.answer) ? ` (answered ${str(r.answer)})` : ""}: --undo opens it again`, 409)
+      if (moot) {
+        const out = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", closed: clip(moot, 300) }) as Item
+        rows.push({ path: `${out.id}.md`, question: str(r.question), closed: clip(moot, 300) })
+        continue
+      }
+      const answer = all || p.default === true ? str(r.default) : answerOf((r.options as string[]) ?? [], str(p.answer)).answer
+      const out = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", answer, answered: nowStamp() }) as Item
+      done.push({ d: { ...r, ...out }, answer })
+      rows.push({ path: `${out.id}.md`, question: str(r.question), answer, told: !!toldOf(r, answer) })
+    }
+    const { sent, failed } = await sendAnswers(ctx, done)
+    // (an answer may settle another question: the rest are read against it)
+    const said = done.map(({ d, answer }) => `${str(d.question)} The user answered: ${answer}`).join("\n")
+    if (said && !all) track(closeSettled(ctx, said, "your answer", new Set(done.map(({ d }) => str(d.id)))))
+    knocked = Math.min(knocked, openDecisions().length)
+    return { decided: rows, sent, failed }
+  },
+  text: (r) => {
+    if (!r.decided.length) return "No decision was open."
+    const lines = r.decided.map((d: Item) => `  ${d.reopened ? "Open again" : d.closed ? "Closed" : `Answered ${quoted(d.answer)}`}: ${d.question}${d.told === false ? " (kept the default: nothing to tell)" : ""}`)
+    return [`${r.decided.length === 1 ? "Done" : `${r.decided.length} done`}:`, ...lines,
+      ...(r.sent.length ? [`Sent to ${r.sent.length === 1 ? "its session" : `${r.sent.length} sessions`}.`] : []), ...(r.failed.length ? [`Couldn't send: ${r.failed.join("; ")}`] : [])].join("\n")
+  },
+  did: (p) => ({ action: "edit", text: p.defaults ? "Accepted every default" : `Decided ${quoted(str(p.item))}` }),
+})
+
+plugin.op({
+  id: "inbox.reports",
+  cli: "inbox reports",
+  summary: "The reports agents filed lately, one line each linking the whole report: what the morning brief's digest lists (results go there, not in the inbox).",
+  help: `Each report agents ended a task with (vau inbox report), since a time (default: the last day), newest first, as
+one line: its title and TL;DR, linked. The morning brief puts these under its digest. A failed one, or one that went out
+publicly, stayed in the inbox and says so.
+
+  vau inbox reports
+  vau inbox reports --since 2026-11-06`,
+  kind: "read",
+  params: { since: { type: "string", description: "from when: YYYY-MM-DD, a local stamp, or a span back (12h, 2d; default 24h)" } },
+  run: async ({ since }) => {
+    await plugin.vault.sync()
+    const s = str(since).trim()
+    const span = /^(\d+)\s*([hd])$/.exec(s)
+    const from = !s ? stampOf(new Date(Date.now() - DAY)) : span ? stampOf(new Date(Date.now() - Number(span[1]) * (span[2] === "d" ? DAY : 3600_000))) : /^\d{4}-\d\d-\d\d/.test(s) ? s : null
+    if (!from) throw new OpError(`since: YYYY-MM-DD, a local stamp or a span back (12h, 2d), not ${s}`)
+    const rs = sortBy(plugin.vault.items("inbox").filter((r) => !truthy(r.question) && truthy(r.work || r.agent || r.session || r.terminal) && latest(r) >= from), latest, true)
+    return { since: from, reports: rs.map((r) => ({ path: `${r.id}.md`, title: str(r.title), tldr: str(r.tldr) || null, at: latest(r), inbox: str(r.status) === "new" && !isArchived(r) })) }
+  },
+  text: (r) => r.reports.length
+    ? r.reports.map((x: Item) => `- [[${baseOf(str(x.path))}]]${x.tldr ? `: ${x.tldr}` : ""}${x.inbox ? " (in the inbox)" : ""}`).join("\n")
+    : `No reports since ${r.since}.`,
+})
+
+/** A session's latest progress, for the Agents panel's row (its terminal's or its chat's step): while it's on it. */
+plugin.provide("inbox:progress", (terminal: string, session?: string) =>
+  shown().find((e) => e.kind === "session" && e.state !== "done" && !!e.progress && ((!!terminal && e.terminal === terminal) || (!!session && e.session === session)))?.progress ?? null)
+
+plugin.op({
+  id: "inbox.progress",
+  cli: "inbox progress",
+  owner: "files on this machine",
+  lock: false,
+  summary: "Say how your work goes (a check-in, still working, a step done): your session's row shows it, each line replacing the last; never told, never in the inbox.",
+  help: `For what a watcher or a long task would have said in a report ("still working", "two of five fixes in"): it goes
+on your own row (the Agents panel, the inbox's Working), not to the user. The inbox is for decisions: a question
+is vau inbox ask, the end of a task vau inbox report.
+
+  vau inbox progress "Two of five fixes in; CI running on the third"`,
+  kind: "write",
+  params: {
+    text: { type: "string", required: true, description: "where it stands, one line" },
+    terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL)" },
+    session: { type: "string", env: "CLAUDE_CODE_SESSION_ID", description: "your session's id (filled in from CLAUDE_CODE_SESSION_ID)" },
+    agent: { type: "string", env: "VAULTITE_AGENT", description: "who you are (claude, codex): from VAULTITE_AGENT, else the terminal's id" },
+  },
+  args: ["text"],
+  run: async (p) => {
+    const terminal = TERMINAL.test(str(p.terminal).trim()) ? str(p.terminal).trim() : ""
+    const session = clip(p.session, 120), agent = clip(p.agent, 40).toLowerCase() || agentOfTerminal(terminal)
+    if (!terminal && !session) throw new OpError("progress is a session's: run it in an app terminal (VAULTITE_TERMINAL), or give --session")
+    const text = clip(p.text, 300)
+    if (!text) throw new OpError("`text`: where it stands, one line")
+    const who = { agent: agent || "vau", terminal, session }
+    const row = list().find(rowOf(who))
+    // (a row that needs the user stays as it is: only its line changes)
+    await sessionRow(who, { progress: text, ...(!row || row.state === "done" ? { state: "working" as const, read: true } : {}) }, false)
+    return { ok: true, progress: text }
+  },
+  text: () => "Shown on your row.",
+})
+
 plugin.op({
   id: "inbox.report",
   cli: "inbox report",
   owner: "files on this machine",
   lock: false,
-  summary: "End a task you were handed (a voice note, a dispatch) with a report in the user's inbox: what you did, open questions, screenshots; they reply from it into this session.",
-  help: `A result in Inbox/ (marked new, a toast, a push to the phone and watch) that says which session wrote it (the
-terminal and Claude Code's session, from VAULTITE_TERMINAL and CLAUDE_CODE_SESSION_ID): its Reply box sends the
-user's answer back here (this session resumed, or a new one once its context is no longer cached). Make it stand
-alone, for the user who may not remember asking and for a new session that picks it up without yours: what was asked
-(link the note), what you did, where (files, repo, branch, commit), what's left. Questions only you can't settle (a
-choice, an approval), one each. Handed a task to do alone (a dispatch, a voice note), your terminal ends once this
-turn does: report last. Your session's next report (after the user's reply) goes on in the same file, under its title,
-and the file's title says where it stands now: one file per exchange.
-The title starts with what kind of work it was and where it stands, so the user reads the inbox at a glance: work
-(feature, fix, change, research, plan, answer) and state (done; waiting when you ask questions; stuck when you couldn't
-finish) make "Feature done · Sidebar scrolls again". tldr goes on top: what happened and what you need from them, in
-two or three plain sentences, no jargon; the push says it too.
+  summary: "End a task you were handed (a voice note, a dispatch) with a report: a one-line TL;DR, each question for the user as its own decision (options and the default you take), the details folded; the user replies from it into this session.",
+  help: `The report is a record, not an inbox item: it goes straight to the archive, and the morning brief lists it in one
+line (its TL;DR, linked). What reaches the user's inbox is each decision: a question with its options as buttons and
+the default you take if they don't answer. Write it in this order, short:
+- tldr: one line, what happened in plain words (the brief and the push say it).
+- decision: one per question only the user can settle, never prose questions in the summary. Text "Question? | Option*
+  | Option" (* marks the default) or JSON {"question", "options", "default", "blocking", "why"}. You've gone with its
+  default already: it reads "Went with X; change it?", quietly. blocking (or --state waiting for the text ones): you
+  stop until they answer; it comes first and pushes to the phone. A question already open (yours or another agent's) is
+  the same decision, not a second one.
+- summary: the details, folded under the TL;DR: what was asked (link the note), what you did, where (files, repo,
+  branch, commit), what's left; enough for a new session to pick it up. At most about 1,500 words: link files for more.
+- settles: decisions this work answered or made moot (their paths): they close, saying so.
+Stuck (couldn't finish) or public (it went out where others see it: a release, a post, a message) keeps it in the inbox
+too, told. Progress on the way is vau inbox progress, never a report.
+Its session is named (VAULTITE_TERMINAL, CLAUDE_CODE_SESSION_ID): the user's answers and replies come back here (this
+session resumed, or a new one once its context is no longer cached). Handed a task to do alone, your terminal ends once
+this turn does: report last. Your session's next report goes on in the same file: one file per exchange. The title
+starts with the work and where it stands: "Feature done · Sidebar scrolls again".
 
-  vau inbox report "Sidebar scrolls again" --work fix --tldr "The left sidebar scrolls again. Live on the M1." \\
-    --summary "The sidebar's list had ..." --questions "Ship it to the phone too?" --images /tmp/before.png /tmp/after.png`,
+  vau inbox report "Sidebar scrolls again" --work fix --tldr "The left sidebar scrolls again, live on the M1." \\
+    --summary "The sidebar's list had ..." --decision "Ship it to the phone too? | Yes | Not yet*" \\
+    --images /tmp/before.png /tmp/after.png`,
   kind: "write",
   params: {
     title: { type: "string", required: true, description: "what was done, in a few words, in sentence case (after the work and state: Feature done · <title>)" },
     work: { type: "string", enum: Object.keys(WORK), required: true, description: "what kind of work: feature, fix, change (a refactor, a setting, a cleanup), research, plan (a proposal to approve), answer" },
-    state: { type: "string", enum: Object.keys(STATE), description: "where it stands: done, waiting (on the user: your questions), stuck (couldn't finish); waiting when there are questions, else done" },
-    tldr: { type: "string", required: true, description: "on top: what happened and what you need from the user, in two or three plain sentences" },
-    summary: { type: "string", required: true, description: "what you did and where to look, as Markdown" },
-    questions: { type: "array", items: { type: "string" }, commas: false, description: "open questions for the user, one each" },
+    state: { type: "string", enum: Object.keys(STATE), description: "where it stands: done, waiting (you stop on its decisions), stuck (couldn't finish); waiting when a decision is blocking, else done" },
+    tldr: { type: "string", required: true, description: "one line on top: what happened, in plain words (at most about 60 words)" },
+    summary: { type: "string", required: true, description: "the details, folded: what you did and where to look, as Markdown" },
+    decision: { type: "array", items: { description: "\"Question? | Option* | Option\" (* the default), or {question, options, default, blocking?, why?}" }, commas: false,
+      description: "each question for the user, its options and the default you take: one decision each" },
+    settles: { type: "array", items: { type: "string" }, commas: false, description: "decisions this work settled (Inbox/<Title>.md): closed, saying so" },
+    public: { type: "boolean", description: "it went out where others see it (a release, a post, a message): the report stays in the inbox, told" },
+    digest: { type: "boolean", description: "this report is the user's daily digest itself (the morning brief): it stays in the inbox, told" },
     images: { type: "array", items: { type: "string" }, description: "screenshots: files on this machine (absolute paths) or in the vault (png, jpg, gif, webp)" },
     terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL)" },
     session: { type: "string", env: "CLAUDE_CODE_SESSION_ID", description: "your session's id, to resume it (filled in from CLAUDE_CODE_SESSION_ID)" },
@@ -1493,11 +1918,20 @@ two or three plain sentences, no jargon; the push says it too.
   },
   args: ["title"],
   run: async (p, ctx) => {
-    const summary = str(p.summary).trim(), tldr = str(p.tldr).trim()
+    const summary = str(p.summary).trim(), tldr = clip(p.tldr)
     if (!summary) throw new OpError("`summary`: what you did and where to look")
-    if (!tldr) throw new OpError("`tldr`: what happened and what you need from the user, in two or three plain sentences")
-    const questions = ((p.questions ?? []) as string[]).map((q) => q.replace(/\s+/g, " ").trim()).filter(Boolean)
-    const title = reportTitle(str(p.work), str(p.state) || (questions.length ? "waiting" : "done"), str(p.title).trim())
+    if (!tldr) throw new OpError("`tldr`: what happened, one line in plain words")
+    if (tldr.length > 400) throw new OpError(`\`tldr\`: one line, at most about 60 words (it's ${tldr.split(" ").length}): the rest goes in summary`)
+    // (the daily digest is the one long read: three times as long)
+    if (summary.length > SUMMARY_MAX * (p.digest === true ? 3 : 1)) throw new OpError(`\`summary\`: at most about 1,500 words (it's ${summary.split(/\s+/).length}): keep what a new session needs, link files for the rest`)
+    const specs = specsOf(p.decision, p.state === "waiting")
+    const settles = ((p.settles ?? []) as string[]).map((x) => str(x).trim()).filter(Boolean)
+    const missing = settles.filter((x) => !decisionAt(x))
+    if (missing.length) throw new OpError(`settles: no decision ${missing.join(", ")} (vau inbox decisions lists them)`, 404)
+    const state = str(p.state) || (specs.some((d) => d.blocking) ? "waiting" : "done")
+    const title = reportTitle(str(p.work), state, str(p.title).trim())
+    // What reaches the inbox: a failure, what went out publicly, the daily digest; the rest is a record, archived.
+    const told = state === "stuck" || p.public === true || p.digest === true
     // Screenshots into the vault: one already there stays where it is, one on this machine is saved as an attachment.
     const images: string[] = []
     for (const given of (p.images ?? []) as string[]) {
@@ -1520,34 +1954,52 @@ two or three plain sentences, no jargon; the push says it too.
     const agent = clip(p.agent, 40).toLowerCase() || agentOfTerminal(terminal)
     const machine = terminal || session ? await selfMachine() : null
     if (terminal && handed().includes(terminal)) ending.set(terminal, Date.now())
-    const round = [withTldr(tldr, ""), summary,
-      questions.length ? `## Open questions\n\n${questions.map((q) => `- ${q}`).join("\n")}` : "",
-      images.length ? `## Screenshots\n\n${images.map((i) => `![[${path.posix.basename(i)}]]`).join("\n\n")}` : ""].filter(Boolean).join("\n\n")
     const who = { ...(agent ? { agent } : {}), ...(session ? { session } : {}), ...(terminal ? { terminal } : {}), ...(machine ? { machine } : {}) }
     // The same session's report before (the one the user replied to): this one goes on in it, so an exchange is one file.
     await plugin.vault.sync()
-    const prior = sortBy(plugin.vault.items("inbox").filter((x) => (terminal && str(x.terminal) === terminal) || (session && str(x.session) === session)),
+    const prior = sortBy(plugin.vault.items("inbox").filter((x) => !truthy(x.question) && ((terminal && str(x.terminal) === terminal) || (session && str(x.session) === session))),
       latest, true)[0]
+    // TL;DR, its decisions (drawn with their buttons, once a file), screenshots, then the details folded.
+    const decisions = specs.length && !(prior && str(prior.body).includes(DECISIONS_BLOCK)) ? DECISIONS_BLOCK : ""
+    const round = (head: string) => [withTldr(tldr, ""), head, decisions,
+      images.length ? images.map((i) => `![[${path.posix.basename(i)}]]`).join("\n") : "", folded("Details", summary)].filter(Boolean).join("\n\n")
     let r: Item
     if (prior) {
       await editBody(prior.id, (body) => {
-        const next = `## ${title}\n\n${round}\n\n`
+        const next = `## ${title}\n\n${round("")}\n\n`
         const at = body.lastIndexOf(REPLY_BLOCK)
         return at < 0 ? `${body.replace(/\n*$/, "")}\n\n${next}${REPLY_BLOCK}\n` : body.slice(0, at) + next + body.slice(at)
       })
-      r = await ctx.api("PUT", `inbox/${encodeURIComponent(prior.id)}`, { status: "new", updated: nowStamp(), snoozed: null, title: reportTitle(str(p.work), str(p.state) || (questions.length ? "waiting" : "done"), subjectOf(str(prior.title))), ...who }) as Item
+      r = await ctx.api("PUT", `inbox/${encodeURIComponent(prior.id)}`, { status: told ? "new" : "done", updated: nowStamp(), snoozed: null, title: reportTitle(str(p.work), state, subjectOf(str(prior.title))), ...who }) as Item
     } else {
-      r = await ctx.api("POST", "inbox", { title, body: [round, terminal || session ? REPLY_BLOCK : ""].filter(Boolean).join("\n\n"), from: agent ? agentLabel(agent) : ctx.who.label, ...who }) as Item
+      r = await ctx.api("POST", "inbox", { title, work: str(p.work), body: [round(""), terminal || session ? REPLY_BLOCK : ""].filter(Boolean).join("\n\n"), from: agent ? agentLabel(agent) : ctx.who.label, ...who }) as Item
+      if (!told) r = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done" }) as Item
     }
     const file = `${r.id}.md`
-    // Its session's thread is the report now, needing the user (it's what they sent it to do), the file its record.
-    const report = { state: "open" as const, ask: "report", title: str(r.title), body: tldr, link: file, read: false, questions: undefined }
-    if (terminal || session) await sessionRow({ agent: agent || "vau", terminal, session }, report, true)
-    else addEvent({ source: agent || "vau", kind: "waiting", ...report })
-    return { path: file, title: r.title, images, terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
+    const w: Asker = { agent, session, terminal, machine, from: agent ? agentLabel(agent) : ctx.who.label }
+    const asked = specs.length ? await askAll(ctx, specs, w, baseOf(str(r.id))) : []
+    const closed: string[] = []
+    for (const x of settles) {
+      const d = decisionAt(x)
+      if (!d || str(d.status) !== "new" || isArchived(d)) continue
+      await ctx.api("PUT", `inbox/${encodeURIComponent(d.id)}`, { status: "done", closed: clip(`Settled by [[${baseOf(str(r.id))}]]`, 300) })
+      closed.push(`${d.id}.md`)
+    }
+    // Its session's thread is the report: needing the user when it's told, else done with it, quietly (the record is the
+    // report, its questions the decisions).
+    const report = told
+      ? { state: "open" as const, ask: "report", title: str(r.title), body: tldr, link: file, read: false, questions: undefined }
+      : { state: "done" as const, ask: "report", title: str(r.title), body: tldr, link: file, read: true, questions: undefined, progress: undefined }
+    if (terminal || session) await sessionRow({ agent: agent || "vau", terminal, session }, report, told)
+    else if (told) addEvent({ source: agent || "vau", kind: "waiting", ...report })
+    // (later work settles what was asked before it: the rest are read against this report)
+    track(closeSettled(ctx, `${tldr}\n\n${summary}`, `[[${baseOf(str(r.id))}]]`, new Set(asked.map((x) => x.path.replace(/\.md$/, "")))))
+    return { path: file, title: r.title, inbox: told, decisions: asked, closed, images, terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
   },
-  text: (r) => `In the user's inbox: ${r.path}${r.thread ? " (added to this session's report before, as a thread)" : ""}.` + (r.terminal || r.session ? " Their reply comes back to this session" +
-    (r.terminal && ending.has(r.terminal) ? "; this terminal ends when this turn does." : ".") : ""),
+  text: (r) => [`Reported: ${r.path}${r.thread ? " (added to this session's report before)" : ""}, ${r.inbox ? "in the user's inbox" : "archived (the morning brief lists it)"}.`,
+    ...r.decisions.map((d: Item) => `  ${d.merged ? "Same as one open already" : d.blocking ? "Asked, waiting on it" : "Asked"}: ${d.question} (${d.path})`),
+    ...r.closed.map((c: string) => `  Closed: ${c}`),
+    r.terminal || r.session ? `Their answers come back to this session${r.terminal && ending.has(r.terminal) ? "; this terminal ends when this turn does." : "."}` : ""].filter(Boolean).join("\n"),
 })
 
 /** The machine a report's session runs on when it isn't this one (a resume here would find no session), else null. */
@@ -2260,8 +2712,9 @@ plugin.block("inbox", (ctx) => {
   const results = [...l.pinned.results, ...l.review].slice(0, nr)
   // (what's pinned and what needs the user first, then what agents work on, then messages)
   const es = [...l.pinned.events, ...l.needs, ...l.working, ...l.messages].slice(0, ne)
-  ctx.source(nr > 0 ? results : [])
+  ctx.source([...l.decisions, ...(nr > 0 ? results : [])])
   const parts: string[] = []
+  if (l.decisions.length) parts.push(`Decisions:\n${bullets(l.decisions.map(decisionLine))}`)
   if (ne > 0 && es.length) {
     parts.push(`From your agents:\n${bullets(es.map((e) => [fmtAgo(e.t), `${e.title}${e.preview || e.body ? `: ${clip(e.preview || e.body, 200)}` : ""}`,
       e.pinned && "pinned", waitsOnYou(e) ? "needs you" : e.state === "working" ? "working on it" : !e.read && "unread", e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")))}`)
@@ -2270,6 +2723,27 @@ plugin.block("inbox", (ctx) => {
     parts.push(`To review:\n${bullets(results.map((r) => [`[[${r.id}|${r.title}]]`, r.from && `from ${r.from}`, latest(r) && fmtAgo(stampAt(latest(r)))].filter(Boolean).join(" · ")))}`)
   }
   return [`## ${str(o.title) || "Inbox"}`, parts.length ? parts.join("\n\n") : "_Nothing needs you. When an agent asks you something or leaves you a report, it shows here._"].join("\n\n")
+})
+
+/** A decision as one line of text: its question, what it stands at, its options. */
+const decisionLine = (r: Item) => [`[[${r.id}|${str(r.question)}]]`, str(r.answer) ? `answered: ${str(r.answer)}` : str(r.closed) ? `closed: ${str(r.closed)}` : r.blocking ? "waits on you" : `went with ${str(r.default)}`,
+  `options: ${((r.options as string[]) ?? []).map((o) => (o === r.default ? `${o} (default)` : o)).join(" / ")}`].join(" · ")
+
+/** The decisions a file asks: a decision's own file, itself; a report, the ones it asked (its `report`, or `also`). */
+export function decisionsIn(p: string): Item[] {
+  const name = baseOf(p)
+  const all = plugin.vault.items("inbox").filter((r) => truthy(r.question))
+  const own = all.find((r) => `${r.id}.md` === p || r.id === p.replace(/\.md$/, ""))
+  if (own) return [own]
+  const asks = (r: Item) => baseOf(linkTo(str(r.report))) === name || ((r.also as string[] | undefined) ?? []).some((l) => baseOf(linkTo(l)) === name)
+  return sortBy(all.filter(asks), (r) => str(r.created), false)
+}
+
+plugin.block("decisions", (ctx) => {
+  const ds = decisionsIn(ctx.path)
+  ctx.source(ds)
+  if (!ds.length) return "_The decisions a report asks the user, each with its options (inbox.report writes them)._"
+  return `${bullets(ds.map(decisionLine))}\n\n_Answer one: \`vau inbox decide "<its path>" "<option>"\`._`
 })
 
 plugin.block("reply", (ctx) => {

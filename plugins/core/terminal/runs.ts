@@ -16,7 +16,7 @@ export function useTerminalRuns(): AgentRun[] | null {
       if (!a || (s.external && !s.clients)) return []
       const needs = needsYou(s, a)
       return [{
-        id: `terminal:${s.id}`, kind: "terminal", title: labelOf(s, a), step: s.msg || undefined,
+        id: `terminal:${s.id}`, kind: "terminal", title: labelOf(s, a), step: s.progress || s.msg || undefined,
         state: needs ? "needs" : s.state === "working" || s.starting ? "working" : "done", failed: s.state === "error", unread: !!s.needs && s.state !== "blocked",
         machine: s.machine, where: s.machineLabel, agent: a.label, tint: a.tint, session: s.session, at: s.started, started: true,
         to: `view:terminal/${s.id}`, menu: () => menuOf(s, a),

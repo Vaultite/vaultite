@@ -5,7 +5,9 @@ import { splitMachine, stem, useLive, type AgentRun } from "@vaultite"
 
 /** A session as the route lists it (chathost.ts' Summary, with its title); <id>@<machine> for another machine's. */
 type Chat = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; cwd: string; by: string; started: number; at: number
-  asks: string[]; title?: string; error?: string; turn: { prompt: string; text: string; error?: string } | null }
+  asks: string[]; title?: string; error?: string; turn: { prompt: string; text: string; error?: string } | null
+  /** What it last said of its progress (inbox.progress). */
+  progress?: string }
 
 const EVERY = 4000
 const firstLine = (t: string | undefined) => t?.trim().split("\n")[0]?.slice(0, 120) || undefined
@@ -19,7 +21,7 @@ export function useChatRuns(): AgentRun[] | null {
       const needs = c.state === "waiting" || c.asks.length > 0, failed = c.state === "error"
       return {
         id: `chat:${c.id}`, kind: "chat", title: c.title || firstLine(c.turn?.prompt) || stem(c.cwd) || "Chat",
-        step: needs ? "Waiting for your answer" : failed ? firstLine(c.error ?? c.turn?.error) : c.state === "working" ? firstLine(c.turn?.prompt) : firstLine(c.turn?.text),
+        step: needs ? "Waiting for your answer" : failed ? firstLine(c.error ?? c.turn?.error) : c.state === "working" ? c.progress || firstLine(c.turn?.prompt) : firstLine(c.turn?.text),
         state: needs ? "needs" : c.state === "working" || c.state === "starting" ? "working" : "done", failed,
         machine, agent: "Claude Code", tint: "var(--orange)", session: id, at: c.at || c.started, to: `view:claude-session/${c.id}`,
       }

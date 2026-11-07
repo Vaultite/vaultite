@@ -3,19 +3,22 @@
 import { CliError, done, execute, type PluginCli } from "../../../core/cli.ts"
 
 const SUBS: Record<string, string> = { "": "inbox.list", add: "inbox.add", read: "inbox.read", unread: "inbox.unread", clear: "inbox.clear",
-  answer: "inbox.answer", push: "inbox.push", voice: "inbox.voice", report: "inbox.report", reply: "inbox.reply", settle: "inbox.settle", done: "inbox.done", snooze: "inbox.snooze", wake: "inbox.wake", pin: "inbox.pin", hold: "inbox.hold" }
+  answer: "inbox.answer", push: "inbox.push", voice: "inbox.voice", report: "inbox.report", ask: "inbox.ask", decide: "inbox.decide",
+  decisions: "inbox.decisions", reports: "inbox.reports", progress: "inbox.progress", reply: "inbox.reply", settle: "inbox.settle", done: "inbox.done", snooze: "inbox.snooze", wake: "inbox.wake", pin: "inbox.pin", hold: "inbox.hold" }
 
 export const cli: PluginCli = {
   commands: [{
     name: "inbox",
     after: "notify",
-    summary: "What's new in the inbox (results to review, agents' sessions that need you, events); add a result; an agent's hook posts here.",
-    usage: "vau inbox [add <title> [--body <text>] [--source <url>] [--from <who>] | report <title> --summary <text> | reply <path|id> <text> | settle <path|id> [--title <title>] | snooze <path|id> --until <when> | wake <path|id> | pin <path|id> [--off] | hold <until|off> [--label <what>] | hook <agent> [<json>] | read [<id>...] | unread <id>... | answer <id> <approve|deny|reply|read> [--text <text>] | push <title> | voice <text> | clear]",
-    help: `The Inbox: results to review (files in Inbox/, status new), coding agents' sessions while they need you (one row
-each: a question, an approval, an answer to read) and other events, kept on the server's machine until read, then for a
-week. Without a subcommand: all of it, newest first. The subcommands are
-operations: vau inbox.add --help explains one (inbox.list, inbox.add, inbox.report, inbox.reply, inbox.settle,
-inbox.snooze, inbox.wake, inbox.pin, inbox.hold, inbox.read, inbox.unread, inbox.answer, inbox.push, inbox.voice, inbox.clear).
+    summary: "What's new in the inbox (decisions waiting on you, agents' sessions that need you, results to review, events); ask or answer a decision; an agent's hook posts here.",
+    usage: "vau inbox [add <title> [--body <text>] [--source <url>] [--from <who>] | report <title> --tldr <line> --summary <text> [--decision <q | a* | b>] | ask <question> --options <a> <b> --default <a> | decide <path> <answer> | decide --defaults | decisions | reports [--since <when>] | progress <line> | reply <path|id> <text> | settle <path|id> [--title <title>] | snooze <path|id> --until <when> | wake <path|id> | pin <path|id> [--off] | hold <until|off> [--label <what>] | hook <agent> [<json>] | read [<id>...] | unread <id>... | answer <id> <approve|deny|reply|read> [--text <text>] | push <title> | voice <text> | clear]",
+    help: `The Inbox is for decisions: each question an agent asks is its own item (a file in Inbox/), its options as
+buttons and the default it takes if unanswered; agents' sessions while they need you (an approval, an answer to read);
+results to review (status new). Reports are records: archived as they come, listed in the morning brief (vau inbox
+reports). Progress is a session's own row (vau inbox progress), never the inbox. Without a subcommand: all of it. The
+subcommands are operations: vau inbox.add --help explains one (inbox.list, inbox.add, inbox.report, inbox.ask,
+inbox.decide, inbox.decisions, inbox.reports, inbox.progress, inbox.reply, inbox.settle, inbox.snooze, inbox.wake,
+inbox.pin, inbox.hold, inbox.read, inbox.unread, inbox.answer, inbox.push, inbox.voice, inbox.clear).
 
   vau inbox                                   what's new
   vau inbox add "Plant care apps compared" --body "## Findings ..." --from Claude
@@ -24,8 +27,15 @@ inbox.snooze, inbox.wake, inbox.pin, inbox.hold, inbox.read, inbox.unread, inbox
   vau inbox read mg3k2a-1f9c0e                mark one read (ids: vau inbox)
   vau inbox unread mg3k2a-1f9c0e              mark one unread (seeing the Inbox won't read it again)
   vau inbox clear                             forget every event
-  vau inbox report "Sidebar fixed" --summary "..." --questions "Ship it?" --images /tmp/after.png
-                                              end a task you were handed: a report the user replies to
+  vau inbox report "Sidebar fixed" --work fix --tldr "The sidebar scrolls again." --summary "..." \\
+    --decision "Ship it to the phone too? | Yes | Not yet*" --images /tmp/after.png
+                                              end a task you were handed: a record, and a decision per question
+  vau inbox ask "Keep the quieter island?" --options Keep "Go back" --default Keep
+                                              one decision (--blocking: you wait on it)
+  vau inbox decisions                         what waits on the user's answer
+  vau inbox decide "Inbox/Keep the quieter island.md" "Go back"   their answer (--default; --defaults: all of them)
+  vau inbox reports --since 2026-11-06        the reports filed since, one line each (the brief's digest)
+  vau inbox progress "Two of five fixes in"   your session's row says it, quietly
   vau inbox reply "Inbox/Sidebar fixed.md" "Yes, ship it"   the reply, typed into the agent's session
   vau inbox reply mg3k2a-1f9c0e "The second one"            the same, to a session's row (ids: vau inbox)
   vau inbox settle "Inbox/Sidebar fixed.md"   archive a result (--title names it anew; done: its old name)

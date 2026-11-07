@@ -8,8 +8,9 @@ import { show } from "./ops.ts"
 
 export const DEFAULT_PROMPT = "Read the note {path} and do what it asks."
 /** What an agent is told after its prompt while the Inbox is on: it works alone, and its report is where the user answers. */
-export const REPORT = "Do it all the way, then end with `vau inbox report` (vau inbox report --help): the user reads it in their " +
-  "inbox, your terminal ends after this turn, and their reply comes back to you."
+export const REPORT = "Do it all the way, then end with `vau inbox report` (vau inbox report --help): a one-line TL;DR, each question " +
+  "for the user as its own --decision with its options and the default you take (never questions in prose), the details. Your " +
+  "terminal ends after this turn, and their answers come back to you."
 /** How the refusal of a command not yet allowed here starts (the app asks the user on it). */
 export const COMMAND_UNSEEN = "This machine hasn't run this action's command before:"
 

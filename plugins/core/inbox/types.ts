@@ -22,6 +22,14 @@ export type InboxItem = {
   do?: string
   /** An agent's report (inbox.report): who wrote it, its session, the app terminal and the machine it ran on, for the reply. */
   agent?: string; session?: string; terminal?: string; machine?: string
+  /** A decision (decisions.ts): its question, options, default, whether its agent waits on it; then the answer or why
+   *  it closed; the report that asked it, and others that asked it too (merged). */
+  question?: string; options?: string[]; default?: string; blocking?: boolean
+  answer?: string; answered?: string | null; closed?: string; report?: string; also?: string[]
+  /** A report's work (inbox.report: feature, fix, change, research, plan, answer). */
+  work?: string
+  /** A report's TL;DR (its callout), one line: what the morning brief and the Reports list show. */
+  tldr?: string
 }
 
 /** A question an agent asks (core/agents.ts' Question): `closed`, only its options (no answer typed, no Chat about this). */
@@ -65,6 +73,8 @@ export type InboxEvent = {
   snoozed?: number
   /** Pinned on top of the inbox till it's done or unpinned. */
   pinned?: boolean
+  /** A session's latest progress (inbox.progress), each replacing the last: shown on its row, never told. */
+  progress?: string
   /** The session that delegated this one its task, by its name then (its own thread, if any, by its terminal or session). */
   parent?: { title: string; agent: string; terminal?: string; session?: string }
 }

@@ -37,6 +37,8 @@ export type Session = { id: string; agent: string | null; process: string; busy?
   /** What its program is doing (OSC 7501, else its agent's hooks or a question on its screen): blocked is waiting on
    *  the user (`kind`: for a permission, an answer or a login), `msg` its words (the program's). */
   state?: "idle" | "working" | "blocked" | "done" | "error"; kind?: "permission" | "question" | "auth"; msg?: string
+  /** What its agent last said of its progress (inbox.progress): the Agents panel's step. */
+  progress?: string
   /** Its agent's command was typed into its shell and its program isn't in front yet. */
   starting?: boolean
   /** The Inbox has a row for it that needs the user, unread: an answer to read, a question. */

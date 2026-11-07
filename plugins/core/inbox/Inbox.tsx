@@ -2,7 +2,7 @@
 // Reading only makes a row plain: a thread leaves once it's done.
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import {
-  AlarmClockOff, Bell, CalendarClock, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, Clock, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen,
+  AlarmClockOff, Bell, CalendarClock, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, Clock, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, ListTodo, Mail, MailOpen,
   Maximize2, ListChecks, MessageCircleQuestion, MessageSquareReply, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
@@ -17,6 +17,7 @@ import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 import { countOf, latestOf, lists, reviewing } from "./threads"
 import { useHasDraft } from "./drafts"
 import { DraftTag, ReplyBox } from "./Reply"
+import { acceptAll, DecisionRow, keepDefault } from "./DecisionRows"
 
 const waiting = (r: InboxItem) => reviewing(r) && !snoozed(r.snoozed)
 /** The inbox's lists now (threads.ts), from the events and the store's results. */
@@ -428,6 +429,64 @@ const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => 
   ...(e.state === "done" ? [{ label: "Delete", icon: Trash2, run: () => void forget(e.id) }] : []),
 ]
 
+/** A row's line: a working session's latest progress, else its body as one plain line. */
+const lineOf = (e: InboxEvent) => (e.state === "working" && e.progress) || e.preview || (e.body ? snippet(e.body) : "")
+
+// ---------- decisions: their rows (Decisions.tsx), with the Inbox's snooze and selection
+
+const decisionItems = (r: InboxItem): MenuItem[] => [
+  { label: "Open", icon: FileText, run: () => openFile(pathOf(r)) },
+  ...(r.default ? [{ label: `Accept the default (${r.default})`, icon: Check, sep: true, run: () => void keepDefault(r) }] : []),
+  snoozeMenu([resultKey(r)]),
+]
+const decisionSwipe = (r: InboxItem): SwipeAction[] => snoozed(r.snoozed)
+  ? [{ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys([resultKey(r)], null), removes: true }]
+  : [{ label: "Snooze", icon: Clock, run: snoozeAtRow([resultKey(r)]) }, ...(r.default ? [{ label: "Keep default", icon: Check, run: () => void keepDefault(r), removes: true }] : [])]
+const decisionSnooze = (r: InboxItem) => snoozeMenu([resultKey(r)])
+
+/** The decisions on the page: the ones an agent waits on, then the ones it went with a default for, and Accept all. */
+function DecisionsSection({ rows, max }: { rows: InboxItem[]; max: number }) {
+  const waits = rows.filter((r) => r.blocking), kept = rows.filter((r) => !r.blocking)
+  const { shown, more, all, toggle } = useCap(waits, kept, max)
+  if (!rows.length) return null
+  const row = (r: InboxItem) => <DecisionRow key={r.id} r={r} snooze={decisionSnooze} swipe={decisionSwipe(r)} />
+  return (
+    <section data-inbox-decisions>
+      <div className="mb-0.5 flex h-7 items-center gap-2">
+        <h3 className="flex-1 text-[13px] font-semibold text-muted-foreground">Decisions <span className="font-normal tabular-nums">{rows.length}</span></h3>
+        {rows.length > 1 && (
+          <button type="button" data-accept-all onClick={() => void acceptAll(rows)}
+            className="flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] px-2 text-[13px] text-primary hover:bg-foreground/[0.06] max-md:h-9 max-md:text-[15px]">
+            <ListTodo className="size-3.5" strokeWidth={2.25} />Accept all defaults
+          </button>
+        )}
+      </div>
+      <div className="hairline">{[...waits.map(row), ...shown.map(row)]}</div>
+      <FoldButton more={more} all={all} toggle={toggle} className="mt-1 h-8 text-[13px]" />
+    </section>
+  )
+}
+
+/** The day's reports, folded at the bottom: one line each, its TL;DR; the whole report a click away. */
+function Reports({ store }: { store: Store }) {
+  const rs = listsOf(store, useEvents().events).reports
+  return (
+    <Folded label="Reports today" n={rs.length} attr="data-inbox-reports">
+      {rs.map((r) => (
+        <button key={r.id} type="button" data-report={r.id} onClick={() => openFile(pathOf(r))}
+          className="relative isolate flex min-h-11 w-full cursor-pointer items-center gap-3 py-2 text-left before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]">
+          <FileText className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} />
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2 text-[15px] leading-[20px] max-md:text-[17px] max-md:leading-[22px]">{r.title}</span>
+            {r.tldr && <span className="block text-[13px] text-muted-foreground max-md:line-clamp-2 max-md:text-[15px] md:truncate">{r.tldr}</span>}
+          </span>
+          {(r.updated || r.created) && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums max-md:text-[15px]">{fmtAgo((r.updated || r.created)!, { short: true })}</span>}
+        </button>
+      ))}
+    </Folded>
+  )
+}
+
 /** What a reply to it is kept under (drafts.ts): its id, the thread's, whether it links its report or not. */
 const draftKey = (e: InboxEvent) => e.id
 
@@ -586,7 +645,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
   const pin = <Pin className="size-3 shrink-0 text-tertiary" strokeWidth={2.25} aria-label="Pinned" />
   const row = (e: InboxEvent) => (
     <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} data-state={e.state} select={eventKey(e)} swipe={() => eventSwipe(e)}
-      label={e.preview || e.body ? `${e.title}: ${e.preview || snippet(e.body!)}` : e.title} tag={<>{e.pinned && pin}<DraftTag to={draftKey(e)} short /></>}
+      label={lineOf(e) ? `${e.title}: ${lineOf(e)}` : e.title} tag={<>{e.pinned && pin}<DraftTag to={draftKey(e)} short /></>}
       time={e.state === "working" ? "working" : fmtAgo(e.t, { short: true })} dim={e.state === "working"}
       icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
       <GateButtons e={e} className={small} size="size-3.5" />
@@ -598,10 +657,20 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
   return (
     <div className="flex shrink-0 flex-col" data-inbox-panel>
       <SidebarHeading title="Inbox" open={open}>
+        {l.decisions.length > 1 && <HeadingButton icon={ListTodo} label="Accept all defaults" onClick={() => void acceptAll(l.decisions)} />}
         {unread > 0 && <HeadingButton icon={CheckCheck} label="Mark all read" onClick={() => markRead()} />}
         <HeadingButton icon={Maximize2} label="Open inbox" onClick={openInbox} />
       </SidebarHeading>
       <div className="flex flex-col gap-px pb-1" data-select-list={SELECT}>
+        {l.decisions.map((r) => (
+          <PanelRow key={r.id} data-decision={r.id} select={resultKey(r)} swipe={() => decisionSwipe(r)} label={r.question!} active={file === pathOf(r)}
+            time={r.created ? fmtAgo(r.created, { short: true }) : undefined}
+            icon={r.blocking ? <MessageCircleQuestion className="size-4 shrink-0" strokeWidth={2} style={{ color: "var(--orange)" }} /> : <CircleCheck className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />}
+            onClick={() => openFile(pathOf(r))} onContextMenu={menuFor(rowMenu(SELECT, resultKey(r), () => decisionItems(r)))}>
+            <HeadingButton icon={Check} label={`Accept the default: ${r.default}`} onClick={stop(() => void keepDefault(r))} />
+            <HeadingButton icon={Clock} label="Snooze" onClick={snoozeBelow([resultKey(r)])} />
+          </PanelRow>
+        ))}
         {l.pinned.events.map(row)}
         {l.needs.map(row)}
         {[...l.pinned.results, ...l.review].map((r) => (
@@ -613,7 +682,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           </PanelRow>
         ))}
         {rest.map(row)}
-        {!l.pinned.events.length && !l.pinned.results.length && !l.needs.length && !l.review.length && !rest.length && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing needs you.</p>}
+        {!l.decisions.length && !l.pinned.events.length && !l.pinned.results.length && !l.needs.length && !l.review.length && !rest.length && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing needs you.</p>}
         <FoldButton more={more} all={all} toggle={toggle} className="h-7 rounded-[5px] pl-1.5 text-[13px] hover:bg-foreground/[0.04]" />
       </div>
     </div>
@@ -686,7 +755,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   const [whole, setWhole] = useState(false)
   const asks = answerable(e)
   // (an agent's answer is Markdown: one plain line here, whole in its sheet)
-  const line = e.preview || (e.body ? snippet(e.body) : "")
+  const line = lineOf(e)
   const draft = useHasDraft(draftKey(e))
   const where = standing(e)
   const [replying, setOpen] = useState(() => replyingTo.has(e.id))
@@ -824,7 +893,7 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   // (a row with a body is taller: as many of those as last time too)
   const bodies = useKeptCount(kept && `${kept}:bodies`, loading ? undefined : live.filter((e) => e.body || e.machineLabel).length, 0)
   const row = (e: InboxEvent) => <EventRow key={e.id} e={e} fresh={fresh?.has(e.id)} touched={touched} />
-  const past = dealt && <><Snoozed store={store} /><Settled store={store} fresh={fresh} /></>
+  const past = dealt && <><Reports store={store} /><Snoozed store={store} /><Settled store={store} fresh={fresh} /></>
   const results = l.review.slice(0, nr)
   // The shelves: pinned, active (what waits on you first, then what's to read, the latest first), working; snoozed and
   // settled folded below. A row says why it's there (its icon, Asks you, Report...).
@@ -833,10 +902,11 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   const active = [...(ne ? l.needs.map(row) : []),
     ...byLatest([...results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} /> })), ...(ne ? l.messages.map((e) => ({ at: e.t, row: row(e) })) : [])])]
   // (the page says above what comes here; the block, alone on a dashboard, says it here)
-  const empty = dealt ? "Nothing needs you." : "Nothing needs you. When an agent asks you something or leaves you a report, it shows here."
-  if (!pinned.length && !active.length && !live.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>{empty}</Empty>}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
+  const empty = dealt ? "Nothing needs you." : "Nothing needs you. When an agent needs a decision from you, it shows here."
+  if (!l.decisions.length && !pinned.length && !active.length && !live.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>{empty}</Empty>}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
   return (
     <div className="flex flex-col gap-4" data-select-list={SELECT} data-keylist>
+      <DecisionsSection rows={l.decisions} max={dealt ? 100 : Math.max(ne, 3)} />
       <Section title="Pinned" attr="data-inbox-pinned" rows={pinned} max={dealt ? 50 : Math.max(ne, nr)} />
       <Section title="Active" attr="data-inbox-active" rows={active} max={dealt ? 100 : Math.max(ne, nr)}
         loading={loading && rows > 0 ? <LoadingRows count={rows} meta={bodies} lead={<span className="size-[18px] shrink-0" />} /> : undefined} />
@@ -894,7 +964,7 @@ export function InboxPage({ store, focused }: { store: Store; focused: boolean }
         )}
       </div>
       <p className="mb-4 text-[13px] text-muted-foreground max-md:text-[15px]">
-        Your coding agents' sessions when they need you (a question, an approval, an answer or a report to read) and results to review. Reading one doesn't settle it: it stays until you settle it, or you reply and the agent finishes with nothing more for you.
+        What your agents need you to decide, each with its options; the ones they wait on come first. What they finished is in the morning brief and under Reports today.
       </p>
       <Lists store={store} events={20} results={100} fresh={fresh} touched={touched} all />
     </div>
