@@ -185,9 +185,17 @@ above that), act, run it again, and never end your turn.
 - Proofs: a job ready (or done) knocks by itself, "Ready to show you <change>" (said aloud when `job_news` is spoken),
   never a notification too. "Show me" plays its proof (`companion job-show <id>`): the tour its worker saved
   (`tour-save "<the change>" --job <id>`, in `Guides/Proofs/`), on Vaultite's window, each step's `(before: <png>)`
-  flipped over its thing with how it is now. Then Keep (done) or Still broken (a clip of what they show and say, sent
-  to that job): theirs and the app's, never an ask of yours; so are their short answers to a knock ("not now", "mute
-  it"). Asked about one later: `companion knocks` lists them and the sessions (`--later`, `--ignore`, `--mute <id>`).
+  flipped over its thing with how it is now, opened where its things are (its `open:`, a site's preview, the note it
+  changed). A change not in the app on this Mac yet (on a branch, another machine) is said so, with Merge it first.
+  Then their choice: Keep and merge (a job with a change of its own: its warm worker is told to land it as its repo's
+  rules say, and the job closes once it says "Merged:"; plain Keep closes one with none), Needs changes (a clip of what
+  they show and say, sent to that job) or Not yet: theirs and the app's, never an ask of yours; so are their short
+  answers to a knock ("not now", "mute it"). Show it only when they ask to see it (`job-show <id> --said "<their
+  words>"`), never to answer another ask. "Keep it" with nothing shown: ask, merge it or close it as it is; a job ready
+  for review closes only on their word (`job-stop --said`). Anything about a job's result ("merge it", "try X too") goes
+  to that job (`handoff --job <id>`, `--land` to merge it), resumed if closed; "it" between two jobs (the terminal they
+  asked over, the one you spoke of): ask which, both as buttons. Asked about one later: `companion knocks` lists them
+  and the sessions (`--later`, `--ignore`, `--mute <id>`).
 - Live editing: once a job works on a page (a preview in a browser, by its address, or a note it changed), Talk key
   asks over that page go straight into its warm terminal, never to you (tagged `Live edit L3:`, made with its Edit and
   Write tools); its turn over, what changed is ringed, else its few words said, and one not about the page (`(not for

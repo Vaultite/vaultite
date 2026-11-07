@@ -1,6 +1,6 @@
-// A job's proof: its change shown on the real UI, not claimed. A job that's ready knocks ("Ready to show you …"); Show
-// me plays the tour its worker saved (proofs.ts), each before flipped with how it is now, then Keep or Still broken. No Node.
-import { gist, type Job, live, resultLine } from "./jobs.ts"
+// A job's proof: its change shown on the real UI, not claimed: its ready knock, Show me playing its worker's tour
+// (proofs.ts), then Keep and merge (its worker lands it), Needs changes (sent back) or Not yet. No Node.
+import { gist, type Job, landable, live, resultLine } from "./jobs.ts"
 
 /** The layer a step's before picture is drawn on, beside its agent's own (each flips without the other). */
 const BEFORE = " (before)"
@@ -15,8 +15,11 @@ export const FLIPS: [number, boolean][] = [[1700, false], [3100, true], [4500, f
 export const readyNow = (j: Pick<Job, "state">, from: string) => live(from as Job["state"]) && (j.state === "ready for review" || j.state === "done")
 
 const lowerFirst = (s: string) => (/^[A-Z][a-z]/.test(s) && !/^[A-Z][a-z]+[A-Z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s)
-/** A job's ready knock, one line: what it shows (its proof's title, "the blue save button"), else its own title. */
-export function readyLine(j: Pick<Job, "title" | "state">, change?: string) {
+/** A job's ready knock, one line: what it shows (its proof's title, "the blue save button"), else its own title; one that
+ *  was merging what they kept, how that went. */
+export function readyLine(j: Pick<Job, "title" | "state" | "land">, change?: string) {
+  const name = j.title.replace(/\s+/g, " ").trim().replace(/[.!]+$/, "")
+  if (j.land?.at !== undefined) return j.land.merged ? `Merged: ${name}` : `Didn't merge: ${name}`
   const what = (change ?? "").replace(/\s+/g, " ").trim().replace(/[.!]+$/, "")
   if (what) return `Ready to show you ${lowerFirst(what)}`
   const title = j.title.replace(/\s+/g, " ").trim().replace(/[.!]+$/, "")
@@ -31,11 +34,29 @@ export function summaryOf(j: Pick<Job, "result" | "last" | "title">) {
   return parts.filter(Boolean).join(" ") || `It didn't say what changed for "${j.title}".`
 }
 
-/** The user's answer after a proof: keep it, still broken, or neither (a real ask). Short words only. */
-export function choiceSaid(text: string): "keep" | "broken" | null {
-  const t = text.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, " ").replace(/\s+/g, " ").trim()
+/** What they can answer after a proof: keep it (and merge it, when it has a change of its own: landable), it needs
+ *  changes, or not yet (it waits in Jobs). An offer to merge first (its change isn't live where they are): yes or not yet. */
+export type Choice = "keep" | "broken" | "later"
+export type Asked = "proof" | "offer"
+/** The words of the choice for job `j`: its question and buttons, each button's words what happens. */
+export function choicesFor(j: Pick<Job, "state" | "where" | "result" | "land">, asked: Asked = "proof"): { say: string; buttons: string[] } {
+  if (asked === "offer") return { say: "Merge it first, then show you?", buttons: ["Merge it first", "Not yet"] }
+  return landable(j) ? { say: "Keep it and merge it in, or does it need changes?", buttons: ["Keep and merge", "Needs changes", "Not yet"] }
+    : { say: "Keep it, or does it need changes?", buttons: ["Keep", "Needs changes"] }
+}
+
+/** The user's answer after a proof (`asked`) in a few words: keep it (merge it), needs changes, not yet, or neither (a
+ *  real ask, null). */
+export function choiceSaid(text: string, asked: Asked = "proof"): Choice | null {
+  const t = text.toLowerCase().replace(/[’]/g, "'").replace(/[^\p{L}\p{N}' ]+/gu, " ").replace(/\s+/g, " ").trim()
   if (!t || t.split(" ").length > 7) return null
-  if (/^(?:(?:no|nope|nah) )?(?:it'?s |that'?s |its )?(?:still (?:broken|wrong|not (?:working|right|fixed))|not (?:fixed|working|right)(?: yet)?|(?:it )?(?:doesn'?t|does not|didn'?t) work|broken)(?: still)?$/.test(t)) return "broken"
-  if (/^(?:(?:yes|yeah|yep|ok|okay|great|nice|perfect|good) )*(?:keep(?: it| that| this)?|looks (?:good|great|right)|that'?s (?:good|great|right|it)|ship it|(?:it )?works|good|great|perfect|lgtm)(?: thanks| thank you)?$/.test(t)) return "keep"
+  if (/^(?:(?:no|nope|nah|ok|okay) )?(?:not (?:yet|now)|later|maybe later|leave it(?: for now)?|(?:keep it )?(?:but )?(?:don'?t|do not) merge(?: it)?(?: yet)?|keep it but don'?t merge(?: it)?|hold (?:on|off)|wait)$/.test(t)) return "later"
+  if (/^(?:(?:no|nope|nah) )?(?:it'?s |that'?s |its )?(?:still (?:broken|wrong|not (?:working|right|fixed))|not (?:fixed|working|right)(?: yet)?|(?:it )?(?:doesn'?t|does not|didn'?t) work|broken|needs? (?:changes|work|fixing|a change)|change (?:something|it)|fix (?:it|something))(?: still)?$/.test(t)) return "broken"
+  if (/^(?:(?:yes|yeah|yep|ok|okay|great|nice|perfect|good|sure) )*(?:keep(?: it| that| this)?(?: and merge(?: it)?)?|merge(?: it)?(?: first| in)?|land it|looks (?:good|great|right)|that'?s (?:good|great|right|it)|ship it|(?:it )?works|good|great|perfect|lgtm)(?: thanks| thank you| please)?$/.test(t)) return "keep"
+  if (asked === "offer" && /^(?:yes|yeah|yep|ok|okay|sure|please|do it|go ahead)(?: please| do it| go ahead)?$/.test(t)) return "keep"
+  if (asked === "offer" && /^(?:no|nope|nah)(?: thanks)?$/.test(t)) return "later"
   return null
 }
+
+/** Words that ask to see a job's change ("show me", "let's see the header", "what did it do?"): what job-show is for. */
+export const asksToSee = (text: string) => /\b(show|see|look|watch|demo|play|view|try|preview)\b|\bwhat (?:did|does|has) (?:it|that|the job)\b|\bhow (?:does|did) it look\b/i.test(text)

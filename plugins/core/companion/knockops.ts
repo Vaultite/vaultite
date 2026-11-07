@@ -146,7 +146,8 @@ replaces its last. Urgency: low comes at a longer pause, high at any pause in th
     help: `What came to the user lately from sessions in the background, and the presences by the notch (working, needs
 you, done). When they say "not now" or "ignore that one" about a knock, you mark it: later (it comes back at their next
 break), ignore (that one), or mute (every knock from its session, for 12 hours). "Show me" opens its session
-(vau open view:terminal/<its terminal>, --split right beside, or open what it names); a job's ready knock plays its proof (companion job-show).
+(vau open view:terminal/<its terminal>, --split right beside, or open what it names); a job's ready knock with a tour plays
+its proof (companion job-show), one without opens its terminal.
 
   vau companion knocks
   vau companion knocks --later k3x

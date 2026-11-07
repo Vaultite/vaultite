@@ -7,7 +7,7 @@ import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentModels, type AgentUse, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
-import { byUser, LOCAL, liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
+import { byUser, LOCAL, liveMarkdown, localDate, type OpCtx, OpError, Plugin, ROOT, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
 import { joinPath, Kind, readText, requestWriter, safeName, type Vault, type Writer, writeAtomic, writeNew } from "../../../core/vault.ts"
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { bridges } from "./bridge.ts"
@@ -24,7 +24,7 @@ import { bestFound, byLabel, checkMarks, type Found, type Mark, type Rect as Scr
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
-import { type JobState, jobSpoken, jobTimingsText, jobTold } from "./jobs.ts"
+import { type Job, type JobState, jobSpoken, jobTimingsText, jobTold, landable } from "./jobs.ts"
 import { knockOps } from "./knockops.ts"
 import { beforeLayer, FLIPS, layerOwner, readyNow } from "./proof.ts"
 import { proofOps } from "./proofs.ts"
@@ -262,7 +262,7 @@ let nid = 0
 const log = plugin.dayLog<Moment>("moments")
 const acts = plugin.dayLog<Act>("actions")
 /** What's logged that isn't acting: its turn's bookkeeping. */
-const BOOKKEEPING = new Set(["next", "handed", "sent", "done", "again", "result", "withdrawn", "talked"])
+const BOOKKEEPING = new Set(["next", "handed", "sent", "done", "again", "result", "withdrawn", "talked", "shown"])
 /** `text`: what it said (a say's words), kept for the conversation's page. */
 const did = (as: string, op: string, seqs?: number[], text?: string) => {
   const t = Date.now(), quick = inSummoned.getStore() === true
@@ -2722,6 +2722,7 @@ const jobs = jobOps(plugin, {
   // show; the rest is news)
   moved: (j, from) => void (talks.moved(j, from) || liveEditing.moved(j, from) || (readyNow(j, from) && j.terminal ? proofs.moved(j, from) : jobNews(j.title, j.state, from)).catch(() => {})),
   warm: (j) => liveEditing.warm(j) || talks.talking(j),
+  paneTo: (id) => paneById(id)?.to ?? "",
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
 captureOps(plugin, jobs)
@@ -2784,11 +2785,15 @@ const proofs = proofOps(plugin, {
     return s && { ...s, fallback: async () => false }
   },
   say: (text, o = {}) => plugin.host.call("companion.say", { text, ...(o.ask ? { ask: true } : {}) }, AS_TOOL, { report: "companion job-show" }),
-  choices: async () => {
+  notHere: (j, t) => {
+    if (!ownTour(t) || !j.where.repo) return ""
+    if (j.where.machine) return `it ran on ${j.where.label || j.where.machine}, not here`
+    return landable(j) && ownCode(j) ? "it's on a branch, not merged into the app you're running" : ""
+  },
+  choices: async (_j, c) => {
     if (!screens.size || !displaysOf(ownName()).length) return false
     const at = { area: "bottom" }
-    await plugin.host.call("companion.draw", { say: "Keep it, or is it still broken?", marks: [
-      { type: "button", label: "Keep", do: { ask: "Keep" }, at }, { type: "button", label: "Still broken", do: { ask: "Still broken" }, at }] }, AS_TOOL, { report: "companion job-show" })
+    await plugin.host.call("companion.draw", { say: c.say, marks: c.buttons.map((label) => ({ type: "button", label, do: { ask: label }, at })) }, AS_TOOL, { report: "companion job-show" })
     return true
   },
   clear: () => { stopFlips(); screenDrawing.clear({ agent: ownName() }) },
@@ -2810,7 +2815,17 @@ const proofs = proofOps(plugin, {
     const ds = Array.isArray(on.displays) ? on.displays.filter((x): x is ScreenRectLike => !!x && typeof x === "object" && ["x", "y", "width", "height"].every((k) => typeof (x as Record<string, unknown>)[k] === "number")).slice(0, 8) : []
     shown = { t: shown?.t ?? Date.now(), voice: on.voice, displays: ds.length ? ds : shown?.displays ?? [] }
   },
+  asked: () => askOf(ownName()),
+  shown: (j, by) => did(ownName(), "shown", undefined, JSON.stringify({ job: j.id, title: j.title, by })),
 })
+/** Whether job `j` works on this app's own code (its repo's package is the one running): its change shows here once merged. */
+function ownCode(j: Job) {
+  const name = (dir: string) => { try { return String(JSON.parse(fs.readFileSync(`${dir}/package.json`, "utf8")).name ?? "") } catch { return "" } }
+  const mine = name(ROOT)
+  let dir = j.where.cwd.replace(/^~(?=\/|$)/, os.homedir())
+  for (let i = 0; i < 4 && dir.length > 1; i++, dir = dir.replace(/\/[^/]+\/?$/, "") || "/") if (fs.existsSync(`${dir}/package.json`)) return !!mine && name(dir) === mine
+  return false
+}
 /** The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"):
  *  its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first. */
 plugin.provide("agents-used:companion", (): AgentUse[] => [
@@ -4040,7 +4055,7 @@ recognizer, the key's up and down, its end), as the menu-bar helper logged them 
     const got = await plugin.desktop("talk:presses", { day }).catch(() => []), presses = (Array.isArray(got) ? got : []) as PressLine[]
     return { day, exchanges: exchanges(log.read(day), acts.read(day), presses, ownName()), spent: spent(presses), jobs: jobs.cards().map((j) => ({ ...j, at: j.started, ...(j.ended ? { ended: j.ended } : {}) })) }
   },
-  text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "ask" : "asks"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${e.voice ? "said" : "asked"}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
+  text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "ask" : "asks"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${e.kind === "shown" ? "proof played" : e.voice ? "said" : "asked"}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
     ...(r.spent.length ? [`Used: ${r.spent.map((x: Spent) => `${x.service} ${x.uses}${x.seconds ? `, ${Math.round(x.seconds)} s` : ""}${x.cost ? `, $${x.cost.toFixed(3)}` : ""}`).join("; ")}`] : [])].join("\n"),
 })
 /** A Talk key ask's picture of the screen, as the helper wrote it (userData/screens/display-*.png): no other file. */

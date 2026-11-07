@@ -22,6 +22,8 @@ const DOES: Record<string, string> = { look: "pointed", draw: "drew", highlight:
   edit: "wrote", comment: "commented", suggest: "suggested", propose: "proposed", follow: "followed", see: "looked at a pane", clear: "cleared" }
 const NOT_SHOWN = new Set(["next", "handed", "sent", "done", "again", "word", "say", "pass", "stopped", "result", "withdrawn", "talked"])
 const ASKS = new Set(["ask", "point", "reply"])
+/** A job's proof shown (`shown`, its JSON): its own exchange, so its words never read as the answer to the ask before. */
+const proofOf = (a: Act) => { try { const x = JSON.parse(a.text ?? ""); return { t: a.t, seq: -1, kind: "shown", text: `Show me: ${String(x.title ?? x.job ?? "a job")}`, summoned: false, voice: true as const } } catch { return null } }
 
 /** A press's cost in dollars, where its steps say one (the realtime voice's turns). */
 const costOf = (steps: PressLine[]) => { const c = steps.reduce((s, x) => s + (typeof x.cost === "number" ? x.cost : 0), 0); return c > 0 ? c : undefined }
@@ -34,9 +36,10 @@ export function exchanges(ms: Moment[], allActs: Act[], presses: PressLine[], na
   const acts = allActs.filter((a) => mine(a.as))
   // (small talk the realtime voice answered alone is an act, `talked`: their words and its, as JSON)
   const talked = acts.filter((a) => a.op === "talked" && a.text).flatMap((a) => { try { const x = JSON.parse(a.text!); return [{ t: a.t, heard: String(x.heard ?? ""), said: String(x.said ?? "") }] } catch { return [] } })
-  const asks: (Moment | { t: number; seq: number; kind: string; text: string; summoned: true; voice: true; talked: string })[] = [
+  const asks: (Moment | { t: number; seq: number; kind: string; text: string; summoned: boolean; voice: true; talked?: string })[] = [
     ...ms.filter((m) => ASKS.has(m.kind) && !m.again && (!m.for || m.for === name)),
     ...talked.map((x) => ({ t: x.t, seq: -1, kind: "ask", text: x.heard, summoned: true as const, voice: true as const, talked: x.said })),
+    ...acts.filter((a) => a.op === "shown").flatMap((a) => proofOf(a) ?? []),
   ].sort((a, b) => a.t - b.t)
   const byPress = new Map<string, PressLine[]>()
   for (const l of presses) byPress.set(l.press, [...(byPress.get(l.press) ?? []), l])
@@ -54,7 +57,7 @@ export function exchanges(ms: Moment[], allActs: Act[], presses: PressLine[], na
     return {
       t: m.t, seq: m.seq, kind: m.kind, text: m.text ?? "", summoned: !!m.summoned, voice: !!m.voice,
       where: w.title ? `${w.title}${w.app ? ` (${w.app})` : ""}` : "path" in m && m.path ? `${m.path.replace(/\.md$/, "")}${m.line ? `, line ${m.line}` : ""}` : "",
-      said: "talked" in m ? [m.talked] : mine.filter((a) => a.op === "say" && a.text).map((a) => a.text!),
+      said: "talked" in m ? [m.talked ?? ""] : mine.filter((a) => a.op === "say" && a.text).map((a) => a.text!),
       did: [...new Set(mine.filter((a) => !NOT_SHOWN.has(a.op)).map((a) => DOES[a.op] ?? a.op))],
       ...(results.length ? { results } : {}),
       ...(handed && word ? { word: Math.max(0, (word.t - m.t) / 1000) } : {}), ...(done ? { total: (done.t - m.t) / 1000 } : {}),
@@ -75,7 +78,7 @@ export function talkSoFar(xs: Exchange[], now: number, budget = 6000, whole = 8)
   for (let i = xs.length - 1; i >= 0; i--) {
     const e = xs[i], n = xs.length - 1 - i < whole ? 600 : 160
     const did = [...(e.results ?? []).map((r) => one(r, n === 600 ? 300 : 120)), ...(e.results?.length ? [] : e.did)]
-    const line = [`- ${ago(now, e.t)}${e.where ? `, in ${one(e.where, 80)}` : ""}, they ${e.voice ? "said" : "asked"}: ${one(e.text, n) || "(pointed, no words)"}`,
+    const line = [e.kind === "shown" ? `- ${ago(now, e.t)}, a job's proof played (${one(e.text, n)}), not an answer to anything they asked` : `- ${ago(now, e.t)}${e.where ? `, in ${one(e.where, 80)}` : ""}, they ${e.voice ? "said" : "asked"}: ${one(e.text, n) || "(pointed, no words)"}`,
       ...(e.said.length ? [`  you: ${one(e.said.join(" "), n)}`] : []), ...(did.length ? [`  you did: ${did.join("; ")}`] : [])].join("\n")
     if (used + line.length > budget) break
     lines.unshift(line); used += line.length + 1

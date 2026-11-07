@@ -9,7 +9,7 @@ import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type 
 import { type Condition, conditionText, type Input, parseCondition, watch } from "./condition.ts"
 import { playedThrough, promoted, skillName } from "./teach.ts"
 import { noteText, writeNote } from "./teachops.ts"
-import { type Aim, type Do, type Fx, type Mode, MODES, parseTour, play, type Result, type Step, type Tour, tourAsked, tourFromAnswer, tourText } from "./tour.ts"
+import { type Aim, type Do, type Fx, type Mode, MODES, nativeSteps, parseTour, play, type Result, type Step, type Tour, tourAsked, tourFromAnswer, tourText } from "./tour.ts"
 import type { Condition as Check, Rect } from "./uimodel.ts"
 import { fileTitle } from "./names.ts"
 import { saveFiles } from "./vaultfiles.ts"
@@ -238,6 +238,7 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
       app: { type: "string", description: "the app it's for (a bundle id; vaultite for the app itself)" },
       site: { type: "string", description: "the site it's for (a host)" },
       job: { type: "string", description: "the job it's the proof of (its id, as its prompt gives it): saved in Guides/Proofs, it's what Show me plays once the job is ready" },
+      open: { type: "string", description: "with job: where the change shows (a note's path or a page's address), which Show me opens before it plays" },
       as: { type: "string", description: "the agent (another than the companion)" },
     },
     args: ["title"],
@@ -253,7 +254,8 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
       } else if (last) tour = tourFromAnswer(last.text, title, last.ctx)
       else throw new OpError("nothing to save: you haven't answered on screen lately; give its steps (text)", 409)
       const app = typeof p.app === "string" && p.app.trim() ? [p.app.trim()] : null, site = typeof p.site === "string" && p.site.trim() ? [p.site.trim().toLowerCase()] : null
-      tour = { ...tour, ...(app ? { app } : {}), ...(site ? { site } : {}), ...(!app && !site && !tour.app.length && !tour.site.length && last ? { app: last.ctx.app ? [last.ctx.app] : [], site: last.ctx.site ? [last.ctx.site] : [] } : {}) }
+      const open = typeof p.open === "string" ? p.open.trim() : ""
+      tour = { ...tour, ...(app ? { app } : {}), ...(site ? { site } : {}), ...(open ? { open } : {}), ...(!app && !site && !tour.app.length && !tour.site.length && last ? { app: last.ctx.app ? [last.ctx.app] : [], site: last.ctx.site ? [last.ctx.site] : [] } : {}) }
       if (!tour.steps.length) throw new OpError("nothing to save: no steps")
       const job = typeof p.job === "string" ? p.job.trim() : ""
       if (job && !/^[\w-]{1,40}$/.test(job)) throw new OpError(`job: a job's id (j3k9x2a), not ${job}`)
@@ -272,9 +274,12 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
         return { ...st, before: (await saveFiles(ctx, base, [{ from, name }]))[0] }
       }))
       await ctx.api("PUT", "file", { path, text: tourText({ ...tour, steps, ...(job ? { job } : {}) }) })
-      return { path, steps: tour.steps.length, ...(job ? { job } : {}) }
+      // (a tour finds its things in Vaultite's window or another app's: the Mac's menu bar or notch it never finds)
+      const native = nativeSteps(tour)
+      const warning = native.length ? `step${native.length > 1 ? "s" : ""} ${native.join(", ")} name${native.length > 1 ? "" : "s"} the Mac's own UI (the menu bar, the notch, a notification), outside Vaultite's window, where a tour can't find things: Show me will say it can't show ${native.length > 1 ? "them" : "it"}. Point those steps at what shows in Vaultite's window, or give each a (before:) picture and say in its words what to open to see it live` : ""
+      return { path, steps: tour.steps.length, ...(job ? { job } : {}), ...(warning ? { warning } : {}) }
     },
-    text: (r) => r.job ? `Saved ${r.path} (${r.steps} steps), the proof of ${r.job}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`,
+    text: (r) => `${r.job ? `Saved ${r.path} (${r.steps} steps), the proof of ${r.job}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`}${r.warning ? ` Warning: ${r.warning}.` : ""}`,
   })
 
   plugin.op({

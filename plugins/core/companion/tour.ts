@@ -19,6 +19,8 @@ export type Tour = { title: string; app: string[]; site: string[]; steps: Step[]
   ask?: string[]
   /** The job it's the proof of (its change shown, `companion job-show`). */
   job?: string
+  /** Where its things are, opened before it plays: a note's path or a page's address (a proof's: where the change shows). */
+  open?: string
   /** What its targets are beyond their words (role, container, place), by their words: found again by these. */
   anchors: Record<string, Partial<Anchor>> }
 
@@ -98,9 +100,15 @@ export function parseTour(fm: Record<string, unknown>, body: string, stem: strin
     for (const [k, v] of Object.entries(fm.anchors as Record<string, unknown>)) if (v && typeof v === "object") anchors[k] = v as Partial<Anchor>
   }
   if (!steps.length && !problems.length) problems.push("a tour's steps are a numbered list: 1. Your chats are down the left [frame \"Chats\"].")
-  const job = typeof fm.job === "string" && fm.job.trim() ? fm.job.trim() : ""
-  return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, ...(list(fm.ask).length ? { ask: list(fm.ask) } : {}), steps, anchors, ...(job ? { job } : {}) }, problems]
+  const job = typeof fm.job === "string" && fm.job.trim() ? fm.job.trim() : "", open = typeof fm.open === "string" ? fm.open.trim() : ""
+  return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, ...(list(fm.ask).length ? { ask: list(fm.ask) } : {}), steps, anchors, ...(job ? { job } : {}), ...(open ? { open } : {}) }, problems]
 }
+
+/** The Mac's own UI outside Vaultite's window, named in a step's words: a tour on that window can't find it there. */
+const NATIVE = /\b(?:menu ?bar(?:'s)?(?: menu| icon| item)?|tray|notch|dynamic island|notification(?: center)?s?|dock(?: icon| menu)?|status item|system settings|(?:app|native|mac'?s?) menu)\b/i
+/** Steps of tour `t` (one on Vaultite's window) whose words or targets name the Mac's own UI outside that window. */
+export const nativeSteps = (t: Pick<Tour, "steps" | "app" | "site">) => (t.site.length || (t.app.length && !t.app.includes("vaultite")) ? []
+  : t.steps.filter((s) => NATIVE.test(s.said) || s.tags.some((g) => NATIVE.test(JSON.stringify(g)))).map((s) => s.n))
 
 /** A step's line in a tour's file: `n. words [tags] (wait: …) (do: …)`. */
 export const stepLine = (s: Step, n: number) => `${n}. ${[s.text, s.wait ? `(wait: ${conditionText(s.wait)})` : "", s.do?.length ? `(do: ${s.do.map(doText).join("; ")})` : "",
@@ -109,7 +117,7 @@ export const stepLine = (s: Step, n: number) => `${n}. ${[s.text, s.wait ? `(wai
 export function tourText(t: Tour, extra: Record<string, string> = {}) {
   const yaml = (v: unknown) => JSON.stringify(v)
   const plain = (v: string) => (/^[\w./@ -]+$/.test(v) && !/^\s|\s$|: /.test(v) ? v : yaml(v))
-  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.job ? [`job: ${t.job}`] : []), ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : []), ...(t.ask?.length ? [`ask: ${yaml(t.ask)}`] : [])]
+  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.job ? [`job: ${t.job}`] : []), ...(t.open ? [`open: ${plain(t.open)}`] : []), ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : []), ...(t.ask?.length ? [`ask: ${yaml(t.ask)}`] : [])]
   const anchors = Object.entries(t.anchors).filter(([, a]) => Object.keys(a).length)
   if (anchors.length) fm.push("anchors:", ...anchors.map(([k, a]) => `  ${yaml(k)}: ${yaml(a)}`))
   fm.push("---")

@@ -3,6 +3,7 @@
 import { anchorOf, keepAnchor, refind, type Seen } from "../plugins/core/companion/anchor.ts"
 import { check as checkOnce, conditionText, durationOf, type Env, type Input, parseCondition, watch } from "../plugins/core/companion/condition.ts"
 import type { Condition as Check } from "../plugins/core/companion/uimodel.ts"
+import type { Job } from "../plugins/core/companion/jobs.ts"
 import { type Aim, askWords, type Fx, parseTour, play, plan, tourAsked, tourFromAnswer, tourText } from "../plugins/core/companion/tour.ts"
 
 let failed = 0, passed = 0
@@ -186,9 +187,9 @@ Some words before the steps.
   check("player: and stops following once its step ends", looked === after, { looked, after })
 }
 
-// ---------- Proofs: a job's change shown, its befores flipped, then Keep or Still broken
+// ---------- Proofs: a job's change shown, its befores flipped, then Keep and merge, Needs changes or Not yet
 {
-  const P = await import("../plugins/core/companion/proof.ts")
+  const P = await import("../plugins/core/companion/proof.ts"), J = await import("../plugins/core/companion/jobs.ts"), T = await import("../plugins/core/companion/tour.ts")
   const [t, problems] = parseTour({ job: "j3k9x2a" }, `1. The save button is blue now [ring "Save"]. (before: "Guides/Proofs/The blue save button/before 1.png")\n2. And it says so in Jobs [point "Jobs"].`, "The blue save button")
   check("proof: a step's before is its picture, its job the tour's; written back as read", !problems.length && t.job === "j3k9x2a" && t.steps[0].before === "Guides/Proofs/The blue save button/before 1.png" &&
     t.steps[0].said === "The save button is blue now." && !t.steps[1].before && tourText(t).includes("job: j3k9x2a") &&
@@ -206,13 +207,36 @@ Some words before the steps.
     P.readyLine({ ...job, state: "done" }) === "Done: Make the save button blue")
   check("proof: only a turn just ended with something is shown (ready for review or done, from working)", P.readyNow({ state: "ready for review" }, "working") && P.readyNow({ state: "done" }, "needs you") &&
     !P.readyNow({ state: "done" }, "ready for review") && !P.readyNow({ state: "failed" }, "working") && !P.readyNow({ state: "needs you" }, "working"))
-  const keep = ["Keep", "keep it", "Yes, keep it.", "looks good", "that's great thanks", "ship it", "it works", "perfect"], broken = ["Still broken", "it's still broken", "not fixed", "No, still not working", "it doesn't work", "broken"]
-  const neither = ["keep the old colour on the header please", "why is it blue", "show me again", ""]
-  check("proof: Keep and Still broken said, in a few words; anything else is a real ask", keep.every((x) => P.choiceSaid(x) === "keep") && broken.every((x) => P.choiceSaid(x) === "broken") &&
-    neither.every((x) => P.choiceSaid(x) === null), [...keep, ...broken, ...neither].map((x) => [x, P.choiceSaid(x)]))
+  const keep = ["Keep", "keep it", "Yes, keep it.", "looks good", "that's great thanks", "ship it", "it works", "perfect", "Keep and merge", "merge it", "ok merge it"]
+  const broken = ["Still broken", "it's still broken", "not fixed", "No, still not working", "it doesn't work", "broken", "Needs changes", "needs work"]
+  const later = ["Not yet", "not now", "later", "keep it but don't merge", "don't merge it yet", "leave it for now"]
+  const neither = ["keep the old colour on the header please", "why is it blue", "show me again", "why didn't you answer my previous message?", "yes", ""]
+  check("proof: its choice said in a few words (keep and merge, needs changes, not yet); anything else is a real ask", keep.every((x) => P.choiceSaid(x) === "keep") && broken.every((x) => P.choiceSaid(x) === "broken") &&
+    later.every((x) => P.choiceSaid(x) === "later") && neither.every((x) => P.choiceSaid(x) === null), [...keep, ...broken, ...later, ...neither].map((x) => [x, P.choiceSaid(x)]))
+  check("proof: after an offer to merge first, a plain yes or no answers it", P.choiceSaid("yes", "offer") === "keep" && P.choiceSaid("Merge it first", "offer") === "keep" && P.choiceSaid("no thanks", "offer") === "later" &&
+    P.choiceSaid("Not yet", "offer") === "later" && P.choiceSaid("what branch?", "offer") === null)
+  // (the choice says what happens: a change of its own merges, one with none just keeps; every button's words answer it)
+  const coded = { state: "ready for review" as const, where: { repo: "site" } as unknown as Job["where"], result: { diff: "1 file changed, +1 -0" } }, note = { ...coded, where: { repo: "" } as unknown as Job["where"] }
+  const cs = [P.choicesFor(coded), P.choicesFor(note), P.choicesFor(coded, "offer")]
+  check("proof: a job with a change of its own asks Keep and merge, Needs changes, Not yet; one with none, Keep or Needs changes; each button its own answer",
+    cs[0].buttons.join() === "Keep and merge,Needs changes,Not yet" && cs[1].buttons.join() === "Keep,Needs changes" && cs[2].buttons.join() === "Merge it first,Not yet" &&
+    cs.every((c, i) => c.buttons.every((b) => P.choiceSaid(b, i === 2 ? "offer" : "proof") !== null)) && !J.landable({ ...coded, land: { asked: 1, at: 2, merged: true } }) &&
+    J.landable({ ...coded, state: "done" }) && !J.landable({ ...coded, state: "working" }), cs)
+  check("proof: a worker's last message says whether it merged what they kept", J.mergedSaid("Merged: squashed into main as abc123.") === true && J.mergedSaid("**Merged** into main") === true &&
+    J.mergedSaid("Not merged: CI is red on main.") === false && J.mergedSaid("I couldn't merge it: conflicts") === null && J.mergedSaid("Couldn't merge: conflicts") === false && J.mergedSaid("Done.") === null)
+  check("proof: once merging what they kept, its knock says how it went", P.readyLine({ ...job, land: { asked: 1, at: 2, merged: true } }) === "Merged: Make the save button blue" &&
+    P.readyLine({ ...job, land: { asked: 1, at: 2, merged: false } }, "The blue save button") === "Didn't merge: Make the save button blue")
+  check("proof: only words asking to see it show a job (never another ask)", ["show me", "let's see the header", "what did it do?", "can I look at it"].every(P.asksToSee) &&
+    !["why didn't you answer my previous message?", "merge it", "keep it", "close that"].some(P.asksToSee))
   const said = P.summaryOf({ title: "x", result: { text: "Made the save button blue in the toolbar. Also tidied its hover.", diff: "2 files changed, +8 -3", files: ["web/src/a.tsx", "web/src/b.css"] } })
   check("proof: nothing to show: its own words' gist and its diff, plainly", said === "Made the save button blue in the toolbar. 2 files changed, +8 -3: a.tsx, b.css." &&
     P.summaryOf({ title: "Fix it" }) === `It didn't say what changed for "Fix it".`, said)
+  const [nat] = parseTour({}, `1. The Jobs heading is bold now [ring "Jobs"], in the menu bar's Vaultite menu.\n2. And here [point "Settings"].`, "Bold jobs")
+  const [site] = parseTour({ site: ["example.com"] }, `1. In the menu bar [ring "Jobs"].`, "x")
+  check("proof: a step naming the Mac's own UI (the menu bar, the notch) is found, so tour-save warns; on a site it isn't", T.nativeSteps(nat).join() === "1" && !T.nativeSteps(site).length &&
+    !T.nativeSteps(parseTour({}, `1. Docked panels stay [ring "Files"].`, "x")[0]).length, T.nativeSteps(nat))
+  check("proof: a tour's open (where its change shows) is written back as read", parseTour({ open: "Notes/Plan.md" }, tourText({ ...t, open: "Notes/Plan.md" }).split("---\n").pop()!, "x")[0].open === "Notes/Plan.md" &&
+    tourText({ ...t, open: "Notes/Plan.md" }).includes("open: Notes/Plan.md"))
   check("proof: a step's before draws on its agent's own before layer", P.layerOwner(P.beforeLayer("Claude")) === "Claude" && P.layerOwner("Claude") === "Claude" && P.beforeLayer("Ada") !== "Ada")
 }
 

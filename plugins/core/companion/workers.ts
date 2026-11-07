@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import { agentName, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, endEvent, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
+import { cardOf, choiceIn, endEvent, LAND_TASK, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
   step, terminalOf, type Waits, type Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import { branchOf, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
@@ -23,6 +23,8 @@ export type JobDeps = {
   warm?: (j: Job) => boolean
   /** Whether a window shows `link` in its shown tab. */
   onScreen?: (link: string) => boolean
+  /** What pane `id` shows (its link: a job's terminal, view:terminal/<id>), "" when unknown. */
+  paneTo?: (id: string) => string
   as: object
 }
 /** A worker's terminal as read where it runs (the op companion.worker): `typed` when the user last typed in one of its
@@ -300,7 +302,13 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const r = resultOf(j, s)
     j.result = r.result
     heard(j, s)
-    return move(j, r.changes ? "changed" : "answered")
+    return move(j, landed(j, r.text) ? "landed" : r.changes ? "changed" : "answered")
+  }
+  /** Its turn over while it merged what they kept (`text`: its words): whether it says it merged, read once. */
+  function landed(j: Job, text: string) {
+    if (!j.land || j.land.at !== undefined) return false
+    j.land = { ...j.land, at: Date.now(), merged: mergedSaid(text) === true }
+    return j.land.merged === true
   }
   /** Its terminal ended (`s`): while it worked, by what it left in its session's transcript and how it ended (endEvent);
    *  else as the lifecycle says. Read once per end. */
@@ -314,7 +322,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     heard(j, r)
     // (a terminal ended on purpose, End session or vau terminal end, reads as a SIGHUP)
     const crashed = !!x && (!!x.lost || x.code !== 0 || (x.signal !== 0 && x.signal !== 1))
-    move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed }))
+    if (landed(j, done.text)) move(j, "landed")
+    else move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed }))
     resumable(j)
     return true
   }
@@ -412,6 +421,31 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     changed()
   }
 
+  /** They kept job `j`'s change: its own worker, warm with its context, told to land it (closed once it says merged). */
+  async function land(ctx: OpCtx, j: Job, note = "", shown?: string) {
+    const was = j.land
+    j.land = { asked: Date.now() }
+    try { await steer(ctx, j, [LAND_TASK, note].filter(Boolean).join(" "), shown ?? "Kept: merge it") } catch (e) { j.land = was; throw e }
+  }
+  /** Closed by the user (their stop, their Keep): one ready for review is done, else stopped; its terminal ends. */
+  async function close(ctx: OpCtx, j: Job) {
+    // (the user's own stop: nothing new to tell them)
+    if (move(j, "stop")) { j.seen = true; changed() }
+    await ctx.op("terminal.end", { id: terminalOf(j) }).catch((e: unknown) => { if (!(e instanceof OpError && (e.status === 404 || e.status === 502))) throw e })
+  }
+  /** The job whose terminal ask `m` was over (the pane they held the Talk key on), if any. */
+  const jobOver = (m: Moment | undefined) => { const to = m?.pane ? d.paneTo?.(m.pane) ?? "" : ""; return to ? all().find((x) => linkOf(x) === to) : undefined }
+  /** Why an agent can't take job `j` as the one their ask `m` means: it was over another job's terminal and their words
+   *  (`which`, quoted from it) don't name this one; "" when it can. */
+  function unsure(j: Job, m: Moment | undefined, which: string) {
+    const over = jobOver(m)
+    if (!over || over.id === j.id) return ""
+    const w = plainWords(which)
+    if (w && m?.text && ` ${plainWords(m.text)} `.includes(` ${w} `)) return ""
+    const short = (x: Job) => x.title.split(/\s+/).slice(0, 4).join(" ")
+    return `their ask was over the job "${over.title}" (${over.id}), not "${j.title}" (${j.id}): unless their words name the one they mean (then which: those words), ask them which in one short line ("${short(j)}, or ${short(over)}?"), each a button (draw: a button each, its ask the job's name)`
+  }
+
   /** A new job doing `task` (told where it runs: what it's given may depend on it), placed by the ask it came from (`m`)
  *  unless `p` says where; started in its terminal. */
   async function begin(ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: Moment | undefined, p: Record<string, unknown>) {
@@ -450,10 +484,12 @@ review, done, failed, stopped) with where it runs; opening it opens its terminal
 ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they say so. Every
 handoff announces itself in one short line ("Handed that off to a background agent."; a follow-up, "Passed that on to its job.");
 say replaces it, still one short line, only when they need more (a question, an unexpected place). End your turn. job: a follow-up or a correction to one of yours (companion
-jobs), typed into its terminal. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
+jobs), typed into its terminal; anything about its result ("merge it", "try X too") goes to it too, done or closed (it
+resumes), with land for their word to merge it. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
 
   vau companion handoff "Make the header blue on this page"
-  vau companion handoff "Use the darker blue instead" --job jd3k2h1g`,
+  vau companion handoff "Use the darker blue instead" --job jd3k2h1g
+  vau companion handoff "They said merge it" --job jd3k2h1g --land`,
     kind: "write",
     lock: false,
     params: { task: { type: "string", required: true, description: "what to do, standing alone: the goal, where, what to end with (the ask's words, place and picture go with it); with job, a short note of what it's for: their words, place and picture go with it too" },
@@ -464,7 +500,9 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
       title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words); with job, its new name, when the follow-up changes what it's about" },
       cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over" },
       machine: { type: "string", description: "another of the Machines to run it on, by id (with cwd: that machine's folder)" },
-      job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" }, as: d.as },
+      job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" },
+      land: { type: "boolean", description: "with job: their word to merge what it made (merge it, ship it): it's told to land it as its repo's rules say, and closes once merged" },
+      which: { type: "string", description: "with job: their words naming that job, when their ask was over another job's terminal" }, as: d.as },
     args: ["task"],
     run: async (p, ctx) => {
       const name = d.who(p), task = str(p.task).trim()
@@ -476,11 +514,14 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
         const j = jobOf(str(p.job))
         // (their ask goes with it once: one the job was already given isn't told again)
         const m = d.askOf(name), fresh = m && m.t > (j.asked ?? 0) ? m : undefined
-        await steer(ctx, j, followTask(task, fresh))
+        const unsureWhy = ctx.who.agent ? unsure(j, m, str(p.which)) : ""
+        if (unsureWhy) throw new OpError(unsureWhy, 409)
+        if (p.land === true) await land(ctx, j, followTask(task, fresh), task)
+        else await steer(ctx, j, followTask(task, fresh))
         if (fresh) j.asked = fresh.t
         if (str(p.title).trim()) await retitle(ctx, j, str(p.title))
         d.did(name, "handoff")
-        await d.say(ctx, name, str(p.say).trim() || "Passed that on to its job.")
+        await d.say(ctx, name, str(p.say).trim() || (p.land === true ? "Told its job to merge it." : "Passed that on to its job."))
         return cardOf(j)
       }
       const j = await begin(ctx, task, d.askOf(name), p)
@@ -493,6 +534,8 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
     did: (p) => ({ action: "run", text: p.job ? `Told the job ${p.job} ${quoted(p.task, 60)}` : `Handed off ${quoted(p.task, 60)}`, by: d.who(p) }),
   })
 
+  /** Words that close a job, said by them. */
+  const CLOSES = /\b(close|stop|drop|cancel|discard|scrap|abandon|kill|end|forget|done with|don'?t need|throw)\b/
   /** How recent the user's ask must be for the companion to answer a job's prompt with it. */
   const ASKED_MS = 3 * 60_000
   const plainWords = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
@@ -608,17 +651,32 @@ its terminal (companion job-open).
   plugin.op({
     id: "companion.job-stop",
     cli: "companion job-stop",
-    summary: "Stop a job (its worker's terminal ends; its conversation stays, to resume); one ready for review is closed as done.",
-    help: `  vau companion job-stop jd3k2h1g`,
+    summary: "Stop a job (its worker's terminal ends; its conversation stays, to resume); one ready for review is closed as done, only on the user's own word.",
+    help: `A job ready for review (or merging what they kept) is closed by an agent only with said quoting their ask's words
+that close it ("close it", "drop it"): never as a fallback for "keep it", nor on your own. Unsure what they want: ask
+in one short line, merge it or close it as it is (each a button).
+
+  vau companion job-stop jd3k2h1g
+  vau companion job-stop jd3k2h1g --said "just close it"`,
     kind: "write",
     lock: false,
-    params: { id: { type: "string", required: true, description: "the job's id (or the end of it)" }, as: d.as },
+    params: { id: { type: "string", required: true, description: "the job's id (or the end of it)" },
+      said: { type: "string", description: "from an agent, for a job ready for review: the user's words in their ask that close it, as they said them" },
+      which: { type: "string", description: "their words naming that job, when their ask was over another job's terminal" }, as: d.as },
     args: ["id"],
     run: async (p, ctx) => {
       const j = jobOf(str(p.id))
-      // (the user's own stop: nothing new to tell them)
-      if (move(j, "stop")) { j.seen = true; changed() }
-      await ctx.op("terminal.end", { id: terminalOf(j) }).catch((e: unknown) => { if (!(e instanceof OpError && (e.status === 404 || e.status === 502))) throw e })
+      // (an agent's: the user's own stop, from the app or their shell, is theirs)
+      if (ctx.who.agent) {
+        const m = d.askOf(d.who(p)), why = unsure(j, m, str(p.which))
+        if (why) throw new OpError(why, 409)
+        // (closing what they haven't decided on is theirs: "keep it" with nothing shown once closed an unmerged job)
+        const said = plainWords(str(p.said))
+        if ((j.state === "ready for review" || (j.land && j.land.at === undefined)) &&
+          (!m?.text || Date.now() - m.t > ASKED_MS || !CLOSES.test(said) || !` ${plainWords(m.text)} `.includes(` ${said} `)))
+          throw new OpError(`"${j.title}" is ready for review: it's closed only on their own word (said quoting it: "close it"). Else ask them in one short line, merge it or close it as it is, each a button`, 403)
+      }
+      await close(ctx, j)
       return cardOf(j)
     },
     text: (r) => `${r.state === "done" ? "Closed" : "Stopped"} "${r.title}" (${r.id}): ${r.state}.`,
@@ -665,6 +723,12 @@ its terminal (companion job-open).
     find: jobOf,
     /** Job `id` told `text`, typed into its terminal (its conversation resumed if it closed); its card shows `shown`. */
     tell: (ctx: OpCtx, id: string, text: string, shown?: string) => steer(ctx, jobOf(id), text, shown),
+    /** They kept job `id`'s change: its worker told to merge it, the job closed once it says it merged. */
+    land: (ctx: OpCtx, id: string) => land(ctx, jobOf(id)),
+    /** Job `id` closed by the user (done when ready for review). */
+    close: (ctx: OpCtx, id: string) => close(ctx, jobOf(id)),
+    /** Why ask `m` may mean another job than `id` (its pane another job's terminal), "" when it can't. */
+    unsure: (id: string, m: Moment | undefined, which = "") => unsure(jobOf(id), m, which),
     /** Where an ask over `o` would run here (its folder, repo, the preview it's on). */
     placeHere: (o: Over) => placeHere(o, ""),
     line: () => jobsLine(all()),

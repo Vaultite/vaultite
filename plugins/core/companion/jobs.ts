@@ -5,15 +5,15 @@ import type { Moment } from "./plugin.ts"
 
 export const JOB_STATES = ["starting", "working", "needs you", "ready for review", "done", "failed", "stopped"] as const
 export type JobState = typeof JOB_STATES[number]
-/** What moves a job: its worker as read (working, asks the user, error), its turn's end (changed: with changes to
- *  review; answered: none), its terminal's end with nothing to show (endEvent), the user's steer (told) and stop. */
-export type JobEvent = "working" | "asks" | "changed" | "answered" | "error" | "ended" | "told" | "stop"
+/** What moves a job: its worker as read (working, asks, error), its turn's end (changed: to review; answered: none;
+ *  landed: what they kept, merged), its terminal's end with nothing to show (endEvent), their steer (told) and stop. */
+export type JobEvent = "working" | "asks" | "changed" | "answered" | "landed" | "error" | "ended" | "told" | "stop"
 
 /** The lifecycle: from each state, where each event goes; an event not listed changes nothing. */
 export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
-  starting: { working: "working", asks: "needs you", changed: "ready for review", answered: "done", error: "failed", ended: "failed", stop: "stopped" },
-  working: { asks: "needs you", changed: "ready for review", answered: "done", error: "failed", ended: "failed", stop: "stopped" },
-  "needs you": { working: "working", told: "working", changed: "ready for review", answered: "done", error: "failed", ended: "failed", stop: "stopped" },
+  starting: { working: "working", asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
+  working: { asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
+  "needs you": { working: "working", told: "working", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
   // (reviewed: closing it, or its terminal ending, is done; a steer or the user typing in it goes on)
   "ready for review": { working: "working", told: "working", asks: "needs you", ended: "done", stop: "done" },
   done: { working: "working", told: "working", asks: "needs you" },
@@ -23,6 +23,18 @@ export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
 /** States the user hears about, a badge until they open the job. */
 const NEWS = new Set<JobState>(["needs you", "ready for review", "done", "failed"])
 export const live = (s: JobState) => s === "starting" || s === "working" || s === "needs you"
+/** Whether job `j` has a change of its own to merge (a repo's diff or files, not yet merged; one closed unmerged too):
+ *  Keep then lands it. */
+export const landable = (j: Pick<Job, "state" | "where" | "result" | "land">) =>
+  (j.state === "ready for review" || j.state === "done") && !!j.where.repo && !!(j.result?.diff || j.result?.files?.length) && !j.land?.merged
+/** What its worker is told when they keep its change: land it as its repo says, then say how it went in its first word. */
+export const LAND_TASK = "They watched your change and kept it: merge it now, as this repo's own rules say (its CLAUDE.md, AGENTS.md or CONTRIBUTING: the checks to run first, how a branch lands, and whether to push or deploy; a step those rules keep for the user still waits for them). Start your last message with \"Merged:\" and where it landed, in a line, or with \"Not merged:\" and why."
+/** Whether a worker's last message says it merged what they kept (true), says it didn't (false), or neither (null). */
+export function mergedSaid(text: string): boolean | null {
+  const t = text.replace(/^[\s*_#>`]+/, "").toLowerCase()
+  if (/^(?:not merged|couldn'?t merge|didn'?t merge|can'?t merge)\b/.test(t)) return false
+  return /^merged\b/.test(t) ? true : null
+}
 /** A job's terminal as every machine's list names it (`<id>@<machine>` when it runs on another). */
 export const terminalOf = (j: Pick<Job, "terminal" | "where">) => `${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`
 
@@ -59,6 +71,9 @@ export type Job = {
   /** When: the ask it came from, its card up (the handoff answered), its worker's first step, its turn began, its last change. */
   asked?: number; started: number; carded?: number; stepped?: number; turn: number; at: number
   result?: Result
+  /** Kept, to be merged (Keep and merge, or their word to land it): when they said so, and once its turn ended, whether
+   *  it said it merged (its last message starting "Merged:"). It closes as done only once merged. */
+  land?: { asked: number; at?: number; merged?: boolean }
   /** Opened since its last news. */
   seen: boolean
   log: Transition[]
@@ -193,7 +208,7 @@ function askLines(m: Moment | undefined) {
 }
 /** How a worker shows its change working (its proof), when the change shows on screen: what Show me plays. */
 export function proofTask(id: string) {
-  return `If your change shows on screen, show it working rather than say so: before you end, save a short tour of it (what Show me plays for them when you're ready): vau companion tour-save "<the change in a few words, as a noun: the blue save button>" --job ${id} --text '<steps>'. A step is a numbered line: one short sentence said aloud, with a tag on the thing as their screen shows it, by its words there ([ring "Save"], [point "Jobs"], [frame "Settings"]); two to four steps. Add (before: <a png>) to a step to flip a picture of that thing before your change over it as it is now: take it before you change anything (a headless screenshot of just that element, or vau screen shot cropped to it with sips), of the thing alone. It plays on Vaultite's own window (its UI, a note) and finds things by their words, so name what shows once your change is there. Nothing to show on screen (research, a backend change): skip it.`
+  return `If your change shows on screen, show it working rather than say so: before you end, save a short tour of it (what Show me plays for them when you're ready): vau companion tour-save "<the change in a few words, as a noun: the blue save button>" --job ${id} --text '<steps>'. A step is a numbered line: one short sentence said aloud, with a tag on the thing as their screen shows it, by its words there ([ring "Save"], [point "Jobs"], [frame "Settings"]); two to four steps. Add (before: <a png>) to a step to flip a picture of that thing before your change over it as it is now: take it before you change anything (a headless screenshot of just that element, or vau screen shot cropped to it with sips), of the thing alone. It plays on Vaultite's own window (its UI, a note: --open the note or page it's on, when that's where it shows) and finds things by their words, so name what shows once your change is there; the Mac's own UI outside that window (the menu bar's menus, the notch, notifications) it can't find, so say in a step's words what to open to see it. Nothing to show on screen (research, a backend change): skip it.`
 }
 /** What a worker is told: the task, the ask it came from (its words, where, what was under the pointer, the screen's
  *  picture then), how to end (changes are the user's to review, nothing outward without their word), and its proof. */
@@ -223,6 +238,7 @@ export function jobText(j: Job, now = Date.now()) {
     l?.told ? `told last: ${l.told}` : "",
     said ? `it said (${ago(said.at, now)}): ${cut(said.text.trim(), 1500)}` : "", l?.asks?.length ? `asks: ${l.asks.join(" | ")}` : "",
     resultLine(r) ? `results: ${resultLine(r)}` : "", r?.files?.length ? `files: ${r.files.slice(0, 12).join(", ")}` : "",
+    j.land ? (j.land.at === undefined ? "kept: told to merge it, merging now" : j.land.merged ? "kept and merged" : "kept, but it didn't say it merged: see what it said") : "",
     j.closed ? "its terminal closed once it was done: a follow-up (handoff --job) or opening it resumes its conversation" : "",
     `open it: vau companion job-open ${j.id}`].filter(Boolean).join("\n")
 }
@@ -239,7 +255,7 @@ export function jobsText(jobs: Job[], now = Date.now()) {
 /** The recent jobs a summoned ask is told of, so it can steer one, stop it, or say how it's going. */
 export function jobsLine(jobs: Job[], now = Date.now()) {
   const recent = jobs.filter((j) => live(j.state) || (now - j.at < 6 * 3600_000 && j.state !== "stopped")).slice(0, 4)
-  return recent.length ? `Your jobs (to tell one more or correct it: handoff with its job; to stop one: job-stop; how one goes: job; to show them one that's ready, on their screen: job-show; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
+  return recent.length ? `Your jobs (to tell one more or correct it, and anything about one's result (merge it, try X too): handoff with its job, land for their word to merge it; to stop one: job-stop; how one goes: job; to show them one that's ready, on their screen: job-show; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
     `${j.id} "${cut(j.title, 60)}" (${j.state}${j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)})`).join(", ")}.` : ""
 }
 

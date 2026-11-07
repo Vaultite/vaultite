@@ -29,7 +29,9 @@ anchors:                     # optional, written by tour-save: what tells a targ
   tour-save copies in), laid over the thing and flipped with how it is now while its words are said: a job's proof.
 - A job's proof: `vau companion tour-save "<the change: the blue save button>" --job <id> --text '...'` keeps it in
   `Guides/Proofs/` (`job:` in its frontmatter). Once the job is ready it knocks "Ready to show you the blue save button";
-  "show me" plays it (`companion job-show <id>`), then asks Keep or Still broken.
+  "show me" plays it (`companion job-show <id>`), then asks Keep and merge, Needs changes or Not yet. `--open <note or
+  address>` says where the change shows (opened first). Steps on the Mac's own UI (the menu bar, the notch,
+  notifications) are outside Vaultite's window, where a tour can't find things: tour-save warns.
 - `vau companion tour <note> [--mode show|guide|do] [--wait]` plays one; `companion tour-save "<title>"` saves the last
   answer on screen as one ("save that as a tour"), or `--text` the steps given, to `Guides/<title>.md`.
 

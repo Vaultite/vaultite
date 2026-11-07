@@ -126,14 +126,17 @@ export default async ($: VaultTest) => {
     const c = await import("../../../plugins/core/companion/plugin.ts")
     const { matchSocket } = await import("../../../core/plugins.ts")
     const heard: Any[] = [], sc = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send: (d: string) => heard.push(JSON.parse(d)), close() {}, ping() {}, terminate() {} })
-    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+    // (the helper's socket, as its upgrade request comes: what its asks' ops run as)
+    const helperReq = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+    matchSocket(app.plugins, ["companion", "live"])![1].fn(sc as Any, helperReq, { wild: [], query: { screen: "1" } })
     const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
     const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
     const said: Any[] = []
     const osc = (s: string, more = "") => `printf '\\033]7501;state=${s}${more}\\033\\\\'`
     const b64 = (s: string) => Buffer.from(s).toString("base64")
-    // (works, writes a file, rests; told more, works again; then asks a permission)
+    // (works, writes a file, rests; told to merge it once kept, works and rests; told more, works again; then asks a permission)
     const script = `sleep 0.5; ${osc("working", `:msg=${b64("Editing index.html")}`)}; sleep 1; echo '<p>blue</p>' >> index.html; ${osc("idle")}; ` +
+      `IFS= read -r k; ${osc("working")}; echo "$k" > landed.txt; sleep 1; ${osc("idle")}; ` +
       `IFS= read -r l; ${osc("working")}; echo "$l" > told.txt; sleep 1; ${osc("blocked", `:kind=permission:msg=${b64("Bash(rm -rf build)")}`)}; sleep 600`
     cc["agent:claude"] = async (start: Any) => { said.push(start); return { command: script, cwd: null } }
     let turn: Any = null
@@ -151,6 +154,9 @@ export default async ($: VaultTest) => {
         (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "On it: a session in site."), [st, b, said[0]])
       const working = await waitFor(() => heard.findLast((m) => m.t === "jobs" && m.jobs.some((j: Any) => j.id === card.id && j.state === "working")), 10000, 50)
       check("jobs: its terminal working moves it to working, what it does now from its agent", !!working && working.jobs.find((j: Any) => j.id === card.id).now === "Editing index.html", heard.at(-1))
+      // (its worker saves its proof before it ends, as it's told)
+      const [tst, tb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
+      check("proof: tour-save --job keeps it in Guides/Proofs, as that job's", tst === 200 && tb.path === "Guides/Proofs/The blue heading.md" && read(tb.path).includes(`job: ${card.id}`) && !tb.warning, [tst, tb])
       turn = { text: "Made the heading blue in index.html. Try http://localhost:5173.", files: [path.join(repo, "index.html")], at: Date.now(), final: true }
       const review = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r.state === "ready for review" && r }, 10000, 100)
       check("jobs: its turn over with a change, it's ready for review: its diff, its link, what it said, new for the menu bar",
@@ -159,26 +165,33 @@ export default async ($: VaultTest) => {
       ;[st, b] = await api("POST", "ops/companion.jobs", {})
       check("companion jobs: its state, where, its results", st === 200 && b.jobs[0]?.id === card.id && b.jobs[0].state === "ready for review" && b.jobs[0].where.account === "Personal", b)
       {
-        // Its proof: ready, it knocks; its worker was told to save a tour; Show me with no window says so plainly, then Keep or Still broken.
+        // Its proof: ready, it knocks; its worker was told to save a tour; Show me with no window says so plainly, then the choice.
         const knock = (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.open === `job:${card.id}`)
-        check("proof: a job ready knocks, Ready to show you, from its terminal, opening its proof; its worker was told how to save one",
-          knock?.line === "Ready to show you: Make the heading blue" && knock.urgency === "normal" && knock.from === card.link.split("/").pop() && said[0]?.prompt.includes(`--job ${card.id}`), [knock, said[0]?.prompt.slice(-900)])
-        let [pst, pb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
-        check("proof: tour-save --job keeps it in Guides/Proofs, as that job's", pst === 200 && pb.path === "Guides/Proofs/The blue heading.md" && read(pb.path).includes(`job: ${card.id}`), [pst, pb])
+        check("proof: a job ready knocks, Ready to show you its change, from its terminal, opening its proof; its worker was told how to save one",
+          knock?.line === "Ready to show you the blue heading" && knock.urgency === "normal" && knock.from === card.link.split("/").pop() && said[0]?.prompt.includes(`--job ${card.id}`), [knock, said[0]?.prompt.slice(-900)])
+        let [pst, pb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"], in the menu bar.' }, agent)
+        check("proof: tour-save warns of a step on the Mac's own UI, outside Vaultite's window", pst === 200 && /step 1 names the Mac's own UI/.test(pb.warning ?? ""), [pst, pb])
+        ;[pst, pb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
+        // (an agent shows a job only when their ask is to see it, and closes one ready for review only on their word)
+        const [ast, ab] = await api("POST", "ops/companion.job-show", { id: card.id }, agent)
+        const [cst, cb] = await api("POST", "ops/companion.job-stop", { id: card.id }, agent)
+        check("proof: an agent's Show me without their words asking to see it is refused; its stop of a job ready for review too",
+          ast === 403 && /only when their ask is to see/.test(ab.error) && cst === 403 && /closed only on their own word/.test(cb.error) &&
+          (await api("POST", "ops/companion.job", { id: card.id }))[1].state === "ready for review", [ast, ab, cst, cb])
         const [ost, ob] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: "other1", text: "1. Blue [ring \"Lighthouse\"]." }, agent)
         check("proof: another job's proof by the same title is saved beside it, never over it", ost === 200 && ob.path === "Guides/Proofs/The blue heading 2.md" && read(pb.path).includes(`job: ${card.id}`), [ost, ob])
         ;[pst, pb] = await api("POST", "ops/companion.job-show", { id: card.id })
         const plainly = await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && /can't show it here/.test(n.text)), 5000, 50)
-        const asked = await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && n.text === "Keep it, or is it still broken?"), 5000, 50)
-        check("proof: Show me with no window to show it on says so plainly, what it changed, then asks Keep or Still broken",
+        const asked = await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && n.text === "Keep it and merge it in, or does it need changes?"), 5000, 50)
+        check("proof: Show me with no window to show it on says so plainly, what it changed, then asks Keep and merge or Needs changes",
           pst === 200 && pb.proof === "Guides/Proofs/The blue heading.md" && /heading blue in index\.html/.test(plainly?.text ?? "") && !!asked &&
           (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.id === knock?.id)?.state === "opened", [pst, pb, plainly, asked])
         ;[pst, pb] = await api("POST", "ops/companion.job-show", { choose: "broken" })
-        check("proof: Still broken records a clip on the helper for that job", pst === 200 && pb.recording === true && heard.some((m) => m.t === "record" && m.job === card.id), [pst, pb])
+        check("proof: Needs changes records a clip on the helper for that job", pst === 200 && pb.recording === true && heard.some((m) => m.t === "record" && m.job === card.id), [pst, pb])
         const [pst2] = await api("POST", "ops/companion.job-show", { choose: "keep" })
-        check("proof: Keep with nothing just shown is refused", pst2 === 409)
-        // Played on a window (a stand-in answering where its things are) with the helper's displays: its ring, its before
-        // over the heading flipped with how it is now, then the choice's buttons; Keep pressed there closes it as done.
+        check("proof: Keep with nothing just shown is refused (never a close on a guess)", pst2 === 409 && (await api("POST", "ops/companion.job", { id: card.id }))[1].state === "ready for review")
+        // Played on a window (a stand-in) with the helper's displays: its ring, its before flipped over the heading, then the
+        // choice's buttons; Keep and merge pressed there tells its own worker to merge it, closed once it says it merged.
         const png = Buffer.alloc(33); png.writeUInt32BE(0x89504e47, 0); png.writeUInt32BE(320, 16); png.writeUInt32BE(40, 20)
         fs.mkdirSync(path.join(VAULT, "Pics"), { recursive: true }); fs.writeFileSync(path.join(VAULT, "Pics/Before.png"), png)
         await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"]. (before: "Pics/Before.png")' }, agent)
@@ -195,16 +208,22 @@ export default async ($: VaultTest) => {
         const ring = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.some((k: Any) => k.type === "ring")), 8000, 50)
         const over = await waitFor(() => layers().find((m) => m.agent === "Claude (before)" && m.drawing?.marks[0]?.over), 5000, 50)
         const flipped = await waitFor(() => layers().some((m) => m.agent === "Claude (before)" && m.drawing?.hidden) && layers().some((m, i, all) => m.agent === "Claude (before)" && m.drawing && !m.drawing.hidden && all.slice(0, i).some((x) => x.drawing?.hidden)), 8000, 50)
-        const buttons = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.filter((k: Any) => k.type === "button").length === 2), 12000, 50)
+        const buttons = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.filter((k: Any) => k.type === "button").length === 3), 12000, 50)
         const r = ring?.drawing.marks.find((k: Any) => k.type === "ring")?.at, o = over?.drawing.marks[0]?.at
-        check("proof: played on the window, its ring on the thing, its before laid over it on its own layer and flipped (hidden, shown again), then Keep and Still broken",
+        check("proof: played on the window, its ring on the thing, its before laid over it on its own layer and flipped (hidden, shown again), then Keep and merge, Needs changes, Not yet",
           pst === 200 && r?.x === 200 && r?.w === 320 && JSON.stringify(o) === JSON.stringify({ x: 200, y: 120, w: 320, h: 40 }) && over?.drawing.marks[0].caption === "Before" && !!flipped &&
-          buttons?.drawing.marks.filter((k: Any) => k.type === "button").map((k: Any) => k.label).join() === "Keep,Still broken", { pst, pb, ring, over, buttons: buttons?.drawing.marks })
+          buttons?.drawing.marks.filter((k: Any) => k.type === "button").map((k: Any) => k.label).join() === "Keep and merge,Needs changes,Not yet", { pst, pb, ring, over, buttons: buttons?.drawing.marks })
         const narrated = (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && n.text === "The heading is blue now.")
         check("proof: its words are said (aloud, as Show me was)", narrated?.answers?.voice === true, narrated)
-        sc.emit("message", Buffer.from(JSON.stringify({ t: "drawing-act", id: buttons?.drawing.id, kind: "ask", text: "Keep" })))
-        const kept = await waitFor(async () => { const r2 = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r2.state === "done" && r2 }, 5000, 50)
-        check("proof: Keep pressed closes it as done, the app's own (no ask to the model), its layers down", !!kept && layers().at(-1)?.drawing === null, { kept: kept?.state, last: layers().at(-1) })
+        sc.emit("message", Buffer.from(JSON.stringify({ t: "drawing-act", id: buttons?.drawing.id, kind: "ask", text: "Keep and merge" })))
+        turn = { text: "Merged: squashed into main as abc1234.", files: [], at: Date.now() + 500, final: true }
+        const landing = await waitFor(() => fs.existsSync(path.join(repo, "landed.txt")) && fs.readFileSync(path.join(repo, "landed.txt"), "utf8").trim(), 10000, 100)
+        const mid = (await api("POST", "ops/companion.job", { id: card.id }))[1]
+        check("proof: Keep and merge pressed tells its own worker to merge it as its repo says, the app's own (no ask to the model), its layers down, and it isn't closed yet",
+          /kept it: merge it now, as this repo's own rules say/.test(landing || "") && /Merged:/.test(landing || "") && mid.state !== "done" && layers().at(-1)?.drawing === null, { landing, mid: mid.state, last: layers().at(-1), said: (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text).slice(-3) })
+        const merged = await waitFor(async () => { const r2 = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r2.state === "done" && r2 }, 10000, 100)
+        const told2 = (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.line === "Merged: Make the heading blue")
+        check("proof: once its worker says it merged, the job closes as done, its knock saying so and opening its terminal (nothing to show)", !!merged && !!told2 && !told2.open, { merged: merged?.state, told2 })
         win.emit("close")
       }
       sc.emit("message", Buffer.from(JSON.stringify({ t: "job-seen", ids: [card.id] })))
@@ -266,6 +285,16 @@ export default async ($: VaultTest) => {
       ;[st, b] = await api("POST", "ops/companion.do", { text: "Tidy the trip note" }, asApp)
       linkEnd(b)
       check("Do it: only words is a job too", st === 200 && /Tidy the trip note/.test(said.at(-1)?.prompt ?? ""), [st, b])
+      // (an "it" between two jobs: their ask over one's terminal, an agent naming the other: it asks which, unless their words name it)
+      const pwin = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, close() {}, ping() {}, terminate() {}, send() {} })
+      matchSocket(app.plugins, ["companion", "live"])![1].fn(pwin as Any, helperReq, { wild: [], query: {} })
+      pwin.emit("message", JSON.stringify({ t: "where", open: [], shown: [], focus: null, at: Date.now(), active: true, panes: [{ id: "pjob", to: b.link, title: "Tidy the trip note", tab: "t1" }], pane: "pjob" }))
+      c.addMoment({ kind: "ask", for: "Claude", text: "so let's merge the heading one", pane: "pjob" })
+      const [ust, ub] = await api("POST", "ops/companion.handoff", { task: "merge it", job: card.id, land: true }, agent)
+      const [wst, wb] = await api("POST", "ops/companion.handoff", { task: "merge it", job: card.id, land: true, which: "the heading one" }, agent)
+      check("handoff --job: their ask over another job's terminal asks which (both named), unless their words name it", ust === 409 && /their ask was over the job "Tidy the trip note"/.test(ub.error) &&
+        /\("Make the heading blue, or Tidy the trip note\?"\)/.test(ub.error) && !/their ask was over/.test(wb.error ?? ""), [ust, ub, wst, wb])
+      pwin.emit("close")
       for (const id of ends) await api("DELETE", `terminals/${id}`).catch(() => {})
       ;[st, b] = await api("POST", "ops/inbox.add", { title: "Tidy the trip note", do: "Tidy the trip note", from: "Dream" })
       check("inbox add --do: the item keeps its task", st === 200 && /^do: Tidy the trip note$/m.test(read(b.path)), [st, b])
@@ -466,7 +495,7 @@ setTimeout(draw, 300)
       const review = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job.id }))[1]; return r.state === "ready for review" && r }, 15000, 300)
       check("jobs on another machine: its turn's end there, with the diff counted there and its preview link", !!review && review.result.diff === "1 file changed, +2 -1" &&
         review.result.link === "https://studio.tail1.ts.net:8450" && calls.some((c) => c.op === "companion.worker" && c.p.turn && c.p.base === "abc123"), review)
-      ;[st, b] = await api("POST", "ops/companion.job-stop", { id: job.id }, agent)
+      ;[st, b] = await api("POST", "ops/companion.job-stop", { id: job.id })
       check("job-stop on another machine: its terminal ended there; reviewed, it's done", st === 200 && b.state === "done" && calls.some((c) => c.op === "terminal.end" && c.p.id === "claude-remote1"), [st, b, calls.at(-1)])
       // Nothing tying it here (no machine, no folder, no preview or editor): to the always-on machine with this vault.
       Object.assign(studio, { standalone: true, vault: "v1" })
