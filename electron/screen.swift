@@ -2,6 +2,7 @@
 // apps' fields and text (Accessibility), and the display's picture. JSON lines in and out; stdin closing ends it.
 import AppKit
 import ApplicationServices
+import CoreAudio
 import ScreenCaptureKit
 
 /** A window's number (CGWindowID), as appwindows.swift gets it. */
@@ -643,6 +644,47 @@ func sampleAreas(_ areas: [[String: Double]], _ exclude: [Int], _ done: @escapin
   }
 }
 
+// ---------- who has an audio device running (calllogic.ts: a call keeps the companion quiet), Core Audio's process objects
+
+func audioProp<T>(_ obj: AudioObjectID, _ sel: AudioObjectPropertySelector, _ zero: T) -> T? {
+  var a = AudioObjectPropertyAddress(mSelector: sel, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  var v = zero, size = UInt32(MemoryLayout<T>.size)
+  return withUnsafeMutablePointer(to: &v) { AudioObjectGetPropertyData(obj, &a, 0, nil, &size, $0) } == noErr ? v : nil
+}
+/** A process's parents, nearest first (launchd left out). */
+func parents(_ pid: pid_t) -> [Int] {
+  var chain: [Int] = [], p = pid
+  for _ in 0..<12 {
+    var info = kinfo_proc(), size = MemoryLayout<kinfo_proc>.size, mib = [CTL_KERN, KERN_PROC, KERN_PROC_PID, p]
+    guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { break }
+    p = info.kp_eproc.e_ppid
+    if p <= 1 { break }
+    chain.append(Int(p))
+  }
+  return chain
+}
+/** The app macOS holds responsible for a process (a browser for its audio helper), as TCC does. */
+typealias Responsible = @convention(c) (pid_t) -> pid_t
+let responsibleFor: Responsible? = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid").map { unsafeBitCast($0, to: Responsible.self) }
+func mics() -> [String: Any] {
+  guard #available(macOS 14.2, *) else { return ["ok": false, "why": "macOS 14.2 tells who uses the mic"] }
+  var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+  var size: UInt32 = 0
+  guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &a, 0, nil, &size) == noErr else { return ["ok": false, "why": "core audio"] }
+  var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+  guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &a, 0, nil, &size, &ids) == noErr else { return ["ok": false, "why": "core audio"] }
+  var users: [[String: Any]] = []
+  for id in ids {
+    let input = (audioProp(id, kAudioProcessPropertyIsRunningInput, UInt32(0)) ?? 0) != 0, output = (audioProp(id, kAudioProcessPropertyIsRunningOutput, UInt32(0)) ?? 0) != 0
+    guard input || output, let pid = audioProp(id, kAudioProcessPropertyPID, pid_t(0)), pid > 0 else { continue }
+    let bundle = (audioProp(id, kAudioProcessPropertyBundleID, nil as CFString?) ?? nil) as String? ?? ""
+    let owner = responsibleFor?(pid) ?? pid
+    let app = NSRunningApplication(processIdentifier: owner > 0 ? owner : pid)
+    users.append(["pid": Int(pid), "bundle": bundle, "app": app?.localizedName ?? "", "appBundle": app?.bundleIdentifier ?? "", "chain": parents(pid), "input": input, "output": output])
+  }
+  return ["ok": true, "users": users]
+}
+
 func handle(_ req: [String: Any]) -> [String: Any] {
   let id = req["window"] as? Int ?? 0
   switch req["op"] as? String {
@@ -654,6 +696,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
     if !tapThread.isExecuting && !tapThread.isFinished { tapThread.start() }
     return ["ok": true]
   case "ink": inkOn = req["on"] as? Bool ?? false; if !inkOn { inking = false }; return ["ok": true, "ink": filtering]
+  case "mics": return mics()
   case "exchange": exchange = req["on"] as? Bool ?? false; return ["ok": true]
   case "clicks": clicks = req["on"] as? Bool ?? false; return ["ok": true]
   case "inputs": inputs = req["on"] as? Bool ?? false; return ["ok": true]

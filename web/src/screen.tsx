@@ -2,7 +2,7 @@
 // their bubbles (a click opens #panel, which takes the keyboard), the dictation pill. Nothing rests here.
 import { StrictMode, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createRoot } from "react-dom/client"
-import { Check, CircleHelp, Mic } from "lucide-react"
+import { Check, CircleHelp, Mic, Volume2 } from "lucide-react"
 import { Marked } from "marked"
 import "./index.css"
 import { makePill } from "@/core/pill"
@@ -47,13 +47,15 @@ type Behind = { agent: string; tint: string; app: string; title: string; img: st
 type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number; hear?: number }
 type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
   /** What its empty field says (an answer's box: how to reply without the mouse). */
-  hint?: string }
+  hint?: string
+  /** Its answer was kept quiet for a call: a play button says it. */
+  play?: boolean }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
   onCue?: (fn: (name: Cue) => void) => () => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
   region?: (r: Rect) => void; regionAct?: (what: string) => void
-  panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: (esc?: boolean) => void; mic: () => void; more: (x: number, y: number) => void } }
+  panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: (esc?: boolean) => void; mic: () => void; play?: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
 followSystemTheme()
@@ -573,13 +575,20 @@ function Panel() {
         send={() => { if (text.trim()) { api?.panel.send(text); setDraft("") } }} busy={d.busy} close={() => api?.panel.close()} more={(e) => api?.panel.more(e.clientX, e.clientY)}
         words={(n) => <div className="note-prose compact companion-md" dangerouslySetInnerHTML={{ __html: html(n.text ?? "") }} />}
         time={(t) => TIME.format(t)}
-        tools={
+        tools={<>
+          {d.play && (
+            <button type="button" aria-label="Say it aloud" data-tip="Kept quiet for your call: say it aloud"
+              className="mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground"
+              onClick={() => api?.panel.play?.()}>
+              <Volume2 className="size-4" />
+            </button>
+          )}
           <button type="button" aria-label={listening ? "Stop dictating" : "Dictate"} aria-pressed={listening} data-tip={listening ? "Stop" : "Dictate"}
             className="mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground aria-pressed:text-white aria-pressed:hover:bg-[var(--c)]"
             style={{ "--c": tint, ...(listening ? { background: tint } : {}) } as React.CSSProperties} onClick={() => api?.panel.mic()}>
             {listening ? <span className="companion-wave" aria-hidden><i /><i /><i /></span> : <Mic className="size-4" />}
           </button>
-        } />
+        </>} />
     </div>
   )
 }

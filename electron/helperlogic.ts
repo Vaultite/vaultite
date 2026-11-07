@@ -16,7 +16,9 @@ export type Prefs = { fn: boolean; keys: string[]; talk: string[]; privateApps: 
   /** Which jobs' news is told (the companion's job_news). */
   jobNews: string
   /** The screen's timeline kept in memory, the last seconds (the companion's `timeline`). */
-  timeline: boolean }
+  timeline: boolean
+  /** Its windows kept out of screen shares and recordings (`hide_from_shares`); quiet while on a call (`quiet_on_calls`). */
+  hideFromShares: boolean; quietOnCalls: boolean }
 /** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
  *  `settings` giving the defaults. */
 export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
@@ -46,6 +48,8 @@ export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, 
     },
     jobNews: String(val(c.job_news, def(DEFAULTS.companion, "job_news") ?? "quiet")),
     timeline: val(c.timeline, def(DEFAULTS.companion, "timeline") ?? false) === true,
+    hideFromShares: val(c.hide_from_shares, def(DEFAULTS.companion, "hide_from_shares") ?? true) !== false,
+    quietOnCalls: val(c.quiet_on_calls, def(DEFAULTS.companion, "quiet_on_calls") ?? true) !== false,
   }
 }
 

@@ -4,6 +4,7 @@ import { BrowserWindow, clipboard, ipcMain, screen, shell, type Display, type Ip
 import path from "node:path"
 import { besidePointer, grownAt, panelAt, pointerBox, type Point, reaching, type Rect, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
+import { overlayWindow } from "./overlaywin.ts"
 import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
@@ -12,7 +13,9 @@ export type OverlayActs = { open: (name: string, at: Point) => void; stop: () =>
   region?: (r: Rect) => void; regionAct?: (what: string) => void }
 /** What the user does in a cursor's conversation: asks (typed), the microphone, More (its menu), and it closed (`esc`:
  *  by Esc in it; else clicked away, its close, or closed by the helper). */
-export type PanelActs = { send: (name: string, text: string) => void; mic: () => void; more: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; closed: (name: string, why?: "esc") => void }
+export type PanelActs = { send: (name: string, text: string) => void; mic: () => void
+  /** Its play button: the answer kept quiet for a call, said now. */
+  play: (name: string) => void; more: (name: string, at: { window: BrowserWindow; x: number; y: number }) => void; closed: (name: string, why?: "esc") => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
 const wins = new Map<number, BrowserWindow>()
@@ -29,16 +32,10 @@ const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()
 const LINGER = 4000
 
 function make(d: Display) {
-  const w = new BrowserWindow({ ...d.bounds, transparent: true, frame: false, hasShadow: false, resizable: false, movable: false, minimizable: false,
-    maximizable: false, fullscreenable: false, focusable: false, skipTaskbar: true, show: false, type: "panel", enableLargerThanScreen: true,
+  const w = overlayWindow({ ...d.bounds, focusable: false, enableLargerThanScreen: true,
     // (its soft cues play with no click on it: nothing ever clicks the overlay to allow them)
-    backgroundColor: "#00000000", webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" } })
+    webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" } })
   w.setIgnoreMouseEvents(true, { forward: true })
-  // (skipTransformProcessType: else macOS takes the app out of the Dock for it)
-  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
-  // (not a window to the user: Mission Control leaves it out)
-  w.setHiddenInMissionControl(true)
-  w.setAlwaysOnTop(true, "screen-saver")
   w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (layers.size) sendDrawing(); if (feed) feedPointer(true) })
   if (url) void w.loadURL(url).catch(() => {})
   wins.set(d.id, w)
@@ -217,7 +214,9 @@ export type PanelData = { name: string; tint: string; items: { id: string; kind:
   /** `done` (with its `id`, to be taken once): said, for the box; `send`: sent as it is (a Talk key's). */
   words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
   /** What its empty field says (an answer's box: how to reply without the mouse). */
-  hint?: string }
+  hint?: string
+  /** Its answer was kept quiet for a call: a play button says it. */
+  play?: boolean }
 const WIDTH = 300, PAD = 16
 /** `travels`: an exchange's box, going with the companion as it rides beside the pointer (`goal`: where it's going,
  *  `held`: till when it holds for the pointer reaching for it). */
@@ -240,13 +239,9 @@ export function openPanel(base: string, at: Point, data: PanelData, focus = true
     return
   }
   // (a panel: on a Mac one that takes the keyboard without bringing the app forward, so the app in front stays so)
-  const w = new BrowserWindow({ width: WIDTH + PAD * 2, height: 160, transparent: true, frame: false, hasShadow: false, resizable: false, movable: false,
-    minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, show: false, type: "panel", backgroundColor: "#00000000",
+  const w = overlayWindow({ width: WIDTH + PAD * 2, height: 160,
     // (a click in it goes straight to its field: no first click spent bringing it forward)
-    acceptFirstMouse: true, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } })
-  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
-  w.setHiddenInMissionControl(true)
-  w.setAlwaysOnTop(true, "screen-saver", 1)
+    acceptFirstMouse: true, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } }, 1)
   const mine: NonNullable<typeof panel> = { w, name: data.name, at, data, height: 0, menu: false, focus, travels, held: 0 }
   panel = mine
   // (a link in its words opens in the browser, never in this window)
@@ -328,6 +323,7 @@ export function onPanel(a: PanelActs) {
   ipcMain.on("panel:send", (e, text: unknown) => { const p = ofPanel(e); if (p && typeof text === "string" && text.trim()) { a.send(p.name, text.trim()) } })
   ipcMain.on("panel:close", (e, esc: unknown) => { if (ofPanel(e)) closePanel(esc === true) })
   ipcMain.on("panel:mic", (e) => { if (ofPanel(e)) a.mic() })
+  ipcMain.on("panel:play", (e) => { const p = ofPanel(e); if (p) a.play(p.name) })
   ipcMain.on("panel:more", (e, m: { x?: unknown; y?: unknown }) => {
     const p = ofPanel(e)
     if (!p || typeof m?.x !== "number" || typeof m.y !== "number") return

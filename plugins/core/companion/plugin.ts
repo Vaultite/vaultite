@@ -1100,6 +1100,8 @@ const realtimePaused = new Map<WebSocket, { account: string; why: string; until:
 const pausedNow = () => [...realtimePaused.values()].find((p) => p && p.until > Date.now()) ?? null
 /** The mic each helper hears with, and why (electron/miclogic.ts): for its status. */
 const mics = new Map<WebSocket, string>()
+/** Each Mac's call, as its helper hears it (electron/calllogic.ts): its voice keeps quiet meanwhile. */
+const calls = new Map<WebSocket, string>()
 /** What the realtime voice answered alone (small talk): their words and its, kept as an ask and a say. `withdraw`: the
  *  summoned session was asked it too (as the realtime voice listened): its turn stops, and what it said goes. */
 function screenAnswered(m: Record<string, unknown>) {
@@ -1148,9 +1150,10 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "answered") screenAnswered(m)
     // (its realtime voice paused, and why, or back: for its status)
     if (m.t === "mic") mics.set(ws, str(m.mic).slice(0, 300))
+    if (m.t === "call") { if (str(m.call)) calls.set(ws, str(m.call).slice(0, 120)); else calls.delete(ws) }
     if (m.t === "realtime") { const p = m.paused as Record<string, unknown> | null; realtimePaused.set(ws, p && typeof p === "object" ? { account: str(p.account), why: str(p.why).slice(0, 300), until: Number(p.until) || 0 } : null) }
   })
-  ws.on("close", () => { screens.delete(ws); realtimePaused.delete(ws); mics.delete(ws); takeover.closed(ws); ride(ws, "") })
+  ws.on("close", () => { screens.delete(ws); realtimePaused.delete(ws); mics.delete(ws); calls.delete(ws); takeover.closed(ws); ride(ws, "") })
 }
 /** The summoned session's turn stopped (its Talk key pressed again, Esc): only it, never the long session's. */
 function bargeIn() {
@@ -3645,10 +3648,11 @@ plugin.op({
       sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel(), ...(lane().trouble() ? { trouble: lane().trouble() } : {}) } : null,
       agents: [...agents.values()].map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
       notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list(),
-      realtime: pausedNow() ? { state: "paused", ...pausedNow()! } : realtimePaused.size ? { state: "on" } : null, voice: voiceHere(plugin, setting, [...mics.values()].at(-1)) }
+      realtime: pausedNow() ? { state: "paused", ...pausedNow()! } : realtimePaused.size ? { state: "on" } : null, voice: voiceHere(plugin, setting, [...mics.values()].at(-1)), ...(calls.size ? { call: [...calls.values()].at(-1) } : {}) }
   },
   text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}.${r.summoned ? ` Summoned asks: ${r.summoned.model}${r.summoned.id ? `, session ${r.summoned.id}` : ""}${r.summoned.trouble ? ` (its last trouble, at ${new Date(r.summoned.trouble.t).toTimeString().slice(0, 5)}: ${cut(r.summoned.trouble.why, 160)})` : ""}.` : ""} Windows: ${r.windows}.`,
     voiceHereText(r.voice),
+    ...(r.call ? [`Quiet: ${r.call}, its answers show as text.`] : []),
     ...(r.realtime?.state === "paused" ? [`Realtime voice: paused, ${r.realtime.account === "quota" ? "the OpenAI account has no credits" : "OpenAI refused its key"} (${cut(r.realtime.why, 120)}); tries again at ${new Date(r.realtime.until).toTimeString().slice(0, 5)}.`] : []),
     ...r.agents.map((a: Agent & { live: boolean }) => {
       const s = r.sessions.find((x: { name: string }) => key(x.name) === key(a.name))

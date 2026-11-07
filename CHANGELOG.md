@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion stays out of screen shares and keeps quiet on calls**: its cursors, drawings, cards and boxes never
+  show in a screen share, a recording or a screenshot (only you see them). While another app has the mic (a call in
+  Zoom, FaceTime, Meet, Slack or Discord, a recording), its answers show in its box with a play button instead of being
+  said, with no sounds; your Talk key still works. Settings: Hidden from screen shares, Quiet on calls.
 - **The companion works in a window behind yours**: asked to do something in an app you aren't looking at, it clicks
   and types there without your pointer or bringing that app forward, a small live picture of that window by the corner
   showing its cursor and each step; every step is read back, and one it can't confirm it offers to do in front.

@@ -6,6 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { HEX } from "../plugins/core/companion/screenmarks.ts"
 import { buildTakeover, takeoverHelperName } from "./takeover-build.ts"
+import { overlayWindow } from "./overlaywin.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
 import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
@@ -113,14 +114,8 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)
 const tintOf = (t: string) => HEX[t] ?? HEX.orange
 
 function floating(b: Electron.Rectangle, mouse: boolean, sized = false) {
-  const w = new BrowserWindow({ ...b, transparent: true, frame: false, hasShadow: false, resizable: false, movable: false, minimizable: false, maximizable: false,
-    fullscreenable: false, focusable: false, skipTaskbar: true, show: false, type: "panel", acceptFirstMouse: true, backgroundColor: "#00000000",
-    webPreferences: { sandbox: true, contextIsolation: true, javascript: false, enablePreferredSizeMode: sized } })
+  const w = overlayWindow({ ...b, focusable: false, acceptFirstMouse: true, webPreferences: { sandbox: true, contextIsolation: true, javascript: false, enablePreferredSizeMode: sized } })
   if (!mouse) w.setIgnoreMouseEvents(true)
-  // (as the overlay's: every Space, over full screen apps, and the app stays in the Dock)
-  w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
-  w.setHiddenInMissionControl(true)
-  w.setAlwaysOnTop(true, "screen-saver")
   return w
 }
 /** Shown without taking focus, then faded in. */

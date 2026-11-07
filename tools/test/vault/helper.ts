@@ -428,6 +428,41 @@ export default async ($: VaultTest) => {
     check("mic: the status's Voice here line says which mic it hears with", /^Voice here: hears with Soniox through MacBook Pro Microphone, the output/.test(voiceHereText({ hears: "soniox", mic: micSaid(a), speaks: ["mac"], realtime: "off" })))
   }
   {
+    // On a call (electron/calllogic.ts), from made-up mic users: an app for calls or a browser at once, another app once it
+    // held the mic a while; never this app, dictation or the system's own; a call ends a grace after its mic stops.
+    const { callFrom, callSaid, GRACE_MS, HELD_MS } = await import("../../../electron/calllogic.ts")
+    const u = (bundle: string, o: Partial<{ app: string; appBundle: string; chain: number[]; input: boolean; output: boolean; pid: number }> = {}) =>
+      ({ pid: 500, bundle, app: "", appBundle: "", chain: [1], input: true, output: false, ...o })
+    const own = new Set([42]), t0 = 1_000_000
+    let first = new Map<string, number>()
+    const zoom = callFrom([u("us.zoom.xos", { app: "zoom.us", appBundle: "us.zoom.xos" })], own, null, first, t0)
+    check("call: Zoom opening the mic is a call at once", zoom?.app === "Zoom" && callSaid(zoom) === "on a call in Zoom", zoom)
+    first = new Map()
+    const meet = callFrom([u("com.google.Chrome.helper", { app: "Google Chrome", appBundle: "com.google.Chrome" })], own, null, first, t0)
+    check("call: a browser's helper opening the mic is a call in that browser (Meet)", meet?.app === "Chrome" && meet.bundle === "com.google.Chrome", meet)
+    first = new Map()
+    const ours = [u("app.vaultite.main.helper", { chain: [42, 1] }), u("", { pid: 77, chain: [60, 42, 1] }), u("com.electron.wispr-flow", { app: "Wispr Flow" }),
+      u("com.apple.CoreSpeech"), u("com.apple.assistantd")]
+    check("call: never this app (its own processes and their children), dictation apps, nor the system's daemons",
+      callFrom(ours, own, null, first, t0) === null && callFrom(ours, own, null, first, t0 + 60_000) === null)
+    first = new Map()
+    const obs = [u("com.obsproject.obs-studio", { app: "OBS" })]
+    check("call: another app holding the mic is one only after a while (a recording), not a moment's use",
+      callFrom(obs, own, null, first, t0) === null && callFrom(obs, own, null, first, t0 + HELD_MS - 1) === null && callFrom(obs, own, null, first, t0 + HELD_MS)?.app === "OBS")
+    check("call: one let go of the mic before then starts over", (() => { const f = new Map<string, number>(); callFrom(obs, own, null, f, t0); callFrom([], own, null, f, t0 + 1000)
+      return callFrom(obs, own, null, f, t0 + HELD_MS) === null })())
+    const vm = [u("com.apple.VoiceMemos", { app: "Voice Memos" })], f = new Map<string, number>()
+    check("call: Voice Memos recording counts, though it's Apple's", callFrom(vm, own, null, f, t0) === null && callFrom(vm, own, null, f, t0 + HELD_MS)?.app === "Voice Memos")
+    const muted = callFrom([], own, zoom, new Map(), t0 + GRACE_MS - 1)
+    check("call: its mic stopping keeps the call a grace (a mute), then it ends", muted === zoom && callFrom([], own, zoom, new Map(), t0 + GRACE_MS) === null)
+    const playing = callFrom([u("us.zoom.xos", { appBundle: "us.zoom.xos", input: false, output: true })], own, zoom, new Map(), t0 + GRACE_MS * 4)
+    check("call: an app for calls still playing the call's sound is still on it (muted for long)", playing?.app === "Zoom" && playing.since === t0, playing)
+    const video = callFrom([u("com.google.Chrome.helper", { appBundle: "com.google.Chrome", input: false, output: true })], own, meet, new Map(), t0 + GRACE_MS)
+    check("call: a browser playing sound after its call (a video) is no call", video === null, video)
+    const both = callFrom([u("us.zoom.xos", { appBundle: "us.zoom.xos" }), u("com.google.Chrome.helper", { appBundle: "com.google.Chrome" })], own, zoom, new Map(), t0 + 5000)
+    check("call: keeps its app's name while another opens the mic too", both?.app === "Zoom" && both.since === t0, both)
+  }
+  {
     // The display at key-down and at let-go: kept both only when something there came or went (a toast), not a caret.
     const { bitmapsDiffer, THUMB } = await import("../../../electron/helperlogic.ts")
     const page = () => Buffer.alloc(THUMB.w * THUMB.h * 4, 230), cell = (b: Buffer, i: number, v: number) => { b.fill(v, i * 4, i * 4 + 3); return b }

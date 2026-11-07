@@ -14,6 +14,8 @@ import { dictate, dictating, stopFor, dictationEngines, expectedWords, freeFor, 
 import { land, landedSaid } from "./dictationroam.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
+import { type Call, callFrom, callSaid, type MicUser } from "./calllogic.ts"
+import { hideFromShares } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
 import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
@@ -118,7 +120,7 @@ export async function startHelper(h: HelperHost) {
     deliver: async (c) => String((await op("companion.capture", c)).said ?? "Sent") })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   watchLayers(layersChanged)
-  onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu,
+  onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu, play: playQuiet,
     // (Esc in its box ends the exchange; the box closed otherwise (clicked away, its close) leaves what it says going on)
     closed: (_name, why) => { if (session?.into === "panel") stopFor(session.sink, true); if (why === "esc") endExchange(); else moveOn(); draw() } })
   if (!QUIET) await startScreen().catch((e) => console.error("vaultite: the screen helper didn't start:", e))
@@ -140,6 +142,7 @@ export async function startHelper(h: HelperHost) {
 export function stopHelper() {
   if (!host) return
   host = null
+  followCalls(false)
   voiceFront.close()
   speaker.quit()
   live.close()
@@ -247,7 +250,8 @@ const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("compan
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
 let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {},
   voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 }, sounds: true,
-  realtime: { front: "realtime", model: "gpt-realtime-2.1-mini", voice: "cedar" }, jobNews: String(DEFAULTS.companion.job_news?.default ?? "quiet"), timeline: false }
+  realtime: { front: "realtime", model: "gpt-realtime-2.1-mini", voice: "cedar" }, jobNews: String(DEFAULTS.companion.job_news?.default ?? "quiet"), timeline: false,
+  hideFromShares: true, quietOnCalls: true }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -270,6 +274,8 @@ async function refresh() {
   const [d, c, s] = await Promise.all([get("plugin/dictation"), get("plugin/companion"), get("plugin/screen")])
   prefs = prefsOf(d, c, s, DEFAULTS)
   penHeard()
+  hideFromShares(prefs.hideFromShares)
+  followCalls()
   followKeys()
   ringFollows()
   draw()
@@ -794,7 +800,7 @@ async function freeTalk() {
 function openAnswer(name: string, p: Point, w: AppWindowInfo | null, since: number) {
   if (!based) return
   // (an answer said aloud needs no box: the box comes only by a tap of the key)
-  const spoken = prefs.voice.mode !== "off"
+  const spoken = prefs.voice.mode !== "off" && !quietForCall()
   exchange = { name, p, w, since, ...(spoken ? { spoken } : {}) }
   void screenAsk("exchange", { on: true })
   if (spoken) return draw()
@@ -820,8 +826,9 @@ function answerArrived() {
 }
 /** A soft cue (the companion's `sounds`; a scripted copy only notes it). */
 function cue(name: "listen" | "sent" | "answer" | "missed") {
-  if (QUIET) return void asked.push({ cue: name })
-  if (prefs.sounds) playCue(name)
+  // (on a call, none: the call would hear them)
+  if (QUIET) return void asked.push({ cue: name, ...(quietForCall() ? { quiet: true } : {}) })
+  if (prefs.sounds && !quietForCall()) playCue(name)
 }
 /** The exchange over (Esc; `stop`: its voice too): its box closed, its cursor gone (at once when it's done; else once it is). */
 function endExchange(stop = true) {
@@ -928,7 +935,7 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   holdEnd()
   const s = prefs.dictation
   // (held over the screen: the realtime voice hears the microphone too)
-  const tap = o.into === "summon" && prefs.realtime.front === "realtime" && voiceFront.available()
+  const tap = o.into === "summon" && prefs.realtime.front === "realtime" && !quietForCall() && voiceFront.available()
   const mine: Session = { sink: { tell: (e) => told(mine, e), ...(tap ? { audio: (b: Buffer) => voiceFront.audio(b) } : {}) }, ...o, finals: [], pending: "", level: 0, ready: false,
     ...(o.into === "field" ? { log: dictations.start("dictation", "start", { front: o.focus.bundle, field: !!o.focus.field }) } : {}) }
   session = mine
@@ -1244,7 +1251,10 @@ function chatOf(name: string): PanelData | null {
   // (an answer's box: how to reply without reaching for the mouse)
   const talk = prefs.talk.length ? keysSaid(prefs.talk.slice(0, 1)) : ""
   const hint = since && talk ? `Reply, or tap ${talk} to type, hold to talk` : undefined
-  return { name, tint: a.tint, items, ...(words ? { words } : {}), ...(busy ? { busy } : {}), ...(hint ? { hint } : {}) }
+  // (kept quiet for a call: its field says why, its play button says it)
+  const play = quietHeld?.name === name && items.some((i) => i.kind === "say" && i.t >= quietHeld!.asked)
+  const said = play ? "Kept quiet for your call" : hint
+  return { name, tint: a.tint, items, ...(words ? { words } : {}), ...(busy ? { busy } : {}), ...(said ? { hint: said } : {}), ...(play ? { play } : {}) }
 }
 
 /** Its conversation open by its cursor (`at`, the screen's), taking the keyboard: its bubble goes into it, all of it seen;
@@ -1368,7 +1378,7 @@ let realtimePaused: { account: string; why: string; until: number } | null = nul
 /** The realtime voice's key and settings: none when it's off (voice_front pipeline, the voice off, no OpenAI key). */
 async function realtimeConfig() {
   const r = prefs.realtime, port = host?.home()?.port
-  if (r.front !== "realtime" || prefs.voice.mode === "off" || !port) return null
+  if (r.front !== "realtime" || prefs.voice.mode === "off" || quietForCall() || !port) return null
   const res = await fetch(`http://127.0.0.1:${port}/api/companion/realtime`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
   const k = (res.ok ? await res.json() : {}) as { url?: string; key?: string }
   return k.url && k.key ? { url: k.url, key: k.key, model: r.model, voice: r.voice } : null
@@ -1389,6 +1399,8 @@ let speakingNow: Scene["speaking"] = null
 function voiceHeard(n: Note) {
   const a = n.answers, mode = prefs.voice.mode
   if (n.kind !== "say" || !a || a.realtime || !n.text || n.dismissed || a.t < hushed || (voiced && a.t < voiced.asked)) return
+  if (quietForCall() && (mode === "always" || (mode === "auto" && a.voice))) return keptQuiet(n.agent, a.t)
+  if (quietHeld && a.t > quietHeld.asked) quietHeld = null
   if (!voiced || voiced.asked !== a.t) {
     // (a newer ask's answer: the last one stops, said or not; the realtime voice's few words before it go on)
     const after = !!fronted && !fronted.begun && a.t >= (lastAsk?.up ?? Infinity)
@@ -1497,6 +1509,61 @@ function stopVoice(until = Date.now()) {
   speaker.stop()
   voiceFront.stop()
 }
+// ---------- quiet on calls: while another app has the mic (calllogic.ts), answers show as text, said only when asked
+
+let call: Call | null = null, callTimer: ReturnType<typeof setInterval> | null = null
+const micSince = new Map<string, number>()
+/** This app's processes (its children too, by their parents): its own mic is never a call. */
+const OWN = new Set([process.pid])
+/** The answer kept quiet for a call (its agent, the ask it answers): its box has a play button. */
+let quietHeld: { name: string; asked: number } | null = null
+const quietForCall = () => prefs.quietOnCalls && !!call
+/** Who has the mic, looked at every 1.5 s while the setting is on. */
+function followCalls(on = prefs.quietOnCalls && process.platform === "darwin" && (LIVE || QUIET)) {
+  if (on === !!callTimer) return
+  if (on) { callTimer = setInterval(() => void callLook(), 1500); void callLook(); return }
+  clearInterval(callTimer!); callTimer = null; micSince.clear()
+  if (call) callChanged(null)
+}
+async function callLook() {
+  const r = await screenAsk<{ ok?: boolean; users?: MicUser[] }>("mics").catch(() => null)
+  if (!callTimer || !r?.ok || !Array.isArray(r.users)) return
+  const next = callFrom(r.users, OWN, call, micSince, Date.now())
+  if (next?.bundle !== call?.bundle) callChanged(next)
+  else call = next
+}
+function callChanged(next: Call | null) {
+  call = next
+  live.say({ t: "call", call: callSaid(next) })
+  if (!quietForCall()) return
+  // (a call began while it spoke: it stops, and its answer shows)
+  const x = exchange
+  if (speaker.saying() || voiceFront.speaking()) { const v = voiced; stopVoice(); if (v) quietHeld = { name: v.name, asked: v.asked } }
+  if (x?.spoken) { x.spoken = false; answerBox() }
+  // (hands-free talk in its box would hear the call: it stops, its words so far kept; their own press still works)
+  if (session?.into === "panel" && session.talk) stopFor(session.sink)
+}
+/** An answer that would be said, kept quiet for the call: its box shows it, with a play button. */
+function keptQuiet(name: string, asked: number) {
+  if (quietHeld?.name === name && quietHeld.asked === asked) return
+  quietHeld = { name, asked }
+  // (in the press's log: why it said nothing)
+  lastAsk?.press.after("quiet", { call: call?.app ?? "" })
+  if (exchange?.name === name && exchange.spoken) { exchange.spoken = false; return answerBox() }
+  const d = chatOf(name)
+  if (d) panelData(d)
+}
+/** Its play button: the answer kept quiet, said now (they asked: the call or not). */
+function playQuiet(name: string) {
+  const h = quietHeld
+  if (!h || h.name !== name) return
+  const says = live.state.said.filter((n) => n.agent === name && n.kind === "say" && n.text && n.answers?.t === h.asked)
+  if (!says.length) return
+  stopVoice()
+  speaker.begin("", says[0].answers?.lang)
+  for (const n of says) { speaker.text(n.id, n.text!); speaker.end(n.id) }
+}
+
 /** A Bluetooth mic stays open past its press (dictation.swift `hold`): closing it would take the headset out of its call
  *  profile ~2 s on, cutting the answer said meanwhile. Released once nothing is listened for, worked on or said, a moment on. */
 let holding: ReturnType<typeof setInterval> | null = null

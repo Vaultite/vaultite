@@ -45,7 +45,7 @@
   one lock; a scripted copy hears a file, never the microphone, and where that lock is held (the user's app runs) its QA
   (web/qa/helper.mjs) is skipped unless VAULTITE_QA_LIVE=1. Each Talk-key press is logged (presslog.ts:
   userData/talk/talk-<day>.jsonl, a missed press's audio beside it): a press that went nowhere can be traced, and one
-  that went shows its answer's first sound (`sound`: whose voice, ms after let-go), a voice failing over and one saying nothing (`voice-silent`: a notice says so once, and the answer shows in its box); `stt` names
+  that went shows its answer's first sound (`sound`: whose voice, ms after let-go), a voice failing over and one saying nothing (`voice-silent`: a notice says so once, and the answer shows in its box), one kept quiet for a call (`quiet`: calllogic.ts); `stt` names
   the recognizer that heard it (`soniox`, else this Mac's with `why`), `stt-fallback` one failing mid-press; its `mic`
   and `micWhy` the input device and why, `mic-change` one that went mid-press.
 - A dictation that leaves its window moves to the helper (dictation.ts `handOver`, the page keeps where it began till its
@@ -62,6 +62,8 @@
   a Talk key's press till its answer is said and a second on (`releaseMic`, at most 60 s). voice.swift follows its output device all the same (an engine started before a switch
   plays into nothing): a new engine, said again from the pause before (`voice-reroute`; `sound` says where it plays).
 - The overlay (overlay.ts) is BrowserWindows, never `AppWindow`s: those count as the app's windows (the Dock, menus).
+  Each is made by overlaywin.ts (a new one too): over every Space, and kept out of screen shares and recordings
+  (content protection; the setting `hide_from_shares`). The companion's own pictures leave them out by number all the same.
   `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock. It never takes the keyboard: a
   cursor's conversation is a window of its own (`type: "panel"`, non-activating), so typing there leaves the app in
   front in front, and closing it gives that app its keyboard back.
