@@ -88,6 +88,7 @@ import { ConfirmDialogs } from "@/components/ConfirmDialog"
 import { WelcomeCards } from "@/components/Welcome"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
 import { cn, space, whenIdle } from "@/lib/utils"
+import { byTab } from "@/core/focus"
 import { canGoSide, focusArea, goSide } from "@/core/keylist"
 import { chooseScheme, schemeName } from "@/components/SchemeChooser"
 import { chooseFont, fontSetting } from "@/components/FontChooser"
@@ -598,9 +599,11 @@ export default function App() {
 
   return (
     <>
-      {/* The first Tab stop, seen only while it has the keyboard: past the sidebar into the focused pane, as F6 goes. */}
+      {/* The first Tab stop, seen only while it has the keyboard: past the sidebar into the focused pane, as F6 goes. Given
+          the keyboard by no Tab (Chromium on Linux, as a focused web page closes, starts the window over as a Tab would),
+          it hands it on to the pane at once instead of showing. */}
       {desktop && (
-        <button type="button" data-skip-link data-overlay onClick={() => focusArea()}
+        <button type="button" data-skip-link data-overlay onClick={() => focusArea()} onFocus={(e) => { if (!byTab(e.nativeEvent)) focusArea() }}
           className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-1.5 focus-visible:left-1/2 focus-visible:z-[90] focus-visible:h-7 focus-visible:-translate-x-1/2 focus-visible:cursor-pointer focus-visible:rounded-[6px] focus-visible:bg-popover focus-visible:px-2.5 focus-visible:text-[13px] focus-visible:font-medium focus-visible:text-popover-foreground focus-visible:shadow-lg">
           Skip to content
         </button>

@@ -97,6 +97,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   closed), and it's told the panel's rows so it can point at them; a click there used to land on nothing. Its summoned
   session may also look in your Desktop, Downloads, Pictures and screenshots folder, and when it can't look somewhere it
   says which folder, never that a mode blocks it.
+- **Closing a web page's tab no longer shows "Skip to content"**: on Linux, Chromium gave the keyboard to the window's
+  first stop as the page went, as if Tab had been pressed; the skip link now shows only for a Tab, else the keyboard
+  goes on to the pane.
 
 ## 0.11.0 (2026-11-07)
 
