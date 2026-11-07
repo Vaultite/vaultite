@@ -182,7 +182,12 @@ plugin.provide("machines", machines)
 plugin.provide("machines:machine", machine)
 plugin.provide("machines:self", selfId)
 plugin.provide("machines:vault", vaultId)
-plugin.provide("machines:ids", () => listed().map((m) => m.id)) // (the first runs the schedule: core/schedule.ts)
+plugin.provide("machines:ids", () => listed().map((m) => m.id))
+/** The machine that runs the jobs and writes what plugins generate: device sync's hub if one is set, else the first listed. */
+plugin.provide("machines:writer", async () => {
+  const hub = String(await plugin.ask<string | null>("sync:hub", null) ?? ""), ids = listed().filter((m) => !m.via).map((m) => m.id)
+  return ids.includes(hub) ? hub : ids[0] ?? null
+})
 
 plugin.route("GET", "machines", () => machines())
 plugin.route("GET", "machines/self", () => self())

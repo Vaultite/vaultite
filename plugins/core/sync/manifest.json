@@ -1,0 +1,8 @@
+{
+  "id": "sync",
+  "icon": "refresh-cw",
+  "category": "system",
+  "alwaysOn": true,
+  "name": "Device sync",
+  "description": "Keeps one vault on every device without another tool: each machine trades its files' versions with the others over your network (an always-on hub, else any peer, else an iCloud mailbox), merges them, and keeps clashes for you to settle in the note."
+}

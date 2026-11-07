@@ -56,6 +56,13 @@ function OtherVersion({ path }: { path: string }) {
     } catch (e) { notifyError(e, "Couldn't merge the other version in") } finally { setWorking(null) }
   }
   const many = versions.length > 1
+  if (v.id.startsWith("sync:")) {
+    // (device sync's clash: two devices changed the same lines; the later stayed, this is the other side)
+    const text = v.merge === "same" ? `Sync kept ${v.label}'s side of a clash (${fmtStamp(v.at)}): everything in it is here.`
+      : `${v.label} changed the same lines (${fmtStamp(v.at)}): this note kept the later change.`
+    const actions = v.merge === "same" ? [["Dismiss", keepThis] as const] : [["Compare", mergeIn] as const, ["Keep this one", keepThis] as const]
+    return <Banner tone={v.merge === "same" ? "info" : "warn"} icon={GitCompareArrows} actions={actions}>{text}</Banner>
+  }
   const lead = many ? `iCloud kept ${versions.length} other versions of this note. The oldest (${from})` : `iCloud kept another version of this note (${from})`
   const text = v.merge === "none" ? `iCloud kept another version of this file (${from}), not text.`
     : v.merge === "same" ? (many ? `${lead} has nothing this one doesn't.` : `iCloud kept an older version of this note (${from}): everything in it is here.`)

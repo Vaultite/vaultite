@@ -239,6 +239,7 @@ by its path.
 - `machines:self` (machines)
 - `machines:vault` (machines)
 - `machines:ids` (machines)
+- `machines:writer` (machines): The machine that runs the jobs and writes what plugins generate: device sync's hub if one is set, else the first listed.
 - `machines:desktop` (machines): What plugin.desktop does on a server with no desktop app attached.
 - `machines:browser` (machines): The machine whose browser this server's agents use (its tabs' numbers are that browser's): this one, or null.
 - `machines:fs` (machines)
@@ -264,6 +265,9 @@ by its path.
 - `share:folders` (share): The folders shared now (not expired): the vault's other machines type in their notes here, with the guests.
 - `share:hosts` (share): The vault's other machines that share folders now, and which (`fresh`: asked again unless just asked, as a note opens: what was asked as this server started knows nothing of a folder shared since).
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
+- `sync:conflicts` (sync): The served vault's clashes sync kept, for the note's banner: by path ({id, at, from}), or one file's with their text and base.
+- `sync:settle` (sync): Settle one (the user merged it in or kept the note as it is): a version on the file that says so, on every device.
+- `sync:hub` (sync): The hub this vault's settings name (vau sync hub), or null: Machines' first then.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
 - `terminal:<…>` (meters, access, ask, waits, state, ended, agent-waits, screen, locate, runs, agent-env, wait, of, of-pids, info): agent-meters; terminal

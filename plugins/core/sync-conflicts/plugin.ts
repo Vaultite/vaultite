@@ -97,7 +97,13 @@ export const store = {
 
 type Found = Record<string, Version[]>
 const found = (): Found => plugin.kept<Found>("found", {})
-plugin.state(() => ({ syncConflicts: found() }))
+/** Device sync's clashes in this vault's notes, beside iCloud's (plugins/core/sync): ids "sync:<id>". */
+const synced = async (): Promise<Found> => (await plugin.ask<Found>("sync:conflicts", {})) ?? {}
+plugin.state(async () => {
+  const all: Found = { ...found() }
+  for (const [p, vs] of Object.entries(await synced())) all[p] = [...(all[p] ?? []), ...vs]
+  return { syncConflicts: all }
+})
 
 /** The vault's folder as the helper walks it (a link followed), and a file's vault path from what it says. */
 const root = () => { try { return fs.realpathSync(plugin.vault.path) } catch { return plugin.vault.path } }
@@ -204,15 +210,17 @@ function mergeOf(text: string, v: VersionText, base: string | null): "same" | "c
 plugin.route("GET", "sync-conflicts/versions", async (req) => {
   await plugin.ownerOnly(req, "Other versions of a file")
   const { rel, abs, mtime } = fileOf(req.query.path)
-  if (!store.on(plugin.vault.path)) return { path: rel, versions: [] }
+  const text = fs.readFileSync(abs, "utf8").replace(/\r\n?/g, "\n")
+  const fromSync = (await plugin.ask<(VersionText & { base: string | null })[]>("sync:conflicts", [], rel) ?? [])
+    .map((v) => ({ ...v, label: v.from, merge: mergeOf(text, v, v.base) }))
+  if (!store.on(plugin.vault.path)) return { path: rel, versions: fromSync }
   const vs = await store.read(abs)
   if (vs.length !== (found()[rel]?.length ?? 0)) void recheck([rel]).catch(() => {})
-  const text = fs.readFileSync(abs, "utf8").replace(/\r\n?/g, "\n")
   const versions = await Promise.all(vs.sort((a, b) => a.at - b.at).map(async (v) => {
     const base = await baseFor(rel, v, mtime)
     return { ...v, label: await labelOf(v.from), base, merge: mergeOf(text, v, base) }
   }))
-  return { path: rel, versions }
+  return { path: rel, versions: [...versions, ...fromSync] }
 }, { lock: false })
 
 /** POST sync-conflicts/resolve {path, id}: the user chose (merged it in, or kept the file as it is): iCloud stops
@@ -222,6 +230,7 @@ plugin.route("POST", "sync-conflicts/resolve", async (req) => {
   const b = (req.body ?? {}) as { path?: unknown; id?: unknown }
   const { rel, abs } = fileOf(b.path)
   if (typeof b.id !== "string" || !b.id) throw new HTTPError(400, "which version? {path, id} (from GET sync-conflicts/versions)")
+  if (b.id.startsWith("sync:")) return { resolved: await plugin.ask<number>("sync:settle", 0, rel, b.id) }
   const resolved = await store.resolve(abs, [b.id])
   await recheck([rel])
   return { resolved }

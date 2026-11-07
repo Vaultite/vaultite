@@ -91,7 +91,8 @@ function apply() {
   const v = plugin.vault, on = !plugin.isOff()
   // (what the rules are made of changes only with the settings, the app or the vault's plugins)
   const key = `${v.path}:${on}:${v.settingsVersion}:${LOADED.map((p) => p.id).join(",")}`
-  if (key !== written) { writeRules(on); written = key }
+  // (generated: only the writer machine rewrites it, so two never write it at once; the others get its copy)
+  if (key !== written && v.writerHere) { writeRules(on); written = key }
   const pointing = on && plugin.settings().rootFiles === true
   if (pointing === pointed) return
   for (const name of Object.keys(LINES)) point((rel) => v.abs(rel), name, pointing)

@@ -98,21 +98,28 @@ export class App {
           ...this.on().flatMap((p): Listed[] => p.jobs.map((job) => ({ plugin: p.id, job })))]
       },
       here: (machine) => this.runsHere(machine),
-      before: () => this.syncPlugins(),
+      before: async () => { await this.syncPlugins(); await this.checkWriter() },
       paused: () => this.vaultPlugins.paused().flatMap((p) => p.jobs.map((job) => ({ plugin: p.id, job,
         why: `${p.name} changed and waits for you to allow it again (vau plugin allow ${p.id})` }))),
     })
   }
 
-  /** Whether this machine runs a job naming `machine` (else Machines' first). Without Machines, only one naming none. */
+  /** Whether this machine runs a job naming `machine` (else the writer: the sync hub, or Machines' first). Without
+   *  Machines, only one naming none. */
   private async runsHere(machine?: string) {
     const ids = (service(this.on(), "machines:ids")?.() ?? []) as string[]
     if (!ids.length) return !machine
+    const writer = String(await Promise.resolve(service(this.on(), "machines:writer")?.()).catch(() => null) ?? "") || ids[0]
     if (!this.self || Date.now() - this.self[0] > 300_000) {
       const ask = service(this.on(), "machines:self")
       this.self = [Date.now(), Promise.resolve(ask ? ask() : null).catch(() => null)]
     }
-    return (await this.self[1]) === (machine ?? ids[0])
+    return (await this.self[1]) === (machine ?? writer)
+  }
+
+  /** Keep the vault's `writerHere` current (the hub can change: vau sync hub). */
+  private async checkWriter() {
+    try { this.vault.writerHere = await this.runsHere() } catch { /* as it was */ }
   }
 
   /** Load the plugins (they register the kinds: the core owns none). */
@@ -125,8 +132,9 @@ export class App {
     this.vault.plain = () => { const f = service(this.plugins, "templates:folder")?.(); return [...typeof f === "string" && f ? [f] : [], ...this.vault.samples()] }
     this.vault.defaults = () => settingDefaults(this.vault, this.plugins)
     // The write gate (core/writegate.ts): a plugin acting on its own writes outside .vaultite/ only where it's granted.
-    this.vault.mayWrite = (id, rel) => G.may(this.vault, this.plugins, id, rel)
+    this.vault.mayWrite = (id, rel) => G.may(this.vault, this.plugins, id, rel, this.vault.writerHere)
     this.vault.writeRefused = (id, rel) => {
+      if (!this.vault.writerHere && G.generated(this.vault, this.plugins, id, rel)) return // (the writer machine makes it)
       const asking = G.refused(this.vault, this.plugins, id, rel)
       eventsOf(this.vault).emit("plugin.write-refused", { plugin: id, path: rel, asking })
     }

@@ -1124,8 +1124,9 @@ async function writeRecap(date: string) {
  *  write a day's at once (iCloud would show one and hide the other). Null: this one, or none known. */
 async function recapWriter(): Promise<{ id: string; m: Machine | null } | null> {
   const ids = await plugin.ask<string[]>("machines:ids", []), self = await plugin.ask<string>("machines:self", "")
-  if (!ids.length || !self || self === ids[0]) return null
-  return { id: ids[0], m: await plugin.ask<Machine | null>("machines:machine", null, ids[0]) }
+  const writer = await plugin.ask<string | null>("machines:writer", null) ?? ids[0]
+  if (!writer || !self || self === writer) return null
+  return { id: writer, m: await plugin.ask<Machine | null>("machines:machine", null, writer) }
 }
 /** activity.recap --write on the recaps' machine, its answer as if run here; once only (one passed on isn't again). */
 async function writeThere({ id, m }: { id: string; m: Machine | null }, client: string | null | undefined, params: object) {

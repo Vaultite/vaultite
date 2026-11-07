@@ -732,6 +732,8 @@ export class Vault {
   /** May the plugin acting on its own write `rel` (outside .vaultite/)? The App asks the grants (core/grants.ts);
    *  without one, never. */
   mayWrite: (plugin: string, rel: string) => boolean = () => false
+  /** Whether this machine writes what plugins generate and runs the jobs (core/app.ts: the sync hub, else Machines' first). */
+  writerHere = true
   /** Told of each write the gate refused (core/writegate.ts): the App logs it and asks the user. */
   writeRefused: (plugin: string, rel: string) => void = (plugin, rel) => console.error(`write refused: ${plugin} may not write ${rel} on its own`)
 

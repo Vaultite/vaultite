@@ -6,7 +6,9 @@ import type { Item, Vault } from "./vault.ts"
 import { isObj } from "./values.ts"
 
 /** One place a plugin writes on its own: a folder (and what's in it) or one file, and why, said to the user. */
-export type WriteDecl = { folder?: string; file?: string; why: string }
+export type WriteDecl = { folder?: string; file?: string; why: string
+  /** What it makes from the vault (a page rebuilt, a day's recap): written by one machine only, the writer (core/app.ts). */
+  generated?: boolean }
 export type Answer = "allowed" | "not now" | "ask"
 /** A declared write as the app lists it, with the user's answer (null: never asked). */
 export type Grant = { plugin: string; name: string; on: boolean; place: string; folder: boolean; why: string; answer: Answer | null
@@ -22,8 +24,9 @@ const cleanPath = (s: string) => s.trim().replace(/^\/+|\/+$/g, "")
 function writesOf(p: Plugin): WriteDecl[] {
   return (Array.isArray(p.manifest.writes) ? p.manifest.writes as unknown[] : []).flatMap((w): WriteDecl[] => {
     if (!isObj(w) || typeof w.why !== "string") return []
-    if (typeof w.folder === "string" && cleanPath(w.folder)) return [{ folder: cleanPath(w.folder), why: w.why.trim() }]
-    if (typeof w.file === "string" && cleanPath(w.file)) return [{ file: cleanPath(w.file), why: w.why.trim() }]
+    const gen = w.generated === true ? { generated: true } : {}
+    if (typeof w.folder === "string" && cleanPath(w.folder)) return [{ folder: cleanPath(w.folder), why: w.why.trim(), ...gen }]
+    if (typeof w.file === "string" && cleanPath(w.file)) return [{ file: cleanPath(w.file), why: w.why.trim(), ...gen }]
     return []
   })
 }
@@ -61,12 +64,19 @@ function covers(vault: Vault, p: Plugin, w: WriteDecl, rel: string) {
   return foldersOf(vault, p, w).some((f) => rel === f || rel.startsWith(`${f}/`))
 }
 
-/** May plugin `id`, acting on its own, write `rel`? Only where it declared and the user allowed. */
-export function may(vault: Vault, plugins: Plugin[], id: string, rel: string) {
+/** May plugin `id`, acting on its own, write `rel`? Only where it declared and the user allowed; what it generates, only
+ *  on the writer machine (`writerHere`), so two machines never rebuild one file at once. */
+export function may(vault: Vault, plugins: Plugin[], id: string, rel: string, writerHere = true) {
   const p = plugins.find((x) => x.id === id)
   if (!p) return false
   const mine = answers(vault)[id] ?? {}
-  return writesOf(p).some((w) => mine[keyOf(w)] === "allowed" && covers(vault, p, w, rel))
+  return writesOf(p).some((w) => mine[keyOf(w)] === "allowed" && covers(vault, p, w, rel) && (writerHere || !w.generated))
+}
+
+/** Whether `rel` is something plugin `id` generates (its writes say so): refused on other machines without asking. */
+export function generated(vault: Vault, plugins: Plugin[], id: string, rel: string) {
+  const p = plugins.find((x) => x.id === id)
+  return !!p && writesOf(p).some((w) => w.generated && covers(vault, p, w, rel))
 }
 
 /** Each declared write of the plugins given (`on`: of those that are on), with the user's answer. */
