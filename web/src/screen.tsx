@@ -12,7 +12,7 @@ import { joinText } from "../../core/dictationtext"
 import { CURSOR_SPRING, glide, type Glide } from "@/core/spring"
 import { makePilot, type PenScript, type Pilot } from "@/core/pilot"
 import { type Sample, TRAIL, trailPieces } from "@/core/trail"
-import { type Cue, playCue } from "@/core/cues"
+import { type Cue, cueLength, playCue } from "@/core/cues"
 import { penSound } from "@/core/pensound"
 import { cn, followSystemTheme } from "@/lib/utils"
 // (what its flag shows, by the window's own rule: the two draw one cursor)
@@ -98,7 +98,7 @@ const kick = () => { if (!raf) { clockOff = Date.now() - performance.now(); raf 
 
 const flying: { pilot: Pilot | null; el: HTMLElement | null; to: string; reduced: boolean; at: Point | null; sound: boolean; inked: { x: number; y: number; t: number } | null } = { pilot: null, el: null, to: "", reduced: matchMedia("(prefers-reduced-motion: reduce)").matches, at: null, sound: false, inked: null }
 /** Its pen heard as it inks (core/pensound.ts), on the display it's on, when its drawing says it may be. */
-const pen = penSound(() => (audio ??= new AudioContext()))
+const pen = penSound(() => (audio ??= new AudioContext()), () => napAudio())
 function flyPose(now: number) {
   const pilot = flying.pilot!, pose = pilot.pose(now), el = flying.el
   flying.at = { x: pose.x, y: pose.y }
@@ -140,6 +140,14 @@ function cueNow(name: Cue) {
   audio ??= new AudioContext()
   if (audio.state === "suspended") void audio.resume()
   playCue(audio, name)
+  napAudio(cueLength(name) * 1000)
+}
+// (one owner for the context the cues and the pen share: suspended once both are quiet, so no audio runs at rest)
+let audioUntil = 0, audioNap: ReturnType<typeof setTimeout> | undefined
+function napAudio(ms = 0) {
+  audioUntil = Math.max(audioUntil, Date.now() + ms)
+  clearTimeout(audioNap)
+  audioNap = setTimeout(() => { if (!pen.busy() && audio?.state === "running") void audio.suspend() }, audioUntil - Date.now() + 300)
 }
 function pointerMoved(p: [number, number, number, number]) {
   // (held, the pointer leaves its trail; a drag makes a box instead)
@@ -176,7 +184,9 @@ function drawTrail(now: number) {
     return { ...p, x: p.x + (to.x - p.x) * e, y: p.y + (to.y - p.y) * e }
   }
   const pieces = trailPieces(trail.pts.map(pull), now, { still: flying.reduced })
-  if (!pieces.length && !held) trail.pts = []
+  // (held with the pointer still, once it's all faded: nothing left to draw, so the loop sleeps till the pointer moves)
+  const newest = trail.pts.at(-1)
+  if (!pieces.length && (!held || !newest || now - newest.t > (flying.reduced ? TRAIL.still : TRAIL.fade))) trail.pts = []
   else if (trail.pts.length > 600) trail.pts = trail.pts.filter((p) => now - p.t < TRAIL.fade)
   const c = trail.el ??= Object.assign(document.createElement("canvas"), { className: "pointer-events-none fixed inset-0", ariaHidden: "true" })
   if (!c.isConnected) {

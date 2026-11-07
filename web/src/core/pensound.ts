@@ -10,8 +10,9 @@ export function penLevel(speed: number) {
 }
 
 /** A pen's voice on an audio context `make` gives when first needed: `ink(speed)` each frame it draws, `lift()` when
- *  it doesn't. Asleep (its context suspended) a moment after it lifts. */
-export function penSound(make: () => AudioContext) {
+ *  it doesn't. Its noise stops a moment after it lifts, then `rested()`: the context is shared (the cues'), its owner
+ *  suspends it. */
+export function penSound(make: () => AudioContext, rested: () => void = () => {}) {
   let ctx: AudioContext | null = null, gain: GainNode | null = null, band: BiquadFilterNode | null = null, src: AudioBufferSourceNode | null = null
   let sleep: ReturnType<typeof setTimeout> | null = null
   function wake() {
@@ -34,10 +35,12 @@ export function penSound(make: () => AudioContext) {
       sleep = null
       try { src?.stop() } catch { /* (already stopped) */ }
       src?.disconnect(); src = null
-      if (ctx?.state === "running") void ctx.suspend()
+      rested()
     }, 700)
   }
   return {
+    /** Its noise is playing. */
+    busy: () => !!src,
     ink(speed: number) {
       const level = penLevel(speed)
       if (!level && !src) return
