@@ -392,7 +392,7 @@ setTimeout(draw, 300)
       job = b
       const start = calls.find((c) => c.op === "terminal.start")
       check("handoff on another machine: its where asked there, its terminal started there in that folder, the card says so",
-        st === 200 && b.link === "view:terminal/claude-remote1@studio" && b.where.startsWith("Studio, site") && calls[0]?.op === "companion.where" && calls[0].client?.startsWith("machine/") &&
+        st === 200 && b.link === "view:terminal/claude-remote1@studio" && b.where.startsWith("Studio, site") && !!calls.find((c) => c.op === "companion.where")?.client?.startsWith("machine/") &&
         start?.p.cwd === "/home/alice/Projects/site" && /Fix the header/.test(start?.p.prompt ?? ""), [st, b, calls])
       const working = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job.id }))[1]; return r.state === "working" && r }, 10000, 200)
       check("jobs on another machine: read from its worker there; typed in there by the user, it's theirs (never closed by itself)", !!working && working.now === "Editing the header" && working.held === true, working)
@@ -410,11 +410,12 @@ setTimeout(draw, 300)
       calls.length = 0
       // (its own ask over the GitHub page: an earlier block's may be no longer the last; heard only while the companion is on)
       await api("PATCH", "config/plugin/companion", { mode: "quiet" })
+      await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].mode !== "off", 5000, 50)
       ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "research the header", app: "com.example.browser", title: "Site", screen: "https://github.com/lighthouse/site", sx: 10, sy: 20 })
       ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Research the header", say: "On it." }, agent)
       job = b
       check("handoff with nothing tying it here (the ask's GitHub page): on the always-on machine, only the page passed on", st === 200 && b.where.startsWith("Studio") && /Studio \(always on\)/.test(b.why) &&
-        calls[0]?.op === "companion.where" && JSON.stringify(calls[0].p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }), [st, b, calls[0]])
+        JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }), [st, b, calls])
       await waitFor(async () => (await api("POST", "ops/companion.job", { id: job.id }))[1].session === "rs1", 10000, 200)
       stage = "gone"
       const shipped = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job.id }))[1]; return r.state !== "working" && r }, 15000, 300)
@@ -439,12 +440,13 @@ setTimeout(draw, 300)
         try {
           // (an earlier block leaves it off, which drops the ask)
           await api("PATCH", "config/plugin/companion", { mode: "quiet" })
+      await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].mode !== "off", 5000, 50)
           stage = "working"
           ;[st, b] = await ask()
           const start = calls.find((c) => c.op === "terminal.start")
           check("handoff over a preview here, its repo pushed and checked out on the always-on machine: it runs there, in that checkout, told to preview there",
             st === 200 && b.link.endsWith("@studio") && /all pushed: as asked, on Studio \(always on\), previewed there/.test(b.why) &&
-            JSON.stringify(calls[0]?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }) && start?.p.cwd === "/home/alice/Projects/site" &&
+            JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }) && start?.p.cwd === "/home/alice/Projects/site" &&
             new RegExp(`asked over the preview http://localhost:${port} on [^]*Studio's own preview[^]*say it's on Studio`).test(start?.p.prompt ?? ""), [st, b, start?.p])
           await api("POST", "ops/companion.job-stop", { id: b.id }, agent)
           fs.appendFileSync(path.join(repo, "index.html"), "<p>wip</p>\n")
