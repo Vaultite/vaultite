@@ -5,7 +5,9 @@ export type { Drawing }
 type Display = { id: number; bounds: { x: number; y: number; width: number; height: number }; workArea?: { y: number } }
 type Pt = { x: number; y: number }
 /** What the user pressed on a drawing (web/src/screendraw). */
-export type DrawAct = { id: string; kind: "clear" | "keep" | "copy" | "open" | "ask"; text?: string; url?: string; places?: Drawing["places"] }
+export type DrawAct = { id: string; kind: "clear" | "settle" | "keep" | "copy" | "open" | "ask" | "dismiss"; text?: string; url?: string; places?: Drawing["places"]
+  /** A card the user dismissed, by its id. */
+  mark?: string }
 
 const within = (d: Display, p: Pt) => p.x >= d.bounds.x && p.x < d.bounds.x + d.bounds.width && p.y >= d.bounds.y && p.y < d.bounds.y + d.bounds.height
 /** The display with the cards: where its first known place is, else the pointer's. */

@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion shows pictures and videos, draws any shape, and diagrams like Excalidraw**: ask for your latest
+  screenshot (or a vault file, a file of yours, a link) and it's a card by its cursor, a video muted and looped,
+  pressed to hear it; it draws logos and animals from path data, clean or sketched, and diagrams of boxes, diamonds
+  and bound arrows in Excalidraw's hand. Its cards stay up past your next ask, so "make it blue" or "add a step"
+  changes the drawing in place (erasing runs the pen backward); you can drag or dismiss any card, and put one anywhere.
+  Each session draws on its own layer, which it can hide and show again; Keep opens it all as an editable .excalidraw.
 - **Dictation learns your words**: fix a word right after dictating it (in a note, a terminal or a field) and it's
   added to your dictionary, Dictionary.md, with a toast to undo it; every recognizer expects its words from then on,
   and misheard again, what it was misheard as is replaced. Your people's and projects' names are expected too, the

@@ -862,6 +862,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `entryBytes(file, e)`: One entry's bytes, whole (for small ones: an image, memories.json).
 - `entryStream(file, e)`: One entry's bytes as a stream (inflated as they're read).
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
+- `FileAnswer`: A route's answer as a file of this machine, sent as /api/raw sends one: by its type, in ranges (a video seeks), never read whole.
 - `fmtAgo(t, { short }?)`: How long ago `t` was (ms, or a stamp: stampMs): "just now", "5 min ago", "3 h ago", "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo".
 - `fmtMin(m)`: 90 -> "1 h 30 min".
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.

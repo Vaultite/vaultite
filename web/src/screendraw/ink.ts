@@ -68,11 +68,20 @@ export const linePath = (pts: Line) => pts.map(([x, y], i) => `${i ? "L" : "M"}$
 const f = (v: number) => (Math.round(v * 10) / 10).toString()
 
 const gen = rough.generator()
-/** rough.js' strokes of a shape, as paths (`fill`: hachure in the tint). */
-export function sketch(kind: "rect" | "ellipse" | "line", r: Rect | [Pt, Pt], seed: number, opts: { fill?: boolean; roughness?: number } = {}) {
-  const o = { seed: (seed % 2_000_000) + 1, roughness: opts.roughness ?? 1.1, bowing: 1.2, strokeWidth: 2, stroke: "#000", ...(opts.fill ? { fill: "#000", fillStyle: "hachure", hachureGap: 6, fillWeight: 1.4 } : {}) }
-  const d = Array.isArray(r) ? gen.line(r[0].x, r[0].y, r[1].x, r[1].y, o)
-    : kind === "ellipse" ? gen.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, o) : gen.rectangle(r.x, r.y, r.w, r.h, o)
-  // (hachure's lines are thinner than the outline's)
-  return gen.toPaths(d).map((p) => ({ d: p.d, hatch: p.strokeWidth < 2 }))
+/** A sketched path: an outline, hachure (thinner), or a solid fill. */
+export type Sketched = { d: string; hatch: boolean; fill?: boolean }
+type Shape = "rect" | "ellipse" | "diamond" | "line" | "poly" | "open"
+/** rough.js' strokes of a shape, as paths (`fill`: hachure in the tint; `solid`: a fill under the outline). A poly or an
+ *  open line takes its points. */
+export function sketch(kind: Shape, r: Rect | [Pt, Pt] | Line, seed: number, opts: { fill?: boolean; solid?: boolean; roughness?: number } = {}): Sketched[] {
+  const o = { seed: (seed % 2_000_000) + 1, roughness: opts.roughness ?? 1.1, bowing: 1.2, strokeWidth: 2, stroke: "#000",
+    ...(opts.fill ? { fill: "#000", fillStyle: "hachure", hachureGap: 6, fillWeight: 1.4 } : opts.solid ? { fill: "#000", fillStyle: "solid" } : {}) }
+  const pts = (l: Line) => l.map(([x, y]) => [x, y] as [number, number])
+  const d = kind === "poly" ? gen.polygon(pts(r as Line), o) : kind === "open" ? gen.linearPath(pts(r as Line), o)
+    : Array.isArray(r) ? gen.line((r as [Pt, Pt])[0].x, (r as [Pt, Pt])[0].y, (r as [Pt, Pt])[1].x, (r as [Pt, Pt])[1].y, o)
+    : kind === "ellipse" ? gen.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, o)
+    : kind === "diamond" ? gen.polygon([[r.x + r.w / 2, r.y], [r.x + r.w, r.y + r.h / 2], [r.x + r.w / 2, r.y + r.h], [r.x, r.y + r.h / 2]], o)
+    : gen.rectangle(r.x, r.y, r.w, r.h, o)
+  // (hachure's lines are thinner than the outline's; a solid fill is filled, not stroked)
+  return gen.toPaths(d).map((p) => { const fill = p.stroke === "none" && !!p.fill && p.fill !== "none"; return { d: p.d, hatch: !fill && p.strokeWidth < 2, ...(fill ? { fill } : {}) } })
 }

@@ -1,45 +1,86 @@
-// The companion's drawings over the screen (companion draw --marks), mounted by screen.tsx: what electron/overlay.ts
-// sends this display, drawn by Draw.tsx (loaded with the first one); what the user presses goes back.
+// The companions' layers over the screen (companion draw --marks), mounted by screen.tsx: what electron/overlay.ts sends
+// this display, each session's layer drawn by Draw.tsx (loaded with the first one); what the user presses goes back.
 import { lazy, Suspense, useSyncExternalStore } from "react"
 import type { Drawing, Rect } from "../../../plugins/core/companion/screenmarks"
 import type { PenScript } from "../core/pilot"
 import type { Here } from "./layout"
 
-/** A drawing as this display gets it: `here`, where the display is and whether it has the cards. */
+/** A layer as this display gets it: `here`, where the display is and whether it has the cards. */
 export type Shown = Drawing & { here: Here }
-/** What the user pressed: Clear, Keep (with the places as found here), or a mark's action. */
-export type Act = { id?: string; kind: "clear" | "keep" | "copy" | "open" | "ask"; text?: string; url?: string; places?: Record<string, Rect> }
-export type DrawBridge = { on: (fn: (d: Shown | null) => void) => () => void; act: (a: Act) => void }
+/** What the user pressed: Clear, Keep (with the places as found here), a mark's action, or a card's × (`mark`, its id). */
+export type Act = { id?: string; kind: "clear" | "keep" | "copy" | "open" | "ask" | "dismiss"; text?: string; url?: string; places?: Record<string, Rect>; mark?: string }
+export type DrawBridge = { on: (fn: (d: Shown[] | Shown | null) => void) => () => void; act: (a: Act) => void }
 
 const Draw = lazy(() => import("./Draw"))
 const LEAVE = 220
 
 // (heard from the page's first moment, whether drawn yet or not: one sent with the first scene isn't lost)
-type View = { d: Shown | null; gone: Shown | null }
-let view: View = { d: null, gone: null }
+type View = { up: Shown[]; gone: Shown[] }
+let view: View = { up: [], gone: [] }
 const listeners = new Set<() => void>()
 const set = (v: View) => { view = v; for (const l of listeners) l() }
 const bridge = (window as unknown as { vaultiteScreen?: { draw?: DrawBridge } }).vaultiteScreen?.draw
 bridge?.on((x) => {
-  const was = view.d
-  if (!x && was) setTimeout(() => { if (view.gone === was) set({ ...view, gone: null }) }, LEAVE)
-  set({ d: x, gone: x ? null : was ?? view.gone })
+  const up = Array.isArray(x) ? x : x ? [x] : [], ids = new Set(up.map((d) => d.id))
+  // (a layer that went fades out a moment, then it's gone)
+  const left = view.up.filter((d) => !ids.has(d.id))
+  if (left.length) setTimeout(() => set({ ...view, gone: view.gone.filter((g) => !left.includes(g)) }), LEAVE)
+  set({ up, gone: [...view.gone.filter((g) => !ids.has(g.id)), ...left] })
 })
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 
-/** This display's drawing, and the last one fading as it goes; `pen`: the companion's cursor draws it, told its strokes. */
+/** This display's layers, and those fading as they go; `pen`: the companion's cursor draws the one it's answering with,
+ *  told its strokes. */
 export function ScreenDrawings({ grab, pen }: { grab: (on: boolean) => void; pen?: (s: PenScript | null) => void }) {
-  const { d, gone } = useSyncExternalStore(subscribe, () => view), show = d ?? gone
-  if (!show) return null
-  return <Suspense fallback={null}><Draw key={show.id} d={show} leaving={!d} act={(a) => bridge?.act(a)} grab={grab} pen={pen} /></Suspense>
+  const { up, gone } = useSyncExternalStore(subscribe, () => view)
+  if (!up.length && !gone.length) return null
+  // (the pen follows the newest layer still being drawn: an earlier exchange's is drawn already)
+  const lead = up.filter((d) => !d.past && !d.hidden).sort((a, b) => b.t - a.t)[0]?.id
+  return <Suspense fallback={null}>
+    {[...up, ...gone].map((d) => {
+      // (each layer's Keep and Clear on its own row, named when there are several)
+      const shown = up.filter((x) => !x.hidden), slot = shown.indexOf(d)
+      return <Draw key={d.id} d={d} leaving={!up.includes(d)} act={(a) => bridge?.act(a)} grab={grab} pen={d.id === lead ? pen : undefined} slot={Math.max(0, slot)} named={shown.length > 1} />
+    })}
+  </Suspense>
 }
 
 document.head.append(Object.assign(document.createElement("style"), { textContent: `
 .sd-root { transition: opacity ${LEAVE}ms ease-out; }
-.sd-root.sd-leave { opacity: 0; }
+.sd-root.sd-leave, .sd-root.sd-hidden { opacity: 0; }
+.sd-root.sd-hidden * { pointer-events: none !important; }
 .sd-glow { filter: drop-shadow(0 0 5px color-mix(in srgb, var(--tint) 55%, transparent)) drop-shadow(0 1px 1px rgba(0,0,0,.28)); }
 .sd-ink { fill: var(--tint); }
-.sd-line { fill: none; stroke: var(--tint); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.sd-line { fill: none; stroke: var(--ink, var(--tint)); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: stroke .4s; }
+.sd-fill { fill: var(--fill); stroke: none; transition: fill .4s; }
+.sd-svg { fill: none; stroke-linecap: round; stroke-linejoin: round; transition: stroke .4s; }
+.sd-svg-fill { stroke: none; opacity: 0; animation: sd-fade .45s ease-out var(--delay, 0ms) forwards; transition: fill .4s; }
+.sd-move { transition: transform .5s cubic-bezier(.3,.8,.3,1); }
+.sd-move-xy { transition: left .5s cubic-bezier(.3,.8,.3,1), top .5s cubic-bezier(.3,.8,.3,1), color .4s; }
+/* erased: its pen run backward, what has no pen fading */
+.sd-erase { pointer-events: none !important; }
+.sd-erase .sd-pen { animation: sd-unpen .5s cubic-bezier(.5,0,.75,.6) forwards !important; }
+.sd-erase :is(.sd-fill, .sd-svg-fill, .sd-ink, .sd-dot), .sd-erase > :is(div, .sd-shell), .sd-erase.sd-fade { animation: sd-out .45s ease-in forwards !important; }
+@keyframes sd-unpen { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 1; } }
+@keyframes sd-out { from { opacity: 1; } to { opacity: 0; } }
+.sd-shell { cursor: grab; } .sd-shell:active { cursor: grabbing; }
+.sd-x { position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; cursor: pointer; opacity: 0; transition: opacity .15s;
+  background: var(--background); color: var(--foreground); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 18%, transparent), 0 2px 6px rgba(0,0,0,.22); }
+.sd-shell:hover > .sd-x, .sd-x:focus-visible { opacity: 1; }
+.sd-media { overflow: hidden; }
+.sd-media-box { background: color-mix(in srgb, var(--foreground) 6%, var(--background)); }
+.sd-media-box img, .sd-media-box video { display: block; }
+.sd-media-wait { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--foreground) 8%, transparent) 50%, transparent 70%) 0 0 / 200% 100%; animation: sd-shimmer 1.2s linear infinite; }
+@keyframes sd-shimmer { to { background-position: -200% 0; } }
+.sd-media-failed { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; text-align: center; font-size: 13px; color: color-mix(in srgb, var(--foreground) 70%, transparent); }
+.sd-media-caption { height: ${30}px; line-height: ${30}px; padding: 0 12px; font-size: 13px; font-weight: 500; }
+.sd-media-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-radius: 999px; cursor: default;
+  background: rgba(0,0,0,.55); color: white; opacity: 0; transition: opacity .15s; }
+.sd-shell:hover .sd-media-bar { opacity: 1; }
+.sd-media-bar button { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px; cursor: pointer; } .sd-media-bar button:hover { background: rgba(255,255,255,.18); }
+.sd-media-bar input { flex: 1; min-width: 0; accent-color: var(--tint); cursor: pointer; }
+.sd-lightbox { background: rgba(0,0,0,.6); animation: sd-fade .2s ease-out both; opacity: 0; }
+.sd-lightbox-caption { position: absolute; bottom: 4vh; left: 50%; translate: -50% 0; padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.6); color: white; font-size: 13px; }
 .sd-hatch { stroke-width: 1.3; opacity: .75; }
 .sd-dot { fill: var(--tint); }
 .sd-focus { box-sizing: border-box; border: 2px solid var(--tint); background: color-mix(in srgb, var(--tint) 9%, transparent);
@@ -83,6 +124,8 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 .sd-chip svg { color: var(--tint); }
 .sd-tools { padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent), 0 6px 20px rgba(0,0,0,.2); transform-origin: bottom center; }
 .sd-tool { height: 26px; display: inline-flex; align-items: center; gap: 4px; padding: 0 10px; border-radius: 999px; color: var(--foreground); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.sd-who { color: var(--tint); cursor: default; }
 button.sd-tool:hover { background: color-mix(in srgb, var(--foreground) 8%, transparent); }
-@media (prefers-reduced-motion: reduce) { .sd-pen, .sd-pop, .sd-fade, .sd-tag, .sd-focus, [class*="sd-bob"] { animation: none !important; opacity: 1; stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .sd-pen, .sd-pop, .sd-fade, .sd-tag, .sd-focus, .sd-svg-fill, [class*="sd-bob"] { animation: none !important; opacity: 1; stroke-dashoffset: 0; }
+  .sd-erase { display: none; } .sd-move, .sd-move-xy { transition: none; } }
 ` }))

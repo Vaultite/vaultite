@@ -19,6 +19,7 @@ import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from 
 import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
 import { AUTO_RULES, NEVER_READ, NEVER_RUN, readableDirs } from "./reach.ts"
 import { screenDrawings } from "./drawings.ts"
+import { screenMedia } from "./media.ts"
 import { bestFound, byLabel, checkMarks, type Found, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
@@ -358,9 +359,9 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
   keepAsked(full)
-  // (a new ask: the last answer's drawing goes, a Talk key's too, so a mark it corrects is replaced, not stacked)
-  // (a tour playing for it stops too: they moved on; its own step handed to the model goes on with it)
-  if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.clear({ agent: full.for }); tours.interrupt(full.for) }
+  // (a new ask: what the last answer pointed with goes, a Talk key's too, so a mark it corrects is replaced, not
+  // stacked; its cards stay, for a follow-up to change in place; a tour playing for it stops too: they moved on)
+  if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.settle(full.for); tours.interrupt(full.for) }
   // (its Talk key's: the summoned session's, which runs warm apart from the long one)
   if (lane().takes(full)) {
     setAgent(full.for!, { state: "thinking", ...placeOf(m) })
@@ -869,6 +870,8 @@ const screenDrawing = screenDrawings(plugin, {
     return [...notes.values()].findLast((n) => n.kind === "say" && n.agent === a && n.t >= asked)?.text
   },
   displays: (a) => (screens.size ? (askOf(a)?.displays ?? []).map((d) => ({ x: d.x, y: d.y, w: d.width, h: d.height })) : null),
+  // (a file of this Mac: where its read-only commands may look)
+  media: screenMedia(plugin, { readable: (abs) => READ_ONLY.dirs.some((d) => abs.startsWith(`${d}${path.sep}`)) && !abs.startsWith(`${path.resolve(LOCAL)}${path.sep}`) && !/(^|\/)\.env/.test(abs) }),
 })
 // ---------- tours (tours.ts): played on the screen of each agent's last ask, without the model
 
@@ -1101,7 +1104,7 @@ function screenAnswered(m: Record<string, unknown>) {
 function screenSocket(ws: WebSocket, req: IncomingMessage) {
   screens.add(ws)
   send(ws, snapshot())
-  if (screenDrawing.current()) send(ws, screenDrawing.message())
+  for (const m of screenDrawing.messages()) send(ws, m)
   send(ws, { t: "jobs", jobs: jobs.cards() })
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
@@ -1154,11 +1157,15 @@ function ride(ws: WebSocket, agent: string) {
   broadcast({ t: "riding", agent: riding() })
 }
 
-/** What the user pressed on the drawing over the screen: Clear, Keep, a button's next step (an ask by where it is). */
+/** What the user pressed on a layer over the screen (Clear, Keep, a card's ×, a button's next step: an ask by where it
+ *  is), or what the helper saw of it: its exchange over (settle), the screen under it changed. */
 function drawingAct(m: Record<string, unknown>, req: IncomingMessage) {
-  const d = screenDrawing.current()
-  if (!d || m.id !== d.id) return
+  if (m.kind === "changed" && Array.isArray(m.rects)) return void screenDrawing.changed(m.rects.filter((r): r is ScreenRect => !!r && typeof r === "object" && [r.x, r.y, r.w, r.h].every((v) => typeof v === "number")))
+  const d = screenDrawing.byId(str(m.id))
+  if (!d) return
   if (m.kind === "clear") return void screenDrawing.clear({ id: d.id })
+  if (m.kind === "settle") return void screenDrawing.settle(d.agent)
+  if (m.kind === "dismiss" && typeof m.mark === "string") return void screenDrawing.dismiss(d.id, m.mark)
   if (m.kind === "keep") return void plugin.runOp("companion.save-drawing", { id: d.id, places: m.places ?? {} }, YOU, req).catch((e) => console.error(`companion: keep: ${(e as Error).message}`))
   const a = agents.get(key(d.agent)), r = spots(d.marks).map((s) => rectOf(s, d.places)).find(Boolean)
   if (m.kind === "ask" && str(m.text)) addMoment({ kind: "ask", for: d.agent, text: str(m.text).slice(0, 2000), ...(a?.app ? { app: a.app } : {}),
@@ -1854,13 +1861,13 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "tour", "tour-save"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "tour", "tour-save"]
 /** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
 const QUIET_RESULTS = new Set(["see", "check", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "tour"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "tour"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1918,7 +1925,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "conversation", "tour", "tour-save"]
+const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "conversation", "tour", "tour-save"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -2513,6 +2520,8 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
       if (here.length) { guided.add("tours"); out.push(`  their tours here (companion tour): ${here.join(", ")}`) }
     }
   }
+  // (what its last answer left on their screen: a follow-up changes it in place)
+  for (const a of new Set(ms.flatMap((m) => (m.for && (m.kind === "ask" || m.kind === "point") ? [m.for] : [])))) { const up = screenDrawing.text(a); if (up) out.push(up) }
   for (const e of notes) {
     if (e.pane) { out.push(`"${e.title ?? e.pane}" (pane ${e.pane}), what it shows now${e.text?.includes("[ref=") || /\be\d+\b/.test(e.text ?? "") ? " (refs for look --el, act)" : ""}:`, e.text ?? ""); continue }
     if (e.scene) { out.push(`${e.path}, the drawing (ids for companion draw, say --find):`, e.scene); continue }
@@ -3453,15 +3462,33 @@ plugin.op({
   id: "companion.draw",
   cli: "companion draw",
   summary: "Draw on the screen (marks: ring, point, connect, a scratch pad..., hand-drawn in your colour with your words), or change a drawing's elements (actions, on an .excalidraw).",
-  help: `marks: what to draw over the user's screen, in beats with your words (say), taken down at their next ask or Clear;
-each call adds to what's up (companion clear takes it down). The user can Keep it (companion save-drawing).
+  help: `marks: what to draw over the user's screen, in beats with your words (say); each call adds to what's up. At their
+next ask what pointed goes and the cards stay (a pad, a sticky, a picture...), listed by id with the ask: a follow-up
+about them changes them in place (actions, no path); new marks replace them; companion clear takes it all down. The
+user can drag or dismiss a card, and Keep it all (companion save-drawing: an .excalidraw).
 ${VOCABULARY}
+Which: a thing on their screen, a mark at it; a diagram or flow, a paper of Excalidraw's shapes (rect, diamond, arrow
+from/to ids); a picture of something (a logo, an animal, an icon), a paper with an svg item, clean or sketch; their
+file or a picture from the web, an image or video card.
 
   vau companion draw --say "Click Share. Then pick who." --marks '[{"type":"ring","at":{"el":"e12"},"label":"Share"},
     {"type":"connect","from":{"el":"e12"},"to":[900,420,120,30],"beat":1}, {"type":"num","at":[900,420],"n":2,"beat":1}]'
   vau companion draw --marks '[{"type":"paper","title":"Sales","grid":true,"items":[{"type":"chart","kind":"bar","values":[3,5,8],"labels":["Q1","Q2","Q3"]}]}]'
+  vau companion draw --marks '[{"type":"paper","id":"flow","w":420,"h":160,"items":[{"type":"rect","id":"in","x":20,"y":50,"label":"Sign in"},
+    {"type":"diamond","id":"ok","x":170,"y":30,"w":100,"h":100,"label":"Valid?"},{"type":"rect","id":"home","x":300,"y":50,"label":"Home","fill":"green"},
+    {"type":"arrow","from":"in","to":"ok"},{"type":"arrow","from":"ok","to":"home","label":"yes"}]}]'
+  vau companion draw --marks '[{"type":"paper","w":200,"h":200,"items":[{"type":"svg","style":"sketch","paths":[{"d":"M20 80 Q50 10 80 80 Z","fill":"green"}]}]}]'
+  vau companion draw --marks '[{"type":"image","src":"screenshot","caption":"Your latest screenshot","at":"top-right"}]'
 
-actions: a drawing's changes, all checked before any is made (\`vau docs excalidraw\` has every field). Ids are in the
+actions without a path: what's up changed in place, by the ids the ask listed (or your marks gave): {"op": "add",
+"type": "rect" | ..., "in": "<pad id>", ...an item} (to the last pad without in), {"op": "add", "mark": {...a mark}},
+{"op": "move", "id", "dx", "dy"} (or x, y; a card {"op": "move", "id", "at": "top-left"}), {"op": "change", "id",
+"color", "fill", "label", "text", "w", "h", "caption"...}, {"op": "delete", "id"} (erased, its pen run backward).
+
+  vau companion draw --actions '[{"op":"change","id":"home","fill":"blue"},{"op":"add","type":"rect","id":"err","x":170,"y":0,"w":90,"h":24,"label":"Retry"},
+    {"op":"add","type":"arrow","from":"ok","to":"err","label":"no"},{"op":"delete","id":"old"}]'
+
+actions with a path: a drawing's changes, all checked before any is made (\`vau docs excalidraw\` has every field). Ids are in the
 drawing's text (next, vau render). Only in pair mode or when they asked you to.
 
   vau companion draw --path Drawings/Plan.excalidraw --actions '[{"op":"add","type":"rectangle","id":"login","x":0,"y":0,"label":"Log in","fill":"blue"},
@@ -3471,11 +3498,12 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
   lock: false,
   params: { marks: { type: "array", items: { type: "object" }, description: "marks to draw on the screen: {\"type\": \"ring\" | \"point\" | \"frame\" | \"connect\" | \"paper\" | ..., ...} (see help)" },
     say: { type: "string", description: "with marks, written after them: your words, said once the marks check; each mark's beat is a sentence of them" },
-    actions: { type: "array", items: { type: "object" }, description: "on a drawing (path): what to do, in order: {\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...}" },
+    actions: { type: "array", items: { type: "object" }, description: "what to change, in order, by id: {\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...}; without path the drawing on the screen, with path that drawing file" },
     path: PATH, as: AS },
   run: async (p, ctx) => {
     if (p.marks !== undefined) return drawOnScreen(p, ctx)
-    if (p.actions === undefined) throw new OpError("marks (on the screen) or actions (on a drawing, with path)")
+    if (p.actions === undefined) throw new OpError("marks (on the screen) or actions (on the screen's drawing, or a drawing's with path)")
+    if (p.path === undefined) return editOnScreen(p, ctx)
     const name = who(p), t = target(p), apply = drawer(t.path!)
     if (!apply) throw new OpError(`${t.path} isn't a drawing (a .excalidraw file, its plugin on): companion edit writes in notes`)
     did(name, "draw")
@@ -3494,7 +3522,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
       })
     } finally { setAgent(name, { state: acting(name) }) }
   },
-  text: (r) => (r.screen ? `Drew ${r.marks} on the screen (${r.screen}).${r.unshown ? ` Not drawn, they saw no mark: ${r.unshown.join("; ")}.` : ""}` : `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`),
+  text: (r) => (r.changed ? `Changed the drawing on the screen (${r.changed.join(", ") || "nothing named"}).` : r.screen ? `Drew ${r.marks} on the screen (${r.screen}).${r.unshown ? ` Not drawn, they saw no mark: ${r.unshown.join("; ")}.` : ""}` : `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`),
   did: (p) => (p.marks !== undefined ? { action: "ui", text: "Drew on the screen", paths: [], by: who(p) } : edited(p)),
 })
 
@@ -3514,6 +3542,15 @@ async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
   return { screen: d.id, marks: (p.marks as unknown[]).length - unshown.length, ...(unshown.length ? { unshown } : {}) }
 }
 
+/** The drawing up changed in place by id, its words said with it. */
+async function editOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
+  const name = who(p)
+  did(name, "draw")
+  const { drawing: d, touched } = await screenDrawing.edit(name, p.actions, str(p.say) || undefined)
+  if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...(p.as ? { as: p.as } : {}) })
+  return { screen: d.id, changed: touched }
+}
+
 plugin.op({
   id: "companion.save-drawing",
   cli: "companion save-drawing",
@@ -3530,7 +3567,7 @@ plugin.op({
 plugin.op({
   id: "companion.clear",
   cli: "companion clear",
-  summary: "Take back your comments and suggestions (one by id, or all of yours, and your drawing on the screen).",
+  summary: "Take back your comments and suggestions (one by id, or all of yours, and your layer on the screen).",
   kind: "write",
   lock: false,
   params: { id: { type: "string", description: "the item (n12); default: all of yours" }, as: AS },
@@ -3543,6 +3580,32 @@ plugin.op({
   },
   text: (r) => `Cleared ${r.cleared}.`,
   did: (p) => ({ action: "ui", text: p.id ? `Took back ${str(p.id)}` : "Took back its comments and suggestions", paths: [], by: who(p) }),
+})
+
+plugin.op({
+  id: "companion.layer",
+  cli: "companion layer",
+  summary: "Your layer on the screen (what you drew there, by id): read it, or hide and show it (a before and after).",
+  help: `Each session draws on its own layer (companion draw): its marks never touch another's. A mark stays until the next
+ask (what points), until it's dismissed (cards) or until the screen under it changes (life). Hiding keeps it as it is,
+ids and all: show brings it back at once, nothing drawn again.
+
+  vau companion layer              what's on it, by id
+  vau companion layer --hide       out of sight (the after: the screen as it is)
+  vau companion layer --show       back (the before: what you marked)`,
+  kind: "write",
+  lock: false,
+  params: { hide: { type: "boolean", description: "out of sight, kept as it is" }, show: { type: "boolean", description: "back on the screen" },
+    toggle: { type: "boolean", description: "hidden if shown, shown if hidden" }, as: AS },
+  run: async (p) => {
+    const name = who(p), d = screenDrawing.layer(name)
+    if (!d) return { layer: null, shown: false, text: "" }
+    if (p.hide === true && p.show === true) throw new OpError("hide or show, not both")
+    const shown = p.hide === true ? screenDrawing.toggle(name, false) : p.show === true ? screenDrawing.toggle(name, true) : p.toggle === true ? screenDrawing.toggle(name) : !d.hidden
+    return { layer: d.id, shown, text: screenDrawing.text(name) }
+  },
+  text: (r) => (!r.layer ? "Nothing of yours is on the screen." : `Your layer ${r.layer}, ${r.shown ? "shown" : "hidden"}.${r.text ? `\n${r.text.split("\n").slice(1).join("\n")}` : ""}`),
+  did: (p) => ({ action: "ui", text: p.hide === true ? "Hid its layer" : p.show === true ? "Showed its layer" : p.toggle === true ? "Toggled its layer" : "Read its layer", paths: [], by: who(p) }),
 })
 
 plugin.op({

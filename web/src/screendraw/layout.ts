@@ -1,6 +1,6 @@
 // Where a drawing's parts go on one display (no DOM): labels beside what they name, never over it and on screen; cards on
 // calm space, clear of what's marked; arrows bent between two things.
-import { CARDS, type Drawing, type Mark, PAPER, type Rect, rectOf, type Spot } from "../../../plugins/core/companion/screenmarks"
+import { type Area, CARDS, type Drawing, type Mark, type Media, PAPER, type Rect, rectOf, type Spot } from "../../../plugins/core/companion/screenmarks"
 
 export type Size = { w: number; h: number }
 export type Pt = { x: number; y: number }
@@ -135,8 +135,28 @@ export type Here = { width: number; height: number; origin: Pt; home: boolean; p
 export type Placed = { i: number; mark: Mark; box: Rect | null; to?: Rect | null; ink?: Rect; card?: Rect; label?: Rect
   arrow?: { tip: Pt; tail: Pt }; curve?: ReturnType<typeof arrowPath> }
 
+/** How much of a display a picture or video takes at most, by its size (s, m, l): width and height. */
+const MEDIA_MOST = { s: [0.22, 0.26], m: [0.3, 0.36], l: [0.4, 0.45] } as const
+export const CAPTION_H = 30
+/** An image or video card's size on a display `W` by `H`: its pixels (as loaded, else as the server read them, else
+ *  16:10) fitted in its share of the display; a small one up to twice its size, at least 160 wide. Its caption below. */
+export function mediaSize(m: Media, W: number, H: number, natural?: [number, number]): Size {
+  const [fw, fh] = MEDIA_MOST[m.size ?? "m"], [nw, nh] = natural ?? m.px ?? [1600, 1000]
+  const k = Math.min((W * fw) / nw, (H * fh) / nh, Math.max(2, 160 / nw))
+  return { w: Math.round(Math.max(160, nw * k)), h: Math.round(Math.max(90, nh * k) + (m.caption ? CAPTION_H : 0)) }
+}
+
+/** A card of `size` at an area of `bounds`, `margin` in from its edges. */
+export function areaRect(a: Area, size: Size, bounds: Rect, margin = 24): Rect {
+  const l = bounds.x + margin, r = bounds.x + bounds.w - margin - size.w, t = bounds.y + margin, b = bounds.y + bounds.h - margin - size.h
+  const cx = bounds.x + (bounds.w - size.w) / 2, cy = bounds.y + (bounds.h - size.h) / 2
+  const x = /left/.test(a) ? l : /right/.test(a) ? r : cx, y = /^top/.test(a) ? t : /^bottom/.test(a) ? b : cy
+  return clampInto({ x, y, ...size }, bounds)
+}
+
 /** A card's size before it's measured (the renderer measures its text: `measure` gives that). */
 export function cardSize(m: Mark, measure: (text: string, px: number, bold?: boolean) => number = rough): Size {
+  if (m.type === "image" || m.type === "video") return mediaSize(m, 1440, 900)
   if (m.type === "paper") return { w: m.w + 2, h: m.h + (m.title ? 34 : 0) + 2 }
   if (m.type === "sticky") return { w: 240, h: Math.max(90, 48 + lines(m.text, 210, 14, measure) * 20 + (m.title ? 22 : 0)) }
   if (m.type === "list") return { w: Math.min(320, Math.max(180, ...m.items.map((x) => measure(x, 14) + 52), measure(m.title ?? "", 14, true) + 32)), h: 24 + (m.title ? 26 : 0) + m.items.length * 24 }
@@ -149,7 +169,8 @@ const lines = (text: string, w: number, px: number, measure: (t: string, px: num
   text.split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(measure(l, px) / Math.max(40, w - 24))), 0)
 
 /** Each mark of `d` drawn here, where its parts go: its target box, its card's place, its label's. */
-export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | null, measure?: (text: string, px: number, bold?: boolean) => number): Placed[] {
+export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | null, measure?: (text: string, px: number, bold?: boolean) => number,
+  naturals: Record<string, [number, number]> = {}): Placed[] {
   const bounds: Rect = { x: 0, y: here.top ?? 0, w: here.width, h: here.height - (here.top ?? 0) }
   const local = (s: Spot | undefined): Rect | null => {
     const r = s && rectOf(s, d.places)
@@ -185,11 +206,21 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
   const near = here.pointer ? { x: here.pointer.x - here.origin.x, y: here.pointer.y - here.origin.y } : marked.length ? centre(marked[0]) : { x: here.width * 0.7, y: here.height * 0.35 }
   let at = near
   for (const p of out) {
-    if (!CARDS.has(p.mark.type)) continue
-    const size = cardSize(p.mark, measure)
-    // (each by the last: the cards together, in the calmest room)
-    p.card = p.box ? clampInto({ x: p.box.x, y: p.box.y, ...size }, bounds) : calmSpot(size, bounds, [...avoid, ...content], at, 24, 140, taken)
-    if (!p.box) at = centre(p.card)
+    const m = p.mark
+    if (!CARDS.has(m.type)) continue
+    const size = m.type === "image" || m.type === "video" ? mediaSize(m, here.width, here.height - (here.top ?? 0), m.id ? naturals[m.id] : undefined) : cardSize(m, measure)
+    const area = "at" in m && m.at && "area" in m.at ? m.at.area : null
+    if (p.box && !p.box.w && !p.box.h) p.card = clampInto({ x: p.box.x, y: p.box.y, ...size }, bounds)
+    // (beside what it's about, never over it)
+    else if (p.box) p.card = labelAt(p.box, size, bounds, [...taken, ...avoid.filter((x) => x !== p.box)], 12)
+    else if (area && area !== "cursor") {
+      const r = areaRect(area, size, bounds)
+      p.card = taken.some((x) => overlaps(r, x)) ? calmSpot(size, bounds, [], centre(r), 12, 0, taken) : r
+    } else {
+      // (by the cursor: each by the last, the cards together, in the calmest room)
+      p.card = calmSpot(size, bounds, [...avoid, ...content], at, 24, 140, taken)
+      at = centre(p.card)
+    }
     taken.push(p.card)
   }
   // (frames' labels first, snug at them: all on the side that fits the most, as a set reads alike; one it doesn't fit, on

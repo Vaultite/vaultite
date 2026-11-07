@@ -1,16 +1,23 @@
 // The companion's drawings over the screen (web/src/screendraw: screendraw/Draw.ts, screendraw/layout.ts, screendraw/ink.ts,
 // screendraw/index.ts, in web/src/screen.tsx's page), headless with a stand-in bridge over a made-up screen: marks drawn
 // in beats, labels clear of what they name and on screen, cards on calm space, Keep, Clear and actions. Reads only
-// web/dist (npm run build first): no app, no window on screen. Pictures go to web/qa/shots/screendraw-*.png.
+// web/dist (npm run build first): no app, no window on screen. Needs ffmpeg. Pictures go to web/qa/shots/screendraw-*.png.
 // node web/qa/screendraw.mjs
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { ROOT, SHOTS, qa, until } from "./lib/qa.mjs"
 
 const { browser, check, watch, done } = await qa(import.meta.url)
 const DIST = path.join(ROOT, "web/dist"), W = 1280, H = 800
 fs.mkdirSync(SHOTS, { recursive: true })
-const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml" }
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png", ".webm": "video/webm" }
+// (a picture and two seconds of video with no sound, served as the server serves a card's: nothing can play aloud)
+const MEDIA = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-screendraw-"))
+const ff = (...a) => execFileSync("ffmpeg", ["-loglevel", "error", "-y", ...a])
+ff("-f", "lavfi", "-i", "testsrc=s=1600x1000", "-frames:v", "1", path.join(MEDIA, "shot.png"))
+ff("-f", "lavfi", "-i", "testsrc=d=2:s=320x180:r=15", "-an", "-c:v", "libvpx", "-b:v", "100k", path.join(MEDIA, "clip.webm"))
 // (a made-up app under the overlay, so the marks have things to mark: a toolbar, a sidebar, rows)
 const SCREEN = {
   share: { x: 1100, y: 40, w: 96, h: 32, text: "Share" }, search: { x: 300, y: 40, w: 360, h: 32, text: "Search mail" },
@@ -27,7 +34,7 @@ const B = (x, y, w = 0, h = 0) => ({ x, y, w, h })
 async function open(dark = false) {
   const page = watch(await browser.newPage({ viewport: { width: W, height: H }, colorScheme: dark ? "dark" : "light" }))
   await page.route("http://screen.test/**", (r) => {
-    const f = path.join(DIST, new URL(r.request().url()).pathname)
+    const at = new URL(r.request().url()).pathname, f = at.startsWith("/qa-media/") ? path.join(MEDIA, path.basename(at)) : path.join(DIST, at)
     if (!fs.existsSync(f)) return r.fulfill({ status: 404 })
     r.fulfill({ body: fs.readFileSync(f), contentType: types[path.extname(f)] ?? "application/octet-stream" })
   })
@@ -173,10 +180,12 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   const covered = parts.filter((p) => Object.values(ELEMENTS).some((e) => hit(p, e)))
   check(`${name}: the pad, the sticky and the list on calm space: on screen, apart, covering nothing on screen`, parts.length === 3 && parts.every(onScreen) && !overlap.length && !covered.length, { parts, overlap, covered })
   const pad = await page.evaluate(() => { const p = document.querySelector("[data-mark=paper]"); return { title: p.querySelector(".sd-title")?.textContent, grid: !!p.querySelector(".sd-grid"), axis: [...p.querySelectorAll(".sd-axis")].map((e) => e.textContent).join(), lines: p.querySelectorAll(".sd-line").length, ink: p.querySelectorAll(".sd-ink").length } })
-  check(`${name}: the pad has its title, its grid, a bar chart with its labels, its sketches and ink`, pad.title === "Quarterly sales" && pad.grid && pad.axis === "Q1,Q2,Q3,Q4" && pad.lines >= 8 && pad.ink >= 2, pad)
+  check(`${name}: the pad has its title, its grid, a bar chart with its labels, its sketches (its arrow one) and ink`, pad.title === "Quarterly sales" && pad.grid && pad.axis === "Q1,Q2,Q3,Q4" && pad.lines >= 10 && pad.ink >= 1, pad)
   const fg = await page.evaluate(() => { const c = getComputedStyle(document.querySelector("[data-mark=list]")); return [c.color, c.backgroundColor] })
   check(`${name}: cards follow the theme (readable text on their background)`, name === "dark" ? /rgb\((2[0-5]\d|1[6-9]\d)/.test(fg[0]) : /rgb\(([0-9]|[1-9]\d), /.test(fg[0]), fg)
   await page.screenshot({ path: path.join(SHOTS, `screendraw-pad-${name}.png`) })
+  // (each page left open keeps its animations going: on a runner's software GPU they pile up)
+  await page.close()
 }
 
 // ---- paced to the voice: a beat's marks wait for its sentence to be heard, and spread over it
@@ -198,6 +207,7 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   const delays = await page.evaluate(() => [...document.querySelectorAll("[data-mark-i] .sd-pen")].map((e) => parseFloat(getComputedStyle(e).animationDelay) * 1000))
   check("paced: a beat waits for its sentence to be heard, then comes", waited === "0" && !!came, { waited })
   check("paced: its marks spread over the time it's said, not bunched", delays.length >= 3 && Math.max(...delays) - Math.min(...delays.slice(1)) >= 600, delays)
+  await page.close()
 }
 
 // ---- a walkthrough while its words are being said: nothing before its sentence is heard; the earlier marks step back
@@ -221,6 +231,7 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   const past = await page.evaluate(() => ({ frame: document.querySelector("[data-focus]")?.parentElement?.className, point: [...document.querySelectorAll("svg .sd-gone")].length, ring: document.querySelector("[data-screendraw=dw]")?.getAttribute("data-beat") }))
   check("walkthrough: as the next thing is named, the one before steps back and what pointed at it goes", past.frame === "sd-past" && past.point === 1 && past.ring === "1", past)
   await page.screenshot({ path: path.join(SHOTS, "screendraw-walkthrough.png") })
+  await page.close()
 }
 
 // ---- frames side by side (a sidebar's sections): apart, each named by a small tag snug at it, none on another
@@ -237,6 +248,138 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   const clash = tags.some((a, i) => tags.slice(i + 1).some((b) => hit(a, b)))
   check("frames side by side never overlap; each label a small tag snug at its own frame, on screen, none on another", boxes.length === 3 && apart && snug && !clash, { boxes, tags })
   await page.screenshot({ path: path.join(SHOTS, "screendraw-frames.png") })
+  await page.close()
 }
 
+// ---- svg: a dinosaur sketched, a logo clean, each path drawn by the pen, fills behind
+const DINO = "M20 95 C20 70 45 55 75 55 C95 55 105 60 120 58 C135 30 140 12 160 10 C175 9 182 18 178 26 C172 22 165 22 160 30 C152 45 150 62 148 72 C160 78 172 88 190 92 C175 96 160 92 145 88 L145 108 L132 108 L130 92 C112 96 95 96 80 94 L80 110 L67 110 L64 92 C50 92 38 100 20 95 Z"
+const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d: "M30 62 L50 26 L70 62 Z", fill: "blue", color: "none" },
+  { d: "M44 50 a6 6 0 1 0 12 0 a6 6 0 1 0 -12 0 Z", fill: "#ffffff", color: "none" }]
+{
+  const page = await open()
+  await show(page, { id: "dsvg", agent: "Claude", tint: "green", t: Date.now(), places: ELEMENTS, marks: [
+    { type: "paper", id: "dino", title: "A dinosaur", w: 300, h: 200, items: [{ type: "svg", id: "rex", x: 12, y: 12, w: 276, h: 176, style: "sketch", viewBox: [0, 0, 200, 120], paths: [{ d: DINO, fill: "green" },
+      { d: "M166 17 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 Z", fill: "ink" }, { d: "M100 58 L106 46 L112 58 M120 57 L127 44 L132 55", color: "ink" }] }] },
+    { type: "paper", id: "logo", title: "The logo", w: 200, h: 200, items: [{ type: "svg", id: "mark", x: 12, y: 12, w: 176, h: 176, viewBox: [0, 0, 100, 100], paths: LOGO }] }] })
+  await page.waitForSelector("[data-mark=paper]")
+  const early = await page.evaluate(() => [...document.querySelectorAll("[data-item=rex] .sd-pen")].some((p) => parseFloat(getComputedStyle(p).strokeDashoffset) > 0.05))
+  await page.waitForTimeout(4200)
+  const svg = await page.evaluate(() => ({
+    rex: [...document.querySelectorAll("[data-item=rex] path")].length, fills: document.querySelectorAll("[data-item=rex] .sd-fill").length,
+    rexBox: (() => { const r = document.querySelector("[data-item=rex]").getBoundingClientRect(), p = document.querySelector("[data-card=dino] .sd-paper > div:last-child").getBoundingClientRect(); return { w: r.width, h: r.height, inside: r.left >= p.left - 4 && r.right <= p.right + 4 && r.top >= p.top - 4 && r.bottom <= p.bottom + 4 } })(),
+    logo: document.querySelectorAll("[data-item=mark] .sd-svg").length, logoFill: document.querySelectorAll("[data-item=mark] .sd-svg-fill").length,
+    drawn: [...document.querySelectorAll("[data-item] .sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01),
+    filled: [...document.querySelectorAll("[data-item=mark] .sd-svg-fill")].every((p) => getComputedStyle(p).opacity === "1"),
+    script: document.querySelectorAll("[data-screendraw] script, [data-screendraw] foreignObject").length }))
+  check("svg: a dinosaur sketched by rough.js over its paths, filled, fitted inside its pad", early && svg.rex >= 6 && svg.fills >= 1 && svg.rexBox.inside && svg.rexBox.w > 200, svg)
+  check("svg: a logo clean, its outline drawn by the pen and its fills coming in behind; every stroke ends drawn, nothing but paths", svg.logo === 3 && svg.logoFill === 2 && svg.drawn && svg.filled && svg.script === 0, svg)
+  await page.screenshot({ path: path.join(SHOTS, "screendraw-svg.png") })
+  await page.close()
+}
+
+// ---- Excalidraw's shapes on a pad: a flow, then changed in place by id (moved, recoloured, added, erased)
+{
+  const page = await open()
+  const FLOW = { id: "dflow", agent: "Claude", tint: "orange", t: Date.now(), places: ELEMENTS, marks: [{ type: "paper", id: "flow", title: "Signing in", w: 460, h: 200, items: [
+    { id: "in", type: "rect", x: 16, y: 70, w: 110, h: 56, label: "Sign in" }, { id: "ok", type: "diamond", x: 170, y: 48, w: 110, h: 100, label: "Valid?" },
+    { id: "home", type: "rect", x: 330, y: 70, w: 110, h: 56, label: "Home", fill: "green" }, { id: "a1", type: "arrow", from: "in", to: "ok" },
+    { id: "a2", type: "arrow", from: "ok", to: "home", label: "yes" }] }] }
+  await show(page, FLOW)
+  await page.waitForSelector("[data-mark=paper]")
+  await page.waitForTimeout(2600)
+  const box = (sel) => page.evaluate((sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return r && { x: r.x, y: r.y, w: r.width, h: r.height } }, sel)
+  const [inB, okB, a1] = [await box("[data-item=in]"), await box("[data-item=ok]"), await box("[data-item=a1]")]
+  const labels = await page.evaluate(() => [...document.querySelectorAll("[data-card=flow] .sd-plabel")].map((e) => e.textContent))
+  check("flow: rect, diamond and arrows bound between them, the arrow from one's edge to the other's, labels inside", !!a1 && a1.x >= inB.x + inB.w - 2 && a1.x + a1.w <= okB.x + 12 &&
+    labels.join() === "Sign in,Valid?,Home,yes", { inB, okB, a1, labels })
+  const fillOf = () => page.evaluate(() => getComputedStyle(document.querySelector("[data-item=home] .sd-fill")).fill)
+  const greenFill = await fillOf()
+  const cardAt = await box("[data-card=flow]")
+  // (a follow-up: Home moves down and turns blue, a retry step is added, Sign in is erased with what's bound to it)
+  const t1 = Date.now(), items = FLOW.marks[0].items
+  await show(page, { ...FLOW, past: false, marks: [{ ...FLOW.marks[0], items: [
+    { ...items[0], gone: t1 }, items[1], { ...items[2], y: 120, fill: "blue" }, { ...items[3], gone: t1 }, items[4],
+    { id: "err", type: "rect", x: 180, y: 4, w: 90, h: 30, label: "Retry", color: "red" }, { id: "a3", type: "arrow", from: "ok", to: "err", label: "no" }] }] })
+  await page.waitForTimeout(80)
+  const mid = await page.evaluate(() => ({ erase: [...document.querySelectorAll("[data-item=in] .sd-pen")].map((p) => getComputedStyle(p).animationName), added: !!document.querySelector("[data-item=err] .sd-pen"),
+    moving: getComputedStyle(document.querySelector("[data-item=home] .sd-move")).transitionProperty }))
+  await page.waitForTimeout(1600)
+  const after = await page.evaluate(() => ({ home: document.querySelector("[data-item=home] .sd-move").style.transform, gone: [...document.querySelectorAll("[data-item=in] .sd-pen")].every((p) => parseFloat(getComputedStyle(p).strokeDashoffset) > 0.95),
+    err: [...document.querySelectorAll("[data-item=err] .sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01), labels: [...document.querySelectorAll("[data-card=flow] .sd-plabel")].map((e) => e.textContent) }))
+  const blueFill = await fillOf(), cardNow = await box("[data-card=flow]")
+  check("flow changed in place: what's erased runs its pen backward (and what's bound to it), what moved slides there, what's added is drawn", mid.erase.every((n) => n === "sd-unpen") && mid.erase.length > 0 && mid.added && /transform/.test(mid.moving) && after.gone && after.err && after.home.includes("120px"), { mid, after })
+  check("flow changed in place: recoloured (green to blue), the card where it was, nothing else drawn again", greenFill !== blueFill && /rgb\(165, 216, 255\)|#a5d8ff/.test(blueFill) && Math.abs(cardNow.x - cardAt.x) < 1 && Math.abs(cardNow.y - cardAt.y) < 1, { greenFill, blueFill, cardAt, cardNow })
+  await page.screenshot({ path: path.join(SHOTS, "screendraw-flow.png") })
+  await page.close()
+}
+
+// ---- picture and video cards: by the cursor or where put, sized to the display, opened, heard, dragged, dismissed
+{
+  const page = await open(true)
+  const media = { png: "http://screen.test/qa-media/shot.png", webm: "http://screen.test/qa-media/clip.webm" }
+  const D = { id: "dmedia", agent: "Claude", tint: "purple", t: Date.now(), places: ELEMENTS, marks: [
+    { type: "image", id: "shot", src: "screenshot", url: media.png, name: "Screenshot 2026-11-06.png", px: [1600, 1000], caption: "Your latest screenshot", at: { area: "top-right" } },
+    { type: "video", id: "clip", src: "screenshot", url: media.webm, name: "Screen Recording.mov" },
+    { type: "image", id: "lost", src: "x.png", url: "http://screen.test/missing.png", name: "missing.png", at: { area: "bottom-left" } }] }
+  await show(page, D, { pointer: { x: 640, y: 500 } })
+  await page.waitForSelector("[data-mark=image][data-state=ok]")
+  await page.waitForSelector("[data-mark=video][data-state=ok]", { timeout: 8000 })
+  await page.waitForTimeout(900)
+  const shot = await rects(page, "[data-card=shot]"), clip = await rects(page, "[data-card=clip]")
+  const v = await page.evaluate(() => { const e = document.querySelector("[data-mark=video] video"); return { muted: e.muted, loop: e.loop, playing: !e.paused } })
+  const lost = await page.evaluate(() => document.querySelector("[data-card=lost] [role=alert]")?.textContent)
+  check("picture: in the corner it was put, on screen, at most 40% of the display, its caption below", shot.length === 1 && Math.abs(shot[0].x + shot[0].w - (W - 24)) < 2 && Math.abs(shot[0].y - (25 + 24)) < 2 &&
+    shot[0].w <= W * 0.4 + 1 && onScreen(shot[0]), shot)
+  check("video: by the cursor (the default), playing muted and looped, on screen", clip.length === 1 && onScreen(clip[0]) && Math.hypot(clip[0].x + clip[0].w / 2 - 640, clip[0].y + clip[0].h / 2 - 500) < 520 && v.muted && v.loop && v.playing, { clip, v })
+  check("a picture that can't load says so, never a blank card", lost === "Couldn't load missing.png", lost)
+  await page.click("[data-mark=video] video")
+  check("video: pressed, it's heard", await page.evaluate(() => !document.querySelector("[data-mark=video] video").muted))
+  await page.click("[data-mark=video] video")
+  await page.click("[data-mark=image] img")
+  await page.waitForSelector("[data-lightbox]")
+  const big = await rects(page, "[data-lightbox] img")
+  check("picture: pressed, it opens full size over the screen; pressed again, it goes", big[0]?.w > shot[0].w * 1.8, big)
+  await page.click("[data-lightbox]")
+  await page.waitForTimeout(100)
+  check("…closed", await page.evaluate(() => !document.querySelector("[data-lightbox]")))
+  // (dragged by the picture: it moves with the pointer, and the drag isn't a press)
+  const s0 = (await rects(page, "[data-card=shot]"))[0]
+  await page.mouse.move(s0.x + 60, s0.y + 60); await page.mouse.down(); await page.mouse.move(s0.x - 140, s0.y + 160, { steps: 8 }); await page.mouse.up()
+  await page.waitForTimeout(100)
+  const s1 = (await rects(page, "[data-card=shot]"))[0]
+  check("a card drags anywhere on the screen, and dragging isn't pressing", Math.abs(s1.x - (s0.x - 200)) < 3 && Math.abs(s1.y - (s0.y + 100)) < 3 && await page.evaluate(() => !document.querySelector("[data-lightbox]")), { s0, s1 })
+  await page.hover("[data-card=lost]")
+  await page.click("[data-card=lost] .sd-x")
+  const faded = await until(() => page.evaluate(() => getComputedStyle(document.querySelector("[data-card=lost]")).opacity === "0"), 3000)
+  const acts = await page.evaluate(() => window.__acts.filter((a) => a.kind === "dismiss"))
+  check("a card's × dismisses it: gone at once, the server told which", acts.length === 1 && acts[0].mark === "lost" && acts[0].id === "dmedia" && !!faded, acts)
+  await page.screenshot({ path: path.join(SHOTS, "screendraw-media.png") })
+  await page.close()
+}
+
+// ---- layers: two sessions' drawings side by side, each its own; one hidden and shown again as it was
+{
+  const page = await open()
+  const mine = { id: "dl1", agent: "Claude", tint: "orange", t: Date.now(), places: ELEMENTS, marks: [{ type: "ring", id: "r", at: { el: "share" } }, { type: "sticky", id: "s", text: "Mine" }] }
+  const theirs = { id: "dl2", agent: "Ada", tint: "blue", t: Date.now() + 1, places: ELEMENTS, marks: [{ type: "frame", id: "f", at: { el: "inbox" } }, { type: "sticky", id: "t", text: "Ada's" }] }
+  const here = { width: W, height: H, origin: { x: 0, y: 0 }, home: true, top: 25 }
+  const both = (a, b) => page.evaluate((ls) => window.__draw(ls), [a, b].filter(Boolean).map((d) => ({ ...d, here })))
+  await both(mine, theirs)
+  await page.waitForTimeout(1500)
+  const two = await page.evaluate(() => ({ roots: [...document.querySelectorAll("[data-screendraw]")].map((e) => e.getAttribute("data-agent")), tools: [...document.querySelectorAll(".sd-tools")].map((e) => e.textContent), stickies: [...document.querySelectorAll("[data-mark=sticky]")].map((e) => e.textContent) }))
+  check("layers: two sessions' drawings are both up, each in its own colour, each with its own Keep and Clear, named", two.roots.join() === "Claude,Ada" && two.stickies.sort().join() === "Ada's,Mine" && two.tools.length === 2 && two.tools.some((t) => t.startsWith("Ada")), two)
+  await both(mine, { ...theirs, hidden: true })
+  await page.waitForTimeout(400)
+  const hid = await page.evaluate(() => ({ ada: getComputedStyle(document.querySelector("[data-agent=Ada]")).opacity, mine: getComputedStyle(document.querySelector("[data-agent=Claude]")).opacity, tools: document.querySelectorAll(".sd-tools").length }))
+  await both(mine, theirs)
+  await page.waitForTimeout(400)
+  const back = await page.evaluate(() => ({ ada: getComputedStyle(document.querySelector("[data-agent=Ada]")).opacity, pens: [...document.querySelectorAll("[data-agent=Ada] .sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01) }))
+  check("layers: one hidden is out of sight, the other untouched; shown again it's back as it was, nothing drawn again", hid.ada === "0" && hid.mine === "1" && hid.tools === 1 && back.ada === "1" && back.pens, { hid, back })
+  await both(mine, null)
+  await page.waitForTimeout(400)
+  check("layers: one taken down leaves the other", await page.evaluate(() => [...document.querySelectorAll("[data-screendraw]")].map((e) => e.getAttribute("data-agent")).join()) === "Claude")
+  await page.close()
+}
+
+fs.rmSync(MEDIA, { recursive: true, force: true })
 await done()

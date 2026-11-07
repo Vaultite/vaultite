@@ -3488,6 +3488,57 @@ await section("screen drawings", async () => {
     els.some((e: Any) => e.type === "rectangle" && e.backgroundColor === "#ffec99" && e.x >= 400) && !els.some((e: Any) => e.type === "ellipse" && e.width === 40), els.length)
   const withMarks = sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: { el: "e1" } }]), { all: true, places: { "el:e1": { x: 10, y: 10, w: 20, h: 20 } } })
   check("screen drawings: with all, the marks too, where the overlay found them; nothing worth keeping, none", withMarks?.elements.some((e: Any) => e.type === "ellipse") && sm.toExcalidraw(sm.checkMarks([{ type: "ring", at: [1, 1] }])) === null)
+  // ---- media cards, svg, Excalidraw's shapes on a pad, and changes in place by id
+  const mediaMarks = sm.checkMarks([{ type: "image", src: "screenshot", at: "top right", caption: "Latest", url: "javascript:x" }, { type: "video", src: "https://lighthouse.test/a.mp4", at: [20, 30] }])
+  check("screen drawings: an image or video card: its source as given (never a url of the agent's), an area or a point for where",
+    mediaMarks[0].at.area === "top-right" && mediaMarks[0].url === undefined && mediaMarks[0].caption === "Latest" && mediaMarks[1].at.x === 20 && sm.unshown(mediaMarks).every((x: unknown) => x === null), mediaMarks)
+  check("screen drawings: an area places only a card", err([{ type: "ring", at: "centre" }]).includes("an area places a card") && err([{ type: "sticky", text: "x", at: "middle" }]).includes("an area"))
+  const svgItem = sm.checkMarks([{ type: "paper", w: 200, h: 200, items: [{ type: "svg", style: "sketch", viewBox: "0 0 24 24", paths: [{ d: "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0Z", fill: "green" }, { d: "m7 12 3 3 7-7", color: "ink", width: 3 }] }] }])[0].items[0]
+  check("screen drawings: svg is path data, its box the pad's by default, its viewBox read", svgItem.type === "svg" && svgItem.w === 176 && svgItem.viewBox.join() === "0,0,24,24" && svgItem.paths[1].color === "ink" && svgItem.style === "sketch", svgItem)
+  const svgBad = [err([{ type: "paper", items: [{ type: "svg", paths: [{ d: "<script>alert(1)</script>" }] }] }]), err([{ type: "paper", items: [{ type: "svg", paths: [{ d: "M0 0 L10 10 url(#x)" }] }] }]),
+    err([{ type: "paper", items: [{ type: "svg", d: "M0 0 L10 10", fill: "url(javascript:x)" }] }]), err([{ type: "paper", items: [{ type: "svg", paths: [{ d: "L10 10" }] }] }])]
+  check("screen drawings: svg takes path data only: no markup, no urls, no colour but a name or #hex, starting with M", svgBad.every((e) => /d: |fill: |colour|color/.test(e)), svgBad)
+  const sp: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/svgpath.ts")).href)
+  const circle = sp.boundsOf(sp.flatten("M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0Z")), quad = sp.flatten("M0 0 Q10 20 20 0 T40 0 H50 V10 h-5 z")
+  check("screen drawings: path data flattened: arcs as their circle, curves sampled, relative and closing commands",
+    Math.abs(circle[0] - 2) < 0.2 && Math.abs(circle[2] - 20) < 0.3 && Math.abs(circle[3] - 20) < 0.3 && quad.length === 1 && quad[0].closed && quad[0].pts.at(-1).join() === "0,0", { circle, quad })
+  const flow = sm.checkMarks([{ type: "paper", id: "flow", w: 400, h: 160, items: [{ type: "rectangle", id: "in", x: 10, y: 50, label: "Sign in" }, { type: "diamond", id: "ok", x: 160, y: 30, w: 100, h: 100, label: "Valid?" },
+    { type: "rect", id: "home", x: 290, y: 50, label: "Home", fill: "green" }, { type: "arrow", from: "in", to: "ok" }, { type: "arrow", id: "yes", from: "ok", to: "home", label: "yes" }] }])
+  check("screen drawings: Excalidraw's shapes on a pad: sized by their label, arrows bound to shapes by id", flow[0].items[0].type === "rect" && flow[0].items[0].w >= 100 && flow[0].items[4].from === "ok", flow[0].items)
+  check("screen drawings: an arrow bound to a shape that isn't on the pad, or an id twice, is refused",
+    err([{ type: "paper", items: [{ type: "arrow", from: "nope", to: [10, 10] }] }]).includes("isn't a shape's id") && err([{ type: "paper", items: [{ type: "rect", id: "a", x: 1, y: 1, w: 9, h: 9 }, { type: "rect", id: "a", x: 1, y: 1, w: 9, h: 9 }] }]).includes("twice"))
+  const edgeAt = sm.edgeOf("in", "ok", flow[0].items)
+  check("screen drawings: a bound arrow leaves its shape at its edge, toward the other", Math.abs(edgeAt[0] - (10 + flow[0].items[0].w + 6)) < 1 && Math.abs(edgeAt[1] - 78) < 1, edgeAt)
+  const tE = 1000, ed = sm.editMarks(flow, [{ op: "move", id: "home", dx: -20, dy: -10 }, { op: "change", id: "home", fill: "red", label: "Start" }, { op: "add", type: "rect", id: "err", x: 160, y: 0, w: 90, h: 24, label: "Retry" },
+    { op: "add", type: "arrow", from: "ok", to: "err" }, { op: "delete", id: "in" }, { op: "add", mark: { type: "image", src: "a.png", at: "bottom-left" } }, { op: "move", id: "flow", at: "top-left" }], tE)
+  const edPad = ed.marks[0], home = edPad.items.find((i: Any) => i.id === "home")
+  check("screen drawings: changed in place by id: moved, recoloured, relabelled, added to the last pad, a mark added, a card moved to an area",
+    home.x === 290 - 20 && home.y === 40 && home.fill === "red" && home.label === "Start" && edPad.items.some((i: Any) => i.id === "err") && ed.added.length === 1 && ed.added[0].type === "image" &&
+    edPad.at.area === "top-left" && flow[0].items[2].x === 290, { home, touched: ed.touched })
+  check("screen drawings: erasing a shape erases what's bound to it, its pen run backward, then it's gone for good",
+    edPad.items.find((i: Any) => i.id === "in").gone === tE && edPad.items[3].gone === tE && !edPad.items[4].gone && sm.pruned(ed.marks, tE + sm.ERASE_MS + 1)[0].items.every((i: Any) => !i.gone), edPad.items.map((i: Any) => [i.id, i.gone]))
+  const edErr = (a: unknown) => { try { sm.editMarks(flow, a); return "" } catch (e) { return (e as Error).message } }
+  check("screen drawings: a change says which action and why: an id not up, an op, nothing to change",
+    edErr([{ op: "move", id: "zz", dx: 1 }]).startsWith("actions[0] (move): no \"zz\"") && edErr([{ op: "spin", id: "in" }]).includes("add, move, change or delete") && edErr([{ op: "change", id: "in" }]).includes("what changes"))
+  const upText = sm.drawingText({ id: "d", agent: "Claude", tint: "orange", t: 0, marks: [...flow, ...sm.checkMarks([{ type: "image", id: "pic", src: "x.png", at: "centre" }])] })
+  check("screen drawings: what's up reads by id: a pad's items, arrows between ids, a card's place", upText.includes("flow paper 400x160:") && upText.includes("in rect \"Sign in\" at 10,50") && upText.includes("yes arrow ok -> home \"yes\"") && upText.includes("pic image x.png at centre"), upText)
+  const keptK = sm.toExcalidraw([...flow, ...sm.checkMarks([{ type: "paper", items: [{ type: "svg", paths: [{ d: "M0 0 L100 0 L50 80 Z", fill: "yellow" }] }] }, { type: "image", id: "pic", src: "x.png" }, { type: "video", id: "vid", src: "https://lighthouse.test/v.mp4" }])],
+    { files: { pic: { dataURL: "data:image/png;base64,AAAA", mime: "image/png", px: [800, 600] } } })
+  const kEls = keptK.elements, arrowK = kEls.find((e: Any) => e.id === "yes"), homeK = kEls.find((e: Any) => e.id === "home")
+  check("screen drawings: kept, Excalidraw's own: a diamond, arrows bound both ways, fills by name, an svg as closed filled lines, a picture embedded, a video as a link",
+    kEls.some((e: Any) => e.type === "diamond" && e.id === "ok") && arrowK.startBinding.elementId === "ok" && arrowK.endBinding.elementId === "home" && homeK.boundElements.some((b: Any) => b.id === "yes") &&
+    homeK.backgroundColor === "#b2f2bb" && kEls.some((e: Any) => e.type === "line" && e.backgroundColor === "#ffec99" && e.points.length > 3) &&
+    kEls.some((e: Any) => e.type === "image" && keptK.files[e.fileId]?.dataURL.startsWith("data:image/png") && e.width === 480 && e.height === 360) &&
+    kEls.some((e: Any) => e.type === "rectangle" && e.link === "https://lighthouse.test/v.mp4") && new Set(kEls.map((e: Any) => e.id)).size === kEls.length, kEls.map((e: Any) => [e.id, e.type]))
+  const here1 = { width: 1440, height: 900, origin: { x: 0, y: 0 }, home: true, top: 25, pointer: { x: 700, y: 400 } }
+  const putCards = lay.place({ id: "d", agent: "C", tint: "orange", t: 0, places: { "el:b": { x: 600, y: 300, w: 120, h: 40 } }, marks: sm.checkMarks([
+    { type: "image", id: "a", src: "x.png", at: "top-right" }, { type: "sticky", text: "beside", at: { el: "b" } }, { type: "write", text: "here", at: [100, 700] }, { type: "video", id: "v", src: "y.mp4", size: "l" }]) }, here1, size)
+  const [tr, beside, pt, vid] = putCards.map((p: Any) => p.card)
+  check("screen drawings: a card goes where it's put: an area's corner, beside a thing (never over it), a point, by the cursor; on screen, at most its share of the display",
+    tr.x + tr.w === 1440 - 24 && tr.y === 25 + 24 && !lay.overlaps(beside, { x: 600, y: 300, w: 120, h: 40 }) && pt.x === 100 && pt.y === 700 &&
+    vid.w <= 1440 * 0.4 + 1 && vid.h <= 875 * 0.45 + 1 && putCards.every((p: Any) => lay.inside(p.card, { x: 0, y: 25, w: 1440, h: 875 })), putCards.map((p: Any) => p.card))
+  const shot = lay.mediaSize({ type: "image", src: "s", px: [2880, 1800] }, 1440, 875), tiny = lay.mediaSize({ type: "image", src: "s", px: [32, 32], caption: "x" }, 1440, 875)
+  check("screen drawings: a picture's size: a Retina screenshot fitted to its share; a tiny one at least 160 wide, with room for its caption", shot.w <= 432 && Math.abs(shot.w / shot.h - 1.6) < 0.02 && tiny.w === 160 && tiny.h === 160 + lay.CAPTION_H, { shot, tiny })
   // ---- marks anchor to what's meant: words to find, and a guessed pixel snapped to what's there
   const found = sm.checkMarks([{ type: "ring", at: { find: "Morning report" } }, { type: "connect", from: { find: "A" }, to: { el: "a1" } }])
   check("screen drawings: a spot can be words to find; they're the places the screen must find, read back from them",

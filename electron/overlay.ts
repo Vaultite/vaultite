@@ -21,7 +21,7 @@ let scene: Scene = { agents: [], summon: null, pill: null }
 let acts: OverlayActs | null = null
 let watching = false
 
-const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.pill && !x.region && !drawing
+const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.pill && !x.region && !layers.size
 /** What each window was sent last (its scene's shape and places), and its hiding once it's had nothing to draw a while. */
 const sent = new Map<BrowserWindow, { shape: string; at: string }>()
 const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()
@@ -39,7 +39,7 @@ function make(d: Display) {
   // (not a window to the user: Mission Control leaves it out)
   w.setHiddenInMissionControl(true)
   w.setAlwaysOnTop(true, "screen-saver")
-  w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (drawing) sendDrawing(); if (feed) feedPointer(true) })
+  w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (layers.size) sendDrawing(); if (feed) feedPointer(true) })
   if (url) void w.loadURL(url).catch(() => {})
   wins.set(d.id, w)
   return w
@@ -132,29 +132,35 @@ export function cue(name: string) {
   if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:cue", name)
 }
 
-// ---------- the companion's drawing (drawing.ts): each display its part, in its own points
+// ---------- the companions' layers (drawing.ts): each session's, side by side; each display its part, in its own points
 
-let drawing: Drawing | null = null, onDrawAct: ((a: DrawAct) => void) | null = null
-/** Draw `d` over the screens (null: take it down); `found` the places the helper knows (its asks' elements, "el:<id>"). */
-export function showDrawing(d: Drawing | null, found?: Drawing["places"]) {
-  drawing = d && { ...d, places: { ...found, ...d.places } }
+const layers = new Map<string, Drawing>()
+let onDrawAct: ((a: DrawAct) => void) | null = null
+/** Draw `agent`'s layer `d` over the screens (null: take it down); `found` the places the helper knows (its asks'
+ *  elements, "el:<id>"). */
+export function showDrawing(agent: string, d: Drawing | null, found?: Drawing["places"]) {
+  if (d) layers.set(agent, { ...d, places: { ...found, ...d.places } })
+  else layers.delete(agent)
   sendDrawing()
   push()
 }
+/** Every layer down (the server gone). */
+export function dropDrawings() { layers.clear(); sendDrawing(); push() }
 function sendDrawing() {
   const ds = screen.getAllDisplays(), p = screen.getCursorScreenPoint()
-  for (const d of ds) { const w = wins.get(d.id); if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:draw", drawing && drawingFor(drawing, d, ds, p)) }
+  for (const d of ds) { const w = wins.get(d.id); if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:draw", [...layers.values()].map((l) => drawingFor(l, d, ds, p))) }
 }
-/** The drawing up now (its id), if any: cleared or ended, none. */
-export const drawingUp = () => drawing?.id ?? null
-/** The exchange is over: its drawing goes, and the server hears it. */
-export function endDrawing() {
-  if (!drawing) return
-  const id = drawing.id
-  showDrawing(null)
-  onDrawAct?.({ id, kind: "clear" })
+/** Whether the layer `id` is up (not cleared, not ended). */
+export const drawingUp = (id: string) => [...layers.values()].some((l) => l.id === id)
+/** `agent`'s exchange is over: what lives until the next ask goes from its layer (the server does it and says so); `all`
+ *  (Esc), the whole layer, at once. */
+export function endDrawing(agent: string, all = false) {
+  const l = layers.get(agent)
+  if (!l) return
+  if (all) showDrawing(agent, null)
+  onDrawAct?.({ id: l.id, kind: all ? "clear" : "settle" })
 }
-/** What the user presses on a drawing: Clear, Keep and its next step go to `fn`; copy and open are done here. */
+/** What the user presses on a layer: Clear, Keep, a card's ×, its next step go to `fn`; copy and open are done here. */
 export function drawingActs(fn: (a: DrawAct) => void) { onDrawAct = fn }
 
 const mine = (e: IpcMainEvent) => [...wins.values()].find((w) => w.webContents === e.sender)
@@ -184,14 +190,15 @@ export function overlayActs(a: OverlayActs) {
     pilotTo = Array.isArray(to) && to.length === 2 && to.every((n) => typeof n === "number" && Number.isFinite(n)) ? { x: b.x + to[0], y: b.y + to[1] } : null
   })
   ipcMain.on("screen:draw-act", (e, a: DrawAct) => {
-    if (!mine(e) || !drawing || !a || typeof a !== "object") return
-    const d = drawing, act = { ...a, id: d.id }
+    const d = a && typeof a === "object" ? [...layers.values()].find((l) => l.id === a.id) : undefined
+    if (!mine(e) || !d) return
+    const act = { ...a, id: d.id }
     if ((a.kind === "copy" || a.kind === "open" || a.kind === "ask") && !offered(d, act)) return
     if (a.kind === "copy") return clipboard.writeText(a.text!)
     if (a.kind === "open") return void shell.openExternal(a.url!)
     // (gone at once; the server hears it after)
-    if (a.kind === "clear") showDrawing(null)
-    if (a.kind === "clear" || a.kind === "keep" || a.kind === "ask") onDrawAct?.(act)
+    if (a.kind === "clear") showDrawing(d.agent, null)
+    if (a.kind === "clear" || a.kind === "keep" || a.kind === "ask" || (a.kind === "dismiss" && typeof a.mark === "string")) onDrawAct?.(act)
   })
 }
 
@@ -270,8 +277,8 @@ function spotFor(at: Point, pointer?: Point) {
   // (its flag in the overlay: its name and what it does, about this wide)
   return panelAt(at, { width: WIDTH, height: panel!.height }, area, panel!.name.length * 7 + 70, null, [...avoid, ...marked(), ...(pointer ? [pointerBox(pointer)] : [])])
 }
-/** What the drawing up marks on screen (its spots' rects, a little wider): the box keeps off it. */
-const marked = (): Rect[] => (drawing ? spots(drawing.marks).flatMap((s) => { const r = rectOf(s, drawing!.places); return r ? [{ x: r.x - 10, y: r.y - 10, width: r.w + 20, height: r.h + 20 }] : [] }) : [])
+/** What the layers up mark on screen (their spots' rects, a little wider): the box keeps off it. */
+const marked = (): Rect[] => [...layers.values()].filter((l) => !l.hidden).flatMap((l) => spots(l.marks).flatMap((s) => { const r = rectOf(s, l.places); return r ? [{ x: r.x - 10, y: r.y - 10, width: r.w + 20, height: r.h + 20 }] : [] }))
 /** By its cursor, clear of its arrow and name, inside the screen; shown once its page knows its height. */
 function place() {
   if (!panel || !panel.height) return

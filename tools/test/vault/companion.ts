@@ -850,10 +850,51 @@ export default async ($: VaultTest) => {
     check("companion: companion clear takes its drawing down", st3 === 200 && last()?.drawing === null, last())
     await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
     c.addMoment({ kind: "ask", text: "and this?", app: "com.example.mail", sx: 5, sy: 5 })
-    check("companion: the next ask takes the last answer's drawing down", last()?.drawing === null, last())
+    check("companion: the next ask takes what the last answer pointed with down (nothing else up: its layer)", last()?.drawing === null, last())
     await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
     helper.emit("message", JSON.stringify({ t: "drawing-act", id: last()?.drawing.id, kind: "clear" }))
     check("companion: Clear on the screen takes it down", last()?.drawing === null, last())
+    // (layers: each session's own; cards stay past the next ask, changed in place by id; a card dismissed; hidden and shown)
+    const layerOf = (agent: string) => helper.got.filter((m: Any) => m.t === "drawing" && m.agent === agent).at(-1)?.drawing
+    const png = Buffer.alloc(33); png.writeUInt32BE(0x89504e47, 0); png.writeUInt32BE(640, 16); png.writeUInt32BE(400, 20)
+    fs.mkdirSync(c.plugin.vault.abs("Pics"), { recursive: true }); fs.writeFileSync(c.plugin.vault.abs("Pics/Shot.png"), png)
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }, { type: "paper", id: "flow", items: [{ type: "rect", id: "a", x: 10, y: 10, label: "A" },
+      { type: "rect", id: "b", x: 200, y: 10, label: "B" }, { type: "arrow", from: "a", to: "b" }] }, { type: "image", id: "pic", src: "Pics/Shot.png", at: "top-right" }] })
+    let L = layerOf("Claude")
+    check("companion: an image card from a vault file loads as the app shows it, its pixels read; every mark and item named",
+      st3 === 200 && L?.marks[2].url === "api/raw/Shot.png?path=Pics%2FShot.png" && L.marks[2].px.join() === "640,400" && !!L.marks[0].id && !!L.marks[1].items[2].id, [st3, r3, L?.marks])
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "image", src: "Pics/Nope.png" }] })
+    check("companion: a picture that isn't there draws nothing, and says so", st3 === 409 && /no Pics\/Nope\.png in the vault.*nothing was drawn/.test(r3.error), r3)
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "image", src: "/etc/hosts" }, { type: "video", src: "~/.ssh/id.mp4" }] })
+    check("companion: a file outside where it may read is refused", st3 === 409 && /isn't where you may read/.test(r3.error), r3)
+    c.addMoment({ kind: "ask", text: "make B blue", app: "com.example.mail", sx: 5, sy: 5 })
+    L = layerOf("Claude")
+    const told = c.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "make B blue" }] as Any[], "pair", null)
+    check("companion: at the next ask its cards stay (what pointed goes), and the ask lists them by id to change in place",
+      L?.past === true && L.marks.map((m: Any) => m.id).join() === "flow,pic" && told.includes("Still on their screen, your layer") && told.includes("b rect \"B\" at 200,10"), [L?.marks, told])
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { actions: [{ op: "change", id: "b", fill: "blue" }, { op: "delete", id: "a" }, { op: "move", id: "pic", at: "bottom-left" }] })
+    L = layerOf("Claude")
+    const items = L?.marks[0].items
+    check("companion: draw actions without a path change the screen's drawing in place: recoloured, erased (with what's bound to it), a card moved",
+      st3 === 200 && r3.changed.join() === `b,a,${items?.[2].id},pic` && items.find((i: Any) => i.id === "b").fill === "blue" && items.find((i: Any) => i.id === "a").gone > 0 && items[2].gone > 0 &&
+      L.marks[1].at.area === "bottom-left" && L.past === false, [st3, r3, items])
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { as: "Ada", marks: [{ type: "sticky", id: "note", text: "Ada's" }] })
+    check("companion: another session draws on its own layer, the first one's left as it was", st3 === 200 && layerOf("Ada")?.marks[0].text === "Ada's" && layerOf("Claude")?.marks[0].id === "flow", [st3, r3])
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { as: "Ada", actions: [{ op: "delete", id: "b" }] })
+    check("companion: a session can't change another's marks", st3 === 400 && /no "b" up now/.test(r3.error) && !layerOf("Claude").marks[0].items.find((i: Any) => i.id === "b").gone, [st3, r3])
+    helper.emit("message", JSON.stringify({ t: "drawing-act", id: L.id, kind: "dismiss", mark: "pic" }))
+    check("companion: a card dismissed on the screen goes from its layer", layerOf("Claude")?.marks.every((m: Any) => m.id !== "pic"), layerOf("Claude"))
+    ;[st3, r3] = await api("POST", "ops/companion.layer", { hide: true })
+    const hidden = layerOf("Claude")
+    const [, shownR] = await api("POST", "ops/companion.layer", { show: true })
+    check("companion: its layer hidden and shown again, as it was (another session's untouched)", st3 === 200 && r3.shown === false && hidden?.hidden === true && shownR.shown === true && !layerOf("Claude").hidden &&
+      layerOf("Claude").marks[0].id === "flow" && !layerOf("Ada").hidden, [r3, shownR])
+    const [, readR] = await api("POST", "ops/companion.layer", {})
+    check("companion: companion layer reads its layer by id", readR.layer === L.id && readR.text.includes("flow paper"), readR)
+    helper.emit("message", JSON.stringify({ t: "drawing-act", id: layerOf("Ada").id, kind: "settle" }))
+    check("companion: its exchange over, a layer keeps its cards", layerOf("Ada")?.marks[0].id === "note", layerOf("Ada"))
+    await api("POST", "ops/companion.clear", { as: "Ada" }); await api("POST", "ops/companion.clear", {})
+    check("companion: each session's clear takes its own layer down", layerOf("Ada") === null && layerOf("Claude") === null)
     // (words in web pages: each page shown asked where it says them now, in its own px and zoom; the one at their pointer wins)
     Object.assign(rects, { "page:p1": { x: 100, y: 50, w: 600, h: 800 }, "page:p2": { x: 700, y: 50, w: 600, h: 800 } })
     const wasDesktop = c.plugin.desktop, asked: Any[] = []

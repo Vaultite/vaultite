@@ -19,7 +19,7 @@ import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bi
 import { REAL as captureReal, captureHeard, captureHost, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
-import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
+import { closePanel, cue as playCue, drawingActs, drawingUp, dropDrawings, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
 import { byLabel, type Heard, heardBeats } from "../plugins/core/companion/screenmarks.ts"
@@ -303,7 +303,13 @@ const live = (() => {
       let m: Record<string, unknown>
       try { m = JSON.parse(String(d)) } catch { return }
       // (the companion's drawing over the screen: the server's, its places found there)
-      if (m.t === "drawing") { const d = (m.drawing as Drawing | undefined) ?? null; if (d) { answerArrived(); drawingCame(d) } drawn = d; return paceDrawing() }
+      // (a session's layer: the one of the answer coming is paced to its words, the others drawn as they are)
+      if (m.t === "drawing" && typeof m.agent === "string") {
+        const d = (m.drawing as Drawing | undefined) ?? null
+        if (d && !d.past && !d.hidden && (!exchange || exchange.name === m.agent)) { answerArrived(); drawingCame(d); drawn = d; return paceDrawing() }
+        if (drawn?.agent === m.agent) drawn = d && !d.past ? d : null
+        return void showDrawing(m.agent, d, elementPlaces(lastNear))
+      }
       if (m.t === "state") {
         state.mode = String(m.mode); state.name = String(m.name)
         state.agents = new Map((m.agents as Agent[]).map((a) => [a.name, a]))
@@ -342,7 +348,7 @@ const live = (() => {
   return {
     state,
     open(p: number | null) { this.close(); port = p; if (p !== null) connect() },
-    close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = []; state.jobs = null; drawn = null; showDrawing(null) },
+    close() { port = null; if (timer) clearTimeout(timer); timer = null; ws?.close(); ws = null; state.agents.clear(); state.notes.clear(); state.said = []; state.jobs = null; drawn = null; dropDrawings() },
     /** Not connected: try again now, not at the next backoff (a press is waiting for it). */
     now() { if (ws || port === null) return; if (timer) clearTimeout(timer); wait = 1000; connect() },
     say(m: object) { if (QUIET) asked.push(m); if (ws?.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(m)); return true } return false },
@@ -827,7 +833,7 @@ function endExchange(stop = true) {
   inAppSpots.clear()
   const a = name ? live.state.agents.get(name) : undefined
   if (a && onScreen(a) && a.state === "watching") leave(a.name)
-  endDrawing()
+  if (name) endDrawing(name, stop)
   gesture.reset()
   void screenAsk("exchange", { on: false }).catch(() => {})
   if (panelOpen()) closePanel()
@@ -855,7 +861,7 @@ let settleTimer: ReturnType<typeof setTimeout> | null = null
 function settle() {
   const x = exchange
   const done = (): boolean => !!x && exchange === x && !going(x) && panelOpen() !== x.name && !(summon && HELD.has(summon.m.phase)) && (x.arrived || !!summon?.begun) &&
-    !(drawn?.agent === x.name && drawingUp() === drawn.id && Date.now() < drawingSeen)
+    !(drawn?.agent === x.name && drawingUp(drawn.id) && Date.now() < drawingSeen)
   if (!x?.spoken || settleTimer || !done()) return
   settleTimer = setTimeout(() => { settleTimer = null; if (done()) endExchange(false); else settle() }, LINGER_MS)
 }
@@ -1422,7 +1428,7 @@ const WAIT_HEARD_MS = 4000
 export function voiceHeardLine(h: Heard) {
   heardLines.push({ text: h.text, at: h.at, dur: h.dur })
   // (only the one still up: one cleared or ended stays gone)
-  if (drawn && drawingUp() === drawn.id) paceDrawing(true)
+  if (drawn && drawingUp(drawn.id)) paceDrawing(true)
 }
 /** The drawing, each beat timed to when its sentence is heard (overlay: the pen draws while those words are said); while
  *  its words are still being said, a beat not heard yet waits for them. */
@@ -1435,7 +1441,7 @@ function paceDrawing(learnt = true) {
   const waits = waited = !!drawn && Date.now() - pacedAt < WAIT_HEARD_MS && beatsWait({ saying: voiced ? voiced.name === drawn.agent && speaker.saying() : null,
     aloud: aloud && exchange?.name === drawn.agent, words: !!drawn.caption, working: !!a && BUSY.has(a.state) })
   if (waits) { repace = setTimeout(() => { repace = null; paceDrawing(false) }, pacedAt + WAIT_HEARD_MS - Date.now() + 20); repace.unref?.() }
-  showDrawing(drawn && (heardLines.length || waits ? { ...drawn, spoken: heardBeats(drawn.caption ?? "", heardLines), ...(waits ? { waits } : {}) } : drawn), elementPlaces(lastNear))
+  if (drawn) showDrawing(drawn.agent, heardLines.length || waits ? { ...drawn, spoken: heardBeats(drawn.caption ?? "", heardLines), ...(waits ? { waits } : {}) } : drawn, elementPlaces(lastNear))
 }
 /** Silence, at once: what's said now, and what's still to come of answers asked before `until` (now). */
 function stopVoice(until = Date.now()) {

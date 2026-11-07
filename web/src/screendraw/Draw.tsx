@@ -1,11 +1,12 @@
 // A drawing on one display, as a hand would make it in the companion's colour: strokes drawn as by a pen, in beats with
 // its words; labels in pills, cards on calm space, a Keep and a Clear while it's up.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { ArrowRight, Check, Copy, ExternalLink, X } from "lucide-react"
-import { type Mark, pacedBeats, type PaperItem, type Rect } from "../../../plugins/core/companion/screenmarks"
+import { ArrowRight, Check, Copy, ExternalLink, ImageOff, Pause, Play, Volume2, VolumeX, X } from "lucide-react"
+import { edgeOf, type Media, type Mark, pacedBeats, PALETTE, type PaperItem, type Rect, svgFit } from "../../../plugins/core/companion/screenmarks"
+import { flatten } from "../../../plugins/core/companion/svgpath"
 import { PEN_LEAD, type PenScript } from "../core/pilot"
-import { inflate, place, type Placed, type Pt, type Size } from "./layout"
-import { hash, headLines, inkPath, type Line, linePath, sketch } from "./ink"
+import { CAPTION_H, clampInto, inflate, place, type Placed, type Pt, type Size } from "./layout"
+import { hash, headLines, inkPath, type Line, linePath, sketch, type Sketched } from "./ink"
 import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER } from "./pen"
 import type { Act, Shown } from "./index"
 
@@ -28,7 +29,8 @@ const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return !l ? 
 const born = new Map<string, { t0: number; shown: Map<number, number>; at: number; committed?: boolean; beat?: number }>()
 
 /** `pen`: the companion's cursor is here to draw it (its first beat waits for it to fly there), told its strokes. */
-export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a: Act) => void; grab: (on: boolean) => void; leaving?: boolean; pen?: (s: PenScript | null) => void }) {
+/** `slot`, `named`: its Keep and Clear's row among the layers up, and whether they say whose. */
+export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = false }: { d: Shown; act: (a: Act) => void; grab: (on: boolean) => void; leaving?: boolean; pen?: (s: PenScript | null) => void; slot?: number; named?: boolean }) {
   if (!born.has(d.id)) { born.set(d.id, { t0: Date.now() + (pen && d.here.home && !still() ? PEN_LEAD : 0), shown: new Map(), at: Date.now() }); if (born.size > 20) born.delete(born.keys().next().value!) }
   const { t0, shown: showedAt } = born.get(d.id)!
   // (each beat while its sentence is heard, when the voice says it; else in the time to read it)
@@ -43,7 +45,11 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
   // (the first beat's marks are there from the start, waiting out the pen's lead, unless they wait for their words; one
   // shown stays, though its sentence turns out to be heard later than reckoned)
   const b0 = born.get(d.id)!, beat = b0.beat = Math.max(b0.beat ?? (Number.isFinite(times[0]) ? 0 : -1), times.filter((t) => t0 + t <= now).length - 1)
-  const placed = useMemo(() => place(d, d.here, labelSize, measure), [d])
+  // (a picture's or video's own size, once loaded; where the user dragged a card; what they dismissed; a picture open full size)
+  const [naturals, setNaturals] = useState<Record<string, [number, number]>>({})
+  const [moved, setMoved] = useState<Record<string, Pt>>({}), [hidden, setHidden] = useState<Set<string>>(() => new Set()), [full, setFull] = useState<Media | null>(null)
+  const spots = useRef(new Map<string, { at: string; card: Rect }>())
+  const placed = useMemo(() => steady(place(d, d.here, labelSize, measure, naturals), spots.current, d.here), [d, naturals])
   const W = d.here.width, H = d.here.height, seed = hash(d.id)
   // (in each beat, one after another, on the drawing's clock: when each starts, and its delay from when it showed)
   const startAt = useMemo(() => {
@@ -57,7 +63,7 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
   for (const p of shown) if (!showedAt.has(p.i)) showedAt.set(p.i, Date.now())
   const order = new Map(shown.map((p) => [p.i, startAt.get(p.i)! - showedAt.get(p.i)!]))
   // (the cursor's pen: the strokes of the marks here, as the ink draws them; those still waiting for their words, once timed)
-  const script = useMemo(() => (pen && d.here.home ? { id: d.id, strokes: penStrokes(placed.filter((p) => Number.isFinite(startAt.get(p.i))), (i) => seed + i * 97, (i) => startAt.get(i)!) } : null), [pen, d.id, d.here.home, placed, seed, startAt])
+  const script = useMemo(() => (pen && d.here.home ? { id: d.id, strokes: penStrokes(placed.filter((p) => !p.mark.gone && Number.isFinite(startAt.get(p.i))), (i) => seed + i * 97, (i) => startAt.get(i)!) } : null), [pen, d.id, d.here.home, placed, seed, startAt])
   // (its ink starts when the browser starts its animations, which may be later than it was drawn (React holds a suspended
   // part back a moment, then a frame): the drawing's clock, and so the pen's, set by the first one's start)
   const root = useRef<HTMLDivElement>(null)
@@ -84,21 +90,43 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
   useEffect(() => () => pen?.(null), [pen])
   // (a walkthrough: once the next beat is drawn, what pointed goes and what it showed steps back; cards and steps stay)
   const newest = Math.max(0, ...shown.filter((p) => (startAt.get(p.i) ?? Infinity) <= now).map((p) => p.mark.beat ?? 0))
-  const pastOf = (p: Placed) => ((p.mark.beat ?? 0) >= newest || p.card ? undefined : GONE.has(p.mark.type) ? "sd-gone" : STEP_BACK.has(p.mark.type) ? "sd-past" : undefined)
-  const keepable = d.marks.some((m) => m.type === "paper" || m.type === "sticky" || m.type === "list" || m.type === "write")
+  const pastOf = (p: Placed) => (p.mark.gone || (p.mark.id && hidden.has(p.mark.id)) ? "sd-erase" : (p.mark.beat ?? 0) >= newest || p.card ? undefined : GONE.has(p.mark.type) ? "sd-gone" : STEP_BACK.has(p.mark.type) ? "sd-past" : undefined)
+  const keepable = d.marks.some((m) => !m.gone && KEEPS.has(m.type))
+  const bounds = { x: 0, y: d.here.top ?? 0, w: W, h: H - (d.here.top ?? 0) }
+  const card = (p: Placed): CardCtx => {
+    const id = p.mark.id ?? String(p.i), off = moved[id] ?? { x: 0, y: 0 }
+    return { off, bounds, grab, move: (o) => setMoved((m) => ({ ...m, [id]: o })), open: setFull,
+      natural: (px) => setNaturals((n) => (n[id]?.[0] === px[0] && n[id]?.[1] === px[1] ? n : { ...n, [id]: px })),
+      dismiss: () => { setHidden((h) => new Set(h).add(id)); act({ kind: "dismiss", id: d.id, mark: id }) } }
+  }
   return (
-    <div ref={root} data-screendraw={d.id} data-beat={beat} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
+    <div ref={root} data-screendraw={d.id} data-beat={beat} data-agent={d.agent} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : d.hidden ? "sd-hidden" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
       {shown.filter((p) => p.mark.type === "spotlight" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Spotlight r={p.box!} W={W} H={H} delay={order.get(p.i)!} /></div>)}
       {shown.filter((p) => p.mark.type === "frame" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Focus p={p} delay={order.get(p.i)!} /></div>)}
       <svg className="sd-glow absolute inset-0 overflow-visible" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         {shown.map((p) => <g key={p.i} className={pastOf(p)}><Strokes p={p} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} /></g>)}
       </svg>
-      {shown.map((p) => <div key={p.i} className={pastOf(p)}><Parts p={p} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} grab={grab} seed={seed + p.i * 131} id={`sd${seed}-${p.i}`} /></div>)}
-      {d.here.home && shown.length > 0 && !leaving && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} grab={grab} />}
+      {shown.map((p) => <div key={p.mark.id ?? p.i} className={pastOf(p)}><Parts p={p} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} card={p.card ? card(p) : undefined} seed={seed + p.i * 131} id={`sd${seed}-${p.mark.id ?? p.i}`} /></div>)}
+      {d.here.home && shown.length > 0 && !leaving && !d.hidden && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} grab={grab} slot={slot} who={named ? d.agent : undefined} />}
+      {full && <Lightbox m={full} close={() => setFull(null)} grab={grab} />}
     </div>
   )
 }
 
+/** What Keep has something of. */
+const KEEPS = new Set<Mark["type"]>(["paper", "sticky", "list", "write", "image", "video"])
+/** Cards where they were: a card keeps its spot while its `at` stays (a drawing changed, more marks, a new ask), so
+ *  nothing jumps; one resized stays by its top left. */
+function steady(placed: Placed[], was: Map<string, { at: string; card: Rect }>, here: { width: number; height: number; top?: number }) {
+  const bounds = { x: 0, y: here.top ?? 0, w: here.width, h: here.height - (here.top ?? 0) }
+  for (const p of placed) {
+    if (!p.card || !p.mark.id) continue
+    const at = JSON.stringify(("at" in p.mark && p.mark.at) || null), w = was.get(p.mark.id)
+    if (w && w.at === at) p.card = clampInto({ x: w.card.x, y: w.card.y, w: p.card.w, h: p.card.h }, bounds)
+    was.set(p.mark.id, { at, card: p.card })
+  }
+  return placed
+}
 /** An earlier beat's marks, once a later one is drawn: what only pointed goes, what showed a thing dims. */
 const GONE = new Set<Mark["type"]>(["point", "spotlight"]), STEP_BACK = new Set<Mark["type"]>(["ring", "frame", "underline", "strike", "connect", "scroll"])
 const ms = (n: number) => `${Math.round(n)}ms`
@@ -125,11 +153,11 @@ function Ink({ id, lines, size = 4.5, delay }: { id: string; lines: Line[]; size
     )
   })
 }
-/** rough.js' strokes, drawn as by a pen. */
-function Sketch({ paths, delay, dur = 520, hatch = false }: { paths: { d: string; hatch: boolean }[]; delay: number; dur?: number; hatch?: boolean }) {
-  return paths.map((p, j) => (
-    <path key={j} d={p.d} pathLength={1} className={`sd-pen sd-line ${p.hatch || hatch ? "sd-hatch" : ""}`} style={{ "--delay": ms(delay + (p.hatch ? dur * 0.6 : j * 60)), "--dur": ms(dur) } as React.CSSProperties} />
-  ))
+/** rough.js' strokes, drawn as by a pen; a solid fill comes in behind once its outline is mostly drawn. */
+function Sketch({ paths, delay, dur = 520, hatch = false }: { paths: Sketched[]; delay: number; dur?: number; hatch?: boolean }) {
+  return paths.map((p, j) => (p.fill
+    ? <path key={j} d={p.d} className="sd-fill sd-fade" style={{ "--delay": ms(delay + dur * 0.55) } as React.CSSProperties} />
+    : <path key={j} d={p.d} pathLength={1} className={`sd-pen sd-line ${p.hatch || hatch ? "sd-hatch" : ""}`} style={{ "--delay": ms(delay + (p.hatch ? dur * 0.6 : j * 60)), "--dur": ms(dur) } as React.CSSProperties} />))
 }
 
 /** A mark's strokes on the screen (cards draw their own). */
@@ -157,14 +185,14 @@ function Spotlight({ r, W, H, delay }: { r: Rect; W: number; H: number; delay: n
 }
 
 /** What a mark shows besides strokes: its label, a step's badge, its card. */
-function Parts({ p, delay, act, grab, seed, id }: { p: Placed; delay: number; act: (a: Act) => void; grab: (on: boolean) => void; seed: number; id: string }) {
+function Parts({ p, delay, act, card, seed, id }: { p: Placed; delay: number; act: (a: Act) => void; card?: CardCtx; seed: number; id: string }) {
   const m = p.mark, label = labelOf(m)
   const pop = (d: number) => ({ "--delay": ms(delay + d) }) as React.CSSProperties
   if (m.type === "num" && p.box) {
     const r = p.box, at = r.w || r.h ? { x: r.x - 11, y: r.y - 11 } : { x: r.x - 13, y: r.y - 13 }
     return <div data-mark="num" className="sd-badge sd-pop absolute" style={{ left: at.x, top: at.y, ...pop(0) }}>{m.n}</div>
   }
-  if (p.card) return <Card p={p} delay={delay} act={act} grab={grab} seed={seed} id={id} />
+  if (p.card && card) return <Shell p={p} ctx={card}><Card p={p} delay={delay} act={act} ctx={card} seed={seed} id={id} /></Shell>
   if (!label || !p.label) return null
   // (once its mark is drawn: out of the side facing it, its words typed in)
   const after = m.type === "frame" ? FRAME_MS * 0.8 : m.type === "connect" || m.type === "ring" ? 420 : 300, t = p.ink ?? p.box!, l = p.label
@@ -200,18 +228,61 @@ function Press({ children, className, style, onClick, grab, label }: { children:
   )
 }
 
-function Card({ p, delay, act, grab, seed, id }: { p: Placed; delay: number; act: (a: Act) => void; grab: (on: boolean) => void; seed: number; id: string }) {
+/** What a card gets from its drawing: where the user dragged it, the screen it stays on, and its hands. */
+type CardCtx = { off: Pt; bounds: Rect; grab: (on: boolean) => void; move: (off: Pt) => void; dismiss: () => void; open: (m: Media) => void; natural: (px: [number, number]) => void }
+
+/** A card's place on the screen: the user can drag it anywhere on it (by any part that isn't a control) or dismiss it
+ *  (its × on hover). It takes the pointer while it's under it, and through a drag. */
+function Shell({ p, ctx, children }: { p: Placed; ctx: CardCtx; children: React.ReactNode }) {
+  const c = p.card!, over = useRef(false), drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null), dragged = useRef(false)
+  useEffect(() => () => { if (over.current) ctx.grab(false) }, [ctx.grab])
+  const hold = (on: boolean) => { if (over.current !== on) { over.current = on; ctx.grab(on) } }
+  const clampOff = (o: Pt) => {
+    const r = clampInto({ x: c.x + o.x, y: c.y + o.y, w: c.w, h: c.h }, ctx.bounds)
+    return { x: r.x - c.x, y: r.y - c.y }
+  }
+  const off = clampOff(ctx.off)
+  return (
+    <div data-card={p.mark.id ?? p.i} className="sd-shell pointer-events-auto absolute" style={{ left: c.x + off.x, top: c.y + off.y, width: c.w }}
+      onPointerEnter={() => hold(true)} onPointerLeave={() => { if (!drag.current?.moved) hold(false) }}
+      onPointerDown={(e) => { if (e.button !== 0 || (e.target as HTMLElement).closest("[data-nodrag]")) return; drag.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y, moved: false } }}
+      onPointerMove={(e) => {
+        const g = drag.current
+        if (!g) return
+        const dx = e.clientX - g.x, dy = e.clientY - g.y
+        if (!g.moved && Math.hypot(dx, dy) < 4) return
+        if (!g.moved) { g.moved = true; e.currentTarget.setPointerCapture(e.pointerId) }
+        ctx.move(clampOff({ x: g.ox + dx, y: g.oy + dy }))
+      }}
+      onPointerUp={(e) => {
+        const g = drag.current
+        drag.current = null
+        if (!g?.moved) return
+        dragged.current = true
+        setTimeout(() => { dragged.current = false })
+        const r = e.currentTarget.getBoundingClientRect()
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) hold(false)
+      }}
+      // (a drag isn't a press: what's under it isn't clicked)
+      onClickCapture={(e) => { if (dragged.current) { e.stopPropagation(); e.preventDefault() } }}>
+      {children}
+      <button type="button" data-nodrag aria-label="Dismiss" className="sd-x" onClick={ctx.dismiss}><X className="size-3" strokeWidth={2.6} /></button>
+    </div>
+  )
+}
+
+function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act: (a: Act) => void; ctx: CardCtx; seed: number; id: string }) {
   const m = p.mark, c = p.card!, [done, setDone] = useState(false)
-  const box = { left: c.x, top: c.y, width: c.w, "--delay": ms(delay) } as React.CSSProperties
-  if (m.type === "write") return <div data-mark="write" className={`sd-write sd-fade absolute sd-${m.size ?? "m"}`} style={box}>{m.text}</div>
+  const box = { width: c.w, "--delay": ms(delay) } as React.CSSProperties
+  if (m.type === "write") return <div data-mark="write" className={`sd-write sd-fade sd-${m.size ?? "m"}`} style={box}>{m.text}</div>
   if (m.type === "sticky") return (
-    <div data-mark="sticky" className="sd-card sd-sticky sd-pop absolute" style={{ ...box, minHeight: c.h }}>
+    <div data-mark="sticky" className="sd-card sd-sticky sd-pop" style={{ ...box, minHeight: c.h }}>
       {m.title && <div className="sd-title">{m.title}</div>}
       <div className="whitespace-pre-wrap">{m.text}</div>
     </div>
   )
   if (m.type === "list") return (
-    <div data-mark="list" className="sd-card sd-pop absolute" style={box}>
+    <div data-mark="list" className="sd-card sd-pop" style={box}>
       {m.title && <div className="sd-title">{m.title}</div>}
       <ol className="flex flex-col gap-1">
         {m.items.map((x, i) => <li key={i} className="sd-fade flex gap-2" style={{ "--delay": ms(delay + 200 + i * 140) } as React.CSSProperties}><span className="sd-bullet">{m.numbered ? i + 1 : "•"}</span><span>{x}</span></li>)}
@@ -219,6 +290,7 @@ function Card({ p, delay, act, grab, seed, id }: { p: Placed; delay: number; act
     </div>
   )
   if (m.type === "paper") return <Paper m={m} c={c} delay={delay} seed={seed} id={id} />
+  if (m.type === "image" || m.type === "video") return <MediaCard m={m} c={c} delay={delay} ctx={ctx} />
   // (actions: copy, open, the next step)
   const run = () => {
     const a = m.type === "copy" ? { copy: m.text } : m.type === "open" ? { open: m.url } : m.type === "button" ? m.do : null
@@ -229,33 +301,114 @@ function Card({ p, delay, act, grab, seed, id }: { p: Placed; delay: number; act
   const text = m.type === "copy" ? (done ? "Copied" : m.label ?? "Copy") : m.type === "open" ? m.label ?? "Open" : m.type === "button" ? m.label : ""
   const Icon = m.type === "copy" ? (done ? Check : Copy) : m.type === "open" ? ExternalLink : m.type === "button" && "copy" in m.do ? Copy : m.type === "button" && "open" in m.do ? ExternalLink : ArrowRight
   return (
-    <Press className="sd-chip sd-pop absolute" style={{ ...box, width: undefined, maxWidth: c.w }} onClick={run} grab={grab}>
+    <Press className="sd-chip sd-pop" style={{ "--delay": ms(delay), maxWidth: c.w } as React.CSSProperties} onClick={run} grab={ctx.grab}>
       <Icon className="size-3.5 shrink-0" strokeWidth={2.2} /><span className="truncate">{text}</span>
     </Press>
   )
 }
 
-/** A scratch pad: a card on calm space, plain or ruled in a grid, its items drawn on it in order. */
-function Paper({ m, c, delay, seed, id }: { m: Extract<Mark, { type: "paper" }>; c: Rect; delay: number; seed: number; id: string }) {
-  const W = m.w, H = m.h
+/** A picture or a video by the cursor (or where it was put): a picture opens full size when pressed; a video plays
+ *  muted, looped, pressed it's heard, and its bar scrubs. One that can't load says so. */
+function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx: CardCtx }) {
+  const [state, setState] = useState<"loading" | "ok" | "failed">("loading"), v = useRef<HTMLVideoElement>(null)
+  const [muted, setMuted] = useState(true), [playing, setPlaying] = useState(true), [at, setAt] = useState(0), [dur, setDur] = useState(0)
+  const h = c.h - (m.caption ? CAPTION_H : 0), name = m.name ?? m.src.split("/").pop()
+  const failed = state === "failed" || !m.url
+  // (its size known: from the event, or from the element when that came before anyone heard it)
+  const loaded = (e: HTMLVideoElement) => { setState("ok"); setDur(Number.isFinite(e.duration) ? e.duration : 0); if (e.videoWidth) ctx.natural([e.videoWidth, e.videoHeight]) }
+  useEffect(() => {
+    const e = v.current
+    if (!e) return
+    if (e.readyState >= 1) loaded(e)
+    const id = setInterval(() => { if (e.readyState >= 1) { loaded(e); clearInterval(id) } else if (e.error) { setState("failed"); clearInterval(id) } }, 250)
+    return () => clearInterval(id)
+  }, [m.url])
   return (
-    <div data-mark="paper" className="sd-card sd-paper sd-pop absolute p-0" style={{ left: c.x, top: c.y, width: c.w, "--delay": ms(delay) } as React.CSSProperties}>
+    <div data-mark={m.type} data-state={failed ? "failed" : state} className="sd-card sd-media sd-pop" style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
+      <div className="sd-media-box relative" style={{ height: h }}>
+        {failed ? <div role="alert" className="sd-media-failed"><ImageOff className="size-5" strokeWidth={1.8} /><span>Couldn't load {name}</span></div>
+          : m.type === "image"
+            ? <img src={m.url} alt={m.caption ?? name ?? ""} draggable={false} className="size-full cursor-zoom-in object-contain"
+              onLoad={(e) => { setState("ok"); ctx.natural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight]) }} onError={() => setState("failed")} onClick={() => ctx.open(m)} />
+            : <>
+              <video ref={v} src={m.url} muted={muted} loop autoPlay playsInline className="size-full cursor-pointer object-contain"
+                onLoadedMetadata={(e) => loaded(e.currentTarget)}
+                onTimeUpdate={(e) => { setAt(e.currentTarget.currentTime); if (!dur && Number.isFinite(e.currentTarget.duration)) setDur(e.currentTarget.duration) }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setState("failed")}
+                onClick={() => setMuted((x) => !x)} />
+              <div data-nodrag className="sd-media-bar">
+                <button type="button" aria-label={playing ? "Pause" : "Play"} onClick={() => { const e = v.current; if (e) void (e.paused ? e.play() : e.pause()) }}>{playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}</button>
+                <input type="range" aria-label="Scrub" min={0} max={dur || 1} step={0.05} value={at} onChange={(e) => { const x = Number(e.target.value); setAt(x); if (v.current) v.current.currentTime = x }} />
+                <button type="button" aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted((x) => !x)}>{muted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}</button>
+              </div>
+            </>}
+        {state === "loading" && !failed && <div className="sd-media-wait" />}
+      </div>
+      {m.caption && <div className="sd-media-caption truncate">{m.caption}</div>}
+    </div>
+  )
+}
+
+/** A picture full size over the screen: pressed anywhere, it goes. */
+function Lightbox({ m, close, grab }: { m: Media; close: () => void; grab: (on: boolean) => void }) {
+  useEffect(() => { grab(true); return () => grab(false) }, [grab])
+  return (
+    <button type="button" aria-label="Close the picture" data-lightbox className="sd-lightbox pointer-events-auto fixed inset-0 grid cursor-zoom-out place-items-center" onClick={close}>
+      <img src={m.url} alt={m.caption ?? m.name ?? ""} draggable={false} className="max-h-[88vh] max-w-[92vw] rounded-lg object-contain shadow-2xl" />
+      {m.caption && <span className="sd-lightbox-caption">{m.caption}</span>}
+    </button>
+  )
+}
+
+/** A colour as the screen draws it: the companion's by default, the theme's text for ink and black. */
+const inkCss = (c?: string) => (!c || c === "tint" ? "var(--tint)" : c === "ink" || c === "black" ? "var(--foreground)" : c.startsWith("#") ? c : PALETTE[c]?.[0] ?? "var(--tint)")
+const fillCss = (c?: string) => (!c || c === "none" ? "none" : c === "tint" ? "color-mix(in srgb, var(--tint) 28%, var(--background))" : c === "ink" ? "color-mix(in srgb, var(--foreground) 16%, var(--background))" : c.startsWith("#") ? c : PALETTE[c]?.[1] ?? "none")
+/** A label on a filled shape: dark on Excalidraw's light fills, else the theme's. */
+const onFill = (c?: string) => (c && c !== "none" && c !== "ink" && c !== "tint" && !c.startsWith("#") ? "#1e1e1e" : undefined)
+
+/** A scratch pad: a card on calm space, plain or ruled in a grid, its items drawn on it in order; those added later (a
+ *  follow-up's) drawn as they come, moved ones sliding there, erased ones the pen run backward. */
+function Paper({ m, c, delay, seed, id }: { m: Extract<Mark, { type: "paper" }>; c: Rect; delay: number; seed: number; id: string }) {
+  const W = m.w, H = m.h, first = useRef<Set<string> | null>(null), later = useRef(new Map<string, number>())
+  const keyOf = (it: PaperItem, i: number) => it.id ?? String(i)
+  // (each item's delay, fixed once it's first seen: a changed one doesn't draw again)
+  first.current ??= new Set(m.items.map(keyOf))
+  let k = 0
+  const delays = m.items.map((it, i) => {
+    const key = keyOf(it, i)
+    if (first.current!.has(key)) return delay + 260 + i * 160
+    if (!later.current.has(key)) later.current.set(key, 120 + k++ * 220)
+    return later.current.get(key)!
+  })
+  return (
+    <div data-mark="paper" className="sd-card sd-paper sd-pop" style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
       {m.title && <div className="sd-title px-3 pt-2.5">{m.title}</div>}
       <div className={`relative ${m.grid ? "sd-grid" : ""}`} style={{ width: W, height: H }}>
         <svg className="absolute inset-0 overflow-visible" width={W} height={H}>
-          {m.items.map((it, i) => <Item key={i} it={it} id={`${id}-p${i}`} seed={seed + i * 13} delay={delay + 260 + i * 160} />)}
+          {m.items.map((it, i) => <g key={keyOf(it, i)} data-item={it.id} className={it.gone ? "sd-erase" : undefined} style={{ "--ink": inkCss(it.color), "--fill": fillCss(it.fill) } as React.CSSProperties}>
+            <Item it={it} items={m.items} id={`${id}-p${keyOf(it, i)}`} seed={seed + hash(keyOf(it, i))} delay={delays[i]} /></g>)}
         </svg>
-        {m.items.map((it, i) => <ItemText key={i} it={it} delay={delay + 260 + i * 160} />)}
+        {m.items.map((it, i) => <div key={keyOf(it, i)} className={it.gone ? "sd-erase" : undefined}><ItemText it={it} items={m.items} delay={delays[i]} /></div>)}
       </div>
     </div>
   )
 }
-function Item({ it, id, seed, delay }: { it: PaperItem; id: string; seed: number; delay: number }) {
+/** A shape at its place on the pad, drawn at its own origin: moved, it slides there. */
+const at = (x: number, y: number) => ({ transform: `translate(${x}px, ${y}px)` }) as React.CSSProperties
+function Item({ it, items, id, seed, delay }: { it: PaperItem; items: PaperItem[]; id: string; seed: number; delay: number }) {
   const ink = (lines: Line[], size = 3.4) => <Ink id={id} lines={lines} size={size} delay={delay} />
-  if (it.type === "rect" || it.type === "ellipse") return <Sketch paths={sketch(it.type, it, seed)} delay={delay} />
-  if (it.type === "line") return <Sketch paths={sketch("line", [pt(it.from), pt(it.to)], seed)} delay={delay} dur={360} />
-  if (it.type === "arrow") return ink([[it.from, it.to], ...headLines(pt(it.to), pt(it.from), 10)])
+  const shape = (paths: Sketched[]) => <Sketch paths={paths} delay={delay} />
+  if (it.type === "rect" || it.type === "ellipse" || it.type === "diamond") {
+    const local = { x: 0, y: 0, w: it.w, h: it.h }, fill = it.fill && it.fill !== "none"
+    return <g className="sd-move" style={at(it.x, it.y)}>{shape(sketch(it.type, local, seed, { solid: !!fill, roughness: 1 }))}</g>
+  }
+  if (it.type === "line" || it.type === "arrow") {
+    // (its ends where they are now, a bound one at its shape's edge: redrawn, by the pen, when they move)
+    const a = edgeOf(it.from, it.to, items), b = edgeOf(it.to, it.from, items), from = pt(a), to = pt(b)
+    const heads = it.type === "arrow" ? headLines(to, from, 11).map((l) => sketch("open", l, seed + 3, { roughness: 0.6 })).flat() : []
+    return <g key={`${a.join()}-${b.join()}`}><Sketch paths={[...sketch("line", [from, to], seed, { roughness: 1 }), ...heads]} delay={delay} dur={420} /></g>
+  }
   if (it.type === "path") return ink([it.points])
+  if (it.type === "svg") return <Svg it={it} seed={seed} delay={delay} />
   if (it.type !== "chart") return null
   const { x, y, w, h } = it, foot = it.labels ? 16 : 0, top = Math.max(...it.values, 0), low = Math.min(...it.values, 0), span = top - low || 1, step = w / it.values.length
   const yOf = (v: number) => y + (h - foot) - ((v - low) / span) * (h - foot)
@@ -269,21 +422,54 @@ function Item({ it, id, seed, delay }: { it: PaperItem; id: string; seed: number
   const pts = it.values.map((v, i): [number, number] => [x + i * step + step / 2, yOf(v)])
   return <g>{base}{ink([pts], 3.2)}{pts.map(([px, py], i) => <circle key={i} cx={px} cy={py} r={3.2} className="sd-dot sd-fade" style={{ "--delay": ms(delay + 300 + i * 60) } as React.CSSProperties} />)}</g>
 }
-function ItemText({ it, delay }: { it: PaperItem; delay: number }) {
-  const at = (x: number, y: number, extra: React.CSSProperties = {}) => ({ left: x, top: y, "--delay": ms(delay + 200), ...extra }) as React.CSSProperties
-  if (it.type === "text") return <div className={`sd-ptext sd-fade absolute sd-${it.size ?? "m"}`} style={at(it.x, it.y)}>{it.text}</div>
-  if ((it.type === "rect" || it.type === "ellipse") && it.label) return <div className="sd-plabel sd-fade absolute grid place-items-center text-center" style={at(it.x, it.y, { width: it.w, height: it.h })}>{it.label}</div>
-  if ((it.type === "line" || it.type === "arrow") && it.label) return <div className="sd-plabel sd-fade absolute -translate-x-1/2 -translate-y-full pb-1" style={at((it.from[0] + it.to[0]) / 2, (it.from[1] + it.to[1]) / 2)}>{it.label}</div>
+/** Shapes from path data, drawn by the pen one path after another, fills coming in behind: clean (the paths
+ *  themselves, smooth) or sketch (rough.js over their lines). */
+function Svg({ it, seed, delay }: { it: Extract<PaperItem, { type: "svg" }>; seed: number; delay: number }) {
+  const fit = useMemo(() => svgFit(it), [it]), n = it.paths.length, step = Math.min(420, 3200 / n), dur = Math.min(900, Math.max(320, step * 1.6))
+  const style = (j: number, extra: React.CSSProperties = {}) => ({ "--delay": ms(delay + j * step), "--dur": ms(dur), ...extra }) as React.CSSProperties
+  if (it.style === "sketch") {
+    const toBox = ([x, y]: [number, number]): [number, number] => [it.x + fit.ox + (x - fit.vx) * fit.k, it.y + fit.oy + (y - fit.vy) * fit.k]
+    return <g>{it.paths.map((sp, j) => {
+      const fill = sp.fill ?? it.fill, stroke = sp.color === "none" ? fill : sp.color ?? it.color
+      return <g key={j} style={{ "--ink": inkCss(stroke), "--fill": fillCss(fill) } as React.CSSProperties}>
+        {flatten(sp.d).map((sub, k) => <Sketch key={k} paths={sketch(sub.closed ? "poly" : "open", sub.pts.map(toBox), seed + j * 31 + k, { solid: sub.closed && !!fill && fill !== "none", roughness: 0.9 })} delay={delay + j * step} dur={dur} />)}
+      </g>
+    })}</g>
+  }
+  // (its strokes as wide on the screen whatever its scale: a non-scaling stroke would break the pen's dash in Chromium)
+  return (
+    <g transform={`translate(${it.x + fit.ox} ${it.y + fit.oy}) scale(${fit.k}) translate(${-fit.vx} ${-fit.vy})`}>
+      {it.paths.map((sp, j) => {
+        const fill = sp.fill ?? it.fill, stroke = sp.color === "none" ? (fill && fill !== "none" ? fill : undefined) : sp.color ?? it.color
+        return <g key={j}>
+          {fill && fill !== "none" && <path d={sp.d} className="sd-svg-fill" style={style(j, { fill: fillCss(fill) === "none" ? undefined : fillCss(fill), "--delay": ms(delay + j * step + dur * 0.7) } as React.CSSProperties)} />}
+          {stroke !== undefined || !fill || fill === "none" ? <path d={sp.d} pathLength={1} className="sd-pen sd-svg" style={style(j, { stroke: inkCss(stroke), strokeWidth: (sp.width ?? 2.4) / fit.k })} /> : null}
+        </g>
+      })}
+    </g>
+  )
+}
+function ItemText({ it, items, delay }: { it: PaperItem; items: PaperItem[]; delay: number }) {
+  const pos = (x: number, y: number, extra: React.CSSProperties = {}) => ({ left: x, top: y, "--delay": ms(delay + 200), ...extra }) as React.CSSProperties
+  const color = it.color ? { color: inkCss(it.color) } : {}
+  if (it.type === "text") return <div className={`sd-ptext sd-fade sd-move-xy absolute sd-${it.size ?? "m"}`} style={pos(it.x, it.y, color)}>{it.text}</div>
+  if ((it.type === "rect" || it.type === "ellipse" || it.type === "diamond") && it.label) return <div className="sd-plabel sd-fade sd-move-xy absolute grid place-items-center text-center" style={pos(it.x, it.y, { width: it.w, height: it.h, padding: it.type === "diamond" ? `0 ${it.w * 0.18}px` : "0 6px", whiteSpace: "normal", color: onFill(it.fill) })}>{it.label}</div>
+  if ((it.type === "line" || it.type === "arrow") && it.label) {
+    // (over a flat one, beside a steep one: never on the shapes at its ends)
+    const a = edgeOf(it.from, it.to, items), b = edgeOf(it.to, it.from, items), steep = Math.abs(b[1] - a[1]) > Math.abs(b[0] - a[0])
+    return <div className={`sd-plabel sd-fade sd-move-xy absolute ${steep ? "-translate-y-1/2 pl-1.5" : "-translate-x-1/2 -translate-y-full pb-1"}`} style={pos((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)}>{it.label}</div>
+  }
   if (it.type === "chart" && it.labels) {
     const step = it.w / it.values.length
-    return it.labels.map((l, i) => <div key={i} className="sd-axis sd-fade absolute truncate text-center" style={at(it.x + i * step, it.y + it.h - 14, { width: step })}>{l}</div>)
+    return it.labels.map((l, i) => <div key={i} className="sd-axis sd-fade absolute truncate text-center" style={pos(it.x + i * step, it.y + it.h - 14, { width: step })}>{l}</div>)
   }
   return null
 }
 
-function Toolbar({ kept, keepable, keep, clear, grab }: { kept?: string; keepable: boolean; keep: () => void; clear: () => void; grab: (on: boolean) => void }) {
+function Toolbar({ kept, keepable, keep, clear, grab, slot, who }: { kept?: string; keepable: boolean; keep: () => void; clear: () => void; grab: (on: boolean) => void; slot: number; who?: string }) {
   return (
-    <div className="sd-tools sd-pop absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1" style={{ "--delay": "500ms" } as React.CSSProperties}>
+    <div className="sd-tools sd-pop absolute left-1/2 flex -translate-x-1/2 items-center gap-1" style={{ bottom: 20 + slot * 40, "--delay": "500ms" } as React.CSSProperties}>
+      {who && <span className="sd-tool sd-who">{who}</span>}
       {keepable && (kept
         ? <span data-kept className="sd-tool"><Check className="size-3.5" strokeWidth={2.4} /><span className="max-w-[260px] truncate">Kept in {kept.replace(/\.excalidraw$/, "")}</span></span>
         : <Press className="sd-tool" onClick={keep} grab={grab}>Keep</Press>)}

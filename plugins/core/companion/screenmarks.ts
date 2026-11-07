@@ -1,21 +1,41 @@
 // What the companion draws over the screen (companion draw --marks): marks as data, checked here for the server and the
 // overlay alike (no Node, no DOM), and a drawing kept as an .excalidraw scene. web/src/screendraw draws them.
 import { sayable, speakable } from "./spoken.ts"
+import { boundsOf, flatten, parsePath } from "./svgpath.ts"
 
 /** A rectangle in screen points (a point: w and h 0); an element's, with what it says. */
 export type Rect = { x: number; y: number; w: number; h: number; label?: string }
+/** Where a card goes on a display by name: a corner, an edge's middle, the centre, or by the cursor (the default). */
+export type Area = "cursor" | "top-left" | "top" | "top-right" | "left" | "centre" | "right" | "bottom-left" | "bottom" | "bottom-right"
+export const AREAS: Area[] = ["cursor", "top-left", "top", "top-right", "left", "centre", "right", "bottom-left", "bottom", "bottom-right"]
 /** Where a mark goes: a point or a box (screen points), an element of the ask (`el`, its id), a pane or the app's UI, or
- *  words to find on the screen (`find`: an element saying them, else where the window shows them). */
-export type Spot = Rect | { el: string } | { pane: string } | { ui: string } | { find: string }
+ *  words to find on the screen (`find`: an element saying them, else where the window shows them); a card also an area. */
+export type Spot = Rect | { el: string } | { pane: string } | { ui: string } | { find: string } | { area: Area }
 export type Action = { copy: string } | { open: string } | { ask: string }
-type Base = { beat?: number }
-export type PaperItem =
-  | { type: "line" | "arrow"; from: [number, number]; to: [number, number]; label?: string }
-  | { type: "rect" | "ellipse"; x: number; y: number; w: number; h: number; label?: string }
+/** How long a mark stays up: until the next ask (what points, by default), until it's dismissed (cards, by default:
+ *  the user's ×, Clear, a later answer erasing it), or until the screen under it changes. */
+export type Life = "ask" | "dismiss" | "screen"
+export const LIVES: Life[] = ["ask", "dismiss", "screen"]
+/** `id`: its name for later changes (draw actions); `life`: how long it stays; `gone`: erased then (ms), its pen run
+ *  backward before it goes. Its anchor is its spot (`at`, a connect's ends), found as a screen rect in the layer's places. */
+type Base = { beat?: number; id?: string; life?: Life; gone?: number }
+/** A paper item's end: a point on the paper, or the id of a shape on it (the line starts or ends at its edge). */
+export type End = [number, number] | string
+/** A colour: a palette name (black, gray, red, pink, purple, violet, blue, cyan, teal, green, yellow, orange), ink (the
+ *  theme's text colour), tint (the companion's), or #hex; a fill also none. */
+type Ink = { id?: string; color?: string; fill?: string; gone?: number }
+export type SvgPath = { d: string; color?: string; fill?: string; width?: number }
+export type PaperItem = Ink & (
+  | { type: "line" | "arrow"; from: End; to: End; label?: string }
+  | { type: "rect" | "ellipse" | "diamond"; x: number; y: number; w: number; h: number; label?: string }
   | { type: "path"; points: [number, number][] }
   | { type: "text"; x: number; y: number; text: string; size?: Size }
   | { type: "chart"; kind: "bar" | "line"; x: number; y: number; w: number; h: number; values: number[]; labels?: string[] }
+  | { type: "svg"; x: number; y: number; w: number; h: number; paths: SvgPath[]; viewBox?: [number, number, number, number]; style?: "clean" | "sketch" })
 export type Size = "s" | "m" | "l"
+/** An image or a video on the screen: `src` as given (a vault path, a file of this machine, an https address, or
+ *  "screenshot": their latest); the rest the server's, as it found it: where the overlay loads it, its name, its pixels. */
+export type Media = { type: "image" | "video"; at?: Spot; src: string; caption?: string; size?: Size; url?: string; name?: string; px?: [number, number] }
 export type Mark = Base & (
   | { type: "point" | "ring" | "frame"; at: Spot; label?: string }
   | { type: "underline" | "strike" | "check" | "cross" | "spotlight"; at: Spot }
@@ -28,28 +48,37 @@ export type Mark = Base & (
   | { type: "list"; at?: Spot; title?: string; items: string[]; numbered?: boolean }
   | { type: "button"; at?: Spot; label: string; do: Action }
   | { type: "copy"; at?: Spot; text: string; label?: string }
-  | { type: "open"; at?: Spot; url: string; label?: string })
+  | { type: "open"; at?: Spot; url: string; label?: string }
+  | Media)
 export type MarkType = Mark["type"]
 /** A drawing as the overlay gets it: an agent's marks, the words they're timed with (`caption`, its sentences the
  *  beats), and the screen rects of its places (`places`: "el:e12", "pane:t3", "ui:tab:t3"). */
 export type Drawing = { id: string; agent: string; tint: string; t: number; marks: Mark[]; caption?: string; places?: Record<string, Rect>; kept?: string
   /** Its caption's sentences as they're heard aloud (the companion's voice): when each began (ms, the clock's) and how
    *  long it took; null, not heard (yet). The pen draws each beat while its sentence is heard; `waits`, still being said. */
-  spoken?: (Spoken | null)[]; waits?: boolean }
+  spoken?: (Spoken | null)[]; waits?: boolean
+  /** From an exchange before (a new ask came since): its cards stay up to be changed by id; new marks replace it. */
+  past?: boolean
+  /** Hidden for now (companion layer --hide): kept as it is, drawn again when shown. */
+  hidden?: boolean }
 export type Spoken = { at: number; dur: number }
 
-export const MARK_TYPES: MarkType[] = ["point", "ring", "frame", "underline", "strike", "connect", "num", "check", "cross", "spotlight", "scroll", "write", "paper", "sticky", "list", "button", "copy", "open"]
-/** Cards: placed on calm space when they have no `at`. */
-export const CARDS = new Set<MarkType>(["write", "paper", "sticky", "list", "button", "copy", "open"])
-export const MOST = { marks: 40, items: 60, points: 200, values: 24, list: 12, label: 60, text: 300, copy: 4000, paper: [720, 520] as const }
+export const MARK_TYPES: MarkType[] = ["point", "ring", "frame", "underline", "strike", "connect", "num", "check", "cross", "spotlight", "scroll", "write", "paper", "sticky", "list", "button", "copy", "open", "image", "video"]
+/** Cards: placed by the cursor when they have no `at`, else at it (an area, a point, beside a thing); the user can drag
+ *  one or dismiss it. */
+export const CARDS = new Set<MarkType>(["write", "paper", "sticky", "list", "button", "copy", "open", "image", "video"])
+export const MOST = { marks: 40, items: 60, points: 200, values: 24, list: 12, label: 60, text: 300, copy: 4000, paper: [720, 520] as const, paths: 40, d: 6000, svg: 40_000 }
 export const PAPER = { w: 360, h: 240 }
+export const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|heic|heif|tiff?)$/i
+export const VIDEO_EXT = /\.(mp4|m4v|mov|webm)$/i
 
 /** The vocabulary in a few lines, for the op's help and the docs. */
 export const VOCABULARY = `Spots: {"el": "<id>"} (an element of the ask: snaps to its frame; the best), {"find": "<words>"} (the thing on the screen saying them now, by their pointer), {"pane": "<id>"} or {"ui": "tab:<id>"} in the app; [x, y, w, h] or [x, y] in screen points only for what has none (a bare point snaps to a frame round what they drew there, else to the element there).
 On the screen: point, ring, frame (a thing or an area boxed, the whole of it: what it is), underline, strike, check, cross, spotlight {at, label?}; num {at, n}; scroll {at, dir}; connect {from, to, label?}.
-On calm space (at optional): write {text, size: s|m|l}; paper {w, h, title?, grid?, items}: its items in its own units (0,0 its top left): line|arrow {from: [x,y], to}, rect|ellipse {x,y,w,h,label?}, path {points}, text {x,y,text}, chart {kind: bar|line, x,y,w,h, values, labels?}; sticky {text, title?}; list {items, title?, numbered?}.
+Cards (by your cursor unless at says: an area "top-left" | "top" | "top-right" | "left" | "centre" | "right" | "bottom-left" | "bottom" | "bottom-right", a point [x, y] for its top left, or a spot it goes beside; the user can drag or dismiss one): write {text, size: s|m|l}; sticky {text, title?}; list {items, title?, numbered?}; image or video {src, caption?, size?: s|m|l}: src a vault path, a file of this Mac (~/...), an https address, or "screenshot" (their latest screenshot; a video: their latest screen recording); a video plays muted, looped.
+paper {w, h, title?, grid?, items}: a pad, its items in its own units (0,0 its top left), Excalidraw's: rect|ellipse|diamond {x,y,w,h,label?}, arrow|line {from, to, label?} (an end [x,y], or a shape's id: bound to it), text {x,y,text,size?}, path {points} (freehand), chart {kind: bar|line, x,y,w,h, values, labels?}, svg {paths: [{d, color?, fill?, width?}], x?,y?,w?,h? (its box, the pad's by default), viewBox?, style?: clean|sketch} (path data only: a logo, an animal, any shape, fitted into its box). Each item may say id (to change it later), color and fill (black, gray, red, pink, purple, violet, blue, cyan, teal, green, yellow, orange, ink, tint or #hex; fill none).
 Actions: copy {text}, open {url}, button {label, do: {copy}|{open}|{ask: "<follow-up>"}}.
-Every mark may say beat: the sentence of your words (0 the first) it appears with.`
+Every mark may say beat: the sentence of your words (0 the first) it appears with; id: its name for draw actions; life: ask (until their next ask: what points, by default), dismiss (until dismissed: cards, by default) or screen (until the screen under it changes).`
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 const num = (v: unknown) => typeof v === "number" && Number.isFinite(v)
@@ -72,8 +101,10 @@ function checkMark(m: unknown): Mark {
   if (!MARK_TYPES.includes(type)) throw new Error(`type is one of ${MARK_TYPES.join(", ")}`)
   const base: Base = {}
   if (m.beat !== undefined) { if (!Number.isInteger(m.beat) || (m.beat as number) < 0 || (m.beat as number) > 50) throw new Error("beat: a sentence's index, from 0"); base.beat = m.beat as number }
+  if (m.id !== undefined) base.id = idOf(m.id, "id")
+  if (m.life !== undefined) { if (!LIVES.includes(m.life as Life)) throw new Error("life: ask (until the next ask), dismiss (until dismissed) or screen (until the screen under it changes)"); base.life = m.life as Life }
   const label = () => (m.label === undefined ? {} : { label: words(m.label, "label", MOST.label) })
-  const card = () => (m.at === undefined ? {} : { at: spot(m.at, "at") })
+  const card = () => (m.at === undefined ? {} : { at: spot(m.at, "at", true) })
   switch (type) {
     case "point": case "ring": case "frame": return { ...base, type, at: spot(m.at, "at"), ...label() }
     case "underline": case "strike": case "check": case "cross": case "spotlight": return { ...base, type, at: spot(m.at, "at") }
@@ -96,14 +127,31 @@ function checkMark(m: unknown): Mark {
     case "button": return { ...base, type, ...card(), label: words(m.label, "label", MOST.label), do: action(m.do) }
     case "copy": return { ...base, type, ...card(), text: words(m.text, "text", MOST.copy), ...label() }
     case "open": return { ...base, type, ...card(), url: url(m.url), ...label() }
+    // (where it loads from is the server's to find: url, name and px given are dropped)
+    case "image": case "video": return { ...base, type, ...card(), src: words(m.src ?? m.path ?? m.url, "src", 2000), ...size(m.size),
+      ...(m.caption === undefined ? {} : { caption: words(m.caption, "caption", MOST.text) }) }
     case "paper": {
       const w = m.w === undefined ? PAPER.w : m.w, h = m.h === undefined ? PAPER.h : m.h
       if (!num(w) || !num(h) || (w as number) < 80 || (h as number) < 60 || (w as number) > MOST.paper[0] || (h as number) > MOST.paper[1]) throw new Error(`w, h: its size, 80x60 to ${MOST.paper.join("x")} (default ${PAPER.w}x${PAPER.h})`)
       if (!Array.isArray(m.items) || m.items.length > MOST.items) throw new Error(`items: a list of up to ${MOST.items} things on it`)
-      return { ...base, type, ...card(), w: w as number, h: h as number, ...(m.title === undefined ? {} : { title: words(m.title, "title", MOST.label) }), ...(m.grid ? { grid: true } : {}),
-        items: m.items.map((x, i) => { try { return paperItem(x, w as number, h as number) } catch (e) { throw new Error(`items[${i}]: ${(e as Error).message}`) } }) }
+      const items = m.items.map((x, i) => { try { return paperItem(x, w as number, h as number) } catch (e) { throw new Error(`items[${i}]: ${(e as Error).message}`) } })
+      checkItems(items)
+      return { ...base, type, ...card(), w: w as number, h: h as number, ...(m.title === undefined ? {} : { title: words(m.title, "title", MOST.label) }), ...(m.grid ? { grid: true } : {}), items }
     }
   }
+}
+
+const ID_RE = /^[\w-]{1,40}$/
+const idOf = (v: unknown, what: string) => { if (typeof v !== "string" || !ID_RE.test(v)) throw new Error(`${what}: letters, digits, - and _ (up to 40)`); return v }
+/** A pad's items together: ids once each, a bound end a shape's. */
+export function checkItems(items: PaperItem[]) {
+  const ids = new Set<string>()
+  for (const it of items) if (it.id) { if (ids.has(it.id)) throw new Error(`items: id "${it.id}" twice`); ids.add(it.id) }
+  const shape = (id: string) => items.some((x) => x.id === id && !x.gone && (x.type === "rect" || x.type === "ellipse" || x.type === "diamond" || x.type === "text" || x.type === "svg"))
+  items.forEach((it, i) => {
+    if (it.type !== "line" && it.type !== "arrow") return
+    for (const e of [it.from, it.to]) if (typeof e === "string" && !shape(e)) throw new Error(`items[${i}]: ${JSON.stringify(e)} isn't a shape's id on this pad`)
+  })
 }
 
 function words(v: unknown, what: string, most: number) {
@@ -124,9 +172,16 @@ function action(v: unknown): Action {
   throw new Error("do: {\"copy\": text}, {\"open\": url} or {\"ask\": a follow-up}")
 }
 const ID = /^[\w.:/-]{1,120}$/
-/** A spot as given: [x, y], [x, y, w, h], {x, y, w?, h?}, {el}, {pane}, {ui}. */
-function spot(v: unknown, what: string): Spot {
-  const how = `${what}: {"el": "<id>"}, {"find": "<words>"}, {"pane": "<id>"}, {"ui": "<id>"}, [x, y, w, h] or [x, y] (screen points)`
+/** A spot as given: [x, y], [x, y, w, h], {x, y, w?, h?}, {el}, {pane}, {ui}; a card's also an area ("top-right"). */
+function spot(v: unknown, what: string, card = false): Spot {
+  const how = `${what}: {"el": "<id>"}, {"find": "<words>"}, {"pane": "<id>"}, {"ui": "<id>"}, [x, y, w, h] or [x, y] (screen points)${card ? `, or an area: ${AREAS.join(", ")}` : ""}`
+  const area = typeof v === "string" ? v : isObj(v) && typeof v.area === "string" ? v.area : null
+  if (area !== null) {
+    const a = area.trim().toLowerCase().replace(/\s+/g, "-").replace("center", "centre").replace(/^(pointer|mouse)$/, "cursor")
+    if (!card) throw new Error(`${what}: an area places a card; a mark goes at a thing (${how})`)
+    if (!AREAS.includes(a as Area)) throw new Error(how)
+    return { area: a as Area }
+  }
   if (Array.isArray(v)) {
     if ((v.length !== 2 && v.length !== 4) || !v.every((n) => num(n) && Math.abs(n) < COORD)) throw new Error(how)
     if (v.length === 4 && (v[2] < 0 || v[3] < 0)) throw new Error(`${what}: w and h aren't negative`)
@@ -142,6 +197,8 @@ function spot(v: unknown, what: string): Spot {
   }
   throw new Error(how)
 }
+/** A card's spot, as an action gives one (draw actions' move). */
+export const cardSpot = (v: unknown) => spot(v, "at", true)
 function pt(v: unknown, what: string, w: number, h: number): [number, number] {
   if (!Array.isArray(v) || v.length !== 2 || !num(v[0]) || !num(v[1])) throw new Error(`${what}: [x, y]`)
   if (v[0] < -1 || v[1] < -1 || v[0] > w + 1 || v[1] > h + 1) throw new Error(`${what}: inside the paper (0..${w}, 0..${h})`)
@@ -153,30 +210,85 @@ function box(m: Record<string, unknown>, w: number, h: number) {
   if (x < -1 || y < -1 || x + bw > w + 1 || y + bh > h + 1) throw new Error(`x, y, w, h: inside the paper (${w}x${h})`)
   return { x, y, w: bw, h: bh }
 }
-function paperItem(v: unknown, w: number, h: number): PaperItem {
+const SHAPE_SIZE = (label?: string) => ({ w: Math.max(100, Math.min(260, (label?.length ?? 0) * 8.5 + 36)), h: 56 })
+/** A colour as given: a palette name, ink, tint or #hex (a fill also none). */
+export function colorOf(v: unknown, what: string, fill = false) {
+  if (v === undefined) return undefined
+  const s = String(v).trim().toLowerCase()
+  if (fill && (s === "none" || s === "transparent")) return "none"
+  if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/.test(s) || s in PALETTE || s === "ink" || s === "tint") return s
+  throw new Error(`${what}: ${Object.keys(PALETTE).join(", ")}, ink, tint or #hex${fill ? " (or none)" : ""}`)
+}
+const inkOf = (v: Record<string, unknown>): Ink => {
+  const c = colorOf(v.color ?? v.stroke, "color"), f = colorOf(v.fill, "fill", true)
+  return { ...(v.id === undefined ? {} : { id: idOf(v.id, "id") }), ...(c ? { color: c } : {}), ...(f ? { fill: f } : {}) }
+}
+const end = (v: unknown, what: string, w: number, h: number): End => (typeof v === "string" ? idOf(v, `${what} (a shape's id)`) : pt(v, what, w, h))
+/** A paper item checked on a pad `w` by `h` (Excalidraw's names too: rectangle, freedraw). */
+export function paperItem(v: unknown, w: number, h: number): PaperItem {
   if (!isObj(v)) throw new Error("an item is an object: {\"type\": ..., ...}")
   const label = v.label === undefined ? {} : { label: words(v.label, "label", MOST.label) }
-  switch (v.type) {
-    case "line": case "arrow": return { type: v.type, from: pt(v.from, "from", w, h), to: pt(v.to, "to", w, h), ...label }
-    case "rect": case "ellipse": return { type: v.type, ...box(v, w, h), ...label }
+  const type = v.type === "rectangle" ? "rect" : v.type === "freedraw" ? "path" : v.type
+  const ink = inkOf(v)
+  switch (type) {
+    case "line": case "arrow": return { ...ink, type, from: end(v.from, "from", w, h), to: end(v.to, "to", w, h), ...label }
+    case "rect": case "ellipse": case "diamond": {
+      const s = v.w === undefined && v.h === undefined && num(v.x) && num(v.y) ? SHAPE_SIZE(label.label) : null
+      return { ...ink, type, ...box(s ? { ...v, ...s } : v, w, h), ...label }
+    }
     case "path": {
       if (!Array.isArray(v.points) || v.points.length < 2 || v.points.length > MOST.points) throw new Error(`points: 2 to ${MOST.points} [x, y]`)
-      return { type: "path", points: v.points.map((p, i) => pt(p, `points[${i}]`, w, h)) }
+      return { ...ink, type: "path", points: v.points.map((p, i) => pt(p, `points[${i}]`, w, h)) }
     }
     case "text": {
       if (!num(v.x) || !num(v.y)) throw new Error("x, y: where it starts")
-      return { type: "text", x: v.x as number, y: v.y as number, text: words(v.text, "text", MOST.text), ...size(v.size) }
+      return { ...ink, type: "text", x: v.x as number, y: v.y as number, text: words(v.text ?? v.label, "text", MOST.text), ...size(v.size) }
     }
     case "chart": {
       if (v.kind !== "bar" && v.kind !== "line") throw new Error("kind: bar or line")
       if (!Array.isArray(v.values) || !v.values.length || v.values.length > MOST.values || !v.values.every((n) => num(n) && Math.abs(n) < 1e12)) throw new Error(`values: 1 to ${MOST.values} numbers`)
       const b = v.x === undefined ? { x: 16, y: 16, w: w - 32, h: h - 32 } : box(v, w, h)
       if (v.labels !== undefined && (!Array.isArray(v.labels) || v.labels.length !== v.values.length)) throw new Error("labels: one per value")
-      return { type: "chart", kind: v.kind, ...b, values: v.values as number[], ...(v.labels ? { labels: (v.labels as unknown[]).map((l, i) => words(String(l), `labels[${i}]`, 24)) } : {}) }
+      return { ...ink, type: "chart", kind: v.kind, ...b, values: v.values as number[], ...(v.labels ? { labels: (v.labels as unknown[]).map((l, i) => words(String(l), `labels[${i}]`, 24)) } : {}) }
+    }
+    case "svg": {
+      const given = v.paths ?? (v.d === undefined ? undefined : [{ d: v.d, color: v.color, fill: v.fill, width: v.width }])
+      if (!Array.isArray(given) || !given.length || given.length > MOST.paths) throw new Error(`paths: 1 to ${MOST.paths} {d, color?, fill?, width?} (SVG path data, no markup)`)
+      let total = 0
+      const paths = given.map((p, i): SvgPath => {
+        const what = `paths[${i}]`
+        if (!isObj(p) || typeof p.d !== "string" || !p.d.trim()) throw new Error(`${what}: {d: "M10 10 L50 50 ..."}`)
+        if (p.d.length > MOST.d) throw new Error(`${what}.d: at most ${MOST.d} characters`)
+        total += p.d.length
+        try { parsePath(p.d) } catch (e) { throw new Error(`${what}.${(e as Error).message}`) }
+        if (p.width !== undefined && (!num(p.width) || (p.width as number) <= 0 || (p.width as number) > 20)) throw new Error(`${what}.width: its stroke's width, 0.5 to 20`)
+        const c = colorOf(p.color ?? p.stroke, `${what}.color`, true), f = colorOf(p.fill, `${what}.fill`, true)
+        return { d: p.d.trim(), ...(c ? { color: c } : {}), ...(f ? { fill: f } : {}), ...(p.width === undefined ? {} : { width: p.width as number }) }
+      })
+      if (total > MOST.svg) throw new Error(`paths: at most ${MOST.svg} characters of path data in all`)
+      let vb: [number, number, number, number] | undefined
+      if (v.viewBox !== undefined) {
+        const raw = typeof v.viewBox === "string" ? v.viewBox.trim().split(/[\s,]+/).map(Number) : v.viewBox
+        if (!Array.isArray(raw) || raw.length !== 4 || !raw.every(num) || raw[2] <= 0 || raw[3] <= 0) throw new Error("viewBox: [x, y, w, h], the paths' own units")
+        vb = raw as [number, number, number, number]
+      }
+      if (v.style !== undefined && v.style !== "clean" && v.style !== "sketch") throw new Error("style: clean (smooth lines, the default) or sketch (hand-drawn)")
+      const b = v.x === undefined && v.w === undefined ? { x: 12, y: 12, w: w - 24, h: h - 24 } : box(v, w, h)
+      return { ...ink, type: "svg", ...b, paths, ...(vb ? { viewBox: vb } : {}), ...(v.style ? { style: v.style as "clean" } : {}) }
     }
   }
-  throw new Error("type is one of line, arrow, rect, ellipse, path, text, chart")
+  throw new Error("type is one of rect, ellipse, diamond, line, arrow, text, path, chart, svg")
 }
+
+/** Excalidraw's palette by name: a stroke and the fill that goes with it. */
+export const PALETTE: Record<string, [string, string]> = {
+  black: ["#1e1e1e", "#e9ecef"], gray: ["#868e96", "#e9ecef"], red: ["#e03131", "#ffc9c9"], pink: ["#c2255c", "#fcc2d7"],
+  purple: ["#9c36b5", "#eebefa"], violet: ["#6741d9", "#d0bfff"], blue: ["#1971c2", "#a5d8ff"], cyan: ["#0c8599", "#99e9f2"],
+  teal: ["#099268", "#96f2d7"], green: ["#2f9e44", "#b2f2bb"], yellow: ["#f08c00", "#ffec99"], orange: ["#e8590c", "#ffd8a8"],
+}
+
+/** How long `m` stays: as it says, else a card until it's dismissed, what points until the next ask. */
+export const lifeOf = (m: Mark): Life => m.life ?? (CARDS.has(m.type) ? "dismiss" : "ask")
 
 /** The places a drawing's marks name that the app must find: panes and UI ("pane:t3", "ui:tab:t3"). */
 export function appPlaces(marks: Mark[]) {
@@ -196,6 +308,7 @@ export function rectOf(s: Spot, places: Record<string, Rect> = {}): Rect | null 
   if ("pane" in s) return places[`pane:${s.pane}`] ?? null
   if ("ui" in s) return places[`ui:${s.ui}`] ?? null
   if ("find" in s) return places[`find:${s.find}`] ?? null
+  if ("area" in s) return null
   return s
 }
 
@@ -205,6 +318,7 @@ export function unshown(marks: Mark[], places: Record<string, Rect> = {}, displa
   const on = (r: Rect) => displays.some((d) => r.x + r.w >= d.x && r.x <= d.x + d.w && r.y + r.h >= d.y && r.y <= d.y + d.h)
   return marks.map((m) => {
     for (const s of "from" in m ? [m.from, m.to] : "at" in m && m.at ? [m.at] : []) {
+      if ("area" in s) continue
       const r = rectOf(s, places)
       if (!r) return "el" in s ? `found nothing: ${s.el} isn't an element the ask listed` : "found nothing there"
       if (displays.length && !on(r)) return `at ${Math.round(r.x)},${Math.round(r.y)} is off their screen`
@@ -322,6 +436,147 @@ export function pacedBeats(caption: string, beats: number, spoken: (Spoken | nul
   return { times, spread }
 }
 
+// ---------- changed in place: a drawing's marks and its pads' items by id (draw actions without a path)
+
+/** How long what's erased stays (its pen run backward), ms. */
+export const ERASE_MS = 700
+const live = <T extends { gone?: number }>(x: T) => !x.gone
+const ITEM_TYPES = new Set(["rect", "rectangle", "ellipse", "diamond", "line", "arrow", "text", "path", "freedraw", "chart", "svg"])
+/** Every id in `marks`: its marks' and its pads' items'. */
+export function idsIn(marks: Mark[]) {
+  return new Set(marks.flatMap((m) => [...(m.id ? [m.id] : []), ...(m.type === "paper" ? m.items.flatMap((i) => (i.id ? [i.id] : [])) : [])]))
+}
+/** `marks` with what was erased more than a moment ago (`now`) gone for good. */
+export const pruned = (marks: Mark[], now = Date.now()): Mark[] => marks.filter((m) => !m.gone || now - m.gone < ERASE_MS)
+  .map((m) => (m.type === "paper" && m.items.some((i) => i.gone) ? { ...m, items: m.items.filter((i) => !i.gone || now - i.gone < ERASE_MS) } : m))
+
+/** `marks` with `actions` made, in order, each checked first (an error names the action and why); `added`: the marks
+ *  they added (their places are still to find), `touched`: the ids they changed. */
+export function editMarks(marks: Mark[], actions: unknown, now = Date.now()): { marks: Mark[]; added: Mark[]; touched: string[] } {
+  if (!Array.isArray(actions) || !actions.length) throw new Error("actions: a list of at least one ({\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...})")
+  if (actions.length > MOST.items) throw new Error(`actions: at most ${MOST.items}`)
+  const out: Mark[] = marks.map((m) => (m.type === "paper" ? { ...m, items: m.items.map((i) => ({ ...i })) } : { ...m })), added: Mark[] = [], touched: string[] = []
+  const touch = (id?: string) => { if (id && !touched.includes(id)) touched.push(id) }
+  const find = (id: unknown) => {
+    if (typeof id !== "string") throw new Error("id: the id of a mark or an item (what's up lists them)")
+    for (const m of out) {
+      if (m.gone) continue
+      if (m.id === id) return { mark: m }
+      if (m.type === "paper") { const item = m.items.find((i) => i.id === id && live(i)); if (item) return { mark: m, item } }
+    }
+    throw new Error(`no ${JSON.stringify(id)} up now (what's up lists the ids)`)
+  }
+  actions.forEach((raw, n) => {
+    const a = isObj(raw) ? raw : {}, op = a.op
+    try {
+      if (op === "add") {
+        if (a.mark !== undefined) {
+          const m = checkMark(a.mark)
+          if (m.id && idsIn(out).has(m.id)) throw new Error(`id "${m.id}" is taken`)
+          out.push(m); added.push(m); touch(m.id)
+          return
+        }
+        if (!ITEM_TYPES.has(String(a.type))) throw new Error(`type: an item for a pad (${[...ITEM_TYPES].join(", ")}); a new mark is {"op": "add", "mark": {...}}`)
+        const pads = out.filter((m): m is Extract<Mark, { type: "paper" }> => m.type === "paper" && live(m))
+        const pad = a.in === undefined ? pads.at(-1) : pads.find((p) => p.id === a.in)
+        if (!pad) throw new Error(a.in === undefined ? "no pad up to add to: draw one (a paper mark), or add a mark" : `no pad ${JSON.stringify(a.in)} up`)
+        const { op: _op, in: _in, ...item } = a
+        const it = paperItem(item, pad.w, pad.h)
+        if (it.id && idsIn(out).has(it.id)) throw new Error(`id "${it.id}" is taken`)
+        checkItems([...pad.items, it])
+        pad.items.push(it); touch(it.id)
+      } else if (op === "move") {
+        const { mark, item } = find(a.id)
+        if (!item) {
+          if (a.at === undefined) throw new Error(`at: where it goes (${CARDS.has(mark.type) ? "an area, a point or a spot" : "a spot"})`)
+          if (mark.type === "connect") throw new Error("a connect moves by its ends: delete it and add another")
+          ;(mark as { at?: Spot }).at = CARDS.has(mark.type) ? cardSpot(a.at) : spotOf(a.at)
+          touch(mark.id)
+          return
+        }
+        const pad = mark as Extract<Mark, { type: "paper" }>, p = (k: string) => (a[k] === undefined ? undefined : num(a[k]) ? (a[k] as number) : bad(`${k}: a number`))
+        const x = p("x"), y = p("y"), dx = p("dx"), dy = p("dy")
+        if (x === undefined && y === undefined && dx === undefined && dy === undefined) throw new Error("x and y (its top left, on the pad), or dx and dy")
+        const b = itemBox(item, pad.items)
+        // (kept on the pad)
+        const mx = Math.min(Math.max((x ?? b.x + (dx ?? 0)), 0), Math.max(0, pad.w - b.w)) - b.x, my = Math.min(Math.max((y ?? b.y + (dy ?? 0)), 0), Math.max(0, pad.h - b.h)) - b.y
+        shift(item, mx, my); touch(item.id)
+      } else if (op === "change") {
+        const { mark, item } = find(a.id)
+        const keys = Object.keys(a).filter((k) => k !== "op" && k !== "id")
+        if (!keys.length) throw new Error("what changes: label, text, color, fill, w, h, size, caption, title")
+        if (item) {
+          const pad = mark as Extract<Mark, { type: "paper" }>
+          const { op: _op, ...change } = a
+          const next = paperItem({ ...item, ...change, type: item.type }, pad.w, pad.h)
+          const i = pad.items.indexOf(item)
+          pad.items[i] = { ...next, ...(item.id ? { id: item.id } : {}) }
+          checkItems(pad.items)
+          touch(item.id)
+        } else {
+          const { op: _op, id: _id, ...rest } = a
+          const next = checkMark({ ...mark, ...rest })
+          // (another source is found again)
+          if ((mark.type === "image" || mark.type === "video") && rest.src !== undefined) { delete mark.url; delete mark.name; delete mark.px; added.push(mark) }
+          Object.assign(mark, next); touch(mark.id)
+        }
+      } else if (op === "delete") {
+        const { mark, item } = find(a.id)
+        if (!item) { mark.gone = now; touch(mark.id); return }
+        item.gone = now; touch(item.id)
+        // (what's bound to it goes with it)
+        const pad = mark as Extract<Mark, { type: "paper" }>
+        for (const x of pad.items) if ((x.type === "line" || x.type === "arrow") && live(x) && (x.from === item.id || x.to === item.id)) { x.gone = now; touch(x.id) }
+      } else throw new Error(`op ${JSON.stringify(op ?? "")}: add, move, change or delete`)
+    } catch (e) { throw new Error(`actions[${n}]${typeof op === "string" ? ` (${op})` : ""}: ${(e as Error).message}`) }
+  })
+  return { marks: out, added, touched }
+}
+const bad = (why: string): never => { throw new Error(why) }
+const spotOf = (v: unknown) => spot(v, "at")
+/** An item's box on its pad (a bound end at its shape's centre). */
+export function itemBox(it: PaperItem, items: PaperItem[] = []): Rect {
+  if ("w" in it) return { x: it.x, y: it.y, w: it.w, h: it.h }
+  if (it.type === "text") return { x: it.x, y: it.y, w: it.text.length * 8, h: it.size === "l" ? 26 : 18 }
+  const pts = it.type === "path" ? it.points : [endPoint(it.from, items), endPoint(it.to, items)]
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]), x = Math.min(...xs), y = Math.min(...ys)
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
+}
+/** A line's end as a point: as given, or its shape's centre. */
+export function endPoint(e: End, items: PaperItem[]): [number, number] {
+  if (Array.isArray(e)) return e
+  const s = items.find((i) => i.id === e)
+  if (!s) return [0, 0]
+  const b = itemBox(s, items)
+  return [b.x + b.w / 2, b.y + b.h / 2]
+}
+function shift(it: PaperItem, dx: number, dy: number) {
+  if ("x" in it) { it.x += dx; it.y += dy; return }
+  if (it.type === "path") { it.points = it.points.map(([x, y]) => [x + dx, y + dy]); return }
+  if (it.type === "line" || it.type === "arrow") for (const k of ["from", "to"] as const) { const e = it[k]; if (Array.isArray(e)) it[k] = [e[0] + dx, e[1] + dy] }
+}
+
+/** A drawing as its agent reads it at its next ask: each mark and pad item by id, to change in place. */
+export function drawingText(d: Drawing) {
+  const q = (t: string) => JSON.stringify(t.length > 40 ? `${t.slice(0, 40)}…` : t)
+  const at = (s?: Spot) => (!s ? "" : "area" in s ? ` at ${s.area}` : "el" in s ? ` at ${s.el}` : "find" in s ? ` at ${q(s.find)}` : "x" in s ? ` at ${Math.round(s.x)},${Math.round(s.y)}` : "")
+  const item = (i: PaperItem, all: PaperItem[]) => {
+    const end = (e: End) => (typeof e === "string" ? e : e.map(Math.round).join(","))
+    const c = [i.color, i.fill && `fill ${i.fill}`].filter(Boolean).join(", "), tail = c ? ` (${c})` : ""
+    if (i.type === "line" || i.type === "arrow") return `${i.id} ${i.type} ${end(i.from)} -> ${end(i.to)}${i.label ? ` ${q(i.label)}` : ""}${tail}`
+    const b = itemBox(i, all), words = "label" in i && i.label ? ` ${q(i.label)}` : i.type === "text" ? ` ${q(i.text)}` : i.type === "svg" ? ` (${i.paths.length} paths)` : ""
+    return `${i.id} ${i.type}${words} at ${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}x${Math.round(b.h)}${tail}`
+  }
+  const lines = d.marks.filter(live).map((m) => {
+    const name = `${m.id ?? "?"} ${m.type}`
+    if (m.type === "paper") return [`- ${name}${m.title ? ` ${q(m.title)}` : ""} ${m.w}x${m.h}${at(m.at)}:`, ...m.items.filter(live).map((i) => `    ${item(i, m.items)}`)].join("\n")
+    if (m.type === "image" || m.type === "video") return `- ${name} ${m.name ?? m.src}${m.caption ? ` ${q(m.caption)}` : ""}${at(m.at)}`
+    const words = "label" in m && m.label ? ` ${q(m.label)}` : "text" in m ? ` ${q(m.text)}` : "title" in m && m.title ? ` ${q(m.title)}` : ""
+    return `- ${name}${words}${"at" in m ? at(m.at) : ""}`
+  })
+  return lines.length ? lines.join("\n") : ""
+}
+
 // ---------- kept: a drawing as an .excalidraw scene (vau docs excalidraw)
 
 /** The palette Excalidraw picks from, by the app's tint names. */
@@ -329,12 +584,18 @@ export const HEX: Record<string, string> = { orange: "#e8590c", blue: "#1971c2",
 const INK = "#1e1e1e"
 type El = Record<string, unknown>
 
+/** A kept image's bytes, by its mark's id: a data URL, and its pixels when known. */
+export type KeptFile = { dataURL: string; mime: string; px?: [number, number] }
 /** What's worth keeping of `marks`: its scratch pads and cards (`all`: the marks on the screen too, where `places` knows
- *  them). Null: nothing to keep. */
-export function toExcalidraw(marks: Mark[], opts: { tint?: string; places?: Record<string, Rect>; all?: boolean } = {}) {
-  const stroke = HEX[opts.tint ?? ""] ?? HEX.orange, els: El[] = []
+ *  them); `files`, the images' bytes (one without is kept as a link). Null: nothing to keep. */
+export function toExcalidraw(marks: Mark[], opts: { tint?: string; places?: Record<string, Rect>; all?: boolean; files?: Record<string, KeptFile> } = {}) {
+  marks = marks.filter(live)
+  const tint = HEX[opts.tint ?? ""] ?? HEX.orange, els: El[] = [], files: Record<string, El> = {}
+  const strokeOf = (c?: string) => (!c || c === "tint" ? tint : c === "ink" ? INK : c.startsWith("#") ? c : PALETTE[c]?.[0] ?? tint)
+  const fillOf = (c?: string) => (!c || c === "none" ? "transparent" : c === "tint" ? tint : c === "ink" ? INK : c.startsWith("#") ? c : PALETTE[c]?.[1] ?? "transparent")
   let n = 0, seed = 1
-  const id = (p: string) => `${p}${++n}`
+  const taken = idsIn(marks)
+  const id = (p: string) => { let x; do x = `${p}${++n}`; while (taken.has(x)); return x }
   const common = (x: number, y: number, w: number, h: number, more: El = {}): El =>
     ({ x: r1(x), y: r1(y), width: r1(w), height: r1(h), angle: 0, strokeColor: INK, backgroundColor: "transparent", fillStyle: "solid", strokeWidth: 2, strokeStyle: "solid",
       roughness: 1, opacity: 100, groupIds: [], frameId: null, roundness: null, seed: seed++, version: 1, versionNonce: seed * 7919, isDeleted: false, boundElements: null,
@@ -343,20 +604,24 @@ export function toExcalidraw(marks: Mark[], opts: { tint?: string; places?: Reco
     const lines = t.split("\n"), w = Math.max(...lines.map((l) => l.length)) * fontSize * 0.55, h = lines.length * fontSize * 1.25
     return { id: id("t"), type: "text", ...common(x, y, w, h), text: t, originalText: t, fontSize, fontFamily: 5, textAlign: "left", verticalAlign: "top", containerId: null, lineHeight: 1.25, autoResize: true, ...more }
   }
-  const shape = (type: "rectangle" | "ellipse", x: number, y: number, w: number, h: number, label?: string, more: El = {}) => {
-    const s: El = { id: id(type[0]), type, ...common(x, y, w, h, more) }
+  const bind = (s: El, b: { id: unknown; type: string }) => { s.boundElements = [...((s.boundElements as El[] | null) ?? []), b] }
+  const shape = (type: "rectangle" | "ellipse" | "diamond", x: number, y: number, w: number, h: number, label?: string, more: El = {}, own?: string) => {
+    const s: El = { id: own ?? id(type[0]), type, ...common(x, y, w, h, { ...(type === "rectangle" ? { roundness: { type: 3 } } : {}), ...more }) }
     els.push(s)
     if (label) {
-      const t = text(x, y, label, 16, { containerId: s.id, textAlign: "center", verticalAlign: "middle" })
+      const t = text(x, y, label, 16, { containerId: s.id, textAlign: "center", verticalAlign: "middle", strokeColor: s.backgroundColor !== "transparent" ? INK : s.strokeColor })
       Object.assign(t, { x: r1(x + w / 2 - (t.width as number) / 2), y: r1(y + h / 2 - (t.height as number) / 2) })
-      s.boundElements = [{ id: t.id, type: "text" }]
+      bind(s, { id: t.id, type: "text" })
       els.push(t)
     }
+    return s
   }
-  const linear = (type: "line" | "arrow", pts: [number, number][], more: El = {}) => {
+  const linear = (type: "line" | "arrow", pts: [number, number][], more: El = {}, own?: string) => {
     const [x0, y0] = pts[0], rel = pts.map(([x, y]) => [r1(x - x0), r1(y - y0)]), xs = rel.map((p) => p[0]), ys = rel.map((p) => p[1])
-    els.push({ id: id(type[0]), type, ...common(x0, y0, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), more), points: rel, lastCommittedPoint: null,
-      startBinding: null, endBinding: null, startArrowhead: null, endArrowhead: type === "arrow" ? "arrow" : null })
+    const e: El = { id: own ?? id(type[0]), type, startBinding: null, endBinding: null, ...common(x0, y0, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), more),
+      points: rel, lastCommittedPoint: null, startArrowhead: null, endArrowhead: type === "arrow" ? "arrow" : null }
+    els.push(e)
+    return e
   }
   // (cards side by side, a row, in the order drawn)
   let cx = 0
@@ -365,8 +630,10 @@ export function toExcalidraw(marks: Mark[], opts: { tint?: string; places?: Reco
     if (m.type === "paper") {
       const top = m.title ? 36 : 0
       if (m.title) els.push(text(cx, 0, m.title, 24))
-      shape("rectangle", cx, top, m.w, m.h, undefined, { strokeColor: "#ced4da", backgroundColor: "#ffffff", roughness: 0, roundness: { type: 3 } })
-      for (const it of m.items) paperEl(it, cx, top)
+      shape("rectangle", cx, top, m.w, m.h, undefined, { strokeColor: "#ced4da", backgroundColor: "#ffffff", roughness: 0 })
+      const items = m.items.filter(live), made = new Map<string, El>()
+      // (shapes first, so an arrow binds to what's drawn)
+      for (const it of [...items.filter((i) => i.type !== "line" && i.type !== "arrow"), ...items.filter((i) => i.type === "line" || i.type === "arrow")]) paperEl(it, items, cx, top, made)
       cx += m.w + GAP
     } else if (m.type === "sticky") {
       shape("rectangle", cx, 0, 220, 160, undefined, { backgroundColor: "#ffec99", strokeColor: "#f08c00" })
@@ -377,30 +644,64 @@ export function toExcalidraw(marks: Mark[], opts: { tint?: string; places?: Reco
       els.push(t)
       cx += (t.width as number) + GAP
     } else if (m.type === "write") {
-      const t = text(cx, 0, m.text, m.size === "l" ? 32 : m.size === "s" ? 16 : 22, { strokeColor: stroke })
+      const t = text(cx, 0, m.text, m.size === "l" ? 32 : m.size === "s" ? 16 : 22, { strokeColor: tint })
       els.push(t)
       cx += (t.width as number) + GAP
+    } else if (m.type === "image" || m.type === "video") {
+      const f = m.id ? opts.files?.[m.id] : undefined, px = f?.px ?? m.px ?? [16, 10], k = Math.min(1, 480 / px[0], 360 / px[1]), w = Math.round(px[0] * k), h = Math.round(px[1] * k)
+      const link = /^https?:/i.test(m.src) ? m.src : m.url && !m.url.startsWith("api/companion/media/") ? m.src : null
+      if (m.type === "image" && f) {
+        const fileId = `f${hash16(f.dataURL)}`
+        files[fileId] = { mimeType: f.mime, id: fileId, dataURL: f.dataURL, created: 1 }
+        els.push({ id: id("i"), type: "image", ...common(cx, 0, w, h, { strokeColor: "transparent", roughness: 0 }), fileId, status: "saved", scale: [1, 1], link })
+      } else {
+        const s = shape("rectangle", cx, 0, Math.max(w, 240), Math.max(h, 120), `${m.type === "video" ? "Video" : "Image"}: ${m.name ?? m.src}`, { strokeColor: tint, roughness: 0 })
+        s.link = link
+      }
+      if (m.caption) els.push(text(cx, Math.max(h, m.type === "video" || !f ? 120 : 0) + 10, m.caption, 16))
+      cx += Math.max(w, f && m.type === "image" ? 0 : 240) + GAP
     }
   }
-  function paperEl(it: PaperItem, ox: number, oy: number) {
+  function paperEl(it: PaperItem, items: PaperItem[], ox: number, oy: number, made: Map<string, El>) {
     const p = (q: [number, number]): [number, number] => [ox + q[0], oy + q[1]]
+    const stroke = strokeOf(it.color), bg = fillOf(it.fill), own = it.id && !made.has(it.id) ? it.id : undefined
+    const keep = (e: El) => { if (it.id) made.set(it.id, e); return e }
     if (it.type === "line" || it.type === "arrow") {
-      linear(it.type, [p(it.from), p(it.to)], { strokeColor: stroke })
-      if (it.label) els.push(text(ox + (it.from[0] + it.to[0]) / 2, oy + (it.from[1] + it.to[1]) / 2 - 22, it.label, 16))
-    } else if (it.type === "rect" || it.type === "ellipse") shape(it.type === "rect" ? "rectangle" : "ellipse", ox + it.x, oy + it.y, it.w, it.h, it.label, { strokeColor: stroke })
-    else if (it.type === "path") linear("line", it.points.map(p), { strokeColor: stroke })
-    else if (it.type === "text") els.push(text(ox + it.x, oy + it.y, it.text, it.size === "l" ? 28 : it.size === "s" ? 14 : 18))
-    else if (it.type === "chart") {
+      const ends = [it.from, it.to].map((e) => (typeof e === "string" ? made.get(e) : undefined))
+      const pts = [p(edgeOf(it.from, it.to, items)), p(edgeOf(it.to, it.from, items))]
+      const e = linear(it.type, pts, { strokeColor: stroke,
+        ...(ends[0] ? { startBinding: { elementId: ends[0].id, focus: 0, gap: 6 } } : {}), ...(ends[1] ? { endBinding: { elementId: ends[1].id, focus: 0, gap: 6 } } : {}) }, own)
+      for (const s of ends) if (s) bind(s, { id: e.id, type: "arrow" })
+      keep(e)
+      if (it.label) {
+        const t = text((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2 - 10, it.label, 16, { containerId: e.id, textAlign: "center", verticalAlign: "middle" })
+        bind(e, { id: t.id, type: "text" }); els.push(t)
+      }
+    } else if (it.type === "rect" || it.type === "ellipse" || it.type === "diamond") keep(shape(it.type === "rect" ? "rectangle" : it.type, ox + it.x, oy + it.y, it.w, it.h, it.label, { strokeColor: stroke, backgroundColor: bg }, own))
+    else if (it.type === "path") keep(linear("line", it.points.map(p), { strokeColor: stroke }, own))
+    else if (it.type === "text") keep(els[els.push(text(ox + it.x, oy + it.y, it.text, it.size === "l" ? 28 : it.size === "s" ? 14 : 18, { strokeColor: it.color ? stroke : INK, ...(own ? { id: own } : {}) })) - 1])
+    else if (it.type === "svg") {
+      // (its paths as lines, fitted into its box as the screen draws them; one grouped, so it moves as one)
+      const fit = svgFit(it), group = id("g")
+      it.paths.forEach((sp) => {
+        for (const sub of flatten(sp.d)) {
+          const pts = sub.pts.map(([x, y]) => p([it.x + fit.ox + (x - fit.vx) * fit.k, it.y + fit.oy + (y - fit.vy) * fit.k]))
+          const f = fillOf(sp.fill ?? it.fill)
+          linear("line", pts, { strokeColor: sp.color === "none" ? "transparent" : strokeOf(sp.color ?? it.color), backgroundColor: sub.closed ? f : "transparent",
+            strokeWidth: Math.max(1, Math.min(4, sp.width ?? 2)), roughness: it.style === "sketch" ? 1 : 0, groupIds: [group], roundness: null })
+        }
+      })
+    } else if (it.type === "chart") {
       const top = Math.max(...it.values, 0), low = Math.min(...it.values, 0), span = top - low || 1, step = it.w / it.values.length
       const yOf = (v: number) => oy + it.y + it.h - ((v - low) / span) * it.h
-      if (it.kind === "bar") it.values.forEach((v, i) => shape("rectangle", ox + it.x + i * step + step * 0.15, Math.min(yOf(v), yOf(0)), step * 0.7, Math.abs(yOf(v) - yOf(0)), undefined, { strokeColor: stroke, backgroundColor: stroke, fillStyle: "hachure" }))
+      if (it.kind === "bar") it.values.forEach((v, i) => shape("rectangle", ox + it.x + i * step + step * 0.15, Math.min(yOf(v), yOf(0)), step * 0.7, Math.abs(yOf(v) - yOf(0)), undefined, { strokeColor: stroke, backgroundColor: stroke, fillStyle: "hachure", roundness: null }))
       else linear("line", it.values.map((v, i): [number, number] => [ox + it.x + i * step + step / 2, yOf(v)]), { strokeColor: stroke })
       it.labels?.forEach((l, i) => els.push(text(ox + it.x + i * step + 2, oy + it.y + it.h + 4, l, 12)))
     }
   }
   if (opts.all) {
     // (the marks on the screen, under the cards, where they were: their places as the overlay found them)
-    const below = 260
+    const below = 260, stroke = tint
     for (const m of marks) {
       const r = "at" in m && m.at ? rectOf(m.at, opts.places) : null
       const o = (q: Rect): Rect => ({ ...q, y: q.y + below })
@@ -412,7 +713,7 @@ export function toExcalidraw(marks: Mark[], opts: { tint?: string; places?: Reco
       if (!r || CARDS.has(m.type)) continue
       const q = o(r)
       if (m.type === "ring") shape("ellipse", q.x - 10, q.y - 10, q.w + 20, q.h + 20, undefined, { strokeColor: stroke })
-      else if (m.type === "frame" || m.type === "spotlight") shape("rectangle", q.x - 6, q.y - 6, q.w + 12, q.h + 12, undefined, { strokeColor: stroke })
+      else if (m.type === "frame" || m.type === "spotlight") shape("rectangle", q.x - 6, q.y - 6, q.w + 12, q.h + 12, undefined, { strokeColor: stroke, roundness: null })
       else if (m.type === "underline") linear("line", [[q.x, q.y + q.h + 4], [q.x + q.w, q.y + q.h + 4]], { strokeColor: stroke })
       else if (m.type === "strike") linear("line", [[q.x, q.y + q.h / 2], [q.x + q.w, q.y + q.h / 2]], { strokeColor: stroke })
       else if (m.type === "num") shape("ellipse", q.x - 14, q.y - 14, 28, 28, String(m.n), { strokeColor: stroke })
@@ -421,6 +722,26 @@ export function toExcalidraw(marks: Mark[], opts: { tint?: string; places?: Reco
     }
   }
   if (!els.length) return null
-  return { type: "excalidraw", version: 2, source: "vaultite", elements: els, appState: { viewBackgroundColor: "#ffffff", gridSize: null }, files: {} }
+  return { type: "excalidraw", version: 2, source: "vaultite", elements: els, appState: { viewBackgroundColor: "#ffffff", gridSize: null }, files }
+}
+const hash16 = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i += Math.max(1, s.length >> 12)) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(16) + s.length.toString(16) }
+
+/** Where an svg item's paths go in its box: their viewBox (else their own bounds) fitted in, centred. */
+export function svgFit(it: Extract<PaperItem, { type: "svg" }>) {
+  const vb = it.viewBox ?? boundsOf(it.paths.flatMap((p) => { try { return flatten(p.d) } catch { return [] } })) ?? [0, 0, it.w, it.h]
+  const [vx, vy, vw, vh] = [vb[0], vb[1], Math.max(vb[2], 1e-6), Math.max(vb[3], 1e-6)], k = Math.min(it.w / vw, it.h / vh)
+  return { vx, vy, k, ox: (it.w - vw * k) / 2, oy: (it.h - vh * k) / 2 }
+}
+/** A line's end on a pad: its point, or where it leaves its shape (box, ellipse or diamond) toward the other end. */
+export function edgeOf(e: End, other: End, items: PaperItem[], gap = 6): [number, number] {
+  if (Array.isArray(e)) return e
+  const s = items.find((i) => i.id === e)
+  if (!s) return [0, 0]
+  const b = itemBox(s, items), c = { x: b.x + b.w / 2, y: b.y + b.h / 2 }, [tx, ty] = endPoint(other, items), dx = tx - c.x, dy = ty - c.y
+  if (!dx && !dy) return [c.x, c.y]
+  const rx = b.w / 2 + gap, ry = b.h / 2 + gap
+  const k = s.type === "ellipse" ? 1 / Math.hypot(dx / rx, dy / ry) : s.type === "diamond" ? 1 / (Math.abs(dx) / rx + Math.abs(dy) / ry)
+    : Math.min(dx ? rx / Math.abs(dx) : Infinity, dy ? ry / Math.abs(dy) : Infinity)
+  return [c.x + dx * Math.min(1, k), c.y + dy * Math.min(1, k)]
 }
 const r1 = (v: number) => Math.round(v * 10) / 10

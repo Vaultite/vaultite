@@ -171,6 +171,14 @@ export class Text {
   }
 }
 
+/** A route's answer as a file of this machine, sent as /api/raw sends one: by its type, in ranges (a video seeks), never
+ *  read whole. The route checks it may be read. */
+export class FileAnswer {
+  path: string
+  type: string
+  constructor(path: string, type: string) { this.path = path; this.type = type }
+}
+
 /** An answer with a status other than 200: `return reply(201, item)`. */
 export class Reply {
   status: number

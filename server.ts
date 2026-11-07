@@ -16,6 +16,7 @@ import { promisify } from "node:util"
 import zlib from "node:zlib"
 import { fromThisMachine, hostName, originHost, overNetwork, tailnetNames } from "./core/owner.ts"
 import type { App } from "./core/app.ts"
+import type { FileAnswer as Answered } from "./core/plugins.ts"
 import type { Live as LiveType } from "./core/live.ts"
 import type { Vault } from "./core/vault.ts"
 
@@ -47,7 +48,7 @@ const { isHeic, jpegOf } = await import("./core/heic.ts")
 const { thumbOf } = await import("./core/thumbs.ts")
 const { tooBig } = await import("./core/filetypes.ts")
 const { runsCode } = await import("./core/opening.ts")
-const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
+const { contentType, enabled, FileAnswer, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, iCloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
 const { answers, claim, reclaim, servingKey } = await import("./core/serving.ts")
@@ -297,13 +298,17 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
     st = fs.statSync(jpeg)
     type = "image/jpeg"
   }
-  const ext = path.extname(rel).toLowerCase()
+  sendFile(req, res, abs, st, type, { thumb, name: path.basename(rel), download: !!query.download, pdf: path.extname(rel).toLowerCase() === ".pdf" })
+}
+
+/** A file's bytes as the answer: its type, in the range asked (a video seeks), streamed. */
+function sendFile(req: http.IncomingMessage, res: http.ServerResponse, abs: string, st: fs.Stats, type: string, o: { thumb?: boolean; name: string; download?: boolean; pdf?: boolean }) {
   const headers: Record<string, string> = {
-    "Content-Type": type, "Cache-Control": thumb ? "private, max-age=31536000, immutable" : "no-cache", "Accept-Ranges": "bytes",
+    "Content-Type": type, "Cache-Control": o.thumb ? "private, max-age=31536000, immutable" : "no-cache", "Accept-Ranges": "bytes",
     "X-Content-Type-Options": "nosniff", "Last-Modified": st.mtime.toUTCString(),
   }
-  if (ext !== ".pdf") headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"
-  headers["Content-Disposition"] = `${query.download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(path.basename(rel))}`
+  if (!o.pdf) headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"
+  headers["Content-Disposition"] = `${o.download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(o.name)}`
   let start = 0, end = st.size - 1, status = 200
   const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ""))
   if (range && (range[1] || range[2])) {
@@ -320,6 +325,13 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
   res.writeHead(status, headers)
   if (req.method === "HEAD" || st.size === 0) return res.end()
   fs.createReadStream(abs, { start, end }).on("error", () => res.destroy()).pipe(res)
+}
+/** A route's FileAnswer sent, or a 404 when it's gone. */
+function sendAnswered(req: http.IncomingMessage, res: http.ServerResponse, f: Answered) {
+  let st: fs.Stats
+  try { st = fs.statSync(f.path) } catch { return json(res, { error: "not found" }, 404) }
+  if (!st.isFile()) return json(res, { error: "not found" }, 404)
+  sendFile(req, res, f.path, st, f.type, { name: path.basename(f.path) })
 }
 
 // Other names this server is reached by (a reverse proxy's own domain), besides its addresses, localhost and its own names.
@@ -469,6 +481,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   const out = await app.run(method, parts, query, body, req)
   if (out.status >= 400) failures.set(req, String((out.body as { error?: unknown } | null)?.error ?? ""))
   if (out.body instanceof Text) return send(res, out.status, out.body.text, out.body.type, out.body.headers)
+  if (out.body instanceof FileAnswer) return sendAnswered(req, res, out.body)
   return send(res, out.status, jsonOf(out.body), "application/json")
 }
 
