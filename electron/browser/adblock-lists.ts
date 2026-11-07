@@ -3,6 +3,7 @@
 import { parentPort, workerData } from "node:worker_threads"
 import fs from "node:fs"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { ElectronBlocker } from "@ghostery/adblocker-electron"
 
 const UBO = "https://ublockorigin.github.io/uAssetsCDN"
@@ -13,8 +14,10 @@ const LISTS = [
   ["filters/unbreak.min.txt"], ["thirdparties/easylist.txt"], ["thirdparties/easyprivacy.txt"],
 ].map(([p]) => [`${UBO}/${p}`, `${UBO_ALT}/${p}`])
   .concat([["https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext"]])
-const RESOURCES = ["https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/resources.json",
-  "https://cdn.jsdelivr.net/gh/ghostery/adblocker@master/packages/adblocker/assets/ublock-origin/resources.json"]
+/** The scriptlets (code run in pages) at the engine's own release, not a moving branch. */
+const TAG = `v${(createRequire(import.meta.url)("@ghostery/adblocker-electron/package.json") as { version: string }).version}`
+const RESOURCES = [`https://raw.githubusercontent.com/ghostery/adblocker/${TAG}/packages/adblocker/assets/ublock-origin/resources.json`,
+  `https://cdn.jsdelivr.net/gh/ghostery/adblocker@${TAG}/packages/adblocker/assets/ublock-origin/resources.json`]
 /** What uBlock's `!#if` lines ask, as uBlock in Chromium answers. */
 const ENV: [string, boolean][] = [["env_chromium", true], ["ext_ublock", true], ["cap_user_stylesheet", true]]
 

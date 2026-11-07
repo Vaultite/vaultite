@@ -31,7 +31,7 @@ if (built < Math.max(newest(path.join(ROOT, "web")), newest(path.join(ROOT, "plu
   const r = spawnSync("npm", ["run", "build"], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" })
   if (r.status) process.exit(r.status)
 }
-// npm may skip install scripts (allowScripts), and Electron's downloads its binary: fetch it when it's missing.
+// npm runs no install scripts (.npmrc), and Electron's downloads its binary: fetch it when it's missing.
 if (!fs.existsSync(path.join(ROOT, "node_modules", "electron", "path.txt"))) {
   const r = spawnSync(process.execPath, [path.join(ROOT, "node_modules", "electron", "install.js")], { cwd: ROOT, stdio: "inherit" })
   if (r.status) process.exit(r.status)

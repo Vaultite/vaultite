@@ -8,6 +8,7 @@ that keep it simple (written for AI agents, and they work for people too).
 
 ```sh
 npm ci
+npm run prepare    # its git hooks (.npmrc runs no scripts at install)
 npm run build
 node bin/vau sandbox /tmp/vaultite-dev    # the sample vault, dated as of today (examples/vault + core/sandbox.ts)
 VAULTITE_VAULT=/tmp/vaultite-dev VAULTITE_LOCAL=/tmp/vaultite-local PORT=8799 npm start

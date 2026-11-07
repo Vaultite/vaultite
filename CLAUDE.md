@@ -29,6 +29,8 @@ the main writers. Served on a private network (a tailnet), no accounts.
   imports name the `.ts` file. Files in `core/` that the web imports use no Node.
 - `core/` is the server, `web/src/core/` the app's core; several file names exist on both sides, so say which.
 - The packaged app ships only `dependencies`, which vault plugins bundle against: keep backend deps few.
+- npm runs no install scripts and takes only versions a week old (`.npmrc`): a dep that needs a script (a native build)
+  gets its own step (`npm rebuild <name>`); an urgent security fix, `--min-release-age=0`. Pin new deps exactly.
 
 ## UI
 Read `web/CLAUDE.md` first. UI text: sentence case, no emojis, no all caps.

@@ -22,7 +22,7 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       version: ${{ steps.plan.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,11 +52,12 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 26
           cache: npm
+      - run: npm ci
       - name: Signing identity and notary profile, in a keychain of the run's own
         env:
           CERT: ${{ secrets.MAC_CERT_P12 }}
@@ -87,7 +88,6 @@ jobs:
             --issuer "$NOTARY_ISSUER" --keychain "$kc"
           rm "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary.p8"
           echo "VAULTITE_NOTARY_KEYCHAIN=$kc" >> "$GITHUB_ENV"
-      - run: npm ci
       - run: npx playwright-core install chromium
       - if: env.STABLE != 'true'
         run: npm pkg set version=${{ needs.plan.outputs.version }}
@@ -95,7 +95,7 @@ jobs:
       - run: npm run ${{ env.STABLE == 'true' && 'release' || 'release:nightly' }}
       # (its update list names only its zip: kept under its arch, for publish to merge with the other's)
       - run: for f in dist-app/*-mac.yml; do mv "$f" "${f%.yml}.${{ matrix.arch }}.yml"; done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mac-${{ matrix.arch }}
           if-no-files-found: error
@@ -114,8 +114,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 26
           cache: npm
@@ -131,7 +131,7 @@ jobs:
       - if: env.STABLE != 'true'
         run: npm pkg set version=${{ needs.plan.outputs.version }}
       - run: npm run ${{ env.STABLE == 'true' && 'release:linux' || 'release:linux:nightly' }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-${{ runner.arch }}
           if-no-files-found: error
@@ -154,8 +154,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 26
           cache: npm
@@ -188,7 +188,7 @@ jobs:
           arch=$(echo "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')
           for f in dist-app/latest.yml dist-app/nightly.yml; do [ -f "$f" ] && mv "$f" "${f%.yml}.$arch.yml"; done
           ls dist-app
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-${{ runner.arch }}
           if-no-files-found: error
@@ -202,11 +202,11 @@ jobs:
     needs: [plan, mac, linux, windows]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 26
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: out
           merge-multiple: true
@@ -236,7 +236,7 @@ jobs:
         run: |
           if [ "$STABLE" = true ]; then dir=""; else dir="nightly/"; fi
           for f in out/*-mac.zip out/*-mac.zip.blockmap out/*.AppImage out/*.deb out/*-Setup-*.exe out/*-Setup-*.exe.blockmap out/*.yml; do
-            npx -y wrangler@4 r2 object put "vaultite-updates/$dir$(basename "$f")" --file "$f" --remote
+            npx -y wrangler@4.156.0 r2 object put "vaultite-updates/$dir$(basename "$f")" --file "$f" --remote
           done
           node tools/check_feed.ts "https://vaultite.com/updates/$dir" out
           node tools/prune_feed.ts "$dir"
