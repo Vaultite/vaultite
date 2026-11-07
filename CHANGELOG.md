@@ -6,6 +6,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.11.0 (2026-11-07)
+
+The companion walks you through a screen in step with its voice, its marks landing on what it names; it remembers
+your talk for the hour and shows it in the Conversations panel, and runs its jobs on your always-on machine. Also glass
+bundles and live sites in the web demo, Zen's floating card back, versions iCloud kept out of sight shown in the note,
+faster agent browsing, and videos and notes embedded in callouts.
+
 - **The companion's frames fit what they name**: over Vaultite it knows the window's regions (the sidebar's panels, panes,
   the status bar), so a frame round one is exact; frames side by side keep a hairline apart, and each label is a small
   tag snug at its frame, never on another. Its answer box is never cut off by a screen's edge, shows only its name, and
@@ -116,9 +123,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The Conversations panel shows your talk with the companion**: Talk, beside a note's Comments, is today's asks and
   its answers as a chat, newest at the bottom and coming in live, with the jobs it started, a line to ask it, and its
   page a click away. A note with comments opens on them, any other on the talk.
-- **The companion remembers the talk**: a fresh session of its Talk key (after a pause, a restart, or once its context
-  grows) is told the talk so far from its log, with what it did (what it opened, the jobs it started), instead of the
-  last few lines of the last ten minutes. Small talk the realtime voice answered shows on the Companion page too.
 - **Agents at work in terminals no longer keep the app busy**: the whole window no longer draws again every 2 s while
   one prints, and a terminal tab not shown wakes no frames; switching tabs and opening menus do less work too.
 - **The companion acts where you are**: asked over another app, it's told you're there, not in the note Vaultite shows
