@@ -103,8 +103,9 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 @keyframes sd-pop { from { opacity: 0; scale: .85; } to { opacity: 1; scale: 1; } }
 .sd-fade { opacity: 0; animation: sd-fade .35s ease-out var(--delay, 0ms) forwards; }
 @keyframes sd-fade { to { opacity: 1; } }
-.sd-bob-down { animation: sd-bob-y 1.2s ease-in-out infinite; } .sd-bob-up { animation: sd-bob-y 1.2s ease-in-out infinite reverse; }
-.sd-bob-right { animation: sd-bob-x 1.2s ease-in-out infinite; } .sd-bob-left { animation: sd-bob-x 1.2s ease-in-out infinite reverse; }
+/* (a scroll's arrow nudges a few times, then rests: nothing on screen moves for long on its own) */
+.sd-bob-down { animation: sd-bob-y 1.2s ease-in-out 5; } .sd-bob-up { animation: sd-bob-y 1.2s ease-in-out 5 reverse; }
+.sd-bob-right { animation: sd-bob-x 1.2s ease-in-out 5; } .sd-bob-left { animation: sd-bob-x 1.2s ease-in-out 5 reverse; }
 @keyframes sd-bob-y { 50% { translate: 0 6px; } } @keyframes sd-bob-x { 50% { translate: 6px 0; } }
 .sd-pill { height: 24px; padding: 0 11px; border-radius: 8px; background: var(--tint); color: white; font-size: 13px; font-weight: 600; line-height: 24px; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   box-shadow: 0 0 0 1px color-mix(in srgb, white 55%, transparent), 0 4px 14px color-mix(in srgb, var(--tint) 30%, rgba(0,0,0,.22)); transform-origin: center; }

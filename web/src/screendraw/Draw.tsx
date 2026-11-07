@@ -345,7 +345,8 @@ function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act:
 }
 
 /** A picture or a video by the cursor (or where it was put): a picture opens full size when pressed; a video plays
- *  muted, looped, pressed it's heard, and its bar scrubs. One that can't load says so. */
+ *  muted a few times round, then rests (its bar plays it again), pressed it's heard, and its bar scrubs. One that can't
+ *  load (in 15 s) says so. */
 function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx: CardCtx }) {
   const [state, setState] = useState<"loading" | "ok" | "failed">("loading"), v = useRef<HTMLVideoElement>(null)
   const [muted, setMuted] = useState(true), [playing, setPlaying] = useState(true), [at, setAt] = useState(0), [dur, setDur] = useState(0)
@@ -358,9 +359,14 @@ function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx
     const e = v.current
     if (!e) return
     if (e.readyState >= 1) loaded(e)
-    const id = setInterval(() => { if (e.readyState >= 1) { loaded(e); clearInterval(id) } else if (e.error) { setState("failed"); clearInterval(id) } }, 250)
+    const t0 = Date.now(), id = setInterval(() => {
+      if (e.readyState >= 1) { loaded(e); clearInterval(id) } else if (e.error || Date.now() - t0 > LOAD_MS) { setState("failed"); clearInterval(id) }
+    }, 250)
     return () => clearInterval(id)
   }, [m.url])
+  // (a picture that never comes: no shimmer left running)
+  useEffect(() => { if (m.type !== "image" || state !== "loading") return; const t = setTimeout(() => setState((s) => (s === "loading" ? "failed" : s)), LOAD_MS); return () => clearTimeout(t) }, [m.type, m.url, state])
+  const rounds = useRef(0)
   return (
     <div data-mark={m.type} data-state={failed ? "failed" : state} data-over={m.over ? "" : undefined} className={`sd-card sd-media ${m.over ? "sd-over" : "sd-pop"}`} style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
       <div className="sd-media-box relative" style={{ height: h }}>
@@ -369,12 +375,13 @@ function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx
             ? <img src={m.url} alt={m.caption ?? name ?? ""} draggable={false} className={`size-full ${m.over ? "object-fill" : "cursor-zoom-in object-contain"}`}
               onLoad={(e) => { setState("ok"); ctx.natural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight]) }} onError={() => setState("failed")} onClick={() => { if (!m.over) ctx.open(m) }} />
             : <>
-              <video ref={v} src={m.url} muted={muted} loop autoPlay playsInline className="size-full cursor-pointer object-contain"
+              <video ref={v} src={m.url} muted={muted} autoPlay playsInline className="size-full cursor-pointer object-contain"
+                onEnded={(e) => { if (++rounds.current < ROUNDS) void e.currentTarget.play() }}
                 onLoadedMetadata={(e) => loaded(e.currentTarget)}
                 onTimeUpdate={(e) => { setAt(e.currentTarget.currentTime); if (!dur && Number.isFinite(e.currentTarget.duration)) setDur(e.currentTarget.duration) }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setState("failed")}
                 onClick={() => setMuted((x) => !x)} />
               <div data-nodrag className="sd-media-bar">
-                <button type="button" aria-label={playing ? "Pause" : "Play"} onClick={() => { const e = v.current; if (e) void (e.paused ? e.play() : e.pause()) }}>{playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}</button>
+                <button type="button" aria-label={playing ? "Pause" : "Play"} onClick={() => { const e = v.current; if (e) { rounds.current = 0; void (e.paused ? e.play() : e.pause()) } }}>{playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}</button>
                 <input type="range" aria-label="Scrub" min={0} max={dur || 1} step={0.05} value={at} onChange={(e) => { const x = Number(e.target.value); setAt(x); if (v.current) v.current.currentTime = x }} />
                 <button type="button" aria-label={muted ? "Unmute" : "Mute"} onClick={() => setMuted((x) => !x)}>{muted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}</button>
               </div>
@@ -385,6 +392,9 @@ function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx
     </div>
   )
 }
+
+/** How long a card's picture or video may take to come; how many times a video plays round before it rests. */
+const LOAD_MS = 15_000, ROUNDS = 3
 
 /** A picture full size over the screen: pressed anywhere, it goes. */
 function Lightbox({ m, close, grab }: { m: Media; close: () => void; grab: (on: boolean) => void }) {

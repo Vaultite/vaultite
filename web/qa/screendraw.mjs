@@ -330,7 +330,7 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
   const lost = await page.evaluate(() => document.querySelector("[data-card=lost] [role=alert]")?.textContent)
   check("picture: in the corner it was put, on screen, at most 40% of the display, its caption below", shot.length === 1 && Math.abs(shot[0].x + shot[0].w - (W - 24)) < 2 && Math.abs(shot[0].y - (25 + 24)) < 2 &&
     shot[0].w <= W * 0.4 + 1 && onScreen(shot[0]), shot)
-  check("video: by the cursor (the default), playing muted and looped, on screen", clip.length === 1 && onScreen(clip[0]) && Math.hypot(clip[0].x + clip[0].w / 2 - 640, clip[0].y + clip[0].h / 2 - 500) < 520 && v.muted && v.loop && v.playing, { clip, v })
+  check("video: by the cursor (the default), playing muted (a few times round, then it rests), on screen", clip.length === 1 && onScreen(clip[0]) && Math.hypot(clip[0].x + clip[0].w / 2 - 640, clip[0].y + clip[0].h / 2 - 500) < 520 && v.muted && !v.loop && v.playing, { clip, v })
   check("a picture that can't load says so, never a blank card", lost === "Couldn't load missing.png", lost)
   await page.click("[data-mark=video] video")
   check("video: pressed, it's heard", await page.evaluate(() => !document.querySelector("[data-mark=video] video").muted))
