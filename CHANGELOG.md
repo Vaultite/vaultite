@@ -9,6 +9,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Agents you type to can close a job on your word**: "close it" typed to a terminal agent now closes a job ready for
   review (read from that agent's own conversation, not words another agent typed into it), and a refusal says why. A
   job the companion hands off long after your last ask no longer carries that ask.
+- **Jobs that landed their change close by themselves**: a job whose commit is on main is done, not left ready for
+  review; a job follows its conversation resumed in any terminal (another account's, a pinned tab's), so ending that
+  closes it, and one whose terminal is gone counts as ended. Pinned agent tabs keep their account.
 - **Messages sent while Claude works stay where you sent them**: in a chat, what you send mid-turn is read back from
   its transcript in its place, instead of falling to the bottom or going missing once the chat reloads.
 - **The notch island is calm, the menu bar menu short**: at rest the island is one still count of the agents working,

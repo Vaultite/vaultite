@@ -434,7 +434,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onVaultChange(fn)`
 - `op(id, params?)`: Run an operation of the API (core/ops.ts: `POST /api/ops/<id>`): its result.
 - `opcodes`
-- `openAgent(name, opts?)`: Open agent `name` in a terminal tab, new or `resume` (a session id, in the tab that has it).
+- `openAgent(name, opts?)`: Open agent `name` in a terminal tab, new or `resume` (a session id, in the tab that has it, its account's id with `profile`).
 - `openAround(r)`: Open the closed <details> a range is in, so what was found shows.
 - `openAt(path, anchor, opts?)`: Open a file at a heading ("Heading", "Parent#Child") or a block ("^id"); no anchor: just open it.
 - `OpenCanvas`

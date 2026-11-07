@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react"
 import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, op, openView, parseTerminal, type Agent, type AgentPhase, type Dot } from "@vaultite"
+import { resumeTerminalId } from "../../../core/terminalids.ts"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading the terminal: the lazy view
 // registers itself here while it's mounted.
@@ -274,15 +275,16 @@ export const getSessions = () => now
 /** The session with this id, as the server said last (null: not known yet). */
 export const sessionById = (id: string) => now.list?.find((s) => s.id === id) ?? null
 
-/** What a pin of terminal `id` keeps: its agent's conversation as a resume (resume-<agent>-<session>, then @<machine>),
- *  when the agent has conversations (a session view) and says which one it's in; null for a shell. */
+/** What a pin of terminal `id` keeps: its agent's conversation as a resume (resume-<agent>[_<account>]-<session>, then
+ *  @<machine>), when the agent has conversations (a session view) and says which one it's in; null for a shell. */
 export function pinOfTerminal(id: string): string | null {
   const s = sessionById(id), t = parseTerminal(id)
   const a = s ? agentIn(s) : agentOfTerminal(id)
   const session = s?.session ?? t?.resume
   if (!a?.session || !session) return null
   const machine = s?.machine ?? t?.machine
-  return `resume-${a.name}-${session}${machine ? `@${machine}` : ""}`
+  // (its account kept: a job watches the id with it, and another account's resume is another terminal)
+  return `${resumeTerminalId(a.name, session, t?.agent === a.name ? t.profile : null)}${machine ? `@${machine}` : ""}`
 }
 
 /** The terminal already running the conversation resume id `id` names (not itself): opened there, it isn't resumed

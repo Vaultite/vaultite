@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, endEvent, HANDED, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
+import { cardOf, choiceIn, commitsIn, endEvent, HANDED, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
@@ -38,7 +38,9 @@ export type Seen = { running: boolean; state?: string; kind?: string; msg?: stri
   /** How its terminal ended, when it did and that's known. */
   exit?: { code: number; signal: number; lost?: boolean }
   /** How full its agent's context is (its last request's tokens, its window), when asked and its agent says. */
-  context?: { tokens: number; window: number } }
+  context?: { tokens: number; window: number }
+  /** Whether a commit its words name (or its branch) is on its repo's main since base: it landed its change itself. */
+  onMain?: boolean }
 
 const KEEP = 40, KEEP_DAYS = 7
 /** How long after the user's ask the companion's handoff is still its answer (its words and place go with it). */
@@ -56,6 +58,17 @@ export async function diffSince(cwd: string, base: string) {
   const m = /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/.exec(stat)
   const n = fresh.split("\n").filter(Boolean).length, c = Number(commits.trim()) || 0
   return [m ? `${m[1]} file${m[1] === "1" ? "" : "s"} changed, +${m[2] ?? 0} -${m[3] ?? 0}` : "", n ? `${n} new file${n > 1 ? "s" : ""}` : "", c ? `${c} commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ")
+}
+/** Whether a commit `text` names, or branch `branch`, came after `base` and is on `cwd`'s remote main: a job that landed
+ *  its own change (pushing from a worktree moves the checkout's origin/main too). */
+export async function onMainSince(cwd: string, base: string, text: string, branch = "") {
+  const ok = (args: string[]) => new Promise<boolean>((r) => execFile("git", args, { cwd, timeout: 5000, env: gitEnv() }, (e) => r(!e)))
+  const main = (await ok(["rev-parse", "--verify", "-q", "origin/main"])) ? "origin/main" : (await ok(["rev-parse", "--verify", "-q", "origin/master"])) ? "origin/master" : ""
+  if (!main || !base) return false
+  for (const h of [...commitsIn(text), ...(branch ? [branch] : [])]) {
+    if (await ok(["merge-base", "--is-ancestor", h, main]) && !(await ok(["merge-base", "--is-ancestor", h, base]))) return true
+  }
+  return false
 }
 const NOT_THEIRS = "only on the user's own words: answer it while answering their ask (Talk key) or their message to you that names the choice (made after it began waiting), with said quoting them; else ask them which"
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
@@ -199,7 +212,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** Its terminal here as it is: running (else how it ended), its state, title, and with `turn` its last turn (its
    *  `session`'s, which outlives the terminal) and the diff since `base`. */
-  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string; context?: boolean } = {}): Promise<Seen> {
+  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string; branch?: string; said?: string; context?: boolean } = {}): Promise<Seen> {
     const running = await plugin.ask<boolean>("terminal:runs", false, id)
     const st = await plugin.ask<{ state?: string; kind?: string; msg?: string } | null>("terminal:state", null, id)
     const info = running ? await plugin.ask<{ title?: string; typed?: number } | null>("terminal:info", null, id) : null
@@ -219,7 +232,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       ...(o.turn ? { turn: turn ? { text: str(turn.text), files: turn.files ?? [], at: turn.at ?? 0, final: turn.final !== false && !!turn.text, ...(turn.session ? { session: turn.session } : {}),
         ...(turn.prompt ? { prompt: turn.prompt } : {}), ...(turn.background ? { background: turn.background } : {}) } : null } : {}),
       // (a coding job's changes are in its worktree once it made one, else wherever it worked)
-      ...(o.turn && o.cwd && o.base ? { diff: await diffSince(o.tree && fs.existsSync(o.tree) ? o.tree : o.cwd, o.base) } : {}) }
+      ...(o.turn && o.cwd && o.base ? { diff: await diffSince(o.tree && fs.existsSync(o.tree) ? o.tree : o.cwd, o.base) } : {}),
+      ...(o.cwd && o.base && (o.turn || o.said) ? { onMain: await onMainSince(o.cwd, o.base, [turn?.text, o.said].filter(Boolean).join("\n"), o.branch) } : {}) }
   }
   /** The prompt terminal `id` is blocked on (`st`): a permission (one its screen shows: its words and choices), else its
    *  one question with its options; a question in several parts or picks has no choices (answered in its terminal). */
@@ -234,9 +248,11 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const shown = await plugin.ask<{ says: string; choices: string[] } | null>("terminal:ask", null, id).catch(() => null)
     return { kind: "permission", question: st.msg || shown?.says || "Asks permission", choices: shown?.choices ?? ["Approve", "Deny"] }
   }
-  /** Job `j`'s worker read where it runs; `turn`: its last turn too, `diff`: and its changes. */
+  /** Job `j`'s worker read where it runs; `turn`: its last turn too, `diff`: and its changes, and whether it's on main. */
   const seenOf = (j: Job, turn = false, diff = turn) => {
-    const o = { ...(turn ? { turn, ...(j.session ? { session: j.session } : {}) } : {}), ...(diff ? { cwd: j.where.cwd, ...(j.where.base ? { base: j.where.base } : {}), ...(j.where.tree ? { tree: j.where.tree } : {}) } : {}) }
+    const said = [j.result?.text, j.last?.text].filter(Boolean).join("\n").slice(0, 8000)
+    const o = { ...(turn ? { turn, ...(j.session ? { session: j.session } : {}) } : {}), ...(diff ? { cwd: j.where.cwd, ...(j.where.base ? { base: j.where.base } : {}), ...(j.where.tree ? { tree: j.where.tree } : {}),
+      ...(j.where.branch ? { branch: j.where.branch } : {}), ...(said ? { said } : {}) } : {}) }
     return j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, ...o }, 10) as Promise<Seen> : seenHere(j.terminal, o)
   }
 
@@ -282,6 +298,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
         if (since === undefined) { resting.set(j.id, Date.now()); setTimeout(() => void refresh(j), HOLD + 100).unref?.() }
         else if (Date.now() - since >= HOLD) moved = await finish(j)
       } else if (j.state === "done") moved = await tidy(j, s)
+      if (j.state === "ready for review" && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) moved = await shippedSince(j) || moved
       if (moved || waited || j.now !== was || j.last?.at !== said) changed()
     } finally {
       busy.delete(j.id)
@@ -315,7 +332,18 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const r = resultOf(j, s)
     j.result = r.result
     heard(j, s)
-    return move(j, landed(j, r.text) ? "landed" : r.changes ? "changed" : "answered")
+    return move(j, landed(j, r.text) || shipped(j, s, r.text) ? "landed" : r.changes ? "changed" : "answered")
+  }
+  /** Whether job `j` landed its own change (`s` read with its diff, `text` its words): a commit it names, or its branch,
+   *  on main since it began, else its words saying so when they name none. Never one merging what they kept (landed). */
+  const shipped = (j: Job, s: Seen, text: string) => !!j.where.repo && !(j.land && j.land.at === undefined) && (s.onMain === true || (!commitsIn(text).length && landedSaid(text)))
+  /** When each job ready for review was last looked for on main (its change landed by itself, or by anyone later). */
+  const shipRead = new Map<string, number>()
+  const SHIP_READ = 5 * 60_000
+  async function shippedSince(j: Job) {
+    shipRead.set(j.id, Date.now())
+    const s = await seenOf(j, false, true).catch(() => null)
+    return !!s && shipped(j, s, [j.result?.text, j.last?.text].filter(Boolean).join("\n")) && move(j, "landed")
   }
   /** Its turn over while it merged what they kept (`text`: its words): whether it says it merged, read once. */
   function landed(j: Job, text: string) {
@@ -335,7 +363,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     heard(j, r)
     // (a terminal ended on purpose, End session or vau terminal end, reads as a SIGHUP)
     const crashed = !!x && (!!x.lost || x.code !== 0 || (x.signal !== 0 && x.signal !== 1))
-    if (landed(j, done.text)) move(j, "landed")
+    if (landed(j, done.text) || shipped(j, r, done.text)) move(j, "landed")
     else move(j, endEvent({ text: !!done.text.trim(), final: !!r.turn?.final && !!done.text, changes: done.changes, crashed }))
     resumable(j)
     return true
@@ -403,17 +431,22 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
 
   // Its terminal here tells its changes (its hooks, OSC 7501, its end); one on another machine is asked now and then.
+  // (its own gone, it follows any terminal resuming its conversation: another account's id, a pin's)
   plugin.onEvent({ types: ["terminal.state", "terminal.ended"] }, (ev) => {
-    const j = all().find((x) => !x.where.machine && x.terminal === str(ev.id))
-    if (j) void refresh(j).catch((e) => console.error("companion: jobs:", e))
+    const id = str(ev.id), t = parseTerminal(id)
+    const j = all().find((x) => !x.where.machine && x.terminal === id)
+      ?? (t?.resume && !t.machine ? all().find((x) => !x.where.machine && x.exited && x.state !== "stopped" && x.session === t.resume && x.where.agent.split("_")[0] === t.agent) : undefined)
+    if (!j) return
+    if (j.terminal !== id) { j.terminal = id; delete j.exited; delete j.closed }
+    void refresh(j).catch((e) => console.error("companion: jobs:", e))
   })
   let ticks = 0
   const timer = setInterval(() => {
     ticks++
     for (const j of all()) {
       const recent = Date.now() - j.at < 6 * 3600_000
-      // (one done whose terminal runs: looked at for tidy)
-      const later = (j.where.machine && j.state !== "stopped" && recent) || (j.state === "done" && !j.exited)
+      // (one done whose terminal runs: looked at for tidy; one ready for review: its terminal gone is its end, its change on main)
+      const later = (j.where.machine && j.state !== "stopped" && recent) || (j.state === "done" && !j.exited) || (j.state === "ready for review" && recent)
       if (live(j.state) ? (j.where.machine || ticks % 2 === 0) : later && ticks % 10 === 0) void refresh(j).catch(() => {})
     }
   }, 3000)
@@ -789,9 +822,10 @@ in one short line, merge it or close it as it is (each a button).
     params: { id: { type: "string", required: true, description: "its terminal's id" }, turn: { type: "boolean", description: "its last turn and the diff too" },
       session: { type: "string", description: "its agent's session (its turn read from it, the terminal ended or not)" },
       cwd: { type: "string", description: "its folder (the diff's)" }, base: { type: "string", description: "the commit the diff counts from" },
-      tree: { type: "string", description: "its own worktree: the diff's once it exists" }, context: { type: "boolean", description: "how full its agent's context is too" } },
+      tree: { type: "string", description: "its own worktree: the diff's once it exists" }, branch: { type: "string", description: "its own branch (whether it's on main)" },
+      said: { type: "string", description: "its words (whether a commit they name is on main)" }, context: { type: "boolean", description: "how full its agent's context is too" } },
     args: ["id"],
-    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base), tree: str(p.tree), context: p.context === true }),
+    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base), tree: str(p.tree), branch: str(p.branch), said: str(p.said), context: p.context === true }),
   })
 
   /** Jobs the user opened: no longer news. */

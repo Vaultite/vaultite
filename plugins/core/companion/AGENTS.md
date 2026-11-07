@@ -170,7 +170,8 @@ above that), act, run it again, and never end your turn.
   working, needs you, ready for review (a coding job's end: its diff and a preview's link), done, failed or stopped. A
   coding job works in its own git worktree and branch beside the checkout it was asked over (`<repo>-<job id>`, branch
   `job-<job id>`; `companion job` names it), never editing or switching that checkout (on the always-on machine it's the
-  live server's); its change reaches main only by Keep and merge, landed from that worktree, which is then removed. The
+  live server's); its change reaches main only by Keep and merge, landed from that worktree, which is then removed (one
+  told to land it itself is done once a commit it names, or its branch, is on main). The
   menu bar lists them, and opening one opens its terminal, where the user can type. Nothing ships, deploys or goes out
   unless they say so. A done job's terminal closes by itself after two minutes (not while it's on their screen, they
   typed in it, or it runs something in the background); the job stays with its result, and opening it (`companion

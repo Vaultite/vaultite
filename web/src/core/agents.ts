@@ -68,11 +68,11 @@ export async function resolvePlace(agent: string | null, asked: { machine?: stri
   return { machine: machine ?? "", profile: asked.profile ?? (agent ? h.accounts?.[agent] ?? "" : ""), instead }
 }
 
-/** Open agent `name` in a terminal tab, new or `resume` (a session id, in the tab that has it). `machine`: on another
- *  machine ("": this one); `profile`: in one of its accounts; either left out: the workspace's default (resolvePlace). */
+/** Open agent `name` in a terminal tab, new or `resume` (a session id, in the tab that has it, its account's id with
+ *  `profile`). `machine`: on another machine ("": this one); either left out: the workspace's default (resolvePlace). */
 export async function openAgent(name: string, opts: { resume?: string; split?: boolean; newTab?: boolean; machine?: string | null; profile?: string | null } = {}) {
   if (opts.resume) {
-    const to = `terminal/${onMachine(resumeTerminalId(name, opts.resume), opts.machine)}`
+    const to = `terminal/${onMachine(resumeTerminalId(name, opts.resume, opts.profile), opts.machine)}`
     return openView(to, { newTab: opts.newTab ?? !isViewOpen(to), split: opts.split })
   }
   const asked = performance.now(), { machine, profile, instead } = await resolvePlace(name, opts)

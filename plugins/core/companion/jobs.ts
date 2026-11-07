@@ -14,8 +14,8 @@ export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
   starting: { working: "working", asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
   working: { asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
   "needs you": { working: "working", told: "working", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
-  // (reviewed: closing it, or its terminal ending, is done; a steer or the user typing in it goes on)
-  "ready for review": { working: "working", told: "working", asks: "needs you", ended: "done", stop: "done" },
+  // (reviewed: closing it, its terminal ending, or its change found on main, is done; a steer or the user typing in it goes on)
+  "ready for review": { working: "working", told: "working", asks: "needs you", ended: "done", landed: "done", stop: "done" },
   done: { working: "working", told: "working", asks: "needs you" },
   failed: { working: "working", told: "working" },
   stopped: {},
@@ -40,6 +40,19 @@ export function mergedSaid(text: string): boolean | null {
   const t = text.replace(/^[\s*_#>`]+/, "").toLowerCase()
   if (/^(?:not merged|couldn'?t merge|didn'?t merge|can'?t merge)\b/.test(t)) return false
   return /^merged\b/.test(t) ? true : null
+}
+/** The commits a worker's message names ("pushed to main as 98b7fcde"), at most 8. */
+export const commitsIn = (text: string) => [...new Set(text.match(/(?<![\w/.-])[0-9a-f]{7,40}(?![\w/-]|\.\w)/g) ?? [])].filter((h) => /[a-f]/.test(h) && /\d/.test(h)).slice(0, 8)
+/** Whether a worker's message says it landed its change on main itself ("Merged:", "pushed to main", "it's on main"),
+ *  a sentence that only might ("not pushed to main", "once it's on main") left out. */
+export function landedSaid(text: string): boolean {
+  if (mergedSaid(text)) return true
+  return text.split(/\n|(?<=[.!?;])\s+/).some((line) => {
+    const l = line.replace(/[*_`#>]+/g, "").trim()
+    if (/^(?:[-•]\s*)?merged:/i.test(l)) return true
+    const m = /\b(?:merged|pushed|landed|squashed)\b(?:\s+\S+){0,4}?\s+(?:to|on|onto|into)\s+(?:origin\/)?(?:main|master)\b|\b(?:is|are|it's|now)\s+(?:live\s+)?on\s+(?:origin\/)?(?:main|master)\b/i.exec(l)
+    return !!m && !/\b(?:not|never|no|won't|isn't|aren't|wasn't|didn't|can't|couldn't|once|until|unless|if|when|after|before|would|will|should|to be)\b|n't\b/i.test(l.slice(0, m.index + m[0].length))
+  })
 }
 /** A job's terminal as every machine's list names it (`<id>@<machine>` when it runs on another). */
 export const terminalOf = (j: Pick<Job, "terminal" | "where">) => `${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`

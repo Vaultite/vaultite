@@ -25,6 +25,14 @@ export default async ($: VaultTest) => {
     check("jobs: nothing moves a stopped job; a reviewed one stopped is done", b.state === "stopped" && b.log.length === 2 && c.state === "done" && c.log.at(-1).ev === "stop", [b.log, c.log])
     check("jobs: a worker that ends while it works failed; one ready for review that ends is done",
       run(["working", "ended"]).state === "failed" && run(["working", "changed", "ended"]).state === "done" && run(["ended"]).state === "failed")
+    check("jobs: one that landed its own change is done, ready for review or still working",
+      run(["working", "changed", "landed"]).state === "done" && run(["working", "landed"]).state === "done")
+    const said = ["A job's proof is now a video, and it's pushed to main as 98b7fcde.", "It's on main as `08f5dfd`; the M1 picks it up.", "All three are done.\n\n- **Merged:** `c09009af feat: x` is on main.",
+      "Landed on main as c09009af. Now cleanup.", "Both fixes are on main as ff4071ef: CI passed."]
+    const unsaid = ["Committed as a8ef2daa on branch job-x, but **not pushed**: waiting for your Keep and merge.", "Once it's on main, the M1 picks it up.", "I didn't push to main.",
+      "The M1 takes it from main.", "Made the heading blue. Try http://localhost:5173."]
+    check("jobs: a worker's words saying it landed its change on main, never ones that only might", said.every(J.landedSaid) && !unsaid.some(J.landedSaid), [said.filter((t) => !J.landedSaid(t)), unsaid.filter(J.landedSaid)])
+    check("jobs: the commits a message names", J.commitsIn("pushed as 7493dcf6 (`c09009afa67159e`), see #12345678 and abcdefgh, deadbeef").join() === "7493dcf6,c09009afa67159e", J.commitsIn("pushed as 7493dcf6 (`c09009afa67159e`), see #12345678 and abcdefgh, deadbeef"))
     const E = (text: boolean, final: boolean, changes: boolean, crashed: boolean) => J.endEvent({ text, final, changes, crashed })
     check("jobs: a terminal ending after its worker left an answer is done (with changes, ready for review), mid-turn too unless it crashed; with nothing, failed",
       E(true, false, false, false) === "answered" && E(true, true, true, true) === "changed" && E(false, false, true, false) === "changed" &&
@@ -120,6 +128,20 @@ export default async ($: VaultTest) => {
   const g = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", ...a], { cwd: repo, stdio: "pipe", env: gitEnv() }).toString()
   g("init", "-q"); g("remote", "add", "origin", "git@github.com:lighthouse/site.git"); fs.writeFileSync(path.join(repo, "index.html"), "<h1>Hi</h1>\n"); g("add", "."); g("commit", "-qm", "first")
   const real = fs.realpathSync(repo)
+  {
+    // A job's own change on main: a commit its words name, or its branch, after its base; nothing before it, nothing unpushed.
+    const { onMainSince } = await import("../../../plugins/core/companion/workers.ts")
+    const base = g("rev-parse", "HEAD").trim()
+    fs.writeFileSync(path.join(repo, "a.txt"), "a\n"); g("add", "."); g("commit", "-qm", "landed"); const landed = g("rev-parse", "--short", "HEAD").trim()
+    g("update-ref", "refs/remotes/origin/main", "HEAD")
+    g("checkout", "-qb", "job-x"); fs.writeFileSync(path.join(repo, "b.txt"), "b\n"); g("add", "."); g("commit", "-qm", "unpushed"); const local = g("rev-parse", "--short", "HEAD").trim()
+    check("jobs: a job's change is on main when a commit it names (or its branch) is on origin/main after its base",
+      await onMainSince(repo, base, `Pushed as ${landed}.`) && !await onMainSince(repo, base, `Committed as ${local}, not pushed.`) && !await onMainSince(repo, base, `Based on ${base.slice(0, 8)}.`) &&
+      !await onMainSince(repo, base, "Done.", "job-x") && !await onMainSince(repo, landed, `Pushed as ${landed}.`), { landed, local })
+    g("update-ref", "refs/remotes/origin/main", "job-x")
+    check("jobs: its branch landed on main counts too", await onMainSince(repo, base, "Done.", "job-x"))
+    g("checkout", "-q", "-"); g("branch", "-qD", "job-x"); g("update-ref", "-d", "refs/remotes/origin/main"); g("reset", "-q", "--hard", base)
+  }
   {
     const gh = await W.resolveHere({ url: "https://github.com/lighthouse/site/issues/4" }, VAULT, [], roots)
     const note = await W.resolveHere({ path: "Notes/Plan.md", url: "http://localhost:1" }, VAULT, [], roots)
@@ -447,11 +469,20 @@ export default async ($: VaultTest) => {
       check("handoff --job on a closed job: its conversation resumed with the follow-up, renamed as asked",
         st2 === 200 && b2.state === "working" && b2.title === "Summary on Today" && b2.link === "view:terminal/resume-claude-sess-tidy" && resumed?.resume === "sess-tidy" &&
         resumed?.prompt === "Yes, add it" && !!(await waitFor(() => runs("resume-claude-sess-tidy"), 5000, 100)), [st2, b2, resumed])
+      // (its conversation resumed under another id, an account's or a pin's: the job follows that terminal, and its end)
+      await api("DELETE", "terminals/resume-claude-sess-tidy")
+      const rested = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r.exited && r }, 15000, 200)
+      await api("POST", "terminals/resume-claude_personal-sess-tidy")
+      const followed = await waitFor(async () => { const r = await job(b.id); return r.terminal === "resume-claude_personal-sess-tidy" && r.state === "working" && r }, 10000, 200)
+      await api("DELETE", "terminals/resume-claude_personal-sess-tidy")
+      const after = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r.terminal === "resume-claude-sess-tidy" && r }, 15000, 200)
+      check("jobs: its own terminal gone, it follows another terminal resuming its conversation (another account's id), and that one's end ends it",
+        !!rested && !!followed && !!after, [rested, followed, after])
     } finally {
       Wk.tidyAfter(120_000)
       Object.assign(cc, was)
       for (const k of Object.keys(cc)) if (!(k in was)) delete cc[k]
-      for (const id of [first, "resume-claude-sess-tidy"]) if (id) await api("DELETE", `terminals/${id}`).catch(() => {})
+      for (const id of [first, "resume-claude-sess-tidy", "resume-claude_personal-sess-tidy"]) if (id) await api("DELETE", `terminals/${id}`).catch(() => {})
       fs.rmSync(plain, { recursive: true, force: true })
     }
   }
