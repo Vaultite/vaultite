@@ -260,7 +260,8 @@ export default async ($: VaultTest) => {
     check("takeover: a plain button with nothing near it changed isn't called a failure", T.effectOf("click", { ok: true, before: plain, target: plain, near }, near)?.ok === true)
   }
 
-  {
+  // (Windows runs no script by its #! line, and has no Mac helpers to run)
+  if (process.platform !== "win32") {
     // The Mac helpers' line protocol (electron/linehelper.ts), with a stand-in helper: answers, events, a timeout, a death.
     const { lineHelper } = await import("../../../electron/linehelper.ts")
     const bin = path.join($.tmp, "line-helper")
