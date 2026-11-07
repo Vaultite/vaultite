@@ -22,6 +22,11 @@ anchors:                     # optional, written by tour-save: what tells a targ
 - While a step is up its marks follow their things (a scroll, a moved window), hiding while one is off screen.
 - A target off screen: "scroll down a bit", and the step plays once it shows. One not found: the model plays that
   step (an ask for it), and the tour goes on. A new ask, Esc, or `companion tour --stop` stops it.
+- `(before: <png>)` on a step: a picture of its first target before a change (a vault path, or a file here that
+  tour-save copies in), laid over the thing and flipped with how it is now while its words are said: a job's proof.
+- A job's proof: `vau companion tour-save "<the change: the blue save button>" --job <id> --text '...'` keeps it in
+  `Guides/Proofs/` (`job:` in its frontmatter). Once the job is ready it knocks "Ready to show you the blue save button";
+  "show me" plays it (`companion job-show <id>`), then asks Keep or Still broken.
 - `vau companion tour <note> [--mode show|guide|do] [--wait]` plays one; `companion tour-save "<title>"` saves the last
   answer on screen as one ("save that as a tour"), or `--text` the steps given, to `Guides/<title>.md`.
 

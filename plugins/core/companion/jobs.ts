@@ -62,11 +62,9 @@ export type Job = {
   log: Transition[]
 }
 
-/** Job `j` after event `ev` (at `t`): the move, logged with it, or null when it doesn't move. */
-/** Whether a job now `state` is a notification (job_news): needing them or failed; every end when spoken; none off. */
-export const jobTold = (state: string, news: unknown) => news === "off" ? false
-  : state === "needs you" || state === "failed" || (news === "spoken" && (state === "ready for review" || state === "done"))
-/** What its voice says when job `j` moves to news (needs you, ready for review, done, failed), else "". */
+/** Whether a job now `state` is a notification (job_news): needing them or failed (one ready knocks: proofs.ts). */
+export const jobTold = (state: string, news: unknown) => news !== "off" && (state === "needs you" || state === "failed")
+/** What its voice says when job `j` moves to news (needs you, failed; ready and done knock instead), else "". */
 export function jobSpoken(j: Pick<Job, "title" | "state">, from: string) {
   if (from === j.state) return ""
   // (its first words, not ending on "on the": said aloud, it reads as cut)
@@ -78,6 +76,7 @@ export function jobSpoken(j: Pick<Job, "title" | "state">, from: string) {
     : j.state === "done" && from !== "ready for review" ? `${job} is done.` : j.state === "failed" ? `${job} failed.` : ""
 }
 
+/** Job `j` after event `ev` (at `t`): the move, logged with it, or null when it doesn't move. */
 export function step(j: Job, ev: JobEvent, t = Date.now()): Transition | null {
   const to = JOB_NEXT[j.state][ev]
   if (!to || to === j.state) return null
@@ -190,13 +189,18 @@ function askLines(m: Moment | undefined) {
   ].filter(Boolean) : []
   return asked
 }
+/** How a worker shows its change working (its proof), when the change shows on screen: what Show me plays. */
+export function proofTask(id: string) {
+  return `If your change shows on screen, show it working rather than say so: before you end, save a short tour of it (what Show me plays for them when you're ready): vau companion tour-save "<the change in a few words, as a noun: the blue save button>" --job ${id} --text '<steps>'. A step is a numbered line: one short sentence said aloud, with a tag on the thing as their screen shows it, by its words there ([ring "Save"], [point "Jobs"], [frame "Settings"]); two to four steps. Add (before: <a png>) to a step to flip a picture of that thing before your change over it as it is now: take it before you change anything (a headless screenshot of just that element, or vau screen shot cropped to it with sips), of the thing alone. It plays on Vaultite's own window (its UI, a note) and finds things by their words, so name what shows once your change is there. Nothing to show on screen (research, a backend change): skip it.`
+}
 /** What a worker is told: the task, the ask it came from (its words, where, what was under the pointer, the screen's
- *  picture then), and how to end: changes are the user's to review, nothing outward without their word. */
-export function jobTask(task: string, m: Moment | undefined, coding: boolean, moved?: { from: string; on: string }) {
+ *  picture then), how to end (changes are the user's to review, nothing outward without their word), and its proof. */
+export function jobTask(task: string, m: Moment | undefined, coding: boolean, moved?: { from: string; on: string }, id?: string) {
   const asked = askLines(m)
   return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
     moved ? `They asked over ${moved.from}. You run on ${moved.on} instead, from its checkout of that repo: work in a new git worktree of it at that commit (fetch it first if need be), never switching that checkout's own branch (it may be a live server's), and try your change in ${moved.on}'s own preview (its dev server or Tailscale Serve), not theirs. In your result, give its link and say it's on ${moved.on}.` : "",
-    `You're a job they handed off, in a terminal of Vaultite they can open and type in. ${coding ? "Change the code freely, but don't push, merge, deploy, publish, post or message anyone unless they say so: it ends in their review. End" : "End"} with a few lines: what you found or did, the files you changed, and how to try it (a preview's link if there is one).`]
+    `You're a job they handed off, in a terminal of Vaultite they can open and type in. ${coding ? "Change the code freely, but don't push, merge, deploy, publish, post or message anyone unless they say so: it ends in their review. End" : "End"} with a few lines: what you found or did, the files you changed, and how to try it (a preview's link if there is one).`,
+    id ? proofTask(id) : ""]
     .filter(Boolean).join("\n\n")
 }
 
@@ -233,7 +237,7 @@ export function jobsText(jobs: Job[], now = Date.now()) {
 /** The recent jobs a summoned ask is told of, so it can steer one, stop it, or say how it's going. */
 export function jobsLine(jobs: Job[], now = Date.now()) {
   const recent = jobs.filter((j) => live(j.state) || (now - j.at < 6 * 3600_000 && j.state !== "stopped")).slice(0, 4)
-  return recent.length ? `Your jobs (to tell one more or correct it: handoff with its job; to stop one: job-stop; how one goes: job; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
+  return recent.length ? `Your jobs (to tell one more or correct it: handoff with its job; to stop one: job-stop; how one goes: job; to show them one that's ready, on their screen: job-show; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
     `${j.id} "${cut(j.title, 60)}" (${j.state}${j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)})`).join(", ")}.` : ""
 }
 

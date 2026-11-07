@@ -1,5 +1,8 @@
 // Tours, anchors and waits on the server (companion tour, tour-save, anchor, wait) over a screen plugin.ts lends:
 // Vaultite's window, or the app an ask was over through the Mac's helper. The rules are tour.ts', anchor.ts', condition.ts'.
+import fs from "node:fs"
+import os from "node:os"
+import nodePath from "node:path"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { joinPath, Kind, parseText, safeName } from "../../../core/vault.ts"
 import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type Where } from "./anchor.ts"
@@ -16,8 +19,9 @@ export type Screen = {
   /** A ui model check, once (`before`: a snapshot to compare with, for changed). */
   holds: (c: Check, before?: string) => Promise<boolean>
   snapshot: () => Promise<string>
-  /** Say a step's words with its marks at the places found. */
-  show: (said: string, marks: { kind: string; at: Seen | null; to?: Seen | null; label?: string; n?: number; dir?: string }[]) => Promise<void>
+  /** Say a step's words with its marks at the places found; `before`: a picture of its first target before a change,
+   *  laid over it and flipped with how it is now. */
+  show: (said: string, marks: { kind: string; at: Seen | null; to?: Seen | null; label?: string; n?: number; dir?: string }[], before?: string) => Promise<void>
   /** Draw a shown step's marks again where their things are now, unsaid (null: off screen); none: they stay put. */
   follow?: (marks: Parameters<Screen["show"]>[1]) => Promise<void>
   say: (text: string) => Promise<void>
@@ -46,8 +50,8 @@ export function toursOf(plugin: Plugin, o: {
   // (tours beside guides: type: tour notes in Guides/, read whole when played)
   plugin.kind(new Kind({
     type: "tour", collection: "tours", folder: "Guides", label: "Tours",
-    parse: (fm, body, stem) => { const [t, problems] = parseTour(fm, body, stem); return [{ title: t.title, app: t.app, site: t.site, steps: t.steps.length, ...(fm.anchors ? { anchors: fm.anchors } : {}), body }, problems] },
-    render: (t) => [{ app: (t.app as string[] | undefined)?.length ? t.app : null, site: (t.site as string[] | undefined)?.length ? t.site : null }, String(t.body ?? "")],
+    parse: (fm, body, stem) => { const [t, problems] = parseTour(fm, body, stem); return [{ title: t.title, app: t.app, site: t.site, steps: t.steps.length, ...(fm.anchors ? { anchors: fm.anchors } : {}), ...(t.job ? { job: t.job } : {}), body }, problems] },
+    render: (t) => [{ ...(t.job ? { job: t.job } : {}), app: (t.app as string[] | undefined)?.length ? t.app : null, site: (t.site as string[] | undefined)?.length ? t.site : null }, String(t.body ?? "")],
     filename: (t, at) => joinPath(at.folder, safeName(String(t.title || "Tour"))),
   }))
   const playing = new Map<string, { title: string; mode: Mode; ctl: AbortController; done: Promise<Result>; step: number }>()
@@ -106,7 +110,7 @@ export function toursOf(plugin: Plugin, o: {
       show: async (step, at) => {
         const p = playing.get(name)
         if (p) p.step = step.n
-        await s.show(step.said, marksOf(step, at))
+        await s.show(step.said, marksOf(step, at), step.before)
       },
       ...(s.follow ? { follow: (step: Step, at: (Aim | null)[]) => s.follow!(marksOf(step, at)) } : {}),
       say: (text) => s.say(text),
@@ -148,6 +152,18 @@ export function toursOf(plugin: Plugin, o: {
     const [tour, problems] = parseTour(fm, body, title)
     if (problems.length) throw new OpError(`${at}: ${problems.join("; ")}`)
     return { tour: /^(?:.*\/)?SKILL\.md$/i.test(at) ? { ...tour, title: body.match(/^#\s+(.+)$/m)?.[1]?.trim() || tour.title } : tour, path: at }
+  }
+  type Row = { id: string; title: string; body: string; app?: string[]; site?: string[]; anchors?: unknown; job?: string }
+  const rows = () => plugin.vault.shared("tours") as unknown as readonly Row[]
+  /** A tour as its note reads, or its problems. */
+  const parsed = (t: Row) => parseTour(t as unknown as Record<string, unknown>, t.body, t.title)
+  /** Job `id`'s proof: the newest tour saying it's that job's, its path, and its problems (none: it plays). */
+  const proofOf = (id: string) => {
+    const when = (x: Row) => fs.statSync(plugin.vault.abs(x.id), { throwIfNoEntry: false })?.mtimeMs ?? 0
+    const t = rows().filter((x) => x.job === id).sort((a, b) => when(b) - when(a))[0]
+    if (!t) return null
+    const [tour, problems] = parsed(t)
+    return { path: /\.md$/i.test(t.id) ? t.id : `${t.id}.md`, tour, problems }
   }
   const resultText = (t: string, r: Result) => {
     const lines = r.steps.map((s) => `  ${s.n}. ${s.how}${s.waited ? ` (waited ${Math.round(s.waited.ms / 100) / 10} s: ${s.waited.why}${s.waited.by ? `, ${s.waited.by}` : ""})` : ""}${s.why ? `: ${s.why}` : ""}`)
@@ -213,6 +229,7 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
       text: { type: "string", description: "its steps (else your last answer)" },
       app: { type: "string", description: "the app it's for (a bundle id; vaultite for the app itself)" },
       site: { type: "string", description: "the site it's for (a host)" },
+      job: { type: "string", description: "the job it's the proof of (its id, as its prompt gives it): saved in Guides/Proofs, it's what Show me plays once the job is ready" },
       as: { type: "string", description: "the agent (another than the companion)" },
     },
     args: ["title"],
@@ -230,11 +247,23 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
       const app = typeof p.app === "string" && p.app.trim() ? [p.app.trim()] : null, site = typeof p.site === "string" && p.site.trim() ? [p.site.trim().toLowerCase()] : null
       tour = { ...tour, ...(app ? { app } : {}), ...(site ? { site } : {}), ...(!app && !site && !tour.app.length && !tour.site.length && last ? { app: last.ctx.app ? [last.ctx.app] : [], site: last.ctx.site ? [last.ctx.site] : [] } : {}) }
       if (!tour.steps.length) throw new OpError("nothing to save: no steps")
-      const path = `Guides/${title}.md`
-      await ctx.api("PUT", "file", { path, text: tourText(tour) })
-      return { path, steps: tour.steps.length }
+      const job = typeof p.job === "string" ? p.job.trim() : ""
+      if (job && !/^[\w-]{1,40}$/.test(job)) throw new OpError(`job: a job's id (j3k9x2a), not ${job}`)
+      const path = job ? `Guides/Proofs/${title}.md` : `Guides/${title}.md`
+      // (a before picture outside the vault comes into it, beside its proof: it plays wherever the vault is)
+      const steps = await Promise.all(tour.steps.map(async (st) => {
+        if (!st.before || !nodePath.isAbsolute(st.before.replace(/^~(?=\/)/, os.homedir()))) return st
+        const from = st.before.replace(/^~(?=\/)/, os.homedir()), ext = nodePath.extname(from).toLowerCase()
+        if (!/^\.(png|jpe?g|gif|webp|heic)$/.test(ext) || !fs.existsSync(from)) throw new OpError(`step ${st.n}: before: ${st.before} isn't a picture here (png, jpg, gif, webp)`)
+        const rel = `Guides/Proofs/${title}/before ${st.n}${ext}`
+        await ctx.api("POST", "folder", { path: `Guides/Proofs/${title}` }).catch(() => {})
+        await ctx.api("POST", "upload", { path: rel, bytes: fs.createReadStream(from) })
+        return { ...st, before: rel }
+      }))
+      await ctx.api("PUT", "file", { path, text: tourText({ ...tour, steps, ...(job ? { job } : {}) }) })
+      return { path, steps: tour.steps.length, ...(job ? { job } : {}) }
     },
-    text: (r) => `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`,
+    text: (r) => r.job ? `Saved ${r.path} (${r.steps} steps), the proof of ${r.job}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`,
   })
 
   plugin.op({
@@ -305,6 +334,9 @@ scroll, a move or a relabel; gone, it says so. Kept ones (k1, k2: what you point
     /** An answer on screen ended: kept for tour-save. */
     answered: (name: string, text: string, ctx: Parameters<typeof tourFromAnswer>[2] & {}) => { if (/\[\s*[a-z]+[\s\]]/i.test(text)) lastAnswer.set(name, { text, ctx }) },
     playing: (name: string) => playing.get(name) ?? null,
+    proofOf,
+    /** Play `tour` (a proof) for `name` on screen `s` straight through: how it went. */
+    show: (name: string, s: Screen, tour: Tour) => start(name, s, tour, "show"),
     escapedAt: () => escaped,
   }
 }

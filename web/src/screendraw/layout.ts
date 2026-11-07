@@ -212,7 +212,8 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
     if (!CARDS.has(m.type)) continue
     const size = m.type === "image" || m.type === "video" ? mediaSize(m, here.width, here.height - (here.top ?? 0), m.id ? naturals[m.id] : undefined) : cardSize(m, measure)
     const area = "at" in m && m.at && "area" in m.at ? m.at.area : null
-    if (p.box && !p.box.w && !p.box.h) p.card = clampInto({ x: p.box.x, y: p.box.y, ...size }, bounds)
+    if (p.box && (m.type === "image" || m.type === "video") && m.over && p.box.w && p.box.h) p.card = { ...p.box }
+    else if (p.box && !p.box.w && !p.box.h) p.card = clampInto({ x: p.box.x, y: p.box.y, ...size }, bounds)
     // (beside what it's about, never over it)
     else if (p.box) p.card = labelAt(p.box, size, bounds, [...taken, ...avoid.filter((x) => x !== p.box)], 12)
     else if (area && area !== "cursor") {

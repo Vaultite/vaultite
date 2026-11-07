@@ -69,6 +69,11 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
   background: var(--background); color: var(--foreground); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 18%, transparent), 0 2px 6px rgba(0,0,0,.22); }
 .sd-shell:hover > .sd-x, .sd-x:focus-visible { opacity: 1; }
 .sd-media { overflow: hidden; }
+/* a before picture over the thing as it is now: no lift, a quick fade in and out as it flips, its caption a tab */
+.sd-card.sd-over { position: relative; overflow: visible; background: transparent; border-radius: 4px; box-shadow: 0 0 0 2px var(--tint); animation: sd-in .18s ease-out both; }
+.sd-over .sd-media-box { background: transparent; overflow: hidden; border-radius: 4px; }
+.sd-over-tab { position: absolute; bottom: calc(100% + 5px); left: -2px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 20px; white-space: nowrap; color: white; background: var(--tint); pointer-events: none; }
+@keyframes sd-in { from { opacity: 0; } to { opacity: 1; } }
 .sd-media-box { background: color-mix(in srgb, var(--foreground) 6%, var(--background)); }
 .sd-media-box img, .sd-media-box video { display: block; }
 .sd-media-wait { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--foreground) 8%, transparent) 50%, transparent 70%) 0 0 / 200% 100%; animation: sd-shimmer 1.2s linear infinite; }

@@ -118,7 +118,7 @@ export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = fal
         {shown.map((p) => <g key={p.i} className={`sd-move ${pastOf(p) ?? ""}`} style={glide(p)}><Strokes p={geometry(p)} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} /></g>)}
       </svg>
       {shown.map((p) => <div key={p.mark.id ?? p.i} className={`${p.card ? "" : "sd-move absolute left-0 top-0"} ${pastOf(p) ?? ""}`} style={p.card ? undefined : glide(p)}><Parts p={p.card ? p : geometry(p)} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} card={p.card ? card(p) : undefined} seed={seed + p.i * 131} id={`sd${seed}-${p.mark.id ?? p.i}`} /></div>)}
-      {d.here.home && shown.length > 0 && !leaving && !d.hidden && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} grab={grab} slot={slot} who={named ? d.agent : undefined} />}
+      {d.here.home && shown.length > 0 && !leaving && !d.hidden && !shown.every((p) => isOver(p.mark)) && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} grab={grab} slot={slot} who={named ? d.agent : undefined} />}
       {full && <Lightbox m={full} close={() => setFull(null)} grab={grab} />}
     </div>
   )
@@ -148,6 +148,7 @@ function glide(p: Moved): React.CSSProperties {
 
 /** What Keep has something of. */
 const KEEPS = new Set<Mark["type"]>(["paper", "sticky", "list", "write", "image", "video"])
+const isOver = (m: Mark) => (m.type === "image" || m.type === "video") && !!m.over
 /** Cards where they were: a card keeps its spot while its `at` stays (a drawing changed, more marks, a new ask), so
  *  nothing jumps; one resized stays by its top left. */
 function steady(placed: Placed[], was: Map<string, { at: string; card: Rect }>, here: { width: number; height: number; top?: number }) {
@@ -226,6 +227,8 @@ function Parts({ p, delay, act, card, seed, id }: { p: Placed; delay: number; ac
     const r = p.box, at = r.w || r.h ? { x: r.x - 11, y: r.y - 11 } : { x: r.x - 13, y: r.y - 13 }
     return <div data-mark="num" className="sd-badge sd-pop absolute" style={{ left: at.x, top: at.y, ...pop(0) }}>{m.n}</div>
   }
+  // (a before picture over its thing: where it is, clicks passing through, nothing to drag or dismiss)
+  if (p.card && card && isOver(m)) return <div data-card={m.id ?? p.i} className="pointer-events-none absolute" style={{ left: p.card.x, top: p.card.y, width: p.card.w }}><Card p={p} delay={delay} act={act} ctx={card} seed={seed} id={id} /></div>
   if (p.card && card) return <Shell p={p} ctx={card}><Card p={p} delay={delay} act={act} ctx={card} seed={seed} id={id} /></Shell>
   if (!label || !p.label) return null
   // (once its mark is drawn: out of the side facing it, its words typed in)
@@ -346,7 +349,8 @@ function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act:
 function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx: CardCtx }) {
   const [state, setState] = useState<"loading" | "ok" | "failed">("loading"), v = useRef<HTMLVideoElement>(null)
   const [muted, setMuted] = useState(true), [playing, setPlaying] = useState(true), [at, setAt] = useState(0), [dur, setDur] = useState(0)
-  const h = c.h - (m.caption ? CAPTION_H : 0), name = m.name ?? m.src.split("/").pop()
+  // (laid over the thing: its whole box, its caption a tab inside it)
+  const h = c.h - (m.caption && !m.over ? CAPTION_H : 0), name = m.name ?? m.src.split("/").pop()
   const failed = state === "failed" || !m.url
   // (its size known: from the event, or from the element when that came before anyone heard it)
   const loaded = (e: HTMLVideoElement) => { setState("ok"); setDur(Number.isFinite(e.duration) ? e.duration : 0); if (e.videoWidth) ctx.natural([e.videoWidth, e.videoHeight]) }
@@ -358,12 +362,12 @@ function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx
     return () => clearInterval(id)
   }, [m.url])
   return (
-    <div data-mark={m.type} data-state={failed ? "failed" : state} className="sd-card sd-media sd-pop" style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
+    <div data-mark={m.type} data-state={failed ? "failed" : state} data-over={m.over ? "" : undefined} className={`sd-card sd-media ${m.over ? "sd-over" : "sd-pop"}`} style={{ width: c.w, padding: 0, "--delay": ms(delay) } as React.CSSProperties}>
       <div className="sd-media-box relative" style={{ height: h }}>
         {failed ? <div role="alert" className="sd-media-failed"><ImageOff className="size-5" strokeWidth={1.8} /><span>Couldn't load {name}</span></div>
           : m.type === "image"
-            ? <img src={m.url} alt={m.caption ?? name ?? ""} draggable={false} className="size-full cursor-zoom-in object-contain"
-              onLoad={(e) => { setState("ok"); ctx.natural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight]) }} onError={() => setState("failed")} onClick={() => ctx.open(m)} />
+            ? <img src={m.url} alt={m.caption ?? name ?? ""} draggable={false} className={`size-full ${m.over ? "object-fill" : "cursor-zoom-in object-contain"}`}
+              onLoad={(e) => { setState("ok"); ctx.natural([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight]) }} onError={() => setState("failed")} onClick={() => { if (!m.over) ctx.open(m) }} />
             : <>
               <video ref={v} src={m.url} muted={muted} loop autoPlay playsInline className="size-full cursor-pointer object-contain"
                 onLoadedMetadata={(e) => loaded(e.currentTarget)}
@@ -377,7 +381,7 @@ function MediaCard({ m, c, delay, ctx }: { m: Media; c: Rect; delay: number; ctx
             </>}
         {state === "loading" && !failed && <div className="sd-media-wait" />}
       </div>
-      {m.caption && <div className="sd-media-caption truncate">{m.caption}</div>}
+      {m.caption && (m.over ? <div className="sd-over-tab">{m.caption}</div> : <div className="sd-media-caption truncate">{m.caption}</div>)}
     </div>
   )
 }

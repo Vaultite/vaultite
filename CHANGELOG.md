@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Proof, not claims**: a job that's done knocks by the notch, "Ready to show you the blue save button". Say "show
+  me" and the companion plays its change on your screen, a picture of how it looked before flipped over how it is
+  now as it talks you through it; then Keep, or Still broken to record what's wrong and send it back to that job.
 - **Teach by showing**: say "watch me" and what it's for with the Talk key, do it while you talk, then "that's it":
   the companion keeps it as a draft tour (in Guides) or a skill an agent can run, each step found again by what it is
   even after the app changes. "Make what I just did a skill" works from the timeline's last minutes.

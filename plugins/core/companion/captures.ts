@@ -9,7 +9,7 @@ import { type Job, live, type Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import type { Found, Over } from "./where.ts"
 
-export type Capture = { kind: "recording" | "replay"; clip: string; ms: number; width: number; height: number; frames: { t: number; file: string }[]
+export type Capture = { kind: "recording" | "replay"; job?: string; clip: string; ms: number; width: number; height: number; frames: { t: number; file: string }[]
   narration: Narration[]; box: Rect; at: number; place: Record<string, unknown>; end?: Record<string, unknown> }
 type Jobs = { list: () => Job[]; begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: Record<string, unknown>) => Promise<Job>
   tell: (ctx: OpCtx, id: string, text: string) => Promise<void>; placeHere: (o: Over) => Promise<Found & { repo: string }> }
@@ -93,6 +93,7 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
       at: { type: "number", description: "when it began (ms since 1970)" },
       place: { type: "object", description: "what was there as it began (app, title, url, under)" },
       end: { type: "object", description: "what was under the pointer at its end" },
+      job: { type: "string", description: "the job it's for (Still broken after its proof), else the one on that surface" },
     },
     run: async (p, ctx) => {
       const c = p as unknown as Capture
@@ -106,7 +107,7 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
       const said = c.narration.map((n) => n.text).join(" ").trim()
       const over: Over = { url: str(c.place.url) || undefined, app: str(c.place.app) || undefined, title: str(c.place.title) || undefined, path: str(c.place.path) || undefined, under: str(c.place.under) || undefined }
       const found = await jobs.placeHere(over).catch(() => undefined)
-      const job = jobFor(jobs.list(), { url: over.url, found })
+      const job = (str(p.job) && jobs.list().find((j) => j.id === str(p.job))) || jobFor(jobs.list(), { url: over.url, found })
       // (on another machine, its vault's own path: iCloud brings the files there)
       const fileFor = async (machine: string) => {
         const m = machine ? await plugin.ask<Machine | null>("machines:machine", null, machine) : null
@@ -116,7 +117,9 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
       let went = "Saved here: no job was working on it and nothing was said to do.", to = `Saved in ${setting("captures_folder") || "the vault"}`, sent = ""
       try {
         if (job) {
-          await jobs.tell(ctx, job.id, captureText(c, saved, await fileFor(job.where.machine), false))
+          // (Still broken, after its proof: they watched it and it doesn't work yet)
+          const broken = str(p.job) === job.id ? "They watched your change shown on their screen and it's still broken. " : ""
+          await jobs.tell(ctx, job.id, `${broken}${captureText(c, saved, await fileFor(job.where.machine), false)}`)
           went = `Sent to the job "${job.title}" (${job.id}).`
           to = `Sent to ${job.title}`
           sent = job.id

@@ -18,7 +18,7 @@ import { type Call, callFrom, callSaid, type MicUser } from "./calllogic.ts"
 import { hideFromShares } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
 import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
-import { REAL as captureReal, captureHeard, captureHost, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
+import { REAL as captureReal, captureHeard, captureHost, recordFor, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
 import { islandNow, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence } from "./knockhelper.ts"
@@ -248,11 +248,14 @@ async function openJob(j: HelperJob) {
     await new Promise((r) => setTimeout(r, 500))
   }
 }
-/** A session by the notch opened: its terminal in Vaultite, or what its knock names. */
+/** A session by the notch opened: its terminal in Vaultite, or what its knock names; a job's ready knock shows its
+ *  change (its proof, companion job-show) over this Mac's displays. */
 async function openPresence(p: Presence) {
   if (!host) return
   host.openHome()
-  const go = () => (p.terminal ? op("terminal.open", { id: p.terminal }) : p.open ? op("ui.open", { path: p.open }) : Promise.resolve({}))
+  const job = p.open?.startsWith("job:") ? p.open.slice(4) : ""
+  const displays = screen.getAllDisplays().map((d) => d.bounds)
+  const go = () => (job ? op("companion.job-show", { id: job, displays }) : p.terminal ? op("terminal.open", { id: p.terminal }) : p.open ? op("ui.open", { path: p.open }) : Promise.resolve({}))
   // (a window just opening has no page to open it in yet)
   for (let i = 0; i < 20; i++) {
     if (await go().then(() => true, () => false)) return
@@ -392,6 +395,8 @@ const live = (() => {
       // (a companion's wait listening: clicks and typing, told to the server as they happen)
       else if (m.t === "inputs") return void screenAsk("inputs", { on: m.on === true }).catch(() => {})
       else if (m.t === "knocks") return knocksHeard(m)
+      // (Still broken, after a job's proof: what they show and say recorded, for that job)
+      else if (m.t === "record" && typeof m.job === "string") return void recordFor(m.job)
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
         for (const j of jobNews(state.jobs, jobs, prefs.jobNews)) jobNotice(j)

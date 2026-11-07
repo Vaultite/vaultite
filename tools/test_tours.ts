@@ -186,5 +186,35 @@ Some words before the steps.
   check("player: and stops following once its step ends", looked === after, { looked, after })
 }
 
+// ---------- Proofs: a job's change shown, its befores flipped, then Keep or Still broken
+{
+  const P = await import("../plugins/core/companion/proof.ts")
+  const [t, problems] = parseTour({ job: "j3k9x2a" }, `1. The save button is blue now [ring "Save"]. (before: "Guides/Proofs/The blue save button/before 1.png")\n2. And it says so in Jobs [point "Jobs"].`, "The blue save button")
+  check("proof: a step's before is its picture, its job the tour's; written back as read", !problems.length && t.job === "j3k9x2a" && t.steps[0].before === "Guides/Proofs/The blue save button/before 1.png" &&
+    t.steps[0].said === "The save button is blue now." && !t.steps[1].before && tourText(t).includes("job: j3k9x2a") &&
+    JSON.stringify(parseTour({ job: "j3k9x2a" }, tourText(t).split("---\n").pop()!, "x")[0].steps) === JSON.stringify(t.steps), [t, problems, tourText(t)])
+  check("proof: a before with nothing to lay it over is refused", /needs a tag/.test(parseTour({}, "1. It's blue now. (before: a.png)", "x")[1].join()))
+  const waits: number[] = [], screen2: Record<string, Aim> = { Save: { ok: true, at: { x: 1, y: 2, width: 80, height: 24 }, shown: true, how: "same" }, Jobs: { ok: true, at: { x: 5, y: 5, width: 40, height: 20 }, shown: true, how: "same" } }
+  const befores: (string | undefined)[] = []
+  await play(t, "show", { aim: async (a) => screen2[a.label] ?? { ok: false, why: "gone" }, show: async (s) => { befores.push(s.before) }, say: async () => {}, wait: async () => ({ met: true, why: "met", ms: 1 }),
+    act: async () => ({ ok: true }), fallback: async () => false, sleep: async (ms) => { waits.push(ms) } })
+  check("proof: a step with a before stays up for its flips (before, now, before, now), one without as its words take",
+    befores[0] === t.steps[0].before && befores[1] === undefined && waits[0] >= P.FLIPS.at(-1)![0] + 1000 && waits[1] < waits[0] && P.FLIPS.map((f) => f[1]).join() === "false,true,false", { waits, befores })
+  const job = { title: "Make the save button blue", state: "ready for review" as const }
+  check("proof: a ready job's knock says what it shows, else its title", P.readyLine(job, "The blue save button") === "Ready to show you the blue save button" &&
+    P.readyLine(job, "GitHub's new badge.") === "Ready to show you GitHub's new badge" && P.readyLine(job) === "Ready to show you: Make the save button blue" &&
+    P.readyLine({ ...job, state: "done" }) === "Done: Make the save button blue")
+  check("proof: only a turn just ended with something is shown (ready for review or done, from working)", P.readyNow({ state: "ready for review" }, "working") && P.readyNow({ state: "done" }, "needs you") &&
+    !P.readyNow({ state: "done" }, "ready for review") && !P.readyNow({ state: "failed" }, "working") && !P.readyNow({ state: "needs you" }, "working"))
+  const keep = ["Keep", "keep it", "Yes, keep it.", "looks good", "that's great thanks", "ship it", "it works", "perfect"], broken = ["Still broken", "it's still broken", "not fixed", "No, still not working", "it doesn't work", "broken"]
+  const neither = ["keep the old colour on the header please", "why is it blue", "show me again", ""]
+  check("proof: Keep and Still broken said, in a few words; anything else is a real ask", keep.every((x) => P.choiceSaid(x) === "keep") && broken.every((x) => P.choiceSaid(x) === "broken") &&
+    neither.every((x) => P.choiceSaid(x) === null), [...keep, ...broken, ...neither].map((x) => [x, P.choiceSaid(x)]))
+  const said = P.summaryOf({ title: "x", result: { text: "Made the save button blue in the toolbar. Also tidied its hover.", diff: "2 files changed, +8 -3", files: ["web/src/a.tsx", "web/src/b.css"] } })
+  check("proof: nothing to show: its own words' gist and its diff, plainly", said === "Made the save button blue in the toolbar. 2 files changed, +8 -3: a.tsx, b.css." &&
+    P.summaryOf({ title: "Fix it" }) === `It didn't say what changed for "Fix it".`, said)
+  check("proof: a step's before draws on its agent's own before layer", P.layerOwner(P.beforeLayer("Claude")) === "Claude" && P.layerOwner("Claude") === "Claude" && P.beforeLayer("Ada") !== "Ada")
+}
+
 console.log(`${passed} passed, ${failed} failed`)
 process.exitCode = failed ? 1 : 0

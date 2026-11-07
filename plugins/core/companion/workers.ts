@@ -415,7 +415,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const j: Job = { id: newId(), title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), ...(on ? { on } : {}), started: now, turn: now, at: now, seen: false, log: [] }
     all().unshift(j)
     try {
-      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: jobTask(told, m, !!where.repo, where.moved ? { from: where.moved, on: where.label } : undefined), name: title, cwd: where.cwd,
+      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: jobTask(told, m, !!where.repo, where.moved ? { from: where.moved, on: where.label } : undefined, j.id), name: title, cwd: where.cwd,
         ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
         ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
       j.terminal = r.id.split("@")[0]

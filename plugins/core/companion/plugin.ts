@@ -26,6 +26,8 @@ import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type JobState, jobSpoken, jobTimingsText, jobTold } from "./jobs.ts"
 import { knockOps } from "./knockops.ts"
+import { beforeLayer, FLIPS, layerOwner, readyNow } from "./proof.ts"
+import { proofOps } from "./proofs.ts"
 import { captureOps } from "./captures.ts"
 import { liveEdits } from "./liveedit.ts"
 import { walkOps } from "./walkops.ts"
@@ -349,6 +351,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   const full = { ...m, seq: ++seq, t: m.t ?? Date.now() } as Moment
   if (m.kind === "edit" || m.kind === "open") delete full.for
   else full.for = addressee(m.for)
+  // (Keep or Still broken, just after a job's proof: the app's, never the model's, nor an ask a later job is told of)
+  if (m.kind === "ask" && full.for && isMain(full.for) && full.text && !m.tour && proofs.answer(liveCtx(from), full.text)) return full
   // (an ask already asked, as it reads, a while ago: a line asked again by Enter on it, after a restart too)
   if (m.kind === "ask" && !m.item && !m.summoned && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
   log.append(full.t, [full])
@@ -870,7 +874,7 @@ const takeover = takeovers(send, (name, sx, sy) => void resolve(target({ sx, sy 
 const screenDrawing = screenDrawings(plugin, {
   send: (m) => { for (const ws of screens) send(ws, m) },
   locate: (places) => windowRects(places),
-  tint: (a) => agentOf(a).tint,
+  tint: (a) => agentOf(layerOwner(a)).tint,
   elements: (a) => Object.fromEntries((nearBy.get(key(a)) ?? []).map((e) => [`el:${e.id}`, rectOfNear(e)])),
   // (Vaultite's own elements by their data-ui id, found again where they are now: the ask's frames may be stale)
   live: async (a, ids) => {
@@ -886,7 +890,7 @@ const screenDrawing = screenDrawings(plugin, {
     const asked = moments.findLast((m) => m.for === a && (m.kind === "ask" || m.kind === "point"))?.t ?? 0
     return [...notes.values()].findLast((n) => n.kind === "say" && n.agent === a && n.t >= asked)?.text
   },
-  displays: (a) => (screens.size ? (askOf(a)?.displays ?? []).map((d) => ({ x: d.x, y: d.y, w: d.width, h: d.height })) : null),
+  displays: (a) => (screens.size ? displaysOf(layerOwner(a)).map((d) => ({ x: d.x, y: d.y, w: d.width, h: d.height })) : null),
   // (a file of this Mac: where its read-only commands may look)
   media: screenMedia(plugin, { readable: (abs) => READ_ONLY.dirs.some((d) => abs.startsWith(`${d}${path.sep}`)) && !abs.startsWith(`${path.resolve(LOCAL)}${path.sep}`) && !/(^|\/)\.env/.test(abs) }),
 })
@@ -912,9 +916,37 @@ function glides(up: Mark[], marks: unknown[]) {
   }
   return out
 }
-/** Agent `name`'s screen for a tour: the app its last ask was over (the Mac's helper reads it), else Vaultite's window. */
-function screenOf(name: string): Screen | null {
-  const ask = askOf(name), away = ask ? awayIn([ask]) : ""
+/** A job's proof showing (proofs.ts): its narration said aloud or not, and the displays its helper said it has. */
+let shown: { t: number; voice: boolean; displays: ScreenRectLike[] } | null = null
+type ScreenRectLike = { x: number; y: number; width: number; height: number }
+/** Where agent `name`'s marks can show: its last ask's displays, else those of a proof being shown. */
+function displaysOf(name: string): ScreenRectLike[] {
+  const asked = askOf(name)?.displays ?? []
+  return asked.length ? asked : shown?.displays ?? []
+}
+/** A step's before picture flipping with how its thing is now (a proof's): its layer, and the flips still to come. */
+let flipping: { layer: string; timers: ReturnType<typeof setTimeout>[] } | null = null
+function stopFlips() {
+  if (!flipping) return
+  for (const t of flipping.timers) clearTimeout(t)
+  screenDrawing.clear({ agent: flipping.layer })
+  flipping = null
+}
+/** Picture `src` laid over `at` (screen points) on agent `name`'s before layer, then flipped: before, now, before, now. */
+async function flip(name: string, src: string, at: { x: number; y: number; width: number; height: number }) {
+  stopFlips()
+  const layer = beforeLayer(name)
+  try {
+    await screenDrawing.draw(layer, [{ type: "image", src, at: [at.x, at.y, at.width, at.height], over: true, caption: "Before", life: "dismiss" }])
+  } catch (e) { return void console.error(`companion: a before picture didn't show: ${(e as Error).message}`) }
+  const mine: NonNullable<typeof flipping> = { layer, timers: [] }
+  mine.timers = FLIPS.map(([ms, on]) => setTimeout(() => { if (flipping === mine) screenDrawing.toggle(layer, on) }, ms))
+  flipping = mine
+}
+/** Agent `name`'s screen for a tour: the app its last ask was over (the Mac's helper reads it), else Vaultite's window
+ *  (`vaultite`: that window whatever the ask was over, as a proof of Vaultite's own). */
+function screenOf(name: string, o: { vaultite?: boolean } = {}): Screen | null {
+  const ask = askOf(name), away = ask && !o.vaultite ? awayIn([ask]) : ""
   if (away === "a private app") return null
   const call = (op: string, p: Record<string, unknown>) => plugin.host.call(op, { ...p, ...(isMain(name) ? {} : { as: name }) }, AS_TOOL, { report: "companion tour" })
   const mid = (s: Seen) => ({ sx: Math.round(s.frame.x + s.frame.width / 2), sy: Math.round(s.frame.y + s.frame.height / 2) })
@@ -925,9 +957,12 @@ function screenOf(name: string): Screen | null {
     const x = m.kind === "point" ? null : markOf({ kind: m.kind as Tag["kind"], at: spot(m.at!), ...(m.to ? { to: spot(m.to) } : {}), ...(m.label ? { label: m.label } : {}), ...(m.n !== undefined ? { n: m.n } : {}), ...(m.dir ? { dir: m.dir } : {}), offset: 0 })
     return x ? [x] : []
   })
-  const overScreen = () => screens.size > 0 && !!askOf(name)?.displays?.length
-  async function show(text: string, marks: Parameters<Screen["show"]>[1]) {
+  const overScreen = () => screens.size > 0 && displaysOf(name).length > 0
+  async function show(text: string, marks: Parameters<Screen["show"]>[1], before?: string) {
+    stopFlips()
     const placed = marks.filter((m) => m.at)
+    // (its picture before over its first thing, as it is now, while its words are said)
+    if (before && overScreen() && placed[0]) void flip(name, before, placed[0].at!.frame)
     if (overScreen() && placed.length) {
       // (over the screen: marks at the frames found, a point its cursor there)
       const drawn = drawnOf(placed)
@@ -1054,6 +1089,8 @@ async function pageFinds(name: string, text: string) {
   return each.filter((x): x is NonNullable<typeof x> => !!x && Array.isArray(x.found) && Number.isFinite(x.zoom))
 }
 const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said", "hush"])
+/** The helper the user last spoke to or answered a knock on: where Still broken records. */
+let lastScreen: WebSocket | null = null
 const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
 /** Only the helper's own pictures: an agent reads what's named here. */
@@ -1163,6 +1200,7 @@ function screenSocket(ws: WebSocket, req: IncomingMessage) {
     if (m.t === "job-seen" && Array.isArray(m.ids)) return void jobs.seen(m.ids.filter((x): x is string => typeof x === "string").slice(0, 30))
     // (a cursor's conversation opened over the screen: its says seen)
     if (m.t === "saw" && Array.isArray(m.ids)) return void saw(m.ids.filter((x): x is string => typeof x === "string").slice(0, 100))
+    if (m.t === "knock" || m.t === "moment") lastScreen = ws
     if (m.t === "knock") return void knocks.heard(m)
     if (m.t === "drawing-act") return void drawingAct(m, req)
     if (m.t === "moment" && !takeover.heard(ws, m)) screenMoment(m, req)
@@ -1534,6 +1572,8 @@ const ANCHORS = ["find", "after", "line", "append"]
 function answering(name: string): Note["answers"] {
   const from = inSummoned.getStore() ? lane().last() : moments.filter((m) => meantFor(m, name) && Date.now() - m.t < 180_000).slice(-5)
   const m = from.findLast((x) => x.kind === "ask" || x.kind === "point")
+  // (a job's proof showing since: its narration, said as Show me was)
+  if (shown && isMain(name) && shown.t > (m?.t ?? 0)) return { t: shown.t, ...(shown.voice ? { voice: true as const } : {}) }
   return m?.summoned ? answersOf(m) : undefined
 }
 function answersOf(m: Moment): NonNullable<Note["answers"]> {
@@ -1901,13 +1941,13 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "tour", "tour-save"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "job-show", "tour", "tour-save"]
 /** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
 const QUIET_RESULTS = new Set(["see", "check", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "tour"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "job-show", "tour"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1915,6 +1955,8 @@ const ALLOWED = ["mcp__vaultite-app", ...ALLOW.filter((c) => c !== "vau companio
 const AS_TOOL = whoOf("cli", "claude-code")
 /** The API as excerpts reads notes with, for a chat session's moments. */
 const apiCtx = { api: (method: string, route: string, body?: unknown) => plugin.host.api(method, route, body) } as unknown as OpCtx
+/** An ops context for work the app does itself, as request `from` would (live edits, a proof's Keep). */
+const liveCtx = (from?: IncomingMessage) => ({ ...apiCtx, op: async (id: string, p?: Record<string, unknown>) => (await plugin.runOp(id, p ?? {}, undefined, from)).result }) as unknown as OpCtx
 
 /** Agent `name`'s tools, each op's parameters (but `as`, which is it) and words (but its vau examples); `busy`: its turn
  *  runs (the summoned session's own). */
@@ -1965,7 +2007,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "live-undo", "conversation", "tour", "tour-save"]
+const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "job-show", "live-undo", "conversation", "tour", "tour-save"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -2647,7 +2689,8 @@ const jobs = jobOps(plugin, {
   say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
   // (a live edit's turn ending is told by its ring, not its news)
-  moved: (j, from) => void (liveEditing.moved(j, from) || jobNews(j.title, j.state, from).catch(() => {})),
+  // (a live edit's turn ending is told by its ring; a job just ready knocks, its proof to show; the rest is news)
+  moved: (j, from) => void (liveEditing.moved(j, from) || (readyNow(j, from) ? proofs.moved(j, from) : jobNews(j.title, j.state, from)).catch(() => {})),
   warm: (j) => liveEditing.warm(j),
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
@@ -2657,7 +2700,7 @@ teachOps(plugin)
 const knocks = knockOps(plugin, { toScreens, listening: () => screens.size > 0, jobs: () => jobs.list(), off: () => mode() === "off", hidden: () => plugin.settings().island === false })
 const liveEditing = liveEdits(plugin, {
   jobs,
-  ctx: (from) => ({ ...apiCtx, op: async (id: string, p?: Record<string, unknown>) => (await plugin.runOp(id, p ?? {}, undefined, from)).result }) as unknown as OpCtx,
+  ctx: (from) => liveCtx(from),
   say: async (name, text, m) => {
     did(name, "say", undefined, text)
     keepSaid(putNote({ kind: "say", agent: name, text, ...placeOf(m) as Partial<Note>, ...(m.summoned ? { answers: answersOf(m) } : {}) }, sayMs(text)))
@@ -2669,6 +2712,43 @@ const liveEditing = liveEdits(plugin, {
   desktop: (name, args) => plugin.desktop(name, args),
 })
 walkOps(plugin, jobs)
+/** A job's proof (proofs.ts): its ready knock, Show me playing the tour its worker saved, then Keep or Still broken. */
+const proofs = proofOps(plugin, {
+  jobs, knocks, tours,
+  name: () => ownName(),
+  screen: (name, t) => {
+    const s = screenOf(name, { vaultite: !t.site.length && (!t.app.length || t.app.includes("vaultite")) })
+    // (a thing it names that's gone is said plainly, never played by the model instead)
+    return s && { ...s, fallback: async () => false }
+  },
+  say: (text, o = {}) => plugin.host.call("companion.say", { text, ...(o.ask ? { ask: true } : {}) }, AS_TOOL, { report: "companion job-show" }),
+  choices: async () => {
+    if (!screens.size || !displaysOf(ownName()).length) return false
+    const at = { area: "bottom" }
+    await plugin.host.call("companion.draw", { say: "Keep it, or is it still broken?", marks: [
+      { type: "button", label: "Keep", do: { ask: "Keep" }, at }, { type: "button", label: "Still broken", do: { ask: "Still broken" }, at }] }, AS_TOOL, { report: "companion job-show" })
+    return true
+  },
+  clear: () => { stopFlips(); screenDrawing.clear({ agent: ownName() }) },
+  open: (where) => plugin.host.call("companion.open", { path: where }, AS_TOOL, { report: "companion job-show" }),
+  record: (id) => {
+    const ws = lastScreen && screens.has(lastScreen) ? lastScreen : screens.size === 1 ? [...screens][0] : null
+    if (!ws) return false
+    send(ws, { t: "record", job: id })
+    return true
+  },
+  urgency: async () => {
+    if (setting("job_news") === "off") return "off"
+    if (setting("job_news") !== "spoken" || setting("voice") === "off") return "normal"
+    const block = await plugin.host.call("block.status", {}).then((r) => r.result as { now?: unknown } | null).catch(() => null)
+    return block?.now ? "normal" : "high"
+  },
+  showing: (on) => {
+    if (!on) { shown = null; return }
+    const ds = Array.isArray(on.displays) ? on.displays.filter((x): x is ScreenRectLike => !!x && typeof x === "object" && ["x", "y", "width", "height"].every((k) => typeof (x as Record<string, unknown>)[k] === "number")).slice(0, 8) : []
+    shown = { t: shown?.t ?? Date.now(), voice: on.voice, displays: ds.length ? ds : shown?.displays ?? [] }
+  },
+})
 /** The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"):
  *  its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first. */
 plugin.provide("agents-used:companion", (): AgentUse[] => [

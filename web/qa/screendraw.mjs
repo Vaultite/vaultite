@@ -381,6 +381,36 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
   await page.close()
 }
 
+// ---- a job's proof: a picture of the thing before laid over it, flipped with how it is now (its own layer, hidden and shown)
+{
+  const page = await open()
+  const here = { width: W, height: H, origin: { x: 0, y: 0 }, home: true, top: 25 }
+  const ring = { id: "dp1", agent: "Claude", tint: "orange", t: Date.now(), places: ELEMENTS, marks: [{ type: "ring", id: "r", at: { el: "share" } }] }
+  const before = { id: "dp2", agent: "Claude (before)", tint: "orange", t: Date.now() + 1, places: ELEMENTS, marks: [
+    { type: "image", id: "b", src: "x.png", url: "http://screen.test/qa-media/shot.png", px: [1600, 1000], over: true, caption: "Before", at: R("share") }] }
+  const both = (a, b) => page.evaluate((ls) => window.__draw(ls), [a, b].filter(Boolean).map((d) => ({ ...d, here })))
+  await both(ring, before)
+  await page.waitForSelector("[data-mark=image][data-state=ok]")
+  await page.waitForTimeout(500)
+  const card = (await rects(page, "[data-card=b]"))[0], img = (await rects(page, "[data-card=b] img"))[0]
+  const look = await page.evaluate(() => ({ tab: document.querySelector("[data-card=b] .sd-over-tab")?.textContent, below: !!document.querySelector("[data-card=b] .sd-media-caption"),
+    through: getComputedStyle(document.querySelector("[data-card=b]")).pointerEvents, tools: [...document.querySelectorAll(".sd-tools")].map((e) => e.textContent) }))
+  const s = SCREEN.share
+  check("proof: its before picture lies over the thing, its size, its caption a tab above it, clicks passing through, no toolbar of its own",
+    !!card && Math.abs(card.x - s.x) < 1 && Math.abs(card.y - s.y) < 1 && Math.abs(card.w - s.w) < 1 && Math.abs(img.h - s.h) < 1 && look.tab === "Before" && !look.below && look.through === "none" &&
+    look.tools.length === 1 && !look.tools[0].includes("(before)"), { card, img, s, look })
+  await page.screenshot({ path: path.join(SHOTS, "screendraw-before.png"), clip: { x: s.x - 160, y: s.y - 30, width: s.w + 200, height: s.h + 90 } })
+  await both(ring, { ...before, hidden: true })
+  await page.waitForTimeout(400)
+  const flipped = await page.evaluate(() => ({ before: getComputedStyle(document.querySelector("[data-agent='Claude (before)']")).opacity, ring: getComputedStyle(document.querySelector("[data-agent=Claude]")).opacity }))
+  await page.screenshot({ path: path.join(SHOTS, "screendraw-after.png"), clip: { x: s.x - 160, y: s.y - 30, width: s.w + 200, height: s.h + 90 } })
+  await both(ring, before)
+  await page.waitForTimeout(400)
+  const back = await page.evaluate(() => getComputedStyle(document.querySelector("[data-agent='Claude (before)']")).opacity)
+  check("proof: flipped, the before goes and the thing shows as it is now, its ring still up; flipped back, the before again", flipped.before === "0" && flipped.ring === "1" && back === "1", { flipped, back })
+  await page.close()
+}
+
 // ---- choreography: rings shaped to their thing; a mark whose thing moved glides there, not drawn again; frames kept
 {
   const page = await open()

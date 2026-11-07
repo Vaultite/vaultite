@@ -69,6 +69,16 @@ export function knockOps(plugin: Plugin, d: Deps) {
     return job?.title || row?.name || row?.title || ctx.who.agent || "A session"
   }
 
+  /** A knock added (one before from its session replaced), kept and told; throws (400) on a bad one. */
+  function knock(p: { from: string; who: string; line: string; urgency?: string; life?: number; open?: string }) {
+    let k: Knock
+    try { k = makeKnock({ id: `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, ...p }, Date.now()) } catch (e) { throw new OpError((e as Error).message, 400) }
+    const ks = addKnock(all(), k, isMuted)
+    for (const x of ks) if (x.id === k.id || x.state !== all().find((y) => y.id === x.id)?.state) put(x)
+    tell()
+    return ks.find((x) => x.id === k.id)!
+  }
+
   /** The user (or the helper for them) did `act` to knock `id`; `mute`: its session's knocks too, a while. */
   function act(id: string, what: KnockAct, mute = false) {
     const k = all().find((x) => x.id === id || (id.length >= 4 && x.id.endsWith(id)))
@@ -113,15 +123,7 @@ replaces its last. Urgency: low comes at a longer pause, high at any pause in th
       if (life !== undefined && !(life > 0)) throw new OpError(`for is a duration (90s, 30m, 2h), not ${str(p.for)}`, 400)
       const from = str(p.terminal).trim()
       if (!rows.length) await readTerminals()
-      let k: Knock
-      try {
-        k = makeKnock({ id: `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, from, who: str(p.who) || whoIs(from, ctx), line: str(p.line),
-          urgency: str(p.urgency) || undefined, life, open: str(p.open) || undefined }, Date.now())
-      } catch (e) { throw new OpError((e as Error).message, 400) }
-      const ks = addKnock(all(), k, isMuted)
-      for (const x of ks) if (x.id === k.id || x.state !== all().find((y) => y.id === x.id)?.state) put(x)
-      tell()
-      return ks.find((x) => x.id === k.id)!
+      return knock({ from, who: str(p.who) || whoIs(from, ctx), line: str(p.line), urgency: str(p.urgency) || undefined, life, open: str(p.open) || undefined })
     },
     text: (k: Knock) => (k.state === "ignored" ? `Knock ${k.id} kept, unshown: the user ignored ${k.who} for now.` : `Knocked (${k.id}): it comes up by the notch at their next pause.`),
   })
@@ -132,8 +134,8 @@ replaces its last. Urgency: low comes at a longer pause, high at any pause in th
     summary: "The knocks of the background sessions (waiting, put off, told) and the sessions shown by the notch; or put one off or ignore it, as the user said.",
     help: `What came to the user lately from sessions in the background, and the presences by the notch (working, needs
 you, done). When they say "not now" or "ignore that one" about a knock, you mark it: later (it comes back at their next
-break), ignore (that one), or mute (every knock from its session, for 12 hours). "Show me" opens its session:
-vau terminal open <its terminal>, or open what it names.
+break), ignore (that one), or mute (every knock from its session, for 12 hours). "Show me" opens its session
+(vau terminal open <its terminal>, or open what it names); a job's ready knock plays its proof (companion job-show).
 
   vau companion knocks
   vau companion knocks --later k3x
@@ -170,5 +172,8 @@ vau terminal open <its terminal>, or open what it names.
     hello: () => { tell(true); void readTerminals() },
     presences: () => presences,
     knocks: () => all().filter((k) => !over(k)),
+    knock,
+    /** Knocks from `from` still to come or telling, ended (its job reviewed elsewhere, say). */
+    settle: (from: string) => { for (const x of all()) if (x.from === from && !over(x)) put(actOn(x, "open", Date.now())); tell() },
   }
 }

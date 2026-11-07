@@ -33,14 +33,14 @@ export default async ($: VaultTest) => {
       J.jobSpoken({ title: "Make the header blue on the about page please", state: "ready for review" }, "working") === 'The job "Make the header blue" is ready for review.' &&
       J.jobSpoken({ title: "x", state: "needs you" }, "working") === 'The job "x" needs you.' && J.jobSpoken({ title: "", state: "failed" }, "working") === "A job failed." &&
       J.jobSpoken({ title: "x", state: "done" }, "ready for review") === "" && J.jobSpoken({ title: "x", state: "working" }, "starting") === "")
-    check("jobs: news told by job_news: needing you or failed by default (quiet), every end when spoken, none when off",
+    check("jobs: notifications by job_news: needing you or failed, quiet or spoken, none when off; one ready or done knocks instead (its proof)",
       J.jobTold("needs you", "quiet") && J.jobTold("failed", "quiet") && !J.jobTold("done", "quiet") && !J.jobTold("ready for review", "quiet") &&
-      J.jobTold("done", "spoken") && J.jobTold("ready for review", "spoken") && !J.jobTold("needs you", "off") && !J.jobTold("working", "spoken"))
+      !J.jobTold("done", "spoken") && !J.jobTold("ready for review", "spoken") && J.jobTold("failed", "spoken") && !J.jobTold("needs you", "off") && !J.jobTold("working", "spoken"))
     {
       const { jobNews } = await import("../../../electron/helperlogic.ts")
       const j = (state: string) => ({ id: "a", title: "x", state, link: null, unseen: true, at: 0 })
       check("jobs: the menu bar's notifications follow job_news",
-        jobNews([j("working")], [j("done")], "quiet").length === 0 && jobNews([j("working")], [j("done")], "spoken").length === 1 &&
+        jobNews([j("working")], [j("done")], "quiet").length === 0 && jobNews([j("working")], [j("done")], "spoken").length === 0 &&
         jobNews([j("working")], [j("needs you")], "quiet").length === 1 && jobNews([j("working")], [j("failed")], "off").length === 0)
       const { jobNote } = await import("../../../electron/helperlogic.ts")
       const trust = { ...j("needs you"), waits: { question: "Trust this folder?", choices: ["Yes, I trust this folder", "No, exit"] } }
@@ -54,7 +54,9 @@ export default async ($: VaultTest) => {
         J.choiceIn(perm, "maybe") === 0 && J.choiceIn(perm, "3") === 0 && J.choiceIn(q, "let's encrypt") === 2 && J.choiceIn(q, "yes") === 0)
     }
     {
-      const jt = J.jobTask("Fix the footer", undefined, true)
+      const jt = J.jobTask("Fix the footer", undefined, true, undefined, "j3k9x2a")
+      check("jobs: a worker is told to show its change working: a tour saved as its proof, its befores, by its job's id",
+        jt.includes('vau companion tour-save "') && jt.includes("--job j3k9x2a") && jt.includes("(before: ") && !J.jobTask("x", undefined, true).includes("tour-save"))
       const first = J.lastOf({ text: "Fixed it. The links \"Why now?\" stay.\n\nShould I also change the header? Or keep it as is?", at: 5, final: true, prompt: jt })
       const told = J.lastOf({ text: "Looking at it.", at: 9, final: false, prompt: "Use the **darker** blue", background: 2 })
       check("jobs: its latest turn: what it said, the questions its answer ends with (quotes left out), what it was told after its task, its background tasks",
@@ -156,6 +158,53 @@ export default async ($: VaultTest) => {
         review.log.map((x: Any) => x.to).join() === "working,ready for review", review)
       ;[st, b] = await api("POST", "ops/companion.jobs", {})
       check("companion jobs: its state, where, its results", st === 200 && b.jobs[0]?.id === card.id && b.jobs[0].state === "ready for review" && b.jobs[0].where.account === "Personal", b)
+      {
+        // Its proof: ready, it knocks; its worker was told to save a tour; Show me with no window says so plainly, then Keep or Still broken.
+        const knock = (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.open === `job:${card.id}`)
+        check("proof: a job ready knocks, Ready to show you, from its terminal, opening its proof; its worker was told how to save one",
+          knock?.line === "Ready to show you: Make the heading blue" && knock.urgency === "normal" && knock.from === card.link.split("/").pop() && said[0]?.prompt.includes(`--job ${card.id}`), [knock, said[0]?.prompt.slice(-900)])
+        let [pst, pb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
+        check("proof: tour-save --job keeps it in Guides/Proofs, as that job's", pst === 200 && pb.path === "Guides/Proofs/The blue heading.md" && read(pb.path).includes(`job: ${card.id}`), [pst, pb])
+        ;[pst, pb] = await api("POST", "ops/companion.job-show", { id: card.id })
+        const plainly = await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && /can't show it here/.test(n.text)), 5000, 50)
+        const asked = await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && n.text === "Keep it, or is it still broken?"), 5000, 50)
+        check("proof: Show me with no window to show it on says so plainly, what it changed, then asks Keep or Still broken",
+          pst === 200 && pb.proof === "Guides/Proofs/The blue heading.md" && /heading blue in index\.html/.test(plainly?.text ?? "") && !!asked &&
+          (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.id === knock?.id)?.state === "opened", [pst, pb, plainly, asked])
+        ;[pst, pb] = await api("POST", "ops/companion.job-show", { choose: "broken" })
+        check("proof: Still broken records a clip on the helper for that job", pst === 200 && pb.recording === true && heard.some((m) => m.t === "record" && m.job === card.id), [pst, pb])
+        const [pst2] = await api("POST", "ops/companion.job-show", { choose: "keep" })
+        check("proof: Keep with nothing just shown is refused", pst2 === 409)
+        // Played on a window (a stand-in answering where its things are) with the helper's displays: its ring, its before
+        // over the heading flipped with how it is now, then the choice's buttons; Keep pressed there closes it as done.
+        const png = Buffer.alloc(33); png.writeUInt32BE(0x89504e47, 0); png.writeUInt32BE(320, 16); png.writeUInt32BE(40, 20)
+        fs.mkdirSync(path.join(VAULT, "Pics"), { recursive: true }); fs.writeFileSync(path.join(VAULT, "Pics/Before.png"), png)
+        await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"]. (before: "Pics/Before.png")' }, agent)
+        const heading = { role: "heading", label: "Lighthouse", frame: { x: 200, y: 120, width: 320, height: 40 } }
+        const win = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, close() {}, ping() {}, terminate() {}, send(t: string) {
+          const m = JSON.parse(t)
+          if (m.t === "things") setImmediate(() => win.emit("message", JSON.stringify({ t: "done", rid: m.rid, ok: true, window: { x: 0, y: 25, width: 1440, height: 875 }, things: [heading] })))
+        } })
+        matchSocket(app.plugins, ["companion", "live"])![1].fn(win as Any, {} as IncomingMessage, { wild: [], query: {} })
+        win.emit("message", JSON.stringify({ t: "where", open: [], shown: [], focus: null, at: Date.now() }))
+        heard.length = 0
+        ;[pst, pb] = await api("POST", "ops/companion.job-show", { id: card.id, displays: [{ x: 0, y: 0, width: 1440, height: 900 }] })
+        const layers = () => heard.filter((m) => m.t === "drawing")
+        const ring = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.some((k: Any) => k.type === "ring")), 8000, 50)
+        const over = await waitFor(() => layers().find((m) => m.agent === "Claude (before)" && m.drawing?.marks[0]?.over), 5000, 50)
+        const flipped = await waitFor(() => layers().some((m) => m.agent === "Claude (before)" && m.drawing?.hidden) && layers().some((m, i, all) => m.agent === "Claude (before)" && m.drawing && !m.drawing.hidden && all.slice(0, i).some((x) => x.drawing?.hidden)), 8000, 50)
+        const buttons = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.filter((k: Any) => k.type === "button").length === 2), 12000, 50)
+        const r = ring?.drawing.marks.find((k: Any) => k.type === "ring")?.at, o = over?.drawing.marks[0]?.at
+        check("proof: played on the window, its ring on the thing, its before laid over it on its own layer and flipped (hidden, shown again), then Keep and Still broken",
+          pst === 200 && r?.x === 200 && r?.w === 320 && JSON.stringify(o) === JSON.stringify({ x: 200, y: 120, w: 320, h: 40 }) && over?.drawing.marks[0].caption === "Before" && !!flipped &&
+          buttons?.drawing.marks.filter((k: Any) => k.type === "button").map((k: Any) => k.label).join() === "Keep,Still broken", { pst, pb, ring, over, buttons: buttons?.drawing.marks })
+        const narrated = (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && n.text === "The heading is blue now.")
+        check("proof: its words are said (aloud, as Show me was)", narrated?.answers?.voice === true, narrated)
+        sc.emit("message", Buffer.from(JSON.stringify({ t: "drawing-act", id: buttons?.drawing.id, kind: "ask", text: "Keep" })))
+        const kept = await waitFor(async () => { const r2 = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r2.state === "done" && r2 }, 5000, 50)
+        check("proof: Keep pressed closes it as done, the app's own (no ask to the model), its layers down", !!kept && layers().at(-1)?.drawing === null, { kept: kept?.state, last: layers().at(-1) })
+        win.emit("close")
+      }
       sc.emit("message", Buffer.from(JSON.stringify({ t: "job-seen", ids: [card.id] })))
       check("jobs: opened from the menu bar, it's no longer new", !!(await waitFor(async () => (await api("POST", "ops/companion.job", { id: card.id }))[1].seen === true, 3000, 50)))
       turn = null

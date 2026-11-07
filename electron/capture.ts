@@ -17,7 +17,9 @@ export type CaptureHost = {
   draw: () => void
 }
 /** What's sent: the clip and its frames (files on this Mac), their words as it played, the box, what was there. */
-export type Capture = Omit<Clip, "file"> & { kind: "recording" | "replay"; clip: string; narration: Narration[]; box: Rect; at: number; place: Record<string, unknown>; end?: Record<string, unknown> }
+export type Capture = Omit<Clip, "file"> & { kind: "recording" | "replay"; clip: string; narration: Narration[]; box: Rect; at: number; place: Record<string, unknown>; end?: Record<string, unknown>
+  /** The job it's for (Still broken after its proof), else the one on that surface. */
+  job?: string }
 export { REAL }
 
 type Box = { rect: Rect; display: Rect; tint: string }
@@ -27,7 +29,7 @@ let region: Box | null = null
 let boxes: BoxAt[] = []
 /** A drag with the Talk key held, as it goes: from where it began. */
 let dragging: { from: Point; display: Rect; was: Box | null } | null = null
-let recording: { since: number; narration: Narration[]; place: Record<string, unknown>; timer: ReturnType<typeof setTimeout> } | null = null
+let recording: { since: number; narration: Narration[]; place: Record<string, unknown>; timer: ReturnType<typeof setTimeout>; job?: string } | null = null
 let saving = false
 
 export function captureHost(h: CaptureHost) { host = h }
@@ -109,7 +111,11 @@ async function boxNow(): Promise<Rect> {
   return (f && boxOf({ x: f.x, y: f.y }, { x: f.x + f.width, y: f.y + f.height }, d)) || d
 }
 
-async function startRecording(first: string) {
+/** Still broken, after job `job`'s proof: what they show and say recorded (their box, else the window under the pointer),
+ *  sent to that job when they say stop. */
+export function recordFor(job: string) { void startRecording("", job) }
+
+async function startRecording(first: string, job?: string) {
   if (recording || saving || !host) return
   const rect = await boxNow(), now = Date.now()
   if (!region) setRegion({ rect, display: screen.getDisplayNearestPoint(centre(rect)).bounds, tint: "red" })
@@ -117,7 +123,7 @@ async function startRecording(first: string) {
   if (!r.ok) { host.hint(r.why === "quiet" ? "Can't record here" : "Can't record the screen: allow Vaultite in Screen Recording"); return }
   await holdVideo(now)
   const place = await host.placeAt(centre(rect)).catch(() => ({}))
-  recording = { since: now, narration: first ? [{ t: 0, text: first }] : [], place, timer: setTimeout(() => void stopRecording(), RECORD_MOST_MS) }
+  recording = { since: now, narration: first ? [{ t: 0, text: first }] : [], place, timer: setTimeout(() => void stopRecording(), RECORD_MOST_MS), ...(job ? { job } : {}) }
   host.draw()
 }
 async function stopRecording(lost = false) {
@@ -127,7 +133,7 @@ async function stopRecording(lost = false) {
   recording = null
   if (lost) { host.hint("The recording stopped"); return host.draw() }
   const to = Date.now()
-  await send("recording", r.since, r.narration, r.place, () => saveClip(r.since, to, boxesSince(boxes, r.since, to)))
+  await send("recording", r.since, r.narration, r.place, () => saveClip(r.since, to, boxesSince(boxes, r.since, to)), r.job)
   await letGo()
 }
 /** The video let go after a recording: back to the timeline's ring, or off when it isn't kept. */
@@ -153,7 +159,7 @@ async function replay(said: string) {
 }
 
 /** A clip made (`make`) and handed on; the box stays for the next. */
-async function send(kind: Capture["kind"], at: number, narration: Narration[], place: Record<string, unknown>, make: () => Promise<(Clip & { narration?: Narration[] }) | { why: string }>) {
+async function send(kind: Capture["kind"], at: number, narration: Narration[], place: Record<string, unknown>, make: () => Promise<(Clip & { narration?: Narration[] }) | { why: string }>, job?: string) {
   saving = true
   host!.draw()
   try {
@@ -162,7 +168,7 @@ async function send(kind: Capture["kind"], at: number, narration: Narration[], p
     if ("why" in c) { host!.hint(`Couldn't save it: ${c.why}`); return }
     const end = await host!.placeAt(screen.getCursorScreenPoint()).catch(() => undefined)
     host!.hint(await host!.deliver({ kind, clip: c.file, ms: c.ms, width: c.width, height: c.height, frames: c.frames, narration: c.narration ?? narration,
-      box: box ?? { x: 0, y: 0, width: c.width, height: c.height }, at, place, ...(end ? { end } : {}) }))
+      box: box ?? { x: 0, y: 0, width: c.width, height: c.height }, at, place, ...(end ? { end } : {}), ...(job ? { job } : {}) }))
   } catch (e) {
     host!.hint(`Couldn't send it: ${(e as Error).message}`)
   } finally {

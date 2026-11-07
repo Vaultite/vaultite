@@ -9,8 +9,12 @@ export type Mode = "show" | "guide" | "do"
 export const MODES: readonly Mode[] = ["show", "guide", "do"]
 /** Something a step does itself, in do mode: at the thing saying `text`, or (typing, pressing) where the keys go. */
 export type Do = { action: "click" | "type" | "press" | "scroll"; text?: string; value?: string; key?: string; dir?: "up" | "down" }
-export type Step = { n: number; text: string; said: string; tags: Tag[]; wait?: Condition; do?: Do[] }
+export type Step = { n: number; text: string; said: string; tags: Tag[]; wait?: Condition; do?: Do[]
+  /** A picture of its first target before a change (a job's proof): laid over it and flipped with how it is now. */
+  before?: string }
 export type Tour = { title: string; app: string[]; site: string[]; steps: Step[]
+  /** The job it's the proof of (its change shown, `companion job-show`). */
+  job?: string
   /** What its targets are beyond their words (role, container, place), by their words: found again by these. */
   anchors: Record<string, Partial<Anchor>> }
 
@@ -35,17 +39,19 @@ export function parseDo(src: string): Do[] {
 export const doText = (d: Do) => d.action === "click" ? `click ${JSON.stringify(d.text)}` : d.action === "type" ? `type ${JSON.stringify(d.value)}${d.text ? ` in ${JSON.stringify(d.text)}` : ""}`
   : d.action === "press" ? `press ${d.key}` : `scroll ${d.dir ?? "down"}${d.text ? ` ${JSON.stringify(d.text)}` : ""}`
 
-const NOTE = /\(\s*(wait|do)\s*:\s*((?:[^()"“”]|"[^"]*"|“[^”]*”)*)\)/gi
+const NOTE = /\(\s*(wait|do|before)\s*:\s*((?:[^()"“”]|"[^"]*"|“[^”]*”)*)\)/gi
 /** One step's line (its number gone): its words and tags, its wait and its do. */
 export function parseStep(n: number, line: string): Step {
-  let wait: Condition | undefined, does: Do[] | undefined
+  let wait: Condition | undefined, does: Do[] | undefined, before: string | undefined
   const text = line.replace(NOTE, (_m, k: string, body: string) => {
     if (k.toLowerCase() === "wait") wait = parseCondition(body)
+    else if (k.toLowerCase() === "before") before = body.trim().replace(/^["“]|["”]$/g, "").trim() || undefined
     else does = [...(does ?? []), ...parseDo(body)]
     return ""
   }).replace(/\s{2,}/g, " ").trim()
   const { said, tags } = parseTags(text)
-  return { n, text, said, tags, ...(wait ? { wait } : {}), ...(does ? { do: does } : {}) }
+  if (before && !tags.length) throw new Error("before: needs a tag on the thing it was a picture of ([ring \"Save\"])")
+  return { n, text, said, tags, ...(wait ? { wait } : {}), ...(does ? { do: does } : {}), ...(before ? { before } : {}) }
 }
 
 /** A tour's file (type: tour): its app bundle ids or sites, its steps the body's numbered list (a step's later lines
@@ -71,16 +77,18 @@ export function parseTour(fm: Record<string, unknown>, body: string, stem: strin
     for (const [k, v] of Object.entries(fm.anchors as Record<string, unknown>)) if (v && typeof v === "object") anchors[k] = v as Partial<Anchor>
   }
   if (!steps.length && !problems.length) problems.push("a tour's steps are a numbered list: 1. Your chats are down the left [frame \"Chats\"].")
-  return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, steps, anchors }, problems]
+  const job = typeof fm.job === "string" && fm.job.trim() ? fm.job.trim() : ""
+  return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, steps, anchors, ...(job ? { job } : {}) }, problems]
 }
 
 /** A step's line in a tour's file: `n. words [tags] (wait: …) (do: …)`. */
-export const stepLine = (s: Step, n: number) => `${n}. ${[s.text, s.wait ? `(wait: ${conditionText(s.wait)})` : "", s.do?.length ? `(do: ${s.do.map(doText).join("; ")})` : ""].filter(Boolean).join(" ")}`
+export const stepLine = (s: Step, n: number) => `${n}. ${[s.text, s.wait ? `(wait: ${conditionText(s.wait)})` : "", s.do?.length ? `(do: ${s.do.map(doText).join("; ")})` : "",
+  s.before ? `(before: ${JSON.stringify(s.before)})` : ""].filter(Boolean).join(" ")}`
 /** A tour as its file says it (`extra`: more frontmatter, first). */
 export function tourText(t: Tour, extra: Record<string, string> = {}) {
   const yaml = (v: unknown) => JSON.stringify(v)
   const plain = (v: string) => (/^[\w./@ -]+$/.test(v) && !/^\s|\s$|: /.test(v) ? v : yaml(v))
-  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : [])]
+  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.job ? [`job: ${t.job}`] : []), ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : [])]
   const anchors = Object.entries(t.anchors).filter(([, a]) => Object.keys(a).length)
   if (anchors.length) fm.push("anchors:", ...anchors.map(([k, a]) => `  ${yaml(k)}: ${yaml(a)}`))
   fm.push("---")
@@ -208,7 +216,7 @@ export async function play(t: Tour, mode: Mode, fx: Fx, signal?: AbortSignal, fr
         await fx.show({ ...step, tags }, pairUp(tags, aims))
         unfollow = following(t, { ...step, tags }, spots, aims, fx, signal)
         // (time to read it, or hear it, before the next step's words replace it; a wait's step waits for them instead)
-        if (!wait && !signal?.aborted) await fx.sleep(readMs(step.said))
+        if (!wait && !signal?.aborted) await fx.sleep(Math.max(readMs(step.said), step.before ? FLIP_MS : 0))
       }
       for (const d of does) {
         if (signal?.aborted) return { ended: "stopped", steps: [...out, { n: step.n, how: "stopped", ms: Date.now() - t0 }] }
@@ -226,6 +234,8 @@ export async function play(t: Tour, mode: Mode, fx: Fx, signal?: AbortSignal, fr
   return { ended: "done", steps: out }
 }
 
+/** How long a step with a before stays up: its picture over the thing, then how it is now, twice. */
+export const FLIP_MS = 6000
 /** How long a step's words stay up with nothing to wait for. */
 export const readMs = (said: string) => Math.min(7000, 1200 + said.length * 50)
 /** How often a shown step's targets are looked for again, and how far one moves (points) before its marks follow. */

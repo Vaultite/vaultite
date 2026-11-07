@@ -174,7 +174,15 @@ above that), act, run it again, and never end your turn.
   (`--urgency low|normal|high`). The helper brings one up by the notch at a pause (never while you speak or they talk),
   waits a moment for "not now", then it stays as its session's face needing them; a high one is said in your voice. The
   island by the notch shows those sessions (working, needs you, done; the setting `island`): a hover lists them, a click
-  opens one. Their short answer to a knock ("not now", "ignore that one", "mute it", "show me") is the helper's, never
+  opens one.
+- Proofs: a job ready (or done) knocks by itself, "Ready to show you <change>" (said aloud when `job_news` is spoken),
+  never a notification too. "Show me" (said, or its click) plays its proof (`companion job-show <id>`): the tour its
+  worker saved (`tour-save "<the change>" --job <id>`, in `Guides/Proofs/`; its prompt says how), on Vaultite's window,
+  each step's `(before: <png>)` laid over its thing and flipped with how it is now as its words are said. No tour, one
+  that doesn't play, or a thing it names gone: it says so plainly with what the job says it changed. Then Keep (closed
+  as done) or Still broken (a clip of what they show and say, recorded till they say stop, sent to that job), by a
+  click or a word: the app's, never an ask of yours. Asked "how's that job going?", `companion job` says; "show me
+  that job" is `companion job-show`. Their short answer to a knock ("not now", "ignore that one", "mute it", "show me") is the helper's, never
   an ask. Asked about one later ("what was that?", "ignore the deploy one"): `companion knocks` lists them and the
   sessions, `--later`, `--ignore` or `--mute <id>` marks one, and showing it opens its session (`terminal open <id>`).
 - Live editing: once a job works on a page (a preview, by its address, or a note), Talk key asks over that page go
