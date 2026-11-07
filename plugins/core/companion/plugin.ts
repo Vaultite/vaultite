@@ -899,8 +899,8 @@ const screenDrawing = screenDrawings(plugin, {
 })
 // ---------- tours (tours.ts): played on the screen of each agent's last ask, without the model
 
-// (a tour of Vaultite's own plays on its window, wherever the last ask was, as a proof does)
-const tours = toursOf(plugin, { screen: (name, t) => screenOf(name, { vaultite: !!t && ownTour(t) }), who: (p) => who(p) })
+// (a tour of Vaultite's own plays on its window, wherever the last ask was, as a proof does; with none open, where they asked)
+const tours = toursOf(plugin, { screen: (name, t) => (t && ownTour(t) ? screenOf(name, { vaultite: true }) : null) ?? screenOf(name), who: (p) => who(p) })
 /** The window used last: where a tour over Vaultite plays. */
 const lastWindow = () => [...windows.entries()].sort((a, b) => b[1].at - a[1].at)[0]?.[0]
 /** A thing as Vaultite's window lists it (tourwindow.ts): `within`, the data-ui around one that has none. */
@@ -970,10 +970,12 @@ function screenOf(name: string, o: { vaultite?: boolean } = {}): Screen | null {
     // (a step's own drawing goes as the next step comes; its cards, unless they say, stay till their next ask)
     if (drewCard) { drewCard = false; screenDrawing.clear({ agent: name }) }
     const placed = marks.filter((m) => m.at)
+    // (words pointing at nothing: said by their pointer as they asked, its bubble there, as an answer is)
+    const asked = askOf(name), here = overScreen() && asked?.sx !== undefined ? { sx: asked.sx, sy: asked.sy } : {}
     if (draw?.length) {
       drewCard = true
       const at = drawnOf(placed), point = placed.find((m) => m.kind === "point")
-      if (point) await call("companion.look", mid(point.at!))
+      if (point || "sx" in here) await call("companion.look", point ? mid(point.at!) : here)
       return void await call("companion.draw", { marks: [...at, ...draw.map((d) => ({ life: "ask", ...d }))], ...(text ? { say: text } : {}) })
     }
     // (its picture before over its first thing, as it is now, while its words are said)
@@ -990,7 +992,7 @@ function screenOf(name: string, o: { vaultite?: boolean } = {}): Screen | null {
     // (in Vaultite's window: its cursor and bubble at the thing, by its data-ui id, else its words in the UI around it)
     const places = placed.flatMap((m) => { const s = m.at as Shown; return s.ui ? [{ ui: s.ui }] : s.within ? [{ ui: s.within, find: s.label }] : [] })
     for (const p of places.slice(1)) await call("companion.highlight", p).catch(() => {})
-    if (text) await call("companion.say", { text, ...(places[0] ?? {}) })
+    if (text) await call("companion.say", { text, ...(places[0] ?? here) })
     else if (places[0]) await call("companion.look", places[0])
   }
   async function act(d: Parameters<Screen["act"]>[0], at: Seen | null) {
