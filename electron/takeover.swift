@@ -206,6 +206,8 @@ func setGuard(_ on: Bool, grace: Double, rest: Double) {
   graceUntil = CFAbsoluteTimeGetCurrent() + grace / 1000
   if rest > 0 { restMs = rest }
   guardLock.unlock()
+  // (off between drives: every mouse move on the Mac would go through this process for nothing)
+  if let t = guardTap { CGEvent.tapEnable(tap: t, enable: on) }
 }
 
 // ---------- posting: the pointer (gliding from where it is), clicks, typing, keys, the wheel; each marked ours
