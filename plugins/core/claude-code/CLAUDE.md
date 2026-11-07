@@ -27,5 +27,6 @@
 - The inbox hears sessions through `inbox:session` and answers through `agent-reply:claude` / `agent-answer:claude`; a
   session ended takes replies here only if the chat ran it (`chats.json`), else the inbox resumes it as a terminal's.
 - The keeper's code is what it started with (its `hello` says which: `codeOf`). A server that finds one running other
-  code (an update in place) ends it once no session has run for two minutes, and starts another; each session resumes on
-  its next message. (The companion's sessions never leave it empty: without this it ran its first code for days.)
+  code (an update in place) ends it once no session has run, started or been about to (`touch`: a Talk key pressed) for
+  two minutes, and starts another; each session resumes on its next message (one that never had a turn can't: it starts
+  anew). (The companion's sessions never leave it empty: without this it ran its first code for days.)

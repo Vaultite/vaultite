@@ -251,7 +251,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
-- `terminal:<…>` (meters, access, waits, state, ended, agent-waits, screen, locate, runs, agent-env, wait, of, of-pids, info): agent-meters; terminal
+- `terminal:<…>` (meters, access, ask, waits, state, ended, agent-waits, screen, locate, runs, agent-env, wait, of, of-pids, info): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
 - `versions:icloud` (sync-conflicts)
 - `watches:read` (watches): A source read now (note:, terminal:, site: in the user's tab), as the companion's follows read panes; null: none such.

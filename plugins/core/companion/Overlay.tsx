@@ -7,7 +7,7 @@ import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiff
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { shown, uiElement } from "./panes"
-import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin,  type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { arrowBox, boxAt } from "./boxes"
 import { interfaceZoom, onTop, type Screen, screenOf } from "./locate"
 import { Chat } from "./Chat"
@@ -29,6 +29,8 @@ type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boo
   over?: boolean
   /** Where it was last drawn, no longer where its place is (home()'s fallback): it fades out there, never shows. */
   faded?: boolean
+  /** Its place is scrolled out of view: drawn at the edge nearest it ("up there"). */
+  out?: boolean
   /** What it points at (an element of the app, a terminal's row, a page's element): its words never cover it. */
   target?: { x: number; y: number; width: number; height: number } }
 /** A cursor's place as drawn: what it looked at, its place among them, its step in a stack; held, it stays there (dx, dy
@@ -100,7 +102,7 @@ function rowOf(path: string): Spot | null {
   const x = Math.max(c.left + 4, Math.min(c.right - 24, r.left + Math.min(r.width - 24, 120)))
   const y = Math.max(c.top + 2, Math.min(c.bottom - 24, r.top + 4))
   // (on a hidden sidebar slid in, it rides over it, as the sidebar's toggle does; the rest stay under it with the page)
-  return { x, y, low: y + FLAG > Math.min(c.bottom, innerHeight - 40), rides: !!el.closest("aside[data-peek]") || undefined }
+  return { x, y, low: y + FLAG > Math.min(c.bottom, innerHeight - 40), rides: !!el.closest("aside[data-peek]") || undefined, out: !seen(el) || undefined }
 }
 
 /** Where each cursor was last shown, for one with nowhere to be to fade there. */
@@ -146,7 +148,7 @@ function spotOf(a: Agent, i: number, held = false): Spot | null {
   if (!v || pos === null) return (a.path && rowOf(a.path)) || home(a, i)
   const line = v.state.doc.lineAt(pos)
   const c = coords(v, a.find ? rowEnd(v, Math.min(line.to, pos + a.find.length), line.to) : line.to, -1)
-  return { x: Math.min(c.box.right - 40, c.x + 28), y: c.y, low: c.y + FLAG > c.box.bottom }
+  return { x: Math.min(c.box.right - 40, c.x + 28), y: c.y, low: c.y + FLAG > c.box.bottom, out: !c.shown || undefined }
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
@@ -505,11 +507,9 @@ function useGlide(el: React.RefObject<HTMLDivElement | null>, x: number, y: numb
   useEffect(() => () => cancelAnimationFrame(raf.current), [])
 }
 
-const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under, shift, age, typed, open, setOpen, pop, hold }: { a: Agent; spot: Spot; said: Note | null; others: Agent[]; under: boolean
+const Cursor = memo(function Cursor({ a, spot, said, waiting, others, under, shift, age, typed, open, setOpen, pop, hold }: { a: Agent; spot: Spot; said: Note | null; others: Agent[]; under: boolean
   /** It has words waiting for the user's pause (they're speaking). */
   waiting: boolean
-  /** Its history holds a bubble the user hasn't seen: the unread dot. */
-  dot: boolean
   /** Its place in a stack on one spot: drawn this many steps to the right, so each colour shows. */
   shift: number
   /** Since it last acted: 0 under 3 s (its name shows), 1 under 4 s, 2 under 8 s, 3 after (only watching, it fades). */
@@ -603,7 +603,6 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
       {!spot.drawn && <>
       <div className={cn("relative", shown.bob && "companion-bob")}>
         <Arrow tint={tint} />
-        {dot && !open && <span data-companion-unread aria-label="Unread" className="absolute top-[-1px] left-[12px] size-[7px] rounded-full ring-2 ring-background" style={{ background: tint }} />}
       </div>
       <button ref={flagRef} type="button" tabIndex={tag || many ? 0 : -1} aria-label={many ? `${[a, ...others].map((x) => x.name).join(", ")} here` : `Go to ${a.name}`} aria-haspopup={many ? "menu" : undefined} aria-expanded={many ? fan : undefined}
         data-companion-flag data-floats={floats && (tag || fan) ? "" : undefined} data-under-pages={floats && (tag || fan) ? undefined : ""} data-tip={many || !(a.path || a.pane) ? undefined : "Go to where it is"}
@@ -1004,9 +1003,13 @@ export function Overlay() {
     const mine = says(a), said = mine.findLast((n) => !heldBack(n)) ?? null, waiting = mine.some(heldBack)
     let h = holds.current.get(a.name)
     if (h?.left && !stays(a, h.left)) { holds.current.delete(a.name); h = undefined }
-    // (only while it works, writes, speaks or points, as a collaborator in a shared doc: idle a while, it rests at home)
-    const idle = !h && !said && !waiting && !a.asks && typing?.agent !== a.name && a.state === "watching" && Date.now() - a.t > IDLE_MS
-    const at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : idle ? home(a, i) : spotOf(a, i)
+    // (only while it works, writes, speaks or points, as a collaborator in a shared doc: idle a while, or moved there
+    // without acting, it rests at home)
+    const quiet = !h && !said && !waiting && !a.asks && typing?.agent !== a.name && a.state === "watching"
+    const idle = quiet && (!!a.rests || Date.now() - a.t > IDLE_MS)
+    let at = h?.screen ? screenSpot(h.screen) : h ? spotOf({ ...a, ...h.at }, h.i, true) : idle ? home(a, i) : spotOf(a, i)
+    // (past its act's moment, a quiet one whose line is scrolled away hides there, never kept at the edge; back with the line)
+    if (quiet && at?.out && Date.now() - a.t >= 3000) at = { ...at, parked: true, docked: true, faded: true }
     // (left on a line of a note not on screen now: where that note is, as it would be)
     const off = !!h?.left && !h.screen && !(h.at.path && viewOf(h.at.path))
     return { a, i, spot: at && h && !h.screen && !off ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, waiting, with: [] as Agent[], under: false, shift: 0, held: h }
@@ -1113,7 +1116,6 @@ export function Overlay() {
       {phone && <PhoneLayer agents={off ? [] : s.agents} popped={popped} setPopped={setPopped}
         sayOf={(a) => { const mine = says(a); return { said: mine.findLast((n) => !heldBack(n)) ?? null, waiting: mine.some(heldBack) } }} />}
       {!phone && cursors.map(({ a, spot, said, waiting, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} waiting={waiting} others={others} under={under} shift={shift}
-        dot={unread(a.name).some((n) => n.id !== said?.id)}
         age={Date.now() - a.t < 3000 ? 0 : Date.now() - a.t <= 4000 ? 1 : Date.now() - a.t <= 8000 ? 2 : 3} typed={typing?.agent === a.name}
         open={popped === a.name} setOpen={(o) => setPopped((was) => (o ? a.name : was === a.name ? null : was))} pop={setPopped} hold={(on, at, text) => hold(a.name, on, at, text)} />)}
     </div>,

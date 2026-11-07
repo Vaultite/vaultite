@@ -27,13 +27,18 @@ export const live = (s: JobState) => s === "starting" || s === "working" || s ==
 /** Where a job runs: the machine ("" this one) and its label, the folder and its repo, the account, the harness
  *  (agent id, its name, model, effort), why it went there, the commit a review's diff counts from, the preview asked over. */
 export type Where = { machine: string; label: string; cwd: string; repo: string; agent: string; account: string; harness: string; model: string; effort: string
-  why: string; base?: string; preview?: string }
+  why: string; base?: string; preview?: string
+  /** What the user watched on the machine it left (a preview, an editor's project): it previews on its own machine. */
+  moved?: string }
 /** What a turn ended with: its last message, the files it changed, the diff since `base` (one line), a PR, a link to try. */
 export type Result = { text?: string; files?: string[]; diff?: string; pr?: string; link?: string }
 export type Transition = { t: number; ev: JobEvent; from: JobState; to: JobState }
 /** Its worker's latest turn as last read: what it said last and when, what it was told last (a follow-up, the user's
  *  or the companion's), the questions it asks, its background tasks still running. */
 export type Last = { text: string; at: number; told?: string; asks?: string[]; background?: number }
+/** What its worker waits on, answerable where the user is (its notification's buttons, their word to the companion): the
+ *  prompt's question and its choices (a permission's: approve's, then deny's; none: it takes more, in its terminal), since when. */
+export type Waits = { kind: "permission" | "question"; question: string; choices: string[]; at: number }
 export type Job = {
   id: string; title: string; state: JobState; where: Where
   /** Its worker's terminal id, on where.machine. */
@@ -44,6 +49,7 @@ export type Job = {
   /** The user typed in its terminal: theirs now, never closed by itself. */
   held?: boolean
   last?: Last
+  waits?: Waits
   /** What it's doing now, one line (its agent's status, its terminal's title, what it asks). */
   now: string
   /** When: the ask it came from, its card up (the handoff answered), its worker's first step, its turn began, its last change. */
@@ -137,11 +143,27 @@ export const resultLine = (r?: Result) => (r ? [r.diff, r.pr, r.link].filter(Boo
 /** What it said last: its latest words read, else its result's. */
 const saidOf = (j: Job) => (j.last?.text ? j.last : j.result?.text ? { text: j.result.text, at: j.at } : null)
 
-/** A job as the menu bar and the app list it. */
-export type JobCard = { id: string; title: string; state: JobState; link: string; unseen: boolean; at: number; started: number; ended?: number; where: string; now: string; took: string; result: string }
+/** A job as the menu bar and the app list it (`waits`: what it waits on, while it needs the user). */
+export type JobCard = { id: string; title: string; state: JobState; link: string; unseen: boolean; at: number; started: number; ended?: number; where: string; now: string; took: string; result: string
+  waits?: { question: string; choices: string[] } }
 export const cardOf = (j: Job, now = Date.now()): JobCard => ({ id: j.id, title: j.title, state: j.state, link: linkOf(j), unseen: unseen(j), at: j.at, started: j.started,
-  ...(live(j.state) ? {} : { ended: j.at }), where: whereLine(j.where), now: j.now, took: took(j, now),
+  ...(live(j.state) ? {} : { ended: j.at }), ...(j.state === "needs you" && j.waits ? { waits: { question: j.waits.question, choices: j.waits.choices } } : {}),
+  where: whereLine(j.where), now: j.now, took: took(j, now),
   result: resultLine(j.result) || cut((j.result?.text ?? "").replace(/\s+/g, " ").trim(), 200) })
+
+const YES = /^(yes|y|yeah|yep|approve|allow|ok|okay|trust|accept|sure)$/i, NO = /^(no|n|nope|deny|reject|refuse|exit|disable|don't|cancel)$/i
+/** Which of `w`'s choices `given` names (from 1): its number, its words (or the start of them, one only), or a
+ *  permission's yes or no; 0 when none. */
+export function choiceIn(w: Pick<Waits, "kind" | "choices">, given: string) {
+  const said = given.trim().replace(/[.!]+$/, "").replace(/\s+/g, " ").toLowerCase(), names = w.choices.map((c) => c.toLowerCase().replace(/\s*\(recommended\)$/, ""))
+  if (/^\d+$/.test(said)) return Number(said) >= 1 && Number(said) <= w.choices.length ? Number(said) : 0
+  const exact = names.indexOf(said), starts = names.flatMap((n, i) => (said && n.startsWith(said) ? [i] : []))
+  if (exact >= 0) return exact + 1
+  if (starts.length === 1) return starts[0] + 1
+  return w.kind === "permission" && w.choices.length === 2 ? (YES.test(said) ? 1 : NO.test(said) ? 2 : 0) : 0
+}
+/** What job `j` waits on, a line: its question, then its choices numbered. */
+export const waitsLine = (w: Waits) => `"${cut(w.question, 160)}"${w.choices.length ? ` (${w.choices.map((c, i) => `${i + 1}. ${cut(c, 60)}`).join(" | ")})` : " (in its terminal only)"}`
 
 /** A PR and a link to try, from a worker's last message (else the preview it was asked over). */
 export function linksIn(text: string, preview?: string): Pick<Result, "pr" | "link"> {
@@ -167,9 +189,10 @@ function askLines(m: Moment | undefined) {
 }
 /** What a worker is told: the task, the ask it came from (its words, where, what was under the pointer, the screen's
  *  picture then), and how to end: changes are the user's to review, nothing outward without their word. */
-export function jobTask(task: string, m: Moment | undefined, coding: boolean) {
+export function jobTask(task: string, m: Moment | undefined, coding: boolean, moved?: { from: string; on: string }) {
   const asked = askLines(m)
   return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
+    moved ? `They asked over ${moved.from}. You run on ${moved.on} instead, from its checkout of that repo: work in a new git worktree of it at that commit (fetch it first if need be), never switching that checkout's own branch (it may be a live server's), and try your change in ${moved.on}'s own preview (its dev server or Tailscale Serve), not theirs. In your result, give its link and say it's on ${moved.on}.` : "",
     `You're a job they handed off, in a terminal of Vaultite they can open and type in. ${coding ? "Change the code freely, but don't push, merge, deploy, publish, post or message anyone unless they say so: it ends in their review. End" : "End"} with a few lines: what you found or did, the files you changed, and how to try it (a preview's link if there is one).`]
     .filter(Boolean).join("\n\n")
 }
@@ -186,6 +209,7 @@ export function jobText(j: Job, now = Date.now()) {
   const r = j.result, l = j.last, said = saidOf(j)
   return [`${j.id} · ${j.state}${unseen(j) ? " (new)" : ""} · "${j.title}" · ${whereLine(j.where)} · ${took(j, now)}`,
     live(j.state) && j.now && !(said && j.now === gist(said.text)) ? `now: ${j.now}` : "",
+    j.state === "needs you" && j.waits ? `waits on: ${waitsLine(j.waits)}${j.waits.choices.length ? ": companion job-answer with the user's choice, only on their words" : ""}` : "",
     l?.background ? `in the background: ${l.background} task${l.background > 1 ? "s" : ""} of its still running (a command, a subagent)` : "",
     l?.told ? `told last: ${l.told}` : "",
     said ? `it said (${ago(said.at, now)}): ${cut(said.text.trim(), 1500)}` : "", l?.asks?.length ? `asks: ${l.asks.join(" | ")}` : "",
@@ -198,7 +222,7 @@ export function jobText(j: Job, now = Date.now()) {
 export function jobsText(jobs: Job[], now = Date.now()) {
   if (!jobs.length) return "No jobs: companion handoff starts one."
   return jobs.map((j) => `- ${j.id} · ${j.state}${unseen(j) ? " (new)" : ""} · ${j.title} · ${whereLine(j.where)} · ${took(j, now)}` +
-    (j.now && live(j.state) ? `\n  now: ${cut(j.now, 120)}` : "") + (j.last?.asks?.length ? `\n  asks: ${cut(j.last.asks.join(" | "), 200)}` : "") +
+    (j.now && live(j.state) ? `\n  now: ${cut(j.now, 120)}` : "") + (j.state === "needs you" && j.waits ? `\n  waits on: ${waitsLine(j.waits)}` : "") + (j.last?.asks?.length ? `\n  asks: ${cut(j.last.asks.join(" | "), 200)}` : "") +
     (resultLine(j.result) ? `\n  ${resultLine(j.result)}` : "") +
     (j.result?.text && !live(j.state) ? `\n  ${cut(j.result.text.replace(/\s+/g, " "), 200)}` : "")).join("\n")
 }
@@ -206,8 +230,8 @@ export function jobsText(jobs: Job[], now = Date.now()) {
 /** The recent jobs a summoned ask is told of, so it can steer one, stop it, or say how it's going. */
 export function jobsLine(jobs: Job[], now = Date.now()) {
   const recent = jobs.filter((j) => live(j.state) || (now - j.at < 6 * 3600_000 && j.state !== "stopped")).slice(0, 4)
-  return recent.length ? `Your jobs (to tell one more or correct it: handoff with its job; to stop one: job-stop; how one goes: job): ${recent.map((j) =>
-    `${j.id} "${cut(j.title, 60)}" (${j.state}${j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)})`).join(", ")}.` : ""
+  return recent.length ? `Your jobs (to tell one more or correct it: handoff with its job; to stop one: job-stop; how one goes: job; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
+    `${j.id} "${cut(j.title, 60)}" (${j.state}${j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)})`).join(", ")}.` : ""
 }
 
 /** How fast jobs got going (ms): from the ask to their card, and to their worker's first step. */

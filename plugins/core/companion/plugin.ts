@@ -78,6 +78,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** The display's picture as the key went down too, when the screen changed while they spoke (a toast gone); over
    *  Vaultite, its toasts of the last minute (`notices`, in words). */
   shotDown?: string; shotDownAt?: Rect; notices?: string
+  /** On screen, its displays' bounds (screen points): where a mark can show. */
+  displays?: Rect[]
   /** In a pane (a terminal, a web page: today's tab id) or the app's UI (a data-ui id), by its title; a terminal's row, a
    *  page's element (a snapshot ref) or the text under the pointer (`text`). */
   pane?: string; ui?: string; row?: number; el?: string
@@ -95,6 +97,8 @@ type Ink = { shape: string; box: Rect; points: [number, number][] }
 export type Agent = Target & Boxed & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean; why?: string
   /** When it last pointed at its place (look, highlight, a say given one): a phone, with no cursor, shows it a moment. */
   pointed?: number
+  /** Moved there without acting (after the user's note, back from the screen): its cursor rests at home till it acts. */
+  rests?: boolean
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
 /** Where a page's element is in its page (CSS px, at its zoom), for the window to draw at: the engine's answer for `el`. */
 export type Boxed = { box?: { x: number; y: number; w: number; h: number; zoom: number } }
@@ -352,7 +356,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   // user's corrections, a bubble closed or words moved)
   if (m.kind === "open") {
     for (const a of agents.values()) if (meantFor(full, a.name) && a.state === "watching" && live(a.name) && !handed.has(key(a.name)))
-      setAgent(a.name, { path: full.path, line: full.line, x: full.x, y: full.y, find: undefined, state: "watching" })
+      setAgent(a.name, { path: full.path, line: full.line, x: full.x, y: full.y, find: undefined, state: "watching" }, true)
   } else if (wakes(full)) {
     for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
     for (const s of sessions()) if (isChat(s.id) && meantFor(full, s.name)) void pump(s.name)
@@ -463,10 +467,11 @@ plugin.provide("companion:who", (terminal: string) => {
 
 /** What anchors a place: given one, the rest of the agent's old place goes (a pane's row isn't a note's line). */
 const ROOTS = ["path", "pane", "ui", "app", "sx"] as const
-function setAgent(name: string, change: Partial<Agent>) {
+/** `moved`: a new place, not an act (`t` stays when it last acted), so its cursor doesn't show for it. */
+function setAgent(name: string, change: Partial<Agent>, moved = false) {
   if (change.state === "watching" || change.state === "writing" || change.state === "away") handed.delete(key(name))
   if (ROOTS.some((k) => change[k] !== undefined)) change = { ...Object.fromEntries([...PLACE_KEYS, "box"].map((k) => [k, undefined])), ...change }
-  const a = Object.assign(agentOf(name), { seen: undefined, why: undefined }, change, { t: Date.now() })
+  const a = Object.assign(agentOf(name), { seen: undefined, why: undefined, rests: undefined }, change, moved ? { rests: true } : { t: Date.now() })
   broadcast({ t: "agent", agent: a })
   return a
 }
@@ -848,6 +853,7 @@ const screenDrawing = screenDrawings(plugin, {
     const asked = moments.findLast((m) => m.for === a && (m.kind === "ask" || m.kind === "point"))?.t ?? 0
     return [...notes.values()].findLast((n) => n.kind === "say" && n.agent === a && n.t >= asked)?.text
   },
+  displays: (a) => (screens.size ? (askOf(a)?.displays ?? []).map((d) => ({ x: d.x, y: d.y, w: d.width, h: d.height })) : null),
 })
 const rectOfNear = (e: Near): ScreenRect => ({ x: e.frame.x, y: e.frame.y, w: e.frame.width, h: e.frame.height, label: e.label })
 /** Where the window used last has `places` now (locate.ts), in screen points; words found nearest `near`. */
@@ -901,14 +907,14 @@ function screenPlace(m: Record<string, unknown>) {
   const near = Array.isArray(m.near) ? m.near.slice(0, 40).flatMap((e: Record<string, unknown>) => { const f = rect(e?.frame); return f && str(e.id) ? [{ id: str(e.id).slice(0, 8), role: str(e.role).slice(0, 40), label: str(e.label).slice(0, 120), frame: f }] : [] }) : []
   const ink = Array.isArray(m.ink) ? m.ink.slice(0, 12).flatMap((k: Record<string, unknown>) => { const b = rect(k?.box); return b ? [{ shape: str(k.shape).slice(0, 20), box: b,
     points: (Array.isArray(k.points) ? k.points : []).slice(0, 40).map((p: unknown) => (Array.isArray(p) ? [Math.round(Number(p[0])), Math.round(Number(p[1]))] : [0, 0]) as [number, number]) }] : [] }) : []
-  const at = rect(m.shotAt)
+  const at = rect(m.shotAt), displays = Array.isArray(m.displays) ? m.displays.slice(0, 8).map(rect).filter((d): d is Rect => !!d && d.width > 0 && d.height > 0) : []
   return { ...(str(m.app) ? { app: str(m.app).slice(0, 200) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
     ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     ...(OWN_SHOT.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
     ...(OWN_SHOT.test(down) && OWN_SHOT.test(shot) ? { shotDown: down, ...(rect(m.shotDownAt) ? { shotDownAt: rect(m.shotDownAt)! } : {}) } : {}),
     ...(str(m.notices) ? { notices: str(m.notices).slice(0, 1200) } : {}),
-    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}) }
+    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}), ...(displays.length ? { displays } : {}) }
 }
 /** What the last ask on screen found near the pointer, by agent: what `--ax` points at. */
 const nearBy = new Map<string, Near[]>()
@@ -917,7 +923,7 @@ const nearBy = new Map<string, Near[]>()
 export function comeBack(name: string) {
   if (!agents.has(key(name))) return
   const w = [...windows.values()].sort((a, b) => b.at - a.at).find((x) => x.focus), f = w?.focus?.path && w.shown.includes(w.focus.path) ? w.focus : null
-  setAgent(name, { ...Object.fromEntries(PLACE_KEYS.map((k) => [k, undefined])), ...(f?.path ? { path: f.path, line: f.line } : {}) })
+  setAgent(name, { ...Object.fromEntries(PLACE_KEYS.map((k) => [k, undefined])), ...(f?.path ? { path: f.path, line: f.line } : {}) }, true)
 }
 /** What the user did on screen, as the helper says it: an ask, or a point (no words). Over Vaultite's own window, it
  *  says what's there as the page knows it too (a note's line, a pane's row, the app's UI), asked as one asked there. */
@@ -1013,9 +1019,11 @@ function ride(ws: WebSocket, agent: string) {
   const was = riding()
   if (agent) ridingBy.set(ws, agent); else ridingBy.delete(ws)
   if (riding() === was) return
-  // (its exchange over: what it answered there was said by the pointer or in its box, never a bubble after, where its
-  // cursor goes next; a late answer still comes as one)
-  if (was) for (const n of [...notes.values()]) if (n.kind === "say" && n.answers && key(n.agent) === key(was)) dropNote(n.id)
+  // (its exchange over: what it answered there was said by the pointer or in its box, so seen, never a bubble after,
+  // where its cursor goes next; a late answer still comes as one)
+  const there = was ? [...notes.values()].filter((n) => n.kind === "say" && n.answers && key(n.agent) === key(was)).map((n) => n.id) : []
+  for (const id of there) dropNote(id)
+  saw(there)
   broadcast({ t: "riding", agent: riding() })
 }
 
@@ -1706,6 +1714,7 @@ export type Chat = {
   stop: (id: string) => Promise<unknown>
   interrupt: (id: string) => Promise<boolean>
   list: () => ChatState[]
+  touch: () => void
   serve: (id: string, o: ChatHow) => void
   on: (fn: (id: string, s: ChatState | null) => void) => () => void
   asking: (id: string) => string[]
@@ -1714,13 +1723,13 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer"]
 /** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
 const QUIET_RESULTS = new Set(["see", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
-const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop"])
+const STREAMS = new Set(["say", "comment", "edit", "draw"]), ENDS = new Set(["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "act", "follow", "unfollow", "keep", "clear", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer"])
 /** Those after which its turn always ends. */
 const LAST = new Set(["pass", "handover", "handoff"])
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
@@ -1778,7 +1787,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["open", "page", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-open", "job-stop", "conversation"]
+const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "conversation"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -2316,7 +2325,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     else if (m.kind === "move") out.push(m.into === "note" ? `- move${at}: they put your bubble in the note there (more for the note than a bubble), ${JSON.stringify(cut(m.text ?? "", 200))}`
       : `- move${at}: they folded what you wrote there back into a bubble (more for a bubble than the note), ${JSON.stringify(cut(m.text ?? "", 200))}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
-    if (m.shot) out.push(`  its picture: ${m.shot}${m.shotAt ? ` (the screen around their pointer, a pixel a point: its top left is sx ${m.shotAt.x}, sy ${m.shotAt.y}, so its pixel x, y is sx ${m.shotAt.x} + x, sy ${m.shotAt.y} + y${m.sx !== undefined ? `; their pointer at ${m.sx - m.shotAt.x}, ${m.sy! - m.shotAt.y} in it` : ""})` : ""}`)
+    if (m.shot) out.push(`  its picture: ${m.shot}${m.shotAt ? ` (the screen around their pointer, cropped: what its edges cut is whole on their screen; a pixel a point: its top left is sx ${m.shotAt.x}, sy ${m.shotAt.y}, so its pixel x, y is sx ${m.shotAt.x} + x, sy ${m.shotAt.y} + y${m.sx !== undefined ? `; their pointer at ${m.sx - m.shotAt.x}, ${m.sy! - m.shotAt.y} in it` : ""})` : ""}`)
     if (m.shotDown) out.push(`  its picture as the key went down: ${m.shotDown} (the screen changed while they spoke: what they meant may be only in this one${m.shotDownAt ? `; its top left is sx ${m.shotDownAt.x}, sy ${m.shotDownAt.y}` : ""})`)
     if (m.notices) out.push(`  Vaultite's toasts of the last minute (gone from the picture, maybe): ${m.notices}`)
     if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)
@@ -3223,7 +3232,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
       })
     } finally { setAgent(name, { state: acting(name) }) }
   },
-  text: (r) => (r.screen ? `Drew ${r.marks} on the screen (${r.screen}).` : `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`),
+  text: (r) => (r.screen ? `Drew ${r.marks} on the screen (${r.screen}).${r.unshown ? ` Not drawn, they saw no mark: ${r.unshown.join("; ")}.` : ""}` : `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`),
   did: (p) => (p.marks !== undefined ? { action: "ui", text: "Drew on the screen", paths: [], by: who(p) } : edited(p)),
 })
 
@@ -3231,7 +3240,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
 async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
   const name = who(p)
   did(name, "draw")
-  const d = await screenDrawing.draw(name, p.marks, str(p.say) || undefined).catch((e) => {
+  const { drawing: d, unshown } = await screenDrawing.draw(name, p.marks, str(p.say) || undefined).catch((e) => {
     const use = toolUse.getStore(), n = use ? streams.get(use)?.note : undefined, ask = askOf(name)?.t
     if (n && ask !== undefined) saidUndrawn.set(key(name), { note: n, text: notes.get(n)?.text ?? str(p.say), ask })
     throw e
@@ -3240,7 +3249,7 @@ async function drawOnScreen(p: Record<string, unknown>, ctx: OpCtx) {
   const at = r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : {}
   if (str(p.say)) await ctx.op("companion.say", { text: str(p.say), ...at, ...(p.as ? { as: p.as } : {}) })
   else if (r) setAgent(name, { ...at, state: acting(name) })
-  return { screen: d.id, marks: (p.marks as unknown[]).length }
+  return { screen: d.id, marks: (p.marks as unknown[]).length - unshown.length, ...(unshown.length ? { unshown } : {}) }
 }
 
 plugin.op({
@@ -3284,12 +3293,12 @@ plugin.op({
     const id = sessionId()
     const all = await Promise.all(sessions().map(async (s) => ({ ...s, running: await running(s.id) })))
     return { mode: mode(), name: ownName(), session: (await running(id)) ? id : null, windows: windows.size, focus: focus(),
-      sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel() } : null,
+      sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id, ...(isChat(id) ? { chat: true } : {}) })), summoned: lane().on() ? { id: lane().id(), model: summonedModel(), ...(lane().trouble() ? { trouble: lane().trouble() } : {}) } : null,
       agents: [...agents.values()].map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
       notes: [...notes.values()], moments: moments.slice(-10), follows: followed.list(),
       realtime: pausedNow() ? { state: "paused", ...pausedNow()! } : realtimePaused.size ? { state: "on" } : null, voice: voiceHere(plugin, setting, [...mics.values()].at(-1)) }
   },
-  text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}.${r.summoned ? ` Summoned asks: ${r.summoned.model}${r.summoned.id ? `, session ${r.summoned.id}` : ""}.` : ""} Windows: ${r.windows}.`,
+  text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}.${r.summoned ? ` Summoned asks: ${r.summoned.model}${r.summoned.id ? `, session ${r.summoned.id}` : ""}${r.summoned.trouble ? ` (its last trouble, at ${new Date(r.summoned.trouble.t).toTimeString().slice(0, 5)}: ${cut(r.summoned.trouble.why, 160)})` : ""}.` : ""} Windows: ${r.windows}.`,
     voiceHereText(r.voice),
     ...(r.realtime?.state === "paused" ? [`Realtime voice: paused, ${r.realtime.account === "quota" ? "the OpenAI account has no credits" : "OpenAI refused its key"} (${cut(r.realtime.why, 120)}); tries again at ${new Date(r.realtime.until).toTimeString().slice(0, 5)}.`] : []),
     ...r.agents.map((a: Agent & { live: boolean }) => {

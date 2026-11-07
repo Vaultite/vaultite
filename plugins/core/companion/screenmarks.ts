@@ -199,6 +199,20 @@ export function rectOf(s: Spot, places: Record<string, Rect> = {}): Rect | null 
   return s
 }
 
+/** Why each of `marks` can't show, null where it can: its spot found nowhere (`places` lacks it), or its box off every
+ *  one of `displays` (screen points; none known, not checked). A card with no spot goes on calm space: it shows. */
+export function unshown(marks: Mark[], places: Record<string, Rect> = {}, displays: Rect[] = []): (string | null)[] {
+  const on = (r: Rect) => displays.some((d) => r.x + r.w >= d.x && r.x <= d.x + d.w && r.y + r.h >= d.y && r.y <= d.y + d.h)
+  return marks.map((m) => {
+    for (const s of "from" in m ? [m.from, m.to] : "at" in m && m.at ? [m.at] : []) {
+      const r = rectOf(s, places)
+      if (!r) return "el" in s ? `found nothing: ${s.el} isn't an element the ask listed` : "found nothing there"
+      if (displays.length && !on(r)) return `at ${Math.round(r.x)},${Math.round(r.y)} is off their screen`
+    }
+    return null
+  })
+}
+
 const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
 /** The element of `els` saying `text`: the same words, else the most like them (its label in them, or them in it). */
 export function byLabel<T extends { label: string }>(els: T[], text: string): T | null {

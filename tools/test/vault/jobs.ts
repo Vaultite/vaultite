@@ -42,6 +42,16 @@ export default async ($: VaultTest) => {
       check("jobs: the menu bar's notifications follow job_news",
         jobNews([j("working")], [j("done")], "quiet").length === 0 && jobNews([j("working")], [j("done")], "spoken").length === 1 &&
         jobNews([j("working")], [j("needs you")], "quiet").length === 1 && jobNews([j("working")], [j("failed")], "off").length === 0)
+      const { jobNote } = await import("../../../electron/helperlogic.ts")
+      const trust = { ...j("needs you"), waits: { question: "Trust this folder?", choices: ["Yes, I trust this folder", "No, exit"] } }
+      const imports = { ...trust, waits: { question: "Allow external CLAUDE.md imports?", choices: ["Yes, allow external imports", "No, disable external imports"] } }
+      check("jobs: a job waiting on a prompt is told with its question and its choices as buttons; another prompt after it is told again",
+        jobNote(trust).body === "x\nTrust this folder?" && jobNote(trust).choices.join() === "Yes, I trust this folder,No, exit" && jobNote(j("done")).choices.length === 0 &&
+        jobNews([trust], [imports], "quiet").length === 1 && jobNews([trust], [trust], "quiet").length === 0, jobNote(trust))
+      const perm = { kind: "permission" as const, choices: ["Yes, I trust this folder", "No, exit"] }, q = { kind: "question" as const, choices: ["Local cert", "Let's Encrypt (Recommended)"] }
+      check("jobs: a choice is named by its number, its words or their start, or yes and no for a permission",
+        J.choiceIn(perm, "1") === 1 && J.choiceIn(perm, "No, exit") === 2 && J.choiceIn(perm, "yes") === 1 && J.choiceIn(perm, "No.") === 2 && J.choiceIn(perm, "Yes, I trust") === 1 &&
+        J.choiceIn(perm, "maybe") === 0 && J.choiceIn(perm, "3") === 0 && J.choiceIn(q, "let's encrypt") === 2 && J.choiceIn(q, "yes") === 0)
     }
     {
       const jt = J.jobTask("Fix the footer", undefined, true)
@@ -79,8 +89,8 @@ export default async ($: VaultTest) => {
       pick("auto", false, ms.map((m) => (m.id === "m1" ? { ...m, online: false } : m))).machine?.id === "pc", [pick("auto"), pick("auto", true)])
     check("where: a machine named for jobs is used while it can be, else here, saying why", pick("pc").machine?.id === "pc" && pick("lap").machine === null &&
       pick("box").machine === null && /another vault/.test(pick("box").why) && pick("nope").machine === null)
-    check("where: a preview or an editor's project stays where it's served; a note, a GitHub page or nothing may move",
-      !W.movable({ cwd: "/r", why: "", from: "preview" }) && !W.movable({ cwd: "/r", why: "", from: "editor" }) && W.movable({ cwd: "/r", why: "", from: "github" }) && W.movable({ cwd: "/v", why: "", from: "vault" }))
+    check("where: a preview or an editor's project is a copy the user watches here; a note, a GitHub page or nothing isn't",
+      W.watched({ cwd: "/r", why: "", from: "preview" }) && W.watched({ cwd: "/r", why: "", from: "editor" }) && !W.watched({ cwd: "/r", why: "", from: "github" }) && !W.watched({ cwd: "/v", why: "", from: "vault" }))
     check("where: an address another machine serves goes to it", W.machineOfUrl({ url: "https://studio.tail1.ts.net:8450/x" }, { studio: "studio.tail1.ts.net" })?.machine === "studio" &&
       W.machineOfUrl({ url: "http://localhost:3000" }, { studio: "studio.tail1.ts.net" }) === null)
   }
@@ -284,18 +294,83 @@ export default async ($: VaultTest) => {
     }
   }
 
+  // A first session in a folder stops on Claude Code's trust prompt, then its imports one, each a menu defaulting to No
+  // (a stand-in drawing them): answered Yes from the job's notification, then by the user's word to the companion.
+  if (process.platform !== "win32") {
+    const c = await import("../../../plugins/core/companion/plugin.ts")
+    const cc = app.plugins.find((p) => p.id === "claude-code")!.services, was = { ...cc }
+    const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
+    const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "jobs-trust-")), chosen = path.join(plain, "chosen.txt"), script = path.join(plain, "menus.cjs")
+    fs.writeFileSync(script, `const fs = require("fs")
+const menus = [["Accessing workspace:", "Quick safety check: Is this a project you created or one you trust?", "No, exit", "Yes, I trust this folder"],
+  ["Allow external CLAUDE.md file imports?", "This project's CLAUDE.md imports files outside the current working directory.", "No, disable external imports", "Yes, allow external imports"]]
+let m = 0, at = 0
+const draw = () => { const [a, b, no, yes] = menus[m]; process.stdout.write("\\x1b[2J\\x1b[H" + [" " + a, "", " " + b, "", (at ? "   " : " ❯ ") + no, (at ? " ❯ " : "   ") + yes, "", " Enter to confirm · Esc to cancel"].join("\\r\\n")) }
+process.stdin.setRawMode(true)
+process.stdin.on("data", (d) => {
+  const k = String(d)
+  if (k === "\\x1b[B") at = 1; else if (k === "\\x1b[A") at = 0
+  else if (k === "\\r") { fs.appendFileSync(${JSON.stringify(chosen)}, menus[m][2 + at] + "\\n"); m++; at = 0
+    if (m === menus.length) { process.stdout.write("\\x1b[2J\\x1b[H\\x1b]7501;state=working\\x1b\\\\"); return } }
+  draw()
+})
+setTimeout(draw, 300)
+`)
+    cc["agent:claude"] = async () => ({ command: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}; sleep 600`, cwd: null })
+    cc["agent-turn:claude"] = async () => null
+    const job = async (id: string) => (await api("POST", "ops/companion.job", { id }))[1]
+    let id = ""
+    try {
+      await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", summoned_model: "companion" })
+      const [st, b] = await api("POST", "ops/companion.handoff", { task: "Fix the site's header", cwd: plain }, agent)
+      id = b.link?.split("/").pop() ?? ""
+      const trust = await waitFor(async () => { const r = await job(b.id); return r.state === "needs you" && r.waits && r }, 15000, 200)
+      check("jobs: a worker stopped on its folder's trust prompt needs you, with the prompt's question and its choices (Yes first)", st === 200 && !!trust &&
+        /^Trust this folder\?/.test(trust.waits.question) && trust.waits.choices.join() === "Yes, I trust this folder,No, exit" && trust.waits.kind === "permission", trust)
+      const [, list] = await api("POST", "ops/companion.jobs", {})
+      check("jobs: its card carries what it waits on, for its notification's buttons", list.jobs[0]?.waits?.choices?.[0] === "Yes, I trust this folder", list.jobs[0]?.waits)
+      let [s2, r2] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "yes", said: "yes" }, agent)
+      check("job-answer: an agent can't answer it without the user's words in an ask after it began waiting", s2 === 403, [s2, r2])
+      ;[s2, r2] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "Yes, I trust this folder" }, asApp)
+      const first = await waitFor(() => fs.existsSync(chosen) && fs.readFileSync(chosen, "utf8"), 5000, 50)
+      check("job-answer from its notification: Yes chosen in its terminal, the cursor moved off the default No first", s2 === 200 && r2.answered === "Yes, I trust this folder" &&
+        first === "Yes, I trust this folder\n", [s2, r2, first])
+      const imports = await waitFor(async () => { const r = await job(b.id); return r.state === "needs you" && /imports/.test(r.waits?.question ?? "") && r }, 15000, 200)
+      check("jobs: its imports prompt next is what it waits on now", !!imports && imports.waits.choices[0] === "Yes, allow external imports", imports)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "Yes, allow them. Thanks", voice: true, app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
+      ;[s2, r2] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "no", said: "no" }, agent)
+      check("job-answer: words the user didn't say aren't theirs", s2 === 403 && !fs.readFileSync(chosen, "utf8").includes("disable"), [s2, r2])
+      const [, jobsNow] = await api("POST", "ops/companion.job", { id: b.id })
+      ;[s2, r2] = await api("POST", "ops/companion.job-answer", { id: b.id, choice: "yes", said: "yes, allow them" }, agent)
+      const both = await waitFor(() => { const t = fs.readFileSync(chosen, "utf8"); return t.split("\n").length > 2 && t }, 5000, 50)
+      check("job-answer by voice: the companion answers with the user's word in their ask, its choice pressed in the terminal", s2 === 200 && r2.answered === "Yes, allow external imports" &&
+        both === "Yes, I trust this folder\nYes, allow external imports\n", [s2, r2, both, jobsNow.waits])
+      const on = await waitFor(async () => { const r = await job(b.id); return r.state === "working" && r }, 10000, 200)
+      check("jobs: answered, it works on, waiting on nothing", !!on && !on.waits, on)
+    } finally {
+      Object.assign(cc, was)
+      for (const k of Object.keys(cc)) if (!(k in was)) delete cc[k]
+      await api("POST", "ops/companion.next", { timeout: 0 })
+      await api("PATCH", "config/plugin/companion", { mode: "off", summoned_model: "haiku" })
+      if (id) await api("DELETE", `terminals/${id}`).catch(() => {})
+      fs.rmSync(plain, { recursive: true, force: true })
+    }
+  }
+
   // Another machine's job: where and its worker asked of that machine's companion, its terminal started and ended there.
   {
     const http = await import("node:http")
     const calls: Any[] = []
-    let stage = "working"
+    let stage = "working", farHas = true
     const server = http.createServer((req, res) => {
       let body = ""
       req.on("data", (d) => (body += d))
       req.on("end", () => {
         const op = req.url!.replace("/api/ops/", ""), p = body ? JSON.parse(body) : {}
         calls.push({ op, p, client: req.headers["x-vaultite-client"] })
-        const out: Any = op === "companion.where" ? { cwd: "/home/alice/Projects/site", repo: "site", base: "abc123", why: "as asked", refused: "" }
+        const out: Any = op === "companion.where" ? (farHas ? { cwd: "/home/alice/Projects/site", repo: "site", base: "abc123", why: "as asked", refused: "" }
+            : { cwd: "/home/alice/Vault", repo: "", base: "", why: "nothing on screen named a project: the vault", from: "vault", refused: "" })
           : op === "terminal.start" ? { id: "claude-remote1" }
           : op === "companion.worker" ? (stage === "working" ? { running: true, state: "working", title: "✳ Editing the header", typed: Date.now(), ...(p.turn ? { turn: { text: "", files: [], at: 0, final: false, session: "rs1" } } : {}) }
             : stage === "gone" ? { running: false, exit: { code: 0, signal: 1 }, ...(p.turn ? { turn: { text: "Shipped the header.", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: false, session: "rs1" }, diff: "1 file changed, +2 -1" } : {}) }
@@ -333,7 +408,8 @@ export default async ($: VaultTest) => {
       ms["machines:vault"] = () => "v1"
       stage = "working"
       calls.length = 0
-      // (its own ask over the GitHub page: an earlier block's may be no longer the last)
+      // (its own ask over the GitHub page: an earlier block's may be no longer the last; heard only while the companion is on)
+      await api("PATCH", "config/plugin/companion", { mode: "quiet" })
       ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "research the header", app: "com.example.browser", title: "Site", screen: "https://github.com/lighthouse/site", sx: 10, sy: 20 })
       ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Research the header", say: "On it." }, agent)
       job = b
@@ -346,7 +422,50 @@ export default async ($: VaultTest) => {
       check("jobs on another machine: a worker that closed itself after its changes is ready for review, read from its session, and stays so",
         shipped?.state === "ready for review" && /Shipped the header/.test(shipped.result?.text ?? "") && again.state === "ready for review" &&
         calls.some((c) => c.op === "companion.worker" && c.p.turn && c.p.session === "rs1"), [shipped, again.state])
+      // A preview served here: to the always-on machine when it has the repo and all of it is pushed, else here, saying why.
+      if (process.platform !== "win32") {
+        const cc = app.plugins.find((p) => p.id === "claude-code")!.services, wasC = { ...cc }, ours: string[] = []
+        cc["agent:claude"] = async () => ({ command: "sleep 60", cwd: null })
+        g("add", "-A"); g("commit", "-qm", "earlier blocks' changes", "--allow-empty"); g("update-ref", "refs/remotes/origin/main", "HEAD")
+        const pv = spawn(process.execPath, ["-e", "const s=require('http').createServer(()=>{}).listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { cwd: repo, stdio: ["ignore", "pipe", "ignore"] })
+        const port = await new Promise<string>((ok) => pv.stdout!.once("data", (d) => ok(String(d).trim())))
+        const ask = async () => {
+          ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "make the header blue", app: "com.example.browser", title: "Site", screen: `localhost:${port}/about`, sx: 10, sy: 20 })
+          calls.length = 0
+          const r = await api("POST", "ops/companion.handoff", { task: "Make the header blue", say: "On it." }, agent)
+          if (!String(r[1].link ?? "").includes("@")) ours.push(String(r[1].link ?? "").split("/").pop()!)
+          return r
+        }
+        try {
+          // (an earlier block leaves it off, which drops the ask)
+          await api("PATCH", "config/plugin/companion", { mode: "quiet" })
+          stage = "working"
+          ;[st, b] = await ask()
+          const start = calls.find((c) => c.op === "terminal.start")
+          check("handoff over a preview here, its repo pushed and checked out on the always-on machine: it runs there, in that checkout, told to preview there",
+            st === 200 && b.link.endsWith("@studio") && /all pushed: as asked, on Studio \(always on\), previewed there/.test(b.why) &&
+            JSON.stringify(calls[0]?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }) && start?.p.cwd === "/home/alice/Projects/site" &&
+            new RegExp(`asked over the preview http://localhost:${port} on [^]*Studio's own preview[^]*say it's on Studio`).test(start?.p.prompt ?? ""), [st, b, start?.p])
+          await api("POST", "ops/companion.job-stop", { id: b.id }, agent)
+          fs.appendFileSync(path.join(repo, "index.html"), "<p>wip</p>\n")
+          ;[st, b] = await ask()
+          check("handoff over a preview here with uncommitted changes: it stays here, its why saying they'd be lost by moving",
+            st === 200 && !b.link.includes("@") && /1 uncommitted change, not yet pushed, would be lost on Studio: here\)$/.test(b.why) && !calls.some((c) => c.op === "companion.where"), [st, b, calls])
+          g("checkout", "--", "index.html")
+          farHas = false
+          ;[st, b] = await ask()
+          check("handoff over a pushed preview the always-on machine hasn't checked out: it stays here, saying so",
+            st === 200 && !b.link.includes("@") && /not checked out on Studio: here\)$/.test(b.why) && calls.some((c) => c.op === "companion.where"), [st, b])
+        } finally {
+          await api("PATCH", "config/plugin/companion", { mode: "off" })
+          pv.kill()
+          Object.assign(cc, wasC)
+          for (const id of ours) await api("DELETE", `terminals/${id}`).catch(() => {})
+        }
+      }
     } finally {
+      await api("POST", "ops/companion.next", { timeout: 0 })
+      await api("PATCH", "config/plugin/companion", { mode: "off" })
       Object.assign(ms, wasM)
       for (const k of Object.keys(ms)) if (!(k in wasM)) delete ms[k]
       server.close()

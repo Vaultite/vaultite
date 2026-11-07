@@ -177,7 +177,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     return p
   }
   const ask = async (op: string, params: Record<string, unknown> = {}) => (await keeper(!!port)).request(op, params)
-  /** When a session last ran (a turn, an ask): a keeper is ended only when none has for a while. */
+  /** When a session last ran or was started, sent to or about to be (a turn, an ask): a keeper is ended only when none
+   *  has for a while. */
   let busyAt = Date.now()
   /** Keeper `pid` (followed by `w`) runs other code than this server's: ended once no session ran for two minutes
    *  (each resumes on its next message). The companion's sessions, never all gone, kept one's first code for days. */
@@ -427,6 +428,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
 
   /** A new session: its id. `own`: a plugin's, run so again when it's resumed. */
   async function start(o: ChatStart, own = false) {
+    busyAt = Date.now()
     const a = accountOf(o.account)
     if (o.cwd && !fs.statSync(o.cwd, { throwIfNoEntry: false })?.isDirectory()) throw new OpError(`there's no folder ${o.cwd}`, 404)
     if (o.model && !d.models().models.some((m) => m.id === o.model) && !/^claude-[\w.-]+$/.test(o.model)) throw new OpError(`'${o.model}' isn't a model Claude Code runs`)
@@ -447,6 +449,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
 
   /** What the user says to session `id`: straight in while the keeper runs it, else it's resumed with it. */
   async function send(id: string, text: string, given: ChatStart = {}) {
+    busyAt = Date.now()
     if (!SESSION.test(id)) throw new OpError(`'${id}' isn't a session id`)
     const o = { ...owned.get(id), ...given }
     const said = text.trim()
@@ -874,6 +877,9 @@ Machines (its sessions are <id>@<machine>), all every machine's.
         return true
       },
       list: () => [...hosted.values()],
+      /** A session of the plugin's is about to be used (its Talk key pressed, an ask on its way): the keeper isn't ended
+       *  for a while, so what was warmed for it is still there. */
+      touch: () => { busyAt = Date.now() },
       serve(id: string, o: ChatStart) {
         owned.set(id, { ...o, prompt: undefined })
         // (cut off mid-turn by a keeper that ended, before its tools were back: taken up again now)

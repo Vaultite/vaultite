@@ -3,6 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
+import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { api, check, tmp } = $
@@ -76,7 +77,14 @@ export default async ($: VaultTest) => {
       !privateApp({ bundle: "com.apple.MobileSMS", name: "Messages" }, ["1Password"]))
   }
   {
-    const { atOffset, dictationKeys, drawnShapes, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene, tappedKeys, trailStrokes } = await import("../../../electron/helperlogic.ts")
+    const { atOffset, beatsWait, dictationKeys, drawingHold, drawnShapes, inkOf, panelAt, pointIn, prefsOf, sceneFor, splitScene, tappedKeys, trailStrokes } = await import("../../../electron/helperlogic.ts")
+    // (a drawing answered with no words: its marks wait for nothing, and are held up long enough to see before a spoken
+    // exchange ends by itself; the bug: they waited for words never said, and went with the exchange 1.5 s on)
+    check("helper: a wordless drawing's marks don't wait for words once its turn is over; a worded one's do while said or to come",
+      !beatsWait({ saying: null, aloud: true, words: false, working: false }) && beatsWait({ saying: null, aloud: true, words: false, working: true }) &&
+      beatsWait({ saying: null, aloud: true, words: true, working: false }) && beatsWait({ saying: true, aloud: false, words: false, working: false }) &&
+      !beatsWait({ saying: false, aloud: true, words: true, working: true }) && !beatsWait({ saying: null, aloud: false, words: true, working: true }))
+    check("helper: a drawing is held up a few seconds to be seen, longer for each beat", drawingHold(0) >= 3000 && drawingHold(2) > drawingHold(0) && drawingHold(99) <= 20_000)
     const area = { x: 0, y: 25, width: 1600, height: 975 }, bounds = { x: 0, y: 0, width: 1600, height: 1000 }, size = { width: 300, height: 200 }
     const { arrowBox, boxAt, flagBox } = await import("../../../plugins/core/companion/boxes.ts")
     const meets = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
@@ -416,7 +424,7 @@ export default async ($: VaultTest) => {
       ink: [{ shape: "ring", box: { x: 770, y: 410, width: 100, height: 60 }, points: [[770, 440], [820, 410], [870, 440]] }] })
     const heldText = held ? c.momentsText([held], "quiet", null) : ""
     check("companion: a summoned ask says the display's picture and their pointer in it, what they drew and what's near, by id",
-      heldText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer, a pixel a point: its top left is sx 0, sy 0, so its pixel x, y is sx 0 + x, sy 0 + y; their pointer at 812, 440 in it)") &&
+      heldText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer, cropped: what its edges cut is whole on their screen; a pixel a point: its top left is sx 0, sy 0, so its pixel x, y is sx 0 + x, sy 0 + y; their pointer at 812, 440 in it)") &&
       heldText.includes("they drew a ring round sx 770-870, sy 410-470") && heldText.includes('a1 button "Send" at 790,430 60×24'), heldText)
     const name = (barSt as { agents: { name: string; sx?: number }[] }).agents.find((a) => a.sx === 1290)!.name
     const [axSt] = await api("POST", "ops/companion.look", { ax: "a1", as: name })
@@ -435,7 +443,7 @@ export default async ($: VaultTest) => {
     {
       // (back in the window: by their note only while it's on screen; one in a tab behind sent it to a file's row, far off)
       const { EventEmitter } = await import("node:events")
-      type Got = { t: string; id?: string; agent?: string; note?: { id: string }; said?: { text?: string }[] }
+      type Got = { t: string; id?: string; agent?: string; note?: { id: string; answers?: object }; said?: { id?: string; text?: string; seen?: boolean }[] }
       const live = c.plugin.sockets.find((x: { pattern: string[] }) => x.pattern.join("/") === "companion/live")!
       const sock = (screen: boolean) => {
         const got: Got[] = []
@@ -445,21 +453,30 @@ export default async ($: VaultTest) => {
       }
       const win = sock(false), where = (shown: string[]) => win.emit("message", Buffer.from(JSON.stringify({ t: "where", open: ["Notes/A.md"], shown, focus: { path: "Notes/A.md", line: 3 }, active: true })))
       const placed = async () => ((await api("POST", "ops/companion.status", {}))[1] as { agents: { name: string; path?: string }[] }).agents.find((a) => a.name === name)
+      // (the ask over the window above, its session a stand-in, is answered late: wait for that turn to end first)
+      await waitFor(async () => ((await api("POST", "ops/companion.status", {}))[1] as { notes: { kind: string; t: number }[] }).notes.some((n) => n.kind === "say" && n.t >= (there?.t ?? 0)), 8000, 100)
       where([]); c.comeBack(name)
       const behind = await placed()
       where(["Notes/A.md"]); c.comeBack(name)
       const shown = await placed()
       check("companion: back from the screen, by their note when it's shown, else home (never a tab behind's file row)", !!behind && !behind.path && shown?.path === "Notes/A.md", [behind, shown])
+      check("companion: …moved there, not acting: its cursor rests at home", (shown as { rests?: boolean } | undefined)?.rests === true, shown)
       // (an exchange's answers were said by the pointer or in its box: once it's over, no window shows them again)
       const helper = sock(true)
       helper.emit("message", JSON.stringify({ t: "riding", agent: name }))
       helper.emit("message", JSON.stringify({ t: "answered", agent: name, heard: "how are you", said: "I'm good." }))
       const answer = win.got.filter((m) => m.t === "note").at(-1)?.note
+      // (a summoned ask, its answer by the pointer: here, that its session can't start)
+      c.addMoment({ kind: "ask", for: name, summoned: true, text: "open my page" })
+      const late = () => win.got.find((m) => m.t === "note" && m.note?.id !== answer?.id && m.note?.answers)?.note
+      for (let i = 0; i < 100 && !late(); i++) await $.sleep(50)
       helper.emit("message", JSON.stringify({ t: "riding", agent: "" }))
       const dropped = win.got.findIndex((m) => m.t === "drop" && m.id === answer?.id), over = win.got.findIndex((m) => m.t === "riding" && m.agent === "")
       const kept = win.got.filter((m) => m.t === "said").at(-1)?.said ?? []
       check("companion: its exchange over, its answers there leave the windows before its cursor shows there, kept in its history",
         !!answer && dropped >= 0 && dropped < over && kept.some((n) => n.text === "I'm good."), { answer, got: win.got.slice(-4) })
+      const theirs = kept.find((n) => n.id === late()?.id)
+      check("companion: …and seen there (by the pointer, in its box), so no unread dot for them", !!theirs?.seen, theirs)
       helper.emit("close"); win.emit("close")
     }
     check("companion: in quiet no edit reaches it, nor does the helper send one (it follows nothing on screen)", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&

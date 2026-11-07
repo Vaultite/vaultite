@@ -16,7 +16,7 @@ import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, besidePointer, bitmapsDiffer, dictationKeys, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
@@ -200,13 +200,15 @@ async function openJob(j: HelperJob) {
     await new Promise((r) => setTimeout(r, 500))
   }
 }
-/** A job ended or needs them: a notification, whose click opens it. */
+/** A job ended or needs them: a notification, whose click opens it; what it waits on, its buttons answer there. */
 function jobNotice(j: HelperJob) {
-  if (QUIET) return void asked.push({ notice: "job", id: j.id, state: j.state })
+  const note = jobNote(j)
+  if (QUIET) return void asked.push({ notice: "job", id: j.id, state: j.state, body: note.body, choices: note.choices })
   if (!Notification.isSupported()) return
-  const n = new Notification({ title: j.state === "needs you" ? "A job needs you" : j.state === "failed" ? "A job failed" : j.state === "ready for review" ? "A job is ready for review" : "A job is done",
-    body: [j.title, j.result].filter(Boolean).join("\n"), silent: true })
+  const n = new Notification({ title: note.title, body: note.body, silent: true, actions: note.choices.map((text) => ({ type: "button" as const, text })) })
   n.on("click", () => void openJob(j))
+  // (a choice that no longer fits, its prompt gone or changed: the job opens instead)
+  n.on("action", (_e, i) => void op("companion.job-answer", { id: j.id, choice: String(i + 1) }).catch(() => openJob(j)))
   n.show()
 }
 
@@ -283,7 +285,7 @@ const live = (() => {
       let m: Record<string, unknown>
       try { m = JSON.parse(String(d)) } catch { return }
       // (the companion's drawing over the screen: the server's, its places found there)
-      if (m.t === "drawing") { if (m.drawing) answerArrived(); drawn = (m.drawing as Drawing | undefined) ?? null; return paceDrawing() }
+      if (m.t === "drawing") { const d = (m.drawing as Drawing | undefined) ?? null; if (d) { answerArrived(); drawingCame(d) } drawn = d; return paceDrawing() }
       if (m.t === "state") {
         state.mode = String(m.mode); state.name = String(m.name)
         state.agents = new Map((m.agents as Agent[]).map((a) => [a.name, a]))
@@ -293,7 +295,7 @@ const live = (() => {
         // (connected again: the server hears who rides with the pointer now)
         ridingSaid = null
       } else if (m.t === "said") state.said = (m.said as Note[] | undefined) ?? []
-      else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a); voiceHeardAgent(a) }
+      else if (m.t === "agent") { const a = m.agent as Agent; state.agents.set(a.name, a); voiceHeardAgent(a); if (waited && drawn?.agent === a.name && !BUSY.has(a.state)) paceDrawing(false) }
       else if (m.t === "note") { const n = m.note as Note; state.notes.set(n.id, n); voiceHeard(n); if (n.kind === "say" && n.agent === exchange?.name && n.t >= exchange.since) answerArrived() }
       else if (m.t === "drop") state.notes.delete(String(m.id))
       // (its answer stopped in the app: Esc, its box closed)
@@ -784,7 +786,8 @@ let settleTimer: ReturnType<typeof setTimeout> | null = null
 /** A spoken exchange done (its words said to their end, its turn over), its box not open: a moment on, its cursor leaves. */
 function settle() {
   const x = exchange
-  const done = (): boolean => !!x && exchange === x && !going(x) && panelOpen() !== x.name && !(summon && HELD.has(summon.m.phase)) && (x.arrived || !!summon?.begun)
+  const done = (): boolean => !!x && exchange === x && !going(x) && panelOpen() !== x.name && !(summon && HELD.has(summon.m.phase)) && (x.arrived || !!summon?.begun) &&
+    !(drawn?.agent === x.name && drawingUp() === drawn.id && Date.now() < drawingSeen)
   if (!x?.spoken || settleTimer || !done()) return
   settleTimer = setTimeout(() => { settleTimer = null; if (done()) endExchange(false); else settle() }, LINGER_MS)
 }
@@ -940,7 +943,8 @@ async function pointedAt(name: string, p: Point, w: AppWindowInfo | null, parks 
   // (over Vaultite's window, Accessibility reads nothing of it: its page names what's near, by the same ids)
   const { near: appNear, ...there } = inApp ?? {}, near = Array.isArray(appNear) && appNear.length ? pageNear(appNear) : axNear
   return { ...there, ...(win ? { app: win.bundle, window: win.window, title: win.title } : under ? { app: under.bundle } : {}), sx: Math.round(p.x), sy: Math.round(p.y),
-    ...(text?.ok && text.text ? { screen: text.text } : {}), ...(shot ? { shot: shot.file, shotAt: shot.frame } : {}), ...(under ? { under: under.text } : {}), ...(near.length ? { near } : {}) }
+    ...(text?.ok && text.text ? { screen: text.text } : {}), ...(shot ? { shot: shot.file, shotAt: shot.frame } : {}), ...(under ? { under: under.text } : {}), ...(near.length ? { near } : {}),
+    displays: screen.getAllDisplays().map((d) => d.bounds) }
 }
 
 /** What's at a screen point of the home vault's window, as its page knows it (a note's line, a pane's row, the app's UI):
@@ -1283,6 +1287,13 @@ function voiceHeardAgent(a: Agent) {
 let drawn: Drawing | null = null, heardLines: Heard[] = [], pacedAt = 0, waited = false, repace: ReturnType<typeof setTimeout> | null = null
 /** The last ask was spoken (its answer is said aloud, as the setting `voice` is `auto`). */
 let askedAloud = false
+/** Until when the drawing up is held for the user to see it (drawingHold): a spoken exchange doesn't settle sooner. */
+let drawingSeen = 0
+function drawingCame(d: Drawing) {
+  if (drawn?.id === d.id && drawn.marks.length === d.marks.length) return
+  drawingSeen = Date.now() + drawingHold(Math.max(0, ...d.marks.map((m) => m.beat ?? 0)))
+  setTimeout(settle, drawingSeen - Date.now() + 20).unref?.()
+}
 /** How long a beat waits for its sentence to be heard, with nothing heard meanwhile, before it goes by the reading time. */
 const WAIT_HEARD_MS = 4000
 /** A sentence heard (the companion's voice, or another that plays its answer): its drawing's pen keeps to it. */
@@ -1298,7 +1309,9 @@ function paceDrawing(learnt = true) {
   if (repace) { clearTimeout(repace); repace = null }
   // (its words still to come, or being said: its answer's voice not begun yet, or not done)
   const aloud = prefs.voice.mode === "always" || (prefs.voice.mode === "auto" && askedAloud)
-  const waits = waited = !!drawn && Date.now() - pacedAt < WAIT_HEARD_MS && (voiced ? voiced.name === drawn.agent && speaker.saying() : aloud && exchange?.name === drawn.agent)
+  const a = drawn && live.state.agents.get(drawn.agent)
+  const waits = waited = !!drawn && Date.now() - pacedAt < WAIT_HEARD_MS && beatsWait({ saying: voiced ? voiced.name === drawn.agent && speaker.saying() : null,
+    aloud: aloud && exchange?.name === drawn.agent, words: !!drawn.caption, working: !!a && BUSY.has(a.state) })
   if (waits) { repace = setTimeout(() => { repace = null; paceDrawing(false) }, pacedAt + WAIT_HEARD_MS - Date.now() + 20); repace.unref?.() }
   showDrawing(drawn && (heardLines.length || waits ? { ...drawn, spoken: heardBeats(drawn.caption ?? "", heardLines), ...(waits ? { waits } : {}) } : drawn), elementPlaces(lastNear))
 }

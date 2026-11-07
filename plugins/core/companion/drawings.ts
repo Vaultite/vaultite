@@ -2,7 +2,7 @@
 // when the exchange ends (the next ask, Clear, a while idle); Keep saves it as an .excalidraw file.
 import fs from "node:fs"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
-import { appPlaces, checkMarks, type Drawing, findsOf, type Mark, type Rect, sentences, snapMarks, spots, toExcalidraw } from "./screenmarks.ts"
+import { appPlaces, checkMarks, type Drawing, findsOf, type Mark, type Rect, sentences, snapMarks, spots, toExcalidraw, unshown } from "./screenmarks.ts"
 
 /** A drawing left up this long with nothing new goes by itself. */
 const IDLE_MS = 5 * 60_000
@@ -24,6 +24,8 @@ export function screenDrawings(plugin: Plugin, o: {
   drawn: (agent: string) => Rect[]
   /** The agent's words of this exchange, for the beats (its last say since its last ask). */
   words: (agent: string) => string | undefined
+  /** The displays its last ask was on (screen points; [] unknown), or null when no helper is there to draw. */
+  displays: (agent: string) => Rect[] | null
 }) {
   let now: Drawing | null = null, n = 0, idle: ReturnType<typeof setTimeout> | undefined
   /** What a helper connecting now is sent. */
@@ -37,10 +39,13 @@ export function screenDrawings(plugin: Plugin, o: {
     return true
   }
 
-  /** `marks` drawn by `agent` (added to its drawing up, else a new one), timed with `say` or its words. */
+  /** `marks` drawn by `agent` (added to its drawing up, else a new one), timed with `say` or its words; `unshown`, why
+   *  each mark left out couldn't show. */
   async function draw(agent: string, marks: unknown, say?: string) {
     let ms: Mark[]
     try { ms = checkMarks(marks) } catch (e) { throw new OpError((e as Error).message) }
+    const displays = o.displays(agent)
+    if (!displays) throw new OpError("nothing was drawn and they saw no mark: no screen to draw on here (the Mac's menu-bar helper isn't connected)", 409)
     const want = appPlaces(ms), ids = [...new Set(spots(ms).flatMap((s) => ("el" in s ? [s.el] : [])))]
     const [here, moved] = await Promise.all([want.length ? o.locate(want) : {}, ids.length ? o.live(agent, ids).catch(() => ({})) : {}])
     const places: Record<string, Rect> = { ...o.elements(agent), ...moved, ...here }
@@ -51,13 +56,17 @@ export function screenDrawings(plugin: Plugin, o: {
     if (unfound.length) throw new OpError(`nothing on the user's screen says ${unfound.map((t) => JSON.stringify(t)).join(", ")} now, so nothing was drawn and they saw no mark: use the words exactly as it shows them (a few will do), an element by id, or the area's box; don't go on as if they saw it`, 409)
     // (a guessed pixel: round what they drew there, or the element it's on)
     ms = snapMarks(ms, places, o.drawn(agent))
+    // (only marks that land on a display are drawn, and said to be)
+    const why = unshown(ms, places, displays), left = ms.flatMap((m, i) => (why[i] ? [`the ${m.type} ${why[i]}`] : []))
+    ms = ms.filter((_, i) => !why[i])
+    if (!ms.length) throw new OpError(`${left.join("; ")}, so nothing was drawn and they saw no mark: use an element's id, the words exactly as their screen shows them, or a box on their screen; don't go on as if they saw it`, 409)
     const caption = say ?? o.words(agent)
     if (now && now.agent === agent && !now.kept) now = { ...now, marks: [...now.marks, ...ms].slice(-40), places: { ...now.places, ...places }, ...(caption ? { caption } : {}) }
     else now = { id: `d${Date.now().toString(36)}${++n}`, agent, tint: o.tint(agent), t: Date.now(), marks: ms, places, ...(caption ? { caption } : {}) }
     clearTimeout(idle)
     idle = setTimeout(drop, IDLE_MS)
     tell()
-    return now
+    return { drawing: now, unshown: left }
   }
 
   /** `agent`'s drawing up timed with `caption` now (its words whole, as they came after its marks). */

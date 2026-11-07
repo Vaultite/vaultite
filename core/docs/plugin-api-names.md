@@ -1061,7 +1061,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 
 ### `@vaultite/core/agents.ts` (plugin.ts: a coding agent's plugin)
 - `Account`: One of an agent's accounts: Claude Code's config folders, Hermes' homes, OpenClaw's agents.
-- `AgentAsk`: A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last `lines` (default 12), and the keys that answer it, each written apart.
+- `AgentAsk`: A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last `lines` (default 12), answered by keys (each written apart) or an option of its menu; Terminal tells…
 - `AgentChatNew`: A new chat session told `prompt` (the service "agent-chat-new:<name>"), in an account and folder: its id, or null when none can run here (an app serving no port: a test's).
 - `AgentCommand`: What an "agent:<name>" service answers: its line for a POSIX shell, run in `cwd`; `argv` and `env` start it where that can't run (PowerShell, cmd), else Git Bash runs `command` there.
 - `AgentHow`: How a session is started, besides its id and first prompt.
@@ -1077,6 +1077,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ago(s)`: An ISO time as "2 h 10 min ago", "3 days ago".
 - `argvOf(args, valued, maybe?)`: A command line's words after its program: `opt(...names)` an option's value ("" for a switch; `--x=v` too), the next word for those in `valued`, and for those in `maybe` when it isn't an option;…
 - `Asking`: What a session waits on the user for, as it said it (the service "agent-asking:<name>"): questions, or a plan.
+- `askLabel(a, answer)`: What a choice is called to the user: its option's words, else Approve or Deny.
+- `AskOption`: An option of a menu its screen shows, by the words it starts with: the menu's cursor (❯) is moved onto it, checked there on the screen, then Enter (a menu whose default is No is never answered by…
 - `buildCache(keep?)`: The last few things built (conversations), by key: `make` runs again only when the key's `version` changed.
 - `changedFiles(entries)`: The files `entries`' edits changed, in order: Claude Code's Edit, Write and NotebookEdit (their input's path), Codex's file changes (a line per file: "update ~/src/app.ts").
 - `Choice`: A question's answer: its options' numbers (from 1), text typed as its own answer (its picker's Type something), or in a multi-select both.

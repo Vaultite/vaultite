@@ -82,7 +82,8 @@ function Status() {
     { label: "Show its session", icon: SquareTerminal, run: () => void showSession() },
     { label: "Restart its session", icon: Power, run: () => void op("companion.stop").then(() => setMode(s.mode === "off" ? "quiet" : s.mode)) },
   ]
-  const tip = [`${s.name}, companion${word ? `: ${word}` : ""}`, ...others.map((x) => `${x.name}: ${x.state === "watching" ? "idle" : x.state}`)].join(", ")
+  const unseen = s.mode === "off" ? 0 : unread(a?.name ?? s.name).length
+  const tip = [`${s.name}, companion${word ? `: ${word}` : ""}${unseen ? `, ${unseen} unread` : ""}`, ...others.map((x) => `${x.name}: ${x.state === "watching" ? "idle" : x.state}`)].join(", ")
   return (
     <button type="button" onClick={(e) => menuAbove(e, items())} aria-label={`${s.name}, companion`} data-tip={tip} data-tip-side="top"
       data-companion-status className="relative size-6 shrink-0 cursor-pointer rounded-[5px] hover:bg-foreground/[0.06]">
@@ -90,8 +91,8 @@ function Status() {
         <Arrow key={x.name} data-companion-home={x.name} tint={x.tint} size={16} className={cn("absolute top-[4px]", x.busy && "animate-pulse")}
           style={{ left: 4 + (i - (arrows.length - 1) / 2) * 5, zIndex: arrows.length - i }} />
       ))}
-      {/* (what it said that you haven't seen: a click on its cursor shows it) */}
-      {s.mode !== "off" && unread(a?.name ?? s.name).length > 0 && <span data-companion-unread aria-hidden className="absolute top-[3px] right-[3px] size-[6px] rounded-full ring-[1.5px] ring-background" style={{ background: tint }} />}
+      {/* (what it said that you haven't seen, as an app's badge: its menu's What it said shows it) */}
+      {unseen > 0 && <span data-companion-unread aria-hidden className="absolute top-[3px] right-[3px] size-[6px] rounded-full ring-[1.5px] ring-background" style={{ background: tint }} />}
     </button>
   )
 }

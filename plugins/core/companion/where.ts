@@ -12,8 +12,10 @@ export type Over = { url?: string; app?: string; title?: string; path?: string; 
 export type Found = { cwd: string; why: string; from?: "note" | "github" | "preview" | "editor" | "vault"; preview?: string }
 
 const HOME = os.homedir()
-const run = (cmd: string, args: string[], cwd?: string) => new Promise<string>((ok) =>
-  execFile(cmd, args, { timeout: 3000, cwd, maxBuffer: 1 << 20, env: gitEnv() }, (e, out) => ok(e ? "" : String(out))))
+/** A command's output, null when it failed. */
+const ran = (cmd: string, args: string[], cwd?: string) => new Promise<string | null>((ok) =>
+  execFile(cmd, args, { timeout: 3000, cwd, maxBuffer: 1 << 20, env: gitEnv() }, (e, out) => ok(e ? null : String(out))))
+const run = async (cmd: string, args: string[], cwd?: string) => (await ran(cmd, args, cwd)) ?? ""
 export const tilde = (p: string, home = HOME) => (p === home ? "~" : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p)
 const untilde = (p: string) => p.replace(/^~(?=$|\/)/, HOME)
 
@@ -134,9 +136,26 @@ export function preferredMachine(all: Machine[], want: string, vault: string, he
   const m = here ? null : all.find((x) => x.standalone && fits(x))
   return m ? { machine: m, why: "always on" } : none
 }
-/** Whether an ask placed here may run on the machine jobs prefer: not over a preview served here or an editor's project
- *  open here (the copy the user watches). */
-export const movable = (f: Found) => f.from !== "preview" && f.from !== "editor"
+/** Whether an ask placed here is over a copy the user watches here: a preview served here, an editor's project open here. */
+export const watched = (f: Found) => f.from === "preview" || f.from === "editor"
+/** A checkout's GitHub `owner/repo` (origin's first, else any remote's), or "". */
+export async function githubOf(dir: string) {
+  for (const u of [(await run("git", ["remote", "get-url", "origin"], dir)).trim(), ...remotes(dir)]) {
+    const m = /github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(u)
+    if (m) return `${m[1]}/${m[2]}`
+  }
+  return ""
+}
+/** What of a checkout exists only here, in words: its uncommitted changes and commits on no remote ("" when none). */
+export async function onlyHere(dir: string) {
+  const [status, ahead] = await Promise.all([ran("git", ["status", "--porcelain"], dir), ran("git", ["rev-list", "--count", "HEAD", "--not", "--remotes"], dir)])
+  // (unread, it may hold changes: never moved on a guess)
+  if (status === null || ahead === null) return "changes git couldn't read"
+  const n = status.split("\n").filter(Boolean).length, c = Number(ahead.trim()) || 0
+  return [n ? `${n} uncommitted change${n > 1 ? "s" : ""}` : "", c ? `${c} unpushed commit${c > 1 ? "s" : ""}` : ""].filter(Boolean).join(" and ")
+}
+/** Its branch now ("" when detached). */
+export const branchOf = async (dir: string) => { const b = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], dir)).trim(); return b === "HEAD" ? "" : b }
 
 /** The Tailscale name of an address that's another machine's: its hostname, when `hosts` (machine id -> hostname) has it. */
 export function machineOfUrl(o: Over, hosts: Record<string, string>): { machine: string; url: string } | null {

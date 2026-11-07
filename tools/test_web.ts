@@ -3411,6 +3411,10 @@ await section("screen drawings", async () => {
   check("screen drawings: a mark tag with words alone marks the thing saying them (no label repeating them); an arrow's end can be words",
     said === "Here and there, with." && tags.length === 3 && JSON.stringify(tg.markOf(tags[0])) === '{"type":"ring","at":{"find":"Morning report"}}' &&
       JSON.stringify(tg.markOf(tags[1]).to) === '{"find":"Send"}' && tg.markOf(tags[2]).label === "Share" && tg.markOf(tags[2]).at.el === "a2", [said, tags])
+  const long = tg.parseTags(`[frame "The Morning report bug (Bug 2026-11-06 08.49) has a different cause: folded callouts with videos in the editor, where an embed is mounted and dropped 3 ms later. Hand it to its own session?" "Morning report bug"] That one.`), wrong = tg.parseTags("[frame] Here. [ring] There.")
+  const streaming = tg.parseTags(`Look [frame "The Morning report bug (Bug 2026-11-06 08.49) has a different cause: folded callouts with videos in the editor, where an embed is mounted and dropped 3 ms later. Hand it to its own session?`)
+  check("screen drawings: a tag naming its kind is never said, however long its words (it's a mark) or wrong (dropped), streamed too",
+    long.said === "That one." && long.tags.length === 1 && wrong.said === "Here. There." && !wrong.tags.length && streaming.said === "Look", [long, wrong, streaming])
 })
 
 // ---------- Autosave (web/src/core/autosave.ts): on a made-up server that merges as core/files.ts PUT does ----------

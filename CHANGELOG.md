@@ -6,6 +6,23 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion never reads a mark out loud**: a mark naming a long line of text, or one it got wrong, was spoken as
+  words ("frame, the Morning report bug..."); it's now drawn, or dropped.
+- **A Talk key ask is never lost to a restart**: one asked as the companion's session ended (an update restarting it) or
+  failed goes to a fresh session by itself, so you don't ask again; if none can answer it says so in a few words, never
+  an error read aloud.
+- **The companion's marks show when it answers with them alone**: a ring or frame drawn without words waited for words
+  that never came and went with the exchange a second later, so you saw nothing; it now draws at once and stays a few
+  seconds. A mark off your screen or on nothing isn't drawn nor said to be, and it tells you instead of going silent.
+- **A job asked over a preview or an editor's project runs on your always-on machine**: when it has the repo checked out
+  and everything here is pushed, so you can close your laptop; it previews there and says where. With changes not yet
+  pushed, it stays here and says why.
+- **A job stopped on a prompt is answered where you are**: its notification shows the prompt (a folder's trust, its
+  CLAUDE.md imports, a permission, its question) with its choices as buttons, or you tell the companion which; the
+  choice is pressed in its terminal with the cursor checked on it first, never Enter on a default No.
+- **The companion's cursor shows only when it does something**: following you to another note or coming back from the
+  screen no longer pops it into your note, a quiet one whose line scrolls away hides instead of waiting at the pane's
+  edge, and what it said by your pointer counts as read (the unread dot is on its status bar arrow only).
 - **A chat session waiting on background work keeps running**: a Claude Code session the app runs (a chat tab, a
   companion's job, one an inbox reply resumed) was ended after 20 minutes idle even while a Monitor or a background
   command it started still ran, so what it waited for never came back to it; it now waits for them. `vau chat list

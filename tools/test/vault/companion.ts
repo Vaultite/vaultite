@@ -186,10 +186,13 @@ export default async ($: VaultTest) => {
     // Going to another note wakes no one: the cursor follows there at once, and the open comes with the next moment.
     const waiting = api("POST", "ops/companion.next", { timeout: 1 })
     await $.sleep(50)
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    const acted = r.agents.find((a: Any) => a.name === "Claude")?.t
     c.addMoment({ kind: "open", path: "Notes/B.md", line: 1 })
     c.addMoment({ kind: "open", path: "Notes/C.md", line: 4 })
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: an open moves the cursor there, no turn needed", r.agents.some((a: Any) => a.name === "Claude" && a.path === "Notes/C.md" && a.line === 4 && a.state === "watching"), r.agents)
+    check("companion: …as a move, not an act: it rests (no cursor shown for it), when it last acted kept", r.agents.some((a: Any) => a.name === "Claude" && a.rests && a.t === acted), [acted, r.agents])
     ;[, r] = await waiting
     check("companion: an open alone wakes no one", r.moments.length === 0, r.moments)
     const next = api("POST", "ops/companion.next", { timeout: 3 })
@@ -866,8 +869,20 @@ export default async ($: VaultTest) => {
     ;[st3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { el: "a1" } }] })
     const els = last()?.drawing?.places?.["el:a1"], me3 = (await api("POST", "ops/companion.status", {}))[1].agents.find((a: Any) => a.name === "Claude")
     check("companion: an ask's elements are the drawing's places, its cursor at the one ringed", st3 === 200 && els?.w === 80 && els.label === "Share" && me3?.sx === 140 && me3.sy === 215, [els, me3])
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { el: "a9" } }] })
+    check("companion: a mark on an element the ask didn't list draws nothing, and says they saw no mark", st3 === 409 && /a9 isn't an element.*saw no mark/.test(r3.error), r3)
+    // (only marks on a display are drawn, and counted: "Drew N" is what showed)
+    c.screenMoment({ kind: "ask", text: "here?", app: "com.example.mail", sx: 5, sy: 5, displays: [{ x: 0, y: 0, width: 1470, height: 956 }, { x: 1470, y: -200, width: 1920, height: 1080 }] })
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [100, 100, 40, 20] }, { type: "check", at: [5000, 100] }, { type: "num", at: [2000, 100], n: 1 }] })
+    const shownNow = last()?.drawing?.marks ?? []
+    check("companion: of its marks, one off every display isn't drawn and the answer says so; one on another display is",
+      st3 === 200 && r3.marks === 2 && r3.unshown?.length === 1 && /check at 5000,100 is off their screen/.test(r3.unshown[0]) && shownNow.length === 2 && !shownNow.some((m: Any) => m.type === "check"), [r3, shownNow])
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "frame", at: [-900, -900, 40, 20] }] })
+    check("companion: a drawing with every mark off their screen is refused: nothing drawn, they saw no mark", st3 === 409 && /off their screen.*saw no mark/.test(r3.error), r3)
     await api("POST", "ops/companion.clear", {})
     helper.emit("close"); win.emit("close")
+    ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: [1, 1] }] })
+    check("companion: with no helper to draw on, nothing is drawn nor said to be", st3 === 409 && /no screen to draw on/.test(r3.error), r3)
     fs.rmSync($.vault.abs("Drawings"), { recursive: true, force: true })
   }
   // Guides (type: guide, Guides/): the user's note on an app or site goes with a summoned ask there, cut when long.

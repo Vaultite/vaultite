@@ -12,6 +12,8 @@ export type Tag = { kind: "point" | typeof MARKS[number]; at: Spot; to?: Spot; l
 const KINDS = new Set<string>(["point", ...MARKS])
 /** A tag longer than this isn't one: its bracket is words. */
 const LONGEST = 160
+/** A tag naming its kind (`[frame "…"`) is one however long its words: never said aloud, up to this. */
+const KIND_LONGEST = 800
 
 /** `text` so far as said (its tags out, the words around them joined) and its tags, complete ones only. A tag still
  *  being written holds back what follows it, so what's said only grows. */
@@ -26,8 +28,11 @@ export function parseTags(text: string): { said: string; tags: Tag[] } {
     const head = /^\[\s*([a-z]*)/i.exec(text.slice(open, open + 12))?.[1].toLowerCase() ?? ""
     const maybe = head === "" ? text.length - open < 2 : [...KINDS].some((k) => k.startsWith(head))
     // (being written: held back till it closes, or it's clearly words)
-    if (close < 0) { if (maybe && text.length - open <= LONGEST) { said = said.trimEnd(); break } said += text.slice(open); break }
-    const tag = close - open <= LONGEST && KINDS.has(head) ? tagOf(head, text.slice(open + 1 + text.slice(open + 1).search(/[a-z]/i) + head.length, close)) : null
+    const kind = KINDS.has(head) && /^\[\s*[a-z]+(?=[\s\]])/i.test(text.slice(open, open + 14)), most = kind ? KIND_LONGEST : LONGEST
+    if (close < 0) { if ((maybe || kind) && text.length - open <= most) { said = said.trimEnd(); break } said += text.slice(open); break }
+    const tag = close - open <= most && KINDS.has(head) ? tagOf(head, text.slice(open + 1 + text.slice(open + 1).search(/[a-z]/i) + head.length, close)) : null
+    // (a tag it meant but got wrong is dropped, never read out)
+    if (!tag && kind && close - open <= most) { said = said.trimEnd(); i = close + 1; continue }
     if (!tag) { said += text.slice(open, close + 1); i = close + 1; continue }
     said = said.trimEnd()
     tags.push({ ...tag, offset: said.length })

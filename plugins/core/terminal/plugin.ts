@@ -6,7 +6,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentAsk, type AgentCommand, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentCommand, askLabel, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, readableImage, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
@@ -570,6 +570,34 @@ async function askIn(id: string, agent = "") {
   return b && /^[\w-]{1,40}$/.test(name) ? { b, hit: await askOn(b, id, await asksOf(name)) } : { b, hit: null }
 }
 
+/** Rows from the cursor (❯) of the menu at the bottom of `screen` to its option starting with `option` (below it:
+ *  positive), 0 on it; null when the menu doesn't show both. */
+export function menuAt(screen: string, option: string): number | null {
+  const lines = screen.replace(/\s+$/, "").split("\n").slice(-30).map((l) => l.replace(/^\s*│|│\s*$/g, ""))
+  const chosen = lines.findLastIndex((l) => /^\s*[❯›]\s/.test(l))
+  const at = lines.findLastIndex((l) => l.replace(/^\s*(?:[❯›]\s*)?(?:\d{1,2}\.\s+)?/, "").startsWith(option))
+  return chosen < 0 || at < 0 || Math.abs(at - chosen) > 12 ? null : at - chosen
+}
+/** Answers the menu terminal `id` shows with its option `option`: its cursor moved a row at a time, the screen read after
+ *  each, and Enter only once it's there; false when it can't be brought there. */
+async function choose(b: Backend, id: string, option: string) {
+  let apart = menuAt(await screenOf(b, id, 40), option)
+  for (let i = 0; i < 12 && apart !== null && apart !== 0; i++) {
+    const was = apart
+    await b.send(id, { text: apart > 0 ? "\x1b[B" : "\x1b[A" })
+    for (let t = 0; t < 20 && apart === was; t++) { await new Promise((r) => setTimeout(r, 50)); apart = menuAt(await screenOf(b, id, 40), option) }
+  }
+  if (apart !== 0) return false
+  await b.send(id, { text: "\r" })
+  return true
+}
+
+/** The question terminal `id` shows on its screen (its agent's, or `agent`'s), as asked of the user: its words, its
+ *  choices (approve's, then deny's). */
+plugin.provide("terminal:ask", async (id: string, agent = "") => {
+  const { hit } = TERMINAL_ID.test(id) ? await askIn(id, agent) : { hit: null }
+  return hit ? { id: hit.id, says: hit.says, choices: [askLabel(hit, "approve"), askLabel(hit, "deny")] } : null
+})
 /** Whether terminal `id` waits on the user now: a question on its screen, or its state says so. */
 plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || current(id)?.state === "blocked")
 /** Terminal `id`'s state now (StateChange without its time), or null when nothing says. */
@@ -1601,7 +1629,9 @@ plugin.route("POST", "terminals/*/answer", async (req) => {
   await mustRun(id)
   const { b, hit } = await askIn(id, typeof req.body?.agent === "string" ? req.body.agent : "")
   if (!b || !hit) throw new HTTPError(409, "its terminal isn't asking anything now")
-  for (const [i, k] of hit[answer].entries()) {
+  const how = hit[answer]
+  if (!Array.isArray(how)) { if (!(await choose(b, id, how.option))) throw new HTTPError(409, `its menu's cursor can't be brought to "${how.option}": open its terminal`) }
+  else for (const [i, k] of how.entries()) {
     if (i) await new Promise((r) => setTimeout(r, 150))
     await b.send(id, { text: k })
   }

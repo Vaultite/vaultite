@@ -200,8 +200,16 @@ export default async ($: VaultTest) => {
     const asks = cc.plugin.services["agent-asks:claude"]()
     const showing = (text: string) => ({ capture: async () => ({ text, cols: 80, rows: 24, cursor: { x: 0, y: 0 }, alternate: false }) })
     const trust = await term.askOn(showing("Accessing workspace:\n\n /Users/sam/Notes\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n\n"), "t", asks)
-    check("terminal: Claude Code's folder trust is a question, approved by choosing Yes (its default is No)", trust?.id === "trust" &&
-      JSON.stringify(trust.approve) === JSON.stringify(["\x1b[B", "\r"]) && JSON.stringify(trust.deny) === JSON.stringify(["\x1b"]), trust)
+    check("terminal: Claude Code's folder trust is a question, approved by choosing Yes in its menu (its default is No)", trust?.id === "trust" &&
+      JSON.stringify(trust.approve) === JSON.stringify({ option: "Yes, I trust this folder" }) && JSON.stringify(trust.deny) === JSON.stringify({ option: "No, exit" }), trust)
+    const imports = await term.askOn(showing(" Allow external CLAUDE.md file imports?\n External imports:\n   /Users/sam/rules.md\n\n ❯ No, disable external imports\n   Yes, allow external imports\n\n Enter to confirm · Esc to cancel"), "t", asks)
+    check("terminal: its external imports prompt after it is one too, its choices its menu's words", imports?.id === "imports" &&
+      JSON.stringify(imports.approve) === JSON.stringify({ option: "Yes, allow external imports" }), imports)
+    const menu = " Accessing workspace:\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel"
+    check("terminal: a menu's cursor is read against the option to choose: rows below it, 0 on it, none when it isn't shown",
+      term.menuAt(menu, "Yes, I trust this folder") === 1 && term.menuAt(menu, "No, exit") === 0 &&
+      term.menuAt(menu.replace(" ❯ No", "   No").replace("   Yes", " ❯ Yes"), "No, exit") === -1 && term.menuAt(menu, "Yes, allow external imports") === null &&
+      term.menuAt(menu.replace(" ❯ No", "   No"), "No, exit") === null && term.menuAt(" ❯ 1. Yes\n   2. No", "No") === 1, menu)
     const perm = await term.askOn(showing(" Bash command\n   rm -rf build\n Do you want to proceed?\n ❯ 1. Yes\n   2. No"), "t", asks)
     check("terminal: its permission dialog is one too, Yes first", perm?.id === "permission" && JSON.stringify(perm.approve) === JSON.stringify(["\r"]), perm)
     // A cloud session (session_...) continued here: claude --teleport, in a worktree beside a checkout of its repository.

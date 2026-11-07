@@ -1,5 +1,5 @@
-// The Agent SDK in a test's chat keeper, no model: "call|stream|cut|hold <tool> <json>" calls a tool (streamed; cut off;
-// held mid-text till $CHATD_TEST_RELEASE's file is there), "[hold ]words <text>" streams it, "slow" waits, "list" says how.
+// The Agent SDK in a test's chat keeper, no model: "call|stream|cut|hold <tool> <json>" calls a tool (streamed; cut off; held mid-text till $CHATD_TEST_RELEASE's file is there),
+// "[hold ]words <text>" streams it, "slow" waits, "list" says how, "crash" fails it (once $CHATD_TEST_CRASH's file is there).
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -26,7 +26,7 @@ function midText(json: string, args: Any) {
 
 export function query({ prompt, options }: Any) {
   const out: Any[] = []
-  let wake = null as (() => void) | null, done = false
+  let wake = null as (() => void) | null, done = false, crashed: Error | null = null
   const push = (m: Any) => { out.push(m); wake?.() }
   const base = { session_id: options.sessionId ?? options.resume, parent_tool_use_id: null }
   let client: Promise<Client> | null = null
@@ -89,6 +89,11 @@ export function query({ prompt, options }: Any) {
       // (pictures with it: their count, as "[2 images]" before its text)
       const c = m.message.content, pics = Array.isArray(c) ? c.filter((x: Any) => x.type === "image").length : 0
       const text = `${pics ? `[${pics} images] ` : ""}${Array.isArray(c) ? c.filter((x: Any) => x.type === "text").map((x: Any) => x.text).join("\n") : String(c)}`
+      if (/\bcrash\b/.test(text) && process.env.CHATD_TEST_CRASH && fs.existsSync(process.env.CHATD_TEST_CRASH)) {
+        fs.rmSync(process.env.CHATD_TEST_CRASH)
+        crashed = new Error(`MCP error -32000: Not connected (session ${base.session_id}, /tmp/claude/${base.session_id}.sock)`)
+        break
+      }
       if (/\bslow\b/.test(text) && await pause(800)) {
         push({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 10, uuid: crypto.randomUUID(), ...base })
         continue
@@ -127,6 +132,7 @@ export function query({ prompt, options }: Any) {
   const gen = (async function* () {
     for (;;) {
       if (out.length) { yield out.shift(); continue }
+      if (crashed) throw crashed
       if (done) return
       await new Promise<void>((r) => { wake = r })
       wake = null

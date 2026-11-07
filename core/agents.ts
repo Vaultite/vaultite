@@ -394,8 +394,13 @@ export type PermissionMode = typeof PERMISSION_MODES[number]
  *  can't run (PowerShell, cmd), else Git Bash runs `command` there. */
 export type AgentCommand = { command: string; cwd?: string | null; argv?: string[]; env?: Record<string, string> }
 /** A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last `lines` (default 12),
- *  and the keys that answer it, each written apart. Terminal tells the inbox of one shown before the agent's hooks run. */
-export type AgentAsk = { id: string; match: RegExp; says: string; approve: string[]; deny: string[]; lines?: number }
+ *  answered by keys (each written apart) or an option of its menu; Terminal tells the inbox of one before hooks run. */
+export type AgentAsk = { id: string; match: RegExp; says: string; approve: string[] | AskOption; deny: string[] | AskOption; lines?: number }
+/** An option of a menu its screen shows, by the words it starts with: the menu's cursor (❯) is moved onto it, checked
+ *  there on the screen, then Enter (a menu whose default is No is never answered by Enter alone). */
+export type AskOption = { option: string }
+/** What a choice is called to the user: its option's words, else Approve or Deny. */
+export const askLabel = (a: AgentAsk, answer: "approve" | "deny") => { const c = a[answer]; return Array.isArray(c) ? (answer === "approve" ? "Approve" : "Deny") : c.option }
 /** A question an agent asks in its own words (Claude Code's AskUserQuestion): its options, one or several of them, an
  *  answer typed instead and Chat about this; `closed`, a dialog read off its screen: only its options. */
 export type Question = { question: string; header?: string; multi?: boolean; closed?: boolean; options: { label: string; description?: string }[] }

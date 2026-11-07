@@ -567,10 +567,12 @@ plugin.provide("agent-mode:claude", async (terminal: string, session = ""): Prom
   return PERMISSION_MODES.find((m) => m === said) ?? null
 })
 
-/** Its dialogs: folder trust before its hooks run, its default No; a permission, Enter while Yes is chosen. Its question
- *  can be far up (choices wrapped): Yes chosen under it and no user prompt (❯) after tell it's the one shown now. */
+/** Its dialogs: folder trust, then external CLAUDE.md imports, before its hooks run (menus defaulting to No); a permission,
+ *  Enter while Yes is chosen, its question maybe far up (choices wrapped): Yes chosen and no user prompt (❯) after it. */
 const ASKS: AgentAsk[] = [
-  { id: "trust", match: /Yes, I trust this folder/, says: "Trust this folder? It can read, edit and run files in it", approve: ["\x1b[B", "\r"], deny: ["\x1b"] },
+  { id: "trust", match: /Yes, I trust this folder/, says: "Trust this folder? It can read, edit and run files in it", approve: { option: "Yes, I trust this folder" }, deny: { option: "No, exit" } },
+  { id: "imports", match: /Yes, allow external imports/, says: "Allow external CLAUDE.md imports? Its rules read files outside this folder",
+    approve: { option: "Yes, allow external imports" }, deny: { option: "No, disable external imports" } },
   { id: "permission", match: /Do you want to.*(?:\n(?![❯>]).*)*\n *[❯>] 1\. Yes(?:\n(?![❯>]).*)*$/, lines: 40, says: "Asks permission", approve: ["\r"], deny: ["\x1b"] },
 ]
 plugin.provide("agent-asks:claude", (): AgentAsk[] => ASKS)

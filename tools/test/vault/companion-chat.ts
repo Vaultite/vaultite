@@ -15,10 +15,12 @@ const CHATD = path.join(ROOT, "plugins/core/claude-code/chatd.ts")
 const HOOKS = path.join(import.meta.dirname, "chatd", "hooks.ts")
 /** Where a test lets a held stream go on (chatd/sdk.ts, "hold"). */
 const RELEASE = path.join(os.tmpdir(), `vaultite-chatd-release-${process.pid}`)
+/** Where a test makes the next "crash" ask end its session with an error (chatd/sdk.ts). */
+const CRASH = path.join(os.tmpdir(), `vaultite-chatd-crash-${process.pid}`)
 
 /** A real chat keeper (chatd.ts, its own process) at `sock`, its SDK the stand-in (chatd/sdk.ts). */
 async function keeper(sock: string) {
-  const p = spawn(process.execPath, ["--import", pathToFileURL(HOOKS).href, CHATD, sock, sock], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, CHATD_TEST_RELEASE: RELEASE } })
+  const p = spawn(process.execPath, ["--import", pathToFileURL(HOOKS).href, CHATD, sock, sock], { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, CHATD_TEST_RELEASE: RELEASE, CHATD_TEST_CRASH: CRASH } })
   let err = ""
   p.stderr!.on("data", (d) => { err += d })
   const up = await waitFor(() => new Promise<boolean>((r) => { const c = net.connect(sock); c.on("connect", () => { c.destroy(); r(true) }); c.on("error", () => r(false)) }), 10000, 100)
@@ -360,15 +362,16 @@ export default async ($: VaultTest) => {
       // (its picture's pixels are its points: what it's told and its tags agree, mapped to the screen by where the picture
       // sits; a mark that didn't show is told with its next ask)
       await idle(quick!)
+      // (the helper's socket: marks are drawn only where it is)
+      const { matchSocket: socketOf } = await import("../../../core/plugins.ts")
+      const screen1: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], send(t: string) { screen1.got.push(JSON.parse(t)) }, close() {}, ping() {}, terminate() {} })
+      socketOf($.app.plugins, ["companion", "live"])![1].fn(screen1, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
       c.screenMoment({ kind: "ask", agent: "Claude", text: 'words Here [frame 10,20,30,40 "Tabs"], not [ring "Nowhere at all"].', app: "com.example.mail", window: 9, sx: 150, sy: 90,
         shot, shotAt: { x: 100, y: 50, width: 1329, height: 864 }, ink: [{ shape: "ring", box: { x: 400, y: 300, width: 50, height: 40 }, points: [[400, 300], [450, 340]] }] })
       await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && /^Here/.test(n.text ?? "")), 15_000, 50)
       await idle(quick!)
       const inPicture = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
-      const { matchSocket: socketOf } = await import("../../../core/plugins.ts")
-      const screen1: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], send(t: string) { screen1.got.push(JSON.parse(t)) }, close() {}, ping() {}, terminate() {} })
-      socketOf($.app.plugins, ["companion", "live"])![1].fn(screen1, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
-      const framed = screen1.got.find((m: Any) => m.t === "drawing")?.drawing?.marks?.find((k: Any) => k.label === "Tabs")
+      const framed = screen1.got.find((m: Any) => m.t === "drawing" && m.drawing)?.drawing?.marks?.find((k: Any) => k.label === "Tabs")
       check("summoned: its ask's points are its picture's pixels, and a tag's pixels land on the screen where the picture shows them",
         /their pointer at 50, 40 in it/.test(inPicture) && /its box 300,250,50,40/.test(inPicture) && JSON.stringify(framed?.at) === '{"x":110,"y":70,"w":30,"h":40}', [framed, inPicture.slice(0, 900)])
       c.screenMoment({ kind: "ask", agent: "Claude", text: "words Okay.", app: "com.example.mail", window: 9, sx: 150, sy: 90 })
@@ -379,6 +382,27 @@ export default async ($: VaultTest) => {
         /they never saw: your \[ring "Nowhere at all"\] wasn't drawn/.test(toldOf), toldOf.slice(0, 400))
       check("summoned: its Talk key's next ask takes the last answer's drawing down (a corrected mark replaces it, never stacks)",
         screen1.got.some((m: Any) => m.t === "drawing" && m.drawing === null), screen1.got.map((m: Any) => m.t))
+      // (its draw tool's points are the same pixels, mapped the same way: the same box lands on the same spot, and a
+      // wordless answer that shows is an answer, nothing said for it)
+      const drawCalls = () => screen1.got.filter((m: Any) => m.t === "drawing" && m.drawing).length
+      const before2 = drawCalls(), says2 = (await status()).notes.filter((n: Any) => n.kind === "say").length
+      c.screenMoment({ kind: "ask", agent: "Claude", text: 'call draw {"marks":[{"type":"frame","at":[10,20,30,40],"label":"Tabs"}],"done":true}', app: "com.example.mail", window: 9, sx: 150, sy: 90,
+        shot, shotAt: { x: 100, y: 50, width: 1329, height: 864 }, displays: [{ x: 0, y: 0, width: 1470, height: 956 }] })
+      const tooled = await waitFor(() => (drawCalls() > before2 ? screen1.got.filter((m: Any) => m.t === "drawing" && m.drawing).at(-1).drawing.marks.find((k: Any) => k.label === "Tabs") : null), 15_000, 50)
+      await idle(quick!)
+      check("summoned: a draw tool's box and the same inline tag land on the same screen spot, the picture's origin added once",
+        JSON.stringify(tooled?.at) === JSON.stringify(framed?.at) && JSON.stringify(tooled?.at) === '{"x":110,"y":70,"w":30,"h":40}', [tooled, framed])
+      check("summoned: a wordless draw that showed is its answer: nothing said for it", (await status()).notes.filter((n: Any) => n.kind === "say").length === says2, (await status()).notes.filter((n: Any) => n.kind === "say").slice(-2))
+      // (a mark off every display isn't drawn nor said to be, and an answer that was only that isn't silent)
+      for (const [how, text] of [["tool", 'call draw {"marks":[{"type":"frame","at":[3000,20,30,40]}],"done":true}'], ["tag", "words [frame 3000,20,30,40]"]]) {
+        const n0 = screen1.got.length, sorry = async () => (await status()).notes.filter((n: Any) => n.kind === "say" && /couldn't mark that/.test(n.text ?? "")), had = (await sorry()).length
+        c.screenMoment({ kind: "ask", agent: "Claude", text, app: "com.example.mail", window: 9, sx: 150, sy: 90, shot, shotAt: { x: 100, y: 50, width: 1329, height: 864 }, displays: [{ x: 0, y: 0, width: 1470, height: 956 }] })
+        const told = await waitFor(async () => (await sorry()).length > had || null, 15_000, 50)
+        await idle(quick!)
+        const results = fs.readFileSync(fs.readdirSync(c.plugin.localDir()).filter((f) => f.startsWith("actions-")).map((f) => path.join(c.plugin.localDir(), f)).at(-1)!, "utf8").trim().split("\n").slice(-6).join("\n")
+        check(`summoned: a mark off their screen (its ${how}) isn't drawn, never "Drew", and the answer says so instead of silence`,
+          !!told && !screen1.got.slice(n0).some((m: Any) => m.t === "drawing" && m.drawing) && !/Drew 1/.test(results), [told, results])
+      }
       c.screenMoment({ kind: "ask", agent: "Claude", text: "words O botão de enviar", voice: true, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
       const aloud = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "O botão de enviar"), 15_000, 50)
       check("summoned: one asked by voice says so (the desktop app says it aloud)", aloud?.answers?.voice === true && aloud.answers.t > answered.answers.t, aloud?.answers)
@@ -479,6 +503,45 @@ export default async ($: VaultTest) => {
       check("summoned: the realtime voice answering alone withdraws the summoned answer: its turn stops, nothing of it said or kept, their ask once, its words the realtime voice's",
         !!stopped && kept.filter((n) => n.kind === "ask" && /how's it going/.test(n.text)).length === 1 && kept.some((n) => n.kind === "say" && n.text === "Good, thanks!") &&
         !(await status()).notes.some((n: Any) => n.kind === "say" && /I stopped/.test(n.text)), { stopped, kept: kept.slice(-4).map((n) => `${n.kind}: ${n.text}`) })
+      await idle(warmed!)
+
+      // A lost ask: its session gone or failing before it answered goes to a fresh one once; nothing raw is ever said.
+      const laneId = () => { try { return JSON.parse(fs.readFileSync(laneFile, "utf8")).id as string } catch { return null } }
+      const says = async (): Promise<string[]> => (await status()).notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text as string)
+      const raw = (xs: string[]) => xs.filter((x) => /couldn't take that in|I stopped|no session|Not connected|keeper|[0-9a-f]{8}-[0-9a-f]{4}/.test(x))
+      const actions = () => fs.readFileSync(fs.readdirSync(c.plugin.localDir()).filter((f) => f.startsWith("actions-")).map((f) => path.join(c.plugin.localDir(), f)).at(-1)!, "utf8")
+      // (its keeper ended for an update as a fresh session sat warm for the ask they were speaking, as on 2026-11-06)
+      await api("POST", "ops/claude-code.chat-stop", { id: warmed })
+      sc.emit("message", Buffer.from(JSON.stringify({ t: "summoning" })))
+      const cold = await waitFor(() => { const x = laneId(); return x && x !== warmed ? x : null }, 5000, 50)
+      await idle(cold!)
+      await k.stop()
+      await waitFor(async () => !(await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.length, 5000, 100)
+      k = await keeper(CHAT_SOCKET)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "what's in this window", app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      const answeredCold = await waitFor(async () => { const x = laneId(); return x && x !== cold ? (await said(x)).findLast((e) => e.k === "text" && /^Read it/.test(e.text))?.text : null }, 15_000, 50)
+      check("summoned: an ask after its keeper ended (an update) as its session sat warm goes to a fresh session and is answered, nothing raw said",
+        !!answeredCold && !raw(await says()).length, [answeredCold, await says()])
+      await idle(laneId()!)
+      // (its session failing mid-ask: handed again once, to a fresh one, which answers)
+      fs.writeFileSync(CRASH, "")
+      const failing = laneId()
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "crash: what's this button", app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      const retried = await waitFor(async () => { const x = laneId(); return x && x !== failing ? (await said(x)).findLast((e) => e.k === "text" && /^Read it/.test(e.text))?.text : null }, 15_000, 50)
+      const handedTwice = (actions().match(/"op":"handed"/g) ?? []).length
+      check("summoned: its session failing mid-ask hands the ask again, once, to a fresh session that answers it; the error isn't said, it's in status",
+        !!retried && !fs.existsSync(CRASH) && !raw(await says()).length && /Not connected/.test((await status()).summoned?.trouble?.why ?? ""), [retried, await says(), (await status()).summoned])
+      await idle(laneId()!)
+      // (no keeper to answer at all: one short line, said and logged as its say, never the error)
+      await k.stop()
+      await waitFor(async () => !(await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.length, 5000, 100)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "and this one?", app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+      const gaveUp = await waitFor(async () => (await says()).find((x) => /ask me again/.test(x)), 15_000, 50)
+      const handed = (actions().match(/"op":"handed"/g) ?? []).length - handedTwice
+      check("summoned: an ask no session can take is tried once more, then gets one short line, logged as its say, nothing raw",
+        gaveUp === "I lost my session there, ask me again?" && handed === 2 && actions().includes('"op":"say","text":"I lost my session there, ask me again?"') && !raw(await says()).length,
+        [gaveUp, handed, await says()])
+      k = await keeper(CHAT_SOCKET)
       sc.emit("close")
       await api("POST", "ops/companion.stop", {})
       check("summoned: the companion stopped, its summoned session ends too", !!(await waitFor(async () => !(await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.length, 5000, 100)) &&

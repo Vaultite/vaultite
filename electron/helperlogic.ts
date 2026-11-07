@@ -212,6 +212,13 @@ export function shotCrop(d: Rect, p: Point): Rect {
   return { x: at(p.x, w, d.x, d.width), y: at(p.y, h, d.y, d.height), width: w, height: h }
 }
 
+/** How long a drawing that came with `beats` beats (its last mark's, from 0) is held up for the user to see it, before a
+ *  spoken exchange that ends by itself takes it down: its pen's work, then a look at it (its words say longer). */
+export const drawingHold = (beats: number) => 3500 + Math.min(10, beats) * 1200
+/** Whether a drawing's beats wait for their words to be heard: some are being said, or (none begun) the answer is said
+ *  aloud and has words, or may still (its turn at work). A wordless answer's marks wait for nothing. */
+export const beatsWait = (o: { saying: boolean | null; aloud: boolean; words: boolean; working: boolean }) => o.saying ?? (o.aloud && (o.words || o.working))
+
 /** A point kept inside a window as it moves: where in it (from its top left) the user left a cursor. */
 export const offsetIn = (frame: Rect, p: Point) => ({ dx: Math.round(p.x - frame.x), dy: Math.round(p.y - frame.y) })
 /** That point now, the window at `frame`; one left past its size (it shrank) stays inside it. */
@@ -219,7 +226,9 @@ export const atOffset = (frame: Rect, o: { dx: number; dy: number }) =>
   ({ x: frame.x + Math.max(8, Math.min(frame.width - 8, o.dx)), y: frame.y + Math.max(8, Math.min(frame.height - 8, o.dy)) })
 
 /** A job the companion handed off, as the menu bar lists it (plugins/core/companion/jobs.ts' JobCard: its states). */
-export type HelperJob = { id: string; title: string; state: string; link: string | null; unseen: boolean; at: number; where?: string; now?: string; took?: string; result?: string }
+export type HelperJob = { id: string; title: string; state: string; link: string | null; unseen: boolean; at: number; where?: string; now?: string; took?: string; result?: string
+  /** What it waits on while it needs the user: its notification's buttons answer it. */
+  waits?: { question: string; choices: string[] } }
 const ACTIVE = new Set(["starting", "working", "needs you"])
 const RANK: Record<string, number> = { "needs you": 0, "ready for review": 1, working: 2, starting: 2 }
 /** The Jobs in the menu: those needing the user, to review or at work first, then the latest ended ones of the last day; a few. */
@@ -227,12 +236,20 @@ export function jobsShown(jobs: HelperJob[], now = Date.now()) {
   return jobs.filter((j) => ACTIVE.has(j.state) || (j.state !== "stopped" && (j.unseen || now - j.at < 86_400_000)))
     .sort((a, b) => (RANK[a.state] ?? 3) - (RANK[b.state] ?? 3) || b.at - a.at).slice(0, 6)
 }
-/** Jobs whose news is told (`news`: job_news) that came to need the user, or ended (ready for review, done, failed),
- *  since `before` (null: the first list heard, no news): a notification each. */
+/** Jobs whose news is told (`news`: job_news) that came to need the user (or wait on another prompt), or ended (ready
+ *  for review, done, failed), since `before` (null: the first list heard, no news): a notification each. */
 export function jobNews(before: HelperJob[] | null, after: HelperJob[], news: string) {
   if (!before) return []
-  const was = new Map(before.map((j) => [j.id, j.state]))
-  return after.filter((j) => was.has(j.id) && was.get(j.id) !== j.state && jobTold(j.state, news) && (j.state === "needs you" || j.unseen))
+  const was = new Map(before.map((j) => [j.id, j]))
+  const prompt = (j?: HelperJob) => j?.waits?.question ?? ""
+  return after.filter((j) => was.has(j.id) && (was.get(j.id)!.state !== j.state || (j.state === "needs you" && prompt(j) !== prompt(was.get(j.id)))) &&
+    jobTold(j.state, news) && (j.state === "needs you" || j.unseen))
+}
+/** A job's notification: what it says, and the buttons answering what it waits on (macOS shows a few). */
+export function jobNote(j: HelperJob) {
+  const waits = j.state === "needs you" ? j.waits : undefined
+  return { title: j.state === "needs you" ? "A job needs you" : j.state === "failed" ? "A job failed" : j.state === "ready for review" ? "A job is ready for review" : "A job is done",
+    body: [j.title, waits?.question ?? j.result].filter(Boolean).join("\n"), choices: (waits?.choices ?? []).slice(0, 4) }
 }
 /** A job's line under its title in the menu: its state, where, and what it does now or ended with. */
 export const jobSublabel = (j: HelperJob) => [`${JOB_SAID[j.state] ?? j.state}${j.unseen ? ", new" : ""}${j.took ? ` · ${j.took}` : ""}`, j.where, ACTIVE.has(j.state) ? j.now : j.result]

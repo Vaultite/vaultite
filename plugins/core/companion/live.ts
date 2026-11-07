@@ -19,6 +19,8 @@ export type Agent = Target & Boxed & { name: string; tint: string; state: "watch
   why?: string
   /** When it last pointed at its place (look, highlight, a say given one): a phone shows it there a moment. */
   pointed?: number
+  /** Moved there without acting (plugin.ts setAgent): its cursor rests at home till it acts. */
+  rests?: boolean
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
 /** What a session runs: its coding agent (claude, codex, claude_work), model and effort ("": its own). */
 export type How = { agent: string; model: string; effort: string }
@@ -98,7 +100,7 @@ export function askedFromHere(name: string) {
 /** Show agent `name` as `a` now, before the server says so (for `ms` at most). */
 function expect(name: string, a: Partial<Agent>, ms: number) {
   clearTimeout(ahead.get(name)?.timer)
-  ahead.set(name, { a: { ...a, seen: undefined, t: Date.now() }, timer: setTimeout(() => { ahead.delete(name); showAgents() }, ms) })
+  ahead.set(name, { a: { ...a, seen: undefined, rests: undefined, t: Date.now() }, timer: setTimeout(() => { ahead.delete(name); showAgents() }, ms) })
   showAgents()
 }
 /** Agent `name`'s question answered here: it goes at once. Returns the undo, for an answer that failed. */
