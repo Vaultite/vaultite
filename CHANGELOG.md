@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Each bundle's page on vaultite.com shows that bundle**: its demo is its own, so Standard or Zen no longer shows the
+  Glass a visit before left; Reset starts that bundle again, and Browser's page opens its live sites, as the home
+  page's picker does.
 - **The menu bar menu's headings are bold**: Companion and Jobs read as titles at the menu's text size, where macOS
   drew them small and semibold.
 - **The list of sessions by the notch holds any number**: with many background sessions the list a hover opens no

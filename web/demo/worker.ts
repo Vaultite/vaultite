@@ -40,12 +40,16 @@ for (const site of SITES) {
 }
 
 // ---------- the vault, kept in IndexedDB ----------
-const db = new Promise<IDBDatabase>((ok, no) => {
-  const r = indexedDB.open("vaultite-demo", 1)
+// (one per space, which the page says first: space.ts)
+const space = new Promise<string>((ok) => {
+  self.addEventListener("message", (e: MessageEvent) => { if (e.data?.type === "space") ok(String(e.data.space ?? "")) })
+})
+const db = space.then((s) => new Promise<IDBDatabase>((ok, no) => {
+  const r = indexedDB.open(s ? `vaultite-demo:${s}` : "vaultite-demo", 1)
   r.onupgradeneeded = () => { r.result.createObjectStore("files"); r.result.createObjectStore("meta") }
   r.onsuccess = () => ok(r.result)
   r.onerror = () => no(r.error)
-})
+}))
 async function tx<T>(stores: string[], fn: (t: IDBTransaction) => IDBRequest<T> | void): Promise<T | undefined> {
   const t = (await db).transaction(stores, "readwrite")
   const r = fn(t)

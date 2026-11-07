@@ -144,6 +144,28 @@ async function visit(name, browser) {
   await drawn()
   await open("Notes/Lisbon trip.md")
   is("Reset brings the sample back", !(await shown()).includes(MARK) && (await shown()).includes("Lisbon"), (await shown()).slice(-300))
+
+  // A bundle's page (vaultite.com/b/...) has a demo of its own: what one leaves never shows on another's.
+  const pageOf = async (id, hash = "") => { await page.goto("about:blank"); await page.goto(`${base}?desk=page&bundle=gh:Vaultite/vaultite/bundles/${id}${hash}`); await drawn() }
+  const NOTE = "Only on Zen's page.md", has = async () => (await api("GET", `file?path=${encodeURIComponent(NOTE)}`)).status === 200
+  const on = async () => (await api("GET", "bundles")).json?.previous?.bundle
+  await pageOf("zen")
+  is("a built-in bundle's page opens the demo's own copy, not GitHub's", (await on()) === "zen")
+  is("...and keeps what's written there", (await api("POST", "file", { path: NOTE, text: "here" })).status === 201 && await has())
+  await pageOf("browser")
+  is("another bundle's page has none of it", (await on()) === "browser" && !(await has()))
+  is("...the Browser's opens its live sites", await page.waitForFunction(() => location.hash.startsWith("#view/web"), null, { timeout: 15000 }).then(() => true, () => false), page.url())
+  await page.goto("about:blank")
+  await page.goto(base)
+  await drawn()
+  is("nor the main demo", !(await has()) && (await on()) !== "browser")
+  await pageOf("zen", "#file/Start%20here.md")
+  is("back on the first page, it's still there", await has())
+  await page.getByRole("button", { name: "Reset" }).click()
+  await page.locator("[data-confirm] button", { hasText: "Reset" }).click()
+  await page.waitForURL((u) => !u.hash, { timeout: 10000 }).catch(() => {})
+  await drawn()
+  is("Reset there starts that bundle again", !(await has()) && (await on()) === "zen" && page.url().includes("bundle=gh"), page.url())
   is("throws nothing", !errors.length, errors.slice(0, 5))
   await browser.close()
 }

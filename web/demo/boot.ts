@@ -1,5 +1,6 @@
 // The web demo's start (npm run build:demo), main.tsx's first import: the server runs in a worker (worker.ts), reached
 // through a service worker (sw.ts) for what the page fetches and a port for the live socket; then the app starts.
+import { forgetLocal, SPACE } from "./space.ts"
 import { SHOWN } from "./machine.ts"
 import { NEEDS_APP } from "./node/stub.ts"
 import { SITES } from "./sites.ts"
@@ -28,6 +29,7 @@ if (parent !== window) {
 }
 
 const server = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
+server.postMessage({ type: "space", space: SPACE })
 const ready = new Promise<void>((ok, no) => {
   server.onmessage = (e) => { if (e.data.type === "ready") ok(); else if (e.data.type === "failed") no(new Error(e.data.error)) }
 })
@@ -182,13 +184,25 @@ function draggable(bar: HTMLElement) {
   addEventListener("resize", () => { if (bar.classList.contains("moved")) { const r = bar.getBoundingClientRect(); place(r.left, r.top) } })
 }
 
+/** The bundle the page around the demo asked for last (?bundle=, then vaultite-demo:apply), and its name once known:
+ *  what Reset starts again with. */
+const showing: { asked: string | null; name: string } = { asked: new URLSearchParams(location.search).get("bundle"), name: "" }
+/** The look and the answer about AI the page around the demo said last (?theme= and ?ai=, then its messages). */
+const site: { theme?: string; ai?: string } = {}
+
 async function reset() {
   const { confirmDialog } = await import("@/components/ConfirmDialog")
-  if (!(await confirmDialog({ title: "Reset the demo?", body: "Your edits are deleted and the sample vault comes back.", confirm: "Reset", danger: true }))) return
+  const body = `Your edits are deleted and the sample vault comes back${showing.name ? `, with ${showing.name} on` : ""}.`
+  if (!(await confirmDialog({ title: "Reset the demo?", body, confirm: "Reset", danger: true }))) return
   const ch = new MessageChannel()
   await new Promise((ok) => { ch.port1.onmessage = ok; server.postMessage({ type: "reset" }, [ch.port2]) })
-  for (const k of Object.keys(localStorage)) if (k.startsWith("vaultite.")) localStorage.removeItem(k)
-  location.replace(location.pathname)
+  forgetLocal()
+  // (the same bundle, applied again on the fresh vault, in the page's look as it is now; on its first page)
+  const q = new URLSearchParams(location.search)
+  if (showing.asked) q.set("bundle", showing.asked); else q.delete("bundle")
+  for (const [k, v] of Object.entries(site)) q.set(k, v)
+  const query = q.toString()
+  location.replace(location.pathname + (query ? `?${query}` : ""))
 }
 
 /** The bundle picker of the page around the demo (vaultite.com): ?bundle=<id>, or gh:<owner>/<name> for one shared from
@@ -197,16 +211,24 @@ async function bundles() {
   const api = (path: string, body?: unknown) => fetch(`api/${path}`, body === undefined ? undefined
     : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json())
   const post = (m: unknown) => { if (parent !== window) parent.postMessage(m, location.origin) }
-  let on: string | null = (await api("bundles")).previous?.bundle ?? null
+  const listed = await api("bundles")
+  let on: string | null = listed.previous?.bundle ?? null
+  /** The app's own bundles, which this demo has as its release does: their page (gh:Vaultite/vaultite/bundles/<id>)
+   *  opens this copy rather than GitHub's, at once, and as the home page's picker does (the Browser's live sites). */
+  const builtIn = new Set<string>(((listed.bundles ?? []) as { id: string; source: string }[]).filter((b) => b.source === "app").map((b) => b.id))
   /** Turn a bundle on (applied without what runs code: the demo left it out); false when it couldn't. `running`: the app
    *  is, and follows it (its first page, Undo). */
   const openBundle = async (asked: string, running = false) => {
     let id = asked
-    if (asked.startsWith("gh:")) {
+    const own = /^gh:vaultite\/vaultite\/bundles\/([\w-]+)$/i.exec(asked)?.[1]?.toLowerCase()
+    if (own && builtIn.has(own)) id = own
+    else if (asked.startsWith("gh:")) {
       // (the demo's copy of one asked for again is replaced: a link is the visitor's go, and the server asks for it)
       const r = await api("bundles/import", { from: asked.slice(3), replace: true })
-      if (r.error) return fail(asked, r.error)
-      id = r.bundle.id
+      // (GitHub not answering now, or its limit reached: the copy a visit before brought, in this bundle's own space)
+      const had = r.error && SPACE && on ? (await api(`bundles/${encodeURIComponent(on)}`)).bundle : null
+      if (r.error && String(had?.from ?? "").toLowerCase() !== asked.slice(3).toLowerCase()) return fail(asked, r.error)
+      id = r.error ? on! : r.bundle.id
     }
     const p = await api(`bundles/${encodeURIComponent(id)}`)
     if (p.error) return fail(asked, p.error)
@@ -222,8 +244,9 @@ async function bundles() {
       if (first && !location.hash) history.replaceState(null, "", `#file/${encodeURIComponent(first)}`)
     }
     on = id
+    showing.asked = asked
     const info = await api(`demo/bundle/${encodeURIComponent(id)}`)
-    if (!info.error) { post({ type: "vaultite-demo:info", asked, bundle: info }); if (change) leftOut(info) }
+    if (!info.error) { showing.name = String(info.name ?? ""); post({ type: "vaultite-demo:info", asked, bundle: info }); if (change) leftOut(info) }
     return true
   }
   const fail = (asked: string, error: string) => {
@@ -277,12 +300,13 @@ async function siteLook() {
   const { setPrefs } = await import("@/core/prefs")
   const t = theme(q.get("theme"))
   if (t) setPrefs({ theme: t })
+  if (t) site.theme = t
   if (ai === "on" || ai === "off") setPrefs({ ai: ai === "on" })
   addEventListener("message", (e) => {
     if (e.origin !== location.origin) return
     const t = theme(e.data?.theme)
-    if (e.data?.type === "vaultite-demo:theme" && t) setPrefs({ theme: t })
-    if (e.data?.type === "vaultite-demo:ai" && typeof e.data.on === "boolean") setPrefs({ ai: e.data.on })
+    if (e.data?.type === "vaultite-demo:theme" && t) { setPrefs({ theme: t }); site.theme = t }
+    if (e.data?.type === "vaultite-demo:ai" && typeof e.data.on === "boolean") { setPrefs({ ai: e.data.on }); site.ai = e.data.on ? "on" : "off" }
   })
 }
 
