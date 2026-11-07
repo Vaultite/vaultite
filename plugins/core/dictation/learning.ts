@@ -23,11 +23,13 @@ export function watchFix(said: string, read: () => string | null): Watch {
   /** What this watch taught, so a word still being typed ("Vorss") is replaced when it's finished ("Vorssaint"). */
   let taught: Entry[] = []
   const stop = () => { over = true; if (timer) clearTimeout(timer); timer = null }
-  // (a minute from the dictation, or from the last change)
-  const expiring = () => setTimeout(() => { if (!timer) stop() }, WATCH_MS)
+  // (a minute from the dictation, or from the last change: a fix still settling is read then, the last time)
+  const expiring = () => setTimeout(() => { const was = !!timer; stop(); if (was) settled() }, WATCH_MS)
   let expire = expiring()
+  // (one read at a time: two overlapping would both teach the same fix)
+  let learning: Promise<void> = Promise.resolve()
+  const settled = () => { learning = learning.then(learn).catch(() => {}) }
   const learn = async () => {
-    timer = null
     const now = read()
     if (now === null) return stop()
     const fixes = corrections(said, now)
@@ -50,7 +52,7 @@ export function watchFix(said: string, read: () => string | null): Watch {
       if (over) return
       changed = true
       if (timer) clearTimeout(timer)
-      timer = setTimeout(() => void learn(), SETTLE_MS)
+      timer = setTimeout(() => { timer = null; settled() }, SETTLE_MS)
       clearTimeout(expire)
       expire = expiring()
     },
@@ -59,7 +61,7 @@ export function watchFix(said: string, read: () => string | null): Watch {
       const was = changed && !!timer
       stop()
       clearTimeout(expire)
-      if (was) void learn()
+      if (was) settled()
     },
   }
 }
