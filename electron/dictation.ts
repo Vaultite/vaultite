@@ -8,7 +8,7 @@ import type { AppWindow } from "./appwindow.ts"
 import { dictationSwift, parakeetModel } from "./dictation-build.ts"
 import { replacer } from "../core/dictationtext.ts"
 import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
-import { dictationKeep, type Keeping, type Where } from "./dictationkeep.ts"
+import type { Keeping } from "./dictationkeep.ts"
 
 /** Shipped built in the app (tools/build_helpers.ts), else built the first time into userData. */
 let helper: ChildProcess | null = null
@@ -223,8 +223,7 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
   const mic = file ? undefined : pickMic(opts.microphone, await listedDevices())
   if (owner && owner !== sink) { tell({ type: "end", reason: "elsewhere" }); keeping?.end("elsewhere") }
   owner = sink
-  const where = whereOf(opts.where)
-  keeping = keep !== false && where ? keepFor(sink, where) : null
+  keeping = keep !== false && opts.where ? (list ?? await loadList()).keepFor(sink, opts.where) : null
   swap = replacer(replacements.map(([s, w]) => `${s}: ${w}`))
   const silence = Number(opts.silence)
   send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: Number.isFinite(silence) ? silence : 0, ...(cloud ? { cloud } : {}), ...(opts.tap ? { tap: true } : {}),
@@ -250,7 +249,7 @@ export const handOver = (from: DictationSink, to: DictationSink) => {
   if (owner !== from) return false
   owner = to
   // (what it typed in the window is that one's; what it hears from now, the helper's, landing where it says)
-  if (keeping) { keeping.end("moved"); keeping = keepFor(to, { kind: "app" }) }
+  if (keeping && list) { keeping.end("moved"); keeping = list.keepFor(to, { kind: "app" }) }
   return true
 }
 /** `pending`: its words not settled yet; `held`: its key is down; `free`: hands-free; `start`: none under way, there's nowhere to dictate in the window. */
@@ -272,32 +271,14 @@ export const dictationHandlers: Record<string, (win: AppWindow, ...args: unknown
   "dictation:microphones": (win, watch) => import("./mics.ts").then((m) => m.microphones(win, watch)),
 }
 
-// ---------- the Dictations list: each dictation's words, kept on this Mac (dictationkeep.ts)
+// ---------- the Dictations list: each dictation's words, kept on this Mac (dictationlist.ts, loaded at the first one kept)
 
-const kept = dictationKeep(() => path.join(app.getPath("userData"), "dictations"))
-/** The session under way's keeping, and each sink's last (the helper says where its words landed after the end). */
+/** The session under way's keeping. */
 let keeping: Keeping | null = null
-const keptOf = new WeakMap<DictationSink, Keeping>()
-const keepFor = (sink: DictationSink, where: Where) => { const k = kept.start(where); keptOf.set(sink, k); return k }
-const KINDS = new Set(["note", "terminal", "field", "app"])
-const clip = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 200) : undefined)
-function whereOf(w: unknown): Where | null {
-  if (!w || typeof w !== "object") return null
-  const o = w as Record<string, unknown>
-  if (!KINDS.has(String(o.kind))) return null
-  const path = clip(o.path), name = clip(o.name), bundle = clip(o.bundle)
-  return { kind: o.kind as Where["kind"], ...(path ? { path } : {}), ...(name ? { name } : {}), ...(bundle ? { bundle } : {}) }
-}
+let list: typeof import("./dictationlist.ts") | null = null
+const loadList = async () => (list ??= await import("./dictationlist.ts"))
 /** Where the helper put `sink`'s words once it stopped (dictationroam.ts' `land`), with the words as they landed. */
-export const keptLanded = (sink: DictationSink, o: { to: string; name?: string; text?: string; inbox?: boolean }) => keptOf.get(sink)?.landed(o)
-/** The server's calls (main.ts: `dictations:*`): the list, one forgotten, all cleared. */
-export function dictationsCall(name: string, args: unknown[]) {
-  const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { q?: unknown; limit?: unknown; id?: unknown }
-  if (name === "dictations:list") return { ...kept.list({ q: typeof o.q === "string" ? o.q.slice(0, 200) : "", limit: typeof o.limit === "number" ? o.limit : undefined }), here: true }
-  if (name === "dictations:forget") { if (typeof o.id === "string") kept.forget(o.id); return { ok: true } }
-  if (name === "dictations:clear") { kept.clear(); return { ok: true } }
-  throw new Error(`no dictations call ${name}`)
-}
+export const keptLanded = (sink: DictationSink, o: { to: string; name?: string; text?: string; inbox?: boolean }) => list?.keptLanded(sink, o)
 
 export function stopDictation() {
   if (idle) { clearTimeout(idle); idle = null }

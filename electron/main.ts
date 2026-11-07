@@ -17,7 +17,7 @@ import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { talkCall } from "./talklog.ts"
 import { afterUpdate, installedCommit } from "./installed.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
-import { dictationHandlers, dictationsCall, setDictationServer, stopDictation } from "./dictation.ts"
+import { dictationHandlers, setDictationServer, stopDictation } from "./dictation.ts"
 import type { HelperPrefs } from "./helper.ts"
 import { setTranslucent, translucentAt, translucentWindow } from "./translucency.ts"
 import { hideGhost, showGhost, type GhostLook } from "./dragghost.ts"
@@ -289,7 +289,7 @@ const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name ==
   : m.name === "app:updates" ? appUpdates()
   : typeof m.name === "string" && m.name.startsWith("screen:") ? (helper ? helper.screenCall(m.name, Array.isArray(m.args) ? m.args : []) : null)
   : typeof m.name === "string" && m.name.startsWith("talk:") ? talkCall(m.name, Array.isArray(m.args) ? m.args : [])
-  : typeof m.name === "string" && m.name.startsWith("dictations:") ? (MAC ? dictationsCall(m.name, Array.isArray(m.args) ? m.args : []) : { items: [], total: 0, here: false })
+  : typeof m.name === "string" && m.name.startsWith("dictations:") ? (MAC ? import("./dictationlist.ts").then((d) => d.dictationsCall(String(m.name), Array.isArray(m.args) ? m.args : [])) : { items: [], total: 0, here: false })
   : typeof m.name === "string" && m.name.startsWith("voice:") ? (helper ? helper.voiceCall(m.name, Array.isArray(m.args) ? m.args : []) : { said: false, why: "no menu-bar helper here" })
   : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
 
