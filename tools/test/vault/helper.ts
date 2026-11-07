@@ -595,7 +595,8 @@ export default async ($: VaultTest) => {
       // (a summoned ask, its answer by the pointer: here, that its session can't start)
       c.addMoment({ kind: "ask", for: name, summoned: true, text: "open my page" })
       const late = () => win.got.find((m) => m.t === "note" && m.note?.id !== answer?.id && m.note?.answers)?.note
-      for (let i = 0; i < 100 && !late(); i++) await $.sleep(50)
+      // (its session tried first, up to the chat keeper's 10 s start: a slow CI Mac takes most of it)
+      for (let i = 0; i < 400 && !late(); i++) await $.sleep(50)
       helper.emit("message", JSON.stringify({ t: "riding", agent: "" }))
       const dropped = win.got.findIndex((m) => m.t === "drop" && m.id === answer?.id), over = win.got.findIndex((m) => m.t === "riding" && m.agent === "")
       const kept = win.got.filter((m) => m.t === "said").at(-1)?.said ?? []
