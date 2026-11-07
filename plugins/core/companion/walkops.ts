@@ -117,7 +117,7 @@ with screen recording allowed, a frame and a short clip from the screen's timeli
         const title = `QA walk: ${g.label} (${its.length})`
         try {
           const j = await jobs.begin(ctx, async (w) => walkJobText(g.label, its, since, saved.note, await vaultFileOn(plugin, w.machine), p.clips === true), m,
-            { title, ...(!g.project?.repo && g.project?.path ? { cwd: g.project.path } : {}) })
+            { title, on: "", ...(!g.project?.repo && g.project?.path ? { cwd: g.project.path } : {}) })
           sent.push({ label: g.label, items: its.map((it) => it.n), id: j.id, title: j.title })
         } catch (e) {
           sent.push({ label: g.label, items: its.map((it) => it.n), why: (e as Error).message })

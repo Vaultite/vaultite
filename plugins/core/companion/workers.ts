@@ -411,7 +411,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const where: Where = { ...await route(m, p), ...harnessOf(p) }
     const told = typeof task === "string" ? task : await task(where)
     const now = Date.now(), title = (str(p.title).trim() || told.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
-    const on = surfaceOf(m)
+    // (`p.on` "": a job no page's asks go to live, as a QA walk's: it works through a list)
+    const on = typeof p.on === "string" ? p.on : surfaceOf(m)
     const j: Job = { id: newId(), title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), ...(on ? { on } : {}), started: now, turn: now, at: now, seen: false, log: [] }
     all().unshift(j)
     try {
