@@ -179,13 +179,14 @@ check("and one added through the API", !!(await toastWith("In your inbox: A fiel
 const needs = async () => (await api("GET", "inbox/events")).needs
 check("the button counts results and what needs you", !!(await until(async () => (await count()) === 3 + (await needs()))), [await count(), await needs()])
 
-// 6. The Inbox view, from the button: what needs you, results, what agents work on, messages; it reads the messages.
+// 6. The Inbox view, from the button: what needs you, results, messages (what agents work on is the Agents panel's); it
+// reads the messages.
 await page.locator("aside [data-inbox-button]").click()
 await page.waitForSelector("[data-inbox-view]")
 check("the view lists results to review", (await page.locator("[data-inbox-view] [data-result]").count()) === 3, await page.locator("[data-inbox-view] [data-result]").count())
-check("and what needs you and messages under Active, what agents work on under Working", (await page.locator("[data-inbox-view] [data-inbox-active] [data-event]").count()) >= 3 &&
-  (await page.locator("[data-inbox-view] [data-inbox-working] [data-event]").count()) >= 1,
-  [await page.locator("[data-inbox-view] [data-inbox-active] [data-event]").count(), await page.locator("[data-inbox-view] [data-inbox-working] [data-event]").count()])
+check("and what needs you and messages under Active, what agents work on not listed", (await page.locator("[data-inbox-view] [data-inbox-active] [data-event]").count()) >= 3 &&
+  (await page.locator("[data-inbox-view] [data-event][data-state=working]").count()) === 0,
+  [await page.locator("[data-inbox-view] [data-inbox-active] [data-event]").count(), await page.locator("[data-inbox-view] [data-event][data-state=working]").count()])
 const firstActive = await page.locator("[data-inbox-view] [data-inbox-active]").locator("[data-event], [data-result]").first().getAttribute("data-kind").catch(() => null)
 check("Active: what waits on you first", firstActive === "session" || firstActive === "waiting", firstActive)
 await wait(400)
@@ -325,7 +326,7 @@ await page.locator("[data-sonner-toast]", { hasText: /Settled “.+”/ }).first
 check("Undo puts it back to review", !!(await until(() => read(`${reading}.md`).includes("status: new"))))
 await wait(500)
 
-// 8b. What needs you always shows, read or not; messages and what agents work on after it, past 8 rows folded; done
+// 8b. What needs you always shows, read or not; messages after it, past 8 rows folded; what agents work on and done
 // ones never (read messages are done).
 await page.goto(`${B}#file/${enc(PAGE)}`)
 await wait(800)
@@ -334,10 +335,9 @@ const prow = (sel = "") => page.locator(`aside [data-inbox-panel] [data-event]${
 const busy = `qw${Date.now().toString(36)}`
 await api("POST", `inbox/hook?agent=claude&terminal=${busy}`, { hook_event_name: "Notification", notification_type: "permission_prompt", message: "Claude needs your permission to use Bash", session_id: "qa-busy" })
 await api("POST", `inbox/hook?agent=claude&terminal=${busy}`, { hook_event_name: "UserPromptSubmit", session_id: "qa-busy" })
-await until(() => prow(`[data-state=working]`).count())
-const op = (loc) => loc.evaluate((el) => getComputedStyle(el).opacity)
-check("what an agent works on is dimmed, what needs you not", (await op(prow("[data-state=working]").first())) === "0.5" && (await op(prow("[data-state=open][data-kind=session]").first())) === "1",
-  [await op(prow("[data-state=working]").first()), await op(prow("[data-state=open]").first())])
+await until(async () => (await api("GET", "inbox/events")).events.some((e) => e.session === "qa-busy" && e.state === "working"))
+await wait(600)
+check("what an agent works on isn't in the panel (the Agents panel has it)", (await prow("[data-state=working]").count()) === 0, await prow("[data-state=working]").count())
 for (let i = 1; i <= 10; i++) await api("POST", "inbox/events", { source: "backup", kind: "info", title: `Backup ${i} finished` })
 const fold = page.locator("aside [data-inbox-panel] [data-inbox-fold]")
 const live = async () => (await api("GET", "inbox/events")).events.filter((e) => e.state !== "done" && !(e.snoozed > Date.now()))

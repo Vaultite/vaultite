@@ -26,7 +26,7 @@
       "description": "a reply box under an agent's report: what's typed goes back into its session (its terminal, the session resumed while its context is cached, or a new session that reads the report), and its thread is working on it"
     },
     "inbox": {
-      "description": "what needs you: decisions waiting on your answer, agents' sessions that need you, results to review in Inbox/, what agents work on since you answered, and messages",
+      "description": "what needs you: decisions waiting on your answer, agents' sessions that need you, results to review in Inbox/, and messages (what agents work on is the Agents panel's)",
       "live": "agents' events on this machine and the vault's other machines (not in the vault)",
       "options": {
         "events": { "type": "number", "default": 5, "min": 0, "max": 50, "description": "how many of the agents' threads and messages to show in each list, the rest folded into Show N more (0 hides them)" },

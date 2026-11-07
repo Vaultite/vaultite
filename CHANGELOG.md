@@ -47,7 +47,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   it went with the default already wait quietly, with Accept all defaults. The same question from two agents is one
   item, and one later work settled closes itself, saying why. Reports go straight to the archive, one line each in the
   morning brief and under Reports today (a failure or something that went out publicly still comes to the inbox); an
-  agent's progress shows on its own row. The companion knocks "three decisions waiting" and walks you through them.
+  agent's progress shows on its own row, and what agents work on is the Agents panel's, no longer listed in the inbox. The companion knocks "three decisions waiting" and walks you through them.
 - **Terminals run on libghostty-vt 1.0**: Ghostty's first stable release of its terminal engine, in place of a
   pre-release build: a bit faster on fast output, with the same screens, copy and search.
 - **A job's ready card stays up to be read**: "Ready to show you …" comes at your next pause and stays 15 seconds

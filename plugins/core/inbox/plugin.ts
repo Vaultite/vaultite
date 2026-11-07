@@ -1847,7 +1847,7 @@ plugin.op({
   lock: false,
   summary: "Say how your work goes (a check-in, still working, a step done): your session's row shows it, each line replacing the last; never told, never in the inbox.",
   help: `For what a watcher or a long task would have said in a report ("still working", "two of five fixes in"): it goes
-on your own row (the Agents panel, the inbox's Working), not to the user. The inbox is for decisions: a question
+on your own row in the Agents panel, not to the user. The inbox is for decisions: a question
 is vau inbox ask, the end of a task vau inbox report.
 
   vau inbox progress "Two of five fixes in; CI running on the third"`,
@@ -2713,8 +2713,8 @@ plugin.block("inbox", (ctx) => {
   const nr = Number(o.results ?? 10), ne = Number(o.events ?? 5)
   const l = lists(plugin.isOff() ? [] : shown(), asResults(plugin.vault.items("inbox")))
   const results = [...l.pinned.results, ...l.review].slice(0, nr)
-  // (what's pinned and what needs the user first, then what agents work on, then messages)
-  const es = [...l.pinned.events, ...l.needs, ...l.working, ...l.messages].slice(0, ne)
+  // (what's pinned and what needs the user first, then messages: what agents work on is the Agents panel's)
+  const es = [...l.pinned.events, ...l.needs, ...l.messages].slice(0, ne)
   ctx.source([...l.decisions, ...(nr > 0 ? results : [])])
   const parts: string[] = []
   if (l.decisions.length) parts.push(`Decisions:\n${bullets(l.decisions.map(decisionLine))}`)

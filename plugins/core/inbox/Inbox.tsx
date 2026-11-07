@@ -636,8 +636,8 @@ const small = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-
 export function InboxPanel({ store, open, file }: SidebarCtx) {
   const { unread, events } = useEvents()
   const l = listsOf(store, events)
-  // (what needs you always shows; then messages, then what agents work on, up to 8 rows)
-  const { shown: rest, more, all, toggle } = useCap([...l.pinned.events, ...l.needs], [...l.messages, ...l.working], 8)
+  // (what needs you always shows; then messages, up to 8 rows: what agents work on is the Agents panel's)
+  const { shown: rest, more, all, toggle } = useCap([...l.pinned.events, ...l.needs], l.messages, 8)
   useTick()
   useBack(store)
   useInboxSelect(store)
@@ -887,7 +887,7 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   useInboxSelect(store)
   // (while the events come, as many skeleton rows as there were last time; none: the Loading line, as tall as "Nothing needs you.")
   const loading = !!ne && !ready
-  const live = ne ? [...l.pinned.events, ...l.needs, ...l.working, ...l.messages] : []
+  const live = ne ? [...l.pinned.events, ...l.needs, ...l.messages] : []
   const kept = ne ? `inbox:${dealt ? "page" : "block"}:events` : null
   const rows = useKeptCount(kept, loading ? undefined : live.length)
   // (a row with a body is taller: as many of those as last time too)
@@ -895,7 +895,7 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   const row = (e: InboxEvent) => <EventRow key={e.id} e={e} fresh={fresh?.has(e.id)} touched={touched} />
   const past = dealt && <><Reports store={store} /><Snoozed store={store} /><Settled store={store} fresh={fresh} /></>
   const results = l.review.slice(0, nr)
-  // The shelves: pinned, active (what waits on you first, then what's to read, the latest first), working; snoozed and
+  // The shelves: pinned, active (what waits on you first, then what's to read, the latest first); snoozed and
   // settled folded below. A row says why it's there (its icon, Asks you, Report...).
   const byLatest = (xs: { at: number; row: ReactNode }[]) => xs.sort((a, b) => b.at - a.at).map((x) => x.row)
   const pinned = byLatest([...(ne ? l.pinned.events.map((e) => ({ at: e.t, row: row(e) })) : []), ...(nr ? l.pinned.results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} /> })) : [])])
@@ -910,7 +910,6 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
       <Section title="Pinned" attr="data-inbox-pinned" rows={pinned} max={dealt ? 50 : Math.max(ne, nr)} />
       <Section title="Active" attr="data-inbox-active" rows={active} max={dealt ? 100 : Math.max(ne, nr)}
         loading={loading && rows > 0 ? <LoadingRows count={rows} meta={bodies} lead={<span className="size-[18px] shrink-0" />} /> : undefined} />
-      <Section title="Working" attr="data-inbox-working" rows={ne ? l.working.map(row) : []} max={dealt ? 20 : ne} />
       {past}
     </div>
   )

@@ -6,7 +6,7 @@ default you take if they don't answer; never a question in prose (a "Your call" 
   and it reads "Went with X; change it?", quietly. The same question open already (yours or another agent's) is that one.
 - The end of a task: `vau inbox report` (below), its questions as `--decision`.
 - Progress (a check-in, still working, a step done): `vau inbox progress "<line>"`, on your session's own row (the Agents
-  panel, the inbox's Working), each line replacing the last. Never a report or a result.
+  panel), each line replacing the last. Never a report or a result.
 - Something for the user to read later (research, a summary): `vau inbox add "<title>" --tldr "<in short>" --body
   "<markdown>"` (MCP's `inbox_add`). A long task finished: `vau notify "<text>"`.
 
