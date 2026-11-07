@@ -17,9 +17,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **QA walks**: say "start a QA walk" with the Talk key, then go around any app talking; each sentence is noted with
   the thing under your pointer and a frame of it, "scratch that" drops the last, and "done" sends them as one job per
   project (Vaultite, your site...), all kept in Captures. The island by the notch counts them as you go.
-- **Live editing**: once a job works on a page (a preview or a note), what you ask over it with the Talk key goes
-  straight to that job as you say it, ask after ask, with no wait for the companion; when the page reloads, the
-  change is ringed. "Undo that" takes back exactly the last ask's change, never your own edits or other asks'.
+- **Live editing**: once a job works on a page (a preview in your browser, or a note it changed), what you ask over it
+  with the Talk key goes straight to that job as you say it, ask after ask, with no wait for the companion; when the
+  page reloads, the change is ringed. "Undo that" takes back exactly the last ask's change, never your own edits or
+  other asks'.
 - **Sessions by the notch**: agents working in the background (terminals, jobs) show as small faces beside the notch
   (top centre on a Mac without one; right of Vorssaint's island when it's there), each working, needing you or done.
   When one asks for you (`vau companion knock`), its line comes up there at a pause, never while anyone talks: say or
