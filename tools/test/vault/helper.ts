@@ -381,7 +381,7 @@ export default async ($: VaultTest) => {
   }
   {
     // The summoned exchange's geometry (electron/helperlogic.ts): beside the pointer, its box reachable, the picture.
-    const { besidePointer, panelAt, pointerBox, reaching, shotCrop, SHOT_MOST } = await import("../../../electron/helperlogic.ts")
+    const { besidePointer, grownAt, panelAt, pointerBox, reaching, shotCrop, SHOT_MOST } = await import("../../../electron/helperlogic.ts")
     const d = { x: 0, y: 0, width: 1470, height: 956 }
     check("beside: right of and below the pointer; on the other side by an edge", JSON.stringify(besidePointer({ x: 500, y: 400 }, d)) === '{"x":524,"y":420}' &&
       besidePointer({ x: 1460, y: 400 }, d).x < 1460 && besidePointer({ x: 500, y: 950 }, d).y < 950)
@@ -392,6 +392,9 @@ export default async ($: VaultTest) => {
     const meets = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
     const misses = [10, 700, 1400].flatMap((x) => [40, 500, 900].map((y) => ({ x, y }))).filter((p) => meets({ ...panelAt(besidePointer(p, d), { width: 300, height: 180 }, { ...d, y: 25, height: 931 }, 100, null, [pointerBox(p)]), width: 300, height: 180 }, pointerBox(p)))
     check("box: the answer's box never covers the user's pointer, anywhere on screen", !misses.length, misses)
+    const work = { ...d, y: 25, height: 931 }, grow = (y: number, at: number, h: number) => grownAt({ x: 1300, y }, 100, { width: 300, height: h }, { x: 1280, y: at }, work)
+    check("box: growing as its words come, it grows away from its cursor, yet no screen edge ever cuts it",
+      grow(400, 390, 300).y === 400 && grow(600, 720, 300).y === 400 && grow(800, 790, 300).y === 656 && grow(60, 170, 300).y === 25 && grow(400, 390, 300).x === 1170, [grow(400, 390, 300), grow(800, 790, 300), grow(60, 170, 300)])
     const crop = shotCrop(d, { x: 766, y: 463 }), whole = shotCrop({ x: 0, y: 0, width: 1280, height: 800 }, { x: 10, y: 10 }), side = shotCrop({ x: -2560, y: -200, width: 2560, height: 1440 }, { x: -100, y: 1200 })
     check("picture: as much of the display as Claude takes unscaled (a pixel stays a point), around the pointer, inside the display",
       crop.width * crop.height <= SHOT_MOST.pixels && Math.abs(crop.width / crop.height - 1470 / 956) < 0.01 && crop.x <= 766 && crop.x + crop.width >= 766 && crop.y >= 0 && crop.y + crop.height <= 956 &&

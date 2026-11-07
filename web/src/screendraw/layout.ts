@@ -42,6 +42,34 @@ export function labelAt(target: Rect, size: Size, bounds: Rect, taken: Rect[] = 
   return tries.map((r) => clampInto(r, bounds)).sort((a, b) => cost(a) - cost(b))[0]
 }
 
+/** Where a frame's label goes, snug at it as a design tool names a frame: over its top left, else beside its top right, under
+ *  its bottom left, beside its top left, over its top right, under its bottom right. */
+export const TAB_SIDES = ["above-left", "right-top", "below-left", "left-top", "above-right", "below-right"] as const
+export type TabSide = (typeof TAB_SIDES)[number]
+const TAB_GAP = 3
+export function tabAt(f: Rect, { w, h }: Size, side: TabSide): Rect {
+  const left = f.x, right = f.x + f.w - w, above = f.y - h - TAB_GAP, below = f.y + f.h + TAB_GAP
+  return side === "above-left" ? { x: left, y: above, w, h } : side === "right-top" ? { x: f.x + f.w + TAB_GAP, y: f.y, w, h }
+    : side === "below-left" ? { x: left, y: below, w, h } : side === "left-top" ? { x: f.x - w - TAB_GAP, y: f.y, w, h }
+    : side === "above-right" ? { x: right, y: above, w, h } : { x: right, y: below, w, h }
+}
+
+/** A frame round `r`, 6 out, but less toward a frame beside it (`frames`' other rects, touching or a little over it): two
+ *  side by side, as a sidebar's panels, keep a hairline apart, never overlapping. */
+export function frameRect(r: Rect, frames: Rect[]): Rect {
+  let l = 6, t = 6, rt = 6, b = 6
+  const pad = (gap: number) => Math.max(-8, (gap - 3) / 2)
+  // (how far apart along one axis, negative when they overlap there: by a little, still side by side)
+  const apart = (a0: number, a1: number, b0: number, b1: number) => (b0 + b1 >= a0 + a1 ? b0 - a1 : a0 - b1)
+  for (const o of frames) {
+    if (o === r) continue
+    const gx = apart(r.x, r.x + r.w, o.x, o.x + o.w), gy = apart(r.y, r.y + r.h, o.y, o.y + o.h), little = (g: number, a: number, c: number) => g > -12 && g > -Math.min(a, c) / 3
+    if (gx < 0 && gy < 15 && little(gy, r.h, o.h)) { if (o.y + o.h / 2 > r.y + r.h / 2) b = Math.min(b, pad(gy)); else t = Math.min(t, pad(gy)) }
+    else if (gy < 0 && gx < 15 && little(gx, r.w, o.w)) { if (o.x + o.w / 2 > r.x + r.w / 2) rt = Math.min(rt, pad(gx)); else l = Math.min(l, pad(gx)) }
+  }
+  return { x: r.x - l, y: r.y - t, w: r.w + l + rt, h: r.h + t + b }
+}
+
 /** Calm space for a card of `size`: clear of `avoid` (what's on screen, marked, other cards) by a margin, in the emptiest
  *  room (the farthest from all of it, up to `calm`), then nearest `near`; on screen. */
 export function calmSpot(size: Size, bounds: Rect, avoid: Rect[], near: Pt, margin = 24, calm = 140, beside: Rect[] = []): Rect {
@@ -142,14 +170,14 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
   // as the ask's elements say)
   const marked = out.flatMap((p) => (CARDS.has(p.mark.type) || !p.box ? [] : p.to ? [p.box, p.to] : [p.box]))
   const content = Object.entries(d.places ?? {}).filter(([k]) => k.startsWith("el:")).map(([, r]) => local(r)!).filter(on)
-  const inks: Rect[] = []
+  const inks: Rect[] = [], frames = out.flatMap((p) => (p.mark.type === "frame" && p.box ? [p.box] : []))
   for (const p of out) {
     if (!p.box || CARDS.has(p.mark.type)) continue
     if (p.to) { p.curve = arrowPath(p.box, p.to, bounds); p.ink = spanOf(p.curve.from, p.curve.to) }
     else if (p.mark.type === "point") { p.arrow = pointArrow(p.box, bounds, [...marked.filter((m) => m !== p.box), ...inks]); p.ink = inflate(spanOf(p.arrow.tip, p.arrow.tail), 8) }
     else if (p.mark.type === "underline") p.ink = { x: p.box.x - 6, y: p.box.y, w: p.box.w + 12, h: p.box.h + 10 }
     else if (p.mark.type === "check" || p.mark.type === "cross") { const c = markSpot(p.box); p.ink = { x: c.x - 16, y: c.y - 16, w: 32, h: 32 } }
-    else p.ink = ringBox(p.mark, p.box)
+    else p.ink = p.mark.type === "frame" ? frameRect(p.box, frames) : ringBox(p.mark, p.box)
     inks.push(p.ink)
   }
   // (cards first; then labels, clear of the marks, the cards and each other)
@@ -164,9 +192,21 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
     if (!p.box) at = centre(p.card)
     taken.push(p.card)
   }
+  // (frames' labels first, snug at them: all on the side that fits the most, as a set reads alike; one it doesn't fit, on
+  // the first side that does)
+  const tabbed = out.filter((p) => p.mark.type === "frame" && p.ink && labelSize(p.mark) && !saysItsOwn(p.mark, d.places))
+  const blocks = (p: Placed) => [...avoid.filter((x) => x !== p.box && x !== p.ink && !inside(p.box!, x)), ...taken]
+  const fits = (r: Rect, p: Placed, also: Rect[] = []) => inside(r, bounds) && !overlaps(r, p.ink!) && ![...blocks(p), ...also].some((x) => overlaps(r, x))
+  const counts = TAB_SIDES.map((k) => { const got: Rect[] = []; for (const p of tabbed) { const r = tabAt(p.ink!, labelSize(p.mark)!, k); if (fits(r, p, got)) got.push(r) } return got.length })
+  const side = TAB_SIDES[counts.indexOf(Math.max(...counts))]
+  for (const p of tabbed) {
+    const s = labelSize(p.mark)!, k = [side, ...TAB_SIDES].find((t) => fits(tabAt(p.ink!, s, t), p))
+    p.label = k ? tabAt(p.ink!, s, k) : labelAt(p.ink!, s, bounds, blocks(p), TAB_GAP)
+    taken.push(p.label)
+  }
   for (const p of out) {
     const s = labelSize(p.mark)
-    if (!s || !p.box || CARDS.has(p.mark.type) || saysItsOwn(p.mark, d.places)) continue
+    if (!s || !p.box || p.label || CARDS.has(p.mark.type) || saysItsOwn(p.mark, d.places)) continue
     // (clear of every other mark's thing and ink, the cards and the labels placed)
     const others = [...avoid.filter((x) => x !== p.box && x !== p.ink && x !== p.to), ...taken]
     if (p.curve) p.label = labelAt({ x: p.curve.mid.x - 2, y: p.curve.mid.y - 2, w: 4, h: 4 }, s, bounds, [...others, p.box, p.to!], 6)

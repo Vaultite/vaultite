@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's frames fit what they name**: over Vaultite it knows the window's regions (the sidebar's panels, panes,
+  the status bar), so a frame round one is exact; frames side by side keep a hairline apart, and each label is a small
+  tag snug at its frame, never on another. Its answer box is never cut off by a screen's edge, shows only its name, and
+  no longer opens on its own after a shortcut that used the Talk key's modifiers.
 - **The companion never reads a mark out loud**: a mark naming a long line of text, or one it got wrong, was spoken as
   words ("frame, the Morning report bug..."); it's now drawn, or dropped.
 - **A Talk key ask is never lost to a restart**: one asked as the companion's session ended (an update restarting it) or

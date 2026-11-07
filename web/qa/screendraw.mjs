@@ -223,4 +223,20 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   await page.screenshot({ path: path.join(SHOTS, "screendraw-walkthrough.png") })
 }
 
+// ---- frames side by side (a sidebar's sections): apart, each named by a small tag snug at it, none on another
+{
+  const page = await open()
+  const rows = ["inbox", "sent", "drafts"]
+  await show(page, { id: "df", agent: "Claude", tint: "orange", t: Date.now(), places: ELEMENTS, marks: rows.map((k, i) => ({ type: "frame", at: { el: k }, label: ["Mail in", "Mail out", "Unsent"][i] })) })
+  await page.waitForSelector("[data-screendraw=df]")
+  await page.waitForTimeout(1800)
+  const boxes = await rects(page, "[data-focus]"), tags = await rects(page, "[data-mark-label]")
+  const apart = boxes.every((a, i) => boxes.slice(i + 1).every((b) => !hit(a, b)))
+  const gap = (l, f) => Math.hypot(Math.max(0, f.x - (l.x + l.w), l.x - (f.x + f.w)), Math.max(0, f.y - (l.y + l.h), l.y - (f.y + f.h)))
+  const snug = tags.length === 3 && tags.every((t, i) => gap(t, boxes[i]) <= 4 && !hit(t, boxes[i]) && onScreen(t) && t.h <= 20)
+  const clash = tags.some((a, i) => tags.slice(i + 1).some((b) => hit(a, b)))
+  check("frames side by side never overlap; each label a small tag snug at its own frame, on screen, none on another", boxes.length === 3 && apart && snug && !clash, { boxes, tags })
+  await page.screenshot({ path: path.join(SHOTS, "screendraw-frames.png") })
+}
+
 await done()

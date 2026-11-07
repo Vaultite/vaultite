@@ -115,7 +115,7 @@ above that), act, run it again, and never end your turn.
   window there (`app`, `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), the display's
   picture (read the PNG: a pixel a point from `shotAt`; when the screen changed as they spoke, `shotDown` too, as the key
   went down: a toast since gone; over Vaultite, its toasts of the last minute, `notices`) and what's near it, by id (Accessibility's; over Vaultite's
-  own UI, its page's buttons, rows and panels). Over another app the ask says they're there, not in Vaultite (a note it shows is only behind).
+  own UI, its page's buttons, rows and panels, and its regions however far: the sidebars' panels, panes, the status bar). Over another app the ask says they're there, not in Vaultite (a note it shows is only behind).
   Point there by id, which snaps to the element (`companion say --ax a3`), else `--app <bundle> --find <text>` or `--sx --sy`. Your words
   are said aloud by their pointer with no box (only a tap of the key opens it, your words and a reply field); a typed ask's, or with the voice off, stream into their box by the pointer, open for the next ask (its field takes a click or a tap of the key; the key held
   again listens); Esc ends it; moving on (a click elsewhere, another app) closes the box but what you're saying goes on to its end, and your cursor leaves once you're done there. Through the exchange your

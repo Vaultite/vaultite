@@ -7,7 +7,7 @@ import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiff
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { shown, uiElement } from "./panes"
-import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, type Target, type Note, onBump, pick, pin, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { arrowBox, boxAt } from "./boxes"
 import { interfaceZoom, onTop, type Screen, screenOf } from "./locate"
 import { Chat } from "./Chat"
@@ -315,7 +315,7 @@ export function Popover({ a, close, menu, phone }: { a: Agent; close: () => void
     close()
   }
   return (
-    <Chat name={a.name} tint={tintOf(a.name)} how={howText(a)} items={mine} draft={draft} setDraft={setDraft} send={send} close={close} more={(e) => { close(); menu(e) }}
+    <Chat name={a.name} tint={tintOf(a.name)} items={mine} draft={draft} setDraft={setDraft} send={send} close={close} more={(e) => { close(); menu(e) }}
       words={(n) => <Markdown text={n.text ?? ""} className="companion-md" />} time={(t) => fmtTime(new Date(t).toISOString())} actions={(n) => <SayActions n={n as Note} />}
       busy={a.state === "thinking" || a.state === "reading"} focus={!phone && !coarse.matches} phone={phone} className={phone ? "pointer-events-auto" : "pointer-events-auto absolute top-0 left-0"}
       style={phone ? { width: "100%", maxWidth: "none" } : undefined} />
@@ -329,7 +329,10 @@ export function placeAt(x: number, y: number): Record<string, unknown> | null {
   const told = noticesText(), notices = told ? { notices: told } : {}
   const at = noteAt(x, y) ?? paneAt(x, y)
   if (!at) return told ? notices : null
-  if ("path" in at && at.path) return { path: at.path, line: at.line, ...(at.find ? { find: at.find } : {}), ...(at.selection ? { selection: at.selection } : {}), ...notices }
+  if ("path" in at && at.path) {
+    const near = landmarks(x, y, new Set())
+    return { path: at.path, line: at.line, ...(at.find ? { find: at.find } : {}), ...(at.selection ? { selection: at.selection } : {}), ...(near.length ? { near } : {}), ...notices }
+  }
   const { text, ...p } = at as PanePlace, near = elementsNear(x, y)
   return { ...p, ...(text ? { under: text } : {}), ...(near.length ? { near } : {}), ...notices }
 }
@@ -359,7 +362,36 @@ export function elementsNear(x: number, y: number, radius = 260, most = 30) {
   }
   // (nearest first; of those it's on, the smallest: the one thing, before what holds it)
   const area = (e: { frame: { width: number; height: number } }) => e.frame.width * e.frame.height
-  return out.sort((a, b) => a.d - b.d || area(a) - area(b)).slice(0, most).map(({ d: _, ...e }) => e)
+  const nearest = out.sort((a, b) => a.d - b.d || area(a) - area(b)).slice(0, most).map(({ d: _, ...e }) => e)
+  return [...nearest, ...landmarks(x, y, new Set(nearest.map((e) => `${e.frame.x},${e.frame.y},${e.frame.width},${e.frame.height}`)))]
+}
+/** The window's regions however far from x, y (a sidebar's panels and foot, panes, the status bar), nearest first, each
+ *  as much as shows: a frame round one is then exact. At most 10, so an ask's 40 elements hold them all. */
+const LANDMARKS = "[data-ui^='panel:'], section[data-pane-frame]:not([data-away]), [data-status-bar], [data-sidebar-foot]"
+function landmarks(x: number, y: number, seen: Set<string>) {
+  const out: { role: string; label: string; frame: { x: number; y: number; width: number; height: number }; d: number }[] = []
+  for (const el of document.querySelectorAll<HTMLElement>(LANDMARKS)) {
+    const r = shownRect(el), frame = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }, k = `${frame.x},${frame.y},${frame.width},${frame.height}`
+    if (r.width < 4 || r.height < 4 || seen.has(k) || el.closest(".companion-overlay") || !onTop(el, r)) continue
+    const ui = el.dataset.ui, label = (el.getAttribute("aria-label") || el.querySelector<HTMLElement>("[data-heading]")?.dataset.heading || (el.innerText || "").trim().split("\n")[0] || "").trim().slice(0, 120)
+    if (!label) continue
+    seen.add(k)
+    out.push({ role: `${ui ? ui.split(":")[0] : el.matches("[data-status-bar]") ? "status" : "area"}${ui ? ` ui:${ui}` : ""}`, label, frame,
+      d: Math.hypot(Math.max(r.left - x, 0, x - r.left - r.width), Math.max(r.top - y, 0, y - r.top - r.height)) })
+  }
+  return out.sort((a, b) => a.d - b.d).slice(0, 10).map(({ d: _, ...e }) => e)
+}
+/** What of `el` shows: its box cut to each scroller or clipper it's in (a panel scrolled half out frames only its half). */
+function shownRect(el: HTMLElement) {
+  const b = el.getBoundingClientRect()
+  let left = Math.max(0, b.left), top = Math.max(0, b.top), right = Math.min(innerWidth, b.right), bottom = Math.min(innerHeight, b.bottom)
+  for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+    const s = getComputedStyle(a)
+    if (s.overflowX === "visible" && s.overflowY === "visible") continue
+    const c = a.getBoundingClientRect()
+    left = Math.max(left, c.left); top = Math.max(top, c.top); right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom)
+  }
+  return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
 }
 /** The window's toasts of the last minute, newest last, as words: "Claude isn't running" (an error, 12 s ago). */
 export function noticesText(now = Date.now()) {

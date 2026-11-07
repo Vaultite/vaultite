@@ -181,7 +181,7 @@ await page.evaluate(() => window.__draw(null))
 const gone = (await sample(page, 1000)).filter(Boolean)
 check("the drawing gone, it flies back beside the pointer", gone.at(-1).x === 924 && gone.at(-1).y === 320, gone.at(-1))
 
-// a frame: it flies to the area's top left, then drags its box open by the far corner, its label typed in to the right
+// a frame: it flies to the area's top left, then drags its box open by the far corner, its label typed in over its top left
 await page.evaluate(() => {
   const bg = Object.assign(document.createElement("div"), { id: "fake-screen" })
   bg.style.cssText = "position:fixed;inset:0;z-index:-1;font:600 13px system-ui;background:#1f1f22"
@@ -206,7 +206,8 @@ const settled = opening.at(-1)
 check("…and it rests on the box's corner once open", Math.abs(settled.x - 412) < 2 && Math.abs(settled.y - 414) < 2 && settled.w === 122, settled)
 await page.waitForTimeout(400)
 const tag = await page.evaluate(() => { const l = document.querySelector("[data-mark-label]"), r = l.getBoundingClientRect(); return { text: l.textContent, x: r.x, y: r.y, h: r.height } })
-check("…its label to the right of it, by its top (a tall area: clear of the cursor at its foot), typed in whole", tag.text === "Tab groups" && tag.x >= 418 && tag.x < 440 && tag.y === 290, tag)
+check("…its label a small tag over its top left, snug as a design tool names a frame (clear of the cursor at its foot), typed in whole",
+  tag.text === "Tab groups" && Math.abs(tag.x - 290) < 1 && Math.abs(tag.y + tag.h - 287) < 1, tag)
 await page.screenshot({ path: path.join(ROOT, "web/qa/shots/screenpilot-frame.png"), clip: { x: 240, y: 250, width: 420, height: 220 } })
 await page.evaluate(() => { window.__draw(null); document.getElementById("fake-screen")?.remove() })
 await pointer(page, 900, 300)

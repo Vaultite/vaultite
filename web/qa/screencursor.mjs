@@ -160,12 +160,12 @@ await panel.addInitScript(() => {
 })
 await panel.goto("http://screen.test/screen.html#panel")
 await panel.waitForFunction(() => !!window.__panel)
-const data = { name: "Claude", tint: "orange", how: "Claude Code · Opus · high", items: [{ id: "a1", kind: "ask", text: "what's this row?", t: Date.now() - 60_000 }, { id: "s1", kind: "say", text: "An **invoice** from Lighthouse, due Friday.", t: Date.now() - 50_000 }] }
+const data = { name: "Claude", tint: "orange", items: [{ id: "a1", kind: "ask", text: "what's this row?", t: Date.now() - 60_000 }, { id: "s1", kind: "say", text: "An **invoice** from Lighthouse, due Friday.", t: Date.now() - 50_000 }] }
 await panel.evaluate((d) => window.__panel(d), data)
 await panel.waitForSelector("[data-companion-popover]")
-const p = await panel.evaluate(() => ({ how: document.querySelector("[data-companion-how]")?.textContent, asked: document.querySelector("[data-asked]")?.textContent, said: document.querySelector("[data-said] .note-prose")?.innerHTML,
+const p = await panel.evaluate(() => ({ name: document.querySelector("[data-companion-name]")?.textContent, asked: document.querySelector("[data-asked]")?.textContent, said: document.querySelector("[data-said] .note-prose")?.innerHTML,
   focused: document.activeElement?.tagName, placeholder: document.activeElement?.getAttribute("placeholder") }))
-check("its conversation shows what it runs, what was asked, its words as Markdown, the box focused", p.how === "Claude Code · Opus · high" && p.asked === "what's this row?" && /<strong>invoice<\/strong>/.test(p.said ?? "") && p.focused === "INPUT" && p.placeholder === "Ask Claude", p)
+check("its conversation shows its name alone, what was asked, its words as Markdown, the box focused", p.name === "Claude" && p.asked === "what's this row?" && /<strong>invoice<\/strong>/.test(p.said ?? "") && p.focused === "INPUT" && p.placeholder === "Ask Claude", p)
 const sizes = await panel.evaluate(() => window.__calls.filter((c) => c[0] === "size").map((c) => c[1]))
 check("it tells its height, for its window to fit it", sizes.length > 0 && sizes.at(-1) > 120 && sizes.at(-1) < 400, sizes)
 if (process.env.SHOTS) await panel.screenshot({ path: path.join(process.env.SHOTS, "panel.png") })

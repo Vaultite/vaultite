@@ -60,6 +60,7 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 @keyframes sd-bob-y { 50% { translate: 0 6px; } } @keyframes sd-bob-x { 50% { translate: 6px 0; } }
 .sd-pill { height: 24px; padding: 0 11px; border-radius: 8px; background: var(--tint); color: white; font-size: 13px; font-weight: 600; line-height: 24px; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   box-shadow: 0 0 0 1px color-mix(in srgb, white 55%, transparent), 0 4px 14px color-mix(in srgb, var(--tint) 30%, rgba(0,0,0,.22)); transform-origin: center; }
+.sd-frame-tag { height: 20px; padding: 0 8px; border-radius: 6px; font-size: 12px; line-height: 20px; box-shadow: 0 0 0 1px color-mix(in srgb, white 45%, transparent), 0 2px 8px color-mix(in srgb, var(--tint) 25%, rgba(0,0,0,.2)); }
 .sd-tag { opacity: 0; animation: sd-tag .42s cubic-bezier(.3,1.45,.55,1) var(--delay, 0ms) forwards; }
 @keyframes sd-tag { from { opacity: 0; scale: .55; translate: var(--dx, 0) var(--dy, 0); } 40% { opacity: 1; } to { opacity: 1; scale: 1; translate: 0 0; } }
 .sd-badge { width: 24px; height: 24px; border-radius: 999px; background: var(--tint); color: white; font-size: 13px; font-weight: 700; display: grid; place-items: center;

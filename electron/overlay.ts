@@ -2,7 +2,7 @@
  *  going through but over a bubble or the pill (to click them); it draws web/screen.html as helper.ts says. */
 import { BrowserWindow, clipboard, ipcMain, screen, shell, type Display, type IpcMainEvent } from "electron"
 import path from "node:path"
-import { besidePointer, panelAt, pointerBox, type Point, reaching, type Rect, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
+import { besidePointer, grownAt, panelAt, pointerBox, type Point, reaching, type Rect, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
 import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 
@@ -188,8 +188,8 @@ export function overlayActs(a: OverlayActs) {
 
 // ---------- a cursor's conversation: its own small window, the one that takes the keyboard (the overlay never does)
 
-/** What it shows: the agent, what it runs, its last words and the user's asks, the words being dictated into its box. */
-export type PanelData = { name: string; tint: string; how: string; items: { id: string; kind: string; text?: string; t: number; question?: boolean }[]
+/** What it shows: the agent, its last words and the user's asks, the words being dictated into its box. */
+export type PanelData = { name: string; tint: string; items: { id: string; kind: string; text?: string; t: number; question?: boolean }[]
   /** It's at work on what it was asked (its answer is on its way). */
   busy?: boolean
   /** `done` (with its `id`, to be taken once): said, for the box; `send`: sent as it is (a Talk key's). */
@@ -270,8 +270,8 @@ function place() {
   if (panel.travels && panel.w.isVisible() && panel.pos) {
     // (grown as its words stream in: it keeps the edge by its cursor (its foot, when it's above it) and grows away from
     // it, in one move; resized by its top it pushed down over the pointer, then slid back, each new line)
-    const was = panel.w.getBounds().height - PAD * 2, above = panel.pos.y + was <= panel.at.y + 6
-    if (above) panel.pos = { x: panel.pos.x, y: panel.pos.y - (panel.height - was) }
+    const was = panel.w.getBounds().height - PAD * 2, area = screen.getDisplayNearestPoint({ x: Math.round(panel.at.x), y: Math.round(panel.at.y) }).workArea
+    panel.pos = grownAt(panel.pos, was, { width: WIDTH, height: panel.height }, panel.at, area)
     panel.goal = at
     panel.w.setBounds({ x: Math.round(panel.pos.x - PAD), y: Math.round(panel.pos.y - PAD), width: WIDTH + PAD * 2, height: panel.height + PAD * 2 })
     return

@@ -14,7 +14,6 @@ import { dictate, dictating, stopFor, dictationEngines, freeFor, handOver, onAud
 import { land, landedSaid } from "./dictationroam.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
-import { howWith } from "../plugins/core/companion/look.ts"
 import { icon } from "./menu.ts"
 import { atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
@@ -272,7 +271,7 @@ const live = (() => {
   let ws: WebSocket | null = null, port: number | null = null, wait = 1000, timer: ReturnType<typeof setTimeout> | null = null
   const state = { mode: "quiet", name: "", agents: new Map<string, Agent>(), notes: new Map<string, Note>(),
     /** Each agent's last says and what the user asked it: its conversation. */
-    said: [] as Note[], harnesses: [] as Parameters<typeof howWith>[1],
+    said: [] as Note[],
     /** What it handed off (null till the server says): the menu's Jobs. */
     jobs: null as HelperJob[] | null }
   const connect = () => {
@@ -291,7 +290,6 @@ const live = (() => {
         state.agents = new Map((m.agents as Agent[]).map((a) => [a.name, a]))
         state.notes = new Map((m.notes as Note[]).map((n) => [n.id, n]))
         state.said = (m.said as Note[] | undefined) ?? []
-        state.harnesses = (m.harnesses as typeof state.harnesses | undefined) ?? []
         // (connected again: the server hears who rides with the pointer now)
         ridingSaid = null
       } else if (m.t === "said") state.said = (m.said as Note[] | undefined) ?? []
@@ -1114,7 +1112,7 @@ function chatOf(name: string): PanelData | null {
   // (an answer's box: how to reply without reaching for the mouse)
   const talk = prefs.talk.length ? keysSaid(prefs.talk.slice(0, 1)) : ""
   const hint = since && talk ? `Reply, or tap ${talk} to type, hold to talk` : undefined
-  return { name, tint: a.tint, how: howWith(a, live.state.harnesses), items, ...(words ? { words } : {}), ...(busy ? { busy } : {}), ...(hint ? { hint } : {}) }
+  return { name, tint: a.tint, items, ...(words ? { words } : {}), ...(busy ? { busy } : {}), ...(hint ? { hint } : {}) }
 }
 
 /** Its conversation open by its cursor (`at`, the screen's), taking the keyboard: its bubble goes into it, all of it seen;

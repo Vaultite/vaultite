@@ -178,6 +178,13 @@ export function panelAt(p: Point, size: { width: number; height: number }, area:
   return { x: Math.round(b.x), y: Math.round(b.y) }
 }
 
+/** Its box at `pos`, grown from `was` to `size.height` tall (its words streaming in): it keeps the edge by its cursor at
+ *  `at` (its foot, when it's above it) and grows away from it, yet wholly inside `area`: a screen's edge never cuts it. */
+export function grownAt(pos: Point, was: number, size: { width: number; height: number }, at: Point, area: Rect): Point {
+  const p = pos.y + was <= at.y + 6 ? { x: pos.x, y: pos.y - (size.height - was) } : pos
+  return { x: Math.max(area.x, Math.min(area.x + area.width - size.width, p.x)), y: Math.max(area.y, Math.min(area.y + area.height - size.height, p.y)) }
+}
+
 // ---------- the summoned companion's exchange: beside the pointer, its box with it, the display's picture
 
 /** Where the companion rides beside the pointer: a little right of and below its arrow, on the other side near an edge. */

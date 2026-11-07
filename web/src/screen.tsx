@@ -33,7 +33,7 @@ type Shown = { width: number; height: number; top: number; agents: Agent[]; summ
   speaking?: { name: string; level?: number } | null }
 /** Only the places changed (helperlogic.ts splitScene): x, y and a target's frame. */
 type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number; hear?: number }
-type PanelData = { name: string; tint: string; how: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
+type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
   /** What its empty field says (an answer's box: how to reply without the mouse). */
   hint?: string }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
@@ -492,7 +492,7 @@ function Panel() {
   const tint = `var(--${d.tint})`
   return (
     <div ref={box} className="w-fit p-4">
-      <Chat name={d.name} tint={tint} how={d.how} items={d.items} draft={text} setDraft={listening ? () => {} : setDraft} focus placeholder={d.hint}
+      <Chat name={d.name} tint={tint} items={d.items} draft={text} setDraft={listening ? () => {} : setDraft} focus placeholder={d.hint}
         send={() => { if (text.trim()) { api?.panel.send(text); setDraft("") } }} busy={d.busy} close={() => api?.panel.close()} more={(e) => api?.panel.more(e.clientX, e.clientY)}
         words={(n) => <div className="note-prose compact companion-md" dangerouslySetInnerHTML={{ __html: html(n.text ?? "") }} />}
         time={(t) => TIME.format(t)}

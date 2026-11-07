@@ -79,24 +79,27 @@ func tapped(_ type: CGEventType, _ e: CGEvent) {
 /** Chords: two modifiers held together and nothing else, by name (core/fnkey.ts CHORDS). Let go of one, it's up; another
  *  key or modifier with them, `other` (a shortcut). */
 let CHORD_FLAGS: [String: CGEventFlags] = ["control_option": [.maskControl, .maskAlternate], "fn_control": [.maskSecondaryFn, .maskControl]]
-var chords: [String] = [], chordOn: [String: Bool] = [:]
+/** `spent`: a shortcut took it; it comes on again only once let go (else letting go of the shortcut's key is a new press). */
+var chords: [String] = [], chordOn: [String: Bool] = [:], chordSpent = Set<String>()
 func tappedChord(_ type: CGEventType, _ e: CGEvent) {
   keysLock.lock(); let names = chords; keysLock.unlock()
   if type == .keyDown {
-    for n in names where chordOn[n] == true { chordOn[n] = false; send(["event": "chord", "name": n, "other": true]) }
+    for n in names where chordOn[n] == true { chordOn[n] = false; chordSpent.insert(n); send(["event": "chord", "name": n, "other": true]) }
     return
   }
   guard type == .flagsChanged else { return }
   let mods = e.flags.intersection(ANY_MOD)
   for n in names {
     guard let f = CHORD_FLAGS[n] else { continue }
-    let on = mods == f, was = chordOn[n] ?? false
+    if !mods.isSuperset(of: f) { chordSpent.remove(n) }
+    let on = mods == f && !chordSpent.contains(n), was = chordOn[n] ?? false
     if on == was { continue }
     chordOn[n] = on
     // (when it happened, ms since 1970: a busy app hearing it late still tells a tap from a hold)
     let t = Date().timeIntervalSince1970 * 1000
     if on { send(["event": "chord", "name": n, "on": true, "t": t]) }
-    else { send(mods.isSuperset(of: f) ? ["event": "chord", "name": n, "other": true] : ["event": "chord", "name": n, "on": false, "t": t]) }
+    else if mods.isSuperset(of: f) { chordSpent.insert(n); send(["event": "chord", "name": n, "other": true]) }
+    else { send(["event": "chord", "name": n, "on": false, "t": t]) }
   }
 }
 

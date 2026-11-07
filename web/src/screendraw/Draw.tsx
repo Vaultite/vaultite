@@ -9,7 +9,7 @@ import { hash, headLines, inkPath, type Line, linePath, sketch } from "./ink"
 import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER } from "./pen"
 import type { Act, Shown } from "./index"
 
-const PILL_H = 24, PILL_PX = 13
+const PILL_H = 24, PILL_PX = 13, TAB_H = 20, TAB_PX = 12
 
 let ctx: CanvasRenderingContext2D | null = null
 /** How wide `text` is in the overlay's font. */
@@ -20,7 +20,8 @@ export function measure(text: string, px: number, bold = false) {
   return ctx.measureText(text).width
 }
 const labelOf = (m: Mark) => ("label" in m && m.label && m.type !== "button" && m.type !== "copy" && m.type !== "open" ? m.label : m.type === "scroll" ? "Scroll" : null)
-const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return l ? { w: Math.ceil(measure(l, PILL_PX, true)) + 22, h: PILL_H } : null }
+// (a frame's label is a smaller tag, snug at its corner, as a design tool names a frame)
+const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return !l ? null : m.type === "frame" ? { w: Math.ceil(measure(l, TAB_PX, true)) + 16, h: TAB_H } : { w: Math.ceil(measure(l, PILL_PX, true)) + 22, h: PILL_H } }
 
 /** When each drawing was first seen (`t0`: its first beat, after the pen's lead), and when each mark first showed: every
  *  part's delay counts from the drawing's clock, whatever comes again (kept, a new place, more marks). */
@@ -139,7 +140,7 @@ const pt = (p: [number, number]): Pt => ({ x: p[0], y: p[1] })
 
 /** A thing or an area, boxed: drawn open from its top left as the pen drags its far corner, glowing as it lands. */
 function Focus({ p, delay }: { p: Placed; delay: number }) {
-  const r = inflate(p.box!, 6)
+  const r = p.ink ?? inflate(p.box!, 6)
   return <div data-mark-i={p.i} data-focus className="sd-focus absolute" style={{ left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: Math.min(10, r.w / 2, r.h / 2), "--delay": ms(delay), "--dur": ms(FRAME_MS) } as React.CSSProperties} />
 }
 
@@ -164,7 +165,7 @@ function Parts({ p, delay, act, grab, seed, id }: { p: Placed; delay: number; ac
   const after = m.type === "frame" ? FRAME_MS * 0.8 : m.type === "connect" || m.type === "ring" ? 420 : 300, t = p.ink ?? p.box!, l = p.label
   const from = l.x >= t.x + t.w - 1 ? { o: "left center", dx: -10, dy: 0 } : l.x + l.w <= t.x + 1 ? { o: "right center", dx: 10, dy: 0 } : l.y >= t.y + t.h - 1 ? { o: "center top", dx: 0, dy: -6 } : { o: "center bottom", dx: 0, dy: 6 }
   return (
-    <div data-mark-label={m.type} aria-label={label} className="sd-pill sd-tag absolute"
+    <div data-mark-label={m.type} aria-label={label} className={`${m.type === "frame" ? "sd-pill sd-frame-tag" : "sd-pill"} sd-tag absolute`}
       style={{ left: l.x, top: l.y, width: l.w, transformOrigin: from.o, "--dx": `${from.dx}px`, "--dy": `${from.dy}px`, ...pop(after) } as React.CSSProperties}>
       <Typed text={label} delay={delay + after + 60} />
     </div>

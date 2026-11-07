@@ -3358,6 +3358,23 @@ await section("screen drawings", async () => {
   const own = { ...d, places: { "el:b": { x: 600, y: 300, w: 80, h: 30, label: "Share" } }, marks: sm.checkMarks([{ type: "ring", at: { el: "b" }, label: "share" }, { type: "ring", at: { el: "b" }, label: "Send it here" }]) }
   const ownLabels = lay.place(own, one, size).map((p: Any) => !!p.label).join()
   check("screen drawings: a label that only repeats its element's own word is left out", ownLabels === "false,true", ownLabels)
+  // ---- frames: side by side a hairline apart, their labels snug at them on one side, never on each other
+  const sections = [[8, 40, 274, 36], [8, 76, 274, 120], [8, 196, 274, 300], [8, 496, 274, 101], [8, 597, 274, 255], [8, 852, 274, 45]]
+  const sidebar = { ...d, places: {}, marks: sm.checkMarks(sections.map((r, i) => ({ type: "frame", at: r, label: ["Search", "Pinned", "Tabs", "Inbox", "Files", "Vault"][i], beat: i }))) }
+  const tall = { width: 1470, height: 956, origin: { x: 0, y: 0 }, home: true, top: 33 }, framed = lay.place(sidebar, tall, size)
+  const inkClash = framed.flatMap((p: Any, i: number) => framed.slice(i + 1).filter((q: Any) => lay.overlaps(p.ink, q.ink)).map((q: Any) => [p.mark.label, q.mark.label]))
+  const gapTo = (l: Any, f: Any) => Math.hypot(Math.max(0, f.x - (l.x + l.w), l.x - (f.x + f.w)), Math.max(0, f.y - (l.y + l.h), l.y - (f.y + f.h)))
+  const loose = framed.filter((p: Any) => !p.label || gapTo(p.label, p.ink) > 3 || lay.overlaps(p.label, p.ink) || !lay.inside(p.label, { x: 0, y: 33, w: 1470, h: 923 }))
+  const tagClash = framed.flatMap((p: Any, i: number) => framed.slice(i + 1).filter((q: Any) => lay.overlaps(p.label, q.label)).map((q: Any) => [p.mark.label, q.mark.label]))
+  const sides = new Set(framed.map((p: Any) => p.label.x - (p.ink.x + p.ink.w)))
+  check("screen drawings: stacked frames (a sidebar's panels) never overlap; each label snug at its frame, on screen, none on another, all on one side",
+    !inkClash.length && !loose.length && !tagClash.length && sides.size === 1, { inkClash, loose: loose.map((p: Any) => [p.mark.label, p.label, p.ink]), tagClash, sides: [...sides] })
+  const firstThree = lay.place({ ...sidebar, marks: sidebar.marks.slice(0, 3) }, tall, size).map((p: Any) => JSON.stringify(p.label)).join()
+  check("screen drawings: the next frame down (a walkthrough's next beat) moves no label before it", firstThree === framed.slice(0, 3).map((p: Any) => JSON.stringify(p.label)).join(), firstThree)
+  const guessed = lay.place({ ...d, places: {}, marks: sm.checkMarks([{ type: "frame", at: [100, 100, 200, 100] }, { type: "frame", at: [100, 190, 200, 100] }]) }, one, size)
+  check("screen drawings: frames a little over each other (boxes guessed from the picture) are drawn apart too", !lay.overlaps(guessed[0].ink, guessed[1].ink), guessed.map((p: Any) => p.ink))
+  const lone = lay.place({ ...d, places: {}, marks: sm.checkMarks([{ type: "frame", at: [400, 300, 200, 100], label: "Chart" }]) }, one, size)[0]
+  check("screen drawings: a frame alone is named over its top left, as a design tool names one", lone.label.x === lone.ink.x && lone.label.y + lone.label.h === lone.ink.y - 3, [lone.label, lone.ink])
   // ---- the electron side: which display has the cards; only what the drawing offers runs
   const displays = [{ id: 1, bounds: { x: 0, y: 0, width: 1280, height: 800 } }, { id: 2, bounds: { x: 1280, y: 0, width: 1280, height: 800 } }]
   check("screen drawings: the home display is where its first place is, else the pointer's", dr.homeOf(d, displays, { x: 10, y: 10 }) === 2 && dr.homeOf({ ...d, marks: [{ type: "write", text: "x" }] }, displays, { x: 1300, y: 10 }) === 2, dr.homeOf(d, displays, { x: 10, y: 10 }))

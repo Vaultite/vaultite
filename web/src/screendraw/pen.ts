@@ -57,7 +57,7 @@ export function penStrokes(placed: Placed[], seedOf: (i: number) => number, star
     const at = startOf(p.i), ink = markInk(p, seedOf(p.i))
     if (ink) { const starts = lineStarts(ink.lines); ink.lines.forEach((l, j) => out.push({ start: at + starts[j], dur: durOf(l), pts: l })); continue }
     if (p.mark.type === "frame" && p.box) {
-      const r = inflate(p.box, 6)
+      const r = p.ink ?? inflate(p.box, 6)
       // (from where the box starts, its corner a little out: .sd-focus' first size)
       out.push({ start: at, dur: FRAME_MS, pts: [[r.x + Math.min(FOCUS_FROM, r.w), r.y + Math.min(FOCUS_FROM, r.h)], [r.x + r.w, r.y + r.h]], ease: OPEN_EASE })
     } else if (p.mark.type === "num" && p.box) {
