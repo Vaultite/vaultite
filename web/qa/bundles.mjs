@@ -128,9 +128,9 @@ const want = {
   "standard": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links"),
   "days": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.pages.pinned[1] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.density === "comfortable",
   // (a value that's the app's default is written as no key: paneTabBars is on by default)
-  "zen": (s) => s.appearance.rails === false && s.appearance.tabBar === false && s.appearance.paneTabBars === false && s.sidebars.left.includes("tabs:tabs") && s.appearance.snippets?.includes("Floating panes"),
-  // (Zen's floating panes go with it; Days' Home, an imported bundle's page, is unpinned)
-  "browser": (s) => s.sidebars.left.join() === "pages:pages,tabs:tabs" && !s.appearance.snippets?.length && !s.pages.pinned.includes(`${PAGES}Home.md`),
+  "zen": (s) => s.appearance.rails === false && s.appearance.tabBar === false && s.appearance.paneTabBars === false && s.sidebars.left.includes("tabs:tabs") && s.appearance.paneCards === true && !s.appearance.snippets?.length,
+  // (Zen's pane cards go with it; Days' Home, an imported bundle's page, is unpinned)
+  "browser": (s) => s.sidebars.left.join() === "pages:pages,tabs:tabs" && !s.appearance.paneCards && !s.appearance.snippets?.length && !s.pages.pinned.includes(`${PAGES}Home.md`),
 }
 for (const id of Object.keys(want)) {
   await picker(page, B)

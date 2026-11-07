@@ -393,7 +393,7 @@ export function Plugins({ view, onView, above }: { store: Store; view?: Tab; onV
         {!view && <Segmented<Tab> label="Plugins" value={tab} onChange={setTab} className="shrink-0"
           options={[{ value: "installed", label: "Your plugins", attrs: { "data-plugins-installed": "" } }, { value: "get", label: "Get plugins", attrs: { "data-plugins-get": "" } }]} />}
         <div className="flex min-w-[200px] flex-1 items-center gap-2">
-          <form role="search" className="flex min-w-0 flex-1" onSubmit={(e) => e.preventDefault()} data-plugins-search>
+          <form role="search" aria-label="Search plugins" className="flex min-w-0 flex-1" onSubmit={(e) => e.preventDefault()} data-plugins-search>
             <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? (above ? "Search plugins and layouts" : "Search all plugins") : "Search your plugins"} />
           </form>
           <Button onClick={openFilter} aria-haspopup="menu" data-plugins-filter={filtered}

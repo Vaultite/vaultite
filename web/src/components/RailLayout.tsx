@@ -140,8 +140,8 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
     search.onMove(e.key === "ArrowDown" ? 1 : -1)
   }
   const field = search && (
-    // Enter goes to the result picked; the arrows move between them.
-    <form role="search" className="flex" onKeyDown={keys} onSubmit={(e) => { e.preventDefault(); search.onSubmit?.() }} {...search.attrs}>
+    // Enter goes to the result picked; the arrows move between them. (Named: a page in it may have a search of its own.)
+    <form role="search" aria-label={search.placeholder} className="flex" onKeyDown={keys} onSubmit={(e) => { e.preventDefault(); search.onSubmit?.() }} {...search.attrs}>
       <FilterField value={search.value} onChange={search.onChange} placeholder={search.placeholder} />
     </form>
   )

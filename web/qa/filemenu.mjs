@@ -65,8 +65,9 @@ const origin = new URL(B).origin
     check(`tree menu: ${want}`, tree.includes(want), tree)
   }
   check("tree menu: Open to the right, Change icon and the other kinds are in submenus", !["Open to the right", "Change icon", "New"].some((x) => tree.includes(x)), tree)
-  // Its groups (a line between each): open; new (other kinds in New note ▸); change; Pin (the plugins' "navigate"
-  // section); the path then More ▸ (the plugins' "more"); Archive right above Delete (the plugins' "away").
+  // Its groups (a line between each): open; new (other kinds in New note ▸); change; Pin, Show in the sidebar (the
+  // plugins' "navigate" section); the path then More ▸ (the plugins' "more"); Archive right above Delete (the
+  // plugins' "away").
   const groups = await menu.evaluate((m) => {
     const out = [[]]
     for (const el of m.children) {
@@ -78,7 +79,7 @@ const origin = new URL(B).origin
   const groupOf = (label) => groups.find((g) => g.includes(label))?.join("|")
   check("tree menu: open, new, change, keep, more, delete groups", groups[0]?.join("|") === "Open in new tab" &&
     groups[1]?.join("|") === "New note|New folder" && groups[2]?.join("|") === "Rename|Move file to…|Duplicate" &&
-    groupOf("Pin") === "Pin" && groupOf("More") === `Copy path|${REVEAL}|More` && groups.at(-1)?.join("|") === "Archive|Delete", groups)
+    groupOf("Pin") === "Pin|Show in the sidebar" && groupOf("More") === `Copy path|${REVEAL}|More` && groups.at(-1)?.join("|") === "Archive|Delete", groups)
   // Split rows: hovering opens the rest, the row's own choice first.
   for (const [row_, want] of [["Open in new tab", "Open in new tab|Open to the right"], ["Rename", "Rename|Change icon"]]) {
     await menu.locator(":scope > button", { hasText: new RegExp(`^${row_}$`) }).hover(); await wait(300)
