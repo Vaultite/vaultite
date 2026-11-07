@@ -47,15 +47,19 @@ const STOP = new Set(("a an the to of or and for in on it its is are be should d
   "me us them they there here if so then than now just also still any all one which what when how").split(" "))
 const words = (s: string) => clean(s).toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, " ").split(/\s+/).filter((w) => w && !STOP.has(w))
 
+/** How many of their words two questions share (0 to 1). */
+export function overlap(a: string, b: string) {
+  const sx = new Set(words(a)), sy = new Set(words(b))
+  let both = 0
+  for (const w of sx) if (sy.has(w)) both++
+  return sx.size + sy.size - both ? both / (sx.size + sy.size - both) : 0
+}
+
 /** The same question, said much the same way (from two agents, or the same one twice): one decision. */
 export function sameQuestion(a: string, b: string) {
   const x = words(a), y = words(b)
   if (x.join(" ") === y.join(" ")) return true
-  if (Math.min(x.length, y.length) < 3) return false
-  const sx = new Set(x), sy = new Set(y)
-  let both = 0
-  for (const w of sx) if (sy.has(w)) both++
-  return both / (sx.size + sy.size - both) >= 0.7
+  return Math.min(x.length, y.length) >= 3 && overlap(a, b) >= 0.7
 }
 
 /** What the user answered, as one of `options`: by its number (1-based) or its words (whole, else the only option

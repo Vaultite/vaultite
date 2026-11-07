@@ -10,7 +10,7 @@ import {
   type Machine, NOT_THE_USER, type OpCtx, type Request, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
-import { answerOf, type DecisionSpec, sameQuestion, specOf } from "./decisions.ts"
+import { answerOf, type DecisionSpec, overlap, sameQuestion, specOf } from "./decisions.ts"
 import { judge, type Need, type Turn } from "./needs.ts"
 import * as push from "./push.ts"
 import { parseUntil, snoozed, snoozeMs, stampOf, whenText } from "./snooze.ts"
@@ -1560,7 +1560,8 @@ async function mergeAlike(ctx: OpCtx, made: string[]) {
   } catch { return }
   for (const m of text.matchAll(/^\s*([A-J])\s*[:=-]\s*(\d+)/gm)) {
     const r = fresh[L.indexOf(m[1])], into = open[Number(m[2]) - 1]
-    if (!r || !into || str(into.status) !== "new") continue
+    // (the model's match alone merged unrelated questions: the same question shares some of its words)
+    if (!r || !into || str(into.status) !== "new" || overlap(str(r.question), str(into.question)) < 0.2) continue
     const link = str(r.report)
     const also = [...((into.also as string[] | undefined) ?? []), ...(link && baseOf(linkTo(link)) !== baseOf(linkTo(str(into.report))) ? [link] : [])]
     await ctx.api("PUT", `inbox/${encodeURIComponent(into.id)}`, { also, ...(r.blocking === true && into.blocking !== true ? { blocking: true } : {}) }).catch(() => {})
