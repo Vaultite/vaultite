@@ -73,7 +73,10 @@ let host: HelperHost | null = null
 const stubs = new Map<string, Record<string, unknown>>()
 /** What a scripted copy asked of them, and copied. */
 const screenAsked: Record<string, unknown>[] = []
+/** The screen helper's switches as last set (its taps, the windows watched): set again on the one started after it died. */
+const SWITCHES = new Set(["fn", "clicks", "keys", "inputs", "ink", "exchange", "watch"]), switched = new Map<string, Record<string, unknown>>()
 const screenAsk = <T = Record<string, unknown>>(op: string, req: Record<string, unknown> = {}): Promise<T> => {
+  if (SWITCHES.has(op)) switched.set(op, req)
   // (web/qa/dictation-apps.mjs, by hand: a scripted copy on real windows of its own)
   if (!QUIET || process.env.VAULTITE_QA_SCREEN) return askHelper<T>(op, req)
   screenAsked.push({ op, ...req })
@@ -452,7 +455,7 @@ function heard(m: Record<string, unknown>) {
   }
   if (m.event === "tap" && (m.ok === false || m.ink === false)) notice("tap", m.ok === false ? "Dictation and Talk keys need Vaultite in Accessibility" : "Drawing while you talk needs Vaultite in Accessibility",
     "Allow it in System Settings, Privacy & Security, Accessibility, then press one again.", "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility")
-  if (m.event === "exit" && host) setTimeout(() => { if (host) void startScreen().then(listen).catch(() => {}) }, 2000)
+  if (m.event === "exit" && host) setTimeout(() => { if (host) void startScreen().then(() => Promise.all([...switched].map(([op, req]) => askHelper(op, req)))).catch(() => {}) }, 2000)
 }
 
 const said = new Set<string>()
