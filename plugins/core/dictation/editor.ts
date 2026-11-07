@@ -3,6 +3,7 @@
 import { Facet, StateEffect, StateField, type Extension } from "@codemirror/state"
 import { Decoration, EditorView, WidgetType } from "@codemirror/view"
 import { joinText, type DictationTarget } from "@vaultite"
+import { watchFix, type Watch } from "./learning.ts"
 
 /** Where the words go and the pending ones; `moved`: the user put the cursor elsewhere since, which takes effect at the
  *  next utterance (a sentence under way finishes where it started). */
@@ -18,6 +19,27 @@ const spot = StateField.define<Spot | null>({
     return at === v.at && moved === v.moved ? v : { ...v, at, moved }
   },
   provide: (f) => EditorView.decorations.from(f, (v) => (v?.text ? Decoration.set([Decoration.widget({ widget: new Pending(v.text), side: 1 }).range(v.at)]) : Decoration.none)),
+})
+
+/** Words dictated lately, where they are now (each settled chunk; the user's edits inside or at their ends count as
+ *  theirs, the next chunk doesn't), and the watch reading their fixes (learning.ts). */
+type Said = { from: number; to: number; watch: Watch }
+export const said = StateEffect.define<Said>()
+export const saids = StateField.define<Said[]>({
+  create: () => [],
+  update(v, tr) {
+    const mine = tr.isUserEvent("input.dictation")
+    let out = tr.docChanged ? v.map((s) => ({ ...s, from: tr.changes.mapPos(s.from, -1), to: tr.changes.mapPos(s.to, mine ? -1 : 1) })) : v
+    for (const e of tr.effects) if (e.is(said)) out = [...out.slice(-19), e.value]
+    return out
+  },
+})
+/** An edit of the user's touching words just dictated: their watch hears of it. */
+const edits = EditorView.updateListener.of((u) => {
+  for (const tr of u.transactions) {
+    if (!tr.docChanged || tr.isUserEvent("input.dictation")) continue
+    for (const s of tr.startState.field(saids, false) ?? []) if (tr.changes.touchesRange(s.from, s.to)) s.watch.edited()
+  }
 })
 
 class Pending extends WidgetType {
@@ -36,7 +58,7 @@ class Pending extends WidgetType {
 const pathOf = Facet.define<string | undefined, string | undefined>({ combine: (v) => v[0] })
 
 /** What every editor gets: the anchor and its pending words. */
-export const dictationEditor = (path?: string): Extension => [spot, pathOf.of(path), EditorView.baseTheme({
+export const dictationEditor = (path?: string): Extension => [spot, saids, edits, pathOf.of(path), EditorView.baseTheme({
   ".cm-dictation-pending": { color: "var(--muted-foreground)", opacity: "0.75" },
 })]
 
@@ -85,9 +107,13 @@ export function editorTarget(view: EditorView): DictationTarget | null {
       const sel = view.state.selection.main, block = sel.head !== at && caret(view) === at
       // (the cursor where the words go goes on with them, as when typing; Vim's block on their last character)
       const follow = sel.empty && (sel.head === at || block)
+      const span: Said = { from: at, to: at + insert.length, watch: watchFix(insert, () => {
+        const now = view.dom.isConnected ? view.state.field(saids, false)?.find((x) => x.watch === span.watch) : null
+        return now ? view.state.sliceDoc(now.from, now.to) : null
+      }) }
       view.dispatch({
         changes: { from: at, insert },
-        effects: set.of({ at: at + insert.length, text: rest(s.text, insert), moved: false }),
+        effects: [set.of({ at: at + insert.length, text: rest(s.text, insert), moved: false }), said.of(span)],
         ...(follow ? { selection: { anchor: at + insert.length - (block ? 1 : 0) }, scrollIntoView: true } : {}),
         userEvent: "input.dictation",
       })

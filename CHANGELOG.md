@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Dictation learns your words**: fix a word right after dictating it (in a note, a terminal or a field) and it's
+  added to your dictionary, Dictionary.md, with a toast to undo it; every recognizer expects its words from then on,
+  and misheard again, what it was misheard as is replaced. Your people's and projects' names are expected too, the
+  companion adds a word you spell out, and dictation's Replacements setting moved into the dictionary.
 - **The companion does things on your Mac**: asked by its Talk key, it opens apps, files, folders and any System
   Settings pane, then points at the setting itself; it runs commands too, and one that needs your yes (any change to
   your Mac's settings) shows as "Run `…`?" by your pointer: say yes or click Run. Keys and secrets never run.
@@ -24,7 +28,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the clip, its frames at each change and your words go to the job working on that page, else a new job, else
   Captures, and it only says where. The last 30 s (screen, pointer, clicks, apps, your words) stay in memory only while
   you turn that on, and agents can ask for a stretch (`vau screen timeline`).
-
 - **Control dictates**: pick Left or Right Control in dictation's keys (for keyboards whose fn never reaches macOS).
   A tap does nothing, a double tap dictates hands-free until the next double tap (or a press of another dictation
   key), and held alone it listens until you let go; Control with a key, a click or a scroll never dictates.

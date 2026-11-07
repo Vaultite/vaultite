@@ -5,7 +5,7 @@
   "essential": true,
   "desktopApp": true,
   "name": "Dictation",
-  "description": "Speak where the cursor is (a note, a terminal, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized by Soniox in the cloud with its key, else on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. In a terminal the words go in as a paste and never press Enter. Move to another app or tab and it keeps listening, the words in a box under the menu bar: they land in the field in front when it stops, else where you began, else on the clipboard and in your inbox.",
+  "description": "Speak where the cursor is (a note, a terminal, the Ask box, a chat, any app's field with its keys): ⌘J starts and ⌘J again stops, or hold ⌘J while you speak. Words show dimmed as you say them and settle into the text, recognized by Soniox in the cloud with its key, else on this Mac: Apple's on-device recognizer, or Parakeet with Handy's or Hex's model. Fix a word right after saying it and it's added to your dictionary (Dictionary.md), which every recognizer then expects. In a terminal the words go in as a paste and never press Enter. Move to another app or tab and it keeps listening, the words in a box under the menu bar: they land in the field in front when it stops, else where you began, else on the clipboard and in your inbox.",
   "settings": {
     "engine": {
       "type": "enum",
@@ -42,15 +42,6 @@
       "max": 600,
       "label": "Stop after silence",
       "description": "seconds without speech before a tapped dictation stops on its own; 0 never: it listens until you stop it"
-    },
-    "replacements": {
-      "type": "list",
-      "lines": true,
-      "default": [
-        "at Claude: @claude"
-      ],
-      "label": "Replacements",
-      "description": "what you say, then what's written, one a line (\"at Claude: @claude\"); the said words are also what the recognizer listens for"
     },
     "fn": {
       "type": "boolean",

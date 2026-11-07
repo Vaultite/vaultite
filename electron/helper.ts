@@ -8,9 +8,9 @@ import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
 import { HOLD_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
-import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
+import { joinText } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
-import { dictate, dictating, stopFor, dictationEngines, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
+import { dictate, dictating, stopFor, dictationEngines, expectedWords, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
 import { land, landedSaid } from "./dictationroam.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
@@ -400,7 +400,7 @@ const key = fnKey()
 /** The helper's own session: words into another app's field, into a cursor's conversation, or the companion summoned
  *  (`summon`: its words by its cursor, sent when let go); `talk`: a Talk key's, sent when it stops. */
 type Session = { sink: DictationSink; into: "field" | "panel" | "summon"; focus: Focus; finals: string[]; pending: string; level: number; ready: boolean
-  swap: [RegExp, string][]; talk?: boolean
+  talk?: boolean
   /** The mic it hears with is a Bluetooth one: held open after, till its answer is said (holdMic). */
   bluetooth?: boolean
   /** The summoned companion its words are for (a new press may summon another before they're done). */
@@ -869,11 +869,6 @@ async function engineFor(s: Record<string, unknown>) {
   return { engine: e.parakeet && (language || !e.locale || /^en\b/i.test(String(e.locale))) ? "parakeet" : "apple", language }
 }
 
-const replacements = () => {
-  const s = prefs.dictation
-  return Array.isArray(s.replacements) ? s.replacements.filter((x): x is string => typeof x === "string") : (DEFAULTS.dictation.replacements?.default as string[] | undefined) ?? []
-}
-
 async function begin() {
   // (a cursor's conversation open: the words go in its box)
   if (panelFocused()) return listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true } })
@@ -898,7 +893,7 @@ function roamIn(win: AppWindow, sink: DictationSink, o: Roam) {
     return true
   }
   const mine: Session = { sink: { tell: (e) => told(mine, e) }, into: "field", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: false }, finals: [], pending: o.pending ?? "", level: 0, ready: true,
-    swap: replacer(replacements()), free: o.free, origin: win.webContents, log: dictations.start("dictation", "roam", { from: "window", ...(o.free ? { free: true } : {}) }) }
+    free: o.free, origin: win.webContents, log: dictations.start("dictation", "roam", { from: "window", ...(o.free ? { free: true } : {}) }) }
   if (!handOver(sink, mine.sink)) return false
   session = mine
   page = null
@@ -922,10 +917,10 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   if (session?.into === "field") { const was = session; session = null; void finish(was, false) }
   stopVoice()
   holdEnd()
-  const s = prefs.dictation, lines = replacements()
+  const s = prefs.dictation
   // (held over the screen: the realtime voice hears the microphone too)
   const tap = o.into === "summon" && prefs.realtime.front === "realtime" && voiceFront.available()
-  const mine: Session = { sink: { tell: (e) => told(mine, e), ...(tap ? { audio: (b: Buffer) => voiceFront.audio(b) } : {}) }, ...o, finals: [], pending: "", level: 0, ready: false, swap: replacer(lines),
+  const mine: Session = { sink: { tell: (e) => told(mine, e), ...(tap ? { audio: (b: Buffer) => voiceFront.audio(b) } : {}) }, ...o, finals: [], pending: "", level: 0, ready: false,
     ...(o.into === "field" ? { log: dictations.start("dictation", "start", { front: o.focus.bundle, field: !!o.focus.field }) } : {}) }
   session = mine
   draw()
@@ -934,7 +929,7 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   // (a Talk key's audio is kept a while: a press that went nowhere can be heard again)
   // (an answer said aloud follows a Talk key's: a Bluetooth mic stays open till it's said, holdMic)
   const answered = mine.into === "summon" || !!mine.talk
-  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", words: lines.map(parseReplacement).filter((x) => !!x).map((x) => x[0]), ...(tap ? { tap } : {}),
+  const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", ...(tap ? { tap } : {}),
     microphone: s.microphone, hold: answered })
   if (r.mic) { mine.bluetooth = r.mic.bluetooth; micTold(r.mic) }
   // (the recognizer that hears it: Soniox, or this Mac's and why not Soniox; one failing later logs stt-fallback; the mic
@@ -1112,7 +1107,7 @@ function placeTold(from: WebContents, m: { id?: unknown; place?: unknown }) {
 
 function told(s: Session, e: Record<string, unknown>) {
   if (session !== s) return
-  const said = (t: unknown) => s.swap.reduce((x, [re, to]) => x.replace(re, to), String(t ?? ""))
+  const said = (t: unknown) => String(t ?? "")
   if (s.into === "summon" && (e.type === "start" || e.type === "error" || e.type === "end" || e.type === "fallback"))
     s.of?.press?.step(`stt-${e.type}`, { ...(e.reason ? { reason: e.reason } : {}), ...(e.code ? { code: e.code } : {}), ...(e.message ? { message: String(e.message).slice(0, 200) } : {}),
       ...(e.type === "end" ? { chars: s.finals.join(" ").length } : {}) })
@@ -1332,6 +1327,7 @@ const voiceFront = realtimeFront<Summon>({
   config: realtimeConfig,
   name: () => live.state.name,
   languages: hints,
+  words: () => expectedWords().terms,
   player: speaker,
   route: (s, r) => {
     const mine = fronted?.s === s

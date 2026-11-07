@@ -6,6 +6,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { AppWindow } from "./appwindow.ts"
 import { buildDictation, helperName, parakeetModel } from "./dictation-build.ts"
+import { replacer } from "../core/dictationtext.ts"
 import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
 
 /** Shipped built in the app (tools/build_helpers.ts), else built the first time into userData. */
@@ -71,9 +72,13 @@ function start(): Promise<ChildProcess> {
 
 function send(cmd: Record<string, unknown>) { helper?.stdin?.write(JSON.stringify(cmd) + "\n") }
 
+/** The session's replacements (the dictionary's "said: written", the server's), applied to what it hears. */
+let swap: [RegExp, string][] = []
+const swapped = (m: Record<string, unknown>) => (swap.length && (m.type === "pending" || m.type === "final") && typeof m.text === "string"
+  ? { ...m, text: swap.reduce((x, [re, to]) => x.replace(re, to), m.text) } : m)
 function tell(...msgs: Record<string, unknown>[]) {
   const o = owner
-  if (o) for (const m of msgs) o.tell(m)
+  if (o) for (const m of msgs) o.tell(swapped(m))
 }
 const sinks = new WeakMap<AppWindow, DictationSink>()
 /** A window's sink: what it's told goes to its page. */
@@ -125,32 +130,38 @@ let serverOf: (win?: AppWindow) => number | null = () => null
 export const setDictationServer = (f: typeof serverOf) => { serverOf = f }
 
 type Cloud = { url: string; key: string; model?: string; languages: string[] }
-/** Soniox's key and settings when the vault's server says it hears this one (plugins/core/dictation/plugin.ts), else
- *  why not (unanswered: this Mac's engine, and why); and the words to expect (`terms`: Vaultite's, the vault's names). */
-async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?: Cloud; why?: string; terms: string[] }> {
+type Words = { terms: string[]; replacements: [string, string][] }
+/** What the vault's server last said to expect, for the realtime voice (its instructions name them). */
+let lastWords: Words = { terms: [], replacements: [] }
+export const expectedWords = () => lastWords
+/** Soniox's key when the vault's server says it hears this one (plugins/core/dictation/plugin.ts), else why not; and
+ *  the words to expect and what's written for what's said (the dictionary's, Vaultite's, the vault's names). */
+async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?: Cloud; why?: string } & Words> {
   const port = serverOf(sink.win)
-  if (!port) return { terms: [] }
+  if (!port) return lastWords
   try {
     const r = await fetch(`http://127.0.0.1:${port}/api/dictation/cloud`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
-    const c = (r.ok ? await r.json() : {}) as Partial<Cloud> & { why?: string; terms?: unknown }
+    const c = (r.ok ? await r.json() : {}) as Partial<Cloud> & { why?: string; terms?: unknown; replacements?: unknown }
     const terms = Array.isArray(c.terms) ? c.terms.filter((t): t is string => typeof t === "string") : []
-    if (!c.url || !c.key) return { why: c.why ?? (r.ok ? undefined : `Vaultite's server answered ${r.status}`), terms }
+    const replacements = Array.isArray(c.replacements) ? c.replacements.filter((x): x is [string, string] => Array.isArray(x) && typeof x[0] === "string" && typeof x[1] === "string") : []
+    if (r.ok) lastWords = { terms, replacements }
+    const words = lastWords
+    if (!c.url || !c.key) return { why: c.why ?? (r.ok ? undefined : `Vaultite's server answered ${r.status}`), ...words }
     // (no languages set: the one asked for and the Mac's, as hints; Soniox switches between them on its own)
     const said = c.languages?.length ? c.languages : [language, ...app.getPreferredSystemLanguages()]
     const languages = [...new Set(said.map((l) => l.split(/[-_]/)[0].toLowerCase()).filter((l) => /^[a-z]{2,3}$/.test(l)))].slice(0, 6)
-    return { cloud: { url: c.url, key: c.key, model: c.model, languages }, terms }
-  } catch (e) { return { why: `Vaultite's server didn't answer (${(e as Error).name === "TimeoutError" ? "timed out" : (e as Error).message})`, terms: [] } }
+    return { cloud: { url: c.url, key: c.key, model: c.model, languages }, ...words }
+  } catch (e) { return { why: `Vaultite's server didn't answer (${(e as Error).name === "TimeoutError" ? "timed out" : (e as Error).message})`, ...lastWords } }
 }
 
-/** The words a recognizer is told to expect: the caller's first (its replacements' said words), then the server's. */
-export const termsOf = (words: unknown, terms: string[]) =>
-  [...new Set([...(Array.isArray(words) ? words : []), ...terms].filter((w): w is string => typeof w === "string" && !!w.trim()).map((w) => w.trim().slice(0, 100)))].slice(0, 100)
+/** The words a recognizer is told to expect, cleaned. */
+export const termsOf = (terms: string[]) => [...new Set(terms.filter((w) => !!w.trim()).map((w) => w.trim().slice(0, 100)))].slice(0, 100)
 
 const starts = new Set<() => void>()
 /** Told as any dictation starts (a window's, the helper's): the companion's voice stops, never heard by the microphone. */
 export const onDictating = (fn: () => void) => { starts.add(fn); return () => starts.delete(fn) }
 
-export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; words?: unknown; keep?: unknown; tap?: boolean
+export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; keep?: unknown; tap?: boolean
   /** The setting `microphone` (miclogic.ts); `hold`: a Bluetooth mic stays open after, till releaseMic (a Talk key's). */
   microphone?: unknown; hold?: boolean }
 /** The devices: as told, else the first list a fresh helper tells (a moment at most). */
@@ -166,7 +177,7 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
   const language = typeof opts.language === "string" ? opts.language : ""
   // (a copy a script drives hears a file, never the microphone: it can't take the user's)
   if (process.env.VAULTITE_QUIET && !process.env.VAULTITE_DICTATION_FILE) return { ok: false, code: "quiet" }
-  const [allowed, { cloud, why, terms }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
+  const [allowed, { cloud, why, terms, replacements }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
   if (!allowed) return { ok: false, code: "permission" }
   for (const fn of starts) fn()
   let model = engine === "parakeet" ? parakeetModel() : null
@@ -181,10 +192,11 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
   const mic = file ? undefined : pickMic(opts.microphone, await listedDevices())
   if (owner && owner !== sink) tell({ type: "end", reason: "elsewhere" })
   owner = sink
+  swap = replacer(replacements.map(([s, w]) => `${s}: ${w}`))
   const silence = Number(opts.silence)
   send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: Number.isFinite(silence) ? silence : 0, ...(cloud ? { cloud } : {}), ...(opts.tap ? { tap: true } : {}),
     ...(mic ? { mic: [mic.uid, ...mic.fallback].filter(Boolean), hold: opts.hold === true } : {}),
-    words: termsOf(opts.words, terms),
+    words: termsOf(terms),
     // (Keep the last dictation's audio: in the app's logs, to replay through tools/dictation_bench.ts)
     ...(opts.keep === true ? { record: path.join(app.getPath("logs"), "dictation-last.wav") } : {}),
     // (a script driving the app hears a file instead: web/qa/dictation.mjs)

@@ -2,7 +2,6 @@
 // tells the events (the desktop app's helper, electron/dictation.ts; an iPhone's would too); plugins hear `onDictation`.
 import type { EditorView } from "@codemirror/view"
 import { cell } from "@/core/signal"
-import { parseReplacement, replacer } from "../../../core/dictationtext.ts"
 import { fnKey } from "../../../core/fnkey.ts"
 import { announce } from "@/core/announce"
 import { typingIn } from "@/core/commands"
@@ -36,8 +35,8 @@ export type DictationEngine = "apple" | "parakeet"
 export type DictationEngines = { apple: boolean; parakeet: boolean; locale?: string; why?: string }
 export type DictationSource = {
   engines: (language: string) => Promise<DictationEngines>
-  /** `words`: what to listen for (Apple's); `keep`: keep the audio for replaying it (electron/dictation.ts says where). */
-  start: (o: { engine: DictationEngine; language: string; silence: number; words?: string[]; keep?: boolean; microphone?: string }) => Promise<{ ok: boolean; code?: string; message?: string }>
+  /** `keep`: keep the audio for replaying it (electron/dictation.ts says where; it asks the server what words to expect). */
+  start: (o: { engine: DictationEngine; language: string; silence: number; keep?: boolean; microphone?: string }) => Promise<{ ok: boolean; code?: string; message?: string }>
   stop: () => Promise<unknown>
   cancel: () => Promise<unknown>
   on: (fn: (e: DictationEvent) => void) => () => void
@@ -130,8 +129,8 @@ let session = 0
 
 /** Listen, typing into `target` (`hold`: push to talk, the key still down). Says why when it can't. */
 export async function startDictation(target: DictationTarget, o: { engine: DictationEngine; language: string; silence: number; hold?: boolean
-  /** "said: written" lines (`replacements`), which are also the words listened for; `keep`: keep the audio. */
-  replacements?: string[]; keep?: boolean
+  /** `keep`: keep the audio. */
+  keep?: boolean
   /** The setting `microphone`: auto, default, builtin or a device's name. */
   microphone?: string },
   failed: (code: string, message?: string) => void) {
@@ -140,18 +139,15 @@ export async function startDictation(target: DictationTarget, o: { engine: Dicta
   if (now.get()?.stopping) await settled()
   if (now.get()) await stopDictation(true)
   const mine = ++session
-  const swap = replacer(o.replacements ?? [])
-  const said = (t: string) => swap.reduce((x, [re, to]) => x.replace(re, to), t)
   now.set({ target, hold: !!o.hold, speaking: false, spokeAt: 0, pending: "", level: 0, ready: false })
-  unsub = src.on((e) => heard(e.type === "pending" || e.type === "final" ? { ...e, text: said(e.text) } : e, mine, failed))
+  unsub = src.on((e) => heard(e, mine, failed))
   // (the window left, or another field took the keyboard: the session follows the user)
   refused = false
   addEventListener("blur", away)
   addEventListener("focusin", moved)
   indicator.show()
   tell({ type: "start" })
-  const words = (o.replacements ?? []).map(parseReplacement).filter((x) => !!x).map((x) => x[0])
-  const r = await src.start({ engine: o.engine, language: o.language, silence: o.silence, words, keep: !!o.keep, ...(o.microphone ? { microphone: o.microphone } : {}) }).catch((e) => ({ ok: false, code: "helper", message: String(e) }))
+  const r = await src.start({ engine: o.engine, language: o.language, silence: o.silence, keep: !!o.keep, ...(o.microphone ? { microphone: o.microphone } : {}) }).catch((e) => ({ ok: false, code: "helper", message: String(e) }))
   if (!r.ok && session === mine) { finish(); failed(r.code ?? "helper", r.message) }
 }
 

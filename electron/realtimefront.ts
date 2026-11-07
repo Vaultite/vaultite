@@ -29,6 +29,8 @@ export function realtimeFront<O>(o: {
   name: () => string
   /** The languages the user speaks (two letters, likeliest first). */
   languages?: () => string[]
+  /** Names and words they use (dictation's dictionary and the vault's), for hearing them right. */
+  words?: () => string[]
   player: Player
   /** A press's route, told once (see Route), to the press it's for. */
   route: (owner: O, r: Route) => void
@@ -74,7 +76,7 @@ export function realtimeFront<O>(o: {
     s?.close()
     turns = 0
     sKey = k
-    const me: RealtimeSession = realtimeSession({ ...cfg, instructions: instructions(o.name(), o.languages?.() ?? []), tools: [LOOK_TOOL] }, {
+    const me: RealtimeSession = realtimeSession({ ...cfg, instructions: instructions(o.name(), o.languages?.() ?? [], o.words?.() ?? []), tools: [LOOK_TOOL] }, {
       began: (rid) => { const t = turn; if (t?.state === "answering" && !t.rid) t.rid = rid },
       audio: (b, rid, item) => heardAudio(b, rid, item),
       said: (d, rid) => { const t = turn; if (t?.rid === rid) t.said += d },

@@ -48,14 +48,15 @@ export function languagesSaid(codes: string[]) {
   return said.length > 1 ? `${said.slice(0, -1).join(", ")} and ${said.at(-1)}` : said[0] ?? ""
 }
 
-/** What the realtime model is told, the same every session (its cached input stays warm); `languages`, the user's. */
-export function instructions(name: string, languages: string[] = []) {
-  const spoken = languagesSaid(languages)
+/** What the realtime model is told, the same every session (its cached input stays warm); `languages`, the user's;
+ *  `words`, names they use (the first 40). */
+export function instructions(name: string, languages: string[] = [], words: string[] = []) {
+  const spoken = languagesSaid(languages), names = words.slice(0, 40).join(", ")
   return `You're ${name || "the companion"}, the user's companion on their Mac: they hold a key, speak to you, and let go; you answer out loud at once, by their pointer.
 You can't see their screen. Anything about what's on it (this, here, that, this page, this button, my email, what's open, what they drew) or anything you'd have to look up, read or do: say just "Let me look." or "One sec." (the same two or three words in their language), not a word more, and call look_at_screen with their question. Its answer is said to them right after those words, so never add to them, and never guess or describe what's on screen.
 Small talk, a quick fact, a word's meaning, a sum, how are you: answer yourself, no tool.
 Talk like a friend beside them: the answer first, one or two short sentences with contractions, about 25 words unless they ask for more. No lists, symbols, ids, or long numbers read out.
-${spoken ? `They speak ${spoken}, maybe mixed: answer` : "Answer"} in the language they spoke last.`
+${spoken ? `They speak ${spoken}, maybe mixed: answer` : "Answer"} in the language they spoke last.${names ? `\nNames and words they use, to hear them right: ${names}.` : ""}`
 }
 
 /** OpenAI's list prices for gpt-realtime-2.1 and its mini, USD per million tokens (developers.openai.com, 2026-11). */

@@ -20,6 +20,8 @@ const LOCAL = path.join(TMP, "local")
 const cloud = ENGINE === "soniox" ? await standInSoniox() : null
 fs.writeFileSync(path.join(VAULT, "Dictated.md"), "# Dictated\n\nShopping:")
 fs.writeFileSync(path.join(VAULT, "Vim.md"), "# Vim\n\nList:")
+// (the dictionary: a word every recognizer expects, and what's written for what's said)
+fs.writeFileSync(path.join(VAULT, "Dictionary.md"), "---\ntype: dictionary\n---\n\n- Vorssaint\n- bread: brioche\n")
 // (Vim's keys on: ⌘J in normal mode dictates as in insert mode)
 const plugins = path.join(VAULT, ".vaultite", "plugins.json")
 const conf = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { disabled: [], enabled: [] }
@@ -69,6 +71,8 @@ check("the indicator goes when it ends", !(await listening()))
 const settled = await win.evaluate(() => window.ends.at(-1)?.settled)
 console.log(`  (${ENGINE}: microphone open ${micOpen} ms and first pending words ${firstPending} ms after ⌘J, the app's whole path; the last words ${settled} ms after the stop)`)
 if (cloud) check("soniox: the key from this machine's config, the socket closed once it ended", cloud.seen.length > 0 && cloud.seen.every((c) => c.auth === "Bearer qa-key" && c.closed), cloud.seen)
+if (cloud) check("soniox: told the dictionary's words first", cloud.seen[0]?.terms?.[0] === "Vorssaint" && cloud.seen[0].terms.includes("brioche") && cloud.seen[0].terms.includes("at Claude"), cloud.seen[0]?.terms)
+check("the dictionary's replacement: \"bread\" is written brioche", /milk and brioche/i.test(after), after)
 
 // ---------- undo takes the dictated words out
 await win.keyboard.press("Meta+Z")
@@ -76,6 +80,29 @@ await wait(300)
 check("undo takes them out", !normal(await text()).includes("milk"), await text())
 await win.keyboard.press("Meta+Shift+Z")
 await wait(300)
+
+// ---------- a word fixed right after it was said: it's learned, with a toast to undo it
+const dictionary = () => fs.readFileSync(path.join(VAULT, "Dictionary.md"), "utf8")
+// (the word selected as a double click would, then typed over)
+await win.evaluate(() => {
+  const walk = document.createTreeWalker(document.querySelector("[data-pane] .cm-content"), NodeFilter.SHOW_TEXT)
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    const i = n.textContent.indexOf("milk")
+    if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 4); getSelection().removeAllRanges(); getSelection().addRange(r); return }
+  }
+})
+await wait(200)
+// (Vim's keys are on in this vault: c changes what's selected)
+await win.keyboard.press("c")
+await win.keyboard.type("Milkweed")
+await win.keyboard.press("Escape")
+const toast = () => win.evaluate(() => [...document.querySelectorAll("[data-sonner-toast]")].map((t) => t.textContent).join("|"))
+check("a fix shows the toast", await until(async () => /Added “Milkweed” to your dictionary/.test(await toast()), 8000, 100), { toast: await toast(), text: await text() })
+check("…and the word is in the dictionary", await until(() => dictionary().includes("- Milkweed\n"), 3000), dictionary())
+if (process.env.VAULTITE_QA_SHOT) await win.screenshot({ path: process.env.VAULTITE_QA_SHOT })
+await win.locator("[data-sonner-toast] button", { hasText: "Undo" }).click()
+check("Undo takes it out", await until(() => !dictionary().includes("Milkweed"), 3000), dictionary())
+
 
 // ---------- held: push to talk, over when the key is let go
 await win.keyboard.down("Meta")
@@ -128,7 +155,7 @@ async function standInSoniox() {
         if (!said) ws.send(JSON.stringify({ tokens: words.slice(0, n).map((text) => ({ text, is_final: false })) }))
         return
       }
-      if (!config) { config = true; return }
+      if (!config) { config = true; c.terms = JSON.parse(d.toString()).context?.terms; return }
       if (JSON.parse(d.toString()).type !== "finalize") return
       const ms = bytes / 32
       ws.send(JSON.stringify({ tokens: [...(said ? [] : words.map((text) => ({ text, is_final: true, start_ms: 0, end_ms: ms }))), { text: "<fin>", is_final: true }] }))

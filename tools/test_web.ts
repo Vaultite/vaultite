@@ -46,7 +46,8 @@ const COTYPE_STUBS: Record<string, string> = {
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
 const shim = path.join(tempDir("vau-shim-"), "vaultite.ts")
 fs.writeFileSync(shim, `export { blockPieces, paragraphAt } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}
-export { joinText } from ${JSON.stringify(pathToFileURL(path.join(ROOT, "core", "dictationtext.ts")).href)}`)
+export { joinText } from ${JSON.stringify(pathToFileURL(path.join(ROOT, "core", "dictationtext.ts")).href)}
+export const notify = (...a) => globalThis.__learn?.toasts.push(a); export const op = async (id, p) => globalThis.__learn ? globalThis.__learn.op(id, p) : null`)
 registerHooks({
   resolve(spec, context, next) {
     if (spec in COTYPE_STUBS && context.parentURL?.endsWith("/plugins/core/companion/cotype.ts")) return { url: `data:text/javascript,${encodeURIComponent(COTYPE_STUBS[spec])}`, shortCircuit: true }
@@ -2197,6 +2198,82 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const c = term(true)
   c.target.final("  \n ")
   check("dictation in a terminal: nothing said, nothing sent", !c.sent.length, c.sent)
+}
+
+// ---------- Dictation that learns: a misheard word's fix, in a note, a terminal or a field (plugins/core/dictation/learn.ts) ----------
+{
+  const { corrections, TypedLine } = await plugin("dictation/learn.ts")
+  const fix = (a: string, b: string) => JSON.stringify(corrections(a, b))
+  check("learn: one misheard word fixed", fix("We're going to the Olympicos tomorrow", "We're going to the Olimpicos tomorrow") === '[{"word":"Olimpicos","said":"Olympicos"}]')
+  check("learn: several words heard for one, and two fixes in a sentence", fix("I couldn't pronounce for saint here", "I couldn't pronounce Vorssaint here") === '[{"word":"Vorssaint","said":"for saint"}]' &&
+    fix("can you ask clawed about the tea mux setup", "can you ask Claude about the tmux setup") === '[{"word":"Claude","said":"clawed"},{"word":"tmux","said":"tea mux"}]')
+  check("learn: a name that only sounds alike (Kyle for Kaio, Fox for phoXiv)", fix("talk to Kyle", "talk to Kaio") === '[{"word":"Kaio","said":"Kyle"}]' && fix("Fox is up", "phoXiv is up") === '[{"word":"phoXiv","said":"Fox"}]')
+  check("learn: a name's capital is a word to learn, a sentence's isn't", fix("open the vaultite app", "open the Vaultite app") === '[{"word":"Vaultite"}]' && fix("hello world", "Hello world") === "[]")
+  check("learn: a sentence retyped teaches nothing", fix("I want to go home now", "Let's head back to the house later") === "[]" && fix("The cat sat on the mat and then left", "The dog sat on the rug and then ran") === "[]")
+  check("learn: grammar and homophones teach nothing", fix("run the test now", "run the tests now") === "[]" && fix("put it over their", "put it over there") === "[]" && fix("so I go there", "so I went there") === "[]")
+  check("learn: words only added or taken out teach nothing", fix("send it", "send it to Alice today") === "[]" && fix("send it to Alice today", "send it") === "[]")
+  const type = (said: string, keys: (string | [string, Record<string, boolean>])[]) => {
+    const t = new TypedLine(said)
+    const named = new Set(["Backspace", "Delete", "Enter", "End", "ArrowLeft", "ArrowRight", "ArrowUp"])
+    for (const k of keys) for (const key of typeof k === "string" ? (named.has(k) ? [k] : [...k]) : [k[0]]) t.key({ key, ...(Array.isArray(k) ? k[1] : {}) })
+    return t
+  }
+  const back = type("ask for saint to", ["Backspace", "Backspace", "Backspace", ["Backspace", { altKey: true }], ["Backspace", { altKey: true }], "Vorssaint to"])
+  check("learn in a terminal: backspaces and a word retyped, followed key by key", back.text === "ask Vorssaint to" && !back.lost && corrections("ask for saint to", back.text)[0]?.word === "Vorssaint", back)
+  const moved = type("ping Matt Bocak today", [["ArrowLeft", { altKey: true }], "ArrowLeft", ["Backspace", { altKey: true }], "Pocock"])
+  check("learn in a terminal: the cursor moved back by a word, a word taken out and typed", moved.text === "ping Matt Pocock today" && fix("ping Matt Bocak today", moved.text) === '[{"word":"Pocock","said":"Bocak"}]', moved.text)
+  const lost = type("one two", ["ArrowUp"]), past = type("ab", ["Backspace", "Backspace", "Backspace"]), pasted = type("x", [["v", { metaKey: true }]])
+  check("learn in a terminal: a key it can't follow, a backspace past the words, a paste: the line isn't known", lost.lost && past.lost && pasted.lost)
+  const enter = new TypedLine("hi")
+  check("learn in a terminal: Enter ends the line", enter.key({ key: "Enter" }) === false)
+
+  const { readDictionary, addEntry, removeEntry, hintOf } = await plugin("dictation/words.ts")
+  const note = "Words I say.\n\n- Vorssaint\n- Olympicos: Olimpicos\n- [ ] not a word\n\nMore notes."
+  const d = readDictionary(note)
+  check("dictionary: a word a line, or said: written; the rest is the user's", JSON.stringify(d) === '{"words":["Vorssaint"],"replacements":[["Olympicos","Olimpicos"]]}', d)
+  const added = addEntry(note, { word: "Kaio" })
+  check("dictionary: a word goes after the last one, once, in any case", added.did && added.body.includes("- Olympicos: Olimpicos\n- Kaio\n- [ ]") && !addEntry(added.body, { word: "kaio" }).did, added.body)
+  check("dictionary: the first one starts a list", addEntry("", { word: "Vorssaint" }).body === "- Vorssaint\n" && addEntry("Intro", { word: "a", said: "b" }).body === "Intro\n\n- b: a\n")
+  const removed = removeEntry(added.body, { word: "Olimpicos", said: "olympicos" })
+  check("dictionary: a line taken out, the rest as it was", removed.did && removed.body === "Words I say.\n\n- Vorssaint\n- Kaio\n- [ ] not a word\n\nMore notes." && !removeEntry(removed.body, { word: "Nope" }).did, removed.body)
+  check("dictionary: a replacement's hint is what's written when it's words, else what's said", hintOf(["Olympicos", "Olimpicos"]) === "Olimpicos" && hintOf(["at Claude", "@claude"]) === "at Claude")
+
+  // What a fix teaches reaches the dictionary through its ops, said with a toast and its Undo (learning.ts)
+  const learnt = { toasts: [] as Any[], calls: [] as [string, Props][], op: async (id: string, p: Props) => { learnt.calls.push([id, p]); return id === "dictation.add" ? { added: { word: p.word, ...(p.said && p.word === "Kaio" ? { said: p.said } : {}) } } : {} } }
+  ;(globalThis as Any).__learn = learnt
+  const { watchFix } = await plugin("dictation/learning.ts")
+  let now = "we met Kyle today"
+  const w = watchFix(now, () => now)
+  now = "we met Kaio today"
+  w.edited(); w.done()
+  await new Promise((r) => setTimeout(r, 20))
+  const toast = learnt.toasts[0]
+  check("learn: a fix adds the word (fixed: the misheard words with it), with a toast to undo it", learnt.calls[0]?.[0] === "dictation.add" && learnt.calls[0][1].fixed === true && learnt.calls[0][1].said === "Kyle" &&
+    toast?.[0] === "Added “Kaio” to your dictionary" && toast[1].action.label === "Undo" && toast[1].duration === 6000, { calls: learnt.calls, toast })
+  await toast[1].action.run()
+  check("learn: Undo takes it out", JSON.stringify(learnt.calls.at(-1)) === '["dictation.remove",{"word":"Kaio","said":"Kyle"}]', learnt.calls)
+  learnt.calls.length = 0
+  let typing = "ask for saint now"
+  const half = watchFix(typing, () => typing)
+  typing = "ask Vorss now"; half.edited(); half.done()
+  await new Promise((r) => setTimeout(r, 20))
+  const unchanged = watchFix("a b", () => "a b"); unchanged.done()
+  check("learn: words never changed teach nothing", learnt.calls.every(([, p]) => p.word !== "a"))
+  ;(globalThis as Any).__learn = undefined
+
+  // In a note: words dictated keep their place as the user edits around and in them; the next chunk isn't theirs
+  const { EditorState } = await import("@codemirror/state")
+  const ed = await plugin("dictation/editor.ts")
+  const quiet = { edited() {}, done() {} }
+  let st = EditorState.create({ doc: "Notes: ", extensions: [ed.saids] })
+  st = st.update({ changes: { from: 7, insert: "I like for saint" }, effects: ed.said.of({ from: 7, to: 23, watch: quiet }), userEvent: "input.dictation" }).state
+  st = st.update({ changes: { from: 23, insert: " a lot" }, userEvent: "input.dictation" }).state
+  const span = () => { const s = (st.field(ed.saids) as { from: number; to: number }[])[0]; return st.sliceDoc(s.from, s.to) }
+  check("learn in a note: the next chunk dictated isn't part of the words before it", span() === "I like for saint", span())
+  st = st.update({ changes: { from: 14, to: 23, insert: "Vors" }, userEvent: "input.type" }).state
+  st = st.update({ changes: { from: 18, insert: "saint" }, userEvent: "input.type" }).state
+  st = st.update({ changes: { from: 0, insert: "My " }, userEvent: "input.type" }).state
+  check("learn in a note: a word replaced and typed on is read as the fix, an edit elsewhere isn't", span() === "I like Vorssaint" && fix("I like for saint", span()) === '[{"word":"Vorssaint","said":"for saint"}]', span())
 }
 
 // ---------- Audio recorder: the transcript under the recording (plugins/core/audio-recorder/transcript.ts) ----------

@@ -16,9 +16,15 @@ clipboard when a private app is in front), so said words are never lost. A passw
 helper (Vaultite Dev), leaving the window stops it. Each session's way is in `talk/dictation-<day>.jsonl`, no words.
 - Settings (`.vaultite/plugins/dictation/data.json`): `engine` `auto` | `soniox` | `apple` | `parakeet`; `language` (Apple's,
   `pt-BR`; the Mac's when left out); `languages` (Soniox's hints, `[en, pt]`; the language and the Mac's when left out); `silence` (seconds without speech before a tapped dictation stops; 0, the default,
-  never); `replacements`, lines of "said: written" (`at Claude: @claude`), whose said words the recognizer listens for (as it does for Vaultite's own words, the agents' names and the newest notes' names; a plugin adds its own with the service `dictation:terms`);
+  never);
   `keep_audio` (this Mac's), the last dictation's audio kept in the app's logs folder as `dictation-last.wav`;
   `microphone` (this Mac's): `auto` (the default), `default`, `builtin` or a device's name, below.
+- The dictionary, Dictionary.md (`type: dictionary`): a "- word" line each (Vorssaint), or "- said: written" for what
+  dictation writes instead (`- Olympicos: Olimpicos`), replaced as it's heard. Every recognizer expects its words first,
+  then Vaultite's, the agents' names (a plugin adds its own: the service `dictation:terms`), the people's and projects'
+  names and the newest notes'; Parakeet takes no hints, only the replacements. Fixing a word just dictated (in a note, a
+  terminal or a field, within a minute) adds it, with a toast and its Undo; the same word misheard again adds what it
+  was misheard as. A word taken out isn't learned again. `vau dictation add|remove|words`.
 - The mic (dictation, the Talk key and the realtime voice alike): a Bluetooth headset's own mic drops it to its call
   profile (24 kHz sound both ways) and back ~2 s after it closes, cutting what plays. So `auto` hears with the system's
   input unless the output is Bluetooth and that input is too: then the built-in mic, else a wired one. `default` is

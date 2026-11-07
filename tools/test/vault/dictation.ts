@@ -35,6 +35,43 @@ export default async ($: VaultTest) => {
     check("dictation: no key, automatic is this Mac's", st === 200 && !c.key && !c.why, c)
     check("dictation: the recognizer is told Vaultite's words, the companion's name and the newest notes' names, not a private one's",
       ["Vaultite", "Claude", "Codex", "Quillfeather"].every((w) => c.terms?.includes(w)) && !c.terms.includes("Hushed thing") && c.terms.length <= 80, c.terms)
+
+    // ---------- The dictionary (Dictionary.md): words added, learned from fixes, and told to every recognizer
+    fs.mkdirSync(path.join(VAULT, "People"), { recursive: true }); fs.mkdirSync(path.join(VAULT, "Projects"), { recursive: true })
+    fs.writeFileSync(path.join(VAULT, "People", "Alice Park.md"), "---\ntype: person\nname: Alice Park\n---\n")
+    fs.writeFileSync(path.join(VAULT, "Projects", "Lighthouse.md"), "---\ntype: project\n---\n")
+    await vault.sync()
+    let dr = await vau("dictation", "add", "Vorssaint")
+    const dict = () => fs.readFileSync(path.join(VAULT, "Dictionary.md"), "utf8")
+    check("dictation add: the first word makes Dictionary.md", dr.code === 0 && dict() === "---\ntype: dictionary\n---\n\n- Vorssaint\n", { dr, text: fs.existsSync(path.join(VAULT, "Dictionary.md")) && dict() })
+    dr = await vau("dictation", "add", "Olimpicos", "--said", "Olympicos")
+    check("dictation add: what it mishears, as said: written", dr.code === 0 && dict().endsWith("- Vorssaint\n- Olympicos: Olimpicos\n") && /already/.test((await vau("dictation", "add", "vorssaint")).out), dict())
+    ;[, c] = await api("GET", "dictation/cloud")
+    check("dictation: the dictionary's words come first, then Vaultite's, the people's and projects' names",
+      c.terms[0] === "Vorssaint" && c.terms[1] === "Olimpicos" && ["Alice Park", "Lighthouse", "@claude"].every((w, i) => i === 2 ? !c.terms.includes(w) : c.terms.includes(w)) && c.terms.includes("at Claude"), c.terms)
+    check("dictation: what's written for what's said, Vaultite's then the dictionary's", JSON.stringify(c.replacements) === '[["at Claude","@claude"],["Olympicos","Olimpicos"]]', c.replacements)
+    const fixed = (word: string, said: string) => api("POST", "ops/dictation.add", { word, said, fixed: true })
+    let [, fr] = await fixed("Kaio", "Kyle")
+    check("dictation: a fix teaches the word first", JSON.stringify(fr.added) === '{"word":"Kaio"}' && dict().includes("- Kaio\n") && !dict().includes("Kyle"), fr)
+    ;[, fr] = await fixed("Kaio", "Kyle")
+    check("dictation: misheard again, what it's misheard as", JSON.stringify(fr.added) === '{"word":"Kaio","said":"Kyle"}' && dict().includes("- Kyle: Kaio\n"), fr)
+    await api("POST", "ops/dictation.remove", { word: "Kaio" }); await api("POST", "ops/dictation.remove", { word: "Kaio", said: "Kyle" })
+    ;[, fr] = await fixed("Kaio", "Kyle")
+    check("dictation: a word taken out (Undo) isn't learned from a fix again; added by name, it is", !fr.added && fr.unlearned && !dict().includes("Kaio") &&
+      (await vau("dictation", "add", "Kaio")).code === 0 && dict().includes("- Kaio\n"), { fr, text: dict() })
+    dr = await vau("dictation", "words")
+    check("dictation words: the dictionary, the replacements and what's expected", dr.code === 0 && /Dictionary \(Dictionary\.md\): Vorssaint, "Olympicos" as Olimpicos, Kaio/.test(dr.out) && /Olympicos → Olimpicos/.test(dr.out), dr.out)
+    // (dictation's replacements setting from before: its lines into the dictionary, the setting gone)
+    await set({ replacements: ["at Claude: @claude", "Clyde: Claude", "Olympicos: Olimpicos"], keys: ["fn"] })
+    const { DONE, migrate } = await import("../../../core/migrations.ts")
+    vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "dictation-dictionary-2026-11") })
+    await migrate(vault, false)
+    const after = JSON.parse(fs.readFileSync(path.join(VAULT, settings), "utf8"))
+    check("migration: the replacements setting's lines go into Dictionary.md, once; Vaultite's own isn't copied", dict().endsWith("- Kaio\n- Clyde: Claude\n") && dict().split("Olympicos: Olimpicos").length === 2 &&
+      !dict().includes("at Claude") && !("replacements" in after) && after.keys[0] === "fn", { text: dict(), after })
+    fs.rmSync(path.join(VAULT, "Dictionary.md")); fs.rmSync(path.join(VAULT, "People", "Alice Park.md")); fs.rmSync(path.join(VAULT, "Projects", "Lighthouse.md"))
+    await set({})
+
     const [, sp0] = await api("GET", "companion/voice")
     check("dictation: no key, the companion's voice isn't Soniox's", !sp0.soniox, sp0)
     await set({ engine: "soniox" })

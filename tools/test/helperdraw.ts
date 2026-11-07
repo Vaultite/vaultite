@@ -54,7 +54,7 @@ mock.module(at("dictation.ts"), { exports: { freeFor() {}, handOver: () => false
   return { ok: true, ...(micBt ? { mic: { uid: "pods", name: "Alice's AirPods", bluetooth: true, why: "the system's input (set)", fallback: [] } } : {}) }
 }, dictating: () => false,
   stopFor: (sink: Sink, cancel = false) => { const words = heardWords; setTimeout(() => { if (!cancel && words) sink.tell({ type: "final", text: words }); sink.tell({ type: "end", reason: cancel ? "cancel" : "stop" }) }, finishMs) },
-  dictationEngines: async () => ({}), onDictating: () => () => {}, onAudioDevices: () => () => {}, releaseMic: () => { releases.push(Date.now()) } } })
+  dictationEngines: async () => ({}), expectedWords: () => ({ terms: [], replacements: [] }), onDictating: () => () => {}, onAudioDevices: () => () => {}, releaseMic: () => { releases.push(Date.now()) } } })
 
 // (the server: settings, and the companion's socket)
 let agent: Record<string, unknown> = { name: "Claude", tint: "orange", state: "watching", t: Date.now(), path: "Notes/A.md", line: 3 }

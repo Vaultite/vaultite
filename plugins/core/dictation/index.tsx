@@ -2,8 +2,8 @@
 // session, electron/dictation.ts the recognizer). A tap starts and the next stops; held, it listens until let go.
 import { useEffect } from "react"
 import { Mic } from "lucide-react"
-import { definePlugin, dictation, dictationSource, fnDictation, hintDictation, landDictation, listening, notify, notifyError, openPermissions, pluginSettings, pressDictation,
-  startDictation, typingIn, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
+import { createFile, definePlugin, dictation, dictationSource, fnDictation, Group, hintDictation, landDictation, listening, notify, notifyError, openFile, openPermissions, plural, pluginSettings,
+  pressDictation, SettingRow, startDictation, typingIn, useStore, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
 import { fieldTarget } from "./field"
 import { terminalTarget, type TerminalInput } from "./terminal"
 
@@ -55,11 +55,27 @@ async function begin(hold: boolean) {
   const s = pluginSettings("dictation").get()
   const language = typeof s.language === "string" ? s.language.trim() : ""
   const silence = typeof s.silence === "number" ? s.silence : 0
-  // (left out of its settings: the manifest's default)
-  const replacements = Array.isArray(s.replacements) ? s.replacements.filter((x): x is string => typeof x === "string") : ["at Claude: @claude"]
   const microphone = typeof s.microphone === "string" ? s.microphone : undefined
-  await startDictation(target, { engine: await engineFor(s.engine, language), language, silence, hold, replacements, keep: s.keep_audio === true, microphone }, failed)
+  await startDictation(target, { engine: await engineFor(s.engine, language), language, silence, hold, keep: s.keep_audio === true, microphone }, failed)
   return !!dictation()
+}
+
+declare module "@vaultite" {
+  interface PluginState { dictionary?: { note: string | null; size: number } }
+}
+
+/** The dictionary's row in its settings: the note (Dictionary.md), made when there's none yet. */
+function DictionarySettings() {
+  const d = useStore().store?.dictionary
+  const open = async () => {
+    const at = d?.note ?? (await createFile("", "Dictionary", "---\ntype: dictionary\n---\n\n")).path
+    if (at) openFile(at)
+  }
+  return (
+    <Group>
+      <SettingRow label="Dictionary" sub="Words you fix right after dictating are added" value={d?.size ? plural(d.size, "word") : "Empty"} onClick={() => void open()} data-dictionary />
+    </Group>
+  )
 }
 
 /** fn while this window has the keyboard: its ⌘J (the helper dictates in other apps itself). */
@@ -70,6 +86,9 @@ function FnKey() {
 
 export default definePlugin({
   background: () => <FnKey />,
+  settingsPanel: () => <DictionarySettings />,
+  settingsPanelFirst: true,
+  settingsSearch: [{ label: "Dictionary", key: "dictionary" }],
   commands: [
     { id: "dictation:start", name: "Dictate", nameWhenOn: "Stop dictating", keys: ["Mod+J"], on: listening, when: () => !!dictationSource,
       run: () => void pressDictation(begin), icon: Mic, label: "Dictate", words: "voice speech microphone talk" },

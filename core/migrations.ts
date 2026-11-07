@@ -147,6 +147,21 @@ export function baseLayoutOut(text: string): string {
   return drop.size ? lines.filter((_, i) => !drop.has(i)).join("\n") : text
 }
 
+/** Dictation's `replacements` setting, now lines of the user's dictionary (Dictionary.md, plugins/core/dictation/words.ts)
+ *  beside the words it learns; "at Claude: @claude" is the app's own. */
+function replacementsToDictionary(v: Vault) {
+  const lines = strs(v.readConfig("plugins/dictation/data")?.replacements).map((l) => l.trim()).filter((l) => l.includes(": ") && l.toLowerCase() !== "at claude: @claude")
+  if (lines.length) {
+    const rel = "Dictionary.md", had = fs.existsSync(v.abs(rel)) ? fs.readFileSync(v.abs(rel), "utf8") : ""
+    const add = lines.filter((l) => !had.includes(`- ${l}\n`)).map((l) => `- ${l}\n`).join("")
+    if (add) writeAtomic(v.abs(rel), had ? `${had.replace(/\n*$/, "\n")}${add}` : `---\ntype: dictionary\n---\n\n${add}`)
+  }
+  eachSettings(v, (get, set) => {
+    const d = get("plugins/dictation/data")
+    if (d && "replacements" in d) set("plugins/dictation/data", Object.fromEntries(Object.entries(d).filter(([k]) => k !== "replacements")))
+  })
+}
+
 /** The Browser's blocked elements list, which was a note of the user's (type: blocked-elements) and is the app's now,
  *  in .vaultite (the web-viewer plugin's elements.ts BLOCKED). */
 const BLOCKED_LIST = ".vaultite/plugins/web-viewer/blocked-elements.md"
@@ -332,6 +347,7 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       }
     }),
   },
+  { id: "dictation-dictionary-2026-11", run: replacementsToDictionary },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in
