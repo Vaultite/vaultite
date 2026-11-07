@@ -68,7 +68,7 @@ async function launch() {
   await win.evaluate(() => {
     let tabbed = 0
     addEventListener("keydown", (e) => { if (e.key === "Tab") tabbed = Date.now() }, true)
-    addEventListener("focusin", (e) => { if (e.target.matches?.("[data-skip-link]") && Date.now() - tabbed > 1000) (window.__skipFocus ??= []).push(window.__step ?? "?") }, true)
+    addEventListener("focusin", (e) => { if (e.target.matches?.("[data-skip-link]") && Date.now() - tabbed > 1000) (window.__skipFocus ??= []).push([window.__step ?? "?", String(e.relatedTarget?.outerHTML ?? null).slice(0, 120), document.hasFocus(), new Error().stack.split("\n").slice(1, 9).join(" | ")]) }, true)
   })
   await app.evaluate(({ app: a, BaseWindow, BrowserWindow, shell }, dl) => {
     globalThis.__opened = []
