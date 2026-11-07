@@ -13,3 +13,6 @@ the display's picture and what's near the pointer), or you ask.
   this Mac's; with an OpenAI key (`vau voice key --provider openai`), a realtime voice hears the ask and gives the first sound at once (small talk it answers alone; for the screen two words, your say right after them). Write a say as you'd say it: the answer first, no lists, code or addresses. Only the Talk key, Esc or a new
   ask stop it, at once; a click elsewhere or another app in front don't.
 - Private apps (`private_apps`, names or bundle ids) are never read, pictured or titled: their calls are refused.
+- `screen.timeline` (`vau screen timeline --last 20`, `--said "<their words>"`, `--clip`): what happened in the last 30 s
+  on one clock (the pointer, the app in front, clicks and what was clicked, their Talk key words, their box), its video
+  with `--clip` (read its frames). Kept only while the companion's setting `timeline` is on; else it says so.

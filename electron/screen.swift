@@ -108,6 +108,8 @@ func tappedChord(_ type: CGEventType, _ e: CGEvent) {
 var inkOn = false, inking = false, inkSent = 0.0
 /** What the exchange watches meanwhile (its answer showing): a click elsewhere, Esc. Told, never taken. */
 var exchange = false
+/** Clicks told anyway, for the timeline (helper.ts keeps them only while it's on). */
+var clicks = false
 var filtering = false
 func mouse(_ type: CGEventType, _ e: CGEvent) -> Bool {
   let p = e.location
@@ -127,7 +129,7 @@ func mouse(_ type: CGEventType, _ e: CGEvent) -> Bool {
     send(["event": "ink", "phase": "up", "x": p.x, "y": p.y])
     return true
   }
-  if type == .leftMouseDown && exchange { send(["event": "click", "x": p.x, "y": p.y]) }
+  if type == .leftMouseDown && (exchange || clicks) { send(["event": "click", "x": p.x, "y": p.y, "exchange": exchange]) }
   return false
 }
 var tap: CFMachPort?
@@ -529,6 +531,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
     return ["ok": true]
   case "ink": inkOn = req["on"] as? Bool ?? false; if !inkOn { inking = false }; return ["ok": true, "ink": filtering]
   case "exchange": exchange = req["on"] as? Bool ?? false; return ["ok": true]
+  case "clicks": clicks = req["on"] as? Bool ?? false; return ["ok": true]
   case "windows":
     // (on screen, every layer: what a display's picture would show, by whose; metadata only)
     let all = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []

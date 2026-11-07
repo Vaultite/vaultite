@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Show the companion a glitch instead of describing it**: hold the Talk key and drag to draw a box, which stays on
+  screen to move or resize. Say "record this" (narrate as you go, "stop" ends it) or "that, just now" for the last 25 s;
+  the clip, its frames at each change and your words go to the job working on that page, else a new job, else
+  Captures, and it only says where. The last 30 s (screen, pointer, clicks, apps, your words) stay in memory only while
+  you turn that on, and agents can ask for a stretch (`vau screen timeline`).
+
 - **Control dictates**: pick Left or Right Control in dictation's keys (for keyboards whose fn never reaches macOS).
   A tap does nothing, a double tap dictates hands-free until the next double tap (or a press of another dictation
   key), and held alone it listens until you let go; Control with a key, a click or a scroll never dictates.

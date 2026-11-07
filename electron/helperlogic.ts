@@ -1,6 +1,7 @@
 // The menu-bar helper's reckoning, apart from Electron so it's tested alone (tools/test/vault/helper.ts).
 import { arrowBox, boxAt, flagBox } from "../plugins/core/companion/boxes.ts"
 import { jobTold } from "../plugins/core/companion/jobs.ts"
+import type { RegionScene } from "../plugins/core/companion/clips.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 type Decls = Record<string, { default?: unknown }>
@@ -13,7 +14,9 @@ export type Prefs = { fn: boolean; keys: string[]; talk: string[]; privateApps: 
   /** Who hears a spoken ask and answers it first (realtimefront.ts): a realtime model, or dictation and the voice. */
   realtime: { front: "realtime" | "pipeline"; model: string; voice: string }
   /** Which jobs' news is told (the companion's job_news). */
-  jobNews: string }
+  jobNews: string
+  /** The screen's timeline kept in memory, the last seconds (the companion's `timeline`). */
+  timeline: boolean }
 /** The home vault's settings the helper follows: dictation's, the companion's and screen's data.json, their manifests'
  *  `settings` giving the defaults. */
 export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, s: Record<string, unknown>, DEFAULTS: Record<"dictation" | "companion" | "screen", Decls>): Prefs {
@@ -42,6 +45,7 @@ export function prefsOf(d: Record<string, unknown>, c: Record<string, unknown>, 
       voice: String(val(c.realtime_voice, def(DEFAULTS.companion, "realtime_voice") ?? "") || "cedar"),
     },
     jobNews: String(val(c.job_news, def(DEFAULTS.companion, "job_news") ?? "quiet")),
+    timeline: val(c.timeline, def(DEFAULTS.companion, "timeline") ?? false) === true,
   }
 }
 
@@ -69,7 +73,9 @@ export type Summoned = { name: string; tint: string; state: "listening" | "think
   missed?: string
   follow?: boolean; aim?: { id: string; x: number; y: number }
   /** Listening, how loud they are (0 to 1). */
-  level?: number } & Doing
+  level?: number
+  /** Held, a drag makes a box: the pointer leaves no trail meanwhile. */
+  drag?: boolean } & Doing
 /** What the overlay draws: cursors, the companion summoned (the pointer's trail while its key is held: the overlay draws
  *  it from its feed), and dictation's box, under the menu bar of the pointer's display. */
 export type Scene = {
@@ -80,6 +86,8 @@ export type Scene = {
   pill: { level: number; text: string; pending?: string; ready: boolean; free?: boolean; hint?: boolean } | null
   /** The cursor whose answer is being said aloud (its name), and how loud it is now (0 to 1). */
   speaking?: { name: string; level: number } | null
+  /** The user's box (capture.ts), screen points. */
+  region?: RegionScene | null
 }
 type Display = { id: number; bounds: Rect; workArea?: Rect }
 const inside = (d: Display, x: number, y: number) => x >= d.bounds.x && x < d.bounds.x + d.bounds.width && y >= d.bounds.y && y < d.bounds.y + d.bounds.height
@@ -101,8 +109,11 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
     summon: s.summon && (s.summon.follow || here(s.summon)) ? local(s.summon) : null,
     pill: pillHere ? s.pill : null,
     speaking: s.speaking ?? null,
+    // (on each display it crosses, in its points)
+    region: s.region && overlaps(s.region.rect, d.bounds) ? { ...s.region, rect: { ...s.region.rect, x: s.region.rect.x - dx, y: s.region.rect.y - dy } } : null,
   }
 }
+const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 export type DisplayScene = ReturnType<typeof sceneFor>
 
 /** A display's scene as what it draws (`shape`, compared as text) and where (`at`): while only places change (the

@@ -16,6 +16,9 @@ import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { icon } from "./menu.ts"
 import { atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { REAL as captureReal, captureHeard, captureHost, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
+import { quitRecorder } from "./recorder.ts"
+import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, showDrawing, showOverlay, type PanelData } from "./overlay.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
@@ -105,7 +108,12 @@ export async function startHelper(h: HelperHost) {
   onDictating(() => stopVoice())
   // (the mic it would hear with now, for its status: devices plugged, the output changed)
   onAudioDevices((d) => micTold(pickMic(prefs.dictation.microphone, d)))
-  overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) } })
+  overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) }, region: regionMoved, regionAct })
+  timelineHost({ exclude: excluded, bundles: () => prefs.privateApps, holding: recordingNow, privateNow: () => hidden(front),
+    clicks: (on) => void screenAsk("clicks", { on }).catch(() => {}) })
+  captureHost({ exclude: excluded, bundles: () => prefs.privateApps, hint, draw,
+    placeAt: async (p) => { const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null); return { ...await pointedAt(live.state.name, p, w?.window ? w : null, false), ...(w?.frame ? { frame: w.frame } : {}) } },
+    deliver: async (c) => String((await op("companion.capture", c)).said ?? "Sent") })
   drawingActs((a) => live.say({ t: "drawing-act", ...a }))
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu,
     // (Esc in its box ends the exchange; the box closed otherwise (clicked away, its close) leaves what it says going on)
@@ -136,6 +144,9 @@ export function stopHelper() {
   showOverlay(null)
   stopScreen()
   stopTakeover()
+  stopCapture()
+  keepTimeline(false)
+  quitRecorder()
   tray?.destroy()
   tray = null
   lock?.close()
@@ -173,6 +184,9 @@ function menuItems(): Electron.MenuItemConstructorOptions[] {
     // (what it said that wasn't seen: the menu bar icon's badge)
     { label: unread ? `What it said (${unread} new)` : "What it said", icon: icon("message-circle"), enabled: !!name && live.state.said.some((n) => n.agent === name && n.kind === "say"),
       click: () => openChat(name, screen.getCursorScreenPoint()) },
+    // (the screen kept in memory for "that, just now": said while it is, and turned off here)
+    { label: timelineOn() ? "Keeping the last 30 s of screen" : "Keep the last 30 s of screen", icon: icon("history"), sublabel: timelineOn() ? "In memory only, till you send it" : undefined,
+      type: "checkbox", checked: prefs.timeline, enabled: !!home, click: setting("plugin/companion", { timeline: !prefs.timeline }) },
     // (what it handed off: a click opens its tab in Vaultite)
     ...(jobs.length ? [{ type: "separator" as const }, { label: jobsHeader(jobs), type: "header" as const },
       ...jobs.map((j) => ({ label: j.title || "A job", sublabel: jobSublabel(j), icon: jobIcon(j.state), enabled: !!j.link, click: () => void openJob(j) }))] : []),
@@ -230,7 +244,7 @@ const DEFAULTS = { dictation: manifest("dictation"), companion: manifest("compan
 /** The home vault's settings that the helper follows, their defaults the manifests' (read every 10 s and after a change). */
 let prefs: Prefs = { fn: true, keys: DEFAULTS.dictation.keys?.default ?? [], talk: DEFAULTS.companion.keys?.default ?? [], privateApps: DEFAULTS.screen.private_apps?.default ?? [], dictation: {},
   voice: { mode: "auto", provider: "auto", name: "", eleven: { voice: "", model: "" }, speed: 1 }, sounds: true,
-  realtime: { front: "realtime", model: "gpt-realtime-2.1-mini", voice: "cedar" }, jobNews: String(DEFAULTS.companion.job_news?.default ?? "quiet") }
+  realtime: { front: "realtime", model: "gpt-realtime-2.1-mini", voice: "cedar" }, jobNews: String(DEFAULTS.companion.job_news?.default ?? "quiet"), timeline: false }
 let based = ""
 
 async function op(id: string, body: Record<string, unknown> = {}) {
@@ -253,8 +267,12 @@ async function refresh() {
   const [d, c, s] = await Promise.all([get("plugin/dictation"), get("plugin/companion"), get("plugin/screen")])
   prefs = prefsOf(d, c, s, DEFAULTS)
   followKeys()
+  ringFollows()
   draw()
 }
+/** The screen's timeline kept in memory only while asked for (the setting), the companion on, and this the app that
+ *  hears the keys. */
+const ringFollows = () => keepTimeline(((LIVE && !QUIET) || (QUIET && captureReal)) && prefs.timeline && !!live.state.name && live.state.mode !== "off")
 
 type Agent = { name: string; tint: string; state: string; t?: number; seen?: boolean; why?: string; app?: string; window?: number; find?: string; sx?: number; sy?: number; display?: number; path?: string
   /** Its place in the app, off a note: a pane (a terminal's row), the app's UI; a note's line. */
@@ -336,13 +354,16 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "mod") return modHeard(m)
   if (m.event === "chord") return chordHeard(m)
   if (m.event === "moved") return windowMoved(m)
+  if (m.event === "ink") return inkHeard(m)
   // (its exchange on: a click elsewhere moves on, Esc ends it, its voice with it)
-  if (m.event === "click") { if (takeoverClick(Number(m.x), Number(m.y))) return; const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
+  if (m.event === "click") { void clicked(Number(m.x), Number(m.y)); if (m.exchange === false) return; if (takeoverClick(Number(m.x), Number(m.y))) return; const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
   if (m.event === "esc") return endExchange()
   if (m.event === "front") {
     // (another app in front: they moved on)
     if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving()) moveOn()
     front = m as unknown as AppWindowInfo
+    happened({ t: Date.now(), kind: "app", ...(hidden(front) ? { app: "", name: "", private: true } : { app: front.bundle, name: front.name, title: front.title }) })
+    timelineRefollow()
     // (another app in front may cover or uncover what the cursors point at: looked at again)
     for (const e of placed.values()) e.at = 0
     host?.event("screen:front", hidden(front) ? { bundle: front.bundle, name: front.name, private: true } : { bundle: front.bundle, name: front.name, title: front.title, window: front.window, vaultite: !!front.vaultite })
@@ -537,6 +558,8 @@ type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; t
   press?: Press | null
   /** Its coming was cued. */
   cued?: boolean
+  /** Its words are in the timeline. */
+  told?: boolean
   /** What's at the point let go at, gathered as its words are finished (not after). */
   place?: Promise<{ w: AppWindowInfo | null; place: Record<string, unknown> }>
   /** The display as the key went down: a toast or a menu there then may be gone by the let-go. */
@@ -572,7 +595,7 @@ function talkAct(a: NonNullable<TalkAction>) {
   if (a === "send") {
     // (hands-free in its box: what's in it goes; held: let go here, it thinks here)
     if (session?.into === "summon" || (starting && startingTalk)) {
-      if (summon?.m.send("up")) { Object.assign(summon, { p: screen.getCursorScreenPoint(), released: Date.now() }); summon.place = gather(summon); voiceFront.release(whereOf(summon)) }
+      if (summon?.m.send("up")) { Object.assign(summon, { p: screen.getCursorScreenPoint(), released: Date.now() }); summon.place = gather(summon); if (!recordingNow()) voiceFront.release(whereOf(summon)) }
       // (something to send, said or drawn: it's heard as it's let go)
       if (summon && ((session && (session.finals.length || session.pending.trim())) || trailStrokes(summon.trail, Date.now()).length)) cue("sent")
       void inkOff(); draw()
@@ -625,7 +648,8 @@ async function startSummon() {
   void screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).then((w) => { s.w = w.window ? w : null }, () => {})
   draw()
   // (its realtime turn begins now: a let-go while the last press's words finish is this one's)
-  voiceFront.press(s)
+  // (while it records, their words are narration: the realtime voice never answers them)
+  if (!recordingNow()) voiceFront.press(s)
   // (pressed again as its last words are still being finished (or it speaks): those go first, then this one listens)
   for (let i = 0; i < 60 && session?.into === "summon"; i++) await new Promise((r) => setTimeout(r, 25))
   if (session?.into === "summon") s.press?.step("took over a press still finishing")
@@ -640,16 +664,26 @@ function stuck(s: Summon, phase: Phase) {
   missed(s, `stuck ${phase}`, phase === "thinking" ? "No answer came" : "Something went wrong")
   if (phase === "thinking") setTimeout(() => { if (summon === s) endExchange(false) }, MISSED_MS + 50)
 }
+/** A drag while the Talk key is held: a box (capture.ts), the pointer leaving no trail meanwhile. */
+let inkDown = false
+function inkHeard(m: Record<string, unknown>) {
+  const s = summon, phase = m.phase as "down" | "move" | "up", p = { x: Number(m.x), y: Number(m.y) }
+  if (phase === "up") inkDown = false
+  if (!s || !HELD.has(s.m.phase) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return
+  if (phase === "down") inkDown = true
+  regionDrag(phase, p, s.tint)
+}
 /** The pointer moved while it's fed: held, its trail (the last few seconds). */
 function trailed(p: Point, t: number) {
   const s = summon
-  if (!s || s.m.phase !== "listening") return
+  if (!s || s.m.phase !== "listening" || inkDown) return
   s.trail.push({ x: p.x, y: p.y, t })
   if (s.trail.length > 400 || t - s.trail[0].t > 4000) s.trail = s.trail.filter((q) => t - q.t <= 4000).slice(-400)
 }
 /** The summoned companion's ask (`text`; none, a point at what its trail marks): about the point let go at, with what's
  *  there, the display's picture and what Accessibility finds near it; its answer comes in its box, open by it. */
 async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; talk?: string[] } = {}) {
+  if (captured(s, text)) return
   const ink = drawnShapes(inkOf(trailStrokes(s.trail, s.released ?? Date.now())))
   if (!text && !ink.length) return missed(s, "nothing heard nor drawn")
   draw()
@@ -658,7 +692,7 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
   if (win?.frame) park(s.name, win.window, offsetIn(win.frame, s.p))
   // (the realtime voice's press: its few words go on, this answer said after them)
   if (!how.front) stopVoice()
-  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), voice: true, ...(s.released ? { keyUp: s.released } : {}),
+  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), ...(regionRect() ? { region: regionRect() } : {}), voice: true, ...(s.released ? { keyUp: s.released } : {}),
     ...(how.front ? { front: how.front, ...(how.talk?.length ? { talk: how.talk } : {}) } : {}) })
   if (!sent) return missed(s, "Vaultite's server isn't connected", "Can't reach Vaultite")
   s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot, ...(how.front ? { front: how.front } : {}) })
@@ -670,6 +704,17 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
   openAnswer(s.name, s.p, w?.window ? w : null, exchange?.name === s.name ? exchange.since : s.at)
 }
 
+/** Words for region capture (record this, stop, that just now; anything while it records is narration): handled
+ *  there, never an ask. */
+function captured(s: Summon, text: string) {
+  if (text && !s.told) { s.told = true; happened({ t: s.at, kind: "said", text }) }
+  if (!text || !captureHeard(text, s.at)) return false
+  voiceFront.stop()
+  s.press?.end("capture")
+  closeSummon(s, "capture")
+  draw()
+  return true
+}
 /** The window at the point let go at and what's there (pointedAt), its cursor left there only once it's asked. */
 async function gather(s: Summon) {
   const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
@@ -925,6 +970,11 @@ async function shotAt(p: Point) {
   const all = await screenAsk<{ windows?: { window: number; bundle: string; name: string }[] }>("windows").catch(() => ({ windows: [] }))
   return displayShot(p, [...ownWindows(), ...(all.windows ?? []).filter((w) => hidden(w)).map((w) => w.window)])
 }
+/** What a recording leaves out: our windows and a private app's (capture.swift leaves out their whole app too). */
+async function excluded() {
+  const all = await screenAsk<{ windows?: { window: number; bundle: string; name: string }[] }>("windows").catch(() => ({ windows: [] }))
+  return [...ownWindows(), ...(all.windows ?? []).filter((w) => hidden(w)).map((w) => w.window)]
+}
 type Near = { role: string; label: string; frame: Rect }
 /** The last ask's elements near the pointer, by id (global screen points): what `--ax` and drawings point at. */
 let lastNear: (Near & { id: string })[] = []
@@ -1038,6 +1088,7 @@ async function finish(s: Session, cancelled: boolean) {
     if (HELD.has(m.m.phase)) return failed(m, `the recognizer stopped while held${text ? "" : ", nothing heard"}`, "Stopped hearing you", text)
     // (the realtime voice gives its first sound: the summoned session is asked at once all the same, its answer said
     // after the realtime voice's few words, or dropped if it answered alone)
+    if (captured(m, text)) return
     const front = voiceFront.heard(m, text)
     if (front === "done") { m.press?.end("realtime", { front: "talk" }); return }
     if (!front) return sendSummon(m, text)
@@ -1622,7 +1673,7 @@ function draw() {
   const state = !s ? "watching" : listening ? "listening" : ph === "missed" || ph === "failed" ? "missed" : busy || (s && waiting(s)) ? "thinking" : "watching"
   const home = s && besidePointer(s.p, screen.getDisplayNearestPoint(s.p).bounds)
   const called: Scene["summon"] = s && home && (!listening || Date.now() - s.at > 120)
-    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...doing(s.name), ...(state === "missed" && s.missed ? { missed: s.missed } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}) } : null
+    ? { name: s.name, tint: s.tint, state, sx: home.x, sy: home.y, follow: true, ...(words ? { words } : {}), ...doing(s.name), ...(state === "missed" && s.missed ? { missed: s.missed } : {}), ...(listening && session?.into === "summon" ? { level: Math.round(session.level * 20) / 20 } : {}), ...(aimed && !listening ? { aim: { id: aimed.id, x: Math.round(aimed.x), y: Math.round(aimed.y) } } : {}), ...(inkDown && listening ? { drag: true } : {}) } : null
   followPointer(!!called, trailed)
   // (it came: a soft cue, once a press)
   if (called && s && !s.cued) { s.cued = true; if (listening) cue("listen") }
@@ -1633,7 +1684,8 @@ function draw() {
   const hintNow = hinted && hinted.until > Date.now() ? hinted : null
   const pill: Scene["pill"] = d && d.into === "field" ? { level: d.level, text: boxWords(d), pending: d.pending, ready: d.ready, ...(d.free ? { free: true } : {}) }
     : hintNow ? { level: 0, text: hintNow.text, ready: true, hint: true } : null
-  lastScene = { ...handOff(agents, called), pill, speaking: speakingNow }
+  lastScene = { ...handOff(agents, called), pill, speaking: speakingNow, region: regionScene() }
+  ringFollows()
   showOverlay(based || null, lastScene)
   badge()
   rides()
@@ -1688,7 +1740,22 @@ export async function voiceCall(name: string, args: unknown[]) {
   return speaker.sample(o.text.slice(0, 2000), o.provider === "elevenlabs" || o.provider === "soniox" ? o.provider : undefined)
 }
 
+/** A click anywhere, while the timeline keeps them: where, and what's there (Accessibility's; never a private app's). */
+async function clicked(x: number, y: number) {
+  if (!timelineOn() || hidden(front)) return
+  const t = Date.now(), under = await underAt({ x, y }).catch(() => null)
+  happened({ t, kind: "click", x, y, ...(under ? { under: under.text } : {}) })
+}
+/** The timeline asked (screen.timeline): a stretch of what happened, its clip saved only when asked. */
+async function timelineCall(a: unknown) {
+  const o = (a && typeof a === "object" ? a : {}) as Record<string, unknown>
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined), r = o.box as Rect | undefined
+  const box = r && [r.x, r.y, r.width, r.height].every((n) => typeof n === "number") ? r : undefined
+  return queryTimeline({ last: num(o.last), from: num(o.from), to: num(o.to), said: typeof o.said === "string" ? o.said : undefined,
+    kinds: Array.isArray(o.kinds) ? o.kinds.map(String) as never : undefined, clip: o.clip === true, ...(box ? { box } : {}) })
+}
 export async function screenCall(name: string, args: unknown[]) {
+  if (name === "screen:timeline") return timelineCall(args[0])
   const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { app?: unknown; window?: unknown; max?: unknown }
   const window = Number.isInteger(o.window) ? o.window as number : 0, bundle = typeof o.app === "string" ? o.app : ""
   // (whose window it is first: a private app's is never read)

@@ -389,6 +389,30 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     changed()
   }
 
+  /** A new job doing `task` (told where it runs: what it's given may depend on it), placed by the ask it came from (`m`)
+ *  unless `p` says where; started in its terminal. */
+  async function begin(ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: Moment | undefined, p: Record<string, unknown>) {
+    const where: Where = { ...await route(m, p), ...harnessOf(p) }
+    const told = typeof task === "string" ? task : await task(where)
+    const now = Date.now(), title = (str(p.title).trim() || told.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
+    const j: Job = { id: newId(), title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now, seen: false, log: [] }
+    all().unshift(j)
+    try {
+      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: jobTask(told, m, !!where.repo, where.moved ? { from: where.moved, on: where.label } : undefined), name: title, cwd: where.cwd,
+        ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
+        ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
+      j.terminal = r.id.split("@")[0]
+    } catch (e) {
+      j.now = (e as Error).message
+      move(j, "error")
+      changed()
+      throw e
+    }
+    j.carded = Date.now()
+    changed()
+    return j
+  }
+
   plugin.op({
     id: "companion.handoff",
     cli: "companion handoff",
@@ -430,27 +454,10 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
         if (str(p.say).trim()) await d.say(ctx, name, str(p.say))
         return cardOf(j)
       }
-      const m = d.askOf(name)
-      const where: Where = { ...await route(m, p), ...harnessOf(p) }
-      const now = Date.now(), title = (str(p.title).trim() || task.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
-      const j: Job = { id: newId(), title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now, seen: false, log: [] }
-      all().unshift(j)
-      try {
-        const r = await ctx.op("terminal.start", { agent: where.agent, prompt: jobTask(task, m, !!where.repo, where.moved ? { from: where.moved, on: where.label } : undefined), name: title, cwd: where.cwd,
-          ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
-          ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
-        j.terminal = r.id.split("@")[0]
-      } catch (e) {
-        j.now = (e as Error).message
-        move(j, "error")
-        changed()
-        throw e
-      }
-      j.carded = Date.now()
-      changed()
+      const j = await begin(ctx, task, d.askOf(name), p)
       d.did(name, "handoff")
       if (str(p.say).trim()) await d.say(ctx, name, str(p.say))
-      return { ...cardOf(j), why: where.why }
+      return { ...cardOf(j), why: j.where.why }
     },
     text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`,
     did: (p) => ({ action: "run", text: p.job ? `Told the job ${p.job} ${quoted(p.task, 60)}` : `Handed off ${quoted(p.task, 60)}`, by: d.who(p) }),
@@ -621,7 +628,11 @@ its terminal (companion job-open).
   }
 
   return {
-    list: all, cards, seen, jobsAgent,
+    list: all, cards, seen, jobsAgent, begin,
+    /** Job `id` told `text`, typed into its terminal (its conversation resumed if it closed). */
+    tell: (ctx: OpCtx, id: string, text: string) => steer(ctx, jobOf(id), text),
+    /** Where an ask over `o` would run here (its folder, repo, the preview it's on). */
+    placeHere: (o: Over) => placeHere(o, ""),
     line: () => jobsLine(all()),
     /** How fast the day's jobs got going, for companion timings. */
     timings: (day: string, dayOf: (t: number) => string) => jobTimings(all().filter((j) => dayOf(j.started) === day)),

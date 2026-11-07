@@ -127,6 +127,9 @@ above that), act, run it again, and never end your turn.
   colour and cursor. It answers in plain words, said and shown as they stream, its tags inline pointing and drawing as
   they come (`[point a3]`, `[ring a4 "Send"]`, `[ring "Send"]`: the thing on screen saying it; a pixel, `[point 830,273]`, only for what has neither); its tools are for the rest (a scratch pad, a page, a handoff). In an app or on a site, an ask
   carries the user's guide to it (`vau docs guides`); with none it says so, and you may offer once to write one.
+- Their box: held, a drag draws a box that stays on screen (an ask carries it: `their box`). "Record this", "stop" and
+  "that, just now" are the app's, never asks: it sends the clip, its frames and their words to the job on that surface
+  (else a new job when they said what to do, else Captures) and says where. Its last 30 s: `screen timeline`.
 - The realtime voice (the setting `voice_front`: realtime, once this machine has an OpenAI key, `vau voice key --provider
   openai`; `realtime_model`, `realtime_voice`): a Talk key's spoken ask on screen streams to OpenAI's speech-to-speech model,
   whose sound comes first. You're asked at once all the same (its moment says `asked through the realtime voice`): for

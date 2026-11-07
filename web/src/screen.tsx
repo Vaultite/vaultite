@@ -19,6 +19,8 @@ import { presence, type Mark as MarkKind } from "../../plugins/core/companion/lo
 import { arrowBox, boxAt, flagBox } from "../../plugins/core/companion/boxes"
 import { Chat, type ChatItem } from "../../plugins/core/companion/Chat"
 import { type DrawBridge, ScreenDrawings } from "./screendraw"
+import { Region, REGION_STYLE } from "./screenregion"
+import type { RegionScene } from "../../plugins/core/companion/clips"
 
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; width: number; height: number }
@@ -28,11 +30,13 @@ type Doing = { doing?: string; paused?: boolean }
 type Agent = { name: string; tint: string; state: string; sx: number; sy: number; t?: number; seen?: boolean; why?: string; from?: Point; leaving?: boolean; target?: Rect; say?: Say } & Doing
 type Summoned = Doing & { name: string; tint: string; state: "listening" | "thinking" | "watching" | "missed"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean
   missed?: string
-  follow?: boolean; aim?: { id: string; x: number; y: number }; level?: number }
+  follow?: boolean; aim?: { id: string; x: number; y: number }; level?: number; drag?: boolean }
 type Shown = { width: number; height: number; top: number; agents: Agent[]; summon: Summoned | null
   pill: { level: number; text: string; pending?: string; ready: boolean; free?: boolean; hint?: boolean } | null
   /** The cursor saying its answer aloud: its level comes with the places (`At.level`). */
-  speaking?: { name: string; level?: number } | null }
+  speaking?: { name: string; level?: number } | null
+  /** The user's box, in this display's points. */
+  region?: RegionScene | null }
 /** Only the places changed (helperlogic.ts splitScene): x, y and a target's frame. */
 type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number; hear?: number }
 type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
@@ -42,6 +46,7 @@ type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) =
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
   onCue?: (fn: (name: Cue) => void) => () => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
+  region?: (r: Rect) => void; regionAct?: (what: string) => void
   panel: { on: (fn: (d: PanelData) => void) => () => void; size: (h: number) => void; send: (text: string) => void; close: (esc?: boolean) => void; mic: () => void; more: (x: number, y: number) => void } }
 const api = (window as unknown as { vaultiteScreen?: Bridge }).vaultiteScreen
 
@@ -116,8 +121,8 @@ function cueNow(name: Cue) {
   playCue(audio, name)
 }
 function pointerMoved(p: [number, number, number, number]) {
-  // (held, the pointer leaves its trail)
-  if (view.s?.summon?.state === "listening") {
+  // (held, the pointer leaves its trail; a drag makes a box instead)
+  if (view.s?.summon?.state === "listening" && !view.s.summon.drag) {
     if (!trail.pts.length || trail.tint !== view.s.summon.tint) { trail.tint = view.s.summon.tint; trail.colour = getComputedStyle(document.documentElement).getPropertyValue(`--${trail.tint}`).trim() || "#e8590c" }
     trail.pts.push({ x: p[0], y: p[1], t: clock() })
     kick()
@@ -527,6 +532,7 @@ function Screen() {
       {s.agents.map((a) => <Cursor key={a.name} a={a} speaking={s.speaking?.name === a.name} />)}
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
       {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} speaking={!!s.summon && s.speaking?.name === s.summon.name} />}
+      {s.region && <Region r={s.region} top={s.top} grab={grab} moved={(r) => api?.region?.(r)} act={(w) => api?.regionAct?.(w)} />}
       {s.pill && (s.pill.hint ? <Hint text={s.pill.text} top={s.top} /> : <Pill p={s.pill} top={s.top} />)}
     </>
   )
@@ -566,6 +572,6 @@ const STYLE = `
 @keyframes pilot-float { 50% { translate: 0 -3px; } }
 @media (prefers-reduced-motion: reduce) { .companion-miss, .companion-glow, .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
 `
-document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE }))
+document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE + REGION_STYLE }))
 document.documentElement.style.background = "transparent"
 createRoot(document.getElementById("root")!).render(<StrictMode>{location.hash === "#panel" ? <Panel /> : <Screen />}</StrictMode>)

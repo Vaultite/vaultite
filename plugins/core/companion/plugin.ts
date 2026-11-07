@@ -23,6 +23,7 @@ import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMP
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
 import { type JobState, jobSpoken, jobTimingsText, jobTold } from "./jobs.ts"
+import { captureOps } from "./captures.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
@@ -75,6 +76,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** What was under their pointer, in words; on screen, that point (sx, sy), the picture's frame (`shotAt`: a pixel a
    *  point), what Accessibility found near it (`near`, ids for --ax) and what they drew (`ink`). */
   under?: string; sx?: number; sy?: number; shotAt?: Rect; near?: Near[]; ink?: Ink[]
+  /** The box they drew on screen and keep there (a drag with the Talk key held: what they record), screen points. */
+  region?: Rect
   /** The display's picture as the key went down too, when the screen changed while they spoke (a toast gone); over
    *  Vaultite, its toasts of the last minute (`notices`, in words). */
   shotDown?: string; shotDownAt?: Rect; notices?: string
@@ -914,7 +917,7 @@ function screenPlace(m: Record<string, unknown>) {
     ...(OWN_SHOT.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
     ...(OWN_SHOT.test(down) && OWN_SHOT.test(shot) ? { shotDown: down, ...(rect(m.shotDownAt) ? { shotDownAt: rect(m.shotDownAt)! } : {}) } : {}),
     ...(str(m.notices) ? { notices: str(m.notices).slice(0, 1200) } : {}),
-    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}), ...(displays.length ? { displays } : {}) }
+    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}), ...(displays.length ? { displays } : {}), ...(rect(m.region) ? { region: rect(m.region)! } : {}) }
 }
 /** What the last ask on screen found near the pointer, by agent: what `--ax` points at. */
 const nearBy = new Map<string, Near[]>()
@@ -2332,6 +2335,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
     for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height} (its box ${k.box.x},${k.box.y},${k.box.width},${k.box.height}): ${k.points.map((p) => p.join(",")).join(" ")}`)
+    if (m.region) out.push(`  their box (one they drew and keep on screen; "record this" records it): sx ${m.region.x}-${m.region.x + m.region.width}, sy ${m.region.y}-${m.region.y + m.region.height}`)
     if (m.near?.length) out.push("  near their pointer (point at one: --ax <id>):", ...m.near.map((e) => `    ${e.id} ${e.role} ${JSON.stringify(e.label)} at ${e.frame.x},${e.frame.y} ${e.frame.width}×${e.frame.height}`))
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
     // (its Talk key's, in an app or on a site: the user's guide to it, once a message)
@@ -2428,6 +2432,7 @@ const jobs = jobOps(plugin, {
   moved: (j, from) => void jobNews(j.title, j.state, from).catch(() => {}),
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
+captureOps(plugin, jobs)
 /** The coding agents it runs, as a terminal names them (claude_agent), and for what (the service "agents-used:companion"):
  *  its chat's while it's on, then its jobs'. `agent-limits` with `for: companion` shows these accounts first. */
 plugin.provide("agents-used:companion", (): AgentUse[] => [
