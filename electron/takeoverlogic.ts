@@ -83,6 +83,26 @@ export const declined: Record<Exclude<Answer, "yes">, string> = {
   forgotten: "no answer for minutes, the offer is gone: don't do it; offer again only if they ask you to",
 }
 
+/** The offer a spoken yes or no is for, when several are up: the one under their pointer, else the nearest to it. */
+export function aimedAt(cards: { id: string; rect: Rect }[], p: { x: number; y: number }): string | null {
+  let best: { id: string; d: number } | null = null
+  for (const c of cards) {
+    const r = c.rect, dx = Math.max(r.x - p.x, 0, p.x - (r.x + r.width)), dy = Math.max(r.y - p.y, 0, p.y - (r.y + r.height))
+    const d = dx * dx + dy * dy
+    if (!best || d < best.d) best = { id: c.id, d }
+  }
+  return best?.id ?? null
+}
+
+/** Where a new card goes: by `at`, moved down past the cards already up that it would cover. */
+export function cardSpot(at: { x: number; y: number }, size: { width: number; height: number }, area: Rect, up: Rect[]): { x: number; y: number } {
+  const x = Math.round(Math.min(Math.max(at.x + 18, area.x + 8), area.x + area.width - size.width - 8))
+  let y = Math.round(Math.max(at.y + 18, area.y + 8))
+  const covers = (r: Rect) => x < r.x + r.width && r.x < x + size.width && y < r.y + r.height && r.y < y + size.height
+  for (let hit = up.find(covers); hit; hit = up.find(covers)) y = hit.y + hit.height + 6
+  return { x, y: Math.round(Math.min(y, area.y + area.height - size.height - 8)) }
+}
+
 /** Whether their yes still holds after the driving ends this way: a step done keeps it, them taking over or the
  *  exchange ending doesn't. */
 export const keepsYes = (why: string) => why === "done"

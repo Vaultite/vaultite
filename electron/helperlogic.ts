@@ -310,3 +310,25 @@ export function floatingOver(ws: ScreenWindow[], display: Rect, hidden: (w: Scre
     && w.frame.y < display.y + display.height && w.frame.y + w.frame.height > display.y)
     .slice(0, most).map((w) => ({ app: w.bundle, name: w.name, frame: { x: Math.round(w.frame!.x), y: Math.round(w.frame!.y), width: Math.round(w.frame!.width), height: Math.round(w.frame!.height) } }))
 }
+
+/** What `open` is run with to open what a user could (a web page in an app, an app, a file or folder in its app, any
+ *  address: System Settings' panes, mail...), or why not. An app is a bundle id or a name; `~/` is home. */
+export function openArgs(o: { url?: string; app?: string; path?: string }, home: string): string[] | { why: string } {
+  const url = (o.url ?? "").trim(), app = (o.app ?? "").trim(), file = (o.path ?? "").trim()
+  if (!url && !app && !file) return { why: "give a url, an app or a path" }
+  if (url && file) return { why: "a url or a path, not both" }
+  // (an address of a scheme: no script, no file: a path goes as one)
+  if (url && (!/^[a-z][\w+.-]*:\S+$/i.test(url) || /^(javascript|data|file|vbscript):/i.test(url))) return { why: `${url} isn't an address to open` }
+  if (app && !/^[\p{L}\p{N} ._&'()+-]{1,80}$/u.test(app)) return { why: `${app} isn't an app's name` }
+  const at = file === "~" ? home : file.startsWith("~/") ? `${home}/${file.slice(2)}` : file
+  if (file && !at.startsWith("/")) return { why: "a path from / or ~/" }
+  const by = app ? (/^[\w-]+(\.[\w-]+)+$/.test(app) && !/\.app$/i.test(app) ? ["-b", app] : ["-a", app]) : []
+  return [...by, ...(url ? [url] : at ? [at] : [])]
+}
+
+/** The app an address opens in, when the address says (System Settings' panes): what's in front once it's open. */
+export function openedBundle(o: { url?: string; app?: string }): string {
+  if (o.app && /^[\w-]+(\.[\w-]+)+$/.test(o.app)) return o.app
+  if (/^x-apple\.systempreferences:/i.test(o.url ?? "") || /^system (settings|preferences)$/i.test(o.app ?? "")) return "com.apple.systempreferences"
+  return ""
+}

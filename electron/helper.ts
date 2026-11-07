@@ -15,7 +15,7 @@ import { land, landedSaid } from "./dictationroam.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
@@ -318,9 +318,9 @@ const live = (() => {
       // (its answer stopped in the app: Esc, its box closed)
       else if (m.t === "hush") return stopVoice()
       // (a step in another app, or their spoken answer to its offer: takeover.ts')
-      else if (m.t === "takeover" || m.t === "takeover-answer") return takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt, redraw: draw })
-      // (a web page asked for in their browser: opened there)
-      else if (m.t === "open-url") return openIn(m)
+      else if (m.t === "takeover" || m.t === "takeover-answer" || m.t === "confirm") return takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt, redraw: draw })
+      // (what the companion opens on this Mac: an app, a file, a page in their browser, a System Settings pane)
+      else if (m.t === "open") return void openOn(m)
       // (words a mark names, found in the window asked about)
       else if (m.t === "find") return void findIn(m)
       // (every thing in the window asked about, in the UI model's shape: a check or an anchor reads them)
@@ -365,7 +365,7 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "esc") return endExchange()
   if (m.event === "front") {
     // (another app in front: they moved on)
-    if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving()) moveOn()
+    if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving() && Date.now() > openedUntil) moveOn()
     front = m as unknown as AppWindowInfo
     happened({ t: Date.now(), kind: "app", ...(hidden(front) ? { app: "", name: "", private: true } : { app: front.bundle, name: front.name, title: front.title }) })
     timelineRefollow()
@@ -951,19 +951,53 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of">) {
   else if (r.code === "model") notice("model", "Parakeet's model isn't on this Mac", "Handy or Hex downloads it, or pick Apple's recognizer in Dictation's settings.")
 }
 
-/** A web page the companion opens in the app the user asked from (their browser): a new tab there, in front. */
-function openIn(m: Record<string, unknown>) {
-  const url = String(m.url ?? ""), bundle = String(m.app ?? ""), reply = (r: object) => live.say({ t: "takeover-done", id: m.id, ...r })
-  if (!/^https?:\/\/\S+$/i.test(url) || !/^[\w.-]+$/.test(bundle)) return void reply({ ok: false, why: "failed", text: "that isn't a web address and an app" })
-  if (QUIET) return void reply({ ok: true, how: "open" })
-  execFile("/usr/bin/open", ["-b", bundle, url], { timeout: 10_000 }, (e) => reply(e ? { ok: false, why: "failed", text: `${bundle} couldn't open it` } : { ok: true, how: "open" }))
+/** While what the companion opened comes to the front: that's its doing, not their moving on. */
+let openedUntil = 0
+/** What the companion opens on this Mac, as a user could, then what's in front and in it, by id (as an ask's elements:
+ *  what it points at, rings and acts on next). */
+async function openOn(m: Record<string, unknown>) {
+  const reply = (r: object) => live.say({ t: "takeover-done", id: m.id, ...r })
+  const o = { url: typeof m.url === "string" ? m.url : "", app: typeof m.app === "string" ? m.app : "", path: typeof m.path === "string" ? m.path : "" }
+  const args = openArgs(o, os.homedir())
+  if (!Array.isArray(args)) return reply({ ok: false, why: "failed", text: args.why })
+  if (o.path && !fs.existsSync(args.at(-1)!)) return reply({ ok: false, why: "failed", text: `there's no ${o.path} on this Mac` })
+  if (QUIET) return reply({ ok: true, how: "open", args })
+  const was = front?.window, wasTitle = front?.title, want = openedBundle(o)
+  openedUntil = Date.now() + 10_000
+  const failed = await new Promise<string>((done) => execFile("/usr/bin/open", args, { timeout: 10_000 }, (e, _out, err) => done(e ? String(err || e.message).trim().split("\n")[0] : "")))
+  if (failed) return reply({ ok: false, why: "failed", text: `it didn't open: ${failed}` })
+  // (its window, once there: an app starting takes seconds; then a moment for its content, which System Settings fills after)
+  let w: AppWindowInfo | null = null
+  for (const until = Date.now() + 8000; Date.now() < until;) {
+    await new Promise((r) => setTimeout(r, 150))
+    if (!want && !(front && front.window !== was)) continue
+    w = await screenAsk<AppWindowInfo>("window", { window: 0, bundle: want || front?.bundle || "" }).catch(() => null)
+    if (w?.window) break
+  }
+  if (!w?.window || hidden(w)) return reply({ ok: true, how: "open" })
+  // (an app already open shows another pane in the same window: its title changes; then its elements, once they settle)
+  for (const until = Date.now() + 1500; was === w.window && Date.now() < until && w.title === wasTitle;) {
+    await new Promise((r) => setTimeout(r, 150))
+    w = (await screenAsk<AppWindowInfo>("window", { window: w.window }).catch(() => null)) ?? w
+  }
+  const f = w.frame
+  let near: Near[] = []
+  for (let n = -1, since = Date.now(); f && Date.now() - since < 4000 && (near.length !== n || Date.now() - since < 1200);) { n = near.length; await new Promise((r) => setTimeout(r, 400)); near = await nearIn(f, w.window) }
+  reply({ ok: true, how: "open", app: w.name, bundle: w.bundle, title: w.title, ...(f ? { frame: f } : {}), near })
+}
+/** A window's elements by id, from its middle out: what an ask's would be with the pointer there (finds search it). */
+async function nearIn(f: Rect, window: number) {
+  nearPoint = { x: Math.round(f.x + f.width / 2), y: Math.round(f.y + f.height / 2) }
+  nearWindow = window
+  lastNear = (await axThings(nearPoint, Math.max(f.width, f.height), 40, window)).map((e, i) => ({ ...e, id: `a${i + 1}` }))
+  return lastNear
 }
 
 /** The element saying a mark's words in the window the last ask was over: its whole Accessibility tree, not only by
  *  the pointer. Answered as a step is. */
 async function findIn(m: Record<string, unknown>) {
   const p = nearPoint ?? screen.getCursorScreenPoint()
-  const el = byLabel(await axThings(p), String(m.text ?? ""))
+  const el = byLabel(await axThings(p, 5000, 400, nearWindow), String(m.text ?? ""))
   live.say({ t: "takeover-done", id: m.id, ...(el ? { ok: true, found: { id: "", ...el } } : { ok: false, why: "none" }) })
 }
 
@@ -993,17 +1027,18 @@ async function excluded() {
 type Near = Thing & { ax?: string }
 /** The last ask's elements near the pointer, by id (global screen points): what `--ax` and drawings point at. */
 let lastNear: (Near & { id: string })[] = []
-/** Where the last ask's elements were looked for: the window a find searches. */
-let nearPoint: Point | null = null
+/** Where the last ask's elements were looked for: the window a find searches (by its number, one the companion opened). */
+let nearPoint: Point | null = null, nearWindow = 0
 /** Every thing Accessibility lists in the window under `p` (not Vaultite's), nearest first: what a check or an anchor
  *  reads in another app. */
-export async function axThings(p: Point, radius = 5000, most = 400): Promise<Near[]> {
-  const r = await screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius, max: most }).catch(() => null)
+export async function axThings(p: Point, radius = 5000, most = 400, window = 0): Promise<Near[]> {
+  const r = await screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius, max: most, ...(window ? { window } : {}) }).catch(() => null)
   return (r?.elements ?? []).flatMap((e) => thingFrom(e) ?? [])
 }
 /** What Accessibility finds near `p`, nearest first, each with an id the agent points by (companion say --ax a3). */
 async function nearAt(p: Point) {
   nearPoint = p
+  nearWindow = 0
   const r = await screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius: 260, max: 30 }).catch(() => null)
   lastNear = (r?.elements ?? []).flatMap((e) => thingFrom(e) ?? []).map((e, i) => ({ ...e, id: `a${i + 1}` }))
   return lastNear

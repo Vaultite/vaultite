@@ -508,7 +508,7 @@ func walk(_ root: AXUIElement, max: Int, find: String?) -> (text: String, found:
  *  words, frame, state, actions and the labelled things it's in, nearest first (the UI model's shape: uimodel.ts);
  *  whole subtrees off the area are skipped. Bounded in elements and time. */
 let NEAR_ROLES: Set<String> = ["AXButton", "AXLink", "AXStaticText", "AXTextField", "AXTextArea", "AXHeading", "AXCell", "AXRow", "AXImage", "AXMenuItem",
-  "AXMenuBarItem", "AXCheckBox", "AXRadioButton", "AXTab", "AXPopUpButton", "AXComboBox", "AXSearchField", "AXSlider", "AXDisclosureTriangle", "AXMenuButton", "AXIncrementor"]
+  "AXMenuBarItem", "AXCheckBox", "AXRadioButton", "AXTab", "AXPopUpButton", "AXComboBox", "AXSearchField", "AXSlider", "AXDisclosureTriangle", "AXMenuButton", "AXIncrementor", "AXSwitch", "AXToggle"]
 /** Containers whose words name what's in them (a row in "Sidebar"). */
 let HOLDER_ROLES: Set<String> = ["AXGroup", "AXScrollArea", "AXTabGroup", "AXSplitGroup", "AXToolbar", "AXList", "AXOutline", "AXTable", "AXSheet", "AXWindow", "AXWebArea", "AXRadioGroup", "AXBrowser"]
 /** An element's state in the model's words, as far as Accessibility tells it. */
@@ -538,9 +538,10 @@ func innerText(_ el: AXUIElement, _ depth: Int) -> String {
   return ""
 }
 func actionNames(_ el: AXUIElement) -> [String] { var a: CFArray?; return AXUIElementCopyActionNames(el, &a) == .success ? (a as? [String] ?? []) : [] }
-func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int) -> [String: Any] {
+func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int, in id: Int = 0) -> [String: Any] {
   let area = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
-  guard let w = windowHere(x, y), case let pid = ownerOf(w), pid != vaultitePid,
+  // (a window by its number, one just opened: whatever is above it; else the one there)
+  guard let w = id > 0 ? windowNumbered(id) : windowHere(x, y), case let pid = ownerOf(w), pid != vaultitePid,
         let ax = axWindow(pid, w[kCGWindowNumber as String] as? Int ?? 0) else { return ["ok": false, "elements": []] }
   var found: [(Double, [String: Any])] = [], seen = 0
   let deadline = Date().addingTimeInterval(0.8)
@@ -617,7 +618,7 @@ func handle(_ req: [String: Any]) -> [String: Any] {
       m["layer"] = layerOf(w); m["frame"] = rectJSON(boundsOf(w)); m["seen"] = seen(w); m["vaultite"] = ownerOf(w) == vaultitePid
       return m
     }]
-  case "near": return near(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["radius"] as? Double ?? 260, req["max"] as? Int ?? 30)
+  case "near": return near(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["radius"] as? Double ?? 260, req["max"] as? Int ?? 30, in: id)
   case "focus": return focus(keep: req["keep"] as? Bool ?? false)
   case "kept": return keptField(req["do"] as? String ?? "", req["text"] as? String ?? "")
   case "insert": return insert(req["text"] as? String ?? "")

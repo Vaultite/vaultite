@@ -2,6 +2,7 @@
 // margin comments, suggestions, edits typed in). Comments and suggestions are kept in a sidecar per note; the rest is live.
 import { AsyncLocalStorage } from "node:async_hooks"
 import fs from "node:fs"
+import os from "node:os"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
@@ -16,7 +17,7 @@ import { partialArgs } from "./partial.ts"
 import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
 import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from "./text.ts"
 import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
-import { NEVER_READ, readableDirs } from "./reach.ts"
+import { AUTO_RULES, NEVER_READ, NEVER_RUN, readableDirs } from "./reach.ts"
 import { screenDrawings } from "./drawings.ts"
 import { bestFound, byLabel, checkMarks, type Found, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
@@ -27,7 +28,7 @@ import { captureOps } from "./captures.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
-import { doneText, effectOf, isBrowser, stepOf, takeovers } from "./takeover.ts"
+import { doneText, effectOf, isBrowser, macOpen, nearText, stepOf, takeovers } from "./takeover.ts"
 import { check as checkOn, listView, parseCondition, thingFrom, thingText, type Verdict } from "./uimodel.ts"
 export { nearest } // (its tests reach it through the plugin)
 
@@ -874,7 +875,7 @@ async function windowRects(places: string[], near?: { x: number; y: number }): P
  *  (Accessibility); over Vaultite, its window's and its web pages', the best nearest what they drew or pointed at. */
 async function screenFind(a: string, text: string): Promise<ScreenRect | null> {
   const ask = askOf(a), near = byLabel(nearBy.get(key(a)) ?? [], text)
-  if (awayIn([ask].filter((m) => !!m))) {
+  if (awayIn([ask].filter((m) => !!m)) || (openedFor.has(key(a)) && openedFor.get(key(a)) === ask)) {
     if (near) return rectOfNear(near)
     const r = await takeover.find(text)
     return r.ok && r.found ? rectOfNear(r.found) : null
@@ -1709,10 +1710,13 @@ plugin.onEvent({ types: ["terminal.agent-missing"] }, (ev) => {
 
 /** A tool served to a chat session, run here: claude-code's chat relays its calls. */
 export type ChatTool = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; run: (args: unknown, use?: string) => Promise<unknown>
-  streams?: boolean; ends?: boolean; stream?: (use: string, json: string, end?: "done" | "stop") => void }
+  streams?: boolean; ends?: boolean; hidden?: boolean; stream?: (use: string, json: string, end?: "done" | "stop") => void }
 export type ChatHow = { cwd?: string; account?: string; model?: string; effort?: string; append?: string; title?: string; by?: string; inbox?: boolean; allowed?: string[]; denied?: string[]; dirs?: string[]; tools?: ChatTool[]
-  /** Its permission mode (Claude Code's): the summoned session's is dontAsk, what isn't allowed refused at once. */
+  /** Its permission mode (Claude Code's): the summoned session's is auto, what its classifier blocks offered to them. */
   mode?: "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
+  /** Its permission asks and auto mode's blocks answered by its hidden tool of that name; commands never run (regex
+   *  sources); auto mode's rules (claude-code's chathost.ts). */
+  confirm?: string; never?: string[]; autoMode?: Record<string, string[]>
   /** Pictures sent with its message (an ask's screenshot); `quick`: no thinking first. */
   images?: string[]; quick?: boolean
   /** A lean session's whole system prompt and the few Claude Code tools it has; its words as written (`onText`). */
@@ -1805,14 +1809,32 @@ const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "see", "act", "check", "
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
 const SUMMONED_BUILTINS = ["Bash"]
-/** What it runs, never asked (dontAsk: anything else is refused at once, never a check that keeps them waiting
- *  while they talk): the long session's commands, showing things in their window, and looking around (READ_ONLY). */
+/** What it runs at once, no classifier's check keeping them waiting while they talk: the long session's commands,
+ *  showing things in their window, and looking around (READ_ONLY). The rest auto mode decides, its blocks offered. */
 const SUMMONED_ALLOWED = [...ALLOWED, "Bash(vau --help)", "Bash(vau open:*)", "Bash(vau commands:*)", "Bash(vau command companion:session:*)", "Bash(vau screen:*)",
   "Bash(tailscale serve status:*)", "Bash(tailscale status:*)", "Bash(lsof:*)", "Bash(git -C * log *)", "Bash(git -C * show *)"]
 /** Where its read-only commands (ls, cat, grep...: Claude Code tells them from writes, redirects too) may look unasked
  *  (reach.ts), never home's dotfiles or Library (keys, cookies, mail); git's -c could run a pager, so it's refused. */
 const READ_ONLY = { dirs: readableDirs().dirs,
   denied: [`/${path.resolve(LOCAL)}`].map((d) => `Read(${d}/**)`).concat(NEVER_READ, "Bash(git * --output*)", "Bash(git * -c *)", "Bash(git * --config-env*)", "Bash(git * --exec-path*)") }
+const escaped = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+/** What a command it may not run unasked becomes: a one-line offer by their pointer ("Run `…`?"), said yes to or
+ *  clicked, then run; any other tool's ask, a no. Answers the keeper's gate (claude-code's chathost.ts, confirm). */
+function confirmTool(name: () => string): ChatTool {
+  return { name: "confirm", hidden: true, description: "", schema: {}, run: async (args) => {
+    const a = (args ?? {}) as { tool?: string; input?: { command?: unknown; description?: unknown }; blocked?: boolean }
+    const cmd = typeof a.input?.command === "string" ? a.input.command.trim() : ""
+    if (a.tool !== "Bash" || !cmd) return { yes: false, message: "Only shell commands are offered to them: do it with your own tools, or hand it off." }
+    const who = name(), what = typeof a.input?.description === "string" && a.input.description.trim() ? a.input.description.trim().replace(/\.?$/, ".") : ""
+    did(who, "result", undefined, `offered: ${cmd.slice(0, 300)}`)
+    const r = await takeover.confirm(`Run \`${cmd.length > 120 ? `${cmd.slice(0, 119)}…` : cmd}\`?`, `${what ? `${what} ` : ""}Say yes or click Run.`, { agent: who, tint: agentOf(who).tint })
+    did(who, "result", undefined, `offer ${r.ok ? "taken" : r.why === "none" ? "not shown (no Mac's screen)" : `declined (${r.why ?? "no"})`}`)
+    if (r.ok) return { yes: true }
+    return { yes: false, message: r.why === "none" ? "There's no screen of theirs to ask on: tell them the command in a few words, or hand it off." : r.why === "asked"
+      ? "They asked something else instead: don't run it; answer that (your next message)." : "Not run: the user said no to it on its offer. Tell them you left it, in a few words (it was their no: no hooks, blocks or approvals), and don't try it another way." }
+  } }
+}
+
 /** An ask's window text it's given at most (chars), the lines by what's at their pointer first: the rest is in its
  *  picture, and every ask's text stays in its history. */
 const SCREEN_CHARS = 4000
@@ -1827,9 +1849,9 @@ const lane = (): Lane => {
     file: () => `${plugin.localDir()}/summoned.json`, chat, name: ownName, model: summonedModel,
     // (low effort: its thinking, which can't be turned off, took 1 to 2 s of each answer at the account's high)
     options: (model) => ({ cwd: plugin.vault.path, account: agentSetting().split("_")[1] || undefined, model, effort: "low", quick: true, system: SUMMONED_PROMPT,
-      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, mode: "dontAsk", allowed: SUMMONED_ALLOWED,
-      denied: ["Bash(vau companion:*)", ...READ_ONLY.denied], dirs: READ_ONLY.dirs,
-      tools: toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()) }),
+      builtins: SUMMONED_BUILTINS, title: "Companion: summoned", by: "companion", inbox: false, mode: "auto", allowed: SUMMONED_ALLOWED,
+      denied: ["Bash(vau companion:*)", ...READ_ONLY.denied], dirs: READ_ONLY.dirs, confirm: "confirm", never: [...NEVER_RUN, escaped(path.resolve(LOCAL))], autoMode: AUTO_RULES,
+      tools: [...toolsFor(ownName(), SUMMONED_TOOLS, () => lane().busy()), confirmTool(ownName)] }),
     acts: () => { const [say, look, draw] = toolsFor(ownName(), SUMMONED_ACTS, () => lane().busy()); return { say, look, draw } },
     found: async (text) => {
       if (askOf(ownName())?.path) return null
@@ -3169,35 +3191,49 @@ plugin.around("tabs.focus", async (call, next) => {
   if (name && tab) { setAgent(name, { ui: `tab:${tab}`, state: "writing", pointed: Date.now() }); await new Promise((done) => setTimeout(done, LAND_MS)) }
   return next()
 })
+/** The ask a Mac open answered, by agent: its words name what's in that window now (screenFind looks there). */
+const openedFor = new Map<string, Moment>()
 plugin.op({
   id: "companion.open",
   cli: "companion open",
-  summary: "Open a note, a folder, a view or a web page in the user's window, your cursor flying there so they see it.",
-  help: `For what they asked to see: a pinned page, a note, a site. It answers the pane it opened (a web page's: see and act
-work there).
+  summary: "Open what the user asked to see, your cursor flying there: a note, a folder, a view or a web page in their window, or on their Mac an app, a file or folder in its app, any address (a System Settings pane).",
+  help: `For what they asked to see: a pinned page, a note, a site; on their Mac, what they could open themselves (an app,
+~/Downloads in Finder, a System Settings pane by its address). It answers the pane it opened (a web page's: see and act
+work there), or the Mac's window in front and what's in it by id (point, ring and act on those).
 
   vau companion open Personal/Dashboards/Today.md
-  vau companion open https://example.com --split right`,
+  vau companion open https://example.com --split right
+  vau companion open "x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
+  vau companion open ~/Downloads
+  vau companion open --app Calculator`,
   kind: "write",
   lock: false,
-  params: { path: { type: "string", required: true, description: "a vault path (or as they say it: Today), a folder, a view (view:graph) or a web address" },
+  params: { path: { type: "string", description: "a vault path (or as they say it: Today), a folder, a view (view:graph), a web address, any other address (x-apple.systempreferences:..., mailto:...), or a path on their Mac (~/Downloads)" },
+    app: { type: "string", description: "an app on their Mac to open (its name, Calculator, or bundle id), with path or the address in it if given" },
     split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down)" }, newTab: { type: "boolean", description: "in a new tab" },
     vaultite: { type: "boolean", description: "a web page in Vaultite even when they asked from their browser (where it opens, a new tab, by default)" }, as: AS },
   args: ["path"],
   run: async (p, ctx) => {
-    const name = who(p), path = str(p.path), m = askOf(name)
+    const name = who(p), path = str(p.path), app = str(p.app), m = askOf(name)
+    if (!path && !app) throw new OpError("give a path or an app")
     did(name, "open")
     // (asked from their browser: a page opens there, where they are, not in a pane of Vaultite's behind it)
-    if (/^https?:\/\/\S+$/i.test(path) && p.vaultite !== true && m?.summoned && m.app && isBrowser(m.app)) {
-      const r = await takeover.open(path, m.app)
-      if (!r.ok) throw new OpError(`it didn't open in ${m.app}: ${r.text ?? r.why ?? "no answer"} (vaultite: true opens it in Vaultite)`, 409)
-      return { path, pane: null, in: m.app }
+    const browser = /^https?:\/\/\S+$/i.test(path) && !app && p.vaultite !== true && m?.summoned && m.app && isBrowser(m.app) ? m.app : ""
+    const mac = browser ? { url: path, app: browser } : macOpen(path, app, plugin.vault.path, os.homedir())
+    if (mac) {
+      const r = await takeover.open(mac)
+      if (!r.ok) throw new OpError(`it didn't open${mac.app ? ` in ${mac.app}` : ""}: ${r.text ?? r.why ?? "no answer"}${browser ? " (vaultite: true opens it in Vaultite)" : ""}`, 409)
+      if (r.near?.length) { nearBy.set(key(name), r.near); if (m) openedFor.set(key(name), m) }
+      if (r.frame) { const f = r.frame; void resolve(target({ sx: Math.round(f.x + f.width / 2), sy: Math.round(f.y + Math.min(f.height / 2, 120)) }, true), name).then((t) => setAgent(name, { ...t, state: acting(name), pointed: Date.now() }), () => {}) }
+      return { path: path || app, pane: null, in: r.app || mac.app || "", title: r.title ?? "", near: r.near ?? [], browser: !!browser }
     }
     const r = await openSeen(name, path, () => ctx.op("ui.open", { path, ...(p.split ? { split: p.split } : {}), ...(p.newTab ? { newTab: true } : {}) }))
     return { path, pane: r.pane ?? null }
   },
-  text: (r) => (r.in ? `Opened ${r.path} in ${r.in}, a new tab there in front of them.` : `Opened ${r.path}${r.pane ? ` (pane ${r.pane})` : ""}.`),
-  did: (p) => ({ action: "ui", text: `Opened ${String(p.path)}`, paths: [], by: who(p) }),
+  text: (r) => (r.browser ? `Opened ${r.path} in ${r.in}, a new tab there in front of them.`
+    : r.in !== undefined ? `Opened ${r.path} on their Mac${r.in ? `: ${r.in}${r.title ? `, "${r.title}"` : ""} is in front` : ""}.${nearText(r.near as never, "In it now (point, ring or act by id)")}`
+    : `Opened ${r.path}${r.pane ? ` (pane ${r.pane})` : ""}.`),
+  did: (p) => ({ action: "ui", text: `Opened ${String(p.path || p.app)}`, paths: [], by: who(p) }),
 })
 
 const followText = (f: Follow) => `${f.id}: ${f.pane ? `pane ${f.pane}` : f.tab ? `tab ${f.tab}` : f.group ? `tab group ${f.group}` : f.ui}${f.title ? ` "${f.title}"` : ""}`

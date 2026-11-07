@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion does things on your Mac**: asked by its Talk key, it opens apps, files, folders and any System
+  Settings pane, then points at the setting itself; it runs commands too, and one that needs your yes (any change to
+  your Mac's settings) shows as "Run `…`?" by your pointer: say yes or click Run. Keys and secrets never run.
 - **Clicks work while you talk to the companion**: with the Talk key held, a drag still draws or makes the capture
   box, but a plain click goes through to the app as a normal click (never a Control-click), and the companion is
   told what you clicked. It no longer says its own working-out aloud between steps, and a handoff to a folder that

@@ -1,5 +1,5 @@
 // The Agent SDK in a test's chat keeper, no model: "call|stream|cut|hold <tool> <json>" calls a tool (streamed; cut off; held mid-text till $CHATD_TEST_RELEASE's file is there),
-// "[hold ]words <text>" streams it, "slow" waits, "list" says how, "crash" fails it (once $CHATD_TEST_CRASH's file is there).
+// "[hold ]words <text>" streams it, "slow" waits, "list" says how, "crash" fails it (once $CHATD_TEST_CRASH's file is there), "blocked <command>" is a shell call auto mode refuses.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -83,6 +83,22 @@ export function query({ prompt, options }: Any) {
     push({ type: "assistant", message: { id: mid, content: [{ type: "text", text }] }, uuid: crypto.randomUUID(), ...base })
     push({ type: "result", subtype: "success", is_error: false, duration_ms: 10, result: text, uuid: crypto.randomUUID(), ...base })
   }
+  /** A shell call the classifier blocks, as Claude Code goes: its PreToolUse hooks first (one may allow or deny it),
+   *  else blocked, its PermissionDenied hooks told, and on their retry the same again. */
+  const shell = async (command: string, tries = 2): Promise<string> => {
+    const use = `toolu_${crypto.randomUUID().slice(0, 8)}`, input = { command, description: "Writes a test setting" }, signal = new AbortController().signal
+    for (const m of options.hooks?.PreToolUse ?? []) if (!m.matcher || new RegExp(m.matcher).test("Bash"))
+      for (const h of m.hooks) {
+        const o = (await h({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: input, tool_use_id: use }, use, { signal }))?.hookSpecificOutput
+        if (o?.permissionDecision === "allow") return `ran ${command}`
+        if (o?.permissionDecision === "deny") return `denied ${command}: ${o.permissionDecisionReason}`
+      }
+    if (!tries) return `blocked ${command} again`
+    let retry = false
+    for (const m of options.hooks?.PermissionDenied ?? []) for (const h of m.hooks)
+      retry ||= (await h({ hook_event_name: "PermissionDenied", tool_name: "Bash", tool_input: input, tool_use_id: use, reason: "judged dangerous" }, use, { signal }))?.hookSpecificOutput?.retry === true
+    return retry ? shell(command, tries - 1) : `blocked ${command}`
+  }
   void (async () => {
     push({ type: "system", subtype: "init", model: options.model ?? "claude-haiku-5", permissionMode: options.permissionMode ?? "default", cwd: options.cwd, ...base })
     for await (const m of prompt) {
@@ -103,9 +119,11 @@ export function query({ prompt, options }: Any) {
       if (linesOf(text).some((l) => /^list\b/.test(l))) {
         const tools = options.mcpServers?.["vaultite-app"] ? (await (await mcp()).listTools()).tools : []
         const always = tools.length && tools.every((t) => t._meta?.["anthropic/alwaysLoad"] === true)
-        say(`Tools: ${tools.map((t) => t.name).join(",")}${always ? " (always loaded)" : ""}. Allowed: ${(options.allowedTools ?? []).join(",")}. Denied: ${(options.disallowedTools ?? []).join(",")}. Resumed: ${options.resume ? "yes" : "no"}. Told: ${/vaultite-app tools/.test(options.systemPrompt?.append ?? "") ? "tools" : "nothing"}. Ends: ${options.env?.CLAUDE_CODE_TERMINAL_MCP_TOOLS ?? ""}. Prompt: ${typeof options.systemPrompt === "string" ? "its own" : "Claude Code's"}. Builtins: ${Array.isArray(options.tools) ? options.tools.join(",") : "all"}. Settings: ${(options.settingSources ?? []).join(",") || "none"}. Effort: ${options.effort ?? ""}. Dirs: ${(options.additionalDirectories ?? []).join(",")}`)
+        say(`Tools: ${tools.map((t) => t.name).join(",")}${always ? " (always loaded)" : ""}. Allowed: ${(options.allowedTools ?? []).join(",")}. Denied: ${(options.disallowedTools ?? []).join(",")}. Resumed: ${options.resume ? "yes" : "no"}. Told: ${/vaultite-app tools/.test(options.systemPrompt?.append ?? "") ? "tools" : "nothing"}. Ends: ${options.env?.CLAUDE_CODE_TERMINAL_MCP_TOOLS ?? ""}. Prompt: ${typeof options.systemPrompt === "string" ? "its own" : "Claude Code's"}. Builtins: ${Array.isArray(options.tools) ? options.tools.join(",") : "all"}. Settings: ${(options.settingSources ?? []).join(",") || "none"}. Effort: ${options.effort ?? ""}. Dirs: ${(options.additionalDirectories ?? []).join(",")}. Auto: ${options.settings?.autoMode ? "rules" : "none"}`)
         continue
       }
+      const blocked = linesOf(text).flatMap((l) => l.split("\n")).filter((l) => /^blocked /.test(l)).map((l) => l.slice(8))
+      if (blocked.length) { say(`Shell: ${(await Promise.all(blocked.map((b) => shell(b)))).join(" | ")}`); continue }
       const calls = callsIn(text), said: string[] = []
       let stopped = false
       for (const c of calls) {

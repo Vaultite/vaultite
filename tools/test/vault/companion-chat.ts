@@ -334,8 +334,8 @@ export default async ($: VaultTest) => {
       check("summoned: started with the companion, a session of its own on its model, up with no turn (its short prompt needs none)", !!quick && quick !== longId &&
         !(await said(quick!)).some((e) => e.k === "user") && /haiku/.test(listed.find((s) => s.id === quick)?.model ?? "") &&
         !/haiku/.test(listed.find((s) => s.id === longId)?.model ?? ""), listed)
-      check("summoned: it never waits on a permission check while they talk (dontAsk: what it may run is listed, the rest refused at once)",
-        listed.find((s) => s.id === quick)?.mode === "dontAsk" && listed.find((s) => s.id === longId)?.mode !== "dontAsk", listed.map((s) => [s.id === quick ? "quick" : "long", s.mode]))
+      check("summoned: it runs in auto mode (what it may run unasked is listed: no classifier's wait while they talk)",
+        listed.find((s) => s.id === quick)?.mode === "auto", listed.map((s) => [s.id === quick ? "quick" : "long", s.mode]))
       const shot = path.join($.tmp, "screens", "display-1-1.png")
       fs.mkdirSync(path.dirname(shot), { recursive: true })
       fs.writeFileSync(shot, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"))
@@ -454,6 +454,70 @@ export default async ($: VaultTest) => {
       check("summoned: every command its prompt names runs without asking, and every tool it names is served (its own page with a split too)",
         named.length >= 5 && !refused.length && tools.every((t) => served.includes(t)) && served.includes("page"), { refused, tools, served, allow })
       await idle(quick!)
+      check("summoned: auto mode has its rules (a Mac's settings always asked on a card)", /Auto: rules/.test(qtools ?? ""), qtools)
+      // A command auto mode blocks: offered by their pointer, run on their yes (said or clicked), a no told, each offer its own.
+      {
+        const { matchSocket } = await import("../../../core/plugins.ts")
+        let onHelper: (m: Any) => void = () => {}
+        const helper: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], send(t: string) { const m = JSON.parse(t); helper.got.push(m); onHelper(m) }, close() {}, ping() {}, terminate() {} })
+        matchSocket($.app.plugins, ["companion", "live"])![1].fn(helper, {} as IncomingMessage, { wild: [], query: { screen: "1" } })
+        const tell = (m: object) => helper.emit("message", Buffer.from(JSON.stringify(m)))
+        tell({ t: "moment", kind: "none" })
+        const offers = () => helper.got.filter((m: Any) => m.t === "confirm"), up: string[] = []
+        // (a stand-in helper: its cards up, a spoken answer for the one by the pointer, `aim`, else the newest)
+        let aim = (): string | undefined => up.at(-1)
+        onHelper = (m) => {
+          if (m.t === "confirm") { up.push(m.id); setImmediate(() => tell({ t: "takeover-asking", id: m.id, agent: m.agent, ms: 600_000 })) }
+          if (m.t === "takeover-answer") { const id = m.asked ? undefined : aim(); for (const x of id ? [id] : [...up]) { up.splice(up.indexOf(x), 1); tell({ t: "takeover-done", id: x, ok: m.yes === true, why: m.yes ? "yes" : m.asked ? "asked" : "no" }) } }
+        }
+        const click = (id: string, yes: boolean) => { up.splice(up.indexOf(id), 1); tell({ t: "takeover-done", id, ok: yes, why: yes ? "yes" : "no" }) }
+        const shellSaid = async (n: number) => waitFor(async () => (await said(quick!)).filter((e) => e.k === "text" && /^Shell: /.test(e.text))[n]?.text as string | undefined, 15_000, 20)
+        const ask = (text: string) => c.screenMoment({ kind: "ask", agent: "Claude", text, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+        const spoken = (text: string) => tell({ t: "moment", kind: "ask", agent: "Claude", text, voice: true, app: "com.example.mail", window: 9, sx: 500, sy: 480 })
+        const cmd = "defaults write com.vaultite.offer-test probe -int 1"
+        const seq0 = ask(`blocked ${cmd}`)?.seq ?? 0
+        await waitFor(() => offers().length === 1, 15_000, 20)
+        const o1 = offers()[0]
+        check("summoned: a command auto mode blocks is offered by their pointer as one line, what it does under it",
+          o1?.line === `Run \`${cmd}\`?` && o1.sub === "Writes a test setting. Say yes or click Run." && o1.agent === "Claude", [o1, (await said(quick!)).slice(-4).map((e) => `${e.k}: ${String(e.text).slice(-400)}`)])
+        spoken("yes please")
+        check("summoned: their spoken yes runs that very command (retried, not blocked again) and the ask completes",
+          (await shellSaid(0)) === `Shell: ran ${cmd}` && helper.got.some((m: Any) => m.t === "takeover-answer" && m.yes === true), [(await said(quick!)).slice(-3).map((e) => `${e.k}: ${String(e.text).slice(-300)}`), helper.got.map((m: Any) => m.t)])
+        await idle(quick!)
+        const seq1 = ask(`blocked ${cmd}`)?.seq ?? 0
+        check("summoned: their spoken yes answers the offer, not kept as an ask", seq1 === seq0 + 1, [seq0, seq1])
+        await waitFor(() => offers().length === 2, 15_000, 20)
+        click(offers()[1].id, true)
+        check("summoned: a click on its Run runs it too (a yes before counts for nothing: offered again)", (await shellSaid(1)) === `Shell: ran ${cmd}`, await said(quick!))
+        await idle(quick!)
+        ask(`blocked ${cmd}`)
+        await waitFor(() => offers().length === 3, 15_000, 20)
+        spoken("no")
+        const no = await shellSaid(2)
+        check("summoned: their no isn't run and is told to it as theirs (don't try it another way), the ask completing",
+          no?.startsWith(`Shell: denied ${cmd}: Not run: the user said no`) === true, no)
+        await idle(quick!)
+        // (two at once: a yes said by the older card runs that one, not the newest; the other's own answer stands)
+        const a = "defaults write com.vaultite.offer-test a -int 1", b = "defaults write com.vaultite.offer-test b -int 1"
+        ask(`blocked ${a}\nblocked ${b}`)
+        await waitFor(() => offers().length === 5, 15_000, 20)
+        const [oa, ob] = offers().slice(3).sort((x: Any, y: Any) => (x.line.includes(" a ") ? -1 : 1) - (y.line.includes(" a ") ? -1 : 1))
+        aim = () => oa.id
+        spoken("yes")
+        await $.sleep(100)
+        const pending = up.slice()
+        click(ob.id, false)
+        const two = await shellSaid(3)
+        check("summoned: with two offers up, a yes meant for one runs that one and leaves the other waiting for its own answer",
+          pending.length === 1 && pending[0] === ob.id && /ran defaults write com\.vaultite\.offer-test a /.test(two ?? "") && /denied defaults write com\.vaultite\.offer-test b /.test(two ?? ""), [pending, two])
+        aim = () => up.at(-1)
+        await idle(quick!)
+        ask("blocked cat ~/.ssh/id_ed25519")
+        const secret = await shellSaid(4)
+        check("summoned: keys and secrets never run, nor are offered", /^Shell: denied cat ~\/\.ssh\/id_ed25519: That reads keys/.test(secret ?? "") && offers().length === 5, secret)
+        await idle(quick!)
+        helper.emit("close")
+      }
       // (a tool that ends its turn before a word: its turn goes on, told to say what it did, so no ask ends in silence)
       c.screenMoment({ kind: "ask", agent: "Claude", text: 'call follow {"done":true}', app: "com.example.mail", window: 9, sx: 500, sy: 480 })
       const nudged = await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && /^Called: Following nothing\./.test(n.text ?? "")), 15_000, 50)

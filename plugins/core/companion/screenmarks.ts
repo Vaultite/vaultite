@@ -213,7 +213,8 @@ export function unshown(marks: Mark[], places: Record<string, Rect> = {}, displa
   })
 }
 
-const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+/** Words as found: a key's glyph by its name (macOS labels the fn key 🌐, which people call fn or globe). */
+const norm = (t: string) => t.toLowerCase().replace(/🌐/gu, " fn ").replace(/\bglobe\b/g, "fn").replace(/[^\p{L}\p{N}]+/gu, " ").trim()
 /** The element of `els` saying `text`: the same words, else the most like them (its label in them, or them in it). */
 export function byLabel<T extends { label: string }>(els: T[], text: string): T | null {
   const want = norm(text)

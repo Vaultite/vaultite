@@ -45,7 +45,10 @@ export type ChatStart = { prompt?: string; cwd?: string; account?: string; model
   /** Permission rules it runs without asking ("mcp__vaultite-app": its tools; "Bash(vau read:*)"), and never. */
   allowed?: string[]; denied?: string[]
   /** Folders besides cwd its read-only commands may read unasked (additionalDirectories). */
-  dirs?: string[] }
+  dirs?: string[]
+  /** Its permission asks and auto mode's blocks answered by one of its tools (hidden), not the chat tab; shell
+   *  commands refused outright; auto mode's rules (chathost.ts' Spec). */
+  confirm?: string; never?: string[]; autoMode?: Record<string, string[]> }
 
 const SESSION = /^[\w-]{1,80}$/
 const MODE_LABELS: Record<Mode, string> = { default: "Ask for permissions", acceptEdits: "Accept edits", plan: "Plan mode", auto: "Auto mode",
@@ -422,7 +425,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode || modeDefault(a.id),
       ...(o.system !== undefined ? { system: o.system, builtins: o.builtins ?? [] } : { append: [chatContext(), o.append].filter(Boolean).join("\n\n") }),
       ...(o.onText ? { texts: true } : {}), ...(o.title ? { title: o.title } : {}),
-      ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema, streams, ends }) => ({ name, description, schema, ...(streams ? { streams } : {}), ...(ends ? { ends } : {}) })) } : {}),
+      ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema, streams, ends, hidden }) => ({ name, description, schema, ...(streams ? { streams } : {}), ...(ends ? { ends } : {}), ...(hidden ? { hidden } : {}) })) } : {}),
+      ...(o.confirm ? { confirm: o.confirm } : {}), ...(o.never?.length ? { never: o.never } : {}), ...(o.autoMode ? { autoMode: o.autoMode } : {}),
       ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.dirs?.length ? { dirs: o.dirs } : {}), ...(o.inbox === false ? { quiet: true } : {}), ...(o.quick ? { quick: true } : {}) }
   }
 

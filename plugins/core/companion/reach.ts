@@ -29,6 +29,15 @@ export function readableDirs(shots = screenshotDir()) {
 /** Never read there even so: keys and secrets a download or a project may hold. */
 export const NEVER_READ = ["Read(**/.env*)", "Read(**/.ssh/**)", "Read(**/*.pem)", "Read(**/*.p12)", "Read(**/id_rsa*)", "Read(**/id_ed25519*)"]
 
+/** Shell commands never run, whoever asks, not even offered (regex sources): what reads keys and secrets. */
+export const NEVER_RUN = [String.raw`(^|[^\w])\.ssh(/|\b|$)`, String.raw`Library/Keychains`, String.raw`\bkeychain-db\b`,
+  String.raw`\bsecurity\s+(find-(generic|internet)-password|dump-keychain|export|unlock-keychain|set-key-partition-list)\b`,
+  String.raw`(^|[\s'"/=])\.env(\.[\w-]+)?($|[\s'";|&)])`, String.raw`\bid_(rsa|ed25519|ecdsa|dsa)\b`, String.raw`\.(pem|p12|key)($|[\s'";|&)])`, String.raw`\bdata/config\.json\b`]
+
+/** Auto mode's rules for it: what changes their Mac's settings is always asked on a card by their pointer (its
+ *  classifier blocks it here, the card's yes runs it), so a spoken ask never flips a setting unseen. */
+export const AUTO_RULES = { hard_deny: ["$defaults", "Changing this Mac's settings or another app's preferences (defaults write, delete or import; pmset; networksetup; systemsetup; scutil --set; tccutil; launchctl load, unload, bootstrap, bootout, enable or disable; nvram; spctl): block it even when the user asked for it, as they approve these on a card outside this conversation."] }
+
 /** The folders as its prompt names them: "~/Projects, ~/Documents, …; screenshots go to ~/Pictures/Screenshots". */
 export function readableText(r = readableDirs()) {
   return `the vault, ${r.dirs.map(homely).join(", ")} (screenshots are saved to ${homely(r.shots)})`

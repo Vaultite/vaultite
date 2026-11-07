@@ -14,7 +14,9 @@ export const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"]
 
 /** A tool the server serves to a session (the companion's), each call relayed to it. `streams`: its input told as it's
  *  written ("partial"); `ends`: a turn may end after it with no words (Claude Code asks for some); `endsTurn`: it ends. */
-export type ToolDef = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; streams?: boolean; ends?: boolean }
+export type ToolDef = { name: string; description: string; schema: { properties?: Record<string, unknown>; required?: string[] }; streams?: boolean; ends?: boolean
+  /** Never shown to the model: the host calls it itself (a session's `confirm`). */
+  hidden?: boolean }
 
 /** How a session runs: its id (a new one's, or the one it resumes), folder, environment (CLAUDE_CONFIG_DIR picks the
  *  account), the claude to run, and what it starts with. */
@@ -36,6 +38,13 @@ export type Spec = {
   system?: string; builtins?: string[]
   /** Its words told as they're written ("partial" with no name). */
   texts?: boolean
+  /** Who answers its permission asks and auto mode's blocks, in place of the chat tab: a hidden tool, called with
+   *  `{ tool, input, reason, blocked }`, answering `{ yes, message? }`. A yes to a block runs that very call when retried. */
+  confirm?: string
+  /** Shell commands refused outright, never offered (regex sources: keys, Keychains, the server's secrets). */
+  never?: string[]
+  /** Auto mode's classifier rules (settings' autoMode: allow, soft_deny, hard_deny, environment; "$defaults" keeps its own). */
+  autoMode?: Record<string, string[]>
 }
 
 export type State = "starting" | "working" | "waiting" | "idle" | "error"
@@ -104,13 +113,24 @@ export function codeOf(dir: string) {
 /** The relayed tools' names as Claude Code calls them. */
 const APP = "mcp__vaultite-app__"
 
+/** What a refused call tells the model: the user's no, and a secret's. */
+const NO = "Not run: the user said no to it (or moved on from it). Tell them you left it, in a few words (it was their no: no hooks or blocks), and don't try it another way."
+const SECRET = "That reads keys or secrets (Keychains, ~/.ssh, tokens, Vaultite's own secrets): never, whoever asks. Say you may not."
+/** A shell call's command (Bash's), else null. */
+const shellOf = (tool: string, input: unknown) => (tool === "Bash" && typeof (input as { command?: unknown })?.command === "string" ? (input as { command: string }).command : null)
+/** A call as its retry matches it: the tool and what it does (a command's words, not its description or timeout). */
+export function callKey(tool: string, input: unknown) {
+  const cmd = shellOf(tool, input)
+  return `${tool}\0${cmd !== null ? cmd.trim().replace(/\s+/g, " ") : JSON.stringify(input)}`
+}
+
 /** Minutes a session sits idle (no turn, nothing asked, nothing running in the background) before its claude process
  *  ends; the next message resumes it. */
 const IDLE = 20 * 60_000
 /** Entries a session keeps (the newest): the rest is in its transcript. */
 const KEEP = 1500
-/** How long a relayed tool call waits for the server. */
-const TOOL_MS = 5 * 60_000
+/** How long a relayed tool call waits for the server; a confirm, for the user (an offer waits ten minutes). */
+const TOOL_MS = 5 * 60_000, CONFIRM_MS = 11 * 60_000
 
 type Pending = { kind: AskKind; input: Record<string, unknown>; suggestions: PermissionUpdate[]; resolve: (r: PermissionResult) => void }
 
@@ -136,6 +156,10 @@ class Session {
   message = ""
   /** Relayed calls (tool_use ids) whose result ended the turn. */
   ending = new Set<string>()
+  /** The user's answers to blocked calls (`confirm`), by call: retried, a yes runs it unchecked once and a no is told
+   *  why; their no holds the shell till their next message (no trying it another way). */
+  answered = new Map<string, { yes: boolean; message?: string }[]>()
+  declined = false
   constructor(spec: Spec) {
     this.spec = spec
     this.s = { id: spec.id, state: "starting", cwd: spec.cwd, account: spec.account ?? "", by: spec.by ?? "app", model: spec.model ?? "", effort: spec.effort ?? "",
@@ -202,7 +226,9 @@ export class Host {
         : { systemPrompt: { type: "preset", preset: "claude_code", ...(spec.append ? { append: spec.append } : {}) }, settingSources: ["user", "project", "local"] }),
       ...(spec.title && !spec.resume ? { title: spec.title } : {}),
       canUseTool: this.asker(x),
+      ...(spec.autoMode ? { settings: { autoMode: spec.autoMode } } : {}),
       hooks: {
+        ...this.gate(x),
         PostToolUse: [{ matcher: "^(Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell)$", hooks: [async (h) => {
           if (h.hook_event_name === "PostToolUse") this.emit({ t: "did", id: spec.id, tool: h.tool_name, input: h.tool_input })
           this.effortOf(x, h)
@@ -214,7 +240,8 @@ export class Host {
       },
       stderr: (d: string) => { x.stderr.push(d); if (x.stderr.length > 40) x.stderr.shift() },
     }
-    const tools = spec.tools?.length && this.sdk.mcp ? this.sdk.mcp("vaultite-app", spec.tools.map((t) => ({ ...t, run: async (args: unknown, use?: string) => {
+    const shown = spec.tools?.filter((t) => !t.hidden)
+    const tools = shown?.length && this.sdk.mcp ? this.sdk.mcp("vaultite-app", shown.map((t) => ({ ...t, run: async (args: unknown, use?: string) => {
       const r = await this.relay(spec.id, t.name, args, use) as { endsTurn?: unknown } | null
       if (!r || typeof r !== "object" || !("endsTurn" in r)) return r
       const { endsTurn, ...rest } = r
@@ -242,6 +269,8 @@ export class Host {
     const asked = [...x.asks.keys()].at(-1)
     if (asked) { this.answer(id, asked, { allow: false, message: text.trim() }); return { uuid: "", answered: asked } }
     const at = new Date().toISOString()
+    x.declined = false
+    x.answered.clear()
     x.queue.push({ type: "user", uuid, session_id: id, parent_tool_use_id: null, message: { role: "user", content: withImages(text, images) }, timestamp: at } as SDKUserMessage)
     x.wake?.()
     for (const e of x.reader.feed({ type: "user", uuid, message: { content: text }, timestamp: at })) this.put(x, e)
@@ -331,10 +360,10 @@ export class Host {
   /** The tool calls the server hasn't answered: told again to a server that follows (one restarting missed them). */
   pendingCalls() { return [...this.calls.values()].map((c) => c.e) }
 
-  private relay(id: string, name: string, args: unknown, use?: string) {
+  private relay(id: string, name: string, args: unknown, use?: string, ms = TOOL_MS) {
     const call = crypto.randomUUID(), e = { t: "tool" as const, id, call, name, args, ...(use ? { use } : {}) }
     return new Promise<unknown>((resolve) => {
-      const timer = setTimeout(() => { this.calls.delete(call); resolve({ isError: true, content: [{ type: "text", text: "Vaultite didn't answer" }] }) }, TOOL_MS)
+      const timer = setTimeout(() => { this.calls.delete(call); resolve({ isError: true, content: [{ type: "text", text: "Vaultite didn't answer" }] }) }, ms)
       timer.unref?.()
       this.calls.set(call, { resolve, timer, e })
       this.emit(e)
@@ -343,7 +372,11 @@ export class Host {
 
   /** canUseTool: an ask (a permission, its questions, its plan) held until the user answers it, or the turn is stopped. */
   private asker(x: Session): CanUseTool {
-    return (tool, input, o) => new Promise<PermissionResult>((resolve) => {
+    return (tool, input, o) => (x.spec.confirm && tool !== "AskUserQuestion" && tool !== "ExitPlanMode"
+      ? this.confirmed(x, tool, input, o.decisionReason ?? o.title ?? "", false, o.toolUseID).then((a): PermissionResult => (a.yes
+        ? { behavior: "allow", updatedInput: input }
+        : { behavior: "deny", message: a.message ?? NO }))
+      : new Promise<PermissionResult>((resolve) => {
       const kind: AskKind = tool === "AskUserQuestion" ? "question" : tool === "ExitPlanMode" ? "plan" : "permission"
       const id = `ask:${o.toolUseID}`
       const always = kind === "permission" && !o.suppressAlwaysAllowRule && o.suggestions?.length ? alwaysText(o.suggestions) : ""
@@ -362,7 +395,43 @@ export class Host {
         this.put(x, { ...e, answer: "Stopped" })
         resolve({ behavior: "deny", message: "Stopped" })
       }, { once: true })
-    })
+    }))
+  }
+
+  /** Its `confirm` tool's answer for a call (`blocked`: auto mode refused it), a no while the user's last one holds. */
+  private async confirmed(x: Session, tool: string, input: unknown, reason: string, blocked: boolean, use?: string): Promise<{ yes: boolean; message?: string }> {
+    if (x.declined) return { yes: false }
+    const r = await this.relay(x.spec.id, x.spec.confirm!, { tool, input, reason, blocked }, use, CONFIRM_MS) as { yes?: unknown; message?: unknown } | null
+    const a = { yes: r?.yes === true, ...(typeof r?.message === "string" ? { message: r.message } : {}) }
+    if (!a.yes) x.declined = true
+    return a
+  }
+
+  /** The hooks `confirm` and `never` need: a block offered to the user, then retried, their yes letting that call
+   *  through once and their no told in its words; a no holds the shell till their next message; secrets never run. */
+  private gate(x: Session): NonNullable<Options["hooks"]> {
+    const { confirm, never } = x.spec
+    if (!confirm && !never?.length) return {}
+    const nevers = (never ?? []).map((n) => new RegExp(n, "i"))
+    const decide = (allow: boolean, why: string) => ({ hookSpecificOutput: { hookEventName: "PreToolUse" as const, permissionDecision: allow ? "allow" as const : "deny" as const, permissionDecisionReason: why } })
+    return {
+      PreToolUse: [{ hooks: [async (h) => {
+        if (h.hook_event_name !== "PreToolUse") return {}
+        const cmd = shellOf(h.tool_name, h.tool_input)
+        if (cmd !== null && nevers.some((n) => n.test(cmd))) return decide(false, SECRET)
+        const k = callKey(h.tool_name, h.tool_input), a = x.answered.get(k)?.shift()
+        if (x.answered.get(k)?.length === 0) x.answered.delete(k)
+        if (a) return decide(a.yes, a.yes ? "the user said yes to it" : a.message ?? NO)
+        return cmd !== null && x.declined ? decide(false, NO) : {}
+      }] }],
+      // (the retry is what tells the model their answer: a no's words, not the classifier's "try another way")
+      ...(confirm ? { PermissionDenied: [{ timeout: CONFIRM_MS / 1000, hooks: [async (h) => {
+        if (h.hook_event_name !== "PermissionDenied") return {}
+        const a = await this.confirmed(x, h.tool_name, h.tool_input, h.reason, true, h.tool_use_id), k = callKey(h.tool_name, h.tool_input)
+        x.answered.set(k, [...x.answered.get(k) ?? [], a])
+        return { hookSpecificOutput: { hookEventName: "PermissionDenied" as const, retry: true } }
+      }] }] } : {}),
+    }
   }
 
   /** The effort Claude Code applies (a hook's word for it), shown till one is chosen. */

@@ -8,7 +8,7 @@ import { HEX } from "../plugins/core/companion/screenmarks.ts"
 import { buildTakeover, takeoverHelperName } from "./takeover-build.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
-import { type Answer, type Call, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
+import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
   spotOf, type Step, tookText, types, probeThing } from "./takeoverlogic.ts"
 
 type Point = { x: number; y: number }
@@ -136,45 +136,59 @@ function fadeAway(w: BrowserWindow | null) {
   setTimeout(() => { if (!w.isDestroyed()) w.destroy() }, FADE_MS + 40)
 }
 
-let card: BrowserWindow | null = null
-/** When they clicked Do it: their hand coming off it right after isn't them taking over. */
+/** When they clicked a yes: their hand coming off it right after isn't them taking over. */
 let yesClicked = 0
-let answer: ((a: Answer) => void) | null = null
-/** Offer `line` by `at` (their yes: a click on Do it, or said). */
-function offer(line: string, name: string, tint: string, at: Point, sent: () => void): Promise<Answer> {
-  answered("no")
-  if (!QUIET) show(line, name, tint, at)
+/** The offers up, by their request's id: several may be (a command asked while another waits), each answered alone. */
+const cards = new Map<string, (a: Answer) => void>()
+const shown = new Map<string, BrowserWindow>()
+/** The take-over step's offer up (one at a time: its steps queue). */
+let stepOffer: string | null = null
+type Card = { line: string; sub: string; yes: string; name: string; tint: string; at: Point }
+/** Offer `c` (their yes: a click on its yes, or said with the pointer by it) as `id`; `sent` once it's up. */
+function offer(id: string, c: Card, sent: () => void): Promise<Answer> {
+  if (!QUIET) show(id, c)
   sent()
   return new Promise((done) => {
-    const late = setTimeout(() => { if (answer === settle) answered("forgotten") }, OFFER_MS)
-    const settle = (a: Answer) => { clearTimeout(late); done(a) }
-    answer = settle
+    const late = setTimeout(() => answered(id, "forgotten"), OFFER_MS)
+    cards.set(id, (a) => { clearTimeout(late); done(a) })
   })
 }
-function show(line: string, name: string, tint: string, at: Point) {
-  // (as tall as its words need: a long ask takes two or three lines, and the buttons stay in)
-  const W = 368, d = screen.getDisplayNearestPoint(at).workArea
-  const place = (h: number) => ({ width: W, height: h, x: Math.round(Math.min(Math.max(at.x + 18, d.x + 8), d.x + d.width - W - 8)),
-    y: Math.round(Math.min(Math.max(at.y + 18, d.y + 8), d.y + d.height - h - 8)) })
+function show(id: string, c: Card) {
+  // (as tall as its words need: a long ask takes two or three lines, and the buttons stay in; below the ones up)
+  const W = 368, d = screen.getDisplayNearestPoint(c.at).workArea
+  const others = () => [...shown.entries()].filter(([k, w]) => k !== id && !w.isDestroyed()).map(([, w]) => w.getBounds())
+  const place = (h: number) => ({ width: W, height: h, ...cardSpot(c.at, { width: W, height: h }, d, others()) })
   const w = floating(place(118), true, true)
-  card = w
-  w.webContents.on("preferred-size-changed", (_e, size) => { if (!w.isDestroyed() && size.height > 0) w.setBounds(place(Math.ceil(size.height))) })
+  shown.set(id, w)
+  w.webContents.on("preferred-size-changed", (_e, size) => { if (!w.isDestroyed() && size.height > 0) w.setBounds({ ...w.getBounds(), height: Math.ceil(size.height) }) })
   w.webContents.on("will-navigate", (e, url) => {
     e.preventDefault()
     if (url === "takeover:yes") yesClicked = Date.now()
-    answered(url === "takeover:yes" ? "yes" : "no")
+    answered(id, url === "takeover:yes" ? "yes" : "no")
   })
-  void w.loadURL(offerPage(line, name, tint)).then(() => { if (card === w) appear(w) }, () => {})
+  void w.loadURL(offerPage(c.line, c.sub, c.yes, c.tint)).then(() => { if (shown.get(id) === w) appear(w) }, () => {})
 }
-export const offerPage = (line: string, name: string, tint: string) => page(`<style>:root { --tint: ${tintOf(tint)} }</style><div class="card"><div class="line">${esc(line)}</div>
-<div class="sub">${esc(name)} will use your mouse and keys while you watch. Using your mouse pauses it; a click or Esc stops it.</div>
-<div class="row"><a href="takeover:no">Not now</a><a class="yes" href="takeover:yes">Do it</a></div></div>`)
-function answered(how: Answer) {
-  const a = answer
-  answer = null
-  fadeAway(card)
-  card = null
-  a?.(how)
+export const offerPage = (line: string, sub: string, yes: string, tint: string) => page(`<style>:root { --tint: ${tintOf(tint)} }</style><div class="card"><div class="line">${esc(line)}</div>
+<div class="sub">${esc(sub)}</div>
+<div class="row"><a href="takeover:no">Not now</a><a class="yes" href="takeover:yes">${esc(yes)}</a></div></div>`)
+const driveSub = (name: string) => `${name} will use your mouse and keys while you watch. Using your mouse pauses it; a click or Esc stops it.`
+/** Offer `id` answered (null: every one up). */
+function answered(id: string | null, how: Answer) {
+  for (const k of id === null ? [...cards.keys()] : [id]) {
+    const done = cards.get(k)
+    cards.delete(k)
+    fadeAway(shown.get(k) ?? null)
+    shown.delete(k)
+    if (stepOffer === k) stepOffer = null
+    done?.(how)
+  }
+}
+/** Their spoken answer: for the offer by their pointer, when several are up. */
+function spoken(how: Answer) {
+  if (how === "asked") return answered(null, how)
+  const p = screen.getCursorScreenPoint()
+  const id = aimedAt([...shown.entries()].filter(([k, w]) => cards.has(k) && !w.isDestroyed()).map(([k, w]) => ({ id: k, rect: w.getBounds() })), p) ?? [...cards.keys()].at(-1)
+  if (id) answered(id, how)
 }
 
 let border: BrowserWindow | null = null, borderPaused: Promise<string> | null = null
@@ -210,7 +224,7 @@ let redraw = () => {}
 /** Driving ends: its steps done (their yes kept for the next), they stopped it (a click, Esc, typing where it typed),
  *  the exchange ended or another drives (it stops at once, their yes with it). */
 function stop(why: string) {
-  answered("no")
+  if (stepOffer) answered(stepOffer, "no")
   if (!keepsYes(why)) consent = null
   const d = drive
   if (!d) return
@@ -244,14 +258,14 @@ function caption(d: Drive, text: string) {
  *  click away from the offer is a no. */
 export function takeoverClick(x: number, y: number) {
   if (drive) return true
-  if (!card || card.isDestroyed()) return false
-  const b = card.getBounds()
-  if (x >= b.x && y >= b.y && x < b.x + b.width && y < b.y + b.height) return true
-  answered("no")
+  if (!cards.size) return false
+  const on = [...shown.values()].some((w) => { if (w.isDestroyed()) return false; const b = w.getBounds(); return x >= b.x && y >= b.y && x < b.x + b.width && y < b.y + b.height })
+  if (on) return true
+  answered(null, "no")
   return false
 }
-/** The exchange is over (Esc, they moved on): no more steps on its yes. */
-export const takeoverEnded = () => stop("ended")
+/** The exchange is over (Esc, they moved on): no more steps on its yes, and no offer left waiting. */
+export const takeoverEnded = () => { answered(null, "no"); stop("ended") }
 
 // ---------- their hands: on the mouse or the keys (takeover.swift's busy), till they're still a moment (rested)
 
@@ -316,7 +330,9 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
   const out = outward(step, there), agreed = consent?.agent === m.agent && Date.now() - consent.at < YES_MS
   if (out || !agreed) {
     const line = out ?? (m.ask?.trim() || `Want me to do it while you watch?`)
-    const said = await offer(line.slice(0, 120), m.agent, m.tint, spot, () => host.reply({ t: "takeover-asking", id: m.id, agent: m.agent, ms: OFFER_MS }))
+    if (stepOffer) answered(stepOffer, "no")
+    stepOffer = m.id
+    const said = await offer(m.id, { line: line.slice(0, 120), sub: driveSub(m.agent), yes: "Do it", name: m.agent, tint: m.tint, at: spot }, () => host.reply({ t: "takeover-asking", id: m.id, agent: m.agent, ms: OFFER_MS }))
     if (said !== "yes") return { ok: false, why: "declined", text: declined[said] }
     if (!out) consent = { agent: m.agent, at: Date.now() }
   }
@@ -399,10 +415,19 @@ const took = (why: string) => ({ ok: false, why: "stopped", text: tookText(why) 
 
 /** The server's take-over messages: a step to do (`takeover`), their spoken answer to an offer (`takeover-answer`). */
 export function takeoverHeard(m: Record<string, unknown>, host: TakeoverHost) {
-  if (m.t === "takeover-answer") return void (answer && answered(m.yes === true ? "yes" : m.asked === true ? "asked" : "no"))
+  if (m.t === "takeover-answer") return void (cards.size && spoken(m.yes === true ? "yes" : m.asked === true ? "asked" : "no"))
+  if (m.t === "confirm" && typeof m.id === "string") return void confirm(m, host)
   if (m.t !== "takeover" || typeof m.id !== "string" || !m.step || typeof m.step !== "object") return
   const list = (x: unknown) => (Array.isArray(x) ? x.map(String) : [])
   const req = { id: m.id, agent: String(m.agent ?? ""), tint: String(m.tint ?? "orange"), step: m.step as Step, ...(typeof m.ask === "string" ? { ask: m.ask } : {}), apps: list(m.apps), sites: list(m.sites) }
   redraw = host.redraw
   queue = queue.then(() => run(req, host).catch((e: Error) => ({ ok: false, why: "failed", text: e.message })).then((r) => host.reply({ t: "takeover-done", id: req.id, ...r })))
+}
+
+/** The server's `confirm`: their yes or no to `line` (a command to run), by their pointer, apart from any step's. */
+async function confirm(m: Record<string, unknown>, host: TakeoverHost) {
+  const id = String(m.id), name = String(m.agent ?? "")
+  const said = await offer(id, { line: String(m.line ?? "").slice(0, 160), sub: String(m.sub ?? ""), yes: "Run", name, tint: String(m.tint ?? "orange"), at: screen.getCursorScreenPoint() },
+    () => host.reply({ t: "takeover-asking", id, agent: name, ms: OFFER_MS }))
+  host.reply({ t: "takeover-done", id, ok: said === "yes", why: said })
 }

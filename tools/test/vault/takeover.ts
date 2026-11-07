@@ -71,6 +71,38 @@ export default async ($: VaultTest) => {
   check("takeover: their hand coming off Do it isn't taking over; a spoken or an old yes has no grace",
     L.handGrace(10_000, 10_200) === L.HAND_MS - 200 && L.handGrace(10_000, 10_000 + L.HAND_MS + 1) === 0 && L.handGrace(0, 10_000) === 0)
 
+  check("takeover: a spoken answer is for the offer under their pointer, else the nearest; none up, none",
+    L.aimedAt([{ id: "a", rect: { x: 0, y: 0, width: 100, height: 50 } }, { id: "b", rect: { x: 0, y: 60, width: 100, height: 50 } }], { x: 10, y: 70 }) === "b" &&
+    L.aimedAt([{ id: "a", rect: { x: 0, y: 0, width: 100, height: 50 } }, { id: "b", rect: { x: 0, y: 60, width: 100, height: 50 } }], { x: 300, y: 10 }) === "a" && L.aimedAt([], { x: 0, y: 0 }) === null)
+  const area = { x: 0, y: 0, width: 1440, height: 900 }
+  check("takeover: a second card goes below the one up, never over it, and stays on the screen",
+    JSON.stringify(L.cardSpot({ x: 100, y: 100 }, { width: 368, height: 118 }, area, [])) === '{"x":118,"y":118}' &&
+    JSON.stringify(L.cardSpot({ x: 100, y: 100 }, { width: 368, height: 118 }, area, [{ x: 118, y: 118, width: 368, height: 118 }])) === '{"x":118,"y":242}' &&
+    L.cardSpot({ x: 1400, y: 880 }, { width: 368, height: 118 }, area, []).x === 1440 - 368 - 8 && L.cardSpot({ x: 1400, y: 880 }, { width: 368, height: 118 }, area, []).y === 900 - 118 - 8)
+  const H = await import("../../../electron/helperlogic.ts")
+  check("open on the Mac: an app by name or bundle, a pane's address, a path from home, an address in an app",
+    JSON.stringify(H.openArgs({ app: "System Settings" }, "/Users/al")) === '["-a","System Settings"]' && JSON.stringify(H.openArgs({ app: "com.apple.calculator" }, "/h")) === '["-b","com.apple.calculator"]' &&
+    JSON.stringify(H.openArgs({ url: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension" }, "/h")) === '["x-apple.systempreferences:com.apple.Keyboard-Settings.extension"]' &&
+    JSON.stringify(H.openArgs({ path: "~/Downloads" }, "/Users/al")) === '["/Users/al/Downloads"]' && JSON.stringify(H.openArgs({ app: "Safari", url: "https://example.com" }, "/h")) === '["-a","Safari","https://example.com"]')
+  check("open on the Mac: no script or data address, no relative path, no flag for an app's name",
+    "why" in (H.openArgs({ url: "javascript:alert(1)" }, "/h") as object) && "why" in (H.openArgs({ url: "file:///etc/passwd" }, "/h") as object) && "why" in (H.openArgs({ path: "Downloads" }, "/h") as object) &&
+    "why" in (H.openArgs({ app: "-n; rm" }, "/h") as object) && "why" in (H.openArgs({}, "/h") as object))
+  check("open on the Mac: a System Settings pane is in front once it's open", H.openedBundle({ url: "x-apple.systempreferences:com.apple.BluetoothSettings" }) === "com.apple.systempreferences" &&
+    H.openedBundle({ app: "com.apple.finder" }) === "com.apple.finder" && H.openedBundle({ url: "mailto:a@example.com" }) === "")
+  check("open: an app, another scheme's address or a path outside the vault is the Mac's; the vault's, a view and the web aren't",
+    JSON.stringify(T.macOpen("", "Calculator", "/v", "/h")) === '{"app":"Calculator"}' && JSON.stringify(T.macOpen("x-apple.systempreferences:com.apple.Keyboard-Settings.extension", "", "/v", "/h")) === '{"url":"x-apple.systempreferences:com.apple.Keyboard-Settings.extension"}' &&
+    JSON.stringify(T.macOpen("~/Downloads", "", "/v", "/h")) === '{"path":"/h/Downloads"}' && T.macOpen("/v/Notes/A.md", "", "/v", "/h") === null && T.macOpen("Notes/A.md", "", "/v", "/h") === null &&
+    T.macOpen("view:graph", "", "/v", "/h") === null && T.macOpen("https://example.com", "", "/v", "/h") === null && JSON.stringify(T.macOpen("https://example.com", "Safari", "/v", "/h")) === '{"app":"Safari","url":"https://example.com"}')
+  const { byLabel } = await import("../../../plugins/core/companion/screenmarks.ts")
+  const keys = [{ label: "Keyboard brightness" }, { label: "Press 🌐︎ key to" }]
+  check("open on the Mac: the fn key's setting is found by its words, said fn or globe (macOS shows a 🌐)",
+    byLabel(keys, "Press fn key to")?.label === "Press 🌐︎ key to" && byLabel(keys, "press globe key")?.label === "Press 🌐︎ key to" && byLabel(keys, "brightness")?.label === "Keyboard brightness")
+  const R = await import("../../../plugins/core/companion/reach.ts")
+  const never = (cmd: string) => R.NEVER_RUN.some((n) => new RegExp(n, "i").test(cmd))
+  check("summoned: keys and secrets are never run, whoever asks; their names in other words are",
+    ["cat ~/.ssh/id_ed25519", "ls /Users/al/.ssh", "security find-generic-password -s x -w", "cat .env", "cat app/.env.local", "cp ~/Library/Keychains/login.keychain-db /tmp", "cat data/config.json", "openssl rsa -in server.pem"].every(never) &&
+    !["ls ~/Downloads", "cat notes/environment.md", "grep ssh README.md", "defaults read com.apple.HIToolbox", "echo key", "cat .envelope"].some(never))
+
   // ---------- act on the screen, through a stand-in helper
   const c = await import("../../../plugins/core/companion/plugin.ts")
   // (its summoned session off: asks here start no agent)
@@ -135,11 +167,11 @@ export default async ($: VaultTest) => {
     ink: [{ shape: "ring", box: { x: 0, y: 101, width: 293, height: 146 }, points: [[0, 101], [293, 247]] }] })
   const found = { role: "button", label: "Bookmarks", frame: { x: 1200, y: 44, width: 30, height: 24 } }
   answer = (m) => {
-    if (m.t === "open-url") setImmediate(() => from({ t: "takeover-done", id: m.id, ok: true, how: "open" }))
+    if (m.t === "open") setImmediate(() => from({ t: "takeover-done", id: m.id, ok: true, how: "open" }))
     if (m.t === "find") setImmediate(() => from({ t: "takeover-done", id: m.id, ...(m.text === "Bookmarks" ? { ok: true, found: { id: "", ...found } } : { ok: false, why: "none" }) }))
   }
   ;[st, r] = await api("POST", "ops/companion.open", { path: "https://internal.example.com" })
-  const opened = helper.got.filter((m: Any) => m.t === "open-url").at(-1)
+  const opened = helper.got.filter((m: Any) => m.t === "open").at(-1)
   check("takeover: a web page asked for from their browser opens there (the helper), said so",
     st === 200 && opened?.url === "https://internal.example.com" && opened.app === "com.google.Chrome" && r.in === "com.google.Chrome", [st, r, opened])
   // (marks name what's there: an element of the ask by its words, else the window's own, found by the helper)
@@ -155,6 +187,28 @@ export default async ($: VaultTest) => {
   const snapped = drawn()?.marks.slice(-2).map((m: Any) => m.at)
   check("takeover: a ring at a guessed pixel goes round what they drew there, or the element it's on",
     JSON.stringify(snapped?.[0]) === '{"x":0,"y":101,"w":293,"h":146}' && snapped?.[1].el === "a1", snapped)
+  // (on their Mac: a System Settings pane opens there, its window's elements the ids to point at, its words found in them)
+  const pane = "x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
+  const fnRow = { id: "a1", role: "pop up button", label: "Press fn key to", frame: { x: 700, y: 400, width: 160, height: 22 }, state: {}, actions: [], inside: [] }
+  answer = (m) => { if (m.t === "open") setImmediate(() => from({ t: "takeover-done", id: m.id, ok: true, how: "open", app: "System Settings", bundle: "com.apple.systempreferences", title: "Keyboard",
+    frame: { x: 400, y: 100, width: 715, height: 600 }, near: [fnRow] })) }
+  c.screenMoment({ kind: "ask", text: "show me where fn's setting is", app: "com.example.mail", sx: 10, sy: 10, near: [] })
+  ;[st, r] = await api("POST", "ops/companion.open", { path: pane })
+  const toPane = helper.got.filter((m: Any) => m.t === "open").at(-1)
+  check("open on the Mac: a System Settings pane goes to the helper, answering the window in front and its elements by id",
+    st === 200 && toPane?.url === pane && !toPane.app && r.in === "System Settings" && r.title === "Keyboard" && r.near?.[0]?.label === "Press fn key to", [st, r, toPane])
+  ;[st, r] = await api("POST", "ops/companion.draw", { marks: [{ type: "ring", at: { find: "Press fn key to" } }] })
+  const ring = helper.got.filter((m: Any) => m.t === "drawing" && m.drawing).at(-1)?.drawing
+  check("open on the Mac: a mark's words land on that window's element (its frame), never on nothing", st === 200 && ring?.places?.["find:Press fn key to"]?.x === 700 && ring.places["find:Press fn key to"].w === 160, [st, r, ring?.places])
+  answer = (m) => { if (m.t === "takeover") setImmediate(() => from({ t: "takeover-done", id: m.id, ok: true, how: "ax" })) }
+  ;[st, r] = await api("POST", "ops/companion.act", { action: "click", ax: "a1" })
+  check("open on the Mac: act on its ids goes there (a step for that element)", steps().at(-1)?.step.el?.label === "Press fn key to", steps().at(-1))
+  await api("POST", "ops/companion.clear", {})
+  answer = (m) => { if (m.t === "open") setImmediate(() => from({ t: "takeover-done", id: m.id, ok: m.path !== "/nope", ...(m.path === "/nope" ? { why: "failed", text: "there's no /nope on this Mac" } : { how: "open" }) })) }
+  ;[st, r] = await api("POST", "ops/companion.open", { app: "Calculator" })
+  check("open on the Mac: an app by its name", st === 200 && helper.got.filter((m: Any) => m.t === "open").at(-1)?.app === "Calculator", [st, r])
+  ;[st, r] = await api("POST", "ops/companion.open", { path: "/nope" })
+  check("open on the Mac: what doesn't open says why", st === 409 && /there's no \/nope/.test(r.error), [st, r])
   await api("POST", "ops/companion.clear", {})
   c.screenMoment({ kind: "ask", text: "and this?", app: "com.example.mail", sx: 1, sy: 1 })
   ;[st, r] = await api("POST", "ops/companion.act", { action: "click", ax: "a1" })

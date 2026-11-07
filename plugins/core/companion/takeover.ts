@@ -8,7 +8,7 @@ type Rect = { x: number; y: number; width: number; height: number }
 export type Near = Thing & { id: string; ax?: string }
 /** What act was told, on the screen. */
 export type ScreenAct = { action: string; ax?: string; sx?: number; sy?: number; value?: string; key?: string; direction?: string; ask?: string; doing?: string }
-export type Done = { ok: boolean; why?: string; text?: string; how?: string; near?: Near[]; app?: string; title?: string
+export type Done = { ok: boolean; why?: string; text?: string; how?: string; near?: Near[]; app?: string; title?: string; bundle?: string; frame?: Rect
   /** A find's: the element saying the words, in the window asked about. */
   found?: Near
   /** A scroll's: false when nothing there moved (at its end, or not what scrolls). */
@@ -53,17 +53,20 @@ export function stepOf(p: ScreenAct, near: Near[]): { action: string; el?: { fra
   return base
 }
 
+/** Elements by id, as act and open answer them. */
+export const nearText = (near: Near[] = [], head = "Near it now (act or point by id)") =>
+  near.length ? `\n${head}:\n${near.slice(0, 40).map((e) => `  ${thingText(e, { frame: true })}`).join("\n")}` : ""
+
 /** What act answers after a step on the screen. */
 export function doneText(r: Done): string {
   if (!r.ok) return r.text ?? `It didn't work (${r.why ?? "no answer"}).`
-  if (r.effect && !r.effect.ok) return `It did the step, but ${r.effect.saw}: tell them plainly, or try another way.${nearText(r)}`
+  if (r.effect && !r.effect.ok) return `It did the step, but ${r.effect.saw}: tell them plainly, or try another way.${nearText(r.near?.slice(0, 20))}`
   const how = r.how === "none" ? " (it already was)" : r.how === "ax" ? " (through Accessibility)" : r.how === "point" ? " (with the pointer)" : r.how === "key" ? " (with the keys)" : ""
   const now = r.app ? ` Now in ${r.app}${r.title ? `, "${r.title}"` : ""}.` : ""
   if (r.moved === false) return `Scrolled${how}, but nothing there moved: it's at its end, or that part doesn't scroll (point at what to scroll).${now}`
-  return `Done${how}${r.effect ? `: ${r.effect.saw}` : ""}.${now}${nearText(r)}`
+  return `Done${how}${r.effect ? `: ${r.effect.saw}` : ""}.${now}${nearText(r.near?.slice(0, 20))}`
 }
 
-const nearText = (r: Done) => (r.near?.length ? `\nNear it now (act or point by id):\n${r.near.slice(0, 20).map((e) => `  ${thingText(e, { frame: true })}`).join("\n")}` : "")
 
 /** How long a step may take on the helper (typing a long text), past its offer's wait (which the helper says). */
 const STEP_MS = 120_000
@@ -71,28 +74,32 @@ const STEP_MS = 120_000
 /** The helpers' take-overs: which helper an ask came from (its steps go there), the steps waiting on each, its offers. */
 export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent: string, sx: number, sy: number) => void) {
   const waiting = new Map<string, { ws: WebSocket; done: (r: Done) => void; wait: (ms: number) => void }>()
-  const offering = new Set<WebSocket>()
+  /** Each helper's offers up, by request id: a spoken yes or no answers one of them (the helper says which). */
+  const offering = new Map<WebSocket, Set<string>>()
+  const up = (ws: WebSocket) => (offering.get(ws)?.size ?? 0) > 0
+  const drop = (ws: WebSocket, id?: string) => { const o = offering.get(ws); if (!o) return; if (id) o.delete(id); else o.clear(); if (!o.size) offering.delete(ws) }
   let from: WebSocket | null = null, n = 0
   return {
     /** A moment came from this helper: its steps go there. A yes or a no while its offer waits answers it (true); any
      *  other ask moves on from it (the offer goes, the ask goes on: act answers so, and its turn reaches the ask). */
     heard(ws: WebSocket, m: Record<string, unknown>): boolean {
       from = ws
-      if (!offering.has(ws) || (m.kind !== "ask" && m.kind !== "point")) return false
+      if (!up(ws) || (m.kind !== "ask" && m.kind !== "point")) return false
       const yes = typeof m.text === "string" ? answerOf(m.text) : null
-      offering.delete(ws)
+      // (another ask moves on from them all; a yes or no is the one by their pointer's, the helper's to tell)
+      if (yes === null) drop(ws)
       send(ws, yes === null ? { t: "takeover-answer", yes: false, asked: true } : { t: "takeover-answer", yes })
       return yes !== null
     },
     /** Its offer is up: a Talk key's press then is its answer, not a barge-in. */
-    offering: (ws: WebSocket) => offering.has(ws),
+    offering: up,
     /** The helper's own messages: an offer shown, a step done (true: handled). */
     message(ws: WebSocket, m: Record<string, unknown>): boolean {
       // (its offer up, waiting as long as the helper's does: their answer may take a while)
-      if (m.t === "takeover-asking") { offering.add(ws); if (typeof m.id === "string" && Number.isFinite(m.ms)) waiting.get(m.id)?.wait(Number(m.ms) + STEP_MS); return true }
+      if (m.t === "takeover-asking") { if (typeof m.id === "string") offering.set(ws, (offering.get(ws) ?? new Set()).add(m.id)); if (typeof m.id === "string" && Number.isFinite(m.ms)) waiting.get(m.id)?.wait(Number(m.ms) + STEP_MS); return true }
       if (m.t === "takeover-at") { if (typeof m.agent === "string" && Number.isFinite(m.sx) && Number.isFinite(m.sy)) fly(m.agent, Number(m.sx), Number(m.sy)); return true }
       if (m.t !== "takeover-done" || typeof m.id !== "string") return false
-      offering.delete(ws)
+      drop(ws, m.id)
       const w = waiting.get(m.id)
       if (w?.ws === ws) { waiting.delete(m.id); w.done(m as unknown as Done) }
       return true
@@ -108,8 +115,11 @@ export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent:
       const { apps, sites } = (await import("./plugin.ts")).privates()
       return request((id) => ({ t: "takeover", id, agent: who.agent, tint: who.tint, step, apps, sites, ...(who.ask ? { ask: who.ask } : {}) }), STEP_MS)
     },
-    /** Open web page `url` in `app` (their browser, where they asked) on the Mac whose helper asked: a tab there. */
-    open: (url: string, app: string) => request((id) => ({ t: "open-url", id, url, app }), 15_000),
+    /** Ask them (`line` by their pointer, `sub` under it) on the Mac whose helper asked: `ok` once they say yes. */
+    confirm: (line: string, sub: string, who: { agent: string; tint: string }) => request((id) => ({ t: "confirm", id, line, sub, agent: who.agent, tint: who.tint }), 15_000),
+    /** Open on the Mac whose helper asked what a user could (macOpen): answers the window in front then and its
+     *  elements, by id (as an ask's). */
+    open: (o: { url?: string; app?: string; path?: string }) => request((id) => ({ t: "open", id, ...o }), 15_000),
     /** The element saying `text` in the window the last ask was over (its Accessibility, whole), by its helper. */
     find: (text: string) => request((id) => ({ t: "find", id, text }), 3000),
     /** Every thing in the window the last ask was over (its Accessibility, in the UI model's shape), by its helper. */
@@ -127,6 +137,16 @@ export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent:
       send(ws, m(id))
     })
   }
+}
+
+/** What `open` opens on the user's Mac rather than in Vaultite: an app (`app`, with what to open in it), an address of
+ *  another scheme than the web's (System Settings' panes, mail...), a path outside the vault; null for the vault's. */
+export function macOpen(to: string, app: string, vault: string, home: string): { url?: string; app?: string; path?: string } | null {
+  const full = to === "~" ? home : to.startsWith("~/") ? `${home}/${to.slice(2)}` : to
+  const inVault = full === vault || full.startsWith(`${vault}/`)
+  const what: { url?: string; path?: string } | null = !to ? {} : /^[a-z][\w+.-]*:/i.test(to) && !/^(view|file):/i.test(to) ? { url: to } : full.startsWith("/") && !inVault ? { path: full } : null
+  if (app) return what ? { app, ...what } : { app }
+  return what && (what.url || what.path) && !/^https?:/i.test(what.url ?? "") ? what : null
 }
 
 /** Browsers by bundle id: a web page asked for while they're in one opens there, not in Vaultite. */
