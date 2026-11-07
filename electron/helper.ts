@@ -110,7 +110,7 @@ export async function startHelper(h: HelperHost) {
   if (!lock) return false
   host = h
   app.on("will-quit", stopHelper)
-  if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v: Record<string, unknown>) => stubs.set(op, v), presses: () => presses.read(),
+  if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v?: Record<string, unknown> | null) => (v == null ? stubs.delete(op) : stubs.set(op, v)), presses: () => presses.read(),
     asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
     teach: (text: string) => teachHeard(text, Date.now()), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene } })
@@ -534,16 +534,18 @@ function chordHeard(m: Record<string, unknown>) {
 function fnHeard(m: Record<string, unknown>, byFn = true) {
   if (!prefs.fn || !host?.home()) return
   const to = page && !page.isDestroyed() ? page : null
-  // (Control's double tap: hands-free, or off)
+  // (Control's double tap: hands-free, or off; the window's while it dictates or has the keyboard, never because it
+  // took an earlier press: a double tap brings no down of its own)
   if (m.double === true) {
-    if (to) return void to.send("vaultite:fn", { double: true })
+    const win = session || starting ? null : dictating() ? to : keyboardPage()
+    if (win) { page = win; return void win.send("vaultite:fn", { double: true }) }
     if (session || starting) return act("stop")
     act("start")
     return act("free")
   }
   if (m.other === true) { const shortcut = m.shortcut === true; if (to) to.send("vaultite:fn", { other: true, shortcut }); else act(key.other(Date.now(), shortcut)); return }
   if (m.down === true) {
-    if (!session) page = host.focusedPage()
+    if (!session) page = keyboardPage()
     if (page && !session) return void page.send("vaultite:fn", { down: true, held: m.held === true })
     page = null
     if (byFn) void firstUse()
@@ -552,6 +554,10 @@ function fnHeard(m: Record<string, unknown>, byFn = true) {
   if (to) { to.send("vaultite:fn", { down: false }); return }
   act(key.up(Date.now()))
 }
+
+/** The app's page that has the keyboard, which a dictation key's press goes to (a scripted copy's never does: a stub
+ *  says it does). */
+const keyboardPage = () => host?.focusedPage() ?? (QUIET && stubs.has("keyboard") ? host?.homeWindow()?.page ?? null : null)
 
 let checkedFn = false
 /** The first press: macOS's own action for the key (an emoji picker, the input source) would come too: say how to stop it, once. */

@@ -65,8 +65,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Captures, and it only says where. The last 30 s (screen, pointer, clicks, apps, your words) stay in memory only while
   you turn that on, and agents can ask for a stretch (`vau screen timeline`).
 - **Control dictates**: pick Left or Right Control in dictation's keys (for keyboards whose fn never reaches macOS).
-  A tap does nothing, a double tap dictates hands-free until the next double tap (or a press of another dictation
-  key), and held alone it listens until you let go; Control with a key, a click or a scroll never dictates.
+  A tap does nothing, a double tap dictates hands-free until the next double tap, in whichever app (or a press of
+  another dictation key), and held alone it listens until you let go; Control with a key, a click or a scroll never dictates.
 - **Moving your mouse no longer cancels the companion's take-over**: steps it does through Accessibility ignore your
   mouse; one that needs the real pointer or keys waits while you use them ("Paused, you're using the mouse" by its
   cursor), looks again once you've been still a second, and carries on. A click, Esc, or typing where it types stops
