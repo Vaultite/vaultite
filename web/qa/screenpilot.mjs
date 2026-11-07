@@ -26,6 +26,7 @@ async function open(reduced = false, hash = "") {
     window.__calls = []
     const call = (name) => (...a) => window.__calls.push([name, ...a])
     window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt(fn) { window.__at = fn; return () => {} }, onPointer(fn) { window.__pointer = fn; return () => {} }, pilot: call("pilot"), grab() {},
+      pen: call("pen"), onPen(fn) { window.__pen = fn; return () => {} },
       open() {}, stop() {}, draw: { on(fn) { window.__draw = fn; return () => {} }, act() {} },
       panel: { on(fn) { window.__panel = fn; return () => {} }, size() {}, send: call("send"), close() {}, mic() {}, more() {} } }
   })
@@ -177,9 +178,23 @@ const end = pen.at(-1)
 await page.waitForTimeout(300)
 const still = (await sample(page, 20)).filter(Boolean).at(-1)
 check("done, it stays by what it drew", still.x === end.x && still.y === end.y && Math.hypot(end.x - end.fx, end.y - end.fy) < 2, { end, still })
+const told = await page.evaluate(() => window.__calls.filter((c) => c[0] === "pen").map((c) => c[1]))
+check("…its pen told to the other displays' cursors", told.some((s) => s?.id === "d1" && s.strokes.length > 0), told.length)
 await page.evaluate(() => window.__draw(null))
 const gone = (await sample(page, 1000)).filter(Boolean)
 check("the drawing gone, it flies back beside the pointer", gone.at(-1).x === 924 && gone.at(-1).y === 320, gone.at(-1))
+
+// drawn on another display: this one's cursor follows the pen that display tells, never staying by the pointer here
+await page.evaluate(() => { window.__calls.length = 0; window.__draw({ id: "d9", agent: "Claude", tint: "orange", t: Date.now(), caption: "Over there.", marks: [{ type: "ring", at: { x: 2000, y: 300, w: 160, h: 40 } }],
+  here: { width: innerWidth, height: innerHeight, origin: { x: 0, y: 0 }, home: false, top: 25 } }) })
+await page.waitForTimeout(300)
+const quietHere = await page.evaluate(() => !window.__calls.some((c) => c[0] === "pen"))
+await page.evaluate(() => window.__pen({ id: "d9", strokes: [{ start: Date.now() + 500, dur: 400, pts: [[1400, 320], [1500, 320]] }] }))
+const away2 = (await sample(page, 1200)).filter(Boolean).at(-1)
+check("drawn on another display: this one tells no pen, and its cursor goes with the pen that display told (off this one)", quietHere && away2.hidden === true && away2.x > 1300, { quietHere, away2 })
+await page.evaluate(() => { window.__pen(null); window.__draw(null) })
+const back2 = (await sample(page, 1000)).filter(Boolean).at(-1)
+check("…and comes back beside the pointer when it's done", back2.x === 924 && back2.y === 320 && !back2.hidden, back2)
 
 // a frame: it flies to the area's top left, then drags its box open by the far corner, its label typed in over its top left
 await page.evaluate(() => {

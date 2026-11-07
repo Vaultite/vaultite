@@ -193,6 +193,18 @@ export function overlayActs(a: OverlayActs) {
     const b = w.getBounds()
     pilotTo = Array.isArray(to) && to.length === 2 && to.every((n) => typeof n === "number" && Number.isFinite(n)) ? { x: b.x + to[0], y: b.y + to[1] } : null
   })
+  // (the pen the display with the drawing gives its cursor: every display's cursor follows it, or one would stay by
+  // the pointer on another display while it draws on this one)
+  ipcMain.on("screen:pen", (e, s: { strokes?: unknown } | null) => {
+    const w = mine(e)
+    if (!w || (s !== null && !Array.isArray(s?.strokes))) return
+    const b = w.getBounds()
+    for (const o of wins.values()) {
+      if (o === w || o.isDestroyed() || o.webContents.isLoading()) continue
+      const ob = o.getBounds(), dx = b.x - ob.x, dy = b.y - ob.y
+      o.webContents.send("vaultite:pen", s && { ...s, strokes: (s.strokes as { pts: [number, number][] }[]).map((k) => ({ ...k, pts: k.pts.map(([x, y]) => [x + dx, y + dy]) })) })
+    }
+  })
   ipcMain.on("screen:draw-act", (e, a: DrawAct) => {
     const d = a && typeof a === "object" ? [...layers.values()].find((l) => l.id === a.id) : undefined
     if (!mine(e) || !d) return

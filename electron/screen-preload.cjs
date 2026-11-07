@@ -28,6 +28,13 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
   },
   // (where the companion is headed or rests while it points, [x, y] here; null: beside the pointer)
   pilot: (to) => ipcRenderer.send("screen:pilot", to),
+  // (the pen's strokes the display with the drawing gives its cursor, told the other displays' (theirs in their points))
+  pen: (s) => ipcRenderer.send("screen:pen", s),
+  onPen(fn) {
+    const h = (_e, s) => fn(s)
+    ipcRenderer.on("vaultite:pen", h)
+    return () => { ipcRenderer.removeListener("vaultite:pen", h) }
+  },
   grab: (on) => ipcRenderer.send("screen:grab", !!on),
   open: (name, x, y) => ipcRenderer.send("screen:open", { name, x, y }),
   stop: () => ipcRenderer.send("screen:stop"),

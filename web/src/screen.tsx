@@ -53,6 +53,7 @@ type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean
   play?: boolean }
 type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
+  pen?: (s: PenScript | null) => void; onPen?: (fn: (s: PenScript | null) => void) => () => void
   onCue?: (fn: (name: Cue) => void) => () => void
   open: (name: string, x: number, y: number) => void; stop: () => void; draw?: DrawBridge
   region?: (r: Rect) => void; regionAct?: (what: string) => void
@@ -228,8 +229,9 @@ function drawTrail(now: number) {
   g.globalCompositeOperation = "source-over"
   return true
 }
-/** A drawing's strokes for its pen (Draw.tsx, on the display that has them). */
-function penFor(s: PenScript | null) {
+/** A drawing's strokes for its pen (Draw.tsx, on the display that has them; `told`: another display's, in our points). */
+function penFor(s: PenScript | null, told = false) {
+  if (!told) api?.pen?.(s)
   flying.sound = !!s?.sound
   if (!flying.pilot) return
   flying.pilot.pen(s, clock())
@@ -607,7 +609,8 @@ function Panel() {
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 function Screen() {
   const { s, gone, summonGone, behindGone } = useSyncExternalStore(subscribe, () => view)
-  useEffect(() => { const a = api?.on(onScene), b = api?.onAt(onAt), c = api?.onPointer?.(pointerMoved), d = api?.onCue?.(cueNow); return () => { a?.(); b?.(); c?.(); d?.() } }, [])
+  useEffect(() => { const a = api?.on(onScene), b = api?.onAt(onAt), c = api?.onPointer?.(pointerMoved), d = api?.onCue?.(cueNow), e = api?.onPen?.((s) => penFor(s, true))
+    return () => { a?.(); b?.(); c?.(); d?.(); e?.() } }, [])
   if (!s) return null
   return (
     <>

@@ -40,7 +40,8 @@ export function ScreenDrawings({ grab, pen }: { grab: (on: boolean) => void; pen
     {[...up, ...gone].map((d) => {
       // (each layer's Keep and Clear on its own row, named when there are several)
       const shown = up.filter((x) => !x.hidden), slot = shown.indexOf(d)
-      return <Draw key={d.id} d={d} leaving={!up.includes(d)} act={(a) => bridge?.act(a)} grab={grab} pen={d.id === lead ? pen : undefined} slot={Math.max(0, slot)} named={shown.length > 1} />
+      // (its pen from the display with its cards: the others' cursors are told it, screen.tsx)
+      return <Draw key={d.id} d={d} leaving={!up.includes(d)} act={(a) => bridge?.act(a)} grab={grab} pen={d.id === lead && d.here.home ? pen : undefined} slot={Math.max(0, slot)} named={shown.length > 1} />
     })}
   </Suspense>
 }
