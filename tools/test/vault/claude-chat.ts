@@ -106,6 +106,20 @@ export default async ($: VaultTest) => {
       all[1].id === "m1:0" && all[1].text === "On it." && !all[1].live && typing[0]?.summary === "npm te" &&
       all[2].id === "t1" && all[2].summary === "npm test" && all[2].result === "1 failing" && all[2].error === true && r.text === "On it." && r.prompt === "Fix it", all)
   }
+  // A message sent mid-turn: its transcript line is an attachment, by the uuid it was sent with, where the turn took it.
+  {
+    const r = new Reader()
+    const q = (prompt: string, uuid: string, commandMode = "prompt") => ({ type: "attachment", uuid: `a-${uuid}`, attachment: { type: "queued_command", prompt, source_uuid: uuid, commandMode, timestamp: "2026-01-02T10:00:00Z" } })
+    r.feed({ type: "user", uuid: "u1", message: { content: "Fix it" } })
+    r.feed({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "npm test" } }] } })
+    r.feed(q("Also the phone", "u2"))
+    r.feed(q("<task-notification>done</task-notification>", "u3", "task-notification"))
+    r.feed(q("<agent-message from=\"x\">hi</agent-message>", "u4"))
+    r.feed({ type: "assistant", message: { id: "m2", content: [{ type: "text", text: "Both." }] } })
+    const all = [...r.entries.values()] as Any[]
+    check("chat entries: a message sent mid-turn read back from its transcript in its place, under the id it was sent with; a task's notice and another session's message aren't the user's",
+      all.map((e) => e.id).join() === "u1,t1,u2,m2:0" && all[2].k === "user" && all[2].text === "Also the phone", all)
+  }
 
   // The keeper, run in this process with the stand-in SDK, where the plugin looks for it.
   const sdk = fakeSdk()

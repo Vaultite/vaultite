@@ -56,7 +56,7 @@ const MODE_LABELS: Record<Mode, string> = { default: "Ask for permissions", acce
 /** Entries a page of history has (the chat tab's first, and each Show earlier). */
 const PAGE = 300
 /** Byte strings a transcript line needs to be read for the chat (the rest is tool output). */
-const WANTED = ['"type":"user"', '"type":"assistant"', '"compact_boundary"', '"ai-title"', '"custom-title"']
+const WANTED = ['"type":"user"', '"type":"assistant"', '"queued_command"', '"compact_boundary"', '"ai-title"', '"custom-title"']
 
 /** A transcript read for the chat: its entries, title and folder. */
 class Talk {

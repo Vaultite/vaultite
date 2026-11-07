@@ -105,7 +105,8 @@ export class Reader {
     if (!m || typeof m !== "object" || m.isMeta || m.isSidechain || m.isSynthetic) return out
     const at = typeof m.timestamp === "string" ? m.timestamp : new Date().toISOString()
     const parent = typeof m.parent_tool_use_id === "string" && m.parent_tool_use_id ? m.parent_tool_use_id : undefined
-    if (m.type === "user") this.user(m, at, parent, out)
+    if (m.type === "attachment") this.queued(m.attachment, out)
+    else if (m.type === "user") this.user(m, at, parent, out)
     else if (m.type === "assistant") this.assistant(m, at, parent, out)
     else if (m.type === "stream_event") this.stream(m, at, parent, out)
     else if (m.type === "result") {
@@ -134,6 +135,15 @@ export class Reader {
     this.prompt = text
     this.text = ""
     this.put({ k: "user", id, text: clip(text, 20000), at }, out)
+  }
+
+  /** A message the user sent mid-turn: a transcript keeps it as an attachment (by the uuid it was sent with), not a user
+   *  line. Background tasks' notices and other sessions' messages come this way too: not the user's. */
+  private queued(a: Json, out: Entry[]) {
+    if (a?.type !== "queued_command" || a.commandMode !== "prompt" || !a.source_uuid) return
+    const text = userText(a.prompt)
+    if (!text || /^<(agent-message|cross-session-message|teammate-message|task-notification)\b/.test(text)) return
+    this.put({ k: "user", id: String(a.source_uuid), text: clip(text, 20000), at: typeof a.timestamp === "string" ? a.timestamp : new Date().toISOString() }, out)
   }
 
   private assistant(m: Json, at: string, parent: string | undefined, out: Entry[]) {
