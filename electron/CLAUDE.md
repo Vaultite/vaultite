@@ -40,7 +40,8 @@
   One per Mac (a lock socket in the temp folder: Vaultite, Main and Dev may all run); off in Vaultite Dev and under
   VAULTITE_QUIET unless VAULTITE_HELPER=1. With it, a closed window's server is kept (`kept` in main.ts) and the Dock
   icon shows only while a window is open. Native parts: screen.swift (the keys' tap and ink, fields, other apps' text, the display's picture), dictation, voice.swift
-  (the companion's voice out: it never plays under VAULTITE_QUIET, and VOICE_OUT writes a file instead).
+  (the companion's voice out: it never plays under VAULTITE_QUIET, and VOICE_OUT writes a file instead). Each Swift helper
+  is built by swiftbuild.ts and run by linehelper.ts; screen.swift and takeover.swift share ax.swift, so they name an element alike.
   Only the app the user runs (packaged, not VAULTITE_QUIET; VAULTITE_HELPER_TAP=1 by hand) hears their keys and takes the
   one lock; a scripted copy hears a file, never the microphone, and where that lock is held (the user's app runs) its QA
   (web/qa/helper.mjs) is skipped unless VAULTITE_QA_LIVE=1. Each Talk-key press is logged (presslog.ts:
