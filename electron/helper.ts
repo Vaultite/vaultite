@@ -15,7 +15,7 @@ import { land, landedSaid } from "./dictationroam.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
@@ -359,6 +359,8 @@ function heard(m: Record<string, unknown>) {
   if (m.event === "moved") return windowMoved(m)
   if (m.event === "ink") return inkHeard(m)
   // (its exchange on: a click elsewhere moves on, Esc ends it, its voice with it)
+  // (one let go while the Talk key was held: it went on to the app, and goes with the ask)
+  if (m.event === "click" && m.held) { void clicked(Number(m.x), Number(m.y)); return heldClick({ x: Number(m.x), y: Number(m.y) }) }
   if (m.event === "click") { void clicked(Number(m.x), Number(m.y)); if (m.exchange === false) return; if (takeoverClick(Number(m.x), Number(m.y))) return; const b = panelBounds(), x = Number(m.x), y = Number(m.y); if (!b || x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) moveOn(); return }
   if (m.event === "esc") return endExchange()
   if (m.event === "front") {
@@ -559,6 +561,8 @@ type Summon = { name: string; tint: string; p: Point; w: AppWindowInfo | null; t
   missed?: string
   /** Its press, in the log of presses. */
   press?: Press | null
+  /** What they clicked while it was held (each went on to the app): where, and what Accessibility read there. */
+  clicks?: Promise<HeldClick>[]
   /** Its coming was cued. */
   cued?: boolean
   /** Its words are in the timeline. */
@@ -676,6 +680,12 @@ function inkHeard(m: Record<string, unknown>) {
   if (phase === "down") inkDown = true
   regionDrag(phase, p, s.tint)
 }
+/** A click while the Talk key is held (screen.swift let it go on to the app): what was clicked, for its ask. */
+function heldClick(p: Point) {
+  const s = summon
+  if (!s || !HELD.has(s.m.phase) || !Number.isFinite(p.x) || !Number.isFinite(p.y) || (s.clicks?.length ?? 0) >= 8) return
+  ;(s.clicks ??= []).push(underAt(p).then((u) => u?.text ?? "", () => "").then((under) => ({ sx: Math.round(p.x), sy: Math.round(p.y), ...(under ? { under } : {}) })))
+}
 /** The pointer moved while it's fed: held, its trail (the last few seconds). */
 function trailed(p: Point, t: number) {
   const s = summon
@@ -691,11 +701,12 @@ async function sendSummon(s: Summon, text: string, how: { front?: "realtime"; ta
   if (!text && !ink.length) return missed(s, "nothing heard nor drawn")
   draw()
   const { w, place } = await (s.place ?? gather(s))
+  const clicks = await Promise.all(s.clicks ?? [])
   const win = w?.window && !w.vaultite && place.app !== "private" ? w : null
   if (win?.frame) park(s.name, win.window, offsetIn(win.frame, s.p))
   // (the realtime voice's press: its few words go on, this answer said after them)
   if (!how.front) stopVoice()
-  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), ...(regionRect() ? { region: regionRect() } : {}), voice: true, ...(s.released ? { keyUp: s.released } : {}),
+  const sent = live.say({ t: "moment", kind: text ? "ask" : "point", agent: s.name, ...(text ? { text } : {}), ...place, ...(ink.length ? { ink } : {}), ...(regionRect() ? { region: regionRect() } : {}), ...(clicks.length ? { clicks } : {}), voice: true, ...(s.released ? { keyUp: s.released } : {}),
     ...(how.front ? { front: how.front, ...(how.talk?.length ? { talk: how.talk } : {}) } : {}) })
   if (!sent) return missed(s, "Vaultite's server isn't connected", "Can't reach Vaultite")
   s.press?.end("sent", { chars: text.length, drew: ink.length, shot: !!place.shot, ...(how.front ? { front: how.front } : {}) })

@@ -81,6 +81,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   under?: string; sx?: number; sy?: number; shotAt?: Rect; near?: Near[]; ink?: Ink[]
   /** The box they drew on screen and keep there (a drag with the Talk key held: what they record), screen points. */
   region?: Rect
+  /** What they clicked as they spoke, the Talk key held (each went on to the app as a click): where, and what was there. */
+  clicks?: { sx: number; sy: number; under?: string }[]
   /** The display's picture as the key went down too, when the screen changed while they spoke (a toast gone); over
    *  Vaultite, its toasts of the last minute (`notices`, in words). */
   shotDown?: string; shotDownAt?: Rect; notices?: string
@@ -915,6 +917,8 @@ function screenPlace(m: Record<string, unknown>) {
     points: (Array.isArray(k.points) ? k.points : []).slice(0, 40).map((p: unknown) => (Array.isArray(p) ? [Math.round(Number(p[0])), Math.round(Number(p[1]))] : [0, 0]) as [number, number]) }] : [] }) : []
   const floating = Array.isArray(m.floating) ? m.floating.slice(0, 6).flatMap((w: Record<string, unknown>) => { const f = rect(w?.frame)
     return f && str(w.app) ? [{ app: str(w.app).slice(0, 200), name: str(w.name).slice(0, 120), frame: f }] : [] }) : []
+  const clicks = Array.isArray(m.clicks) ? m.clicks.slice(0, 8).flatMap((c: Record<string, unknown>) => { const x = Number(c?.sx), y = Number(c?.sy)
+    return Number.isFinite(x) && Number.isFinite(y) ? [{ sx: Math.round(x), sy: Math.round(y), ...(str(c.under) ? { under: str(c.under).slice(0, 300) } : {}) }] : [] }) : []
   const at = rect(m.shotAt), displays = Array.isArray(m.displays) ? m.displays.slice(0, 8).map(rect).filter((d): d is Rect => !!d && d.width > 0 && d.height > 0) : []
   return { ...(str(m.app) ? { app: str(m.app).slice(0, 200), ...(str(m.appName) ? { appName: str(m.appName).slice(0, 120) } : {}) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
     ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
@@ -922,7 +926,8 @@ function screenPlace(m: Record<string, unknown>) {
     ...(OWN_SHOT.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
     ...(OWN_SHOT.test(down) && OWN_SHOT.test(shot) ? { shotDown: down, ...(rect(m.shotDownAt) ? { shotDownAt: rect(m.shotDownAt)! } : {}) } : {}),
     ...(str(m.notices) ? { notices: str(m.notices).slice(0, 1200) } : {}),
-    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}), ...(floating.length ? { floating } : {}), ...(displays.length ? { displays } : {}), ...(rect(m.region) ? { region: rect(m.region)! } : {}) }
+    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}), ...(floating.length ? { floating } : {}), ...(displays.length ? { displays } : {}), ...(rect(m.region) ? { region: rect(m.region)! } : {}),
+    ...(clicks.length ? { clicks } : {}) }
 }
 /** What the last ask on screen found near the pointer, by agent: what `--ax` points at. */
 const nearBy = new Map<string, Near[]>()
@@ -1711,7 +1716,7 @@ export type ChatHow = { cwd?: string; account?: string; model?: string; effort?:
   /** Pictures sent with its message (an ask's screenshot); `quick`: no thinking first. */
   images?: string[]; quick?: boolean
   /** A lean session's whole system prompt and the few Claude Code tools it has; its words as written (`onText`). */
-  system?: string; builtins?: string[]; onText?: (use: string, text: string, end?: "done" | "stop") => void }
+  system?: string; builtins?: string[]; onText?: (use: string, text: string, end?: "done" | "stop" | "tool") => void }
 export type ChatState = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; error?: string; seq?: number; turn?: { text: string } | null
   /** Tokens its last request read. */
   context?: number }
@@ -2342,6 +2347,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.under) out.push(`  under their pointer${m.sx !== undefined ? ` (sx ${m.sx}, sy ${m.sy})` : ""}: ${m.under}`)
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
     for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height} (its box ${k.box.x},${k.box.y},${k.box.width},${k.box.height}): ${k.points.map((p) => p.join(",")).join(" ")}`)
+    if (m.clicks?.length) out.push(`  they clicked as they spoke (each went to the app as a click; the picture may show what it did): ${m.clicks.map((c) => `${c.under ?? "something"} at sx ${c.sx}, sy ${c.sy}`).join("; ")}`)
     if (m.region) out.push(`  their box (one they drew and keep on screen; "record this" records it): sx ${m.region.x}-${m.region.x + m.region.width}, sy ${m.region.y}-${m.region.y + m.region.height}`)
     if (m.floating?.length) out.push(`  floating over the screen (another app's panel, maybe what they mean): ${m.floating.map((w) => `${w.name ? `${w.name} (${w.app})` : w.app} at sx ${w.frame.x}, sy ${w.frame.y}, ${w.frame.width}×${w.frame.height}`).join("; ")}`)
     if (m.near?.length) out.push("  near their pointer (point at one: --ax <id>):", ...m.near.map((e) => `    ${thingText(e, { frame: true })}`))

@@ -452,6 +452,10 @@ export default async ($: VaultTest) => {
     check("companion: an ask from the desktop (no window) says what was under the pointer, its point, and the display's picture",
       deskText.includes('under their pointer (sx 812, sy 440): Finder: folder "Taxes", in "Desktop"') && deskText.includes("its picture: /tmp/x/screens/display-812-1.png (the screen around their pointer") &&
       (deskSt as { agents?: { sx?: number }[] }).agents?.some((a) => a.sx === 812), [deskText, deskSt])
+    const clicked = c.addMoment({ kind: "ask", text: "why is this greyed out?", app: "com.apple.Safari", sx: 820, sy: 40, clicks: [{ sx: 820, sy: 40, under: 'Safari: button "Share"' }, { sx: 5, sy: 6 }] })
+    const clickedText = clicked ? c.momentsText([clicked], "quiet", null) : ""
+    check("companion: what they clicked with the Talk key held goes with the ask, each click the app's",
+      clickedText.includes('they clicked as they spoke (each went to the app as a click; the picture may show what it did): Safari: button "Share" at sx 820, sy 40; something at sx 5, sy 6'), clickedText)
     const bar = c.addMoment({ kind: "point", sx: 1290, sy: 12, shot: "/tmp/x/screens/region-2.png" })
     const barText = bar ? c.momentsText([bar], "quiet", null) : ""
     const [, barSt] = await api("POST", "ops/companion.status", {})

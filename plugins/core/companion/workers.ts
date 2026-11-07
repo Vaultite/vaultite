@@ -1,6 +1,7 @@
 // Jobs' workers: coding agents in the app's terminals (any harness, here or on another machine), read from what's tracked
 // already (their terminal's state, their transcript), moving jobs.ts' lifecycle. Ops: handoff, jobs, job, job-stop, where, worker.
 import { execFile } from "node:child_process"
+import fs from "node:fs"
 import os from "node:os"
 import { agentName, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, userSurface, whoOf } from "../../../core/plugins.ts"
@@ -102,12 +103,23 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   // ---------- where it runs
 
   /** Where an ask over `o` (or `cwd`, as given) runs here: its folder, repo and base, or why it never runs here. */
-  async function placeHere(o: Over, cwd: string): Promise<Found & { repo: string; base: string; refused: string }> {
+  async function placeHere(o: Over, cwd: string): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean }> {
     const self = (await machines()).filter((m) => m.self).map((m) => hostOf(m.url)).filter(Boolean)
     const found: Found = cwd ? { cwd: cwd.replace(/^~(?=$|\/)/, os.homedir()), why: "as asked" } : await resolveHere(o, plugin.vault.path, self)
+    // (a folder asked for that isn't here: said, so it's looked for elsewhere, never a job that fails to start)
+    if (cwd && !fs.statSync(found.cwd, { throwIfNoEntry: false })?.isDirectory()) return { ...found, repo: "", base: "", refused: "", missing: true }
     const top = found.cwd === plugin.vault.path ? "" : await repoOf(found.cwd)
     const at = top || found.cwd
     return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base: top ? await headOf(top) : "", refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")) }
+  }
+  /** A folder asked for with no machine, not here: on the machine jobs prefer (where the user's repos often are), else
+   *  refused with where it was looked for. */
+  async function elsewhere(cwd: string, here: Placed): Promise<{ machine: string; there: Placed }> {
+    const all = await machines(), self = all.find((x) => x.self)
+    const pick = preferredMachine(all, setting("jobs_machine"), await plugin.ask<string>("machines:vault", ""), self ? !!self.standalone : !inDesktop())
+    const far = pick.machine ? await atMachine(pick.machine.id, "companion.where", { cwd }, 6).catch(() => null) as Placed | null : null
+    if (pick.machine && far && !far.missing) return { machine: pick.machine.id, there: { ...far, why: `${far.why}, on ${pick.machine.label} (no such folder on ${await labelOf("")})` } }
+    throw new OpError(`there's no folder ${tilde(here.cwd)} on ${await labelOf("")}${pick.machine ? ` nor on ${pick.machine.label}` : ""}. Leave cwd out (it runs where the ask was), or give the folder as it is on a machine with machine`, 404)
   }
   type Placed = Awaited<ReturnType<typeof placeHere>>
   /** Where a handoff runs: as asked (machine, cwd), else from the ask: an address another machine serves goes there; what
@@ -125,6 +137,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       ? await atMachine(machine, "companion.where", { ...(str(p.cwd) ? { cwd: str(p.cwd) } : {}), ...(o.url ? { url: o.url } : urlsIn(o)[0] ? { url: urlsIn(o)[0].href } : {}),
         ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }) as unknown as Placed
       : await placeHere(o, str(p.cwd))
+    if (there.missing && machine) throw new OpError(`there's no folder ${str(p.cwd)} on ${await labelOf(machine)}`, 404)
+    if (there.missing) ({ machine, there } = await elsewhere(str(p.cwd), there))
     let moved = ""
     if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)

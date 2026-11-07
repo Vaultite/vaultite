@@ -176,6 +176,10 @@ export default async ($: VaultTest) => {
       fs.mkdirSync(path.join(tmp, "Work"), { recursive: true })
       ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Fix it", say: "On it.", cwd: path.join(tmp, "Work") }, agent)
       check("handoff: a folder jobs never run in is refused, saying why", st === 403 && /Work runs elsewhere/.test(b.error), [st, b])
+      const before = (await api("POST", "ops/companion.jobs", {}))[1].jobs.length
+      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Fix it", cwd: "~/no-such-repo-here" }, agent)
+      check("handoff: a folder that isn't here (nor on a machine jobs prefer) is refused at once, no job left failed",
+        st === 404 && /there's no folder ~\/no-such-repo-here/.test(b.error) && /Leave cwd out/.test(b.error) && (await api("POST", "ops/companion.jobs", {}))[1].jobs.length === before, [st, b])
       // Do it: a task line handed over, in progress; a line that isn't an open task; one that moved; only words.
       const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
       const ends: string[] = [], linkEnd = (b: Any) => { const id = String(b.link ?? "").split("/").pop()!; ends.push(id); return id }

@@ -38,6 +38,29 @@ const FRESH_TOKENS = 80_000, FRESH_ASKS = 40, FRESH_AFTER_MS = 55 * 60_000
 /** Its prompt's version: a session told another is left for a fresh one. */
 const VERSION = crypto.createHash("sha256").update(SUMMONED_PROMPT).digest("hex").slice(0, 12)
 
+/** Its words before they're said: a block with a tag (an answer, a walkthrough's step) as it's written; one with none at
+ *  its message's end (`use` ""): said if the turn ends there, dropped if a tool call follows (narration, not for them). */
+export function wordsGate(speak: (use: string, text: string, end?: "done" | "stop") => void, dropped: (text: string) => void) {
+  const live = new Set<string>(), held = new Map<string, string>()
+  return (use: string, text: string, end?: "done" | "stop" | "tool") => {
+    if (!use) {
+      for (const [u, t] of held) if (end === "tool") dropped(t); else speak(u, t, "done")
+      held.clear()
+      return
+    }
+    if (live.has(use) || parseTags(text).tags.length) {
+      live.add(use)
+      held.delete(use)
+      speak(use, text, end === "tool" ? "done" : end)
+      if (end) live.delete(use)
+      return
+    }
+    // (its turn cut short: what it had goes as before)
+    if (end === "stop") { held.delete(use); return speak(use, text, "stop") }
+    held.set(use, text)
+  }
+}
+
 /** The summoned session of the companion `name()`, on while it runs Claude Code and `model()` is set: `text` is an
  *  ask's message, `options` how it runs, `acts` what its words and tags become; the rest is plugin.ts' own. */
 export function summonedLane(o: {
@@ -93,7 +116,7 @@ export function summonedLane(o: {
   const tools = (ts: Tool[]) => ts.map((t) => ({ ...inPixels(t),
     run: (args: unknown, use?: string) => { const of = asks; return marksShown(t.name).then((no) => no ?? inSummoned.run(true, () => t.run(onScreen(t.name, args), use)).then((r) => (t.name === "draw" ? drew(r, of) : r)).then(unsaid).then(told)) },
     ...(t.stream ? { stream: (use: string, json: string, end?: "done" | "stop") => inSummoned.run(true, () => t.stream!(use, json, end)) } : {}) }))
-  const options = (model: string) => { const x = o.options(model); return { ...x, tools: tools(x.tools ?? []), onText: words } }
+  const options = (model: string) => { const x = o.options(model); return { ...x, tools: tools(x.tools ?? []), onText: gated } }
 
   /** Where the picture of the asks it was handed sits on the screen: its x, y are that picture's pixels. */
   const origin = () => { const at = given.findLast((m) => m.shotAt)?.shotAt; return { x: at?.x ?? 0, y: at?.y ?? 0 } }
@@ -147,6 +170,9 @@ export function summonedLane(o: {
   /** Its acts in order (a tag's look or mark, a block's last words), one after another. */
   let queue: Promise<unknown> = Promise.resolve()
   const then = (f: () => Promise<unknown>) => { queue = queue.then(() => inSummoned.run(true, f)).catch(() => {}) }
+  /** Its narration kept from their ears (its session still has it): never said at its turn's end either. */
+  const unspoken = new Set<string>()
+  const gated = wordsGate(words, (t) => { unspoken.add(t.trim()); if (unspoken.size > 20) unspoken.delete(unspoken.values().next().value!) })
   function words(use: string, text: string, end?: "done" | "stop") {
     if (withdrawn) return
     const { said, tags } = parseTags(text), a = o.acts()
@@ -199,7 +225,8 @@ export function summonedLane(o: {
     if (err && handed && !acted && !shown && !withdrawn && !stopped) return failed(given, err)
     if (err) note(err)
     // (its words not heard as they came, a keeper of older code: said whole now, its tags acted on)
-    const turn = handed && !acted && !withdrawn && s.state === "idle" ? parseTags(s.turn?.text?.trim() ?? "") : null
+    const last = s.turn?.text?.trim() ?? ""
+    const turn = handed && !acted && !withdrawn && s.state === "idle" && !unspoken.has(last) ? parseTags(last) : null
     if (turn?.tags.length) for (const t of turn.tags) then(() => tagged(t, turn.said))
     if (turn?.said) { acted = true; inSummoned.run(true, () => o.did(name, "say", undefined, turn.said)); o.say(name, turn.said) }
     // (an ask never ends in silence: what its last tool did, else that it got nowhere; Esc's stop and the realtime voice's are theirs)

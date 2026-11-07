@@ -69,7 +69,7 @@ export type Event =
   | { t: "did"; id: string; tool: string; input: unknown }
   /** A streaming tool's input as written so far (`use`: its tool_use id, which its call names too; no `name`: its words,
    *  `texts`, by their entry id); `end`: its block is written ("done"; the call comes), or the turn ended ("stop"). */
-  | { t: "partial"; id: string; use: string; name: string; json: string; end?: "done" | "stop" }
+  | { t: "partial"; id: string; use: string; name: string; json: string; end?: "done" | "stop" | "tool" }
 
 /** What the host runs sessions with: the SDK's query, and an in-process MCP server of relayed tools. */
 export type Sdk = {
@@ -424,11 +424,14 @@ export class Host {
       for (const s of x.streams.values()) this.emit({ t: "partial", id: x.s.id, ...s, end: "stop" })
       x.streams.clear()
     }
-    if (m.type === "result") return stop()
+    // (`texts`: each message's end told too, with no `use`: "tool" when a tool call follows its words, else "stop")
+    const ended = (end: "tool" | "stop") => { if (x.spec.texts) this.emit({ t: "partial", id: x.s.id, use: "", name: "", json: "", end }) }
+    if (m.type === "result") { stop(); return ended("stop") }
     if (m.type !== "stream_event" || m.parent_tool_use_id) return
     const ev = m.event as { type: string; index?: number; message?: { id?: string }; content_block?: { type?: string; id?: string; name?: string }
-      delta?: { type?: string; partial_json?: string; text?: string } }
+      delta?: { type?: string; partial_json?: string; text?: string; stop_reason?: string } }
     if (ev.type === "message_start") { x.message = String(ev.message?.id ?? ""); return stop() }
+    if (ev.type === "message_delta" && ev.delta?.stop_reason) return ended(ev.delta.stop_reason === "tool_use" ? "tool" : "stop")
     if (typeof ev.index !== "number") return
     if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
       const name = String(ev.content_block.name ?? ""), short = name.startsWith(APP) ? name.slice(APP.length) : ""

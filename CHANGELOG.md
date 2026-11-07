@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Clicks work while you talk to the companion**: with the Talk key held, a drag still draws or makes the capture
+  box, but a plain click goes through to the app as a normal click (never a Control-click), and the companion is
+  told what you clicked. It no longer says its own working-out aloud between steps, and a handoff to a folder that
+  isn't on this Mac runs on the machine that has it, instead of leaving a failed job.
 - **The companion acts on any app's controls the same way, and checks they worked**: in Vaultite and in other Mac
   apps it finds a button, tab, row, switch or section by its role and name, presses the part that does it (a panel's
   heading, not the panel), and reads the state back, so it says "I pressed Files but it didn't open" instead of

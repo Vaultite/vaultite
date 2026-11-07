@@ -66,6 +66,8 @@ export type ScreenAgent = { name: string; tint: string; state: string; sx: numbe
 /** Driving another app (take-over): what it does now (its caption), `paused` while it waits for their hands. */
 export type Doing = { doing?: string; paused?: boolean }
 export type Point = { x: number; y: number }
+/** A click let go while the Talk key was held (it went on to the app): where, screen points, and what was there. */
+export type HeldClick = { sx: number; sy: number; under?: string }
 /** The companion called up by a Talk key, listening (its words as they come) or thinking; `follow`: in its exchange, it
  *  rides beside the pointer on every display (the overlay's feed); `aim`: what it points at, which it flies to. */
 export type Summoned = { name: string; tint: string; state: "listening" | "thinking" | "watching" | "missed"; sx: number; sy: number; words?: string; from?: Point; leaving?: boolean

@@ -130,6 +130,9 @@ above that), act, run it again, and never end your turn.
 - Their box: held, a drag draws a box that stays on screen (an ask carries it: `their box`). "Record this", "stop" and
   "that, just now" are the app's, never asks: it sends the clip, its frames and their words to the job on that surface
   (else a new job when they said what to do, else Captures) and says where. Its last 30 s: `screen timeline`.
+- Their clicks: held, a plain click (let go within a few points) still goes to the app, and the ask says what it was
+  (`they clicked as they spoke`); hands-free, the mouse and keys are never the companion's. Words between your tool
+  calls with no tag aren't said (narration); your answer and each walkthrough step carry a tag and are.
 - The realtime voice (the setting `voice_front`: realtime, once this machine has an OpenAI key, `vau voice key --provider
   openai`; `realtime_model`, `realtime_voice`): a Talk key's spoken ask on screen streams to OpenAI's speech-to-speech model,
   whose sound comes first. You're asked at once all the same (its moment says `asked through the realtime voice`): for

@@ -103,9 +103,28 @@ func tappedChord(_ type: CGEventType, _ e: CGEvent) {
   }
 }
 
-/** Ink: while the helper says (a Talk key held, outside Vaultite), drags are drawn, never reaching the app below; a drag
- *  begun then is the helper's to its release. */
+/** Ink: while the helper says (a Talk key held, outside Vaultite), a press waits: moved past SLOP points it's a drag, drawn
+ *  and the helper's to its release; let go before, a click, replayed to the app (marked REPLAYED, let by) and told. */
 var inkOn = false, inking = false, inkSent = 0.0
+var pressed: CGEvent? = nil
+let SLOP = 4.0, REPLAYED: Int64 = 0x7661756c74
+/** The Talk key's own modifiers, held now: a click replayed is a plain click (Control's would be a right click). */
+func talkFlags() -> CGEventFlags {
+  var f: CGEventFlags = []
+  for c in modHeld { if let m = MODS[c] { f.formUnion(m) } }
+  for (n, on) in chordOn where on { if let m = CHORD_FLAGS[n] { f.formUnion(m) } }
+  if fnDown { f.formUnion(.maskSecondaryFn) }
+  return f
+}
+func replay(_ events: [CGEvent]) {
+  let strip = talkFlags()
+  for e in events {
+    guard let c = e.copy() else { continue }
+    c.flags = c.flags.subtracting(strip)
+    c.setIntegerValueField(.eventSourceUserData, value: REPLAYED)
+    c.post(tap: .cghidEventTap)
+  }
+}
 /** What the exchange watches meanwhile (its answer showing): a click elsewhere, Esc. Told, never taken. */
 var exchange = false
 /** Clicks told anyway, for the timeline (helper.ts keeps them only while it's on). */
@@ -114,8 +133,22 @@ var filtering = false
 func mouse(_ type: CGEventType, _ e: CGEvent) -> Bool {
   let p = e.location
   if type == .leftMouseDown && inkOn && filtering {
+    pressed = e.copy()
+    return true
+  }
+  if let d = pressed, type == .leftMouseDragged || type == .leftMouseUp {
+    let q = d.location
+    if type == .leftMouseUp {
+      pressed = nil
+      replay([d, e])
+      send(["event": "click", "x": q.x, "y": q.y, "held": true])
+      return true
+    }
+    if hypot(p.x - q.x, p.y - q.y) < SLOP { return true }
+    pressed = nil
     inking = true
-    send(["event": "ink", "phase": "down", "x": p.x, "y": p.y])
+    send(["event": "ink", "phase": "down", "x": q.x, "y": q.y])
+    send(["event": "ink", "phase": "move", "x": p.x, "y": p.y])
     return true
   }
   if type == .leftMouseDragged && inking {
@@ -139,6 +172,8 @@ let tapThread = Thread {
   let mask = [CGEventType.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .leftMouseDragged, .leftMouseUp, .scrollWheel].reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) }
   let cb: CGEventTapCallBack = { _, type, e, _ in
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput { if let t = tap { CGEvent.tapEnable(tap: t, enable: true) }; return Unmanaged.passUnretained(e) }
+    // (a click held back and let go (mouse): the app's, untouched, and never a key with the Talk key)
+    if e.getIntegerValueField(.eventSourceUserData) == REPLAYED { return Unmanaged.passUnretained(e) }
     if type == .leftMouseDragged || type == .leftMouseUp { return mouse(type, e) ? nil : Unmanaged.passUnretained(e) }
     if type == .leftMouseDown && mouse(type, e) { return nil }
     if type == .keyDown && exchange && e.getIntegerValueField(.keyboardEventKeycode) == 53 { send(["event": "esc"]) }

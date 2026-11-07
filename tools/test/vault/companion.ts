@@ -107,6 +107,20 @@ export default async ($: VaultTest) => {
     const { partialArgs } = await import("../../../plugins/core/companion/partial.ts")
     const json = JSON.stringify({ path: "N.md", line: 3, text: 'say "hi"\nthen 😀' }), texts: string[] = []
     for (let n = 0; n <= json.length; n++) { const r = partialArgs(json.slice(0, n)); texts.push(typeof r.whole.text === "string" ? r.whole.text : r.open?.key === "text" ? r.open.text : "") }
+    {
+      // Its words: a block with a tag is said as it's written; one with none waits: dropped when a tool call follows
+      // (narration between its steps), said when the turn ends on it.
+      const { wordsGate } = await import("../../../plugins/core/companion/summoned.ts")
+      const said: string[] = [], dropped: string[] = []
+      const g = wordsGate((use, text, end) => said.push(`${use}:${text}${end ? `/${end}` : ""}`), (t) => dropped.push(t))
+      g("m1:0", "[point a1] Sounds"); g("m1:0", "[point a1] Sounds broken.", "done"); g("", "", "tool")
+      g("m2:0", "Handoff without"); g("m2:0", "Handoff without cwd, so it runs there.", "done"); g("", "", "tool")
+      g("m3:0", "Sent it to"); g("m3:0", "Sent it to a job.", "done"); g("", "", "stop")
+      g("m4:0", "Your chats are down the left [frame"); g("m4:0", "Your chats are down the left [frame 0,60,260,700]. Then", "done"); g("", "", "tool")
+      check("companion: words with a tag are said as written; narration before a tool call never; a last word with none, at its end",
+        said.join("|") === "m1:0:[point a1] Sounds|m1:0:[point a1] Sounds broken./done|m3:0:Sent it to a job./done|m4:0:Your chats are down the left [frame 0,60,260,700]. Then/done" &&
+        dropped.join() === "Handoff without cwd, so it runs there.", { said, dropped })
+    }
     check("companion: a tool's input read as it's written, each text a start of the next", texts.every((t, i) => i === 0 || t.startsWith(texts[i - 1])) && texts.at(-1) === 'say "hi"\nthen 😀' &&
       JSON.stringify(partialArgs('{"path":"N.md","line":3').whole) === '{"path":"N.md"}' && partialArgs('{"path":"N.md","line":3,"te').keys.join() === "path,line", texts.slice(-6))
   }

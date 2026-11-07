@@ -40,7 +40,7 @@ export type ChatStart = { prompt?: string; cwd?: string; account?: string; model
    *  servers or skills), and the few of Claude Code's own tools it has (none by default). */
   system?: string; builtins?: string[]
   /** Its words as it writes them (each text block's so far, `use` its entry id; `end` as a tool's stream says). */
-  onText?: (use: string, text: string, end?: "done" | "stop") => void
+  onText?: (use: string, text: string, end?: "done" | "stop" | "tool") => void
   title?: string; by?: string; tools?: ChatTool[]; inbox?: boolean
   /** Permission rules it runs without asking ("mcp__vaultite-app": its tools; "Bash(vau read:*)"), and never. */
   allowed?: string[]; denied?: string[]
@@ -302,7 +302,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       inform(e.id, null)
     } else if (e.t === "tool") void runTool(e.id, e.call, e.name, e.args, e.use)
     else if (e.t === "partial") {
-      try { if (e.name) toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end); else owned.get(e.id)?.onText?.(e.use, e.json, e.end) } catch (err) { console.error("chat: stream:", err) }
+      try { if (e.name) toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end === "tool" ? undefined : e.end); else owned.get(e.id)?.onText?.(e.use, e.json, e.end) } catch (err) { console.error("chat: stream:", err) }
     }
     else if (e.t === "did") {
       // (Activity's intake for agents' hooks, the session named by its title)
