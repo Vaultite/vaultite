@@ -2,15 +2,13 @@
  *  one session at a time, through Soniox or this Mac's engine; it stays a while after, Parakeet loaded, then goes. */
 import { app, systemPreferences } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
-import fs from "node:fs"
 import path from "node:path"
 import type { AppWindow } from "./appwindow.ts"
-import { buildDictation, helperName, parakeetModel } from "./dictation-build.ts"
+import { dictationSwift, parakeetModel } from "./dictation-build.ts"
 import { replacer } from "../core/dictationtext.ts"
 import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
 
 /** Shipped built in the app (tools/build_helpers.ts), else built the first time into userData. */
-const SHIPPED = path.join(import.meta.dirname, "bin")
 let helper: ChildProcess | null = null
 let starting: Promise<ChildProcess> | null = null
 /** Who hears the session under way: a window, or the menu-bar helper. */
@@ -32,11 +30,7 @@ export const onAudioDevices = (fn: (d: Devices) => void) => { deviceWatchers.add
 /** A Bluetooth mic held open past its session (dictation.swift `hold`), till releaseMic. */
 let heldMic = ""
 
-async function binary() {
-  const shipped = path.join(SHIPPED, helperName())
-  if (fs.existsSync(shipped)) return shipped
-  return buildDictation(path.join(app.getPath("userData"), "bin"))
-}
+const binary = () => dictationSwift.binary(path.join(app.getPath("userData"), "bin"))
 
 function start(): Promise<ChildProcess> {
   if (helper && helper.exitCode === null && !helper.killed) return Promise.resolve(helper)

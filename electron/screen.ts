@@ -4,7 +4,7 @@ import { app } from "electron"
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { buildScreen, screenHelperName } from "./screen-build.ts"
+import { screenSwift } from "./swiftbuild.ts"
 import { lineHelper } from "./linehelper.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
@@ -13,15 +13,10 @@ export type AppWindowInfo = { bundle: string; name: string; pid: number; window:
 /** The field with the keyboard: whether words can go in (`field`), a password's (`secure`), the text before its caret. */
 export type Focus = AppWindowInfo & { field: boolean; editable?: boolean; secure?: boolean; role?: string; before?: string }
 
-const SHIPPED = path.join(import.meta.dirname, "bin")
 let listener: (m: Record<string, unknown>) => void = () => {}
 export const onScreenEvent = (fn: typeof listener) => { listener = fn }
 
-async function binary() {
-  const shipped = path.join(SHIPPED, screenHelperName())
-  return fs.existsSync(shipped) ? shipped : buildScreen(path.join(app.getPath("userData"), "bin"))
-}
-const helper = lineHelper({ binary, event: (m) => listener(m), exited: () => listener({ event: "exit" }) })
+const helper = lineHelper({ binary: () => screenSwift.binary(path.join(app.getPath("userData"), "bin")), event: (m) => listener(m), exited: () => listener({ event: "exit" }) })
 export const startScreen = helper.started
 /** Ask the helper (a hung app's AX calls time out in it: 1 s each). */
 export const screenAsk = <T = Record<string, unknown>>(op: string, req: Record<string, unknown> = {}, ms = 10_000): Promise<T> => helper.ask<T>({ ...req, op }, ms)

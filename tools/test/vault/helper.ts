@@ -618,8 +618,8 @@ export default async ($: VaultTest) => {
   let tools = process.platform === "darwin"
   try { if (tools) execFileSync("/usr/bin/xcode-select", ["-p"], { stdio: "ignore" }) } catch { tools = false }
   if (tools) {
-    const { buildScreen } = await import("../../../electron/screen-build.ts")
-    const bin = await buildScreen(path.join(tmp, "screen-helper"))
+    const { screenSwift } = await import("../../../electron/swiftbuild.ts")
+    const bin = await screenSwift.build(path.join(tmp, "screen-helper"))
     const child = spawn(bin, [], { stdio: ["pipe", "pipe", "ignore"] })
     const lines: Record<string, unknown>[] = []
     let buf = ""

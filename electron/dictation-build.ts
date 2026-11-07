@@ -2,24 +2,17 @@
 // Parakeet is transcribe.cpp's release framework (pinned, checked), shipped as a plain dylib; else Apple's engine alone.
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
+import { run, swiftHelper } from "./swiftbuild.ts"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-const SOURCE = path.join(import.meta.dirname, "dictation.swift")
 const TRANSCRIBE = { version: "v0.4.1", sha256: "fb5646e564036a6c49659e3efcf72eb567af20da31b8569045c9a08181d35126" }
 const ZIP_URL = `https://github.com/handy-computer/transcribe.cpp/releases/download/${TRANSCRIBE.version}/TranscribeCpp.xcframework.zip`
 const CACHE = path.join(os.tmpdir(), "vaultite-natives", `transcribe-${TRANSCRIBE.version}`)
 const FRAMEWORK = "CTranscribe.framework"
 /** The framework's library, beside the helper: one plain file, as a framework's symlinks don't survive packaging. */
 const LIB = "libctranscribe.dylib", LIB_ID = `@executable_path/${LIB}`
-
-const run = (bin: string, args: string[], timeout = 300_000) => new Promise<{ ok: boolean; err: string }>((done) =>
-  execFile(bin, args, { timeout }, (e, _out, err) => done({ ok: !e, err: String(err).trim() })))
-
-/** The helper's file name: its source's hash and transcribe.cpp's version, so a change builds it again. */
-export const helperName = () =>
-  `dictation-${crypto.createHash("sha1").update(fs.readFileSync(SOURCE)).update(TRANSCRIBE.version).update(LIB).digest("hex").slice(0, 12)}`
 
 /** transcribe.cpp's macOS framework (universal), downloaded once and checked against its pinned hash; null without it. */
 async function framework(): Promise<string | null> {
@@ -63,32 +56,15 @@ async function flatten(from: string, helper: string, lib: string) {
 }
 const stdout = (bin: string, args: string[]) => new Promise<string>((done) => execFile(bin, args, (_e, o) => done(String(o))))
 
-/** Build the helper into `dir` (Xcode's Command Line Tools), for this Mac or for each of `archs` (the app's: both),
- *  with transcribe.cpp's framework beside it when it could be had. Answers its path. */
-export async function buildDictation(dir: string, archs: string[] = []): Promise<string> {
-  const out = path.join(dir, helperName())
-  if (fs.existsSync(out)) return out
-  if (!(await run("/usr/bin/xcode-select", ["-p"])).ok) throw new Error("it needs Xcode's Command Line Tools to be built here")
-  fs.mkdirSync(dir, { recursive: true })
-  const fw = await framework()
-  const link = fw ? ["-D", "PARAKEET", "-F", fw, "-framework", "CTranscribe"] : []
-  const tmp = `${out}.${process.pid}`
-  const slices = (archs.length ? archs : [os.arch() === "arm64" ? "arm64" : "x86_64"]).map((a) => [`${tmp}-${a}`, a])
-  try {
-    for (const [file, arch] of slices) {
-      // (macOS 14: Parakeet runs there; Apple's engine is macOS 26's, asked at run time)
-      const r = await run("/usr/bin/xcrun", ["swiftc", "-O", "-target", `${arch}-apple-macos14`, ...link, SOURCE, "-o", file])
-      if (!r.ok) throw new Error(`it didn't build: ${r.err.split("\n").filter((l) => l.includes("error")).slice(0, 2).join(" ")}`)
-    }
-    const r = await run("/usr/bin/xcrun", ["lipo", "-create", ...slices.map((s) => s[0]), "-output", tmp])
-    if (!r.ok) throw new Error(`lipo: ${r.err}`)
+let fw: string | null = null
+/** The helper, with transcribe.cpp's framework beside it when it could be had (macOS 14: Parakeet runs there; Apple's
+ *  engine is macOS 26's, asked at run time). Its name has transcribe.cpp's version too. */
+export const dictationSwift = swiftHelper({ id: "dictation", sources: ["dictation.swift"], macos: "14", salt: `${TRANSCRIBE.version}${LIB}`,
+  flags: async () => { fw = await framework(); return fw ? ["-D", "PARAKEET", "-F", fw, "-framework", "CTranscribe"] : [] },
+  after: async (bin, dir) => {
     fs.rmSync(path.join(dir, FRAMEWORK), { recursive: true, force: true })
-    if (fw) await flatten(path.join(fw, FRAMEWORK, "Versions", "A", "CTranscribe"), tmp, path.join(dir, LIB))
-    fs.renameSync(tmp, out)
-  } finally { for (const f of [tmp, ...slices.map((s) => s[0])]) fs.rmSync(f, { force: true }) }
-  for (const f of fs.readdirSync(dir)) if (f.startsWith("dictation-") && f !== path.basename(out)) fs.rmSync(path.join(dir, f), { force: true })
-  return out
-}
+    if (fw) await flatten(path.join(fw, FRAMEWORK, "Versions", "A", "CTranscribe"), bin, path.join(dir, LIB))
+  } })
 
 // ---------- Parakeet's model: Handy's or Hex's download, used where it is
 

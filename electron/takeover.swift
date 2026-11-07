@@ -5,55 +5,11 @@ import AppKit
 import ApplicationServices
 import ScreenCaptureKit
 
-@_silgen_name("_AXUIElementGetWindow") func axWindowID(_ el: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
-func wid(_ w: AXUIElement) -> Int? { var id: CGWindowID = 0; return axWindowID(w, &id) == .success && id != 0 ? Int(id) : nil }
-
-/** Vaultite's main process (our parent): its windows are never acted in here. */
-let vaultitePid = getppid()
+// (ax.swift: sending, Accessibility reads, an element's words as the screen helper lists them)
 _ = AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1)
 /** Marks the events we post, so the guard (and nothing else) tells them from the user's. */
 let MARK: Int64 = 0x5641554C54
 
-let out = NSLock()
-func send(_ obj: [String: Any]) {
-  guard let data = try? JSONSerialization.data(withJSONObject: obj), let line = String(data: data, encoding: .utf8) else { return }
-  out.lock(); FileHandle.standardOutput.write((line + "\n").data(using: .utf8)!); out.unlock()
-}
-func attr<T>(_ el: AXUIElement, _ name: String) -> T? {
-  var v: CFTypeRef?
-  guard AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success else { return nil }
-  return v as? T
-}
-func frame(_ el: AXUIElement) -> CGRect? {
-  var p = CGPoint.zero, s = CGSize.zero
-  guard let pv: AXValue = attr(el, kAXPositionAttribute), let sv: AXValue = attr(el, kAXSizeAttribute) else { return nil }
-  AXValueGetValue(pv, .cgPoint, &p); AXValueGetValue(sv, .cgSize, &s)
-  return CGRect(origin: p, size: s)
-}
-func rectJSON(_ r: CGRect?) -> Any { guard let r else { return NSNull() }; return ["x": r.minX, "y": r.minY, "width": r.width, "height": r.height] }
-func pidOf(_ el: AXUIElement) -> pid_t { var p: pid_t = 0; AXUIElementGetPid(el, &p); return p }
-func appInfo(_ pid: pid_t) -> [String: Any] {
-  let a = NSRunningApplication(processIdentifier: pid)
-  return ["bundle": a?.bundleIdentifier ?? "", "name": a?.localizedName ?? "", "pid": Int(pid), "vaultite": pid == vaultitePid]
-}
-func actions(_ el: AXUIElement) -> [String] { var a: CFArray?; return AXUIElementCopyActionNames(el, &a) == .success ? (a as? [String] ?? []) : [] }
-func settable(_ el: AXUIElement, _ name: String) -> Bool { var b: DarwinBoolean = false; return AXUIElementIsAttributeSettable(el, name as CFString, &b) == .success && b.boolValue }
-func secure(_ el: AXUIElement) -> Bool { (attr(el, kAXSubroleAttribute) as String?) == "AXSecureTextField" }
-/** Its words as screen.swift's near() names it (so an element listed there is found again by them). */
-func label(_ el: AXUIElement) -> String {
-  for k in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute] {
-    if let v: String = attr(el, k), !v.trimmingCharacters(in: .whitespaces).isEmpty { return String(v.prefix(120)) }
-  }
-  return ""
-}
-func roleOf(_ el: AXUIElement) -> String { attr(el, kAXRoleDescriptionAttribute) as String? ?? attr(el, kAXRoleAttribute) as String? ?? "" }
-/** Chromium and Electron build their tree only when asked, as screen.swift wakes them. */
-var woken = Set<pid_t>()
-func wake(_ pid: pid_t) {
-  if woken.contains(pid) { return }
-  woken.insert(pid)
-  AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
-}
 
 // ---------- finding an element again: the window under its frame, walked for the one with that frame and words
 
@@ -64,11 +20,6 @@ func windowUnder(_ p: CGPoint) -> (pid: pid_t, id: Int)? {
     return (pid_t(w[kCGWindowOwnerPID as String] as? Int ?? 0), w[kCGWindowNumber as String] as? Int ?? 0)
   }
   return nil
-}
-func axWindow(_ pid: pid_t, _ id: Int) -> AXUIElement? {
-  wake(pid)
-  let ws: [AXUIElement] = attr(AXUIElementCreateApplication(pid), kAXWindowsAttribute) ?? []
-  return ws.first { wid($0) == id }
 }
 func close(_ a: CGRect, _ b: CGRect) -> Bool { abs(a.minX - b.minX) <= 4 && abs(a.minY - b.minY) <= 4 && abs(a.width - b.width) <= 4 && abs(a.height - b.height) <= 4 }
 /** The element at `want` (a near() list's frame) with its words, else the one there with that frame, else what's hit at
@@ -103,7 +54,7 @@ func doer(_ el: AXUIElement, _ action: String) -> AXUIElement? {
   var e: AXUIElement? = el
   for _ in 0..<4 {
     guard let x = e else { return nil }
-    if actions(x).contains(action) { return x }
+    if actionNames(x).contains(action) { return x }
     e = attr(x, kAXParentAttribute)
   }
   return nil
@@ -129,7 +80,7 @@ func describe(_ el: AXUIElement) -> [String: Any] {
   m["secure"] = secure(el)
   m["label"] = secure(el) ? "" : label(el)
   m["frame"] = rectJSON(frame(el))
-  m["actions"] = actions(el)
+  m["actions"] = actionNames(el)
   m["valueSettable"] = settable(el, kAXValueAttribute)
   if let v: NSNumber = attr(el, kAXValueAttribute), ["AXCheckBox", "AXRadioButton", "AXSwitch"].contains(m["role"] as? String ?? "") { m["checked"] = v.intValue != 0 }
   // (its state, read back after a step: whether it did what it meant)

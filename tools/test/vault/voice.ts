@@ -329,8 +329,8 @@ export default async ($: VaultTest) => {
   let tools = process.platform === "darwin"
   try { if (tools) execFileSync("/usr/bin/xcode-select", ["-p"], { stdio: "ignore" }) } catch { tools = false }
   if (tools) {
-    const { buildVoice } = await import("../../../electron/voice-build.ts")
-    const bin = await buildVoice(path.join(tmp, "voice-helper"))
+    const { voiceSwift } = await import("../../../electron/swiftbuild.ts")
+    const bin = await voiceSwift.build(path.join(tmp, "voice-helper"))
     const wav = path.join(tmp, "voice.wav")
     const child = spawn(bin, [], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, VOICE_OUT: wav } })
     const lines: Any[] = []

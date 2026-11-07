@@ -3,14 +3,11 @@
 import { app, globalShortcut, screen } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { coverTranslucent } from "./translucency.ts"
-import { execFile } from "node:child_process"
 import { lineHelper } from "./linehelper.ts"
-import crypto from "node:crypto"
+import { appWindowsSwift } from "./swiftbuild.ts"
 import fs from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 
-const SOURCE = path.join(path.dirname(fileURLToPath(import.meta.url)), "appwindows.swift")
 type Rect = { x: number; y: number; width: number; height: number }
 
 /** Each app window in a tab (by its number): its app, vault window, rect (null: tab hidden), whether it's raised behind
@@ -62,22 +59,7 @@ function setThrough(win: AppWindow, on: boolean, tell = false) {
   else if (!any && watching) { clearInterval(watching); watching = null }
 }
 
-/** The helper's binary, compiled from its source the first time (and after it changes). */
-async function binary() {
-  const src = fs.readFileSync(SOURCE)
-  const out = path.join(app.getPath("userData"), "bin", `appwindows-${crypto.createHash("sha1").update(src).digest("hex").slice(0, 12)}`)
-  if (fs.existsSync(out)) return out
-  fs.mkdirSync(path.dirname(out), { recursive: true })
-  // (built beside it, then moved in: a build cut off midway never leaves a binary that's reused)
-  const tmp = `${out}.${process.pid}.tmp`
-  await new Promise<void>((ok, fail) => execFile("/usr/bin/swiftc", ["-O", SOURCE, "-o", tmp], (e, _o, err) =>
-    e ? fail(new Error(`Couldn't build the app windows helper (it needs Xcode's Command Line Tools): ${err || e.message}`)) : ok()))
-    .catch((e) => { fs.rmSync(tmp, { force: true }); throw e })
-  fs.renameSync(tmp, out)
-  return out
-}
-
-const helper = lineHelper({ binary, stderr: "inherit", event: heard,
+const helper = lineHelper({ binary: () => appWindowsSwift.binary(path.join(app.getPath("userData"), "bin")), stderr: "inherit", event: heard,
   // (an app that doesn't answer the helper holds it: the call gives up rather than wait forever; adopt can take 15 s)
   timeout: { ms: 30_000, why: "helper" },
   exited: () => { for (const w of [...shown.keys()]) gone(w) } })

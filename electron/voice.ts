@@ -2,14 +2,12 @@
  *  (tts.ts, with the server's keys) and voice.swift plays them, saying what no cloud can. One answer at a time. */
 import { app } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
-import fs from "node:fs"
 import path from "node:path"
 import { cloudVoice, type CloudConfig, type CloudVoice } from "./tts.ts"
 import { voice, type Voice } from "./voicelogic.ts"
 import type { Heard } from "../plugins/core/companion/screenmarks.ts"
-import { buildVoice, voiceHelperName } from "./voice-build.ts"
+import { voiceSwift } from "./swiftbuild.ts"
 
-const SHIPPED = path.join(import.meta.dirname, "bin")
 /** Its helper goes after this long unused (its process, and the audio device with it). */
 const IDLE_MS = 10 * 60_000
 
@@ -64,10 +62,7 @@ export function companionVoice(o: {
   let output = ""
   const recorded = new Set<number>()
 
-  async function binary() {
-    const shipped = path.join(SHIPPED, voiceHelperName())
-    return fs.existsSync(shipped) ? shipped : buildVoice(path.join(app.getPath("userData"), "bin"))
-  }
+  const binary = () => voiceSwift.binary(path.join(app.getPath("userData"), "bin"))
   function start(): Promise<ChildProcess | null> {
     if (child && child.exitCode === null && !child.killed) return Promise.resolve(child)
     starting ??= binary().then((bin) => {

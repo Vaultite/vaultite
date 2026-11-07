@@ -3,7 +3,7 @@
 import { app } from "electron"
 import fs from "node:fs"
 import path from "node:path"
-import { buildCapture, captureHelperName } from "./capture-build.ts"
+import { captureSwift } from "./swiftbuild.ts"
 import { lineHelper } from "./linehelper.ts"
 import type { BoxAt, Point, Rect } from "../plugins/core/companion/clips.ts"
 
@@ -13,13 +13,9 @@ export type Clip = { file: string; ms: number; width: number; height: number; fr
 
 let on = false
 let stopped: (() => void) | null = null
-async function binary() {
-  const shipped = path.join(import.meta.dirname, "bin", captureHelperName())
-  return fs.existsSync(shipped) ? shipped : buildCapture(path.join(app.getPath("userData"), "bin"))
-}
 // (macOS stopped it (screen recording taken away, the display gone), or it died: a recording's lost)
 const lost = () => { on = false; stopped?.() }
-const helper = lineHelper({ binary, exited: lost, event: (m) => { if (m.event === "stopped") lost() } })
+const helper = lineHelper({ binary: () => captureSwift.binary(path.join(app.getPath("userData"), "bin")), exited: lost, event: (m) => { if (m.event === "stopped") lost() } })
 const ask = <T = Record<string, unknown>>(call: Record<string, unknown>, ms = 15_000): Promise<T> =>
   REAL ? helper.ask<T>(call, ms) : Promise.resolve({ ok: false, why: "quiet" } as T)
 

@@ -1,10 +1,9 @@
 /** Take-over (the helper's): a step in another app as the user watches (an offer, a border, its cursor's caption); a
  *  click or Esc stops it, their hands on it pause what needs them; the steps are takeover.swift's (takeoverlogic.ts). */
 import { app, BrowserWindow, screen } from "electron"
-import fs from "node:fs"
 import path from "node:path"
 import { HEX } from "../plugins/core/companion/screenmarks.ts"
-import { buildTakeover, takeoverHelperName } from "./takeover-build.ts"
+import { takeoverSwift } from "./swiftbuild.ts"
 import { lineHelper } from "./linehelper.ts"
 import { overlayWindow } from "./overlaywin.ts"
 import { privateApp } from "../core/privateapps.ts"
@@ -32,11 +31,7 @@ const CAPTION_MS = 1200
 
 // ---------- takeover.swift
 
-async function binary() {
-  const shipped = path.join(import.meta.dirname, "bin", takeoverHelperName())
-  return fs.existsSync(shipped) ? shipped : buildTakeover(path.join(app.getPath("userData"), "bin"))
-}
-const helper = lineHelper({ binary,
+const helper = lineHelper({ binary: () => takeoverSwift.binary(path.join(app.getPath("userData"), "bin")),
   // (gone mid-drive: its guard went with it, so nothing more is done blind)
   exited: () => { if (drive) stop("helper") },
   event: (m) => {

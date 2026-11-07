@@ -115,9 +115,9 @@ export default async ($: VaultTest) => {
 async function helper($: VaultTest, tmp: string) {
   const { check } = $
   if (process.platform !== "darwin") return
-  const { buildDictation } = await import("../../../electron/dictation-build.ts")
+  const { dictationSwift } = await import("../../../electron/dictation-build.ts")
   let bin: string
-  try { bin = await buildDictation(path.join(os.tmpdir(), "vaultite-natives", "dictation-test")) } catch (e) { console.log(`  (skipped the helper: ${(e as Error).message})`); return }
+  try { bin = await dictationSwift.build(path.join(os.tmpdir(), "vaultite-natives", "dictation-test")) } catch (e) { console.log(`  (skipped the helper: ${(e as Error).message})`); return }
   const audio = path.join(tmp, "two.aiff")
   // (`say -o` writes a file, nothing is played)
   execFileSync("say", ["-o", audio, "Remember to buy milk and bread. [[slnc 1500]] Then call Alice Park about the lighthouse project."])

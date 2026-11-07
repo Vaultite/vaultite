@@ -5,37 +5,8 @@ import ApplicationServices
 import CoreAudio
 import ScreenCaptureKit
 
-/** A window's number (CGWindowID), as appwindows.swift gets it. */
-@_silgen_name("_AXUIElementGetWindow") func axWindowID(_ el: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError
-func wid(_ w: AXUIElement) -> Int? { var id: CGWindowID = 0; return axWindowID(w, &id) == .success && id != 0 ? Int(id) : nil }
-
-/** Vaultite's main process (the helper's parent): its windows (the vault's, the overlay) are never another app's. */
-let vaultitePid = getppid()
+// (ax.swift: sending, Accessibility reads, an element's words)
 _ = AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1)
-
-let out = NSLock()
-func send(_ obj: [String: Any]) {
-  guard let data = try? JSONSerialization.data(withJSONObject: obj), let line = String(data: data, encoding: .utf8) else { return }
-  out.lock(); FileHandle.standardOutput.write((line + "\n").data(using: .utf8)!); out.unlock()
-}
-
-func attr<T>(_ el: AXUIElement, _ name: String) -> T? {
-  var v: CFTypeRef?
-  guard AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success else { return nil }
-  return v as? T
-}
-func frame(_ el: AXUIElement) -> CGRect? {
-  var p = CGPoint.zero, s = CGSize.zero
-  guard let pv: AXValue = attr(el, kAXPositionAttribute), let sv: AXValue = attr(el, kAXSizeAttribute) else { return nil }
-  AXValueGetValue(pv, .cgPoint, &p); AXValueGetValue(sv, .cgSize, &s)
-  return CGRect(origin: p, size: s)
-}
-func rectJSON(_ r: CGRect?) -> Any { guard let r else { return NSNull() }; return ["x": r.minX, "y": r.minY, "width": r.width, "height": r.height] }
-func pidOf(_ el: AXUIElement) -> pid_t { var p: pid_t = 0; AXUIElementGetPid(el, &p); return p }
-func appInfo(_ pid: pid_t) -> [String: Any] {
-  let a = NSRunningApplication(processIdentifier: pid)
-  return ["bundle": a?.bundleIdentifier ?? "", "name": a?.localizedName ?? "", "pid": Int(pid)]
-}
 
 // ---------- the dictation keys: down and up, on its own thread (a slow request never holds the key)
 
@@ -248,20 +219,12 @@ func watchFront(_ pid: pid_t) {
 // ---------- fields: where words go, and putting them there
 
 let TEXT_ROLES: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
-/** Chromium and Electron build their tree only when asked (AXManualAccessibility), as VoiceOver's apps do. */
-var awoken = Set<pid_t>()
-func wake(_ pid: pid_t) {
-  if awoken.contains(pid) { return }
-  awoken.insert(pid)
-  AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue)
-}
 func focused() -> AXUIElement? {
   let a = NSWorkspace.shared.frontmostApplication
   if let a { wake(a.processIdentifier) }
   // (the system-wide answer fails on some Macs and for some apps; the app in front still knows)
   return attr(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute) ?? a.flatMap { attr(AXUIElementCreateApplication($0.processIdentifier), kAXFocusedUIElementAttribute) }
 }
-func settable(_ el: AXUIElement, _ name: String) -> Bool { var b: DarwinBoolean = false; return AXUIElementIsAttributeSettable(el, name as CFString, &b) == .success && b.boolValue }
 func editable(_ el: AXUIElement) -> Bool {
   let role: String = attr(el, kAXRoleAttribute) ?? ""
   if TEXT_ROLES.contains(role) { return true }
@@ -269,7 +232,6 @@ func editable(_ el: AXUIElement) -> Bool {
   if (attr(el, "AXEditableAncestor") as AXUIElement?) != nil { return true }
   return settable(el, kAXSelectedTextAttribute) || (role != "AXWindow" && settable(el, kAXValueAttribute) && settable(el, kAXSelectedTextRangeAttribute))
 }
-func secure(_ el: AXUIElement) -> Bool { (attr(el, kAXSubroleAttribute) as String?) == "AXSecureTextField" }
 func windowOf(_ el: AXUIElement) -> AXUIElement? { attr(el, kAXWindowAttribute) }
 /** The text before the caret (what the words join to), when the field tells it. */
 func before(_ el: AXUIElement) -> String? {
@@ -388,12 +350,6 @@ func windowNumbered(_ id: Int) -> [String: Any]? { onScreen().first { ($0[kCGWin
 func boundsOf(_ w: [String: Any]) -> CGRect? {
   guard let b = w[kCGWindowBounds as String] as? NSDictionary else { return nil }
   return CGRect(dictionaryRepresentation: b)
-}
-/** An app's AX window with number `id`. */
-func axWindow(_ pid: pid_t, _ id: Int) -> AXUIElement? {
-  wake(pid)
-  let ws: [AXUIElement] = attr(AXUIElementCreateApplication(pid), kAXWindowsAttribute) ?? []
-  return ws.first { wid($0) == id }
 }
 func describe(_ w: [String: Any]) -> [String: Any] {
   let pid = pid_t(w[kCGWindowOwnerPID as String] as? Int ?? 0), id = w[kCGWindowNumber as String] as? Int ?? 0
@@ -548,17 +504,6 @@ func stateOf(_ el: AXUIElement, _ role: String, _ sub: String) -> [String: Any] 
   }
   return s
 }
-/** The first words a text inside `el` says, `depth` levels down at most. */
-func innerText(_ el: AXUIElement, _ depth: Int) -> String {
-  guard depth > 0, let kids: [AXUIElement] = attr(el, kAXChildrenAttribute) else { return "" }
-  for k in kids.prefix(8) {
-    if (attr(k, kAXRoleAttribute) as String?) == "AXStaticText", let v: String = attr(k, kAXValueAttribute) ?? attr(k, kAXTitleAttribute), !v.trimmingCharacters(in: .whitespaces).isEmpty { return String(v.prefix(120)) }
-    let t = innerText(k, depth - 1)
-    if !t.isEmpty { return t }
-  }
-  return ""
-}
-func actionNames(_ el: AXUIElement) -> [String] { var a: CFArray?; return AXUIElementCopyActionNames(el, &a) == .success ? (a as? [String] ?? []) : [] }
 func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int, in id: Int = 0) -> [String: Any] {
   let area = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
   // (a window by its number, one just opened: whatever is above it; else the one there)
@@ -575,12 +520,7 @@ func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int, in id: Int = 0) ->
     let f = frame(el)
     if let f, f.width > 0, f.height > 0, !f.intersects(area) { continue }
     let role: String = attr(el, kAXRoleAttribute) ?? ""
-    var label = ""
-    for k in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute, kAXPlaceholderValueAttribute] {
-      if let v: String = attr(el, k), !v.trimmingCharacters(in: .whitespaces).isEmpty { label = String(v.prefix(120)); break }
-    }
-    // (a row or cell says its words in a text inside it: named by them, so the row is what's found and selected)
-    if label.isEmpty, ["AXRow", "AXCell"].contains(role) { label = innerText(el, 3) }
+    let label = label(el, role: role)
     if let f, f.width > 0, NEAR_ROLES.contains(role), !label.isEmpty {
       let dx = max(f.minX - x, 0, x - f.maxX), dy = max(f.minY - y, 0, y - f.maxY), sub: String = attr(el, kAXSubroleAttribute) ?? ""
       found.append((dx * dx + dy * dy, ["role": attr(el, kAXRoleDescriptionAttribute) as String? ?? role, "ax": role, "sub": sub, "label": label, "frame": rectJSON(f),
