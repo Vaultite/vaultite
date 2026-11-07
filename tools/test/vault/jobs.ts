@@ -54,9 +54,22 @@ export default async ($: VaultTest) => {
         J.choiceIn(perm, "maybe") === 0 && J.choiceIn(perm, "3") === 0 && J.choiceIn(q, "let's encrypt") === 2 && J.choiceIn(q, "yes") === 0)
     }
     {
-      const jt = J.jobTask("Fix the footer", undefined, true, undefined, "j3k9x2a")
+      const site = { cwd: "/Users/alice/Projects/site", repo: "site", base: "0123456789abcdef", label: "M1", ...J.worktreeOf("/Users/alice/Projects/site", "site", "j3k9x2a") }
+      const jt = J.jobTask("Fix the footer", undefined, site, "j3k9x2a")
       check("jobs: a worker is told to show its change working: a tour saved as its proof, its befores, by its job's id",
-        jt.includes('vau companion tour-save "') && jt.includes("--job j3k9x2a") && jt.includes("(before: ") && !J.jobTask("x", undefined, true).includes("tour-save"))
+        jt.includes('vau companion tour-save "') && jt.includes("--job j3k9x2a") && jt.includes("(before: ") && !J.jobTask("x", undefined, site).includes("tour-save"))
+      const live = J.jobTask("Fix the footer", undefined, { ...site, live: true }, "j3k9x2a"), note = J.jobTask("Tidy my note", undefined, { ...site, repo: "", tree: undefined, branch: undefined })
+      check("jobs: every coding job works in its own worktree and branch beside its checkout, made at the commit asked, its packages installed there; never the checkout",
+        site.tree === "/Users/alice/Projects/site-j3k9x2a" && site.branch === "job-j3k9x2a" &&
+        jt.includes("git -C /Users/alice/Projects/site worktree add /Users/alice/Projects/site-j3k9x2a -b job-j3k9x2a 0123456789ab") && /never in \/Users\/alice\/Projects\/site itself/.test(jt) &&
+        /install them there/.test(jt) && /Keep and merge lands it/.test(jt) && /running server's own checkout/.test(live) && !/worktree/.test(note) && !/They asked over/.test(jt), jt)
+      const moved = J.jobTask("Fix the footer", undefined, { ...site, moved: "the preview http://localhost:5173 on M4" }, "j3k9x2a")
+      check("jobs: one moved to another machine works in its worktree there too, previewed there", /worktree add/.test(moved) && /fetch that commit first/.test(moved) && /They asked over the preview http:\/\/localhost:5173 on M4\. You run on M1/.test(moved), moved)
+      const land = J.landTask(site), liveLand = J.landTask({ ...site, live: true }), old = J.landTask({ cwd: "/r" })
+      check("jobs: Keep and merge lands it from its worktree (pushed to main, nothing merged in the checkout), then removes the worktree and its branch; one line",
+        /merge it now, from your worktree \/Users\/alice\/Projects\/site-j3k9x2a \(branch job-j3k9x2a\), as this repo's own rules say/.test(land) && /git push origin HEAD:main/.test(land) &&
+        land.includes("git -C /Users/alice/Projects/site worktree remove /Users/alice/Projects/site-j3k9x2a, and branch -D job-j3k9x2a") && /Never switch or edit \/Users\/alice\/Projects\/site:/.test(land) && !land.includes("\n") &&
+        /nothing lands there/.test(liveLand) && /the server takes main itself/.test(liveLand) && /don't merge/.test(liveLand) && !/worktree/.test(old) && /^They watched your change and kept it: merge it now, as this repo's own rules say/.test(old), land)
       const first = J.lastOf({ text: "Fixed it. The links \"Why now?\" stay.\n\nShould I also change the header? Or keep it as is?", at: 5, final: true, prompt: jt })
       const told = J.lastOf({ text: "Looking at it.", at: 9, final: false, prompt: "Use the **darker** blue", background: 2 })
       check("jobs: its latest turn: what it said, the questions its answer ends with (quotes left out), what it was told after its task, its background tasks",
@@ -135,10 +148,11 @@ export default async ($: VaultTest) => {
     const osc = (s: string, more = "") => `printf '\\033]7501;state=${s}${more}\\033\\\\'`
     const b64 = (s: string) => Buffer.from(s).toString("base64")
     // (works, writes a file, rests; told to merge it once kept, works and rests; told more, works again; then asks a permission)
-    const script = `sleep 0.5; ${osc("working", `:msg=${b64("Editing index.html")}`)}; sleep 1; echo '<p>blue</p>' >> index.html; ${osc("idle")}; ` +
+    // (it makes its worktree as told and edits there, never the checkout)
+    const script = (tree: string) => `stty -icanon 2>/dev/null; sleep 0.5; ${osc("working", `:msg=${b64("Editing index.html")}`)}; sleep 1; ${tree} -q; (cd ${tree.split(" ")[5]} && echo '<p>blue</p>' >> index.html); ${osc("idle")}; ` +
       `IFS= read -r k; ${osc("working")}; echo "$k" > landed.txt; sleep 1; ${osc("idle")}; ` +
       `IFS= read -r l; ${osc("working")}; echo "$l" > told.txt; sleep 1; ${osc("blocked", `:kind=permission:msg=${b64("Bash(rm -rf build)")}`)}; sleep 600`
-    cc["agent:claude"] = async (start: Any) => { said.push(start); return { command: script, cwd: null } }
+    cc["agent:claude"] = async (start: Any) => { said.push(start); return { command: script(/git -C \S+ worktree add \S+ -b \S+ [0-9a-f]+/.exec(start.prompt ?? "")?.[0] ?? "false x x x /nowhere"), cwd: null } }
     let turn: Any = null
     cc["agent-turn:claude"] = async () => turn
     let card: Any = null
@@ -157,18 +171,22 @@ export default async ($: VaultTest) => {
       // (its worker saves its proof before it ends, as it's told)
       const [tst, tb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
       check("proof: tour-save --job keeps it in Guides/Proofs, as that job's", tst === 200 && tb.path === "Guides/Proofs/The blue heading.md" && read(tb.path).includes(`job: ${card.id}`) && !tb.warning, [tst, tb])
-      turn = { text: "Made the heading blue in index.html. Try http://localhost:5173.", files: [path.join(repo, "index.html")], at: Date.now(), final: true }
+      const tree = path.join(path.dirname(real), `site-${card.id}`)
+      turn = { text: "Made the heading blue in index.html. Try http://localhost:5173.", files: [path.join(tree, "index.html")], at: Date.now(), final: true }
       const review = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r.state === "ready for review" && r }, 10000, 100)
       check("jobs: its turn over with a change, it's ready for review: its diff, its link, what it said, new for the menu bar",
         !!review && review.result.diff === "1 file changed, +1 -0" && review.result.link === "http://localhost:5173" && /heading blue/.test(review.result.text) && review.seen === false &&
         review.log.map((x: Any) => x.to).join() === "working,ready for review", review)
+      check("jobs: a coding job worked in its own worktree on its own branch, its diff read there, the checkout untouched",
+        review?.where.tree === tree && review.where.branch === `job-${card.id}` && fs.readFileSync(path.join(tree, "index.html"), "utf8").includes("blue") &&
+        !fs.readFileSync(path.join(repo, "index.html"), "utf8").includes("blue") && g("branch", "--show-current").trim() !== `job-${card.id}`, { where: review?.where, diff: review?.result.diff })
       ;[st, b] = await api("POST", "ops/companion.jobs", {})
       check("companion jobs: its state, where, its results", st === 200 && b.jobs[0]?.id === card.id && b.jobs[0].state === "ready for review" && b.jobs[0].where.account === "Personal", b)
       {
         // Its proof: ready, it knocks; its worker was told to save a tour; Show me with no window says so plainly, then the choice.
         const knock = (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.open === `job:${card.id}`)
-        check("proof: a job ready knocks, Ready to show you its change, from its terminal, opening its proof; its worker was told how to save one",
-          knock?.line === "Ready to show you the blue heading" && knock.urgency === "normal" && knock.from === card.link.split("/").pop() && said[0]?.prompt.includes(`--job ${card.id}`), [knock, said[0]?.prompt.slice(-900)])
+        check("proof: a job ready knocks, Ready to show you its change, its card held 15 s, from its terminal, opening its proof; its worker was told how to save one",
+          knock?.line === "Ready to show you the blue heading" && knock.urgency === "normal" && knock.hold === 15_000 && knock.from === card.link.split("/").pop() && said[0]?.prompt.includes(`--job ${card.id}`), [knock, said[0]?.prompt.slice(-900)])
         let [pst, pb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"], in the menu bar.' }, agent)
         check("proof: tour-save warns of a step on the Mac's own UI, outside Vaultite's window", pst === 200 && /step 1 names the Mac's own UI/.test(pb.warning ?? ""), [pst, pb])
         ;[pst, pb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
@@ -220,7 +238,7 @@ export default async ($: VaultTest) => {
         const landing = await waitFor(() => fs.existsSync(path.join(repo, "landed.txt")) && fs.readFileSync(path.join(repo, "landed.txt"), "utf8").trim(), 10000, 100)
         const mid = (await api("POST", "ops/companion.job", { id: card.id }))[1]
         check("proof: Keep and merge pressed tells its own worker to merge it as its repo says, the app's own (no ask to the model), its layers down, and it isn't closed yet",
-          /kept it: merge it now, as this repo's own rules say/.test(landing || "") && /Merged:/.test(landing || "") && mid.state !== "done" && layers().at(-1)?.drawing === null, { landing, mid: mid.state, last: layers().at(-1), said: (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text).slice(-3) })
+          /kept it: merge it now, from your worktree [^ ]+ \(branch job-[a-z0-9]+\), as this repo's own rules say/.test(landing || "") && /git push origin HEAD:main/.test(landing || "") && /Merged:/.test(landing || "") && mid.state !== "done" && layers().at(-1)?.drawing === null, { landing, mid: mid.state, last: layers().at(-1), said: (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text).slice(-3) })
         const merged = await waitFor(async () => { const r2 = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r2.state === "done" && r2 }, 10000, 100)
         const told2 = (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.line === "Merged: Make the heading blue")
         check("proof: once its worker says it merged, the job closes as done, its knock saying so and opening its terminal (nothing to show)", !!merged && !!told2 && !told2.open, { merged: merged?.state, told2 })

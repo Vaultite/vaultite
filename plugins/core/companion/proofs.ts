@@ -3,7 +3,7 @@
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { type Job, landable, live, terminalOf } from "./jobs.ts"
-import type { Knock } from "./knocks.ts"
+import { type Knock, READY_HOLD_MS } from "./knocks.ts"
 import type { Moment } from "./plugin.ts"
 import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, readyLine, readyNow, summaryOf } from "./proof.ts"
 import type { Result, Tour } from "./tour.ts"
@@ -18,7 +18,7 @@ const SETTLE_MS = 900
 export type ProofDeps = {
   jobs: { list: () => Job[]; find: (id: string) => Job; seen: (ids: string[]) => void; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void>
     land: (ctx: OpCtx, id: string) => Promise<void>; close: (ctx: OpCtx, id: string) => Promise<void>; unsure: (id: string, m: Moment | undefined, which?: string) => string }
-  knocks: { knock: (p: { from: string; who: string; line: string; urgency?: string; open?: string }) => Knock; settle: (from: string) => void }
+  knocks: { knock: (p: { from: string; who: string; line: string; urgency?: string; open?: string; hold?: number }) => Knock; settle: (from: string) => void }
   tours: { proofOf: (id: string) => { path: string; tour: Tour; problems: string[] } | null; show: (name: string, s: Screen, tour: Tour) => Promise<Result> }
   /** The companion's name (the one that shows proofs). */
   name: () => string
@@ -72,7 +72,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     const urgency = await d.urgency()
     if (urgency === "off") return true
     try {
-      d.knocks.knock({ from: terminalOf(j), who: j.title, line: readyLine(j, change), urgency, ...(change ? { open: `job:${j.id}` } : {}) })
+      d.knocks.knock({ from: terminalOf(j), who: j.title, line: readyLine(j, change), urgency, hold: READY_HOLD_MS, ...(change ? { open: `job:${j.id}` } : {}) })
     } catch (e) { console.error(`companion: ${j.id}'s ready knock: ${(e as Error).message}`) }
     return true
   }

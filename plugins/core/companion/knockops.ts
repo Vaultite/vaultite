@@ -81,7 +81,7 @@ export function knockOps(plugin: Plugin, d: Deps) {
   }
 
   /** A knock added (one before from its session replaced), kept and told; throws (400) on a bad one. */
-  function knock(p: { from: string; who: string; line: string; urgency?: string; life?: number; open?: string }) {
+  function knock(p: { from: string; who: string; line: string; urgency?: string; life?: number; open?: string; hold?: number }) {
     let k: Knock
     try { k = makeKnock({ id: `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, ...p, from: qualified(p.from) }, Date.now()) } catch (e) { throw new OpError((e as Error).message, 400) }
     const before = new Map(all().map((x) => [x.id, x.state])), ks = addKnock(all(), k, isMuted)
@@ -110,7 +110,8 @@ export function knockOps(plugin: Plugin, d: Deps) {
     summary: "Ask for the user's attention from a background session, in one line, without interrupting them: it comes up by the notch at their next pause.",
     help: `For a session working in the background (a terminal's agent, a job, a script) with something for the user: done
 and ready to look at, a question only they can answer, a failure. The line shows beside the notch at a pause (never
-while the companion speaks or they talk), waits a moment for "not now" (then it comes back at their next break), and
+while the companion speaks or they talk), waits a moment for "not now" (then it comes back at their next break; --hold
+keeps its card up longer to be read, as a job's ready knock does for 15s), then folds into the island by design: it
 stays as its session's presence, needing them, till they open it or its life ends. A newer knock from the same session
 replaces its last. Urgency: low comes at a longer pause, high at any pause in the talk. Only the companion speaks.
 
@@ -126,15 +127,18 @@ replaces its last. Urgency: low comes at a longer pause, high at any pause in th
       who: { type: "string", description: "its session's name as the user knows it (default: its job's title, its terminal's name)" },
       terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal it comes from (vau fills it in when it runs in one): what a click opens" },
       open: { type: "string", description: "what a click opens instead: a note's path, a view, a link" },
+      hold: { type: "string", description: "how long its card stays up before it folds into the island (15s, up to 2m; default 3s): it then comes only at a real pause, and waits while nobody is at the Mac" },
     },
     args: ["line"],
     run: async (p, ctx) => {
       if (d.off()) throw new OpError("the companion is off: nothing comes up by the notch", 409)
       const life = str(p.for) ? duration(str(p.for)) : undefined
       if (life !== undefined && !(life > 0)) throw new OpError(`for is a duration (90s, 30m, 2h), not ${str(p.for)}`, 400)
+      const hold = str(p.hold) ? duration(str(p.hold)) : undefined
+      if (hold !== undefined && !(hold > 0)) throw new OpError(`hold is a duration (15s, 1m), not ${str(p.hold)}`, 400)
       const from = qualified(str(p.terminal).trim())
       if (!rows.length) await readTerminals()
-      return knock({ from, who: str(p.who) || whoIs(from, ctx), line: str(p.line), urgency: str(p.urgency) || undefined, life, open: str(p.open) || undefined })
+      return knock({ from, who: str(p.who) || whoIs(from, ctx), line: str(p.line), urgency: str(p.urgency) || undefined, life, open: str(p.open) || undefined, hold })
     },
     text: (k: Knock) => (k.state === "ignored" ? `Knock ${k.id} kept, unshown: the user ignored ${k.who} for now.` : d.hidden() ? `Knocked (${k.id}), kept: the island by the notch is off (the setting island), so it doesn't come up.` : `Knocked (${k.id}): it comes up by the notch at their next pause.`),
   })

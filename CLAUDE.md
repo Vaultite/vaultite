@@ -60,9 +60,12 @@ is its point.
   Pattern kills (`pkill -f`, `killall`) hit the user's own apps.
 
 ## Working here
-- Work in a git worktree, never the main checkout: several sessions run at once (check `git worktree list` first).
-  `git worktree add ../vaultite-<task> -b <task>`, symlink `node_modules`, commit after each working step, squash-merge
-  into main from the main checkout (one commit), deploy, remove the worktree. Park work in commits: `git stash` is
+- Work in a git worktree, never the main checkout: several sessions run at once (check `git worktree list` first),
+  and an always-on machine's checkout is its live server's. `git worktree add ../vaultite-<task> -b <task>`, symlink
+  `node_modules` (a real `npm install` in the worktree once you add a package, never into the checkout's), commit after
+  each working step. Land from the worktree, never by merging in a checkout: rebase onto `origin/main`, squash to one
+  commit, `git push origin HEAD:main`; then `git pull --ff-only` a checkout that isn't a live server's (a server
+  following main takes it itself), deploy, remove the worktree and its branch. Park work in commits: `git stash` is
   shared by every worktree.
 - Comments: at most 2 lines, saying why, not what.
 - CHANGELOG.md: one user-facing line per change (edit an Unreleased line rather than add another).

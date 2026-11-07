@@ -10,10 +10,20 @@ export type Knock = { id: string; from: string; who: string; line: string; urgen
   /** When it showed, and when it was put off (its "not now"). */
   shown?: number; later?: number
   /** What its click opens when it isn't a terminal's (a note, a link). */
-  open?: string }
+  open?: string
+  /** How long its card stays up to be read (ms), else GRACE_MS: a ready knock's (READY_HOLD_MS) comes only at a real
+   *  pause, never mid-typing, and its time runs only while they're at the Mac. */
+  hold?: number }
 
 /** How long a shown knock waits for "not now" before it's told. */
 export const GRACE_MS = 3000
+/** A job's ready knock ("Ready to show you …") stays up this long, unless dismissed, before it folds into the island:
+ *  by design, the island's presence then holds it. */
+export const READY_HOLD_MS = 15_000
+/** Still this long with a held card up, they may have left: its time waits till they're back (a read takes less). */
+export const HERE_MS = 10_000
+/** How long knock `k`'s card stays up. */
+export const holdOf = (k: Pick<Knock, "hold">) => k.hold ?? GRACE_MS
 /** How still the user must be (no key, no pointer) for a knock to come up: an urgent one at any pause in the talk. */
 export const STILL_MS: Record<Urgency, number> = { high: 0, normal: 1500, low: 6000 }
 /** Still longer than this, they're away from this Mac: nothing comes up (another Mac's helper may have them). */
@@ -35,15 +45,16 @@ export function duration(s: string) {
 }
 
 /** A new knock from `from` (its session's id, or ""), named `who`; `life` ms (else its urgency's). Throws on a bad one. */
-export function makeKnock(p: { id: string; from: string; who: string; line: string; urgency?: string; life?: number; open?: string }, now: number): Knock {
+export function makeKnock(p: { id: string; from: string; who: string; line: string; urgency?: string; life?: number; open?: string; hold?: number }, now: number): Knock {
   const line = p.line.replace(/\s+/g, " ").trim()
   if (!line) throw new Error("a knock needs its line: what it wants, in a few words")
   const urgency = (p.urgency || "normal") as Urgency
   if (!URGENCIES.includes(urgency)) throw new Error(`urgency is low, normal or high, not ${p.urgency}`)
   const life = p.life ?? LIVES[urgency]
   if (!(life > 0)) throw new Error("a knock's life is a duration: 90s, 30m, 2h")
+  if (p.hold !== undefined && !(p.hold > 0 && p.hold <= 120_000)) throw new Error("a knock's hold is a duration up to 2m: 15s")
   return { id: p.id, from: p.from, who: p.who.trim().slice(0, 60) || "A session", line: line.length > 140 ? `${line.slice(0, 139)}…` : line,
-    urgency, at: now, until: now + Math.min(life, 86_400_000), state: "waiting", ...(p.open ? { open: p.open } : {}) }
+    urgency, at: now, until: now + Math.min(life, 86_400_000), state: "waiting", ...(p.open ? { open: p.open } : {}), ...(p.hold ? { hold: p.hold } : {}) }
 }
 
 /** Add knock `k`: an earlier one from its session still to come or still telling is replaced by it (its newest word
@@ -71,7 +82,9 @@ export function pick(ks: Knock[], p: Pause): Knock | null {
   if (p.talking || p.still >= AWAY_MS) return null
   // (they moved since `t`: still for less time than has passed since it)
   const movedSince = (t: number) => p.now - p.still > t
-  const ready = ks.filter((k) => k.until > p.now && p.still >= STILL_MS[k.urgency] &&
+  // (a held card is to be read: never mid-typing, even an urgent one)
+  const pause = (k: Knock) => (k.hold ? Math.max(STILL_MS[k.urgency], STILL_MS.normal) : STILL_MS[k.urgency])
+  const ready = ks.filter((k) => k.until > p.now && p.still >= pause(k) &&
     (k.state === "waiting" || (k.state === "later" && p.now - (k.later ?? 0) >= LATER_MS && movedSince(k.later ?? 0))))
   return ready.sort((a, b) => RANK[a.urgency] - RANK[b.urgency] || a.at - b.at)[0] ?? null
 }
@@ -100,8 +113,12 @@ export function knockReply(text: string): "later" | "ignore" | "mute" | "open" |
   if (/^(?:ok |okay |yes |yeah )?(?:show me|show it|open it|open that|let'?s see)(?: please)?$/.test(t)) return "open"
   return null
 }
-/** A showing knock whose grace ran out without a "not now": told. */
-export const graceOver = (k: Knock, now: number) => k.state === "showing" && now - (k.shown ?? now) >= GRACE_MS
+/** A showing knock whose grace (its hold) ran out without a "not now": told. */
+export const graceOver = (k: Knock, now: number) => k.state === "showing" && now - (k.shown ?? now) >= holdOf(k)
+/** Whether showing knock `k`'s time waits now: while anyone talks (a "not now" may be on its way), and a held one's
+ *  while nobody is at the Mac (locked, or still past HERE_MS). */
+export const graceWaits = (k: Knock, p: { talking: boolean; still: number; locked?: boolean }) =>
+  k.state === "showing" && (p.talking || (!!k.hold && (!!p.locked || p.still >= HERE_MS)))
 
 // ---------- presences: the background sessions, small by the notch
 

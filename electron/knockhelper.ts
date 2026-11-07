@@ -1,7 +1,7 @@
 // The helper's side of knocks (companion/knocks.ts): each comes up at a pause it sees (no one talking, the user still
-// and at this Mac), waits its grace for "not now", then is told; island.ts draws it.
+// and at this Mac), waits its grace (a ready one's 15 s hold) for "not now", then is told; island.ts draws it.
 import { powerMonitor, screen } from "electron"
-import { actOn, graceOver, GRACE_MS, HEARD_MS, type Knock, type KnockAct, knockReply, over, pick, type Presence } from "../plugins/core/companion/knocks.ts"
+import { actOn, graceOver, graceWaits, HEARD_MS, holdOf, type Knock, type KnockAct, knockReply, over, pick, type Presence } from "../plugins/core/companion/knocks.ts"
 import { islandActs, islandReady, presenceAt, showIsland, spotNow } from "./island.ts"
 import type { OtherWindow, Rect, Spot } from "./islandlogic.ts"
 import type { WalkScene } from "../plugins/core/companion/walks.ts"
@@ -104,6 +104,7 @@ function act(id: string, what: KnockAct, mute = false) {
 }
 
 const stillNow = () => host?.still?.() ?? powerMonitor.getSystemIdleTime() * 1000
+const lockedNow = () => !host?.still && powerMonitor.getSystemIdleState(1) === "locked"
 
 function tick() {
   if (timer) { clearTimeout(timer); timer = null }
@@ -114,8 +115,8 @@ function tick() {
   // (its window loading still, or its place not known yet: it shows once it can be seen)
   if (k && k.state !== "showing" && (!islandReady(host.base()) || !spot)) { void place(); timer = setTimeout(tick, 150); return }
   if (k && k.state !== "showing") { act(k.id, "show"); host.cue("knock"); lastTick = now; return }
-  // (its grace waits while they talk (a "not now" may be on its way) or read it with the pointer on it)
-  if (k?.state === "showing" && talking && !hovering) k.shown = (k.shown ?? now) + (now - lastTick)
+  // (its grace waits while they talk, while a held one's reader is away, or read it with the pointer on it)
+  if (k && !hovering && graceWaits(k, { talking, still: stillNow(), locked: lockedNow() })) k.shown = (k.shown ?? now) + (now - lastTick)
   lastTick = now
   if (k && !hovering && graceOver(k, now)) {
     act(k.id, "told")
@@ -127,7 +128,8 @@ function tick() {
   const away = !showing && stillNow() > AWAY_MS
   const live = !!walk || (!away && (presences.length > 0 || !!showing))
   if (live) void place()
-  const left = showing ? (hovering ? GRACE_MS - (hovering - (showing.shown ?? hovering)) : GRACE_MS - (now - (showing.shown ?? now))) : 0
+  const hold = showing ? holdOf(showing) : 0
+  const left = showing ? (hovering ? hold - (hovering - (showing.shown ?? hovering)) : hold - (now - (showing.shown ?? now))) : 0
   const tint = showing ? presences.find((p) => p.knock === showing.id)?.tint ?? "orange" : "orange"
   showIsland(host.base(), live ? { presences, knock: showing ? { ...showing, tint, left: Math.max(0, left) } : null, walk } : null, spot)
   // (quick while one shows, its grace counting; else at a walk while any wait or show)

@@ -22,6 +22,23 @@ export default async ($: VaultTest) => {
       K.pick([ks[0], ks[1], shown], pause({ talking: true }))?.id === "c" && shown.state === "showing")
     check("knocks: its grace is about 3 s; it's told once it ran out with no not now",
       !K.graceOver(shown, T + 1000 + 2900) && K.graceOver(shown, T + 1000 + K.GRACE_MS) && K.actOn(shown, "told", T + 5000).state === "told")
+    // A job's ready knock: its card held 15 s, at a real pause only, its time waiting while nobody is at the Mac.
+    const ready = K.makeKnock({ id: "r", from: "", who: "Fix footer", line: "Ready to show you the footer", urgency: "high", life: 600_000, hold: K.READY_HOLD_MS }, T)
+    check("knocks: a ready knock comes at a real pause, never mid-typing, even urgent", K.pick([ready], pause({ still: 0 })) === null &&
+      K.pick([ready], pause({ still: 1000 })) === null && K.pick([ready], pause({ still: K.STILL_MS.normal }))?.id === "r")
+    const up = K.actOn(ready, "show", T + 1000)
+    check("knocks: its card stays up 15 s, not 3, then it's told (folds into the island)", K.holdOf(up) === 15_000 && K.holdOf(shown) === K.GRACE_MS &&
+      !K.graceOver(up, T + 1000 + K.GRACE_MS) && !K.graceOver(up, T + 1000 + 14_900) && K.graceOver(up, T + 1000 + K.READY_HOLD_MS))
+    check("knocks: one card at a time: an urgent one waits its turn behind a ready card", K.pick([up, ks[2]], pause())?.id === "r")
+    const at = { talking: false, still: 2000 }
+    check("knocks: a held card's time waits while nobody is at the Mac (locked, or still a while), and while anyone talks",
+      !K.graceWaits(up, at) && K.graceWaits(up, { ...at, locked: true }) && K.graceWaits(up, { ...at, still: K.HERE_MS }) && K.graceWaits(up, { ...at, talking: true }) &&
+      !K.graceWaits(shown, { ...at, still: K.HERE_MS }) && K.graceWaits(shown, { ...at, talking: true }) && !K.graceWaits(ready, { ...at, locked: true }))
+    const off = K.actOn(up, "later", T + 3000)
+    check("knocks: dismissed (not now), a ready card goes at once", off.state === "later" && K.pick([off], pause({ now: T + 4000 })) === null)
+    let long = ""
+    try { K.makeKnock({ id: "q", from: "", who: "", line: "x", hold: 10 * 60_000 }, T) } catch (e) { long = (e as Error).message }
+    check("knocks: a hold is at most 2 minutes", /hold/.test(long))
     const later = K.actOn(shown, "later", T + 2000)
     check("knocks: not now puts it off: not at once, nor later while they've sat still since, but at their next break",
       K.pick([later], { now: T + 2000 + 5000, talking: false, still: 2000 }) === null &&
@@ -107,7 +124,11 @@ export default async ($: VaultTest) => {
     ;[st, b] = await api("POST", "ops/companion.knock", { line: "  ", urgency: "high" })
     const [st2] = await api("POST", "ops/companion.knock", { line: "x", urgency: "loud" })
     const [st3] = await api("POST", "ops/companion.knock", { line: "x", for: "soon" })
-    check("knock op: no line, a wrong urgency or life is refused", st === 400 && st2 === 400 && st3 === 400, b)
+    const [st4] = await api("POST", "ops/companion.knock", { line: "x", hold: "10m" })
+    check("knock op: no line, a wrong urgency, life or hold is refused", st === 400 && st2 === 400 && st3 === 400 && st4 === 400, b)
+    const [, held] = await api("POST", "ops/companion.knock", { line: "Ready to look", who: "Held", hold: "15s" })
+    check("knock op: --hold keeps its card up longer", held.hold === 15_000, held)
+    await api("POST", "ops/companion.knocks", { ignore: held.id })
     ;[st, b] = await api("POST", "ops/companion.knocks", {})
     check("knocks op: lists it", st === 200 && b.knocks.some((k: Any) => k.id === id && k.state === "waiting"), b)
     ;[st, b] = await api("POST", "ops/companion.knocks", { later: id })

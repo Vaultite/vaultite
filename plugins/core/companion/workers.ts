@@ -4,9 +4,9 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import { agentName, parseTerminal } from "../../../core/agents.ts"
-import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, endEvent, LAND_TASK, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
-  step, terminalOf, type Waits, type Where } from "./jobs.ts"
+import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
+import { cardOf, choiceIn, endEvent, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
+  step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import { branchOf, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
 
@@ -52,6 +52,7 @@ export async function diffSince(cwd: string, base: string) {
 const NOT_THEIRS = "only on the user's own words: answer it while answering their ask that names the choice (made after it began waiting), with said quoting them; else ask them which"
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
+const sameDir = (a: string, b: string) => { try { return fs.realpathSync(a) === fs.realpathSync(b) } catch { return false } }
 
 export function jobOps(plugin: Plugin, d: JobDeps) {
   const setting = (k: string) => str(plugin.settings()[k]).trim() || str(plugin.manifest.settings?.[k]?.default)
@@ -107,14 +108,15 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   // ---------- where it runs
 
   /** Where an ask over `o` (or `cwd`, as given) runs here: its folder, repo and base, or why it never runs here. */
-  async function placeHere(o: Over, cwd: string): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean }> {
+  async function placeHere(o: Over, cwd: string): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; live?: boolean }> {
     const self = (await machines()).filter((m) => m.self).map((m) => hostOf(m.url)).filter(Boolean)
     const found: Found = cwd ? { cwd: cwd.replace(/^~(?=$|\/)/, os.homedir()), why: "as asked" } : await resolveHere(o, plugin.vault.path, self)
     // (a folder asked for that isn't here: said, so it's looked for elsewhere, never a job that fails to start)
     if (cwd && !fs.statSync(found.cwd, { throwIfNoEntry: false })?.isDirectory()) return { ...found, repo: "", base: "", refused: "", missing: true }
     const top = found.cwd === plugin.vault.path ? "" : await repoOf(found.cwd)
     const at = top || found.cwd
-    return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base: top ? await headOf(top) : "", refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")) }
+    return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base: top ? await headOf(top) : "", refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")),
+      ...(top && sameDir(top, ROOT) ? { live: true } : {}) }
   }
   /** A folder asked for with no machine, not here: on the machine jobs prefer (where the user's repos often are), else
    *  refused with where it was looked for. */
@@ -147,7 +149,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
     return { machine, label: await labelOf(machine), cwd: there.cwd, repo: there.repo, why: there.why, ...(there.base ? { base: there.base } : {}), ...(there.preview ? { preview: there.preview } : {}),
-      ...(moved ? { moved } : {}) }
+      ...(moved ? { moved } : {}), ...(there.live ? { live: true } : {}) }
   }
   /** An ask placed `here` moved to the machine jobs prefer: its checkout of the GitHub page's repo or of a pushed preview's
    *  (an editor project's), else its vault unless the repo is only here. `moved`: what the user watched here. */
@@ -169,7 +171,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (!far || (!far.repo && here.repo)) return stay(far ? `not checked out on ${m.label}` : `${m.label} doesn't answer`)
     if (!local) return { machine: m.id, there: { ...far, why: `${far.why}, on ${m.label} (${pick.why})` }, moved: "" }
     const branch = await branchOf(here.cwd), at = [branch, here.base.slice(0, 7)].filter(Boolean).join(" at ")
-    return { machine: m.id, there: { ...far, why: `${here.why}, all pushed: ${far.why}, on ${m.label} (${pick.why}), previewed there` },
+    // (its worktree there starts at the commit they watched here, which its diff counts from)
+    return { machine: m.id, there: { ...far, ...(here.base ? { base: here.base } : {}), why: `${here.why}, all pushed: ${far.why}, on ${m.label} (${pick.why}), previewed there` },
       moved: `${here.preview ? `the preview ${here.preview}` : `${tilde(here.cwd)}, open in their editor`} on ${await labelOf("")}${at ? ` (${at})` : ""}` }
   }
   /** The Claude Code a job runs as when the handoff names none: the setting, with its account (claude_personal). */
@@ -188,7 +191,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** Its terminal here as it is: running (else how it ended), its state, title, and with `turn` its last turn (its
    *  `session`'s, which outlives the terminal) and the diff since `base`. */
-  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string } = {}): Promise<Seen> {
+  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string } = {}): Promise<Seen> {
     const running = await plugin.ask<boolean>("terminal:runs", false, id)
     const st = await plugin.ask<{ state?: string; kind?: string; msg?: string } | null>("terminal:state", null, id)
     const info = running ? await plugin.ask<{ title?: string; typed?: number } | null>("terminal:info", null, id) : null
@@ -206,7 +209,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       ...(exit ? { exit: { code: exit.code, signal: exit.signal, ...(exit.lost ? { lost: true } : {}) } } : {}),
       ...(o.turn ? { turn: turn ? { text: str(turn.text), files: turn.files ?? [], at: turn.at ?? 0, final: turn.final !== false && !!turn.text, ...(turn.session ? { session: turn.session } : {}),
         ...(turn.prompt ? { prompt: turn.prompt } : {}), ...(turn.background ? { background: turn.background } : {}) } : null } : {}),
-      ...(o.turn && o.cwd && o.base ? { diff: await diffSince(o.cwd, o.base) } : {}) }
+      // (a coding job's changes are in its worktree once it made one, else wherever it worked)
+      ...(o.turn && o.cwd && o.base ? { diff: await diffSince(o.tree && fs.existsSync(o.tree) ? o.tree : o.cwd, o.base) } : {}) }
   }
   /** The prompt terminal `id` is blocked on (`st`): a permission (one its screen shows: its words and choices), else its
    *  one question with its options; a question in several parts or picks has no choices (answered in its terminal). */
@@ -223,7 +227,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** Job `j`'s worker read where it runs; `turn`: its last turn too, `diff`: and its changes. */
   const seenOf = (j: Job, turn = false, diff = turn) => {
-    const o = { ...(turn ? { turn, ...(j.session ? { session: j.session } : {}) } : {}), ...(diff ? { cwd: j.where.cwd, ...(j.where.base ? { base: j.where.base } : {}) } : {}) }
+    const o = { ...(turn ? { turn, ...(j.session ? { session: j.session } : {}) } : {}), ...(diff ? { cwd: j.where.cwd, ...(j.where.base ? { base: j.where.base } : {}), ...(j.where.tree ? { tree: j.where.tree } : {}) } : {}) }
     return j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, ...o }, 10) as Promise<Seen> : seenHere(j.terminal, o)
   }
 
@@ -425,7 +429,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   async function land(ctx: OpCtx, j: Job, note = "", shown?: string) {
     const was = j.land
     j.land = { asked: Date.now() }
-    try { await steer(ctx, j, [LAND_TASK, note].filter(Boolean).join(" "), shown ?? "Kept: merge it") } catch (e) { j.land = was; throw e }
+    try { await steer(ctx, j, [landTask(j.where), note].filter(Boolean).join(" "), shown ?? "Kept: merge it") } catch (e) { j.land = was; throw e }
   }
   /** Closed by the user (their stop, their Keep): one ready for review is done, else stopped; its terminal ends. */
   async function close(ctx: OpCtx, j: Job) {
@@ -454,10 +458,13 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const now = Date.now(), title = (str(p.title).trim() || told.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
     // (`p.on` "": a job no page's asks go to live, as a QA walk's: it works through a list)
     const on = typeof p.on === "string" ? p.on : surfaceOf(m)
-    const j: Job = { id: newId(), title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), ...(on ? { on } : {}), started: now, turn: now, at: now, seen: false, log: [] }
+    const id = newId()
+    // (a coding job's own worktree, beside the checkout it was asked over: it lands only by their Keep and merge)
+    if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, id))
+    const j: Job = { id, title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), ...(on ? { on } : {}), started: now, turn: now, at: now, seen: false, log: [] }
     all().unshift(j)
     try {
-      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: jobTask(told, m, !!where.repo, where.moved ? { from: where.moved, on: where.label } : undefined, j.id), name: title, cwd: where.cwd,
+      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: jobTask(told, m, where, j.id), name: title, cwd: where.cwd,
         ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
         ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
       j.terminal = r.id.split("@")[0]
@@ -481,7 +488,9 @@ runs where the ask was over, derived on the spot: a preview's address (localhost
 serving it, its repo, on its machine), a GitHub page (its checkout here), an editor's window (its project), a note (the
 vault); cwd and machine say it instead. A job is in the menu bar's Jobs (starting, working, needs you, ready for
 review, done, failed, stopped) with where it runs; opening it opens its terminal, where the user can type. A coding job
-ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they say so. Every
+works in its own git worktree and branch beside the checkout (repo-<job id>, branch job-<job id>), never in the
+checkout itself, and ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they
+say so; Keep and merge (or land) lands it from that worktree and removes it. Every
 handoff announces itself in one short line ("Handed that off to a background agent."; a follow-up, "Passed that on to its job.");
 say replaces it, still one short line, only when they need more (a question, an unexpected place). End your turn. job: a follow-up or a correction to one of yours (companion
 jobs), typed into its terminal; anything about its result ("merge it", "try X too") goes to it too, done or closed (it
@@ -705,9 +714,10 @@ in one short line, merge it or close it as it is (each a button).
     kind: "read",
     params: { id: { type: "string", required: true, description: "its terminal's id" }, turn: { type: "boolean", description: "its last turn and the diff too" },
       session: { type: "string", description: "its agent's session (its turn read from it, the terminal ended or not)" },
-      cwd: { type: "string", description: "its folder (the diff's)" }, base: { type: "string", description: "the commit the diff counts from" } },
+      cwd: { type: "string", description: "its folder (the diff's)" }, base: { type: "string", description: "the commit the diff counts from" },
+      tree: { type: "string", description: "its own worktree: the diff's once it exists" } },
     args: ["id"],
-    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base) }),
+    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base), tree: str(p.tree) }),
   })
 
   /** Jobs the user opened: no longer news. */

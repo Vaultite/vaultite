@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Check, Undo2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { Knock, Presence } from "../../plugins/core/companion/knocks"
+import { holdOf, type Knock, type Presence } from "../../plugins/core/companion/knocks"
 import { countText, type WalkScene } from "../../plugins/core/companion/walks"
 
 type Spot = { x: number; y: number; bar: number; align: "left" | "centre"; attached: boolean; room?: number }
@@ -135,7 +135,7 @@ export function Island() {
   const shown = presences.slice(0, n), more = presences.length - n
   const radius = spot.bar / 2
   const of = knock ? presences.find((p) => p.knock === knock.id) : undefined
-  const ring = knock ? Math.max(0, Math.min(1, knock.left / 3000)) : 0
+  const ring = knock ? Math.max(0, Math.min(1, knock.left / holdOf(knock))) : 0
   // (no room for its line before the status items: it drops into a card below the bar, as the list does, rather than
   // cover them; the card hangs from the bar's end, reaching back under the notch when room is short)
   const drop = (!!knock || !!said) && room < 320, rows = presences.length > 0 || !!walk, card = (open && rows) || drop, back = room < 340

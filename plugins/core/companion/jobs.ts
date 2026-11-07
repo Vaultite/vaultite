@@ -27,8 +27,14 @@ export const live = (s: JobState) => s === "starting" || s === "working" || s ==
  *  Keep then lands it. */
 export const landable = (j: Pick<Job, "state" | "where" | "result" | "land">) =>
   (j.state === "ready for review" || j.state === "done") && !!j.where.repo && !!(j.result?.diff || j.result?.files?.length) && !j.land?.merged
-/** What its worker is told when they keep its change: land it as its repo says, then say how it went in its first word. */
-export const LAND_TASK = "They watched your change and kept it: merge it now, as this repo's own rules say (its CLAUDE.md, AGENTS.md or CONTRIBUTING: the checks to run first, how a branch lands, and whether to push or deploy; a step those rules keep for the user still waits for them). Start your last message with \"Merged:\" and where it landed, in a line, or with \"Not merged:\" and why."
+/** What its worker is told when they keep its change: land it from its worktree as its repo says (never merging in the
+ *  checkout it was asked over), clean that up, then say how it went in its first word. One line: it's typed in. */
+export function landTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
+  const rules = "as this repo's own rules say (its CLAUDE.md, AGENTS.md or CONTRIBUTING: the checks to run first, how a branch lands, and whether to push or deploy; a step those rules keep for the user still waits for them)"
+  const end = "Start your last message with \"Merged:\" and where it landed, in a line, or with \"Not merged:\" and why."
+  if (!w.tree) return `They watched your change and kept it: merge it now, ${rules}. ${end}`
+  return `They watched your change and kept it: merge it now, from your worktree ${w.tree} (branch ${w.branch}), ${rules}. Never switch or edit ${w.cwd}${w.live ? " (the running server's own checkout: nothing lands there)" : ""}: with a remote, rebase onto its main, squash it to one commit and git push origin HEAD:main (or its PR, when the rules land by one)${w.live ? " (the server takes main itself)" : ""}; with none, ${w.live ? "don't merge" : "squash-merge it into that checkout only if it's clean"}. Then git -C ${w.cwd} worktree remove ${w.tree}, and branch -D ${w.branch}. ${end}`
+}
 /** Whether a worker's last message says it merged what they kept (true), says it didn't (false), or neither (null). */
 export function mergedSaid(text: string): boolean | null {
   const t = text.replace(/^[\s*_#>`]+/, "").toLowerCase()
@@ -43,7 +49,10 @@ export const terminalOf = (j: Pick<Job, "terminal" | "where">) => `${j.terminal}
 export type Where = { machine: string; label: string; cwd: string; repo: string; agent: string; account: string; harness: string; model: string; effort: string
   why: string; base?: string; preview?: string
   /** What the user watched on the machine it left (a preview, an editor's project): it previews on its own machine. */
-  moved?: string }
+  moved?: string
+  /** A coding job's own git worktree and branch (worktreeOf), beside its checkout `cwd`, which it never edits; `live`:
+   *  that checkout is the running server's own. */
+  tree?: string; branch?: string; live?: boolean }
 /** What a turn ended with: its last message, the files it changed, the diff since `base` (one line), a PR, a link to try. */
 export type Result = { text?: string; files?: string[]; diff?: string; pr?: string; link?: string }
 export type Transition = { t: number; ev: JobEvent; from: JobState; to: JobState }
@@ -206,17 +215,29 @@ function askLines(m: Moment | undefined) {
   ].filter(Boolean) : []
   return asked
 }
+/** The worktree and branch job `id` works in, beside checkout `cwd` of `repo`: "~/Projects/site" → "~/Projects/site-<id>". */
+export function worktreeOf(cwd: string, repo: string, id: string) {
+  const parent = cwd.replace(/\/+$/, "").replace(/\/[^/]+$/, "") || "/"
+  return { tree: `${parent === "/" ? "" : parent}/${repo || "repo"}-${id}`, branch: `job-${id}` }
+}
+/** How a coding job keeps off its checkout: its own worktree, made from the commit it was asked at, its packages
+ *  installed there before checks; `moved`: it runs on another machine than the one they asked over. */
+function worktreeLine(w: Pick<Where, "cwd" | "base" | "tree" | "branch" | "live" | "label" | "moved">) {
+  const at = w.base ? ` ${w.base.slice(0, 12)}` : ""
+  return [`Work in your own git worktree, never in ${w.cwd} itself: leave its working tree and branch as they are (${w.live ? "it's the running server's own checkout" : "it may be a live server's, or theirs mid-work"}). Before your first edit, make it: git -C ${w.cwd} worktree add ${w.tree} -b ${w.branch}${at}${w.moved ? " (fetch that commit first if need be)" : ""}; then edit, build, test and commit only there (absolute paths, or cd ${w.tree} && … in each command). It has none of the checkout's installed packages: before checks, install them there (npm ci, or as the repo's rules say; a symlink to the checkout's node_modules is fine until you add or change a package, then a real install in the worktree, never into the checkout's). Changing nothing (research, an answer): no worktree.`,
+    w.moved ? `They asked over ${w.moved}. You run on ${w.label} instead, from its checkout of that repo: try your change in ${w.label}'s own preview (its dev server or Tailscale Serve), not theirs. In your result, give its link and say it's on ${w.label}.` : ""].filter(Boolean).join(" ")
+}
 /** How a worker shows its change working (its proof), when the change shows on screen: what Show me plays. */
 export function proofTask(id: string) {
   return `If your change shows on screen, show it working rather than say so: before you end, save a short tour of it (what Show me plays for them when you're ready): vau companion tour-save "<the change in a few words, as a noun: the blue save button>" --job ${id} --text '<steps>'. A step is a numbered line: one short sentence said aloud, with a tag on the thing as their screen shows it, by its words there ([ring "Save"], [point "Jobs"], [frame "Settings"]); two to four steps. Add (before: <a png>) to a step to flip a picture of that thing before your change over it as it is now: take it before you change anything (a headless screenshot of just that element, or vau screen shot cropped to it with sips), of the thing alone. It plays on Vaultite's own window (its UI, a note: --open the note or page it's on, when that's where it shows) and finds things by their words, so name what shows once your change is there; the Mac's own UI outside that window (the menu bar's menus, the notch, notifications) it can't find, so say in a step's words what to open to see it. Nothing to show on screen (research, a backend change): skip it.`
 }
-/** What a worker is told: the task, the ask it came from (its words, where, what was under the pointer, the screen's
- *  picture then), how to end (changes are the user's to review, nothing outward without their word), and its proof. */
-export function jobTask(task: string, m: Moment | undefined, coding: boolean, moved?: { from: string; on: string }, id?: string) {
-  const asked = askLines(m)
+/** What a worker is told: the task, the ask it came from (its words, where, under the pointer, the screen), where to
+ *  work (a coding job: its own worktree), how to end (theirs to review, nothing outward unasked), and its proof. */
+export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved">, id?: string) {
+  const asked = askLines(m), coding = !!w?.repo
   return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
-    moved ? `They asked over ${moved.from}. You run on ${moved.on} instead, from its checkout of that repo: work in a new git worktree of it at that commit (fetch it first if need be), never switching that checkout's own branch (it may be a live server's), and try your change in ${moved.on}'s own preview (its dev server or Tailscale Serve), not theirs. In your result, give its link and say it's on ${moved.on}.` : "",
-    `You're a job they handed off, in a terminal of Vaultite they can open and type in. ${coding ? "Change the code freely, but don't push, merge, deploy, publish, post or message anyone unless they say so: it ends in their review. End" : "End"} with a few lines: what you found or did, the files you changed, and how to try it (a preview's link if there is one).`,
+    coding && w.tree ? worktreeLine(w) : "",
+    `You're a job they handed off, in a terminal of Vaultite they can open and type in. ${coding ? "Change the code freely, but don't push, merge, deploy, publish, post or message anyone unless they say so: it ends in their review (their Keep and merge lands it). End" : "End"} with a few lines: what you found or did, the files you changed, and how to try it (a preview's link if there is one).`,
     id ? proofTask(id) : ""]
     .filter(Boolean).join("\n\n")
 }
@@ -237,6 +258,7 @@ export function jobText(j: Job, now = Date.now()) {
     l?.background ? `in the background: ${l.background} task${l.background > 1 ? "s" : ""} of its still running (a command, a subagent)` : "",
     l?.told ? `told last: ${l.told}` : "",
     said ? `it said (${ago(said.at, now)}): ${cut(said.text.trim(), 1500)}` : "", l?.asks?.length ? `asks: ${l.asks.join(" | ")}` : "",
+    j.where.tree ? `its worktree: ${j.where.tree} (branch ${j.where.branch}), beside ${j.where.cwd}` : "",
     resultLine(r) ? `results: ${resultLine(r)}` : "", r?.files?.length ? `files: ${r.files.slice(0, 12).join(", ")}` : "",
     j.land ? (j.land.at === undefined ? "kept: told to merge it, merging now" : j.land.merged ? "kept and merged" : "kept, but it didn't say it merged: see what it said") : "",
     j.closed ? "its terminal closed once it was done: a follow-up (handoff --job) or opening it resumes its conversation" : "",

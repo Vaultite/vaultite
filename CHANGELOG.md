@@ -8,6 +8,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Terminals run on libghostty-vt 1.0**: Ghostty's first stable release of its terminal engine, in place of a
   pre-release build: a bit faster on fast output, with the same screens, copy and search.
+- **A job's ready card stays up to be read**: "Ready to show you …" comes at your next pause and stays 15 seconds
+  (held while your pointer is on it or nobody is at the Mac) before it folds by the notch, one card at a time.
+- **Every coding job works in its own worktree**: a job never edits or switches the checkout it was asked over (on an
+  always-on machine, its live server's); its change reaches main only by Keep and merge, landed from its worktree,
+  which is then removed.
 
 ## 0.12.0 (2026-11-07)
 
