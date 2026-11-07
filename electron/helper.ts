@@ -265,7 +265,7 @@ async function openPresence(p: Presence) {
   host.openHome()
   const job = p.open?.startsWith("job:") ? p.open.slice(4) : ""
   const displays = screen.getAllDisplays().map((d) => d.bounds)
-  const go = () => (job ? op("companion.job-show", { id: job, displays }) : p.terminal ? op("terminal.open", { id: p.terminal }) : p.open ? op("ui.open", { path: p.open }) : Promise.resolve({}))
+  const go = () => (job ? op("companion.job-show", { id: job, displays }) : p.terminal ? op("ui.open", { path: `view:terminal/${p.terminal}` }) : p.open ? op("ui.open", { path: p.open }) : Promise.resolve({}))
   // (a window just opening has no page to open it in yet)
   for (let i = 0; i < 20; i++) {
     if (await go().then(() => true, () => false)) return

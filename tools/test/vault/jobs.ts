@@ -209,6 +209,14 @@ export default async ($: VaultTest) => {
       }
       sc.emit("message", Buffer.from(JSON.stringify({ t: "job-seen", ids: [card.id] })))
       check("jobs: opened from the menu bar, it's no longer new", !!(await waitFor(async () => (await api("POST", "ops/companion.job", { id: card.id }))[1].seen === true, 3000, 50)))
+      // Opened beside: "open it on the right" is a split, not a new tab.
+      {
+        const { checkParams, whoOf } = await import("../../../core/ops.ts")
+        const opened: string[] = [], ctx = { who: whoOf("cli", null), op: async (id: string, b: unknown) => { opened.push(`${id} ${JSON.stringify(b)}`); return {} } }
+        const jo = app.plugins.find((x) => x.id === "companion")!.ops.find((o) => o.id === "companion.job-open")!
+        await jo.run(checkParams(jo, { id: card.id, split: "right" }), ctx as never)
+        check("job-open --split right: its terminal in a pane beside, not a new tab", opened.at(-1) === `ui.open ${JSON.stringify({ path: card.link, split: "right" })}`, opened)
+      }
       turn = null
       ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Use the darker blue", job: card.id }, agent)
       const told = await waitFor(() => fs.existsSync(path.join(repo, "told.txt")) && fs.readFileSync(path.join(repo, "told.txt"), "utf8").trim(), 10000, 100)

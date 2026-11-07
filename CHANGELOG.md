@@ -10,6 +10,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   there), or close it with its X. Two quick bounces of ⌃⌥ just after letting go no longer open it listening
   hands-free, and while it does listen hands-free, holding ⌃⌥ and letting go sends what you said, where before only
   a double tap did.
+- **A job's session opens beside you**: "open that session on the right" now opens a job's terminal in a split
+  (right or below) instead of a new tab; right-click a job's card for Open to the right or Open below. Show me on a
+  session by the notch opens its terminal again (it did nothing).
 - **Every handoff says so**: the companion answers each job it hands off with one short line, "Handed that off to
   a background agent." (a follow-up: "Passed that on to its job."), where a routine one used to be silent.
 - **Talk with a job**: ask the companion "let me talk to it" (or point at a job in the island) and that job takes the

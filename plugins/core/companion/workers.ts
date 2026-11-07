@@ -585,22 +585,24 @@ its terminal (companion job-open).
   plugin.op({
     id: "companion.job-open",
     cli: "companion job-open",
-    summary: "Open a job's terminal in a tab (as its card does): one closed once it was done resumes its conversation first.",
-    help: `  vau companion job-open jd3k2h1g`,
+    summary: "Open a job's terminal in a tab (as its card does), or in a split beside or below when they say where: one closed once it was done resumes its conversation first.",
+    help: `  vau companion job-open jd3k2h1g
+  vau companion job-open jd3k2h1g --split right`,
     kind: "write",
     lock: false,
-    params: { id: { type: "string", required: true, description: "the job's id (or the end of it)" } },
+    params: { id: { type: "string", required: true, description: "the job's id (or the end of it)" },
+      split: { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down), not a new tab" } },
     args: ["id"],
     run: async (p, ctx) => {
       const j = jobOf(str(p.id))
       if (j.state !== "stopped" && await wake(ctx, j)) changed()
       opened.set(j.id, Date.now())
       seen([j.id])
-      await ctx.op("ui.open", { path: linkOf(j) })
+      await ctx.op("ui.open", { path: linkOf(j), ...(p.split ? { split: p.split } : {}) })
       return cardOf(j)
     },
-    text: (r) => `Opened "${r.title}" (${r.id}).`,
-    did: (p) => ({ action: "ui", text: `Opened the job ${p.id}` }),
+    text: (r, p) => `Opened "${r.title}" (${r.id})${p.split ? ` in a split ${p.split}` : ""}.`,
+    did: (p) => ({ action: "ui", text: `Opened the job ${p.id}${p.split ? ` (split ${p.split})` : ""}` }),
   })
 
   plugin.op({

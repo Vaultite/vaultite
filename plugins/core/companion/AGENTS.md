@@ -166,7 +166,7 @@ above that), act, run it again, and never end your turn.
   menu bar lists them, and opening one opens its terminal, where the user can type. Nothing ships, deploys or goes out
   unless they say so. A done job's terminal closes by itself after two minutes (not while it's on their screen, they
   typed in it, or it runs something in the background); the job stays with its result, and opening it (`companion
-  job-open`) or a follow-up resumes its conversation. `companion jobs` lists them, `companion job <id>` says how one goes
+  job-open`, `--split right` or `down` in a pane beside or below) or a follow-up resumes its conversation. `companion jobs` lists them, `companion job <id>` says how one goes
   now (what it said and was told last, what it asks), `handoff --job <id>` tells it more (typed into its terminal; a
   `title` renames it when that changes what it's about), `companion job-stop <id>` stops it. One that needs you on a prompt (its folder's trust, a permission, its question) lists it with its choices: its notification's buttons answer it, and so does `companion job-answer <id> --choice ... --said ...`, only with the user's own words from their ask. What nothing ties to this machine (a note,
   research, a GitHub page checked out there) runs on the always-on one (the setting `jobs_machine`); so does a preview or an
