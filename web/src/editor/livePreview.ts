@@ -15,7 +15,7 @@ import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
 import { BLOCK_ID, blockName, FENCE, scan, TAG } from "../../../core/sections.ts"
 import { fenceLayout, infoWithLayout, type LayoutKey } from "../../../core/blocks.ts"
 import { frontmatter } from "./frontmatter"
-import { blockLines, COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
+import { blockLines, COPY_ICON, copyCode, drawEmbeds, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
 import { cellAt } from "./tableText"
@@ -524,7 +524,8 @@ function pressed(view: EditorView, el: HTMLElement, e: MouseEvent) {
     view.state.facet(previewConfig).follow(wiki.dataset.tag ? { tag: wiki.dataset.tag } : { wiki: wiki.dataset.wiki! }, e.metaKey || e.ctrlKey || e.button === 1)
     return false
   }
-  const own = (e.target as Element).closest("a, button, input, textarea, select, summary, [contenteditable=true], [data-no-edit]")
+  // (an embed drawn in a callout is its own: a press on its player plays it)
+  const own = (e.target as Element).closest("a, button, input, textarea, select, summary, [contenteditable=true], [data-no-edit], [data-md-embed]")
   // (or handled inside: a table's cell opening redraws it, so the clicked cell is already gone from the page)
   if ((own && el.contains(own)) || e.defaultPrevented || !view.state.facet(EditorView.editable)) return false
   e.preventDefault()
@@ -1551,22 +1552,26 @@ function drawHtml(el: HTMLElement, text: string, view: EditorView, edit: BlockEd
     const mark = taskMarks(now)[nth]
     if (mark !== undefined) view.dispatch({ changes: { from: from + mark, to: from + mark + 1, insert: on ? "x" : " " }, userEvent: "input.toggle" })
   }
+  let undraw = () => {}
   const paint = (t: string) => {
     now = t
-    const html = view.state.facet(previewConfig).renderMarkdown(t)
+    const cfg = view.state.facet(previewConfig), html = cfg.renderMarkdown(t)
     if (html === last) return
     const open = [...el.querySelectorAll("details")].map((d) => d.open)
+    undraw()
     el.innerHTML = html
     last = html
     el.querySelectorAll("details").forEach((d, i) => { if (i < open.length) d.open = open[i] })
     hydrate(el)
-    wireTasks(el, view.state.facet(previewConfig).writable ? tick : null)
+    // (a callout's ![[x]] drawn as on a line of its own, as everywhere else Markdown is: a folded one's when it's opened)
+    undraw = drawEmbeds(el, (span, target) => { const d = cfg.renderEmbed(target, undefined, span, () => null); return d ? d.destroy : undefined })
+    wireTasks(el, cfg.writable ? tick : null)
     markdownDrawn(el, lines)
   }
   const lines = blockLines(edit.line, () => now, () => view.state.doc.toString())
   paint(text)
   el.addEventListener("click", (e) => richClick(e, el))
-  return { update: paint, destroy: () => {} }
+  return { update: paint, destroy: () => undraw() }
 }
 /** A table, edited cell by cell where it can be (./tables.ts), else as Markdown drawn. */
 const drawTable = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) => drawCells(el, text, view, {

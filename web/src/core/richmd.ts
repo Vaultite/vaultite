@@ -110,6 +110,33 @@ export function hydrate(root: HTMLElement) {
   }
 }
 
+/** Whether `el` is folded away in `root`: inside a shut <details>, not in its <summary> (a callout's title shows). */
+function folded(el: Element, root: HTMLElement) {
+  for (let d = el.parentElement?.closest("details"); d && root.contains(d); d = d.parentElement?.closest("details")) {
+    if (!d.open && !d.querySelector(":scope > summary")?.contains(el)) return true
+  }
+  return false
+}
+
+/** `draw` each `![[x]]` left for its caller (`data-md-embed`) in `root` once it shows: at once, or in a folded callout
+ *  when it's first opened, so a video folded away isn't loaded. Returns the way to undo them all (`draw`'s returns). */
+export function drawEmbeds(root: HTMLElement, draw: (el: HTMLElement, target: string) => (() => void) | void): () => void {
+  const waiting = new Set(root.querySelectorAll<HTMLElement>("[data-md-embed]")), undo: (() => void)[] = []
+  const pass = () => {
+    for (const el of waiting) {
+      if (folded(el, root)) continue
+      waiting.delete(el)
+      const u = draw(el, el.dataset.mdEmbed!)
+      if (u) undo.push(u)
+    }
+    if (!waiting.size) root.removeEventListener("toggle", pass, true)
+  }
+  // (toggle doesn't bubble: heard on the way down; a fold opened by code says it too)
+  root.addEventListener("toggle", pass, true)
+  pass()
+  return () => { root.removeEventListener("toggle", pass, true); waiting.clear(); for (const u of undo.splice(0)) u() }
+}
+
 /** Where drawn Markdown is in its file (a note's block in the editor): its lines (0-based) now and the file's text,
  *  null once it's gone. */
 export type DrawnLines = () => { lineStart: number; lineEnd: number; doc: string } | null

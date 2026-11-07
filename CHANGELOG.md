@@ -100,6 +100,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A foldable callout opened stays open, with no empty gap**: scrolled away and back, or its note left and opened
   again, a section you opened is still open, and one shut is drawn at its shut height instead of held at its open one
   for a few seconds, so the page no longer jumps under you.
+- **A video or note embedded in a callout shows in the editor, and loads only once opened**: the editor drew it as a
+  bare link, and elsewhere (sheets, previews, the Companion page, an embedded note) a folded callout's videos loaded
+  while hidden. An embed seen in a split pane, then drawn wider (or narrower), is no longer held at the other width's
+  height for a few seconds, an empty gap or text pushed down when it let go.
 - **The Companion page's plan limits put its accounts first**: the Claude Code accounts its chat and its jobs run in,
   as its settings say now, come first, tinted and labelled Companion chat and Jobs, the others after them
   (`block-agent-limits` with `for: companion`).

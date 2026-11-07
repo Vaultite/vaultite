@@ -7,7 +7,7 @@ import { Copy } from "lucide-react"
 import { keyHint } from "@/core/commands"
 import { drawnLink, followLink, linkClick, resolver } from "@/core/links"
 import { type MarkdownOpts, renderInline, renderMarkdown } from "@/core/markdown"
-import { dropMermaid, hydrate, markdownDrawn, richClick, taskMarks, tickTask, wireDoIt, wireTasks } from "@/core/richmd"
+import { drawEmbeds, dropMermaid, hydrate, markdownDrawn, richClick, taskMarks, tickTask, wireDoIt, wireTasks } from "@/core/richmd"
 import { fileOf, isReadOnly, readFile } from "@/core/files"
 import { put } from "@/core/http"
 import { notifyError } from "@/core/notify"
@@ -76,14 +76,14 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     markdownDrawn(ref.current)
     // Its links have no address (a click follows them): Tab reaches them, and Enter presses them (core/keylist.ts).
     for (const a of ref.current.querySelectorAll<HTMLElement>("a[data-wiki], a[data-tag], a[data-url]")) { a.tabIndex = 0; a.setAttribute("role", "link") }
-    // `![[x]]` anywhere in the text: what it names, drawn in its place as on a line of its own (its own root).
+    // `![[x]]` anywhere in the text: what it names, drawn in its place as on a line of its own (its own root), once
+    // it shows (a folded callout's: when it's opened).
     if (!s) return
-    const roots = [...ref.current.querySelectorAll<HTMLElement>("[data-md-embed]")].map((el) => {
+    return drawEmbeds(ref.current, (el, target) => {
       const root = createRoot(el)
-      root.render(<EmbedView store={s} target={el.dataset.mdEmbed!} from={from ?? ""} seen={seenKey ? seenKey.split("\n") : []} />)
-      return root
+      root.render(<EmbedView store={s} target={target} from={from ?? ""} seen={seenKey ? seenKey.split("\n") : []} />)
+      return () => { setTimeout(() => root.unmount(), 0) }
     })
-    return () => { if (roots.length) setTimeout(() => { for (const r of roots) r.unmount() }, 0) }
   }, [html, s, from, seenKey, tasks, text])
   // Its diagrams let go when its HTML does (each holds a live drawing: observers, zoom).
   useEffect(() => {

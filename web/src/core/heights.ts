@@ -103,7 +103,7 @@ function batched(read: () => number, write: (n: number) => void) {
   reads.push({ read, write })
 }
 
-/** Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then
+/** Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest at once, then its width's) while its content comes in, then
  *  remember its height as it changes (`shrinks`: see Held; a function `key`: read at each, a height per fold). */
 export function holdHeight(el: HTMLElement, key: string | (() => string), anyWidth = false, shrinks = false): () => void {
   const at = typeof key === "string" ? () => key : key, first = at()
@@ -143,8 +143,20 @@ export function holdHeight(el: HTMLElement, key: string | (() => string), anyWid
     holding.add(h)
     ticking ??= setInterval(tick, 150)
   }
-  if (anyWidth) hold(heightOf(first))
-  else batched(() => el.getBoundingClientRect().width, (w) => hold(heightOf(first, w)))
+  if (anyWidth) {
+    hold(heightOf(first))
+    // (then, laid out, the height it had at this width: the latest may be a split pane's; never seen at this width,
+    // the latest is only a guess, let go once nothing inside loads, shorter too: a video's height follows its width)
+    batched(() => el.getBoundingClientRect().width, (w) => {
+      if (!h || w <= 0) return
+      const exact = heightOf(first, w)
+      if (exact === undefined) { h.shrinks = true; return }
+      if (Math.abs(exact - h.held) < 1) return
+      trace("heights", { key: first, held: exact, why: "width", was: h.held })
+      h.held = exact
+      el.style.height = `${exact}px`
+    })
+  } else batched(() => el.getBoundingClientRect().width, (w) => hold(heightOf(first, w)))
   const sizes = new ResizeObserver((entries) => {
     const e = entries[entries.length - 1]
     const box = e.borderBoxSize?.[0]
