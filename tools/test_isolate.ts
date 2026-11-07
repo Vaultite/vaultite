@@ -4,11 +4,14 @@ import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { RUN, sweep, touches } from "./test/isolate.ts"
 import { check, exit, freePort, sleep, summary, tempDir, testServer } from "./test/lib.ts"
 import { REFUSED_FILE, isOwnVault } from "../core/testrun.ts"
 
 const began = Date.now()
+// (the temp folder as each system names it: Windows' os.tmpdir() reads TEMP and TMP)
+const tmpIs = (dir: string) => ({ TMPDIR: dir, TEMP: dir, TMP: dir })
 const ROOT = path.resolve(import.meta.dirname, "..")
 const tmp = tempDir("vaultite-isolate-test-")
 const own = path.join(tmp, "own"), sandbox = path.join(tmp, "sandbox")
@@ -42,7 +45,7 @@ check("a sandbox never is, nor a test's folder", !isOwnVault(sandbox, ownEnv) &&
   const run = path.join(tmp, "run-b"), rt = path.join(tmp, "rt")
   fs.mkdirSync(run); fs.mkdirSync(rt, { mode: 0o700 })
   const port = await freePort()
-  const user: Record<string, string | undefined> = { ...ownEnv, VAULTITE_VAULT: own, VAULTITE_LOCAL: path.join(tmp, "local-b"), PORT: String(port), HOST: "127.0.0.1", TMPDIR: rt, XDG_RUNTIME_DIR: rt }
+  const user: Record<string, string | undefined> = { ...ownEnv, VAULTITE_VAULT: own, VAULTITE_LOCAL: path.join(tmp, "local-b"), PORT: String(port), HOST: "127.0.0.1", ...tmpIs(rt), XDG_RUNTIME_DIR: rt }
   for (const k of ["VAULTITE_TEST", "VAULTITE_TEST_RUN"]) delete user[k]
   const s = testServer({ env: user as NodeJS.ProcessEnv, stdio: ["ignore", "ignore", "pipe"] })
   let up = false
@@ -93,14 +96,14 @@ check("a sandbox never is, nor a test's folder", !isOwnVault(sandbox, ownEnv) &&
 
 // ---------- a run's end removes its folder, failed or not, and fails one that reached the user's vault
 {
-  const script = (body: string) => spawnSync(process.execPath, ["--input-type=module", "-e", `import ${JSON.stringify(path.join(ROOT, "tools/test/isolate.ts"))}; ${body}`],
-    { env: { ...process.env, VAULTITE_TEST_RUN: "", TMPDIR: tmp, VAULTITE_OWN_VAULTS: own }, encoding: "utf8" })
+  const script = (body: string) => spawnSync(process.execPath, ["--input-type=module", "-e", `import ${JSON.stringify(pathToFileURL(path.join(ROOT, "tools/test/isolate.ts")).href)}; ${body}`],
+    { env: { ...process.env, VAULTITE_TEST_RUN: "", ...tmpIs(tmp), VAULTITE_OWN_VAULTS: own }, encoding: "utf8" })
   const ok = script(`console.log(process.env.VAULTITE_TEST_RUN)`)
   const dir = ok.stdout.trim()
   check("a run's folder is gone when it ends", ok.status === 0 && dir.startsWith(tmp) && !fs.existsSync(dir), [ok.status, dir, ok.stderr])
   const failed = script(`console.log(process.env.VAULTITE_TEST_RUN); process.exit(3)`)
   check("and when it fails, with its code", failed.status === 3 && !fs.existsSync(failed.stdout.trim()), [failed.status, failed.stdout])
-  const reached = script(`const { refuseOwnVault } = await import(${JSON.stringify(path.join(ROOT, "core/testrun.ts"))}); refuseOwnVault(${JSON.stringify(own)}, "a test")`)
+  const reached = script(`const { refuseOwnVault } = await import(${JSON.stringify(pathToFileURL(path.join(ROOT, "core/testrun.ts")).href)}); refuseOwnVault(${JSON.stringify(own)}, "a test")`)
   check("a run that reached the user's vault fails", reached.status === 1 && /reached the user's own vault/.test(reached.stdout), [reached.status, reached.stdout.slice(-300)])
 }
 
