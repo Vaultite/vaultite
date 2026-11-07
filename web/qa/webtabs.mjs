@@ -177,7 +177,12 @@ await wait(2000)
 const unasked = (await tabs()).list.filter((t) => t === at("/two")).length
 check("a page's script opening a tab with nobody clicking: blocked", unasked === 1, await tabs())
 check("… and the user told, with Open", await until(async () => (await win.locator("[data-sonner-toast]", { hasText: "Blocked a pop-up" }).count()) > 0, 5000))
+const focusNow = () => app.evaluate(({ webContents, BaseWindow }) => [BaseWindow.getAllWindows().map((w) => [w.isFocused(), w.isVisible()]), webContents.getAllWebContents().filter((w) => !w.isDestroyed()).map((w) => [w.id, w.getURL().slice(0, 40), w.isFocused()])])
+const fb = await focusNow()
 await menuClick("Close tab")
+const fa = [await focusNow(), await win.evaluate(() => document.activeElement?.outerHTML.slice(0, 60))]
+await wait(500)
+console.log("FOCUSDIAG", JSON.stringify([fb, fa, await focusNow(), await win.evaluate(() => document.activeElement?.outerHTML.slice(0, 60))]))
 await showTab(at("/opener"))
 await until(async () => (await shownUrl()) === at("/opener"), 8000)
 
