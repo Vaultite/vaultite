@@ -2690,7 +2690,7 @@ const jobs = jobOps(plugin, {
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
   // (a live edit's turn ending is told by its ring, not its news)
   // (a live edit's turn ending is told by its ring; a job just ready knocks, its proof to show; the rest is news)
-  moved: (j, from) => void (liveEditing.moved(j, from) || (readyNow(j, from) ? proofs.moved(j, from) : jobNews(j.title, j.state, from)).catch(() => {})),
+  moved: (j, from) => void (liveEditing.moved(j, from) || (readyNow(j, from) && j.terminal ? proofs.moved(j, from) : jobNews(j.title, j.state, from)).catch(() => {})),
   warm: (j) => liveEditing.warm(j),
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })

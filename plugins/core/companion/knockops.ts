@@ -54,15 +54,18 @@ export function knockOps(plugin: Plugin, d: Deps) {
     }
     return all()
   }
-  let reading = false
-  async function readTerminals() {
-    if (reading || !d.listening() || d.off() || d.hidden()) return tell()
+  // (`again`: a terminal moved while they were read, so they're read once more after)
+  let reading = false, again = false
+  async function readTerminals(): Promise<void> {
+    if (reading) { again = true; return }
+    if (!d.listening() || d.off() || d.hidden()) return tell()
     reading = true
     try {
       const r = await plugin.runOp("terminal.list", { machine: "all" })
       rows = ((r.result as { sessions?: TermRow[] })?.sessions ?? []).map((s) => ({ id: s.id, agent: s.agent, state: s.state, needs: s.needs, name: s.name, title: s.title }))
     } catch { /* this machine's terminals as last read */ } finally { reading = false }
     tell()
+    if (again) { again = false; return readTerminals() }
   }
   const timer = setInterval(() => void readTerminals(), EVERY_MS)
   timer.unref?.()
@@ -133,7 +136,7 @@ replaces its last. Urgency: low comes at a longer pause, high at any pause in th
       if (!rows.length) await readTerminals()
       return knock({ from, who: str(p.who) || whoIs(from, ctx), line: str(p.line), urgency: str(p.urgency) || undefined, life, open: str(p.open) || undefined })
     },
-    text: (k: Knock) => (k.state === "ignored" ? `Knock ${k.id} kept, unshown: the user ignored ${k.who} for now.` : `Knocked (${k.id}): it comes up by the notch at their next pause.`),
+    text: (k: Knock) => (k.state === "ignored" ? `Knock ${k.id} kept, unshown: the user ignored ${k.who} for now.` : d.hidden() ? `Knocked (${k.id}), kept: the island by the notch is off (the setting island), so it doesn't come up.` : `Knocked (${k.id}): it comes up by the notch at their next pause.`),
   })
 
   plugin.op({

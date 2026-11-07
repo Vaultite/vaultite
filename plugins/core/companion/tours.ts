@@ -39,7 +39,12 @@ const heard: Input[] = []
 const KEEP_MS = 10 * 60_000
 let escaped = 0
 /** `ms` gone by, or sooner if `signal` stops it. */
-const rest = (ms: number, signal: AbortSignal) => new Promise<void>((ok) => { const t = setTimeout(ok, ms); signal.addEventListener("abort", () => { clearTimeout(t); ok() }, { once: true }) })
+const rest = (ms: number, signal: AbortSignal) => new Promise<void>((ok) => {
+  if (signal.aborted) return ok()
+  // (its listener goes with it: a long tour's rests would pile them up on one signal)
+  const stop = () => { clearTimeout(t); ok() }, t = setTimeout(() => { signal.removeEventListener("abort", stop); ok() }, ms)
+  signal.addEventListener("abort", stop, { once: true })
+})
 /** Kept anchors (k1, k2: what the companion pointed at), by agent. */
 type Kept = { id: string; anchor: Anchor; t: number }
 

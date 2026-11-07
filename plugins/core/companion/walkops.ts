@@ -43,11 +43,15 @@ export function walkOps(plugin: Plugin, jobs: Jobs) {
   /** Its items by project: a project note's, else a preview's or an editor's repo here (where.ts), else the rest. */
   async function grouped(items: WalkItem[]) {
     const all = projects(), groups = new Map<string, { label: string; project?: Project; found?: Found; items: WalkItem[] }>()
+    // (once per place: each is a few git calls, and a walk's items mostly share a few)
+    const places = new Map<string, Promise<(Found & { repo: string }) | undefined>>()
     for (const it of items) {
       const p = projectFor(it.place, all)
       let key = p ? `p:${p.note}` : "", label = p?.name ?? "", found: Found | undefined
       if (!p) {
-        const f = await jobs.placeHere({ url: it.place.url, app: it.place.app, title: it.place.title, screen: it.place.screen, under: it.place.under }).catch(() => undefined)
+        const o = { url: it.place.url, app: it.place.app, title: it.place.title, screen: it.place.screen, under: it.place.under }, k = JSON.stringify(o)
+        if (!places.has(k)) places.set(k, jobs.placeHere(o).catch(() => undefined))
+        const f = await places.get(k)
         if (f && f.from !== "vault" && f.from !== "note") { key = `d:${f.cwd}`; label = path.basename(f.cwd); found = f }
       }
       if (!key) { key = "other"; label = "other apps" }
