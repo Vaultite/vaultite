@@ -596,6 +596,13 @@ export default async ($: VaultTest) => {
     ;[st, b] = await api("POST", "ops/inbox.report", { title: "Shot named", work: "fix", tldr: "x", summary: "x", images: [shot] })
     const shotText = st === 200 ? read(`${b.path}`) : ""
     check("report: a screenshot is saved under the day and the report's name", /!\[\[\d{4}-\d\d-\d\d Shot named - after\.png\]\]/.test(shotText), [st, b, shotText])
+    fs.mkdirSync(path.join(VAULT, "Guides/Proofs/Blue save"), { recursive: true }); fs.writeFileSync(path.join(VAULT, "Guides/Proofs/Blue save/Blue save.mp4"), "x")
+    ;[st, b] = await api("POST", "ops/inbox.report", { title: "With its demo", work: "feature", tldr: "x", summary: "x", video: "Guides/Proofs/Blue save/Blue save.mp4", images: [shot] })
+    const demo = st === 200 ? read(`${b.path}`) : ""
+    const [bst, bb] = await api("POST", "ops/inbox.report", { title: "Bad demo", work: "fix", tldr: "x", summary: "x", video: shot })
+    check("report: a job's demo video is embedded by its vault path, above the screenshots; a picture isn't one",
+      demo.indexOf("![[Guides/Proofs/Blue save/Blue save.mp4]]") > 0 && demo.indexOf("![[Guides/Proofs/Blue save/Blue save.mp4]]") < demo.indexOf("after.png]]") && bst === 400 && /mp4/.test(bb.error), [st, b, demo, bb])
+    fs.rmSync(path.join(VAULT, "Guides/Proofs/Blue save"), { recursive: true, force: true })
     const cliOut = await vau("inbox", "report", "From the command line", "--work", "feature", "--tldr", "Did it", "--summary", "Did it", "--decision", "First of the two? | A* | B", "Second of the two? | C | D*", "--session", "sess-cli")
     rep = read("Inbox/.archive/Feature done · From the command line.md")
     check("report: vau takes a list's values after its flag", cliOut.code === 0 && exists("Inbox/First of the two.md") && /default: D/.test(read("Inbox/Second of the two.md")) && rep.includes("session: sess-cli"), [cliOut, rep])

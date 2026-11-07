@@ -1,11 +1,11 @@
-// A job's proof on the server: its ready knock, Show me (companion job-show) playing its worker's tour, then Keep and
-// merge (its own worker lands it), Needs changes (a clip, sent back to it) or Not yet. The rules are proof.ts'.
+// A job's proof on the server: its ready knock, Show me playing its worker's video (else its tour, live), then Keep and
+// merge (its own worker lands it), Needs changes (a clip, sent back) or Not yet. The rules are proof.ts'.
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { type Job, landable, live, terminalOf } from "./jobs.ts"
 import { type Knock, READY_HOLD_MS } from "./knocks.ts"
 import type { Moment } from "./plugin.ts"
-import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, readyLine, readyNow, summaryOf } from "./proof.ts"
+import { type Asked, asksToSee, type Choice, choiceSaid, choicesFor, narration, readyLine, readyNow, summaryOf } from "./proof.ts"
 import type { Result, Tour } from "./tour.ts"
 import type { Screen } from "./tours.ts"
 
@@ -35,6 +35,11 @@ export type ProofDeps = {
   clear: () => void
   /** Open what a job worked on (a note, a page), so its tour finds its things. */
   open: (path: string) => Promise<unknown>
+  /** Play a proof's video (a vault path) where they are: a card by the notch over their screen, else its note opened in
+   *  the app (`note`); false when neither can show. */
+  play: (video: string, title: string, note: string) => Promise<boolean>
+  /** Whether a vault file is there (a proof's video, synced). */
+  has: (path: string) => boolean
   /** Ask the helper to record a clip for job `id` (its region capture, sent to the job); false: no helper. */
   record: (id: string) => boolean
   /** How a ready knock comes now: said aloud (high: job_news spoken, not in a focus block), shown (normal), or not (off). */
@@ -87,14 +92,25 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
   }
 
   /** Show job `j`: its proof played, else said plainly what it changed; then the choice. */
-  async function show(j: Job, voice: boolean) {
-    const name = d.name(), proof = d.tours.proofOf(j.id), mine = { stopped: false }
+  async function show(j: Job, voice: boolean, live = false) {
+    const name = d.name(), proof = d.tours.proofOf(j.id), mine = { stopped: false }, began = Date.now()
     playing = { job: j.id, ctl: mine }
     d.showing({ voice })
     try {
-      if (!proof) return await plain(j, mine, `It didn't leave a tour to show you, so here's what it says it did. ${summaryOf(j)}`)
+      if (!proof) return await plain(j, mine, `It didn't leave a demo to show you, so here's what it says it did. ${summaryOf(j)}`)
       if (proof.problems.length) return await plain(j, mine, `Its tour doesn't play (${proof.problems[0]}), so here's what it says it did. ${summaryOf(j)}`)
-      const t = proof.tour, away = d.notHere(j, t)
+      const t = proof.tour
+      // (its video by default: recorded on the worker's own copy, so it shows wherever the change is)
+      if (!live && t.video && d.has(t.video)) {
+        if (!(await d.play(t.video, t.title, proof.path))) return await plain(j, mine, `I can't play its video here. ${summaryOf(j)}`)
+        for (const [at, said] of narration(t)) {
+          await new Promise((r) => setTimeout(r, Math.max(0, at - (Date.now() - began))))
+          if (mine.stopped) return
+          if (said) await d.say(said).catch(() => {})
+        }
+        return await choose(j, mine)
+      }
+      const away = d.notHere(j, t)
       // (a change that isn't in the app here has nothing on screen to find: say so, and offer to merge it first)
       if (away) {
         if (!landable(j)) return await plain(j, mine, `I can't show it on this Mac: ${away}. ${summaryOf(j)}`)
@@ -168,22 +184,25 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
   plugin.op({
     id: "companion.job-show",
     cli: "companion job-show",
-    summary: "Show the user a job's change on their screen (Show me on its ready knock): the tour its worker saved, each before flipped with how it is now, then their choice: Keep and merge, Needs changes, or Not yet.",
+    summary: "Show the user a job's change (Show me on its ready knock): the demo video its worker recorded, narrated, by the notch (else its tour, live on their screen), then their choice: Keep and merge, Needs changes, or Not yet.",
     help: `Only when they ask to see that job's change: from an agent, id the job they mean and said quoting their words
-asking to see it ("show me the header"); never in answer to anything else. A change not in the app on this Mac yet (on a
-branch, another machine) is said so, with an offer to merge it first. No tour, one that can't play or a thing it names
-gone: it says so plainly, with what the job says it changed. The choice is their click or word, the app's: Keep and
+asking to see it ("show me the header"); never in answer to anything else. Its video plays wherever the change is (a
+branch, another machine), each step's words said as it comes. --live plays its tour on their own screen instead, when
+they ask to see it live: a change not in the app on this Mac yet is said so, with an offer to merge it first. No proof,
+one that can't play or a thing it names gone: it says so plainly, with what the job says it changed. The choice is their click or word, the app's: Keep and
 merge (its own worker lands it as its repo says; the job closes once merged; with no change of its own, Keep closes
 it), Needs changes (a clip of what they show and say, sent back to that job), Not yet (it waits in Jobs). Its worker
-saves the tour: companion tour-save "<the change>" --job <its id>.
+saves it: companion tour-save "<the change>" --job <its id> --record <its own server>.
 
   vau companion job-show j3k9x2a --said "show me the header"
+  vau companion job-show j3k9x2a --live --said "show me it live"
   vau companion job-show                 (the one job that's ready, when there's only one)
   vau companion job-show --choose keep   (their answer, after it: keep, broken, later)`,
     kind: "write",
     lock: false,
     params: {
       id: { type: "string", description: "the job's id (default: the one ready to show, when there's only one)" },
+      live: { type: "boolean", description: "play its tour on their own screen rather than its video (when they ask to see it live, and it's in the app here)" },
       choose: { type: "string", enum: ["keep", "broken", "later"], description: "their answer after it was shown: keep (and merge), needs changes (broken), or not yet (later)" },
       said: { type: "string", description: "from an agent: the user's words in their ask asking to see it, as they said them" },
       which: { type: "string", description: "their words naming that job, when their ask was over another job's terminal" },
@@ -212,12 +231,13 @@ saves the tour: companion tour-save "<the change>" --job <its id>.
       d.shown(j, theirs ? "click" : "ask")
       if (Array.isArray(p.displays)) d.showing({ voice: p.voice !== false, displays: p.displays })
       const proof = d.tours.proofOf(j.id)
-      void show(j, p.voice !== false).catch((e) => console.error(`companion: showing ${j.id}: ${(e as Error).message}`))
-      return { job: j.id, title: j.title, proof: proof && !proof.problems.length ? proof.path : null }
+      void show(j, p.voice !== false, p.live === true).catch((e) => console.error(`companion: showing ${j.id}: ${(e as Error).message}`))
+      const video = proof && !proof.problems.length && p.live !== true && proof.tour.video && d.has(proof.tour.video) ? proof.tour.video : null
+      return { job: j.id, title: j.title, proof: proof && !proof.problems.length ? proof.path : null, ...(video ? { video } : {}) }
     },
     text: (r) => r.landing ? "Kept: its job is merging it, and closes once it says it merged." : r.kept ? "Kept: closed as done." : r.later ? "Not yet: it waits in Jobs."
       : "recording" in r ? (r.recording ? "Recording what they show: it goes to the job when they say stop." : "Waiting for their words on what to change.")
-      : r.proof ? `Showing "${r.title}" (${r.proof}); their choice follows.` : `"${r.title}" left no tour: saying what it changed, then their choice.`,
+      : r.video ? `Playing "${r.title}"'s video (${r.video}), narrated; their choice follows.` : r.proof ? `Showing "${r.title}" (${r.proof}) live; their choice follows.` : `"${r.title}" left no proof: saying what it changed, then their choice.`,
   })
 
   return {

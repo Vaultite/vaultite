@@ -1405,7 +1405,7 @@ const subjectOf = (title: string) => {
   return m && Object.values(WORK).concat("Work").includes(m[1]) && Object.values(STATE).includes(m[2]) ? m[3] : title
 }
 
-const IMAGE = /\.(png|jpe?g|gif|webp)$/i
+const IMAGE = /\.(png|jpe?g|gif|webp)$/i, VIDEO = /\.(mp4|m4v|mov|webm)$/i
 const REPLY_BLOCK = "```block-reply\n```"
 const DECISIONS_BLOCK = "```block-decisions\n```"
 /** A report's details at most (about 1,500 words): a report reads in a minute; files hold the rest. */
@@ -1901,7 +1901,8 @@ starts with the work and where it stands: "Feature done · Sidebar scrolls again
 
   vau inbox report "Sidebar scrolls again" --work fix --tldr "The left sidebar scrolls again, live on the M1." \\
     --summary "The sidebar's list had ..." --decision "Ship it to the phone too? | Yes | Not yet*" \\
-    --images /tmp/before.png /tmp/after.png`,
+    --images /tmp/before.png /tmp/after.png
+A job with a proof embeds its demo video: --video <the path tour-save gave> (Guides/Proofs/...).`,
   kind: "write",
   params: {
     title: { type: "string", required: true, description: "what was done, in a few words, in sentence case (after the work and state: Feature done · <title>)" },
@@ -1915,6 +1916,7 @@ starts with the work and where it stands: "Feature done · Sidebar scrolls again
     public: { type: "boolean", description: "it went out where others see it (a release, a post, a message): the report stays in the inbox, told" },
     digest: { type: "boolean", description: "this report is the user's daily digest itself (the morning brief): it stays in the inbox, told" },
     images: { type: "array", items: { type: "string" }, description: "screenshots: files on this machine (absolute paths) or in the vault (png, jpg, gif, webp)" },
+    video: { type: "string", description: "a demo video, embedded above the screenshots: a job's proof (its vault path, Guides/Proofs/...) or a file on this machine (mp4, mov, webm)" },
     terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL)" },
     session: { type: "string", env: "CLAUDE_CODE_SESSION_ID", description: "your session's id, to resume it (filled in from CLAUDE_CODE_SESSION_ID)" },
     agent: { type: "string", env: "VAULTITE_AGENT", description: "who you are (claude, codex): from VAULTITE_AGENT (a chat session's), else the terminal's id" },
@@ -1952,6 +1954,17 @@ starts with the work and where it stands: "Feature done · Sidebar scrolls again
       const up = await ctx.op("file.upload", { data: data.toString("base64"), name }) as { path: string }
       images.push(up.path)
     }
+    // (a demo video: one in the vault by its path, as its name may be any proof's; one on this machine uploaded)
+    let video = str(p.video).trim()
+    if (video) {
+      if (!VIDEO.test(video)) throw new OpError(`${video}: a video is an mp4, mov or webm`)
+      if (!path.isAbsolute(video)) { if (!fs.existsSync(plugin.vault.abs(video))) throw new OpError(`no ${video} in the vault (a file on this machine: its absolute path)`) }
+      else {
+        let data: Buffer
+        try { data = fs.readFileSync(video) } catch { throw new OpError(`can't read ${video}`) }
+        video = (await ctx.op("file.upload", { data: data.toString("base64"), name: `${localDate(Date.now())} ${safeName(str(p.title).trim()).slice(0, 50).trim()} - ${path.basename(video)}` }) as { path: string }).path
+      }
+    }
     const terminal = TERMINAL.test(str(p.terminal).trim()) ? str(p.terminal).trim() : ""
     const session = clip(p.session, 120)
     const agent = clip(p.agent, 40).toLowerCase() || agentOfTerminal(terminal)
@@ -1964,7 +1977,7 @@ starts with the work and where it stands: "Feature done · Sidebar scrolls again
       latest, true)[0]
     // TL;DR, its decisions (drawn with their buttons, once a file), screenshots, then the details folded.
     const decisions = specs.length && !(prior && str(prior.body).includes(DECISIONS_BLOCK)) ? DECISIONS_BLOCK : ""
-    const round = (head: string) => [withTldr(tldr, ""), head, decisions,
+    const round = (head: string) => [withTldr(tldr, ""), head, decisions, video ? `![[${video}]]` : "",
       images.length ? images.map((i) => `![[${path.posix.basename(i)}]]`).join("\n") : "", folded("Details", summary)].filter(Boolean).join("\n\n")
     let r: Item
     if (prior) {
@@ -1997,7 +2010,7 @@ starts with the work and where it stands: "Feature done · Sidebar scrolls again
     else if (told) addEvent({ source: agent || "vau", kind: "waiting", ...report })
     // (later work settles what was asked before it: the rest are read against this report)
     track(closeSettled(ctx, `${tldr}\n\n${summary}`, `[[${baseOf(str(r.id))}]]`, new Set(asked.map((x) => x.path.replace(/\.md$/, "")))))
-    return { path: file, title: r.title, inbox: told, decisions: asked, closed, images, terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
+    return { path: file, title: r.title, inbox: told, decisions: asked, closed, images, ...(video ? { video } : {}), terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
   },
   text: (r) => [`Reported: ${r.path}${r.thread ? " (added to this session's report before)" : ""}, ${r.inbox ? "in the user's inbox" : "archived (the morning brief lists it)"}.`,
     ...r.decisions.map((d: Item) => `  ${d.merged ? "Same as one open already" : d.blocking ? "Asked, waiting on it" : "Asked"}: ${d.question} (${d.path})`),

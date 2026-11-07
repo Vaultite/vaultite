@@ -27,11 +27,20 @@ anchors:                     # optional, written by tour-save: what tells a targ
   step (an ask for it), and the tour goes on. A new ask, Esc, or `companion tour --stop` stops it.
 - `(before: <png>)` on a step: a picture of its first target before a change (a vault path, or a file here that
   tour-save copies in), laid over the thing and flipped with how it is now while its words are said: a job's proof.
-- A job's proof: `vau companion tour-save "<the change: the blue save button>" --job <id> --text '...'` keeps it in
-  `Guides/Proofs/` (`job:` in its frontmatter). Once the job is ready it knocks "Ready to show you the blue save button";
-  "show me" plays it (`companion job-show <id>`), then asks Keep and merge, Needs changes or Not yet. `--open <note or
-  address>` says where the change shows (opened first). Steps on the Mac's own UI (the menu bar, the notch,
-  notifications) are outside Vaultite's window, where a tour can't find things: tour-save warns.
+  `(after: <png>)`: a still of the thing after the change where no browser reaches (the Mac's menu bar, the notch,
+  notifications), shown in a proof's video as a before and after slide; such a step needs no tag.
+- A job's proof is a demo video: `vau companion tour-save "<the change: the blue save button>" --job <id> --record
+  <address> --text '...'` plays the steps on the worker's own copy of the change (its dev server, or for Vaultite a
+  sandbox server from its worktree; never the user's live app, which is refused), in a headless Chrome with no sound:
+  each step's words a caption, its marks drawn in, a click shown where a `(wait: click)` or `(do: click "…")` clicks,
+  then the next step shows what it led to. `--open <note or address>` is where it starts (and where Show me opens a
+  live one). The mp4 (a few MB) is kept beside it, `Guides/Proofs/<title>/<title>.mp4`, embedded on top of the note
+  with `video:` and each step's start (`times:`) in its frontmatter; `--video <file>` keeps one recorded otherwise.
+  Every thing a step names is found by its words on that page first: one that isn't there fails, listing what is.
+- Once the job is ready it knocks "Ready to show you the blue save button"; "show me" plays the video by the notch
+  (`companion job-show <id>`), saying each step's words as it comes, then asks Keep and merge, Needs changes or Not yet.
+  "Show me it live" (`--live`) plays the tour on Vaultite's window instead, when the change is in the app there. The
+  worker's report embeds the video (`vau inbox report ... --video <its path>`).
 - `vau companion tour <note> [--mode show|guide|do] [--wait]` plays one; `companion tour-save "<title>"` saves the last
   answer on screen as one ("save that as a tour"), or `--text` the steps given, to `Guides/<title>.md`.
 

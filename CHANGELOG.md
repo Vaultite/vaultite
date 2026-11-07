@@ -13,6 +13,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   ready (Show me), what each one works on and what's done. The menu bar menu has who needs you, one row of how many
   work, the companion's controls with Mute for an hour, and Settings; Open at login is in Settings, About. Each agent
   keeps one colour of its own, the same on its cursor, by the notch and in the Agents panel.
+- **A job's proof is a demo video**: its worker records its change playing on its own copy (headless, silent, its
+  steps captioned and marked), so Show me plays it by the notch, narrated, even before it's merged or when it ran on
+  another machine; the same video is in its report. "Show me it live" still plays the tour on your screen.
 - **Questions over a job's page get a quick answer**: live editing sends only changes ("make this blue") and unclear
   asks to the job; a plain question ("what does this button do?") goes to the companion, which knows what the job did
   there. A job taking a long run of edits starts fresh with a summary instead of slowing down or compacting mid-ask.

@@ -238,6 +238,27 @@ Some words before the steps.
     !T.nativeSteps(parseTour({}, `1. Docked panels stay [ring "Files"].`, "x")[0]).length, T.nativeSteps(nat))
   check("proof: a tour's open (where its change shows) is written back as read", parseTour({ open: "Notes/Plan.md" }, tourText({ ...t, open: "Notes/Plan.md" }).split("---\n").pop()!, "x")[0].open === "Notes/Plan.md" &&
     tourText({ ...t, open: "Notes/Plan.md" }).includes("open: Notes/Plan.md"))
+  {
+    const V = await import("../plugins/core/companion/proofvideo.ts")
+    const [vt, vp] = parseTour({}, `1. Save is blue now [ring "Save"]. (wait: click)\n2. The menu bar shows it (before: "/tmp/b.png") (after: "/tmp/a.png").`, "Blue save")
+    const back = tourText({ ...vt, job: "j1", video: "Guides/Proofs/Blue save/Blue save.mp4", times: [0.9, 4.6] })
+    const [again] = parseTour({ video: "Guides/Proofs/Blue save/Blue save.mp4", times: [0.9, 4.6] }, back.split("---\n").pop()!, "x")
+    check("proof video: a step's after still (the Mac's own UI) parses with its before and no tag; its video and step times are written back, the video embedded on top",
+      !vp.length && vt.steps[1].after === "/tmp/a.png" && vt.steps[1].before === "/tmp/b.png" && !vt.steps[1].tags.length &&
+      back.includes("video: Guides/Proofs/Blue save/Blue save.mp4") && back.includes("times: [0.9,4.6]") && back.includes("![[Guides/Proofs/Blue save/Blue save.mp4]]\n\n1. ") &&
+      again.steps.length === 2 && again.steps[1].after === "/tmp/a.png" && again.video === "Guides/Proofs/Blue save/Blue save.mp4" && again.times?.join() === "0.9,4.6", back)
+    check("proof video: a before with neither a tag nor an after is still refused", /before: needs a tag/.test(parseTour({}, `1. It changed (before: "/tmp/b.png").`, "x")[1].join()))
+    const n = P.narration(vt), timed = P.narration({ ...vt, times: [1, 5] })
+    check("proof video: its narration says each step's words at its recorded time, else at a reading pace, then a beat for the last to end",
+      timed[0][0] === 1000 && timed[1][0] === 5000 && timed[1][1] === "The menu bar shows it." && timed[2][1] === "" && timed[2][0] === 5000 + P.holdMs(vt.steps[1]) &&
+      n[0][0] === 900 && n[1][0] === 900 + P.holdMs(vt.steps[0]) && P.holdMs(vt.steps[1]) > P.holdMs({ said: "The menu bar shows it." }), { n, timed })
+    check("proof video: a bare (wait: click) clicks the step's own thing, a do after it",
+      JSON.stringify(V.actsOf(vt.steps[0])) === '[{"action":"click","text":"Save"}]' && JSON.stringify(V.actsOf(parseTour({}, `1. Here [ring "A"]. (wait: click "B") (do: type "hi")`, "x")[0].steps[0])) === '[{"action":"click","text":"B"},{"action":"type","value":"hi"}]' &&
+      !V.actsOf(vt.steps[1]).length)
+    check("proof video: it plays at the address given, or a note or page of the Vaultite served there",
+      V.proofUrl("http://127.0.0.1:8811/") === "http://127.0.0.1:8811/" && V.proofUrl("http://127.0.0.1:8811/", "Notes/Idea.md") === "http://127.0.0.1:8811/#file/Notes%2FIdea.md" &&
+      V.proofUrl("http://127.0.0.1:8811", "settings") === "http://127.0.0.1:8811/#settings" && V.proofUrl("http://127.0.0.1:8811", "https://example.com/a") === "https://example.com/a")
+  }
   check("proof: a step's before draws on its agent's own before layer", P.layerOwner(P.beforeLayer("Claude")) === "Claude" && P.layerOwner("Claude") === "Claude" && P.beforeLayer("Ada") !== "Ada")
 }
 

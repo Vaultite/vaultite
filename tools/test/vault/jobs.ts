@@ -58,8 +58,9 @@ export default async ($: VaultTest) => {
     {
       const site = { cwd: "/Users/alice/Projects/site", repo: "site", base: "0123456789abcdef", label: "M1", ...J.worktreeOf("/Users/alice/Projects/site", "site", "j3k9x2a") }
       const jt = J.jobTask("Fix the footer", undefined, site, "j3k9x2a")
-      check("jobs: a worker is told to show its change working: a tour saved as its proof, its befores, by its job's id",
-        jt.includes('vau companion tour-save "') && jt.includes("--job j3k9x2a") && jt.includes("(before: ") && !J.jobTask("x", undefined, site).includes("tour-save"))
+      check("jobs: a worker is told to show its change working: a demo video recorded on its own copy, its befores, stills of the Mac's UI, by its job's id, in its report",
+        jt.includes('vau companion tour-save "') && jt.includes("--job j3k9x2a") && jt.includes("--record <your own copy's address>") && /never their live app/.test(jt) &&
+        jt.includes("(before: ") && jt.includes("(after: <png>)") && jt.includes("vau inbox report ... --video") && !J.jobTask("x", undefined, site).includes("tour-save"))
       const live = J.jobTask("Fix the footer", undefined, { ...site, live: true }, "j3k9x2a"), note = J.jobTask("Tidy my note", undefined, { ...site, repo: "", tree: undefined, branch: undefined })
       check("jobs: every coding job works in its own worktree and branch beside its checkout, made at the commit asked, its packages installed there; never the checkout",
         site.tree === "/Users/alice/Projects/site-j3k9x2a" && site.branch === "job-j3k9x2a" &&
@@ -172,7 +173,7 @@ export default async ($: VaultTest) => {
       check("jobs: its terminal working moves it to working, what it does now from its agent", !!working && working.jobs.find((j: Any) => j.id === card.id).now === "Editing index.html", heard.at(-1))
       // (its worker saves its proof before it ends, as it's told)
       const [tst, tb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, text: '1. The heading is blue now [ring "Lighthouse"].' }, agent)
-      check("proof: tour-save --job keeps it in Guides/Proofs, as that job's", tst === 200 && tb.path === "Guides/Proofs/The blue heading.md" && read(tb.path).includes(`job: ${card.id}`) && !tb.warning, [tst, tb])
+      check("proof: tour-save --job keeps it in Guides/Proofs, as that job's; with no video it warns that a proof is one by default", tst === 200 && tb.path === "Guides/Proofs/The blue heading.md" && read(tb.path).includes(`job: ${card.id}`) && /no video: a proof is one by default/.test(tb.warning ?? ""), [tst, tb])
       const tree = path.join(path.dirname(real), `site-${card.id}`)
       turn = { text: "Made the heading blue in index.html. Try http://localhost:5173.", files: [path.join(tree, "index.html")], at: Date.now(), final: true }
       const review = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r.state === "ready for review" && r }, 10000, 100)
@@ -244,6 +245,25 @@ export default async ($: VaultTest) => {
         const merged = await waitFor(async () => { const r2 = (await api("POST", "ops/companion.job", { id: card.id }))[1]; return r2.state === "done" && r2 }, 10000, 100)
         const told2 = (await api("POST", "ops/companion.knocks", {}))[1].knocks.find((k: Any) => k.line === "Merged: Make the heading blue")
         check("proof: once its worker says it merged, the job closes as done, its knock saying so and opening its terminal (nothing to show)", !!merged && !!told2 && !told2.open, { merged: merged?.state, told2 })
+        // Its demo video (recorded on the worker's own copy): kept beside the proof, played by the notch, narrated, then the choice.
+        const mp4 = path.join(os.tmpdir(), `vaultite-test-proof-${process.pid}.mp4`)
+        fs.writeFileSync(mp4, Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypmp42"), Buffer.alloc(12)]))
+        const [vst, vb] = await api("POST", "ops/companion.tour-save", { title: "The blue heading", job: card.id, video: mp4, text: '1. The heading is blue now [ring "Lighthouse"].\n2. The menu bar says so (before: "Pics/Before.png") (after: "Pics/Before.png").' }, agent)
+        fs.rmSync(mp4, { force: true })
+        const [rst, rb] = await api("POST", "ops/companion.tour-save", { title: "Recorded", job: card.id, record: `http://127.0.0.1:${process.env.PORT ?? 8793}`, text: '1. Blue [ring "Lighthouse"].' }, agent)
+        check("proof: tour-save --video keeps the video beside it, embedded on top and named in its frontmatter; a still of the Mac's UI (after:) is no warning; recording on the user's own app is refused",
+          vst === 200 && vb.video === "Guides/Proofs/The blue heading/The blue heading.mp4" && fs.existsSync(path.join(VAULT, vb.video)) && !vb.warning &&
+          read(vb.path).includes(`video: ${vb.video}`) && read(vb.path).includes(`![[${vb.video}]]`) && read(vb.path).includes('(after: "Pics/Before.png")') &&
+          rst === 409 && /the user's own app/.test(rb.error), [vst, vb, rst, rb])
+        heard.length = 0
+        const [sst, sb] = await api("POST", "ops/companion.job-show", { id: card.id, displays: [{ x: 0, y: 0, width: 1440, height: 900 }] })
+        const card2 = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.some((k: Any) => k.type === "video")), 8000, 50)
+        const v = card2?.drawing.marks.find((k: Any) => k.type === "video")
+        const both = await waitFor(async () => { const n = (await api("POST", "ops/companion.status", {}))[1].notes.filter((x: Any) => x.kind === "say").map((x: Any) => x.text); return n.includes("The heading is blue now.") && n.includes("The menu bar says so.") }, 20000, 100)
+        const choice = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.some((k: Any) => k.type === "button")), 20000, 50)
+        check("proof: Show me plays its video by the notch (a video card at the top), says each step's words as it comes, then the choice",
+          sst === 200 && sb.video === vb.video && v?.at?.area === "top" && /The%20blue%20heading\.mp4/.test(v?.url ?? "") && !!both && !!choice, { sst, sb, v, both, choice: choice?.drawing.marks })
+        await api("POST", "ops/companion.job-show", { choose: "later" })
         win.emit("close")
       }
       sc.emit("message", Buffer.from(JSON.stringify({ t: "job-seen", ids: [card.id] })))

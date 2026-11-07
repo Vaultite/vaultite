@@ -12,6 +12,9 @@ export type Do = { action: "click" | "type" | "press" | "scroll"; text?: string;
 export type Step = { n: number; text: string; said: string; tags: Tag[]; wait?: Condition; do?: Do[]
   /** A picture of its first target before a change (a job's proof): laid over it and flipped with how it is now. */
   before?: string
+  /** A picture of the thing after the change, where no tour or recording can reach it (the Mac's menu bar, the notch): a
+   *  proof's video shows it as a slide, beside its before when it has one. */
+  after?: string
   /** Marks of `companion draw` it shows with its words (a card, a sketch: `(draw: [...])`), cleared as the next step comes. */
   draw?: Record<string, unknown>[] }
 export type Tour = { title: string; app: string[]; site: string[]; steps: Step[]
@@ -21,6 +24,8 @@ export type Tour = { title: string; app: string[]; site: string[]; steps: Step[]
   job?: string
   /** Where its things are, opened before it plays: a note's path or a page's address (a proof's: where the change shows). */
   open?: string
+  /** A proof's video (a vault path, an mp4 its worker recorded of it playing) and when each step starts in it (s). */
+  video?: string; times?: number[]
   /** What its targets are beyond their words (role, container, place), by their words: found again by these. */
   anchors: Record<string, Partial<Anchor>> }
 
@@ -45,20 +50,21 @@ export function parseDo(src: string): Do[] {
 export const doText = (d: Do) => d.action === "click" ? `click ${JSON.stringify(d.text)}` : d.action === "type" ? `type ${JSON.stringify(d.value)}${d.text ? ` in ${JSON.stringify(d.text)}` : ""}`
   : d.action === "press" ? `press ${d.key}` : `scroll ${d.dir ?? "down"}${d.text ? ` ${JSON.stringify(d.text)}` : ""}`
 
-const NOTE = /\(\s*(wait|do|before|draw)\s*:\s*((?:[^()"“”]|"[^"]*"|“[^”]*”)*)\)/gi
+const NOTE = /\(\s*(wait|do|before|after|draw)\s*:\s*((?:[^()"“”]|"[^"]*"|“[^”]*”)*)\)/gi
 /** One step's line (its number gone): its words and tags, its wait and its do. */
 export function parseStep(n: number, line: string): Step {
-  let wait: Condition | undefined, does: Do[] | undefined, before: string | undefined, draw: Record<string, unknown>[] | undefined
+  let wait: Condition | undefined, does: Do[] | undefined, before: string | undefined, after: string | undefined, draw: Record<string, unknown>[] | undefined
   const text = line.replace(NOTE, (_m, k: string, body: string) => {
     if (k.toLowerCase() === "wait") wait = parseCondition(body)
     else if (k.toLowerCase() === "draw") draw = [...(draw ?? []), ...parseDraw(body)]
     else if (k.toLowerCase() === "before") before = body.trim().replace(/^["“]|["”]$/g, "").trim() || undefined
+    else if (k.toLowerCase() === "after") after = body.trim().replace(/^["“]|["”]$/g, "").trim() || undefined
     else does = [...(does ?? []), ...parseDo(body)]
     return ""
   }).replace(/\s{2,}/g, " ").trim()
   const { said, tags } = parseTags(text)
-  if (before && !tags.length) throw new Error("before: needs a tag on the thing it was a picture of ([ring \"Save\"])")
-  return { n, text, said, tags, ...(wait ? { wait } : {}), ...(does ? { do: does } : {}), ...(before ? { before } : {}), ...(draw ? { draw } : {}) }
+  if (before && !after && !tags.length) throw new Error("before: needs a tag on the thing it was a picture of ([ring \"Save\"]), or an (after: <png>) beside it")
+  return { n, text, said, tags, ...(wait ? { wait } : {}), ...(does ? { do: does } : {}), ...(before ? { before } : {}), ...(after ? { after } : {}), ...(draw ? { draw } : {}) }
 }
 /** `(draw: {"type": "image", "src": "screenshot"})`: one mark of companion draw's, or a list of them. */
 function parseDraw(src: string): Record<string, unknown>[] {
@@ -101,7 +107,9 @@ export function parseTour(fm: Record<string, unknown>, body: string, stem: strin
   }
   if (!steps.length && !problems.length) problems.push("a tour's steps are a numbered list: 1. Your chats are down the left [frame \"Chats\"].")
   const job = typeof fm.job === "string" && fm.job.trim() ? fm.job.trim() : "", open = typeof fm.open === "string" ? fm.open.trim() : ""
-  return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, ...(list(fm.ask).length ? { ask: list(fm.ask) } : {}), steps, anchors, ...(job ? { job } : {}), ...(open ? { open } : {}) }, problems]
+  const video = typeof fm.video === "string" ? fm.video.trim() : "", times = Array.isArray(fm.times) ? fm.times.map(Number).filter((x) => Number.isFinite(x) && x >= 0) : []
+  return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, ...(list(fm.ask).length ? { ask: list(fm.ask) } : {}), steps, anchors, ...(job ? { job } : {}), ...(open ? { open } : {}),
+    ...(video ? { video, ...(times.length ? { times } : {}) } : {}) }, problems]
 }
 
 /** The Mac's own UI outside Vaultite's window, named in a step's words: a tour on that window can't find it there. */
@@ -112,16 +120,18 @@ export const nativeSteps = (t: Pick<Tour, "steps" | "app" | "site">) => (t.site.
 
 /** A step's line in a tour's file: `n. words [tags] (wait: …) (do: …)`. */
 export const stepLine = (s: Step, n: number) => `${n}. ${[s.text, s.wait ? `(wait: ${conditionText(s.wait)})` : "", s.do?.length ? `(do: ${s.do.map(doText).join("; ")})` : "",
-  s.before ? `(before: ${JSON.stringify(s.before)})` : "", s.draw ? `(draw: ${JSON.stringify(s.draw.length === 1 ? s.draw[0] : s.draw)})` : ""].filter(Boolean).join(" ")}`
+  s.before ? `(before: ${JSON.stringify(s.before)})` : "", s.after ? `(after: ${JSON.stringify(s.after)})` : "", s.draw ? `(draw: ${JSON.stringify(s.draw.length === 1 ? s.draw[0] : s.draw)})` : ""].filter(Boolean).join(" ")}`
 /** A tour as its file says it (`extra`: more frontmatter, first). */
 export function tourText(t: Tour, extra: Record<string, string> = {}) {
   const yaml = (v: unknown) => JSON.stringify(v)
   const plain = (v: string) => (/^[\w./@ -]+$/.test(v) && !/^\s|\s$|: /.test(v) ? v : yaml(v))
-  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.job ? [`job: ${t.job}`] : []), ...(t.open ? [`open: ${plain(t.open)}`] : []), ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : []), ...(t.ask?.length ? [`ask: ${yaml(t.ask)}`] : [])]
+  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.job ? [`job: ${t.job}`] : []), ...(t.open ? [`open: ${plain(t.open)}`] : []), ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : []), ...(t.ask?.length ? [`ask: ${yaml(t.ask)}`] : []),
+    ...(t.video ? [`video: ${plain(t.video)}`, ...(t.times?.length ? [`times: ${yaml(t.times)}`] : [])] : [])]
   const anchors = Object.entries(t.anchors).filter(([, a]) => Object.keys(a).length)
   if (anchors.length) fm.push("anchors:", ...anchors.map(([k, a]) => `  ${yaml(k)}: ${yaml(a)}`))
   fm.push("---")
-  return `${fm.join("\n")}\n${t.steps.map((s, i) => stepLine(s, i + 1)).join("\n")}\n`
+  // (its video embedded on top: the note shows it, and the steps below are what it says)
+  return `${fm.join("\n")}\n${t.video ? `![[${t.video}]]\n\n` : ""}${t.steps.map((s, i) => stepLine(s, i + 1)).join("\n")}\n`
 }
 
 /** The elements an ask came with (a3: its words, role and place), and where it was. */

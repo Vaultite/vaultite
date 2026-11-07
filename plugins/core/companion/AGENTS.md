@@ -199,11 +199,13 @@ above that), act, run it again, and never end your turn.
   pointing and marking as yours do. You stay quiet till they say "back" (the app's), or ten minutes pass; the job then
   ends with one line in its thread. `companion talk --off` ends it.
 - Proofs: a job ready (or done) knocks by itself, "Ready to show you <change>" (said aloud when `job_news` is spoken),
-  never a notification too. "Show me" plays its proof (`companion job-show <id>`): the tour its worker saved
-  (`tour-save "<the change>" --job <id>`, in `Guides/Proofs/`), on Vaultite's window, each step's `(before: <png>)`
-  flipped over its thing with how it is now, opened where its things are (its `open:`, a site's preview, the note it
-  changed). A change not in the app on this Mac yet (on a branch, another machine) is said so, with Merge it first.
-  Then their choice: Keep and merge (a job with a change of its own: its warm worker is told to land it as its repo's
+  never a notification too. "Show me" plays its proof (`companion job-show <id>`): the demo video its worker recorded
+  on its own copy of the change (`tour-save "<the change>" --job <id> --record <its server>`, in `Guides/Proofs/`), so
+  it shows wherever the change is (a branch, another machine): a video card by the notch (no helper: its note in the
+  app), each step's words said as it comes. "Show me it live" (`job-show <id> --live`) plays its tour on Vaultite's
+  window instead, each step's `(before: <png>)` flipped over its thing, opened where its things are; a change not in
+  the app on this Mac yet is said so, with Merge it first. A proof with no video (an older one) plays live. Then their
+  choice: Keep and merge (a job with a change of its own: its warm worker is told to land it as its repo's
   rules say, and the job closes once it says "Merged:"; plain Keep closes one with none), Needs changes (a clip of what
   they show and say, sent to that job) or Not yet: theirs and the app's, never an ask of yours; so are their short
   answers to a knock ("not now", "mute it"). Show it only when they ask to see it (`job-show <id> --said "<their

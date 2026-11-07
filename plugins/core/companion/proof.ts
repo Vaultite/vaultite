@@ -1,6 +1,7 @@
 // A job's proof: its change shown on the real UI, not claimed: its ready knock, Show me playing its worker's tour
 // (proofs.ts), then Keep and merge (its worker lands it), Needs changes (sent back) or Not yet. No Node.
 import { gist, type Job, landable, live, resultLine } from "./jobs.ts"
+import type { Step, Tour } from "./tour.ts"
 
 /** The layer a step's before picture is drawn on, beside its agent's own (each flips without the other). */
 const BEFORE = " (before)"
@@ -60,3 +61,24 @@ export function choiceSaid(text: string, asked: Asked = "proof"): Choice | null 
 
 /** Words that ask to see a job's change ("show me", "let's see the header", "what did it do?"): what job-show is for. */
 export const asksToSee = (text: string) => /\b(show|see|look|watch|demo|play|view|try|preview)\b|\bwhat (?:did|does|has) (?:it|that|the job)\b|\bhow (?:does|did) it look\b/i.test(text)
+
+/** How long a step stays up in a proof's video: its words read at an easy pace, a before picture's flips through, an
+ *  after's slide. */
+export function holdMs(s: Pick<Step, "said" | "before" | "after">) {
+  const words = s.said.split(/\s+/).filter(Boolean).length
+  const read = Math.min(9000, Math.max(2800, 1600 + words * 340))
+  return s.before || s.after ? Math.max(read, FLIPS.at(-1)![0] + 1400) : read
+}
+/** A proof video's narration: each step's words and when to say them (ms from its start), its recorded times or, without
+ *  them, at a reading pace; then a beat (empty words) for its last step to end. */
+export function narration(t: Pick<Tour, "steps" | "times">): [number, string][] {
+  const out: [number, string][] = []
+  let at = 900
+  t.steps.forEach((s, i) => {
+    const when = t.times?.[i] !== undefined ? t.times[i] * 1000 : at
+    out.push([when, s.said])
+    at = when + holdMs(s)
+  })
+  out.push([at, ""])
+  return out
+}

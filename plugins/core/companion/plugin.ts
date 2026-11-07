@@ -2821,6 +2821,15 @@ const proofs = proofOps(plugin, {
   },
   clear: () => { stopFlips(); screenDrawing.clear({ agent: ownName() }) },
   open: (where) => plugin.host.call("companion.open", { path: where }, AS_TOOL, { report: "companion job-show" }),
+  // (by the notch over their screen, as the ready card it came from; with no helper, its note in the app, the video on top)
+  play: async (video, title, note) => {
+    if (screens.size && displaysOf(ownName()).length) {
+      await plugin.host.call("companion.draw", { marks: [{ type: "video", src: video, at: { area: "top" }, size: "l", caption: title }] }, AS_TOOL, { report: "companion job-show" })
+      return true
+    }
+    return plugin.host.call("companion.open", { path: note }, AS_TOOL, { report: "companion job-show" }).then(() => true, () => false)
+  },
+  has: (rel) => fs.existsSync(plugin.vault.abs(rel)),
   record: (id) => {
     const ws = lastScreen && screens.has(lastScreen) ? lastScreen : screens.size === 1 ? [...screens][0] : null
     if (!ws) return false

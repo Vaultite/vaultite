@@ -13,6 +13,20 @@ import { type Aim, type Do, type Fx, type Mode, MODES, nativeSteps, parseTour, p
 import type { Condition as Check, Rect } from "./uimodel.ts"
 import { fileTitle } from "./names.ts"
 import { saveFiles } from "./vaultfiles.ts"
+import { proofUrl, recordProof } from "./proofvideo.ts"
+
+/** A path as given, "~/" its home's. */
+const local = (p: string) => p.replace(/^~(?=\/)/, os.homedir())
+/** Whether a proof may be recorded at `url`: an http address, never this server (the user's live app: a window of theirs
+ *  would open on it), which throws saying so. */
+function recordable(url: string) {
+  let u: URL
+  try { u = new URL(url) } catch { throw new OpError(`record: an address (http://127.0.0.1:<port>), not ${url}`) }
+  if (!/^https?:$/.test(u.protocol)) throw new OpError(`record: an http address, not ${url}`)
+  const here = ["127.0.0.1", "localhost", "[::1]", os.hostname().toLowerCase()].includes(u.hostname.toLowerCase())
+  if (here && (u.port || (u.protocol === "https:" ? "443" : "80")) === String(process.env.PORT ?? "8793"))
+    throw new OpError("record: that's the user's own app, where your change isn't yet: record on your own copy (your worktree's dev server, or a sandbox server: vau sandbox, then npm start on a free port)", 409)
+}
 
 /** Where a tour plays: what shows there now and what it can do there. */
 export type Screen = {
@@ -57,8 +71,9 @@ export function toursOf(plugin: Plugin, o: {
   // (tours beside guides: type: tour notes in Guides/, read whole when played)
   plugin.kind(new Kind({
     type: "tour", collection: "tours", folder: "Guides", label: "Tours",
-    parse: (fm, body, stem) => { const [t, problems] = parseTour(fm, body, stem); return [{ title: t.title, app: t.app, site: t.site, ...(t.ask?.length ? { ask: t.ask } : {}), steps: t.steps.length, ...(fm.anchors ? { anchors: fm.anchors } : {}), ...(t.job ? { job: t.job } : {}), body }, problems] },
-    render: (t) => [{ ...(t.job ? { job: t.job } : {}), app: (t.app as string[] | undefined)?.length ? t.app : null, site: (t.site as string[] | undefined)?.length ? t.site : null,
+    parse: (fm, body, stem) => { const [t, problems] = parseTour(fm, body, stem); return [{ title: t.title, app: t.app, site: t.site, ...(t.ask?.length ? { ask: t.ask } : {}), steps: t.steps.length, ...(fm.anchors ? { anchors: fm.anchors } : {}), ...(t.job ? { job: t.job } : {}),
+      ...(t.video ? { video: t.video, ...(t.times ? { times: t.times } : {}) } : {}), body }, problems] },
+    render: (t) => [{ ...(t.job ? { job: t.job } : {}), ...(t.video ? { video: t.video, ...(t.times ? { times: t.times } : {}) } : {}), app: (t.app as string[] | undefined)?.length ? t.app : null, site: (t.site as string[] | undefined)?.length ? t.site : null,
       ask: (t.ask as string[] | undefined)?.length ? t.ask : null }, String(t.body ?? "")],
     filename: (t, at) => joinPath(at.folder, safeName(String(t.title || "Tour"))),
   }))
@@ -161,7 +176,7 @@ export function toursOf(plugin: Plugin, o: {
     if (problems.length) throw new OpError(`${at}: ${problems.join("; ")}`)
     return { tour: /^(?:.*\/)?SKILL\.md$/i.test(at) ? { ...tour, title: body.match(/^#\s+(.+)$/m)?.[1]?.trim() || tour.title } : tour, path: at }
   }
-  type Row = { id: string; title: string; body: string; app?: string[]; site?: string[]; ask?: string[]; anchors?: unknown; job?: string }
+  type Row = { id: string; title: string; body: string; app?: string[]; site?: string[]; ask?: string[]; anchors?: unknown; job?: string; video?: string; times?: number[] }
   const rows = () => plugin.vault.shared("tours") as unknown as readonly Row[]
   /** A tour as its note reads, or its problems. */
   const parsed = (t: Row) => parseTour(t as unknown as Record<string, unknown>, t.body, t.title)
@@ -225,20 +240,32 @@ Its format: vau docs tours.`,
   plugin.op({
     id: "companion.tour-save",
     cli: "companion tour-save",
-    summary: "Save a walkthrough as a tour (Guides/<title>.md): your last answer on screen, its pointing sentences its steps, or the steps given.",
+    summary: "Save a walkthrough as a tour (Guides/<title>.md): your last answer on screen, its pointing sentences its steps, or the steps given; a job's proof with its video.",
     help: `"Save that as a tour": with no text, your last answer is saved, its ids (a3) as the words of what they were. Give
 text to write it yourself, a step a numbered line with its tags, (wait: click) and (do: click "Send").
 
+A job's proof (--job) is a video by default: --record <address> plays its steps there, on your own copy of the change
+(your worktree's dev server or a sandbox server, never the user's live app), in a headless Chrome with no sound, each
+step's words as a caption and its marks drawn in, and keeps the mp4 beside it (Guides/Proofs/<title>/). A step's
+(before: <png>) flips over its thing; (after: <png>) shows a still of the Mac's own UI (the menu bar, the notch), which
+no browser shows, as a before and after slide. --video keeps an mp4 you recorded yourself instead.
+
   vau companion tour-save "Start a chat"
-  vau companion tour-save "Start a chat" --text '1. Start one here [ring "New chat"]. (wait: click)'`,
+  vau companion tour-save "Start a chat" --text '1. Start one here [ring "New chat"]. (wait: click)'
+  vau companion tour-save "the blue save button" --job j3k9x2a --record http://127.0.0.1:8811 --open Notes/Idea.md \\
+    --text '1. Save is blue now [ring "Save"]. (before: /tmp/save-before.png)'`,
     kind: "write",
+    // (a recording runs for a while: the vault isn't held meanwhile)
+    lock: false,
     params: {
       title: { type: "string", required: true, description: "its name (its file's)" },
       text: { type: "string", description: "its steps (else your last answer)" },
       app: { type: "string", description: "the app it's for (a bundle id; vaultite for the app itself)" },
       site: { type: "string", description: "the site it's for (a host)" },
       job: { type: "string", description: "the job it's the proof of (its id, as its prompt gives it): saved in Guides/Proofs, it's what Show me plays once the job is ready" },
-      open: { type: "string", description: "with job: where the change shows (a note's path or a page's address), which Show me opens before it plays" },
+      open: { type: "string", description: "with job: where the change shows (a note's path or a page's address), which Show me opens before it plays, and a recording opens on its server" },
+      record: { type: "string", description: "with job: the address of your own copy of the change (http://127.0.0.1:<port>: your dev server or a sandbox server) to record its video on, headless" },
+      video: { type: "string", description: "with job: an mp4 of it you recorded yourself (a file here), kept as its video" },
       as: { type: "string", description: "the agent (another than the companion)" },
     },
     args: ["title"],
@@ -259,27 +286,54 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
       if (!tour.steps.length) throw new OpError("nothing to save: no steps")
       const job = typeof p.job === "string" ? p.job.trim() : ""
       if (job && !/^[\w-]{1,40}$/.test(job)) throw new OpError(`job: a job's id (j3k9x2a), not ${job}`)
+      const record = typeof p.record === "string" ? p.record.trim() : "", given = typeof p.video === "string" ? local(p.video.trim()) : ""
+      if ((record || given) && !job) throw new OpError("record and video are a job's proof: give its job too")
+      if (record && given) throw new OpError("record or video, not both")
+      if (record) recordable(record)
+      if (given && (!/\.(mp4|m4v|mov|webm)$/i.test(given) || !fs.existsSync(given))) throw new OpError(`video: ${p.video} isn't a video here (an mp4, mov or webm file)`)
       // (a proof of another job by that title is left alone; this job's own is saved over, its pictures too)
       const theirs = (rel: string) => { try { return !new RegExp(`^job: ${job}$`, "m").test(fs.readFileSync(plugin.vault.abs(rel), "utf8")) } catch { return false } }
       let base = job ? `Guides/Proofs/${title}` : `Guides/${title}`
       for (let n = 2; job && theirs(`${base}.md`); n++) base = `Guides/Proofs/${title} ${n}`
       const path = `${base}.md`
-      // (a before picture outside the vault comes into it, beside its proof: it plays wherever the vault is)
-      const steps = await Promise.all(tour.steps.map(async (st) => {
-        if (!st.before || !nodePath.isAbsolute(st.before.replace(/^~(?=\/)/, os.homedir()))) return st
-        const from = st.before.replace(/^~(?=\/)/, os.homedir()), ext = nodePath.extname(from).toLowerCase()
-        if (!/^\.(png|jpe?g|gif|webp|heic)$/.test(ext) || !fs.existsSync(from)) throw new OpError(`step ${st.n}: before: ${st.before} isn't a picture here (png, jpg, gif, webp)`)
-        const name = `before ${st.n}${ext}`
+      /** A file of this machine copied in beside the proof as `name` (one there before replaced): its vault path. */
+      const keep = async (from: string, name: string) => {
         if (fs.existsSync(plugin.vault.abs(`${base}/${name}`))) await ctx.api("DELETE", `file?path=${encodeURIComponent(`${base}/${name}`)}`)
-        return { ...st, before: (await saveFiles(ctx, base, [{ from, name }]))[0] }
+        return (await saveFiles(ctx, base, [{ from, name }]))[0]
+      }
+      // (a before or after picture outside the vault comes into it, beside its proof: it plays wherever the vault is)
+      const picture = async (n: number, which: "before" | "after", src?: string) => {
+        if (!src || !nodePath.isAbsolute(local(src))) return src
+        const from = local(src), ext = nodePath.extname(from).toLowerCase()
+        if (!/^\.(png|jpe?g|gif|webp|heic)$/.test(ext) || !fs.existsSync(from)) throw new OpError(`step ${n}: ${which}: ${src} isn't a picture here (png, jpg, gif, webp)`)
+        return keep(from, `${which} ${n}${ext}`)
+      }
+      const steps = await Promise.all(tour.steps.map(async (st) => {
+        const before = await picture(st.n, "before", st.before), after = await picture(st.n, "after", st.after)
+        return { ...st, ...(before ? { before } : {}), ...(after ? { after } : {}) }
       }))
-      await ctx.api("PUT", "file", { path, text: tourText({ ...tour, steps, ...(job ? { job } : {}) }) })
+      // (its video: recorded now on their copy of the change, or the one given; its steps' times for the narration)
+      let video: { path: string; times?: number[]; bytes: number; ms?: number } | null = null
+      if (record || given) {
+        const ext = record ? ".mp4" : nodePath.extname(given).toLowerCase(), file = `${safeName(title)}${ext}`
+        if (record) {
+          const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "vaultite-proof-out-")), out = nodePath.join(tmp, file)
+          try {
+            const r = await recordProof({ url: proofUrl(record, open), tour: { title, steps }, out, pic: (src) => (nodePath.isAbsolute(src) ? src : plugin.vault.abs(src)) })
+              .catch((e) => { throw new OpError(`couldn't record it: ${(e as Error).message}`, 409) })
+            video = { path: await keep(out, file), times: r.times, bytes: r.bytes, ms: r.ms }
+          } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
+        } else video = { path: await keep(given, file), bytes: fs.statSync(given).size }
+      }
+      await ctx.api("PUT", "file", { path, text: tourText({ ...tour, steps, ...(job ? { job } : {}), ...(video ? { video: video.path, ...(video.times ? { times: video.times } : {}) } : {}) }) })
       // (a tour finds its things in Vaultite's window or another app's: the Mac's menu bar or notch it never finds)
-      const native = nativeSteps(tour)
-      const warning = native.length ? `step${native.length > 1 ? "s" : ""} ${native.join(", ")} name${native.length > 1 ? "" : "s"} the Mac's own UI (the menu bar, the notch, a notification), outside Vaultite's window, where a tour can't find things: Show me will say it can't show ${native.length > 1 ? "them" : "it"}. Point those steps at what shows in Vaultite's window, or give each a (before:) picture and say in its words what to open to see it live` : ""
-      return { path, steps: tour.steps.length, ...(job ? { job } : {}), ...(warning ? { warning } : {}) }
+      const native = nativeSteps(tour).filter((n) => !steps.find((s) => s.n === n)?.after)
+      const warning = [native.length ? `step${native.length > 1 ? "s" : ""} ${native.join(", ")} name${native.length > 1 ? "" : "s"} the Mac's own UI (the menu bar, the notch, a notification), which neither a recording nor Vaultite's window shows: give ${native.length > 1 ? "each" : "it"} an (after: <png>) still of it (and a (before: <png>)), and say in its words what to open to see it live` : "",
+        job && !video ? "no video: a proof is one by default (--record on your own copy of the change, or --video), so the user sees it before it's merged" : "",
+        video && video.bytes > 12 << 20 ? `its video is ${Math.round(video.bytes / (1 << 20))} MB: keep a proof short (fewer, shorter steps)` : ""].filter(Boolean).join("; ")
+      return { path, steps: tour.steps.length, ...(job ? { job } : {}), ...(video ? { video: video.path, size: video.bytes < 1 << 20 ? `${Math.max(1, Math.round(video.bytes / 1024))} KB` : `${Math.round(video.bytes / 104857.6) / 10} MB`, ...(video.ms ? { seconds: Math.round(video.ms / 1000) } : {}) } : {}), ...(warning ? { warning } : {}) }
     },
-    text: (r) => `${r.job ? `Saved ${r.path} (${r.steps} steps), the proof of ${r.job}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`}${r.warning ? ` Warning: ${r.warning}.` : ""}`,
+    text: (r) => `${r.job ? `Saved ${r.path} (${r.steps} steps), the proof of ${r.job}${r.video ? `, with its video ${r.video} (${r.seconds ? `${r.seconds} s, ` : ""}${r.size}: embed it in your report, --video)` : ""}: Show me plays it once the job is ready.` : `Saved ${r.path} (${r.steps} steps): play it with companion tour "${r.path}".`}${r.warning ? ` Warning: ${r.warning}.` : ""}`,
   })
 
   plugin.op({
