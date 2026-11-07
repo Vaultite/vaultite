@@ -38,8 +38,8 @@ export function companionVoice(o: {
   let child: ChildProcess | null = null, starting: Promise<ChildProcess | null> | null = null, idle: ReturnType<typeof setTimeout> | null = null
   let keys: { at: number; port: number; k: Keys } | null = null
   const clouds = new Map<string, CloudVoice>()
-  /** A sample's provider, for that answer alone. */
-  let only: Provider | null = null
+  /** A sample's provider, for that answer alone; the Soniox voice of an answer by another agent than the companion. */
+  let only: Provider | null = null, as: string | null = null
   /** Pieces sent to it and not played to their end yet (the player's numbers). */
   const playing = new Set<number>()
   /** Pieces given words (audio, or text to say) and those heard to start: one given words that ends unheard said nothing. */
@@ -143,7 +143,7 @@ export function companionVoice(o: {
   function cloudOf(p: Provider): CloudVoice | null {
     const k = keys?.k, pr = o.prefs()
     const c: CloudConfig | null = p === "elevenlabs" ? (k?.elevenlabs ? { provider: p, url: k.elevenlabs.url, key: k.elevenlabs.key, model: pr.eleven.model || "eleven_flash_v2_5", voice: pr.eleven.voice || "nPczCjzI2devNBz1zQrb", speed: pr.speed } : null)
-      : k?.soniox ? { provider: p, url: k.soniox.url, key: k.soniox.key, model: k.soniox.model, voice: pr.name || "Adrian", speed: pr.speed } : null
+      : k?.soniox ? { provider: p, url: k.soniox.url, key: k.soniox.key, model: k.soniox.model, voice: as || pr.name || "Adrian", speed: pr.speed } : null
     if (!c) return null
     const config = JSON.stringify(c)
     let v = clouds.get(config)
@@ -157,7 +157,8 @@ export function companionVoice(o: {
   /** The providers tried, in order, of those with a key: the one picked (auto: ElevenLabs'), then the other. */
   function chain(): Provider[] {
     if (o.record) return []
-    const p = only ?? o.prefs().provider
+    // (another agent's answer is Soniox's, the only cloud with its own voice for it)
+    const p = only ?? (as ? "soniox" : o.prefs().provider)
     const order: Provider[] = only ? [only] : p === "soniox" ? ["soniox", "elevenlabs"] : ["elevenlabs", "soniox"]
     return order.filter((x) => !!keys?.k[x])
   }
@@ -204,11 +205,12 @@ export function companionVoice(o: {
       void fetchKeys().then(() => cloudsNow()[0]?.warm())
       if (!o.record) void start()
     },
-    /** A new answer to `asked` (the ask's words): what was speaking stops (`after`: the realtime voice's words go on).
-     *  Its words wait for the keys (asked once a minute), so its first piece knows whether the cloud speaks. */
-    begin(asked: string, lang?: string, after = false) {
+    /** A new answer to `asked` (the ask's words): what was speaking stops (`after`: the realtime voice's words go on);
+     *  `voice`: Soniox's voice for it (another agent's). Its words wait for the keys (asked once a minute). */
+    begin(asked: string, lang?: string, after = false, voice?: string | null) {
       const g = ++gen
       only = null
+      as = voice || null
       if (after) { const h = held; held = []; v.start(asked, lang); held = h } else v.start(asked, lang)
       ready = fetchKeys().then(() => {}, () => {})
       return g
@@ -219,6 +221,7 @@ export function companionVoice(o: {
       await fetchKeys()
       if (g !== gen) return { said: false }
       only = provider ?? null
+      as = null
       const by = chain()[0] ?? "this Mac"
       v.start(text)
       v.text("sample", text)

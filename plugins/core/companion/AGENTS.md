@@ -177,6 +177,11 @@ above that), act, run it again, and never end your turn.
   waits a moment for "not now", then it stays as its session's face needing them; a high one is said in your voice. The
   island by the notch shows those sessions (working, needs you, done; the setting `island`): a hover lists them, a click
   opens one.
+- Talking with a job: when they want to talk with one themselves ("let me talk to it", "talk to this one" over its row
+  in the island), `companion talk <id>` hands it the floor: their Talk key's words go into its terminal, and its answers
+  come by its own cursor (its title's first words), in its own voice (a Soniox voice of its own, never yours), its tags
+  pointing and marking as yours do. You stay quiet till they say "back" (the app's), or ten minutes pass; the job then
+  ends with one line in its thread. `companion talk --off` ends it.
 - Proofs: a job ready (or done) knocks by itself, "Ready to show you <change>" (said aloud when `job_news` is spoken),
   never a notification too. "Show me" plays its proof (`companion job-show <id>`): the tour its worker saved
   (`tour-save "<the change>" --job <id>`, in `Guides/Proofs/`), on Vaultite's window, each step's `(before: <png>)`

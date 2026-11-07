@@ -134,6 +134,20 @@ export function chunker() {
   }
 }
 
+// ---------- whose voice: each agent but the companion speaks in a Soniox voice of its own
+
+/** Soniox voices for agents other than the companion (a job it handed the floor to, @ada): clear, and unlike each other. */
+export const AGENT_VOICES = ["Grace", "Logan", "Hazel", "Owen", "Nina", "Shane", "Iris", "Mason", "Poppy", "Rafael", "Harper", "Ruby"]
+/** The Soniox voice agent `name` speaks in: null for the companion (`main`: its own setting), else one of AGENT_VOICES,
+ *  the same each time, never the companion's (`own`). */
+export function voiceOf(name: string, main: string, own: string) {
+  if (!name.trim() || name.trim().toLowerCase() === main.trim().toLowerCase()) return null
+  const pool = AGENT_VOICES.filter((v) => v.toLowerCase() !== (own || "Adrian").toLowerCase())
+  let h = 0
+  for (const c of name.trim().toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return pool[h % pool.length]
+}
+
 // ---------- the language its words are in: its voice speaks that one
 
 const WORDS: Record<string, string[]> = {

@@ -35,6 +35,7 @@ import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { companionVoice } from "./voice.ts"
 import { realtimeFront } from "./realtimefront.ts"
 import { countText, type WalkPlace } from "../plugins/core/companion/walks.ts"
+import { voiceOf } from "../plugins/core/companion/spoken.ts"
 import { clickedAt, keepsActs, keyHeard, lessonAct, lessonScene, stopTeach, teachDeaf, teachFinal, teachHeard, teachHost, teachListening, teachListens, teachPending, typedHeard, watching } from "./teach.ts"
 import { endWalk, startWalk, stopWalk, walkAct, walkCall, walkFilms, walkFinal, walkHeard, walkHost, walkListening, walkListens, walkOn, walkPending, walkScene } from "./walk.ts"
 import { stopTakeover, takeoverBehind, takeoverCaption, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard, takeoverOffering } from "./takeover.ts"
@@ -1576,12 +1577,13 @@ function voiceHeard(n: Note) {
   if (n.kind !== "say" || !a || a.realtime || !n.text || n.dismissed || a.t < hushed || (voiced && a.t < voiced.asked)) return
   if (quietForCall() && (mode === "always" || (mode === "auto" && a.voice))) return keptQuiet(n.agent, a.t)
   if (quietHeld && a.t > quietHeld.asked) quietHeld = null
-  if (!voiced || voiced.asked !== a.t) {
-    // (a newer ask's answer: the last one stops, said or not; the realtime voice's few words before it go on)
+  // (a newer ask's answer, or another agent's to the same one (a job handed the floor): the last stops, said or not; the
+  // realtime voice's few words before it go on)
+  if (!voiced || voiced.asked !== a.t || voiced.name !== n.agent) {
     const after = !!fronted && !fronted.begun && a.t >= (lastAsk?.up ?? Infinity)
     if (after) { fronted!.begun = true; hushed = Math.max(hushed, a.t); if (voiced?.quiet) clearTimeout(voiced.quiet); voiced = null } else stopVoice(a.t)
     if (mode === "off" || (mode === "auto" && !a.voice)) return
-    speaker.begin("", a.lang, after)
+    speaker.begin("", a.lang, after, voiceOf(n.agent, live.state.name, prefs.voice.name))
     heardLines = []
     voiced = { name: n.agent, asked: a.t, notes: [], quiet: null, ...(after ? { fronted: fronted!.s } : {}) }
   }
@@ -1749,7 +1751,7 @@ function playQuiet(name: string) {
   const says = live.state.said.filter((n) => n.agent === name && n.kind === "say" && n.text && n.answers?.t === h.asked)
   if (!says.length) return
   stopVoice()
-  speaker.begin("", says[0].answers?.lang)
+  speaker.begin("", says[0].answers?.lang, false, voiceOf(name, live.state.name, prefs.voice.name))
   for (const n of says) { speaker.text(n.id, n.text!); speaker.end(n.id) }
 }
 

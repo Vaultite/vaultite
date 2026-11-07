@@ -486,6 +486,17 @@ await wait(50)
 sock!.send(JSON.stringify({ t: "jobs", jobs: [{ ...job("needs you"), id: "j3", title: "Ask me" }] }))
 check("jobs: one at work that comes to need them is a notification", await until(() => notices().length === 1 && notices()[0].state === "needs you"), notices())
 
+// ---------- a job handed the floor answers the same ask: said too, the companion's words before it stopped
+{
+  const t = Date.now(), note = (id: string, agent: string, text: string) => sock!.send(JSON.stringify({ t: "note", note: { id, kind: "say", agent, text, t: Date.now(), answers: { t, voice: true } } }))
+  note("k1", "Claude", "Handing you to Make a landing page.")
+  await until(() => H.spoken().some((m) => m.cmd === "say" && /Handing you/.test(String(m.text))))
+  const before = stops()
+  note("k2", "Make a landing page", "I wrote the plan in two parts.")
+  check("voice: a job given the floor answers the same ask aloud, its own answer, the companion's stopped for it",
+    await until(() => H.spoken().some((m) => m.cmd === "say" && /two parts/.test(String(m.text)))) && stops() > before, H.spoken().slice(-4))
+}
+
 // ---------- its voice: a stop silences audio streamed from elsewhere too (the realtime voice's), nothing left saying
 {
   const { companionVoice } = await import(at("voice.ts"))

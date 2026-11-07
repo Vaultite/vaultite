@@ -30,6 +30,7 @@ import { beforeLayer, FLIPS, layerOwner, readyNow } from "./proof.ts"
 import { proofOps } from "./proofs.ts"
 import { captureOps } from "./captures.ts"
 import { liveEdits } from "./liveedit.ts"
+import { talkOps } from "./talks.ts"
 import { walkOps } from "./walkops.ts"
 import { teachOps } from "./teachops.ts"
 import { jobOps } from "./workers.ts"
@@ -38,7 +39,7 @@ import { type Guide, guideFor, guideLines, parseGuide, sitesOf } from "./guides.
 import { type Screen, toursOf } from "./tours.ts"
 import type { Tour } from "./tour.ts"
 import type { Seen } from "./anchor.ts"
-import { markOf, type Spot, type Tag } from "./tags.ts"
+import { beatOf, markOf, placeOf as tagPlace, type Spot, type Tag } from "./tags.ts"
 import { doneText, effectOf, isBrowser, macOpen, nearText, stepOf, takeovers } from "./takeover.ts"
 import { check as checkOn, listView, parseCondition, thingFrom, thingText, type Verdict } from "./uimodel.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -376,6 +377,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   // (a new ask: what the last answer pointed with goes, a Talk key's too, so a mark it corrects is replaced, not
   // stacked; its cards stay, for a follow-up to change in place; a tour playing for it stops too: they moved on)
   if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.settle(full.for); tours.interrupt(full.for); if (isMain(full.for)) proofs.stop() }
+  // (a job has the floor: their Talk key's words are its, the companion quiet till they say back)
+  if (full.summoned && full.for && isMain(full.for) && talks.take(full, from)) return full
   // (a tour's ask phrase, "what's new?": the tour plays, without the model)
   if (full.summoned && full.for && isMain(full.for) && m.kind === "ask" && !m.tour && full.text) {
     const name = full.for, ended = () => { if (touredAsk.get(key(name)) === full) touredAsk.delete(key(name)); setAgent(name, { state: acting(name) }) }
@@ -1966,7 +1969,7 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "job-show", "tour", "tour-save"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "layer", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "tour", "tour-save"]
 /** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
 const QUIET_RESULTS = new Set(["see", "check", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
@@ -2032,7 +2035,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "job-show", "live-undo", "conversation", "tour", "tour-save"]
+const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "live-undo", "conversation", "tour", "tour-save"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -2715,10 +2718,10 @@ const jobs = jobOps(plugin, {
   askOf,
   say: (ctx, name, text) => plugin.host.call("companion.say", { text, ...(isMain(name) ? {} : { as: name }) }, ctx.who),
   did, who, as: AS, cards: (cards) => toScreens({ t: "jobs", jobs: cards }),
-  // (a live edit's turn ending is told by its ring, not its news)
-  // (a live edit's turn ending is told by its ring; a job just ready knocks, its proof to show; the rest is news)
-  moved: (j, from) => void (liveEditing.moved(j, from) || (readyNow(j, from) && j.terminal ? proofs.moved(j, from) : jobNews(j.title, j.state, from)).catch(() => {})),
-  warm: (j) => liveEditing.warm(j),
+  // (a talk's turn is said by the job's cursor, a live edit's told by its ring; a job just ready knocks, its proof to
+  // show; the rest is news)
+  moved: (j, from) => void (talks.moved(j, from) || liveEditing.moved(j, from) || (readyNow(j, from) && j.terminal ? proofs.moved(j, from) : jobNews(j.title, j.state, from)).catch(() => {})),
+  warm: (j) => liveEditing.warm(j) || talks.talking(j),
   onScreen: (link) => [...windows.values()].some((w) => { const tab = w.panes.find((p) => p.id === w.pane)?.tab; return !!tab && w.panes.some((p) => p.tab === tab && p.to === link) }),
 })
 captureOps(plugin, jobs)
@@ -2738,6 +2741,38 @@ const liveEditing = liveEdits(plugin, {
   fallback: (m) => void handOut(m),
   desktop: (name, args) => plugin.desktop(name, args),
 })
+/** Talking with a job (talks.ts): the floor handed to its worker, the Talk key's words typed into its terminal. */
+const talks = talkOps(plugin, {
+  jobs, askOf,
+  ctx: (from) => liveCtx(from),
+  main: () => ownName(),
+  say: async (name, text, m) => {
+    did(name, "say", undefined, text)
+    keepSaid(putNote({ kind: "say", agent: name, text, ...(m ? placeOf(m) as Partial<Note> : {}), ...(m?.summoned ? { answers: answersOf(m) } : {}) }, sayMs(text)))
+    setAgent(name, { state: "watching" })
+  },
+  show: (name, m) => void setAgent(name, m ? { state: "thinking", ...placeOf(m) } : { state: "watching" }),
+  gone: (name) => {
+    for (const n of [...notes.values()]) if (n.agent === name && !n.by) dropNote(n.id)
+    setAgent(name, { state: "away" })
+    agents.delete(key(name))
+  },
+  sees: (name, m) => {
+    nearBy.set(key(name), nearBy.get(key(ownName())) ?? [])
+    if (m && !moments.includes(m)) { m.seq = ++seq; moments.push(m) }
+  },
+  tags: async (name, tags, said) => { for (const t of tags) await tagAs(name, t, said).catch(() => {}) },
+  fallback: (m) => void handOut(m),
+})
+/** Tag `t` of words `said` by `name` (a job talking): its cursor flies to what it names, or a mark is drawn there. */
+async function tagAs(name: string, t: Tag, said: string) {
+  if (t.kind === "point") {
+    const r = "find" in t.at && !askOf(name)?.path ? await screenFind(name, t.at.find).catch(() => null) : null
+    return plugin.host.call("companion.look", { ...(r ? { sx: Math.round(r.x + r.w / 2), sy: Math.round(r.y + r.h / 2) } : tagPlace(t.at)), as: name }, AS_TOOL)
+  }
+  const mark = markOf(t, beatOf(said, t.offset))
+  return mark ? plugin.host.call("companion.draw", { marks: [mark], as: name }, AS_TOOL) : null
+}
 walkOps(plugin, jobs)
 /** A job's proof (proofs.ts): its ready knock, Show me playing the tour its worker saved, then Keep or Still broken. */
 const proofs = proofOps(plugin, {
