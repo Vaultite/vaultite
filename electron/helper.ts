@@ -1130,8 +1130,7 @@ export async function axThings(p: Point, radius = 5000, most = 400, window = 0):
 async function nearAt(p: Point) {
   nearPoint = p
   nearWindow = 0
-  const r = await screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius: 260, max: 30 }).catch(() => null)
-  lastNear = (r?.elements ?? []).flatMap((e) => thingFrom(e) ?? []).map((e, i) => ({ ...e, id: `a${i + 1}` }))
+  lastNear = (await axThings(p, 260, 30)).map((e, i) => ({ ...e, id: `a${i + 1}` }))
   return lastNear
 }
 
@@ -1247,13 +1246,13 @@ async function walkPlace(p: Point): Promise<{ place: WalkPlace; near: Thing[]; w
   const win = w?.window && !w.vaultite ? w : null
   if (win && hidden(win)) return { place: { appName: "a private app" }, near: [], private: true }
   const [text, under, near, inApp] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 3000 }).catch(() => null) : null, underAt(p),
-    w?.vaultite ? null : screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius: 160, max: 30, ...(win ? { window: win.window } : {}) }).catch(() => null),
+    w?.vaultite ? null : axThings(p, 160, 30, win?.window ?? 0),
     w?.vaultite ? inAppAt(p) : null])
   const str = (v: unknown) => (typeof v === "string" ? v : undefined)
   const place: WalkPlace = { ...(win ? { app: win.bundle, appName: win.name, title: win.title } : w?.vaultite ? { vaultite: true, appName: app.getName(), title: w.title } : under ? { app: under.bundle, appName: under.name } : {}),
     ...(text?.ok && text.text ? { screen: text.text } : {}), ...(under ? { under: under.text } : {}),
     ...(inApp ? Object.fromEntries(Object.entries({ path: str(inApp.path), line: typeof inApp.line === "number" ? inApp.line : undefined, ui: str(inApp.ui), under: str(inApp.under) }).filter(([, v]) => v !== undefined)) : {}) }
-  const things = inApp && Array.isArray(inApp.near) ? pageThings(inApp.near) ?? [] : (near?.elements ?? []).flatMap((e) => thingFrom(e) ?? [])
+  const things = inApp && Array.isArray(inApp.near) ? pageThings(inApp.near) ?? [] : near ?? []
   return { place, near: things, ...(w?.frame ? { window: w.frame } : {}) }
 }
 
