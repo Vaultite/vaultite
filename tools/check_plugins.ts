@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseAst } from "rolldown/parseAst"
 import { declsOf, drawnBy, drawsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
 import { blocksIn } from "../core/sections.ts"
-import { blockProblems, iconNames, nodeSide, pluginProblems, walk } from "../core/rules.ts"
+import { blockProblems, iconNames, listedPackage, nodeSide, PLUGIN_PACKAGES, pluginProblems, SHARED, SHARED_EDITOR, walk } from "../core/rules.ts"
 import { ICON_NAME } from "../core/pluginmeta.ts"
 import { opProblems } from "../core/ops.ts"
 
@@ -452,6 +452,9 @@ for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(t
 {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
   const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8")) as { packages: Record<string, { version?: string; resolved?: string; integrity?: string; hasInstallScript?: boolean; link?: boolean; inBundle?: boolean }> }
+  // (what vault plugins may import is the plugin API: it ships, and what the app hands them is on it)
+  for (const n of PLUGIN_PACKAGES) if (!pkg.dependencies?.[n]) problems.push(`package.json: ${n} is one of the packages vault plugins import (core/rules.ts PLUGIN_PACKAGES): it goes in dependencies`)
+  for (const n of [...SHARED, ...SHARED_EDITOR]) if (n !== "@vaultite" && !listedPackage(n)) problems.push(`core/rules.ts: ${n}, which the app hands vault plugins, isn't in PLUGIN_PACKAGES`)
   const reviewed = pkg.allowScripts ?? {}, OFF_REGISTRY = new Set(["xlsx"])
   for (const [where, p] of Object.entries(lock.packages)) {
     if (!where || p.link || p.inBundle) continue

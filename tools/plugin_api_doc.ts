@@ -4,6 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseAst } from "rolldown/parseAst"
+import { PLUGIN_PACKAGES, SHARED, SHARED_EDITOR } from "../core/rules.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const OUT = path.join(ROOT, "core", "docs", "plugin-api.md")
@@ -143,6 +144,14 @@ function services() {
   })
 }
 
+/** The npm packages a vault plugin may import (core/rules.ts), each at the version the app ships (package-lock.json):
+ *  the app's own copy (its frontend's, never bundled: `own`), or the others. */
+function packages(own: boolean) {
+  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8")).packages as Record<string, { version: string }>
+  const shared = new Set([...SHARED, ...SHARED_EDITOR])
+  return PLUGIN_PACKAGES.filter((n) => shared.has(n) === own).map((n) => `\`${n}\` ${lock[`node_modules/${n}`]?.version ?? "?"}`).join(", ")
+}
+
 /** The reference, as its two topics: plugin-api (what a plugin is made of) and plugin-api-names (every name to import). */
 export function generate(): Record<string, string> {
   return {
@@ -169,6 +178,14 @@ ${keysOf("Manifest").join("\n")}
 \`import { definePlugin } from "@vaultite"\`; every key is optional (its icon is its manifest's).
 
 ${keysOf("PluginDef").join("\n")}
+
+### npm packages
+What a plugin imports besides its folder and the plugin API (index.tsx and plugin.ts alike; any file in one too:
+\`react-dom/client\`), at the versions this app ships. Any other library: copy it into the plugin's folder and import it
+by its path.
+
+- The app's own copy, loaded with an index.tsx, never bundled into it: ${packages(true)}
+- Bundled into an index.tsx (\`import()\` a big one where it's used): ${packages(false)}
 
 ### Services the app's plugins offer
 \`plugin.ask("<name>", ...args)\` (\`plugin.provide\` to offer one): by name, never by plugin.

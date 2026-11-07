@@ -190,6 +190,28 @@ export default async ($: VaultTest) => {
   lh = await vplugin()
   check("vault plugins: the frontend's rules too", !lh.loaded && lh.problems.some((p: string) => p.includes("@/core/data")) && lh.problems.some((p: string) => p.includes("node:fs")), lh.problems)
   fs.cpSync(path.join(TOOLS, "fixtures", "lighthouse", "index.tsx"), path.join(VAULT, LH, "index.tsx"))
+  {
+    // Its npm packages are the plugin API's (core/rules.ts PLUGIN_PACKAGES); another library it copies into its folder.
+    const index = read(`${LH}/index.tsx`), unlisted = (p: string) => p.includes("not one of the npm packages the app gives plugins (react, ") && p.includes("copy the library into the plugin's folder")
+    write(`${LH}/plugin.ts`, `import YAML from "yaml"\nvoid YAML\n${lhPlugin}`)
+    write(`${LH}/vendor/tiny.js`, `export const tiny = (s) => s.trim()\n`)
+    write(`${LH}/index.tsx`, `import { compressToBase64 } from "lz-string"\nimport { tiny } from "./vendor/tiny.js"\nvoid compressToBase64; void tiny\n${index}`)
+    lh = await vplugin()
+    check("vault plugins: listed packages and a library in its folder load and build", lh.loaded && typeof lh.bundle === "string" && !lh.problems.length, lh.problems)
+    write(`${LH}/plugin.ts`, `import semver from "semver"\nvoid semver\n${lhPlugin}`)
+    lh = await vplugin()
+    check("vault plugins: an npm package the app doesn't list is refused, saying the list", !lh.loaded && lh.problems.some((p: string) => p.includes("plugin.ts: imports semver") && unlisted(p)), lh.problems)
+    write(`${LH}/plugin.ts`, lhPlugin.replace("export const plugin", 'await import(["sem", "ver"].join(""))\nexport const plugin'))
+    lh = await vplugin()
+    check("...and by plugin.ts's resolve hook, what the check can't see", !lh.loaded && lh.problems.some((p: string) => p.includes("plugin.ts couldn't be loaded") && p.includes("'semver'") && unlisted(p)), lh.problems)
+    write(`${LH}/plugin.ts`, lhPlugin)
+    write(`${LH}/vendor/tiny.js`, `import semver from "semver/functions/valid.js"\nexport const tiny = (s) => semver(s)\n`)
+    lh = await vplugin()
+    check("...and by the bundler, a deep import from a library it copied too", lh.loaded && lh.bundle === null && lh.problems.some((p: string) => p.startsWith("index.tsx couldn't be built")
+      && p.includes("'semver/functions/valid.js'") && p.includes("not one of the npm packages the app gives plugins")), lh.problems)
+    fs.rmSync(path.join(VAULT, LH, "vendor"), { recursive: true })
+    write(`${LH}/index.tsx`, index)
+  }
   write(`${LH}/label.ts`, "export const label = (\n")
   lh = await vplugin()
   check("vault plugins: a frontend that doesn't build says why, the backend still runs", lh.loaded && lh.bundle === null

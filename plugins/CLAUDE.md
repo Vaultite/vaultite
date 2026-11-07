@@ -35,7 +35,8 @@
    this machine. What only the owner may (a shell, the screen): `plugin.ownerOnly(req)`.
 5. Imports: `@vaultite`, its own folder and the modules plugins it `requires` export (`@plugins/<id>/<module>`, its
    manifest's `exports`; a running backend via `plugin.peer(id).exports`); the backend reaches the core only through
-   `CORE_FOR_PLUGINS`. Settings come through the API, never from disk.
+   `CORE_FOR_PLUGINS`. Settings come through the API, never from disk. A vault plugin's npm packages are only
+   `PLUGIN_PACKAGES` (core/rules.ts), part of the plugin API: each stays in `dependencies`; dropping one breaks plugins.
 6. What it writes outside `.vaultite/` on its own, its manifest's `writes` declares (`core/CLAUDE.md`, write gate).
 
 ## Blocks

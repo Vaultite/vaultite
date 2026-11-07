@@ -162,6 +162,14 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `answers`: What its ops ask the user's window (`ctx.ui({action: "<plugin id>:<name>"})`), by name: the result goes back as the op's, a thrown error's message as its error. `ended` aborts when the op stops waiting.
 - `background`: Runs while it's on, drawn nowhere, in every open window and device: listen and draw there (Workspaces keeps tabs in step), never write on a timer. What must happen once is the server's: plugin.every. Return null.
 
+### npm packages
+What a plugin imports besides its folder and the plugin API (index.tsx and plugin.ts alike; any file in one too:
+`react-dom/client`), at the versions this app ships. Any other library: copy it into the plugin's folder and import it
+by its path.
+
+- The app's own copy, loaded with an index.tsx, never bundled into it: `react` 19.3.1, `react-dom` 19.3.1, `@codemirror/state` 6.7.6, `@codemirror/view` 6.43.14, `@codemirror/language` 6.12.4, `@codemirror/commands` 6.11.1, `@codemirror/search` 6.7.2, `@codemirror/autocomplete` 6.20.3, `@lezer/common` 1.5.3, `@lezer/highlight` 1.2.5
+- Bundled into an index.tsx (`import()` a big one where it's used): `lucide-react` 1.48.0, `@codemirror/lint` 6.9.7, `@codemirror/lang-markdown` 6.5.2, `@lezer/lr` 1.4.10, `@replit/codemirror-vim` 6.4.0, `@excalidraw/excalidraw` 0.18.1, `katex` 0.19.0, `mermaid` 12.2.0, `turndown` 7.2.4, `yaml` 2.9.1, `lz-string` 1.5.0, `@novnc/novnc` 1.7.0, `ws` 8.22.0, `sax` 1.6.1
+
 ### Services the app's plugins offer
 `plugin.ask("<name>", ...args)` (`plugin.provide` to offer one): by name, never by plugin.
 

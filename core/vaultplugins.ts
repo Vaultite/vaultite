@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentType, LOCAL, Plugin, ROOT } from "./plugins.ts"
 import { disclosuresOf, exportsOf, ICON_NAME, iconOf, PLUGIN_MODULE } from "./pluginmeta.ts"
 import { onItsOwn } from "./writegate.ts"
-import { backendOnly, blockProblems, exportFile, hashed, inside, installProblems, pluginProblems, settingsFile, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
+import { backendOnly, blockProblems, exportFile, hashed, inside, installProblems, listedPackage, pluginProblems, settingsFile, SHARED, SHARED_EDITOR, UNLISTED, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
 import { declsOf, drawsOf, settingsOf } from "./blocks.ts"
 import { groupOf } from "./categories.ts"
 import type { VaultEvent } from "./events.ts"
@@ -121,10 +121,10 @@ registerHooks({
       return asModule({ ...r, url: `${r.url}?plugin=${m[1]}&v=${m[2]}` })
     }
     if (/^(@[\w.-]+\/)?[\w.-]/.test(spec) && !spec.includes(":") && !spec.startsWith("@vaultite") && !spec.startsWith("@plugins/")) {
-      return next(spec, { ...context, parentURL: APP }) // an npm package: the app's
+      return listedPackage(spec) ? next(spec, { ...context, parentURL: APP }) : refuse(UNLISTED) // an npm package: the app's
     }
     return refuse("a vault plugin's backend imports its own folder, @vaultite/core/plugins.ts (vault.ts, client.ts, " +
-      "timeline.ts, agents.ts, layout.ts), modules of plugins it requires (@plugins/<id>/<module>), Node's modules and the app's npm packages")
+      "timeline.ts, agents.ts, layout.ts), modules of plugins it requires (@plugins/<id>/<module>), Node's modules and the npm packages the app gives plugins")
   },
 })
 
@@ -253,7 +253,8 @@ async function bundle(vp: VaultPlugin) {
         }
         if (spec.startsWith("@/")) refuse(spec, "use \"@vaultite\" (the plugin API) instead")
         if (spec.startsWith("@vaultite")) refuse(spec, "the plugin API is \"@vaultite\"")
-        if (isBuiltin(spec) || spec.includes(":") || path.isAbsolute(spec)) refuse(spec, "index.tsx runs in the browser: its folder, \"@vaultite\" and npm packages")
+        if (isBuiltin(spec) || spec.includes(":") || path.isAbsolute(spec)) refuse(spec, "index.tsx runs in the browser: its folder, \"@vaultite\" and the npm packages the app gives plugins")
+        if (!listedPackage(spec)) refuse(spec, UNLISTED)
         const r = await this.resolve(spec, path.join(ROOT, "package.json"), { skipSelf: true })
         return r ?? refuse(spec, "the app has no such package")
       },

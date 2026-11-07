@@ -34,6 +34,19 @@ export const SHARED = new Set(["@vaultite", "react", "react/jsx-runtime", "react
 export const SHARED_EDITOR = new Set(["@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/commands",
   "@codemirror/search", "@codemirror/autocomplete", "@lezer/common", "@lezer/highlight"])
 
+/** The npm packages the app promises vault plugins, any file in them too ("react-dom/client"), at the versions its
+ *  `dependencies` ship (`vau docs plugin-api`). Another library a plugin copies into its folder. Taking one out breaks plugins. */
+export const PLUGIN_PACKAGES = ["react", "react-dom", "lucide-react", "@codemirror/state", "@codemirror/view", "@codemirror/language",
+  "@codemirror/commands", "@codemirror/search", "@codemirror/autocomplete", "@codemirror/lint", "@codemirror/lang-markdown",
+  "@lezer/common", "@lezer/highlight", "@lezer/lr", "@replit/codemirror-vim", "@excalidraw/excalidraw", "katex", "mermaid",
+  "turndown", "yaml", "lz-string", "@novnc/novnc", "ws", "sax"]
+/** "yaml", "@codemirror/view", "lucide-react/icons" -> the package's name. */
+export const packageOf = (spec: string) => spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/")
+/** Whether a vault plugin may import npm specifier `spec`: one of PLUGIN_PACKAGES or a file in one. */
+export const listedPackage = (spec: string) => PLUGIN_PACKAGES.includes(packageOf(spec))
+/** Why it can't import another (the check, the bundler and plugin.ts's resolve hook say the same). */
+export const UNLISTED = `not one of the npm packages the app gives plugins (${PLUGIN_PACKAGES.join(", ")}): copy the library into the plugin's folder and import it by its path`
+
 /** Every file under a folder (hidden files and node_modules left out), absolute paths, sorted. */
 export function walk(d: string): string[] {
   let names: fs.Dirent[]
@@ -65,8 +78,6 @@ export function userFilesOf(dir: string): Set<string> {
   return new Set(list.filter((f): f is string => typeof f === "string" && userFileOk(f)))
 }
 const userFileOk = (f: string) => /^[\w.-]+(\/[\w.-]+)*$/.test(f) && !f.split("/").some((s) => /^\.+$/.test(s) || s.startsWith(".")) && !CODE.test(f) && f !== "manifest.json"
-/** "yaml", "@codemirror/view", "lucide-react/icons" -> the package's name. */
-const packageOf = (spec: string) => spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/")
 
 /** How long a manifest's `forAgents` line may be: every agent session reads every one that's on. */
 const FOR_AGENTS_MAX = 240
@@ -273,13 +284,13 @@ function importProblems(file: string, src: string, where: string, rules: ImportR
     if (backend) {
       if (!rules.vault || isBuiltin(spec) || VAULT_CORE.test(spec)) continue
       if (spec.startsWith("@vaultite")) say(spec, "a vault plugin's backend imports the core as @vaultite/core/plugins.ts, vault.ts, client.ts, timeline.ts, agents.ts or layout.ts")
-      else if (!fs.existsSync(path.join(rules.root, "node_modules", packageOf(spec)))) say(spec, "the app has no such package")
+      else if (!listedPackage(spec)) say(spec, UNLISTED)
       continue
     }
     if (!rules.vault || SHARED.has(spec) || SHARED_EDITOR.has(spec)) continue
     if (spec.startsWith("@vaultite")) say(spec, "the plugin API is \"@vaultite\" (the core's files are for plugin.ts)")
     else if (isBuiltin(spec)) say(spec, "Node's modules are for plugin.ts; index.tsx runs in the browser")
-    else if (!fs.existsSync(path.join(rules.root, "node_modules", packageOf(spec)))) say(spec, "the app has no such package")
+    else if (!listedPackage(spec)) say(spec, UNLISTED)
   }
   return out
 }

@@ -66,7 +66,8 @@ by name), `plugin.memo(ttl, fn)` / `plugin.writeCache()` for live data, `plugin.
 for what it keeps for itself (out of the vault), `plugin.onUnload(fn)` to stop timers. It may
 import only `@vaultite/core/plugins.ts`, `vault.ts`, `client.ts`, `timeline.ts`, `agents.ts` (a coding agent's: its
 usage, sessions and terminals; `vau docs plugin-api-names`), `layout.ts` (a workspace's tabs and panes, as saved), its own folder, the modules plugins it requires export,
-Node's modules and npm packages the app has (so may its other modules, the ones `index.tsx` doesn't import); a required
+Node's modules and the npm packages the app gives plugins (`vau docs plugin-api` lists them; another library goes in its
+folder) (so may its other modules, the ones `index.tsx` doesn't import); a required
 plugin's running backend through `plugin.peer("<id>").exports`. The vault's files: `plugin.vault.entries`
 (each Markdown file's path, `fm`, `tags`...), and any file's text by `fs` at `plugin.vault.abs(path)` (write only through ops
 or the API).
@@ -125,7 +126,7 @@ title="...">...</Panel> }, files, details, search, links, commands, sidebar, hea
 `"@vaultite"` (`Panel`, `Row`, `useLive("finance/summary")` for its routes (`useLive(route, undefined, true)`: again
 whenever notes change, for a route that reads them), `openFile`, `Markdown`, `Loading`,
 `notify`, `SidebarRow`, `SidebarHeading`, `SettingRow`, `SettingField`, `usePluginSettings(id)` for its data.json, live
-and written...), plus `react`, `lucide-react`, npm packages the app has (CodeMirror's are the editor's own; a package's
+and written...), plus the npm packages the app gives plugins (`react`, `lucide-react`, CodeMirror's: the editor's own; a package's
 stylesheet too: `import "pkg/index.css"`), its own folder and the modules plugins it `requires` export
 (`@plugins/logs/types` has `Log`, `logsOf`). `import()` a big package where it's used: it loads then, not at every start.
 Drag with `startDrag` and take drops with `useDropTarget`; in a tab, an element marked `data-drops` takes files dropped
