@@ -137,6 +137,40 @@ try {
     check("compare: nothing missing, nothing lost", now && !now.missing.length && !now.lostLines.length && now.same > 70, now)
   })
 
+  await section("the switch off iCloud, and back", async () => {
+    // (on a stopped machine's folders: the copy made and checked, the set and link written; then undone)
+    const from = path.join(tmp, "icloud", "MyVault"), to = path.join(tmp, "home", "Vaultite", "MyVault"), local = path.join(tmp, "switch-local")
+    const link = path.join(tmp, "home", ".vaultite", "vault")
+    fs.cpSync(V.c, from, { recursive: true })
+    fs.mkdirSync(path.dirname(link), { recursive: true }); fs.symlinkSync(from, link)
+    const tool = (...args: string[]) => execFileSync(process.execPath, [path.join(import.meta.dirname, "sync_switch.ts"), ...args], { encoding: "utf8", env: { ...process.env } })
+    const port = String(await freePort())
+    const out = tool("move", "--from", from, "--to", to, "--local", local, "--device", "m1", "--copy", from, "--link", link, "--port", port, "--no-icloud-wait")
+    const sets = JSON.parse(fs.readFileSync(path.join(local, "sync", "sets.json"), "utf8")).sets
+    check("the vault copied whole", tool("hashes", from) === tool("hashes", to), out)
+    check("its set: the new folder, the old one its one-way copy", sets.length === 1 && sets[0].folder === to && sets[0].copy === from && sets[0].id === vaultId, sets)
+    check("the link points at the new folder", fs.readlinkSync(link) === to)
+    let refused = ""
+    try { tool("move", "--from", from, "--to", to, "--local", local, "--device", "m1", "--port", port, "--no-icloud-wait") } catch (e) { refused = String((e as { stderr?: string }).stderr) }
+    check("a second move is refused (the folder's made)", /isn't empty/.test(refused), refused)
+    const busy = (await import("node:net")).createServer().listen(Number(port), "127.0.0.1")
+    await new Promise((r) => busy.once("listening", r))
+    try { tool("back", "--local", local, "--port", port); refused = "" } catch (e) { refused = String((e as { stderr?: string }).stderr) }
+    busy.close()
+    check("nothing moves while a server answers", /stop it first/.test(refused), refused)
+    tool("back", "--local", local, "--port", port)
+    check("back: the link is the old folder again, its sync stopped", fs.readlinkSync(link) === from && !JSON.parse(fs.readFileSync(path.join(local, "sync", "sets.json"), "utf8")).sets.length)
+    // (a machine that has no copy, the mini PC: an empty folder with the vault's id, its service pointed at it)
+    const unit = path.join(tmp, "vaultite.service"), was = `[Service]\nEnvironment="VAULTITE_VAULT=/home/x/MyVault"\nRestart=always\n`
+    fs.writeFileSync(unit, was)
+    const join = path.join(tmp, "home", "Vaultite", "Joined")
+    tool("join", "--to", join, "--vault", vaultId, "--local", local, "--device", "minipc", "--unit", unit, "--port", port)
+    check("join: the folder has the vault's id, the service points at it", fs.readFileSync(unit, "utf8").includes(`VAULTITE_VAULT=${join}`) &&
+      JSON.parse(fs.readFileSync(path.join(join, ".vaultite/plugins/machines/vault.json"), "utf8")).id === vaultId)
+    tool("back", "--local", local, "--port", port)
+    check("and back", fs.readFileSync(unit, "utf8") === was)
+  })
+
   await section("a restart picks up", async () => {
     await stop("a")
     write("b", "Notes/While a was off.md", "hello\n")
