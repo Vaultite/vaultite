@@ -131,10 +131,12 @@ try {
   await win.keyboard.press("Control+Shift+C")
   const copied = await until(async () => { const c = await win.evaluate(() => navigator.clipboard.readText()); return c === "win-word-55" && c }, 2000)
   check("Ctrl+Shift+C copies", !!copied, await win.evaluate(() => navigator.clipboard.readText()))
-  // (Ctrl+Shift+V is left to the browser's paste event, which a headless browser doesn't send: sent here)
+  // (Ctrl+Shift+V is left to the browser's paste event: Chromium sends one off a Mac, as paste as plain text, with the
+  // clipboard; on a Mac it doesn't: sent here)
+  if (!MAC) await win.evaluate(() => navigator.clipboard.writeText("from-clip-9"))
   await win.keyboard.type("echo v:")
   await win.keyboard.press("Control+Shift+V")
-  await win.evaluate(() => { const d = new DataTransfer(); d.setData("text/plain", "from-clip-9"); document.querySelector("[data-term-input]").dispatchEvent(new ClipboardEvent("paste", { clipboardData: d, bubbles: true, cancelable: true })) })
+  if (MAC) await win.evaluate(() => { const d = new DataTransfer(); d.setData("text/plain", "from-clip-9"); document.querySelector("[data-term-input]").dispatchEvent(new ClipboardEvent("paste", { clipboardData: d, bubbles: true, cancelable: true })) })
   await win.keyboard.press("Enter")
   check("Ctrl+Shift+V types nothing itself; the paste comes", !!(await until(async () => /^v:from-clip-9\s*$/m.test(await terminalText(win)), 4000)), (await terminalText(win)).slice(-200))
 } finally {

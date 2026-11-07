@@ -10,6 +10,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the status bar), so a frame round one is exact; frames side by side keep a hairline apart, and each label is a small
   tag snug at its frame, never on another. Its answer box is never cut off by a screen's edge, shows only its name, and
   no longer opens on its own after a shortcut that used the Talk key's modifiers.
+- **The companion's pen draws smoothly on any machine**: each mark's ink repainted the whole screen under its glow every
+  frame it drew, so a slower Mac drew it at half speed; it now repaints only the mark.
+- **A terminal tab loads as two files, not thirteen**: the terminal's libghostty-vt side is one file again, as xterm.js
+  was, so a window started with less to fetch.
 - **The companion never reads a mark out loud**: a mark naming a long line of text, or one it got wrong, was spoken as
   words ("frame, the Morning report bug..."); it's now drawn, or dropped.
 - **A Talk key ask is never lost to a restart**: one asked as the companion's session ended (an update restarting it) or

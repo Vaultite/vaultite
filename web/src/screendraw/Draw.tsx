@@ -91,7 +91,7 @@ export default function Draw({ d, act, grab, leaving, pen }: { d: Shown; act: (a
       {shown.filter((p) => p.mark.type === "spotlight" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Spotlight r={p.box!} W={W} H={H} delay={order.get(p.i)!} /></div>)}
       {shown.filter((p) => p.mark.type === "frame" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Focus p={p} delay={order.get(p.i)!} /></div>)}
       <svg className="sd-glow absolute inset-0 overflow-visible" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        {shown.map((p) => <g key={p.i} className={pastOf(p)}><Strokes p={p} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} W={W} H={H} /></g>)}
+        {shown.map((p) => <g key={p.i} className={pastOf(p)}><Strokes p={p} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} /></g>)}
       </svg>
       {shown.map((p) => <div key={p.i} className={pastOf(p)}><Parts p={p} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} grab={grab} seed={seed + p.i * 131} id={`sd${seed}-${p.i}`} /></div>)}
       {d.here.home && shown.length > 0 && !leaving && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} grab={grab} />}
@@ -105,14 +105,19 @@ const ms = (n: number) => `${Math.round(n)}ms`
 /** Reduced motion: everything drawn at once, no pen to wait for. */
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
+/** A line's box, `pad` around it: its mask's, so each frame the pen draws repaints that, not the whole glowing screen. */
+function boundsOf(l: Line, pad: number) {
+  const xs = l.map((p) => p[0]), ys = l.map((p) => p[1]), x = Math.min(...xs) - pad, y = Math.min(...ys) - pad
+  return { x, y, w: Math.max(...xs) + pad - x, h: Math.max(...ys) + pad - y }
+}
 /** Ink along each line, revealed as a pen draws it (a mask along the line), one line after the other. */
-function Ink({ id, lines, size = 4.5, delay, W, H }: { id: string; lines: Line[]; size?: number; delay: number; W: number; H: number }) {
+function Ink({ id, lines, size = 4.5, delay }: { id: string; lines: Line[]; size?: number; delay: number }) {
   const starts = lineStarts(lines)
   return lines.map((l, j) => {
-    const dur = durOf(l), start = delay + starts[j], mid = `${id}-${j}`
+    const dur = durOf(l), start = delay + starts[j], mid = `${id}-${j}`, b = boundsOf(l, size * 3.4)
     return (
       <g key={j}>
-        <mask id={mid} maskUnits="userSpaceOnUse" x={-50} y={-50} width={W + 100} height={H + 100}>
+        <mask id={mid} maskUnits="userSpaceOnUse" x={b.x} y={b.y} width={b.w} height={b.h}>
           <path d={linePath(l)} pathLength={1} className="sd-pen" fill="none" stroke="#fff" strokeWidth={size * 3.4} strokeLinecap="round" strokeLinejoin="round" style={{ "--delay": ms(start), "--dur": ms(dur) } as React.CSSProperties} />
         </mask>
         <path d={inkPath(l, size)} mask={`url(#${mid})`} className="sd-ink" />
@@ -128,12 +133,12 @@ function Sketch({ paths, delay, dur = 520, hatch = false }: { paths: { d: string
 }
 
 /** A mark's strokes on the screen (cards draw their own). */
-function Strokes({ p, id, seed, delay, W, H }: { p: Placed; id: string; seed: number; delay: number; W: number; H: number }) {
+function Strokes({ p, id, seed, delay }: { p: Placed; id: string; seed: number; delay: number }) {
   const m = p.mark, r = p.box
   if (!r) return null
   const ink = markInk(p, seed)
   if (!ink) return null
-  const lines = <Ink id={id} lines={ink.lines} size={ink.size} delay={delay} W={W} H={H} />
+  const lines = <Ink id={id} lines={ink.lines} size={ink.size} delay={delay} />
   return <g data-mark-i={p.i} className={m.type === "scroll" ? `sd-bob-${m.dir}` : undefined}>{lines}</g>
 }
 const pt = (p: [number, number]): Pt => ({ x: p[0], y: p[1] })
@@ -238,15 +243,15 @@ function Paper({ m, c, delay, seed, id }: { m: Extract<Mark, { type: "paper" }>;
       {m.title && <div className="sd-title px-3 pt-2.5">{m.title}</div>}
       <div className={`relative ${m.grid ? "sd-grid" : ""}`} style={{ width: W, height: H }}>
         <svg className="absolute inset-0 overflow-visible" width={W} height={H}>
-          {m.items.map((it, i) => <Item key={i} it={it} id={`${id}-p${i}`} seed={seed + i * 13} delay={delay + 260 + i * 160} W={W} H={H} />)}
+          {m.items.map((it, i) => <Item key={i} it={it} id={`${id}-p${i}`} seed={seed + i * 13} delay={delay + 260 + i * 160} />)}
         </svg>
         {m.items.map((it, i) => <ItemText key={i} it={it} delay={delay + 260 + i * 160} />)}
       </div>
     </div>
   )
 }
-function Item({ it, id, seed, delay, W, H }: { it: PaperItem; id: string; seed: number; delay: number; W: number; H: number }) {
-  const ink = (lines: Line[], size = 3.4) => <Ink id={id} lines={lines} size={size} delay={delay} W={W} H={H} />
+function Item({ it, id, seed, delay }: { it: PaperItem; id: string; seed: number; delay: number }) {
+  const ink = (lines: Line[], size = 3.4) => <Ink id={id} lines={lines} size={size} delay={delay} />
   if (it.type === "rect" || it.type === "ellipse") return <Sketch paths={sketch(it.type, it, seed)} delay={delay} />
   if (it.type === "line") return <Sketch paths={sketch("line", [pt(it.from), pt(it.to)], seed)} delay={delay} dur={360} />
   if (it.type === "arrow") return ink([[it.from, it.to], ...headLines(pt(it.to), pt(it.from), 10)])

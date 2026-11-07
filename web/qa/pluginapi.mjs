@@ -6,6 +6,7 @@
 //   node web/qa/pluginapi.mjs <base url> <vault path>
 import { mkdirSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
+import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, done } = await qa(import.meta.url)
 const api = Number((await (await fetch(new URL("/api/ops/app.version", B), { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json().catch(() => ({}))).api) || 8
@@ -22,7 +23,7 @@ writeFileSync(`${dir}/index.tsx`, code("ComingInTheNextApi"))
 writeFileSync(`${dir}/plugin.ts`, `import { Plugin } from "@vaultite/core/plugins.ts"\nexport const plugin = new Plugin(import.meta.url)\nplugin.block("qa-tasks", () => "- Compare the two flights\\n- Book the car")\n`)
 mkdirSync(`${VAULT}/QA`, { recursive: true })
 writeFileSync(`${VAULT}/QA/Trip.md`, "---\ntype: note\n---\n# Trip\n\n- [ ] Compare the two flights\n- [ ] Book the car\n\n```block-qa-tasks\n```\n")
-const vau = (...a) => execFileSync("vau", ["--url", B, ...a], { encoding: "utf8" })
+const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a], { encoding: "utf8" })
 vau("plugin", "on", "qa-tasks")
 vau("plugin", "allow", "qa-tasks")
 
