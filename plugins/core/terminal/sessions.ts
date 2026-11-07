@@ -268,7 +268,8 @@ export function subscribeSessions(fn: () => void) {
   if (!ws && !document.hidden) connect()
   return () => {
     listeners.delete(fn)
-    if (!listeners.size) disconnect()
+    // (a view redrawn drops its last listener and takes one again a frame later: the socket outlives that)
+    if (!listeners.size) setTimeout(() => { if (!listeners.size) disconnect() }, 1000)
   }
 }
 export const getSessions = () => now

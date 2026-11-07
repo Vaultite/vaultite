@@ -25,7 +25,7 @@ async function keeper(sock: string) {
   p.stderr!.on("data", (d) => { err += d })
   const up = await waitFor(() => new Promise<boolean>((r) => { const c = net.connect(sock); c.on("connect", () => { c.destroy(); r(true) }); c.on("error", () => r(false)) }), 10000, 100)
   if (!up) throw new Error(`the chat keeper didn't start: ${err}`)
-  return { stop: async () => { p.kill("SIGTERM"); await new Promise((r) => p.once("exit", r)); fs.rmSync(sock, { force: true }); fs.rmSync(`${sock}.pid`, { force: true }) } }
+  return { stop: async () => { if (p.exitCode === null && p.signalCode === null) { p.kill("SIGTERM"); await new Promise((r) => p.once("exit", r)) } fs.rmSync(sock, { force: true }); fs.rmSync(`${sock}.pid`, { force: true }) } }
 }
 
 /** A line-JSON client of a keeper, as the server is: requests answered by `re`, the rest its events. */
@@ -41,7 +41,7 @@ function wire(sock: string) {
     }
   })
   const ask = (op: string, p: Any = {}) => new Promise<Any>((r) => { waiting.set(++re, r); c.write(JSON.stringify({ op, re, ...p }) + "\n") })
-  return { heard, ask, close: () => new Promise((r) => { c.once("close", r); c.destroy() }) }
+  return { heard, ask, closed: (fn: () => void) => c.once("close", fn), close: () => new Promise<void>((r) => { if (c.destroyed) return r(); c.once("close", () => r()); c.destroy() }) }
 }
 
 /** A window with `path` open, as its socket's messages: it types edits in as editor.ts does. `hidden`: it no longer
@@ -91,6 +91,15 @@ export default async ($: VaultTest) => {
       check("chat keeper: a tool call not answered is told again to the next server that follows, whose answer reaches the session",
         !started.error && call?.name === "shout" && call.args?.text === "hi" && again?.call === call.call && r.entries?.some((e: Any) => e.k === "text" && e.text === "Called: HI"), [started, call, again, r.entries])
       await w.ask("stop", { id })
+      // Ended by a SIGTERM (a reboot) mid-turn: its sessions end unheard, so the server takes their turns up again after.
+      const cut = crypto.randomUUID()
+      await w.ask("start", { spec: { id: cut, resume: false, cwd: VAULT, env: {} }, prompt: "slow" })
+      await waitFor(async () => (await w.ask("list")).sessions.find((s: Any) => s.id === cut)?.state === "working", 3000, 20)
+      const closed = new Promise<void>((r) => w.closed(r))
+      await k.stop()
+      await closed
+      check("chat keeper: a SIGTERM ends it without telling a server its sessions are gone (a reboot's turns are taken up again)",
+        !w.heard.some((e) => e.t === "gone" && e.id === cut), w.heard.map((e) => `${e.t}:${e.id ?? e.s?.id}`))
       await w.close()
     } finally { await k.stop() }
   }

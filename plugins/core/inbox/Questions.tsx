@@ -12,14 +12,15 @@ const row = "flex min-h-11 items-center gap-3 rounded-[10px] border-[0.5px] px-3
 const label = "block text-[17px] leading-[22px] md:text-[14px] md:leading-[20px]"
 const num = "w-5 shrink-0 self-start text-[17px] leading-[22px] text-muted-foreground tabular-nums md:text-[14px] md:leading-[20px]"
 
-/** Questions as Claude Code's picker shows them (the inbox's sheet, the chat tab): `answer` sends what's picked, with a
- *  line saying it; `busy` while it goes. Shared by every surface, so each offers every choice the terminal does. */
-export function QuestionPicker({ qs, busy = false, answer }: { qs: Question[]; busy?: boolean; answer: (a: PickerAnswer, said: string) => void }) {
+/** Questions as Claude Code's picker shows them (the inbox's sheet, the chat tab), each surface offering every choice
+ *  the terminal does; `ownBelow`: one single-select's own answer is typed in the surface's field (the chat's composer). */
+export function QuestionPicker({ qs, busy = false, answer, ownBelow = false }: { qs: Question[]; busy?: boolean; answer: (a: PickerAnswer, said: string) => void; ownBelow?: boolean }) {
   const [picked, setPicked] = useState<number[][]>(() => qs.map(() => []))
   const [typed, setTyped] = useState<string[]>(() => qs.map(() => ""))
   // (one question of one option at a time: a tap is the answer, as in its terminal)
   const tapSends = qs.length === 1 && !qs[0].multi
-  const open = !qs.some((q) => q.closed)
+  const below = ownBelow && qs.length === 1 && !qs[0].multi
+  const open = !qs.some((q) => q.closed) && !below
   // A single-select's own answer counts while none of its options is picked; a multi-select's goes with its picks.
   const own = (qi: number) => (qs[qi].multi || !picked[qi].length ? typed[qi].trim() : "")
   const answered = (qi: number) => picked[qi].length > 0 || !!own(qi)
@@ -65,7 +66,7 @@ export function QuestionPicker({ qs, busy = false, answer }: { qs: Question[]; b
                   </button>
                 )
               })}
-              {!q.closed && (
+              {!q.closed && !below && (
                 <label data-option={q.options.length + 1} data-typed={mine ? "on" : "off"}
                   className={cn(row, "cursor-text py-1.5 focus-within:border-primary", mine ? "border-primary bg-primary/10" : "border-border")}>
                   <span className={cn(num, "self-center")}>{q.options.length + 1}.</span>

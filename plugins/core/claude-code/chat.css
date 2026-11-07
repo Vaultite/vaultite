@@ -1,0 +1,159 @@
+/* The chat transcript's own styles: loaded with the chat's chunk (ChatTab.tsx), not with the app, so its type, rows and
+   code don't weigh on every launch. A phone is Tailwind's max-md (under 48rem). */
+
+/* Its text sizes: prose, a step below (rows, notes, the status line; `chat-lines` where it wraps), the small print
+   (outcomes), code in a row, an edit's counts. */
+.chat-prose { min-width: 0; font-size: 15px !important; line-height: 24px !important; }
+.chat-small { font-size: 14px; }
+.chat-lines { line-height: 20px; }
+.chat-fine { font-size: 13px; }
+.chat-code { font-family: var(--font-code); font-size: 13px; }
+.chat-count { font-family: var(--font-code); font-size: 12.5px; }
+.chat-think { font-size: 14px !important; line-height: 22px !important; }
+@media (width < 48rem) {
+  .chat-prose { font-size: 17px !important; line-height: 26px !important; }
+  .chat-small { font-size: 16px; }
+  .chat-lines { line-height: 22px; }
+  .chat-fine { font-size: 15px; }
+  .chat-code { font-size: 14.5px; }
+  .chat-count { font-size: 14px; }
+  .chat-think { font-size: 16px !important; line-height: 24px !important; }
+}
+
+/* Its Markdown: code scrolls sideways, fading where it's cut (index.css' edge-fade-x), never wraps; inline code keeps to
+   the line's height, so lines with it are as evenly spaced as the rest; paragraphs breathe a little more than a sheet's. */
+.chat-prose pre {
+  overflow-x: auto; white-space: pre !important; overflow-wrap: normal !important; font-size: 13px !important; line-height: 20px !important;
+  --edge-fade-s: 28px; --edge-fade-e: 28px;
+  animation: edge-fade-start linear both, edge-fade-end linear both;
+  animation-timeline: scroll(self inline), scroll(self inline);
+  animation-range: 0 28px, calc(100% - 28px) 100%;
+  mask-image: linear-gradient(to right, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+}
+.chat-prose :not(pre) > code { line-height: 1 !important; padding: 0 0.3em !important; background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+.chat-prose :where(p, ul, ol, .md-code, blockquote, table, .md-table-view) { margin-bottom: 12px !important; }
+.chat-prose > :last-child { margin-bottom: 0 !important; }
+
+/* While words are written: a soft dot after the last letter, whatever it's in. */
+.chat-caret { display: inline-block; width: 0.5em; height: 0.5em; margin-left: 0.25em; border-radius: 9999px; background: currentColor;
+  vertical-align: 0.05em; opacity: 0.5; user-select: none; }
+
+/* A row (a call, a thought, a turn's fold): on hover its words darken, nothing fills. On a phone it's drawn dense, as
+   Claude's are, its target still 44px. */
+.chat-row { position: relative; }
+@media (hover: hover) {
+  .chat-row:hover [data-verb] { color: var(--foreground); }
+  .chat-row:hover [data-what] { color: color-mix(in srgb, var(--foreground) 75%, transparent); }
+  .chat-row:hover [data-chevron] { color: var(--muted-foreground); }
+}
+@media (width < 48rem) { .chat-row::before { content: ""; position: absolute; inset: -4px 0; } }
+
+/* What runs turns in steps, a few redraws a second rather than sixty. */
+.chat-spin { color: color-mix(in srgb, var(--foreground) 70%, transparent); animation-duration: 0.9s !important; animation-timing-function: steps(12) !important; }
+.chat-mark { animation-duration: 3s !important; animation-timing-function: steps(30) !important; }
+
+/* A line down the side of what belongs to the row above it: a thought's text, a subagent's steps. */
+.chat-rule { border-left: 1.5px solid var(--border); }
+.chat-steps { margin-left: 7px; padding-left: 15px; }
+@media (width < 48rem) { .chat-steps { padding-left: 12px; } }
+
+/* A todo's dot: open, under way, done. */
+.chat-todo { margin-top: 5px; border: 1.5px solid var(--border); }
+.chat-todo[data-status="in_progress"] { border-color: var(--orange); }
+.chat-todo[data-status="completed"] { border-color: var(--green); background: var(--green); }
+
+/* A long run of calls while they run: a few rows high, the newest in sight. */
+.chat-capped { max-height: 168px; }
+@media (width < 48rem) { .chat-capped { max-height: 220px; } }
+
+/* A message's pictures: small, larger in place when clicked. */
+.chat-thumb { transition: height var(--motion) var(--ease-out), max-width var(--motion) var(--ease-out); }
+[aria-pressed="true"] > .chat-thumb { cursor: zoom-out; }
+@media (width < 48rem) { .chat-run { gap: 4px; } }
+
+/* Jump to latest: only while scrolled away from it, fading in and out just over the composer. */
+.chat-jump { position: absolute; bottom: 10px; left: 50%; translate: -50% 0; box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  transition: opacity var(--motion) var(--ease-out), translate var(--motion) var(--ease-out); }
+.chat-jump:not([data-jump-latest]) { opacity: 0; translate: -50% 8px; pointer-events: none; }
+.chat-scrim { position: absolute; inset-inline: 0; bottom: 0; height: 56px; pointer-events: none; opacity: 0;
+  background: linear-gradient(to bottom, transparent, var(--background) 70%); transition: opacity var(--motion) var(--ease-out); }
+.chat-scrim[data-on] { opacity: 1; }
+@media (width < 48rem) { .chat-scrim { height: 72px; } }
+
+/* A call's long output: its start, fading out, then Show all. */
+.chat-clamp { max-height: 240px; }
+.chat-clamped { mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
+@media (width < 48rem) { .chat-clamp { max-height: 200px; } }
+
+/* The composer and what docks over it float a little; a card in the conversation rests. */
+.chat-float { box-shadow: 0 2px 10px rgb(0 0 0 / 0.06); }
+.dark .chat-float { box-shadow: 0 2px 12px rgb(0 0 0 / 0.35); }
+.chat-lift { box-shadow: 0 4px 16px rgb(0 0 0 / 0.08); }
+.dark .chat-lift { box-shadow: 0 4px 16px rgb(0 0 0 / 0.4); }
+.chat-rest { box-shadow: 0 1px 3px rgb(0 0 0 / 0.06); }
+/* The composer's chips fade at their end where there are more; a picture's remove button shows on hover (always on a
+   phone). */
+.chat-chips { mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); }
+.chat-pic-x { box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
+@media (width >= 48rem) {
+  .chat-pic-x { opacity: 0; transition: opacity 150ms var(--ease-out); }
+  .group\/pic:hover .chat-pic-x, .group\/pic:focus-within .chat-pic-x { opacity: 1; }
+}
+/* What failed, in a box tinted red. */
+.chat-alarm { border-color: color-mix(in srgb, var(--red) 35%, transparent); background: color-mix(in srgb, var(--red) 6%, transparent); }
+
+/* The chat's column (header, conversation, composer line up on it); a new chat's middle; the one primary's hover. */
+.chat-column { max-width: 46rem; }
+.chat-fresh { padding-block: 32px; }
+.chat-fresh-in { padding-bottom: 6vh; }
+.chat-strong:hover { background: color-mix(in srgb, var(--foreground) 85%, transparent); }
+@media (width < 48rem) { .chat-fresh-in { padding-bottom: 0; } .chat-talk { padding-top: 16px; } }
+
+/* The frame's own: the composer's dock and field, its pictures, a queued message; what asks; the header's states. */
+.chat-dock { padding: 0 16px max(12px, env(safe-area-inset-bottom)); }
+.chat-box[data-dropping] { border-color: color-mix(in srgb, var(--foreground) 40%, transparent); }
+.chat-field { display: block; width: 100%; min-height: 48px; max-height: 40dvh; padding: 12px 16px 4px; font-size: 15px; line-height: 22px; }
+.chat-field[data-fresh] { min-height: 72px; }
+.chat-field:disabled { cursor: not-allowed; }
+.chat-foot { display: flex; align-items: center; gap: 4px; padding: 0 8px 8px; }
+.chat-plus { width: 18px; height: 18px; }
+.chat-send-off { cursor: default; background: color-mix(in srgb, var(--foreground) 7%, transparent); color: color-mix(in srgb, var(--muted-foreground) 70%, transparent); }
+.chat-pic { height: 56px; width: 192px; }
+.chat-pic-hit { position: absolute; top: -10px; right: -10px; width: 32px; height: 32px; }
+.chat-queued { align-self: end; animation: mode-fade var(--motion) var(--ease-out); }
+.chat-chip-skel { height: 14px; }
+.chat-answers [data-send-answers] { background: var(--foreground); color: var(--background); }
+.chat-question { max-height: 45dvh; }
+.chat-plan { max-height: 40dvh; margin-inline: 16px; background: color-mix(in srgb, var(--muted) 60%, transparent); }
+.chat-ask-x { padding-inline: 16px; }
+.chat-ask-head { padding-top: 14px; }
+.chat-actions { padding-bottom: 14px; }
+.chat-actions[data-stack] { flex-direction: column; align-items: stretch; }
+.chat-key-strong { background: color-mix(in srgb, var(--background) 15%, transparent); color: color-mix(in srgb, var(--background) 75%, transparent); }
+.chat-skel-2 { background: color-mix(in srgb, var(--muted) 70%, transparent); }
+.chat-gone { padding-block: 64px; }
+.chat-alarm-acts { padding-left: 26px; }
+.chat-alarm { padding-block: 14px; }
+/* The header names its terminal action where there's room for it. */
+.chat-head { container: head / inline-size; }
+.chat-term > span { display: none; }
+@container head (width >= 42rem) { .chat-term { display: flex; padding-inline: 8px; } .chat-term > span { display: inline; } }
+@media (width < 48rem) {
+  .chat-dock { padding: 0 10px 8px; }
+  .chat-field { min-height: 44px; padding: 10px 14px 4px; font-size: 17px; line-height: 24px; }
+  .chat-foot { gap: 2px; padding: 0 6px 6px; }
+  .chat-plus { width: 22px; height: 22px; }
+  .chat-pic { height: 64px; width: 208px; }
+  .chat-pic-hit { top: -14px; right: -14px; width: 44px; height: 44px; }
+  .chat-chip-skel { height: 16px; }
+  .chat-plan { margin-inline: 14px; }
+  .chat-ask-x { padding-inline: 14px; }
+  .chat-act { flex: 1 1 auto; }
+  .chat-gone { padding-block: 48px; }
+  .chat-gone-acts { width: 100%; max-width: 20rem; flex-direction: column; }
+  .chat-alarm-acts { padding-left: 0; flex-direction: column; }
+  .chat-welcome-title { font-size: 22px !important; line-height: 28px !important; }
+}
+
+/* A thought in the status line, cut at its start: its latest words stay in sight. */
+.chat-tail { direction: rtl; text-align: left; }

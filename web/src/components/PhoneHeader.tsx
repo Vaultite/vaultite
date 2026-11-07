@@ -1,5 +1,5 @@
-// Phones: the top bar: the sidebars' buttons (`sidebarButtons`, or where the edges are the browser's), the pane's title
-// (once the page's own has scrolled away) with a split tab's dots, the page's buttons (#phone-actions), the … menu.
+// Phones: the top bar: the sidebars' buttons, the pane's title (once the page's own has scrolled away) over the page's
+// line (#phone-subtitle) or a split's dots, the page's buttons (#phone-actions), the … menu.
 import { useLayoutEffect, useRef } from "react"
 import { Ellipsis, PanelLeft, PanelRight } from "lucide-react"
 import { focusedPane, panesOf, type Pane, type Tab } from "../../../core/layout.ts"
@@ -52,8 +52,9 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
           </div>
         </div>
         <div className={cn("relative flex min-w-0 flex-col items-center", ps.length > 1 && "self-stretch justify-center pb-2.5")}>
-          <div className={cn("relative max-w-full transition-opacity duration-150", inSight && "opacity-0")}>
-            <div data-phone-title className="truncate px-1 text-center text-[17px] font-semibold" style={NOW}>{name}</div>
+          <div className={cn("group/title relative max-w-full transition-opacity duration-150", inSight && "opacity-0")}>
+            <div data-phone-title className="truncate px-1 text-center text-[17px] font-semibold group-has-[#phone-subtitle:not(:empty)]/title:text-[16px] group-has-[#phone-subtitle:not(:empty)]/title:leading-[20px]" style={NOW}>{name}</div>
+            <div id="phone-subtitle" className="truncate px-1 text-center text-[12px] leading-[15px] text-muted-foreground empty:hidden" style={NOW} />
             {near.map((b) => (
               <div key={b.side} aria-hidden data-phone-title-beside={b.side} style={SIDE[b.side]}
                 className="pointer-events-none absolute top-0 left-1/2 w-max max-w-[calc(100vw-0.5rem-2*var(--side,0px))] truncate px-1 text-center text-[17px] font-semibold">{nameOf(b.tab, b.pane)}</div>

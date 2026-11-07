@@ -200,13 +200,17 @@ export { FileEmbed } from "@/components/FileEmbed"
 export { DoIt } from "@/components/DoIt"
 // The address of a file's bytes (an image's src, a binary format's file; an iPhone photo as JPEG where needed).
 export { rawUrl } from "@/components/FileViewers"
-export { kindIcon } from "@/core/filekinds"
+export { formatSize, kindIcon } from "@/core/filekinds"
 export { AmbientButton } from "@/components/Ambient"
 export { CORNERS, useCornerDrag, useCornerStack, type Corner } from "@/components/CornerCard"
 export { Button, buttonClass, HeadingButton } from "@/components/Button"
 // A note over a file's text and what can be done about it (a NoteTopItem's).
 export { Banner } from "@/components/Banner"
 export { Badged, Bar, Bars, Editable, IconAction, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Slider, Stat, Switch, type Dot } from "@/components/kit"
+// A place in the app's chrome a view draws into (a portal's host: #phone-actions, #phone-subtitle), once it's there.
+export { usePortalHost } from "@/components/kit"
+// A page with no name yet hides the phone header's name meanwhile (a chat while it loads).
+export { useNoPhoneTitle } from "@/components/FileTitle"
 export { switchPreview, type Preview, type PreviewOption } from "@/components/SettingPreview"
 export { Frame } from "@/components/ChoicePictures"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.

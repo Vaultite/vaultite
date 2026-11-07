@@ -120,8 +120,10 @@ try {
   check("a session opens its conversation", !!(await until(() => page.$(chat), 8000)))
   check("title, folder, model", await until(async () => /Upload test fix/.test(await page.textContent(`${chat} h1`)) &&
     (await page.textContent(`${chat} header`)).includes("Opus 5.5"), 8000))
+  // (a finished turn's work is one line: opened, its calls are one line each)
+  await page.click(`${chat} [data-work] button`)
   check("messages as Markdown", !!(await until(() => page.$(`${chat} [data-entry=text] strong`), 8000)))
-  check("tool calls are one line each", (await page.$$(`${chat} [data-tool]`)).length >= 2)
+  check("tool calls are one line each", await until(async () => (await page.$$(`${chat} [data-tool]`)).length >= 2, 4000))
   await page.click(`${chat} [data-tool='Bash'] button`)
   check("a tool call expands to its input and result", await until(async () => (await page.textContent(`${chat} [data-tool='Bash']`)).includes("1 failing: upload retries"), 4000))
   await shot(page, "6-session-view")

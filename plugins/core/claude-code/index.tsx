@@ -3,6 +3,7 @@ import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, noti
 import { ClaudeIcon } from "./ClaudeIcon"
 import { chatTitle, NEW } from "./titles"
 import { useChatRuns } from "./runs"
+import { chatMenu } from "./chatmenu"
 
 // The chat is its own chunk, loaded once the app is idle on a computer, else when a chat tab first draws. Not lazy:
 // React holds what suspended back ~300 ms; and one element whether loaded or not, so its arrival doesn't remount it.
@@ -47,7 +48,7 @@ export default definePlugin(agentPlugin(SRC, {
   process: ["claude"], accounts: "claude-code/accounts",
   opens: { open: { id: "terminal:claude", name: "Open Claude Code" }, split: { id: "terminal:claude-split", desktop: true, name: "Open Claude Code in right split" } },
   // A session's tab is its chat (`new` until it starts), drawn edge to edge with its own composer.
-  sessionView: { full: true, argState: true, title: (id) => chatTitle(id, sessionTitle(SRC, id)),
+  sessionView: { full: true, argState: true, title: (id) => chatTitle(id, sessionTitle(SRC, id)), tabMenu: (id) => chatMenu(id),
     render: ({ arg, setArg }) => <ChatView id={arg} setArg={setArg} /> },
   // A question about a file (a live answer's follow-up): a new chat with it.
   ask: (question, file) => void askChat(question, file),

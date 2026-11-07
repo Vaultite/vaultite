@@ -9,7 +9,9 @@ export type AskKind = "permission" | "question" | "plan"
 /** One thing in a conversation, by id: a user message (its uuid), a block of an answer (`<message id>:<index>`), a tool
  *  call (its tool_use id), what a session asks (`ask:<tool_use id>`), a turn's end, a note. `live`: still streaming. */
 export type Entry =
-  | { k: "user"; id: string; text: string; at: string }
+  | { k: "user"; id: string; text: string; at: string
+      /** Its pictures, each as `imageSrc` names it (useChat gives the app a URL it loads). */
+      images?: { src: string }[] }
   | { k: "text" | "thinking"; id: string; text: string; at: string; live?: boolean; parent?: string }
   | { k: "tool"; id: string; name: string; summary: string; input: unknown; result?: string; error?: boolean; at: string; live?: boolean; parent?: string }
   | { k: "ask"; id: string; kind: AskKind; tool: string; title: string; detail?: string; input?: unknown; questions?: Question[]; plan?: string
@@ -36,12 +38,13 @@ export function summarize(name: string, input: unknown) {
   return s.replace(/\s+/g, " ").trim().slice(0, 200)
 }
 
-/** What a user message says, as Markdown: a slash command as "/name args", system reminders and command output left out. */
-export function userText(content: unknown): string {
+/** What a user message says, as Markdown: a slash command as "/name args", system reminders and command output left out;
+ *  `pictures`: each image as "_(image)_" (the chat draws them itself). */
+export function userText(content: unknown, pictures = true): string {
   let s = ""
   if (typeof content === "string") s = content
   else if (Array.isArray(content)) {
-    s = content.map((c) => (c?.type === "text" ? String(c.text ?? "") : c?.type === "image" ? "_(image)_" : "")).filter(Boolean).join("\n\n")
+    s = content.map((c) => (c?.type === "text" ? String(c.text ?? "") : c?.type === "image" && pictures ? "_(image)_" : "")).filter(Boolean).join("\n\n")
   }
   const cmd = /<command-name>([^<]*)<\/command-name>/.exec(s)
   if (cmd) {
@@ -55,6 +58,26 @@ export function resultText(content: unknown): string {
   if (typeof content === "string") return content
   if (Array.isArray(content)) return content.map((c) => (c?.type === "text" ? String(c.text ?? "") : c?.type === "image" ? "(image)" : "")).filter(Boolean).join("\n")
   return content == null ? "" : JSON.stringify(content)
+}
+
+/** The pictures a message may carry (the API's), at most IMAGES_MAX of IMAGE_MAX bytes each. */
+export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const
+export type ImageType = (typeof IMAGE_TYPES)[number]
+export const IMAGES_MAX = 10, IMAGE_MAX = 5 << 20
+/** What a picture's bytes are, by their first bytes (not what it's called), or null when none of IMAGE_TYPES. */
+export function imageType(b: Uint8Array): ImageType | null {
+  const at = (i: number, ...xs: number[]) => xs.every((x, j) => b[i + j] === x)
+  if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png"
+  if (at(0, 0xff, 0xd8, 0xff)) return "image/jpeg"
+  if (at(0, 0x47, 0x49, 0x46, 0x38) && (b[4] === 0x37 || b[4] === 0x39) && b[5] === 0x61) return "image/gif"
+  if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp"
+  return null
+}
+/** Picture `n` of user message `entry`, under its session's chat URL (api/claude-code/chat/<id>/). */
+export const imageSrc = (entry: string, n: number) => `image/${encodeURIComponent(entry)}/${n}`
+const picturesOf = (id: string, content: unknown) => {
+  const n = Array.isArray(content) ? content.filter((c) => c?.type === "image").length : 0
+  return n ? { images: Array.from({ length: n }, (_, i) => ({ src: imageSrc(id, i) })) } : {}
 }
 
 const words = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "")
@@ -152,22 +175,21 @@ export class Reader {
       return
     }
     if (parent) return // (a subagent's prompt: its Agent call says it)
-    const text = userText(content)
-    if (!text) return
-    const id = String(m.uuid ?? `user:${at}`)
+    const text = userText(content, false), id = String(m.uuid ?? `user:${at}`), pics = picturesOf(id, content)
+    if (!text && !pics.images) return
     if (INTERRUPTED.test(text)) return this.put({ k: "note", id, text: "Interrupted", at }, out)
-    this.prompt = text
+    this.prompt = text || "(a picture)"
     this.text = ""
-    this.put({ k: "user", id, text: clip(text, 20000), at }, out)
+    this.put({ k: "user", id, text: clip(text, 20000), at, ...pics }, out)
   }
 
   /** A message the user sent mid-turn: a transcript keeps it as an attachment (by the uuid it was sent with), not a user
    *  line. Background tasks' notices and other sessions' messages come this way too: not the user's. */
   private queued(a: Json, out: Entry[]) {
     if (a?.type !== "queued_command" || a.commandMode !== "prompt" || !a.source_uuid) return
-    const text = userText(a.prompt)
-    if (!text || /^<(agent-message|cross-session-message|teammate-message|task-notification)\b/.test(text)) return
-    this.put({ k: "user", id: String(a.source_uuid), text: clip(text, 20000), at: typeof a.timestamp === "string" ? a.timestamp : new Date().toISOString() }, out)
+    const text = userText(a.prompt, false), id = String(a.source_uuid), pics = picturesOf(id, a.prompt)
+    if ((!text && !pics.images) || /^<(agent-message|cross-session-message|teammate-message|task-notification)\b/.test(text)) return
+    this.put({ k: "user", id, text: clip(text, 20000), at: typeof a.timestamp === "string" ? a.timestamp : new Date().toISOString(), ...pics }, out)
   }
 
   private assistant(m: Json, at: string, parent: string | undefined, out: Entry[]) {

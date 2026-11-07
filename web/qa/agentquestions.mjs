@@ -119,7 +119,7 @@ check("phone: its send button answers with what's typed", JSON.stringify(p.sent[
     questions: [{ question: "Which toppings?", multi: true, options: [{ label: "Cheese" }, { label: "Basil" }, { label: "Olive" }] }] }
   const s = { id: "qa-chat", state: "waiting", cwd: "/tmp", account: "default", by: "app", model: "sonnet", effort: "medium", mode: "default", started: Date.now(), at: Date.now(), asks: ["ask1"], seq: 1, told: 0, turn: null }
   await page.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => ws.send(JSON.stringify({ t: "hello", found: true, s, title: "Pizza", cwd: "/tmp", account: "default",
-    model: "sonnet", effort: "medium", tui: null, driven: "", history: { entries: [], start: 0 }, live: [asked] })))
+    model: "sonnet", effort: "medium", tui: null, driven: "", history: { entries: [asked], start: 0 } })))
   await page.goto(`${B}#view/claude-session%2Fqa-chat`)
   const card = page.locator("[data-entry=ask][data-ask=question]")
   await until(() => card.locator("[data-questions]").count(), 8000)

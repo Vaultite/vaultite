@@ -1,6 +1,6 @@
 // A file's title, the same on every page (a note, a dashboard, a sheet, a phone): its own icon, then its name. On a
 // phone the header's name stays hidden while this one is in sight (iOS large titles).
-import { useLayoutEffect, useRef, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react"
 import { namedIcon, tintOf } from "@/core/pages"
 import { cell } from "@/core/signal"
 import { usePane } from "@/core/pane"
@@ -11,6 +11,10 @@ export const TITLE = "title-font block w-full text-[24px] leading-[30px] font-bo
 
 /** Whether the page's own title is in sight below the phone's header (PhoneHeader hides its name meanwhile). */
 export const titleInSight = cell(false)
+/** A page with no name to say yet (a chat while it loads): the phone's header shows none meanwhile, not a stand-in. */
+export function useNoPhoneTitle(on: boolean) {
+  useEffect(() => { if (!on) return; titleInSight.set(true); return () => titleInSight.set(false) }, [on])
+}
 
 /** An icon that changes the file's icon: its hover is drawn around it, so it sits where the plain icon would. */
 export const ICON_BUTTON = "relative isolate grid shrink-0 cursor-pointer before:absolute before:-inset-1 before:-z-10 before:rounded-[6px] " +

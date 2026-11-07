@@ -5,7 +5,7 @@ import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
 import type { CanUseTool, McpServerConfig, Options, PermissionResult, PermissionUpdate, Query, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
-import { type AskKind, type Entry, questionsOf, Reader, summarize } from "./chatlog.ts"
+import { type AskKind, type Entry, IMAGE_MAX, IMAGES_MAX, imageType, questionsOf, Reader, summarize } from "./chatlog.ts"
 
 export type Mode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max"
@@ -58,6 +58,8 @@ export type Summary = {
   error?: string; quiet?: boolean
   /** Tokens its last request read (its context now), as the API counted them. */
   context?: number
+  /** Its background tasks running now (a Monitor, a shell, a subagent): ending its process would kill them. */
+  background: number
 }
 
 /** A permission allowed (`always`: its rules too) or not (`message`: why); questions' answers (options, text or both;
@@ -71,6 +73,8 @@ const CHAT = "The user wants to clarify these questions. They may have more cont
 /** What the host tells its connections. */
 export type Event =
   | { t: "put"; id: string; e: Entry }
+  /** Entry `e` is no more (a message Stop took back before it ran). */
+  | { t: "drop"; id: string; e: string }
   | { t: "state"; s: Summary }
   | { t: "gone"; id: string }
   | { t: "tool"; id: string; call: string; name: string; args: unknown; use?: string }
@@ -163,7 +167,7 @@ class Session {
   constructor(spec: Spec) {
     this.spec = spec
     this.s = { id: spec.id, state: "starting", cwd: spec.cwd, account: spec.account ?? "", by: spec.by ?? "app", model: spec.model ?? "", effort: spec.effort ?? "",
-      mode: spec.mode ?? "default", started: Date.now(), at: Date.now(), asks: [], seq: 0, told: 0, turn: null, ...(spec.quiet ? { quiet: true } : {}) }
+      mode: spec.mode ?? "default", started: Date.now(), at: Date.now(), asks: [], seq: 0, told: 0, turn: null, background: 0, ...(spec.quiet ? { quiet: true } : {}) }
   }
   /** What the user says, as the query takes it (it waits here between turns). */
   async *input(): AsyncGenerator<SDKUserMessage> {
@@ -203,8 +207,10 @@ export class Host {
     return x
   }
 
-  /** Start session `spec` (new, or resuming its id) with `prompt` as its first message, if any (`images`: its pictures). */
-  start(spec: Spec, prompt?: string, images: string[] = []): Summary {
+  /** Start session `spec` (new, or resuming its id) with `prompt` as its first message, if any (`images`: its pictures;
+   *  `uuid`: its id). */
+  start(spec: Spec, prompt?: string, images: string[] = [], uuid?: string): Summary {
+    const content = prompt || images.length ? withImages(prompt ?? "", images) : null
     const old = this.sessions.get(spec.id)
     if (old && !old.ended) throw new Error(`session ${spec.id} already runs`)
     if (!spec.resume && !/^[0-9a-f-]{36}$/i.test(spec.id)) throw new Error("a new session's id is a UUID")
@@ -256,32 +262,52 @@ export class Host {
       throw e
     }
     void this.run(x)
-    if (prompt) this.send(spec.id, prompt, undefined, images)
+    if (content) this.said(x, prompt ?? "", images.length, uuid ?? crypto.randomUUID(), content)
     else this.state(x, "idle")
     return x.s
   }
 
-  /** The user's message to session `id` (`uuid`: its id in the transcript; `images`: pictures sent with it), queued
-   *  while a turn runs; while it asks something it's the answer: what to do instead, or a reply to its questions. */
+  /** The user's message to session `id` (`uuid`: its id in the transcript; `images`: its pictures), queued while a turn
+   *  runs; while it asks something it's the answer (with pictures it's said too, as an answer can't carry them). */
   send(id: string, text: string, uuid: string = crypto.randomUUID(), images: string[] = []) {
     const x = this.session(id)
-    if (!text.trim()) throw new Error("nothing to send")
+    if (!text.trim() && !images.length) throw new Error("nothing to send")
+    const content = withImages(text.trim(), images)
     const asked = [...x.asks.keys()].at(-1)
-    if (asked) { this.answer(id, asked, { allow: false, message: text.trim() }); return { uuid: "", answered: asked } }
-    const at = new Date().toISOString()
-    x.declined = false
-    x.answered.clear()
-    x.queue.push({ type: "user", uuid, session_id: id, parent_tool_use_id: null, message: { role: "user", content: withImages(text, images) }, timestamp: at } as SDKUserMessage)
-    x.wake?.()
-    for (const e of x.reader.feed({ type: "user", uuid, message: { content: text }, timestamp: at })) this.put(x, e)
-    this.state(x, "working", true)
-    return { uuid }
+    if (asked && !images.length) { this.answer(id, asked, { allow: false, message: text.trim() }); return { uuid: "", answered: asked } }
+    if (asked) this.answer(id, asked, { allow: false, message: PICTURES }, "Answered in the message below")
+    this.said(x, text.trim(), images.length, uuid, content)
+    return { uuid, ...(asked ? { answered: asked } : {}) }
   }
 
+  /** A message queued for the query, its entry told (`pictures`: how many it carries). */
+  private said(x: Session, text: string, pictures: number, uuid: string, content: SDKUserMessage["message"]["content"]) {
+    const at = new Date().toISOString(), id = x.s.id
+    x.declined = false
+    x.answered.clear()
+    x.queue.push({ type: "user", uuid, session_id: id, parent_tool_use_id: null, message: { role: "user", content }, timestamp: at } as SDKUserMessage)
+    x.wake?.()
+    const shown = [...Array.from({ length: pictures }, () => ({ type: "image" })), ...(text ? [{ type: "text", text }] : [])]
+    for (const e of x.reader.feed({ type: "user", uuid, message: { content: shown }, timestamp: at })) this.put(x, e)
+    this.state(x, "working", true)
+  }
+
+  /** Stop its turn, and the messages queued behind it (`taken`: the user's, given back, as Esc gives them in a terminal);
+   *  a Claude Code too old to take them back runs them after. */
   async interrupt(id: string) {
     const x = this.session(id)
     x.stopping = x.s.state === "working" || x.s.state === "waiting"
-    await x.q?.interrupt()
+    // (cancelQueued: the SDK's, though its type doesn't list it yet)
+    const r = await (x.q?.interrupt as ((o?: { cancelQueued: boolean }) => Promise<{ cancelled?: string[] } | undefined>) | undefined)?.call(x.q, { cancelQueued: true })
+    const taken: Extract<Entry, { k: "user" }>[] = []
+    for (const uuid of r?.cancelled ?? []) {
+      const e = x.reader.entries.get(uuid)
+      if (e?.k !== "user") continue
+      taken.push(e)
+      x.reader.entries.delete(uuid)
+      this.emit({ t: "drop", id, e: uuid })
+    }
+    return { taken }
   }
 
   /** Change how it runs from now: the model, its effort, the permission mode. */
@@ -308,7 +334,8 @@ export class Host {
     if (x && seq > x.s.told) x.s.told = Math.min(seq, x.s.seq)
   }
 
-  answer(id: string, ask: string, a: Answer) {
+  /** Answer what it asks (`shown`: the ask's answer in words, in place of what `a` says). */
+  answer(id: string, ask: string, a: Answer, shown?: string) {
     const x = this.session(id)
     const p = x.asks.get(ask)
     if (!p) throw new Error("it doesn't ask that any more")
@@ -341,7 +368,7 @@ export class Host {
       said = a.allow ? "Approved" : a.message ? `Kept planning: ${a.message}` : "Kept planning"
     }
     p.resolve(r)
-    if (e?.k === "ask") this.put(x, { ...e, answer: said })
+    if (e?.k === "ask") this.put(x, { ...e, answer: shown ?? said })
     x.s.asks = [...x.asks.keys()]
     if (!x.asks.size) this.state(x, "working", true)
     if (p.kind === "plan" && a.allow && a.mode) void this.set(id, { mode: a.mode }).catch((err) => this.log("plan mode:", err))
@@ -394,6 +421,8 @@ export class Host {
         x.s.asks = [...x.asks.keys()]
         this.put(x, { ...e, answer: "Stopped" })
         resolve({ behavior: "deny", message: "Stopped" })
+        // (as an answer does: its turn goes on; a Stop's result says it ended)
+        if (!x.asks.size && !x.ended && !x.stopping) this.state(x, "working", true)
       }, { once: true })
     }))
   }
@@ -464,7 +493,8 @@ export class Host {
       this.emit({ t: "state", s: x.s })
     } else if (m.type === "system" && m.subtype === "background_tasks_changed") {
       const was = x.background
-      x.background = m.tasks.filter((t) => !t.ambient).length
+      x.background = x.s.background = m.tasks.filter((t) => !t.ambient).length
+      if (was !== x.background) this.emit({ t: "state", s: x.s })
       // (its last one done while idle: the wait starts now)
       if (was && !x.background && x.s.state === "idle") this.idleTimer(x, true)
     }
@@ -473,17 +503,26 @@ export class Host {
       const n = (u?.input_tokens ?? 0) + (u?.cache_read_input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0)
       if (n) x.s.context = n
     }
+    // (a turn its process started on its own, or a message sent as the last one ended: the SDK sends each at once, so
+    // only a new answer starting says a turn runs; a stopped stream's last pieces don't)
+    const begun = m.type === "assistant" || (m.type === "stream_event" && (m.event as { type?: string }).type === "message_start")
+    if (begun && !m.parent_tool_use_id && x.s.state === "idle") this.state(x, "working", true)
     this.streamed(x, m)
     const stopped = m.type === "result" && x.stopping
-    for (const e of x.reader.feed(m)) this.put(x, stopped && e.k === "result" ? { k: "note", id: e.id, text: "Stopped", at: e.at } : e)
+    // (its transcript's "Interrupted" says it already: the same line once, live or read back)
+    const said = stopped && interrupted([...x.reader.entries.values()])
+    for (const e of x.reader.feed(m)) {
+      if (stopped && e.k === "result") { if (said) x.reader.entries.delete(e.id); else this.put(x, { k: "note", id: e.id, text: "Stopped", at: e.at }) }
+      else this.put(x, e)
+    }
     if (m.type === "result") {
       x.stopping = false
       // (what was streaming when it stopped is as far as it got)
       for (const e of [...x.reader.entries.values()]) if ("live" in e && e.live) this.put(x, { ...e, live: undefined })
       const error = stopped || (m.subtype === "success" && !m.is_error) ? undefined : (x.reader.entries.get(String(m.uuid)) as { error?: string } | undefined)?.error
       x.s.turn = { prompt: x.reader.prompt, text: x.reader.text, ...(error ? { error } : {}) }
-      // (another message sent while it worked starts the next turn at once)
-      if (!x.asks.size) this.state(x, x.queue.length ? "working" : "idle", true)
+      // (a message sent meanwhile runs as its own turn: its first words say so)
+      if (!x.asks.size) this.state(x, "idle", true)
     }
   }
 
@@ -551,7 +590,7 @@ export class Host {
     if (x.idle) clearTimeout(x.idle)
     x.idle = null
     if (!on) return
-    x.idle = setTimeout(() => { if (x.s.state === "idle" && !x.asks.size && !x.queue.length && !x.background) this.end(x) }, this.idleMs)
+    x.idle = setTimeout(() => { if (x.s.state === "idle" && !x.asks.size && !x.background) this.end(x) }, this.idleMs)
     x.idle.unref?.()
   }
 
@@ -602,6 +641,17 @@ function alwaysText(ups: PermissionUpdate[]) {
   return said.length ? said.join(", ").slice(0, 200) : "this from now on"
 }
 
+/** What an answer says when the user's message has pictures (said next: an answer can't carry them). */
+const PICTURES = "The user answered with a message and pictures: it's their next message, read it."
+/** Whether the turn told last (since the user last spoke) was cut short by the user, as its transcript says it. */
+function interrupted(es: Entry[]) {
+  for (let i = es.length - 1; i >= 0; i--) {
+    if (es[i].k === "user") return false
+    if (es[i].k === "note" && (es[i] as { text: string }).text === "Interrupted") return true
+  }
+  return false
+}
+
 const lastLines = (lines: string[]) => lines.join("").trim().split("\n").slice(-4).join("\n").slice(0, 600)
 
 // ---------- the socket: requests {op, re, ...} answered {re, ...} or {re, error}; `follow` hears every Event
@@ -622,14 +672,19 @@ export function eachMessage(sock: net.Socket, fn: (m: Record<string, unknown>) =
   })
 }
 
-const imagesIn = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 4) : [])
-/** A message's content: its text, after the pictures that still are there (a picture gone is left out). */
+const imagesIn = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
+/** A message's content: its pictures (files on this machine), then its text; one that can't go is refused, never left out. */
 function withImages(text: string, images: string[]): SDKUserMessage["message"]["content"] {
-  const blocks = images.flatMap((f) => {
-    const type = /\.png$/i.test(f) ? "image/png" as const : /\.jpe?g$/i.test(f) ? "image/jpeg" as const : null
-    try { return type ? [{ type: "image" as const, source: { type: "base64" as const, media_type: type, data: fs.readFileSync(f).toString("base64") } }] : [] } catch { return [] }
+  if (images.length > IMAGES_MAX) throw new Error(`at most ${IMAGES_MAX} pictures a message (${images.length} given)`)
+  const blocks = images.map((f) => {
+    let b: Buffer
+    try { b = fs.readFileSync(f) } catch { throw new Error(`the picture ${path.basename(f)} isn't there to send`) }
+    const type = imageType(b)
+    if (!type) throw new Error(`${path.basename(f)} isn't a PNG, JPEG, GIF or WebP picture`)
+    if (b.length > IMAGE_MAX) throw new Error(`${path.basename(f)} is over ${IMAGE_MAX >> 20} MB`)
+    return { type: "image" as const, source: { type: "base64" as const, media_type: type, data: b.toString("base64") } }
   })
-  return blocks.length ? [...blocks, { type: "text" as const, text }] : text
+  return blocks.length ? [...blocks, ...(text ? [{ type: "text" as const, text }] : [])] : text
 }
 
 /** Serve `host` at socket `sock` (a Unix socket, or a named pipe on Windows), until `stop`. */
@@ -645,9 +700,9 @@ export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) =>
       case "follow": followers.add(c); setTimeout(() => { for (const e of host.pendingCalls()) send(c, e) }, 0); return { sessions: host.list() }
       case "list": return { sessions: host.list() }
       case "read": { const r = host.read(id); if (!r) throw new Error(`no session ${id} runs here`); return r }
-      case "start": return { s: host.start(m.spec as Spec, typeof m.prompt === "string" ? m.prompt : undefined, imagesIn(m.images)) }
+      case "start": return { s: host.start(m.spec as Spec, typeof m.prompt === "string" ? m.prompt : undefined, imagesIn(m.images), typeof m.uuid === "string" ? m.uuid : undefined) }
       case "send": return { ...host.send(id, String(m.text ?? ""), typeof m.uuid === "string" ? m.uuid : undefined, imagesIn(m.images)) }
-      case "interrupt": await host.interrupt(id); return {}
+      case "interrupt": return await host.interrupt(id)
       case "set": return { s: await host.set(id, m as { model?: string; effort?: Effort; mode?: Mode }) }
       case "answer": return { s: host.answer(id, String(m.ask ?? ""), (m.answer ?? {}) as Answer) }
       case "stop": return { stopped: host.stop(id) }

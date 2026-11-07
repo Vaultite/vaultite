@@ -1,12 +1,13 @@
 import crypto from "node:crypto"
+import { EventEmitter } from "node:events"
 import fs from "node:fs"
+import http, { type IncomingMessage } from "node:http"
 import path from "node:path"
-import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 
-/** A stand-in for the Agent SDK's query: it answers each message by what it says ("permission", "question", "plan",
- *  "slow"), streaming its answer, and keeps what it was given and answered. */
+/** A stand-in for the Agent SDK's query: it answers each message by what it says ("permission", "question", "plan", "slow",
+ *  "hold": wait for `go()`), takes each the moment it's sent (as the SDK does) and runs them in turn; Stop takes back the rest. */
 export function fakeSdk() {
   const runs: Any[] = []
   const query = ({ prompt, options }: Any) => {
@@ -14,7 +15,7 @@ export function fakeSdk() {
     let wake = null as (() => void) | null, done = false
     const push = (m: Any) => { out.push(m); wake?.() }
     const sid = options.sessionId ?? options.resume
-    const run: Any = { options, model: options.model, mode: options.permissionMode, efforts: [], said: [] }
+    const run: Any = { options, model: options.model, mode: options.permissionMode, efforts: [], said: [], queued: [] }
     runs.push(run)
     const base = { session_id: sid, parent_tool_use_id: null }
     const ask = async (tool: string, input: Any, more: Any = {}) => {
@@ -26,11 +27,24 @@ export function fakeSdk() {
       push({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: tu, content: r.behavior === "allow" ? "ok" : r.message, is_error: r.behavior !== "allow" }] }, uuid: crypto.randomUUID(), ...base })
       return r
     }
+    let more = null as (() => void) | null, drained = false
+    void (async () => {
+      for await (const m of prompt) { run.queued.push(m); more?.() }
+      drained = true
+      more?.()
+    })()
     void (async () => {
       push({ type: "system", subtype: "init", model: options.model ?? "claude-sonnet-5", permissionMode: options.permissionMode ?? "default", cwd: options.cwd, ...base })
-      for await (const m of prompt) {
-        const text = String(m.message.content)
-        run.said.push({ text, uuid: m.uuid })
+      for (;;) {
+        if (!run.queued.length) {
+          if (drained) break
+          await new Promise<void>((r) => { more = r })
+          more = null
+          continue
+        }
+        const m = run.queued.shift()
+        const c = m.message.content, text = typeof c === "string" ? c : c.filter((b: Any) => b.type === "text").map((b: Any) => b.text).join("\n")
+        run.said.push({ text, uuid: m.uuid, content: c })
         if (/permission/.test(text)) run.permission = await ask("Bash", { command: "rm -rf build" }, { title: "Claude wants to run rm -rf build",
           suggestions: [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "rm:*" }], behavior: "allow", destination: "localSettings" }] })
         else if (/question/.test(text)) run.question = await ask("AskUserQuestion", { questions: [{ question: "Tea or coffee?", header: "Drink", multiSelect: false,
@@ -40,6 +54,15 @@ export function fakeSdk() {
           // (a Monitor left running when the turn ends; `background()` ends it)
           push({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "bwatch", task_type: "monitor", description: "QA finishing" }, { task_id: "live", task_type: "monitor", description: "watcher", ambient: true }], ...base })
           run.background = () => push({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "live", task_type: "monitor", description: "watcher", ambient: true }], ...base })
+        }
+        else if (/hold/.test(text)) {
+          const mid = `msg_${crypto.randomUUID().slice(0, 8)}`
+          push({ type: "stream_event", event: { type: "message_start", message: { id: mid } }, ...base })
+          push({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, api_message_id: mid, ...base })
+          await new Promise<void>((r) => { run.go = r })
+          push({ type: "assistant", message: { id: mid, content: [{ type: "text", text: `Held: ${text}` }] }, uuid: crypto.randomUUID(), ...base })
+          push({ type: "result", subtype: "success", is_error: false, duration_ms: 50, result: "Done", uuid: crypto.randomUUID(), ...base })
+          continue
         }
         else if (/slow/.test(text)) {
           await new Promise<void>((r) => { run.stop = r })
@@ -66,7 +89,12 @@ export function fakeSdk() {
       }
     })()
     return Object.assign(gen, {
-      interrupt: async () => { run.stop?.(); run.abort?.() },
+      interrupt: async (o?: { cancelQueued?: boolean }) => {
+        const queued = run.queued.map((m: Any) => m.uuid)
+        if (o?.cancelQueued) run.queued.length = 0
+        run.stop?.(); run.abort?.()
+        return o?.cancelQueued ? { still_queued: [], cancelled: queued } : { still_queued: queued }
+      },
       setModel: async (m: string) => { run.model = m },
       setPermissionMode: async (m: string) => { run.mode = m },
       applyFlagSettings: async (s: Any) => { run.efforts.push(s.effortLevel) },
@@ -76,12 +104,18 @@ export function fakeSdk() {
   return { runs, query }
 }
 
+/** The smallest pictures: a 1x1 PNG and a JPEG's first bytes (enough to say what it is). */
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9])
+
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, app, check } = $
   const { Host, listen } = await import("../../../plugins/core/claude-code/chathost.ts")
   const { CHAT_SOCKET } = await import("../../../plugins/core/claude-code/chat.ts")
   const { settled } = await import("../../../plugins/core/inbox/plugin.ts")
   const { Reader } = await import("../../../plugins/core/claude-code/chatlog.ts")
+  const { IMAGES, merge } = await import("../../../plugins/core/claude-code/chat.ts")
+  const { matchSocket } = await import("../../../core/plugins.ts")
   const as = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
     headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
   const asApp = as("app/desktop")
@@ -161,7 +195,8 @@ export default async ($: VaultTest) => {
       host4.start({ id: bg, resume: false, cwd: VAULT, env: {} }, "Watch the QA run in the background")
       await waitFor(() => host4.list().find((s) => s.id === bg)?.state === "idle", 5000, 50)
       await new Promise((r) => setTimeout(r, 500))
-      check("chat: an idle session waiting on its background task keeps running", host4.list().some((s) => s.id === bg), host4.list())
+      check("chat: an idle session waiting on its background task keeps running, and says it has one (a code update waits for it)",
+        host4.list().find((s) => s.id === bg)?.background === 1, host4.list())
       sdk4.runs[0].background()
       const ended = await waitFor(() => !host4.list().some((s) => s.id === bg), 3000, 50)
       check("chat: once its background task is done (an ambient one doesn't count), the idle wait ends it", !!ended, host4.list())
@@ -341,6 +376,203 @@ export default async ($: VaultTest) => {
       } finally { if (had === null) fs.rmSync(at); else fs.writeFileSync(at, had) }
     }
 
+    // ---------- a turn's state, as the SDK sends messages: each the moment it's sent
+    {
+      const sdk5 = fakeSdk(), host5 = new Host({ query: sdk5.query as Any }), states: string[] = []
+      host5.idleMs = 150
+      const sid = crypto.randomUUID(), off = host5.on((e) => { if (e.t === "state" && e.s.id === sid) states.push(e.s.state) })
+      host5.start({ id: sid, resume: false, cwd: VAULT, env: {} }, "hold on")
+      await waitFor(() => sdk5.runs[0]?.go, 3000, 20)
+      // (sent while it writes its answer: the SDK has it at once, and runs it as its own turn after this one's result)
+      host5.send(sid, "hold this one too")
+      const first = sdk5.runs[0].go
+      first()
+      await waitFor(() => sdk5.runs[0].go !== first, 3000, 20)
+      await new Promise((r) => setTimeout(r, 400))
+      check("chat: a message sent as a turn ended runs as its own turn, working (Stop shows), not idle and ended mid-turn",
+        host5.list().find((s) => s.id === sid)?.state === "working" && states.slice(-2).join() === "idle,working" && !sdk5.runs[0].closed, [states, host5.list()])
+      sdk5.runs[0].go()
+      await waitFor(() => host5.list().find((s) => s.id === sid)?.state === "idle", 3000, 20)
+      // An ask the SDK takes back (its call aborted, not answered): working again till its turn ends.
+      host5.idleMs = 60_000
+      states.length = 0
+      host5.send(sid, "ask permission")
+      await waitFor(() => host5.list().find((s) => s.id === sid)?.state === "waiting", 3000, 20)
+      sdk5.runs[0].abort()
+      await waitFor(() => host5.list().find((s) => s.id === sid)?.state === "idle", 3000, 20)
+      const ask = host5.read(sid)!.entries.find((e) => e.k === "ask") as Any
+      check("chat: an ask taken back leaves waiting (working, then its turn's end), answered Stopped", states.join().includes("waiting,working") &&
+        states.at(-1) === "idle" && ask?.answer === "Stopped" && !host5.list().find((s) => s.id === sid)!.asks.length, [states, ask])
+      // Stop takes back the messages queued behind the turn, given back to send again.
+      states.length = 0
+      host5.send(sid, "hold the line")
+      await waitFor(() => sdk5.runs[0].queued.length === 0 && host5.read(sid)!.entries.some((e) => e.k === "text" && (e as Any).live), 3000, 20)
+      const q = host5.send(sid, "and this, later")
+      await waitFor(() => sdk5.runs[0].queued.length === 1, 3000, 10)
+      const dropped: string[] = [], off2 = host5.on((e) => { if (e.t === "drop") dropped.push(e.e) })
+      const r = await host5.interrupt(sid)
+      sdk5.runs[0].go?.()
+      await waitFor(() => host5.list().find((s) => s.id === sid)?.state === "idle", 3000, 20)
+      check("chat: Stop takes back what was queued behind the turn: given back, its entry gone, never run", r.taken.length === 1 && r.taken[0].text === "and this, later" &&
+        dropped.join() === q.uuid && !host5.read(sid)!.entries.some((e) => e.id === q.uuid) && !sdk5.runs[0].said.some((x: Any) => x.text === "and this, later"), [r, dropped])
+      off(); off2()
+      host5.close()
+    }
+
+    // ---------- the chat tab's socket: hello first, then what changed, nothing lost or undone; the conversation merged
+    {
+      const tab = () => {
+        const got: Any[] = []
+        const ws: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, send(d: string) { got.push(JSON.parse(d)) }, close() { ws.readyState = 3; ws.emit("close") }, ping() {}, terminate() { ws.close() } })
+        return { ws, got }
+      }
+      const open = (sid: string, ws: Any) => matchSocket(app.plugins, ["claude-code", "chat", sid])![1].fn(ws, asApp, { wild: [sid], query: {} })
+      /** What a tab shows from its messages, as useChat draws them. */
+      const drawn = (got: Any[]) => {
+        let map = new Map<string, Any>(), st: Any = null
+        for (const m of got) {
+          if (m.t === "hello") { map = new Map(m.history.entries.map((e: Any) => [e.id, e])); st = m.s }
+          else if (m.t === "put") map.set(m.e.id, m.e)
+          else if (m.t === "drop") map.delete(m.e)
+          else if (m.t === "state") st = m.s
+        }
+        return { entries: [...map.values()], st }
+      }
+      const [, w] = await api("POST", "ops/claude-code.chat-start", { cwd: VAULT, mode: "default" })
+      let fine = true, why: Any = null
+      const run = sdk.runs.find((r: Any) => r.options.sessionId === w.id)!
+      const same = (got: Any[], state: string) => {
+        const d = drawn(got), want = host.read(w.id)!.entries
+        return got[0]?.t === "hello" && d.st?.state === state && d.st.seq === host.list().find((s) => s.id === w.id)!.seq &&
+          want.every((e) => JSON.stringify(d.entries.find((x) => x.id === e.id)) === JSON.stringify(e))
+      }
+      for (let delay = 0; delay < 12 && fine; delay++) {
+        const t = tab()
+        run.go = null
+        // (its message sent as the tab's hello is made: what it hears meanwhile is newer than what the hello says)
+        setTimeout(() => void api("POST", "ops/claude-code.chat-send", { id: w.id, text: `hold ${delay}` }), delay)
+        open(w.id, t.ws)
+        await waitFor(() => run.go && t.got.some((m) => m.t === "hello"), 3000, 5)
+        await new Promise((r) => setTimeout(r, 30))
+        const mid = same(t.got, "working")
+        run.go()
+        await waitFor(() => host.list().find((s) => s.id === w.id)?.state === "idle" && t.got.some((m) => m.t === "state" && m.s?.state === "idle"), 3000, 20)
+        await new Promise((r) => setTimeout(r, 30))
+        if (!mid || !same(t.got, "idle")) { fine = false; why = { delay, mid, got: t.got.map((m) => `${m.t}:${m.s?.state ?? m.e?.id ?? ""}`), d: drawn(t.got) } }
+        t.ws.close()
+      }
+      check("chat tab: its hello comes first, then each change since, so a tab opened mid-turn shows the turn and its end (never working forever)", fine, why)
+
+      // Reload mid-way: what only the keeper has (an ask, a turn's failure) stays where it was, not at the bottom.
+      await api("POST", "ops/claude-code.chat-send", { id: w.id, text: "ask permission" })
+      await waitFor(() => host.list().find((s) => s.id === w.id)?.state === "waiting", 3000, 20)
+      await api("POST", "ops/claude-code.chat-answer", { id: w.id, allow: true }, asApp)
+      await waitFor(() => host.list().find((s) => s.id === w.id)?.state === "idle", 3000, 20)
+      const live = host.read(w.id)!.entries
+      // (its transcript as Claude Code writes it: the messages and calls, not the asks nor the turns' ends)
+      const lines = live.flatMap((e: Any): Any[] => e.k === "user" ? [{ type: "user", uuid: e.id, message: { content: e.text }, timestamp: e.at }]
+        : e.k === "text" ? [{ type: "assistant", message: { id: e.id.split(":")[0], content: [{ type: "text", text: e.text }] }, timestamp: e.at }]
+        : e.k === "tool" ? [{ type: "assistant", message: { id: `msg_${e.id}`, content: [{ type: "tool_use", id: e.id, name: e.name, input: e.input }] }, timestamp: e.at },
+          { type: "user", message: { content: [{ type: "tool_result", tool_use_id: e.id, content: e.result ?? "" }] }, timestamp: e.at }] : [])
+      fs.writeFileSync(path.join(proj, `${w.id}.jsonl`), lines.map((l) => JSON.stringify({ ...l, cwd: VAULT, sessionId: w.id })).join("\n") + "\n")
+      const t = tab()
+      open(w.id, t.ws)
+      await waitFor(() => t.got.some((m) => m.t === "hello"), 3000, 20)
+      const shown = t.got.find((m) => m.t === "hello").history.entries.map((e: Any) => e.id)
+      check("chat tab: reloaded, the transcript and the keeper's entries in the order they were shown (an ask after its call, each turn's end after it)",
+        shown.join() === live.map((e) => e.id).join(), { shown, live: live.map((e) => `${e.k}:${e.id}`) })
+      t.ws.close()
+      const e = (k: string, id: string, more: Any = {}) => ({ k, id, at: "", text: "", ...more })
+      const m1 = merge([e("user", "u1"), e("text", "a:0"), e("note", "n", { text: "Interrupted" }), e("user", "u2"), e("text", "b:0")],
+        [e("ask", "ask:1"), e("text", "a:0", { text: "newer" }), e("note", "r1", { text: "Stopped" }), e("user", "u2"), e("result", "r2"), e("text", "b:0"), e("note", "r3", { text: "Failed" })])
+      check("chat: merged, the keeper's own entries after the one before them (leading ones before the first shared), its newer copy in place, Stopped once beside Interrupted",
+        m1.map((x) => x.id).join() === "u1,ask:1,a:0,n,u2,r2,b:0,r3" && (m1[2] as Any).text === "newer", m1.map((x) => x.id))
+
+      // Another machine not answering: the tab is told so and tries again (refused is for good).
+      const ms = app.plugins.find((p) => p.id === "machines")!.services, wasM = { ...ms }
+      const server = http.createServer((req, res) => {
+        if (/\/image\/u-remote\/0$/.test(req.url ?? "")) res.writeHead(200, { "Content-Type": "image/png" }).end(PNG)
+        else res.writeHead(404).end("{}")
+      }).listen(0, "127.0.0.1")
+      await new Promise((r) => server.once("listening", r))
+      const studio = { id: "studio", label: "Studio", url: `http://127.0.0.1:${(server.address() as Any).port}`, online: false, self: false, plugins: ["claude-code"] }
+      ms["machines:machine"] = async (mid: string) => (mid === "studio" ? studio : null)
+      try {
+        const off = tab()
+        open(`${w.id}@studio`, off.ws)
+        await waitFor(() => off.got.length, 3000, 20)
+        check("chat tab: another machine not answering is unreachable for now, not refused", off.got[0]?.t === "unreachable" && /Studio/.test(off.got[0].reason), off.got)
+        studio.online = true
+        const [st, png] = await api("GET", `claude-code/chat/${w.id}@studio/image/u-remote/0`)
+        check("chat: another machine's session's picture comes from that machine", st === 200 && Buffer.isBuffer(png) && png.equals(PNG), [st])
+      } finally { Object.assign(ms, wasM); server.close() }
+    }
+
+    // ---------- pictures: checked by the ops, written for the keeper, sent as image blocks, shown live and read back
+    {
+      const [, w] = await api("POST", "ops/claude-code.chat-start", { cwd: VAULT, mode: "default" })
+      const png = { data: PNG.toString("base64"), type: "image/png" }
+      const refusals: [Any, RegExp, string][] = [
+        [Array.from({ length: 11 }, () => png), /at most 10/, "eleven"],
+        [[{ data: JPEG.toString("base64"), type: "image/png" }], /image\/jpeg, not image\/png/, "a JPEG called a PNG"],
+        [[{ data: Buffer.from("hello there").toString("base64"), type: "image/png" }], /isn't a PNG, JPEG, GIF or WebP/, "not a picture"],
+        [[{ data: `data:image/png;base64,${png.data}`, type: "image/png" }], /data: prefix/, "a data: URL"],
+        [[{ data: Buffer.concat([PNG, Buffer.alloc(5 << 20)]).toString("base64"), type: "image/png" }], /over 5 MB/, "over 5 MB"],
+        [[{ data: png.data, type: "image/tiff" }], /type/, "a type it doesn't take"]]
+      const bad: Any[] = []
+      for (const [images, why, name] of refusals) {
+        const [st, b] = await api("POST", "ops/claude-code.chat-send", { id: w.id, text: "Look", images })
+        if (st !== 400 || !why.test(b.error ?? "") || !/images/.test(b.error)) bad.push([name, st, b.error])
+      }
+      check("chat send: pictures refused in plain words when too many, too big, not pictures, not what they say, or a data: URL", !bad.length, bad)
+      const before = sdk.runs.find((r: Any) => r.options.sessionId === w.id)!.said.length
+      let [st, b] = await api("POST", "ops/claude-code.chat-send", { id: w.id, images: [png, { data: JPEG.toString("base64"), type: "image/jpeg" }] })
+      const run = sdk.runs.find((r: Any) => r.options.sessionId === w.id)!
+      await waitFor(() => run.said.length > before, 3000, 20)
+      const got = run.said.at(-1)?.content
+      check("chat send: pictures alone reach the session as image blocks (no text block)", st === 200 && Array.isArray(got) && got.length === 2 && got[0].type === "image" &&
+        got[0].source.media_type === "image/png" && got[0].source.data === png.data && got[1].source.media_type === "image/jpeg", [st, b, got?.map?.((c: Any) => c.type)])
+      const mine = host.read(w.id)!.entries.find((e) => e.id === b.uuid) as Any
+      check("chat: the message's entry has its pictures, no \"_(image)_\" text", mine?.k === "user" && mine.text === "" && mine.images?.length === 2 &&
+        mine.images[0].src === `image/${b.uuid}/0`, mine)
+      ;[st, b] = await api("GET", `claude-code/chat/${w.id}/${mine.images[1].src}`)
+      check("chat: a picture is served while the server keeps it", st === 200 && Buffer.isBuffer(b) && b.equals(JPEG), [st])
+      // While it asks: the pictures go with the message, the ask answered by it.
+      await waitFor(() => host.list().find((s) => s.id === w.id)?.state === "idle", 3000, 20)
+      await api("POST", "ops/claude-code.chat-send", { id: w.id, text: "ask permission" })
+      await waitFor(() => host.list().find((s) => s.id === w.id)?.state === "waiting", 3000, 20)
+      ;[st, b] = await api("POST", "ops/claude-code.chat-send", { id: w.id, text: "Not that, see this", images: [png] })
+      await waitFor(() => run.said.at(-1)?.text === "Not that, see this", 3000, 20)
+      check("chat send: a message with pictures while it asks answers the ask and is said, pictures and all", st === 200 && !!b.answered && run.permission?.behavior === "deny" &&
+        run.said.at(-1).content[0]?.type === "image", [st, b, run.permission])
+      // Read back from the transcript: the user line's image blocks, and a message sent mid-turn (its queued_command).
+      const r = new Reader()
+      r.feed({ type: "user", uuid: "u-img", message: { content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png.data } }, { type: "text", text: "This one" }] } })
+      r.feed({ type: "attachment", attachment: { type: "queued_command", commandMode: "prompt", source_uuid: "u-q", prompt: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png.data } }] } })
+      const [a, q] = [r.entries.get("u-img") as Any, r.entries.get("u-q") as Any]
+      check("chat entries: a transcript's pictures are the entry's, its text without \"_(image)_\"; a picture alone sent mid-turn too",
+        a?.text === "This one" && a.images?.[0]?.src === "image/u-img/0" && q?.text === "" && q.images?.length === 1, [a, q])
+      const old = path.join(proj, `${w.id}.jsonl`)
+      fs.writeFileSync(old, JSON.stringify({ type: "user", uuid: "u-old", cwd: VAULT, sessionId: w.id, message: { content: [{ type: "text", text: "Old" }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: JPEG.toString("base64") } }] } }) + "\n")
+      ;[st, b] = await api("GET", `claude-code/chat/${w.id}/image/u-old/0`)
+      const [st2] = await api("GET", `claude-code/chat/${w.id}/image/u-old/1`)
+      check("chat: a picture the server no longer keeps comes from its transcript; one that isn't there is a 404", st === 200 && Buffer.isBuffer(b) && b.equals(JPEG) && st2 === 404, [st, st2])
+      host.stop(w.id)
+    }
+
+    // A message as its idle process ends (the keeper's news of it on its way): resumed with it, not refused.
+    {
+      const [, w] = await api("POST", "ops/claude-code.chat-start", { prompt: "Say hi", cwd: VAULT })
+      await waitFor(() => host.list().find((s) => s.id === w.id)?.state === "idle", 3000, 20)
+      fs.writeFileSync(path.join(proj, `${w.id}.jsonl`), JSON.stringify({ type: "user", uuid: crypto.randomUUID(), cwd: VAULT, sessionId: w.id, message: { content: "Say hi" }, timestamp: new Date().toISOString() }) + "\n")
+      ;(host as Any).sessions.delete(w.id)
+      const [st, b] = await api("POST", "ops/claude-code.chat-send", { id: w.id, text: "Still there?" })
+      await waitFor(() => sdk.runs.some((r: Any) => r.options.resume === w.id && r.said.length), 3000, 20)
+      check("chat send: to a session whose process just ended, it's resumed with the message", st === 200 && b.resumed &&
+        sdk.runs.find((r: Any) => r.options.resume === w.id)?.said[0]?.text === "Still there?", [st, b])
+      host.stop(w.id)
+    }
+
     // The keeper dies mid-turn (a reboot, a crash): the next one takes the turn up again, once.
     const [, slow] = await api("POST", "ops/claude-code.chat-start", { prompt: "Something slow", cwd: VAULT })
     await waitFor(() => host.list().find((s) => s.id === slow.id)?.state === "working", 3000, 50)
@@ -361,5 +593,6 @@ export default async ($: VaultTest) => {
     cc.services.sample = was.sample
     host.close()
     await served.stop()
+    fs.rmSync(IMAGES, { recursive: true, force: true })
   }
 }

@@ -22,6 +22,7 @@ const stale = () => !fs.existsSync(SELF)
 /** Its code as it started, told to the server, which ends a keeper of other code once it's quiet (chat.ts). */
 const code = codeOf(path.dirname(SELF))
 
+let served: ReturnType<typeof listen> | null = null
 /** Another one already answers at this path: leave it be. */
 async function start() {
   const net = await import("node:net")
@@ -31,13 +32,13 @@ async function start() {
     probe.on("error", () => r(false))
   })
   if (taken) { log("another one answers here: exiting"); process.exit(0) }
-  const served = listen(host, SOCK, { log, hello: () => ({ file: SELF, stale: stale(), code }) })
+  const s = served = listen(host, SOCK, { log, hello: () => ({ file: SELF, stale: stale(), code }) })
   try { fs.writeFileSync(`${FILES}.pid`, `${process.pid}\n`) } catch { /* only for stopping it by hand */ }
   log(`listening on ${SOCK} (pid ${process.pid})`)
   // No session and nobody connected for a minute (or its files gone and no session): it ends.
   let alone = Date.now()
   setInterval(() => {
-    if (served.conns() && !stale()) alone = Date.now()
+    if (s.conns() && !stale()) alone = Date.now()
     if (host.size || (Date.now() - alone < 60_000 && !stale())) return
     log(stale() ? "its files are gone: exiting" : "nothing left: exiting")
     for (const f of [...(WIN ? [] : [SOCK]), `${FILES}.pid`]) try { fs.rmSync(f, { force: true }) } catch { /* gone */ }
@@ -46,9 +47,10 @@ async function start() {
 }
 await start()
 
-// The server going away isn't its business; a SIGTERM ends it, with its sessions (each saved in its transcript).
+// The server going away isn't its business; a SIGTERM ends it, with its sessions (each saved in its transcript), unheard:
+// a server told each ended would forget the turns a reboot cut off, and not take them up again (chat.ts recover).
 process.on("SIGHUP", () => {})
 process.on("SIGINT", () => {})
-process.on("SIGTERM", () => { host.close(); setTimeout(() => process.exit(0), 300) })
+process.on("SIGTERM", () => { void served?.stop(); host.close(); setTimeout(() => process.exit(0), 300) })
 process.on("uncaughtException", (e) => log("uncaught:", e))
 process.on("unhandledRejection", (e) => log("unhandled:", e))

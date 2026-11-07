@@ -260,6 +260,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
+- `formatSize(n)`: "24 KB"
 - `Frame({ mode, className, children })`: A picture's box, in the colour scheme in use (`mode`: light or dark, else the app's).
 - `freeName(t, folder, base, ext?)`: A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 1"...: Obsidian's rule).
 - `get(path)`
@@ -773,6 +774,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useMenuShowing()`: A menu is showing, as a hook (what it was opened from holds still meanwhile).
 - `useNearEnd(ref, onNear, shown, margin?)`: A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked at again when `shown` changes (how many are shown: what's drawn since may have…
 - `useNearScreen(ref, margin?)`: Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after.
+- `useNoPhoneTitle(on)`: A page with no name to say yet (a chat while it loads): the phone's header shows none meanwhile, not a stand-in.
 - `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`.
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
 - `usePane()`
@@ -780,6 +782,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePatched(path, version?)`: useLive for an answer the server keeps frozen (the graph), asked again on `version` and its plugin's changes as a patch of the one it has (?patch=<v>, core/app.ts patched): only what changed…
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
+- `usePortalHost(id)`: The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the same frame (a view transition's picture takes it at once); one more render if it…
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
 - `useReflow(box, l)`: The window's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not opened or closed (grouped, ungrouped, moved by a menu or a drop) slide from where…
 - `useRewrap(box, on)`: Rows that wrap (tiles) in a box resized (a sidebar's edge dragged): items changing rows glide there, and the panels after its own by as much as it grew.

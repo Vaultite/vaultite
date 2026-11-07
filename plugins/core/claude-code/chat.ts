@@ -6,11 +6,12 @@ import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
+import readline from "node:readline"
 import type { WebSocket } from "ws"
 import { type AgentChatNew, type Asking, type Choice, choiceOf, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
-import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_THE_USER, type Op, type OpCtx, OpError, outliving, pipeSockets, type Plugin, runtimeDir,
-  splitMachine, userSurface } from "../../../core/plugins.ts"
-import { type Entry, Reader } from "./chatlog.ts"
+import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_THE_USER, type Op, type OpCtx, OpError, type Param, outliving, pipeSockets, type Plugin, runtimeDir,
+  splitMachine, Text, userSurface } from "../../../core/plugins.ts"
+import { type Entry, IMAGE_MAX, IMAGE_TYPES, IMAGES_MAX, type ImageType, imageType, Reader } from "./chatlog.ts"
 import { type Answer, codeOf, eachMessage, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
 
 type Account = { id: string; dir: string; label: string; private: boolean }
@@ -32,8 +33,8 @@ export type ChatDeps = {
  *  (`use`: the tool_use id, which its streamed input named). One that `streams` hears its input as it's written. */
 export type ChatTool = ToolDef & { run: (args: unknown, use?: string) => Promise<unknown>; stream?: (use: string, json: string, end?: "done" | "stop") => void }
 export type ChatStart = { prompt?: string; cwd?: string; account?: string; model?: string; effort?: Effort; mode?: Mode; append?: string
-  /** Pictures on this machine sent with its message (a screenshot), seen without a Read. */
-  images?: string[]
+  /** Pictures on this machine sent with its message (a screenshot), seen without a Read; `uuid`: that message's id. */
+  images?: string[]; uuid?: string
   /** Answers without thinking first (the summoned companion's). */
   quick?: boolean
   /** A lean session: its whole system prompt (no Claude Code's, nor chat.md, nor the user's settings, CLAUDE.md, MCP
@@ -171,7 +172,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       const h = await w.request("hello").catch(() => ({} as Record<string, unknown>))
       if (h.code !== codeOf(plugin.dir) && typeof h.pid === "number" && h.pid !== process.pid) retire(w, h.pid)
       for (const s of sessions) { hosted.set(s.id, s); void readAsks(w, s.id) }
-      for (const s of sessions) { tellInbox(s); inform(s.id, s) }
+      // (tabs were told each was gone when the last connection dropped)
+      for (const s of sessions) { tellInbox(s); inform(s.id, s); toTabs(s.id, { t: "state", s }) }
       void recover(new Set(sessions.map((s) => s.id)))
       return w
     })()
@@ -189,7 +191,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     console.error(`chat: its keeper (pid ${pid}) runs other code: ending it once it's quiet`)
     const t = setInterval(() => {
       if (w.closed) return clearInterval(t)
-      if ([...hosted.values()].some((s) => s.state === "working" || s.state === "waiting" || s.state === "starting") || Date.now() - busyAt < 2 * 60_000) return
+      // (ending it ends what sessions run in the background too)
+      if ([...hosted.values()].some((s) => s.state === "working" || s.state === "waiting" || s.state === "starting" || s.background) || Date.now() - busyAt < 2 * 60_000) return
       clearInterval(t)
       try { process.kill(pid, "SIGTERM") } catch { /* gone */ }
     }, 15_000)
@@ -287,7 +290,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     if (e.t === "put") {
       if (e.e.k === "ask") { if (e.e.answer) asking.get(e.id)?.delete(e.e.id); else asksOf(e.id).set(e.e.id, e.e) }
       toTabs(e.id, { t: "put", e: e.e })
-    } else if (e.t === "state") {
+    } else if (e.t === "drop") toTabs(e.id, { t: "drop", e: e.e })
+    else if (e.t === "state") {
       if (e.s.state !== "idle" && e.s.state !== "error") busyAt = Date.now()
       const was = hosted.get(e.s.id)?.state
       hosted.set(e.s.id, e.s)
@@ -437,8 +441,9 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     if (o.cwd && !fs.statSync(o.cwd, { throwIfNoEntry: false })?.isDirectory()) throw new OpError(`there's no folder ${o.cwd}`, 404)
     if (o.model && !d.models().models.some((m) => m.id === o.model) && !/^claude-[\w.-]+$/.test(o.model)) throw new OpError(`'${o.model}' isn't a model Claude Code runs`)
     const id = crypto.randomUUID()
-    if (own) owned.set(id, { ...o, prompt: undefined, images: undefined })
-    const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: false }, a), ...(o.prompt?.trim() ? { prompt: o.prompt.trim(), ...(o.images?.length ? { images: o.images } : {}) } : {}) }) as { s: Summary }
+    if (own) owned.set(id, { ...o, prompt: undefined, images: undefined, uuid: undefined })
+    const said = o.prompt?.trim() || o.images?.length ? { prompt: o.prompt?.trim() ?? "", ...(o.images?.length ? { images: o.images } : {}), ...(o.uuid ? { uuid: o.uuid } : {}) } : {}
+    const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: false }, a), ...said }) as { s: Summary }
     // (its news after the answer, in the same read, was heard first: newer)
     if (!hosted.has(id)) hosted.set(id, s)
     return hosted.get(id)!
@@ -456,8 +461,9 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     busyAt = Date.now()
     if (!SESSION.test(id)) throw new OpError(`'${id}' isn't a session id`)
     const o = { ...owned.get(id), ...given }
-    const said = text.trim()
-    if (!said) throw new OpError("text: what to say")
+    const said = text.trim(), pics = { ...(given.images?.length ? { images: given.images } : {}), ...(given.uuid ? { uuid: given.uuid } : {}) }
+    if (!said && !given.images?.length) throw new OpError("`text`: what to say (or `images`)")
+    let lost: Summary | undefined
     if (hosted.has(id) && hosted.get(id)!.state !== "error") {
       // (chosen in a tab that didn't know it ran yet: applied before what it's told)
       const s = hosted.get(id)!, was = owned.get(id)
@@ -465,8 +471,15 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       const change = { ...(given.model && given.model !== s.model && given.model !== was?.model ? { model: given.model } : {}),
         ...(given.effort && given.effort !== s.effort && given.effort !== was?.effort ? { effort: given.effort } : {}),
         ...(given.mode && given.mode !== s.mode ? { mode: given.mode } : {}) }
-      if (Object.keys(change).length) await ask("set", { id, ...change })
-      return await ask("send", { id, text: said, ...(given.images?.length ? { images: given.images } : {}) }) as { uuid: string; answered?: string }
+      try {
+        if (Object.keys(change).length) await ask("set", { id, ...change })
+        return await ask("send", { id, text: said, ...pics }) as { uuid: string; answered?: string }
+      } catch (e) {
+        // (its process ended a moment ago, idle a while, its news on the way: resumed with it instead)
+        if (!/^no session \S+ runs here$/.test((e as Error).message)) throw e
+        lost = hosted.get(id)
+        hosted.delete(id)
+      }
     }
     const why = await busyElsewhere(id)
     if (why) throw new OpError(why, 409)
@@ -474,11 +487,11 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     if (!f) throw new OpError(`no session ${id} on this machine (or it's in a private account)`, 404)
     if (f.account.private) throw new OpError("it's in a private account, which the app doesn't show", 403)
     const t = await readTitle(id)
-    const was = hosted.get(id)
+    const before = hosted.get(id), was = before ?? lost
     const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: true, cwd: o.cwd || t?.cwd || "",
       model: o.model || was?.model || undefined, effort: o.effort || (was?.effort || undefined) as Effort | undefined, mode: o.mode || was?.mode || kept[id]?.mode }, f.account), prompt: said,
-      ...(given.images?.length ? { images: given.images } : {}) }) as { s: Summary }
-    if (hosted.get(id) === was) hosted.set(id, s)
+      ...pics }) as { s: Summary }
+    if (hosted.get(id) === before) hosted.set(id, s)
     return { uuid: "", resumed: true }
   }
 
@@ -543,11 +556,13 @@ export function chats(plugin: Plugin, d: ChatDeps) {
 
   // ---------- the chat tab: its socket (the conversation, then each change), and its pickers' choices
 
+  /** What each tab not yet sent its hello hears meanwhile: sent after it, so nothing told is lost or undone. */
+  const holding = new WeakMap<WebSocket, string[]>()
   function toTabs(id: string, m: object) {
     const tabs = watching.get(id)
     if (!tabs?.size) return
     const text = JSON.stringify(m)
-    for (const ws of tabs) if (ws.readyState === ws.OPEN) ws.send(text)
+    for (const ws of tabs) { const held = holding.get(ws); if (held) held.push(text); else if (ws.readyState === ws.OPEN) ws.send(text) }
   }
 
   /** A page of a session's history: the newest `limit` entries before `before`. */
@@ -569,6 +584,12 @@ export function chats(plugin: Plugin, d: ChatDeps) {
   }
 
   /** The effort an account's sessions run at when none is chosen: its settings' for the model, else its own. */
+  /** The model an account's sessions start with (its settings' `model`), "" when Claude Code picks. */
+  function modelDefault(account: string) {
+    const a = d.accounts().find((x) => x.id === account)
+    try { const m = a ? (JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8")) as { model?: unknown }).model : ""; return typeof m === "string" ? m : "" } catch { return "" }
+  }
+
   function effortDefault(account: string, model = "") {
     const a = d.accounts().find((x) => x.id === account)
     if (!a) return ""
@@ -579,32 +600,66 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     } catch { return "" }
   }
 
-  async function hello(id: string) {
+  /** A session's conversation: its transcript with what the keeper has of it merged in (merge), and its state as of
+   *  that read (what's told after it is newer). */
+  async function conversation(id: string) {
     const t = await readTitle(id)
-    const s = hosted.get(id) ?? null
-    const live = s ? ((await ask("read", { id }).catch(() => null)) as { entries: Entry[] } | null)?.entries ?? [] : []
+    const live = hosted.has(id) ? ((await ask("read", { id }).catch(() => null)) as { entries: Entry[] } | null)?.entries ?? [] : []
+    return { t, s: hosted.get(id) ?? null, list: merge(t?.list ?? [], live) }
+  }
+
+  async function hello(id: string) {
+    const { t, s, list } = await conversation(id)
     const f = d.sessionFile(id)
     const account = s?.account || f?.account.id || ""
     return { t: "hello", id, s, title: t?.title ?? "", cwd: s?.cwd || t?.cwd || "", account, model: t?.model ?? "", effort: effortDefault(account, s?.model || t?.model),
-      history: page(t?.list ?? []), live, tui: s ? null : await d.tuiOf(id), found: !!(s || t), driven: drivenBy(id) }
+      history: page(list), tui: s ? null : await d.tuiOf(id), found: !!(s || t), driven: drivenBy(id) }
   }
+
+  // Every tab's socket is pinged (and told so, as /api/events is): a phone back from the background finds a socket that
+  // went quiet and connects again; one that stopped answering is ended here.
+  const answered = new Map<WebSocket, boolean>(), told = new WeakSet<WebSocket>()
+  function alive(ws: WebSocket, tell: boolean) {
+    answered.set(ws, true)
+    ws.on("pong", () => { if (answered.has(ws)) answered.set(ws, true) })
+    ws.on("close", () => answered.delete(ws))
+    if (tell) told.add(ws)
+  }
+  const pinging = setInterval(() => {
+    for (const [ws, ok] of answered) {
+      if (ws.readyState !== ws.OPEN) continue
+      if (!ok) { ws.terminate(); continue }
+      answered.set(ws, false)
+      try { ws.ping(); if (told.has(ws)) ws.send(PING) } catch { ws.terminate() }
+    }
+    sweep()
+  }, PING_MS)
+  pinging.unref?.()
+  plugin.onUnload(() => clearInterval(pinging))
 
   plugin.socket("claude-code/chat/*", async (ws, req, { wild }) => {
     const [id, at] = splitMachine(wild[0] ?? "")
     const why = await plugin.refusal(req, "Claude Code's chat")
     const m = !why && at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
     if (m && !m.self) {
-      // (another machine's session: its own socket, joined both ways)
-      if (!m.online) { ws.send(JSON.stringify({ t: "refused", reason: `${m.label} isn't answering` })); return ws.close(1013, "unavailable") }
-      return pipeSockets(ws, machineSocket(m, `claude-code/chat/${encodeURIComponent(id)}`), () => { ws.send(JSON.stringify({ t: "refused", reason: `${m.label} isn't answering` })); ws.close(1011, "unreachable") })
+      // (another machine's session: its own socket, joined both ways; not reached now, the tab tries again)
+      const away = () => { if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "unreachable", reason: `${m.label} isn't answering` })); ws.close(1013, "unreachable") } }
+      if (!m.online) return away()
+      const up = machineSocket(m, `claude-code/chat/${encodeURIComponent(id)}`)
+      alive(ws, true)
+      up.once("open", () => alive(up, false))
+      return pipeSockets(ws, up, away)
     }
     if (why || !SESSION.test(id) || (at && !m)) {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "refused", reason: why || "not a session id" }))
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "refused", reason: why || (at ? `no machine '${at}'` : "not a session id") }))
       return ws.close(4003, "refused")
     }
     let set = watching.get(id)
     if (!set) watching.set(id, (set = new Set()))
+    const held: string[] = []
+    holding.set(ws, held)
     set.add(ws)
+    alive(ws, true)
     // A session the keeper doesn't run (a terminal's, or one ended) is read again as its transcript grows.
     const sent = new Map<string, Entry>()
     let tui: string | null = null
@@ -620,10 +675,12 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       const h = await hello(id)
       for (const e of h.history.entries) sent.set(e.id, e)
       tui = h.tui
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(h))
+      if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify(h)); for (const text of held) ws.send(text) }
     } catch (e) {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "error", reason: String((e as Error)?.message ?? e) }))
-    }
+      // (closed, so the tab tries again, and says it couldn't load after a few)
+      console.error(`chat: hello for ${id}:`, e)
+      if (ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ t: "error", reason: String((e as Error)?.message ?? e) })); ws.close(1011, "hello failed") }
+    } finally { holding.delete(ws) }
   })
 
   plugin.route("GET", "claude-code/chat/*/history", async (req) => {
@@ -635,17 +692,39 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       if (!r?.ok) throw new OpError(`${m.label} doesn't answer`, 502)
       return await r.json()
     }
-    const t = await talkOf(id)
-    if (!t) return { entries: [], start: 0, total: 0 }
-    return page(t.list, req.query.before !== undefined ? Math.trunc(Number(req.query.before)) || 0 : undefined, Math.min(1000, Math.max(1, Number(req.query.limit) || PAGE)))
+    if (!SESSION.test(id)) throw new OpError(`'${id}' isn't a session id`, 404)
+    const { list } = await conversation(id)
+    return page(list, req.query.before !== undefined ? Math.trunc(Number(req.query.before)) || 0 : undefined, Math.min(1000, Math.max(1, Number(req.query.limit) || PAGE)))
   }, { sync: false })
 
+  // A user message's pictures: the file the server wrote while it's fresh, else from its transcript (another machine's
+  // session asked of it), so a tab shows them live and read back alike.
+  plugin.route("GET", "claude-code/chat/*/image/*/*", async (req) => {
+    await plugin.ownerOnly(req, "Claude Code's chat")
+    const [id, at] = splitMachine(req.arg(0)), entry = req.arg(1), n = req.arg(2)
+    if (!SESSION.test(id) || !SESSION.test(entry) || !/^\d{1,3}$/.test(n)) throw new OpError("no such picture", 404)
+    const m = at ? await plugin.ask<Machine | null>("machines:machine", null, at) : null
+    if (at && !m) throw new OpError(`no machine '${at}' (Machines lists them)`, 404)
+    if (m && !m.self) {
+      const r = await fetch(`${m.url}/api/claude-code/chat/${encodeURIComponent(id)}/image/${encodeURIComponent(entry)}/${n}`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(30000) }).catch(() => null)
+      if (r?.status === 404) throw new OpError("no such picture", 404)
+      if (!r?.ok) throw new OpError(`${m.label} doesn't answer`, 502)
+      return new Text(Buffer.from(await r.arrayBuffer()), r.headers.get("content-type") ?? "application/octet-stream", KEEP_IMAGE)
+    }
+    const b = pictureFile(entry, Number(n)) ?? await pictureIn(d.sessionFile(id)?.file, entry, Number(n))
+    const type = b && imageType(b)
+    if (!b || !type) throw new OpError("no such picture", 404)
+    return new Text(b, type, KEEP_IMAGE)
+  }, { sync: false })
+
+  // (as sessions' folders are said: the vault through a link, iCloud's, is the same folder as their cwd)
+  const realVault = () => { try { return fs.realpathSync(plugin.vault.path) } catch { return plugin.vault.path } }
   plugin.route("GET", "claude-code/chat/options", async (req) => {
     await plugin.ownerOnly(req, "Claude Code's chat")
     const m = d.models()
     return { models: m.models, efforts: m.efforts, modes: MODES.map((id) => ({ id, label: MODE_LABELS[id] })),
-      accounts: d.accounts().filter((a) => !a.private).map((a) => ({ id: a.id, label: a.label, effort: effortDefault(a.id), mode: modeDefault(a.id) })),
-      folders: (await d.folders()).slice(0, 12), vault: plugin.vault.path, home: HOME }
+      accounts: d.accounts().filter((a) => !a.private).map((a) => { const model = modelDefault(a.id); return { id: a.id, label: a.label, model, effort: effortDefault(a.id, model), mode: modeDefault(a.id) } }),
+      folders: (await d.folders()).slice(0, 12), vault: realVault(), home: HOME }
   }, { sync: false })
 
   // ---------- ops: vau chat ..., MCP's tools
@@ -714,11 +793,13 @@ auto, dontAsk, bypassPermissions; none: the account's permissions.defaultMode, e
       effort: { type: "string", enum: EFFORTS, description: "how hard it thinks" },
       mode: { type: "string", enum: MODES, description: "its permission mode (default: the account's permissions.defaultMode, else auto)" },
       open: { type: "boolean", description: "open its chat tab in the user's window" },
+      images: IMAGES_PARAM,
     },
     args: ["prompt"],
     run: async (p, ctx) => {
+      const uuid = crypto.randomUUID(), images = picturesFor(uuid, p.images)
       const s = await start({ prompt: p.prompt, cwd: p.cwd ? path.resolve(String(p.cwd).replace(/^~(?=$|\/)/, HOME)) : undefined, account: p.account,
-        model: p.model, effort: p.effort, mode: p.mode, by: byUser(ctx.who) ? "app" : ctx.who.agent || ctx.who.client || "agent" })
+        model: p.model, effort: p.effort, mode: p.mode, by: byUser(ctx.who) ? "app" : ctx.who.agent || ctx.who.client || "agent", ...(images.length ? { images, uuid } : {}) })
       if (p.open) await show(ctx, s.id)
       return { id: s.id, state: s.state, cwd: s.cwd, account: s.account }
     },
@@ -733,20 +814,29 @@ auto, dontAsk, bypassPermissions; none: the account's permissions.defaultMode, e
 a reply in their place. A session running in a terminal is answered there, not here.
 
   vau chat send 3f2a... "Also update the changelog"`,
-    params: { id: ID, text: { type: "string", required: true, description: "what to say" },
+    params: { id: ID, text: { type: "string", description: "what to say (none: only its pictures)" },
       model: { type: "string", description: "resuming it: the model to run" }, effort: { type: "string", enum: EFFORTS, description: "resuming it: its effort" },
-      mode: { type: "string", enum: MODES, description: "resuming it: its permission mode" } },
+      mode: { type: "string", enum: MODES, description: "resuming it: its permission mode" }, images: IMAGES_PARAM },
     args: ["id", "text"],
-    run: async (p) => ({ id: p.id, ...(await send(p.id, p.text, { model: p.model, effort: p.effort, mode: p.mode })) }),
+    run: async (p) => {
+      const uuid = crypto.randomUUID(), images = picturesFor(uuid, p.images)
+      return { id: p.id, ...(await send(p.id, String(p.text ?? ""), { model: p.model, effort: p.effort, mode: p.mode, ...(images.length ? { images, uuid } : {}) })) }
+    },
     text: (r) => (r.answered ? "It was asking: that's its answer." : r.resumed ? "Resumed it with that." : "Sent."),
   })
 
   onMachines({
     id: "claude-code.chat-interrupt", cli: "chat interrupt", mcp: "chat_interrupt", owner: OWNER, kind: "write", lock: false,
     summary: "Stop a Claude Code chat session's turn, as Esc does in the terminal: what it was doing stops, the session stays.",
+    help: `Messages sent while it worked that it hadn't started on are taken back (taken: each one's id, text and pictures, to
+send again), as Esc gives them back in a terminal.`,
     params: { id: ID }, args: ["id"],
-    run: async (p) => { hostedOr404(p.id); await ask("interrupt", { id: p.id }); return { id: p.id } },
-    text: () => "Interrupted.",
+    run: async (p) => {
+      hostedOr404(p.id)
+      const r = await ask("interrupt", { id: p.id }) as { taken?: Extract<Entry, { k: "user" }>[] }
+      return { id: p.id, taken: r.taken ?? [] }
+    },
+    text: (r) => `Interrupted.${r.taken.length ? ` Taken back, not sent: ${r.taken.map((e: Entry) => (e.k === "user" ? JSON.stringify(e.text) : "")).join(", ")}.` : ""}`,
   })
 
   onMachines({
@@ -856,9 +946,7 @@ Machines (its sessions are <id>@<machine>), all every machine's.
     run: async (p) => {
       const h = await hello(p.id)
       if (!h.found) throw new OpError(`no session ${p.id} on this machine (or it's in a private account)`, 404)
-      const all = new Map(h.history.entries.map((e) => [e.id, e]))
-      for (const e of h.live) all.set(e.id, e)
-      return { id: p.id, title: h.title, cwd: h.cwd, state: h.s?.state ?? (h.tui !== null ? "in a terminal" : "ended"), entries: [...all.values()].slice(-(Number(p.limit) || 30)) }
+      return { id: p.id, title: h.title, cwd: h.cwd, state: h.s?.state ?? (h.tui !== null ? "in a terminal" : "ended"), entries: h.history.entries.slice(-(Number(p.limit) || 30)) }
     },
     text: (r) => [`# ${r.title || "Chat"} (${r.state})`, ...r.entries.map(entryText).filter(Boolean)].join("\n\n"),
   })
@@ -912,10 +1000,106 @@ Machines (its sessions are <id>@<machine>), all every machine's.
   }
 }
 
+const IMAGES_PARAM = { type: "array", description: `pictures sent with it (at most ${IMAGES_MAX}, ${IMAGE_MAX >> 20} MB each): {data: base64, type: ${IMAGE_TYPES.join(" | ")}}`,
+  items: { type: "object", properties: { data: { type: "string" }, type: { type: "string", enum: IMAGE_TYPES } }, required: ["data", "type"] } } satisfies Param
+const EXT: Record<ImageType, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }
+/** Where the pictures given to the ops wait for the keeper to read them (this machine's, out of the vault), by the
+ *  message they go with, a day at most: a transcript has them after. */
+export const IMAGES = path.join(os.tmpdir(), `vaultite-chat-images-${NAME}`)
+const IMAGE_DAYS = 1
+const KEEP_IMAGE = { "Cache-Control": "private, max-age=31536000, immutable" }
+const PING_MS = 20_000, PING = JSON.stringify({ t: "ping" })
+
+/** The pictures an op was given, checked (each one's bytes say what it is), written for message `uuid`: their files. */
+export function picturesFor(uuid: string, given: unknown): string[] {
+  if (given === undefined || given === null) return []
+  if (!Array.isArray(given)) throw new OpError("`images`: a list of {data, type}")
+  if (given.length > IMAGES_MAX) throw new OpError(`\`images\`: at most ${IMAGES_MAX} a message (${given.length} given)`)
+  const pics = given.map((g: { data?: unknown; type?: unknown } | null, i) => {
+    const data = typeof g?.data === "string" ? g.data.replace(/\s+/g, "") : "", type = g?.type as ImageType
+    if (!IMAGE_TYPES.includes(type)) throw new OpError(`\`images\`: picture ${i + 1}'s type is ${IMAGE_TYPES.join(", ")}`)
+    if (data.startsWith("data:")) throw new OpError(`\`images\`: picture ${i + 1}'s data is base64 alone, without its data: prefix`)
+    if (!data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) throw new OpError(`\`images\`: picture ${i + 1}'s data isn't base64`)
+    if (Math.floor(data.length * 3 / 4) - (data.match(/=+$/)?.[0].length ?? 0) > IMAGE_MAX) throw new OpError(`\`images\`: picture ${i + 1} is over ${IMAGE_MAX >> 20} MB`)
+    const bytes = Buffer.from(data, "base64"), is = imageType(bytes)
+    if (!is) throw new OpError(`\`images\`: picture ${i + 1} isn't a PNG, JPEG, GIF or WebP picture`)
+    if (is !== type) throw new OpError(`\`images\`: picture ${i + 1} is ${is}, not ${type}`)
+    return { bytes, type }
+  })
+  if (!pics.length) return []
+  fs.mkdirSync(IMAGES, { recursive: true, mode: 0o700 })
+  sweep()
+  return pics.map((p, n) => {
+    const f = path.join(IMAGES, `${uuid}-${n}.${EXT[p.type]}`)
+    fs.writeFileSync(f, p.bytes, { mode: 0o600 })
+    return f
+  })
+}
+/** Picture `n` of message `entry` as the server wrote it, while it's kept. */
+function pictureFile(entry: string, n: number) {
+  for (const ext of Object.values(EXT)) { try { return fs.readFileSync(path.join(IMAGES, `${entry}-${n}.${ext}`)) } catch { /* not this one */ } }
+  return null
+}
+/** Picture `n` of message `entry` as its transcript keeps it (a user line, or one sent mid-turn: its queued_command). */
+async function pictureIn(file: string | undefined, entry: string, n: number) {
+  if (!file) return null
+  const lines = readline.createInterface({ input: fs.createReadStream(file, "utf8"), crlfDelay: Infinity })
+  try {
+    for await (const line of lines) {
+      if (!line.includes(entry) || !line.includes('"image"')) continue
+      let d: { uuid?: unknown; message?: { content?: unknown }; attachment?: { source_uuid?: unknown; prompt?: unknown } }
+      try { d = JSON.parse(line) } catch { continue }
+      const content = d.uuid === entry ? d.message?.content : d.attachment?.source_uuid === entry ? d.attachment.prompt : null
+      if (!Array.isArray(content)) continue
+      const img = content.filter((c) => c?.type === "image")[n] as { source?: { type?: string; data?: unknown } } | undefined
+      return img?.source?.type === "base64" && typeof img.source.data === "string" ? Buffer.from(img.source.data, "base64") : null
+    }
+  } catch { /* gone */ } finally { lines.close() }
+  return null
+}
+let swept = 0
+/** The pictures kept past IMAGE_DAYS removed (at most hourly). */
+function sweep() {
+  if (Date.now() - swept < 3600_000) return
+  swept = Date.now()
+  let names: string[] = []
+  try { names = fs.readdirSync(IMAGES) } catch { return }
+  for (const name of names) {
+    const f = path.join(IMAGES, name)
+    try { if (Date.now() - fs.statSync(f).mtimeMs > IMAGE_DAYS * 86400_000) fs.rmSync(f, { force: true }) } catch { /* gone */ }
+  }
+}
+
+/** A transcript with the keeper's entries (`live`) merged in: shared ones where the transcript has them, the keeper's
+ *  own (asks, failed turns, notes) after the one before them there; a "Stopped" left out beside an "Interrupted". */
+export function merge(history: Entry[], live: Entry[]): Entry[] {
+  const at = new Map(history.map((e, i) => [e.id, i]))
+  const out = [...history], before = new Map<number, Entry[]>(), after = new Map<number, Entry[]>(), tail: Entry[] = []
+  let prev = -1, waiting: Entry[] = []
+  for (const e of live) {
+    const i = at.get(e.id)
+    if (i === undefined) { (prev < 0 ? waiting : after.get(prev) ?? (after.set(prev, []), after.get(prev)!)).push(e); continue }
+    out[i] = e
+    if (prev < 0 && waiting.length) { before.set(i, waiting); waiting = [] }
+    prev = i
+  }
+  tail.push(...waiting)
+  const all = out.flatMap((e, i) => [...(before.get(i) ?? []), e, ...(after.get(i) ?? [])]).concat(tail)
+  // (each turn's own: from a user message to the next)
+  const only = new Set(live.filter((e) => !at.has(e.id)).map((e) => e.id)), drop = new Set<string>()
+  for (let i = 0, from = 0; i <= all.length; i++) {
+    if (i < all.length && all[i].k !== "user") continue
+    const turn = all.slice(from, i)
+    if (turn.some((e) => e.k === "note" && e.text === "Interrupted")) for (const e of turn) if (e.k === "note" && e.text === "Stopped" && only.has(e.id)) drop.add(e.id)
+    from = i
+  }
+  return drop.size ? all.filter((e) => !drop.has(e.id)) : all
+}
+
 /** An entry as one Markdown paragraph, for an agent reading a chat. */
 function entryText(e: Entry): string {
   switch (e.k) {
-    case "user": return `**You:** ${e.text}`
+    case "user": return `**You:** ${e.text}${e.images?.length ? ` (${e.images.length} picture${e.images.length > 1 ? "s" : ""})` : ""}`
     case "text": return e.text
     case "thinking": return ""
     case "tool": return `\`${e.name}\` ${e.summary}${e.error ? " (failed)" : ""}`

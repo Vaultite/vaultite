@@ -20,6 +20,19 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   others over your network (the hub, any peer, or an iCloud mailbox), merges them by line or key, and keeps a real
   clash in the note to settle. Try it beside iCloud first with `vau sync shadow` (`vau sync`, `vau sync compare`).
   The iPhone app keeps a copy (notes in full, media by `vau sync keep` rules, a Downloads page) and opens it offline.
+- **Claude chats take pictures, and what Claude asks waits by the composer**: paste, drop or attach pictures (made
+  small enough in the browser, shown as thumbnails to remove), and send them with or without words. A permission,
+  question or plan docks over the composer with its keys (Enter allows, Esc denies, a number picks); a message sent
+  while Claude works waits there as queued (Stop gives it back to edit). The header stays pinned, a phone shows it in
+  its own bar, a new chat puts the composer under its prompt, and an error, a chat that won't load or a machine that
+  isn't answering says so with Try now and Open in terminal.
+- **A chat's turns read like the Claude app's**: a line under a working turn says what Claude does now (thinking,
+  with its latest words; writing; running which call) and for how long; once done, its work folds into "Worked for 1m 12s" above the answer.
+  Each call says what came of it (+2 −1, 42 passed, exit 1, 120 lines) and shows running, done or failed; commands
+  show their output in one box, edits a monospaced diff, files numbered lines. Words flow in as they're written with a
+  dot after the last one, the chat glides down with them (scrolled up, it stays and offers Jump to latest), folds open
+  and shut smoothly, code scrolls sideways (fading where it's cut) instead of wrapping, and a message's pictures show
+  above it.
 - **Messages sent while Claude works stay where you sent them**: in a chat, what you send mid-turn is read back from
   its transcript in its place, instead of falling to the bottom or going missing once the chat reloads.
 - **The notch island is calm, the menu bar menu short**: at rest the island is one still count of the agents working,
@@ -34,6 +47,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   terminal, a field, another app) and the ones that never landed (the app closed, cancelled, only copied), beside your
   asks to the companion. Search them, Copy, or Insert again where you were typing. Kept 30 days on this Mac only, never
   in the vault; Keep dictations turns it off and Clear dictations empties it (Show dictations, Settings > Dictation).
+- **Chats with Claude keep up as a terminal does**: a reload shows the conversation as it happened (asks and failed turns in place), a message sent as Claude finishes shows it working
+  with Stop, Stop gives back the messages it hadn't started on, and a phone back from the background or another
+  machine's blip reconnects on its own. Messages can carry pictures (`images` on `vau chat start` and `send`).
 - **Questions over a job's page get a quick answer**: live editing sends only changes ("make this blue") and unclear
   asks to the job; a plain question ("what does this button do?") goes to the companion, which knows what the job did
   there. A job taking a long run of edits starts fresh with a summary instead of slowing down or compacting mid-ask.
