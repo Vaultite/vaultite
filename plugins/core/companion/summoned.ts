@@ -152,7 +152,7 @@ export function summonedLane(o: {
     if (!x?.isError) { shown = true; unshown = false; return r }
     if (spoke || shown || withdrawn || stopped) return r
     unshown = true; lastDid = NOT_SHOWN
-    if (!handed) { unshown = false; inSummoned.run(true, () => o.did(o.name(), "say", undefined, NOT_SHOWN)); o.say(o.name(), NOT_SHOWN) }
+    if (!handed) { unshown = false; acted = true; inSummoned.run(true, () => o.did(o.name(), "say", undefined, NOT_SHOWN)); o.say(o.name(), NOT_SHOWN) }
     return r
   }
   /** A tool's answer, with the marks that didn't show since. */
@@ -173,8 +173,8 @@ export function summonedLane(o: {
   // ---------- its words: each text block, said as it grows, its tags acted on as each one closes
   const blocks = new Map<string, number>()
   /** Its acts in order (a tag's look or mark, a block's last words), one after another. */
-  let queue: Promise<unknown> = Promise.resolve()
-  const then = (f: () => Promise<unknown>) => { queue = queue.then(() => inSummoned.run(true, f)).catch(() => {}) }
+  let queue: Promise<unknown> = Promise.resolve(), queued = 0
+  const then = (f: () => Promise<unknown>) => { queued++; queue = queue.then(() => inSummoned.run(true, f)).catch(() => {}).finally(() => queued--) }
   /** Its narration kept from their ears (its session still has it): never said at its turn's end either. */
   const unspoken = new Set<string>()
   const gated = wordsGate(words, (t) => { unspoken.add(t.trim()); if (unspoken.size > 20) unspoken.delete(unspoken.values().next().value!) })
@@ -236,10 +236,10 @@ export function summonedLane(o: {
     if (turn?.tags.length) for (const t of turn.tags) then(() => tagged(t, turn.said))
     if (turn?.said) { acted = true; inSummoned.run(true, () => o.did(name, "say", undefined, turn.said)); o.say(name, turn.said) }
     // (an ask never ends in silence: what its last tool did, else that it got nowhere; Esc's stop and the realtime voice's are theirs)
-    if (handed && (!acted || (unshown && !spoke)) && !shown && !withdrawn && !stopped) {
-      const x = quietly(lastDid)
-      acted = true; inSummoned.run(true, () => o.did(name, "say", undefined, x)); o.say(name, x)
-    }
+    const silent = () => (!acted || (unshown && !spoke)) && !shown && !withdrawn && !stopped
+    const fallback = () => { const x = quietly(lastDid); acted = true; inSummoned.run(true, () => o.did(name, "say", undefined, x)); o.say(name, x) }
+    // (its tags still acting: judged once they're done, a mark that didn't show says so itself)
+    if (handed && silent()) { if (!queued) fallback(); else { const of = asks; then(async () => { if (of === asks && silent()) fallback() }) } }
     if (handed) ended(name, was)
     void pump()
   }
