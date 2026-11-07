@@ -23,10 +23,13 @@ export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
 /** States the user hears about, a badge until they open the job. */
 const NEWS = new Set<JobState>(["needs you", "ready for review", "done", "failed"])
 export const live = (s: JobState) => s === "starting" || s === "working" || s === "needs you"
-/** Whether job `j` has a change of its own to merge (a repo's diff or files, not yet merged; one closed unmerged too):
+/** Whether job `j`'s change is already on main: merged when they kept it, or its last move its own landing (its commit
+ *  or branch found on main, or its words saying it pushed there). */
+export const onMain = (j: Pick<Job, "land"> & Partial<Pick<Job, "log">>) => !!j.land?.merged || j.log?.at(-1)?.ev === "landed"
+/** Whether job `j` has a change of its own to merge (a repo's diff or files, not on main yet; one closed unmerged too):
  *  Keep then lands it. */
-export const landable = (j: Pick<Job, "state" | "where" | "result" | "land">) =>
-  (j.state === "ready for review" || j.state === "done") && !!j.where.repo && !!(j.result?.diff || j.result?.files?.length) && !j.land?.merged
+export const landable = (j: Pick<Job, "state" | "where" | "result" | "land"> & Partial<Pick<Job, "log">>) =>
+  (j.state === "ready for review" || j.state === "done") && !!j.where.repo && !!(j.result?.diff || j.result?.files?.length) && !onMain(j)
 /** What its worker is told when they keep its change: land it from its worktree as its repo says (never merging in the
  *  checkout it was asked over), clean that up, then say how it went in its first word. One line: it's typed in. */
 export function landTask(w: Pick<Where, "cwd" | "tree" | "branch" | "live">) {
@@ -274,7 +277,8 @@ export function jobText(j: Job, now = Date.now()) {
     said ? `it said (${ago(said.at, now)}): ${cut(said.text.trim(), 1500)}` : "", l?.asks?.length ? `asks: ${l.asks.join(" | ")}` : "",
     j.where.tree ? `its worktree: ${j.where.tree} (branch ${j.where.branch}), beside ${j.where.cwd}` : "",
     resultLine(r) ? `results: ${resultLine(r)}` : "", r?.files?.length ? `files: ${r.files.slice(0, 12).join(", ")}` : "",
-    j.land ? (j.land.at === undefined ? "kept: told to merge it, merging now" : j.land.merged ? "kept and merged" : "kept, but it didn't say it merged: see what it said") : "",
+    j.land ? (j.land.at === undefined ? "kept: told to merge it, merging now" : j.land.merged ? "kept and merged" : "kept, but it didn't say it merged: see what it said")
+      : onMain(j) ? "landed on main: nothing left to merge" : "",
     j.closed ? "its terminal closed once it was done: a follow-up (handoff --job) or opening it resumes its conversation" : "",
     `open it: vau companion job-open ${j.id}`].filter(Boolean).join("\n")
 }

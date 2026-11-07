@@ -223,6 +223,15 @@ Some words before the steps.
     cs[0].buttons.join() === "Keep and merge,Needs changes,Not yet" && cs[1].buttons.join() === "Keep,Needs changes" && cs[2].buttons.join() === "Merge it first,Not yet" &&
     cs.every((c, i) => c.buttons.every((b) => P.choiceSaid(b, i === 2 ? "offer" : "proof") !== null)) && !J.landable({ ...coded, land: { asked: 1, at: 2, merged: true } }) &&
     J.landable({ ...coded, state: "done" }) && !J.landable({ ...coded, state: "working" }), cs)
+  // (one already on main, landed by itself or merged when kept: nothing to merge, said so; Keep closes it)
+  const branched = { ...coded, where: { repo: "site", tree: "/p/site-j1", branch: "job-j1" } as unknown as Job["where"], log: [{ t: 1, ev: "changed" as const, from: "working" as const, to: "ready for review" as const }] }
+  const shipped = { ...branched, state: "done" as const, log: [...branched.log, { t: 2, ev: "working" as const, from: "ready for review" as const, to: "working" as const }, { t: 3, ev: "landed" as const, from: "working" as const, to: "done" as const }] }
+  const again = { ...shipped, state: "ready for review" as const, log: [...shipped.log, { t: 4, ev: "told" as const, from: "done" as const, to: "working" as const }, { t: 5, ev: "changed" as const, from: "working" as const, to: "ready for review" as const }] }
+  const ls = [P.choicesFor(shipped), P.choicesFor({ ...branched, land: { asked: 1, at: 2, merged: true } }), P.choicesFor(branched), P.choicesFor(again), P.choicesFor(note)]
+  check("proof: a job already on main (landed itself, or merged when kept) asks It's already in, Keep or Needs changes; one on its branch, Keep and merge; one with none, plain Keep",
+    ls.slice(0, 2).every((c) => c.say === "It's already in. Keep it, or does it need changes?" && c.buttons.join() === "Keep,Needs changes") && !J.landable(shipped) && J.onMain(shipped) &&
+    ls[2].buttons.join() === "Keep and merge,Needs changes,Not yet" && ls[3].buttons.join() === "Keep and merge,Needs changes,Not yet" && J.landable(again) &&
+    ls[4].say === "Keep it, or does it need changes?" && ls[4].buttons.join() === "Keep,Needs changes" && /landed on main/.test(J.jobText({ ...shipped, id: "j1", title: "x", terminal: "t", now: "", started: 1, turn: 1, at: 1, seen: true } as unknown as Job)), ls)
   check("proof: a worker's last message says whether it merged what they kept", J.mergedSaid("Merged: squashed into main as abc123.") === true && J.mergedSaid("**Merged** into main") === true &&
     J.mergedSaid("Not merged: CI is red on main.") === false && J.mergedSaid("I couldn't merge it: conflicts") === null && J.mergedSaid("Couldn't merge: conflicts") === false && J.mergedSaid("Done.") === null)
   check("proof: once merging what they kept, its knock says how it went", P.readyLine({ ...job, land: { asked: 1, at: 2, merged: true } }) === "Merged: Make the save button blue" &&

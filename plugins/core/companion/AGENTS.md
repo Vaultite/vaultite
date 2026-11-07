@@ -207,7 +207,8 @@ above that), act, run it again, and never end your turn.
   window instead, each step's `(before: <png>)` flipped over its thing, opened where its things are; a change not in
   the app on this Mac yet is said so, with Merge it first. A proof with no video (an older one) plays live. Then their
   choice: Keep and merge (a job with a change of its own: its warm worker is told to land it as its repo's
-  rules say, and the job closes once it says "Merged:"; plain Keep closes one with none), Needs changes (a clip of what
+  rules say, and the job closes once it says "Merged:"; plain Keep closes one with none, or one already on main,
+  said so: "It's already in"), Needs changes (a clip of what
   they show and say, sent to that job) or Not yet: theirs and the app's, never an ask of yours; so are their short
   answers to a knock ("not now", "mute it"). Show it only when they ask to see it (`job-show <id> --said "<their
   words>"`), never to answer another ask. "Keep it" with nothing shown: ask, merge it or close it as it is; a job ready

@@ -1,6 +1,6 @@
 // A job's proof: its change shown on the real UI, not claimed: its ready knock, Show me playing its worker's tour
-// (proofs.ts), then Keep and merge (its worker lands it), Needs changes (sent back) or Not yet. No Node.
-import { gist, type Job, landable, live, resultLine } from "./jobs.ts"
+// (proofs.ts), then Keep and merge (its worker lands it; Keep when it's already on main), Needs changes or Not yet. No Node.
+import { gist, type Job, landable, live, onMain, resultLine } from "./jobs.ts"
 import type { Step, Tour } from "./tour.ts"
 
 /** The layer a step's before picture is drawn on, beside its agent's own (each flips without the other). */
@@ -35,15 +35,15 @@ export function summaryOf(j: Pick<Job, "result" | "last" | "title">) {
   return parts.filter(Boolean).join(" ") || `It didn't say what changed for "${j.title}".`
 }
 
-/** What they can answer after a proof: keep it (and merge it, when it has a change of its own: landable), it needs
- *  changes, or not yet (it waits in Jobs). An offer to merge first (its change isn't live where they are): yes or not yet. */
+/** What they can answer after a proof: keep it (and merge it, when landable; one on main is said so), it needs changes,
+ *  or not yet (it waits in Jobs). An offer to merge first (its change isn't live where they are): yes or not yet. */
 export type Choice = "keep" | "broken" | "later"
 export type Asked = "proof" | "offer"
 /** The words of the choice for job `j`: its question and buttons, each button's words what happens. */
-export function choicesFor(j: Pick<Job, "state" | "where" | "result" | "land">, asked: Asked = "proof"): { say: string; buttons: string[] } {
+export function choicesFor(j: Pick<Job, "state" | "where" | "result" | "land"> & Partial<Pick<Job, "log">>, asked: Asked = "proof"): { say: string; buttons: string[] } {
   if (asked === "offer") return { say: "Merge it first, then show you?", buttons: ["Merge it first", "Not yet"] }
-  return landable(j) ? { say: "Keep it and merge it in, or does it need changes?", buttons: ["Keep and merge", "Needs changes", "Not yet"] }
-    : { say: "Keep it, or does it need changes?", buttons: ["Keep", "Needs changes"] }
+  if (landable(j)) return { say: "Keep it and merge it in, or does it need changes?", buttons: ["Keep and merge", "Needs changes", "Not yet"] }
+  return { say: j.where.repo && onMain(j) ? "It's already in. Keep it, or does it need changes?" : "Keep it, or does it need changes?", buttons: ["Keep", "Needs changes"] }
 }
 
 /** The user's answer after a proof (`asked`) in a few words: keep it (merge it), needs changes, not yet, or neither (a

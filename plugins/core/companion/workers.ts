@@ -850,6 +850,13 @@ in one short line, merge it or close it as it is (each a button).
       : seenHere(j.terminal, { context: true, ...(j.session ? { session: j.session } : {}) })).catch(() => null))?.context ?? null,
     /** They kept job `id`'s change: its worker told to merge it, the job closed once it says it merged. */
     land: (ctx: OpCtx, id: string) => land(ctx, jobOf(id)),
+    /** Job `id` ready for review looked for on main now (its proof's choice is about to ask): done when it landed. */
+    shipped: async (id: string) => {
+      const j = jobOf(id)
+      if (j.state !== "ready for review" || !j.where.repo || !(await shippedSince(j))) return false
+      changed()
+      return true
+    },
     /** Job `id` closed by the user (done when ready for review). */
     close: (ctx: OpCtx, id: string) => close(ctx, jobOf(id)),
     /** Why ask `m` may mean another job than `id` (its pane another job's terminal), "" when it can't. */

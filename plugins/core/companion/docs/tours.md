@@ -38,7 +38,7 @@ anchors:                     # optional, written by tour-save: what tells a targ
   with `video:` and each step's start (`times:`) in its frontmatter; `--video <file>` keeps one recorded otherwise.
   Every thing a step names is found by its words on that page first: one that isn't there fails, listing what is.
 - Once the job is ready it knocks "Ready to show you the blue save button"; "show me" plays the video by the notch
-  (`companion job-show <id>`), saying each step's words as it comes, then asks Keep and merge, Needs changes or Not yet.
+  (`companion job-show <id>`), saying each step's words as it comes, then asks Keep and merge, Needs changes or Not yet (one already on main: Keep or Needs changes).
   "Show me it live" (`--live`) plays the tour on Vaultite's window instead, when the change is in the app there. The
   worker's report embeds the video (`vau inbox report ... --video <its path>`).
 - `vau companion tour <note> [--mode show|guide|do] [--wait]` plays one; `companion tour-save "<title>"` saves the last

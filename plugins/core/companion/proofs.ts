@@ -1,5 +1,5 @@
 // A job's proof on the server: its ready knock, Show me playing its worker's video (else its tour, live), then Keep and
-// merge (its own worker lands it), Needs changes (a clip, sent back) or Not yet. The rules are proof.ts'.
+// merge (its own worker lands it; Keep alone once on main), Needs changes (a clip, sent back) or Not yet. Rules: proof.ts.
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { type Job, landable, live, terminalOf } from "./jobs.ts"
@@ -17,7 +17,7 @@ const SETTLE_MS = 900
 
 export type ProofDeps = {
   jobs: { list: () => Job[]; find: (id: string) => Job; seen: (ids: string[]) => void; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void>
-    land: (ctx: OpCtx, id: string) => Promise<void>; close: (ctx: OpCtx, id: string) => Promise<void>; unsure: (id: string, m: Moment | undefined, which?: string) => string }
+    land: (ctx: OpCtx, id: string) => Promise<void>; shipped: (id: string) => Promise<boolean>; close: (ctx: OpCtx, id: string) => Promise<void>; unsure: (id: string, m: Moment | undefined, which?: string) => string }
   knocks: { knock: (p: { from: string; who: string; line: string; urgency?: string; open?: string; hold?: number }) => Knock; settle: (from: string) => void }
   tours: { proofOf: (id: string) => { path: string; tour: Tour; problems: string[] } | null; show: (name: string, s: Screen, tour: Tour) => Promise<Result> }
   /** The companion's name (the one that shows proofs). */
@@ -57,6 +57,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
    *  helper to record). */
   let pending: { job: string; until: number; asked: Asked; tell?: boolean } | null = null
   let playing: { job: string; ctl: { stopped: boolean } } | null = null
+  /** The job being shown, looked for on main as it starts. */
+  let mainRead: Promise<boolean> = Promise.resolve(false)
 
   /** The job Show me means with no id: the one ready to show, only when there's just one (never a guess among several). */
   const jobOf = (id: string) => {
@@ -94,6 +96,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
   /** Show job `j`: its proof played, else said plainly what it changed; then the choice. */
   async function show(j: Job, voice: boolean, live = false) {
     const name = d.name(), proof = d.tours.proofOf(j.id), mine = { stopped: false }, began = Date.now()
+    // (its change may have reached main since it was last looked for: the choice and the offer to merge go by that)
+    mainRead = d.jobs.shipped(j.id).catch(() => false)
     playing = { job: j.id, ctl: mine }
     d.showing({ voice })
     try {
@@ -110,6 +114,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
         }
         return await choose(j, mine)
       }
+      await mainRead
       const away = d.notHere(j, t)
       // (a change that isn't in the app here has nothing on screen to find: say so, and offer to merge it first)
       if (away) {
@@ -141,6 +146,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     await choose(j, mine)
   }
   async function choose(j: Job, mine: { stopped: boolean }, asked: Asked = "proof") {
+    await mainRead
     if (mine.stopped) return
     pending = { job: j.id, until: Date.now() + CHOOSE_MS, asked }
     const c = choicesFor(j, asked)
@@ -167,7 +173,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
         await d.say("Merging it now. I'll tell you once it's in.")
         return { job: j.id, landing: true }
       }
-      // (nothing of its own to merge: reviewed, so closed as done; its conversation stays to resume)
+      // (nothing of its own to merge, or already on main: reviewed, so closed as done; its conversation stays to resume)
       if (j.state === "ready for review") await d.jobs.close(ctx, j.id).catch(() => {})
       await d.say("Kept.")
       return { job: j.id, kept: true }
@@ -190,8 +196,8 @@ asking to see it ("show me the header"); never in answer to anything else. Its v
 branch, another machine), each step's words said as it comes. --live plays its tour on their own screen instead, when
 they ask to see it live: a change not in the app on this Mac yet is said so, with an offer to merge it first. No proof,
 one that can't play or a thing it names gone: it says so plainly, with what the job says it changed. The choice is their click or word, the app's: Keep and
-merge (its own worker lands it as its repo says; the job closes once merged; with no change of its own, Keep closes
-it), Needs changes (a clip of what they show and say, sent back to that job), Not yet (it waits in Jobs). Its worker
+merge (its own worker lands it as its repo says; the job closes once merged; with no change of its own, or one
+already on main, said so: Keep closes it, nothing merged), Needs changes (a clip of what they show and say, sent back to that job), Not yet (it waits in Jobs). Its worker
 saves it: companion tour-save "<the change>" --job <its id> --record <its own server>.
 
   vau companion job-show j3k9x2a --said "show me the header"

@@ -283,8 +283,11 @@ export default async ($: VaultTest) => {
         const v = card2?.drawing.marks.find((k: Any) => k.type === "video")
         const both = await waitFor(async () => { const n = (await api("POST", "ops/companion.status", {}))[1].notes.filter((x: Any) => x.kind === "say").map((x: Any) => x.text); return n.includes("The heading is blue now.") && n.includes("The menu bar says so.") }, 20000, 100)
         const choice = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.some((k: Any) => k.type === "button")), 20000, 50)
-        check("proof: Show me plays its video by the notch (a video card at the top), says each step's words as it comes, then the choice",
-          sst === 200 && sb.video === vb.video && v?.at?.area === "top" && /The%20blue%20heading\.mp4/.test(v?.url ?? "") && !!both && !!choice, { sst, sb, v, both, choice: choice?.drawing.marks })
+        const already = await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && n.text === "It's already in. Keep it, or does it need changes?"), 5000, 50)
+        check("proof: Show me plays its video by the notch (a video card at the top), says each step's words as it comes, then the choice: merged, it's already in, Keep or Needs changes",
+          sst === 200 && sb.video === vb.video && v?.at?.area === "top" && /The%20blue%20heading\.mp4/.test(v?.url ?? "") && !!both && !!choice &&
+          !!already && choice.drawing.marks.filter((k: Any) => k.type === "button").map((k: Any) => k.label).join() === "Keep,Needs changes",
+          { buttons: choice?.drawing.marks.map((k: Any) => k.label), already, said: (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text).slice(-3), sst, sb, v, both })
         await api("POST", "ops/companion.job-show", { choose: "later" })
         win.emit("close")
       }
