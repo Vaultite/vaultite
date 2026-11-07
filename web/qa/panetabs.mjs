@@ -153,6 +153,16 @@ try {
   check("another tab shown: the split's row is its map, a cell saying +1", await until(async () => (await lists.count()) === 0 && (await page.locator("[data-tabs-panel] [data-cell-more]").allInnerTexts()).join() === "+1", 3000),
     await page.locator("[data-tabs-panel] [data-cell-more]").allInnerTexts())
   await page.locator("[data-tabs-panel]").screenshot({ path: `${OUT}panetabs-folded.png` })
+  {
+    // (hovered, its X shows over its end: the +1 steps aside, not drawn under it)
+    const cell = page.locator("[data-tabs-panel] [data-pane-half]").filter({ has: page.locator("[data-cell-more]") }).first()
+    const op = async (sel) => cell.locator(sel).evaluate((e) => Number(getComputedStyle(e).opacity))
+    await cell.hover()
+    check("hovered, a cell's +1 gives its place to its X", await until(async () => (await op("[data-cell-more]")) === 0 && (await op("[data-cell-close]")) === 1, 2000),
+      [await op("[data-cell-more]"), await op("[data-cell-close]")])
+    await page.locator("[data-tabs-panel]").screenshot({ path: `${OUT}panetabs-folded-hover.png` })
+    await page.mouse.move(0, 0)
+  }
 
   // The tab bar on: each pane of the split has a strip of its own tabs, one or more, with its +.
   await page.locator(`[data-tabs-panel] [data-open-tab="${split}"]`).click(); await until(async () => (await state()).active === split)

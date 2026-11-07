@@ -75,7 +75,8 @@ function SplitMap({ t, active, info, folded }: { t: Tab; active: boolean; info: 
           {mark}
           {sign}
           <span className={cn("min-w-0 flex-1 overflow-hidden fade-end @max-[52px]:hidden", active && !on && "font-normal text-muted-foreground")}>{pi.label}</span>
-          {more > 0 && <span data-cell-more className="shrink-0 pr-0.5 text-[11px] font-normal text-tertiary tabular-nums @max-[72px]:hidden">+{more}</span>}
+          {/* (its count of the pane's other tabs gives its place to the X, as the name fades under it) */}
+          {more > 0 && <span data-cell-more className="shrink-0 pr-0.5 text-[11px] font-normal text-tertiary tabular-nums transition-opacity group-hover/cell:opacity-0 group-focus-within/cell:opacity-0 @max-[72px]:hidden">+{more}</span>}
         </span>
         <button type="button" data-cell-close={p.id} data-no-drag aria-label={`Close ${pi.label}`} data-tip="Close pane"
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); closePane(p.id) }}

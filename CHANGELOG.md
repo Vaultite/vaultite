@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A split's count of other tabs no longer sits under its close button**: in vertical tabs, hovering a pane of a
+  split showed its +1 under the X; the count now steps aside while the X shows.
 - **Proof, not claims**: a job that's done knocks by the notch, "Ready to show you the blue save button". Say "show
   me" and the companion plays its change on your screen, a picture of how it looked before flipped over how it is
   now as it talks you through it; then Keep, or Still broken to record what's wrong and send it back to that job.
