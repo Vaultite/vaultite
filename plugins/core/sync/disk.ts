@@ -181,18 +181,19 @@ export class DiskStore implements Store {
     fs.writeFileSync(`${p}.tmp`, b)
     fs.renameSync(`${p}.tmp`, p)
   }
-  /** A clone on APFS (no space until one changes), a hard link elsewhere (checked by hash when read); a big file that
-   *  can be neither (iCloud Drive's), pointed at where it is. */
+  /** A clone on APFS (no space until one changes); else a big file is pointed at where it is, a small one copied (a hard
+   *  link would change with the file, edited in place). */
   keepFile(h: string, folder: Folder, p: string) {
     if (!(folder instanceof DiskFolder)) return false
     const to = this.blobPath(h)
     if (fs.existsSync(to) || this.pointer(h)) return true
     fs.mkdirSync(path.dirname(to), { recursive: true })
     try {
-      if (process.platform === "darwin") fs.copyFileSync(folder.abs(p), `${to}.tmp`, fs.constants.COPYFILE_FICLONE_FORCE)
-      else fs.linkSync(folder.abs(p), `${to}.tmp`)
-      fs.renameSync(`${to}.tmp`, to)
-      return true
+      if (process.platform === "darwin") {
+        fs.copyFileSync(folder.abs(p), `${to}.tmp`, fs.constants.COPYFILE_FICLONE_FORCE)
+        fs.renameSync(`${to}.tmp`, to)
+        return true
+      }
     } catch { fs.rmSync(`${to}.tmp`, { force: true }) }
     try { if (fs.statSync(folder.abs(p)).size >= BIG) { this.point(h, folder.abs(p)); return true } } catch { /* gone */ }
     return false

@@ -344,6 +344,8 @@ export class Replica {
     const kind = Math.max(x.size, y.size) > TEXT_MAX ? "binary" : kindOf(path, y.size < 1 << 20 ? this.store.blob(y.blob) : null)
     if (kind !== "binary") {
       if (!this.store.hasBlob(x.blob) || !this.store.hasBlob(y.blob) || bs.some((b) => b.blob && !this.store.hasBlob(b.blob))) return null
+      // (a blob that's gone when read waits to be fetched again: never merged as binary for it)
+      if (!this.store.blob(x.blob) || !this.store.blob(y.blob) || bs.some((b) => b.blob && !this.store.blob(b.blob))) return null
       const bt = this.textOfSet(bs), xt = this.blobText(x.blob), yt = this.blobText(y.blob)
       if (bt !== null && xt !== null && yt !== null) {
         const m = (kind === "json" && mergeJson(bt, yt, xt, true)) || mergeText(bt, yt, xt, true)
