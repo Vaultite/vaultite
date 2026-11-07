@@ -228,6 +228,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** When each job's worker was first seen at rest (its turn may be over once that holds). */
   const resting = new Map<string, number>()
   const busy = new Set<string>()
+  /** Jobs whose terminal moved (or whose rest ended) while they were being read: read once more after. */
+  const again = new Map<string, boolean>()
   const HOLD = 1500
   /** When each live job's latest turn was read: what it says, read again at most every READ. */
   const read = new Map<string, number>()
@@ -235,7 +237,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** Job `j` read again: its worker's state moves it (a rest that holds is its turn's end: its results read then); a
    *  done one may have its terminal closed (tidy). */
   async function refresh(j: Job, now = false) {
-    if (busy.has(j.id) || j.state === "stopped" || !j.terminal) return
+    if (j.state === "stopped" || !j.terminal) return
+    // (dropped, its turn's end would wait for the next poll: seconds more before its news or its ring)
+    if (busy.has(j.id)) return void again.set(j.id, now || !!again.get(j.id))
     busy.add(j.id)
     try {
       const fresh = now || (live(j.state) && Date.now() - (read.get(j.id) ?? 0) >= READ)
@@ -264,7 +268,11 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
         else if (Date.now() - since >= HOLD) moved = await finish(j)
       } else if (j.state === "done") moved = await tidy(j, s)
       if (moved || waited || j.now !== was || j.last?.at !== said) changed()
-    } finally { busy.delete(j.id) }
+    } finally {
+      busy.delete(j.id)
+      const next = again.get(j.id)
+      if (next !== undefined) { again.delete(j.id); void refresh(j, next).catch((e) => console.error("companion: jobs:", e)) }
+    }
   }
   /** What its worker's latest turn (`s`, read with it) says: what it said and was told last, what it asks. */
   function heard(j: Job, s: Seen) {
