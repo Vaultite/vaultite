@@ -3087,7 +3087,9 @@ export async function checkNow(ctx: OpCtx, name: string, condition: string): Pro
   }
   const r = await ctx.ui({ action: "companion:check", condition }).catch((e) => {
     throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
-  }) as Verdict
+  }) as Verdict | null
+  // (a window still running the app from before it could check: it answers nothing)
+  if (typeof r?.saw !== "string") throw new OpError("the app's window is out of date: it can check once it reloads", 409)
   return { ...r, where: "Vaultite" }
 }
 plugin.op({
