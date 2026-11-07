@@ -229,14 +229,14 @@ export class Vt {
   // ---------- what it shows
 
   /** Its screen and history from row `from` (of its screen and history) down, as text, VT or HTML. */
-  protected format(emit: "PLAIN" | "VT" | "HTML", from: number, o: { unwrap: boolean; trim: boolean; extras?: number }) {
+  protected format(emit: "PLAIN" | "VT" | "HTML", from: number, o: { unwrap: boolean; trim: boolean; extras?: number; selection?: number }) {
     this.fset("EMIT", this.e("GhosttyFormatterFormat", emit))
     this.fset("UNWRAP", o.unwrap ? 1 : 0)
     this.fset("TRIM", o.trim ? 1 : 0)
     this.fset("EXTRAS", o.extras ?? 0)
     const opt = this.e("GhosttyFormatterOption", "SELECTION")
     // A selection from the first row asked to the end (else the whole screen), set just before it's used.
-    const sel = from > 0 ? this.selection(from) : 0
+    const sel = o.selection ?? (from > 0 ? this.selection(from) : 0)
     try {
       this.check(this.x.ghostty_formatter_set(this.fmt, opt, sel), "select")
       const pp = this.scratch + 32, lp = this.scratch + 40
@@ -246,7 +246,7 @@ export class Vt {
       this.x.ghostty_free(0, ptr, len)
       return out
     } finally {
-      if (sel) { this.x.ghostty_formatter_set(this.fmt, opt, 0); this.x.ghostty_wasm_free(sel, 64) }
+      if (sel) { this.x.ghostty_formatter_set(this.fmt, opt, 0); if (!o.selection) this.x.ghostty_wasm_free(sel, 64) }
     }
   }
   /** A GhosttySelection from (0, from) of its screen and history to its last cell. */

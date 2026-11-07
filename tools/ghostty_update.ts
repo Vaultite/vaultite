@@ -1,5 +1,5 @@
 // The terminal's libghostty-vt (vt/ghostty-vt.wasm) from a Ghostty release, its signature checked, with PROVENANCE.md;
-// by hand only: node tools/ghostty_update.ts --version 0.1.0 (a release), or --tip (moves: pin what you test).
+// by hand only: node tools/ghostty_update.ts --version 1.0.0 (a release), or --tip (moves: pin what you test).
 import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
@@ -28,7 +28,7 @@ async function about(wasm: Buffer) {
   const p = e.ghostty_type_json(), b = new Uint8Array(e.memory.buffer)
   let n = p
   while (b[n]) n++
-  const j = JSON.parse(new TextDecoder().decode(b.subarray(p, n))) as { library_version: string; commit: string; dirty: boolean }
+  const j = JSON.parse(new TextDecoder().decode(b.subarray(p, n))) as { library_version: string; commit: string | null; dirty: boolean }
   return { version: j.library_version, commit: j.commit, dirty: j.dirty }
 }
 
@@ -61,15 +61,15 @@ https://github.com/ghostty-org/ghostty). Not built here: its release file, its m
 Ghostty's key by \`tools/ghostty_update.ts\`, which wrote this file.
 
 - Version: ${it.version}
-- Source commit: ${it.commit}
+- Source: ${it.commit ? `commit ${it.commit}` : `tag vt-${version}`}
 - From: ${url}
 - SHA-256: ${sha}
 - Taken: ${new Date().toISOString().slice(0, 10)}
 
-Its C API: \`include/ghostty/vt.h\` at that commit (https://libghostty.tip.ghostty.org/). \`vt.ts\` reads enum values
+Its C API: \`include/ghostty/vt.h\` there (${version ? "https://lib.ghostty.org/" : "https://libghostty.tip.ghostty.org/"}). \`vt.ts\` reads enum values
 from the module itself (\`ghostty_type_json\`); struct offsets it uses are checked by \`tools/test_vt.ts\`.
 `)
-    console.log(`ghostty-vt.wasm ${it.version} (${it.commit}), sha256 ${sha}`)
+    console.log(`ghostty-vt.wasm ${it.version} (${it.commit ?? `vt-${version}`}), sha256 ${sha}`)
   } finally { fs.rmSync(tmp, { recursive: true, force: true }) }
 }
 

@@ -296,16 +296,7 @@ export class Screen extends Vt {
   /** The selection's text (wrapped lines joined), "" for none. */
   selectionText() {
     if (!this.hasSelection()) return ""
-    const o = this.sized("GhosttyTerminalSelectionFormatOptions", this.big + 352)
-    this.dv.setInt32(o + 4, this.e("GhosttyFormatterFormat", "PLAIN"), true)
-    this.dv.setUint8(o + 8, 1); this.dv.setUint8(o + 9, 1)
-    this.dv.setUint32(o + 12, this.selectionPtr(), true)
-    const pp = this.big + 384, lp = this.big + 388
-    if (this.x.ghostty_terminal_selection_format_alloc(this.h, 0, o, pp, lp) !== 0) return ""
-    const ptr = this.dv.getUint32(pp, true), len = this.dv.getUint32(lp, true)
-    const s = dec.decode(this.u8.subarray(ptr, ptr + len))
-    this.x.ghostty_free(0, ptr, len)
-    return s
+    try { return this.format("PLAIN", 0, { unwrap: true, trim: true, selection: this.selectionPtr() }) } catch { return "" }
   }
   clearSelection() { this.x.ghostty_terminal_set(this.h, this.e("GhosttyTerminalOption", "SELECTION"), 0) }
   selectAll() {
