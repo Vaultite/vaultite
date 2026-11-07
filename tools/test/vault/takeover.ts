@@ -49,6 +49,26 @@ export default async ($: VaultTest) => {
     L.intentOf({ action: "scroll", direction: "up" }, mail) === "Scrolling up" && L.intentOf({ action: "click", at: { x: 1, y: 2 } }, { ...mail, label: "" }) === "Clicking here" &&
     L.intentOf({ action: "fill", el, value: "x", doing: "Typing the title" }, mail) === "Typing the title" && L.intentOf({ action: "click", el, doing: "x".repeat(80) }, mail).length === 52 &&
     L.intentOf({ action: "click", el: { ...el, label: "A very long label that goes on and on past thirty" } }, mail) === "Clicking here")
+  // Behind their windows: the step ladder and its read-back (the Mac's half is takeover.swift, tried by hand).
+  const win = { ok: true, pid: 42, window: 7, name: "TextEdit", frame: { x: 100, y: 100, width: 400, height: 200 }, front: false, covered: 1, behind: true }
+  check("takeover behind: an app not open, hidden, windowless or Vaultite itself says why; their own front app in view is done in front",
+    /isn't open/.test(L.behindRefusal("Notes", { ok: false, why: "not-running" }) ?? "") && /hidden/.test(L.behindRefusal("Notes", { ok: false, why: "hidden", name: "Notes" }) ?? "") &&
+    /no window/.test(L.behindRefusal("Notes", { ok: false, why: "no-window" }) ?? "") && /Vaultite itself/.test(L.behindRefusal("Vaultite", { ok: true, vaultite: true }) ?? "") &&
+    L.behindRefusal("TextEdit", win) === null && !L.inFront(win) && L.inFront({ ...win, front: true, covered: 0 }) && !L.inFront({ ...win, front: true, covered: 0.4 }))
+  check("takeover behind: Accessibility first, then events sent to its window; a hover (the real pointer's) isn't done behind",
+    ops(L.behindPlan({ action: "click", el, app: "Mail" }, mail)) === "press | click" && ops(L.behindPlan({ action: "hover", el, app: "Mail" }, mail)) === "" &&
+    ops(L.behindPlan({ action: "type", value: "hi", app: "Mail" }, mail)) === "type")
+  check("takeover behind: a step counts as done only when read back: its field's value, its state, else its window changed",
+    L.verified({ action: "fill", value: "Lighthouse" }, { value: "" }, { value: "Lighthouse" }) && !L.verified({ action: "fill", value: "Lighthouse" }, { digest: "a" }, { digest: "b", value: "Light" }) &&
+    L.verified({ action: "type", value: "x" }, { value: "ab" }, { value: "axb" }) && L.verified({ action: "check" }, {}, { checked: true }) && !L.verified({ action: "uncheck" }, {}, { checked: true }) &&
+    L.verified({ action: "click" }, { digest: "a" }, { digest: "b" }) && !L.verified({ action: "click" }, { digest: "a" }, { digest: "a" }) && !L.verified({ action: "press", key: "Enter" }, {}, {}))
+  check("takeover behind: its card's cursor is where the step acts, as fractions of the window, kept inside it",
+    JSON.stringify(L.cursorIn({ x: 300, y: 150 }, win.frame)) === '{"x":0.5,"y":0.25}' && L.cursorIn({ x: 0, y: 900 }, win.frame)?.y === 1 && L.cursorIn(null, win.frame) === null &&
+    /Bring it forward/.test(L.unsureLine("TextEdit")))
+  check("takeover behind: act's step carries the app and the words, and its answer says it was done behind and read back",
+    T.stepOf({ action: "click", app: " Calculator ", find: "7", role: "button" }, []).app === "Calculator" && T.stepOf({ action: "click", app: "Calculator", find: "7" }, []).find === "7" &&
+    T.stepOf({ action: "click", find: "7" }, []).find === undefined &&
+    /^Done in Calculator, behind their window \(clicked there, their pointer untouched\), and read back/.test(T.doneText({ ok: true, how: "point", behind: true, app: "Calculator" })))
   check("takeover: a pause is said, and only a click, Esc or typing where it types stops it",
     L.pausedLine("mouse") === "Paused, you're using the mouse" && /typing/.test(L.pausedLine("keys")) && /clicked/.test(L.tookText("user-click")) && /Esc/.test(L.tookText("user-esc")) &&
     /typing where it was typing/.test(L.tookText("user-typing")) && /kept using/.test(L.tookText("paused")) && L.REST_MS === 1000)

@@ -7,7 +7,9 @@ type Rect = { x: number; y: number; width: number; height: number }
 /** A thing near the pointer (uimodel.ts), by its id; `ax`: its Accessibility role, which the helper finds it again by. */
 export type Near = Thing & { id: string; ax?: string }
 /** What act was told, on the screen. */
-export type ScreenAct = { action: string; ax?: string; sx?: number; sy?: number; value?: string; key?: string; direction?: string; ask?: string; doing?: string }
+export type ScreenAct = { action: string; ax?: string; sx?: number; sy?: number; value?: string; key?: string; direction?: string; ask?: string; doing?: string
+  /** Behind their windows: the app, and the element there by its words (and role). */
+  app?: string; find?: string; role?: string }
 export type Done = { ok: boolean; why?: string; text?: string; how?: string; near?: Near[]; app?: string; title?: string; bundle?: string; frame?: Rect
   /** A find's: the element saying the words, in the window asked about. */
   found?: Near
@@ -15,6 +17,8 @@ export type Done = { ok: boolean; why?: string; text?: string; how?: string; nea
   moved?: boolean
   /** A things request's: every thing in the window asked about (uimodel.ts' shape). */
   things?: Thing[]
+  /** Done behind their windows (read back there), their pointer and front app untouched. */
+  behind?: boolean
   /** A step's element before it and after, read back; `effect`: what that says it did (the server's). */
   before?: Thing; target?: Thing; effect?: { ok: boolean; saw: string } }
 
@@ -40,10 +44,12 @@ export function answerOf(words: string): boolean | null {
 }
 
 /** The step the helper is sent, from act's params and the ask's elements (`near`). */
-export function stepOf(p: ScreenAct, near: Near[]): { action: string; el?: { frame: Rect; role: string; label: string }; at?: { x: number; y: number }; value?: string; key?: string; direction?: string; doing?: string } {
+export function stepOf(p: ScreenAct, near: Near[]): { action: string; el?: { frame: Rect; role: string; label: string }; at?: { x: number; y: number }; value?: string; key?: string; direction?: string; doing?: string
+  app?: string; find?: string; role?: string } {
   const action = p.action === "select" ? "click" : p.action
   const base = { action, ...(p.value !== undefined ? { value: p.value } : {}), ...(p.key ? { key: p.key } : {}), ...(p.direction ? { direction: p.direction } : {}),
-    ...(p.doing?.trim() ? { doing: p.doing.trim().slice(0, 52) } : {}) }
+    ...(p.doing?.trim() ? { doing: p.doing.trim().slice(0, 52) } : {}),
+    ...(p.app?.trim() ? { app: p.app.trim(), ...(p.find?.trim() ? { find: p.find.trim(), ...(p.role ? { role: p.role } : {}) } : {}) } : {}) }
   if (p.ax) {
     const e = near.find((x) => x.id === p.ax)
     if (!e) throw new Error(`no element ${p.ax} near their pointer: the ids are the last ask's (or the last step's) near list`)
@@ -61,7 +67,8 @@ export const nearText = (near: Near[] = [], head = "Near it now (act or point by
 export function doneText(r: Done): string {
   if (!r.ok) return r.text ?? `It didn't work (${r.why ?? "no answer"}).`
   if (r.effect && !r.effect.ok) return `It did the step, but ${r.effect.saw}: tell them plainly, or try another way.${nearText(r.near?.slice(0, 20))}`
-  const how = r.how === "none" ? " (it already was)" : r.how === "ax" ? " (through Accessibility)" : r.how === "point" ? " (with the pointer)" : r.how === "key" ? " (with the keys)" : ""
+  const how = r.how === "none" ? " (it already was)" : r.how === "ax" ? " (through Accessibility)" : r.how === "point" ? (r.behind ? " (clicked there, their pointer untouched)" : " (with the pointer)") : r.how === "key" ? " (with the keys)" : ""
+  if (r.behind) return `Done in ${r.app ?? "that app"}, behind their window${how}, and read back${r.effect?.ok ? `: ${r.effect.saw}` : ""}.`
   const now = r.app ? ` Now in ${r.app}${r.title ? `, "${r.title}"` : ""}.` : ""
   if (r.moved === false) return `Scrolled${how}, but nothing there moved: it's at its end, or that part doesn't scroll (point at what to scroll).${now}`
   return `Done${how}${r.effect ? `: ${r.effect.saw}` : ""}.${now}${nearText(r.near?.slice(0, 20))}`

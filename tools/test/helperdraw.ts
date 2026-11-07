@@ -36,7 +36,7 @@ mock.module(at("overlay.ts"), { exports: { showOverlay: (_b: string, s?: Scene) 
   ownWindows: () => [], panelBounds: () => (panelShown ? { x: 600, y: 300, width: 300, height: 160 } : null),
   showDrawing() {}, dropDrawings() {}, drawingActs() {}, drawingUp: () => false, endDrawing() {}, cue() {}, followPointer: (on: boolean, moved?: (p: Pt, t: number) => void) => { following = on; fed = on ? moved ?? null : null }, panelAvoid() {} } })
 // (take-over: its windows and native part, apart: tools/test/vault/takeover.ts has its rules)
-mock.module(at("takeover.ts"), { exports: { takeoverHeard() {}, takeoverEnded() {}, takeoverClick: () => false, takeoverDriving: () => false, takeoverCaption: () => null, stopTakeover() {} } })
+mock.module(at("takeover.ts"), { exports: { takeoverHeard() {}, takeoverEnded() {}, takeoverClick: () => false, takeoverDriving: () => false, takeoverCaption: () => null, takeoverBehind: () => null, stopTakeover() {} } })
 mock.module(at("screen.ts"), { exports: { onScreenEvent() {}, screenAsk: async () => ({}), startScreen: async () => {}, stopScreen() {}, windowShot: async () => null, displayShot: async () => null,
   fnUsage: async () => null } })
 // (the recognizer: what it heard, given when it's stopped)

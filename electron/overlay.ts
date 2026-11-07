@@ -21,7 +21,7 @@ let scene: Scene = { agents: [], summon: null, pill: null }
 let acts: OverlayActs | null = null
 let watching = false
 
-const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.pill && !x.region && !layers.size
+const empty = (x: ReturnType<typeof sceneFor>) => !x.agents.length && !x.summon && !x.pill && !x.region && !x.behind && !layers.size
 /** What each window was sent last (its scene's shape and places), and its hiding once it's had nothing to draw a while. */
 const sent = new Map<BrowserWindow, { shape: string; at: string }>()
 const hiding = new Map<BrowserWindow, ReturnType<typeof setTimeout>>()

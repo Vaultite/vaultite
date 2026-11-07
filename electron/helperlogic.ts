@@ -90,7 +90,12 @@ export type Scene = {
   speaking?: { name: string; level: number } | null
   /** The user's box (capture.ts), screen points. */
   region?: RegionScene | null
+  /** A step behind their windows (takeover.ts' card): drawn on the main display only. */
+  behind?: BehindCard | null
 }
+/** takeover.ts' BehindCard, told again here: that file needs Electron, this one never does. */
+export type BehindCard = { agent: string; tint: string; app: string; title: string; img: string; aspect: number
+  cursor: { x: number; y: number } | null; caption: string; end?: "done" | "unsure" }
 type Display = { id: number; bounds: Rect; workArea?: Rect }
 const inside = (d: Display, x: number, y: number) => x >= d.bounds.x && x < d.bounds.x + d.bounds.width && y >= d.bounds.y && y < d.bounds.y + d.bounds.height
 /** What one display shows, in its own coordinates: a cursor on its way from or to it too. */
@@ -102,6 +107,9 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
     ({ ...a, sx: a.sx - dx, sy: a.sy - dy, ...(a.from ? { from: { x: a.from.x - dx, y: a.from.y - dy } } : {}), ...(a.target ? { target: { ...a.target, x: a.target.x - dx, y: a.target.y - dy } } : {}),
       ...(a.aim ? { aim: { ...a.aim, x: a.aim.x - dx, y: a.aim.y - dy } } : {}) })
   const pillHere = !!s.pill && (on(pointer.x, pointer.y) || !all.some((x) => inside(x, pointer.x, pointer.y)))
+  // (the main display is the one at the origin; `edge`: the Dock's and side's room it keeps clear of)
+  const main = (all.find((x) => x.bounds.x === 0 && x.bounds.y === 0) ?? all[0] ?? d).id === d.id, w = d.workArea ?? d.bounds
+  const edge = { right: Math.max(0, d.bounds.x + d.bounds.width - w.x - w.width), bottom: Math.max(0, d.bounds.y + d.bounds.height - w.y - w.height) }
   return {
     width: d.bounds.width, height: d.bounds.height,
     // (the menu bar's height: what goes above a cursor stays under it)
@@ -113,6 +121,7 @@ export function sceneFor(d: Display, s: Scene, pointer: Point, all: Display[]) {
     speaking: s.speaking ?? null,
     // (on each display it crosses, in its points)
     region: s.region && overlaps(s.region.rect, d.bounds) ? { ...s.region, rect: { ...s.region.rect, x: s.region.rect.x - dx, y: s.region.rect.y - dy } } : null,
+    behind: s.behind && main ? { ...s.behind, edge } : null,
   }
 }
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height

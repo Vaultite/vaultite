@@ -8,7 +8,9 @@ export type Rect = { x: number; y: number; width: number; height: number }
 export type Step = { action: string; el?: { frame: Rect; role?: string; label?: string }; at?: { x: number; y: number }
   value?: string; key?: string; direction?: "up" | "down"
   /** What it's doing, in a few words (Typing the title): its cursor's caption; else made from the step. */
-  doing?: string }
+  doing?: string
+  /** Behind their windows: the app it acts in (its front window), by name; the element there by its words (`find`). */
+  app?: string; find?: string; role?: string }
 /** What takeover.swift found there (`probe`). */
 export type Probe = { ok: boolean; why?: string; bundle?: string; name?: string; pid?: number; vaultite?: boolean; role?: string; roleName?: string; subrole?: string
   secure?: boolean; label?: string; frame?: Rect | null; actions?: string[]; valueSettable?: boolean; checked?: boolean; web?: boolean; window?: number; title?: string
@@ -206,4 +208,47 @@ export function probeThing(p: Probe | null): Thing | null {
   for (const k of ["expanded", "selected", "checked", "disabled"] as const) if (typeof p[k] === "boolean") state[k] = p[k]
   if (typeof p.value === "string" && !p.secure) state.value = p.value
   return { role: roleOfAx(p.role ?? "", p.subrole), label: p.label ?? "", frame: p.frame, state, actions: actionsOfAx(p.actions ?? []), inside: [] }
+}
+
+// ---------- behind their windows: a step in an app they aren't looking at, their pointer and front app left alone
+
+/** An app's front window, as takeover.swift found it (`window`). */
+export type Window = { ok: boolean; why?: string; pid?: number; window?: number; frame?: Rect; title?: string; bundle?: string; name?: string
+  /** Their front app, and how much of the window others hide (0 to 1). */
+  front?: boolean; covered?: number
+  /** Whether this Mac can act behind (its private SkyLight calls found). */
+  behind?: boolean; vaultite?: boolean }
+/** Why a step can't go to `app`'s window (null: it can). */
+export function behindRefusal(app: string, w: Window): string | null {
+  const name = w.name || app
+  if (w.vaultite) return "that's Vaultite itself: act there with --ui"
+  if (w.ok) return null
+  if (w.why === "not-running") return `${app} isn't open: open it first (vau companion open), then act there`
+  if (w.why === "hidden") return `${name} is hidden: ask them to show it, or act once they do`
+  return `${name} has no window open to act in`
+}
+/** Their own front app, in view: no need to act behind it, the take-over in front does it as they watch. */
+export const inFront = (w: Window) => !!w.front && (w.covered ?? 0) < 0.05
+/** How a step is done behind: as in front (Accessibility first, then the pointer or the keys), but every event goes to
+ *  that window alone; a hover needs the real pointer, so it isn't done there. */
+export const behindPlan = (step: Step, there: Probe): Call[][] => plan(step, there).filter((a) => !a.some((c) => c.op === "hover"))
+/** What's read back around a step behind: its window's digest (takeover.swift), its element's value and state. */
+export type Readback = { digest?: string; value?: string; checked?: boolean; expanded?: boolean }
+/** Whether a step's effect shows in what's read back: its field's value, its state, else its window changed at all. */
+export function verified(step: Step, before: Readback, after: Readback): boolean {
+  if (step.action === "fill" && after.value !== undefined) return after.value === (step.value ?? "")
+  if (step.action === "type" && after.value !== undefined && before.value !== undefined && after.value !== before.value) return true
+  if ((step.action === "check" || step.action === "uncheck") && after.checked !== undefined) return after.checked === (step.action === "check")
+  if ((step.action === "expand" || step.action === "collapse") && after.expanded !== undefined) return after.expanded === (step.action === "expand")
+  return !!before.digest && !!after.digest && before.digest !== after.digest
+}
+/** How long a step's effect may take to show (a web page's, an app's redraw), and how often it's looked for. */
+export const SETTLE_MS = 1500, LOOK_MS = 150
+/** The offer when a step behind couldn't be confirmed: today's take-over, in front, as they watch. */
+export const unsureLine = (app: string) => `I couldn't confirm that in ${app} from behind. Bring it forward and do it while you watch?`
+/** Where a step acts in its window, as fractions of it (its card's cursor). */
+export function cursorIn(p: { x: number; y: number } | null, f: Rect | undefined): { x: number; y: number } | null {
+  if (!p || !f || f.width <= 0 || f.height <= 0) return null
+  const k = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000
+  return { x: k((p.x - f.x) / f.width), y: k((p.y - f.y) / f.height) }
 }

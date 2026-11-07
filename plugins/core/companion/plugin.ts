@@ -3160,7 +3160,7 @@ async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, acti
 const ACTS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll", "focus", "expand", "collapse"]
 /** A step in another app (take-over): an element their ask listed, a screen point, or (asked there) the field with the keys. */
 function onScreen(p: Record<string, unknown>, name: string) {
-  if (str(p.ax) || p.sx !== undefined) return true
+  if (str(p.ax) || p.sx !== undefined || str(p.app)) return true
   if (str(p.pane) || str(p.el)) return false
   const m = moments.findLast((x) => (x.kind === "ask" || x.kind === "point") && (!x.for || key(x.for) === key(name)))
   return !!m?.summoned && !!m.app && m.app !== "private" && !m.pane && !m.ui
@@ -3168,10 +3168,11 @@ function onScreen(p: Record<string, unknown>, name: string) {
 async function screenAct(p: Record<string, unknown>, name: string) {
   let step: ReturnType<typeof stepOf>
   try { step = stepOf({ action: str(p.action), ax: str(p.ax) || undefined, sx: p.sx === undefined ? undefined : Number(p.sx), sy: p.sy === undefined ? undefined : Number(p.sy),
-    value: p.value === undefined ? undefined : str(p.value), key: str(p.key) || undefined, direction: str(p.direction) || undefined, doing: str(p.doing) || undefined }, nearBy.get(key(name)) ?? []) } catch (e) { throw new OpError((e as Error).message, 404) }
+    value: p.value === undefined ? undefined : str(p.value), key: str(p.key) || undefined, direction: str(p.direction) || undefined, doing: str(p.doing) || undefined,
+    app: str(p.app) || undefined, find: str(p.find) || undefined, role: str(p.role) || undefined }, nearBy.get(key(name)) ?? []) } catch (e) { throw new OpError((e as Error).message, 404) }
   did(name, "act")
-  // (its cursor flies there first: the helper waits for it)
-  if (step.el || step.at) setAgent(name, { ...await resolve(target(p, true), name), state: "writing", pointed: Date.now() })
+  // (its cursor flies there first: the helper waits for it; behind their windows, its card shows where instead)
+  if ((step.el || step.at) && !step.app) setAgent(name, { ...await resolve(target(p, true), name), state: "writing", pointed: Date.now() })
   try {
     const r = await takeover.act(step, { agent: name, tint: agentOf(name).tint, ask: str(p.ask) || undefined }), was = nearBy.get(key(name)) ?? []
     // (helper's ids are fresh each step: what's near now is what the next points at)
@@ -3191,7 +3192,9 @@ next step); a long errand goes to a page of your own instead (vau browser open -
 say. Only where its container lets agents act, never on a private page. Answers what changed on the page.
 
 In another app (take-over, an ask on the screen): an element the ask listed (--ax), a point (--sx --sy), or the field
-with the keys (neither). They're asked first (a card by the pointer, --ask its line), a yes lasting the exchange; a
+with the keys (neither). With --app, in that app's window behind theirs: their pointer and front app stay theirs, a card
+shows its window and what you do; the element by its words (--find), each step read back there, and offered in front
+when it can't be confirmed. They're asked first (a card by the pointer, --ask its line), a yes lasting the exchange; a
 send, post or delete is asked each time. Your cursor says what it does (--doing, else made from the step); their mouse
 or keys pause a step that needs them, a click or Esc stops it. Answers the elements there now, by id.
 
@@ -3199,11 +3202,14 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
   vau companion act --pane t5x1 fill --el e5 --value "alice@example.com"
   vau companion act click --ax a3 --ask "Want me to turn on dark mode?"
   vau companion act fill --ax a5 --value "Lighthouse" --doing "Typing the title"
-  vau companion act press --key cmd+s`,
+  vau companion act press --key cmd+s
+  vau companion act click --app Calculator --find "7"
+  vau companion act type --app TextEdit --value "Lighthouse notes"`,
   kind: "write",
   lock: false,
   params: { pane: PANE, ui: { ...UI, description: "instead of a page: the app's own UI, by its id (as in look); a place (panel:files:files) is shown, unfolded, and what it shows comes back" },
-    find: { type: "string", description: "in the app's UI: the words of what to act on, as shown (in ui when given, else anywhere in its window)" },
+    find: { type: "string", description: "in the app's UI, or with --app in that app's window: the words of what to act on, as shown (in ui when given, else anywhere in its window)" },
+    app: { type: "string", description: "another app to act in behind the user's window (its name: TextEdit), their pointer and front app left alone" },
     role: { type: "string", description: "with find: its role (button, tab, row, switch, checkbox, heading, link, menuitem, textbox), when the words alone could name two things" },
     action: { type: "string", required: true, enum: ACTS, description: "what to do" }, el: EL,
     ax: PLACE.ax, sx: PLACE.sx, sy: PLACE.sy, ask: { type: "string", description: "in another app: the line offering it, when they haven't said yes yet (Want me to...?)" },
@@ -3235,7 +3241,7 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
     } finally { setAgent(name, { state: acting(name) }) }
   },
   text: (r, p) => ("screen" in r ? r.text : "clicked" in r ? actInAppText(r, String(p.action)) : actText(r, String(p.action))),
-  did: (p) => ({ action: "ui", text: `${String(p.action)} in ${p.ui ? `the app (${String(p.ui)}${p.find ? ` "${String(p.find)}"` : ""})` : p.ax || p.sx !== undefined ? "another app" : "the user's page"}${p.el || p.ax ? ` (${String(p.el || p.ax)})` : ""}`, paths: [], by: who(p) }),
+  did: (p) => ({ action: "ui", text: `${String(p.action)} in ${p.ui ? `the app (${String(p.ui)}${p.find ? ` "${String(p.find)}"` : ""})` : p.app ? `${String(p.app)}, behind their window${p.find ? ` ("${String(p.find)}")` : ""}` : p.ax || p.sx !== undefined ? "another app" : "the user's page"}${p.el || p.ax ? ` (${String(p.el || p.ax)})` : ""}`, paths: [], by: who(p) }),
 })
 
 /** What each agent's last check of another app read: what its next `changed` compares with. */

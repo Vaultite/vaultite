@@ -9,7 +9,8 @@ import { buildTakeover, takeoverHelperName } from "./takeover-build.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
 import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
-  spotOf, type Step, tookText, types, probeThing } from "./takeoverlogic.ts"
+  spotOf, type Step, tookText, types, probeThing, behindPlan, behindRefusal, cursorIn, inFront, LOOK_MS, type Readback, SETTLE_MS, unsureLine, verified,
+  type Window } from "./takeoverlogic.ts"
 
 type Point = { x: number; y: number }
 type Near = { id: string; role: string; label: string; frame: Rect }
@@ -238,6 +239,15 @@ function stop(why: string) {
   // (done: their pointer glides back where they left it, unless they've had it since; stopped by them, it's theirs)
   void ask({ op: "release", back: d.moved && !why.startsWith("user") })
 }
+/** A step behind their windows, as its card shows it (helper.ts draws it): the window's live picture, the agent's cursor
+ *  in it (where the step acts, as fractions of the window), and what it does. */
+export type BehindCard = { agent: string; tint: string; app: string; title: string; img: string; aspect: number
+  cursor: { x: number; y: number } | null; caption: string
+  /** How the step ended: done (read back), or it couldn't tell (it offers to do it in front). */
+  end?: "done" | "unsure" }
+let card: BehindCard | null = null
+/** The card of the step being done behind their windows, if one is. */
+export const takeoverBehind = (): BehindCard | null => card
 /** While it drives, the app in front changing is its doing, not their moving on. */
 export const takeoverDriving = () => !!drive
 /** Its cursor's caption while it drives (helper.ts draws it by its cursor): what it does, or that it waits for them. */
@@ -314,12 +324,28 @@ const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 const mid = (f: Rect): Point => ({ x: Math.round(f.x + f.width / 2), y: Math.round(f.y + f.height / 2) })
 
 type Ask = { id: string; agent: string; tint: string; step: Step; ask?: string; apps: string[]; sites: string[] }
+/** Their yes, asked by `at` unless they gave it this exchange (a send, post or delete is asked each time, `out` naming
+ *  it). null: go on; else what act answers. */
+async function agree(m: Ask, out: string | null, line: string, at: Point, host: TakeoverHost): Promise<Record<string, unknown> | null> {
+  const agreed = consent?.agent === m.agent && Date.now() - consent.at < YES_MS
+  if (out || !agreed) {
+    if (stepOffer) answered(stepOffer, "no")
+    stepOffer = m.id
+    const said = await offer(m.id, { line: (out ?? line).slice(0, 120), sub: driveSub(m.agent), yes: "Do it", name: m.agent, tint: m.tint, at }, () => host.reply({ t: "takeover-asking", id: m.id, agent: m.agent, ms: OFFER_MS }))
+    if (said !== "yes") return { ok: false, why: "declined", text: declined[said] }
+    if (!out) consent = { agent: m.agent, at: Date.now() }
+  }
+  consent = consent ? { ...consent, at: Date.now() } : consent
+  return null
+}
+const privateOf = (m: Ask, host: TakeoverHost) => (a: { bundle: string; name: string; url?: string }) => host.isPrivate(a) || privateApp(a, m.apps) || (!!a.url && siteIn(hostOf(a.url), m.sites))
 async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>> {
   const { step } = m
+  if (step.app) return runBehind(m, host)
   const probeAt: Call = step.el ? { op: "probe", frame: step.el.frame, role: step.el.role ?? "", label: step.el.label ?? "" }
     : step.at ? { op: "probe", frame: { ...step.at, width: 1, height: 1 }, role: "", label: "" } : { op: "probe", focused: true }
   // (private: the screen plugin's apps, and the companion's own apps and sites, the server's)
-  const hidden = (a: { bundle: string; name: string; url?: string }) => host.isPrivate(a) || privateApp(a, m.apps) || (!!a.url && siteIn(hostOf(a.url), m.sites))
+  const hidden = privateOf(m, host)
   const there = await ask<Probe>(probeAt)
   const no = refusal(step, there, hidden)
   if (no) return { ok: false, why: "refused", text: no }
@@ -327,16 +353,8 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
   // (the field with the keys: its cursor flies there too, as to an element)
   if (!step.el && !step.at) host.reply({ t: "takeover-at", id: m.id, agent: m.agent, sx: spot.x, sy: spot.y })
   // (sending out, or not yet agreed: asked first; a send is asked each time, naming it)
-  const out = outward(step, there), agreed = consent?.agent === m.agent && Date.now() - consent.at < YES_MS
-  if (out || !agreed) {
-    const line = out ?? (m.ask?.trim() || `Want me to do it while you watch?`)
-    if (stepOffer) answered(stepOffer, "no")
-    stepOffer = m.id
-    const said = await offer(m.id, { line: line.slice(0, 120), sub: driveSub(m.agent), yes: "Do it", name: m.agent, tint: m.tint, at: spot }, () => host.reply({ t: "takeover-asking", id: m.id, agent: m.agent, ms: OFFER_MS }))
-    if (said !== "yes") return { ok: false, why: "declined", text: declined[said] }
-    if (!out) consent = { agent: m.agent, at: Date.now() }
-  }
-  consent = consent ? { ...consent, at: Date.now() } : consent
+  const out = outward(step, there), no2 = await agree(m, out, m.ask?.trim() || `Want me to do it while you watch?`, spot, host)
+  if (no2) return no2
   const blind = await driving(m.agent, m.tint, spot)
   if (blind) return { ok: false, why: "refused", text: blind }
   const d = drive!
@@ -412,6 +430,103 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
     ...(after?.ok && !hidden({ bundle: after.bundle ?? "", name: after.name ?? "", url: after.url }) ? { app: after.name, title: after.title } : {}) }
 }
 const took = (why: string) => ({ ok: false, why: "stopped", text: tookText(why) })
+
+// ---------- behind their windows: a step in an app's window they aren't looking at. No border, no pause for their
+// hands: their pointer, keys and front app stay theirs. Its card shows the window, its cursor there and what it does.
+
+/** Who acts in an app behind, till when: one agent an app at a time. */
+const lease = new Map<number, { agent: string; until: number }>()
+let cardIdle: ReturnType<typeof setTimeout> | null = null, cardWindow = 0, shots = 0
+function showCard(c: BehindCard, window: number) {
+  if (cardIdle) clearTimeout(cardIdle)
+  cardIdle = null
+  card = c
+  redraw()
+  if (cardWindow !== window) { cardWindow = window; void shoot(window, ++shots) }
+}
+/** Its window's picture, a few times a second while the card shows. */
+async function shoot(window: number, gen: number) {
+  while (card && gen === shots) {
+    const r = await ask<{ ok?: boolean; img?: string; w?: number; h?: number }>({ op: "shot", window, width: 320 }, 4000)
+    if (!card || gen !== shots) return
+    if (r.ok && r.img) { card = { ...card, img: r.img, aspect: r.w && r.h ? r.w / r.h : card.aspect }; redraw() }
+    await wait(r.ok ? 300 : 1000)
+  }
+}
+function hideCard() { card = null; cardWindow = 0; shots++; if (cardIdle) clearTimeout(cardIdle); cardIdle = null; redraw() }
+function endCard(end: "done" | "unsure") {
+  if (!card) return
+  card = { ...card, end }
+  redraw()
+  cardIdle = setTimeout(hideCard, DRIVE_MS)
+}
+
+async function runBehind(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>> {
+  const step = m.step, app = step.app ?? ""
+  const w = await ask<Window>({ op: "window", app }), hidden = privateOf(m, host)
+  const no = behindRefusal(app, w)
+  if (no) return { ok: false, why: "refused", text: no }
+  if (hidden({ bundle: w.bundle ?? "", name: w.name ?? "" })) return { ok: false, why: "refused", text: "that app is private: the companion never acts there" }
+  const name = w.name || app, at = { pid: w.pid, window: w.window }
+  const probeAt: Call = step.find ? { op: "probe", find: step.find, role: step.role ?? "", ...at }
+    : step.el ? { op: "probe", frame: step.el.frame, role: step.el.role ?? "", label: step.el.label ?? "", ...at }
+    : step.at ? { op: "probe", frame: { ...step.at, width: 1, height: 1 }, role: "", label: "", ...at } : { op: "probe", focused: true, ...at }
+  const there = await ask<Probe>(probeAt)
+  if (step.find && !there.ok) return { ok: false, why: "refused", text: `nothing in ${name} says "${step.find}": check its words, or point with --sx --sy` }
+  // (found by its words: from here on it's that element, by its frame)
+  const s: Step = { ...step, find: undefined, ...(step.find && there.frame ? { el: { frame: there.frame, role: there.role ?? "", label: there.label ?? "" } } : {}) }
+  const refused = refusal(s, there, hidden)
+  if (refused) return { ok: false, why: "refused", text: refused }
+  // (their own front app, in view, or a Mac that can't act behind: today's take-over, in front as they watch)
+  if (inFront(w) || !w.behind) return run({ ...m, step: { ...s, app: undefined } }, host)
+  const held = lease.get(w.pid ?? 0)
+  if (held && held.agent !== m.agent && held.until > Date.now()) return { ok: false, why: "refused", text: `${held.agent} is working in ${name} right now: wait till they're done` }
+  lease.set(w.pid ?? 0, { agent: m.agent, until: Date.now() + 60_000 })
+  try {
+    const spot = spotOf(s, there)
+    const no2 = await agree(m, outward(s, there), m.ask?.trim() || `Want me to do it in ${name}, behind your window?`, await pointerNow(), host)
+    if (no2) return no2
+    showCard({ agent: m.agent, tint: m.tint, app: name, title: w.title ?? "", img: card && cardWindow === w.window ? card.img : "", aspect: w.frame ? w.frame.width / w.frame.height : 1.5,
+      cursor: cursorIn(spot, w.frame), caption: intentOf(s, there) }, w.window ?? 0)
+    await wait(FLY_MS)
+    const probeEl: Call = s.el ? { op: "probe", frame: s.el.frame, role: s.el.role ?? "", label: s.el.label ?? "", ...at } : probeAt
+    const read = async (): Promise<Readback> => {
+      const d = await ask<{ ok?: boolean; digest?: string }>({ op: "digest", ...at }), t = s.at ? null : await ask<Probe>(probeEl)
+      return { digest: d.ok ? d.digest : undefined, ...(t?.ok && !t.secure && typeof t.value === "string" ? { value: t.value } : {}),
+        ...(typeof t?.checked === "boolean" ? { checked: t.checked } : {}), ...(typeof t?.expanded === "boolean" ? { expanded: t.expanded } : {}) }
+    }
+    // (each way in turn, Accessibility first; each read back till its effect shows, else the next is tried)
+    let before = await read(), how = "", why = "", ok = false
+    for (const attempt of behindPlan(s, there)) {
+      if (!attempt.length) { ok = true; how = "none"; break }
+      let r: Record<string, unknown> = { ok: true }
+      for (const call of attempt) { r = await ask({ ...call, ...at }, 60_000); if (!r.ok) break }
+      if (!r.ok) { why = String(r.why ?? ""); continue }
+      how = String(r.how ?? "")
+      for (const since = Date.now(); !ok && Date.now() - since < SETTLE_MS; await wait(LOOK_MS)) ok = verified(s, before, await read())
+      if (ok) break
+      before = await read()
+    }
+    if (ok) {
+      endCard("done")
+      const target = s.el ? probeThing(await ask<Probe>(probeEl).catch(() => null)) : null, was = probeThing(there)
+      return { ok: true, how, behind: true, app: name, title: w.title, ...(was ? { before: was } : {}), ...(target ? { target } : {}) }
+    }
+    endCard("unsure")
+    if (why === "secure") return { ok: false, why: "failed", text: "that's a password field: the companion never types secrets" }
+    // (not confirmed: today's take-over, in front, if they want it; they see the window before anything's done)
+    if (stepOffer) answered(stepOffer, "no")
+    stepOffer = `${m.id}-front`
+    const said = await offer(stepOffer, { line: unsureLine(name), sub: driveSub(m.agent), yes: "Bring it forward", name: m.agent, tint: m.tint, at: await pointerNow() },
+      () => host.reply({ t: "takeover-asking", id: m.id, agent: m.agent, ms: OFFER_MS }))
+    if (said !== "yes") return { ok: false, why: "unsure", text: `it couldn't tell whether that worked in ${name} behind their window${why ? ` (${why})` : ""}: look (vau companion check), or ask them` }
+    await ask({ op: "raise", ...at })
+    hideCard()
+    await wait(300)
+    consent = { agent: m.agent, at: Date.now() }
+    return run({ ...m, step: { ...s, app: undefined } }, host)
+  } finally { lease.set(w.pid ?? 0, { agent: m.agent, until: Date.now() + DRIVE_MS }) }
+}
 
 /** The server's take-over messages: a step to do (`takeover`), their spoken answer to an offer (`takeover-answer`). */
 export function takeoverHeard(m: Record<string, unknown>, host: TakeoverHost) {

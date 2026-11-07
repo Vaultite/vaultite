@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion works in a window behind yours**: asked to do something in an app you aren't looking at, it clicks
+  and types there without your pointer or bringing that app forward, a small live picture of that window by the corner
+  showing its cursor and each step; every step is read back, and one it can't confirm it offers to do in front.
 - **The companion shows pictures and videos, draws any shape, and diagrams like Excalidraw**: ask for your latest
   screenshot (or a vault file, a file of yours, a link) and it's a card by its cursor, a video muted and looped,
   pressed to hear it; it draws logos and animals from path data, clean or sketched, and diagrams of boxes, diamonds

@@ -2,7 +2,7 @@
 // their bubbles (a click opens #panel, which takes the keyboard), the dictation pill. Nothing rests here.
 import { StrictMode, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createRoot } from "react-dom/client"
-import { Check, Mic } from "lucide-react"
+import { Check, CircleHelp, Mic } from "lucide-react"
 import { Marked } from "marked"
 import "./index.css"
 import { makePill } from "@/core/pill"
@@ -36,7 +36,12 @@ type Shown = { width: number; height: number; top: number; agents: Agent[]; summ
   /** The cursor saying its answer aloud: its level comes with the places (`At.level`). */
   speaking?: { name: string; level?: number } | null
   /** The user's box, in this display's points. */
-  region?: RegionScene | null }
+  region?: RegionScene | null
+  behind?: Behind | null }
+/** A step in a window behind theirs (electron/takeover.ts' BehindCard): its live picture, the cursor in it (fractions of
+ *  the window), what it does; `edge`: the room the Dock takes at this display's corner. */
+type Behind = { agent: string; tint: string; app: string; title: string; img: string; aspect: number; cursor: Point | null; caption: string
+  end?: "done" | "unsure"; edge: { right: number; bottom: number } }
 /** Only the places changed (helperlogic.ts splitScene): x, y and a target's frame. */
 type At = { agents: Record<string, number[]>; summon: [number, number] | null; level?: number; hear?: number }
 type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean; words?: { text: string; listening: boolean; done?: boolean; id?: number; send?: boolean }
@@ -258,8 +263,8 @@ function repaint(key: string) {
 
 // ---------- what's drawn: the scene, and what just left it (fading where it was going)
 
-type View = { s: Shown | null; gone: Agent[]; summonGone: Summoned | null }
-let view: View = { s: null, gone: [], summonGone: null }
+type View = { s: Shown | null; gone: Agent[]; summonGone: Summoned | null; behindGone: Behind | null }
+let view: View = { s: null, gone: [], summonGone: null, behindGone: null }
 const fading = new Map<string, ReturnType<typeof setTimeout>>()
 const listeners = new Set<() => void>()
 const set = (v: Partial<View>) => { view = { ...view, ...v }; for (const l of listeners) l() }
@@ -297,7 +302,11 @@ function onScene(s: Shown) {
   if (summonGone) leave("summon", () => { set({ summonGone: null }); if (!view.s?.summon) flying.pilot = null })
   // (its exchange over and gone: its pilot with it)
   if (!s.summon && !summonGone) flying.pilot = null
-  set({ s, gone, summonGone })
+  // (the card behind fades out with its cursor where it was)
+  const behindGone = s.behind ? null : view.behindGone ?? was?.behind ?? null
+  if (s.behind) back(BEHIND)
+  else if (behindGone) leave(BEHIND, () => set({ behindGone: null }))
+  set({ s, gone, summonGone, behindGone })
 }
 function onAt(at: At) {
   speakAt(at.level ?? 0)
@@ -432,6 +441,51 @@ function Doing({ d }: { d: Doing }) {
   return <span key={d.doing} data-companion-doing={d.paused ? "paused" : "doing"} className={cn("screen-in max-w-[260px] truncate font-medium", d.paused ? "opacity-75 italic" : "opacity-90")}>{d.doing}</span>
 }
 
+/** The window's picture in its card: whole, its shape kept (a tall one with room either side). */
+const THUMB_W = 268, THUMB_H = 200, BEHIND = "behind"
+function fitted(aspect: number) {
+  const h = Math.min(THUMB_H, Math.round(THUMB_W / (aspect || 1)))
+  return { h, w: Math.min(THUMB_W, Math.round(h * (aspect || 1))) }
+}
+const paintArrow: Paint = (el, x, y) => { el.style.transform = `translate(${x - 3}px, ${y - 2}px)` }
+/** A step behind their windows, as a picture-in-picture at the main display's corner: the window live, the agent's
+ *  cursor gliding in it where the step acts, what it does. */
+function BehindCard({ b, gone }: { b: Behind; gone?: boolean }) {
+  const tint = `var(--${b.tint})`, { w, h } = fitted(b.aspect), arrow = useRef<HTMLDivElement>(null)
+  const x = b.cursor ? (THUMB_W - w) / 2 + b.cursor.x * w : null, y = b.cursor ? b.cursor.y * h : null
+  useLayoutEffect(() => {
+    if (x === null || y === null) return
+    aim(BEHIND, x, y, AGENT)
+    attach(BEHIND, paintArrow)(arrow.current)
+  }, [x, y])
+  const sub = b.end === "done" ? "Done" : b.end === "unsure" ? "Couldn't confirm" : `${b.agent} in ${b.app}`
+  return (
+    <div data-companion-behind={b.end ?? "doing"} data-gone={gone || undefined}
+      className="behind-in pointer-events-none fixed w-[280px] rounded-[14px] bg-card p-1.5 transition-[opacity,translate] duration-300 data-gone:translate-y-1.5 data-gone:opacity-0"
+      style={{ right: 16 + b.edge.right, bottom: 16 + b.edge.bottom,
+        boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 14px 36px rgba(0,0,0,.2), 0 2px 8px rgba(0,0,0,.08)` }}>
+      <div className="relative" style={{ height: h }}>
+        {/* (the picture is the window with its own corners: a tall one stands in the card, no band either side) */}
+        <img src={b.img} alt="" draggable={false} className="absolute top-0 h-full max-w-none rounded-[8.5px] shadow-[0_0_0_0.5px_rgba(0,0,0,.18),0_1px_4px_rgba(0,0,0,.14)]"
+          style={{ left: (THUMB_W - w) / 2, width: w }} />
+        <div ref={arrow} className={cn("absolute top-0 left-0 transition-opacity duration-200", !b.cursor && "opacity-0")}>
+          {!b.end && <span key={b.caption} aria-hidden className="behind-tap" style={{ "--c": tint } as React.CSSProperties} />}
+          <Arrow tint={tint} />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 px-1.5 pt-2 pb-1">
+        <div className="min-w-0 flex-1 leading-tight">
+          <div key={b.caption} className="screen-in truncate text-[13px] font-medium text-foreground">{b.caption}</div>
+          <div key={sub} className="screen-in truncate text-[11.5px] text-muted-foreground">{sub}</div>
+        </div>
+        {b.end === "done" ? <span key="done" className="companion-seen flex size-5 shrink-0 items-center justify-center rounded-full text-white" style={{ background: tint }}><Check className="size-3" strokeWidth={3} /></span>
+          : b.end === "unsure" ? <CircleHelp key="unsure" className="screen-in size-[18px] shrink-0 text-muted-foreground" />
+          : <span className="companion-dots mr-1 shrink-0" style={{ color: tint }}><i /><i /><i /></span>}
+      </div>
+    </div>
+  )
+}
+
 /** Under the menu bar: dictation's box, a word for a moment, where they stay put as you move between apps. */
 const BOX_AT = "fixed right-3 flex max-w-[380px] justify-end"
 function Hint({ text, top }: { text: string; top: number }) {
@@ -522,7 +576,7 @@ function Panel() {
 
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 function Screen() {
-  const { s, gone, summonGone } = useSyncExternalStore(subscribe, () => view)
+  const { s, gone, summonGone, behindGone } = useSyncExternalStore(subscribe, () => view)
   useEffect(() => { const a = api?.on(onScene), b = api?.onAt(onAt), c = api?.onPointer?.(pointerMoved), d = api?.onCue?.(cueNow); return () => { a?.(); b?.(); c?.(); d?.() } }, [])
   if (!s) return null
   return (
@@ -533,6 +587,7 @@ function Screen() {
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
       {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} speaking={!!s.summon && s.speaking?.name === s.summon.name} />}
       {s.region && <Region r={s.region} top={s.top} grab={grab} moved={(r) => api?.region?.(r)} act={(w) => api?.regionAct?.(w)} />}
+      {(s.behind ?? behindGone) && <BehindCard b={(s.behind ?? behindGone)!} gone={!s.behind} />}
       {s.pill && (s.pill.hint ? <Hint text={s.pill.text} top={s.top} /> : <Pill p={s.pill} top={s.top} />)}
     </>
   )
@@ -570,7 +625,12 @@ const STYLE = `
 [data-companion-summoned="thinking"]:not([data-speaking]):not([data-moving]) .companion-glow { opacity: 1; scale: 1; animation: companion-glow 1.4s ease-in-out infinite; }
 @keyframes companion-glow { 0%, 100% { scale: .8; opacity: .55; } 50% { scale: 1.15; opacity: 1; } }
 @keyframes pilot-float { 50% { translate: 0 -3px; } }
-@media (prefers-reduced-motion: reduce) { .companion-miss, .companion-glow, .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen { animation: none !important; } }
+.behind-in { animation: behind-in .3s cubic-bezier(.2,.9,.3,1); transform-origin: bottom right; }
+@keyframes behind-in { from { opacity: 0; translate: 0 8px; scale: .97; } }
+.behind-tap { position: absolute; left: -9px; top: -10px; width: 24px; height: 24px; border-radius: 99px; pointer-events: none; opacity: 0;
+  border: 2px solid var(--c); animation: behind-tap .7s ease-out .3s both; }
+@keyframes behind-tap { from { opacity: .7; scale: .3; } to { opacity: 0; scale: 1.3; } }
+@media (prefers-reduced-motion: reduce) { .companion-miss, .companion-glow, .pilot-arrow, .screen-in, .companion-bob, .companion-pop, .companion-dots i, .companion-wave i, .companion-seen, .behind-in, .behind-tap { animation: none !important; } }
 `
 document.head.append(Object.assign(document.createElement("style"), { textContent: STYLE + REGION_STYLE }))
 document.documentElement.style.background = "transparent"
