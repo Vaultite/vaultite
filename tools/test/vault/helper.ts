@@ -410,7 +410,7 @@ export default async ($: VaultTest) => {
   }
   {
     // The summoned exchange's geometry (electron/helperlogic.ts): beside the pointer, its box reachable, the picture.
-    const { besidePointer, grownAt, panelAt, pointerBox, reaching, shotCrop, SHOT_MOST } = await import("../../../electron/helperlogic.ts")
+    const { besidePointer, floatingOver, grownAt, panelAt, pointerBox, reaching, shotCrop, SHOT_MOST } = await import("../../../electron/helperlogic.ts")
     const d = { x: 0, y: 0, width: 1470, height: 956 }
     check("beside: right of and below the pointer; on the other side by an edge", JSON.stringify(besidePointer({ x: 500, y: 400 }, d)) === '{"x":524,"y":420}' &&
       besidePointer({ x: 1460, y: 400 }, d).x < 1460 && besidePointer({ x: 500, y: 950 }, d).y < 950)
@@ -425,6 +425,14 @@ export default async ($: VaultTest) => {
     check("box: growing as its words come, it grows away from its cursor, yet no screen edge ever cuts it",
       grow(400, 390, 300).y === 400 && grow(600, 720, 300).y === 400 && grow(800, 790, 300).y === 656 && grow(60, 170, 300).y === 25 && grow(400, 390, 300).x === 1170, [grow(400, 390, 300), grow(800, 790, 300), grow(60, 170, 300)])
     const crop = shotCrop(d, { x: 766, y: 463 }), whole = shotCrop({ x: 0, y: 0, width: 1280, height: 800 }, { x: 10, y: 10 }), side = shotCrop({ x: -2560, y: -200, width: 2560, height: 1440 }, { x: -100, y: 1200 })
+    const fr = (x: number, y: number, width: number, height: number) => ({ x, y, width, height })
+    const floats = floatingOver([{ window: 1, bundle: "com.acme.utils", name: "Acme", layer: 26, frame: fr(470, 40, 530, 290) }, { window: 2, bundle: "com.example.mail", name: "Mail", layer: 0, frame: fr(0, 0, 900, 700) },
+      { window: 3, bundle: "com.apple.dock", name: "Dock", layer: 20, frame: fr(0, 880, 1470, 76) }, { window: 4, bundle: "com.acme.utils", name: "Acme", layer: 25, frame: fr(611, 0, 40, 24) },
+      { window: 5, bundle: "app.vaultite", name: "Vaultite", layer: 3, frame: fr(0, 0, 1470, 956), vaultite: true }, { window: 6, bundle: "com.secret.app", name: "Secret", layer: 3, frame: fr(100, 100, 300, 300) },
+      { window: 7, bundle: "com.acme.utils", name: "Acme", layer: 26, frame: fr(500, 100, 200, 200), seen: false }, { window: 8, bundle: "com.other.pip", name: "Pip", layer: 3, frame: fr(2000, 100, 400, 300) }],
+      d, (w) => w.bundle === "com.secret.app")
+    check("screen: what floats over the display is another app's panel, front first; not an ordinary window, the system's, ours, a private app's, a sliver, an unseen one, nor another display's",
+      JSON.stringify(floats) === JSON.stringify([{ app: "com.acme.utils", name: "Acme", frame: fr(470, 40, 530, 290) }]), floats)
     check("picture: as much of the display as Claude takes unscaled (a pixel stays a point), around the pointer, inside the display",
       crop.width * crop.height <= SHOT_MOST.pixels && Math.abs(crop.width / crop.height - 1470 / 956) < 0.01 && crop.x <= 766 && crop.x + crop.width >= 766 && crop.y >= 0 && crop.y + crop.height <= 956 &&
       JSON.stringify(whole) === '{"x":0,"y":0,"width":1280,"height":800}' && side.x + side.width === 0 && side.y + side.height === 1240 && side.width * side.height <= SHOT_MOST.pixels, { crop, whole, side })
@@ -464,6 +472,15 @@ export default async ($: VaultTest) => {
     const pointed = (axIs as { agents: { name: string; sx?: number; sy?: number; frame?: { x: number } }[] }).agents.find((a) => a.name === name)
     check("companion: --ax points at an element of the ask's list, snapped to its frame; an id not listed is a 404",
       axSt === 200 && pointed?.sx === 806 && pointed?.sy === 442 && pointed?.frame?.x === 790 && (await api("POST", "ops/companion.look", { ax: "a9" }))[0] === 404, [axSt, pointed])
+    // (a floating panel of another app: asked over, named by its app's name; behind the ask, said as what floats there)
+    const tray = c.screenMoment({ kind: "ask", text: "what is this?", app: "com.acme.utils", appName: "Acme", sx: 535, sy: 125, under: "Acme: list" })
+    const trayText = tray ? c.momentsText([tray], "pair", null) : ""
+    const behind = c.screenMoment({ kind: "ask", text: "what's that thing?", app: "com.example.mail", appName: "Mail", window: 9, sx: 240, sy: 183,
+      floating: [{ app: "com.acme.utils", name: "Acme", frame: { x: 470, y: 40, width: 530, height: 290 } }] })
+    const behindText = behind ? c.momentsText([behind], "pair", null) : ""
+    check("companion: an app on screen is named by its name and bundle id, and another app's panel floating over the screen is said, by whose",
+      trayText.includes("The user is in Acme (com.acme.utils)") && trayText.includes("on screen, Acme (com.acme.utils)") &&
+      behindText.includes("floating over the screen (another app's panel, maybe what they mean): Acme (com.acme.utils) at sx 470, sy 40, 530×290"), [trayText, behindText])
     // (over Vaultite's own window: the page's place there, a note's line, as asked there, with the display's picture)
     const there = c.screenMoment({ kind: "ask", text: "what's this line?", path: "Notes/A.md", line: 3, selection: "the plan", sx: 400, sy: 300, shot: "/tmp/x/screens/display-400-1.png",
       shotAt: { x: 0, y: 0, width: 1600, height: 1000 } })

@@ -15,7 +15,7 @@ import { land, landedSaid } from "./dictationroam.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { icon } from "./menu.ts"
-import { atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
@@ -640,7 +640,7 @@ async function startSummon() {
   // (one still sending goes on to be sent, then closes: a newer press has the cursor)
   if (summon && summon.m.phase !== "sending") closeSummon(summon, "a new press")
   summon = s
-  s.down = shotAt(p).catch(() => null)
+  s.down = shotAt(p).then((r) => r.shot, () => null)
   live.say({ t: "summoning" })
   // (a press that's a shortcut shows nothing: it appears after a moment)
   setTimeout(draw, 130)
@@ -957,18 +957,19 @@ async function findIn(m: Record<string, unknown>) {
 type Under = { ok?: boolean; vaultite?: boolean; bundle?: string; name?: string; role?: string; label?: string; in?: string }
 /** What's under a point of the screen, in words (`Finder: folder "Taxes", in "Desktop"`); null on Vaultite, nothing, or a
  *  private app's. */
-async function underAt(p: Point): Promise<{ text: string; bundle: string } | null> {
+async function underAt(p: Point): Promise<{ text: string; bundle: string; name: string } | null> {
   const u = await screenAsk<Under>("under", { x: p.x, y: p.y }).catch(() => null)
   if (!u?.ok || u.vaultite || hidden(u)) return null
   const what = [u.role, u.label && JSON.stringify(u.label)].filter(Boolean).join(" ")
   if (!what) return null
-  return { text: `${u.name || u.bundle}: ${what}${u.in && u.in !== u.label ? `, in ${JSON.stringify(u.in)}` : ""}`, bundle: u.bundle ?? "" }
+  return { text: `${u.name || u.bundle}: ${what}${u.in && u.in !== u.label ? `, in ${JSON.stringify(u.in)}` : ""}`, bundle: u.bundle ?? "", name: u.name ?? "" }
 }
 
-/** The display under `p` as a picture, without our windows nor a private app's. */
+/** The display under `p` as a picture, without our windows nor a private app's; and other apps' panels floating on it. */
 async function shotAt(p: Point) {
-  const all = await screenAsk<{ windows?: { window: number; bundle: string; name: string }[] }>("windows").catch(() => ({ windows: [] }))
-  return displayShot(p, [...ownWindows(), ...(all.windows ?? []).filter((w) => hidden(w)).map((w) => w.window)])
+  const all = await screenAsk<{ windows?: ScreenWindow[] }>("windows").catch(() => ({ windows: [] as ScreenWindow[] }))
+  const shot = await displayShot(p, [...ownWindows(), ...(all.windows ?? []).filter((w) => hidden(w)).map((w) => w.window)])
+  return { shot, floating: floatingOver(all.windows ?? [], screen.getDisplayNearestPoint(p).bounds, hidden) }
 }
 /** What a recording leaves out: our windows and a private app's (capture.swift leaves out their whole app too). */
 async function excluded() {
@@ -994,13 +995,15 @@ async function pointedAt(name: string, p: Point, w: AppWindowInfo | null, parks 
   const win = w?.window && !w.vaultite ? w : null
   if (win && hidden(win)) return { app: "private" }
   if (parks && win?.frame) park(name, win.window, offsetIn(win.frame, p))
-  const [text, shot, under, axNear, inApp] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 20_000 }) : null, shotAt(p), underAt(p), nearAt(p),
+  const [text, { shot, floating }, under, axNear, inApp] = await Promise.all([win ? screenAsk<{ ok?: boolean; text?: string }>("text", { window: win.window, max: 20_000 }) : null, shotAt(p), underAt(p), nearAt(p),
     w?.vaultite ? inAppAt(p) : null])
   // (over Vaultite's window, Accessibility reads nothing of it: its page names what's near, by the same ids)
   const { near: appNear, ...there } = inApp ?? {}, near = Array.isArray(appNear) && appNear.length ? pageNear(appNear) : axNear
-  return { ...there, ...(win ? { app: win.bundle, window: win.window, title: win.title } : under ? { app: under.bundle } : {}), sx: Math.round(p.x), sy: Math.round(p.y),
+  // (the app's name with its bundle id: an agent told only com.acme.utils took the name for a guess)
+  const app = win ? { app: win.bundle, ...(win.name ? { appName: win.name } : {}), window: win.window, title: win.title } : under ? { app: under.bundle, ...(under.name ? { appName: under.name } : {}) } : {}
+  return { ...there, ...app, sx: Math.round(p.x), sy: Math.round(p.y),
     ...(text?.ok && text.text ? { screen: text.text } : {}), ...(shot ? { shot: shot.file, shotAt: shot.frame } : {}), ...(under ? { under: under.text } : {}), ...(near.length ? { near } : {}),
-    displays: screen.getAllDisplays().map((d) => d.bounds) }
+    ...(floating.length ? { floating } : {}), displays: screen.getAllDisplays().map((d) => d.bounds) }
 }
 
 /** What's at a screen point of the home vault's window, as its page knows it (a note's line, a pane's row, the app's UI):

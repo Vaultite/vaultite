@@ -70,9 +70,11 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   front?: "realtime"; talk?: string[]
   /** A move: its words moved by the user, a bubble put in the note or what it wrote folded back into a bubble. */
   into?: "note" | "bubble"
-  /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
-   *  says (its Accessibility text) and its picture (a PNG on this machine). */
-  app?: string; window?: number; title?: string; screen?: string; shot?: string
+  /** On screen, outside the app (the desktop app's helper): the app (bundle id, `appName` its name), its window and title,
+   *  what the window says (its Accessibility text) and its picture (a PNG on this machine). */
+  app?: string; appName?: string; window?: number; title?: string; screen?: string; shot?: string
+  /** Other apps' panels floating over the screen then (a tray, a palette), front first: whose a thing in the picture is. */
+  floating?: { app: string; name: string; frame: Rect }[]
   /** What was under their pointer, in words; on screen, that point (sx, sy), the picture's frame (`shotAt`: a pixel a
    *  point), what Accessibility found near it (`near`, ids for --ax) and what they drew (`ink`). */
   under?: string; sx?: number; sy?: number; shotAt?: Rect; near?: Near[]; ink?: Ink[]
@@ -910,14 +912,16 @@ function screenPlace(m: Record<string, unknown>) {
   const near = Array.isArray(m.near) ? m.near.slice(0, 40).flatMap((e: Record<string, unknown>) => { const f = rect(e?.frame); return f && str(e.id) ? [{ id: str(e.id).slice(0, 8), role: str(e.role).slice(0, 80), label: str(e.label).slice(0, 120), frame: f }] : [] }) : []
   const ink = Array.isArray(m.ink) ? m.ink.slice(0, 12).flatMap((k: Record<string, unknown>) => { const b = rect(k?.box); return b ? [{ shape: str(k.shape).slice(0, 20), box: b,
     points: (Array.isArray(k.points) ? k.points : []).slice(0, 40).map((p: unknown) => (Array.isArray(p) ? [Math.round(Number(p[0])), Math.round(Number(p[1]))] : [0, 0]) as [number, number]) }] : [] }) : []
+  const floating = Array.isArray(m.floating) ? m.floating.slice(0, 6).flatMap((w: Record<string, unknown>) => { const f = rect(w?.frame)
+    return f && str(w.app) ? [{ app: str(w.app).slice(0, 200), name: str(w.name).slice(0, 120), frame: f }] : [] }) : []
   const at = rect(m.shotAt), displays = Array.isArray(m.displays) ? m.displays.slice(0, 8).map(rect).filter((d): d is Rect => !!d && d.width > 0 && d.height > 0) : []
-  return { ...(str(m.app) ? { app: str(m.app).slice(0, 200) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
+  return { ...(str(m.app) ? { app: str(m.app).slice(0, 200), ...(str(m.appName) ? { appName: str(m.appName).slice(0, 120) } : {}) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
     ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     ...(OWN_SHOT.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
     ...(OWN_SHOT.test(down) && OWN_SHOT.test(shot) ? { shotDown: down, ...(rect(m.shotDownAt) ? { shotDownAt: rect(m.shotDownAt)! } : {}) } : {}),
     ...(str(m.notices) ? { notices: str(m.notices).slice(0, 1200) } : {}),
-    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}), ...(displays.length ? { displays } : {}), ...(rect(m.region) ? { region: rect(m.region)! } : {}) }
+    ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}), ...(floating.length ? { floating } : {}), ...(displays.length ? { displays } : {}), ...(rect(m.region) ? { region: rect(m.region)! } : {}) }
 }
 /** What the last ask on screen found near the pointer, by agent: what `--ax` points at. */
 const nearBy = new Map<string, Near[]>()
@@ -2281,8 +2285,10 @@ const saidText = (id?: string) => { const n = said.find((x) => x.id === id); ret
 /** The app the latest ask or point of `ms` was made in, when that's another app than Vaultite (on screen); else "". */
 export function awayIn(ms: Moment[]) {
   const m = ms.findLast((x) => x.kind === "ask" || x.kind === "point")
-  return m?.app && !m.path && !m.pane && !m.ui ? (m.app === "private" ? "a private app" : m.app) : ""
+  return m?.app && !m.path && !m.pane && !m.ui ? (m.app === "private" ? "a private app" : appIn(m)) : ""
 }
+/** An app on screen as an agent reads it: its name, then its bundle id. */
+export const appIn = (m: { app?: string; appName?: string }) => (m.appName && m.appName !== m.app ? `${m.appName} (${m.app})` : m.app ?? "")
 
 /** Moments as an agent reads them. */
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = [], aware = "") {
@@ -2294,7 +2300,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
   const out = [head, ...(aware ? [aware] : [])]
   for (const m of ms) {
     const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : m.pane || m.ui ? ` ${m.title ? `"${m.title}" ` : ""}(${m.pane ? `pane ${m.pane}` : m.ui})${m.row ? `, row ${m.row}` : ""}`
-      : m.app ? ` on screen, ${m.title ? `${JSON.stringify(m.title)} in ` : ""}${m.app}${m.window ? ` (window ${m.window})` : ""}`
+      : m.app ? ` on screen, ${m.title ? `${JSON.stringify(m.title)} in ` : ""}${appIn(m)}${m.window ? ` (window ${m.window})` : ""}`
       : m.sx !== undefined ? ` on screen, at sx ${m.sx}, sy ${m.sy} (no window there${m.under ? "" : ", nothing Accessibility reads: see its picture"})` : ""
     if (m.kind === "change") {
       out.push(`- change in${at}: ${m.what ?? "it changed"}${m.url ? ` (${m.url})` : ""}`)
@@ -2336,6 +2342,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     else if (m.sx !== undefined && m.app) out.push(`  their pointer: sx ${m.sx}, sy ${m.sy}`)
     for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height} (its box ${k.box.x},${k.box.y},${k.box.width},${k.box.height}): ${k.points.map((p) => p.join(",")).join(" ")}`)
     if (m.region) out.push(`  their box (one they drew and keep on screen; "record this" records it): sx ${m.region.x}-${m.region.x + m.region.width}, sy ${m.region.y}-${m.region.y + m.region.height}`)
+    if (m.floating?.length) out.push(`  floating over the screen (another app's panel, maybe what they mean): ${m.floating.map((w) => `${w.name ? `${w.name} (${w.app})` : w.app} at sx ${w.frame.x}, sy ${w.frame.y}, ${w.frame.width}×${w.frame.height}`).join("; ")}`)
     if (m.near?.length) out.push("  near their pointer (point at one: --ax <id>):", ...m.near.map((e) => `    ${e.id} ${e.role} ${JSON.stringify(e.label)} at ${e.frame.x},${e.frame.y} ${e.frame.width}×${e.frame.height}`))
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
     // (its Talk key's, in an app or on a site: the user's guide to it, once a message)

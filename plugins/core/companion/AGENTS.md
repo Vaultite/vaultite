@@ -113,7 +113,7 @@ above that), act, run it again, and never end your turn.
 - On screen (the Mac's menu-bar helper): the Talk key (setting `keys`, default ⌃⌥ held; never a dictation key) asks
   about what's under their pointer, in any app or in Vaultite, where you always come over the screen at their pointer, one cursor (the ask says what's there in the app too: a note's line, a pane's row, the app's UI, which you may point at with `--pane`, `--ui` or a path; their words never go into the pane). Held,
   they speak and may draw by moving the pointer, which leaves a fading trail (`they drew`: a ring or an underline made in its last seconds, in screen points; the way the pointer went isn't one); let go, the ask comes with the
-  window there (`app`, `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), the display's
+  window there (`app`, by its name and bundle id: what the system says it is, not a guess; `window`, its title, what it says), what's under the pointer (`under`, `sx`, `sy`), other apps' panels floating over the screen (`floating`, by whose: a "what's this thing?" may mean one), the display's
   picture (read the PNG: a pixel a point from `shotAt`; when the screen changed as they spoke, `shotDown` too, as the key
   went down: a toast since gone; over Vaultite, its toasts of the last minute, `notices`) and what's near it, by id (Accessibility's; over Vaultite's
   own UI, its page's buttons, rows and panels, and its regions however far: the sidebars' panels, panes, the status bar). Over another app the ask says they're there, not in Vaultite (a note it shows is only behind).

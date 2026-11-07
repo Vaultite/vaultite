@@ -295,3 +295,16 @@ export function bitmapsDiffer(a: Buffer, b: Buffer, cells = 3, by = 40) {
   }
   return false
 }
+
+/** The macOS parts drawn over every app (the Dock, the menu bar's, Spotlight...): never what an ask is about. */
+const SYSTEM_UI = new Set(["com.apple.dock", "com.apple.controlcenter", "com.apple.notificationcenterui", "com.apple.Spotlight", "com.apple.systemuiserver",
+  "com.apple.WindowManager", "com.apple.screencaptureui", "com.apple.TextInputMenuAgent", "com.apple.TextInputSwitcher"])
+export type ScreenWindow = { window: number; bundle: string; name: string; layer?: number; frame?: Rect | null; seen?: boolean; vaultite?: boolean }
+/** Other apps' panels floating over the windows of the display (a tray, a palette, a picture in picture), front first:
+ *  what the picture shows over the app asked in, by whose. Not ours, a private app's, the system's, nor a sliver. */
+export function floatingOver(ws: ScreenWindow[], display: Rect, hidden: (w: ScreenWindow) => boolean, most = 4) {
+  return ws.filter((w) => (w.layer ?? 0) > 0 && w.seen !== false && !w.vaultite && w.bundle && !SYSTEM_UI.has(w.bundle) && !hidden(w) && w.frame
+    && w.frame.width >= 80 && w.frame.height >= 60 && w.frame.x < display.x + display.width && w.frame.x + w.frame.width > display.x
+    && w.frame.y < display.y + display.height && w.frame.y + w.frame.height > display.y)
+    .slice(0, most).map((w) => ({ app: w.bundle, name: w.name, frame: { x: Math.round(w.frame!.x), y: Math.round(w.frame!.y), width: Math.round(w.frame!.width), height: Math.round(w.frame!.height) } }))
+}

@@ -320,11 +320,15 @@ func paste(_ text: String) {
 
 // ---------- windows: which is where, and their text
 
-/** On-screen windows front to back (CGWindowList): numbers, owners, bounds; not Vaultite's own. */
-func windowList() -> [[String: Any]] {
-  guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
-  return list.filter { ($0[kCGWindowLayer as String] as? Int) == 0 }
+/** On-screen windows front to back (CGWindowList), every layer: numbers, owners, bounds. */
+func onScreen() -> [[String: Any]] {
+  CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
 }
+func layerOf(_ w: [String: Any]) -> Int { w[kCGWindowLayer as String] as? Int ?? -1 }
+func ownerOf(_ w: [String: Any]) -> pid_t { pid_t(w[kCGWindowOwnerPID as String] as? Int ?? 0) }
+func seen(_ w: [String: Any]) -> Bool { (w[kCGWindowAlpha as String] as? Double ?? 1) > 0 }
+/** A window by its number, at any layer: a floating panel's too. */
+func windowNumbered(_ id: Int) -> [String: Any]? { onScreen().first { ($0[kCGWindowNumber as String] as? Int) == id } }
 func boundsOf(_ w: [String: Any]) -> CGRect? {
   guard let b = w[kCGWindowBounds as String] as? NSDictionary else { return nil }
   return CGRect(dictionaryRepresentation: b)
@@ -347,15 +351,21 @@ func describe(_ w: [String: Any]) -> [String: Any] {
 /** The topmost window under a point (screen points, top-left origin): what the companion's cursor was dropped on. */
 /** Vaultite's own count (an ask there is about its note, pane or UI: `vaultite`), its window kept on top too; its overlays
  *  and boxes, above those, never do. Leaving them all out named the app behind Vaultite's window as the one asked about. */
-func windowAt(_ x: Double, _ y: Double) -> [String: Any] {
-  guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return ["window": 0] }
-  let p = CGPoint(x: x, y: y)
-  guard let w = list.first(where: { w in
-    let layer = w[kCGWindowLayer as String] as? Int ?? -1, own = (w[kCGWindowOwnerPID as String] as? Int).map { pid_t($0) == vaultitePid } ?? false
-    return (layer == 0 || (own && layer == Int(CGWindowLevelForKey(.floatingWindow)))) && boundsOf(w)?.contains(p) == true && (w[kCGWindowAlpha as String] as? Double ?? 1) > 0
-  }) else { return ["window": 0] }
-  return describe(w)
+/** Another app's panel floating over the others (a tray, a palette, the Dock) counts when Accessibility's hit test lands
+ *  in it: what takes clicks there, so a click-through overlay never does. */
+func windowHere(_ x: Double, _ y: Double) -> [String: Any]? {
+  let list = onScreen(), p = CGPoint(x: x, y: y)
+  var hit: AXUIElement?
+  if AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(x), Float(y), &hit) == .success, let el = hit {
+    let pid = pidOf(el)
+    if pid != vaultitePid, pid != 0, let w = list.first(where: { ownerOf($0) == pid && seen($0) && boundsOf($0)?.contains(p) == true }) { return w }
+  }
+  return list.first(where: { w in
+    let layer = layerOf(w), own = ownerOf(w) == vaultitePid
+    return (layer == 0 || (own && layer == Int(CGWindowLevelForKey(.floatingWindow)))) && boundsOf(w)?.contains(p) == true && seen(w)
+  })
 }
+func windowAt(_ x: Double, _ y: Double) -> [String: Any] { windowHere(x, y).map(describe) ?? ["window": 0] }
 /** What's under a point (screen points, top-left origin), as Accessibility names it: a desktop icon, a button, a row.
  *  Its words and its parent's, never a password field's; its app. */
 func under(_ x: Double, _ y: Double) -> [String: Any] {
@@ -379,16 +389,17 @@ func under(_ x: Double, _ y: Double) -> [String: Any] {
   return m
 }
 /** Whether a window in front of window `id` (0: any window) covers a point: a cursor there would point at nothing seen. */
+/** (a floating panel's: only what floats with it counts; an ordinary window's: only ordinary ones, as ever) */
 func covered(_ id: Int, _ x: Double, _ y: Double) -> [String: Any] {
-  let p = CGPoint(x: x, y: y)
-  for w in windowList() {
+  let p = CGPoint(x: x, y: y), all = onScreen(), floats = id > 0 && (all.first { ($0[kCGWindowNumber as String] as? Int) == id }.map(layerOf) ?? 0) != 0
+  for w in all where floats ? ownerOf(w) != vaultitePid : layerOf(w) == 0 {
     if id > 0 && (w[kCGWindowNumber as String] as? Int) == id { return ["covered": false] }
-    if (w[kCGWindowAlpha as String] as? Double ?? 1) > 0, boundsOf(w)?.contains(p) == true { return ["covered": true] }
+    if seen(w), boundsOf(w)?.contains(p) == true { return ["covered": true] }
   }
   return ["covered": false]
 }
 func windowInfo(_ id: Int) -> [String: Any] {
-  guard let w = windowList().first(where: { ($0[kCGWindowNumber as String] as? Int) == id }) else { return ["window": 0] }
+  guard let w = windowNumbered(id) else { return ["window": 0] }
   return describe(w)
 }
 
@@ -399,8 +410,7 @@ func runningApp(_ name: String) -> NSRunningApplication? {
 /** The window asked for (its number), else the focused one of an app (bundle id or name), else of the app in front. */
 func target(_ id: Int, _ bundle: String = "") -> (AXUIElement, pid_t)? {
   if id > 0 {
-    guard let w = windowList().first(where: { ($0[kCGWindowNumber as String] as? Int) == id }),
-          let pid = (w[kCGWindowOwnerPID as String] as? Int).map({ pid_t($0) }), let ax = axWindow(pid, id) else { return nil }
+    guard let w = windowNumbered(id), case let pid = ownerOf(w), let ax = axWindow(pid, id) else { return nil }
     return (ax, pid)
   }
   guard let a = bundle.isEmpty ? NSWorkspace.shared.frontmostApplication : runningApp(bundle) else { return nil }
@@ -415,7 +425,7 @@ var watchers: [pid_t: AXObserver] = [:]
 func watchWindows(_ ids: [Int]) {
   for o in watchers.values { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(o), .defaultMode) }
   watchers = [:]
-  let list = windowList()
+  let list = onScreen()
   for id in ids {
     guard let w = list.first(where: { ($0[kCGWindowNumber as String] as? Int) == id }), let pid = (w[kCGWindowOwnerPID as String] as? Int).map({ pid_t($0) }),
           pid != vaultitePid, let ax = axWindow(pid, id) else { continue }
@@ -464,9 +474,8 @@ func walk(_ root: AXUIElement, max: Int, find: String?) -> (text: String, found:
 let NEAR_ROLES: Set<String> = ["AXButton", "AXLink", "AXStaticText", "AXTextField", "AXTextArea", "AXHeading", "AXCell", "AXRow", "AXImage", "AXMenuItem",
   "AXMenuBarItem", "AXCheckBox", "AXRadioButton", "AXTab", "AXPopUpButton", "AXComboBox", "AXSearchField", "AXSlider", "AXDisclosureTriangle"]
 func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int) -> [String: Any] {
-  let p = CGPoint(x: x, y: y), area = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
-  guard let w = windowList().first(where: { boundsOf($0)?.contains(p) == true && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0 }),
-        let pid = (w[kCGWindowOwnerPID as String] as? Int).map({ pid_t($0) }), pid != vaultitePid,
+  let area = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
+  guard let w = windowHere(x, y), case let pid = ownerOf(w), pid != vaultitePid,
         let ax = axWindow(pid, w[kCGWindowNumber as String] as? Int ?? 0) else { return ["ok": false, "elements": []] }
   var found: [(Double, [String: Any])] = [], seen = 0
   let deadline = Date().addingTimeInterval(0.8)
@@ -534,8 +543,12 @@ func handle(_ req: [String: Any]) -> [String: Any] {
   case "clicks": clicks = req["on"] as? Bool ?? false; return ["ok": true]
   case "windows":
     // (on screen, every layer: what a display's picture would show, by whose; metadata only)
-    let all = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-    return ["windows": all.map { w -> [String: Any] in var m = appInfo(pid_t(w[kCGWindowOwnerPID as String] as? Int ?? 0)); m["window"] = w[kCGWindowNumber as String] as? Int ?? 0; return m }]
+    let all = onScreen()
+    return ["windows": all.map { w -> [String: Any] in
+      var m = appInfo(ownerOf(w)); m["window"] = w[kCGWindowNumber as String] as? Int ?? 0
+      m["layer"] = layerOf(w); m["frame"] = rectJSON(boundsOf(w)); m["seen"] = seen(w); m["vaultite"] = ownerOf(w) == vaultitePid
+      return m
+    }]
   case "near": return near(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["radius"] as? Double ?? 260, req["max"] as? Int ?? 30)
   case "focus": return focus(keep: req["keep"] as? Bool ?? false)
   case "kept": return keptField(req["do"] as? String ?? "", req["text"] as? String ?? "")

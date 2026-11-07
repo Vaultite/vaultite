@@ -174,7 +174,8 @@ export function linksIn(text: string, preview?: string): Pick<Result, "pr" | "li
 
 /** What the user asked over `m`, for a worker: their words (dictated or not), where, their selection and screen. */
 function askLines(m: Moment | undefined) {
-  const where = !m ? "" : m.app ? `on their screen, in ${m.title ? `"${m.title}" (${m.app})` : m.app}` : m.path ? `in their note ${m.path}${m.line ? `, line ${m.line}` : ""}`
+  const named = !!m?.appName && m.appName !== m.app
+  const where = !m ? "" : m.app ? `on their screen, in ${m.title ? `"${m.title}" (${named ? `${m.appName}, ` : ""}${m.app})` : named ? `${m.appName} (${m.app})` : m.app}` : m.path ? `in their note ${m.path}${m.line ? `, line ${m.line}` : ""}`
     : m.pane || m.ui ? `in Vaultite, ${m.title ? `"${m.title}"` : m.pane ?? m.ui}${m.url ? ` (${m.url})` : ""}` : ""
   const asked = m ? [
     // (dictated: the task above is what they meant, when a slip reads otherwise)
