@@ -68,6 +68,37 @@ export default async ($: VaultTest) => {
       T.timelineLines(T.within(k, said, ["click", "said"]), said.from).join("|") === '[0.0 s] said "Record this, it blinks here"|[10.0 s] clicked at 5,5: Safari: button "Close"|[15.0 s] said "Blinks again"')
   }
 
+  // The timeline off (the user's default) when they ask for what needs it: never a dead end. The app's own words get a
+  // card and a line offering to turn it on (a click or a spoken yes); an agent asking is told to offer the same.
+  {
+    const T = await import("../../../plugins/core/screen/timeline.ts")
+    check("timeline: off, an agent asking is told to offer to turn it on (vau screen keep), and that it keeps only from then",
+      /offer to turn it on .*vau screen keep.*never what came before/.test(T.offWhy(T.OFF_WHY)) && T.offWhy("nothing said like \"x\"") === "nothing said like \"x\"", T.offWhy(T.OFF_WHY))
+    const O = await import("../../../electron/timelineoffer.ts")
+    const said: string[] = [], offered: string[] = []
+    let answer: (how: Any) => void = () => {}, on = 0
+    O.offerHost({ offer: (id, line) => { offered.push(`${id} ${line}`); return new Promise((done) => { answer = done }) }, answer: (_id, how) => answer(how),
+      say: (text) => void said.push(text), turnOn: async () => { on++ } })
+    const tick = () => new Promise((r) => setTimeout(r, 0))
+    let ended = O.offerTimeline("replay")
+    check("timeline offer: \"that, just now\" with it off says so in one line, on a card with its yes",
+      offered.length === 1 && /nothing to send\. Turn it on\?$/.test(offered[0]) && said.length === 1 && said[0].split(/[.?] /).length <= 2 && O.offerScene()?.needs === "replay", [offered, said])
+    check("timeline offer: a word that isn't yes or no moves on from it, and goes on as an ask", O.offerHeard("what's this button") === false && await ended === "asked" && !on && !O.offerScene())
+    ended = O.offerTimeline("skill")
+    check("timeline offer: a spoken yes is its answer, not an ask", O.offerHeard("yes please") === true && await ended === "yes")
+    await tick()
+    check("timeline offer: yes turns it on and says what you just did wasn't kept", on === 1 && /It's on from now\. What you just did wasn't kept/.test(said.at(-1)!), said)
+    ended = O.offerTimeline("replay")
+    O.offerHeard("no thanks")
+    check("timeline offer: no leaves it off, saying nothing more", await ended === "no" && on === 1 && !/It's on/.test(said.at(-1)!))
+    const kept = () => { try { return JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/companion/data.json"), "utf8")).timeline } catch { return undefined } }
+    const [s1, b1] = await api("POST", "ops/screen.keep", {})
+    const was = kept()
+    const [s2] = await api("POST", "ops/screen.keep", { off: true })
+    check("screen keep: on (their yes) writes the companion's setting, saying it keeps from now only; --off turns it off",
+      s1 === 200 && was === true && /from now.*wasn't kept/.test(String((b1 as Any).said)) && s2 === 200 && kept() === false, [s1, b1, was, s2, kept()])
+  }
+
   const K = await import("../../../plugins/core/companion/captures.ts")
   {
     const job = (id: string, where: Any, state = "working", at = Date.now()): Any => ({ id, title: id, state, where: { machine: "", cwd: "", repo: "", ...where }, at, log: [] })

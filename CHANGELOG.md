@@ -9,6 +9,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Questions over a job's page get a quick answer**: live editing sends only changes ("make this blue") and unclear
   asks to the job; a plain question ("what does this button do?") goes to the companion, which knows what the job did
   there. A job taking a long run of edits starts fresh with a summary instead of slowing down or compacting mid-ask.
+- **The companion offers to keep your screen when you need it**: "that, just now" or "make what I just did a skill"
+  with Keep the last 30 s of screen off (still the default) says so in one line, aloud and on a card by your pointer;
+  its Turn it on, or a spoken yes, turns it on from that moment and says the seconds before weren't kept. Agents offer
+  the same (`vau screen keep`).
 - **Vault plugins import a set list of npm packages** (plugin API 10): React, Lucide, CodeMirror's, Excalidraw, YAML
   and the others `vau docs plugin-api` lists, at the versions the app ships: what an app update keeps for them. One
   importing another package is told to copy that library into its own folder.

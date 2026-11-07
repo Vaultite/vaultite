@@ -39,7 +39,8 @@ import { countText, type WalkPlace } from "../plugins/core/companion/walks.ts"
 import { voiceOf } from "../plugins/core/companion/spoken.ts"
 import { clickedAt, keepsActs, keyHeard, lessonAct, lessonScene, stopTeach, teachDeaf, teachFinal, teachHeard, teachHost, teachListening, teachListens, teachPending, typedHeard, watching } from "./teach.ts"
 import { endWalk, startWalk, stopWalk, walkAct, walkCall, walkFilms, walkFinal, walkHeard, walkHost, walkListening, walkListens, walkOn, walkPending, walkScene } from "./walk.ts"
-import { stopTakeover, takeoverBehind, takeoverCaption, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard, takeoverOffering } from "./takeover.ts"
+import { offerHere, offerSaid, stopTakeover, takeoverBehind, takeoverCaption, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard, takeoverOffering } from "./takeover.ts"
+import { type Needs, offerHeard, offerHost, offerScene, offerTimeline, OFFER_UP_MS } from "./timelineoffer.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
@@ -115,7 +116,7 @@ export async function startHelper(h: HelperHost) {
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v?: Record<string, unknown> | null) => (v == null ? stubs.delete(op) : stubs.set(op, v)), presses: () => presses.read(),
     asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, knocks: (m: Record<string, unknown>) => knocksHeard(m), islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
-    teach: (text: string) => teachHeard(text, Date.now()), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene,
+    teach: (text: string) => teachHeard(text, Date.now()), capture: (text: string) => captureHeard(text, Date.now()), offer: offerScene, offerSaid: (text: string) => offerHeard(text), refresh: () => refresh(), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene,
     layers: () => layersUp, watched: () => areas, near: (x: number, y: number) => nearAt({ x, y }) } })
   onScreenEvent(heard)
   ipcMain.removeAllListeners("vaultite:place")
@@ -129,7 +130,9 @@ export async function startHelper(h: HelperHost) {
   overlayActs({ open: openChat, stop: () => { if (session) stopFor(session.sink) }, region: regionMoved, regionAct })
   timelineHost({ exclude: excluded, bundles: () => prefs.privateApps, holding: recordingNow, privateNow: () => hidden(front),
     clicks: (on) => void screenAsk("clicks", { on }).catch(() => {}) })
-  captureHost({ exclude: excluded, bundles: () => prefs.privateApps, hint, draw,
+  offerHost({ offer: (id, line, sub, yes) => offerHere(id, { line, sub, yes, name: live.state.name, tint: live.state.agents.get(live.state.name)?.tint ?? "orange" }, OFFER_UP_MS),
+    answer: offerSaid, say: sayHere, turnOn: () => op("screen.keep").then(refresh) })
+  captureHost({ exclude: excluded, bundles: () => prefs.privateApps, hint, draw, unkept: () => unkept("replay"),
     placeAt: async (p) => { const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null); return { ...await pointedAt(live.state.name, p, w?.window ? w : null, false), ...(w?.frame ? { frame: w.frame } : {}) } },
     deliver: async (c) => String((await op("companion.capture", c)).said ?? "Sent") })
   walkHost({ draw, listening: (on) => { if (!on && session?.into === "free" && freeBy?.final === walkFinal) stopFor(session.sink); freeTick() },
@@ -137,7 +140,7 @@ export async function startHelper(h: HelperHost) {
     placeAt: walkPlace,
     still: async (p, crop, file) => { if (QUIET) return false; const r = await shootDisplay(p, await excluded(), path.dirname(file), crop).catch(() => null); if (!r) return false; fs.renameSync(r.file, file); return true },
     deliver: async (w) => String((await op("companion.walk-send", w)).said ?? "Sent") })
-  teachHost({ draw, hint, privateNow: () => hidden(front), refollow: ringFollows, listening: () => freeTick(),
+  teachHost({ draw, hint, unkept: () => unkept("skill"), privateNow: () => hidden(front), refollow: ringFollows, listening: () => freeTick(),
     trusted: () => (QUIET ? stubs.get("ax-access")?.granted !== false : systemPreferences.isTrustedAccessibilityClient(false)),
     things: teachThings, windowAt: async (p) => { const w = await screenAsk<AppWindowInfo>("at", { x: p.x, y: p.y }).catch(() => null); return w ? { ...(w.frame ? { frame: w.frame } : {}), vaultite: !!w.vaultite, private: !!w.window && !w.vaultite && hidden(w) } : null },
     focus: () => screenAsk("focus", {}),
@@ -834,7 +837,7 @@ function captured(s: Summon, text: string) {
   if (text && !s.told) { s.told = true; happened({ t: s.at, kind: "said", text }) }
   // (the app's: a QA walk's words, capture's, a short answer to a knock by the notch ("not now"), words over a session
   // there)
-  const why = !text ? "" : walkHeard(text, s.at) ? "walk" : teachHeard(text, s.at) ? "teach" : captureHeard(text, s.at) ? "capture" : knockSaid(text) ? "knock" : toPresence(text, s.p) ? "session" : ""
+  const why = !text ? "" : offerHeard(text) ? "offer" : walkHeard(text, s.at) ? "walk" : teachHeard(text, s.at) ? "teach" : captureHeard(text, s.at) ? "capture" : knockSaid(text) ? "knock" : toPresence(text, s.p) ? "session" : ""
   if (!why) return false
   voiceFront.stop()
   s.press?.end(why)
@@ -1020,6 +1023,24 @@ function roamIn(win: AppWindow, sink: DictationSink, o: Roam) {
   return true
 }
 
+/** The timeline isn't kept, for what needs it: off by their choice, an offer to turn it on; on but not kept here (the
+ *  companion off), only why. */
+function unkept(needs: Needs) {
+  if (!prefs.timeline) return void offerTimeline(needs)
+  hint(needs === "replay" ? "Nothing kept: the companion isn't keeping your screen right now" : "I wasn't watching: say \"watch me\" first")
+}
+/** One line of the helper's own, said aloud as the voice setting says (an ask by voice: auto says it) and shown: in the
+ *  dictation pill, or only on its card (`card`). */
+function sayHere(text: string, card = false) {
+  if (!card) hint(text)
+  const name = live.state.name
+  if (!name || prefs.voice.mode === "off" || quietForCall()) return
+  stopVoice()
+  const id = `here-${Date.now()}`
+  speaker.begin(text, undefined, false, null)
+  speaker.text(id, text)
+  speaker.end(id)
+}
 /** A word in the dictation pill's place, a moment: a key pressed where it does nothing. */
 let hinted: { text: string; until: number } | null = null
 function hint(text: string) {

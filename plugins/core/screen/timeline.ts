@@ -18,6 +18,11 @@ export type Happened = { t: number } & (
   | { kind: "thing"; x: number; y: number; thing: string })
 export type Kind = Happened["kind"]
 export const KINDS: Kind[] = ["pointer", "app", "click", "key", "field", "said", "box", "thing"]
+/** Why nothing's kept, as the desktop app says it when the timeline is off; an agent asking then offers to turn it on
+ *  (off is the user's choice, the default; a dead end never is). */
+export const OFF_WHY = "the timeline is off: it's kept only while the companion is on and its setting timeline (Keep the last 30 s of screen) is"
+export const OFFER_ON = `off by the user's choice, so tell them in one short line and offer to turn it on (a button, or their spoken yes); on their yes: vau screen keep. It keeps from then on, never what came before: say so`
+export const offWhy = (why: string) => (why === OFF_WHY ? `${why}; ${OFFER_ON}` : why)
 /** How far back it reaches (ms), and the most it keeps: bounded however busy. What was done reaches further (ACTS_MS):
  *  "make what I just did a skill" needs its minutes, and it's small. */
 export const KEEP_MS = 30_000, ACTS_MS = 5 * 60_000, MOST = 6000

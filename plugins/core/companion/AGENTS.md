@@ -130,6 +130,11 @@ above that), act, run it again, and never end your turn.
 - Their box: held, a drag draws a box that stays on screen (an ask carries it: `their box`). "Record this", "stop" and
   "that, just now" are the app's, never asks: it sends the clip, its frames and their words to the job on that surface
   (else a new job when they said what to do, else Captures) and says where. Its last 30 s: `screen timeline`.
+- The screen's timeline (the setting `timeline`, Keep the last 30 s of screen) is off by default, the user's choice:
+  keep it so. Asked for what needs it ("that, just now", "make what I just did a skill", what they just did) while it's
+  off, never a dead end: say so in one short line and offer to turn it on, a button (`draw` a `button` mark) or their
+  spoken yes; on their yes, `vau screen keep`, and say it keeps from now: the last 30 s weren't kept. The app does the
+  same for its own words. A QA walk keeps the screen itself while it's on.
 - A QA walk: "start a QA walk" (with the Talk key, in its box, or the menu bar's Start a QA walk) is the app's, never an
   ask; so are "scratch that", "done" and "cancel the walk" while one is on. It listens hands-free (giving way to a press,
   a dictation or your voice), each sentence an item: their words, the thing their pointer rested on as they said it
@@ -151,7 +156,7 @@ above that), act, run it again, and never end your turn.
   skill") are the app's, never asks; what they did becomes a draft tour in `Guides/` or a draft skill in
   `.agents/skills/<name>/SKILL.md`, whose steps are a tour. "Play <it>" or "run <it>": `companion tour <its path>`
   (a skill `--mode do`); a draft that plays through is kept (`status: draft` goes). `companion teach` makes one from
-  the timeline's last minutes yourself.
+  the timeline's last minutes yourself (off: offer to turn it on, as above).
 - The realtime voice (the setting `voice_front`: realtime, once this machine has an OpenAI key, `vau voice key --provider
   openai`; `realtime_model`, `realtime_voice`): a Talk key's spoken ask on screen streams to OpenAI's speech-to-speech model,
   whose sound comes first. You're asked at once all the same (its moment says `asked through the realtime voice`): for

@@ -2,7 +2,7 @@
  *  the box and the video, kept in memory only while the setting and the companion are on; read with screen.timeline. */
 import { screen } from "electron"
 import type { BoxAt, Rect } from "../plugins/core/companion/clips.ts"
-import { ACTS_MS, type Happened, KEEP_MS, kept, MOST, type Query, rangeOf, within } from "../plugins/core/screen/timeline.ts"
+import { ACTS_MS, type Happened, KEEP_MS, kept, MOST, OFF_WHY, type Query, rangeOf, within } from "../plugins/core/screen/timeline.ts"
 import { type Clip, holdVideo, saveClip, stopVideo, videoAt, videoOn } from "./recorder.ts"
 
 /** What helper.ts lends it. */
@@ -83,7 +83,7 @@ function samplePointer() {
 /** A stretch of it: what happened (`kinds`), and with `clip` its video cropped to `box` (or the box as it moved, `boxes`;
  *  else the display), saved now. */
 export async function queryTimeline(q: Query & { clip?: boolean; box?: Rect; boxes?: BoxAt[] }): Promise<{ ok: false; why: string } | { ok: true; from: number; to: number; events: Happened[]; clip?: Clip; clipWhy?: string }> {
-  if (!wanted) return { ok: false, why: "the timeline is off: it's kept only while the companion is on and its setting Keep a timeline of the last seconds is" }
+  if (!wanted) return { ok: false, why: OFF_WHY }
   const now = Date.now()
   h = kept(h, now)
   const r = rangeOf(h, q, now)

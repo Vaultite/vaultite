@@ -6,6 +6,7 @@ import { dirname } from "node:path"
 import { readText, writeText } from "../../../core/vault.ts"
 import { type Act, type As, kindFor, type Lesson, lessonSkillText, lessonTitle, lessonTour, lessonTourText, recentStretch, skillName } from "./teach.ts"
 import { fileTitle } from "./names.ts"
+import { offWhy } from "../screen/timeline.ts"
 
 const KINDS = ["app", "click", "key", "field", "said"]
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() ? (Number.isFinite(Number(v)) ? Number(v) : Date.parse(v)) : undefined)
@@ -41,7 +42,7 @@ export function teachOps(plugin: Plugin) {
     cli: "companion teach",
     summary: "Make what the user showed on their screen (watch me, or the timeline's last minutes) a draft tour in Guides/ or a draft skill in .agents/skills/.",
     help: `The desktop app sends a lesson when they say "watch me … that's it" or "make what I just did a skill"; called
-with no acts, it takes what the screen's timeline kept (its setting Keep a timeline must be on): the last minutes, back
+with no acts, it takes what the screen's timeline kept (its setting timeline; off, offer to turn it on): the last minutes, back
 to their last pause of a minute. Each click, typing and shortcut is a step on the thing it acted on (found again by what
 it is when played), their words as they did it its words. A tour when they explained what's where, else a skill;
 either is a draft (status: draft) till it has played through once (companion tour).
@@ -64,7 +65,7 @@ either is a draft (status: draft) till it has played through once (companion tou
       if (Array.isArray(p.acts)) acts = (p.acts as Act[]).filter(actOk).slice(0, 2000)
       else {
         const r = await plugin.desktop("screen:timeline", { ...(from ? { from } : { from: to - (num(p.last) ?? 300) * 1000 }), kinds: KINDS }).catch((e: Error) => ({ ok: false, why: e.message })) as { ok: boolean; why?: string; events?: Act[] }
-        if (!r.ok) throw new OpError(`nothing to learn from: ${r.why ?? "the desktop app didn't answer"}`, 409)
+        if (!r.ok) throw new OpError(`nothing to learn from: ${offWhy(r.why ?? "the desktop app didn't answer")}`, 409)
         acts = (r.events ?? []).filter(actOk)
         if (!from) acts = recentStretch(acts)
       }

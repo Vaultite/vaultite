@@ -69,9 +69,37 @@ check("…its steps their words on the things acted on, what each does, a draft"
   text.includes(`(do: type "hello there" in "Message"; press enter)`) && /"Share": \{"role":"button","inside":\["Toolbar"\]/.test(text), text.slice(text.indexOf("## Steps")))
 check("…the lesson gone, a word on where it went", await until(async () => !(await lesson()) && /Saved a draft skill, Share the page/.test(await hint()), 5000, 100), [await lesson(), await hint()])
 
-// ---------- from the last minutes: only with the timeline kept; a lesson forgotten by its ×
+// ---------- from the last minutes: only with the timeline kept; off (its default), never a dead end: a card and its
+// line said offer to turn it on, by its button or a spoken yes, and say what came before wasn't kept
+const setting = () => { try { return JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite", "plugins", "companion", "data.json"), "utf8")).timeline === true } catch { return false } }
+const cards = () => app.windows().filter((p) => p.url().startsWith("data:text/html") && decodeURIComponent(p.url()).includes("Turn it on"))
+const shownUp = (u) => app.evaluate(({ BrowserWindow }, url) => BrowserWindow.getAllWindows().some((w) => w.webContents.getURL() === url && w.isVisible()), u)
+const said = () => helper((h) => h.spoken().filter((m) => m.cmd === "say").map((m) => m.text).join(" "))
+const hit = async (sel) => { const c = await until(() => cards()[0], 5000, 100); if (!c) return false; await until(() => shownUp(c.url()), 5000); await wait(400); return c.locator(sel).click({ timeout: 5000 }).then(() => true, (e) => (console.log(`couldn't click ${sel}: ${e.message.split("\n")[0]}`), false)) }
+// (the server takes the file once its watcher sees it)
+const off = async () => { conf("companion", { agent: "nobody", jobs_agent: "nobody" }); await wait(1500); await helper((h) => h.refresh()) }
+
+await helper((h) => h.capture("that, just now"))
+check("\"that, just now\" with the timeline off offers to turn it on, on a card by the pointer", await until(async () => (await helper((h) => h.offer()))?.needs === "replay" && cards().length === 1, 5000, 100),
+  [await helper((h) => h.offer()), cards().map((c) => decodeURIComponent(c.url()).slice(-400))])
+check("…said aloud in one short line", await until(async () => /I wasn't keeping your screen, so there's nothing to send\. Turn it on\?/.test(await said()), 5000, 100), await said())
+check("…Not now leaves it off", await hit('a[href="takeover:no"]') && await until(async () => !(await helper((h) => h.offer())) && !cards().length, 5000, 100) && !setting(), [await helper((h) => h.offer()), setting()])
+
 await helper((h) => h.teach("make what I just did a skill"))
-check("\"make what I just did a skill\" with no timeline kept says how", await until(async () => /I wasn't watching/.test(await hint()), 3000, 100), await hint())
+check("\"make what I just did a skill\" with the timeline off offers it too", await until(async () => (await helper((h) => h.offer()))?.needs === "skill" && cards().length === 1, 5000, 100), await helper((h) => h.offer()))
+check("…its button turns it on, saying what you just did wasn't kept", await hit('a[href="takeover:yes"]') && await until(() => setting(), 5000, 100) &&
+  await until(async () => /It's on from now\. What you just did wasn't kept/.test(await said()), 5000, 100), [setting(), await said()])
+check("…the card goes", await until(() => !cards().length, 5000, 100))
+
+await off()
+await helper((h) => h.capture("did you see that"))
+check("off again, it offers again", !!await until(() => cards()[0], 5000, 100))
+check("another ask while it's up moves on from it", await helper((h) => h.offerSaid("what's this button for")) === false && await until(async () => !(await helper((h) => h.offer())) && !cards().length, 5000, 100) && !setting())
+await helper((h) => h.capture("that, just now"))
+await until(() => cards()[0], 5000, 100)
+check("a spoken yes turns it on, saying the last 30 s weren't kept", await helper((h) => h.offerSaid("yes please")) === true && await until(() => setting(), 5000, 100) &&
+  await until(async () => /It's on from now\. The last 30 s weren't kept/.test(await said()), 5000, 100), [setting(), await said()])
+await off()
 await helper((h) => h.teach("watch me"))
 await until(async () => (await lesson())?.of === "lesson", 3000, 100)
 await island.locator("[data-island]").hover()

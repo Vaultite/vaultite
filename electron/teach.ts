@@ -24,6 +24,8 @@ export type TeachHost = {
   listening: (on: boolean) => void
   deliver: (l: { acts: Act[]; about?: string; as?: As; title?: string }) => Promise<string>
   hint: (text: string) => void
+  /** The timeline isn't kept: said so, with an offer to turn it on (timelineoffer.ts). */
+  unkept: () => void
   draw: () => void
 }
 let host: TeachHost | null = null
@@ -131,7 +133,7 @@ async function finish(as?: As, byChip = false) {
 /** "Make what I just did a skill": the timeline's last minutes, back to their last pause. */
 async function fromLast(as: As | undefined, title: string) {
   if (!host) return
-  if (!timelineOn()) return host.hint("I wasn't watching: say \"watch me\" first, or turn on Keep a timeline in the companion's settings")
+  if (!timelineOn()) return host.unkept()
   await settleTyping()
   const r = await queryTimeline({ last: 300, kinds: DOING })
   if (!r.ok) return host.hint(`Nothing kept: ${r.why}`)

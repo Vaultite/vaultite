@@ -14,6 +14,8 @@ export type CaptureHost = {
   /** The capture handed to the server; answers where it went, in a few words. */
   deliver: (c: Capture) => Promise<string>
   hint: (text: string) => void
+  /** The timeline isn't kept: said so, with an offer to turn it on (timelineoffer.ts). */
+  unkept: () => void
   draw: () => void
 }
 /** What's sent: the clip and its frames (files on this Mac), their words as it played, the box, what was there. */
@@ -153,7 +155,7 @@ async function letGo() {
  *  they said meanwhile. */
 async function replay(said: string) {
   if (!host || saving) return
-  if (!timelineOn()) { host.hint("Nothing kept: turn on Keep a timeline of the last seconds in the companion's settings"); return }
+  if (!timelineOn()) { host.unkept(); return }
   const rect = await boxNow(), place = await host.placeAt(centre(rect)).catch(() => ({}))
   await send("replay", Date.now() - REPLAY_MS, [], place, async () => {
     const r = await queryTimeline({ last: REPLAY_MS / 1000, kinds: ["said"], clip: true, ...(region ? { boxes: boxesSince(boxes, Date.now() - REPLAY_MS) } : { box: rect }) })

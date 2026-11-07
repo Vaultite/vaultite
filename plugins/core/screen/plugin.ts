@@ -1,7 +1,7 @@
 // What agents see of the user's Mac outside Vaultite, through this machine's desktop app (electron/helper.ts): the app in
 // front (told unasked, metadata only), a window's text and its picture (asked). Private apps never reach them.
 import { inDesktop, OpError, Plugin, privateApp } from "../../../core/plugins.ts"
-import { type Happened, KINDS, timelineLines } from "./timeline.ts"
+import { type Happened, KINDS, offWhy, timelineLines } from "./timeline.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -78,8 +78,9 @@ const time = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" 
 plugin.op({
   id: "screen.timeline", cli: "screen timeline", owner: "the screen", kind: "read", lock: false,
   summary: "What happened on the user's Mac lately, on one clock: the pointer and their box (the last 30 s), the app in front, clicks (what was clicked), shortcuts, fields typed into and what they said to the companion (5 minutes); with clip, its video saved now.",
-  help: `Kept in memory by the desktop app only while the companion is on and its setting timeline (Keep a timeline of the
-last seconds) is: nothing before that, nothing on disk till asked, never a private app. A stretch is the last seconds
+  help: `Kept in memory by the desktop app only while the companion is on and its setting timeline (Keep the last 30 s of
+screen, off by default) is: nothing before that, nothing on disk till asked, never a private app. Off, it says so: tell
+them in one short line and offer to turn it on (on their yes, vau screen keep). A stretch is the last seconds
 (last), a time range (from, to), or from when they last said some words (said) on. With clip, its video (the display
 under the pointer, or box: screen points) is saved as an MP4 on this Mac with a frame at each change: read the frames.
 
@@ -96,11 +97,29 @@ under the pointer, or box: screen points) is saved as an MP4 on this Mac with a 
   },
   run: async (p) => {
     const r = await ask("screen:timeline", { last: p.last, from: time(p.from), to: time(p.to), said: p.said, kinds: p.kinds, clip: p.clip === true, box: p.box })
-    if (!r.ok) throw new OpError(`No timeline: ${String(r.why ?? "it didn't answer")}`, 409)
+    if (!r.ok) throw new OpError(`No timeline: ${offWhy(String(r.why ?? "it didn't answer"))}`, 409)
     const events = (r.events ?? []) as Happened[], from = Number(r.from), clip = r.clip as { file: string; ms: number; frames: { t: number; file: string }[] } | undefined
     return { from: new Date(from).toISOString(), to: new Date(Number(r.to)).toISOString(), events: events.map((e) => ({ ...e, at: e.t - from })), lines: timelineLines(events, from),
       ...(clip ? { clip: clip.file, frames: clip.frames } : r.clipWhy ? { clipWhy: r.clipWhy } : {}) }
   },
   text: (r) => [`From ${r.from} to ${r.to}:`, ...(r.lines.length ? r.lines : ["(nothing happened)"]),
     ...(r.clip ? [`Its clip: ${r.clip}`, `Frames: ${r.frames.map((f: { t: number; file: string }) => `${(f.t / 1000).toFixed(1)} s ${f.file}`).join(", ")}`] : r.clipWhy ? [`No clip: ${r.clipWhy}`] : [])].join("\n"),
+})
+
+plugin.op({
+  id: "screen.keep", cli: "screen keep", owner: "the screen", kind: "write",
+  summary: "Turn the screen's timeline on (the companion's setting timeline, Keep the last 30 s of screen), only on the user's yes, or off: it keeps from then, never what came before.",
+  help: `Off by default, the user's choice: turn it on only when they said yes to your offer (something they asked for needs
+it: "that, just now", what they just did), then say it keeps from now and the last 30 s weren't kept. Off forgets
+what's kept.
+
+  vau screen keep
+  vau screen keep --off`,
+  params: { off: { type: "boolean", description: "turn it off instead (what's kept is forgotten)" } },
+  run: async (p, ctx) => {
+    const on = p.off !== true
+    await ctx.op("settings.set", { name: "plugin/companion", values: { timeline: on } })
+    return { on, said: on ? "It keeps the last 30 s of your screen from now (in memory only); what came before wasn't kept." : "It keeps nothing of your screen now." }
+  },
+  text: (r) => r.said,
 })

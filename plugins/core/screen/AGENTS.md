@@ -17,5 +17,7 @@ the display's picture and what's near the pointer), or you ask.
   on one clock (the pointer, the app in front, clicks and the thing clicked, shortcuts, what a field says once typed in,
   their Talk key words, their box, the thing pointed at as a QA walk's item was said), its video with `--clip` (read its
   frames). What was done (`--kinds app click key field said`) reaches 5 minutes. Kept only while the companion's setting
-  `timeline` is on, a QA walk is, or it's watching a lesson ("watch me"; the video only with screen recording allowed);
-  else it says so. Never a private app's, a password field's, or what looks like a key.
+  `timeline` is on (off by default, the user's choice), a QA walk is, or it's watching a lesson ("watch me"; the video
+  only with screen recording allowed); else it says so: tell them in one short line and offer to turn it on (on their
+  yes, `vau screen keep`, `--off` to stop); it keeps from then, never what came before. Never a private app's, a
+  password field's, or what looks like a key.

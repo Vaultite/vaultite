@@ -59,5 +59,5 @@ settings": "Now open settings."). Passwords and what looks like a key are never 
   else a skill: `Guides/<title>.md`, or `.agents/skills/<name>/SKILL.md` (its steps a tour: `companion tour <it> --mode
   do`). Either is a draft (`status: draft`) till it plays to the end with every step found, then it's kept (`tested:`).
 - "Make what I just did a skill" (or a tour): from the timeline's last five minutes, back to a minute's pause; only
-  while the setting Keep a timeline is on (else it says so). `vau companion teach [--as skill] [--title …]` does the same.
+  while the setting Keep the last 30 s of screen is on (off, it offers to turn it on, from then). `vau companion teach [--as skill] [--title …]` does the same.
 - A target not there yet (a page still loading) is looked for again a few seconds before the model is asked.

@@ -100,11 +100,11 @@ const shown = new Map<string, BrowserWindow>()
 let stepOffer: string | null = null
 type Card = { line: string; sub: string; yes: string; name: string; tint: string; at: Point }
 /** Offer `c` (their yes: a click on its yes, or said with the pointer by it) as `id`; `sent` once it's up. */
-function offer(id: string, c: Card, sent: () => void): Promise<Answer> {
+function offer(id: string, c: Card, sent: () => void, ms = OFFER_MS): Promise<Answer> {
   show(id, c)
   sent()
   return new Promise((done) => {
-    const late = setTimeout(() => answered(id, "forgotten"), OFFER_MS)
+    const late = setTimeout(() => answered(id, "forgotten"), ms)
     cards.set(id, (a) => { clearTimeout(late); done(a) })
   })
 }
@@ -142,6 +142,10 @@ function answered(id: string | null, how: Answer) {
   // (the exchange may settle now: it waited on this)
   redraw()
 }
+/** An offer of the helper's own, no agent's step (turn the timeline on): by their pointer for `ms`, answered by a click
+ *  or `offerSaid`. */
+export const offerHere = (id: string, c: Omit<Card, "at">, ms: number) => offer(id, { ...c, at: screen.getCursorScreenPoint() }, () => {}, ms)
+export function offerSaid(id: string, how: Answer) { if (cards.has(id)) answered(id, how) }
 /** Their spoken answer: for the offer by their pointer, when several are up. */
 function spoken(how: Answer) {
   if (how === "asked") return answered(null, how)
