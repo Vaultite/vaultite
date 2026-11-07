@@ -143,7 +143,7 @@ try {
     await start("a")
     check("what b made meanwhile arrives", await until(() => read("a", "Notes/While a was off.md") === "hello\n"))
     const [, st] = await op("a", "sync.status")
-    check("one version per file after the restart", st?.[0]?.heads === st?.[0]?.files, st?.[0])
+    check("one version per file after the restart", st?.[0]?.merging === 0, st?.[0])
   })
 } catch (e) {
   check("ran", false, (e as Error).message)

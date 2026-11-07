@@ -202,10 +202,13 @@ export class SyncSet {
     if (this.cfg.peers) return this.cfg.peers.map((p) => ({ ...p, label: p.id }))
     return (await machineList()).filter((m) => m.id !== this.device)
   }
+  private lastPeers = -1
   async exchangeAll() {
     if (this.closed) return
-    const ps = await this.peerList()
-    await Promise.all(ps.map((p) => this.exchange(p).catch(() => false)))
+    let ps: Peer[]
+    try { ps = await this.peerList() } catch (e) { this.note(`peers: ${(e as Error).message}`); return }
+    if (ps.length !== this.lastPeers) { this.lastPeers = ps.length; this.note(`peers: ${ps.map((p) => p.id).join(", ") || "none (Machines lists no other machine)"}`) }
+    await Promise.all(ps.map((p) => this.exchange(p).catch((e) => { this.note(`${p.id}: ${(e as Error).message}`); return false })))
   }
   private trading = new Set<string>()
   /** Trade with one peer until neither lacks anything, then fetch the blobs still missing from it. */
@@ -529,11 +532,12 @@ iCloud mailbox when no machine answers.
   run: () => [...running.values()].map(statusOf),
   text: (r: SetStatus[]) => !r.length ? "This machine syncs no folder (vau sync shadow starts shadow mode)." : r.map((s) => [
     `## ${s.shadow ? "Shadow copy" : "Vault"} ${s.id} on ${s.device}${s.isHub ? " (the hub)" : `, hub ${s.hub}`}`,
-    `${s.folder}${s.input ? ` (copied from ${s.input})` : ""}: ${s.files} files, ${s.heads - s.files} waiting to merge, ${s.missingBlobs} blobs to fetch, last look ${ago(s.lastStep)}`,
+    `${s.folder}${s.input ? ` (copied from ${s.input})` : ""}: ${s.files} files, ${s.merging} waiting to merge, ${s.missingBlobs} blobs to fetch, last look ${ago(s.lastStep)}`,
     ...s.peers.map((p) => `- ${p.id}: ${p.hosts === false ? "doesn't sync this vault" : p.error ? `${p.error} (last traded ${ago(p.ok)})` : `traded ${ago(p.ok)}${p.behind ? `, ${p.behind} entries behind` : ", up to date"}`}`),
     s.mailbox ? `- iCloud mailbox: ${s.mailbox.devices.join(", ") || "empty"}` : "- no iCloud mailbox",
     s.held ? `Held: ${s.held.deletes} deletes since ${ago(s.held.since)}: vau sync release` : "",
     s.conflicts ? `${s.conflicts} conflict${s.conflicts > 1 ? "s" : ""}: vau sync conflicts` : "No open conflicts.",
+    ...(s.log.length ? ["Lately:", ...s.log.slice(0, 5).map((l) => `  ${l}`)] : []),
     s.compare ? `Last compare (${ago(s.compare.at)}): ${s.compare.same} same, ${s.compare.differ.length} differ (${s.compare.keptMore.length} where sync kept more), ${s.compare.missing.length} missing, ${s.compare.extra.length} extra, ${s.compare.lostLines.length} with lines lost` : "",
   ].filter(Boolean).join("\n")).join("\n\n"),
 })

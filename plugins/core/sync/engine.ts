@@ -102,7 +102,7 @@ export function besideName(path: string, device: string, at: number, n = 1) {
 type Tracked = { hash: string; node: string; size: number; mtime: number }
 export type Guard = { files: number; max: number }
 export type Status = {
-  device: string; vector: Vector; files: number; heads: number; waiting: number; missingBlobs: number
+  device: string; vector: Vector; files: number; heads: number; merging: number; waiting: number; missingBlobs: number
   held: { deletes: number; since: number } | null; conflicts: number
 }
 
@@ -680,11 +680,11 @@ export class Replica {
   }
 
   status(): Status {
-    let files = 0, heads = 0
-    for (const [file] of this.byFile) { const h = this.heads(file); heads += h.length; if (h.length === 1 && h[0].blob !== null) files++ }
+    let files = 0, heads = 0, merging = 0
+    for (const [file] of this.byFile) { const h = this.heads(file); heads += h.length; if (h.length > 1) merging++; else if (h[0]?.blob) files++ }
     let waiting = 0
     for (const w of this.waiting.values()) waiting += w.size
-    return { device: this.device, vector: this.vector(), files, heads, waiting, missingBlobs: this.missingBlobs().length,
+    return { device: this.device, vector: this.vector(), files, heads, merging, waiting, missingBlobs: this.missingBlobs().length,
       held: this.held ? { deletes: this.held.deletes.length, since: this.held.since } : null, conflicts: this.conflicts().length }
   }
 
