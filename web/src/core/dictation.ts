@@ -51,7 +51,7 @@ export type DictationSource = {
   onLand?: (fn: (q: { where: "here" | "origin" | "drop"; text?: string }) => Promise<{ ok: boolean; elsewhere?: boolean }>) => () => void
   /** The fn key (or another dictation key), as the desktop app's menu-bar helper hears it while this window has the
    *  keyboard (`other`: a key pressed with it). The Talk key never comes here: the helper's companion takes it. */
-  onKey?: (fn: (k: { down?: boolean; other?: boolean }) => void) => () => void
+  onKey?: (fn: (k: { down?: boolean; other?: boolean; shortcut?: boolean; held?: boolean; double?: boolean }) => void) => () => void
   /** The helper asking what's at x, y of this window (a Talk key's ask over it): the answer goes with the ask. */
   placeAt?: (fn: (x: number, y: number) => Record<string, unknown> | null) => () => void
 }
@@ -357,7 +357,14 @@ export function fnDictation(begin: (hold: boolean) => Promise<boolean>) {
   }
   return dictationSource?.onKey?.((k) => {
     const t = performance.now()
-    const a = k.other ? key.other(t) : k.down ? key.down(t, listening() || !!starting) : key.up(t)
+    // (Control's double tap: hands-free from the start, or the end of it)
+    if (k.double) {
+      if (starting) after = "stop"
+      else if (listening()) end("stop")
+      else { after = "free"; const s = (starting = begin(true)); void s.then((ok) => { if (starting !== s) return; starting = null; if (ok && after) end(after) }) }
+      return
+    }
+    const a = k.other ? key.other(t, k.shortcut) : k.down ? key.down(t, listening() || !!starting, k.held) : key.up(t)
     const how = a === "stop" || a === "cancel" || a === "free" ? a : a === null && k.down === false ? "tap" : null
     if (a === "start") {
       after = null

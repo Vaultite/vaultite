@@ -2,7 +2,7 @@
 In the Mac desktop app, ⌘J (`dictation:start`) dictates where the cursor is: a note's editor, a terminal, or a field (the
 Ask box, a chat's input). The dictation keys do the same in the window and in any other app (`fn`, Dictate anywhere, on
 by default); talking to the companion is its own Talk keys' (the companion's setting `keys`: a key in both talks). `keys`
-picks them: `fn_control` (fn⌃ held together, the default), or `fn`, `right_option`, `right_command` alone (with another
+picks them: `fn_control` (fn⌃ held together, the default), or `fn`, `right_option`, `right_command`, `left_control`, `right_control` alone (with another
 key it's only what it always was): a tap starts and the next stops; held, it listens until it's let go; a double tap is
 hands-free, past the setting `silence`, until the next press.
 Words not settled yet show dimmed by the cursor, never in the file; at each pause they settle and are typed in as the

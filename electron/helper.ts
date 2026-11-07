@@ -7,7 +7,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
-import { ALONE_MS, HOLD_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
+import { HOLD_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
 import { joinText, parseReplacement, replacer } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
@@ -213,7 +213,7 @@ function jobNotice(j: HelperJob) {
 
 /** Keys as a Mac writes them: "fn⌃, right ⌥ or ⌃⌥". */
 function keysSaid(keys: string[]) {
-  const said = keys.map((k) => ({ fn: "fn", right_option: "right ⌥", right_command: "right ⌘", control_option: "⌃⌥", fn_control: "fn⌃" } as Record<string, string>)[k]).filter(Boolean)
+  const said = keys.map((k) => ({ fn: "fn", right_option: "right ⌥", right_command: "right ⌘", left_control: "left ⌃", right_control: "right ⌃", control_option: "⌃⌥", fn_control: "fn⌃" } as Record<string, string>)[k]).filter(Boolean)
   return said.length ? said.length > 1 ? `${said.slice(0, -1).join(", ")} or ${said.at(-1)}` : said[0] : "No keys picked"
 }
 
@@ -407,9 +407,9 @@ const asTalk = (events: FnEvent[]) => { for (const e of events) talkHeard(e) }
 function modHeard(m: Record<string, unknown>) {
   const r = mods.heard(m as ModEvent), t = talkMods.heard(m as ModEvent)
   if (settling) clearTimeout(settling)
-  settling = r.wait ? setTimeout(() => { settling = null; asFn(mods.settled()) }, ALONE_MS) : null
+  settling = r.wait ? setTimeout(() => { settling = null; asFn(mods.settled()) }, r.wait) : null
   if (talkSettling) clearTimeout(talkSettling)
-  talkSettling = t.wait ? setTimeout(() => { talkSettling = null; asTalk(talkMods.settled()) }, ALONE_MS) : null
+  talkSettling = t.wait ? setTimeout(() => { talkSettling = null; asTalk(talkMods.settled()) }, t.wait) : null
   asFn(r.fn)
   asTalk(t.fn)
 }
@@ -423,13 +423,20 @@ function chordHeard(m: Record<string, unknown>) {
 function fnHeard(m: Record<string, unknown>, byFn = true) {
   if (!prefs.fn || !host?.home()) return
   const to = page && !page.isDestroyed() ? page : null
-  if (m.other === true) { if (to) to.send("vaultite:fn", { other: true }); else act(key.other(Date.now())) ; return }
+  // (Control's double tap: hands-free, or off)
+  if (m.double === true) {
+    if (to) return void to.send("vaultite:fn", { double: true })
+    if (session || starting) return act("stop")
+    act("start")
+    return act("free")
+  }
+  if (m.other === true) { const shortcut = m.shortcut === true; if (to) to.send("vaultite:fn", { other: true, shortcut }); else act(key.other(Date.now(), shortcut)); return }
   if (m.down === true) {
     if (!session) page = host.focusedPage()
-    if (page && !session) return void page.send("vaultite:fn", { down: true })
+    if (page && !session) return void page.send("vaultite:fn", { down: true, held: m.held === true })
     page = null
     if (byFn) void firstUse()
-    return act(key.down(Date.now(), !!session || starting))
+    return act(key.down(Date.now(), !!session || starting, m.held === true))
   }
   if (to) { to.send("vaultite:fn", { down: false }); return }
   act(key.up(Date.now()))
@@ -546,7 +553,8 @@ let exchange: Exchange | null = null
 /** A Talk key (alone, or a chord), as its gesture: the companion summoned at the pointer, in any app and in Vaultite's
  *  windows alike (one companion, over the screen: the page never gets the key). */
 function talkHeard(m: FnEvent) {
-  if (!host?.home()) return
+  // (Control's double tap: no Talk key is Control)
+  if (!host?.home() || "double" in m) return
   // (pressed again: its voice stops at once, and gets ready for the next answer)
   if ("down" in m && m.down) { stopVoice(); live.say({ t: "interrupt" }); speaker.warm(); voiceFront.warm(); lastAsk = null }
   const now = "t" in m && m.t ? m.t : Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)

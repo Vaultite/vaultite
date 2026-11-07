@@ -8,12 +8,14 @@ export type FnAction = "start" | "stop" | "cancel" | "free" | null
 export function fnKey(hold = HOLD_MS, gap = DOUBLE_MS) {
   let at = 0, started = false, tapped = -Infinity, stopped = -Infinity
   return {
-    /** fn went down; `listening`: a session is under way. */
-    down(now: number, listening: boolean): FnAction {
-      if (listening && now - tapped <= gap) { tapped = -Infinity; started = false; return "free" }
+    /** fn went down; `listening`: a session is under way. `held`: already held long enough (Control's), so its release
+     *  stops what it starts; held while one is under way, it's nothing. */
+    down(now: number, listening: boolean, held = false): FnAction {
+      if (held && listening) { started = false; return null }
+      if (!held && listening && now - tapped <= gap) { tapped = -Infinity; started = false; return "free" }
       // (the second tap of a double tap that stopped it: not a new session)
-      if (!listening && now - stopped <= gap) { stopped = -Infinity; started = false; return null }
-      at = now
+      if (!held && !listening && now - stopped <= gap) { stopped = -Infinity; started = false; return null }
+      at = held ? now - hold : now
       started = !listening
       tapped = -Infinity
       if (listening) stopped = now
@@ -27,9 +29,10 @@ export function fnKey(hold = HOLD_MS, gap = DOUBLE_MS) {
       tapped = now
       return null
     },
-    /** Another key went down with fn: a shortcut, if it's at once; later, they're talking and it's not for dictation. */
-    other(now: number): FnAction {
-      if (!started || now - at >= hold) return null
+    /** Another key went down with fn: a shortcut, if it's at once; later, they're talking and it's not for dictation.
+     *  `shortcut`: it is one whenever it comes (with Control, a key types nothing). */
+    other(now: number, shortcut = false): FnAction {
+      if (!started || (!shortcut && now - at >= hold)) return null
       started = false
       return "cancel"
     },
@@ -42,49 +45,67 @@ export const fnActsToo = (usage: string | null) => usage?.trim() !== "0"
 
 // The keys the user picks (dictation's and the companion's `keys`), as the screen helper's tap knows them: a key alone
 // by its code, a chord (two modifiers held together, nothing else) by its name.
-const CODES: Record<string, number[]> = { fn: [63], right_option: [61], right_command: [54] }
+const CODES: Record<string, number[]> = { fn: [63], right_option: [61], right_command: [54], left_control: [59], right_control: [62] }
+const CONTROL = new Set([59, 62])
 export const CHORDS = ["control_option", "fn_control"] as const
 export const isChord = (k: string) => (CHORDS as readonly string[]).includes(k)
 export const keyCodes = (keys: readonly string[]) => keys.flatMap((k) => CODES[k] ?? [])
 
-/** How long right Option or Command must be alone before it counts: a chord's key comes sooner, and starts nothing. */
+/** How long a modifier must be alone before it counts: a chord's or a shortcut's key comes sooner, and starts nothing. */
 export const ALONE_MS = 200
 
 /** `t`: when the key moved (ms since 1970), if its tap said; else it's when heard. */
-export type FnEvent = { down: boolean; t?: number } | { other: true }
+/** `double`: Control tapped twice, hands-free on (or off); `held`: Control's hold, long enough already. */
+export type FnEvent = { down: boolean; t?: number; held?: boolean } | { other: true; shortcut?: boolean } | { double: true }
 /** What the tap says: a watched key's press or release (`alone`: nothing else held), or that something else came. */
 export type ModEvent = { code?: number; on?: boolean; alone?: boolean; at?: number; other?: boolean }
-/** `fn`: what it means as fn's events; `wait`: call `settled` in ALONE_MS. */
-export type ModHeard = { fn: FnEvent[]; wait?: boolean }
+/** `fn`: what it means as fn's events; `wait`: call `settled` in that many ms. */
+export type ModHeard = { fn: FnEvent[]; wait?: number }
 
-/** The right modifiers, as fn's events: alone, it's fn itself; with another key it's what it always was. */
+/** Control is in every shortcut, so alone a tap of it is nothing: tapped twice (pressed within CONTROL_DOUBLE_MS, as
+ *  Wispr Flow's) it's hands-free, and held alone past CONTROL_HOLD_MS it listens till let go. */
+export const CONTROL_DOUBLE_MS = 500, CONTROL_HOLD_MS = 500
+
+/** The modifiers picked (right Option, Control...), as fn's events: alone, it's fn itself; with another key it's what
+ *  it always was (Control+C cancels what its press started, however long it was held). */
 export function modKeys(keys: readonly string[]) {
   const codes = new Set(keyCodes(keys.filter((k) => k !== "fn")))
-  let solo: { code: number; state: "waiting" | "down" | "dropped" } | null = null
+  let solo: { code: number; state: "waiting" | "down" | "dropped"; at: number } | null = null
+  /** When Control's last clean tap was pressed: the next one, soon, makes a double tap. */
+  let tapped = -Infinity
   const dropSolo = (): FnEvent[] => {
+    tapped = -Infinity
     if (!solo) return []
     const was = solo.state
     solo.state = "dropped"
-    return was === "down" ? [{ other: true }] : []
+    return was === "down" ? [CONTROL.has(solo.code) ? { other: true, shortcut: true } : { other: true }] : []
   }
   return {
     heard(m: ModEvent): ModHeard {
       const code = m.code ?? -1
       if (m.other || !codes.has(code)) return { fn: dropSolo() }
       if (solo && solo.code !== code) return { fn: dropSolo() }
+      const at = m.at ?? Date.now(), control = CONTROL.has(code)
       if (m.on) {
-        solo = { code, state: m.alone ? "waiting" : "dropped" }
-        return { fn: [], wait: !!m.alone }
+        solo = { code, state: m.alone ? "waiting" : "dropped", at }
+        if (!m.alone) tapped = -Infinity
+        return { fn: [], ...(m.alone ? { wait: control ? CONTROL_HOLD_MS : ALONE_MS } : {}) }
       }
-      const was = solo?.state
+      const was = solo
       solo = null
-      return { fn: was === "waiting" ? [{ down: true }, { down: false }] : was === "down" ? [{ down: false }] : [] }
+      if (was?.state === "down") return { fn: [{ down: false }] }
+      if (!control) return { fn: was?.state === "waiting" ? [{ down: true }, { down: false }] : [] }
+      if (was?.state !== "waiting") { tapped = -Infinity; return { fn: [] } }
+      if (was.at - tapped <= CONTROL_DOUBLE_MS) { tapped = -Infinity; return { fn: [{ double: true }] } }
+      tapped = was.at
+      return { fn: [] }
     },
-    /** ALONE_MS after a `wait`, still alone: its press counts now. */
+    /** The `wait` after a press, still alone: its press counts now (Control's as a hold). */
     settled(): FnEvent[] {
       if (solo?.state !== "waiting") return []
       solo.state = "down"
-      return [{ down: true }]
+      tapped = -Infinity
+      return [CONTROL.has(solo.code) ? { down: true, held: true } : { down: true }]
     },
   }
 }

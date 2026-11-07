@@ -31,7 +31,7 @@ export default async ($: VaultTest) => {
     const ROPT = 61, RCMD = 54, LOPT = 58, CTRL = 59
     const solo = (code: number) => { const m = modKeys(ALL); return { m, down: m.heard({ code, on: true, alone: true, at: 0 }), up: () => m.heard({ code, on: false, at: 100 }).fn } }
     const quick = solo(ROPT), quickUp = quick.up()
-    check("right Option: it waits to see it's alone; let go first, it's a tap of fn", quick.down.wait === true && !quick.down.fn.length && JSON.stringify(quickUp) === '[{"down":true},{"down":false}]', quickUp)
+    check("right Option: it waits to see it's alone; let go first, it's a tap of fn", !!quick.down.wait && !quick.down.fn.length && JSON.stringify(quickUp) === '[{"down":true},{"down":false}]', quickUp)
     const long = solo(RCMD), settled = long.m.settled(), heldUp = long.up()
     check("right Command: still alone, it's fn down, then up when let go", JSON.stringify(settled) === '[{"down":true}]' && JSON.stringify(heldUp) === '[{"down":false}]', { settled, heldUp })
     const chord = solo(ROPT), chordKey = chord.m.heard({ other: true }).fn, chordSettled = chord.m.settled(), chordUp = chord.up()
@@ -49,7 +49,36 @@ export default async ($: VaultTest) => {
     check("right Option and Command together: neither", !second.wait && !both.settled().length && !both.heard({ code: ROPT, on: false, at: 50 }).fn.length && !both.heard({ code: RCMD, on: false, at: 60 }).fn.length)
     const off = modKeys(["fn"]), offDown = off.heard({ code: ROPT, on: true, alone: true, at: 0 })
     check("a key not picked: not a trigger", !offDown.wait && !off.settled().length && !off.heard({ code: ROPT, on: false, at: 100 }).fn.length)
-    check("the tap hears the picked keys' codes; chords go by name", keyCodes([...ALL, "control_option", "fn_control"]).join() === "63,61,54" && keyCodes(["nope"]).length === 0 &&
+    {
+    const LCTL = 59, RCTL = 62
+    const ctl = () => modKeys(["left_control", "right_control"])
+    const press = (m: ReturnType<typeof modKeys>, code: number, at: number, ms: number) => [...m.heard({ code, on: true, alone: true, at }).fn, ...m.heard({ code, on: false, at: at + ms }).fn]
+    const one = ctl(), single = press(one, LCTL, 0, 90)
+    check("Control: a tap alone is nothing (it's in every shortcut)", !single.length && !one.settled().length, single)
+    const two = ctl(), dbl2 = [...press(two, LCTL, 0, 80), ...press(two, LCTL, 250, 80)]
+    check("Control: a double tap is hands-free (on, or off)", JSON.stringify(dbl2) === '[{"double":true}]', dbl2)
+    const slow2 = ctl(), apart2 = [...press(slow2, LCTL, 0, 80), ...press(slow2, LCTL, 1200, 80)]
+    const hold2 = ctl(); hold2.heard({ code: LCTL, on: true, alone: true, at: 0 }); hold2.settled(); hold2.heard({ code: LCTL, on: false, at: 700 })
+    const afterHold = press(hold2, LCTL, 800, 80)
+    check("Control: two presses more than 500 ms apart, or a hold then a tap, aren't a double tap", !apart2.length && !afterHold.length, { apart2, afterHold })
+    const cut = ctl(); press(cut, LCTL, 0, 80); cut.heard({ other: true })
+    const cutAfter = press(cut, LCTL, 200, 80)
+    check("Control: a tap, Control+C, a tap: not a double tap", !cutAfter.length, cutAfter)
+    const held = ctl(), heldDown = (held.heard({ code: RCTL, on: true, alone: true, at: 0 }), held.settled()), heldUp = held.heard({ code: RCTL, on: false, at: 900 }).fn
+    check("Control: held alone, it listens till let go", JSON.stringify(heldDown) === '[{"down":true,"held":true}]' && JSON.stringify(heldUp) === '[{"down":false}]', { heldDown, heldUp })
+    const kh = fnKey(450), heldActs = [kh.down(400, false, true), kh.up(500)], busy = fnKey(450), heldBusy = [busy.down(0, true, true), busy.up(900)]
+    check("Control: its hold's release always stops (it counted late); held while listening, nothing", heldActs.join() === "start,stop" && heldBusy.join() === ",", { heldActs, heldBusy })
+    const sc = ctl(), quickC = [...sc.heard({ code: LCTL, on: true, alone: true, at: 0 }).fn, ...sc.heard({ other: true }).fn, ...sc.settled(), ...sc.heard({ code: LCTL, on: false, at: 900 }).fn]
+    check("Control+C (or Control-click, Control-scroll) before the hold counts: nothing starts", !quickC.length, quickC)
+    const late = ctl(); late.heard({ code: LCTL, on: true, alone: true, at: 0 }); late.settled()
+    const lateKey = late.heard({ other: true }).fn, kc = fnKey(450), lateCancel = [kc.down(0, false, true), kc.other(2000, true), kc.up(3000)]
+    check("Control held, then a key (a slow shortcut): what it started is cancelled, however long it was held", JSON.stringify(lateKey) === '[{"other":true,"shortcut":true}]' &&
+      lateCancel.join() === "start,cancel,", { lateKey, lateCancel })
+    const chordFirst = ctl(), withOpt = [...chordFirst.heard({ code: LCTL, on: true, alone: true, at: 0 }).fn, ...chordFirst.heard({ code: LOPT, on: true, alone: false, at: 60 }).fn, ...chordFirst.settled(), ...chordFirst.heard({ code: LCTL, on: false, at: 300 }).fn]
+    check("Control then Option (the Talk keys' ⌃⌥): Control alone does nothing", !withOpt.length, withOpt)
+    check("Control waits longer than right Option to count", ctl().heard({ code: LCTL, on: true, alone: true, at: 0 }).wait! > (modKeys(ALL).heard({ code: ROPT, on: true, alone: true, at: 0 }).wait ?? 0))
+    }
+    check("the tap hears the picked keys' codes; chords go by name", keyCodes([...ALL, "control_option", "fn_control", "left_control", "right_control"]).join() === "63,61,54,59,62" && keyCodes(["nope"]).length === 0 &&
       isChord("control_option") && isChord("fn_control") && !isChord("fn"))
 
     // The Talk keys' gesture (HeyClicky's): hold, tap, double tap.

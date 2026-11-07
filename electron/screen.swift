@@ -44,8 +44,8 @@ var watching = Set<Int64>()
 func watched(_ code: Int64) -> Bool { keysLock.lock(); defer { keysLock.unlock() }; return watching.contains(code) }
 
 let MODS: [Int64: CGEventFlags] = [59: .maskControl, 62: .maskControl, 61: .maskAlternate, 54: .maskCommand]
-/** The left key's own flag: held with the right one, that's not alone. */
-let LEFT: [Int64: UInt64] = [61: 0x20, 54: 0x08]
+/** The key's other side's own flag (left Option's for right Option, right Control's for left): held with it, not alone. */
+let LEFT: [Int64: UInt64] = [61: 0x20, 54: 0x08, 59: 0x2000, 62: 0x01]
 let ANY_MOD: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand, .maskShift, .maskSecondaryFn]
 var modHeld = Set<Int64>(), modLive = false
 /** Control's and the right modifiers' presses as they are (core/fnkey.ts decides); what follows one says only that it came. */
@@ -133,8 +133,8 @@ func mouse(_ type: CGEventType, _ e: CGEvent) -> Bool {
 var tap: CFMachPort?
 /** Started once asked (`fn`): only the menu-bar helper's app hears the key. */
 let tapThread = Thread {
-  // (a click too: Option-click or Control-click isn't a key alone; drags for ink)
-  let mask = [CGEventType.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .leftMouseDragged, .leftMouseUp].reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) }
+  // (a click or a scroll too: Option-click or Control-scroll isn't a key alone; drags for ink)
+  let mask = [CGEventType.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .leftMouseDragged, .leftMouseUp, .scrollWheel].reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) }
   let cb: CGEventTapCallBack = { _, type, e, _ in
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput { if let t = tap { CGEvent.tapEnable(tap: t, enable: true) }; return Unmanaged.passUnretained(e) }
     if type == .leftMouseDragged || type == .leftMouseUp { return mouse(type, e) ? nil : Unmanaged.passUnretained(e) }
