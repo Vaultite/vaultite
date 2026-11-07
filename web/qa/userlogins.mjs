@@ -92,11 +92,13 @@ const enter = () => app.evaluate(({ webContents }, site) => {
   const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(site))
   for (const type of ["keyDown", "char", "keyUp"]) wc?.sendInputEvent({ type, keyCode: type === "char" ? "\r" : "Enter" })
 }, SITE)
-/** Type a sign-in in the page and send it with Enter, as a person does. */
-const signIn = async (user, pw) => {
+/** Type a sign-in in the page and send it with Enter, as a person does, once the page shows (Chromium drops keys sent
+ *  before a page's first paint, as a person couldn't type there yet); it lands on `to`. */
+const signIn = async (user, pw, to) => {
+  await until(() => inPage(`performance.getEntriesByName("first-contentful-paint").length > 0`), 10000)
   await inPage(`user.value = ${JSON.stringify(user)}; pw.value = ${JSON.stringify(pw)}; pw.focus(); 1`)
   await enter()
-  await until(async () => /\/(home|session)$/.test(await inPage("location.pathname") ?? ""), 10000)
+  check(`(${user}'s sign-in sent)`, await until(async () => (await inPage("location.pathname")) === to, 10000), await inPage("location.pathname"))
 }
 
 // ---------- set up, then locked ----------
@@ -139,11 +141,11 @@ check("signed in with what the app filled: no offer", (await offers()).length ==
 
 await inPage(`location.href = "/login"; 1`)
 await until(async () => (await inPage("location.pathname")) === "/login" && (await inPage("typeof pw")) === "object", 10000)
-await signIn("carol", "a wrong one")
+await signIn("carol", "a wrong one", "/session")
 await wait(3500)
 check("a wrong password (the sign-in page again): no offer", (await offers()).length === 0, await offers())
 
-await signIn("bob", BOB)
+await signIn("bob", BOB, "/home")
 const offer = await until(async () => (await offers())[0], 10000)
 check("a sign-in your passwords don't have: offered as new, with the site and username, no password", offer?.kind === "new" && offer.username === "bob" && offer.site === "127.0.0.1"
   && !JSON.stringify(offer).includes(BOB), offer)
@@ -158,7 +160,7 @@ check("… an offer is good once", !!again?.thrown, again)
 // ---------- a new password for alice: offered as an update ----------
 await inPage(`location.href = "/login"; 1`)
 await until(async () => (await inPage("location.pathname")) === "/login" && (await inPage("typeof pw")) === "object", 10000)
-await signIn("alice", NEWER)
+await signIn("alice", NEWER, "/home")
 const update = await until(async () => (await offers()).find((o) => o.username === "alice"), 10000)
 check("alice's new password: offered as an update", update?.kind === "update", update)
 await win.locator("[data-sonner-toast]", { hasText: "Update your password" }).first().locator("[data-button]").click()
