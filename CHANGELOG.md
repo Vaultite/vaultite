@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals run on libghostty-vt 1.0**: Ghostty's first stable release of its terminal engine, in place of a
+  pre-release build: a bit faster on fast output, with the same screens, copy and search.
+
 ## 0.12.0 (2026-11-07)
 
 The companion shows its work: ready jobs knock by the notch and show you their change on screen, you can talk with a
@@ -14,8 +17,6 @@ your asks over a page to its job; the companion works in a window behind yours, 
 of screen shares and draws like a hand. Also dictation that learns your words, a job's session opening in a split, and
 each bundle's page on vaultite.com showing that bundle.
 
-- **Terminals run on libghostty-vt 1.0**: Ghostty's first stable release of its terminal engine, in place of a
-  pre-release build: a bit faster on fast output, with the same screens, copy and search.
 - **Each bundle's page on vaultite.com shows that bundle**: its demo is its own, so Standard or Zen no longer shows the
   Glass a visit before left; Reset starts that bundle again, and Browser's page opens its live sites, as the home
   page's picker does.
