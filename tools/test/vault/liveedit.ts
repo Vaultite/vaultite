@@ -99,6 +99,15 @@ export default async ($: VaultTest) => {
     L.pageOf({ app: "com.mitchellh.ghostty", title: "npm run dev", screen: "VITE ready\n  Local:   http://localhost:5173/\n" } as Any) === "" &&
     L.pageOf({ pane: "t2", screen: "  Local:   http://localhost:5173/" } as Any) === "" &&
     L.pageOf({ app: "com.todesktop.230313mzl4w4u92", screen: 'const site = "http://localhost:5173"' } as Any) === "")
+  {
+    // (a job asked over a note may only research: it takes that note's asks once it changed it, never before)
+    const job = (id: string, files?: string[]) => ({ id, state: "done", on: "note:Notes/Day.md", at: Date.now(), where: {}, ...(files ? { result: { files } } : {}) })
+    const jobs = [job("j1"), job("j2", ["~/vault/Notes/Other.md"])], stub = { vault: { path: "/v" }, kept: (_: string, d: unknown) => d, keep: () => {}, op: () => {} }
+    const live = L.liveEdits(stub as Any, { jobs: { list: () => jobs } } as Any)
+    const none = live.jobOn({ path: "Notes/Day.md" } as Any)
+    jobs.push(job("j3", ["~/vault/Notes/Day.md"]))
+    check("live edit: a note's asks go to a job only once it changed that note", !none && live.jobOn({ path: "Notes/Day.md" } as Any)?.id === "j3", none)
+  }
   check("live edit: what its worker is told: tagged, change it now, a question answered, another's handed back",
     /^Live edit L3: [^]*make this change now[^]*\(not for me\)[^]*they undid[^]*\(The user, through their companion: They said: "make it red"/.test(L.liveText("L3", { t: 1, seq: 1, kind: "ask", text: "make it red" } as Any, ["(they undid L2)"])))
 
