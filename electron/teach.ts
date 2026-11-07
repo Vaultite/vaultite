@@ -198,4 +198,4 @@ async function settleTyping() {
   happened({ t: x.t, kind: "field", el: f.el, value: keptValue(now?.state.value ?? ""), ...(f.window ? { window: f.window } : {}) })
   host.draw()
 }
-export function stopTeach() { if (lesson) clearTimeout(lesson.timer); lesson = null; typing = null }
+export function stopTeach() { if (lesson) clearTimeout(lesson.timer); if (typing) clearTimeout(typing.timer); lesson = null; typing = null }

@@ -31,6 +31,8 @@ let boxes: BoxAt[] = []
 let dragging: { from: Point; display: Rect; was: Box | null } | null = null
 let recording: { since: number; narration: Narration[]; place: Record<string, unknown>; timer: ReturnType<typeof setTimeout>; job?: string } | null = null
 let saving = false
+/** A recording asked for and on its way (its video starting): a second ask meanwhile isn't another. */
+let opening = false
 
 export function captureHost(h: CaptureHost) { host = h }
 export const recordingNow = () => !!recording
@@ -116,7 +118,12 @@ async function boxNow(): Promise<Rect> {
 export function recordFor(job: string) { void startRecording("", job) }
 
 async function startRecording(first: string, job?: string) {
-  if (recording || saving || !host) return
+  if (recording || saving || opening || !host) return
+  opening = true
+  try { await openRecording(first, job) } finally { opening = false }
+}
+async function openRecording(first: string, job?: string) {
+  if (!host) return
   const rect = await boxNow(), now = Date.now()
   if (!region) setRegion({ rect, display: screen.getDisplayNearestPoint(centre(rect)).bounds, tint: "red" })
   const r = await videoAt(centre(rect), await host.exclude(), host.bundles(), REPLAY_MS + 7000)

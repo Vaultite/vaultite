@@ -50,6 +50,7 @@ export function keepTimeline(on: boolean, video = true) {
     if (sampler) clearInterval(sampler)
     sampler = null
     h = []
+    lastP = { x: NaN, y: NaN }
     host?.clicks(false)
     if (!host?.holding()) void stopVideo()
   }
