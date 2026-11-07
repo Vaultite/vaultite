@@ -1,7 +1,7 @@
-// One device's side of sync: every file's versions (content-addressed, with parents), each device's log of the versions it
-// made, and the merges, worked out alike on every device. The folder is the truth; this only remembers how it got there.
-import crypto from "node:crypto"
-import { mergeJson, mergeText } from "./merge.ts"
+// One device's side of sync (plugins/core/sync): every file's versions, each device's log, the merges every device works
+// out alike. No Node here: the phone runs it in its page. The folder is the truth; this remembers how it got there.
+import { sha256 } from "@noble/hashes/sha2.js"
+import { mergeJson, mergeText } from "./syncmerge.ts"
 
 /** A version of a file. `blob` is its bytes' sha-256 (null: deleted); `device` "" for a merge, which any device makes alike. */
 export type Node = {
@@ -59,9 +59,12 @@ export interface Store {
   placed?(h: string, folder: Folder, path: string): void
 }
 
-export const sha = (b: Uint8Array | string) => crypto.createHash("sha256").update(b).digest("hex")
+const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"))
+export const sha = (b: Uint8Array | string) => { let s = ""; for (const x of sha256(typeof b === "string" ? new TextEncoder().encode(b) : b)) s += HEX[x]; return s }
 const enc = new TextEncoder(), dec = new TextDecoder("utf-8", { fatal: true })
 export const PROTOCOL = 1
+/** Checks the folder's bookkeeping after each step (tests: SYNC_DEBUG). */
+const DEBUG = typeof process !== "undefined" && !!process.env?.SYNC_DEBUG
 /** Text bigger than this merges as binary: the later wins, the other kept beside it. */
 const TEXT_MAX = 8 << 20
 
@@ -444,6 +447,9 @@ export class Replica {
     for (const p of list) now.set(p, this.input.stat(p))
     if (all) for (const p of this.seen.keys()) if (!now.has(p)) now.set(p, null)
     const seed = this.seen.size === 0 && all && this.nodes.size === 0
+    // (a device's first look after it took the others' history: a file unlike every version known is a change on the
+    // latest, not a file begun apart, which would clash with versions it merely hadn't seen)
+    const joining = this.seen.size === 0 && all && this.nodes.size > 0
     const gone: string[] = [], added: { path: string; st: FileStat; hash: string }[] = []
     let changed = 0
     for (const [p, st] of now) {
@@ -475,6 +481,7 @@ export class Replica {
         if (there && there.head.blob === a.hash) node = there.head
         else if (known) node = known // (a version it had before: what came after stays, and is written here)
         // (a file made here at a name another device's file has, unseen here: begun apart, so both are kept when merged)
+        else if (there && joining && this.likest(there.file, a.hash)) node = this.record(this.fresh({ file: there.file, path: a.path, blob: a.hash, size: a.st.size, parents: [this.likest(there.file, a.hash)!.id], from }))
         else if (there && !this.tracks(there.file)) node = this.record(this.fresh({ file: there.file, path: a.path, blob: a.hash, size: a.st.size, parents: there.head.blob === null ? this.heads(there.file).map((h) => h.id) : [], from }))
         else {
           // (a new file; at a name another's file just moved to but that file is still here under its old name: a file
@@ -516,6 +523,28 @@ export class Replica {
     return { changed, held: heldN }
   }
 
+  /** The known version of a file most like these bytes (at least half their lines alike), for a file whose own history
+   *  this device doesn't know: an older copy or one edited since. Null: not like any (it began apart). */
+  private likest(file: string, blob: string): Node | null {
+    const mine = this.blobText(blob)
+    if (mine === null) return null
+    // (lines with something in them: braces and blank lines would make any two JSON files look alike)
+    const lines = (t: string) => t.split("\n").filter((l) => l.trim().length > 2)
+    const count = (t: string) => { const m = new Map<string, number>(); for (const l of lines(t)) m.set(l, (m.get(l) ?? 0) + 1); return m }
+    const have = count(mine), n = lines(mine).length
+    if (!n) return null
+    let best: Node | null = null, score = 0.5
+    for (const id of this.byFile.get(file) ?? []) {
+      const v = this.nodes.get(id)!, t = v.blob ? this.blobText(v.blob) : null
+      if (t === null) continue
+      let same = 0
+      for (const [l, k] of count(t)) same += Math.min(k, have.get(l) ?? 0)
+      const s = same / Math.max(n, lines(t).length)
+      if (s > score || (s === score && best && order(best, v) < 0)) { best = v; score = s }
+    }
+    return best
+  }
+
   /** Whether the input has this file under some name. */
   private tracks(file: string) {
     for (const t of this.seen.values()) if (this.nodes.get(t.node)?.file === file) return true
@@ -544,6 +573,27 @@ export class Replica {
     const there = this.fileAt(norm(path))
     if (there) return this.record(this.fresh({ file: there.file, path: norm(path), blob, size: bytes.length, parents: there.head.blob === null ? [there.head.id] : [], from }))
     return this.record(this.fresh({ file: sha(`file:${keyOf(path)}:${from}:${this.clock + 1}`), path: norm(path), blob, size: bytes.length, parents: [], from }))
+  }
+
+  /** A file put into the folder from outside the engine (a big download straight to disk): its version's, so it isn't
+   *  written again nor taken for an edit. False when no live version there has those bytes. */
+  adoptFile(path: string, hash: string, size: number, mtime: number): boolean {
+    const there = this.fileAt(norm(path))
+    if (!there || there.head.blob !== hash) return false
+    const t = { hash, node: there.head.id, size, mtime }
+    this.wrote.set(there.head.path, t)
+    if (this.shadow) return true
+    this.seen.set(there.head.path, t)
+    this.save()
+    return true
+  }
+
+  /** Let go of a file here without deleting it anywhere (the phone freeing room): it stays online only. */
+  forget(path: string) {
+    const p = norm(path)
+    this.wrote.delete(p)
+    this.seen.delete(p)
+    this.save()
   }
 
   /** Settle a conflict (the user chose): a version on the file's head that says so. */
@@ -654,10 +704,10 @@ export class Replica {
   /** Look, merge, write: what a device does after a change of its own or a peer's. */
   step(paths?: string[]) {
     const s = this.scan(paths)
-    if (process.env.SYNC_DEBUG) this.audit("scan")
+    if (DEBUG) this.audit("scan")
     const m = this.mergeAll()
     const w = this.materialize()
-    if (process.env.SYNC_DEBUG) this.audit("materialize")
+    if (DEBUG) this.audit("materialize")
     // (writing may have shown a file changed here meanwhile: looked at again next step)
     return { changed: s.changed, merged: m, wrote: w.wrote, held: s.held + w.held }
   }

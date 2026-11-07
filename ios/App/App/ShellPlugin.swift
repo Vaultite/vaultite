@@ -3,7 +3,8 @@ import Capacitor
 import WebKit
 
 /// The shell's side of the bridge (the page's: web/src/core/phoneapp.ts), given to every page the web view loads.
-/// Capacitor sends pages that aren't the app's own to Safari; listed servers are its own too (`shouldOverrideLoad`).
+/// Capacitor sends pages that aren't the app's own to Safari; listed servers and the offline app are its own too
+/// (`shouldOverrideLoad`).
 @objc(ShellPlugin)
 public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ShellPlugin"
@@ -34,6 +35,16 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "audioStop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "audioState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "audioSleep", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "localList", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "localRead", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "localWrite", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "localRemove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "localMove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "localFetch", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "localInfo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "localAnswer", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openOffline", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setOffline", returnType: CAPPluginReturnPromise),
     ]
 
     /// What a widget or a shortcut asked for (AppViewController): `command` or `open`, until the page takes it.
@@ -245,6 +256,122 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
         return (call.getString("title") ?? "", call.getString("artist") ?? "", call.getString("album") ?? "", call.getString("artwork"), chapters)
     }
 
+    // ---------- the phone's copy of a vault (LocalStore.swift): `area` "vault" or "sync", `vault` its id, paths relative
+
+    @objc func localList(_ call: CAPPluginCall) {
+        onStore(call) { store in
+            let root = try LocalStore.root(area: call.getString("area"), vault: call.getString("vault"))
+            return ["files": store.list(root)]
+        }
+    }
+
+    @objc func localRead(_ call: CAPPluginCall) {
+        onStore(call) { store in
+            let root = try LocalStore.root(area: call.getString("area"), vault: call.getString("vault"))
+            guard let paths = call.getArray("paths", String.self) else { throw LocalStore.Bad("no paths") }
+            return ["files": try store.read(root, paths)]
+        }
+    }
+
+    @objc func localWrite(_ call: CAPPluginCall) {
+        onStore(call) { store in
+            let root = try LocalStore.root(area: call.getString("area"), vault: call.getString("vault"))
+            let file = try LocalStore.file(root, call.getString("path"))
+            guard let data = Data(base64Encoded: call.getString("data") ?? "") else { throw LocalStore.Bad("data isn't base64") }
+            return try store.write(file, data, append: call.getBool("append") ?? false)
+        }
+    }
+
+    @objc func localRemove(_ call: CAPPluginCall) {
+        onStore(call) { store in
+            let root = try LocalStore.root(area: call.getString("area"), vault: call.getString("vault"))
+            try store.remove(root, try LocalStore.file(root, call.getString("path")))
+            return [:]
+        }
+    }
+
+    @objc func localMove(_ call: CAPPluginCall) {
+        onStore(call) { store in
+            let root = try LocalStore.root(area: call.getString("area"), vault: call.getString("vault"))
+            return try store.move(root, try LocalStore.file(root, call.getString("from")), try LocalStore.file(root, call.getString("to")))
+        }
+    }
+
+    @objc func localFetch(_ call: CAPPluginCall) {
+        let store = LocalStore.shared
+        let file: URL
+        do {
+            let root = try LocalStore.root(area: call.getString("area"), vault: call.getString("vault"))
+            file = try LocalStore.file(root, call.getString("path"))
+        } catch { return call.reject(error.localizedDescription) }
+        guard let address = call.getString("url"), let url = URL(string: address), url.scheme == "http" || url.scheme == "https" else {
+            return call.reject("not a web address")
+        }
+        var headers: [String: String] = [:]
+        for (k, v) in call.getObject("headers") ?? [:] { if let v = v as? String { headers[k] = v } }
+        store.fetch(url, headers: headers, to: file) { result in
+            switch result {
+            case .success(let info): call.resolve(info)
+            case .failure(let error): call.reject(error.localizedDescription)
+            }
+        }
+    }
+
+    /// `free`: bytes there's room for (important usage); `wifi`: on Wi-Fi now; `vaults`: the ids with a copy.
+    @objc func localInfo(_ call: CAPPluginCall) {
+        onStore(call) { store in store.info() }
+    }
+
+    private func onStore(_ call: CAPPluginCall, _ work: @escaping (LocalStore) throws -> [String: Any]) {
+        let store = LocalStore.shared
+        store.queue.async {
+            do { call.resolve(try work(store)) } catch { call.reject(error.localizedDescription) }
+        }
+    }
+
+    // ---------- the offline app (LocalScheme.swift)
+
+    /// The offline page's answer to a request window.__vaultiteLocal.request was given (`body` base64).
+    @objc func localAnswer(_ call: CAPPluginCall) {
+        guard let id = call.getString("id") else { return call.reject("no id") }
+        let status = call.getInt("status") ?? 200
+        var headers: [String: String] = [:]
+        for (k, v) in call.getObject("headers") ?? [:] {
+            if let v = v as? String { headers[k] = v } else if let v = v as? NSNumber { headers[k] = v.stringValue }
+        }
+        guard (100...599).contains(status) else { return call.reject("not a status") }
+        var body = Data()
+        if let text = call.getString("body") {
+            guard let data = Data(base64Encoded: text) else { return call.reject("body isn't base64") }
+            body = data
+        }
+        DispatchQueue.main.async {
+            _ = LocalScheme.shared.answer(id, status: status, headers: headers, body: body)
+            call.resolve()
+        }
+    }
+
+    /// Open the offline app on a vault's copy, in place of this page.
+    @objc func openOffline(_ call: CAPPluginCall) {
+        guard let vault = call.getString("vault"), LocalStore.valid(vault: vault), let url = LocalStore.offlineURL(vault) else {
+            return call.reject("not a vault id")
+        }
+        LocalStore.offlineVault = vault
+        DispatchQueue.main.async {
+            _ = self.webView?.load(URLRequest(url: url))
+            call.resolve()
+        }
+    }
+
+    /// Which vault a server's app serves, so the app opens its copy when that server can't be reached. No `vault`: none.
+    @objc func setOffline(_ call: CAPPluginCall) {
+        guard let server = call.getString("server"), LocalStore.origin(server) != nil else { return call.reject("not a server address") }
+        let vault = call.getString("vault")
+        if let vault, !LocalStore.valid(vault: vault) { return call.reject("not a vault id") }
+        LocalStore.setVault(vault, for: server)
+        call.resolve()
+    }
+
     /// The server of the list whose page asks.
     private func pageServer() -> String? {
         var url: URL?
@@ -253,7 +380,7 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     override public func shouldOverrideLoad(_ navigationAction: WKNavigationAction) -> NSNumber? {
-        guard let url = navigationAction.request.url, Servers.knows(url) else { return nil }
+        guard let url = navigationAction.request.url, Servers.knows(url) || url.scheme == LocalScheme.scheme else { return nil }
         return false // allowed, in the app
     }
 }

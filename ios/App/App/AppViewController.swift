@@ -10,12 +10,26 @@ class AppViewController: CAPBridgeViewController {
     /// Capacitor's navigation delegate, kept (the web view holds its delegate weakly).
     private var fallback: LoadFallback?
 
+    /// Capacitor's, with the offline app's scheme (LocalScheme.swift), served from the same bundled files as phone.html.
+    override func webViewConfiguration(for instanceConfiguration: InstanceConfiguration) -> WKWebViewConfiguration {
+        let config = super.webViewConfiguration(for: instanceConfiguration)
+        LocalScheme.shared.web = instanceConfiguration.appLocation
+        config.setURLSchemeHandler(LocalScheme.shared, forURLScheme: LocalScheme.scheme)
+        return config
+    }
+
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(shell)
-        // A server's page that doesn't load (unreachable, or reloaded after iOS ended the page in the background) goes
-        // back to the first screen, saying why, instead of a blank screen only quitting the app gets out of.
+        _ = LocalStore.shared // (its network monitor knows the path by the time a page asks)
+        // A server's page that doesn't load (unreachable, or reloaded after iOS ended the page in the background) opens
+        // the offline app on its vault's copy, else goes back to the first screen, saying why, instead of a blank screen.
         if let webView, let local = bridge?.config.localURL {
             let fallback = LoadFallback(inner: webView.navigationDelegate) { [weak webView] failed, why in
+                if let vault = LocalStore.vault(for: failed), LocalStore.hasCopy(vault), let url = LocalStore.offlineURL(vault) {
+                    LocalStore.offlineVault = vault
+                    _ = webView?.load(URLRequest(url: url))
+                    return
+                }
                 var to = URLComponents(url: local.appendingPathComponent("phone.html"), resolvingAgainstBaseURL: false)
                 to?.queryItems = [URLQueryItem(name: "failed", value: failed), URLQueryItem(name: "why", value: why)]
                 if let url = to?.url { _ = webView?.load(URLRequest(url: url)) }

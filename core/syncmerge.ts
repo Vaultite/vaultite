@@ -1,6 +1,6 @@
-// The merges sync makes on every device alike: by line for text, by key for JSON. Both sides' changes are kept, the same
-// change once; where both changed the same lines (or key), the later side's stays and the other is handed back as a clash.
-import { opcodes } from "../../../core/plugins.ts"
+// The merges sync makes on every device alike: by line for text, by key for JSON. Both sides' changes are kept once; where
+// both changed the same lines (or key), the later side's stays and the other is handed back as a clash. No Node here.
+import { opcodes } from "./textedit.ts"
 
 /** Where both sides changed the same lines: the file as merged with those lines as the base had them (`base`) and as the
  *  losing side had them (`other`), so merging `other` into the file from `base` brings back exactly what lost. */

@@ -171,6 +171,22 @@ try {
     check("and back", fs.readFileSync(unit, "utf8") === was)
   })
 
+  await section("failover: the hub moves and back", async () => {
+    // (the M1 gone: vau sync hub on any machine; a vault setting, so every machine follows, backups and all)
+    const hubOn = async (d: keyof typeof ports) => (await op(d, "sync.status"))[1]?.[0]?.hub
+    await stop("a")
+    write("b", "Notes/While the hub is down.md", "kept on b\n")
+    const [s] = await op("b", "sync.hub", { machine: "b" })
+    check("vau sync hub on another machine", s === 200 && await hubOn("b") === "b")
+    const [, snap] = await op("b", "sync.snapshot")
+    check("the new hub takes the snapshots", snap?.[0]?.hub === true, snap)
+    await start("a")
+    check("the old hub, back, follows the setting", await until(async () => (await hubOn("a")) === "b"))
+    check("and has what was made meanwhile", await until(() => read("a", "Notes/While the hub is down.md") === "kept on b\n"))
+    await op("a", "sync.hub", { machine: "a" })
+    check("and back", await until(async () => (await hubOn("b")) === "a" && (await hubOn("a")) === "a"))
+  })
+
   await section("a restart picks up", async () => {
     await stop("a")
     write("b", "Notes/While a was off.md", "hello\n")

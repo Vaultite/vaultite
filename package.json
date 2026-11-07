@@ -35,7 +35,8 @@
     "release:linux:nightly": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 VAULTITE_CHANNEL=nightly node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --linux --publish never -c electron/nightly.cjs",
     "release:win": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --win --publish never",
     "release:win:nightly": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 VAULTITE_CHANNEL=nightly node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --win --publish never -c electron/nightly.cjs",
-    "ios": "VAULTITE_CLEAN_BUILD=1 vite build && cap sync ios && cap open ios"
+    "ios": "VAULTITE_CLEAN_BUILD=1 vite build && npm run build:offline && cap sync ios && cap open ios",
+    "build:offline": "VAULTITE_OFFLINE=1 vite build -c vite.demo.config.ts"
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "1.3.0",

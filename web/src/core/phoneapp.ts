@@ -114,6 +114,31 @@ export const phoneAudio = phoneApp && shellHas("audioLoad")
     info: phoneApp.audioInfo, stop: phoneApp.audioStop, state: phoneApp.audioState, sleep: phoneApp.audioSleep }
   : null
 
+/** Where the phone keeps a vault's copy (App/ShellPlugin.swift): "vault" its files (Files: On My iPhone, Vaultite),
+ *  "sync" device sync's logs and blobs. Paths are vault paths. */
+export type LocalArea = "vault" | "sync"
+type LocalStat = { size: number; mtime: number }
+export type PhoneLocal = {
+  list: (o: { area: LocalArea; vault: string }) => Promise<{ files: ({ path: string } & LocalStat)[] }>
+  read: (o: { area: LocalArea; vault: string; paths: string[] }) => Promise<{ files: Record<string, string | null> }>
+  write: (o: { area: LocalArea; vault: string; path: string; data: string; append?: boolean }) => Promise<LocalStat>
+  remove: (o: { area: LocalArea; vault: string; path: string }) => Promise<void>
+  move: (o: { area: LocalArea; vault: string; from: string; to: string }) => Promise<LocalStat>
+  /** A URL's bytes straight into a file (big media), with their sha-256. */
+  fetch: (o: { area: LocalArea; vault: string; path: string; url: string; headers?: Record<string, string> }) => Promise<LocalStat & { sha256: string }>
+  info: () => Promise<{ free: number; wifi: boolean; vaults: string[] }>
+  /** Which vault a server's app serves, so the shell opens its copy when that server can't be reached. */
+  setOffline: (o: { server: string; vault: string }) => Promise<void>
+  openOffline: (o: { vault: string }) => Promise<void>
+  /** The offline app's answer to a request the shell passed it (window.__vaultiteLocal.request). */
+  answer: (o: { id: string; status: number; headers: Record<string, string>; body: string | null }) => Promise<void>
+}
+/** The phone's copies of vaults (null outside the iPhone app, or in one built before it had them). */
+export const phoneLocal: PhoneLocal | null = cap?.isNativePlatform?.() && shellHas("localList")
+  ? { list: call("localList"), read: call("localRead"), write: call("localWrite"), remove: call("localRemove"), move: call("localMove"),
+    fetch: call("localFetch"), info: call("localInfo"), setOffline: call("setOffline"), openOffline: call("openOffline"), answer: call("localAnswer") }
+  : null
+
 /** The phone's Apple Health, for a plugin that takes it (null outside the iPhone app): `route` is where the server
  *  takes what it reads (after /api/). */
 export const phoneHealth = phoneApp

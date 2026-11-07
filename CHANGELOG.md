@@ -19,6 +19,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Device sync**: machines keep one vault without iCloud moving the notes: each trades its files' versions with the
   others over your network (the hub, any peer, or an iCloud mailbox), merges them by line or key, and keeps a real
   clash in the note to settle. Try it beside iCloud first with `vau sync shadow` (`vau sync`, `vau sync compare`).
+  The iPhone app keeps a copy (notes in full, media by `vau sync keep` rules, a Downloads page) and opens it offline.
 - **Messages sent while Claude works stay where you sent them**: in a chat, what you send mid-turn is read back from
   its transcript in its place, instead of falling to the bottom or going missing once the chat reloads.
 - **The notch island is calm, the menu bar menu short**: at rest the island is one still count of the agents working,

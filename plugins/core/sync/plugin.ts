@@ -5,8 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
-import { FileAnswer, HTTPError, LOCAL, localDate, localTime, MACHINE_CLIENT, Plugin } from "../../../core/plugins.ts"
-import { type Conflict, type Entry, PROTOCOL, Replica, sha, unsynced, type Vector } from "./engine.ts"
+import { type Conflict, type Entry, FileAnswer, HTTPError, LOCAL, localDate, localTime, MACHINE_CLIENT, Plugin, Replica, sha256hex as sha, SYNC_PROTOCOL as PROTOCOL, unsynced, type Vector } from "../../../core/plugins.ts"
 import { DiskFolder, DiskStore } from "./disk.ts"
 import { Mailbox } from "./mailbox.ts"
 import { Mirror, snapshot } from "./hub.ts"
@@ -133,8 +132,10 @@ export class SyncSet {
     }
     if (this.shadow) this.timers.push(setInterval(() => void this.compare().catch((e) => this.note(`compare: ${(e as Error).message}`)), COMPARE_MS))
     for (const t of this.timers) t.unref?.()
-    // (its own look first, so a device starting fresh makes the versions every device makes alike)
-    void this.run(() => this.stepNow()).then(() => this.compact()).then(() => this.exchangeAll()).then(() => this.mail())
+    // (a device starting fresh takes the others' history first, so its first look finds its files' versions there)
+    const fresh = this.replica.seen.size === 0
+    void (fresh ? this.exchangeAll().then(() => this.mail()) : Promise.resolve())
+      .then(() => this.run(() => this.stepNow())).then(() => this.compact()).then(() => this.exchangeAll()).then(() => this.mail())
   }
   close() {
     this.closed = true
@@ -485,6 +486,31 @@ plugin.route("POST", "sync/blob", async (req) => {
   return { have: true }
 }, { lock: false, sync: false, stream: true })
 
+/** POST sync/blobs {set, hashes}: several small blobs at once (a phone catching up), base64, up to 8 MB. */
+plugin.route("POST", "sync/blobs", async (req) => {
+  await plugin.ownerOnly(req, "Device sync")
+  const s = setOf(req.body?.set), out: Record<string, string> = {}
+  let total = 0
+  for (const h of Array.isArray(req.body?.hashes) ? (req.body.hashes as unknown[]).slice(0, 2000) : []) {
+    if (typeof h !== "string" || !/^[0-9a-f]{64}$/.test(h) || total > 8 << 20) continue
+    const b = s.store.blob(h)
+    if (b && b.length <= 8 << 20) { out[h] = Buffer.from(b).toString("base64"); total += b.length }
+  }
+  return { blobs: out }
+}, { lock: false, sync: false })
+
+/** GET sync/phone: what the iPhone app's copy syncs with here: the vault's own set, or while it's in shadow mode the
+ *  shadow copy's, read only (edits made offline then would never reach the vault). */
+plugin.route("GET", "sync/phone", async (req) => {
+  await plugin.ownerOnly(req, "Device sync")
+  const real = servedSet()
+  if (real) return { set: real.cfg.id, vault: real.cfg.id, readOnly: false, device: "iphone" }
+  let here = plugin.vault.path
+  try { here = fs.realpathSync(here) } catch { /* as given */ }
+  const shadow = [...running.values()].find((s) => { try { return s.shadow && fs.realpathSync(s.cfg.input!) === here } catch { return false } })
+  return shadow ? { set: shadow.cfg.id, vault: shadow.cfg.id, readOnly: true, device: "iphone" } : { set: null }
+}, { lock: false, sync: false })
+
 // ---------- the note's conflicts (sync-conflicts draws them, beside iCloud's)
 
 /** The served vault's own set (not shadow): its folder is the vault. */
@@ -650,6 +676,52 @@ plugin.op({
     return { hub: machine, epoch }
   },
   text: (r: { hub: string; epoch: number }) => `The hub is ${r.hub} now (epoch ${r.epoch}).`,
+})
+
+const BYTES = /^(\d+(?:\.\d+)?)\s*(kb|mb|gb)$/i
+plugin.op({
+  id: "sync.keep", cli: "sync keep", kind: "write",
+  summary: "Choose what a device keeps offline (the phone): a file, a note with its media, or a folder (new files in it too), by kind and age; or all media, or the storage cap.",
+  help: `A device's rules are vault settings (devices.<id> in the sync plugin's data.json), so they sync: the phone takes
+them the next time it connects (big files on Wi-Fi only). Notes are always on it in full; this is for media.
+
+  vau sync keep "Inbox/Clips" --kind video --since 7d     the videos clipped this week
+  vau sync keep "Projects/Trip.md"                        a note and the media in it
+  vau sync keep "Podcasts" --kind audio --latest 5        the latest five
+  vau sync keep "Inbox/Clips" --off                       stop keeping it
+  vau sync keep --all                                     every media file (--all false: the rules again)
+  vau sync keep --cap 3GB`,
+  args: ["path"],
+  params: {
+    path: { type: "string", description: "a file, a note (its media) or a folder" },
+    kind: { type: "string", enum: ["image", "video", "audio", "pdf"], description: "only this kind of file (in a folder)" },
+    since: { type: "string", description: "only files changed in the last: 7d, 2w, 12h" },
+    latest: { type: "integer", minimum: 1, description: "only the latest n (in a folder)" },
+    off: { type: "boolean", description: "stop keeping it" },
+    all: { type: "boolean", description: "keep every media file (false: by the rules again)" },
+    cap: { type: "string", description: "the most it keeps: 2GB, 500MB" },
+    device: { type: "string", default: "iphone", description: "which device (the phone: iphone)" },
+  },
+  run: ({ path: p, kind, since, latest, off, all, cap, device }) => {
+    const cur = plugin.settings({}), devices = { ...(cur.devices ?? {}) } as Record<string, Record<string, unknown>>, d = { ...(devices[device] ?? {}) }
+    if (all !== undefined) d.keepAll = all
+    if (cap) {
+      const m = BYTES.exec(cap)
+      if (!m) throw new HTTPError(400, "`cap`: a size like 2GB or 500MB")
+      d.cap = Math.round(Number(m[1]) * { kb: 1 << 10, mb: 1 << 20, gb: 1 << 30 }[m[2].toLowerCase() as "kb"]!)
+    }
+    if (p !== undefined) {
+      const at = String(p).replace(/^\/+|\/+$/g, "")
+      const keep = (Array.isArray(d.keep) ? d.keep : []).filter((r: { path?: string }) => r.path !== at)
+      d.keep = off ? keep : [...keep, { path: at, ...(kind ? { kind } : {}), ...(since ? { since } : {}), ...(latest ? { latest } : {}) }]
+    } else if (all === undefined && !cap) throw new HTTPError(400, "say what: a `path`, `all` or `cap`")
+    devices[device] = d
+    plugin.saveSettings({ ...cur, devices })
+    return { device, rules: d }
+  },
+  text: (r: { device: string; rules: { keep?: { path: string; kind?: string; since?: string; latest?: number }[]; keepAll?: boolean; cap?: number } }) =>
+    [`${r.device} keeps${r.rules.keepAll ? " every media file" : ":"}`, ...(r.rules.keep ?? []).map((k) => `- ${k.path || "everything"}${k.kind ? `, ${k.kind}` : ""}${k.since ? `, last ${k.since}` : ""}${k.latest ? `, latest ${k.latest}` : ""}`),
+      r.rules.cap ? `Cap: ${Math.round(r.rules.cap / (1 << 20))} MB` : ""].filter(Boolean).join("\n"),
 })
 
 plugin.op({

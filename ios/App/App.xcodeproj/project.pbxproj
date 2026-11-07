@@ -19,6 +19,8 @@
 		A1B2C3D40000000000000072 /* Servers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000005 /* Servers.swift */; };
 		A1B2C3D40000000000000074 /* VoiceNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000073 /* VoiceNote.swift */; };
 		A1B2C3D40000000000000082 /* Downloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000081 /* Downloads.swift */; };
+		A1B2C3D400000000000000A1 /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D400000000000000A0 /* LocalStore.swift */; };
+		A1B2C3D400000000000000A3 /* LocalScheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D400000000000000A2 /* LocalScheme.swift */; };
 		A1B2C3D40000000000000093 /* Audio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000092 /* Audio.swift */; };
 		A1B2C3D40000000000000076 /* Shortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000075 /* Shortcuts.swift */; };
 		A1B2C3D40000000000000051 /* Complications.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000050 /* Complications.swift */; };
@@ -127,6 +129,8 @@
 		A1B2C3D4000000000000006F /* Links.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Links.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000073 /* VoiceNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNote.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000081 /* Downloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Downloads.swift; sourceTree = "<group>"; };
+		A1B2C3D400000000000000A0 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
+		A1B2C3D400000000000000A2 /* LocalScheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalScheme.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000092 /* Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000075 /* Shortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shortcuts.swift; sourceTree = "<group>"; };
 		A1B2C3D4000000000000006B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -282,6 +286,8 @@
 				A1B2C3D40000000000000032 /* WatchLink.swift */,
 				A1B2C3D40000000000000073 /* VoiceNote.swift */,
 				A1B2C3D40000000000000081 /* Downloads.swift */,
+				A1B2C3D400000000000000A0 /* LocalStore.swift */,
+				A1B2C3D400000000000000A2 /* LocalScheme.swift */,
 				A1B2C3D40000000000000092 /* Audio.swift */,
 				A1B2C3D40000000000000075 /* Shortcuts.swift */,
 				A1B2C3D40000000000000008 /* App.entitlements */,
@@ -546,6 +552,8 @@
 				A1B2C3D40000000000000070 /* Links.swift in Sources */,
 				A1B2C3D40000000000000074 /* VoiceNote.swift in Sources */,
 				A1B2C3D40000000000000082 /* Downloads.swift in Sources */,
+				A1B2C3D400000000000000A1 /* LocalStore.swift in Sources */,
+				A1B2C3D400000000000000A3 /* LocalScheme.swift in Sources */,
 				A1B2C3D40000000000000093 /* Audio.swift in Sources */,
 				A1B2C3D40000000000000076 /* Shortcuts.swift in Sources */,
 			);

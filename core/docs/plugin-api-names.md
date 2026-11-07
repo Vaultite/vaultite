@@ -499,6 +499,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `phoneFiles`: The phone's kept files, for a player (null outside the iPhone app).
 - `phoneHealth`: The phone's Apple Health, for a plugin that takes it (null outside the iPhone app): `route` is where the server takes what it reads (after /api/).
 - `PhoneHealth`: What the phone's Apple Health sync is doing: `sent` counts what it posted (sleep samples, workouts, days); `phase` and `progress` (0-1) while it goes through the history; `done` once the history…
+- `phoneLocal`: The phone's copies of vaults (null outside the iPhone app, or in one built before it had them).
+- `PhoneLocal`
+- `PhoneSync`
 - `phoneVoiceNote()`: Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an address it doesn't serve to the system, which gives it back to the app.
 - `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji; `onClose` runs as it closes, picked or not.
 - `PIN_SEARCH`: A search pinned: "search:<query>".
@@ -852,6 +855,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `API_VERSION`
 - `APP_VERSION`
 - `Around`: Middleware over ops: answer next(params)'s result (changed params are checked again), changed or your own in the op's shape, or throw OpError to refuse.
+- `besideName(path, device, at, n?)`: "Notes/Idea.md", "m4", 2026-11-07 -> "Notes/Idea (m4 2026-11-07).md"
 - `BlockCtx`: What a block's text gets: the file it's in (or the one its `file:` names), its options (the block's YAML, with the manifest's declared defaults filled in: core/blocks.ts) and today (YYYY-MM-DD).
 - `BROWSER_UA`
 - `bullets(rows, empty?)`: A Markdown list, or a line saying there's nothing.
@@ -904,7 +908,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `matchServed(plugins, prefix)`: The plugin serving an address outside /api/ (plugin.serve) by its first segment, among `plugins` (the ones on).
 - `matchSocket(plugins, parts)`: The plugin and socket for a WebSocket request path (parts under /api/), and the wildcard values.
 - `merge3(base, mine, actual, fuzzy?)`: Apply base -> mine onto `actual`, or null when a changed line was edited there too (a conflict).
+- `mergeJson(base, a, b, aWins)`: 3-way merge by key (arrays whole), or null when one side isn't JSON.
+- `mergeText(base, a, b, aWins, aFirst?)`: 3-way merge by line.
 - `movedFilePanels(s, src, dst)`: The setup with file (or folder) `src`'s panels following its move; `dst` null: it's gone, and they with it.
+- `nodeId(n)`: The id a version has: a hash of everything else in it, so two devices that make the same merge agree on it.
 - `noDesktop()`
 - `NOT_THE_USER`: Why a caller may not answer for the user, as its refusal says.
 - `OpCall`: An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's).
@@ -936,6 +943,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `recordSpan(s)`: Keep a finished span (the app's arrive through POST activity/perf).
 - `relocatedPin(vault, entry)`: A pin as it is now: its file where it was moved outside the app (Vault.relocated); a search as it is.
 - `repinList(list, src, dst)`: `list` after a file or folder moved from `src` to `dst` (null: to the trash): its pins follow it (its headings' too), each once.
+- `Replica`
 - `reply(status, body)`
 - `Reply`: An answer with a status other than 200: `return reply(201, item)`.
 - `Request`
@@ -954,6 +962,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `service(plugins, name)`: The first plugin's service called `name` (plugin.provide), or null when no plugin offers it.
 - `serviceFor(plugins, kind, rel)`: The service `<kind>:<ext>` a plugin offers for a file by its extension (a double one first: "excalidraw.md"), or null.
 - `settingDefaults(vault, plugins?)`: The defaults other apps' settings give the vault's settings files, by file ("files", "plugins/<id>/data"): each plugin that's on answers `setting-defaults` (Vaults from other apps: .obsidian/);…
+- `sha256hex(b)`
 - `Socket`
 - `SocketAccept`: Runs before the upgrade: throw an HTTPError to refuse it.
 - `SocketHandler`: Runs once the socket is open.
@@ -963,6 +972,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `spans()`
 - `splitMachine(full)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
 - `stampMs(s)`: A stamp ("2026-10-01 12:00:00", the vault's local time; or an ISO date with its zone) as ms, NaN when unreadable.
+- `SYNC_PROTOCOL`
+- `syncKind(path, bytes?)`
+- `syncOrder(a, b)`: The later of two versions: Lamport clock, then device, then id; never the wall clock.
+- `syncPath(p)`: A path as sync names it: NFC, forward slashes, and the key two paths that clash on a Mac share (case).
 - `Text`: A route's answer sent as it is (text/markdown, or another type; bytes too: a font), not as JSON.
 - `TextBlock`
 - `today()`: Today on this machine, YYYY-MM-DD.
@@ -971,6 +984,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `typeNotes(types, fm)`: What's wrong with a file's properties for the vault's types: one quiet note per key ("`due` is a date...").
 - `typeOf(types, key)`: The type of `key`: declared (exactly, else in any case), else implied, else null (the value's own).
 - `typeProblem(type, v)`: Why a value isn't a `type` (a short phrase after its key), or null when it is or it's empty.
+- `unsynced(rel)`: What isn't synced: the folder's own machinery, the OS's litter, sync's temporary files.
 - `unzip(buf, max?)`: The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read (one past `max` bytes throws).
 - `userSurface(w)`: Who may answer for the user (approve or deny a permission: a gate, a terminal's question): the app, their phone's and watch's notifications, or a machine passing one on; never vau, since a…
 - `VAULT_PATH`

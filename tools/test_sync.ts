@@ -2,9 +2,9 @@
 // through partitions and reconnects, which must always converge with no line lost.
 import "./test/isolate.ts"
 import assert from "node:assert/strict"
-import { mergeJson, mergeText } from "../plugins/core/sync/merge.ts"
-import { type Entry, Replica } from "../plugins/core/sync/engine.ts"
-import { MemFolder, MemStore } from "../plugins/core/sync/memory.ts"
+import { mergeJson, mergeText } from "../core/syncmerge.ts"
+import { type Entry, Replica } from "../core/syncengine.ts"
+import { MemFolder, MemStore } from "./test/syncmemory.ts"
 
 let checks = 0
 const check = (name: string, fn: () => void) => { try { fn(); checks++ } catch (e) { console.error(`FAIL ${name}`); throw e } }
@@ -146,6 +146,15 @@ check("shadow: the live folder's changes copied into the copy, a stale one never
   live1.put("N.md", "a\nfrom m4\nfrom m1\n"); live2.put("N.md", "a\nfrom m4\nfrom m1\n"); settle([m1, m4])
   for (const d of [m1, m4]) assert.equal(d.f.text("N.md"), "a\nfrom m4\nfrom m1\n")
   assert.equal(live1.text("N.md"), "a\nfrom m4\nfrom m1\n") // (the live folder is only read)
+})
+check("a device joining later: its files that differ are changes on the history, no clash", () => {
+  const a = device("a"), b = device("b")
+  a.f.put("S.json", '{"pinned": ["x"]}\n'); a.f.put("N.md", "one\n"); a.r.step()
+  a.f.put("S.json", '{"pinned": ["x", "y"]}\n'); a.r.step()
+  b.f.put("S.json", '{"pinned": ["x", "y"]}\n'); b.f.put("N.md", "one\ntwo\n")
+  trade(a, b) // (history first, as a fresh device does)
+  settle([a, b])
+  assert.equal(a.r.conflicts().length, 0); assert.equal(b.f.text("N.md"), "one\ntwo\n"); assert.equal(a.f.text("N.md"), "one\ntwo\n")
 })
 check("a device that restarts picks up where it was", () => {
   const a = device("a"), b = device("b")

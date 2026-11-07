@@ -3,7 +3,7 @@
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { type Entry, type FileStat, type Folder, norm, sha, type Store, unsynced } from "./engine.ts"
+import { type Entry, type FileStat, type Folder, sha256hex as sha, type SyncStore as Store, syncPath as norm, unsynced } from "../../../core/plugins.ts"
 
 const BIG = 1 << 20
 const rel = (root: string, abs: string) => norm(path.relative(root, abs).split(path.sep).join("/"))

@@ -1,5 +1,5 @@
-// A folder and a store in memory: the engine's tests, and a device that keeps nothing on disk.
-import { type Entry, type FileStat, type Folder, sha, type Store } from "./engine.ts"
+// A folder and a store in memory, for device sync's engine tests (core/syncengine.ts).
+import { type Entry, type FileStat, type Folder, sha, type Store } from "../../core/syncengine.ts"
 
 export class MemFolder implements Folder {
   files = new Map<string, { bytes: Uint8Array; mtime: number }>()

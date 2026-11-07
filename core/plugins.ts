@@ -54,6 +54,10 @@ export { frontmatterLinks, frontmatterTargets, type LinkFile, linkResolver, wiki
 export { matches as searchMatches, parse as parseSearch, type SearchDoc, SearchError } from "./searchquery.ts"
 /** A line diff (difflib's opcodes), for what changed between two texts; diffLines: the same, fast at any size. */
 export { merge3, opcodes } from "./textedit.ts"
+/** Device sync's engine (plugins/core/sync): versions, logs and merges, pure, so the phone's page runs it too. */
+export { besideName, type Conflict, type Entry, type FileStat, type Folder, kindOf as syncKind, type Node as SyncNode, norm as syncPath, nodeId, order as syncOrder,
+  PROTOCOL as SYNC_PROTOCOL, Replica, sha as sha256hex, type Status as SyncStatus, type Store as SyncStore, unsynced, type Vector } from "./syncengine.ts"
+export { mergeJson, mergeText } from "./syncmerge.ts"
 export { diffLines } from "./linediff.ts"
 /** Whether a folder can be read, as Settings > Permissions says it (core/permissions.ts). */
 export { accessOf, type Access } from "./permissions.ts"

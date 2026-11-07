@@ -2,7 +2,7 @@
 // and the blobs it added into its own folder, and reads the others'. iCloud never has two writers, so nothing to hide.
 import fs from "node:fs"
 import path from "node:path"
-import type { Entry, Replica, Vector } from "./engine.ts"
+import type { Entry, Replica, Vector } from "../../../core/plugins.ts"
 import type { DiskStore } from "./disk.ts"
 
 const SEGMENT = 1000, BLOB_MAX = 8 << 20

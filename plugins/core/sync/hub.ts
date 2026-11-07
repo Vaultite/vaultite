@@ -3,8 +3,7 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { gitEnv } from "../../../core/plugins.ts"
-import { norm, type Replica, sha, unsynced } from "./engine.ts"
+import { gitEnv, type Replica, sha256hex as sha, syncPath as norm, unsynced } from "../../../core/plugins.ts"
 import type { DiskFolder, DiskStore } from "./disk.ts"
 
 // ---------- git snapshots: text and settings only (media is in the copy)

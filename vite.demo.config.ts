@@ -5,7 +5,8 @@ import base, { bootGroups, pluginIcons, pluginModules } from './vite.config.ts'
 import { MACHINE } from './web/demo/machine.ts'
 import { ignoreOf, walk } from './core/rules.ts'
 
-// npm run build:demo (web/demo/CLAUDE.md). Real paths: Vite sees each module at its real one, so a folder reached
+// npm run build:demo (web/demo/CLAUDE.md); VAULTITE_OFFLINE=1 builds the iPhone app's offline app instead (web/offline/:
+// offline.html beside phone.html in web/dist, on the phone's copy of a vault, without Vaultite's own plugins). Real paths: Vite sees each module at its real one, so a folder reached
 // through a link (a Mac's /var) still matches.
 const real = (p: string) => fs.realpathSync.native(p)
 const ROOT = real(import.meta.dirname)
@@ -27,11 +28,12 @@ const ALIASES: Alias[] = [
 
 // Vaultite's own plugins (Vaultite/plugins, checked out at VAULTITE_PLUGINS, else beside the app) are built in here as
 // if they were the app's, off until turned on: a visitor can't install anything, and bundles name them to install.
+const OFFLINE = process.env.VAULTITE_OFFLINE === '1'
 const PLUGINS_AT = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(import.meta.dirname, '..', 'vaultite-plugins'))
-if (!fs.existsSync(PLUGINS_AT)) throw new Error(`the demo builds in Vaultite's own plugins: check out Vaultite/plugins at ${PLUGINS_AT}, or set VAULTITE_PLUGINS`)
-const OFFICIAL = real(PLUGINS_AT)
+if (!OFFLINE && !fs.existsSync(PLUGINS_AT)) throw new Error(`the demo builds in Vaultite's own plugins: check out Vaultite/plugins at ${PLUGINS_AT}, or set VAULTITE_PLUGINS`)
+const OFFICIAL = OFFLINE ? '' : real(PLUGINS_AT)
 type Official = { id: string; dir: string; manifest: Record<string, unknown>; machine: boolean }
-const official: Official[] = fs.readdirSync(OFFICIAL).sort().flatMap((id) => {
+const official: Official[] = OFFLINE ? [] : fs.readdirSync(OFFICIAL).sort().flatMap((id) => {
   let dir: string, m: Record<string, unknown>
   try { dir = real(path.join(OFFICIAL, id)); m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')) } catch { return [] }
   if (m.id !== id || m.repo !== 'Vaultite/plugins' || fs.existsSync(path.join(ROOT, 'plugins/core', id))) return []
@@ -57,7 +59,7 @@ const asApp = (file: string) => {
   for (const o of official) { const rel = under(o.dir, file); if (rel) return `plugins/core/${o.id}/${rel}` }
   return null
 }
-const MODULES = [path.join(ROOT, 'plugins/core'), OFFICIAL]
+const MODULES = [path.join(ROOT, 'plugins/core'), ...(OFFICIAL ? [OFFICIAL] : [])]
 
 /** The official plugins for the page (web/src/core/plugins.ts merges them in), keyed as plugins/core's globs are. */
 function officialPlugins(): Plugin {
@@ -78,7 +80,7 @@ function officialPlugins(): Plugin {
         `\nexport const pages = {${pages.join(', ')}}\n`
     },
     // (their Tailwind classes are the app's here)
-    transform: (code, id) => (id.endsWith('web/src/index.css') ? `${code}\n@source ${JSON.stringify(OFFICIAL)};\n` : undefined),
+    transform: (code, id) => (id.endsWith('web/src/index.css') && OFFICIAL ? `${code}\n@source ${JSON.stringify(OFFICIAL)};\n` : undefined),
   }
 }
 
@@ -144,7 +146,7 @@ function demoServer(): Plugin {
 /** The app starts once the demo has (web/demo/boot.ts: main.tsx's first import, which waits for its server). */
 const demoEntry = (): Plugin => ({
   name: 'vaultite-demo-entry',
-  transform: (code, id) => (realFile(id) === path.join(ROOT, 'web/src/main.tsx') ? `import ${JSON.stringify(path.join(ROOT, 'web/demo/boot.ts'))}\n${code}` : undefined),
+  transform: (code, id) => (realFile(id) === path.join(ROOT, 'web/src/main.tsx') ? `import ${JSON.stringify(path.join(ROOT, OFFLINE ? 'web/offline/boot.ts' : 'web/demo/boot.ts'))}\n${code}` : undefined),
   // ?theme=light (or dark) pins the look for the site's embed, and the page can switch it (vaultite-demo:theme). Before
   // any of the app's code: its chunks read the system's look as they load.
   // (and without index.html's early read of the state: here the server answers once boot.ts has started it)
@@ -181,10 +183,11 @@ export default defineConfig({
   resolve: { alias: [...ALIASES, ...Object.entries(base.resolve?.alias ?? {}).map(([find, replacement]) => ({ find, replacement }))] },
   worker: { format: 'es', plugins: () => [pluginModules(MODULES), demoServer(), noModuleUrls()] },
   build: {
-    ...base.build, outDir: 'dist-demo', emptyOutDir: true, chunkSizeWarningLimit: 4000, minify: process.env.DEMO_MINIFY !== '0',
+    ...base.build, outDir: OFFLINE ? 'dist' : 'dist-demo', emptyOutDir: !OFFLINE, chunkSizeWarningLimit: 4000, minify: process.env.DEMO_MINIFY !== '0',
+    ...(OFFLINE ? { assetsDir: 'offline' } : {}),
     rollupOptions: {
-      input: { main: path.join(ROOT, 'web/index.html'), sw: path.join(ROOT, 'web/demo/sw.ts') },
-      output: { entryFileNames: (c) => (c.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js'), codeSplitting: { groups: bootGroups } },
+      input: OFFLINE ? { offline: path.join(ROOT, 'web/offline.html') } : { main: path.join(ROOT, 'web/index.html'), sw: path.join(ROOT, 'web/demo/sw.ts') },
+      output: { entryFileNames: (c) => (c.name === 'sw' ? 'sw.js' : `${OFFLINE ? 'offline' : 'assets'}/[name]-[hash].js`), codeSplitting: { groups: bootGroups } },
       onwarn: base.build?.rollupOptions?.onwarn,
     },
   },
