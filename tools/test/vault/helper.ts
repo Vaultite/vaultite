@@ -514,7 +514,8 @@ export default async ($: VaultTest) => {
     // The companion hears the user on screen: an ask or a point with the window's text, the display's picture, what's near
     // the pointer and what they drew.
     const c = await import("../../../plugins/core/companion/plugin.ts")
-    await api("PATCH", "config/plugin/companion", { mode: "quiet" })
+    // (its Talk key's own session on, as by default: what an area before set doesn't decide where a summoned ask goes)
+    await api("PATCH", "config/plugin/companion", { mode: "quiet", summoned_model: null })
     const ask = c.addMoment({ kind: "ask", text: "what does this error mean?", app: "com.apple.Terminal", window: 42, title: "zsh", screen: "error: no such file\nline two", shot: "/tmp/x/screens/window-42-1.png" })
     const text = ask ? c.momentsText([ask], "quiet", null) : ""
     check("companion: an ask on screen names the app and window, its picture and its text", !!ask && text.includes('on screen, "zsh" in com.apple.Terminal (window 42)') &&
@@ -595,15 +596,14 @@ export default async ($: VaultTest) => {
       // (a summoned ask, its answer by the pointer: here, that its session can't start)
       c.addMoment({ kind: "ask", for: name, summoned: true, text: "open my page" })
       const late = () => win.got.find((m) => m.t === "note" && m.note?.id !== answer?.id && m.note?.answers)?.note
-      // (its session tried first, up to the chat keeper's 10 s start: a slow CI Mac takes most of it)
-      for (let i = 0; i < 400 && !late(); i++) await $.sleep(50)
+      for (let i = 0; i < 100 && !late(); i++) await $.sleep(50)
       helper.emit("message", JSON.stringify({ t: "riding", agent: "" }))
       const dropped = win.got.findIndex((m) => m.t === "drop" && m.id === answer?.id), over = win.got.findIndex((m) => m.t === "riding" && m.agent === "")
       const kept = win.got.filter((m) => m.t === "said").at(-1)?.said ?? []
       check("companion: its exchange over, its answers there leave the windows before its cursor shows there, kept in its history",
         !!answer && dropped >= 0 && dropped < over && kept.some((n) => n.text === "I'm good."), { answer, got: win.got.slice(-4) })
       const theirs = kept.find((n) => n.id === late()?.id)
-      check("companion: …and seen there (by the pointer, in its box), so no unread dot for them", !!theirs?.seen, { theirs, late: late() ?? null, kept, got: win.got.slice(-6) })
+      check("companion: …and seen there (by the pointer, in its box), so no unread dot for them", !!theirs?.seen, theirs)
       helper.emit("close"); win.emit("close")
     }
     check("companion: in quiet no edit reaches it, nor does the helper send one (it follows nothing on screen)", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&

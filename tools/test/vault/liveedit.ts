@@ -183,7 +183,8 @@ export default async ($: VaultTest) => {
       const handed = await waitFor(() => other.live === undefined, 20000, 50)
       check("live edit: one its worker says isn't about the page goes to the companion after all, nothing said for it", !!handed && !(await says()).includes("(not for me)"), [other, await says()])
     } finally {
-      await api("PATCH", "config/plugin/companion", { mode: "off" })
+      // (its settings back to the defaults: one left summoned_model "companion" and a later area's Talk key ask went unanswered)
+      await api("PATCH", "config/plugin/companion", { mode: "off", agent: null, summoned_model: null, jobs_agent: null })
       sc.emit("close")
       Object.assign(cc, was)
       if (job) await api("POST", "ops/companion.job-stop", { id: job }, agent).catch(() => {})
