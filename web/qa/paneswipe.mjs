@@ -219,6 +219,13 @@ try {
   await wait(800)
   const wAt = () => W.evaluate(() => [...document.querySelectorAll("[data-pane-dots] button")].findIndex((b) => b.getAttribute("aria-current")))
   const wShift = () => W.evaluate(() => Math.round(new DOMMatrix(getComputedStyle(document.querySelector("#main-scroll > main")).transform).m41))
+  /** Let go: the settle run to its end. (Headless WebKit on Linux can draw no frame for half a second, a settle not
+   *  started meanwhile: waited on itself, not on a fixed time.) */
+  const wSettled = async () => {
+    await wait(100)
+    await until(() => W.evaluate(() => !document.querySelector("#main-scroll > main").getAnimations().length), 5000, 50)
+    await wait(100)
+  }
   /** A finger in the page: down at (x, y), moved along `path` (as line() makes), lifted unless `lift` is false. */
   await W.evaluate(() => {
     // (`at`: when a finger would have been there; a busy page runs the timers late, as it hears a real finger late)
@@ -244,9 +251,9 @@ try {
   check("webkit: a slow drag carries the page, the next pane beside it", Math.abs((await wShift()) + 150) <= 3 && wl.some((x) => x > 240 && x < 390), [await wShift(), wl])
   await W.screenshot({ path: `${OUT}webkit-mid.png` })
   await wLift(50)
-  await wait(700)
+  await wSettled()
   check("webkit: let go short of halfway, held: springs back", (await wShift()) === 0 && (await wAt()) === 0, [await wShift(), await wAt()])
-  await wFinger(200, 500, line(-70, 0, 64)); await wait(700)
+  await wFinger(200, 500, line(-70, 0, 64)); await wSettled()
   check("webkit: a flick goes to the next pane", (await wAt()) === 1 && (await wShift()) === 0, [await wAt(), await wShift()])
   await W.evaluate(landing)
   await wFinger(200, 500, line(-90, 0, 48)); await wait(80)
@@ -254,17 +261,17 @@ try {
   const wFlying = await W.evaluate(() => window.__landed), wCaught = await wShift()
   check("webkit: caught while settling, held where it was", wFlying != null && wFlying < -40 && Math.abs(wCaught - wFlying) < 10, [wFlying, wCaught])
   await wLift(200)
-  await wait(800)
+  await wSettled()
   check("webkit: ...let go there, it lands on a pane", (await wShift()) === 0 && (await wAt()) >= 1, [await wShift(), await wAt()])
-  if ((await wAt()) === 1) { await wFinger(200, 500, line(-70, 0, 64)); await wait(700) }
+  if ((await wAt()) === 1) { await wFinger(200, 500, line(-70, 0, 64)); await wSettled() }
   await wFinger(200, 500, line(-200, 0, 300), false)
   const wBand = await wShift()
   check("webkit: past the last pane it gives, less than the finger", wBand < -10 && wBand > -110, wBand)
   await wLift(0)
-  await wait(700)
+  await wSettled()
   check("webkit: ...and springs back", (await wShift()) === 0 && (await wAt()) === 2, [await wShift(), await wAt()])
   const wb = await W.locator("[data-phone-bar]").boundingBox()
-  await wFinger(200, wb.y + 22, line(-70, 0, 64)); await wait(800)
+  await wFinger(200, wb.y + 22, line(-70, 0, 64)); await wSettled()
   check("webkit: the bar flicked left shows the next tab", (await W.locator("[data-phone-title]").innerText()) === "Tab after" && (await wShift()) === 0, [await W.locator("[data-phone-title]").innerText(), await wShift()])
 } catch (e) {
   check(`webkit: ${e?.stack ?? e}`, false)
