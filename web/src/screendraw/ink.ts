@@ -3,7 +3,7 @@
 import { getStroke } from "perfect-freehand"
 import rough from "roughjs"
 import type { Rect } from "../../../plugins/core/companion/screenmarks"
-import type { Pt } from "./layout"
+import { type Pt, type RingShape } from "./layout"
 
 export type Line = [number, number][]
 
@@ -14,12 +14,40 @@ export function seeded(seed: number) {
 }
 export const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0 }
 
-/** A loop around `r`, as a hand rings something: it starts top left and overshoots its start a little. */
-export function ringLine(r: Rect, rnd: () => number): Line {
+/** A loop around `r` (its ring's box), as a hand rings something: it starts top left and overshoots its start a little. */
+export function ringLine(r: Rect, rnd: () => number, shape: RingShape = "ellipse"): Line {
+  if (shape === "box") return boxLoop(r, rnd)
   const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rx = r.w / 2, ry = r.h / 2, start = -2.5 + rnd() * 0.4, turn = Math.PI * 2 + 0.45, phase = rnd() * 6
   return Array.from({ length: 56 }, (_, i) => {
     const k = i / 55, a = start + k * turn, wob = 1 + 0.035 * Math.sin(a * 3 + phase) + k * 0.05
     return [cx + Math.cos(a) * rx * wob, cy + Math.sin(a) * ry * wob] as [number, number]
+  })
+}
+/** A rounded box drawn in one go round `r`: from its top edge's left part, clockwise, past its start and a little out. */
+function boxLoop(r: Rect, rnd: () => number): Line {
+  const rad = Math.min(16, r.w / 2, r.h / 2), sw = r.w - 2 * rad, sh = r.h - 2 * rad, arc = (Math.PI / 2) * rad
+  const per = 2 * (sw + sh) + 4 * arc, startAt = sw * (0.12 + rnd() * 0.12), run = per * 1.07, phase = rnd() * 6
+  const n = Math.min(140, Math.max(48, Math.round(run / 9)))
+  // (a point `s` along the box's edge, clockwise from its top left straight)
+  const at = (s: number): [number, number] => {
+    s = ((s % per) + per) % per
+    const corner = (cx: number, cy: number, a0: number, d: number): [number, number] => { const a = a0 + d / rad; return [cx + Math.cos(a) * rad, cy + Math.sin(a) * rad] }
+    const x0 = r.x + rad, x1 = r.x + r.w - rad, y0 = r.y + rad, y1 = r.y + r.h - rad
+    if (s < sw) return [x0 + s, r.y]; s -= sw
+    if (s < arc) return corner(x1, y0, -Math.PI / 2, s); s -= arc
+    if (s < sh) return [r.x + r.w, y0 + s]; s -= sh
+    if (s < arc) return corner(x1, y1, 0, s); s -= arc
+    if (s < sw) return [x1 - s, r.y + r.h]; s -= sw
+    if (s < arc) return corner(x0, y1, Math.PI / 2, s); s -= arc
+    if (s < sh) return [r.x, y1 - s]; s -= sh
+    return corner(x0, y0, Math.PI, s)
+  }
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2
+  return Array.from({ length: n }, (_, i) => {
+    // (as a hand goes round: a slight wobble, and the end drifting out so it doesn't close on itself)
+    const k = i / (n - 1), [x, y] = at(startAt + k * run), out = 1.5 * Math.sin(k * 9 + phase) + k * 4
+    const dx = x - cx, dy = y - cy, len = Math.hypot(dx, dy) || 1
+    return [x + (dx / len) * out, y + (dy / len) * out] as [number, number]
   })
 }
 /** A stroke from `a` to `b` with a slight bow (`bow`: how far it bends, in px). */

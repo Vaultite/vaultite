@@ -5,9 +5,9 @@ import { ArrowRight, Check, Copy, ExternalLink, ImageOff, Pause, Play, Volume2, 
 import { edgeOf, type Media, type Mark, pacedBeats, PALETTE, type PaperItem, type Rect, svgFit } from "../../../plugins/core/companion/screenmarks"
 import { flatten } from "../../../plugins/core/companion/svgpath"
 import { PEN_LEAD, type PenScript } from "../core/pilot"
-import { CAPTION_H, clampInto, inflate, place, type Placed, type Pt, type Size } from "./layout"
+import { CAPTION_H, clampInto, inflate, place, type Placed, type Pt, ringShape, type Size } from "./layout"
 import { hash, headLines, inkPath, type Line, linePath, sketch, type Sketched } from "./ink"
-import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER } from "./pen"
+import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER, waitForPen } from "./pen"
 import type { Act, Shown } from "./index"
 
 const PILL_H = 24, PILL_PX = 13, TAB_H = 20, TAB_PX = 12
@@ -26,13 +26,15 @@ const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return !l ? 
 
 /** When each drawing was first seen (`t0`: its first beat, after the pen's lead), and when each mark first showed: every
  *  part's delay counts from the drawing's clock, whatever comes again (kept, a new place, more marks). */
-const born = new Map<string, { t0: number; shown: Map<number, number>; at: number; committed?: boolean; beat?: number }>()
+const born = new Map<string, { t0: number; shown: Map<number, number>; at: number; committed?: boolean; beat?: number
+  /** Its cursor draws it: each mark waits for it to get there. */
+  penned: boolean }>()
 
 /** `pen`: the companion's cursor is here to draw it (its first beat waits for it to fly there), told its strokes. */
 /** `slot`, `named`: its Keep and Clear's row among the layers up, and whether they say whose. */
 export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = false }: { d: Shown; act: (a: Act) => void; grab: (on: boolean) => void; leaving?: boolean; pen?: (s: PenScript | null) => void; slot?: number; named?: boolean }) {
-  if (!born.has(d.id)) { born.set(d.id, { t0: Date.now() + (pen && d.here.home && !still() ? PEN_LEAD : 0), shown: new Map(), at: Date.now() }); if (born.size > 20) born.delete(born.keys().next().value!) }
-  const { t0, shown: showedAt } = born.get(d.id)!
+  if (!born.has(d.id)) { const penned = !!pen && !!d.here.home && !still(); born.set(d.id, { t0: Date.now() + (penned ? PEN_LEAD : 0), shown: new Map(), at: Date.now(), penned }); if (born.size > 20) born.delete(born.keys().next().value!) }
+  const { t0, shown: showedAt, penned } = born.get(d.id)!
   // (each beat while its sentence is heard, when the voice says it; else in the time to read it)
   const last = Math.max(0, ...d.marks.map((m) => m.beat ?? 0)), { times, spread } = useMemo(() => pacedBeats(d.caption ?? "", last, d.spoken, t0, d.waits), [d.caption, last, d.spoken, t0, d.waits])
   const [now, setNow] = useState(Date.now)
@@ -49,7 +51,9 @@ export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = fal
   const [naturals, setNaturals] = useState<Record<string, [number, number]>>({})
   const [moved, setMoved] = useState<Record<string, Pt>>({}), [hidden, setHidden] = useState<Set<string>>(() => new Set()), [full, setFull] = useState<Media | null>(null)
   const spots = useRef(new Map<string, { at: string; card: Rect }>())
-  const placed = useMemo(() => steady(place(d, d.here, labelSize, measure, naturals), spots.current, d.here), [d, naturals])
+  // (a mark whose thing moved keeps the geometry it was drawn with and glides to the new place: `drawn`, by mark)
+  const drawnAs = useRef(new Map<string, Placed>())
+  const placed = useMemo(() => steady(place(d, d.here, labelSize, measure, naturals), spots.current, d.here).map((p) => asDrawn(p, drawnAs.current)), [d, naturals])
   const W = d.here.width, H = d.here.height, seed = hash(d.id)
   // (in each beat, one after another, on the drawing's clock: when each starts, and its delay from when it showed)
   const startAt = useMemo(() => {
@@ -57,13 +61,14 @@ export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = fal
     for (const p of placed) of.set(p.mark.beat ?? 0, (of.get(p.mark.beat ?? 0) ?? 0) + 1)
     // (a heard sentence's marks spread over the time it's said, as a hand draws while it speaks)
     for (const p of placed) { const b = p.mark.beat ?? 0, k = counts.get(b) ?? 0, gap = Math.max(STAGGER, (spread[b] ?? 0) / (of.get(b) ?? 1)); counts.set(b, k + 1); out.set(p.i, t0 + (times[b] ?? 0) + k * gap) }
-    return out
-  }, [placed, times, spread, t0])
+    // (drawn by its cursor: a far mark waits for it to get there, so no ink comes before the pen)
+    return penned ? waitForPen(placed.map(geometry), (i) => seed + i * 97, (i) => out.get(i)!) : out
+  }, [placed, times, spread, t0, penned, seed])
   const shown = placed.filter((p) => (p.mark.beat ?? 0) <= beat)
   for (const p of shown) if (!showedAt.has(p.i)) showedAt.set(p.i, Date.now())
   const order = new Map(shown.map((p) => [p.i, startAt.get(p.i)! - showedAt.get(p.i)!]))
   // (the cursor's pen: the strokes of the marks here, as the ink draws them; those still waiting for their words, once timed)
-  const script = useMemo(() => (pen && d.here.home ? { id: d.id, strokes: penStrokes(placed.filter((p) => !p.mark.gone && Number.isFinite(startAt.get(p.i))), (i) => seed + i * 97, (i) => startAt.get(i)!) } : null), [pen, d.id, d.here.home, placed, seed, startAt])
+  const script = useMemo(() => (pen && d.here.home ? { id: d.id, strokes: penStrokes(placed.filter((p) => !p.mark.gone && Number.isFinite(startAt.get(p.i))).map(geometry), (i) => seed + i * 97, (i) => startAt.get(i)!), ...(d.here.sound ? { sound: true } : {}) } : null), [pen, d.id, d.here.home, d.here.sound, placed, seed, startAt])
   // (its ink starts when the browser starts its animations, which may be later than it was drawn (React holds a suspended
   // part back a moment, then a frame): the drawing's clock, and so the pen's, set by the first one's start)
   const root = useRef<HTMLDivElement>(null)
@@ -86,7 +91,13 @@ export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = fal
     id = requestAnimationFrame(align)
     return () => cancelAnimationFrame(id)
   }, [d.id])
-  useEffect(() => { if (pen) pen(leaving ? null : script) }, [pen, script, leaving])
+  // (the same strokes again, a mark only moved: the pen isn't told, or it would start over)
+  const told = useRef("")
+  useEffect(() => {
+    if (!pen) return
+    const s = leaving ? null : script, said = JSON.stringify(s)
+    if (said !== told.current) { told.current = said; pen(s) }
+  }, [pen, script, leaving])
   useEffect(() => () => pen?.(null), [pen])
   // (a walkthrough: once the next beat is drawn, what pointed goes and what it showed steps back; cards and steps stay)
   const newest = Math.max(0, ...shown.filter((p) => (startAt.get(p.i) ?? Infinity) <= now).map((p) => p.mark.beat ?? 0))
@@ -102,15 +113,37 @@ export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = fal
   return (
     <div ref={root} data-screendraw={d.id} data-beat={beat} data-agent={d.agent} className={`sd-root pointer-events-none fixed inset-0 ${leaving ? "sd-leave" : d.hidden ? "sd-hidden" : ""}`} style={{ "--tint": `var(--${d.tint})` } as React.CSSProperties}>
       {shown.filter((p) => p.mark.type === "spotlight" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Spotlight r={p.box!} W={W} H={H} delay={order.get(p.i)!} /></div>)}
-      {shown.filter((p) => p.mark.type === "frame" && p.box).map((p) => <div key={p.i} className={pastOf(p)}><Focus p={p} delay={order.get(p.i)!} /></div>)}
+      {shown.filter((p) => p.mark.type === "frame" && p.box).map((p) => <div key={p.i} className={`sd-move ${pastOf(p) ?? ""}`} style={glide(p)}><Focus p={geometry(p)} delay={order.get(p.i)!} /></div>)}
       <svg className="sd-glow absolute inset-0 overflow-visible" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        {shown.map((p) => <g key={p.i} className={pastOf(p)}><Strokes p={p} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} /></g>)}
+        {shown.map((p) => <g key={p.i} className={`sd-move ${pastOf(p) ?? ""}`} style={glide(p)}><Strokes p={geometry(p)} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} /></g>)}
       </svg>
-      {shown.map((p) => <div key={p.mark.id ?? p.i} className={pastOf(p)}><Parts p={p} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} card={p.card ? card(p) : undefined} seed={seed + p.i * 131} id={`sd${seed}-${p.mark.id ?? p.i}`} /></div>)}
+      {shown.map((p) => <div key={p.mark.id ?? p.i} className={`${p.card ? "" : "sd-move absolute left-0 top-0"} ${pastOf(p) ?? ""}`} style={p.card ? undefined : glide(p)}><Parts p={p.card ? p : geometry(p)} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} card={p.card ? card(p) : undefined} seed={seed + p.i * 131} id={`sd${seed}-${p.mark.id ?? p.i}`} /></div>)}
       {d.here.home && shown.length > 0 && !leaving && !d.hidden && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} grab={grab} slot={slot} who={named ? d.agent : undefined} />}
       {full && <Lightbox m={full} close={() => setFull(null)} grab={grab} />}
     </div>
   )
+}
+
+/** A placed mark and the geometry it was first drawn with (`drawn`), when its thing has moved since. */
+type Moved = Placed & { drawn?: Placed }
+/** `p` against how its mark was first drawn: the same thing moved (a scroll, its window dragged) keeps that geometry,
+ *  glided over; one changed in kind, or grown or shrunk past a little, is drawn as it is now. */
+function asDrawn(p: Placed, was: Map<string, Placed>): Moved {
+  const key = `${p.mark.id ?? p.i}`, w = was.get(key)
+  const same = w && w.box && p.box && w.mark.type === p.mark.type && p.mark.type !== "connect" && !p.card && (w.mark.beat ?? 0) === (p.mark.beat ?? 0)
+    && near(w.box.w, p.box.w) && near(w.box.h, p.box.h) && (p.mark.type !== "ring" || ringShape(w.box) === ringShape(p.box))
+  if (!same) { was.set(key, p); return p }
+  return w.box!.x === p.box!.x && w.box!.y === p.box!.y && w.box!.w === p.box!.w && w.box!.h === p.box!.h ? p : { ...p, drawn: w }
+}
+const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(4, Math.max(a, b) * 0.4)
+/** What a mark is drawn as: its first geometry, when it has moved since. */
+const geometry = (p: Moved): Placed => p.drawn ?? p
+/** The move from its first geometry to where its thing is now, as a transform that glides (identity when it hasn't). */
+function glide(p: Moved): React.CSSProperties {
+  const a = p.drawn?.box, b = p.box
+  if (!a || !b) return { transform: "translate(0px, 0px) scale(1, 1) translate(0px, 0px)", transformOrigin: "0 0" }
+  const sx = a.w && b.w ? b.w / a.w : 1, sy = a.h && b.h ? b.h / a.h : 1
+  return { transform: `translate(${b.x}px, ${b.y}px) scale(${sx}, ${sy}) translate(${-a.x}px, ${-a.y}px)`, transformOrigin: "0 0" }
 }
 
 /** What Keep has something of. */
@@ -181,7 +214,8 @@ function Focus({ p, delay }: { p: Placed; delay: number }) {
 function Spotlight({ r, W, H, delay }: { r: Rect; W: number; H: number; delay: number }) {
   const h = inflate(r, 8), rr = 10
   const hole = `M${h.x + rr},${h.y}H${h.x + h.w - rr}Q${h.x + h.w},${h.y} ${h.x + h.w},${h.y + rr}V${h.y + h.h - rr}Q${h.x + h.w},${h.y + h.h} ${h.x + h.w - rr},${h.y + h.h}H${h.x + rr}Q${h.x},${h.y + h.h} ${h.x},${h.y + h.h - rr}V${h.y + rr}Q${h.x},${h.y} ${h.x + rr},${h.y}Z`
-  return <svg className="absolute inset-0" width={W} height={H}><path d={`M0,0H${W}V${H}H0Z${hole}`} fillRule="evenodd" className="sd-dim sd-fade" style={{ "--delay": ms(delay) } as React.CSSProperties} /></svg>
+  // (its hole as a style, so it glides to where its thing moved)
+  return <svg className="absolute inset-0" width={W} height={H}><path fillRule="evenodd" className="sd-dim sd-fade" style={{ d: `path("M0,0H${W}V${H}H0Z${hole}")`, "--delay": ms(delay) } as React.CSSProperties} /></svg>
 }
 
 /** What a mark shows besides strokes: its label, a step's badge, its card. */

@@ -251,6 +251,34 @@ export default async ($: VaultTest) => {
     check("spring: one long frame lands where many short ones do", Math.abs(big.x - steps.x) < 1e-6, { big, steps })
   }
   {
+    // The screen under the companion's marks (electron/markwatch.ts): sampled while what points is up; it fades when
+    // the screen there changes for good, follows its thing when one is known, and lets a never-still area be.
+    const mw = await import("../../../electron/markwatch.ts")
+    const things = [{ id: "a1", role: "button", label: "Send", frame: { x: 100, y: 100, width: 60, height: 24 } }, { id: "a2", role: "row", label: "Inbox", frame: { x: 0, y: 300, width: 400, height: 30 } }]
+    const layer = { id: "d1", agent: "Claude", tint: "blue", t: 0, places: { "el:a1": { x: 100, y: 100, w: 60, h: 24 } },
+      marks: [{ type: "ring", id: "m1", at: { el: "a1" } }, { type: "underline", id: "m2", at: { x: 2, y: 302, w: 396, h: 26 } }, { type: "check", id: "m3", at: { x: 900, y: 900, w: 0, h: 0 } },
+        { type: "sticky", id: "m4", text: "kept" }, { type: "write", id: "m5", text: "till it changes", life: "screen", at: { x: 600, y: 600, w: 80, h: 20 } }] } as never
+    const areas = mw.watchedAreas([layer], things)
+    check("mark watch: what points is watched (a point's tip as a small box), cards only when told to live till the screen changes; each anchored to the thing it's on",
+      areas.map((a) => a.mark).join() === "m1,m2,m3,m5" && areas[0].on?.anchor.label === "Send" && areas[1].on?.anchor.label === "Inbox" && !areas[2].on && areas[2].rect.w === 36 &&
+        mw.watchedAreas([{ ...(layer as object), hidden: true } as never]).length === 0, areas)
+    const px = (v: number, n = 64) => ({ w: 8, h: 8, px: new Uint8Array(n).fill(v) })
+    const tinted = { w: 8, h: 8, px: new Uint8Array(64).fill(110) }, other = { w: 8, h: 8, px: Uint8Array.from({ length: 64 }, (_, i) => (i % 2 ? 250 : 10)) }
+    check("mark watch: a hover's tint or a few pixels isn't a change; something else there is", !mw.differs(px(100), tinted) && !mw.differs(px(100), { w: 8, h: 8, px: Uint8Array.from({ length: 64 }, (_, i) => (i < 5 ? 255 : 100)) }) && mw.differs(px(100), other))
+    const w = mw.makeWatch(), still = areas[2], seq = (a: typeof still, ss: ReturnType<typeof px>[]) => ss.map((x) => w.saw(a, x))
+    check("mark watch: an unanchored mark's area that changes and stays changed (twice running) is changed; a flicker isn't",
+      seq(still, [px(100), px(100), other, px(100), other, other]).join() === ",,,,,changed", seq)
+    const v = mw.makeWatch(), noisy = Array.from({ length: 9 }, (_, i) => px(i % 2 ? 0 : 250))
+    check("mark watch: an area never still (a video) is let be once it hasn't settled", noisy.map((x) => v.saw(still, x)).every((r) => r === null))
+    const a1 = mw.watchedAreas([layer], things)[0], aw = mw.makeWatch()
+    check("mark watch: an anchored mark's change is a look for its thing", [px(100), px(100), other].map((x) => aw.saw(a1, x)).join() === ",,look")
+    const scrolled = [{ ...things[0], frame: { ...things[0].frame, y: 40 } }, things[1]], relabelled = [things[1]]
+    const moved = mw.followed(a1, scrolled), again = mw.followed(a1, scrolled), gone = mw.followed(a1, relabelled)
+    check("mark watch: its thing found again moved says by how much (then where it is now), found where it was stays, not found is gone",
+      moved.kind === "moved" && moved.dx === 0 && moved.dy === -60 && again.kind === "stayed" && gone.kind === "gone" && mw.followed(areas[2], scrolled).kind === "gone", { moved, again, gone })
+    check("mark watch: a sample's size keeps its area's shape, small", JSON.stringify(mw.sampleSize({ x: 0, y: 0, w: 300, h: 30 })) === '{"w":48,"h":5}' && JSON.stringify(mw.sampleSize({ x: 0, y: 0, w: 20, h: 20 })) === '{"w":20,"h":20}')
+  }
+  {
     // The summoned companion's motion (web/src/core/pilot.ts): beside the pointer on a fast spring, an arc to what it
     // points at, its marks traced as their pen, back once the user moves on; the same on every display's window.
     const { alongLine, cubicBezier, DWELL, flightMs, makePilot, MOVE_ON, penAt } = await import("../../../web/src/core/pilot.ts")

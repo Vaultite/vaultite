@@ -3574,6 +3574,40 @@ await section("screen drawings", async () => {
   const streaming = tg.parseTags(`Look [frame "The Morning report bug (Bug 2026-11-06 08.49) has a different cause: folded callouts with videos in the editor, where an embed is mounted and dropped 3 ms later. Hand it to its own session?`)
   check("screen drawings: a tag naming its kind is never said, however long its words (it's a mark) or wrong (dropped), streamed too",
     long.said === "That one." && long.tags.length === 1 && wrong.said === "Here. There." && !wrong.tags.length && streaming.said === "Look", [long, wrong, streaming])
+  // ---- choreography: rings shaped to their thing, the pen first, marks that follow
+  {
+  const ink: Any = await web("screendraw/ink.ts"), pen: Any = await web("screendraw/pen.ts")
+  const row = { x: 100, y: 100, w: 300, h: 28 }, icon = { x: 500, y: 100, w: 32, h: 30 }, tall = { x: 50, y: 50, w: 30, h: 200 }
+  const loop = ink.ringLine(lay.ringBox({ type: "ring" }, row), ink.seeded(3), lay.ringShape(row)), ringed = lay.ringBox({ type: "ring" }, row)
+  const xs = loop.map((p: number[]) => p[0]), ys = loop.map((p: number[]) => p[1])
+  check("screen drawings: a ring is a rounded box round a wide or tall thing (a row, a button), an ellipse round a square-ish one, by aspect",
+    lay.ringShape(row) === "box" && lay.ringShape(tall) === "box" && lay.ringShape(icon) === "ellipse" && lay.ringShape({ x: 0, y: 0, w: 60, h: 40 }) === "ellipse", [lay.ringShape(row), lay.ringShape(icon)])
+  check("screen drawings: a box ring hugs its row (its corners inside, a few points out) and overshoots its start",
+    Math.min(...xs) < row.x && Math.min(...xs) > row.x - 16 && Math.max(...ys) > row.y + row.h && Math.max(...ys) < row.y + row.h + 18 && ringed.h < row.h + 20 && loop.length >= 48 &&
+      Math.hypot(loop[0][0] - loop.at(-1)[0], loop[0][1] - loop.at(-1)[1]) < 60 && loop.at(-1)[0] > loop[0][0], { ringed, first: loop[0], last: loop.at(-1) })
+  const at = (i: number, x: number, y: number) => ({ i, mark: { type: "check" }, box: { x, y, w: 0, h: 0 } })
+  const close = [at(0, 100, 100), at(1, 130, 110)], far = [at(0, 100, 100), at(1, 1100, 700)], cards = [at(0, 100, 100), { i: 1, mark: { type: "sticky" }, box: { x: 1200, y: 800, w: 0, h: 0 }, card: { x: 1200, y: 800, w: 200, h: 100 } }]
+  const startOf = (i: number) => 1000 + i * 170, seed = () => 7
+  const nearT = pen.waitForPen(close, seed, startOf), farT = pen.waitForPen(far, seed, startOf), cardT = pen.waitForPen(cards, seed, startOf)
+  const firstEnd = Math.max(...pen.penStrokes([far[0]], seed, () => 1000).map((s: Any) => s.start + s.dur))
+  check("screen drawings: a far mark waits for the pen to finish the last one and hop over; a near one goes on as a hand does; cards don't wait",
+    nearT.get(1) === startOf(1) && farT.get(1) >= firstEnd + 300 && farT.get(0) === 1000 && cardT.get(1) === startOf(1), { near: [...nearT], far: [...farT], firstEnd })
+  const pl: Any = await web("core/pilot.ts"), strokes = pen.penStrokes(far, seed, (i: number) => farT.get(i))
+  const tip = (t: number) => pl.penAt({ id: "f", strokes }, t, { x: 0, y: 0 }, 0)
+  check("screen drawings: so the pen is at a far mark as its ink starts there, and says when it's inking (a frame's drag lays none)",
+    Math.hypot(tip(farT.get(1)).p.x - strokes.find((s: Any) => s.start >= farT.get(1)).pts[0][0], tip(farT.get(1)).p.y - strokes.find((s: Any) => s.start >= farT.get(1)).pts[0][1]) < 2 &&
+      tip(1050).ink === true && tip(firstEnd + 100).ink !== true && pen.penStrokes([{ i: 0, mark: { type: "frame" }, box: { x: 0, y: 0, w: 50, h: 50 } }], seed, () => 0)[0].dry === true, [tip(farT.get(1)), strokes.map((s: Any) => s.start)])
+  const ps: Any = await web("core/pensound.ts")
+  check("screen drawings: the pen's sound is silent when it's slow, soft and rising with its speed, never past its quiet peak",
+    ps.penLevel(10) === 0 && ps.penLevel(400) > 0 && ps.penLevel(400) < ps.penLevel(1200) && ps.penLevel(99999) === 1 && ps.PEN_PEAK <= 0.02, [ps.penLevel(400), ps.penLevel(1200)])
+  const dw: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/drawings.ts")).href)
+  const layer = { id: "d1", agent: "Claude", tint: "blue", t: 0, places: { "el:a3": { x: 10, y: 20, w: 40, h: 20 } },
+    marks: [{ type: "ring", id: "m1", at: { el: "a3" } }, { type: "underline", id: "m2", at: { el: "a3" } }, { type: "check", id: "m3", at: { x: 300, y: 300, w: 0, h: 0 } }, { type: "sticky", id: "m4", text: "x" }] }
+  const sh = dw.shifted(layer, [{ mark: "m1", dx: 5, dy: -10 }, { mark: "m2", dx: 5, dy: -10 }, { mark: "m3", dx: 0, dy: 40 }])
+  check("screen drawings: marks whose things moved follow them: a shared place moves once, a box with its mark, nothing else",
+    JSON.stringify(sh.places["el:a3"]) === '{"x":15,"y":10,"w":40,"h":20}' && JSON.stringify(sh.marks[2].at) === '{"x":300,"y":340,"w":0,"h":0}' && sh.marks[3] === layer.marks[3] &&
+      dw.shifted(layer, [{ mark: "m1", dx: 0, dy: 0 }]) === layer, sh)
+  }
 })
 
 // ---------- Autosave (web/src/core/autosave.ts): on a made-up server that merges as core/files.ts PUT does ----------

@@ -2,7 +2,7 @@
 // dismissed, or until the screen under them changes; edited by id, hidden and shown, kept as an .excalidraw.
 import fs from "node:fs"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
-import { appPlaces, checkMarks, type Drawing, drawingText, editMarks, findsOf, idsIn, type KeptFile, type Mark, type Media, pruned, type Rect, rectOf, sentences, snapMarks, spots,
+import { appPlaces, checkMarks, type Drawing, drawingText, editMarks, findsOf, idsIn, type KeptFile, type Mark, type Media, pruned, type Rect, sentences, snapMarks, type Spot, spots,
   toExcalidraw, unshown, lifeOf } from "./screenmarks.ts"
 
 /** A drawing left up this long with nothing new goes by itself. */
@@ -130,13 +130,24 @@ export function screenDrawings(plugin: Plugin, o: {
     // (its pen doesn't run again: every mark's beat its first)
     up({ ...now, marks: left.map(({ beat: _b, ...m }) => m as Mark), past: true, spoken: undefined, waits: undefined })
   }
-  /** The screen under some of what's up changed (the helper saw it, in screen points): marks living until then go. */
-  function changed(rects: Rect[]) {
-    for (const d of [...layers.values()]) {
-      const left = d.marks.filter((m) => lifeOf(m) !== "screen" || !spots([m]).some((s) => { const r = rectOf(s, d.places); return !!r && rects.some((c) => r.x < c.x + c.w && c.x < r.x + r.w && r.y < c.y + c.h && c.y < r.y + r.h) }))
-      if (left.length === d.marks.length) continue
-      if (left.length) up({ ...d, marks: left }); else drop(d.agent)
-    }
+  /** The screen under marks of layer `id` changed (the helper saw it): those that point or live until then go, faded
+   *  (cards stay till dismissed). */
+  function changed(id: string, marks: string[]) {
+    const d = byId(id)
+    if (!d) return false
+    const goes = new Set(marks), left = d.marks.filter((m) => !m.id || !goes.has(m.id) || lifeOf(m) === "dismiss")
+    if (left.length === d.marks.length) return false
+    if (left.some((m) => !m.gone)) up({ ...d, marks: left }); else drop(d.agent)
+    return true
+  }
+  /** Marks of layer `id` whose things moved (the helper found them again, by how much in screen points): they follow. */
+  function moved(id: string, moves: { mark: string; dx: number; dy: number }[]) {
+    const d = byId(id)
+    if (!d) return false
+    const next = shifted(d, moves)
+    if (next === d) return false
+    up(next)
+    return true
   }
 
   /** `agent`'s layer up timed with `caption` now (its words whole, as they came after its marks). */
@@ -200,7 +211,7 @@ export function screenDrawings(plugin: Plugin, o: {
     const body = drawingText({ ...now, marks: pruned(now.marks) })
     return body && `Still on their screen, your layer${now.hidden ? " (hidden now)" : ""}${now.kept ? ` (kept in ${now.kept})` : ""}: change it in place by id with draw actions (add, move, change, delete erases it), and only when the ask is about it; new marks replace it, clear takes it down.\n${body}`
   }
-  return { draw, edit, settle, changed, recaption, clear, dismiss, toggle, keep, text, messages, byId, layer: (agent: string) => layers.get(agent) ?? null, all: () => [...layers.values()] }
+  return { draw, edit, settle, changed, moved, recaption, clear, dismiss, toggle, keep, text, messages, byId, layer: (agent: string) => layers.get(agent) ?? null, all: () => [...layers.values()] }
 }
 
 /** A kept drawing's name: its pad's title, else its first words, else when. */
@@ -210,4 +221,28 @@ export function titleOf(d: Drawing) {
   if (clean) return clean
   const at = new Date(d.t), two = (x: number) => String(x).padStart(2, "0")
   return `Sketch ${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}.${two(at.getMinutes())}`
+}
+
+/** Layer `d` with marks moved by `moves` (by mark id): a place they're at moves once however many marks share it (two
+ *  marks on one button), a spot given as a box moves with its mark. `d` itself when nothing moved. */
+export function shifted(d: Drawing, moves: { mark: string; dx: number; dy: number }[]): Drawing {
+  const by = new Map(moves.filter((m) => Number.isFinite(m.dx) && Number.isFinite(m.dy) && (m.dx || m.dy)).map((m) => [m.mark, m]))
+  if (!by.size) return d
+  const places = { ...d.places }, done = new Set<string>()
+  const move = (s: Spot, v: { dx: number; dy: number }): Spot => {
+    if ("area" in s) return s
+    const k = "el" in s ? `el:${s.el}` : "pane" in s ? `pane:${s.pane}` : "ui" in s ? `ui:${s.ui}` : "find" in s ? `find:${s.find}` : null
+    if (!k) { const r = s as Rect; return { ...r, x: r.x + v.dx, y: r.y + v.dy } }
+    if (!done.has(k) && places[k]) { done.add(k); places[k] = { ...places[k], x: places[k].x + v.dx, y: places[k].y + v.dy } }
+    return s
+  }
+  let any = false
+  const marks = d.marks.map((m) => {
+    const v = m.id ? by.get(m.id) : undefined
+    if (!v || m.gone) return m
+    any = true
+    if ("from" in m) return { ...m, from: move(m.from, v), to: move(m.to, v) } as Mark
+    return "at" in m && m.at ? { ...m, at: move(m.at as Spot, v) } as Mark : m
+  })
+  return any ? { ...d, marks, places } : d
 }

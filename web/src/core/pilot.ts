@@ -7,14 +7,20 @@ export type Pt = { x: number; y: number }
 export type Aim = { id: string; x: number; y: number }
 /** A stroke of a mark as its ink reveals it: from `start` (wall-clock ms) for `dur` ms, eased as the reveal is (`ease`:
  *  another curve than the ink's, as a frame's box opens). */
-export type Stroke = { start: number; dur: number; pts: [number, number][]; ease?: Ease }
+export type Stroke = { start: number; dur: number; pts: [number, number][]; ease?: Ease
+  /** It lays no ink (a frame's box dragged open, a badge tapped): no pen sound. */
+  dry?: boolean }
 export type Ease = readonly [number, number, number, number]
 /** A drawing's strokes in the order they're drawn (`id`: the drawing's). */
-export type PenScript = { id: string; strokes: Stroke[] }
+export type PenScript = { id: string; strokes: Stroke[]
+  /** Its pen is heard, softly, as it inks (the companion's sounds on, no call). */
+  sound?: boolean }
 export type Mode = "follow" | "fly" | "pen" | "parked" | "back"
 /** Where it is at a moment: `scale` swells a little mid-flight; `busy`: it needs frames (else the loop may sleep till
  *  the next input). `to`: where it's headed or rests (null: with the pointer). */
-export type Pose = { x: number; y: number; scale: number; mode: Mode; busy: boolean; to: Pt | null }
+export type Pose = { x: number; y: number; scale: number; mode: Mode; busy: boolean; to: Pt | null
+  /** Its pen is on the paper, laying ink. */
+  ink?: boolean }
 
 /** Beside the pointer: it trails it, visibly following (about a third of a second to catch up), never sluggish. */
 export const FOLLOW = stiffness(340)
@@ -87,7 +93,7 @@ export const penLeaves = (script: PenScript, from: Pt, t0: number) => {
 }
 /** The pen's tip at `t` along `script`: on the stroke being drawn (the earliest one not done), hopping between strokes
  *  just in time for the next; before the first, at `from` (where it was at `t0`), then flying there. Null: done. */
-export function penAt(script: PenScript, t: number, from: Pt, t0: number): { p: Pt; flying: boolean; done: boolean } {
+export function penAt(script: PenScript, t: number, from: Pt, t0: number): { p: Pt; flying: boolean; done: boolean; ink?: boolean } {
   const ss = script.strokes
   const first = ss[0], firstAt = { x: first.pts[0][0], y: first.pts[0][1] }
   if (t < first.start) {
@@ -106,9 +112,9 @@ export function penAt(script: PenScript, t: number, from: Pt, t0: number): { p: 
     const prev = ss[i - 1], late = prev && end(prev) > s.start ? end(prev) : 0
     if (late && t - late < 70) {
       const was = alongLine(prev.pts, 1), k = smooth((t - late) / 70)
-      return { p: { x: was.x + (p.x - was.x) * k, y: was.y + (p.y - was.y) * k }, flying: false, done: false }
+      return { p: { x: was.x + (p.x - was.x) * k, y: was.y + (p.y - was.y) * k }, flying: false, done: false, ink: !s.dry }
     }
-    return { p, flying: false, done: false }
+    return { p, flying: false, done: false, ink: !s.dry }
   }
   const last = alongLine(s.pts, 1), next = ss[i + 1]
   if (!next) return { p: last, flying: false, done: true }
@@ -120,8 +126,10 @@ export function penAt(script: PenScript, t: number, from: Pt, t0: number): { p: 
 /** How long the hop from stroke `i`'s end to the next one's start takes: the gap, up to a short flight's time. */
 function hopMs(ss: Stroke[], i: number) {
   const a = ss[i].pts[ss[i].pts.length - 1], b = ss[i + 1].pts[0], gap = ss[i + 1].start - end(ss[i])
-  return Math.max(1, Math.min(Math.max(0, gap), Math.min(420, 140 + Math.hypot(b[0] - a[0], b[1] - a[1]) / 2.5)))
+  return Math.max(1, Math.min(Math.max(0, gap), hopFor(Math.hypot(b[0] - a[0], b[1] - a[1]))))
 }
+/** How long the pen's hop of `d` px between strokes takes when it has the time (ms). */
+export const hopFor = (d: number) => Math.min(420, 140 + d / 2.5)
 
 /** The companion's motion in one exchange. Inputs: the pointer (and its home beside it), what it points at, its pen;
  *  `pose(now)` says where it is. `reduced`: no motion, each place at once. */
@@ -197,7 +205,7 @@ export function makePilot(o: { reduced?: boolean } = {}) {
         if (at.done) { mode = "parked"; settled = now; rest = at.p }
         // (where it draws: its first stroke, so what goes with it doesn't chase the pen)
         const first = pen.strokes[0].pts[0]
-        return { ...at.p, scale: at.flying ? 1.06 : 1, mode: at.done ? "parked" : "pen", busy: true, to: at.done ? at.p : { x: first[0], y: first[1] } }
+        return { ...at.p, scale: at.flying ? 1.06 : 1, mode: at.done ? "parked" : "pen", busy: true, to: at.done ? at.p : { x: first[0], y: first[1] }, ...(at.ink ? { ink: true } : {}) }
       }
       if (flight && (mode === "fly" || mode === "back")) {
         const to = flight.to ?? home, k = flight.dur ? clamp01((now - flight.t0) / flight.dur) : 1, e = smooth(k), p = arcAt(flight.from, to, e)

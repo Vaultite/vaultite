@@ -20,7 +20,7 @@ import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Targ
 import { AUTO_RULES, NEVER_READ, NEVER_RUN, readableDirs } from "./reach.ts"
 import { screenDrawings } from "./drawings.ts"
 import { screenMedia } from "./media.ts"
-import { bestFound, byLabel, checkMarks, type Found, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
+import { bestFound, byLabel, checkMarks, type Found, type Mark, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
 import { languageIn } from "./spoken.ts"
 import { elevenUsage, voiceHere, voiceHereText, voiceOps } from "./voice.ts"
@@ -880,6 +880,21 @@ const tours = toursOf(plugin, { screen: (name) => screenOf(name), who: (p) => wh
 const lastWindow = () => [...windows.entries()].sort((a, b) => b[1].at - a[1].at)[0]?.[0]
 /** A thing as Vaultite's window lists it (tourwindow.ts): `within`, the data-ui around one that has none. */
 type Shown = Seen & { within?: string }
+/** How the marks up become `next` when only their places changed (the same kinds, in order, each at a box): each one's
+ *  move, by id. Null: they differ more than that. */
+function glides(up: Mark[], marks: unknown[]) {
+  let next: Mark[]
+  try { next = checkMarks(marks) } catch { return null }
+  if (up.length !== next.length) return null
+  const box = (v: unknown) => (v && typeof v === "object" && "x" in v && "w" in v ? v as ScreenRect : null)
+  const out: { mark: string; dx: number; dy: number }[] = []
+  for (const [i, m] of up.entries()) {
+    const n = next[i], a = "at" in m ? box(m.at) : null, b = "at" in n ? box(n.at) : null
+    if (!m.id || m.type !== n.type || !a || !b || Math.abs(a.w - b.w) > 4 || Math.abs(a.h - b.h) > 4) return null
+    out.push({ mark: m.id, dx: b.x - a.x, dy: b.y - a.y })
+  }
+  return out
+}
 /** Agent `name`'s screen for a tour: the app its last ask was over (the Mac's helper reads it), else Vaultite's window. */
 function screenOf(name: string): Screen | null {
   const ask = askOf(name), away = ask ? awayIn([ask]) : ""
@@ -947,7 +962,9 @@ function screenOf(name: string): Screen | null {
    *  window without the helper's drawing, the bubble finds its place again by itself. */
   async function follow(marks: Parameters<Screen["show"]>[1]) {
     if (!overScreen()) return
-    const drawn = drawnOf(marks)
+    const drawn = drawnOf(marks), up = screenDrawing.layer(name), moves = up && glides(up.marks.filter((m) => !m.gone), drawn)
+    // (the same marks, their things moved: each glides there, not drawn again)
+    if (up && moves) return void screenDrawing.moved(up.id, moves)
     screenDrawing.clear({ agent: name })
     if (drawn.length) await call("companion.draw", { marks: drawn }).catch(() => {})
   }
@@ -1160,7 +1177,8 @@ function ride(ws: WebSocket, agent: string) {
 /** What the user pressed on a layer over the screen (Clear, Keep, a card's ×, a button's next step: an ask by where it
  *  is), or what the helper saw of it: its exchange over (settle), the screen under it changed. */
 function drawingAct(m: Record<string, unknown>, req: IncomingMessage) {
-  if (m.kind === "changed" && Array.isArray(m.rects)) return void screenDrawing.changed(m.rects.filter((r): r is ScreenRect => !!r && typeof r === "object" && [r.x, r.y, r.w, r.h].every((v) => typeof v === "number")))
+  if (m.kind === "changed" && Array.isArray(m.marks)) return void screenDrawing.changed(str(m.id), m.marks.filter((x): x is string => typeof x === "string"))
+  if (m.kind === "moved" && Array.isArray(m.moves)) return void screenDrawing.moved(str(m.id), m.moves.flatMap((x) => (x && typeof x === "object" && typeof x.mark === "string" && typeof x.dx === "number" && typeof x.dy === "number" ? [{ mark: x.mark, dx: x.dx, dy: x.dy }] : [])))
   const d = screenDrawing.byId(str(m.id))
   if (!d) return
   if (m.kind === "clear") return void screenDrawing.clear({ id: d.id })

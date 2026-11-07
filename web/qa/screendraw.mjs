@@ -228,7 +228,7 @@ for (const [page, name] of [[light, "light"], [await open(true), "dark"]]) {
   check("walkthrough: while its words are being said, no mark shows before its sentence is heard", before === 0 && early === 0 && heard >= 2, { before, early, heard })
   await show(page, { ...TOUR, spoken: [{ at: t1 + 900, dur: 1200 }, { at: t1 + 2200, dur: 1000 }] })
   await page.waitForTimeout(1600)
-  const past = await page.evaluate(() => ({ frame: document.querySelector("[data-focus]")?.parentElement?.className, point: [...document.querySelectorAll("svg .sd-gone")].length, ring: document.querySelector("[data-screendraw=dw]")?.getAttribute("data-beat") }))
+  const past = await page.evaluate(() => ({ frame: [...document.querySelector("[data-focus]")?.parentElement?.classList ?? []].filter((c) => c !== "sd-move").join(" "), point: [...document.querySelectorAll("svg .sd-gone")].length, ring: document.querySelector("[data-screendraw=dw]")?.getAttribute("data-beat") }))
   check("walkthrough: as the next thing is named, the one before steps back and what pointed at it goes", past.frame === "sd-past" && past.point === 1 && past.ring === "1", past)
   await page.screenshot({ path: path.join(SHOTS, "screendraw-walkthrough.png") })
   await page.close()
@@ -378,6 +378,45 @@ const LOGO = [{ d: "M50 8 a42 42 0 1 0 0.01 0 Z", color: "ink", width: 3 }, { d:
   await both(mine, null)
   await page.waitForTimeout(400)
   check("layers: one taken down leaves the other", await page.evaluate(() => [...document.querySelectorAll("[data-screendraw]")].map((e) => e.getAttribute("data-agent")).join()) === "Claude")
+  await page.close()
+}
+
+// ---- choreography: rings shaped to their thing; a mark whose thing moved glides there, not drawn again; frames kept
+{
+  const page = await open()
+  const layer = (places) => ({ id: "dc1", agent: "Claude", tint: "orange", t: Date.now(), places, marks: [
+    { type: "ring", id: "r", at: { el: "row1" } }, { type: "ring", id: "o", at: B(1060, 300, 44, 40) }, { type: "underline", id: "u", at: { el: "inbox" } }] })
+  // (frames counted at rest first, this machine's own rate, then through the moves; long tasks would drop frames)
+  const rate = (fs) => { const g = fs.slice(1).map((t, i) => t - fs[i]).sort((a, b) => a - b); return { fps: Math.round((fs.length - 1) / ((fs.at(-1) - fs[0]) / 1000)), p95: Math.round(g[Math.floor(g.length * 0.95)]) } }
+  const rest = rate(await page.evaluate(() => new Promise((ok) => { const f = []; const tick = (t) => { f.push(t); if (f.length < 60) requestAnimationFrame(tick); else ok(f) }; requestAnimationFrame(tick) })))
+  await show(page, layer(ELEMENTS))
+  await page.waitForTimeout(1500)
+  // (from here, once its code has loaded and it's drawn: the glides)
+  await page.evaluate(() => { window.__frames = []; window.__long = []; new PerformanceObserver((l) => window.__long.push(...l.getEntries().map((e) => Math.round(e.duration)))).observe({ type: "longtask" })
+    const tick = (t) => { window.__frames.push(t); requestAnimationFrame(tick) }; requestAnimationFrame(tick) })
+  const box = (sel) => page.evaluate((sel) => { const r = document.querySelector(sel)?.getBoundingClientRect(); return r && { x: r.x, y: r.y, w: r.width, h: r.height } }, sel)
+  const ring = await box("[data-mark-i='0']"), oval = await box("[data-mark-i='1']"), row = SCREEN.row1
+  check("choreography: a ring round a wide row hugs it (a rounded box, a few points out); round a square-ish thing it's an ellipse round it",
+    ring && ring.x < row.x && ring.x > row.x - 20 && ring.h < row.h + 34 && ring.w < row.w + 40 && oval && oval.w < 90 && oval.h < 90, { ring, oval })
+  await page.screenshot({ path: path.join(SHOTS, "screendraw-rings.png") })
+  const moved = { ...ELEMENTS, "el:row1": { ...ELEMENTS["el:row1"], y: ELEMENTS["el:row1"].y + 200 } }
+  await show(page, layer(moved))
+  await page.waitForTimeout(160)
+  const mid = await box("[data-mark-i='0']")
+  await page.waitForTimeout(700)
+  const end = await box("[data-mark-i='0']")
+  const drawn = await page.evaluate(() => [...document.querySelectorAll("[data-mark-i='0'] .sd-pen")].every((p) => Math.abs(parseFloat(getComputedStyle(p).strokeDashoffset)) < 0.01))
+  check("choreography: a mark whose thing moved glides there (part way at first, then on it), its ink not drawn again",
+    mid.y > ring.y + 2 && mid.y < ring.y + 196 && Math.abs(end.y - (ring.y + 200)) < 2 && Math.abs(end.x - ring.x) < 1 && drawn, { ring, mid, end })
+  const still = await box("[data-mark-i='2']")
+  await show(page, layer({ ...moved, "el:inbox": { ...ELEMENTS["el:inbox"], x: ELEMENTS["el:inbox"].x + 40 } }))
+  await page.waitForTimeout(700)
+  const slid = await box("[data-mark-i='2']")
+  check("choreography: an underline follows its row sideways too", Math.abs(slid.x - still.x - 40) < 2 && Math.abs(slid.y - still.y) < 1, { still, slid })
+  const busy = rate(await page.evaluate(() => window.__frames)), long = await page.evaluate(() => window.__long)
+  console.log(`choreography: at rest ${rest.fps} fps (95th percentile frame ${rest.p95} ms); gliding ${busy.fps} fps (${busy.p95} ms); long tasks ${JSON.stringify(long)}`)
+  // (frame rates vary with the machine's load: the check is the page's own work, no long task)
+  check("choreography: gliding holds the main thread no longer than a frame's slack (no long task)", !long.some((d) => d > 80), { rest, busy, long })
   await page.close()
 }
 

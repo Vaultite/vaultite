@@ -1,7 +1,7 @@
 // A mark's strokes as the ink draws them (Draw.tsx) and as the companion's cursor traces them, its pen (web/src/core/
 // pilot.ts): one geometry and one timing for both, so the cursor keeps to the ink's front. No DOM.
-import { OPEN_EASE, type Stroke } from "../core/pilot"
-import { centre, inflate, markSpot, ringBox, type Placed, type Pt } from "./layout"
+import { hopFor, OPEN_EASE, type Stroke } from "../core/pilot"
+import { centre, inflate, markSpot, ringBox, ringShape, type Placed, type Pt } from "./layout"
 import { bowLine, checkLines, crossLines, curveLine, headLines, type Line, ringLine, seeded } from "./ink"
 
 /** How far apart marks of one beat start (ms). */
@@ -26,7 +26,7 @@ export function markInk(p: Placed, seed: number): { lines: Line[]; size?: number
   const m = p.mark, r = p.box, rnd = seeded(seed)
   if (!r) return null
   switch (m.type) {
-    case "ring": return { lines: [ringLine(ringBox(m, r), rnd)] }
+    case "ring": return { lines: [ringLine(ringBox(m, r), rnd, ringShape(r))] }
     case "underline": return { lines: [bowLine({ x: r.x - 4, y: r.y + r.h + 5 }, { x: r.x + r.w + 4, y: r.y + r.h + 3 + rnd() * 2 }, 2 + rnd() * 2)], size: 4 }
     case "strike": return { lines: [bowLine({ x: r.x - 5, y: r.y + r.h * 0.55 }, { x: r.x + r.w + 5, y: r.y + r.h * 0.45 }, 1.5)], size: 3.6 }
     case "check": return { lines: checkLines(markSpot(r)), size: 4.6 }
@@ -59,11 +59,30 @@ export function penStrokes(placed: Placed[], seedOf: (i: number) => number, star
     if (p.mark.type === "frame" && p.box) {
       const r = p.ink ?? inflate(p.box, 6)
       // (from where the box starts, its corner a little out: .sd-focus' first size)
-      out.push({ start: at, dur: FRAME_MS, pts: [[r.x + Math.min(FOCUS_FROM, r.w), r.y + Math.min(FOCUS_FROM, r.h)], [r.x + r.w, r.y + r.h]], ease: OPEN_EASE })
+      out.push({ start: at, dur: FRAME_MS, pts: [[r.x + Math.min(FOCUS_FROM, r.w), r.y + Math.min(FOCUS_FROM, r.h)], [r.x + r.w, r.y + r.h]], ease: OPEN_EASE, dry: true })
     } else if (p.mark.type === "num" && p.box) {
       const r = p.box, c = r.w || r.h ? { x: r.x + 1, y: r.y + 1 } : { x: r.x, y: r.y }
-      out.push({ start: at, dur: 220, pts: [[c.x - 2, c.y - 2], [c.x, c.y]] })
+      out.push({ start: at, dur: 220, pts: [[c.x - 2, c.y - 2], [c.x, c.y]], dry: true })
     }
   }
   return out.sort((a, b) => a.start - b.start)
+}
+
+/** Past this, the next mark waits for the pen to get there (px): nearer, a hand goes on before it's quite done. */
+export const NEAR = 90
+/** Each mark's start (`startOf`, ms) held back so the pen gets there first: a mark far from the last one's end starts
+ *  once that's drawn and the pen has hopped over. Cards and spotlights have no pen and don't wait. */
+export function waitForPen(placed: Placed[], seedOf: (i: number) => number, startOf: (i: number) => number): Map<number, number> {
+  const out = new Map<number, number>()
+  let last: { end: number; at: [number, number] } | null = null
+  for (const p of [...placed].sort((a, b) => startOf(a.i) - startOf(b.i) || a.i - b.i)) {
+    const base = startOf(p.i), ss = penStrokes([p], seedOf, () => 0)
+    if (!ss.length || !Number.isFinite(base)) { out.set(p.i, base); continue }
+    const from = ss[0].pts[0], d = last ? Math.hypot(from[0] - last.at[0], from[1] - last.at[1]) : 0
+    const at: number = last && d > NEAR ? Math.max(base, last.end + hopFor(d)) : base
+    out.set(p.i, at)
+    const tail = ss.reduce((a, b) => (b.start + b.dur > a.start + a.dur ? b : a)), end = tail.pts[tail.pts.length - 1]
+    last = { end: at + tail.start + tail.dur, at: [end[0], end[1]] }
+  }
+  return out
 }

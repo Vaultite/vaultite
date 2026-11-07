@@ -13,6 +13,7 @@ import { CURSOR_SPRING, glide, type Glide } from "@/core/spring"
 import { makePilot, type PenScript, type Pilot } from "@/core/pilot"
 import { type Sample, TRAIL, trailPieces } from "@/core/trail"
 import { type Cue, playCue } from "@/core/cues"
+import { penSound } from "@/core/pensound"
 import { cn, followSystemTheme } from "@/lib/utils"
 // (what its flag shows, by the window's own rule: the two draw one cursor)
 import { presence, type Mark as MarkKind } from "../../plugins/core/companion/look"
@@ -88,10 +89,18 @@ const kick = () => { if (!raf) { clockOff = Date.now() - performance.now(); raf 
 // ---------- the summoned companion in its exchange: its pilot (core/pilot.ts) rides it beside the pointer, flies it to
 // what it points at and draws its marks with it; every display runs the same one and draws it while it's there
 
-const flying: { pilot: Pilot | null; el: HTMLElement | null; to: string; reduced: boolean; at: Point | null } = { pilot: null, el: null, to: "", reduced: matchMedia("(prefers-reduced-motion: reduce)").matches, at: null }
+const flying: { pilot: Pilot | null; el: HTMLElement | null; to: string; reduced: boolean; at: Point | null; sound: boolean; inked: { x: number; y: number; t: number } | null } = { pilot: null, el: null, to: "", reduced: matchMedia("(prefers-reduced-motion: reduce)").matches, at: null, sound: false, inked: null }
+/** Its pen heard as it inks (core/pensound.ts), on the display it's on, when its drawing says it may be. */
+const pen = penSound(() => (audio ??= new AudioContext()))
 function flyPose(now: number) {
   const pilot = flying.pilot!, pose = pilot.pose(now), el = flying.el
   flying.at = { x: pose.x, y: pose.y }
+  const onHere = pose.x > -40 && pose.y > -40 && pose.x < innerWidth + 40 && pose.y < innerHeight + 40
+  if (pose.ink && flying.sound && onHere) {
+    const was = flying.inked, dt = was ? (now - was.t) / 1000 : 0
+    if (was && dt > 0) pen.ink(Math.hypot(pose.x - was.x, pose.y - was.y) / dt)
+    flying.inked = { x: pose.x, y: pose.y, t: now }
+  } else if (flying.inked) { flying.inked = null; pen.lift() }
   if (el) {
     paintCursor(el, pose.x, pose.y)
     el.style.setProperty("--pilot-scale", pose.scale.toFixed(3))
@@ -208,6 +217,7 @@ function drawTrail(now: number) {
 }
 /** A drawing's strokes for its pen (Draw.tsx, on the display that has them). */
 function penFor(s: PenScript | null) {
+  flying.sound = !!s?.sound
   if (!flying.pilot) return
   flying.pilot.pen(s, clock())
   kick()

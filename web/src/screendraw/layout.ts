@@ -130,7 +130,9 @@ const spanOf = (a: Pt, b: Pt): Rect => ({ x: Math.min(a.x, b.x), y: Math.min(a.y
 export const markSpot = (r: Rect): Pt => (r.w > 80 ? { x: r.x + r.w + 18, y: r.y + r.h / 2 } : centre(r))
 
 /** A display's part of a drawing: `origin` its top left in screen points, `home` the one that has the cards. */
-export type Here = { width: number; height: number; origin: Pt; home: boolean; pointer?: Pt; top?: number }
+export type Here = { width: number; height: number; origin: Pt; home: boolean; pointer?: Pt; top?: number
+  /** Its pen may be heard (the companion's sounds on, no call). */
+  sound?: boolean }
 /** A mark as drawn here: its target (`box`, a connect's `to`), what its ink covers, its card, its label, its arrow. */
 export type Placed = { i: number; mark: Mark; box: Rect | null; to?: Rect | null; ink?: Rect; card?: Rect; label?: Rect
   arrow?: { tip: Pt; tail: Pt }; curve?: ReturnType<typeof arrowPath> }
@@ -255,9 +257,15 @@ export function saysItsOwn(m: Mark, places: Record<string, Rect> = {}) {
   return !!own && norm(own) === norm(m.label)
 }
 
+/** How a ring fits what it rings: a rounded box round wide or tall things (a row, a button), an ellipse round round or
+ *  square-ish ones (an icon, an avatar), by aspect. */
+export type RingShape = "ellipse" | "box"
+export const ringShape = (r: Rect): RingShape => { const a = r.w / Math.max(1, r.h); return a >= RING_WIDE || a <= 1 / RING_WIDE ? "box" : "ellipse" }
+export const RING_WIDE = 1.8
 /** What a mark draws around its target (a ring is wider than its thing): its label goes outside that. */
 export function ringBox(m: Mark, r: Rect): Rect {
-  if (m.type === "ring") { const pad = 8 + Math.min(r.w, r.h) * 0.12; return inflate(r, pad) }
+  // (an ellipse needs room round a thing's corners; a rounded box hugs it)
+  if (m.type === "ring") return ringShape(r) === "box" ? inflate(r, 6 + Math.min(r.w, r.h) * 0.06) : inflate(r, 8 + Math.min(r.w, r.h) * 0.12)
   if (m.type === "frame" || m.type === "spotlight") return inflate(r, 6)
   if (m.type === "scroll") return inflate(r.w || r.h ? r : { ...r, x: r.x - 20, y: r.y - 30, w: 40, h: 60 }, 6)
   return r

@@ -601,6 +601,48 @@ func shootDisplay(_ x: Double, _ y: Double, _ exclude: [Int], _ file: String, _ 
   }
 }
 
+/** What's on screen now (ScreenCaptureKit's content), kept a few seconds: a mark's area sampled twice a second asks for it
+ *  each time, and listing it is the costly part. */
+var sampleContent: (at: Date, content: AnyObject)? = nil
+/** Small grey pictures of screen areas (screen points), `w` by `h` pixels each, without the windows asked (the overlay
+ *  drawing the marks): what the helper compares to see the screen under a mark change. Base64, a byte a pixel. */
+func sampleAreas(_ areas: [[String: Double]], _ exclude: [Int], _ done: @escaping ([String: Any]) -> Void) {
+  guard #available(macOS 14.0, *) else { return done(["ok": false, "why": "macos"]) }
+  let shoot: (SCShareableContent) -> Void = { content in
+    var out = [Any](repeating: NSNull(), count: areas.count)
+    let group = DispatchGroup(), lock = NSLock()
+    let hidden = content.windows.filter { exclude.contains(Int($0.windowID)) }
+    for (i, a) in areas.enumerated() {
+      guard let x = a["x"], let y = a["y"], let width = a["width"], let height = a["height"], width >= 1, height >= 1 else { continue }
+      let r = CGRect(x: x, y: y, width: width, height: height), c = CGPoint(x: r.midX, y: r.midY)
+      guard let d = content.displays.first(where: { CGDisplayBounds($0.displayID).contains(c) }) else { continue }
+      let whole = CGDisplayBounds(d.displayID), b = r.intersection(whole)
+      guard !b.isNull, b.width >= 1, b.height >= 1 else { continue }
+      let w = max(2, min(64, Int(a["w"] ?? 32))), h = max(2, min(64, Int(a["h"] ?? 16)))
+      let conf = SCStreamConfiguration()
+      conf.sourceRect = CGRect(x: b.minX - whole.minX, y: b.minY - whole.minY, width: b.width, height: b.height)
+      conf.width = w; conf.height = h; conf.showsCursor = false
+      group.enter()
+      SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: d, excludingWindows: hidden), configuration: conf) { img, _ in
+        defer { group.leave() }
+        guard let img, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return }
+        ctx.interpolationQuality = .low
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let px = ctx.data else { return }
+        let data = Data(bytes: px, count: w * h).base64EncodedString()
+        lock.lock(); out[i] = ["w": w, "h": h, "px": data]; lock.unlock()
+      }
+    }
+    group.notify(queue: .global()) { done(["ok": true, "samples": out]) }
+  }
+  if let c = sampleContent, Date().timeIntervalSince(c.at) < 4, let content = c.content as? SCShareableContent { return shoot(content) }
+  SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, err in
+    guard let content else { return done(["ok": false, "why": err?.localizedDescription ?? "no screen recording"]) }
+    DispatchQueue.main.async { sampleContent = (Date(), content) }
+    shoot(content)
+  }
+}
+
 func handle(_ req: [String: Any]) -> [String: Any] {
   let id = req["window"] as? Int ?? 0
   switch req["op"] as? String {
@@ -665,6 +707,11 @@ Thread {
       let c = req["crop"] as? [String: Double]
       let crop = c.flatMap { c in [c["x"], c["y"], c["width"], c["height"]].allSatisfy { $0 != nil } ? CGRect(x: c["x"]!, y: c["y"]!, width: c["width"]!, height: c["height"]!) : nil }
       shootDisplay(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["exclude"] as? [Int] ?? [], req["file"] as? String ?? "", crop) { r in var res = r; res["id"] = req["id"]; send(res) }
+      continue
+    }
+    if req["op"] as? String == "sample" {
+      let areas = (req["areas"] as? [[String: Any]] ?? []).map { $0.compactMapValues { ($0 as? NSNumber)?.doubleValue } }
+      DispatchQueue.main.async { sampleAreas(areas, req["exclude"] as? [Int] ?? []) { r in var res = r; res["id"] = req["id"]; send(res) } }
       continue
     }
     DispatchQueue.main.sync {

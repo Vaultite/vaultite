@@ -135,7 +135,12 @@ export function cue(name: string) {
 // ---------- the companions' layers (drawing.ts): each session's, side by side; each display its part, in its own points
 
 const layers = new Map<string, Drawing>()
-let onDrawAct: ((a: DrawAct) => void) | null = null
+let onDrawAct: ((a: DrawAct) => void) | null = null, onLayers: ((ls: Drawing[]) => void) | null = null
+/** Whether a drawing's pen may be heard as it inks (the helper's call: sounds on, no call, never under test). */
+let penSound = false
+export function penSounds(on: boolean) { if (on !== penSound) { penSound = on; sendDrawing() } }
+/** The layers up, each time they change (the helper watches the screen under their marks). */
+export function watchLayers(fn: (ls: Drawing[]) => void) { onLayers = fn }
 /** Draw `agent`'s layer `d` over the screens (null: take it down); `found` the places the helper knows (its asks'
  *  elements, "el:<id>"). */
 export function showDrawing(agent: string, d: Drawing | null, found?: Drawing["places"]) {
@@ -148,7 +153,8 @@ export function showDrawing(agent: string, d: Drawing | null, found?: Drawing["p
 export function dropDrawings() { layers.clear(); sendDrawing(); push() }
 function sendDrawing() {
   const ds = screen.getAllDisplays(), p = screen.getCursorScreenPoint()
-  for (const d of ds) { const w = wins.get(d.id); if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:draw", [...layers.values()].map((l) => drawingFor(l, d, ds, p))) }
+  for (const d of ds) { const w = wins.get(d.id); if (w && !w.isDestroyed() && !w.webContents.isLoading()) w.webContents.send("vaultite:draw", [...layers.values()].map((l) => drawingFor(l, d, ds, p, penSound))) }
+  onLayers?.([...layers.values()])
 }
 /** Whether the layer `id` is up (not cleared, not ended). */
 export const drawingUp = (id: string) => [...layers.values()].some((l) => l.id === id)

@@ -56,6 +56,7 @@ document.head.append(Object.assign(document.createElement("style"), { textConten
 .sd-svg { fill: none; stroke-linecap: round; stroke-linejoin: round; transition: stroke .4s; }
 .sd-svg-fill { stroke: none; opacity: 0; animation: sd-fade .45s ease-out var(--delay, 0ms) forwards; transition: fill .4s; }
 .sd-move { transition: transform .5s cubic-bezier(.3,.8,.3,1); }
+.sd-dim { transition: d .5s cubic-bezier(.3,.8,.3,1); }
 .sd-move-xy { transition: left .5s cubic-bezier(.3,.8,.3,1), top .5s cubic-bezier(.3,.8,.3,1), color .4s; }
 /* erased: its pen run backward, what has no pen fading */
 .sd-erase { pointer-events: none !important; }

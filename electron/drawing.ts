@@ -19,10 +19,10 @@ export function homeOf(dr: Drawing, all: Display[], pointer: Pt) {
   }
   return (all.find((x) => within(x, pointer)) ?? all[0])?.id
 }
-/** Display `d`'s drawing: the whole of it, with where `d` is (the page draws what falls on it). */
-export function drawingFor(dr: Drawing, d: Display, all: Display[], pointer: Pt) {
+/** Display `d`'s drawing: the whole of it, with where `d` is (the page draws what falls on it); `sound`: its pen heard. */
+export function drawingFor(dr: Drawing, d: Display, all: Display[], pointer: Pt, sound = false) {
   return { ...dr, here: { width: d.bounds.width, height: d.bounds.height, origin: { x: d.bounds.x, y: d.bounds.y }, home: homeOf(dr, all, pointer) === d.id,
-    top: d.workArea ? Math.max(0, d.workArea.y - d.bounds.y) : 0, ...(within(d, pointer) ? { pointer } : {}) } }
+    top: d.workArea ? Math.max(0, d.workArea.y - d.bounds.y) : 0, ...(within(d, pointer) ? { pointer } : {}), ...(sound ? { sound } : {}) } }
 }
 /** The elements an ask came with (the helper's, by id), as a drawing's places: `{el: "<id>"}` snaps to their frames. */
 export function elementPlaces(near: { id: string; label?: string; frame: { x: number; y: number; width: number; height: number } }[] | null | undefined) {
