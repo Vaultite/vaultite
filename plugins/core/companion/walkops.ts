@@ -2,13 +2,15 @@
 // job per project its items are in (the vault's project notes, else the preview or editor there), and kept in the vault.
 import fs from "node:fs"
 import path from "node:path"
-import type { Machine, OpCtx, Plugin } from "../../../core/plugins.ts"
+import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { inDesktop, OpError } from "../../../core/plugins.ts"
 import { anchorText } from "./anchor.ts"
 import type { Job, Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import { countText, type Project, projectFor, projectOf, type WalkItem, walkJobText, type WalkPlace } from "./walks.ts"
 import type { Found, Over } from "./where.ts"
+import { localStamp, localTime } from "./names.ts"
+import { freeBase, saveFiles, vaultFileOn } from "./vaultfiles.ts"
 
 type Jobs = { begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: Record<string, unknown>) => Promise<Job>
   placeHere: (o: Over) => Promise<Found & { repo: string }> }
@@ -17,8 +19,6 @@ type Jobs = { begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment
 const OWN = /[/\\]captures[/\\][\w-]+[/\\](clip\.mp4|frame\.png|frames[/\\]\d+\.\ds\.png)$/
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
-const stamp = (t: number) => { const d = new Date(t), p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}` }
-const hm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` }
 
 /** An item as the helper sent it, kept to what it may be (its files only its own, and there). */
 function itemOf(v: unknown, i: number): WalkItem | null {
@@ -64,14 +64,10 @@ export function walkOps(plugin: Plugin, jobs: Jobs) {
 
   /** Its files in the vault, beside its note: each item's frame and clip by its number. */
   async function save(ctx: OpCtx, items: WalkItem[], since: number) {
-    const folder = setting("captures_folder").replace(/^\/+|\/+$/g, ""), base = `${folder ? `${folder}/` : ""}${stamp(since)} QA walk`
-    await ctx.api("POST", "folder", { path: base }).catch(() => {})
-    const put = async (from: string, name: string) => { const rel = `${base}/${name}`; await ctx.api("POST", "upload", { path: rel, bytes: fs.createReadStream(from) }); return rel }
-    const saved: WalkItem[] = []
-    for (const it of items) {
-      saved.push({ ...it, ...(it.frame ? { frame: await put(it.frame, `${it.n}.png`) } : {}), ...(it.clip ? { clip: await put(it.clip, `${it.n}.mp4`) } : {}) })
-    }
-    return { base, note: `${base}.md`, items: saved }
+    const folder = setting("captures_folder").replace(/^\/+|\/+$/g, ""), base = freeBase(plugin, `${folder ? `${folder}/` : ""}${localStamp(since)} QA walk`)
+    const files = items.flatMap((it) => [...(it.frame ? [{ from: it.frame, name: `${it.n}.png` }] : []), ...(it.clip ? [{ from: it.clip, name: `${it.n}.mp4` }] : [])])
+    const at = new Map((await saveFiles(ctx, base, files)).map((rel, i) => [files[i].from, rel]))
+    return { base, note: `${base}.md`, items: items.map((it) => ({ ...it, ...(it.frame ? { frame: at.get(it.frame)! } : {}), ...(it.clip ? { clip: at.get(it.clip)! } : {}) })) }
   }
 
   plugin.op({
@@ -113,11 +109,6 @@ with screen recording allowed, a frame and a short clip from the screen's timeli
       if (!items.length) throw new OpError("items: a walk with nothing said")
       const since = num(p.since) || items[0].from || Date.now(), end = items.at(-1)!.to || Date.now()
       const saved = await save(ctx, items, since), byN = new Map(saved.items.map((it) => [it.n, it]))
-      const fileFor = async (machine: string) => {
-        const m = machine ? await plugin.ask<Machine | null>("machines:machine", null, machine) : null
-        const root = machine ? m?.vault : plugin.vault.path
-        return (rel: string) => (root ? path.join(root, rel) : `${rel} (in their vault)`)
-      }
       const sent: { label: string; items: number[]; id?: string; title?: string; why?: string }[] = []
       for (const g of await grouped(items)) {
         const its = g.items.map((it) => byN.get(it.n)!), first = g.items[0].place
@@ -125,7 +116,7 @@ with screen recording allowed, a frame and a short clip from the screen's timeli
         const m = { kind: "ask", t: Date.now(), summoned: true, ...(g.project?.repo ? { url: `https://github.com/${g.project.repo}` } : { url: first.url, app: first.app, title: first.title, screen: first.screen }) } as Moment
         const title = `QA walk: ${g.label} (${its.length})`
         try {
-          const j = await jobs.begin(ctx, async (w) => walkJobText(g.label, its, since, saved.note, await fileFor(w.machine), p.clips === true), m,
+          const j = await jobs.begin(ctx, async (w) => walkJobText(g.label, its, since, saved.note, await vaultFileOn(plugin, w.machine), p.clips === true), m,
             { title, ...(!g.project?.repo && g.project?.path ? { cwd: g.project.path } : {}) })
           sent.push({ label: g.label, items: its.map((it) => it.n), id: j.id, title: j.title })
         } catch (e) {
@@ -134,7 +125,7 @@ with screen recording allowed, a frame and a short clip from the screen's timeli
       }
       const went = sent.map((s) => (s.id ? `${s.label} (${countText(s.items.length)}): the job "${s.title}" (${s.id})` : `${s.label} (${countText(s.items.length)}): not sent, ${s.why}`))
       const text = ["---", "type: note", "tags: [capture, qa-walk]", "---", "",
-        `A QA walk, ${hm(since)} to ${hm(end)}: ${countText(items.length)}.`, "", ...went.map((w) => `- ${w}`), "",
+        `A QA walk, ${localTime(since)} to ${localTime(end)}: ${countText(items.length)}.`, "", ...went.map((w) => `- ${w}`), "",
         ...sent.flatMap((s) => [`## ${s.label}`, "", ...s.items.flatMap((n) => {
           const it = byN.get(n)!, on = it.anchor ? anchorText(it.anchor) : it.place.under ?? ""
           return [`${n}. ${it.said}${on ? ` (${on})` : ""}`, ...(it.frame ? [`   ![[${it.frame}|360]]${it.clip ? ` [[${it.clip}|clip]]` : ""}`] : it.clip ? [`   [[${it.clip}|clip]]`] : [])]

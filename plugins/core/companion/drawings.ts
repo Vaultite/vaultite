@@ -4,6 +4,7 @@ import fs from "node:fs"
 import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { appPlaces, checkMarks, type Drawing, drawingText, editMarks, findsOf, idsIn, type KeptFile, type Mark, type Media, pruned, type Rect, sentences, snapMarks, type Spot, spots,
   toExcalidraw, unshown, lifeOf } from "./screenmarks.ts"
+import { fileTitle } from "./names.ts"
 
 /** A drawing left up this long with nothing new goes by itself. */
 const IDLE_MS = 5 * 60_000
@@ -217,7 +218,7 @@ export function screenDrawings(plugin: Plugin, o: {
 /** A kept drawing's name: its pad's title, else its first words, else when. */
 export function titleOf(d: Drawing) {
   const t = d.marks.map((m) => ("title" in m && m.title) || (m.type === "image" || m.type === "video" ? m.caption ?? "" : "")).find(Boolean) || sentences(d.caption ?? "")[0]?.replace(/[.!?…:]+$/, "") || ""
-  const clean = t.replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60).trim()
+  const clean = fileTitle(t, 60)
   if (clean) return clean
   const at = new Date(d.t), two = (x: number) => String(x).padStart(2, "0")
   return `Sketch ${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())} ${two(at.getHours())}.${two(at.getMinutes())}`

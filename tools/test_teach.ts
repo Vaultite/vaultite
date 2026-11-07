@@ -87,8 +87,8 @@ const lesson: Lesson = { from: t0, to: t0 + 17_000, acts, about: "add a deploy k
   check("the thing clicked: what acts there before its words or its toolbar", clickedThing(things, { x: 110, y: 15 })?.role === "button" && clickedThing(things, { x: 400, y: 20 })?.label === "Toolbar" && !clickedThing(things, { x: 900, y: 900 }))
 }
 {
-  const draft = "---\nname: x\nstatus: draft\ntaught: 2026-11-06\n---\n\n# X\n", p = promoted(draft, Date.UTC(2026, 10, 7))
-  check("promoted: draft gone, when it worked kept; not a draft, untouched", p === "---\nname: x\ntaught: 2026-11-06\ntested: 2026-11-07\n---\n\n# X\n" && promoted(p!, 0) === null && promoted("# no frontmatter", 0) === null, p)
+  const draft = "---\nname: x\nstatus: draft\ntaught: 2026-11-06\n---\n\n# X\n", p = promoted(draft, new Date(2026, 10, 7, 22).getTime())
+  check("promoted: draft gone, when it worked kept (its local day, late at night too); not a draft, untouched", p === "---\nname: x\ntaught: 2026-11-06\ntested: 2026-11-07\n---\n\n# X\n" && promoted(p!, 0) === null && promoted("# no frontmatter", 0) === null, p)
   check("played through: to the end with every step found", playedThrough({ ended: "done", steps: [{ how: "played" }] }) && !playedThrough({ ended: "done", steps: [{ how: "model" }] }) && !playedThrough({ ended: "lost", steps: [{ how: "played" }] }))
 }
 

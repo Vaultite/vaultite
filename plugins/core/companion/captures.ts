@@ -2,12 +2,14 @@
 // else a new job when they said what to do over it. The companion only says where it went.
 import fs from "node:fs"
 import path from "node:path"
-import type { Machine, OpCtx, Plugin } from "../../../core/plugins.ts"
+import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { captureTitle, type Narration, narrationLines, type Rect } from "./clips.ts"
 import { type Job, live, type Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import type { Found, Over } from "./where.ts"
+import { localStamp } from "./names.ts"
+import { freeBase, saveFiles, vaultFileOn } from "./vaultfiles.ts"
 
 export type Capture = { kind: "recording" | "replay"; job?: string; clip: string; ms: number; width: number; height: number; frames: { t: number; file: string }[]
   narration: Narration[]; box: Rect; at: number; place: Record<string, unknown>; end?: Record<string, unknown> }
@@ -50,21 +52,15 @@ export function captureText(c: Capture, saved: { clip: string; frames: { t: numb
   ].filter(Boolean).join(fresh ? "\n" : " · ")
 }
 
-/** Local "YYYY-MM-DD HH.mm.ss", a capture's name's start. */
-const stamp = (t: number) => { const d = new Date(t), p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}` }
 
 export function captureOps(plugin: Plugin, jobs: Jobs) {
   const setting = (k: string) => str(plugin.settings()[k]).trim() || str(plugin.manifest.settings?.[k]?.default)
 
   /** The capture's files in the vault, beside its note (`<folder>/<stamp> <title>/`). */
   async function save(ctx: OpCtx, c: Capture, title: string) {
-    const folder = setting("captures_folder").replace(/^\/+|\/+$/g, ""), base = `${folder ? `${folder}/` : ""}${stamp(c.at)} ${title}`
-    await ctx.api("POST", "folder", { path: base }).catch(() => {})
-    const put = async (from: string, name: string) => { const rel = `${base}/${name}`; await ctx.api("POST", "upload", { path: rel, bytes: fs.createReadStream(from) }); return rel }
-    const clip = await put(c.clip, "clip.mp4")
-    const frames = []
-    for (const f of c.frames) frames.push({ t: f.t, path: await put(f.file, path.basename(f.file)) })
-    return { base, clip, frames, note: `${base}.md` }
+    const folder = setting("captures_folder").replace(/^\/+|\/+$/g, ""), base = freeBase(plugin, `${folder ? `${folder}/` : ""}${localStamp(c.at)} ${title}`)
+    const [clip, ...rels] = await saveFiles(ctx, base, [{ from: c.clip, name: "clip.mp4" }, ...c.frames.map((f) => ({ from: f.file, name: path.basename(f.file) }))])
+    return { base, clip, frames: c.frames.map((f, i) => ({ t: f.t, path: rels[i] })), note: `${base}.md` }
   }
   /** Its note: the clip, their words by time, the frames, and where it went. */
   async function note(ctx: OpCtx, c: Capture, saved: Awaited<ReturnType<typeof save>>, went: string) {
@@ -108,24 +104,18 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
       const over: Over = { url: str(c.place.url) || undefined, app: str(c.place.app) || undefined, title: str(c.place.title) || undefined, path: str(c.place.path) || undefined, under: str(c.place.under) || undefined }
       const found = await jobs.placeHere(over).catch(() => undefined)
       const job = (str(p.job) && jobs.list().find((j) => j.id === str(p.job))) || jobFor(jobs.list(), { url: over.url, found })
-      // (on another machine, its vault's own path: iCloud brings the files there)
-      const fileFor = async (machine: string) => {
-        const m = machine ? await plugin.ask<Machine | null>("machines:machine", null, machine) : null
-        const root = machine ? m?.vault : plugin.vault.path
-        return (rel: string) => (root ? path.join(root, rel) : `${rel} (in their vault)`)
-      }
       let went = "Saved here: no job was working on it and nothing was said to do.", to = `Saved in ${setting("captures_folder") || "the vault"}`, sent = ""
       try {
         if (job) {
           // (Still broken, after its proof: they watched it and it doesn't work yet)
           const broken = str(p.job) === job.id ? "They watched your change shown on their screen and it's still broken. " : ""
-          await jobs.tell(ctx, job.id, `${broken}${captureText(c, saved, await fileFor(job.where.machine), false)}`)
+          await jobs.tell(ctx, job.id, `${broken}${captureText(c, saved, await vaultFileOn(plugin, job.where.machine), false)}`)
           went = `Sent to the job "${job.title}" (${job.id}).`
           to = `Sent to ${job.title}`
           sent = job.id
         } else if (said) {
           const m = { kind: "ask", t: Date.now(), text: said, voice: true, summoned: true, ...over } as Moment
-          const j = await jobs.begin(ctx, async (w) => `${said}\n\n${captureText(c, saved, await fileFor(w.machine), true)}`, m, { title })
+          const j = await jobs.begin(ctx, async (w) => `${said}\n\n${captureText(c, saved, await vaultFileOn(plugin, w.machine), true)}`, m, { title })
           went = `Sent to a new job, "${j.title}" (${j.id}).`
           to = `Started a job: ${j.title}`
           sent = j.id

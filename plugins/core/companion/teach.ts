@@ -3,6 +3,7 @@
 import { anchorOf, type Seen } from "./anchor.ts"
 import { parseStep, stepLine, type Tour, tourText } from "./tour.ts"
 import type { Inside, Rect } from "./uimodel.ts"
+import { fileTitle, localDay, localTime } from "./names.ts"
 
 /** A thing acted on, as the timeline keeps it (the ui model's role, words, frame and what it's in). */
 export type El = { role: string; label: string; frame: Rect; inside?: Inside[] }
@@ -198,26 +199,24 @@ export function kindFor(l: Lesson): As {
 
 /** Its title: what they called it ("how to add a deploy key": "Add a deploy key"), else where it was and when. */
 export function lessonTitle(l: Lesson, appName = "", at = l.from) {
-  const a = (l.about ?? "").replace(/^(?:(?:how|the way) (?:to|i|you|we)(?: do| can)?|what i do to|to)\s+/i, "").replace(/^(?:this|it|that)$/i, "").replace(/[.!?,;:]+$/, "").replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/\s+/g, " ").trim()
+  const a = fileTitle((l.about ?? "").replace(/^(?:(?:how|the way) (?:to|i|you|we)(?: do| can)?|what i do to|to)\s+/i, "").replace(/^(?:this|it|that)$/i, "").replace(/[.!?,;:]+$/, ""), 10_000)
   if (a.split(" ").length >= 2) return cap(a.slice(0, 80).trim())
-  const d = new Date(at), hm = `${String(d.getHours()).padStart(2, "0")}.${String(d.getMinutes()).padStart(2, "0")}`
-  return `${appName || "Steps"} lesson ${d.toISOString().slice(0, 10)} ${hm}`
+  return `${appName || "Steps"} lesson ${localDay(at)} ${localTime(at, ".")}`
 }
 /** A skill's folder name: its title in kebab case. */
 export const skillName = (title: string) => title.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "") || "lesson"
 
-const day = (t: number) => new Date(t).toISOString().slice(0, 10)
 /** The tour's file: a draft (`status: draft`) till it has played through once. */
-export const lessonTourText = (t: Tour, at: number) => tourText(t, { status: "draft", taught: day(at) })
+export const lessonTourText = (t: Tour, at: number) => tourText(t, { status: "draft", taught: localDay(at) })
 
 /** The skill's SKILL.md: what it does and how to run it, its steps a tour the companion plays (do mode) on their
  *  screen, a draft till it has run through once. */
 export function lessonSkillText(t: Tour, o: { name: string; at: number; appNames: string[] }) {
   const where = o.appNames.length ? ` in ${o.appNames.join(" and ")}` : ""
   const what = t.title.replace(/^./, (c) => c.toLowerCase())
-  const fm = tourText(t, { name: o.name, description: `${t.title}${where}, on the user's screen as they showed it. Use when asked to ${what}.`, origin: "ai", status: "draft", taught: day(o.at) }).split("\n---\n")[0]
+  const fm = tourText(t, { name: o.name, description: `${t.title}${where}, on the user's screen as they showed it. Use when asked to ${what}.`, origin: "ai", status: "draft", taught: localDay(o.at) }).split("\n---\n")[0]
   const path = `.agents/skills/${o.name}/SKILL.md`
-  return `${fm}\n---\n\n# ${t.title}\n\nThe user showed this once (watch me, ${day(o.at)}${where}). It runs on their screen, where they see each step:\n\n` +
+  return `${fm}\n---\n\n# ${t.title}\n\nThe user showed this once (watch me, ${localDay(o.at)}${where}). It runs on their screen, where they see each step:\n\n` +
     `    vau companion tour ${path} --mode do --wait\n\n` +
     `Each step finds its thing again by what it is (its words, role and what it's in), so it survives a moved or renamed\n` +
     `button; a step whose thing isn't found comes to the companion to do. What it types is what they typed then: change a\n` +
@@ -230,7 +229,7 @@ export function promoted(text: string, at: number): string | null {
   const m = /^---\n([\s\S]*?)\n---/.exec(text)
   if (!m || !/^status:\s*["']?draft["']?\s*$/m.test(m[1])) return null
   const fm = m[1].split("\n").filter((l) => !/^status:\s*["']?draft["']?\s*$/.test(l) && !/^tested:/.test(l))
-  return `---\n${[...fm, `tested: ${day(at)}`].join("\n")}\n---${text.slice(m[0].length)}`
+  return `---\n${[...fm, `tested: ${localDay(at)}`].join("\n")}\n---${text.slice(m[0].length)}`
 }
 /** Whether a play counts as working: to the end, every step found (none handed to the model). */
 export const playedThrough = (r: { ended: string; steps: { how: string }[] }) => r.ended === "done" && r.steps.length > 0 && r.steps.every((s) => s.how === "played")

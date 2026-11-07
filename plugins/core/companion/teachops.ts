@@ -5,6 +5,7 @@ import fs from "node:fs"
 import { dirname } from "node:path"
 import { readText, writeText } from "../../../core/vault.ts"
 import { type Act, type As, kindFor, type Lesson, lessonSkillText, lessonTitle, lessonTour, lessonTourText, recentStretch, skillName } from "./teach.ts"
+import { fileTitle } from "./names.ts"
 
 const KINDS = ["app", "click", "key", "field", "said"]
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() ? (Number.isFinite(Number(v)) ? Number(v) : Date.parse(v)) : undefined)
@@ -66,7 +67,7 @@ either is a draft (status: draft) till it has played through once (companion tou
       const lesson: Lesson = { from, to, acts, ...(typeof p.about === "string" && p.about.trim() ? { about: p.about.trim() } : {}), ...(p.as === "tour" || p.as === "skill" ? { as: p.as as As } : {}) }
       const as = kindFor(lesson)
       const appNames = [...new Set(acts.flatMap((a) => (a.kind === "app" && !a.private && a.name ? [a.name] : [])))]
-      const title = (typeof p.title === "string" && p.title.trim() ? p.title.trim() : lessonTitle(lesson, appNames[0])).replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/\s+/g, " ").slice(0, 80).trim()
+      const title = fileTitle(typeof p.title === "string" && p.title.trim() ? p.title : lessonTitle(lesson, appNames[0]), 80)
       const { tour, unnamed } = lessonTour(lesson, title)
       if (!tour.steps.some((s) => s.do?.length)) throw new OpError(`nothing to learn from: no click, typing or shortcut on a thing with a name${unnamed ? ` (${unnamed} on things with no name)` : ""}`, 409)
       let path: string, text: string

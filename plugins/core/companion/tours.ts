@@ -11,6 +11,8 @@ import { playedThrough, promoted, skillName } from "./teach.ts"
 import { noteText, writeNote } from "./teachops.ts"
 import { type Aim, type Do, type Fx, type Mode, MODES, parseTour, play, type Result, type Step, type Tour, tourFromAnswer, tourText } from "./tour.ts"
 import type { Condition as Check, Rect } from "./uimodel.ts"
+import { fileTitle } from "./names.ts"
+import { saveFiles } from "./vaultfiles.ts"
 
 /** Where a tour plays: what shows there now and what it can do there. */
 export type Screen = {
@@ -234,7 +236,7 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
     },
     args: ["title"],
     run: async (p, ctx) => {
-      const name = o.who(p), title = String(p.title).trim().replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/\s+/g, " ").slice(0, 80).trim()
+      const name = o.who(p), title = fileTitle(String(p.title), 80)
       if (!title) throw new OpError("give the tour a title")
       const last = lastAnswer.get(name)
       let tour: Tour
@@ -259,11 +261,9 @@ text to write it yourself, a step a numbered line with its tags, (wait: click) a
         if (!st.before || !nodePath.isAbsolute(st.before.replace(/^~(?=\/)/, os.homedir()))) return st
         const from = st.before.replace(/^~(?=\/)/, os.homedir()), ext = nodePath.extname(from).toLowerCase()
         if (!/^\.(png|jpe?g|gif|webp|heic)$/.test(ext) || !fs.existsSync(from)) throw new OpError(`step ${st.n}: before: ${st.before} isn't a picture here (png, jpg, gif, webp)`)
-        const rel = `${base}/before ${st.n}${ext}`
-        await ctx.api("POST", "folder", { path: base }).catch(() => {})
-        if (fs.existsSync(plugin.vault.abs(rel))) await ctx.api("DELETE", `file?path=${encodeURIComponent(rel)}`)
-        await ctx.api("POST", "upload", { path: rel, bytes: fs.createReadStream(from) })
-        return { ...st, before: rel }
+        const name = `before ${st.n}${ext}`
+        if (fs.existsSync(plugin.vault.abs(`${base}/${name}`))) await ctx.api("DELETE", `file?path=${encodeURIComponent(`${base}/${name}`)}`)
+        return { ...st, before: (await saveFiles(ctx, base, [{ from, name }]))[0] }
       }))
       await ctx.api("PUT", "file", { path, text: tourText({ ...tour, steps, ...(job ? { job } : {}) }) })
       return { path, steps: tour.steps.length, ...(job ? { job } : {}) }

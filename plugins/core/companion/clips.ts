@@ -1,5 +1,6 @@
 // Region capture's rules (the desktop app's capture.ts runs them, captures.ts sends what it made): what a Talk key's
 // words ask of it, the box a drag makes and its moves over a clip, their words by time. No Electron: the tests read it.
+import { fileTitle } from "./names.ts"
 export type Rect = { x: number; y: number; width: number; height: number }
 export type Point = { x: number; y: number }
 /** The box from `t` on (ms since 1970), in screen points: a clip is cropped to the box as it was at each moment. */
@@ -63,7 +64,7 @@ export const narrationLines = (n: Narration[]) => n.filter((x) => x.text.trim())
 /** A capture's name: their first words, else what it shows. */
 export function captureTitle(n: Narration[], where: string) {
   const said = n.map((x) => x.text.trim()).find(Boolean)?.replace(/[.!?]+$/, "") ?? ""
-  const t = (said || where || "Screen").replace(/[\\/:*?"<>|#^[\]]+/g, " ").replace(/\s+/g, " ").trim()
+  const t = fileTitle(said || where, 10_000) || "Screen"
   const cut = t.length > 60 ? t.slice(0, 60).replace(/\s+\S*$/, "") : t
   return cut.charAt(0).toUpperCase() + cut.slice(1)
 }
