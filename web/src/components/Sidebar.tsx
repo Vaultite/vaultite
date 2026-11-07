@@ -111,7 +111,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
         <div data-rail className="edge-fade-y relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-width:none]">
           {head && <div data-rail-section className="flex shrink-0 flex-col">{head}</div>}
           {panels.map(({ key, panel }) => (
-            <div key={key} data-panel={key} data-ui={`panel:${key}`} data-rail-section className="flex shrink-0 flex-col" onContextMenu={menuFor(() => panelMenu(key, side))}>
+            <div key={key} data-panel={key} data-ui={`panel:${key}`} role="group" aria-label={panel.title} data-rail-section className="flex shrink-0 flex-col" onContextMenu={menuFor(() => panelMenu(key, side))}>
               {panel.flyout
                 ? <RailFlyout panel={panel} ctx={{ ...ctx, panel: key }} open={flying === key} setOpen={(v) => setFlying(v ? key : null)} />
                 : <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ ...ctx, panel: key })} /></Guard>}
@@ -137,7 +137,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
         const divider = own && !folded && panels.slice(i + 1).some((q) => !setup.collapsed.includes(q.key))
         return (
           <Fragment key={key}>
-          <div data-panel={key} data-ui={`panel:${key}`} data-slide={key} data-collapsed={folded || undefined} onContextMenu={menuFor(() => panelMenu(key, side))}
+          <div data-panel={key} data-ui={`panel:${key}`} id={panelId(key)} role="group" aria-label={panel.heading || panel.title} aria-labelledby={`${panelId(key)}-name`} data-slide={key} data-collapsed={folded || undefined} onContextMenu={menuFor(() => panelMenu(key, side))}
             onPointerDown={(e) => {
               const t = e.target as HTMLElement
               // With a `view`, dropped on a pane it opens as a tab. A button that is itself the
@@ -155,7 +155,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
                 (measured: the most it's given). Scrolling as one, both are plain. */}
             <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "edge-fade-b overflow-y-auto")}>
               <div data-panel-content className="flex shrink-0 flex-col">
-                <PanelFold.Provider value={{ collapsed: folded, toggle: () => foldPanel(box.current, key, () => togglePanelCollapsed(key)) }}>
+                <PanelFold.Provider value={{ collapsed: folded, toggle: () => foldPanel(box.current, key, () => togglePanelCollapsed(key)), controls: panelId(key) }}>
                   {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.({ ...shown, panel: key })}</SidebarHeading>}
                   <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ ...shown, panel: key })} /></Guard>
                 </PanelFold.Provider>
@@ -190,6 +190,8 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
 }
 
 const leaveMode = () => setSidebarMode(null)
+/** A panel's element id, for its heading's aria-controls. */
+const panelId = (key: string) => `panel-${key.replace(/[^\w-]/g, "-")}`
 
 /** A panel alone in the left sidebar, filling it (its own box, scrolling under its heading), with an X on its heading
  *  back to the panels. Right-click: its own menu, Open in a tab, Show panels. */
@@ -204,7 +206,7 @@ function SidebarMode({ of: { key, panel }, ctx }: { of: PanelOf; ctx: SidebarCtx
   const draw = { ...ctx, panel: key, open: true, bounded: true, mode: true }
   const [fades] = useState(modeJustSwitched)
   return (
-    <div data-sidebar-body="left" data-sidebar-mode={key} data-mode-fade={fades || undefined} onContextMenu={menuFor(menu)}
+    <div data-sidebar-body="left" data-sidebar-mode={key} data-ui={`panel:${key}`} role="group" aria-label={panel.heading || panel.title} data-mode-fade={fades || undefined} onContextMenu={menuFor(menu)}
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-1">
       <PanelFold.Provider value={null}>
         <PanelAlone.Provider value={leaveMode}>

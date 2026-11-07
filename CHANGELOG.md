@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion acts on any app's controls the same way, and checks they worked**: in Vaultite and in other Mac
+  apps it finds a button, tab, row, switch or section by its role and name, presses the part that does it (a panel's
+  heading, not the panel), and reads the state back, so it says "I pressed Files but it didn't open" instead of
+  claiming it did; opening, folding, ticking and selecting do nothing when it's already so. `vau companion check`
+  checks one state (`expanded "Files"`, `selected tab "Notes"`, `shows "Saved"`). Sidebar panels are named groups
+  their headings open and fold, for screen readers too.
 - **Show the companion a glitch instead of describing it**: hold the Talk key and drag to draw a box, which stays on
   screen to move or resize. Say "record this" (narrate as you go, "stop" ends it) or "that, just now" for the last 25 s;
   the clip, its frames at each change and your words go to the job working on that page, else a new job, else

@@ -22,7 +22,8 @@ import { newNoteFolder } from "@/core/conventions"
 import { ARCHIVE_DIR } from "../../../core/fileprops.ts"
 import { kindIcon } from "@/core/filekinds"
 import type { FileIcon, FileMark, FileRow, FileRowPart, NewFile } from "@/core/define"
-import { fileIcons, fileMarks, fileViewFor, formatFor, pluginNewFiles, revealPanel, useFileRows } from "@/core/plugins"
+import { fileIcons, fileMarks, fileViewFor, formatFor, pluginNewFiles, useFileRows } from "@/core/plugins"
+import { showPanel } from "@/core/sidebarmode"
 import { getPrefs, setPrefs, usePrefs, type FileSort } from "@/core/prefs"
 import { commandItems, menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { changeIcon, copyPathItem, duplicate, duplicateItem, filesMenu, grouped, iconChangeable, moreItem, noGroups, openFolderItem, openItem, pluginFileGroups, remove, removeMany, renameItem, revealItem, topmost } from "@/components/FileActions"
@@ -109,7 +110,7 @@ export function revealInTree(path: string, opts: { scroll?: boolean; flash?: boo
   // Asked for (flash): a tree in sight, wherever the Files panel is (the right sidebar, a sidebar tab, folded, a
   // rail, a hidden sidebar slid in: one off the window's edge still lays its tree out; a phone's drawer), else the Files tab.
   const shown = [...document.querySelectorAll<HTMLElement>("[role=tree]")].some((t) => t.offsetParent && !t.closest("[data-flyout], [data-pin-tree], [data-peek=false]"))
-  if (opts.flash && !shown && !revealPanel(FILES_PANEL)) openView("files", { newTab: true })
+  if (opts.flash && !shown && !showPanel(FILES_PANEL)) openView("files", { newTab: true })
   // After the folders render (and the sidebar opens).
   // (the tree's row, not the same one in a pinned folder)
   const find = () => [...document.querySelectorAll<HTMLElement>(`[data-tree-path="${CSS.escape(path)}"]`)].find((el) => el.offsetParent && !el.closest("[data-pin-tree]"))

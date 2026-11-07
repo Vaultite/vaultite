@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react"
 import { isDesktop } from "@/core/platform"
 import { peekSidebar } from "@/core/peek"
-import { sidebarPanels } from "@/core/plugins"
+import { revealPanel, sideOf, sidebarPanels } from "@/core/plugins"
 import { getPrefs, setPrefs } from "@/core/prefs"
 import { scopedState, subscribeScoped } from "@/core/scope"
 
@@ -32,3 +32,11 @@ export function setSidebarMode(key: string | null) {
 
 /** Panel `key` alone in the left sidebar, or the panels again if it is already. */
 export const toggleSidebarMode = (key: string) => setSidebarMode(sidebarMode() === key ? null : key)
+
+/** Bring panel `key` into sight (revealPanel), leaving the left sidebar's mode when another panel fills it. */
+export function showPanel(key: string) {
+  const mode = sidebarMode()
+  if (mode === key) { setSidebarMode(key); return true }
+  if (mode && sideOf(key) === "left") setSidebarMode(null)
+  return revealPanel(key)
+}

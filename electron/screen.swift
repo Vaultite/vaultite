@@ -470,34 +470,67 @@ func walk(_ root: AXUIElement, max: Int, find: String?) -> (text: String, found:
 }
 
 /** What Accessibility finds near a point of the window there (not ours): buttons, links, text, rows..., each with its
- *  words and frame, nearest first; whole subtrees off the area are skipped. Bounded in elements and time. */
+ *  words, frame, state, actions and the labelled things it's in, nearest first (the UI model's shape: uimodel.ts);
+ *  whole subtrees off the area are skipped. Bounded in elements and time. */
 let NEAR_ROLES: Set<String> = ["AXButton", "AXLink", "AXStaticText", "AXTextField", "AXTextArea", "AXHeading", "AXCell", "AXRow", "AXImage", "AXMenuItem",
-  "AXMenuBarItem", "AXCheckBox", "AXRadioButton", "AXTab", "AXPopUpButton", "AXComboBox", "AXSearchField", "AXSlider", "AXDisclosureTriangle"]
+  "AXMenuBarItem", "AXCheckBox", "AXRadioButton", "AXTab", "AXPopUpButton", "AXComboBox", "AXSearchField", "AXSlider", "AXDisclosureTriangle", "AXMenuButton", "AXIncrementor"]
+/** Containers whose words name what's in them (a row in "Sidebar"). */
+let HOLDER_ROLES: Set<String> = ["AXGroup", "AXScrollArea", "AXTabGroup", "AXSplitGroup", "AXToolbar", "AXList", "AXOutline", "AXTable", "AXSheet", "AXWindow", "AXWebArea", "AXRadioGroup", "AXBrowser"]
+/** An element's state in the model's words, as far as Accessibility tells it. */
+func stateOf(_ el: AXUIElement, _ role: String, _ sub: String) -> [String: Any] {
+  var s: [String: Any] = [:]
+  if let b: Bool = attr(el, "AXExpanded") { s["expanded"] = b }
+  else if role == "AXDisclosureTriangle", let v: NSNumber = attr(el, kAXValueAttribute) { s["expanded"] = v.intValue != 0 }
+  if let b: Bool = attr(el, kAXSelectedAttribute), b { s["selected"] = true }
+  if ["AXCheckBox", "AXRadioButton", "AXSwitch"].contains(role) || sub == "AXSwitch" || sub == "AXToggle" {
+    if let v: NSNumber = attr(el, kAXValueAttribute) { if role == "AXRadioButton" && sub == "AXTabButton" { s["selected"] = v.intValue != 0 } else { s["checked"] = v.intValue == 2 ? "mixed" as Any : (v.intValue != 0) as Any } }
+  }
+  if let b: Bool = attr(el, kAXEnabledAttribute), !b { s["disabled"] = true }
+  if let b: Bool = attr(el, kAXFocusedAttribute), b { s["focused"] = true }
+  if ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField", "AXSlider", "AXPopUpButton", "AXIncrementor"].contains(role), !secure(el) {
+    if let v: String = attr(el, kAXValueAttribute) { s["value"] = String(v.prefix(200)) } else if let v: NSNumber = attr(el, kAXValueAttribute) { s["value"] = v.stringValue }
+  }
+  return s
+}
+/** The first words a text inside `el` says, `depth` levels down at most. */
+func innerText(_ el: AXUIElement, _ depth: Int) -> String {
+  guard depth > 0, let kids: [AXUIElement] = attr(el, kAXChildrenAttribute) else { return "" }
+  for k in kids.prefix(8) {
+    if (attr(k, kAXRoleAttribute) as String?) == "AXStaticText", let v: String = attr(k, kAXValueAttribute) ?? attr(k, kAXTitleAttribute), !v.trimmingCharacters(in: .whitespaces).isEmpty { return String(v.prefix(120)) }
+    let t = innerText(k, depth - 1)
+    if !t.isEmpty { return t }
+  }
+  return ""
+}
+func actionNames(_ el: AXUIElement) -> [String] { var a: CFArray?; return AXUIElementCopyActionNames(el, &a) == .success ? (a as? [String] ?? []) : [] }
 func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int) -> [String: Any] {
   let area = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
   guard let w = windowHere(x, y), case let pid = ownerOf(w), pid != vaultitePid,
         let ax = axWindow(pid, w[kCGWindowNumber as String] as? Int ?? 0) else { return ["ok": false, "elements": []] }
   var found: [(Double, [String: Any])] = [], seen = 0
   let deadline = Date().addingTimeInterval(0.8)
-  var stack: [(AXUIElement, Int)] = [(ax, 0)]
-  while let (el, depth) = stack.popLast() {
+  // (each with the labelled things it's in, nearest first)
+  var stack: [(AXUIElement, Int, [[String: String]])] = [(ax, 0, [])]
+  while let (el, depth, inside) = stack.popLast() {
     seen += 1
     if seen > 5000 || Date() > deadline { break }
     if secure(el) { continue }
     let f = frame(el)
     if let f, f.width > 0, f.height > 0, !f.intersects(area) { continue }
     let role: String = attr(el, kAXRoleAttribute) ?? ""
-    if let f, f.width > 0, NEAR_ROLES.contains(role) {
-      var label = ""
-      for k in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute] {
-        if let v: String = attr(el, k), !v.trimmingCharacters(in: .whitespaces).isEmpty { label = String(v.prefix(120)); break }
-      }
-      if !label.isEmpty {
-        let dx = max(f.minX - x, 0, x - f.maxX), dy = max(f.minY - y, 0, y - f.maxY)
-        found.append((dx * dx + dy * dy, ["role": attr(el, kAXRoleDescriptionAttribute) as String? ?? role, "label": label, "frame": rectJSON(f)]))
-      }
+    var label = ""
+    for k in [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXHelpAttribute, kAXPlaceholderValueAttribute] {
+      if let v: String = attr(el, k), !v.trimmingCharacters(in: .whitespaces).isEmpty { label = String(v.prefix(120)); break }
     }
-    if depth < 60, let kids: [AXUIElement] = attr(el, kAXChildrenAttribute) { for k in kids.reversed() { stack.append((k, depth + 1)) } }
+    // (a row or cell says its words in a text inside it: named by them, so the row is what's found and selected)
+    if label.isEmpty, ["AXRow", "AXCell"].contains(role) { label = innerText(el, 3) }
+    if let f, f.width > 0, NEAR_ROLES.contains(role), !label.isEmpty {
+      let dx = max(f.minX - x, 0, x - f.maxX), dy = max(f.minY - y, 0, y - f.maxY), sub: String = attr(el, kAXSubroleAttribute) ?? ""
+      found.append((dx * dx + dy * dy, ["role": attr(el, kAXRoleDescriptionAttribute) as String? ?? role, "ax": role, "sub": sub, "label": label, "frame": rectJSON(f),
+        "state": stateOf(el, role, sub), "actions": actionNames(el), "inside": Array(inside.prefix(4))]))
+    }
+    let holds = HOLDER_ROLES.contains(role) && !label.isEmpty ? [["ax": role, "label": label]] + inside : inside
+    if depth < 60, let kids: [AXUIElement] = attr(el, kAXChildrenAttribute) { for k in kids.reversed() { stack.append((k, depth + 1, holds)) } }
   }
   return ["ok": true, "elements": found.sorted { $0.0 < $1.0 }.prefix(most).map { $0.1 }]
 }

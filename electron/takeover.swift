@@ -83,7 +83,7 @@ func find(_ want: CGRect, _ words: String, _ role: String) -> AXUIElement? {
       let f = frame(el)
       if let f, f.width > 0, f.height > 0, !f.insetBy(dx: -4, dy: -4).intersects(want) { continue }
       if let f, close(f, want) {
-        if !words.isEmpty && label(el) == words && (role.isEmpty || roleOf(el) == role) { return el }
+        if !words.isEmpty && label(el) == words && (role.isEmpty || roleOf(el) == role || (attr(el, kAXRoleAttribute) as String?) == role) { return el }
         if byFrame == nil && (words.isEmpty || label(el) == words) { byFrame = el }
       }
       if depth < 60, let kids: [AXUIElement] = attr(el, kAXChildrenAttribute) { for k in kids.reversed() { stack.append((k, depth + 1)) } }
@@ -126,6 +126,11 @@ func describe(_ el: AXUIElement) -> [String: Any] {
   m["actions"] = actions(el)
   m["valueSettable"] = settable(el, kAXValueAttribute)
   if let v: NSNumber = attr(el, kAXValueAttribute), ["AXCheckBox", "AXRadioButton", "AXSwitch"].contains(m["role"] as? String ?? "") { m["checked"] = v.intValue != 0 }
+  // (its state, read back after a step: whether it did what it meant)
+  if let b: Bool = attr(el, "AXExpanded") { m["expanded"] = b } else if m["role"] as? String == "AXDisclosureTriangle", let v: NSNumber = attr(el, kAXValueAttribute) { m["expanded"] = v.intValue != 0 }
+  if let b: Bool = attr(el, kAXSelectedAttribute) { m["selected"] = b }
+  if let b: Bool = attr(el, kAXEnabledAttribute), !b { m["disabled"] = true }
+  if !secure(el), let v: String = attr(el, kAXValueAttribute) { m["value"] = String(v.prefix(200)) }
   if let w: AXUIElement = attr(el, kAXWindowAttribute) { m["window"] = wid(w) ?? 0; m["title"] = attr(w, kAXTitleAttribute) as String? ?? "" }
   // (in a web page: its fields don't hear a value set from outside, so words are typed there)
   var up: AXUIElement? = el, web = false

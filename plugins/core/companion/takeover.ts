@@ -1,16 +1,32 @@
 // Take-over, the server's side: act on the screen goes to the helper the ask came from (electron/takeover.ts); a
 // spoken yes or no while its offer waits answers it instead of being an ask.
 import type { WebSocket } from "ws"
+import { stepEffect, thingText, type Thing } from "./uimodel.ts"
 
 type Rect = { x: number; y: number; width: number; height: number }
-export type Near = { id: string; role: string; label: string; frame: Rect }
+/** A thing near the pointer (uimodel.ts), by its id; `ax`: its Accessibility role, which the helper finds it again by. */
+export type Near = Thing & { id: string; ax?: string }
 /** What act was told, on the screen. */
 export type ScreenAct = { action: string; ax?: string; sx?: number; sy?: number; value?: string; key?: string; direction?: string; ask?: string; doing?: string }
 export type Done = { ok: boolean; why?: string; text?: string; how?: string; near?: Near[]; app?: string; title?: string
   /** A find's: the element saying the words, in the window asked about. */
   found?: Near
   /** A scroll's: false when nothing there moved (at its end, or not what scrolls). */
-  moved?: boolean }
+  moved?: boolean
+  /** A things request's: every thing in the window asked about (uimodel.ts' shape). */
+  things?: Thing[]
+  /** A step's element before it and after, read back; `effect`: what that says it did (the server's). */
+  before?: Thing; target?: Thing; effect?: { ok: boolean; saw: string } }
+
+/** What a step in another app did, from its element's state before and after and whether what's near it changed. */
+export function effectOf(action: string, r: Done, was: Near[]): Done["effect"] | undefined {
+  if (!r.ok || (!r.before && !r.target)) return undefined
+  const a = action === "expand" || action === "collapse" || action === "select" ? action : "click"
+  const changed = (r.near ?? []).map((e) => thingText(e)).join("\n") !== was.map((e) => thingText(e)).join("\n")
+  const e = stepEffect(a, r.before ?? null, r.target ?? null, changed), s = r.target?.state ?? r.before?.state ?? {}
+  // (a plain button: only what's near it is read, so an unchanged neighbourhood isn't proof it did nothing)
+  return !e.ok && s.expanded === undefined && s.checked === undefined && s.selected === undefined && r.target ? { ok: true, saw: "nothing near it changed, so look at the screen to be sure" } : e
+}
 
 /** Their spoken answer to an offer: no at any no word in it ("please stop", "sure, not that one"), yes only when it's
  *  yes words alone, else neither (an ask of its own). */
@@ -31,7 +47,7 @@ export function stepOf(p: ScreenAct, near: Near[]): { action: string; el?: { fra
   if (p.ax) {
     const e = near.find((x) => x.id === p.ax)
     if (!e) throw new Error(`no element ${p.ax} near their pointer: the ids are the last ask's (or the last step's) near list`)
-    return { ...base, el: { frame: e.frame, role: e.role, label: e.label } }
+    return { ...base, el: { frame: e.frame, role: e.ax ?? e.role, label: e.label } }
   }
   if (p.sx !== undefined && p.sy !== undefined) return { ...base, at: { x: Math.round(p.sx), y: Math.round(p.sy) } }
   return base
@@ -40,12 +56,14 @@ export function stepOf(p: ScreenAct, near: Near[]): { action: string; el?: { fra
 /** What act answers after a step on the screen. */
 export function doneText(r: Done): string {
   if (!r.ok) return r.text ?? `It didn't work (${r.why ?? "no answer"}).`
-  const how = r.how === "ax" ? " (through Accessibility)" : r.how === "point" ? " (with the pointer)" : r.how === "key" ? " (with the keys)" : ""
+  if (r.effect && !r.effect.ok) return `It did the step, but ${r.effect.saw}: tell them plainly, or try another way.${nearText(r)}`
+  const how = r.how === "none" ? " (it already was)" : r.how === "ax" ? " (through Accessibility)" : r.how === "point" ? " (with the pointer)" : r.how === "key" ? " (with the keys)" : ""
   const now = r.app ? ` Now in ${r.app}${r.title ? `, "${r.title}"` : ""}.` : ""
   if (r.moved === false) return `Scrolled${how}, but nothing there moved: it's at its end, or that part doesn't scroll (point at what to scroll).${now}`
-  const near = r.near?.length ? `\nNear it now (act or point by id):\n${r.near.slice(0, 20).map((e) => `  ${e.id} ${e.role} ${JSON.stringify(e.label)} at ${e.frame.x},${e.frame.y} ${e.frame.width}×${e.frame.height}`).join("\n")}` : ""
-  return `Done${how}.${now}${near}`
+  return `Done${how}${r.effect ? `: ${r.effect.saw}` : ""}.${now}${nearText(r)}`
 }
+
+const nearText = (r: Done) => (r.near?.length ? `\nNear it now (act or point by id):\n${r.near.slice(0, 20).map((e) => `  ${thingText(e, { frame: true })}`).join("\n")}` : "")
 
 /** How long a step may take on the helper (typing a long text), past its offer's wait (which the helper says). */
 const STEP_MS = 120_000
@@ -94,6 +112,8 @@ export function takeovers(send: (ws: WebSocket, m: object) => void, fly: (agent:
     open: (url: string, app: string) => request((id) => ({ t: "open-url", id, url, app }), 15_000),
     /** The element saying `text` in the window the last ask was over (its Accessibility, whole), by its helper. */
     find: (text: string) => request((id) => ({ t: "find", id, text }), 3000),
+    /** Every thing in the window the last ask was over (its Accessibility, in the UI model's shape), by its helper. */
+    things: () => request((id) => ({ t: "things", id }), 3000),
   }
   function request(m: (id: string) => object, ms: number): Promise<Done> {
     const ws = from

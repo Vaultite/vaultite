@@ -6,7 +6,8 @@ import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, 
 import { canvasOf, canvasShown, cn, CURSOR_SPRING, springStep, type Glide, stiffness, moves, selectTab, getTabLayout, tabOfPane, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, noticesSince, notify, notifyError, op, openFile, plural, runCommandById, dictationSource, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { shown, uiElement } from "./panes"
+import { domTree, resolveDom, uiElement } from "./uidom"
+import type { Thing } from "./uimodel"
 import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, type Target, type Note, onBump, pick, pin, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { arrowBox, boxAt } from "./boxes"
 import { interfaceZoom, onTop, type Screen, screenOf } from "./locate"
@@ -168,7 +169,7 @@ const found = new Map<string, HTMLElement>()
 const uiSpot = (id: string, find?: string) => {
   const el = uiElement(id)
   if (!el || !find) return el ? atElement(el) : null
-  const k = `${id}\0${find}`, was = found.get(k), at = was?.isConnected && el.contains(was) ? was : shown(el, find)
+  const k = `${id}\0${find}`, was = found.get(k), at = was?.isConnected && el.contains(was) ? was : (resolveDom({ name: find }, undefined, el)?.e as HTMLElement | undefined) ?? null
   if (at) { found.clear(); found.set(k, at) }
   return atElement(at ?? el)
 }
@@ -337,11 +338,11 @@ export function placeAt(x: number, y: number): Record<string, unknown> | null {
   return { ...p, ...(text ? { under: text } : {}), ...(near.length ? { near } : {}), ...notices }
 }
 
-/** What the window draws near x, y that a mark can name (buttons, tabs, rows, fields, headings, the app's UI by its
- *  data-ui id), nearest first, with its frame (CSS px): the ids an ask over Vaultite's UI points at. */
+/** What the window draws near x, y that a mark can name, nearest first, as things (uimodel.ts; frame in CSS px): the
+ *  ids an ask over Vaultite's UI points at, as Accessibility's are in another app. */
 const NAMED = "button, a[href], input, select, textarea, h1, h2, h3, h4, [role], [data-ui], [aria-label], [data-tip]"
-export function elementsNear(x: number, y: number, radius = 260, most = 30) {
-  const seen = new Set<string>(), out: { role: string; label: string; frame: { x: number; y: number; width: number; height: number }; d: number }[] = []
+export function elementsNear(x: number, y: number, radius = 260, most = 30): Thing[] {
+  const seen = new Set<string>(), out: (Thing & { d: number })[] = [], tree = domTree()
   for (const el of document.querySelectorAll<HTMLElement>(NAMED)) {
     if (el.closest(".companion-overlay")) continue
     const r = el.getBoundingClientRect()
@@ -350,34 +351,34 @@ export function elementsNear(x: number, y: number, radius = 260, most = 30) {
     const d = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom))
     // (a pane's kept tab, or what a web page's view covers: not what they see)
     if (d > radius || !onTop(el, r)) continue
-    const ui = el.dataset.ui, line = (el.innerText || "").trim().split("\n")[0], aria = el.getAttribute("role")
+    const aria = el.getAttribute("role")
     if (aria === "none" || aria === "presentation") continue
-    const label = (el.getAttribute("aria-label") || el.dataset.tip || el.dataset.heading || line || el.getAttribute("placeholder") || "").trim().slice(0, 120)
-    const kind = /^H\d$/.test(el.tagName) ? "heading" : el.tagName === "A" ? "link" : el.tagName === "BUTTON" ? "button" : /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) ? "field" : "area"
-    const role = `${aria || (ui ? ui.split(":")[0] : kind)}${ui ? ` ui:${ui}` : ""}`
-    const frame = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }, k = `${frame.x},${frame.y},${frame.width},${frame.height}`
-    if (!label || seen.has(k)) continue
-    seen.add(k)
-    out.push({ role, label, frame, d })
+    const t = tree.thing(el)
+    if (!t || !t.label || seen.has(key(t.frame))) continue
+    seen.add(key(t.frame))
+    out.push({ ...t, d })
   }
   // (nearest first; of those it's on, the smallest: the one thing, before what holds it)
   const area = (e: { frame: { width: number; height: number } }) => e.frame.width * e.frame.height
   const nearest = out.sort((a, b) => a.d - b.d || area(a) - area(b)).slice(0, most).map(({ d: _, ...e }) => e)
-  return [...nearest, ...landmarks(x, y, new Set(nearest.map((e) => `${e.frame.x},${e.frame.y},${e.frame.width},${e.frame.height}`)))]
+  return [...nearest, ...landmarks(x, y, new Set(nearest.map((e) => key(e.frame))), tree)]
 }
+const key = (f: { x: number; y: number; width: number; height: number }) => `${f.x},${f.y},${f.width},${f.height}`
 /** The window's regions however far from x, y (a sidebar's panels and foot, panes, the status bar), nearest first, each
  *  as much as shows: a frame round one is then exact. At most 10, so an ask's 40 elements hold them all. */
 const LANDMARKS = "[data-ui^='panel:'], section[data-pane-frame]:not([data-away]), [data-status-bar], [data-sidebar-foot]"
-function landmarks(x: number, y: number, seen: Set<string>) {
-  const out: { role: string; label: string; frame: { x: number; y: number; width: number; height: number }; d: number }[] = []
+function landmarks(x: number, y: number, seen: Set<string>, tree = domTree()) {
+  const out: (Thing & { d: number })[] = []
   for (const el of document.querySelectorAll<HTMLElement>(LANDMARKS)) {
-    const r = shownRect(el), frame = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }, k = `${frame.x},${frame.y},${frame.width},${frame.height}`
-    if (r.width < 4 || r.height < 4 || seen.has(k) || el.closest(".companion-overlay") || !onTop(el, r)) continue
-    const ui = el.dataset.ui, label = (el.getAttribute("aria-label") || el.querySelector<HTMLElement>("[data-heading]")?.dataset.heading || (el.innerText || "").trim().split("\n")[0] || "").trim().slice(0, 120)
-    if (!label) continue
-    seen.add(k)
-    // (a folded panel says so: clicking it opens it, and only its heading shows)
-    out.push({ role: `${ui ? ui.split(":")[0] : el.matches("[data-status-bar]") ? "status" : "area"}${el.hasAttribute("data-collapsed") ? " (folded)" : ""}${ui ? ` ui:${ui}` : ""}`, label, frame,
+    const r = shownRect(el), frame = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
+    if (r.width < 4 || r.height < 4 || seen.has(key(frame)) || el.closest(".companion-overlay") || !onTop(el, r)) continue
+    const t = tree.thing(el), label = t?.label || (el.innerText || "").trim().split("\n")[0].trim().slice(0, 120)
+    if (!t || !label) continue
+    seen.add(key(frame))
+    // (a folded panel says so, its heading's state: pressing it opens it, and only its heading shows)
+    const fold = el.id ? document.querySelector(`[aria-controls~="${CSS.escape(el.id)}"][aria-expanded]`) : null
+    const role = t.role !== "generic" ? t.role : el.matches("[data-status-bar]") ? "status" : "region"
+    out.push({ ...t, role, label, frame, state: fold ? { ...t.state, expanded: fold.getAttribute("aria-expanded") === "true" } : t.state,
       d: Math.hypot(Math.max(r.left - x, 0, x - r.left - r.width), Math.max(r.top - y, 0, y - r.top - r.height)) })
   }
   return out.sort((a, b) => a.d - b.d).slice(0, 10).map(({ d: _, ...e }) => e)

@@ -564,6 +564,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `revealInTree(path, opts?)`: Open every folder above a file.
 - `revealLabel`: Showing a file where it is: Finder on a Mac, Explorer on Windows, the file manager elsewhere.
 - `revealPanel(key)`: Bring a sidebar panel into sight (Reveal current file in file tree): its sidebar open (not a rail), the panel unfolded.
+- `revealUi(id)`: Whether `id` (a data-ui id) was brought into sight; false when the app has no way to show it.
 - `rightClickBelow(e)`: For a … button: right-clicks it, so the menu under it is whatever right-clicking its row or heading shows.
 - `Ring({ value, goal, color, size })`: Progress ring for "x of goal this week".
 - `Row({ title, meta, right, lead, className, onOpen, href, wrap, … })`: A list row: title (two lines at most) and meta line; `onOpen` makes it a disclosure row, `href` a new-tab link.
@@ -628,6 +629,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `showLabel`: The same for a toast's action, on something just saved.
 - `shownName(path)`: A file or folder as the app names it: a note without .md, other files with their extension.
 - `shownTab(l)`: The tab on screen in a list.
+- `showPanel(key)`: Bring panel `key` into sight (revealPanel), leaving the left sidebar's mode when another panel fills it.
 - `SidebarCtx`
 - `SidebarHeading`
 - `sidebarMode(prefs?)`: The panel the left sidebar shows alone now (its key), or null: its panels.

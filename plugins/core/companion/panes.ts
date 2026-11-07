@@ -1,7 +1,9 @@
 // The window's panes for the companion (live.ts' `where`): each pane's tab, title and tab group, and the focused one;
 // and the parts of the app's UI it follows, watched here (their text, as it settles).
 import { Eye } from "lucide-react"
-import { focusedPane, getStore, getTabLayout, noticesSince, notifyError, onTabLayoutChange, op, panelSide, panesOf, revealPanel, setSidebarMode, setUiMarks, sidebarMode, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
+import { focusedPane, getStore, getTabLayout, noticesSince, notifyError, onTabLayoutChange, op, panesOf, revealUi, setUiMarks, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
+import { checkDom, domTree, domView, resolveDom, uiElement } from "./uidom"
+import { actionable, parseCondition, stateWords, stepEffect, type State, type Target } from "./uimodel"
 import { getState, sayWhereSoon, setPanes, subscribe, tintOf, uiChanged, type Follow } from "./live"
 
 /** The most a window tells: a vault's tabs, rarely this many. */
@@ -13,24 +15,8 @@ setPanes(() => {
   return { panes, pane: shown && focusedPane(shown).id }
 })
 
-/** The element on screen with data-ui `id` (the first shown), or null. */
-export function uiElement(id: string): HTMLElement | null {
-  return [...document.querySelectorAll<HTMLElement>(`[data-ui="${CSS.escape(id)}"]`)].find((e) => e.getClientRects().length > 0) ?? null
-}
+export { uiElement }
 
-const CLICKABLE = "button, a[href], [role=button], [role=link], [role=menuitem], [role=tab], [role=treeitem], [role=option], [role=checkbox], [role=switch], [tabindex], [data-ui]"
-/** In `root`, the element showing `find` (its words or its label), the shortest such: what to click for it. */
-export function shown(root: HTMLElement, find: string): HTMLElement | null {
-  const want = find.toLowerCase(), hits: HTMLElement[] = []
-  for (const e of [root, ...root.querySelectorAll<HTMLElement>("*")]) {
-    if (!e.getClientRects().length || e.closest(".companion-overlay")) continue
-    const label = (e.getAttribute("aria-label") ?? e.dataset.tip ?? "").toLowerCase()
-    if (label.includes(want) || (e.childElementCount === 0 && (e.innerText || "").toLowerCase().includes(want))) hits.push(e)
-  }
-  const exact = (e: HTMLElement) => [(e.innerText || "").trim().toLowerCase(), (e.getAttribute("aria-label") ?? "").toLowerCase()].includes(want)
-  const best = hits.sort((a, b) => Number(exact(b)) - Number(exact(a)) || (a.innerText || "").length - (b.innerText || "").length)[0]
-  return best ? (best.closest<HTMLElement>(CLICKABLE) && root.contains(best.closest(CLICKABLE)) ? best.closest<HTMLElement>(CLICKABLE)! : best) : null
-}
 /** What a part of the app's UI shows now, as lines (a panel's rows, a tab's title): what an agent is told after its
  *  click, so it can name and point at what came into sight. */
 export function uiText(el: HTMLElement, most = 60) {
@@ -38,45 +24,68 @@ export function uiText(el: HTMLElement, most = 60) {
   return lines.slice(0, most).map((l) => l.slice(0, 120)).join("\n") + (lines.length > most ? `\n… ${lines.length - most} more` : "")
 }
 const settle = () => new Promise((done) => setTimeout(done, 400))
-/** An agent's click on the app's own UI (companion act --ui): `ui`'s element (none: the window) or what shows `find` in
- *  it, pressed; what it was, shows then, and its toasts. A whole panel opens (its container has no click of its own). */
+/** The state each act asks for (expand: open), checked before it presses: already so, it doesn't. */
+const WANTS: Record<string, [keyof State, boolean]> = { expand: ["expanded", true], collapse: ["expanded", false], check: ["checked", true], uncheck: ["checked", false], select: ["selected", true] }
+/** The window's text and states before the last act: what `changed` compares with. */
+let before: string | undefined
+const notices = (from: number) => noticesSince(from).map((n) => ({ text: n.text, kind: n.kind }))
+/** What holds `e` now (a panel, a tab): its rows are what the agent is told came into sight. */
+const holderOf = (e: Element | null) => e?.closest<HTMLElement>("[data-ui^='panel:']") ?? null
+
+/** An agent's act on the app's UI (companion act --ui/--find): the target resolved to the part that acts (a panel's
+ *  heading, a row's button), pressed, its state read back; a place named (a panel) is shown by the app, unfolded. */
 export async function clickUi(m: Record<string, unknown>) {
-  const id = String(m.ui ?? ""), find = String(m.find ?? "").trim(), from = Date.now()
-  const panel = /^panel:(.+)$/.exec(id)?.[1]
-  if (panel && !find) {
-    // (the left sidebar showing one panel alone: this one, shown again; another, its panels again, this one among them)
-    const mode = sidebarMode()
-    if (mode === panel) setSidebarMode(panel)
-    else {
-      if (mode && panelSide(panel) === "left") setSidebarMode(null)
-      if (!revealPanel(panel)) return { found: false }
-    }
-    await settle()
-    const el = uiElement(id) ?? document.querySelector<HTMLElement>(`[data-sidebar-mode="${CSS.escape(panel)}"]`)
-    return { found: !!el, opened: true, label: el?.querySelector<HTMLElement>("[data-heading]")?.dataset.heading ?? "", shows: el ? uiText(el) : "",
-      notices: noticesSince(from).map((n) => ({ text: n.text, kind: n.kind })) }
-  }
-  const root = id ? uiElement(id) : document.body
+  const id = String(m.ui ?? ""), find = String(m.find ?? "").trim(), role = String(m.role ?? "").trim(), how = String(m.how ?? "click"), from = Date.now()
+  const want = WANTS[how], fold = how === "expand" ? "expand" : how === "collapse" ? "collapse" : undefined
+  const target: Target = find ? { name: find, ...(role ? { role } : {}) } : { ui: id }
+  if (!find && !id) return { found: false }
+  let root: Element | null = find && id ? uiElement(id) : document.body
+  if (!root && revealUi(id)) { await settle(); root = uiElement(id) }
   if (!root) return { found: false }
-  const el = find ? shown(root, find) : root
-  if (!el) return { found: false }
+  let r = resolveDom(target, fold, root)
+  before = domView().snapshot()
+  // (a place, not a control: shown by the app, then its fold read back)
+  const place = !find ? id : r && !actionable(r.named) ? r.named.ui : undefined
+  if (place && (how === "click" || how === "expand")) {
+    if (revealUi(place)) {
+      await settle()
+      const el = uiElement(place), now = el && resolveDom({ ui: place }, "expand")
+      const open = !!el && now?.thing.state.expanded !== false
+      return { found: !!el, opened: true, ok: open, saw: open ? `${JSON.stringify(now?.named.label || place)} is open now` : `${JSON.stringify(now?.named.label || place)} didn't open`,
+        label: now?.named.label ?? "", ...(el ? { shows: uiText(el) } : {}), notices: notices(from) }
+    }
+    if (!r) return { found: false }
+  }
+  if (!r) return { found: false }
+  const was = r.thing
+  if (want && (was.state as Record<string, unknown>)[want[0]] === want[1]) {
+    const holder = holderOf(r.e)
+    return { found: true, already: true, ok: true, label: was.label, role: was.role, saw: `${JSON.stringify(was.label)} is already ${stateWords({ [want[0]]: want[1] })}`, ...(holder ? { shows: uiText(holder) } : {}), notices: [] }
+  }
+  const el = r.e as HTMLElement
   el.scrollIntoView({ block: "nearest" })
-  const r = el.getBoundingClientRect(), at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 }
-  const dbl = m.action === "dblclick"
+  const b = el.getBoundingClientRect(), at = { bubbles: true, cancelable: true, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, button: 0 }
   for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup"]) el.dispatchEvent(t.startsWith("pointer") ? new PointerEvent(t, { ...at, pointerId: 1, isPrimary: true, pointerType: "mouse" }) : new MouseEvent(t, at))
   el.click()
-  if (dbl) el.dispatchEvent(new MouseEvent("dblclick", at))
+  if (how === "dblclick") el.dispatchEvent(new MouseEvent("dblclick", at))
   await settle()
-  // (what holds it now: a panel's rows after a heading's click, the element itself else)
-  const holder = (el.isConnected ? el : null)?.closest<HTMLElement>("[data-ui^='panel:']") ?? (id && uiElement(id)) ?? null
-  return { found: true, label: (el.getAttribute("aria-label") || el.innerText || "").trim().slice(0, 120), ...(holder ? { shows: uiText(holder) } : {}),
-    notices: noticesSince(from).map((n) => ({ text: n.text, kind: n.kind })) }
+  // (read back: the same element if it stayed, else the target found again)
+  const now = el.isConnected ? domTree().thing(el) : resolveDom(target, fold, root.isConnected ? root : document.body)?.thing ?? null
+  const effect = stepEffect(fold ?? (how === "select" ? "select" : "click"), was, now, domView().snapshot() !== before)
+  const holder = holderOf(el.isConnected ? el : null) ?? (id ? uiElement(id) : null)
+  return { found: true, ok: effect.ok, saw: effect.saw, label: was.label, role: was.role, ...(holder ? { shows: uiText(holder) } : {}), notices: notices(from) }
 }
 /** What the app's UI part `ui` shows now (companion see --ui), or null when it isn't on screen. */
 export function readUi(m: Record<string, unknown>) {
-  const id = String(m.ui ?? ""), alone = /^panel:(.+)$/.exec(id)?.[1]
-  const el = uiElement(id) ?? (alone ? document.querySelector<HTMLElement>(`[data-sidebar-mode="${CSS.escape(alone)}"]`) : null)
-  return el ? { found: true, label: el.querySelector<HTMLElement>("[data-heading]")?.dataset.heading ?? el.getAttribute("aria-label") ?? "", folded: el.hasAttribute("data-collapsed"), text: uiText(el, 200) } : { found: false }
+  const el = uiElement(String(m.ui ?? ""))
+  if (!el) return { found: false }
+  const r = resolveDom({ ui: String(m.ui) })
+  return { found: true, label: r?.named.label ?? "", folded: r?.thing.state.expanded === false, text: uiText(el, 200) }
+}
+/** One condition checked in the window now (companion check): `changed` against the window before the last act. */
+export function checkUi(m: Record<string, unknown>) {
+  const v = checkDom(parseCondition(String(m.condition ?? "")), before)
+  return { ok: v.ok, saw: v.saw, ...(v.thing ? { thing: v.thing } : {}) }
 }
 
 const TEXT_GAP = 5000

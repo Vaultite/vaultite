@@ -1,5 +1,6 @@
 // Take-over's rules, apart from the Mac (tested alone): what it never does, what needs the user's yes each time, and
 // how each step is done (Accessibility first, then the pointer or the keys).
+import { actionsOfAx, roleOfAx, type Thing } from "../plugins/core/companion/uimodel.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 /** A step the companion asked for: at an element an ask listed (`el`), a screen point (`at`), or the field with the
@@ -11,12 +12,14 @@ export type Step = { action: string; el?: { frame: Rect; role?: string; label?: 
 /** What takeover.swift found there (`probe`). */
 export type Probe = { ok: boolean; why?: string; bundle?: string; name?: string; pid?: number; vaultite?: boolean; role?: string; roleName?: string; subrole?: string
   secure?: boolean; label?: string; frame?: Rect | null; actions?: string[]; valueSettable?: boolean; checked?: boolean; web?: boolean; window?: number; title?: string
+  /** Its state, read back after a step (uimodel.ts). */
+  expanded?: boolean; selected?: boolean; disabled?: boolean; value?: string
   /** The page or document its window shows (a browser's address): a private site is never acted on. */
   url?: string }
 /** One request to takeover.swift. */
 export type Call = { op: string } & Record<string, unknown>
 
-export const STEPS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "scroll", "focus"]
+export const STEPS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "expand", "collapse", "scroll", "focus"]
 const TYPING = new Set(["fill", "type"])
 /** Apps where Return sends what's written: a message. */
 const SENDS_ON_RETURN = new Set(["com.apple.MobileSMS", "com.apple.mail", "com.tinyspeck.slackmacgap", "net.whatsapp.WhatsApp", "desktop.WhatsApp", "com.hnc.Discord",
@@ -109,8 +112,9 @@ export function plan(step: Step, there: Probe): Call[][] {
     case "rightclick": return [...(step.el ? [[{ op: "press", ...el, action: "AXShowMenu" }]] : []), ...pointer({ op: "click", ...at, right: true })]
     case "hover": return pointer({ op: "hover", ...at })
     case "focus": return focus.length ? focus : [[]]
-    case "check": case "uncheck":
-      if (there.checked !== undefined && there.checked === (step.action === "check")) return [[]]
+    case "check": case "uncheck": case "expand": case "collapse":
+      // (already so: nothing pressed)
+      if (step.action.endsWith("check") ? there.checked !== undefined && there.checked === (step.action === "check") : there.expanded !== undefined && there.expanded === (step.action === "expand")) return [[]]
       return [...(step.el ? [[{ op: "press", ...el }]] : []), ...pointer({ op: "click", ...at })]
     case "fill": {
       // (a native field takes its value at once; a web page's hears only typing)
@@ -153,6 +157,8 @@ export function intentOf(step: Step, there?: Probe): string {
     case "press": return cap(`Pressing ${keyName(step.key ?? "")}`)
     case "check": return cap(`Checking${on || " it"}`)
     case "uncheck": return cap(`Unchecking${on || " it"}`)
+    case "expand": return cap(`Opening${on || " it"}`)
+    case "collapse": return cap(`Folding${on || " it"}`)
     case "scroll": return step.direction === "up" ? "Scrolling up" : "Scrolling down"
     case "focus": return cap(`Going to${on || " the field"}`)
   }
@@ -171,4 +177,13 @@ export function tookText(why: string): string {
   if (why === "user-typing") return "they started typing where it was typing, so it stopped: don't act again unless they ask"
   if (why === "paused") return "they kept using the mouse or keys, so it stopped waiting for them: ask whether to go on"
   return "the exchange ended: stop"
+}
+
+/** What a probe found, as a thing (uimodel.ts): what a step's effect is read from. */
+export function probeThing(p: Probe | null): Thing | null {
+  if (!p?.ok || !p.frame) return null
+  const state: Thing["state"] = {}
+  for (const k of ["expanded", "selected", "checked", "disabled"] as const) if (typeof p[k] === "boolean") state[k] = p[k]
+  if (typeof p.value === "string" && !p.secure) state.value = p.value
+  return { role: roleOfAx(p.role ?? "", p.subrole), label: p.label ?? "", frame: p.frame, state, actions: actionsOfAx(p.actions ?? []), inside: [] }
 }

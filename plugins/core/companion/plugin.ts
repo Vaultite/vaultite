@@ -27,7 +27,8 @@ import { captureOps } from "./captures.ts"
 import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide } from "./guides.ts"
-import { doneText, isBrowser, stepOf, takeovers } from "./takeover.ts"
+import { doneText, effectOf, isBrowser, stepOf, takeovers } from "./takeover.ts"
+import { check as checkOn, listView, parseCondition, thingFrom, thingText, type Verdict } from "./uimodel.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
@@ -94,7 +95,7 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
 export type { Target } from "./places.ts"
 type Rect = { x: number; y: number; width: number; height: number }
 /** An element near the pointer (the helper's Accessibility): its id to point by, its role, its words, its frame. */
-type Near = { id: string; role: string; label: string; frame: Rect }
+type Near = import("./takeover.ts").Near
 /** A stroke of ink: what it looks like (a ring round something, a line, an underline, a scribble), its box, its points. */
 type Ink = { shape: string; box: Rect; points: [number, number][] }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass (why: its words on it);
@@ -846,7 +847,7 @@ const screenDrawing = screenDrawings(plugin, {
   elements: (a) => Object.fromEntries((nearBy.get(key(a)) ?? []).map((e) => [`el:${e.id}`, rectOfNear(e)])),
   // (Vaultite's own elements by their data-ui id, found again where they are now: the ask's frames may be stale)
   live: async (a, ids) => {
-    const ask = askOf(a), ui = (e: Near) => / ui:(\S+)/.exec(e.role)?.[1]
+    const ask = askOf(a), ui = (e: Near) => e.ui
     if (!ask || awayIn([ask])) return {}
     const els = (nearBy.get(key(a)) ?? []).filter((e) => ids.includes(e.id) && ui(e))
     const now = await Promise.all(els.map((e) => windowRects([`ui:${ui(e)}`], { x: e.frame.x + e.frame.width / 2, y: e.frame.y + e.frame.height / 2 }).then((r) => r[`ui:${ui(e)}`])))
@@ -909,7 +910,7 @@ const OWN_SHOT = /[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+)\.png$/
 function screenPlace(m: Record<string, unknown>) {
   const shot = str(m.shot), down = str(m.shotDown), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
   const rect = (r: unknown): Rect | null => { const o = (r ?? {}) as Record<string, unknown>, v = [o.x, o.y, o.width, o.height].map(Number); return v.every(Number.isFinite) ? { x: Math.round(v[0]), y: Math.round(v[1]), width: Math.round(v[2]), height: Math.round(v[3]) } : null }
-  const near = Array.isArray(m.near) ? m.near.slice(0, 40).flatMap((e: Record<string, unknown>) => { const f = rect(e?.frame); return f && str(e.id) ? [{ id: str(e.id).slice(0, 8), role: str(e.role).slice(0, 80), label: str(e.label).slice(0, 120), frame: f }] : [] }) : []
+  const near = Array.isArray(m.near) ? m.near.slice(0, 40).flatMap((e: Record<string, unknown>) => { const t = thingFrom(e); return t?.id ? [t as Near] : [] }) : []
   const ink = Array.isArray(m.ink) ? m.ink.slice(0, 12).flatMap((k: Record<string, unknown>) => { const b = rect(k?.box); return b ? [{ shape: str(k.shape).slice(0, 20), box: b,
     points: (Array.isArray(k.points) ? k.points : []).slice(0, 40).map((p: unknown) => (Array.isArray(p) ? [Math.round(Number(p[0])), Math.round(Number(p[1]))] : [0, 0]) as [number, number]) }] : [] }) : []
   const floating = Array.isArray(m.floating) ? m.floating.slice(0, 6).flatMap((w: Record<string, unknown>) => { const f = rect(w?.frame)
@@ -1730,9 +1731,9 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "see", "act", "check", "follow", "unfollow", "keep", "clear", "history", "status", "handover", "handoff", "open", "page", "job", "job-open", "job-stop", "job-answer"]
 /** Tools whose answers the talk leaves out: what it read, and its words (logged as they're said). */
-const QUIET_RESULTS = new Set(["see", "history", "status", "conversation", "say", "pass", "look", "highlight"])
+const QUIET_RESULTS = new Set(["see", "check", "history", "status", "conversation", "say", "pass", "look", "highlight"])
 /** An action's last call of a turn: its turn ends with it, no call of the model's after (a summary nobody reads). */
 const DONE = { type: "boolean", description: "true on your last call for this moment: your turn ends with it" }
 /** Those whose words show as they're written; those its turn may end after with no words (a summary holds its next moment). */
@@ -1794,7 +1795,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "see", "act", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "conversation"]
+const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "conversation"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
@@ -2343,7 +2344,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     for (const k of m.ink ?? []) out.push(`  they drew ${k.shape === "ring" ? "a ring round" : k.shape === "underline" ? "an underline under" : `a ${k.shape} over`} sx ${k.box.x}-${k.box.x + k.box.width}, sy ${k.box.y}-${k.box.y + k.box.height} (its box ${k.box.x},${k.box.y},${k.box.width},${k.box.height}): ${k.points.map((p) => p.join(",")).join(" ")}`)
     if (m.region) out.push(`  their box (one they drew and keep on screen; "record this" records it): sx ${m.region.x}-${m.region.x + m.region.width}, sy ${m.region.y}-${m.region.y + m.region.height}`)
     if (m.floating?.length) out.push(`  floating over the screen (another app's panel, maybe what they mean): ${m.floating.map((w) => `${w.name ? `${w.name} (${w.app})` : w.app} at sx ${w.frame.x}, sy ${w.frame.y}, ${w.frame.width}×${w.frame.height}`).join("; ")}`)
-    if (m.near?.length) out.push("  near their pointer (point at one: --ax <id>):", ...m.near.map((e) => `    ${e.id} ${e.role} ${JSON.stringify(e.label)} at ${e.frame.x},${e.frame.y} ${e.frame.width}×${e.frame.height}`))
+    if (m.near?.length) out.push("  near their pointer (point at one: --ax <id>):", ...m.near.map((e) => `    ${thingText(e, { frame: true })}`))
     if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
     // (its Talk key's, in an app or on a site: the user's guide to it, once a message)
     if (m.summoned && (m.kind === "ask" || m.kind === "point") && (m.app || m.url)) {
@@ -2931,8 +2932,8 @@ private page or note is never shown.
   run: async (p, ctx) => {
     if (str(p.ui)) {
       const ui = str(p.ui), r = await ctx.ui({ action: "companion:read", ui }).catch(() => null) as { found: boolean; label?: string; folded?: boolean; text?: string } | null
-      if (!r?.found) throw new OpError(`${ui} isn't on the user's screen${/^panel:/.test(ui) ? " (act --ui opens a panel)" : ""}`, 404)
-      return { ui, title: r.label || ui, kind: "ui", text: r.folded ? "(folded: only its heading shows; act --ui opens it)" : r.text ?? "" }
+      if (!r?.found) throw new OpError(`${ui} isn't on the user's screen (act --ui shows a place)`, 404)
+      return { ui, title: r.label || ui, kind: "ui", text: r.folded ? "(folded: only its heading shows; act expand --ui opens it)" : r.text ?? "" }
     }
     const id = str(p.pane) || paneFocus()?.id, pn = paneById(id)
     if (!pn) throw new OpError(id ? `no pane ${id} in the user's window (vau tabs lists them)` : "give `pane`: the user isn't in one", 404)
@@ -2956,28 +2957,38 @@ function actText(r: Acted, action: string) {
   const none = lines || opened ? "" : action === "scroll" ? "\nScrolled; the page's text is the same (see shows what's in view)." : "\nIts text didn't change (a change only its picture shows isn't in it: see, or look at the screen)."
   return `${r.navigated ? "Went to another page: " : ""}${r.title || r.url}${opened}${lines}${none}`
 }
-type InApp = { ui: string; clicked: string; opened?: boolean; shows?: string; notices?: { text: string; kind?: string }[] }
-const actInAppText = (r: InApp) => `${r.opened ? `Opened the ${r.clicked ? JSON.stringify(r.clicked) : r.ui} panel` : `Clicked ${r.clicked ? JSON.stringify(r.clicked) : r.ui}`} in the app.${r.notices?.length ? ` It then showed: ${r.notices.map((n) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}${r.shows ? `\n${r.ui ? `${r.ui} shows now` : "It shows now"} (point at a row by its words, [point "<words>"]):\n${r.shows}` : ""}`
+type InApp = { ui: string; clicked: string; role?: string; opened?: boolean; already?: boolean; ok?: boolean; saw?: string; shows?: string; notices?: { text: string; kind?: string }[] }
+/** What an act in the app did, as read back: done, already so, or plainly not ("nothing changed"), and what shows now. */
+function actInAppText(r: InApp, action: string) {
+  const what = r.clicked ? JSON.stringify(r.clicked) : r.ui
+  const head = r.already ? `Nothing to do: ${r.saw}.` : r.ok === false ? `${r.opened ? "Asked the app to show" : action === "click" ? "Pressed" : `Tried to ${action}`} ${what}, but ${r.saw ?? "nothing changed"}: tell them plainly, or try another way.`
+    : `${r.opened ? `Showed ${what}` : action === "click" ? `Pressed ${what}` : `${action[0].toUpperCase()}${action.slice(1)}ed ${what}`} in the app${r.saw ? `: ${r.saw}` : ""}.`
+  const notices = r.notices?.length ? ` It then showed: ${r.notices.map((n) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""
+  return `${head}${notices}${r.shows ? `\n${r.ui ? `${r.ui} shows now` : "It shows now"} (point at a row by its words, [point "<words>"]):\n${r.shows}` : ""}`
+}
 /** How long its cursor flies before it clicks, so they see where. */
 const LAND_MS = 450
-/** A click on the app's own UI, its cursor there first (index.tsx' answers.click): only what's on screen. */
-async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, action: string): Promise<InApp> {
-  if (action !== "click" && action !== "dblclick") throw new OpError("in the app's own UI it clicks (click, dblclick): to write in a note, edit; in a page, give its pane", 400)
+/** The acts the app's own UI takes: a press, or a state asked for (expand: pressed only when folded). */
+const IN_APP = ["click", "dblclick", "expand", "collapse", "check", "uncheck", "select"]
+/** An act on the app's own UI, its cursor there first (index.tsx' answers.click): the target by its id or its role and
+ *  words, resolved to the part that acts, its state read back. Only what's on screen, or a place the app can show. */
+async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, action: string, role = ""): Promise<InApp> {
+  if (!IN_APP.includes(action)) throw new OpError(`in the app's own UI it does ${IN_APP.join(", ")}: to write in a note, edit; in a page, give its pane`, 400)
   did(name, "act")
   // (words anywhere in the window: no place to fly to first, as find alone would mean their note's words)
   setAgent(name, { ...(ui ? { ui, ...(find ? { find } : {}) } : {}), state: "writing", pointed: Date.now() })
   await new Promise((done) => setTimeout(done, LAND_MS))
   try {
-    const r = await ctx.ui({ action: "companion:click", ui, find, how: action }).catch((e) => {
+    const r = await ctx.ui({ action: "companion:click", ui, find, role, how: action }).catch((e) => {
       throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
-    }) as { found: boolean; label?: string; opened?: boolean; shows?: string; notices?: InApp["notices"] } | null
-    if (r?.found) return { ui, clicked: r.label ?? "", ...(r.opened ? { opened: true } : {}), ...(r.shows ? { shows: r.shows } : {}), notices: r.notices ?? [] }
-    throw new OpError(find ? `no "${find}" in ${ui || "the app's window"} on the user's screen (use its words as shown)`
-      : /^panel:/.test(ui) ? `no ${ui} panel to open: it's hidden or its plugin is off` : `${ui} isn't on the user's screen (vau tabs lists tabs and panes)`, 404)
+    }) as ({ found: boolean; label?: string } & Omit<InApp, "ui" | "clicked">) | null
+    if (r?.found) { const { found: _f, label, ...rest } = r; return { ui, clicked: label ?? "", ...rest } }
+    throw new OpError(find ? `no ${role ? `${role} ` : ""}"${find}" in ${ui || "the app's window"} on the user's screen (use its words as shown)`
+      : `${ui} isn't on the user's screen, and the app can't show it (vau tabs lists tabs and panes)`, 404)
   } finally { setAgent(name, { state: acting(name) }) }
 }
 
-const ACTS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll", "focus"]
+const ACTS = ["click", "dblclick", "rightclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "scroll", "focus", "expand", "collapse"]
 /** A step in another app (take-over): an element their ask listed, a screen point, or (asked there) the field with the keys. */
 function onScreen(p: Record<string, unknown>, name: string) {
   if (str(p.ax) || p.sx !== undefined) return true
@@ -2993,9 +3004,12 @@ async function screenAct(p: Record<string, unknown>, name: string) {
   // (its cursor flies there first: the helper waits for it)
   if (step.el || step.at) setAgent(name, { ...await resolve(target(p, true), name), state: "writing", pointed: Date.now() })
   try {
-    const r = await takeover.act(step, { agent: name, tint: agentOf(name).tint, ask: str(p.ask) || undefined })
-    if (r.near?.length) nearBy.set(key(name), r.near)
-    return { screen: true, ...r, text: doneText(r) }
+    const r = await takeover.act(step, { agent: name, tint: agentOf(name).tint, ask: str(p.ask) || undefined }), was = nearBy.get(key(name)) ?? []
+    // (helper's ids are fresh each step: what's near now is what the next points at)
+    const near = (r.near ?? []).flatMap((e) => { const t = thingFrom(e); return t?.id ? [t as Near] : [] }), read = { ...r, ...(r.near ? { near } : {}) }
+    if (near.length) nearBy.set(key(name), near)
+    const effect = effectOf(str(p.action), read, was), done = effect ? { ...read, effect } : read
+    return { screen: true, ...done, text: doneText(done) }
   } finally { setAgent(name, { state: acting(name) }) }
 }
 plugin.op({
@@ -3019,8 +3033,9 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
   vau companion act press --key cmd+s`,
   kind: "write",
   lock: false,
-  params: { pane: PANE, ui: { ...UI, description: "instead of a page: the app's own UI, by its id (as in look), to click; a sidebar panel (panel:files:files) opens, its sidebar shown and it unfolded, and its rows come back" },
-    find: { type: "string", description: "the words of what to click in the app's UI (a pinned page's name in panel:pages:pages); alone, anywhere in the app's window" },
+  params: { pane: PANE, ui: { ...UI, description: "instead of a page: the app's own UI, by its id (as in look); a place (panel:files:files) is shown, unfolded, and what it shows comes back" },
+    find: { type: "string", description: "in the app's UI: the words of what to act on, as shown (in ui when given, else anywhere in its window)" },
+    role: { type: "string", description: "with find: its role (button, tab, row, switch, checkbox, heading, link, menuitem, textbox), when the words alone could name two things" },
     action: { type: "string", required: true, enum: ACTS, description: "what to do" }, el: EL,
     ax: PLACE.ax, sx: PLACE.sx, sy: PLACE.sy, ask: { type: "string", description: "in another app: the line offering it, when they haven't said yes yet (Want me to...?)" },
     doing: { type: "string", description: "in another app: a few words by your cursor for this step (Typing the title); else made from the step" },
@@ -3029,11 +3044,15 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
   args: ["action", "value"],
   run: async (p, ctx) => {
     const name = who(p)
-    if (str(p.ui)) return actInApp(ctx, name, str(p.ui), str(p.find), str(p.action))
+    if (str(p.ui)) return actInApp(ctx, name, str(p.ui), str(p.find), str(p.action), str(p.role))
+    // (an element their ask listed over Vaultite's own window: the same act, through its UI by id or role and name)
+    const ask = askOf(name), own = str(p.ax) && ask && !awayIn([ask]) ? nearBy.get(key(name))?.find((e) => e.id === str(p.ax)) : undefined
+    if (own) return actInApp(ctx, name, own.ui ?? "", own.ui ? "" : own.label, str(p.action), own.ui ? "" : own.role)
     if (onScreen(p, name)) return screenAct(p, name)
     // (words alone, in a note or a view: a button or row of the app's window saying them)
-    if (str(p.find) && !str(p.pane) && !str(p.el) && paneSource(paneFocus()?.to ?? "").kind !== "site") return actInApp(ctx, name, "", str(p.find), str(p.action))
+    if (str(p.find) && !str(p.pane) && !str(p.el) && paneSource(paneFocus()?.to ?? "").kind !== "site") return actInApp(ctx, name, "", str(p.find), str(p.action), str(p.role))
     if (p.action === "rightclick" || p.action === "focus") throw new OpError(`${String(p.action)} is for another app (--ax, --sx --sy)`)
+    if (p.action === "expand" || p.action === "collapse") throw new OpError(`in a web page, click what opens or folds it`)
     const id = str(p.pane) || paneFocus()?.id
     if (!id) throw new OpError("give `pane` (a web page) or `ui` (the app's own UI): the user isn't in a web page")
     if (p.action === "scroll" && !p.direction && /^(up|down)$/i.test(str(p.value))) p = { ...p, direction: str(p.value).toLowerCase(), value: undefined }
@@ -3046,8 +3065,50 @@ or keys pause a step that needs them, a click or Esc stops it. Answers the eleme
       return { pane: id, ...r }
     } finally { setAgent(name, { state: acting(name) }) }
   },
-  text: (r, p) => ("screen" in r ? r.text : "clicked" in r ? actInAppText(r) : actText(r, String(p.action))),
+  text: (r, p) => ("screen" in r ? r.text : "clicked" in r ? actInAppText(r, String(p.action)) : actText(r, String(p.action))),
   did: (p) => ({ action: "ui", text: `${String(p.action)} in ${p.ui ? `the app (${String(p.ui)}${p.find ? ` "${String(p.find)}"` : ""})` : p.ax || p.sx !== undefined ? "another app" : "the user's page"}${p.el || p.ax ? ` (${String(p.el || p.ax)})` : ""}`, paths: [], by: who(p) }),
+})
+
+/** What each agent's last check of another app read: what its next `changed` compares with. */
+const checked = new Map<string, string>()
+/** One condition (uimodel.ts' language: expanded "Files", shows "Saved", selected tab "Notes", changed) checked once where
+ *  agent `name`'s last ask was: another app's window (its helper's Accessibility) or Vaultite's (its page). */
+export async function checkNow(ctx: OpCtx, name: string, condition: string): Promise<Verdict & { where: string }> {
+  let c
+  try { c = parseCondition(condition) } catch (e) { throw new OpError((e as Error).message, 400) }
+  const ask = askOf(name), away = ask ? awayIn([ask]) : ""
+  if (away) {
+    if (away === "a private app") throw new OpError("that app is private: the companion never reads it", 403)
+    const r = await takeover.things()
+    if (!r.ok) throw new OpError(r.text ?? "that app's window can't be read now", 409)
+    const view = listView(r.things ?? []), v = checkOn(c, view, checked.get(key(name)))
+    checked.set(key(name), view.snapshot())
+    return { ...v, where: away }
+  }
+  const r = await ctx.ui({ action: "companion:check", condition }).catch((e) => {
+    throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
+  }) as Verdict
+  return { ...r, where: "Vaultite" }
+}
+plugin.op({
+  id: "companion.check",
+  cli: "companion check",
+  summary: "Check one state on the user's screen now, by reading it back: whether a section is open, a tab selected, a switch on, words shown, or anything changed since your last act.",
+  help: `Where their last ask was: Vaultite's window, or the app they asked over. A thing is named by its role and words, as
+it shows (role "name" [in "container"]), or by its id (ui:panel:files:files, a3). After an act, to know it worked.
+
+  vau companion check 'expanded "Files"'
+  vau companion check 'selected tab "Notes"'
+  vau companion check 'not checked switch "Dark mode"'
+  vau companion check 'shows "Saved"'
+  vau companion check 'value textbox "Title" is "Lighthouse"'
+  vau companion check changed`,
+  kind: "read",
+  lock: false,
+  params: { condition: { type: "string", required: true, description: "[not] expanded|collapsed|selected|checked|unchecked|focused|disabled|exists|gone <target>; shows \"<words>\" [in <target>]; value <target> is \"<text>\"; changed" }, as: AS },
+  args: ["condition"],
+  run: (p, ctx) => checkNow(ctx, who(p), str(p.condition)),
+  text: (r) => `${r.ok ? "Yes" : "No"}: ${r.saw} (${r.where}).`,
 })
 
 // ---------- opening things before their eyes: its cursor goes where it opens, as the CLI's opens do too

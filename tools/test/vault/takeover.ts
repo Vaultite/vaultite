@@ -81,7 +81,8 @@ export default async ($: VaultTest) => {
   const helper: Any = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as Any[], close() {}, send(t: string) { const m = JSON.parse(t); helper.got.push(m); answer(m, helper) } })
   const from = (m: object) => helper.emit("message", JSON.stringify(m))
   live.fn(helper, { headers: {}, socket: { remoteAddress: "127.0.0.1" } } as Any, { query: { screen: "1" }, wild: [] })
-  const near = [{ id: "a1", role: "button", label: "Save", frame }, { id: "a2", role: "text field", label: "Name", frame: { x: 100, y: 260, width: 200, height: 24 } }]
+  const bare = { state: {}, actions: [], inside: [] }
+  const near = [{ id: "a1", role: "button", label: "Save", frame, ...bare }, { id: "a2", role: "text field", label: "Name", frame: { x: 100, y: 260, width: 200, height: 24 }, ...bare }]
   // (the helper's moment says where its steps go; the ask itself as screenMoment takes it, with no request to start one)
   from({ t: "moment", kind: "none" })
   const ask = () => c.screenMoment({ kind: "ask", text: "save it for me", app: "com.example.mail", sx: 120, sy: 210, near })
@@ -165,4 +166,21 @@ export default async ($: VaultTest) => {
   ;[st, r] = await api("POST", "ops/companion.act", { action: "focus", pane: "tnope" })
   check("takeover: a step only for another app isn't sent to a page", st === 400 && /another app/.test(r.error), [st, r])
   await api("PATCH", "config/plugin/companion", { mode: "off", summoned_model: null })
+  {
+    // One UI model in other apps (plugins/core/companion/uimodel.ts): a fold pressed only when it isn't so, a step's
+    // element read back before and after, and an answer that says plainly when it didn't change
+    const tri = { ...mail, role: "AXDisclosureTriangle" }
+    check("takeover: expand and collapse press only when the fold isn't so already",
+      ops(L.plan({ action: "expand", el }, { ...tri, expanded: false })) === "press | click" && ops(L.plan({ action: "expand", el }, { ...tri, expanded: true })) === "" &&
+      ops(L.plan({ action: "collapse", el }, { ...tri, expanded: true })) === "press | click" && L.STEPS.includes("expand"))
+    const p = L.probeThing({ ...tri, label: "Advanced", frame, expanded: false, actions: ["AXPress"] })
+    check("takeover: a probe read as a thing", p?.role === "button" && p.state.expanded === false && p.actions[0] === "press" && L.probeThing({ ok: false }) === null, p)
+    const before = { ...p!, state: { expanded: false } }, near = [{ id: "a1", ...before }]
+    const still = T.effectOf("expand", { ok: true, before, target: before, near }, near), opened = T.effectOf("click", { ok: true, before, target: { ...before, state: { expanded: true } } }, near)
+    check("takeover: a fold that didn't change says so; one that did says it's open",
+      still?.ok === false && /still folded/.test(still.saw) && opened?.ok === true && /open now/.test(opened.saw) &&
+      /didn't|but "Advanced" is still folded/.test(T.doneText({ ok: true, effect: still })) && T.doneText({ ok: true, how: "ax", effect: opened }).startsWith("Done (through Accessibility): \"Advanced\" is open now"))
+    const plain = { ...before, role: "button", state: {} }
+    check("takeover: a plain button with nothing near it changed isn't called a failure", T.effectOf("click", { ok: true, before: plain, target: plain, near }, near)?.ok === true)
+  }
 }

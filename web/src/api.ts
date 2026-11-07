@@ -128,7 +128,8 @@ export { readSidebars, sameSidebars, savedSidebars, setDefaultSidebars, sidebars
 export { dockAtEnd, hidePanel, offerPanel, revealPanel, sideOf as panelSide } from "@/core/plugins"
 export { filePanelKey } from "../../core/sidebars.ts"
 // The left sidebar's mode: one panel alone filling it (Activity's), kept in the workspace.
-export { setSidebarMode, sidebarMode, toggleSidebarMode, useSidebarMode } from "@/core/sidebarmode"
+export { setSidebarMode, showPanel, sidebarMode, toggleSidebarMode, useSidebarMode } from "@/core/sidebarmode"
+export { revealUi } from "@/core/reveal"
 // Plugins a plugin runs (Obsidian's, under plugin-compat): listed and drawn like any, their switches its own.
 export { hostPlugins, standingIn } from "@/core/plugins"
 // The three levels state lives at (the vault, a workspace, a device: core/scope.ts): the current workspace, the ones in

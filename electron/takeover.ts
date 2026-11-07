@@ -9,7 +9,7 @@ import { buildTakeover, takeoverHelperName } from "./takeover-build.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
 import { type Answer, type Call, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
-  spotOf, type Step, tookText, types } from "./takeoverlogic.ts"
+  spotOf, type Step, tookText, types, probeThing } from "./takeoverlogic.ts"
 
 type Point = { x: number; y: number }
 type Near = { id: string; role: string; label: string; frame: Rect }
@@ -390,7 +390,9 @@ async function run(m: Ask, host: TakeoverHost): Promise<Record<string, unknown>>
   await wait(350)
   const near = await host.near(spot).catch(() => [])
   const after = await ask<Probe>({ op: "probe", focused: true }).catch(() => null)
-  return { ok: true, how: did.how, ...(did.moved === false ? { moved: false } : {}), ...(near.length ? { near } : {}),
+  // (its element read back: whether the step did what it meant, the server judges from before and after)
+  const target = step.el ? probeThing(await ask<Probe>(probeAt).catch(() => null)) : null, was = probeThing(now)
+  return { ok: true, how: did.how, ...(did.moved === false ? { moved: false } : {}), ...(near.length ? { near } : {}), ...(was ? { before: was } : {}), ...(target ? { target } : {}),
     ...(after?.ok && !hidden({ bundle: after.bundle ?? "", name: after.name ?? "", url: after.url }) ? { app: after.name, title: after.title } : {}) }
 }
 const took = (why: string) => ({ ok: false, why: "stopped", text: tookText(why) })

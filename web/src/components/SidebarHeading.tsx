@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 
 /** The panel a heading is in (SidebarPanels provides it, in the open sidebar): whether it's folded to its heading, and
  *  how to fold or open it. None (a heading outside the sidebar, the rail): the heading is only a label. */
-export const PanelFold = createContext<{ collapsed: boolean; toggle: (e?: { altKey: boolean }) => void } | null>(null)
+export const PanelFold = createContext<{ collapsed: boolean; toggle: (e?: { altKey: boolean }) => void; /** the id of what it folds */ controls?: string } | null>(null)
 
 /** A panel shown alone in the left sidebar (its mode, core/sidebarmode.ts): how to bring the panels back, which its
  *  heading offers as an X that's always there. */
@@ -31,7 +31,7 @@ export function SidebarHeading({ title, open, children, aside, className }: {
   if (!open) return null
   const f = fold
   const label = (
-    <span role={f ? "button" : undefined} tabIndex={f ? 0 : undefined} aria-expanded={f ? !f.collapsed : undefined}
+    <span role={f ? "button" : undefined} tabIndex={f ? 0 : undefined} aria-expanded={f ? !f.collapsed : undefined} aria-controls={f?.controls} id={f?.controls && `${f.controls}-name`}
       onKeyDown={f ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); f.toggle(e) } } : undefined}
       className="flex min-w-0 items-center gap-0.5 rounded-[3px] text-[12px] font-semibold text-muted-foreground focus-visible:text-foreground">
       <span className="truncate">{title}</span>

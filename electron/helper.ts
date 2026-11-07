@@ -23,6 +23,7 @@ import { closePanel, cue as playCue, drawingActs, drawingUp, endDrawing, followP
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
 import { byLabel, type Heard, heardBeats } from "../plugins/core/companion/screenmarks.ts"
+import { thingFrom, type Thing } from "../plugins/core/companion/uimodel.ts"
 import { type Press, pressLog } from "./presslog.ts"
 import { type Phase, pressMachine, type PressMachine } from "./pressmachine.ts"
 import { companionVoice } from "./voice.ts"
@@ -322,6 +323,8 @@ const live = (() => {
       else if (m.t === "open-url") return openIn(m)
       // (words a mark names, found in the window asked about)
       else if (m.t === "find") return void findIn(m)
+      // (every thing in the window asked about, in the UI model's shape: a check or an anchor reads them)
+      else if (m.t === "things") return void axThings(nearPoint ?? screen.getCursorScreenPoint()).then((things) => live.say({ t: "takeover-done", id: m.id, ok: true, things }))
       else if (m.t === "jobs" && Array.isArray(m.jobs)) {
         const jobs = m.jobs as HelperJob[]
         for (const j of jobNews(state.jobs, jobs, prefs.jobNews)) jobNotice(j)
@@ -949,8 +952,7 @@ function openIn(m: Record<string, unknown>) {
  *  the pointer. Answered as a step is. */
 async function findIn(m: Record<string, unknown>) {
   const p = nearPoint ?? screen.getCursorScreenPoint()
-  const r = await screenAsk<{ elements?: Near[] }>("near", { x: p.x, y: p.y, radius: 5000, max: 400 }).catch(() => null)
-  const el = byLabel(r?.elements ?? [], String(m.text ?? ""))
+  const el = byLabel(await axThings(p), String(m.text ?? ""))
   live.say({ t: "takeover-done", id: m.id, ...(el ? { ok: true, found: { id: "", ...el } } : { ok: false, why: "none" }) })
 }
 
@@ -976,16 +978,23 @@ async function excluded() {
   const all = await screenAsk<{ windows?: { window: number; bundle: string; name: string }[] }>("windows").catch(() => ({ windows: [] }))
   return [...ownWindows(), ...(all.windows ?? []).filter((w) => hidden(w)).map((w) => w.window)]
 }
-type Near = { role: string; label: string; frame: Rect }
+/** A thing near the pointer, in the UI model's shape; `ax`: its Accessibility role, to find it again by. */
+type Near = Thing & { ax?: string }
 /** The last ask's elements near the pointer, by id (global screen points): what `--ax` and drawings point at. */
 let lastNear: (Near & { id: string })[] = []
 /** Where the last ask's elements were looked for: the window a find searches. */
 let nearPoint: Point | null = null
+/** Every thing Accessibility lists in the window under `p` (not Vaultite's), nearest first: what a check or an anchor
+ *  reads in another app. */
+export async function axThings(p: Point, radius = 5000, most = 400): Promise<Near[]> {
+  const r = await screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius, max: most }).catch(() => null)
+  return (r?.elements ?? []).flatMap((e) => thingFrom(e) ?? [])
+}
 /** What Accessibility finds near `p`, nearest first, each with an id the agent points by (companion say --ax a3). */
 async function nearAt(p: Point) {
   nearPoint = p
-  const r = await screenAsk<{ elements?: Near[] }>("near", { x: p.x, y: p.y, radius: 260, max: 30 }).catch(() => null)
-  lastNear = (r?.elements ?? []).map((e, i) => ({ id: `a${i + 1}`, role: e.role, label: e.label, frame: e.frame }))
+  const r = await screenAsk<{ elements?: unknown[] }>("near", { x: p.x, y: p.y, radius: 260, max: 30 }).catch(() => null)
+  lastNear = (r?.elements ?? []).flatMap((e) => thingFrom(e) ?? []).map((e, i) => ({ ...e, id: `a${i + 1}` }))
   return lastNear
 }
 
@@ -1026,13 +1035,10 @@ const PLACE_KEYS = new Set(["path", "line", "find", "selection", "pane", "ui", "
 function pageNear(els: unknown[]): (Near & { id: string })[] {
   const w = host?.homeWindow(), b = w?.bounds
   if (!w || !b) return lastNear
-  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN)
   lastNear = els.slice(0, 40).flatMap((e) => {
-    const o = (e ?? {}) as { role?: unknown; label?: unknown; frame?: Record<string, unknown> }, f = o.frame ?? {}, r = [n(f.x), n(f.y), n(f.width), n(f.height)]
-    if (typeof o.label !== "string" || !o.label || r.some(Number.isNaN)) return []
-    return [{ role: String(o.role ?? "").slice(0, 80), label: o.label.slice(0, 120),
-      frame: { x: Math.round(b.x + r[0] * w.zoom), y: Math.round(b.y + r[1] * w.zoom), width: Math.round(r[2] * w.zoom), height: Math.round(r[3] * w.zoom) } }]
-  }).map((e, i) => ({ id: `a${i + 1}`, ...e }))
+    const t = thingFrom(e), f = t?.frame
+    return t && f ? [{ ...t, frame: { x: Math.round(b.x + f.x * w.zoom), y: Math.round(b.y + f.y * w.zoom), width: Math.round(f.width * w.zoom), height: Math.round(f.height * w.zoom) } }] : []
+  }).map((e, i) => ({ ...e, id: `a${i + 1}` }))
   return lastNear
 }
 /** The home window's page answering inAppAt: only what a place has (its elements near, as they are). */
