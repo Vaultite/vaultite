@@ -22,12 +22,18 @@ export async function writeNote(plugin: Plugin, ctx: OpCtx, rel: string, text: s
   await ctx.api("PUT", "file", { path: rel, text })
 }
 
+const isStr = (v: unknown) => typeof v === "string"
+/** An act given whole, as its kind needs it (a field's value, a key's name, a said's words). */
+const actOk = (a: Act) => !!a && typeof a === "object" && typeof a.t === "number" && KINDS.includes(a.kind)
+  && (a.kind === "click" ? typeof a.x === "number" && typeof a.y === "number" : a.kind === "key" ? isStr(a.key) : a.kind === "field" ? !!a.el && isStr(a.value)
+    : a.kind === "app" ? isStr(a.app) : isStr(a.text))
+
 export function teachOps(plugin: Plugin) {
   const exists = async (ctx: OpCtx, path: string) => !!await noteText(plugin, ctx, path)
   /** The first of `make(1)`, `make(2)`... not taken yet. */
   async function free(ctx: OpCtx, make: (n: number) => string) {
     for (let n = 1; n < 50; n++) if (!await exists(ctx, make(n))) return make(n)
-    throw new OpError("too many lessons by that name")
+    throw new OpError("too many lessons by that name", 409)
   }
 
   plugin.op({
@@ -55,11 +61,11 @@ either is a draft (status: draft) till it has played through once (companion tou
     },
     run: async (p, ctx) => {
       let acts: Act[], from = num(p.from), to = Date.now()
-      if (Array.isArray(p.acts)) acts = (p.acts as Act[]).filter((a) => a && typeof a === "object" && typeof a.t === "number" && KINDS.includes(a.kind)).slice(0, 2000)
+      if (Array.isArray(p.acts)) acts = (p.acts as Act[]).filter(actOk).slice(0, 2000)
       else {
         const r = await plugin.desktop("screen:timeline", { ...(from ? { from } : { from: to - (num(p.last) ?? 300) * 1000 }), kinds: KINDS }).catch((e: Error) => ({ ok: false, why: e.message })) as { ok: boolean; why?: string; events?: Act[] }
         if (!r.ok) throw new OpError(`nothing to learn from: ${r.why ?? "the desktop app didn't answer"}`, 409)
-        acts = r.events ?? []
+        acts = (r.events ?? []).filter(actOk)
         if (!from) acts = recentStretch(acts)
       }
       if (!acts.length) throw new OpError("nothing to learn from: nothing was done on screen in that stretch", 409)
