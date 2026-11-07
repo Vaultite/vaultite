@@ -192,6 +192,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   ago, and a pane not shown is pointed at by its tab. Its words and cursor draw over a web page they reach. A Talk key's
   answer, once said by your pointer, no longer shows again by the status bar, and its cursor comes back by your note
   only while that note is on screen, else home, instead of flying to a corner of the window.
+- **Closing a web page's tab no longer shows "Skip to content"**: the page had the keyboard as it went, and Chromium
+  passed it on to the window's first stop as a Tab would; the window now takes it back first.
 
 ## 0.10.0 (2026-11-06)
 

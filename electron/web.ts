@@ -796,7 +796,7 @@ async function drawing(p: Page) {
   if (!p.drawn || p.player || p.resting || !p.view.getVisible() || wc.isDestroyed()) return
   const parked = !!p.parked
   if (parked) rest(p)
-  else { p.view.setVisible(false); wc.setBackgroundThrottling(true) }
+  else { keyboardBack(p); p.view.setVisible(false); wc.setBackgroundThrottling(true) }
   for (const until = Date.now() + 1000; Date.now() < until;) {
     if (await askPage(p, "document.visibilityState", 200) === "hidden") break
     await new Promise((done) => setTimeout(done, 30))
@@ -809,14 +809,20 @@ async function drawing(p: Page) {
   await frameIn(p, 1000)
   p.drew = Date.now()
 }
+/** Before page `p`'s view is hidden or taken off its window: the keyboard, if it has it, to the window's own page. (Hidden
+ *  with it, Chromium passes it on as a Tab would, to the window's first stop: its skip link, shown at the top.) */
+function keyboardBack(p: Page) {
+  const wc = p.view.webContents
+  if (wc && !wc.isDestroyed() && wc.isFocused() && !p.win.isDestroyed()) p.win.webContents.focus()
+}
 /** Out of sight: parked if it's an agent's, else hidden. */
-const stow = (p: Page) => { if (p.drawn) park(p); else p.view.setVisible(false) }
+const stow = (p: Page) => { if (p.drawn) park(p); else { keyboardBack(p); p.view.setVisible(false) } }
 
 /** Page `p` into window `win`, its tab having moved there (a pop-out): the same page, live, not loaded again. (Not
  *  `web:adopt`, which gives a tab-less page its tab.) */
 function moveTo(p: Page, win: AppWindow) {
   const from = p.win
-  if (!from.isDestroyed() && !p.player) from.contentView.removeChildView(p.view)
+  if (!from.isDestroyed() && !p.player) { keyboardBack(p); from.contentView.removeChildView(p.view) }
   if (p.full && !p.player) leaveFull(p)
   p.win = win
   p.view.setVisible(false)
@@ -843,6 +849,7 @@ function end(p: Page) {
   // (kept for its tab to come back with: ⌘⇧T, shown again after a discard)
   keepPast(p, true)
   const shot = keepFrame(p)
+  keyboardBack(p)
   p.view.setVisible(false)
   const off = () => { if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view) }
   // (none once its contents are gone: closed by its own script)
@@ -935,9 +942,9 @@ function fit(p: Page) {
     if (p.drawn) return park(p)
     if (!p.view.getVisible()) return
     p.hadFocus = p.view.webContents.isFocused()
+    // (a hidden view keeps the keyboard: the window takes it first, for what's over the page, the palette's search)
+    if (p.hadFocus) { keyboardBack(p); keyboardFrom.set(p.win, p.id) }
     p.view.setVisible(false)
-    // (a hidden view keeps the keyboard: the window takes it, for what's over the page, the palette's search)
-    if (p.hadFocus) { p.win.webContents.focus(); keyboardFrom.set(p.win, p.id) }
     return
   }
   if (keyboardFrom.get(p.win) === p.id) keyboardFrom.delete(p.win) // (shown again: `web:place` gives it back)
