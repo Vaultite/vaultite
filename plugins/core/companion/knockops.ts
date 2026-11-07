@@ -3,7 +3,7 @@
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
 import { actOn, addKnock, duration, expire, type Knock, type KnockAct, makeKnock, over, type Presence, presencesOf, type PresenceState, type TermRow, URGENCIES } from "./knocks.ts"
-import type { Job } from "./jobs.ts"
+import { type Job, terminalOf } from "./jobs.ts"
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 /** An ended knock is kept a day (`companion knocks` shows what came), then forgotten. */
@@ -36,7 +36,7 @@ export function knockOps(plugin: Plugin, d: Deps) {
   /** What the helpers have: the knocks still to come or telling, and the presences. */
   function tell(force = false) {
     const now = Date.now(), ks = tidy(now)
-    const titles = new Map(d.jobs().map((j) => [`${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`, j.title]))
+    const titles = new Map(d.jobs().map((j) => [terminalOf(j), j.title]))
     const none = d.off() || d.hidden()
     presences = none ? [] : presencesOf(rows, ks.map(named), seen, now, { titles })
     const m = { t: "knocks", knocks: none ? [] : ks.filter((k) => !over(k)), presences }
@@ -72,7 +72,7 @@ export function knockOps(plugin: Plugin, d: Deps) {
   /** A knock's session named as the user knows it: its job's title, its terminal's name or title. */
   function whoIs(at: string, ctx: OpCtx) {
     const from = local(at)
-    const job = d.jobs().find((j) => j.terminal === from || `${j.terminal}@${j.where.machine}` === from)
+    const job = d.jobs().find((j) => terminalOf(j) === from)
     const row = rows.find((r) => r.id === from)
     return job?.title || row?.name || row?.title || ctx.who.agent || "A session"
   }

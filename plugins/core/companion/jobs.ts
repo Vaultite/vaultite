@@ -23,6 +23,8 @@ export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
 /** States the user hears about, a badge until they open the job. */
 const NEWS = new Set<JobState>(["needs you", "ready for review", "done", "failed"])
 export const live = (s: JobState) => s === "starting" || s === "working" || s === "needs you"
+/** A job's terminal as every machine's list names it (`<id>@<machine>` when it runs on another). */
+export const terminalOf = (j: Pick<Job, "terminal" | "where">) => `${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`
 
 /** Where a job runs: the machine ("" this one) and its label, the folder and its repo, the account, the harness
  *  (agent id, its name, model, effort), why it went there, the commit a review's diff counts from, the preview asked over. */

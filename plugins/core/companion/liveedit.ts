@@ -16,7 +16,7 @@ import { type FileEdit, unedit } from "./unedit.ts"
 type LiveAsk = { tag: string; t: number; text: string; window?: number; shot?: string; sent?: number; rung?: boolean; undone?: boolean }
 type Live = { n: number; asks: LiveAsk[]; notes: string[]; at: number }
 
-type Jobs = { list: () => Job[]; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void>
+type Jobs = { list: () => Job[]; find: (id: string) => Job; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void>
   atMachine: (machine: string, id: string, body: object, seconds?: number) => Promise<Record<string, unknown>> }
 export type LiveDeps = {
   jobs: Jobs
@@ -300,8 +300,8 @@ when what it wrote changed since, it changes nothing and says why.
     run: async (p, ctx) => {
       const s = state()
       const id = typeof p.job === "string" && p.job.trim() ? p.job.trim() : Object.entries(s.jobs).sort((a, b) => b[1].at - a[1].at)[0]?.[0]
-      const j = id ? d.jobs.list().find((x) => x.id === id || (id.length >= 3 && x.id.endsWith(id))) : undefined
-      if (!j) throw new OpError("no job has edited live lately: nothing to undo", 404)
+      if (!id) throw new OpError("no job has edited live lately: nothing to undo", 404)
+      const j = d.jobs.find(id)
       const r = await undoIn(ctx, j)
       if (!r.undone) throw new OpError(r.said, 409)
       return { job: j.id, title: j.title, undone: r.undone }

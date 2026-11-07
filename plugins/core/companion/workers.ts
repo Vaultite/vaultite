@@ -6,7 +6,7 @@ import os from "node:os"
 import { agentName, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, userSurface, whoOf } from "../../../core/plugins.ts"
 import { cardOf, choiceIn, endEvent, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
-  step, type Waits, type Where } from "./jobs.ts"
+  step, terminalOf, type Waits, type Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import { branchOf, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
 
@@ -376,7 +376,6 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     if (!j) throw new OpError(`no job ${want} (companion jobs lists them)`, 404)
     return j
   }
-  const terminalOf = (j: Job) => `${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`
 
   /** Job `j` named `title` (its card and its terminal), when a follow-up changed what it's about. */
   async function retitle(ctx: OpCtx, j: Job, title: string) {
@@ -650,6 +649,8 @@ its terminal (companion job-open).
 
   return {
     list: all, cards, seen, jobsAgent, begin,
+    /** Job `id`, or the one its id ends with (3 letters or more); 404 when none. */
+    find: jobOf,
     /** Job `id` told `text`, typed into its terminal (its conversation resumed if it closed); its card shows `shown`. */
     tell: (ctx: OpCtx, id: string, text: string, shown?: string) => steer(ctx, jobOf(id), text, shown),
     /** Where an ask over `o` would run here (its folder, repo, the preview it's on). */

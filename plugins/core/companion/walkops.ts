@@ -1,6 +1,5 @@
 // QA walks (the desktop app's walk.ts keeps one): started, scratched and ended by voice or here, and once done sent as one
 // job per project its items are in (the vault's project notes, else the preview or editor there), and kept in the vault.
-import fs from "node:fs"
 import path from "node:path"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { inDesktop, OpError } from "../../../core/plugins.ts"
@@ -10,13 +9,11 @@ import type { Moment } from "./plugin.ts"
 import { countText, type Project, projectFor, projectOf, type WalkItem, walkJobText, type WalkPlace } from "./walks.ts"
 import type { Found, Over } from "./where.ts"
 import { localStamp, localTime } from "./names.ts"
-import { freeBase, saveFiles, vaultFileOn } from "./vaultfiles.ts"
+import { freeBase, ownCapture, saveFiles, vaultFileOn } from "./vaultfiles.ts"
 
 type Jobs = { begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: Record<string, unknown>) => Promise<Job>
   placeHere: (o: Over) => Promise<Found & { repo: string }> }
 
-/** Only the helper's own files are read: a clip, its frames or a still, under its captures folder. */
-const OWN = /[/\\]captures[/\\][\w-]+[/\\](clip\.mp4|frame\.png|frames[/\\]\d+\.\ds\.png)$/
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
 
@@ -27,7 +24,7 @@ function itemOf(v: unknown, i: number): WalkItem | null {
   const pl = (o.place && typeof o.place === "object" ? o.place : {}) as Record<string, unknown>, at = (o.at ?? {}) as Record<string, unknown>
   const place: WalkPlace = Object.fromEntries(Object.entries({ app: str(pl.app), appName: str(pl.appName), title: str(pl.title).slice(0, 300), url: str(pl.url).slice(0, 2000), path: str(pl.path),
     ui: str(pl.ui), under: str(pl.under).slice(0, 300), screen: str(pl.screen).slice(0, 3000), line: num(pl.line) || undefined, vaultite: pl.vaultite === true || undefined }).filter(([, x]) => x)) as WalkPlace
-  const file = (f: unknown) => (OWN.test(str(f)) && fs.existsSync(str(f)) ? str(f) : "")
+  const file = (f: unknown) => (ownCapture(f) ? f : "")
   const a = o.anchor && typeof o.anchor === "object" ? o.anchor as WalkItem["anchor"] : undefined
   return { n: i + 1, said, from: num(o.from), to: num(o.to), at: { x: Math.round(num(at.x)), y: Math.round(num(at.y)) }, place,
     ...(a && typeof a.label === "string" && a.label.trim() ? { anchor: { ...a, label: a.label.slice(0, 200) } } : {}),

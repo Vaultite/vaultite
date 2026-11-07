@@ -4,6 +4,10 @@ import fs from "node:fs"
 import path from "node:path"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 
+/** One of the helper's own capture files (a clip, its frames, a still) and there: the only files of this Mac that a
+ *  capture or a QA walk copies into the vault. */
+export const ownCapture = (f: unknown): f is string => typeof f === "string" && /[/\\]captures[/\\][\w-]+[/\\](clip\.mp4|frame\.png|frames[/\\]\d+\.\ds\.png)$/.test(f) && fs.existsSync(f)
+
 /** `base`, else `base 2`, `base 3`...: the first whose note (`.md`) and folder are both free in the vault. */
 export function freeBase(plugin: Plugin, base: string) {
   const taken = (b: string) => fs.existsSync(plugin.vault.abs(`${b}.md`)) || fs.existsSync(plugin.vault.abs(b))

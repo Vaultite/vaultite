@@ -2,7 +2,7 @@
 // Keep (done) or Still broken (a clip of what they show and say, sent back to the same job). The rules are proof.ts'.
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
-import { type Job, live } from "./jobs.ts"
+import { type Job, live, terminalOf } from "./jobs.ts"
 import type { Knock } from "./knocks.ts"
 import { choiceSaid, readyLine, readyNow, summaryOf } from "./proof.ts"
 import type { Result, Tour } from "./tour.ts"
@@ -15,7 +15,7 @@ const CHOOSE_MS = 5 * 60_000
 const SETTLE_MS = 900
 
 export type ProofDeps = {
-  jobs: { list: () => Job[]; seen: (ids: string[]) => void; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void> }
+  jobs: { list: () => Job[]; find: (id: string) => Job; seen: (ids: string[]) => void; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void> }
   knocks: { knock: (p: { from: string; who: string; line: string; urgency?: string; open?: string }) => Knock; settle: (from: string) => void }
   tours: { proofOf: (id: string) => { path: string; tour: Tour; problems: string[] } | null; show: (name: string, s: Screen, tour: Tour) => Promise<Result> }
   /** The companion's name (the one that shows proofs). */
@@ -38,19 +38,16 @@ export type ProofDeps = {
   showing: (on: { voice: boolean; displays?: unknown } | null) => void
 }
 
-/** A job's terminal as the presences name it (its machine's after an @). */
-export const fromOf = (j: Job) => `${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`
-
 export function proofOps(plugin: Plugin, d: ProofDeps) {
   /** What Keep or Still broken answers now: a job just shown; `tell`: its next words go to it (no helper to record). */
   let pending: { job: string; until: number; tell?: boolean } | null = null
   let playing: { job: string; ctl: { stopped: boolean } } | null = null
 
   const jobOf = (id: string) => {
+    if (id) return d.jobs.find(id)
     const all = d.jobs.list()
-    const j = id ? all.find((x) => x.id === id || (id.length >= 4 && x.id.endsWith(id)))
-      : all.find((x) => (x.state === "ready for review" || x.state === "done") && !x.seen) ?? all.find((x) => x.state === "ready for review")
-    if (!j) throw new OpError(id ? `no job ${id} (companion jobs lists them)` : "no job is ready to show you", 404)
+    const j = all.find((x) => (x.state === "ready for review" || x.state === "done") && !x.seen) ?? all.find((x) => x.state === "ready for review")
+    if (!j) throw new OpError("no job is ready to show you", 404)
     return j
   }
 
@@ -62,7 +59,7 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     const urgency = await d.urgency()
     if (urgency === "off") return true
     try {
-      d.knocks.knock({ from: fromOf(j), who: j.title, line: readyLine(j, change), urgency, open: `job:${j.id}` })
+      d.knocks.knock({ from: terminalOf(j), who: j.title, line: readyLine(j, change), urgency, open: `job:${j.id}` })
     } catch (e) { console.error(`companion: ${j.id}'s ready knock: ${(e as Error).message}`) }
     return true
   }
@@ -154,7 +151,7 @@ or word, the app's. Its worker saves the tour: companion tour-save "<the change>
       if (live(j.state)) throw new OpError(`"${j.title}" is still ${j.state}: nothing to show yet (companion job ${j.id} says how it goes)`, 409)
       if (playing) playing.ctl.stopped = true
       d.jobs.seen([j.id])
-      d.knocks.settle(fromOf(j))
+      d.knocks.settle(terminalOf(j))
       if (Array.isArray(p.displays)) d.showing({ voice: p.voice !== false, displays: p.displays })
       const proof = d.tours.proofOf(j.id)
       void show(j, p.voice !== false).catch((e) => console.error(`companion: showing ${j.id}: ${(e as Error).message}`))

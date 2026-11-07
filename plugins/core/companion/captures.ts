@@ -1,6 +1,5 @@
 // Region captures (the desktop app's capture.ts records them): saved in the vault and handed to the job on that surface,
 // else a new job when they said what to do over it. The companion only says where it went.
-import fs from "node:fs"
 import path from "node:path"
 import type { OpCtx, Plugin } from "../../../core/plugins.ts"
 import { OpError } from "../../../core/plugins.ts"
@@ -9,15 +8,13 @@ import { type Job, live, type Where } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import type { Found, Over } from "./where.ts"
 import { localStamp } from "./names.ts"
-import { freeBase, saveFiles, vaultFileOn } from "./vaultfiles.ts"
+import { freeBase, ownCapture, saveFiles, vaultFileOn } from "./vaultfiles.ts"
 
 export type Capture = { kind: "recording" | "replay"; job?: string; clip: string; ms: number; width: number; height: number; frames: { t: number; file: string }[]
   narration: Narration[]; box: Rect; at: number; place: Record<string, unknown>; end?: Record<string, unknown> }
 type Jobs = { list: () => Job[]; begin: (ctx: OpCtx, task: (w: Where) => Promise<string>, m: Moment | undefined, p: Record<string, unknown>) => Promise<Job>
   tell: (ctx: OpCtx, id: string, text: string) => Promise<void>; placeHere: (o: Over) => Promise<Found & { repo: string }> }
 
-/** Only the helper's own captures are read: a clip and frames under its captures folder. */
-const OWN = /[/\\]captures[/\\][\w-]+[/\\](clip\.mp4|frames[/\\]\d+\.\ds\.png)$/
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const RECENT_MS = 6 * 3600_000
 /** What ties a surface to a repo (a note or the vault never does: any job could be on it). */
@@ -93,8 +90,8 @@ export function captureOps(plugin: Plugin, jobs: Jobs) {
     },
     run: async (p, ctx) => {
       const c = p as unknown as Capture
-      if (!OWN.test(str(c.clip)) || !fs.existsSync(c.clip)) throw new OpError("clip: one of the helper's own captures")
-      c.frames = (Array.isArray(c.frames) ? c.frames : []).filter((f) => OWN.test(str(f?.file)) && fs.existsSync(f.file)).slice(0, 12)
+      if (!ownCapture(c.clip) || !c.clip.endsWith("clip.mp4")) throw new OpError("clip: one of the helper's own captures")
+      c.frames = (Array.isArray(c.frames) ? c.frames : []).filter((f) => ownCapture(f?.file) && !f.file.endsWith(".mp4")).slice(0, 12)
       c.narration = (Array.isArray(c.narration) ? c.narration : []).filter((n) => typeof n?.text === "string").map((n) => ({ t: Math.max(0, Number(n.t) || 0), text: n.text.slice(0, 2000) })).slice(0, 200)
       c.place = c.place && typeof c.place === "object" ? c.place : {}
       c.at = Number(c.at) || Date.now()
