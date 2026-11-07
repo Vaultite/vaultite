@@ -142,7 +142,7 @@ or word, the app's. Its worker saves the tour: companion tour-save "<the change>
       choose: { type: "string", enum: ["keep", "broken"], description: "their answer after it was shown: keep, or still broken" },
       voice: { type: "boolean", description: "asked by voice (its words said aloud; default true)" },
       displays: { type: "array", description: "the helper's displays (screen points): where its marks can show" },
-      as: { type: "string", description: "the agent (only the companion shows proofs)" },
+      as: { type: "string", description: "the agent asking (the proof plays as the companion all the same)" },
     },
     args: ["id"],
     run: async (p, ctx) => {
