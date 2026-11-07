@@ -20,6 +20,7 @@ import { presence, type Mark as MarkKind } from "../../plugins/core/companion/lo
 import { arrowBox, boxAt, flagBox } from "../../plugins/core/companion/boxes"
 import { Chat, type ChatItem } from "../../plugins/core/companion/Chat"
 import { type DrawBridge, ScreenDrawings } from "./screendraw"
+import { useHold } from "./screendraw/hold"
 import { Region, REGION_STYLE } from "./screenregion"
 import { Island, ISLAND_STYLE } from "./screenisland"
 import type { RegionScene } from "../../plugins/core/companion/clips"
@@ -366,12 +367,9 @@ function open(name: string, key: string) {
 }
 
 function Hold({ children, onHover, ...rest }: React.HTMLAttributes<HTMLDivElement> & { onHover?: (on: boolean) => void } & Record<`data-${string}`, unknown>) {
-  const over = useRef(false)
-  useEffect(() => () => { if (over.current) grab(false) }, [])
+  const hold = useHold(grab)
   return (
-    <div {...rest}
-      onPointerEnter={() => { if (!over.current) { over.current = true; grab(true); onHover?.(true) } }}
-      onPointerLeave={() => { if (over.current) { over.current = false; grab(false); onHover?.(false) } }}>
+    <div {...rest} onPointerEnter={() => { if (hold(true)) onHover?.(true) }} onPointerLeave={() => { if (hold(false)) onHover?.(false) }}>
       {children}
     </div>
   )

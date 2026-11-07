@@ -9,6 +9,7 @@ import { CAPTION_H, clampInto, inflate, place, type Placed, type Pt, ringShape, 
 import { hash, headLines, inkPath, type Line, linePath, sketch, type Sketched } from "./ink"
 import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER, waitForPen } from "./pen"
 import type { Act, Shown } from "./index"
+import { useHold } from "./hold"
 
 const PILL_H = 24, PILL_PX = 13, TAB_H = 20, TAB_PX = 12
 
@@ -255,11 +256,10 @@ function Typed({ text, delay }: { text: string; delay: number }) {
 
 /** Chrome a person can press: it takes the pointer while it's under it (the overlay lets it through elsewhere). */
 function Press({ children, className, style, onClick, grab, label }: { children: React.ReactNode; className: string; style?: React.CSSProperties; onClick: () => void; grab: (on: boolean) => void; label?: string }) {
-  const over = useRef(false)
-  useEffect(() => () => { if (over.current) grab(false) }, [grab])
+  const hold = useHold(grab)
   return (
     <button type="button" aria-label={label} className={`pointer-events-auto ${className}`} style={style} onClick={onClick}
-      onPointerEnter={() => { if (!over.current) { over.current = true; grab(true) } }} onPointerLeave={() => { if (over.current) { over.current = false; grab(false) } }}>
+      onPointerEnter={() => hold(true)} onPointerLeave={() => hold(false)}>
       {children}
     </button>
   )
@@ -271,9 +271,7 @@ type CardCtx = { off: Pt; bounds: Rect; grab: (on: boolean) => void; move: (off:
 /** A card's place on the screen: the user can drag it anywhere on it (by any part that isn't a control) or dismiss it
  *  (its × on hover). It takes the pointer while it's under it, and through a drag. */
 function Shell({ p, ctx, children }: { p: Placed; ctx: CardCtx; children: React.ReactNode }) {
-  const c = p.card!, over = useRef(false), drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null), dragged = useRef(false)
-  useEffect(() => () => { if (over.current) ctx.grab(false) }, [ctx.grab])
-  const hold = (on: boolean) => { if (over.current !== on) { over.current = on; ctx.grab(on) } }
+  const c = p.card!, hold = useHold(ctx.grab), drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null), dragged = useRef(false)
   const clampOff = (o: Pt) => {
     const r = clampInto({ x: c.x + o.x, y: c.y + o.y, w: c.w, h: c.h }, ctx.bounds)
     return { x: r.x - c.x, y: r.y - c.y }
