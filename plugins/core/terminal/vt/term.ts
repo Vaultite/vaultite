@@ -8,7 +8,7 @@ import { keyBytes } from "./input.ts"
 import { osc8At, webLinks, type Link, type LinkProvider } from "./links.ts"
 import { wirePointer } from "./mouse.ts"
 import { findAll, type FindSpec } from "./search.ts"
-import { F_LINK, Screen, type Match, type Row } from "./screen.ts"
+import { F_LINK, Screen, type Drawn, type Match, type Row } from "./screen.ts"
 
 export type { Link, LinkProvider } from "./links.ts"
 export type { FindSpec } from "./search.ts"
@@ -59,6 +59,9 @@ export class Term {
   r: Renderer | null = null
   /** Its last drawn rows, as the renderer has them. */
   view: Row[] = []
+  /** Its pictures as last laid out, and that layout's generation. */
+  private pics: Drawn[] = []
+  private laidOut = -1n
   focused = false
   composing = ""
   private queue: { data: Uint8Array | string; at: number; cb?: () => void }[] = []
@@ -272,6 +275,8 @@ export class Term {
     } else this.holdSince = 0
     const changed = this.s.update()
     if (changed !== "none" || this.allRows || this.view.length !== this.rows) this.s.readRows(this.view, this.allRows || changed === "all")
+    const laidOut = this.s.picturesLaidOut()
+    if (laidOut !== this.laidOut) { this.laidOut = laidOut; this.pics = laidOut ? this.s.drawn() : [] }
     this.allRows = false
     const sb = this.s.scrollbar()
     if (sb.offset !== this.lastOffset) {
@@ -312,6 +317,7 @@ export class Term {
       marks, links: this.hovered?.cells ?? [],
       scrollbar: scrolled && (this.scrollbarShown > 0 || rulerMarks.length) ? { top: sb.offset / sb.total, height: sb.len / sb.total, alpha: this.scrollbarShown, color: t.scrollbar, marks: rulerMarks } : null,
       preedit: this.composing,
+      pictures: this.pics, picture: (id) => this.s.picture(id),
     }
   }
   /** The scrollbar shows while it scrolls (and a moment after), as macOS's do. */
@@ -461,6 +467,8 @@ export class Term {
     }
     this.scrollLines(n)
   }
+  /** A cell's size in device pixels (the cells a picture covers), as the server's terminal is told it. */
+  get cellPixels() { return { cw: this.m?.w ?? 8, ch: this.m?.h ?? 16 } }
   /** The grid in device pixels, for the mouse encoder. */
   surface() { return { width: this.cols * this.m.w, height: this.rows * this.m.h, cellWidth: this.m.w, cellHeight: this.m.h } }
   /** A point of the page (client px) as a viewport cell, clamped; and the point in the grid (CSS px). */

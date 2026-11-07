@@ -39,12 +39,15 @@ export const limits = { scrollback: () => 10_000 }
  *  null when only this server's hold on it ended (it still runs: reattach). */
 export type Exit = { code: number; signal: number; lost?: boolean } | null
 
+export type Cell = { width: number; height: number }
+
 /** One server's hold on a running terminal: what it prints, and typing and resizing it. */
 export interface Link {
   readonly cols: number
   readonly rows: number
   write(data: Buffer): void
-  resize(cols: number, rows: number): void
+  /** `cell`: a cell's size in the device's pixels (the cells a picture covers: kitty graphics). */
+  resize(cols: number, rows: number, cell?: Cell): void
   onData(fn: (data: string) => void): void
   onExit(fn: (exit: Exit) => void): void
   /** A picture of the screen and history for a new viewer, given in order with onData (`mirrored` makes one for a
@@ -329,7 +332,7 @@ export async function mirrored(link: RawLink, scrollback = limits.scrollback()):
     get cols() { return link.cols },
     get rows() { return link.rows },
     write: (b) => link.write(b),
-    resize: (c, r) => { link.resize(c, r); if (!ended) term.resize(c, r) },
+    resize: (c, r, cell) => { link.resize(c, r, cell); if (!ended) term.resize(c, r, cell?.width, cell?.height) },
     onData: (fn) => { data.add(fn) },
     onExit: (fn) => link.onExit(fn),
     snapshot: (fn) => fn(ended ? "" : term.serialize()),
@@ -474,12 +477,12 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
     async attach(id: string, cols: number, rows: number): Promise<Link> {
       await o.control()
       const w = await o.open()
-      let size = { cols, rows }
+      let size: { cols: number; rows: number; cw?: number; ch?: number } = { cols, rows }
       const data = new Set<(d: string) => void>(), exits = new Set<(e: Exit) => void>()
       let exit: Exit | undefined
       w.listeners.add((m) => {
         if (m.t === "data" && typeof m.d === "string") for (const fn of data) fn(m.d)
-        else if (m.t === "size") size = { cols: Number(m.cols), rows: Number(m.rows) }
+        else if (m.t === "size") size = { ...size, cols: Number(m.cols), rows: Number(m.rows) }
         else if (m.t === "exit") { exit = { code: Number(m.code) || 0, signal: Number(m.signal) || 0, ...(m.lost ? { lost: true } : {}) }; w.close() }
       })
       // Ended, or the server went away (its terminals with it: there's nothing to reattach to then either).
@@ -488,12 +491,17 @@ function termdClient(o: { name: string; label: string; control: () => Promise<Wi
         const a = await w.request("attach", { id })
         size = { cols: Number(a.cols) || cols, rows: Number(a.rows) || rows }
       } catch (e) { w.close(); throw e }
-      if (size.cols !== cols || size.rows !== rows) { w.send("resize", { cols, rows }); size = { cols, rows } }
+      if (size.cols !== cols || size.rows !== rows) { w.send("resize", { cols, rows }); size = { ...size, cols, rows } }
       return {
         get cols() { return size.cols },
         get rows() { return size.rows },
         write: (b) => w.send("input", { b64: b.toString("base64") }),
-        resize: (c, r) => { if (c !== size.cols || r !== size.rows) { size = { cols: c, rows: r }; w.send("resize", { cols: c, rows: r }) } },
+        resize: (c, r, cell) => {
+          const cw = cell?.width ?? size.cw, ch = cell?.height ?? size.ch
+          if (c === size.cols && r === size.rows && cw === size.cw && ch === size.ch) return
+          size = { cols: c, rows: r, cw, ch }
+          w.send("resize", { cols: c, rows: r, ...(cw ? { cw, ch } : {}) })
+        },
         onData: (fn) => { data.add(fn) },
         onExit: (fn) => { exits.add(fn) },
         snapshot: (fn) => w.call("snapshot", {}, (m) => fn(String(m.data ?? ""))),

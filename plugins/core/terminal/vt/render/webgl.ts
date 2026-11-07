@@ -1,7 +1,7 @@
 // WebGL2: every frame, rectangles (grounds, selection, lines, the cursor) and glyphs from the atlas, each kind one
 // instanced draw (after ghostty-web's renderer, MIT, NOTICE). Its context lost, the terminal draws with canvas.ts.
 import { F_INVERSE, F_OVERLINE, F_STRIKE, F_UNDERLINE, F_WIDE, UL_SHIFT } from "../screen.ts"
-import { colorsOf, lines, styleOf, underlineShape, type Frame, type Mark, type Renderer } from "./frame.ts"
+import { colorsOf, lines, placeOf, rgba, styleOf, underlineShape, type Frame, type Mark, type Renderer } from "./frame.ts"
 import { acquireAtlas, blend, releaseAtlas, type Atlas, type Glyph, type Metrics } from "./glyphs.ts"
 
 const RECT_VS = `#version 300 es
@@ -19,6 +19,12 @@ const GLYPH_FS = `#version 300 es
 precision mediump float; uniform sampler2D u_atlas; in vec4 v_color; in vec2 v_uv; in float v_kind; out vec4 o;
 void main() { vec4 t = texture(u_atlas, v_uv); o = v_kind > 0.5 ? t * v_color.a : v_color * t.a; }`
 
+const PICTURE_VS = `#version 300 es
+layout(location=0) in vec2 a_unit; uniform vec2 u_size; uniform vec4 u_rect; uniform vec4 u_uv; out vec2 v_uv;
+void main() { vec2 p = u_rect.xy + a_unit * u_rect.zw; gl_Position = vec4(p / u_size * vec2(2.0, -2.0) + vec2(-1.0, 1.0), 0.0, 1.0); v_uv = u_uv.xy + a_unit * u_uv.zw; }`
+const PICTURE_FS = `#version 300 es
+precision mediump float; uniform sampler2D u_pic; in vec2 v_uv; out vec4 o; void main() { o = texture(u_pic, v_uv); }`
+
 /** Instances, grown as needed: rects are x, y, w, h, r, g, b, a; glyphs add the atlas rect. */
 class Batch {
   data: Float32Array
@@ -32,7 +38,9 @@ export class WebglRenderer implements Renderer {
   readonly kind = "webgl"
   canvas: HTMLCanvasElement
   private gl: WebGL2RenderingContext
-  private rectProg: WebGLProgram; private glyphProg: WebGLProgram
+  private rectProg: WebGLProgram; private glyphProg: WebGLProgram; private picProg: WebGLProgram
+  /** Pictures drawn lately as textures, by image id and generation, most recent last (null: too big to be one). */
+  private pics = new Map<string, { tex: WebGLTexture | null; w: number; h: number }>()
   private vao: WebGLVertexArrayObject; private unit: WebGLBuffer; private inst: WebGLBuffer
   private tex: WebGLTexture
   private atlas: Atlas | null = null
@@ -60,7 +68,7 @@ export class WebglRenderer implements Renderer {
       gl.linkProgram(p)
       return p
     }
-    this.rectProg = prog(RECT_VS, RECT_FS); this.glyphProg = prog(GLYPH_VS, GLYPH_FS)
+    this.rectProg = prog(RECT_VS, RECT_FS); this.glyphProg = prog(GLYPH_VS, GLYPH_FS); this.picProg = prog(PICTURE_VS, PICTURE_FS)
     this.vao = gl.createVertexArray()!
     gl.bindVertexArray(this.vao)
     this.unit = gl.createBuffer()!
@@ -198,7 +206,63 @@ export class WebglRenderer implements Renderer {
       this.uploaded = atlas.log.length
     }
     gl.bindVertexArray(this.vao)
-    this.pass(this.ground, false); this.pass(this.glyphs, true); this.pass(this.over, false); this.passMixed(this.top)
+    this.pictures(f, 0)
+    this.pass(this.ground, false)
+    this.pictures(f, 1)
+    this.pass(this.glyphs, true); this.pass(this.over, false)
+    this.pictures(f, 2)
+    this.passMixed(this.top)
+    this.forget(f)
+  }
+  /** A layer's pictures, each its part of a texture on a quad, clipped to the grid. */
+  private pictures(f: Frame, layer: number) {
+    const gl = this.gl, m = this.m!
+    let drew = false
+    for (const d of f.pictures) {
+      if (d.layer !== layer || d.sw <= 0 || d.sh <= 0) continue
+      const t = this.texture(f, d)
+      if (!t?.tex) continue
+      if (!drew) {
+        drew = true
+        gl.useProgram(this.picProg)
+        for (const loc of [1, 2, 3]) gl.disableVertexAttribArray(loc)
+        gl.uniform2f(gl.getUniformLocation(this.picProg, "u_size"), this.canvas.width, this.canvas.height)
+        gl.enable(gl.SCISSOR_TEST)
+      }
+      const at = placeOf(d, m.w, m.h, f.rows.length, f.cols)
+      gl.scissor(at.clip.x, this.canvas.height - at.clip.y - at.clip.h, at.clip.w, at.clip.h)
+      gl.bindTexture(gl.TEXTURE_2D, t.tex)
+      gl.uniform4f(gl.getUniformLocation(this.picProg, "u_rect"), at.x, at.y, at.w, at.h)
+      gl.uniform4f(gl.getUniformLocation(this.picProg, "u_uv"), d.sx / t.w, d.sy / t.h, d.sw / t.w, d.sh / t.h)
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    }
+    if (drew) { gl.disable(gl.SCISSOR_TEST); gl.bindTexture(gl.TEXTURE_2D, this.tex) }
+  }
+  private texture(f: Frame, d: Frame["pictures"][number]) {
+    const gl = this.gl, key = `${d.image}:${d.generation}`
+    let t = this.pics.get(key)
+    if (t) { this.pics.delete(key); this.pics.set(key, t); return t }
+    const p = f.picture(d.image)
+    if (!p) return null
+    const max = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number, px = p.width <= max && p.height <= max ? rgba(p, true) : null
+    t = { tex: null, w: p.width, h: p.height }
+    if (px) {
+      t.tex = gl.createTexture()!
+      gl.bindTexture(gl.TEXTURE_2D, t.tex)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      // (premultiplied already: the atlas' setting would do it twice)
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, p.width, p.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(px.buffer))
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+    }
+    this.pics.set(key, t)
+    return t
+  }
+  /** Textures of pictures not in this frame freed, past the few kept for coming back (a scroll). */
+  private forget(f: Frame) {
+    const keep = new Set(f.pictures.map((d) => `${d.image}:${d.generation}`))
+    for (const [k, t] of this.pics) if (this.pics.size > keep.size + 4 && !keep.has(k)) { if (t.tex) this.gl.deleteTexture(t.tex); this.pics.delete(k) }
   }
   private outline(b: Batch, x: number, y: number, w: number, h: number, lw: number, c: number) {
     this.rect(b, x, y, w, lw, c); this.rect(b, x, y + h - lw, w, lw, c); this.rect(b, x, y, lw, h, c); this.rect(b, x + w - lw, y, lw, h, c)
@@ -238,7 +302,9 @@ export class WebglRenderer implements Renderer {
     this.lost = true
     if (this.atlas) { releaseAtlas(this.atlas); this.atlas = null }
     gl.deleteBuffer(this.unit); gl.deleteBuffer(this.inst); gl.deleteTexture(this.tex); gl.deleteVertexArray(this.vao)
-    gl.deleteProgram(this.rectProg); gl.deleteProgram(this.glyphProg)
+    for (const t of this.pics.values()) if (t.tex) gl.deleteTexture(t.tex)
+    this.pics.clear()
+    gl.deleteProgram(this.rectProg); gl.deleteProgram(this.glyphProg); gl.deleteProgram(this.picProg)
     gl.getExtension("WEBGL_lose_context")?.loseContext()
   }
 }

@@ -61,6 +61,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   item, and one later work settled closes itself, saying why. Reports go straight to the archive, one line each in the
   morning brief and under Reports today (a failure or something that went out publicly still comes to the inbox); an
   agent's progress shows on its own row, and what agents work on is the Agents panel's, no longer listed in the inbox. The companion knocks "three decisions waiting" and walks you through them.
+- **Terminals show pictures**: Claude Code shows the PNGs it reads and the ones you paste, and whatever else draws
+  with the kitty graphics protocol (`kitten icat`, yazi) shows too, on the phone as well, after a reload or elsewhere.
 - **Terminals run on libghostty-vt 1.0**: Ghostty's first stable release of its terminal engine, in place of a
   pre-release build: a bit faster on fast output, with the same screens, copy and search.
 - **A job's ready card stays up to be read**: "Ready to show you …" comes at your next pause and stays 15 seconds

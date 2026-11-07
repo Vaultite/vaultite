@@ -16,3 +16,6 @@ web/dist-demo/
 
 # The vault this checkout is opened as (the app writes its own here)
 .vaultite/
+# (Claude Code writes a mod's types into it as it loads one)
+plugins/core/terminal/claude-pictures/.claude-plugin/types/
+plugins/core/terminal/claude-pictures/tsconfig.json

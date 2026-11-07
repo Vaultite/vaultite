@@ -27,5 +27,5 @@
   },
   "include": ["web/src", "plugins", "tools/fixtures", "web/demo/boot.ts", "web/demo/sw.ts"],
   // the backend (plugin.ts, import.ts, cli.ts) runs on Node: tsconfig.server.json
-  "exclude": ["plugins/**/plugin.ts", "plugins/**/import.ts", "plugins/**/cli.ts", "tools/fixtures/**/plugin.ts"]
+  "exclude": ["plugins/core/terminal/claude-pictures", "plugins/**/plugin.ts", "plugins/**/import.ts", "plugins/**/cli.ts", "tools/fixtures/**/plugin.ts"]
 }

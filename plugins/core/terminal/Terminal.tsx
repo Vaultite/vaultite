@@ -355,7 +355,7 @@ function create(id: string): Live {
 
   const connect = () => {
     exited = false; refused = false; sessionGone = false; away = null; l.ended = false
-    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}?cols=${t.cols}&rows=${t.rows}&dark=${document.documentElement.classList.contains("dark") ? 1 : 0}${attachOnly ? "&attach=1" : ""}`
+    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}?cols=${t.cols}&rows=${t.rows}&cw=${t.cellPixels.cw}&ch=${t.cellPixels.ch}&dark=${document.documentElement.classList.contains("dark") ? 1 : 0}${attachOnly ? "&attach=1" : ""}`
     const sock = new WebSocket(url)
     sock.binaryType = "arraybuffer"
     ws = sock
@@ -442,7 +442,7 @@ function create(id: string): Live {
   let resizing = 0, lastResize = -Infinity
   const onResize = t.onResize(() => {
     clearTimeout(resizing)
-    const tell = () => send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows }))
+    const tell = () => send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows, ...t.cellPixels }))
     const now = performance.now(), lone = now - lastResize > RESIZE_SETTLE
     lastResize = now
     if (lone) tell(); else resizing = window.setTimeout(tell, RESIZE_SETTLE)
@@ -479,7 +479,7 @@ function create(id: string): Live {
   const claim = () => {
     if (!l.mounted || !box.clientWidth || ws?.readyState !== WebSocket.OPEN) return
     l.refit()
-    if (shell.cols && (shell.cols !== t.cols || shell.rows !== t.rows)) send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows }))
+    if (shell.cols && (shell.cols !== t.cols || shell.rows !== t.rows)) send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows, ...t.cellPixels }))
   }
   // A key or a click claims it only when another device's size is on it: measuring the box on every key forced a layout
   // of the page per keystroke (the box's own resizes are the ResizeObserver's).

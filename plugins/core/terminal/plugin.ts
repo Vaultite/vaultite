@@ -13,7 +13,7 @@ import {
 } from "../../../core/plugins.ts"
 import {
   asPaste, backendName, type BackendEvent, type CaptureFormat, type Ended, launch, limits, loadPty, localBackend, mirrored, plain, psQuote, ptyLink, runScript, serverFiles, SHELL_DIR,
-  shellArgs, shellFiles, termdBackend, unmarked, wslPath, type AgentRun, type Backend, type Link, type Listed as Shell, type Made, type Spec,
+  shellArgs, shellFiles, termdBackend, unmarked, wslPath, type AgentRun, type Backend, type Cell, type Link, type Listed as Shell, type Made, type Spec,
 } from "./backend.ts"
 import { defaultShell, gitBash, kindOf, progName, shellsHere, type ShellKind } from "./shells.ts"
 import type { Kind, Said, SessionState } from "./osc7501.ts"
@@ -88,6 +88,7 @@ type Session = {
   queued: string // output not sent yet: what one read of the backend brought, sent as one message (flush)
   owed: Map<WebSocket, number> // bytes sent to each page and not yet drawn, as far as it tells (Terminal.tsx's acks)
   acks: Set<WebSocket> // the pages that tell (an older one doesn't: never waited for)
+  cell?: Cell // a cell's size in device pixels, as the last device to size it sent it
   held: boolean // its output held for the pages to catch up (pace)
   stall?: ReturnType<typeof setTimeout> // while held: a page that draws nothing in STALL stops setting the pace
 }
@@ -283,8 +284,16 @@ function env(): Record<string, string> {
     // (Windows' variables have any case, and a shell given Path and PATH would take either: one, Path)
     out[WIN && k.toUpperCase() === "PATH" ? PATH : k] = v
   }
-  return { ...out, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Vaultite", LANG: out.LANG || (process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8") } // (a server may not have en_US generated)
+  return { ...out, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Vaultite", LANG: out.LANG || (process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8"), // (a server may not have en_US generated)
+    // (Claude Code draws pictures only for a terminal whose XTVERSION names kitty or Ghostty, which ours answers as
+    // xterm.js did; this tells it ours draws them, and that it reads their files: termd's kitty.ts)
+    CLAUDE_CODE_FORCE_TERMINAL_IMAGES: "1",
+    // (and its mod that draws the pictures Claude reads and the person pastes: claude-pictures/)
+    CLAUDE_CODE_PLUGIN_DIRS: [out.CLAUDE_CODE_PLUGIN_DIRS, PICTURES_MOD].filter(Boolean).join(path.delimiter) }
 }
+
+/** The Claude Code mod Vaultite's terminals load (CLAUDE_CODE_PLUGIN_DIRS). */
+const PICTURES_MOD = path.join(plugin.dir, "claude-pictures")
 
 /** The environment's PATH, as Windows spells it. */
 const PATH = WIN ? "Path" : "PATH"
@@ -997,9 +1006,12 @@ for (const b of [keeper, fallback]) b.events?.((ev) => onEvent(b, ev))
 
 /** One shell, one size: the last device to send its own wins. Every device hears it, so one that's used again and
  * doesn't fit (the phone shrank it) sends its size back (Terminal.tsx: claim) and the program redraws for it. */
-function resize(s: Session, cols: number, rows: number) {
-  if (s.link.cols === cols && s.link.rows === rows) return
-  s.link.resize(cols, rows)
+function resize(s: Session, cols: number, rows: number, cell?: Cell) {
+  const same = s.link.cols === cols && s.link.rows === rows
+  if (same && (!cell || (cell.width === s.cell?.width && cell.height === s.cell?.height))) return
+  if (cell) s.cell = cell
+  s.link.resize(cols, rows, cell)
+  if (same) return
   const msg = JSON.stringify({ t: "size", cols, rows })
   for (const ws of s.clients) if (ws.readyState === ws.OPEN) ws.send(msg)
 }
@@ -1033,9 +1045,10 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
       if (buf.includes(13)) setTimeout(listChanged, 400)
       return
     }
-    let msg: { t?: string; cols?: number; rows?: number; id?: string; name?: string; data?: string; last?: boolean; lines?: number; n?: number }
+    let msg: { t?: string; cols?: number; rows?: number; cw?: number; ch?: number; id?: string; name?: string; data?: string; last?: boolean; lines?: number; n?: number }
     try { msg = JSON.parse(buf.toString("utf8")) } catch { return }
-    if (msg.t === "resize") resize(s, clamp(msg.cols, 2, 1000, s.link.cols), clamp(msg.rows, 1, 500, s.link.rows))
+    if (msg.t === "resize") resize(s, clamp(msg.cols, 2, 1000, s.link.cols), clamp(msg.rows, 1, 500, s.link.rows),
+      msg.cw && msg.ch ? { width: clamp(msg.cw, 1, 200, 8), height: clamp(msg.ch, 1, 200, 16) } : undefined)
     else if (msg.t === "ack" && Number.isSafeInteger(msg.n)) {
       s.owed.set(ws, Math.max(0, (s.owed.get(ws) ?? 0) - msg.n!))
       s.acks.add(ws)
@@ -1156,9 +1169,10 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
     return ws.close(EXITED, "ended")
   }
   const cols = clamp(query.cols, 2, 1000, 80), rows = clamp(query.rows, 1, 500, 24)
+  const cell = query.cw && query.ch ? { width: clamp(query.cw, 1, 200, 8), height: clamp(query.ch, 1, 200, 16) } : undefined
   const s = sessions.get(id)
   if (s) {
-    resize(s, cols, rows)
+    resize(s, cols, rows, cell)
     return attach(s, ws, false)
   }
   // A tab put back asks only to attach: an agent's new session that ended (or was lost) isn't started again, nor
@@ -1183,7 +1197,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   const first = !starting.has(id)
   // Through Tailscale Serve (allowed() checked who), or from the iPhone app: the shell may say so.
   if (first) starting.set(id, start(id, cols, rows, fromReq(req), null, query.dark === "1" ? true : query.dark === "0" ? false : null).finally(() => starting.delete(id)))
-  starting.get(id)!.then(({ s, fresh }) => ws.readyState === ws.OPEN && attach(s, ws, first && fresh), (e) => {
+  starting.get(id)!.then(({ s, fresh }) => { if (ws.readyState !== ws.OPEN) return; if (cell) resize(s, s.link.cols, s.link.rows, cell); attach(s, ws, first && fresh) }, (e) => {
     console.error("terminal:", e)
     if (ws.readyState !== ws.OPEN) return
     ws.send(Buffer.from(`\r\nCouldn't start a shell: ${(e as Error).message}\r\n`))

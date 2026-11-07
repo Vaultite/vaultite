@@ -25,6 +25,15 @@ export const F_WIDE = 0x800, F_LINK = 0x1000
 export type Cursor = { x: number; y: number; visible: boolean; style: "bar" | "block" | "underline" | "hollow"; blinking: boolean; wideTail: boolean } | null
 export type Colors = { bg: number; fg: number; cursor: number | null; palette: Int32Array }
 export type Match = { start: { x: number; y: number }; end: { x: number; y: number } }
+/** A picture to draw (the render state's layout): image and generation, layer (0 under grounds, 1 under text, 2 over)
+ *  and z; top-left viewport cell (may be off it), offset and size there (px); the part of the picture drawn (its px). */
+export type Drawn = { image: number; generation: bigint; layer: number; z: number; col: number; row: number
+  dx: number; dy: number; width: number; height: number; sx: number; sy: number; sw: number; sh: number }
+
+/** What's read of each drawn picture, in this order (GhosttyRenderStateImageData), and how. */
+const DRAWN_KEYS: [string, "u32" | "i32" | "u64"][] = [["IMAGE_ID", "u32"], ["IMAGE_GENERATION", "u64"], ["LAYER", "i32"], ["Z", "i32"], ["VIEWPORT_COL", "i32"],
+  ["VIEWPORT_ROW", "i32"], ["CELL_OFFSET_X", "u32"], ["CELL_OFFSET_Y", "u32"], ["PIXEL_WIDTH", "u32"], ["PIXEL_HEIGHT", "u32"], ["SOURCE_X", "u32"],
+  ["SOURCE_Y", "u32"], ["SOURCE_WIDTH", "u32"], ["SOURCE_HEIGHT", "u32"], ["PROTOCOL", "i32"]]
 
 /** GhosttyKey by KeyboardEvent.code: the names the module's own enum gives. */
 const CODE_NAMES: Record<string, string> = {
@@ -37,6 +46,8 @@ const CODE_NAMES: Record<string, string> = {
   ShiftLeft: "SHIFT_LEFT", ShiftRight: "SHIFT_RIGHT", ControlLeft: "CONTROL_LEFT", ControlRight: "CONTROL_RIGHT", AltLeft: "ALT_LEFT",
   AltRight: "ALT_RIGHT", MetaLeft: "META_LEFT", MetaRight: "META_RIGHT", CapsLock: "CAPS_LOCK", ContextMenu: "CONTEXT_MENU",
 }
+/** U+10EEEE: a cell a kitty graphics picture (a virtual placement) is drawn in. */
+const PLACEHOLDER = 0x10eeee
 export const MOD_SHIFT = 1, MOD_CTRL = 2, MOD_ALT = 4, MOD_SUPER = 8
 
 const enc = new TextEncoder(), dec = new TextDecoder()
@@ -47,6 +58,7 @@ export class Screen extends Vt {
   private mouseEnc = 0; private mouseEv = 0
   private gesture = 0; private gestureEv: number[] = []
   private search_ = 0
+  private imageIt = 0; private imageBuf = 0
   /** Scratch for bigger out-parameters (1 KB). */
   private big = 0
   private styleCache = new Map<number, number[]>()
@@ -69,6 +81,13 @@ export class Screen extends Vt {
     this.gesture = this.make((slot) => this.x.ghostty_selection_gesture_new(0, slot))
     for (const type of ["PRESS", "RELEASE", "DRAG"]) this.gestureEv.push(this.make((slot) => this.x.ghostty_selection_gesture_event_new(0, slot, this.e("GhosttySelectionGestureEventType", type))))
     this.keyNames = this.types.GhosttyKey?.values ?? {}
+    this.imageIt = this.make((slot) => this.x.ghostty_render_state_image_iterator_new(0, slot))
+    // (get_multi's keys, then a pointer to each value, then the values, 8 bytes each)
+    this.imageBuf = this.x.ghostty_wasm_alloc(DRAWN_KEYS.length * 16)
+    DRAWN_KEYS.forEach(([k], i) => {
+      this.dv.setInt32(this.imageBuf + i * 4, this.e("GhosttyRenderStateImageData", k), true)
+      this.dv.setUint32(this.imageBuf + DRAWN_KEYS.length * 4 + i * 4, this.imageBuf + DRAWN_KEYS.length * 8 + i * 8, true)
+    })
   }
 
   private t(name: string) { return this.types[name] as TypeInfo }
@@ -173,12 +192,14 @@ export class Screen extends Vt {
         let f = (hi >>> 13) & 1 ? F_LINK : 0
         let ch = " "
         let cbg = -1
-        if (tag === 0) ch = content & 0x1fffff ? String.fromCodePoint(content & 0x1fffff) : " "
+        if (tag === 0) ch = content & 0x1fffff && (content & 0x1fffff) !== PLACEHOLDER ? String.fromCodePoint(content & 0x1fffff) : " "
         else if (tag === 1) {
           x.ghostty_render_state_row_cells_select(this.cells, c)
           d = this.dv
           d.setUint32(this.big, this.big + 64, true); d.setUint32(this.big + 4, 256, true); d.setUint32(this.big + 8, 0, true)
           if (x.ghostty_render_state_row_cells_get(this.cells, GLEN, this.big) === 0) { d = this.dv; ch = dec.decode(this.u8.subarray(this.big + 64, this.big + 64 + d.getUint32(this.big + 8, true))) }
+          // (a kitty placeholder cell is the picture's: no glyph of its own)
+          if (ch.codePointAt(0) === PLACEHOLDER) ch = " "
         } else if (tag === 2) cbg = pal[content & 255]
         else if (tag === 3) cbg = ((content & 255) << 16) | (content & 0xff00) | ((content >>> 16) & 255)
         if (wide === 1) f |= F_WIDE
@@ -211,6 +232,27 @@ export class Screen extends Vt {
     }
     x.ghostty_render_state_clean(this.rs)
   }
+  /** A value that changes when the last update() changed the pictures it lays out (placed, moved, scrolled, gone). */
+  picturesLaidOut() {
+    const r = this.x.ghostty_render_state_get(this.rs, this.e("GhosttyRenderStateData", "IMAGE_PLACEMENTS_GENERATION"), this.scratch)
+    return r === 0 ? this.dv.getBigUint64(this.scratch, true) : 0n
+  }
+  /** The pictures the last update() laid out, in the order they're drawn: by layer, then z. */
+  drawn(): Drawn[] {
+    const x = this.x, n = DRAWN_KEYS.length, out: Drawn[] = []
+    this.dv.setUint32(this.scratch + 32, this.imageIt, true)
+    if (x.ghostty_render_state_get(this.rs, this.e("GhosttyRenderStateData", "IMAGE_ITERATOR"), this.scratch + 32) !== 0) return out
+    const kitty = this.e("GhosttyImageProtocol", "KITTY"), vals = this.imageBuf + n * 8
+    while (x.ghostty_render_state_image_iterator_next(this.imageIt)) {
+      if (x.ghostty_render_state_image_get_multi(this.imageIt, n, this.imageBuf, this.imageBuf + n * 4, 0) !== 0) continue
+      const d = this.dv, v = DRAWN_KEYS.map(([, t], i) => t === "u64" ? 0 : t === "i32" ? d.getInt32(vals + i * 8, true) : d.getUint32(vals + i * 8, true))
+      if (v[14] !== kitty) continue
+      out.push({ image: v[0], generation: d.getBigUint64(vals + 8, true), layer: v[2], z: v[3], col: v[4], row: v[5], dx: v[6], dy: v[7],
+        width: v[8], height: v[9], sx: v[10], sy: v[11], sw: v[12], sh: v[13] })
+    }
+    return out.sort((a, b) => a.layer - b.layer || a.z - b.z)
+  }
+
   /** Where the cursor is drawn (null: not in the viewport, or hidden). */
   cursorState(): Cursor {
     const p = this.sized("GhosttyRenderStateCursor", this.big)
@@ -472,6 +514,7 @@ export class Screen extends Vt {
     for (const ev of this.gestureEv) x.ghostty_selection_gesture_event_free(ev)
     x.ghostty_mouse_event_free(this.mouseEv); x.ghostty_mouse_encoder_free(this.mouseEnc)
     x.ghostty_key_event_free(this.keyEv); x.ghostty_key_encoder_free(this.keyEnc)
+    x.ghostty_render_state_image_iterator_free(this.imageIt); x.ghostty_wasm_free(this.imageBuf, DRAWN_KEYS.length * 16)
     x.ghostty_render_state_row_cells_free(this.cells); x.ghostty_render_state_row_iterator_free(this.rows_)
     x.ghostty_render_state_free(this.rs)
     super.dispose()

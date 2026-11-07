@@ -7,8 +7,8 @@ type TypeInfo = { kind: string; values?: Record<string, number> }
 /** What a terminal answers its program (xterm.js's own answers, which the app's pages give too): DA1 VT100 with
  *  advanced video, DA2 xterm.js' version. */
 const DA1 = { level: 1, features: [2] }, DA2 = { type: 0, firmware: 276, rom: 0 }
-/** Answers as the app's terminals have always given them (the server and the pages say the same): no kitty keyboard,
- *  XTVERSION or color queries; no page in DECXCPR. */
+/** Answers as xterm.js gave them (the server and the pages say the same): no kitty keyboard, XTVERSION or colors; no
+ *  page in DECXCPR. Kitty graphics' (ESC _ G, a=q) are the one it never gave that go: these draw pictures. */
 function asXterm(reply: string) {
   if (/^\x1b\[\?\d*u$/.test(reply) || reply.startsWith("\x1bP>|") || /^\x1b\](?:4;\d+|1[0-9]);/.test(reply)) return ""
   return reply.replace(/^(\x1b\[\?\d+;\d+);\d+R$/, "$1R")
@@ -19,6 +19,37 @@ const enc = new TextEncoder(), dec = new TextDecoder()
 const PAGE_ROWS = 1024
 /** Pieces of output written at most this long (UTF-16 units), so the buffer it's copied into stays small. */
 const SLICE = 1 << 16
+
+/** Bytes of kitty graphics pictures one terminal keeps, each of its screens (libghostty-vt drops the oldest past it). */
+export const KITTY_STORAGE = 64 << 20
+
+/** The WASI functions the module (wasm32-wasi: ghostty_update.ts) imports, stubs: no clock (eviction counts sends,
+ *  animations take the caller's time), no files (termd reads pictures: kitty.ts). */
+const WASI: Record<string, (mem: () => DataView) => (...a: never[]) => number> = {
+  args_sizes_get: (mem) => (count: number, size: number) => { mem().setUint32(count, 0, true); mem().setUint32(size, 0, true); return 0 },
+  args_get: () => () => 0,
+  fd_write: (mem) => (_fd: number, iovs: number, n: number, written: number) => {
+    const m = mem()
+    let total = 0
+    for (let i = 0; i < n; i++) total += m.getUint32(iovs + i * 8 + 4, true)
+    m.setUint32(written, total, true)
+    return 0
+  },
+  proc_exit: () => (code: number) => { throw new Error(`libghostty-vt exited (${code})`) },
+}
+/** What `module` imports, given: the WASI functions above, bound to its memory (once the instance has it). Anything
+ *  else it imports is refused, loudly. */
+export function wasiImports(module: WebAssembly.Module, memory: () => WebAssembly.Memory) {
+  const out: Record<string, Record<string, WebAssembly.ImportValue>> = {}
+  let view: DataView | null = null
+  const mem = () => { const m = memory(); if (view?.buffer !== m.buffer) view = new DataView(m.buffer); return view }
+  for (const i of WebAssembly.Module.imports(module)) {
+    const make = i.module === "wasi_snapshot_preview1" && i.kind === "function" ? WASI[i.name] : undefined
+    if (!make) throw new Error(`libghostty-vt imports ${i.module}.${i.name}, which vt.ts doesn't give`)
+    ;(out[i.module] ??= {})[i.name] = make(mem) as WebAssembly.ImportValue
+  }
+  return out
+}
 
 /** The module's types, by C name (ghostty_type_json: enums' values), read once per module. */
 const typesOf = new WeakMap<WebAssembly.Module, Record<string, TypeInfo>>()
@@ -48,6 +79,15 @@ export type VtOptions = {
 
 export type InputLine = { line: string; typed: string; suggested: string }
 
+/** A kitty graphics picture as stored: decoded pixels, `format`'s channels a pixel. */
+export type Picture = { id: number; number: number; width: number; height: number; format: "rgb" | "rgba" | "gray" | "gray_alpha"; generation: bigint; data: Uint8Array }
+/** A picture placed: its image, placement id, cell (SCREEN coordinates; y -1 for a virtual one), offsets within it
+ *  (px), the part of the picture it shows (0: all), the cells it covers (0: the picture's own size) and z-index. */
+export type Placement = { image: number; id: number; virtual: boolean; x: number; y: number; xOffset: number; yOffset: number
+  sourceX: number; sourceY: number; sourceWidth: number; sourceHeight: number; columns: number; rows: number; z: number
+  /** The cells it covers as the terminal works them out (0 when it can't: a virtual one's are its placeholders). */
+  gridColumns: number; gridRows: number }
+
 /** Where vt.ts reads and writes C structs and packed values (tools/test_vt.ts checks them against the module's own
  *  layouts): "Type.field[.field]" to its byte offset, a packed one's to its first bit. */
 export const LAYOUT: Record<string, number> = {
@@ -58,6 +98,8 @@ export const LAYOUT: Record<string, number> = {
   "GhosttySelection.end": 8, "GhosttySelection.rectangle": 16, "GhosttyString.len": 4, "GhosttyTerminalModeConfig.value": 2,
   "GhosttyStyle.fg_color": 0, "GhosttyStyle.flags": 12, "GhosttyStyleColor.value": 1,
   "GhosttyCell.content": 2, "GhosttyCell.style_id": 26, "GhosttyCell.wide": 42, "GhosttyStyleFlags.faint": 2,
+  "GhosttyKittyGraphicsPlacementRenderInfo.grid_cols": 12, "GhosttyKittyGraphicsPlacementRenderInfo.grid_rows": 16,
+  "GhosttyPointCoordinate.y": 4,
 }
 
 /** One terminal, in a WebAssembly instance of its own: memory a terminal grew goes back when it ends. */
@@ -81,17 +123,23 @@ export class Vt {
   constructor(module: WebAssembly.Module, o: VtOptions) {
     this.o = o
     this.scrollback = o.scrollback
-    const inst = new WebAssembly.Instance(module, {})
+    const inst = new WebAssembly.Instance(module, wasiImports(module, () => this.x.memory))
     this.x = inst.exports as unknown as Exports
     if (!typesOf.has(module)) typesOf.set(module, JSON.parse(this.cstr(this.x.ghostty_type_json())).types)
     this.types = typesOf.get(module)!
     this.scratch = this.x.ghostty_wasm_alloc(64)
     this.h = this.make((slot) => this.x.ghostty_terminal_new(0, slot, o.cols, o.rows))
+    // (a cell's size in pixels: a picture's cells are worked out from it, none without one)
+    this.check(this.x.ghostty_terminal_resize(this.h, o.cols, o.rows, 8, 16), "resize")
     this.set("SCROLLBACK_MAX_BYTES", this.size(0xffffffff))
     // (history goes by the page: at least as many lines kept)
     this.set("SCROLLBACK_MAX_LINES", this.size(o.scrollback > 0 ? o.scrollback + PAGE_ROWS : 0))
     // (graphemes as one character, emoji sequences two columns: the server and the pages count widths alike)
     this.setMode(2027, true)
+    // Kitty graphics: direct pictures only (file and temporary-file pictures are read by termd and sent direct, as the
+    // pages can't read the files of the machine the pty is on: termd/kitty.ts).
+    this.dv.setBigUint64(this.scratch, BigInt(KITTY_STORAGE), true)
+    this.set("KITTY_IMAGE_STORAGE_LIMIT", this.scratch)
     this.callbacks()
     this.fmt = this.make((slot) => this.x.ghostty_formatter_terminal_new(0, slot, this.h))
   }
@@ -195,9 +243,13 @@ export class Vt {
     if (!this.inPtr) throw new Error("libghostty-vt: out of memory")
   }
 
-  /** A new size; `cellWidth` and `cellHeight` (px) are what pixel mouse reports and size queries tell. */
+  private cell = "8x16"
+  /** A new size; `cellWidth` and `cellHeight` (px) are what pixel mouse reports and size queries tell, and the cells a
+   *  picture covers when its program doesn't say. */
   resize(cols: number, rows: number, cellWidth = 8, cellHeight = 16) {
-    if (cols === this.cols && rows === this.rows) return
+    const cell = `${cellWidth}x${cellHeight}`
+    if (cols === this.cols && rows === this.rows && cell === this.cell) return
+    this.cell = cell
     this.check(this.x.ghostty_terminal_resize(this.h, cols, rows, cellWidth, cellHeight), "resize")
     if (this.replies.length) { const r = this.replies.join(""); this.replies = []; this.o.onReply?.(r) }
   }
@@ -337,6 +389,81 @@ export class Vt {
       }
     } finally { this.x.ghostty_wasm_free(p, 96) }
     return { line: line.trimEnd(), typed: typed.trimEnd(), suggested: suggested.trim() }
+  }
+
+  /** For each row of history and screen from `from` on, whether it goes on from the row above (a soft wrap). */
+  continued(from: number) {
+    const n = this.length, out: boolean[] = [], p = this.x.ghostty_wasm_alloc(48)
+    try {
+      for (let y = from; y < n; y++) {
+        const d = this.dv
+        d.setInt32(p, this.e("GhosttyPointTag", "SCREEN"), true)
+        d.setUint16(p + 8, 0, true); d.setUint32(p + 12, y, true)
+        out.push(this.x.ghostty_terminal_grid_ref(this.h, p, p + 24) === 0 && this.x.ghostty_grid_ref_row(p + 24, p + 40) === 0 && !!(this.dv.getUint32(p + 40, true) & 2))
+      }
+    } finally { this.x.ghostty_wasm_free(p, 48) }
+    return out
+  }
+
+  // ---------- kitty graphics
+
+  /** Its active screen's picture storage (a handle it owns), 0 when it has none. */
+  protected graphics() { return this.x.ghostty_terminal_get(this.h, this.e("GhosttyTerminalData", "KITTY_GRAPHICS"), this.scratch) === 0 ? this.dv.getUint32(this.scratch, true) : 0 }
+  /** A value that changes with every picture sent, placed or deleted on its active screen (0: none yet). */
+  get picturesGeneration() {
+    const g = this.graphics()
+    if (!g || this.x.ghostty_kitty_graphics_get(g, this.e("GhosttyKittyGraphicsData", "GENERATION"), this.scratch) !== 0) return 0n
+    return this.dv.getBigUint64(this.scratch, true)
+  }
+  /** A picture's pixels as stored (decoded: RGB, RGBA, gray or gray and alpha), a copy; null when it's not (yet) there. */
+  picture(id: number): Picture | null {
+    const g = this.graphics(), img = g ? this.x.ghostty_kitty_graphics_image(g, id) : 0
+    if (!img) return null
+    const get = (k: string, p: number) => this.x.ghostty_kitty_graphics_image_get(img, this.e("GhosttyKittyGraphicsImageData", k), p) === 0
+    const p = this.scratch
+    if (!get("WIDTH", p) || !get("HEIGHT", p + 4) || !get("FORMAT", p + 8) || !get("NUMBER", p + 12) || !get("GENERATION", p + 16) || !get("PIXELS", p + 24)) return null
+    const d = this.dv, f = d.getInt32(p + 8, true), fmt = this.types.GhosttyKittyImageFormat.values!
+    const format = f === fmt.RGBA ? "rgba" : f === fmt.RGB ? "rgb" : f === fmt.GRAY_ALPHA ? "gray_alpha" : "gray"
+    const ptr = d.getUint32(p + 24, true), len = d.getUint32(p + 28, true)
+    return { id, number: d.getUint32(p + 12, true), width: d.getUint32(p, true), height: d.getUint32(p + 4, true), format, generation: d.getBigUint64(p + 16, true), data: this.u8.slice(ptr, ptr + len) }
+  }
+  /** Where its pictures are placed on its active screen: each placement, and its top-left cell (SCREEN coordinates:
+   *  history then screen) unless it's virtual (shown by placeholder cells, which carry it). */
+  placements(): Placement[] {
+    const g = this.graphics()
+    if (!g) return []
+    const x = this.x, it = this.make((slot) => x.ghostty_kitty_graphics_placement_iterator_new(0, slot)), out: Placement[] = []
+    try {
+      this.dv.setUint32(this.scratch + 32, it, true)
+      this.check(x.ghostty_kitty_graphics_get(g, this.e("GhosttyKittyGraphicsData", "PLACEMENT_ITERATOR"), this.scratch + 32), "placements")
+      const buf = x.ghostty_wasm_alloc(64)
+      try {
+        while (x.ghostty_kitty_graphics_placement_next(it)) {
+          const v = (k: string, read: (d: DataView, p: number) => number) => {
+            x.ghostty_kitty_graphics_placement_get(it, this.e("GhosttyKittyGraphicsPlacementData", k), buf)
+            return read(this.dv, buf)
+          }
+          const u32 = (k: string) => v(k, (d, p) => d.getUint32(p, true))
+          const pl: Placement = { image: u32("IMAGE_ID"), id: u32("PLACEMENT_ID"), virtual: v("IS_VIRTUAL", (d, p) => d.getUint8(p)) === 1,
+            x: 0, y: -1, xOffset: u32("X_OFFSET"), yOffset: u32("Y_OFFSET"), sourceX: u32("SOURCE_X"), sourceY: u32("SOURCE_Y"),
+            sourceWidth: u32("SOURCE_WIDTH"), sourceHeight: u32("SOURCE_HEIGHT"), columns: u32("COLUMNS"), rows: u32("ROWS"), z: v("Z", (d, p) => d.getInt32(p, true)),
+            gridColumns: 0, gridRows: 0 }
+          const img = x.ghostty_kitty_graphics_image(g, pl.image)
+          // (the cells it covers, as this terminal works them out: GhosttyKittyGraphicsPlacementRenderInfo)
+          const info = this.x.ghostty_wasm_alloc(48)
+          this.u8.fill(0, info, info + 48); this.dv.setUint32(info, 48, true)
+          if (img && x.ghostty_kitty_graphics_placement_render_info(it, img, this.h, info) === 0) { pl.gridColumns = this.dv.getUint32(info + 12, true); pl.gridRows = this.dv.getUint32(info + 16, true) }
+          x.ghostty_wasm_free(info, 48)
+          // (its rectangle's first grid ref, as a point of history and screen)
+          if (!pl.virtual && img && x.ghostty_kitty_graphics_placement_rect(it, img, this.h, buf) === 0
+            && x.ghostty_terminal_point_from_grid_ref(this.h, buf, this.e("GhosttyPointTag", "SCREEN"), buf + 32) === 0) {
+            pl.x = this.dv.getUint16(buf + 32, true); pl.y = this.dv.getUint32(buf + 36, true)
+          }
+          out.push(pl)
+        }
+      } finally { x.ghostty_wasm_free(buf, 64) }
+    } finally { x.ghostty_kitty_graphics_placement_iterator_free(it) }
+    return out
   }
 
   /** Bytes its instance holds (WebAssembly memory only grows). */

@@ -11,6 +11,7 @@ import { newVt } from "../vt/load.ts"
 import type { Vt } from "../vt/vt.ts"
 import { REPLY, watcher, type Said } from "../osc7501.ts"
 import { adopter } from "./adopt.ts"
+import { KittyFeed, remoteFront, withPictures } from "./kitty.ts"
 import { PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit, type Info } from "./protocol.ts"
 
 const WIN = process.platform === "win32"
@@ -106,9 +107,13 @@ export class Session {
   queued = ""; flushing = false; flushed = 0; typed = 0
   /** Its pty not read for now (hold). */
   held = false
+  /** A cell's size in pixels, as the last device to size it has it. */
+  cell = { width: 8, height: 16 }
   said: Said = { seen: false, status: null }
   private told?: ReturnType<typeof setTimeout>
   private ending = false
+  /** Its output's kitty graphics, made whole here (pictures by file read, PNGs decoded) before anything parses it. */
+  private kitty: KittyFeed
 
   constructor(h: Around, x: { id: string; driver: Driver; shell: string; cwd: string; command: string; cols: number; rows: number; scrollback: number; spare: boolean
     meta?: Record<string, string>; created?: number }) {
@@ -117,6 +122,8 @@ export class Session {
     this.meta = { ...x.meta }
     if (x.created) this.created = x.created
     this.term = this.screen(x.cols, x.rows, x.scrollback > 0 ? x.scrollback : SCROLLBACK)
+    this.kitty = new KittyFeed({ emit: (d) => this.take(d), log: (...a) => this.h.log(...a, this.id),
+      remote: () => { try { return remoteFront(this.driver.process()) } catch { return true } } })
   }
 
   private screen(cols: number, rows: number, scrollback: number) {
@@ -136,7 +143,8 @@ export class Session {
 
   /** Output into its terminal, then on: at the end of this turn of the event loop, or while it pours BATCH after it last
    *  went. */
-  output(d: string) {
+  output(d: string) { this.kitty.feed(d) }
+  private take(d: string) {
     this.activity = Date.now()
     this.queued += d
     if (this.queued.length > HOLD) this.hold()
@@ -401,7 +409,7 @@ export function host(o: HostOptions) {
       case "snapshot": {
         const s = c.session
         if (!s) throw new Error("not attached")
-        return { data: s.term.serialize() }
+        return { data: withPictures(s.term) }
       }
       case "input": {
         // To the attached terminal, or (`id`: typing into one from outside, vau terminal send) that one.
@@ -425,9 +433,13 @@ export function host(o: HostOptions) {
         const s = c.session
         if (!s) return undefined
         const cols = Math.max(2, Math.min(1000, Number(m.cols) || 80)), rows = Math.max(1, Math.min(500, Number(m.rows) || 24))
+        // (a cell's size in the device's pixels, from the app since kitty graphics: what a picture covers)
+        const px = (v: unknown, d: number) => Math.max(1, Math.min(200, Math.round(Number(v)) || d))
+        const cw = px(m.cw, s.cell.width), ch = px(m.ch, s.cell.height)
+        if (cw !== s.cell.width || ch !== s.cell.height) { s.cell = { width: cw, height: ch }; s.term.resize(s.term.cols, s.term.rows, cw, ch) }
         if (cols === s.term.cols && rows === s.term.rows) return undefined
         s.driver.resize(cols, rows)
-        s.term.resize(cols, rows)
+        s.term.resize(cols, rows, cw, ch)
         for (const x of s.attached) if (x !== c) x.send({ t: "size", cols, rows })
         emit({ type: "size", id: s.id, cols, rows })
         return undefined

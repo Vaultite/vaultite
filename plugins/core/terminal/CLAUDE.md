@@ -12,6 +12,16 @@
   `render/` WebGL2 or Canvas2D), so pictures carry no palette. Output is parsed as it's read and passed on at once after input, or
   every few ms while it pours (BATCH in host.ts). `tools/test_vt.ts` checks it against xterm.js, `tools/perf/vt.ts`
   times both.
+- Kitty graphics: Ghostty's release wasm has them compiled out (off on wasm32-freestanding, which has no clock), so
+  `ghostty-vt.wasm` is built here for wasm32-wasi from the signed source (`tools/ghostty_update.ts --build`), its WASI
+  imports given by `vt.ts` (clock, entropy, no files). termd (`termd/kitty.ts`) makes every picture direct pixels
+  before anything parses it: a file (t=f, t=t) is read where the pty is, a PNG decoded (a page has no synchronous
+  decoder), so termd's terminal and every page's take the same bytes and answer alike; their answers (a=q) are the
+  one exception to `asXterm`. `CLAUDE_CODE_FORCE_TERMINAL_IMAGES` (plugin.ts env) makes Claude Code draw them and
+  assume file reads; Claude Code draws only mods' pictures, so its terminals load ours (`claude-pictures/`, through
+  `CLAUDE_CODE_PLUGIN_DIRS`: no account touched) for what it reads and what's pasted (PNG only: a mod can't decode JPEG). A page attaching gets them with its snapshot (`withPictures`, REPLAY_MAX); with the alternate
+  screen up, only that screen's. Pages send their cell size in pixels with their size: a picture without `c`/`r`
+  covers the same cells in termd as in the page.
 - The page's terminal (`vt/term.ts`) is libghostty-vt's too, from the same `ghostty-vt.wasm` (`vt/wasm.ts`, compiled
   with the chunk). Use Ghostty's own encoders, selection and search (`screen.ts`), not hand-written escape codes; only
   what its encoder leaves to the platform's text (Backspace, ⌥←) is in `input.ts`. WebGL's glyphs are drawn on their

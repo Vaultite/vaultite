@@ -2,7 +2,7 @@
 // and ragged) and where WebGL2 is missing or its context was lost.
 import { F_OVERLINE, F_STRIKE, F_UNDERLINE, F_WIDE, UL_SHIFT } from "../screen.ts"
 import { drawBox, isBox } from "./boxdraw.ts"
-import { colorsOf, lines, styleOf, underlineShape, type Frame, type Renderer } from "./frame.ts"
+import { colorsOf, lines, placeOf, rgba, styleOf, underlineShape, type Frame, type Renderer } from "./frame.ts"
 import { css, G_BOLD, G_ITALIC, type Metrics } from "./glyphs.ts"
 
 export class CanvasRenderer implements Renderer {
@@ -11,6 +11,8 @@ export class CanvasRenderer implements Renderer {
   private g: CanvasRenderingContext2D
   private m: Metrics | null = null
   private fonts: string[] = []
+  /** Pictures drawn lately, each as a canvas of its pixels, by image id and generation, most recent last. */
+  private pics = new Map<string, HTMLCanvasElement>()
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -29,6 +31,8 @@ export class CanvasRenderer implements Renderer {
     g.setTransform(1, 0, 0, 1, 0, 0)
     g.clearRect(0, 0, this.canvas.width, this.canvas.height)
     if (!f.clear) { g.fillStyle = css(f.bg); g.fillRect(0, 0, this.canvas.width, this.canvas.height) }
+    const pics = (layer: number) => { for (const d of f.pictures) if (d.layer === layer) this.picture(f, d) }
+    pics(0)
     g.textBaseline = "alphabetic"
     let font = -1
     const text = (s: string, style: number, x: number, y: number, cells: number, color: number) => {
@@ -47,6 +51,7 @@ export class CanvasRenderer implements Renderer {
       }
       if (row.sel) { g.fillStyle = css(f.selection.color, f.selection.alpha); g.fillRect(row.sel[0] * w, top, (row.sel[1] - row.sel[0] + 1) * w, h) }
     }
+    pics(1)
     for (const k of f.marks) {
       g.fillStyle = css(k.color, k.alpha); g.fillRect(k.x1 * w, k.y * h, (k.x2 - k.x1 + 1) * w, h)
       if (k.border !== undefined) { g.strokeStyle = css(k.border); g.lineWidth = lw; g.strokeRect(k.x1 * w + lw / 2, k.y * h + lw / 2, (k.x2 - k.x1 + 1) * w - lw, h - lw) }
@@ -70,6 +75,8 @@ export class CanvasRenderer implements Renderer {
         if (fl & F_OVERLINE) g.fillRect(c * w, top, w * cells, lw)
       }
     }
+    pics(2)
+    this.forget(f)
     for (const k of f.links) {
       const row = f.rows[k.y]
       for (let c = k.x1; c <= k.x2 && row; c++) { g.fillStyle = css(colorsOf(f, row, c)[0]); g.fillRect(c * w, k.y * h + under, w, lw) }
@@ -104,5 +111,30 @@ export class CanvasRenderer implements Renderer {
       g.fillRect(W - bw - Math.round(2 * m.dpr), Math.round(sb.top * H), bw, Math.max(Math.round(sb.height * H), bw * 3))
     }
   }
-  dispose() { this.canvas.width = this.canvas.height = 0 }
+  /** A picture, its part drawn where the frame lays it, clipped to the grid. */
+  private picture(f: Frame, d: Frame["pictures"][number]) {
+    const m = this.m!, g = this.g, key = `${d.image}:${d.generation}`
+    let src = this.pics.get(key)
+    if (src) { this.pics.delete(key); this.pics.set(key, src) }
+    else {
+      const p = f.picture(d.image), px = p && rgba(p, false)
+      if (!p || !px) return
+      src = document.createElement("canvas")
+      src.width = p.width; src.height = p.height
+      src.getContext("2d")!.putImageData(new ImageData(px, p.width, p.height), 0, 0)
+      this.pics.set(key, src)
+    }
+    const at = placeOf(d, m.w, m.h, f.rows.length, f.cols)
+    g.save()
+    g.beginPath(); g.rect(at.clip.x, at.clip.y, at.clip.w, at.clip.h); g.clip()
+    g.imageSmoothingEnabled = true
+    if (d.sw > 0 && d.sh > 0) g.drawImage(src, d.sx, d.sy, d.sw, d.sh, at.x, at.y, at.w, at.h)
+    g.restore()
+  }
+  /** Pictures not drawn in this frame let go, past the few kept for coming back (a scroll). */
+  private forget(f: Frame) {
+    const keep = new Set(f.pictures.map((d) => `${d.image}:${d.generation}`))
+    for (const k of this.pics.keys()) if (this.pics.size > keep.size + 4 && !keep.has(k)) this.pics.delete(k)
+  }
+  dispose() { this.pics.clear(); this.canvas.width = this.canvas.height = 0 }
 }
