@@ -603,7 +603,7 @@ export default async ($: VaultTest) => {
       check("companion: its exchange over, its answers there leave the windows before its cursor shows there, kept in its history",
         !!answer && dropped >= 0 && dropped < over && kept.some((n) => n.text === "I'm good."), { answer, got: win.got.slice(-4) })
       const theirs = kept.find((n) => n.id === late()?.id)
-      check("companion: …and seen there (by the pointer, in its box), so no unread dot for them", !!theirs?.seen, theirs)
+      check("companion: …and seen there (by the pointer, in its box), so no unread dot for them", !!theirs?.seen, { theirs, late: late() ?? null, kept, got: win.got.slice(-6) })
       helper.emit("close"); win.emit("close")
     }
     check("companion: in quiet no edit reaches it, nor does the helper send one (it follows nothing on screen)", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
