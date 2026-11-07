@@ -88,8 +88,12 @@ try {
     await start("b")
     const same = await until(() => read("a", "Notes/Idea.md") === read("b", "Notes/Idea.md") && read("a", "Notes/Idea.md")?.includes("and a line of b's"))
     check("both sides end alike, b's other line kept", same, [read("a", "Notes/Idea.md"), read("b", "Notes/Idea.md")])
-    const [, v] = await api("a", "GET", `sync-conflicts/versions?path=${encodeURIComponent("Notes/Idea.md")}`)
-    const other = (v?.versions ?? []).find((x: Any) => String(x.id).startsWith("sync:"))
+    let v: Any = null, other: Any = null
+    await until(async () => {
+      v = (await api("a", "GET", `sync-conflicts/versions?path=${encodeURIComponent("Notes/Idea.md")}`))[1]
+      other = (v?.versions ?? []).find((x: Any) => String(x.id).startsWith("sync:"))
+      return other?.text != null
+    })
     check("the note offers the other side", other && /first line, from (a|b)/.test(other.text) && other.base !== null, v)
     const idea = (r: Any) => (r?.[0]?.conflicts ?? []).filter((c: Any) => c.path === "Notes/Idea.md")
     const [, cs] = await op("b", "sync.conflicts")

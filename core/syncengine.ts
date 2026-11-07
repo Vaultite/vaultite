@@ -179,9 +179,13 @@ export class Replica {
     return true
   }
 
+  /** A clash's texts (its base and the other side), made by whichever device merged: fetched like versions are. */
+  private clashBlobs = new Set<string>()
+
   private addNode(n: Node) {
     if (this.nodes.has(n.id)) return
     this.nodes.set(n.id, n)
+    for (const b of [n.conflict?.base, n.conflict?.other]) if (b) this.clashBlobs.add(b)
     this.clock = Math.max(this.clock, n.clock)
     for (const p of n.parents) { const k = this.kids.get(p) ?? new Set(); k.add(n.id); this.kids.set(p, k) }
     const f = this.byFile.get(n.file) ?? new Set(); f.add(n.id); this.byFile.set(n.file, f)
@@ -311,6 +315,7 @@ export class Replica {
       for (const h of hs) if (h.blob && !this.store.hasBlob(h.blob)) out.add(h.blob)
       if (hs.length > 1) for (const b of this.bases([hs[0].id], [hs[1].id])) if (b.blob && !this.store.hasBlob(b.blob)) out.add(b.blob)
     }
+    for (const b of this.clashBlobs) if (this.store.hasBlob(b)) this.clashBlobs.delete(b); else out.add(b)
     return [...out]
   }
 
@@ -453,6 +458,7 @@ export class Replica {
     const gone: string[] = [], added: { path: string; st: FileStat; hash: string }[] = []
     let changed = 0
     for (const [p, st] of now) {
+      if (unsynced(p)) continue // (a name the engine itself uses for a moment, mid-swap: never a delete nor a file)
       const was = this.seen.get(p)
       if (!st) { if (was) gone.push(p); continue }
       if (was && was.size === st.size && was.mtime === st.mtime) continue

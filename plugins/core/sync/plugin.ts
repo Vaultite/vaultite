@@ -268,11 +268,10 @@ export class SyncSet {
   inline(es: Entry[]): Record<string, string> {
     const out: Record<string, string> = {}
     let total = 0
-    for (const e of es) {
-      const b = e.node.blob
-      if (!b || out[b] || e.node.size > 256 << 10 || total > 8 << 20) continue
+    for (const e of es) for (const b of [e.node.blob, e.node.conflict?.base, e.node.conflict?.other]) {
+      if (!b || out[b] || (b === e.node.blob && e.node.size > 256 << 10) || total > 8 << 20) continue
       const bytes = this.store.blob(b)
-      if (bytes) { out[b] = Buffer.from(bytes).toString("base64"); total += bytes.length }
+      if (bytes && bytes.length <= 256 << 10) { out[b] = Buffer.from(bytes).toString("base64"); total += bytes.length }
     }
     return out
   }

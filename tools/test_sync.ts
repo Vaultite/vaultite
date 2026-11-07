@@ -55,8 +55,6 @@ function trade(a: Dev, b: Dev) {
     y.r.receive(es)
   }
   for (const [x, y] of [[a, b], [b, a]]) for (const h of y.r.missingBlobs()) { const bl = x.s.blob(h); if (bl) y.s.putBlob(h, bl) }
-  // (a merged blob made on one side, wanted on the other's next step: every blob the logs name)
-  for (const [x, y] of [[a, b], [b, a]]) for (const [h, bl] of x.s.blobs) if (!y.s.hasBlob(h)) y.s.putBlob(h, bl)
 }
 const settle = (ds: Dev[]) => {
   for (let round = 0; round < 12; round++) {
@@ -83,6 +81,8 @@ check("clash: later wins, other is an open conflict on every device, settled onc
   settle([a, b])
   assert.equal(a.f.text("N.md"), b.f.text("N.md"))
   const ca = a.r.conflicts(), cb = b.r.conflicts()
+  // (each device has the clash's texts, whichever made the merge)
+  for (const [d, c] of [[a, ca], [b, cb]] as const) assert.ok(c[0] && d.r.blobText(c[0].conflict.other) !== null && d.r.blobText(c[0].conflict.base) !== null)
   assert.equal(ca.length, 1); assert.equal(cb.length, 1); assert.equal(ca[0].conflict.id, cb[0].conflict.id)
   const winner = a.f.text("N.md")!, other = a.r.blobText(ca[0].conflict.other)!
   assert.ok([winner, other].some((t) => t.includes("from a")) && [winner, other].some((t) => t.includes("from b")))
