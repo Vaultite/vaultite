@@ -289,10 +289,8 @@ transcript (Claude Code's), so the user's own and other asks' changes stay.
     id: "companion.live-undo",
     cli: "companion live-undo",
     summary: "Undo the last live edit a job made on a page (its worker's own edits for that ask, nothing else): \"undo that\" asked some other way, or from elsewhere.",
-    help: `Asks over a page a job works on go straight to it (live editing); "undo that" there is the app's own. This takes
-back the newest of that job's live asks still standing whose worker changed files: exactly its edits, on the files as
-they are now (their own edits and other asks' stay). When what it wrote there changed since, it changes nothing and
-says why. Not for an ask that went to the job itself (it takes that back on its own).
+    help: `Exactly its worker's edits for that ask, on the files as they are now (their own edits and other asks' stay);
+when what it wrote changed since, it changes nothing and says why.
 
   vau companion live-undo
   vau companion live-undo --job jd3k2h1g`,

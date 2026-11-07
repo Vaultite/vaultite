@@ -176,31 +176,21 @@ above that), act, run it again, and never end your turn.
   island by the notch shows those sessions (working, needs you, done; the setting `island`): a hover lists them, a click
   opens one.
 - Proofs: a job ready (or done) knocks by itself, "Ready to show you <change>" (said aloud when `job_news` is spoken),
-  never a notification too. "Show me" (said, or its click) plays its proof (`companion job-show <id>`): the tour its
-  worker saved (`tour-save "<the change>" --job <id>`, in `Guides/Proofs/`; its prompt says how), on Vaultite's window,
-  each step's `(before: <png>)` laid over its thing and flipped with how it is now as its words are said. No tour, one
-  that doesn't play, or a thing it names gone: it says so plainly with what the job says it changed. Then Keep (closed
-  as done) or Still broken (a clip of what they show and say, recorded till they say stop, sent to that job), by a
-  click or a word: the app's, never an ask of yours. Asked "how's that job going?", `companion job` says; "show me
-  that job" is `companion job-show`. Their short answer to a knock ("not now", "ignore that one", "mute it", "show me") is the helper's, never
-  an ask. Asked about one later ("what was that?", "ignore the deploy one"): `companion knocks` lists them and the
-  sessions, `--later`, `--ignore` or `--mute <id>` marks one, and showing it opens its session (`terminal open <id>`).
-- Live editing: once a job works on a page (a preview, by its address, or a note), Talk key asks over that page go
-  straight into its warm terminal, never to you: each as it comes (several stream in mid-turn), tagged (`Live edit L3:`),
-  its worker told to make it now with its Edit and Write tools and end in a few words. Its terminal stays up while
-  they edit there. Its turn over, what changed on screen is ringed (two pictures of the window compared), else its few
-  words are said; one that isn't about the page (`(not for me)`) comes to you after all. "Undo that" there is the
-  app's own: exactly that ask's edits (from its worker's transcript) taken back on the files as they are now, the
-  user's own and other asks' kept, refused with why when what it wrote was changed since; said mid-turn, done once
-  its turn ends. From elsewhere, `companion live-undo` does the same. A handoff of an ask already sent live is refused.
-- Drawing on screen (helper): `draw --marks` with your words (`--say`), each mark in a beat (`beat`: the sentence it comes with), on your own layer (another session's marks are its own: neither touches the other's); each call adds to it. A mark stays until their next ask or the exchange ends (what points), until it's dismissed (cards: their ×, Clear, Esc) or until the screen under it changes (`life`: ask, dismiss, screen); what points fades sooner when the screen under it changes (they clicked, a page came), and one on a thing (an element, words found) follows it instead as it scrolls or moves. Every mark and pad item has an id: what's still up comes with their next ask, and a follow-up about it changes it in place (`draw --actions` without a path: add, move, change a colour or label, delete, which erases it as the pen ran backward); new marks replace it. `companion layer` reads your layer, `--hide`/`--show` takes it out of sight and back as it was (a before and after); a mark off their screen or on nothing isn't drawn (draw says which), so don't go on as if they saw it. Marks: point, ring, frame, underline, strike, check, cross, spotlight, num, scroll, connect (from, to) at `[x, y]` or `[x, y, w, h]` (screen points), `{"el": "a3"}` (an element the ask found, by id: it snaps to its frame; a label saying only its own word is left out), `{"find": "<words>"}` (the element or text on their screen saying them now, in any pane, a web page's too: the one by their pointer) or `{"pane"}`/`{"ui"}` in the app; a ring or frame at a bare point (a guess) frames what they drew there (the things inside it), else the element it's on; cards, by your cursor unless `at` says where (an area: top-left, top, top-right, left, centre, right, bottom-left, bottom, bottom-right; a point for its top left; a spot it goes beside, never over), the user can drag or dismiss: write, paper (a scratch pad of Excalidraw's shapes: rect, ellipse, diamond, arrows and lines whose `from`/`to` may be a shape's id, bound to it, text, freehand paths, a bar or line chart, and svg: path data only, fitted into its box, `clean` or `sketch`, for a logo, an animal or any shape; each item may have `color` and `fill`), sticky, list, image and video (`src`: a vault path, a file of this Mac you may read, an https address, or `screenshot`: their latest screenshot, or screen recording for a video; a video plays muted and looped, pressed it's heard; one that can't load is refused, so say so); copy, open, and a button whose `do` copies, opens or asks the next step. A diagram is a pad of shapes, a picture of a thing an svg, their file an image card. What a thing is gets a frame round all of it (a box your cursor drags open, its label beside); the one thing to press, a ring or a point. Short labels; mark only what you name, and in a walkthrough each thing as you name it (its beat), the earlier ones stepping back as the next comes. `vau companion draw --help` has every field; Keep (or `companion save-drawing`) saves it as an .excalidraw (its shapes, arrows bound, svg as lines, pictures embedded).
-
-### One UI model
-A thing on screen is one shape everywhere (`uimodel.ts`): role (ARIA's words), name, state (expanded, selected,
-checked, disabled, focused, value), actions and the labelled things it's in, nearest first. Vaultite's window reads it
-from its ARIA (`uidom.ts`: `domTree`, `domThings`, `resolveDom`, `domView`), other apps from Accessibility (the helper's
-`near` in electron/screen.swift; `axThings` in electron/helper.ts, the `things` request, `takeovers().things()`). A
-target resolves to the part that acts (`resolve`, `actingPart`); a condition is checked once against a View (`check`;
-`parseCondition`, `conditionText`); `checkNow(ctx, name, condition)` (plugin.ts) checks one where an agent's last ask
-was, what `companion check` runs. A control the app's UI gives no role, state or name is fixed there, in its ARIA (the
-kit's components first), never with a case here.
+  never a notification too. "Show me" plays its proof (`companion job-show <id>`): the tour its worker saved
+  (`tour-save "<the change>" --job <id>`, in `Guides/Proofs/`), on Vaultite's window, each step's `(before: <png>)`
+  flipped over its thing with how it is now. Then Keep (done) or Still broken (a clip of what they show and say, sent
+  to that job): theirs and the app's, never an ask of yours; so are their short answers to a knock ("not now", "mute
+  it"). Asked about one later: `companion knocks` lists them and the sessions (`--later`, `--ignore`, `--mute <id>`).
+- Live editing: once a job works on a page (a preview in a browser, by its address, or a note it changed), Talk key
+  asks over that page go straight into its warm terminal, never to you (tagged `Live edit L3:`, made with its Edit and
+  Write tools); its turn over, what changed is ringed, else its few words said, and one not about the page (`(not for
+  me)`) comes to you after all. "Undo that" there is the app's: exactly that ask's edits taken back, the files as they
+  are now; from elsewhere, `companion live-undo`. A handoff of an ask already sent live is refused.
+- Drawing on screen (helper): `draw --marks` with your words (`--say`), each mark in a beat (`beat`: the sentence it
+  comes with), on your own layer (another session's marks are its own); each call adds to it. Marks, spots, cards and
+  pads, every field: your draw tool's words (`vau companion draw --help`). What's still up comes with their next ask by
+  id: a follow-up about it changes it in place (`draw --actions` without a path); new marks replace it; `companion
+  layer --hide`/`--show` takes it out of sight and back as it was (a before and after). A mark off their screen or on
+  nothing isn't drawn (draw says which): don't go on as if they saw it. What a thing is gets a frame round all of it;
+  the one thing to press, a ring or a point. Short labels; mark only what you name, and in a walkthrough each thing as
+  you name it. Keep (or `companion save-drawing`) saves it as an .excalidraw.

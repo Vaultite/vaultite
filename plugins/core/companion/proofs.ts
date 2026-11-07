@@ -128,10 +128,9 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
     id: "companion.job-show",
     cli: "companion job-show",
     summary: "Show the user a job's change on their screen (Show me on its ready knock): the tour its worker saved, each before flipped with how it is now, then Keep or Still broken.",
-    help: `With no tour (or one that can't play, or a thing it names gone), it says so plainly and what the job says it
-changed (its diff in a line). Then Keep (the job closed as done) or Still broken (a clip of what they show and say is
-recorded and sent back to the same job), by a click or by voice. A job's worker saves its tour with
-companion tour-save "<the change>" --job <its id> (its prompt says so).
+    help: `No tour, one that can't play or a thing it names gone: it says so plainly, with what the job says it changed.
+Keep (the job closed as done) or Still broken (a clip of what they show and say, sent back to that job) is their click
+or word, the app's. Its worker saves the tour: companion tour-save "<the change>" --job <its id>.
 
   vau companion job-show j3k9x2a
   vau companion job-show                 (the job that's ready)
