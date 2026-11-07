@@ -869,6 +869,12 @@ export default async ($: VaultTest) => {
     check("companion: a picture that isn't there draws nothing, and says so", st3 === 409 && /no Pics\/Nope\.png in the vault.*nothing was drawn/.test(r3.error), r3)
     ;[st3, r3] = await api("POST", "ops/companion.draw", { marks: [{ type: "image", src: "/etc/hosts" }, { type: "video", src: "~/.ssh/id.mp4" }] })
     check("companion: a file outside where it may read is refused", st3 === 409 && /isn't where you may read/.test(r3.error), r3)
+    if (process.platform === "darwin") {
+      ;[st3, r3] = await api("POST", "ops/companion.draw", { as: "Icons", marks: [{ type: "image", src: "/System/Applications/Calendar.app" }] })
+      const icon = layerOf("Icons")?.marks[0]
+      check("companion: an app as a picture card shows its icon, as Finder does", st3 === 200 && /^api\/companion\/media\/\w+\/\w+\.png$/.test(icon?.url) && icon.px?.[0] >= 256, [st3, r3, icon])
+      await api("POST", "ops/companion.clear", { as: "Icons" })
+    }
     c.addMoment({ kind: "ask", text: "make B blue", app: "com.example.mail", sx: 5, sy: 5 })
     L = layerOf("Claude")
     const told = c.momentsText([{ seq: 1, t: 0, kind: "ask", for: "Claude", text: "make B blue" }] as Any[], "pair", null)

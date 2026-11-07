@@ -18,7 +18,8 @@ const KIND_LONGEST = 800
 /** `text` so far as said (its tags out, the words around them joined) and its tags, complete ones only. A tag still
  *  being written holds back what follows it, so what's said only grows. */
 export function parseTags(text: string): { said: string; tags: Tag[] } {
-  let said = "", i = 0
+  // (`joined`: where the last tag said in its words' place ended, so "[A] and [B] do x" says both)
+  let said = "", i = 0, joined = -1
   const tags: Tag[] = []
   while (i < text.length) {
     const open = text.indexOf("[", i)
@@ -34,13 +35,27 @@ export function parseTags(text: string): { said: string; tags: Tag[] } {
     // (a tag it meant but got wrong is dropped, never read out)
     if (!tag && kind && close - open <= most) { said = said.trimEnd(); i = close + 1; continue }
     if (!tag) { said += text.slice(open, close + 1); i = close + 1; continue }
+    const lead = /(^|[.:;!?\n-])\s*$/.test(said) || (joined >= 0 && !/[.!?]/.test(said.slice(joined)) && /(,|\band|\bor)\s*$/i.test(said))
     said = said.trimEnd()
     tags.push({ ...tag, offset: said.length })
     i = close + 1
+    const name = lead ? nameSaid(tag, text.slice(i)) : null
+    if (name === undefined) break
+    if (name) { said += (said ? " " : "") + name; joined = said.length }
     // (the words on each side of it, a space between them unless punctuation follows)
     if (said && i < text.length && !/^[\s.,;:!?)…]/.test(text.slice(i))) said += " "
   }
   return { said: said.replace(/^\s+/, "").replace(/[ \t]{2,}/g, " ").replace(/ +([.,;:!?])/g, "$1"), tags }
+}
+
+/** A tag starting its clause with no subject after it ("[ring "Discard"] throws it away"): its words said in its place,
+ *  as it meant them; null: not; undefined: can't tell yet (what follows may still be its words again). */
+function nameSaid(t: Omit<Tag, "offset">, rest: string): string | null | undefined {
+  const name = t.kind === "arrow" || t.kind === "connect" ? "" : t.label ?? ("find" in t.at ? t.at.find.trim() : "")
+  const r = rest.trimStart(), head = r.slice(0, name.length).toLowerCase()
+  if (!name || !r || head === name.toLowerCase()) return null
+  if (r.length < name.length && name.toLowerCase().startsWith(head)) return undefined
+  return /^\p{Ll}/u.test(r) ? name : null
 }
 
 function tagOf(kind: string, args: string): Omit<Tag, "offset"> | null {

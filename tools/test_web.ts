@@ -3572,6 +3572,10 @@ await section("screen drawings", async () => {
       JSON.stringify(tg.markOf(tags[1]).to) === '{"find":"Send"}' && tg.markOf(tags[2]).label === "Share" && tg.markOf(tags[2]).at.el === "a2", [said, tags])
   const long = tg.parseTags(`[frame "The Morning report bug (Bug 2026-11-06 08.49) has a different cause: folded callouts with videos in the editor, where an embed is mounted and dropped 3 ms later. Hand it to its own session?" "Morning report bug"] That one.`), wrong = tg.parseTags("[frame] Here. [ring] There.")
   const streaming = tg.parseTags(`Look [frame "The Morning report bug (Bug 2026-11-06 08.49) has a different cause: folded callouts with videos in the editor, where an embed is mounted and dropped 3 ms later. Hand it to its own session?`)
+  const subject = tg.parseTags('The top bar: [ring "Recent captures"] reopens them. [ring "Undo"] and [ring "Redo"] step back. [ring "Select"] Select moves. Press this one [ring "Save"] here. [ring "iCloud"] iCloud holds it.')
+  check("screen drawings: a tag standing for its sentence's subject says its words there; one beside words naming it, or mid-sentence, says nothing",
+    subject.said === "The top bar: Recent captures reopens them. Undo and Redo step back. Select moves. Press this one here. iCloud holds it." && subject.tags.length === 6 &&
+      tg.parseTags('Here: [ring "Recent captures"] re').said === "Here:", subject.said)
   check("screen drawings: a tag naming its kind is never said, however long its words (it's a mark) or wrong (dropped), streamed too",
     long.said === "That one." && long.tags.length === 1 && wrong.said === "Here. There." && !wrong.tags.length && streaming.said === "Look", [long, wrong, streaming])
   // ---- choreography: rings shaped to their thing, the pen first, marks that follow

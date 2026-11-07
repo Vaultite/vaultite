@@ -15,6 +15,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Talk with a job**: ask the companion "let me talk to it" (or point at a job in the island) and that job takes the
   floor: your Talk key's words go to it, and it answers by its own cursor, in a voice of its own, pointing and marking
   as it explains; the companion stays quiet till you say "back", and the job leaves a line in its inbox thread.
+- **The companion says what it marks, and deletes to the Trash**: "Discard throws this one away", not "throws this one
+  away", when a mark stands for the word; files it deletes go to the Trash, and deleting for good asks on a card. Ask
+  for an app's logo and it shows the app's real icon; asked how to do something, it suggests Vaultite's own way first.
 - **A split's count of other tabs no longer sits under its close button**: in vertical tabs, hovering a pane of a
   split showed its +1 under the X; the count now steps aside while the X shows.
 - **Proof, not claims**: a job that's done knocks by the notch, "Ready to show you the blue save button". Say "show

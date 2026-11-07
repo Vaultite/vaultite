@@ -378,8 +378,8 @@ export default async ($: VaultTest) => {
       await waitFor(async () => (await status()).notes.find((n: Any) => n.kind === "say" && n.text === "Okay."), 15_000, 50)
       await idle(quick!)
       const toldOf = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
-      check("summoned: a mark of its last answer that didn't show is told with the next ask, so it doesn't go on as if they saw it",
-        /they never saw: your \[ring "Nowhere at all"\] wasn't drawn/.test(toldOf), toldOf.slice(0, 400))
+      check("summoned: a mark of its last answer that didn't show is told with the next ask, so it doesn't go on as if they saw it; nor as if they saw nothing, when another did",
+        /they never saw: your \[ring "Nowhere at all"\] wasn't drawn[^.]*\(what else you drew for it did show\)/.test(toldOf), toldOf.slice(0, 400))
       check("summoned: its Talk key's next ask takes the last answer's drawing down (a corrected mark replaces it, never stacks)",
         screen1.got.some((m: Any) => m.t === "drawing" && m.drawing === null), screen1.got.map((m: Any) => m.t))
       // (its draw tool's points are the same pixels, mapped the same way: the same box lands on the same spot, and a

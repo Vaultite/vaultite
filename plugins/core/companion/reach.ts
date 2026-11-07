@@ -34,9 +34,10 @@ export const NEVER_RUN = [String.raw`(^|[^\w])\.ssh(/|\b|$)`, String.raw`Library
   String.raw`\bsecurity\s+(find-(generic|internet)-password|dump-keychain|export|unlock-keychain|set-key-partition-list)\b`,
   String.raw`(^|[\s'"/=])\.env(\.[\w-]+)?($|[\s'";|&)])`, String.raw`\bid_(rsa|ed25519|ecdsa|dsa)\b`, String.raw`\.(pem|p12|key)($|[\s'";|&)])`, String.raw`\bdata/config\.json\b`]
 
-/** Auto mode's rules for it: what changes their Mac's settings is always asked on a card by their pointer (its
- *  classifier blocks it here, the card's yes runs it), so a spoken ask never flips a setting unseen. */
-export const AUTO_RULES = { hard_deny: ["$defaults", "Changing this Mac's settings or another app's preferences (defaults write, delete or import; pmset; networksetup; systemsetup; scutil --set; tccutil; launchctl load, unload, bootstrap, bootout, enable or disable; nvram; spctl): block it even when the user asked for it, as they approve these on a card outside this conversation."] }
+/** Auto mode's rules for it: what changes their Mac's settings or deletes their files for good is always asked on a
+ *  card by their pointer (its classifier blocks it here, the card's yes runs it), so a spoken ask never does it unseen. */
+export const AUTO_RULES = { hard_deny: ["$defaults", "Changing this Mac's settings or another app's preferences (defaults write, delete or import; pmset; networksetup; systemsetup; scutil --set; tccutil; launchctl load, unload, bootstrap, bootout, enable or disable; nvram; spctl): block it even when the user asked for it, as they approve these on a card outside this conversation.",
+  "Deleting the user's files for good (rm, unlink, rmdir, find -delete, shred) anywhere but a temporary folder: block it even when the user asked for it, as they approve it on a card outside this conversation; moving them to the Trash (trash) isn't this."] }
 
 /** The folders as its prompt names them: "~/Projects, ~/Documents, …; screenshots go to ~/Pictures/Screenshots". */
 export function readableText(r = readableDirs()) {

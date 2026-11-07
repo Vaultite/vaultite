@@ -1,5 +1,6 @@
 // An image or video card's source (draw's image and video marks), found when drawn so one that can't load says so:
 // a vault file as the app loads it, a file of this machine by a token only its card knows, https as it is.
+import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
@@ -42,13 +43,15 @@ export function screenMedia(plugin: Plugin, o: {
   async function resolve(m: Media): Promise<Media> {
     const kind = m.type, src = m.src.trim(), want = kind === "video" ? VIDEO_EXT : IMAGE_EXT, what = kind === "video" ? "a video" : "an image"
     if (/^https:\/\//i.test(src)) return { ...m, url: src, name: path.basename(new URL(src).pathname) || new URL(src).host, ...(await probeUrl(src, kind)) }
-    if (/^[a-z][a-z0-9+.-]*:/i.test(src) && !/^[a-z]:[\\/]/i.test(src)) throw new OpError(`src: ${src.split(":")[0]}: isn't a source; a vault path, a file of this Mac, https or "screenshot"`)
+    if (/^[a-z][a-z0-9+.-]*:/i.test(src) && !/^[a-z]:[\\/]/i.test(src)) throw new OpError(`src: ${src.split(":")[0]}: isn't a source; a vault path, a file of this Mac, an app (its icon), https or "screenshot"`)
     if (/^(latest[ -])?(screenshot|screen ?shot|recording|screen recording)$/i.test(src)) {
       const abs = await latestCapture(kind)
       if (!abs) throw new OpError(`they have no ${kind === "video" ? "screen recording" : "screenshot"} in ${screenshotDir()}, so nothing was drawn and they saw no card`, 409)
       return local(m, abs)
     }
     const abs = src.startsWith("~/") ? path.join(os.homedir(), src.slice(2)) : src
+    // (an app: its icon, as Finder shows it; an icon isn't private, so wherever the app is)
+    if (m.type === "image" && /\.app\/?$/i.test(abs) && path.isAbsolute(abs)) return local(m, await appIcon(abs.replace(/\/$/, "")))
     if (path.isAbsolute(abs)) {
       if (!(await mayRead(abs))) throw new OpError(`${src} isn't where you may read (your read-only folders and their screenshots), so nothing was drawn`, 403)
       return local(m, abs)
@@ -93,6 +96,21 @@ export function screenMedia(plugin: Plugin, o: {
     return { dataURL: `data:${mime};base64,${buf.toString("base64")}`, mime, ...(px ? { px } : m.px ? { px: m.px } : {}) }
   }
   return { resolve, bytes }
+}
+
+/** A Mac app's icon as a PNG, made once per version of the app. */
+async function appIcon(app: string): Promise<string> {
+  let st: fs.Stats
+  try { st = fs.statSync(app) } catch { throw new OpError(`no app ${app}, so nothing was drawn and they saw no card`, 404) }
+  if (process.platform !== "darwin") throw new OpError("an app's icon shows only on a Mac")
+  const dir = path.join(os.tmpdir(), "vaultite-app-icons"), out = path.join(dir, `${crypto.createHash("sha1").update(`${app}:${st.mtimeMs}`).digest("hex").slice(0, 16)}.png`)
+  if (fs.existsSync(out)) return out
+  fs.mkdirSync(dir, { recursive: true })
+  const js = `ObjC.import("AppKit"); function run(a) { const i = $.NSWorkspace.sharedWorkspace.iconForFile(a[0]); i.setSize($.NSMakeSize(512, 512)); const b = $.NSBitmapImageRep.imageRepWithData(i.TIFFRepresentation); b.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({})).writeToFileAtomically(a[1], true) }`
+  await new Promise<void>((ok, no) => execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", js, app, out], { timeout: 10_000 }, (e) => (e ? no(e) : ok())))
+    .catch((e: Error) => { throw new OpError(`couldn't read ${path.basename(app)}'s icon: ${e.message.slice(0, 120)}`) })
+  if (!fs.existsSync(out)) throw new OpError(`couldn't read ${path.basename(app)}'s icon`)
+  return out
 }
 
 /** An https image or video: there and what it says it is, and an image's pixels; one that can't be reached now is let
