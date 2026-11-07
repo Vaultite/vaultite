@@ -198,6 +198,7 @@ export function tookText(why: string): string {
   if (why === "user-esc") return "they pressed Esc, so it stopped: don't act again unless they ask"
   if (why === "user-typing") return "they started typing where it was typing, so it stopped: don't act again unless they ask"
   if (why === "paused") return "they kept using the mouse or keys, so it stopped waiting for them: ask whether to go on"
+  if (why === "helper") return "its helper on this Mac stopped mid-way: look again before going on"
   return "the exchange ended: stop"
 }
 

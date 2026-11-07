@@ -1,11 +1,11 @@
 /** Take-over (the helper's): a step in another app as the user watches (an offer, a border, its cursor's caption); a
  *  click or Esc stops it, their hands on it pause what needs them; the steps are takeover.swift's (takeoverlogic.ts). */
 import { app, BrowserWindow, screen } from "electron"
-import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { HEX } from "../plugins/core/companion/screenmarks.ts"
 import { buildTakeover, takeoverHelperName } from "./takeover-build.ts"
+import { lineHelper } from "./linehelper.ts"
 import { overlayWindow } from "./overlaywin.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
@@ -32,59 +32,22 @@ const CAPTION_MS = 1200
 
 // ---------- takeover.swift
 
-let child: ChildProcess | null = null
-let starting: Promise<ChildProcess> | null = null
-let next = 1
-const waiting = new Map<number, (r: Record<string, unknown>) => void>()
 async function binary() {
   const shipped = path.join(import.meta.dirname, "bin", takeoverHelperName())
   return fs.existsSync(shipped) ? shipped : buildTakeover(path.join(app.getPath("userData"), "bin"))
 }
-function started(): Promise<ChildProcess> {
-  if (child && child.exitCode === null && !child.killed) return Promise.resolve(child)
-  starting ??= binary().then((bin) => {
-    const c = spawn(bin, [], { stdio: ["pipe", "pipe", "ignore"] })
-    let buf = ""
-    c.stdout!.on("data", (b: Buffer) => {
-      buf += b.toString()
-      for (let i; (i = buf.indexOf("\n")) >= 0;) {
-        const line = buf.slice(0, i)
-        buf = buf.slice(i + 1)
-        let m: Record<string, unknown>
-        try { m = JSON.parse(line) } catch { continue }
-        if (typeof m.id === "number") { waiting.get(m.id)?.(m); waiting.delete(m.id) }
-        else if (m.event === "user") stop(`user-${String(m.why)}`)
-        else if (m.event === "busy") handsOn(m.why === "keys" ? "keys" : "mouse")
-        else if (m.event === "rested") handsOff()
-      }
-    })
-    c.stdin!.on("error", () => {})
-    c.once("exit", () => {
-      if (child !== c) return
-      child = null
-      for (const done of waiting.values()) done({ ok: false, why: "helper" })
-      waiting.clear()
-    })
-    child = c
-    return c
-  }).finally(() => { starting = null })
-  return starting
-}
-async function ask<T = Record<string, unknown>>(call: Call, ms = 15_000): Promise<T> {
-  const c = await started()
-  const id = next++
-  return new Promise((done) => {
-    const timer = setTimeout(() => { if (waiting.delete(id)) done({ ok: false, why: "timeout" } as T) }, ms)
-    waiting.set(id, (m) => { clearTimeout(timer); done(m as T) })
-    c.stdin!.write(JSON.stringify({ ...call, id }) + "\n")
-  })
-}
+const helper = lineHelper({ binary,
+  // (gone mid-drive: its guard went with it, so nothing more is done blind)
+  exited: () => { if (drive) stop("helper") },
+  event: (m) => {
+    if (m.event === "user") stop(`user-${String(m.why)}`)
+    else if (m.event === "busy") handsOn(m.why === "keys" ? "keys" : "mouse")
+    else if (m.event === "rested") handsOff()
+  } })
+const ask = <T = Record<string, unknown>>(call: Call, ms = 15_000): Promise<T> => helper.ask<T>(call, ms)
 export function stopTakeover() {
   stop("quit")
-  const c = child
-  child = null
-  c?.stdin?.end()
-  if (c) setTimeout(() => { if (c.exitCode === null) c.kill() }, 2000)
+  helper.quit()
 }
 
 // ---------- the offer, and the border while it drives
@@ -232,7 +195,7 @@ function stop(why: string) {
   handsOff()
   redraw()
   // (done: their pointer glides back where they left it, unless they've had it since; stopped by them, it's theirs)
-  void ask({ op: "release", back: d.moved && !why.startsWith("user") })
+  if (helper.running()) void ask({ op: "release", back: d.moved && !why.startsWith("user") })
 }
 /** A step behind their windows, as its card shows it (helper.ts draws it): the window's live picture, the agent's cursor
  *  in it (where the step acts, as fractions of the window), and what it does. */

@@ -3,7 +3,8 @@
 import { app, globalShortcut, screen } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { coverTranslucent } from "./translucency.ts"
-import { execFile, spawn, type ChildProcess } from "node:child_process"
+import { execFile } from "node:child_process"
+import { lineHelper } from "./linehelper.ts"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -12,10 +13,6 @@ import { fileURLToPath } from "node:url"
 const SOURCE = path.join(path.dirname(fileURLToPath(import.meta.url)), "appwindows.swift")
 type Rect = { x: number; y: number; width: number; height: number }
 
-let helper: ChildProcess | null = null
-let starting: Promise<ChildProcess> | null = null
-let next = 1
-const waiting = new Map<number, (res: Record<string, unknown>) => void>()
 /** Each app window in a tab (by its number): its app, vault window, rect (null: tab hidden), whether it's raised behind
  *  it (only while that window is focused), and `at`, where it stands (the tab's rect and its own frame; null: parked). */
 type Shown = { bundle: string; win: AppWindow; rect: Rect | null; behind: boolean; at: { rect: Rect; frame: Rect } | null }
@@ -80,49 +77,11 @@ async function binary() {
   return out
 }
 
-function start() {
-  if (helper && !helper.killed && helper.exitCode === null) return Promise.resolve(helper)
-  starting ??= binary().then((bin) => {
-    const child = spawn(bin, [], { stdio: ["pipe", "pipe", "inherit"] })
-    let buf = ""
-    child.stdout!.on("data", (b: Buffer) => {
-      buf += b.toString()
-      for (let i; (i = buf.indexOf("\n")) >= 0;) {
-        const line = buf.slice(0, i)
-        buf = buf.slice(i + 1)
-        let msg: Record<string, unknown>
-        try { msg = JSON.parse(line) } catch { continue }
-        if (typeof msg.id === "number") { waiting.get(msg.id)?.(msg); waiting.delete(msg.id) }
-        else if (typeof msg.event === "string") heard(msg)
-      }
-    })
-    // (one that couldn't start or whose pipe broke ends as one that exited: its callers answered, the next call starts another)
-    child.on("error", () => { if (child.exitCode === null && !child.killed) child.kill(); child.emit("exit") })
-    child.stdin!.on("error", () => {})
-    child.once("exit", () => {
-      if (helper !== child) return
-      helper = null
-      for (const done of waiting.values()) done({ ok: false, why: "helper" })
-      waiting.clear()
-      for (const w of [...shown.keys()]) gone(w)
-    })
-    helper = child
-    return child
-  }).finally(() => { starting = null })
-  return starting
-}
-
-const ASK_TIMEOUT = 30_000
-async function ask(req: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const child = await start()
-  const id = next++
-  return new Promise((done) => {
-    // (an app that doesn't answer the helper holds it: the call gives up rather than wait forever; adopt can take 15 s)
-    const timer = setTimeout(() => { if (waiting.delete(id)) done({ ok: false, why: "helper" }) }, ASK_TIMEOUT)
-    waiting.set(id, (msg) => { clearTimeout(timer); done(msg) })
-    child.stdin!.write(JSON.stringify({ ...req, id }) + "\n")
-  })
-}
+const helper = lineHelper({ binary, stderr: "inherit", event: heard,
+  // (an app that doesn't answer the helper holds it: the call gives up rather than wait forever; adopt can take 15 s)
+  timeout: { ms: 30_000, why: "helper" },
+  exited: () => { for (const w of [...shown.keys()]) gone(w) } })
+const ask = (req: Record<string, unknown>) => helper.ask(req)
 
 /** An app window closed (or its app quit): its tab says so. */
 function gone(wid: number) {
@@ -303,5 +262,5 @@ export function appsWindow(win: AppWindow) {
 /** The app quits: every window back where it was (the helper does it as its stdin ends). */
 export function stopApps() {
   globalShortcut.unregister(PALETTE)
-  helper?.stdin?.end()
+  helper.quit()
 }

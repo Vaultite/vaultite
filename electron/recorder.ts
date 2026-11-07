@@ -1,65 +1,27 @@
 /** The screen's video (capture.swift): one display, kept in memory as one-second segments, a ring of the last seconds or
  *  everything from a recording's start (`hold`); a stretch of it saved as a clip only when asked, cropped to a box. */
 import { app } from "electron"
-import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { buildCapture, captureHelperName } from "./capture-build.ts"
+import { lineHelper } from "./linehelper.ts"
 import type { BoxAt, Point, Rect } from "../plugins/core/companion/clips.ts"
 
 /** A scripted copy records nothing, unless its QA asks for the real screen (web/qa/capture.mjs). */
 export const REAL = !process.env.VAULTITE_QUIET || !!process.env.VAULTITE_CAPTURE
 export type Clip = { file: string; ms: number; width: number; height: number; frames: { t: number; file: string }[] }
 
-let child: ChildProcess | null = null
-let starting: Promise<ChildProcess> | null = null
-let next = 1
 let on = false
 let stopped: (() => void) | null = null
-const waiting = new Map<number, (r: Record<string, unknown>) => void>()
 async function binary() {
   const shipped = path.join(import.meta.dirname, "bin", captureHelperName())
   return fs.existsSync(shipped) ? shipped : buildCapture(path.join(app.getPath("userData"), "bin"))
 }
-function started(): Promise<ChildProcess> {
-  if (child && child.exitCode === null && !child.killed) return Promise.resolve(child)
-  starting ??= binary().then((bin) => {
-    const c = spawn(bin, [], { stdio: ["pipe", "pipe", "ignore"] })
-    let buf = ""
-    c.stdout!.on("data", (b: Buffer) => {
-      buf += b.toString()
-      for (let i; (i = buf.indexOf("\n")) >= 0;) {
-        const line = buf.slice(0, i)
-        buf = buf.slice(i + 1)
-        let m: Record<string, unknown>
-        try { m = JSON.parse(line) } catch { continue }
-        if (typeof m.id === "number") { waiting.get(m.id)?.(m); waiting.delete(m.id) }
-        // (macOS stopped it: screen recording taken away, the display gone)
-        else if (m.event === "stopped") { on = false; stopped?.() }
-      }
-    })
-    c.stdin!.on("error", () => {})
-    c.once("exit", () => {
-      if (child !== c) return
-      child = null; on = false
-      for (const done of waiting.values()) done({ ok: false, why: "helper" })
-      waiting.clear()
-    })
-    child = c
-    return c
-  }).finally(() => { starting = null })
-  return starting
-}
-async function ask<T = Record<string, unknown>>(call: Record<string, unknown>, ms = 15_000): Promise<T> {
-  if (!REAL) return { ok: false, why: "quiet" } as T
-  const c = await started()
-  const id = next++
-  return new Promise((done) => {
-    const timer = setTimeout(() => { if (waiting.delete(id)) done({ ok: false, why: "timeout" } as T) }, ms)
-    waiting.set(id, (m) => { clearTimeout(timer); done(m as T) })
-    c.stdin!.write(JSON.stringify({ ...call, id }) + "\n")
-  })
-}
+// (macOS stopped it (screen recording taken away, the display gone), or it died: a recording's lost)
+const lost = () => { on = false; stopped?.() }
+const helper = lineHelper({ binary, exited: lost, event: (m) => { if (m.event === "stopped") lost() } })
+const ask = <T = Record<string, unknown>>(call: Record<string, unknown>, ms = 15_000): Promise<T> =>
+  REAL ? helper.ask<T>(call, ms) : Promise.resolve({ ok: false, why: "quiet" } as T)
 
 /** Video of the display at `p` (that display's already: what's left out looked at again), keeping `ring` ms. */
 export async function videoAt(p: Point, exclude: number[], bundles: string[], ring: number) {
@@ -69,7 +31,13 @@ export async function videoAt(p: Point, exclude: number[], bundles: string[], ri
 }
 /** Keep everything from `from` on (a recording), or let it go again (null). */
 export const holdVideo = (from: number | null) => ask({ op: "hold", from })
-export async function stopVideo() { if (on || child) await ask({ op: "stop" }); on = false }
+/** Stopped, and its helper quit unless a clip is still being saved: an idle one would only hold memory. */
+export async function stopVideo() {
+  if (!on && !helper.running()) return
+  on = false
+  await ask({ op: "stop" })
+  if (!on && !helper.pending()) helper.quit()
+}
 export const videoOn = () => on
 export const onVideoStopped = (fn: () => void) => { stopped = fn }
 
@@ -92,9 +60,6 @@ function prune() {
 }
 export function quitRecorder() {
   on = false
-  const c = child
-  child = null
-  c?.stdin?.end()
-  if (c) setTimeout(() => { if (c.exitCode === null) c.kill() }, 2000)
+  helper.quit()
 }
 export type { Rect }
