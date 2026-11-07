@@ -9,6 +9,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Teach by showing**: say "watch me" and what it's for with the Talk key, do it while you talk, then "that's it":
   the companion keeps it as a draft tour (in Guides) or a skill an agent can run, each step found again by what it is
   even after the app changes. "Make what I just did a skill" works from the timeline's last minutes.
+- **Terminals of a Mac's `vau service` run at full speed**: macOS held back the timers of what they started (a
+  browser there animated at 15 fps); the service is an interactive job now (after `vau service install` and a restart).
 - **QA walks**: say "start a QA walk" with the Talk key, then go around any app talking; each sentence is noted with
   the thing under your pointer and a frame of it, "scratch that" drops the last, and "done" sends them as one job per
   project (Vaultite, your site...), all kept in Captures. A chip under the menu bar counts them.

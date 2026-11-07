@@ -49,7 +49,7 @@ try {
   check("selecting it again is already so", tabAgain.body?.already === true, tabAgain.body)
 
   // Find a setting: its switch by name, its state read (Settings' first switch, whatever it is)
-  await page.keyboard.press("Control+Comma")
+  await page.keyboard.press("ControlOrMeta+Comma")
   await until(async () => !!(await page.$("[role=switch][aria-label]")))
   const sw = await page.evaluate(() => { const s = document.querySelector("[role=switch][aria-label]"); return s ? { name: s.getAttribute("aria-label"), on: s.getAttribute("aria-checked") === "true" } : null })
   const read = sw && await holds(`checked switch ${JSON.stringify(sw.name)}`)

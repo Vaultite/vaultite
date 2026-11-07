@@ -44,8 +44,10 @@ const named = await page.evaluate(() => {
   for (let n = walk.nextNode(); n && !text; n = walk.nextNode()) {
     const w = (n.nodeValue ?? "").trim()
     // (words of their own, not an element's name: those are found as that element)
+    // (once on the page as the finder compares words, any case: "Playground" is also a "playground" in a sentence)
     const p = n.parentElement, named = (e) => e.getAttribute("aria-label")?.trim() === w || e.dataset.tip?.trim() === w
-    if (w.length < 5 || w.length > 30 || /\s{2}/.test(w) || document.body.innerText.split(w).length !== 2 || !p || p.closest(".companion-overlay") ||
+    const norm = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+    if (w.length < 5 || w.length > 30 || /\s{2}/.test(w) || norm(document.body.innerText).split(norm(w)).length !== 2 || !p || p.closest(".companion-overlay") ||
       (p.matches("[aria-label], [data-tip], button, a, [role]") && !p.children.length) || [...document.querySelectorAll("[aria-label], [data-tip]")].some(named)) continue
     const range = document.createRange(); range.selectNodeContents(n)
     const r = range.getBoundingClientRect()

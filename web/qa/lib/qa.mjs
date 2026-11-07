@@ -10,6 +10,9 @@ import { fileURLToPath } from "node:url"
 import { hold } from "../../../tools/qa_slots.ts"
 import { quietGrants } from "../../../tools/qa_grants.ts"
 
+// (servers and apps under test, from every checkout and copy: Node's compile cache in the shared temp folder is never
+// pruned, and filled a Linux /tmp's quota till Xvfb couldn't start)
+process.env.NODE_DISABLE_COMPILE_CACHE ??= "1"
 /** Playwright's Chromium, else Google Chrome (Chromium on Linux), VAULTITE_CHROME picks one. Not the installed Chrome
  *  first: a headless one left running is the one macOS brings forward, so opening Chrome shows no window. */
 export const CHROME = [process.env.VAULTITE_CHROME, bundled(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",

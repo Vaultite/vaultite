@@ -100,6 +100,8 @@ export function servicePlan(platform: string, o: ServiceOptions): ServicePlan {
   if (platform === "darwin") {
     const file = path.join(home, "Library", "LaunchAgents", `${LABEL}.plist`)
     const log = path.join(home, "Library", "Logs", "vaultite.log")
+    // (Interactive: its terminals, agents and test browsers are the user's; a Standard job's children get timers
+    // coalesced to ~70 ms, so a page there animates at 15 fps)
     const text = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -114,6 +116,7 @@ ${Object.entries(env).map(([k, v]) => `    <key>${k}</key><string>${xml(v)}</str
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Interactive</string>
   <key>StandardOutPath</key><string>${xml(log)}</string>
   <key>StandardErrorPath</key><string>${xml(log)}</string>
 </dict>

@@ -1554,8 +1554,8 @@ function voiceHeardAgent(a: Agent) {
   // (the realtime voice's conversation told what was said after its few words, so a follow-up knows)
   if (v.fronted) { voiceFront.answer(v.fronted, [...v.texts?.values() ?? []].join(" ")); v.fronted = undefined }
 }
-/** Whether the companion's pen is heard as it draws: with its sounds, never in a scripted copy. */
-const penHeard = () => penSounds(!QUIET && prefs.sounds)
+/** Whether the companion's pen is heard as it draws: with its sounds, not on a call, never in a scripted copy. */
+const penHeard = () => penSounds(!QUIET && prefs.sounds && !quietForCall())
 
 // ---------- the screen under the marks (markwatch.ts): sampled only while a mark that points is up
 
@@ -1664,6 +1664,7 @@ async function callLook() {
 function callChanged(next: Call | null) {
   call = next
   live.say({ t: "call", call: callSaid(next) })
+  penHeard()
   if (!quietForCall()) return
   // (a call began while it spoke: it stops, and its answer shows)
   const x = exchange

@@ -202,7 +202,7 @@ const SV = await import("../core/service.ts")
 const so = { root: "/srv/vault ite", node: "/usr/bin/node", vault: "/home/alice/My Vault", port: 8800, home }
 const mac = SV.servicePlan("darwin", so), lin = SV.servicePlan("linux", so)
 check("service: a launchd agent on macOS, kept alive, logging to ~/Library/Logs", mac.file === path.join(home, "Library/LaunchAgents/app.vaultite.server.plist") &&
-  mac.text.includes("<string>/srv/vault ite/server.ts</string>") && mac.text.includes("<key>KeepAlive</key><true/>") && mac.text.includes("<key>PORT</key><string>8800</string>"), mac.text)
+  mac.text.includes("<string>/srv/vault ite/server.ts</string>") && mac.text.includes("<key>KeepAlive</key><true/>") && mac.text.includes("<key>ProcessType</key><string>Interactive</string>") && mac.text.includes("<key>PORT</key><string>8800</string>"), mac.text)
 check("service: a systemd user unit on Linux, paths with spaces quoted, linger on", lin.file === path.join(home, ".config/systemd/user/vaultite.service") &&
   lin.text.includes('ExecStart="/usr/bin/node" "/srv/vault ite/server.ts"') && lin.text.includes("WorkingDirectory=/srv/vault ite\n") && !lin.text.includes("homebrew") && lin.text.includes('Environment="VAULTITE_VAULT=/home/alice/My Vault"') &&
   lin.text.includes("WantedBy=default.target") && lin.start.some((c) => c[0] === "loginctl" && c[1] === "enable-linger"), lin)

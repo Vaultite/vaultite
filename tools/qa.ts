@@ -8,6 +8,7 @@ import path from "node:path"
 import { freePort, killTree, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
 import { quietGrants } from "./qa_grants.ts"
+import { asInteractiveJob, throttled } from "./qa_job.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
 import { MOVED } from "../core/migrations.ts"
 import { ANCHOR } from "../core/sandbox.ts"
@@ -67,6 +68,13 @@ if (names.some(desktop) && process.platform === "linux" && !process.env.DISPLAY 
   const r = spawnSync("xvfb-run", ["-a", process.execPath, ...process.argv.slice(1)], { stdio: "inherit" })
   if (r.error) console.error("qa: the desktop scripts need a display, and there's none (DISPLAY) nor xvfb-run (apt install xvfb)")
   process.exit(r.status ?? 1)
+}
+// On a Mac, from a background job, the run again as an interactive one (tools/qa_job.ts)
+if (process.platform === "darwin" && !process.env.VAULTITE_QA_JOB && await throttled()) {
+  console.log("qa: this Mac holds back this job's timers (a background launchd job): running as an interactive one")
+  const code = await asInteractiveJob(process.argv.slice(1))
+  if (code !== null) process.exit(code)
+  console.log("qa: launchd wouldn't take the job (no GUI session?): running here, motion checks may fail")
 }
 
 

@@ -8,6 +8,9 @@ import path from "node:path"
 import { runtimeDir } from "../../core/runtime.ts"
 import { PROTOCOL } from "../../plugins/core/terminal/termd/protocol.ts"
 
+// (servers and apps under test, from every checkout and copy: Node's compile cache in the shared temp folder is never
+// pruned, and filled a Linux /tmp's quota till Xvfb couldn't start)
+process.env.NODE_DISABLE_COMPILE_CACHE ??= "1"
 // (a test's git, run from a hook or `git bisect run`, would otherwise reach the repo running it)
 for (const k of Object.keys(process.env)) if (/^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|NAMESPACE|PREFIX)$/.test(k)) delete process.env[k]
 

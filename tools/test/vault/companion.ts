@@ -144,6 +144,8 @@ export default async ($: VaultTest) => {
   }
 
   await api("PATCH", "config/plugin/companion", { mode: "quiet" })
+  // (asks earlier blocks left waiting, as their Talk key's session took them or not: handed out first, not this check's)
+  await api("POST", "ops/companion.next", { timeout: 0 })
   check("companion: quiet hears asks, not what the user writes", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
     c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "what's this?" })?.kind === "ask")
   let [st, r] = await api("POST", "ops/companion.next", { timeout: 0 })
