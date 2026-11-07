@@ -470,14 +470,17 @@ export default async ($: VaultTest) => {
         st2 === 200 && b2.state === "working" && b2.title === "Summary on Today" && b2.link === "view:terminal/resume-claude-sess-tidy" && resumed?.resume === "sess-tidy" &&
         resumed?.prompt === "Yes, add it" && !!(await waitFor(() => runs("resume-claude-sess-tidy"), 5000, 100)), [st2, b2, resumed])
       // (its conversation resumed under another id, an account's or a pin's: the job follows that terminal, and its end)
+      // (no tidy here: it would close the terminal followed before it's read)
+      Wk.tidyAfter(120_000)
       await api("DELETE", "terminals/resume-claude-sess-tidy")
       const rested = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r.exited && r }, 15000, 200)
+      const since = rested ? rested.at : 0
       await api("POST", "terminals/resume-claude_personal-sess-tidy")
-      const followed = await waitFor(async () => { const r = await job(b.id); return r.terminal === "resume-claude_personal-sess-tidy" && r.state === "working" && r }, 10000, 200)
+      const followed = await waitFor(async () => { const r = await job(b.id); return r.terminal === "resume-claude_personal-sess-tidy" && !r.exited && r.log.some((x: Any) => x.ev === "working" && x.t >= since) && r }, 15000, 200)
       await api("DELETE", "terminals/resume-claude_personal-sess-tidy")
-      const after = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r.terminal === "resume-claude-sess-tidy" && r }, 15000, 200)
+      const after = await waitFor(async () => { const r = await job(b.id); return r.state === "done" && r.exited && r.terminal === "resume-claude-sess-tidy" && r }, 15000, 200)
       check("jobs: its own terminal gone, it follows another terminal resuming its conversation (another account's id), and that one's end ends it",
-        !!rested && !!followed && !!after, [rested, followed, after])
+        !!rested && !!followed && !!after, [rested, followed, after, await job(b.id)].map((r: Any) => r && { state: r.state, terminal: r.terminal, exited: r.exited, log: r.log.slice(-4) }))
     } finally {
       Wk.tidyAfter(120_000)
       Object.assign(cc, was)
