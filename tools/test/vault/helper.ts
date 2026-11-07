@@ -418,6 +418,40 @@ export default async ($: VaultTest) => {
     check("press log: a press's steps in order with their time from its start, ended once, a step after its end marked late",
       lines.map((l) => l.ev).join() === "down,stt,up,end,stt-end" && lines[2].ms === 940 && lines[3].outcome === "missed" && lines[4].late === true && p.ended() && lines.every((l) => l.press === p.id && l.kind === "talk"), lines)
     check("press log: a day a file, two weeks kept", fs.existsSync(path.join(dir, "talk-2026-11-05.jsonl")) && fs.existsSync(path.join(dir, "talk-2026-11-01.jsonl")) && !fs.existsSync(path.join(dir, "talk-2026-10-01.jsonl")))
+    // Each dictation's words, kept on this Mac (electron/dictationkeep.ts): as they settle, where they went, a day a file.
+    const { dictationKeep } = await import("../../../electron/dictationkeep.ts")
+    const kdir = fs.mkdtempSync(path.join(os.tmpdir(), "vau-dictations-"))
+    fs.writeFileSync(path.join(kdir, "dictations-2026-09-30.jsonl"), `${JSON.stringify({ t: 1, id: "d-old", ev: "start", where: { kind: "note" } })}\n`)
+    fs.writeFileSync(path.join(kdir, "dictations-2026-10-10.jsonl"), `${JSON.stringify({ t: new Date(2026, 9, 10).getTime(), id: "d-kept", ev: "start", where: { kind: "field", name: "Ask" } })}\n${JSON.stringify({ t: new Date(2026, 9, 10).getTime(), id: "d-kept", ev: "words", text: "Kept a month", in: true })}\n`)
+    const keep = dictationKeep(() => kdir, () => t)
+    const inNote = keep.start({ kind: "note", path: "Shopping.md" })
+    inNote.words("Buy milk", true); t += 10; inNote.words("and brioche.", true); inNote.end("stop")
+    t += 1000
+    const roamed = keep.start({ kind: "app", name: "Mail", bundle: "com.apple.mail" })
+    roamed.words("Dear Alice,", false); roamed.end("stop"); roamed.landed({ to: "front", name: "Mail", text: "Dear Alice," })
+    t += 1000
+    const copied = keep.start({ kind: "app" }); copied.words("Call Lighthouse back", false); copied.end("stop"); copied.landed({ to: "clipboard", text: "Call Lighthouse back", inbox: true })
+    t += 1000
+    const closed = keep.start({ kind: "app", name: "Notes" }); closed.words("The first part.", false); t += 4000; closed.pending("And what was still being said")
+    t += 1000
+    const cancelled = keep.start({ kind: "app", name: "Slack" }); cancelled.words("Never mind", false); cancelled.end("cancel")
+    t += 1000
+    const moved = keep.start({ kind: "note", path: "A.md" }); moved.end("moved")
+    const silent = keep.start({ kind: "field" }); silent.end("stop")
+    const all = keep.list().items, by = (id: string) => all.find((x) => x.id === id)
+    check("dictations: a window's words, typed in as they settle, are one dictation into its note", by(inNote.id)?.text === "Buy milk and brioche." && by(inNote.id)?.landing === "in" && by(inNote.id)?.where.path === "Shopping.md", by(inNote.id))
+    check("dictations: the helper's says where they landed (an app, the clipboard and the inbox)", by(roamed.id)?.landing === "front" && by(roamed.id)?.where.name === "Mail" && by(copied.id)?.landing === "clipboard" && by(copied.id)?.inbox === true, [by(roamed.id), by(copied.id)])
+    check("dictations: words never landed are kept, what was still being heard too, still listening while its session is", by(closed.id)?.landing === "live" && by(closed.id)?.text === "The first part. And what was still being said", by(closed.id))
+    const later = dictationKeep(() => kdir, () => t).list().items.find((x) => x.id === closed.id)
+    check("dictations: the app closed before they landed: kept, marked so", later?.landing === "lost" && later.why === "closed", later)
+    check("dictations: cancelled ones are kept and marked; none with no words; newest first", by(cancelled.id)?.landing === "cancelled" && !by(moved.id) && !by(silent.id) && all[0].id === cancelled.id && all.at(-1)!.id === "d-kept", all.map((x) => x.id))
+    check("dictations: 30 days kept, older days' files gone", !fs.existsSync(path.join(kdir, "dictations-2026-09-30.jsonl")) && !!by("d-kept"))
+    const found = keep.list({ q: "LIGHTHÖUSE" }).items, mail = keep.list({ q: "mail dear" }).items
+    check("dictations: search finds every word, any case or accent, in the words or where they went", found.length === 1 && found[0].id === copied.id && mail.length === 1 && mail[0].id === roamed.id, [found, mail])
+    keep.forget(copied.id)
+    check("dictations: one forgotten is gone, the rest kept", !keep.list().items.some((x) => x.id === copied.id) && keep.list().total === all.length - 1)
+    keep.clear()
+    check("dictations: cleared, nothing's left", keep.list().total === 0 && !fs.readdirSync(kdir).length)
     // A Talk-key press's machine (electron/pressmachine.ts): its table only, each move logged, a stuck phase told.
     const { pressMachine } = await import("../../../electron/pressmachine.ts")
     const moves: string[] = [], stuck: string[] = []

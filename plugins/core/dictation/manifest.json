@@ -66,6 +66,13 @@
       "label": "Microphone",
       "description": "auto: the system's input, but the built-in (or a wired) mic while Bluetooth headphones play, as their own mic would drop them to call quality; default: always the system's input; builtin: the Mac's own; or a mic's name (the desktop app lists this Mac's)"
     },
+    "history": {
+      "local": true,
+      "type": "boolean",
+      "default": true,
+      "label": "Keep dictations",
+      "description": "each dictation's words, kept about 30 days on this Mac only (the app's data, never the vault or another machine) for the Dictations list, landed or not"
+    },
     "keep_audio": {
       "local": true,
       "type": "boolean",

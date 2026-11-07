@@ -1,6 +1,6 @@
 // Soniox's key is this machine's (data/config.json, `dictation.soniox`), never the vault's: the desktop app asks for it
 // to dictate (electron/dictation.ts) and for the companion's voice (companion/voice.ts), and streams to Soniox itself.
-import { OpError, Plugin } from "../../../core/plugins.ts"
+import { inDesktop, OpError, Plugin } from "../../../core/plugins.ts"
 import { Kind } from "../../../core/vault.ts"
 import { addEntry, type Entry, hintOf, readDictionary, readEntries, removeEntry } from "./words.ts"
 
@@ -58,7 +58,7 @@ plugin.route("GET", "dictation/cloud", async (req) => {
   const s = plugin.settings()
   const engine = s.engine ?? "auto"
   if (plugin.isOff()) return {}
-  const expect = { terms: terms(), replacements: replacements() }
+  const expect = { terms: terms(), replacements: replacements(), keep: s.history !== false }
   if (engine !== "auto" && engine !== "soniox") return expect
   const key = keyHere()
   if (!key) return engine === "soniox" ? { why: `No Soniox key on this machine (${SET_KEY})`, ...expect } : expect
@@ -190,4 +190,104 @@ plugin.op({
     `Replaced as heard: ${r.replacements.map(([s, w]) => `${s} → ${w}`).join(", ")}`,
     `Expected (${r.expected.length}): ${r.expected.join(", ")}`,
   ].join("\n"),
+})
+
+// ---------- the Dictations list: what the desktop app on this machine kept (electron/dictationkeep.ts, never the vault),
+// with what was said to the companion (its own log, the service voice:asks)
+
+/** How it ended up, as electron/dictationkeep.ts says. */
+type Landing = "in" | "front" | "origin" | "clipboard" | "cancelled" | "lost" | "live"
+export type DictationItem = { id: string; t: number; text: string; kind: "dictation" | "companion"
+  where: { kind: "note" | "terminal" | "field" | "app" | "companion"; path?: string; name?: string; bundle?: string }
+  landing?: Landing; inbox?: boolean; why?: string
+  /** A companion ask's answer, and the companion's name. */
+  said?: string; who?: string }
+const loose = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()
+const OWNER = "Your dictations"
+
+plugin.op({
+  id: "dictation.history",
+  cli: "dictation history",
+  mcp: false,
+  owner: OWNER,
+  summary: "What the user dictated lately, newest first: each dictation's words, where they went (a note, a terminal, a field, another app) or that they never landed, and what they said to the companion.",
+  help: `Kept about 30 days by the desktop app on this machine (its app data, never the vault or another machine), unless
+Keep dictations is off (the setting \`history\`). Talk key asks come from the companion's own log. \`here\` false: no Mac app
+serves this vault here, so only the companion's asks show.
+
+  vau dictation history
+  vau dictation history --q "milk" --limit 20`,
+  kind: "read",
+  lock: false,
+  params: {
+    q: { type: "string", description: "only those whose words (or where they went) have every word of this, any case or accent" },
+    limit: { type: "number", description: "how many, newest first (default 200)" },
+    companion: { type: "boolean", description: "false: leave out what was said to the companion" },
+  },
+  run: async (p) => {
+    const q = typeof p.q === "string" ? p.q.trim().slice(0, 200) : "", limit = Math.max(1, Math.min(1000, Number(p.limit) || 200))
+    // (only this machine's app: another machine's dictations stay there)
+    const got = (inDesktop() ? await plugin.desktop("dictations:list", { q, limit }).catch(() => null) : null) as { items?: DictationItem[]; total?: number; here?: boolean } | null
+    const words = loose(q).split(/\s+/).filter(Boolean)
+    const asks = p.companion === false ? [] : (await plugin.ask<{ t: number; text: string; where: string; said: string; who?: string }[]>("voice:asks", [], 30))
+      .filter((a) => { const hay = loose(`${a.text} ${a.where}`); return words.every((w) => hay.includes(w)) })
+      .map((a): DictationItem => ({ id: `c-${a.t}`, t: a.t, text: a.text, kind: "companion", where: { kind: "companion", ...(a.where ? { name: a.where } : {}) }, ...(a.said ? { said: a.said } : {}), ...(a.who ? { who: a.who } : {}) }))
+    const mine = (got?.items ?? []).map((x) => ({ ...x, kind: "dictation" as const }))
+    const items = [...mine, ...asks].sort((a, b) => b.t - a.t).slice(0, limit)
+    return { here: got?.here === true, keep: plugin.settings().history !== false, items, total: (got?.total ?? 0) + asks.length }
+  },
+  text: (r: { here: boolean; keep: boolean; items: DictationItem[] }) => [
+    !r.here ? "Dictations are kept on each Mac, by its Vaultite app: none serves this vault here." : !r.keep ? "Keep dictations is off: new ones aren't kept." : "",
+    ...r.items.map((x) => `${new Date(x.t).toISOString().slice(0, 16).replace("T", " ")} ${x.kind === "companion" ? "to the companion" : landingSaid(x)}: ${x.text.replace(/\s+/g, " ").slice(0, 300)}`),
+    r.items.length ? "" : "Nothing dictated lately.",
+  ].filter(Boolean).join("\n"),
+})
+
+/** Where a dictation went, in a few words. */
+export function landingSaid(x: Pick<DictationItem, "where" | "landing" | "inbox" | "why">) {
+  const w = x.where, at = w.kind === "note" ? (w.path ?? "a note").replace(/\.md$/, "") : w.kind === "terminal" ? (w.name ?? "a terminal") : w.kind === "field" ? (w.name ?? "a field") : (w.name ?? "another app")
+  if (x.landing === "clipboard") return x.inbox ? "copied, and in the inbox" : "copied"
+  if (x.landing === "cancelled") return `cancelled, never typed in ${at}`
+  if (x.landing === "lost") return `never landed (${x.why === "closed" ? "the app closed" : x.why === "failed" ? "dictation failed" : "nowhere to type"})`
+  if (x.landing === "live") return `listening, into ${at}`
+  return `into ${at}`
+}
+
+plugin.op({
+  id: "dictation.forget",
+  cli: "dictation forget",
+  mcp: false,
+  owner: OWNER,
+  summary: "Take one dictation out of the Dictations list (by its id, dictation history); the companion's asks stay in its log.",
+  kind: "write",
+  lock: false,
+  params: { id: { type: "string", description: "the dictation's id" } },
+  args: ["id"],
+  run: async (p) => {
+    const id = typeof p.id === "string" ? p.id : ""
+    if (!/^d-[\w-]+$/.test(id)) throw new OpError("say which dictation with `id` (a d-… one, from dictation history)")
+    if (!inDesktop()) throw new OpError("no Mac app serves this vault here: dictations are kept on each Mac", 409)
+    await plugin.desktop("dictations:forget", { id })
+    return { forgotten: id }
+  },
+  text: () => "Took it out of the Dictations list.",
+  did: () => ({ action: "edit", text: "Took a dictation out of the list" }),
+})
+
+plugin.op({
+  id: "dictation.clear",
+  cli: "dictation clear",
+  mcp: false,
+  owner: OWNER,
+  summary: "Clear the Dictations list on this machine: every dictation's words the desktop app kept go (the companion's asks stay in its log).",
+  kind: "write",
+  lock: false,
+  params: {},
+  run: async () => {
+    const r = inDesktop() ? await plugin.desktop("dictations:clear").catch(() => null) : null
+    if (!r) throw new OpError("no Mac app serves this vault here: dictations are kept on each Mac, so clear them there", 409)
+    return { cleared: true }
+  },
+  text: () => "Cleared the dictations kept on this Mac.",
+  did: () => ({ action: "settings", text: "Cleared the Dictations list" }),
 })

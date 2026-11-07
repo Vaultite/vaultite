@@ -8,6 +8,7 @@ import type { AppWindow } from "./appwindow.ts"
 import { dictationSwift, parakeetModel } from "./dictation-build.ts"
 import { replacer } from "../core/dictationtext.ts"
 import { pickMic, type Devices, type MicPick } from "./miclogic.ts"
+import { dictationKeep, type Keeping, type Where } from "./dictationkeep.ts"
 
 /** Shipped built in the app (tools/build_helpers.ts), else built the first time into userData. */
 let helper: ChildProcess | null = null
@@ -57,6 +58,8 @@ function start(): Promise<ChildProcess> {
       heldMic = ""
       for (const done of checked.splice(0)) done({ apple: false, parakeet: false })
       if (owner) tell({ type: "error", code: "helper", message: "Dictation stopped unexpectedly" }, { type: "end", reason: "error" })
+      keeping?.end("error")
+      keeping = null
       owner = null
     })
     helper = child
@@ -93,7 +96,7 @@ function sinkOf(win: AppWindow) {
   if (!s) {
     const sink: DictationSink = { win, tell: (m) => { if (!win.isDestroyed()) win.webContents.send("vaultite:dictation", m) } }
     sinks.set(win, sink)
-    win.on("closed", () => { if (owner === sink) { send({ cmd: "cancel" }); owner = null } })
+    win.on("closed", () => { if (owner === sink) { send({ cmd: "cancel" }); keeping?.end("closed"); keeping = null; owner = null } })
     s = sink
   }
   return s
@@ -112,7 +115,15 @@ function heard(m: Record<string, unknown>) {
   if (m.type === "ready" || (typeof m.id === "number" && m.id !== sid)) return
   if (m.type === "audio") return void owner?.audio?.(Buffer.from(String(m.data ?? ""), "base64"))
   tell(m)
+  if (keeping && (m.type === "final" || m.type === "pending")) {
+    const text = String(swapped(m).text ?? "")
+    // (a window's words are typed in as they settle; the helper's land when it stops)
+    if (m.type === "final") keeping.words(text, !!owner?.win && !owner.win.isDestroyed())
+    else keeping.pending(text)
+  }
   if (m.type === "end") {
+    keeping?.end(String(m.reason ?? ""))
+    keeping = null
     owner = null
     if (idle) clearTimeout(idle)
     rest()
@@ -138,20 +149,21 @@ export const setDictationServer = (f: typeof serverOf) => { serverOf = f }
 
 type Cloud = { url: string; key: string; model?: string; languages: string[] }
 type Words = { terms: string[]; replacements: [string, string][] }
-/** What the vault's server last said to expect, for the realtime voice (its instructions name them). */
-let lastWords: Words = { terms: [], replacements: [] }
+/** What the vault's server last said to expect, for the realtime voice (its instructions name them); `keep`: the
+ *  setting Keep dictations. */
+let lastWords: Words & { keep?: boolean } = { terms: [], replacements: [] }
 export const expectedWords = () => lastWords
 /** Soniox's key when the vault's server says it hears this one (plugins/core/dictation/plugin.ts), else why not; and
  *  the words to expect and what's written for what's said (the dictionary's, Vaultite's, the vault's names). */
-async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?: Cloud; why?: string } & Words> {
+async function cloudFor(sink: DictationSink, language: string): Promise<{ cloud?: Cloud; why?: string; keep?: boolean } & Words> {
   const port = serverOf(sink.win)
   if (!port) return lastWords
   try {
     const r = await fetch(`http://127.0.0.1:${port}/api/dictation/cloud`, { headers: { "X-Vaultite-Client": "app/desktop" }, signal: AbortSignal.timeout(2000) })
-    const c = (r.ok ? await r.json() : {}) as Partial<Cloud> & { why?: string; terms?: unknown; replacements?: unknown }
+    const c = (r.ok ? await r.json() : {}) as Partial<Cloud> & { why?: string; terms?: unknown; replacements?: unknown; keep?: unknown }
     const terms = Array.isArray(c.terms) ? c.terms.filter((t): t is string => typeof t === "string") : []
     const replacements = Array.isArray(c.replacements) ? c.replacements.filter((x): x is [string, string] => Array.isArray(x) && typeof x[0] === "string" && typeof x[1] === "string") : []
-    if (r.ok) lastWords = { terms, replacements }
+    if (r.ok) lastWords = { terms, replacements, keep: c.keep !== false }
     const words = lastWords
     if (!c.url || !c.key) return { why: c.why ?? (r.ok ? undefined : `Vaultite's server answered ${r.status}`), ...words }
     // (no languages set: the one asked for and the Mac's, as hints; Soniox switches between them on its own)
@@ -170,7 +182,9 @@ export const onDictating = (fn: () => void) => { starts.add(fn); return () => st
 
 export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; keep?: unknown; tap?: boolean
   /** The setting `microphone` (miclogic.ts); `hold`: a Bluetooth mic stays open after, till releaseMic (a Talk key's). */
-  microphone?: unknown; hold?: boolean }
+  microphone?: unknown; hold?: boolean
+  /** Where its words go, for the Dictations list (dictationkeep.ts); false: not kept (a Talk key's ask: the companion keeps it). */
+  where?: unknown }
 /** The devices: as told, else the first list a fresh helper tells (a moment at most). */
 async function listedDevices(ms = 400) {
   if (devices || !helper) return devices
@@ -194,7 +208,7 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
   const language = typeof opts.language === "string" ? opts.language : ""
   // (a copy a script drives hears a file, never the microphone: it can't take the user's)
   if (process.env.VAULTITE_QUIET && !process.env.VAULTITE_DICTATION_FILE && !TEXT) return { ok: false, code: "quiet" }
-  const [allowed, { cloud, why, terms, replacements }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE || TEXT ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
+  const [allowed, { cloud, why, terms, replacements, keep }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE || TEXT ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
   if (!allowed) return { ok: false, code: "permission" }
   for (const fn of starts) fn()
   let model = engine === "parakeet" ? parakeetModel() : null
@@ -207,8 +221,10 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
   if (idle) { clearTimeout(idle); idle = null }
   const file = !!(process.env.VAULTITE_QUIET && (process.env.VAULTITE_DICTATION_FILE || TEXT))
   const mic = file ? undefined : pickMic(opts.microphone, await listedDevices())
-  if (owner && owner !== sink) tell({ type: "end", reason: "elsewhere" })
+  if (owner && owner !== sink) { tell({ type: "end", reason: "elsewhere" }); keeping?.end("elsewhere") }
   owner = sink
+  const where = whereOf(opts.where)
+  keeping = keep !== false && where ? keepFor(sink, where) : null
   swap = replacer(replacements.map(([s, w]) => `${s}: ${w}`))
   const silence = Number(opts.silence)
   send({ cmd: "start", id: ++sid, engine, language, model: model ?? "", silence: Number.isFinite(silence) ? silence : 0, ...(cloud ? { cloud } : {}), ...(opts.tap ? { tap: true } : {}),
@@ -230,7 +246,13 @@ export const stopFor = (sink: DictationSink, cancel = false) => { if (owner === 
 /** Hands-free: its session stops only when told, whatever the setting `silence`. */
 export const freeFor = (sink: DictationSink) => { if (owner === sink) send({ cmd: "free" }) }
 /** The session under way goes on for `to`, with what it hears from now. */
-export const handOver = (from: DictationSink, to: DictationSink) => { if (owner !== from) return false; owner = to; return true }
+export const handOver = (from: DictationSink, to: DictationSink) => {
+  if (owner !== from) return false
+  owner = to
+  // (what it typed in the window is that one's; what it hears from now, the helper's, landing where it says)
+  if (keeping) { keeping.end("moved"); keeping = keepFor(to, { kind: "app" }) }
+  return true
+}
 /** `pending`: its words not settled yet; `held`: its key is down; `free`: hands-free; `start`: none under way, there's nowhere to dictate in the window. */
 export type Roam = { pending?: string; held?: boolean; free?: boolean; start?: boolean }
 /** Who takes a window's session when it leaves it (the menu-bar helper), and stops one it has. */
@@ -248,6 +270,33 @@ export const dictationHandlers: Record<string, (win: AppWindow, ...args: unknown
   "dictation:stop": (win) => stopFor(sinkOf(win)),
   "dictation:cancel": (win) => stopFor(sinkOf(win), true),
   "dictation:microphones": (win, watch) => import("./mics.ts").then((m) => m.microphones(win, watch)),
+}
+
+// ---------- the Dictations list: each dictation's words, kept on this Mac (dictationkeep.ts)
+
+const kept = dictationKeep(() => path.join(app.getPath("userData"), "dictations"))
+/** The session under way's keeping, and each sink's last (the helper says where its words landed after the end). */
+let keeping: Keeping | null = null
+const keptOf = new WeakMap<DictationSink, Keeping>()
+const keepFor = (sink: DictationSink, where: Where) => { const k = kept.start(where); keptOf.set(sink, k); return k }
+const KINDS = new Set(["note", "terminal", "field", "app"])
+const clip = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 200) : undefined)
+function whereOf(w: unknown): Where | null {
+  if (!w || typeof w !== "object") return null
+  const o = w as Record<string, unknown>
+  if (!KINDS.has(String(o.kind))) return null
+  const path = clip(o.path), name = clip(o.name), bundle = clip(o.bundle)
+  return { kind: o.kind as Where["kind"], ...(path ? { path } : {}), ...(name ? { name } : {}), ...(bundle ? { bundle } : {}) }
+}
+/** Where the helper put `sink`'s words once it stopped (dictationroam.ts' `land`), with the words as they landed. */
+export const keptLanded = (sink: DictationSink, o: { to: string; name?: string; text?: string; inbox?: boolean }) => keptOf.get(sink)?.landed(o)
+/** The server's calls (main.ts: `dictations:*`): the list, one forgotten, all cleared. */
+export function dictationsCall(name: string, args: unknown[]) {
+  const o = (args[0] && typeof args[0] === "object" ? args[0] : {}) as { q?: unknown; limit?: unknown; id?: unknown }
+  if (name === "dictations:list") return { ...kept.list({ q: typeof o.q === "string" ? o.q.slice(0, 200) : "", limit: typeof o.limit === "number" ? o.limit : undefined }), here: true }
+  if (name === "dictations:forget") { if (typeof o.id === "string") kept.forget(o.id); return { ok: true } }
+  if (name === "dictations:clear") { kept.clear(); return { ok: true } }
+  throw new Error(`no dictations call ${name}`)
 }
 
 export function stopDictation() {

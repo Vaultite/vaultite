@@ -4092,6 +4092,15 @@ recognizer, the key's up and down, its end), as the menu-bar helper logged them 
   text: (r) => [`${r.day}: ${r.exchanges.length} ${r.exchanges.length === 1 ? "ask" : "asks"}.`, ...r.exchanges.map((e: Exchange) => `${new Date(e.t).toTimeString().slice(0, 5)} ${e.kind === "shown" ? "proof played" : e.voice ? "said" : "asked"}${e.where ? ` (${e.where})` : ""}: ${e.text.replace(/\s+/g, " ").slice(0, 160)}${e.said.length ? `\n  -> ${e.said.join(" ").replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
     ...(r.spent.length ? [`Used: ${r.spent.map((x: Spent) => `${x.service} ${x.uses}${x.seconds ? `, ${Math.round(x.seconds)} s` : ""}${x.cost ? `, $${x.cost.toFixed(3)}` : ""}`).join("; ")}`] : [])].join("\n"),
 })
+/** What the user said to it aloud in the last `days` days (a Talk key's asks), newest first, with its answer: the
+ *  Dictations list shows them beside dictation's, from this log, never copied. */
+plugin.provide("voice:asks", (days: number) => {
+  const name = ownName()
+  return Array.from({ length: Math.max(1, Math.min(60, days)) }, (_, i) => localDate(Date.now() - i * 86_400_000))
+    .flatMap((day) => exchanges(log.read(day), acts.read(day), [], name).filter((e) => e.voice && e.kind !== "shown" && e.text.trim()).reverse())
+    .map((e) => ({ t: e.t, text: e.text, where: e.where, said: e.said.join(" ").slice(0, 600), who: name }))
+})
+
 /** A Talk key ask's picture of the screen, as the helper wrote it (userData/screens/display-*.png): no other file. */
 plugin.op({
   id: "companion.press-media",

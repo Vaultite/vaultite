@@ -16,6 +16,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A job's proof is a demo video**: its worker records its change playing on its own copy (headless, silent, its
   steps captioned and marked), so Show me plays it by the notch, narrated, even before it's merged or when it ran on
   another machine; the same video is in its report. "Show me it live" still plays the tour on your screen.
+- **Dictations keeps what you said**: every dictation's words, newest first, with where they went (a note, a
+  terminal, a field, another app) and the ones that never landed (the app closed, cancelled, only copied), beside your
+  asks to the companion. Search them, Copy, or Insert again where you were typing. Kept 30 days on this Mac only, never
+  in the vault; Keep dictations turns it off and Clear dictations empties it (Show dictations, Settings > Dictation).
 - **Questions over a job's page get a quick answer**: live editing sends only changes ("make this blue") and unclear
   asks to the job; a plain question ("what does this button do?") goes to the companion, which knows what the job did
   there. A job taking a long run of edits starts fresh with a summary instead of slowing down or compacting mid-ask.

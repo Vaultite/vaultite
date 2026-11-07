@@ -178,6 +178,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dictationSource`: The source of dictation here, or null: a browser, a phone, an app build from before it.
 - `DictationSource`
 - `DictationTarget`: Where the words go: a note's editor or a terminal (each shows the pending words itself), or a field.
+- `DictationWhere`: Where a session's words go, as the Dictations list names it (electron/dictationkeep.ts).
 - `DiffLine`: Kept, only in the second text (add), only in the first (del), or `n` unchanged lines folded away (gap).
 - `diffLines(a, b)`: How to turn a into b (textedit's opcodes), never a wrong diff at any size.
 - `DiffRows({ lines })`: The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls.

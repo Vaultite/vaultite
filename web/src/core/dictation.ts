@@ -39,7 +39,7 @@ export type DictationEngines = { apple: boolean; parakeet: boolean; locale?: str
 export type DictationSource = {
   engines: (language: string) => Promise<DictationEngines>
   /** `keep`: keep the audio for replaying it (electron/dictation.ts says where; it asks the server what words to expect). */
-  start: (o: { engine: DictationEngine; language: string; silence: number; keep?: boolean; microphone?: string }) => Promise<{ ok: boolean; code?: string; message?: string }>
+  start: (o: { engine: DictationEngine; language: string; silence: number; keep?: boolean; microphone?: string; where?: DictationWhere }) => Promise<{ ok: boolean; code?: string; message?: string }>
   stop: () => Promise<unknown>
   cancel: () => Promise<unknown>
   on: (fn: (e: DictationEvent) => void) => () => void
@@ -61,6 +61,9 @@ export type DictationSource = {
   /** The helper asking what's at x, y of this window (a Talk key's ask over it): the answer goes with the ask. */
   placeAt?: (fn: (x: number, y: number) => Record<string, unknown> | null) => () => void
 }
+
+/** Where a session's words go, as the Dictations list names it (electron/dictationkeep.ts). */
+export type DictationWhere = { kind: "note" | "terminal" | "field"; path?: string; name?: string }
 
 /** Where the words go: a note's editor or a terminal (each shows the pending words itself), or a field. */
 export type DictationTarget = {
@@ -139,7 +142,9 @@ export async function startDictation(target: DictationTarget, o: { engine: Dicta
   /** `keep`: keep the audio. */
   keep?: boolean
   /** The setting `microphone`: auto, default, builtin or a device's name. */
-  microphone?: string },
+  microphone?: string
+  /** Where its words go, for the Dictations list. */
+  where?: DictationWhere },
   failed: (code: string, message?: string) => void) {
   const src = dictationSource
   if (!src) return failed("unsupported")
@@ -154,7 +159,7 @@ export async function startDictation(target: DictationTarget, o: { engine: Dicta
   addEventListener("focusin", moved)
   indicator.show()
   tell({ type: "start" })
-  const r = await src.start({ engine: o.engine, language: o.language, silence: o.silence, keep: !!o.keep, ...(o.microphone ? { microphone: o.microphone } : {}) }).catch((e) => ({ ok: false, code: "helper", message: String(e) }))
+  const r = await src.start({ engine: o.engine, language: o.language, silence: o.silence, keep: !!o.keep, ...(o.microphone ? { microphone: o.microphone } : {}), ...(o.where ? { where: o.where } : {}) }).catch((e) => ({ ok: false, code: "helper", message: String(e) }))
   if (!r.ok && session === mine) { finish(); failed(r.code ?? "helper", r.message) }
 }
 

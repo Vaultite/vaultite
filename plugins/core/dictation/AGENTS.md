@@ -14,10 +14,17 @@ to type) moves the session to a box under the menu bar, where the words show as 
 the field in front, else the one it began in, else on the clipboard and in the inbox (`from: Dictation`; only the
 clipboard when a private app is in front), so said words are never lost. A password field hears nothing. Without the
 helper (Vaultite Dev), leaving the window stops it. Each session's way is in `talk/dictation-<day>.jsonl`, no words.
+- Dictations (`view:dictations`, Show dictations, Settings > Dictation): each dictation's words, kept by the Mac app in its
+  own data (`dictations/dictations-<day>.jsonl` in userData), never the vault or another machine, about 30 days, written
+  as they settle: where they went (a note, a terminal, a field, another app), or that they never landed (the app
+  closed, cancelled, only copied). A Talk key's asks show beside them from the companion's own log. `vau dictation
+  history [--q words]`, `forget <id>`, `clear` (not over MCP); `history: false` (this Mac's) keeps none. A server with
+  no Mac app of its own (a phone's, the web's) has only the companion's asks.
 - Settings (`.vaultite/plugins/dictation/data.json`): `engine` `auto` | `soniox` | `apple` | `parakeet`; `language` (Apple's,
   `pt-BR`; the Mac's when left out); `languages` (Soniox's hints, `[en, pt]`; the language and the Mac's when left out); `silence` (seconds without speech before a tapped dictation stops; 0, the default,
   never);
   `keep_audio` (this Mac's), the last dictation's audio kept in the app's logs folder as `dictation-last.wav`;
+  `history` (this Mac's, on by default): keep each dictation's words for the Dictations list;
   `microphone` (this Mac's): `auto` (the default), `default`, `builtin` or a device's name, below.
 - The dictionary, Dictionary.md (`type: dictionary`): a "- word" line each (Vorssaint), or "- said: written" for what
   dictation writes instead (`- Olympicos: Olimpicos`), replaced as it's heard. Every recognizer expects its words first,

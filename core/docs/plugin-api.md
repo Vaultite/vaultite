@@ -268,6 +268,7 @@ by its path.
 - `terminal:<…>` (meters, access, ask, waits, state, ended, agent-waits, screen, locate, runs, agent-env, wait, of, of-pids, info): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
 - `versions:icloud` (sync-conflicts)
+- `voice:asks` (companion): What the user said to it aloud in the last `days` days (a Talk key's asks), newest first, with its answer: the Dictations list shows them beside dictation's, from this log, never copied.
 - `watches:read` (watches): A source read now (note:, terminal:, site: in the user's tab), as the companion's follows read panes; null: none such.
 - `watches:changes` (watches): What changed between two reads, in a few lines (a terminal's new output, a page's lines gone and new).
 - `widgets:refresh` (inbox): Another plugin's data the widgets show changed (a routine ticked).

@@ -50,7 +50,7 @@ let sttDrops: boolean | string = false, finishMs = 5
 // (`micBt`: the mic it hears with is a Bluetooth one, held open after; each release of it)
 let micBt = false
 const releases: number[] = []
-mock.module(at("dictation.ts"), { exports: { freeFor() {}, handOver: () => false, onRoam() {}, dictate: async (sink: Sink) => {
+mock.module(at("dictation.ts"), { exports: { freeFor() {}, handOver: () => false, onRoam() {}, keptLanded() {}, dictate: async (sink: Sink) => {
   sink.tell({ type: "start" })
   const drops = sttDrops
   if (drops) setTimeout(() => { if (typeof drops === "string") sink.tell({ type: "final", text: drops }); sink.tell({ type: "error", code: "socket", message: "the connection closed" }); sink.tell({ type: "end", reason: "error" }) }, 60)

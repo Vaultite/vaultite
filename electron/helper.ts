@@ -10,7 +10,7 @@ import { WebSocket } from "ws"
 import { HOLD_MS, TAP_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
 import { joinText } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
-import { dictate, dictating, stopFor, dictationEngines, expectedWords, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
+import { dictate, dictating, keptLanded, stopFor, dictationEngines, expectedWords, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
 import { land, landedSaid } from "./dictationroam.ts"
 import { followField, type Followed } from "./dictationfix.ts"
 import { learnedList, type Teach } from "../plugins/core/dictation/learn.ts"
@@ -1105,8 +1105,10 @@ async function listenFor(o: Pick<Session, "into" | "focus" | "talk" | "of" | "fr
   // (a Talk key's audio is kept a while: a press that went nowhere can be heard again)
   // (an answer said aloud follows a Talk key's: a Bluetooth mic stays open till it's said, holdMic)
   const answered = mine.into === "summon" || !!mine.talk
+  // (the Dictations list keeps a field's words, not a private app's; a Talk key's ask is the companion's to keep)
+  const where = mine.into === "field" && !hidden(mine.focus) ? { kind: "app", ...(mine.focus.name ? { name: mine.focus.name } : {}), ...(mine.focus.bundle ? { bundle: mine.focus.bundle } : {}) } : false
   const r = await dictate(mine.sink, { ...how, silence: s.silence, keep: s.keep_audio === true || mine.into === "summon", ...(tap ? { tap } : {}),
-    microphone: s.microphone, hold: answered })
+    microphone: s.microphone, hold: answered, where })
   if (r.mic) { mine.bluetooth = r.mic.bluetooth; micTold(r.mic) }
   // (the recognizer that hears it: Soniox, or this Mac's and why not Soniox; one failing later logs stt-fallback; the mic
   // and why that one, mic-change should it go mid-press)
@@ -1422,6 +1424,7 @@ async function finish(s: Session, cancelled: boolean) {
     secret: (f) => hidden(f) || hidden(s.focus),
   })
   s.log?.end("landed", { to: to.to, chars: text.length, ...(to.how ? { how: to.how } : {}), ...(to.to === "clipboard" ? { kept: !!to.kept } : {}) })
+  keptLanded(s.sink, { to: to.to, name: to.to === "page" ? "Vaultite" : to.name, text, ...(to.kept ? { inbox: true } : {}) })
   dropOrigin(s)
   const said = landedSaid(to, s.focus.name)
   if (s.failed) hint(`Dictation stopped: ${s.failed}`)

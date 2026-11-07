@@ -234,6 +234,14 @@ check("a Talk key while dictating: the words said so far land, not lost", await 
 await helper((h) => h.heard({ event: "chord", name: "control_option", on: false }))
 await helper((h) => h.heard({ event: "esc" }))
 
+// ---------- the Dictations list (this Mac's, the app's data): each kept, saying where it went; not the Talk key's ask
+await wait(2000)
+const list = await win.evaluate(() => fetch("/api/ops/dictation.history", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.json()))
+const ways = (list.items ?? []).filter((x) => x.kind === "dictation").map((x) => x.landing)
+check("Dictations: the ones that roamed are kept, landed in an app, copied, or typed in a note", list.here === true && ways.includes("front") && ways.includes("clipboard") && ways.includes("in"), { here: list.here, ways })
+check("…an app's, by its name", list.items.some((x) => x.landing === "front" && /Example (Notes|Mail)/.test(x.where?.name ?? "")), list.items.map((x) => x.where))
+check("…nothing heard in a password field", !list.items.some((x) => /password/i.test(x.where?.name ?? "")))
+
 await app.close().catch(() => {})
 fs.rmSync(TMP, { recursive: true, force: true })
 await done()

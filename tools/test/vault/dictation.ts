@@ -35,6 +35,12 @@ export default async ($: VaultTest) => {
     check("dictation: no key, automatic is this Mac's", st === 200 && !c.key && !c.why, c)
     check("dictation: the recognizer is told Vaultite's words, the companion's name and the newest notes' names, not a private one's",
       ["Vaultite", "Claude", "Codex", "Quillfeather"].every((w) => c.terms?.includes(w)) && !c.terms.includes("Hushed thing") && c.terms.length <= 80, c.terms)
+    check("dictation: the app is told to keep each dictation's words (Keep dictations, on by default)", c.keep === true, c)
+    // (the Dictations list: no desktop app serves this vault here, so it says they live on each Mac)
+    const [hs, h] = await api("POST", "ops/dictation.history", {})
+    check("dictation history: no Mac app here, said so, nothing of another machine's", hs === 200 && h.here === false && h.keep === true && Array.isArray(h.items), h)
+    const [cs] = await api("POST", "ops/dictation.clear", {})
+    check("dictation clear: with no Mac app here, refused (they're cleared on the Mac that keeps them)", cs === 409, cs)
 
     // ---------- The dictionary (Dictionary.md): words added, learned from fixes, and told to every recognizer
     fs.mkdirSync(path.join(VAULT, "People"), { recursive: true }); fs.mkdirSync(path.join(VAULT, "Projects"), { recursive: true })
