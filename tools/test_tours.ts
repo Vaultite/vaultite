@@ -1,5 +1,6 @@
 // The companion's Anchor, Condition and Tours, apart from any screen: the language, re-finding a thing after the screen
 // changed, and the player against a pretend screen. node tools/test_tours.ts
+import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { anchorOf, keepAnchor, refind, type Seen } from "../plugins/core/companion/anchor.ts"
 import { check as checkOnce, conditionText, durationOf, type Env, type Input, parseCondition, watch } from "../plugins/core/companion/condition.ts"
 import type { Condition as Check } from "../plugins/core/companion/uimodel.ts"

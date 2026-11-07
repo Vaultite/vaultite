@@ -1,5 +1,6 @@
 // What this branch changed, checked, timing each: build, check, then the tests and QA scripts it reaches (--all: every
 // test and smoke, the done gate). node tools/verify.ts [--base main] [--all] [--dry]
+import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"

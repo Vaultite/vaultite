@@ -1,10 +1,10 @@
 import { spawn, execFileSync } from "node:child_process"
 import fs from "node:fs"
 import http from "node:http"
-import os from "node:os"
 import path from "node:path"
 import { WebSocketServer } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
+import { sharedTmp } from "../../../core/testrun.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, tmp, vault } = $
@@ -120,7 +120,7 @@ async function helper($: VaultTest, tmp: string) {
   if (process.platform !== "darwin") return
   const { dictationSwift } = await import("../../../electron/dictation-build.ts")
   let bin: string
-  try { bin = await dictationSwift.build(path.join(os.tmpdir(), "vaultite-natives", "dictation-test")) } catch (e) { console.log(`  (skipped the helper: ${(e as Error).message})`); return }
+  try { bin = await dictationSwift.build(path.join(sharedTmp(), "vaultite-natives", "dictation-test")) } catch (e) { console.log(`  (skipped the helper: ${(e as Error).message})`); return }
   const audio = path.join(tmp, "two.aiff")
   // (`say -o` writes a file, nothing is played)
   execFileSync("say", ["-o", audio, "Remember to buy milk and bread. [[slnc 1500]] Then call Alice Park about the lighthouse project."])

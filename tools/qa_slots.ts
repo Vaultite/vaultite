@@ -3,8 +3,9 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { sharedTmp } from "../core/testrun.ts"
 
-const DIR = path.join(os.tmpdir(), "vaultite-qa-slots")
+const DIR = path.join(sharedTmp(), "vaultite-qa-slots")
 /** How many at once: VAULTITE_QA_SLOTS, else one per 4 GB of memory. */
 const SLOTS = Number(process.env.VAULTITE_QA_SLOTS) || Math.max(1, Math.floor(os.totalmem() / 2 ** 32))
 

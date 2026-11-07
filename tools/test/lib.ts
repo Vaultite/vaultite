@@ -1,5 +1,6 @@
 // The tests' shared kit: check, skip, sections (timed; one that throws ends there, not the run), the summary, the
 // record of runs (tools/.runs/test-runs.jsonl).
+import "./isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { type ChildProcess, spawn, spawnSync, type SpawnOptions } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"

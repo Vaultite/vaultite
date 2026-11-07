@@ -380,6 +380,9 @@ async function openVault(p: string, file?: string) {
     return open
   }
   if (!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${p} isn't a folder`)
+  // (only a test run's app asks: core/testrun.ts stays out of the app's launch)
+  const own = process.env.VAULTITE_TEST === "1" && (await import("../core/testrun.ts")).refuseOwnVault(p, "the desktop app")
+  if (own) throw new Error(own)
   const v = remember(p)
   // (its server kept by the helper: taken back; an attached one attaches again, for this window)
   const had = kept.get(p)

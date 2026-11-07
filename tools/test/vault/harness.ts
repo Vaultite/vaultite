@@ -3,6 +3,7 @@ import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { check, sleep, standIn, stopTerminals, tempDir, type Any } from "../lib.ts"
+import { forgetMachines } from "../isolate.ts"
 
 export type { Any }
 export type VaultTest = Awaited<ReturnType<typeof vaultHarness>>
@@ -20,8 +21,10 @@ export async function vaultHarness(from?: string) {
   process.on("exit", () => stopTerminals(`x${process.pid}`))
   const tmp = tempDir("vaultite-test-")
   const VAULT = path.join(tmp, "vault")
-  if (from) fs.cpSync(from, VAULT, { recursive: true })
-  else {
+  if (from) {
+    fs.cpSync(from, VAULT, { recursive: true })
+    forgetMachines(VAULT)
+  } else {
     fs.mkdirSync(path.join(VAULT, "People"), { recursive: true })
     fs.writeFileSync(path.join(VAULT, "People", "Alice Park.md"), "---\ntype: person\nrelation: friend\nlocation: Seattle, WA\n---\n\n" +
       "Likes hiking.\n\n## Timeline\n\n- 2026-09-20 · call · 20 min · Caught up\n")

@@ -1,5 +1,6 @@
 // The terminal server's screens, xterm.js' headless terminal (termd's before) against libghostty-vt (vt/vt.ts), on
 // the same made-up output (vtcorpus.ts), in this process: node --expose-gc tools/perf/vt.ts [--quick] [--out file.json]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import fs from "node:fs"
 import { createRequire } from "node:module"
 import { newVt } from "../../plugins/core/terminal/vt/load.ts"

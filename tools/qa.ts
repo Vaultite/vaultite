@@ -1,5 +1,6 @@
 // Every UI QA script (web/qa/*.mjs), each on a fresh sandbox and server, runs kept; exit 1 on any failure (npm run qa).
 // node tools/qa.ts [script...] [--repeat 3] [--jobs 3]; --lint: selectors QA scripts use that no source draws.
+import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import { createRequire } from "node:module"

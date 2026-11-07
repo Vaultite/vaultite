@@ -1,5 +1,6 @@
 // Server benchmark on a made-up vault: boot, each endpoint's time and CPU, the first-load burst, bytes on the wire, refreshes.
 // node tools/perf/server.ts [--scale 1] [--runs 15] [--boots 3] [--only boot] [--out r.json] [--compare b.json] [--root <dir>] [--client none]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

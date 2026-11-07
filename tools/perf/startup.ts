@@ -1,5 +1,6 @@
 // What a launch loads before drawing, against startup.json: the desktop main process's imports, web/dist's eager files.
 // node tools/perf/startup.ts [--ratchet]   (--ratchet: limits lowered to now plus headroom)
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import fs from "node:fs"
 import path from "node:path"
 

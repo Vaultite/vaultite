@@ -9,7 +9,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, freePort, qa, until, wait } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
 
 const { args: [VAULT, SHOTS], browser, check, watch, done } = await qa(import.meta.url)
@@ -32,8 +32,9 @@ await new Promise((ok) => site.listen(0, "127.0.0.1", ok))
 const SITE = `http://127.0.0.1:${site.address().port}/`
 
 // ---------- the always-on server, and the app attached to it; another machine's server, on a copy of the vault ----------
-const PORT = 20000 + Math.floor(Math.random() * 20000)
-const B = `http://127.0.0.1:${PORT}`, F = `http://127.0.0.1:${PORT + 1}`
+// (a free port, never one of the 20000-40000 the desktop app gives its vaults: one taken would be the user's server)
+const PORT = await freePort(), PORT2 = await freePort()
+const B = `http://127.0.0.1:${PORT}`, F = `http://127.0.0.1:${PORT2}`
 const machines = path.join(VAULT, ".vaultite/plugins/machines/data.json")
 fs.mkdirSync(path.dirname(machines), { recursive: true })
 fs.writeFileSync(machines, JSON.stringify({ machines: [{ id: "owner", label: "Owner", url: B }, { id: "laptop", label: "Laptop", url: F }] }))
@@ -172,13 +173,13 @@ await run("phone", { width: 390, height: 844 }, true)
 // Another machine (a laptop) with no browser of its own here: the owner's tabs listed, named, watched and driven through
 // its server; an ask's Inbox row there opens the owner's tab.
 const laptop = testServer({ stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, VAULTITE_VAULT: FVAULT, VAULTITE_LOCAL: path.join(TMP, "laptop-local"), HOST: "127.0.0.1", PORT: String(PORT + 1), VAULTITE_DESKTOP: "", TMPDIR: RUN, XDG_RUNTIME_DIR: RUN } })
+  env: { ...process.env, VAULTITE_VAULT: FVAULT, VAULTITE_LOCAL: path.join(TMP, "laptop-local"), HOST: "127.0.0.1", PORT: String(PORT2), VAULTITE_DESKTOP: "", TMPDIR: RUN, XDG_RUNTIME_DIR: RUN } })
 let fout = ""
 laptop.stdout.on("data", (d) => { fout += d })
 laptop.stderr.on("data", (d) => { fout += d })
 // (its output, if it doesn't come up: CI's run once found nothing on its port, with no word why)
 check("(the other machine's server is up)", await until(() => /vaultite: vault read/.test(fout) || laptop.exitCode !== null, 60000) && laptop.exitCode === null,
-  { exit: laptop.exitCode, port: PORT + 1, out: fout.slice(-2000) })
+  { exit: laptop.exitCode, port: PORT2, out: fout.slice(-2000) })
 const listed = await until(async () => (await (await fetch(`${F}/api/web-viewer/tabs`)).json()).tabs?.find((t) => t.tab === TAB), 30000)
 check("another machine lists the owner's tab, named as the owner's", listed?.machine === "owner" && listed.machineLabel === "Owner" && listed.appTab === "", listed)
 await op("ask", { tab: TAB, reason: "Sign in, then Done" })

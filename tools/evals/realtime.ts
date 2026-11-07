@@ -1,5 +1,6 @@
 // The realtime voice on the real APIs (the first sound its, the summoned answer after it), key let go to first audio and
 // to the real answer, vs the pipeline. Flags: --config, --openai-key, --models, --claude, --summoned, --pipeline (no key), --out
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

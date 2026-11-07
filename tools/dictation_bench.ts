@@ -1,10 +1,12 @@
 // Dictation's recognizers on speech files, as the app runs them: how soon words show, the final text, its WER when known.
 // node tools/dictation_bench.ts [--engine apple|parakeet|soniox|both] [--last] [<audio>[=<said>]...]   (soniox: its key here)
+import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFile, execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { dictationSwift, parakeetModel } from "../electron/dictation-build.ts"
+import { sharedTmp } from "../core/testrun.ts"
 
 const argv = process.argv.slice(2)
 const flag = (name: string) => { const i = argv.indexOf(name); return i >= 0 ? argv.splice(i, 2)[1] : undefined }
@@ -54,7 +56,7 @@ const hear = (bin: string, args: string[]) => new Promise<{ events: Event[]; cod
   })))
 
 // (DICTATION_HELPER: a helper built elsewhere, as one without Parakeet)
-const bin = process.env.DICTATION_HELPER || await dictationSwift.build(path.join(os.tmpdir(), "vaultite-dictation-bench"))
+const bin = process.env.DICTATION_HELPER || await dictationSwift.build(path.join(sharedTmp(), "vaultite-dictation-bench"))
 const model = parakeetModel()
 const engines = engineArg === "both" ? ["apple", "parakeet"] : [engineArg]
 const files = inputs()

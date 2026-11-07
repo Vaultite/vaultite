@@ -1,5 +1,6 @@
 // Live updates under load (writers on disk and through the API, windows on a probe note): write to told, and to drawn.
 // node tools/perf/live.ts [--scale 10] [--clients 4] [--writers 8] [--rate 4 (writes/s each)] [--seconds 30] [--out r.json] [--log server.log] [--profile first-window.cpuprofile] [--root <checkout>]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

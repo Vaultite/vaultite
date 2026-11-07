@@ -16,7 +16,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait, keepAwake } from "./lib/qa.mjs"
+import { ROOT, freePort, qa, until, wait, keepAwake } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
@@ -302,7 +302,8 @@ const closed = await mcp.tool("browser_close", { tab: t2 })
 check("MCP: its own tab closes", !closed.isError && !(await op("tabs")).some((t) => t.tab === t2), text(closed))
 
 // ---------- a server on another machine (its own TMPDIR) with no desktop app: a laptop's app doesn't answer it ----------
-const PLAIN = 20000 + Math.floor(Math.random() * 20000)
+// (a free port, never one of the 20000-40000 the desktop app gives its vaults: one taken would be the user's server)
+const PLAIN = await freePort()
 fs.mkdirSync(path.join(TMP, "run-plain"))
 const plain = testServer({ stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, "local-plain"), HOST: "127.0.0.1", PORT: String(PLAIN), VAULTITE_DESKTOP: "", TMPDIR: path.join(TMP, "run-plain"), XDG_RUNTIME_DIR: path.join(TMP, "run-plain") } })

@@ -1,5 +1,6 @@
 // A real vault's benchmark (an Obsidian one: links, attachments), on a copy without .obsidian/plugins: boot, memory, endpoints, a rename, typing.
 // node tools/perf/bigvault.ts --vault <dir> [--root <checkout>] [--runs 5] [--dataview <dir>] [--browser] [--profile f] [--out r.json] [--compare b.json]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

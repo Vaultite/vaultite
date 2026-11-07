@@ -112,7 +112,8 @@ export const LOCAL = process.env.VAULTITE_LOCAL || path.join(ROOT, "data")
 /** This server, as commands on this machine reach it (a shell's VAULTITE_URL, an agent's hooks). */
 export function serverUrl() {
   const host = !process.env.HOST || ["0.0.0.0", "::"].includes(process.env.HOST) ? "127.0.0.1" : process.env.HOST
-  return `http://${host.includes(":") ? `[${host}]` : host}:${process.env.PORT || 8793}`
+  // (a test's app serving no port, tools/test/vault/harness.ts: a port nothing answers on, never the live server's)
+  return `http://${host.includes(":") ? `[${host}]` : host}:${process.env.PORT || (process.env.VAULTITE_TEST === "1" ? 9 : 8793)}`
 }
 /** A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell
  *  expands it ("&prev=$prev"). Gives up after 2 s and never fails, so a hook never blocks its agent. */

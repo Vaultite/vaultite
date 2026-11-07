@@ -8,16 +8,20 @@ let dir: string | null = null
 /** A folder only this user can use: a Mac's $TMPDIR is that already; Linux's /tmp is shared (another user could make
  *  the folder first and swap a script a shell runs), so $XDG_RUNTIME_DIR/vaultite, else /tmp/vaultite-<uid>, checked. */
 export function runtimeDir(): string {
-  if (dir) return dir
-  if (process.platform === "darwin" || typeof process.getuid !== "function") return (dir = os.tmpdir())
+  return (dir ??= runtimeDirFor(os.tmpdir()))
+}
+
+/** runtimeDir() were the temp folder `tmp` (a test run's end reads the user's server's, tools/test/isolate.ts). */
+export function runtimeDirFor(tmp: string): string {
+  if (process.platform === "darwin" || typeof process.getuid !== "function") return tmp
   const uid = process.getuid()
   const xdg = process.env.XDG_RUNTIME_DIR
-  const base = xdg && fs.statSync(xdg, { throwIfNoEntry: false })?.uid === uid ? path.join(xdg, "vaultite") : path.join(os.tmpdir(), `vaultite-${uid}`)
+  const base = xdg && fs.statSync(xdg, { throwIfNoEntry: false })?.uid === uid ? path.join(xdg, "vaultite") : path.join(tmp, `vaultite-${uid}`)
   fs.mkdirSync(base, { recursive: true, mode: 0o700 })
   const st = fs.lstatSync(base)
   if (!st.isDirectory() || st.uid !== uid) throw new Error(`${base} isn't this user's folder: Vaultite won't keep its sockets there`)
   if ((st.mode & 0o077) !== 0) fs.chmodSync(base, 0o700)
-  return (dir = base)
+  return base
 }
 
 let systemdRun: string | null | undefined

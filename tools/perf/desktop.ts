@@ -1,5 +1,6 @@
 // Desktop app cold start (spawn to window, page load, first paint, usable, each part's CPU), then idle: CPU, memory,
 // requests, IPC and React commits. node tools/perf/desktop.ts [--scale 1] [--launches 5] [--settle 10] [--idle 30] [--roots <a>,<b>] [--out r.json]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import { createRequire } from "node:module"

@@ -9,7 +9,8 @@ import path from "node:path"
 
 const TRANSCRIBE = { version: "v0.4.1", sha256: "fb5646e564036a6c49659e3efcf72eb567af20da31b8569045c9a08181d35126" }
 const ZIP_URL = `https://github.com/handy-computer/transcribe.cpp/releases/download/${TRANSCRIBE.version}/TranscribeCpp.xcframework.zip`
-const CACHE = path.join(os.tmpdir(), "vaultite-natives", `transcribe-${TRANSCRIBE.version}`)
+// (in a test run, the temp folder outside its own: core/testrun.ts sharedTmp, kept out of the app's launch)
+const CACHE = path.join(process.env.VAULTITE_TEST_TMPDIR || os.tmpdir(), "vaultite-natives", `transcribe-${TRANSCRIBE.version}`)
 const FRAMEWORK = "CTranscribe.framework"
 /** The framework's library, beside the helper: one plain file, as a framework's symlinks don't survive packaging. */
 const LIB = "libctranscribe.dylib", LIB_ID = `@executable_path/${LIB}`

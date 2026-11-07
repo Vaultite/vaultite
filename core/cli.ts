@@ -8,6 +8,7 @@ import { camel, flagOf, kebab, opDoc, type OpEntry, usage as opUsage } from "./o
 import { distance } from "./blocks.ts"
 import { EVENT_TYPES } from "./events.ts"
 import { servingOf } from "./serving.ts"
+import { TEST_HEADER, inTestRun, testRunId } from "./testrun.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_URL = "http://127.0.0.1:8793"
@@ -178,7 +179,9 @@ export class Ctx {
     // (a vault plugin's schedule, startup or event command acts on its own: core/writegate.ts)
     const actor = process.env.VAULTITE_ACTOR
     return { "X-Vaultite-Client": this.client, ...(agent ? { "X-Vaultite-Agent": agent } : {}), ...(this.command ? { "X-Vaultite-Command": this.command } : {}),
-      ...(actor ? { "X-Vaultite-Actor": actor } : {}), ...(agent ? this.session() : {}) }
+      ...(actor ? { "X-Vaultite-Actor": actor } : {}), ...(agent ? this.session() : {}),
+      // (a test run's: the user's own server refuses it, core/testrun.ts)
+      ...(inTestRun(this.env) ? { [TEST_HEADER]: testRunId(this.env) || "test" } : {}) }
   }
 
   /** Which session of its coding agent this is, for who-wrote-what (provenance): the app terminal it runs in, its
@@ -561,13 +564,16 @@ const commandHelp = (c: Command) => `${c.usage}\n\n${c.summary}\n\n${c.help}`
 /** The server's catalog of operations (`word`: those a command starting with it can name), or null when it can't be
  *  asked (no server, an older one). */
 async function catalog(c: Ctx, word?: string): Promise<OpEntry[] | null> {
+  let r
   try {
-    const r = await c.api("GET", word ? `ops?word=${encodeURIComponent(word)}` : "ops")
-    return r.status === 200 && Array.isArray(r.body) ? r.body as OpEntry[] : null
+    r = await c.api("GET", word ? `ops?word=${encodeURIComponent(word)}` : "ops")
   } catch (e) {
     if (e instanceof CliError) return null
     throw e
   }
+  // (refused, not missing: say why, e.g. a test run's call to the user's own server)
+  if (r.status === 403) throw new CliError(String((r.body as Obj | null)?.error ?? "the server refused"))
+  return r.status === 200 && Array.isArray(r.body) ? r.body as OpEntry[] : null
 }
 
 

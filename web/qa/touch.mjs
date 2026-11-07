@@ -1,6 +1,6 @@
 // Touch at iPhone size: sheets, the header, the drawer, menus and links opening in tabs; subjects from the vault
 // (subjects.mjs). It TICKS A ROUTINE (writes a daily note): throwaway server on a copy of the vault.
-//   node web/qa/touch.mjs <base url>   (a server on a copy: cp -R <vault> /tmp/v; VAULTITE_VAULT=/tmp/v PORT=<port> npm start)
+//   node web/qa/touch.mjs <base url>   (a throwaway's server: vau sandbox /tmp/v; VAULTITE_VAULT=/tmp/v VAULTITE_LOCAL=/tmp/local PORT=<port> npm start)
 import { SHOTS, qa } from "./lib/qa.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
 const { args: [B], browser, check, done } = await qa(import.meta.url)

@@ -1,5 +1,6 @@
 // The summoned companion's speed and how its answers (its words, tags out; says, draws) sound aloud: score.ts spokenStyle.
 //   node tools/evals/summoned.ts [--models haiku,sonnet] [--asks 4] [--fixture companion/summoned-<day>.json]   (DEBUG=1: entries)
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

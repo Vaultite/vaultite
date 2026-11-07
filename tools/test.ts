@@ -1,9 +1,10 @@
 // npm test: every suite at once (each has its own temp folders, ports and servers; they mostly wait), each one's output
 // printed as it ends, then which failed. node tools/test.ts [suite...]   (suite: test_vault, perf/startup...)
+import "./test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawn } from "node:child_process"
 import path from "node:path"
 
-const ALL = ["test_web", "test_vault", "test_vt", "test_kdbx", "test_sandbox", "test_setup", "test_selfupdate", "test_update", "test_stall", "test_desktophost", "test_machines", "test_shared", "test_tours", "perf/startup"]
+const ALL = ["test_web", "test_vault", "test_vt", "test_kdbx", "test_sandbox", "test_setup", "test_selfupdate", "test_update", "test_stall", "test_desktophost", "test_machines", "test_shared", "test_tours", "test_isolate", "perf/startup"]
 const want = process.argv.slice(2)
 const unknown = want.filter((s) => !ALL.includes(s))
 if (unknown.length) { console.error(`no suite ${unknown.join(", ")}: ${ALL.join(" ")}`); process.exit(2) }

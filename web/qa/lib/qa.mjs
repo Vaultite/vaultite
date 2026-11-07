@@ -1,5 +1,6 @@
 // What every QA script shares: its arguments (read from its own usage line), Chrome, the checks and the exit code.
 //   const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
+import { forgetMachines, worksIn } from "../../../tools/test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import { createRequire } from "node:module"
@@ -9,6 +10,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { hold } from "../../../tools/qa_slots.ts"
 import { quietGrants } from "../../../tools/qa_grants.ts"
+import { TEST_HEADER, refuseOwnVault, sharedTmp, testRunId } from "../../../core/testrun.ts"
 
 // (servers and apps under test, from every checkout and copy: Node's compile cache in the shared temp folder is never
 // pruned, and filled a Linux /tmp's quota till Xvfb couldn't start)
@@ -69,7 +71,7 @@ function args(script) {
  *  isn't scripted): a script that drives the helper, dictation or the voice then waits for VAULTITE_QA_LIVE=1. */
 export function userApp() {
   return new Promise((done) => {
-    const c = net.connect(path.join(os.tmpdir(), "vaultite-helper.sock"))
+    const c = net.connect(path.join(sharedTmp(), "vaultite-helper.sock"))
     c.once("connect", () => { c.destroy(); done(true) })
     c.once("error", () => done(false))
   })
@@ -82,6 +84,19 @@ export const LIVE_OK = process.env.VAULTITE_QA_LIVE === "1"
 export async function qa(script, { chrome = {}, live = false } = {}) {
   const argv = args(script)
   if (live && !LIVE_OK && await userApp()) { console.log("skipped: the user's Vaultite app runs here (VAULTITE_QA_LIVE=1 runs it anyway)"); process.exit(0) }
+  // (never the user's own: their vault, or their server, which refuses a test run's call; a copy forgets its machines)
+  for (const a of argv) {
+    if (typeof a !== "string") continue
+    if (/^https?:\/\//.test(a)) {
+      const r = await fetch(`${a.replace(/\/?$/, "/")}api/ops`, { headers: { [TEST_HEADER]: testRunId() || "test" }, signal: AbortSignal.timeout(5000) }).catch(() => null)
+      if (r?.status === 403 && /test run/.test((await r.json().catch(() => ({}))).error ?? "")) { console.error(`${a} is the user's own server: QA runs on a throwaway one (vau sandbox)`); process.exit(1) }
+    } else if (fs.existsSync(path.join(a, ".vaultite"))) {
+      const why = refuseOwnVault(a, path.basename(fileURLToPath(script)))
+      if (why) { console.error(why); process.exit(1) }
+      forgetMachines(a)
+      worksIn(a)
+    }
+  }
   // (a sandbox given, run by hand: its plugins' writes answered, as tools/qa.ts' vaults are, or their ask covers the page)
   for (const a of argv) if (typeof a === "string" && fs.existsSync(path.join(a, ".vaultite/sandbox.json"))) quietGrants(a)
   await hold()

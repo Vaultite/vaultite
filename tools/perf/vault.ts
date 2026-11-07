@@ -1,5 +1,6 @@
 // A made-up, seeded vault for benchmarks: examples/vault plus generated people, notes, logs and books (no one real).
 // node tools/perf/vault.ts <dir> [scale]    scale 1 ~ 300 Markdown files, 10 ~ 3000; the folder is replaced
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"

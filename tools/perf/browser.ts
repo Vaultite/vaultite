@@ -1,5 +1,6 @@
 // The Browser's speed in the desktop app: tabs, navigation, input, frames, CPU, memory, restore; --engine: a kept Shields engine.
 //   node tools/perf/browser.ts [--root <checkout>] [--engine <engine-2.bin>] [--only open,nav,switch,hidden,heavy,preload,keys,chrome,ads,idle,memory,restore,blocker] [--real] [--out r.json]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import http from "node:http"
@@ -7,13 +8,14 @@ import os from "node:os"
 import path from "node:path"
 import { performance } from "node:perf_hooks"
 import { makeVault } from "./vault.ts"
+import { sharedTmp } from "../../core/testrun.ts"
 
 const arg = (name: string, dflt: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt }
 const ROOT = path.resolve(arg("root", path.join(import.meta.dirname, "..", "..")))
 const OUT = arg("out", ""), REAL = process.argv.includes("--real")
 const ONLY = new Set(arg("only", "").split(",").filter(Boolean))
 const want = (...k: string[]) => !ONLY.size || k.some((x) => ONLY.has(x))
-const ENGINE = path.resolve(arg("engine", path.join(os.tmpdir(), "vaultite-browser-perf-engine-2.bin")))
+const ENGINE = path.resolve(arg("engine", path.join(sharedTmp(), "vaultite-browser-perf-engine-2.bin")))
 const now = () => performance.timeOrigin + performance.now()
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-browser-perf-"))

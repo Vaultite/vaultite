@@ -1,5 +1,6 @@
 // An open app over the network (desktop and phone windows): first load, idle a minute with an agent writing, back online.
 // node tools/perf/idle.ts [--scale 1] [--minutes 2] [--root <checkout>] [--out r.json] [--compare before.json] [--quiet]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

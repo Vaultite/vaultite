@@ -1,5 +1,6 @@
 // Agent evals: can an agent use the vault through its tools? On a sandbox vault, never a real one.
 //   node tools/evals/run.ts [--live]   scripted MCP calls in-process; --live: `claude -p` on haiku (a few cents)
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"

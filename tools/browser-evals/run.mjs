@@ -5,6 +5,7 @@
 //     [--reps 1] [--jobs 3] [--label baseline] [--out <dir>]
 // Writes <out>/<label>.json (one row per run) and prints a table; compare runs with report.mjs.
 // The sessions may only run vau and read-only shell tools (an allowlist): nothing else on this Mac.
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

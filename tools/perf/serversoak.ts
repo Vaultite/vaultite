@@ -1,5 +1,6 @@
 // The server alone for hours (app windows coming and going, an agent writing, idle stretches): its memory, CPU, files, sockets and watches, their growth an hour, the idle CPU.
 // node tools/perf/serversoak.ts [--minutes 120] [--scale 30 | --vault <dir>] [--idle 10 (min, every hour)] [--out r.json] [--root <checkout>] [--budget (exit 1 past it: nightly CI)]   Linux
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

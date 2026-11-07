@@ -5,7 +5,7 @@ import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until } from "./lib/qa.mjs"
+import { ROOT, freePort, qa, until } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
@@ -27,7 +27,8 @@ async function serve(port, tmpdir, local) {
   await until(() => /vaultite: vault read/.test(out), 60000)
   return p
 }
-const PORT = 20000 + Math.floor(Math.random() * 20000)
+// (a free port, never one of the 20000-40000 the desktop app gives its vaults: one taken would be the user's server)
+const PORT = await freePort()
 const ORIGIN = `http://127.0.0.1:${PORT}`
 let server = await serve(PORT, RUN, "local")
 const op = async (base, id, params) => {
@@ -70,7 +71,7 @@ await until(async () => await win.locator("[role=tree]").count() > 0, 20000)
 check("… and the window's page came back", await win.locator("[role=tree]").count() > 0)
 
 // ---------- a server on another machine (another TMPDIR): this always-on machine's browser answers it ----------
-const OTHER_PORT = PORT + 1
+const OTHER_PORT = await freePort()
 fs.mkdirSync(path.join(VAULT, ".vaultite/plugins/machines"), { recursive: true })
 fs.writeFileSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"), JSON.stringify({ machines: [
   { id: "home", label: "Home", url: ORIGIN }, { id: "away", label: "Away", url: `http://127.0.0.1:${OTHER_PORT}` }] }))

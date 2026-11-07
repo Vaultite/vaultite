@@ -1,5 +1,6 @@
 // Long desktop session on a made-up vault (notes, tabs, panes, panels, terminals, an agent writing; idle still, shown, hidden, a graph), driven through the app's ops with nothing attached (a debugger keeps what the page logs and compiles, so its heap grows by itself): each process's memory and CPU, the page's heap, DOM and timers; growth an hour.
 // node tools/perf/soak.ts [--minutes 30 (0: idle only)] [--scale 10] [--idle 3 (min a phase)] [--phases still,shown,hidden,graph] [--snapshots (attaches CDP from the first)] [--budget (exit 1 past it: nightly CI)] [--out dir] [--root <checkout>]   not as root; heavy: check `uptime`
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { once } from "node:events"
 import fs from "node:fs"

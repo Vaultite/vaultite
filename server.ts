@@ -65,6 +65,12 @@ const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 // The server answers while it reads the vault, so the web app's files load meanwhile; what needs the vault waits for
 // `ready`. A vault that can't be opened still ends the server.
 const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
+const { TEST_HEADER, REFUSED_FILE, inTestRun, isOwnVault, keepRefusal, refuseOwnVault } = await import("./core/testrun.ts")
+const { runtimeDir } = await import("./core/runtime.ts")
+const ownVault = refuseOwnVault(VAULT_AT, "a test's server")
+if (ownVault) { console.error(`vaultite: ${ownVault}`); process.exit(1) }
+// (the user's own server: a test run's vau is refused, and kept for that run's end to fail it: tools/test/isolate.ts)
+let refusesTests = !inTestRun() && isOwnVault(VAULT_AT)
 await vaultThere(VAULT_AT)
 let servedBy = claim(VAULT_AT, PORT, DESKTOP)
 if (servedBy && process.platform === "win32" && !(await answers(servedBy.port))) servedBy = reclaim(VAULT_AT, PORT, DESKTOP)
@@ -114,6 +120,8 @@ function watch(l: LiveType) {
 /** Serve another vault (Manage vaults, on the web): read it, then every request and socket goes to it. Open apps are
  *  disconnected from the old one's events and reload everything when they reconnect. */
 async function switchTo(p: string) {
+  const own = refuseOwnVault(p, "a test's server")
+  if (own) throw new HTTPError(403, own)
   const other = claim(p, PORT, DESKTOP)
   if (other) throw new HTTPError(409, `${p} is served on this machine already (port ${other.port})`)
   await vault.lock(async () => {
@@ -138,6 +146,7 @@ async function switchTo(p: string) {
     live = watch(new Live(vault).start())
     app.scheduler.start()
   })
+  refusesTests = !inTestRun() && isOwnVault(p)
   keepDownloaded(p, path.join(LOCAL, "icloud.json"))
   console.log(`vaultite: now serving ${p}`)
 }
@@ -584,6 +593,11 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) {
       const why = await foreign(req)
       if (why) return json(res, { error: why }, 403)
+      const run = req.headers[TEST_HEADER]
+      if (run && refusesTests) {
+        keepRefusal(path.join(runtimeDir(), REFUSED_FILE), { run: String(run).slice(0, 64), call: `${req.method} ${url.pathname}`.slice(0, 200) })
+        return json(res, { error: "a test run's call to the user's own vault: tests use a throwaway one (vau sandbox)" }, 403)
+      }
       // What the window shows while the vault is read: whether it's read, and the files iCloud is still downloading.
       if (url.pathname === "/api/loading") {
         const root = path.join(vault?.path ?? VAULT_AT, "/")

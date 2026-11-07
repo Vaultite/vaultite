@@ -1,5 +1,6 @@
 // The companion's eval: a session's moments replayed, each turn checked against the contract (on a sandbox vault).
 //   node tools/evals/companion.ts [--live [--model sonnet] [--effort medium]] [fixture]   (no --live: its baseline)
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

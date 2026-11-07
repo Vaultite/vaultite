@@ -1,5 +1,6 @@
 // Terminal benchmark on a throwaway server: opening, keystroke echo, output bursts, a 60 fps program, reattach, terminal.list.
 // node tools/perf/terminal.ts [--runs 200] [--out r.json] [--compare b.json] [--root <dir>] [--browser (page side); --page-only: only it; --parts echo,frames,replay,memory,tabs; --gpu] [--dotfiles]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"

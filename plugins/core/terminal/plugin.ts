@@ -277,8 +277,8 @@ function env(): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) {
     // (ELECTRON_RUN_AS_NODE: how the desktop app runs this server; a shell that kept it would start every Electron app,
-    // Vaultite or VS Code, as plain Node, which exits at once)
-    if (v === undefined || k.startsWith("npm_") || k.startsWith("VAULTITE_") || agentSession(k, v)
+    // Vaultite or VS Code, as plain Node, which exits at once; a test run's marks kept: core/testrun.ts)
+    if (v === undefined || k.startsWith("npm_") || (k.startsWith("VAULTITE_") && !/^VAULTITE_TEST(_RUN|_HOME)?$/.test(k)) || agentSession(k, v)
       || ["PORT", "HOST", "INIT_CWD", "TMUX", "TMUX_PANE", "ELECTRON_RUN_AS_NODE"].includes(k)) continue
     // (Windows' variables have any case, and a shell given Path and PATH would take either: one, Path)
     out[WIN && k.toUpperCase() === "PATH" ? PATH : k] = v

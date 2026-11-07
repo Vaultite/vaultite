@@ -1,5 +1,6 @@
 // In-process benchmark of core/app.ts on a made-up vault: CPU and fs calls per request, opening in phases, sizes.
 // node tools/perf/app.ts [--scale 1] [--runs 20] [--out r.json] [--compare before.json] [--root <checkout>]
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"

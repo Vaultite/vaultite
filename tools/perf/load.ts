@@ -1,5 +1,6 @@
 // Cold start as the desktop app sees it: server.ts on a made-up vault, Chrome (headless, kept) until a dashboard draws.
 // node tools/perf/load.ts [--scale 1] [--runs 5] [--root <checkout>]...   (several --root: A/B, taking turns)
+import "../test/isolate.ts" // (first: a run of its own, kept off the user's vaults)
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

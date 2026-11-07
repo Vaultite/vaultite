@@ -8,8 +8,10 @@ import { launch, wait, workspaceKey } from "./lib/qa.mjs"
 const args = process.argv.slice(2)
 const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
 const flag = (name) => args.includes(`--${name}`)
-const BASES = (args.filter((a) => /^https?:/.test(a)).length ? args.filter((a) => /^https?:/.test(a)) : [process.env.QA_BASE ?? "http://127.0.0.1:8793/"])
+// (no default: 8793 is often the live server, and this writes)
+const BASES = (args.filter((a) => /^https?:/.test(a)).length ? args.filter((a) => /^https?:/.test(a)) : process.env.QA_BASE ? [process.env.QA_BASE] : [])
   .map((b) => b.replace(/\/?$/, "/"))
+if (!BASES.length) { console.error("usage: node web/qa/perf.mjs <base url> [<another base url>...] (a throwaway server's)"); process.exit(2) }
 const RUNS = Number(opt("runs", "3")), OUT = opt("out", ""), COMPARE = opt("compare", ""), ONLY = opt("only", "")
 const INTERACT = !flag("no-interactions"), CENSUS = flag("census")
 
