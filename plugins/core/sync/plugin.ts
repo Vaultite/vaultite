@@ -60,6 +60,14 @@ export function syncedByOthers(folder: string): string {
   for (let d = path.resolve(folder); ; d = path.dirname(d)) { if (fs.existsSync(path.join(d, ".stfolder"))) return `${folder} is in a Syncthing folder: one sync per folder`; if (d === path.dirname(d)) break }
   return ""
 }
+/** A tailnet address or this machine's (as Machines checks): a synced file never sends the vault to a host its writer picks. */
+function onTailnet(url: string) {
+  let h: string
+  try { const u = new URL(url); if (!/^https?:$/.test(u.protocol) || u.username || u.password) return false; h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "") } catch { return false }
+  const v4 = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h)
+  if (v4) return v4[1] === "127" || (v4[1] === "100" && Number(v4[2]) >= 64 && Number(v4[2]) <= 127)
+  return h.endsWith(".ts.net") || h === "localhost" || h === "::1" || h.startsWith("fd7a:115c:a1e0:")
+}
 const readJson = (p: string) => { try { return JSON.parse(fs.readFileSync(p, "utf8")) } catch { return null } }
 /** A plugin's settings in a synced folder (not the served vault: a shadow copy's, another vault's). */
 const settingsIn = (folder: string, id: string, file = "data") => readJson(path.join(folder, ".vaultite", "plugins", id, `${file}.json`))
@@ -198,9 +206,18 @@ export class SyncSet {
     this.pushTimer ??= setTimeout(() => { this.pushTimer = null; void this.exchangeAll() }, 250)
     this.pushTimer.unref?.()
   }
+  /** The machines to trade with: the set's own, else Machines' (on or off here), the vault's list, the synced folder's. */
   async peerList(): Promise<Peer[]> {
     if (this.cfg.peers) return this.cfg.peers.map((p) => ({ ...p, label: p.id }))
-    return (await machineList()).filter((m) => m.id !== this.device)
+    const out = new Map<string, Peer>()
+    const listed = (folder: string) => {
+      const ms = settingsIn(folder, MACHINES)?.machines
+      return (Array.isArray(ms) ? ms : []).filter((m) => typeof m?.id === "string" && typeof m.url === "string" && !m.via && onTailnet(m.url))
+        .map((m) => ({ id: String(m.id), url: String(m.url).replace(/\/+$/, ""), label: String(m.label || m.id) }))
+    }
+    for (const p of [...await machineList(), ...listed(plugin.vault.path), ...listed(this.folder.root)]) if (!out.has(p.id)) out.set(p.id, p)
+    out.delete(this.device)
+    return [...out.values()]
   }
   private lastPeers = -1
   async exchangeAll() {
