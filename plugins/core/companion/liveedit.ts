@@ -106,13 +106,14 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
   /** The job working on what `m` is over: the latest one asked there (a preview's own by its address), not stopped; on
    *  a note, only one that changed it or was asked there live (a job asked over a note may only research). */
   function jobOn(m: Moment, now = Date.now()): Job | undefined {
-    const on = pageOf(m)
+    // (most asks: no job lately, nothing to read of where they are)
+    const recent = d.jobs.list().filter((j) => j.state !== "stopped" && j.state !== "failed" && (live(j.state) || now - j.at < RECENT_MS))
+    const on = recent.length ? pageOf(m) : ""
     if (!on) return undefined
     const site = on.startsWith("site:") ? on.slice(5) : "", note = on.startsWith("note:") ? on.slice(5) : ""
     const origin = (u?: string) => { try { return u ? new URL(u).origin : "" } catch { return "" } }
     const edits = (j: Job) => !note || !!state().jobs[j.id] || !!j.result?.files?.some((f) => f === note || f.endsWith(`/${note}`))
-    return d.jobs.list().filter((j) => j.state !== "stopped" && j.state !== "failed" && (live(j.state) || now - j.at < RECENT_MS)
-      && (j.on === on || (!!site && origin(j.where.preview) === site)) && edits(j)).sort((a, b) => b.at - a.at)[0]
+    return recent.filter((j) => (j.on === on || (!!site && origin(j.where.preview) === site)) && edits(j)).sort((a, b) => b.at - a.at)[0]
   }
 
   /** Its window's picture now (before the job changes it), or "" when there's none to take. */
