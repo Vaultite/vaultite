@@ -14,6 +14,8 @@ This product includes third-party software and assets:
 - xterm.js (https://github.com/xtermjs/xterm.js), MIT License, Copyright (c) 2017-2019 The xterm.js authors:
   plugins/core/terminal/vt/render/boxdraw.ts draws box and block characters after its custom glyphs, and the cell
   measurement, key sequences and glyph atlas in plugins/core/terminal/vt/ follow its behaviour.
+- kdbxweb (https://github.com/keeweb/kdbxweb, at 7601e45d), MIT License, Copyright (C) 2021-2025 Antelle:
+  electron/browser/kdbx/ is it, changed (PROVENANCE.md there), and tools/fixtures/kdbx/ its test files.
 - Colour palettes in web/src/themes/, each under the licence listed in web/src/themes/LICENSES.md.
 
 Obsidian is a trademark of Dynalist Inc. Vaultite is not affiliated with or endorsed by Dynalist Inc.; the name is used

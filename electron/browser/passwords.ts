@@ -8,7 +8,7 @@ import { allPages, handle, tellAll } from "./engine.ts"
 import type { Change, Full, Row } from "./kdbxedit.ts"
 import type { Otp } from "./keepass.ts"
 
-// (kdbxweb loads at the first use: a Mac that never opens the page never loads it)
+// (kdbx/ loads at the first use: a Mac that never opens the page never loads it)
 const kdbx = () => Promise.all([import("./keepass.ts"), import("./kdbxedit.ts")]).then(([k, e]) => ({ ...k, ...e }))
 
 const CONFIG = () => path.join(app.getPath("userData"), "passwords.json")

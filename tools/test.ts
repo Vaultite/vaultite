@@ -3,7 +3,7 @@
 import { spawn } from "node:child_process"
 import path from "node:path"
 
-const ALL = ["test_web", "test_vault", "test_vt", "test_sandbox", "test_setup", "test_selfupdate", "test_update", "test_stall", "test_desktophost", "test_machines", "test_shared", "test_tours", "perf/startup"]
+const ALL = ["test_web", "test_vault", "test_vt", "test_kdbx", "test_sandbox", "test_setup", "test_selfupdate", "test_update", "test_stall", "test_desktophost", "test_machines", "test_shared", "test_tours", "perf/startup"]
 const want = process.argv.slice(2)
 const unknown = want.filter((s) => !ALL.includes(s))
 if (unknown.length) { console.error(`no suite ${unknown.join(", ")}: ${ALL.join(" ")}`); process.exit(2) }

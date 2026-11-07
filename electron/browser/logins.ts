@@ -10,7 +10,7 @@ import type { Database, Entry } from "./keepass.ts"
 import { fillLogin } from "./fill.ts"
 import { register, verify, type Asserted, type Created, type Passkey } from "./presence.ts"
 
-// (its reader, kdbxweb, loads at the first login: a Mac whose agents never log in never loads it)
+// (its reader, kdbx/, loads at the first login: a Mac whose agents never log in never loads it)
 const keepass = () => import("./keepass.ts")
 
 const HERE = process.platform === "darwin" ? "this Mac" : "this computer"

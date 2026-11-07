@@ -3050,7 +3050,7 @@ await section("agent logins", async () => {
   const kp = await import("../electron/browser/keepass.ts")
   const { loginForm } = await import("../electron/browser/loginform.ts")
   const { keep, scrub, scrubDeep } = await import("../electron/browser/pagesecrets.ts")
-  const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
+  const { Credentials, Kdbx, ProtectedValue } = await import("../electron/browser/kdbx/index.ts")
   const PASSWORD = "correct horse battery staple", SECRET = "Lighthouse-7!pw"
   const db = Kdbx.create(new Credentials(ProtectedValue.fromString(PASSWORD)), "Agents")
   const add = (title: string, fields: Record<string, string>, tags: string[] = [], group = db.getDefaultGroup()) => {
@@ -3196,7 +3196,7 @@ await section("agent logins", async () => {
 await section("your passwords", async () => {
   const kp = await import("../electron/browser/keepass.ts")
   const ed = await import("../electron/browser/kdbxedit.ts")
-  const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
+  const { Credentials, Kdbx, ProtectedValue } = await import("../electron/browser/kdbx/index.ts")
   const MAIN = "made-up main password", SHARE = "made-up share password"
   const db = Kdbx.create(new Credentials(ProtectedValue.fromString(MAIN)), "Main")
   const agents = db.createGroup(db.getDefaultGroup(), "Agents")

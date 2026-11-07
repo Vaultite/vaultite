@@ -15,7 +15,7 @@ const { args: [VAULT, SHOTS], check, errs, watch, done } = await qa(import.meta.
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-passwords-"))
 
 // ---------- a made-up main file ----------
-const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
+const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts")
 const PW = "made-up main password", SECRET = "Lighthouse-7!pw", SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 const db = Kdbx.create(new Credentials(ProtectedValue.fromString(PW)), "Passwords")
 const b64 = (s) => Buffer.from(s).toString("base64")

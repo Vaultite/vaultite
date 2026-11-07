@@ -13,7 +13,7 @@ import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-passwords-"))
-const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
+const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts")
 const { loadKdbx, openDatabase } = await import("../../electron/browser/keepass.ts")
 
 // ---------- a made-up site, and a made-up main file whose Agents group is exported ----------

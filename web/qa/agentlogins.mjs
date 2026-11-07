@@ -21,7 +21,7 @@ const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-logins-"))
 
 // ---------- a made-up agents.kdbx ----------
-const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
+const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts")
 const DB_PASSWORD = "made-up database password"
 const SECRET = "Q7-lantern!pw word", ADMIN = "Harbor-admin-pw-42", HARBOR = "Harbor-pw-31"
 const SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"

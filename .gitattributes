@@ -2,3 +2,5 @@
 * text=auto eol=lf
 # (but batch files: cmd misreads labels and long lines in LF ones)
 *.cmd text eol=crlf
+# (KeePass test files: a key file is its exact bytes)
+tools/fixtures/kdbx/** -text

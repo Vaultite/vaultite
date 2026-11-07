@@ -51,6 +51,7 @@ const areas = areasFor(changed), qa = qaFor(changed)
 type Stage = { name: string; cmd: string[]; why: string }
 const picked: Stage[] = [
   ...(changed.some((f) => f.startsWith("web/src/") || f === "tools/test_web.ts") ? [{ name: "test_web", cmd: ["node", "tools/test_web.ts"], why: "web/src or its test changed" }] : []),
+  ...(changed.some((f) => /^(electron\/browser\/(kdbx\/|keepass\.ts|kdbxedit\.ts)|tools\/test\/kdbx\/|tools\/test_kdbx\.ts)/.test(f)) ? [{ name: "test_kdbx", cmd: ["node", "tools/test_kdbx.ts"], why: "the KeePass reader changed" }] : []),
   ...(areas.length ? [{ name: "test_vault", cmd: ["node", "tools/test_vault.ts", ...(areas.length === AREAS.length ? [] : areas)],
     why: areas.length === AREAS.length ? "all areas" : areas.join(" ") }] : []),
   ...(changed.some((f) => f.startsWith("web/qa/") || f.startsWith("web/src/")) ? [{ name: "qa lint", cmd: ["node", "tools/qa.ts", "--lint"], why: "QA selectors" }] : []),

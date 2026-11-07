@@ -14,7 +14,7 @@ import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-userlogins-"))
-const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
+const { Credentials, Kdbx, ProtectedValue } = await import("../../electron/browser/kdbx/index.ts")
 const { openDatabase } = await import("../../electron/browser/keepass.ts")
 
 // ---------- the made-up site: alice's and bob's sign-in (any password for bob, alice's own or her new one) ----------

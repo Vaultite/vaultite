@@ -2,15 +2,14 @@
 // and, only as the app fills them, an entry's secrets. Node only (no Electron), so its tests run without the app.
 import { argon2dAsync, argon2idAsync } from "@noble/hashes/argon2.js"
 import crypto from "node:crypto"
-import { CryptoEngine, Credentials, Kdbx, KdbxError, ProtectedValue, type KdbxEntry, type KdbxGroup } from "kdbxweb"
+import { CryptoEngine, Credentials, Kdbx, KdbxError, ProtectedValue, type KdbxEntry, type KdbxGroup } from "./kdbx/index.ts"
 import { getDomain } from "tldts-experimental"
 
 // Argon2, which KDBX 4 files are keyed with: Electron's crypto has none, so noble's (plain JS), yielding as it goes so
 // the app's main process never stalls.
 CryptoEngine.setArgon2Impl(async (password, salt, memory, iterations, length, parallelism, type, version) => {
   const fn = type === 2 ? argon2idAsync : argon2dAsync
-  const key = await fn(new Uint8Array(password), new Uint8Array(salt), { m: memory, t: iterations, p: parallelism, dkLen: length, version, asyncTick: 10 })
-  return key.slice().buffer
+  return fn(new Uint8Array(password), new Uint8Array(salt), { m: memory, t: iterations, p: parallelism, dkLen: length, version, asyncTick: 10 })
 })
 
 /** The tag (KeePassXC's Tags field) that lets agents use an entry without asking the user each time. */
@@ -34,8 +33,9 @@ export async function loadKdbx(data: Uint8Array, password: string): Promise<Kdbx
   try {
     return await Kdbx.load(new Uint8Array(data).buffer, new Credentials(ProtectedValue.fromString(password)))
   } catch (e) {
-    const code = e instanceof KdbxError ? e.code : ""
-    throw new Error(code === "InvalidKey" ? "the password doesn't open it" : code === "Unsupported" ? "it's a KeePass file this app can't read (a key file or a hardware key?)"
+    const code = e instanceof KdbxError ? e.code : "", memory = code === "Unsupported" && /^argon2 memory/.test((e as Error).message)
+    throw new Error(code === "InvalidKey" ? "the password doesn't open it" : memory ? "its key settings ask for more than 1 GB of memory to open, more than the app allows"
+      : code === "Unsupported" ? "it's a KeePass file this app can't read (a key file or a hardware key?)"
       : "it isn't a KeePass database (.kdbx), or it's damaged")
   }
 }

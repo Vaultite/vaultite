@@ -25,5 +25,6 @@
   },
   "include": ["server.ts", "core", "web/demo/worker.ts", "web/demo/mount.ts", "web/demo/machine.ts", "web/demo/env.d.ts", "web/demo/node", "plugins/**/plugin.ts", "plugins/**/import.ts", "plugins/**/cli.ts", "tools", "electron/*.ts", "electron/browser/*.ts"],
   // an example vault plugin's frontend: tsconfig.app.json
-  "exclude": ["tools/fixtures/**/*.tsx"]
+  // (upstream kdbxweb's tests, kept as written: typed for an older TypeScript's ArrayBuffer)
+  "exclude": ["tools/fixtures/**/*.tsx", "tools/test/kdbx/upstream"]
 }

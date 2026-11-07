@@ -14,6 +14,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   opens it in its terminal or its chat.
 - **Agents' clicks are faster when nobody watches**: the pointer's glide before a click or fill is waited for only while
   someone sees the page (its tab or the agents card on a Mac someone is at, or a live view from another device).
+- **Passwords' KeePass files are read and written by Vaultite's own code** (kdbxweb, brought in and hardened): damaged
+  or hostile files are refused clearly, tabs in notes are kept, and KDBX 4.1 files save with dates KeePass accepts.
 - **Terminals run on libghostty-vt 1.0**: Ghostty's first stable release of its terminal engine, in place of a
   pre-release build: a bit faster on fast output, with the same screens, copy and search.
 - **A job's ready card stays up to be read**: "Ready to show you …" comes at your next pause and stays 15 seconds
