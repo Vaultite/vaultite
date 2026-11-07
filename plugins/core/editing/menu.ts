@@ -73,11 +73,11 @@ function linkEdit(view: EditorView, span: LinkSpan): LinkEdit {
   }
 }
 
-/** The menu for a right-click at `at` on `target` (`spelled`: what the desktop app's spell checker said of the word there). */
-function menuItems(view: EditorView, at: { x: number; y: number }, target: EventTarget | null, spelled: Spelled | null): MenuItem[] {
+/** The menu for a right-click at `at` on `link` (linkAt's, read as it was pressed; `spelled`: what the desktop app's spell
+ *  checker said of the word there). */
+function menuItems(view: EditorView, at: { x: number; y: number }, link: ReturnType<typeof linkAt>, spelled: Spelled | null): MenuItem[] {
   const editable = view.state.facet(EditorView.editable)
   const pos = view.posAtCoords(at)
-  const link = linkAt(view, target)
   // Outside what's selected, the cursor goes where the click was (a paste goes there), as in Obsidian; not onto a link,
   // which would show as its Markdown under the menu.
   if (editable && pos !== null && !link && !view.state.selection.ranges.some((r) => r.from <= pos && pos <= r.to)) view.dispatch({ selection: EditorSelection.cursor(pos) })
@@ -159,13 +159,15 @@ export const editorMenu = EditorView.domEventHandlers({
   contextmenu(e, view) {
     if (e.defaultPrevented || (e.shiftKey && !spelling) || (e as PointerEvent).pointerType === "touch") return false
     // (the commands' "is there a note being edited" asks the editor with the keyboard)
+    // (the link under the pointer now: by the time the spell checker answers, the editor may have drawn it anew)
+    const link = linkAt(view, e.target)
     const editable = view.state.facet(EditorView.editable)
     if (editable) view.focus()
     const at = { x: e.clientX, y: e.clientY }
     // The desktop app's spell checker answers once the event has gone on to the system (Electron draws no menu of its
     // own): the menu waits for it.
-    if (spelling && editable) { void spelling.at().then((s) => openMenu(at, menuItems(view, at, e.target, s))); return false }
-    const items = menuItems(view, at, e.target, null)
+    if (spelling && editable) { void spelling.at().then((s) => openMenu(at, menuItems(view, at, link, s))); return false }
+    const items = menuItems(view, at, link, null)
     if (!items.length) return false
     e.preventDefault()
     openMenu(at, items)

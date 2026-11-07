@@ -135,9 +135,12 @@ async function run(label, viewport, mobile, base = B) {
     await page.keyboard.press("Backspace")
     check(`${label}: typing goes into the page's field`, await until(async () => /v=\S*xy /.test((await tab()).title), 5000), (await tab()).title)
     await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: base })
-    // (a double click on the field's word selects it: the field's text starts 20px in, 24px type)
+    // (a double click on the field's word selects it: the field's text starts 20px in, 24px type, of the page's own
+    // size: an agent's 1280x800, or its pane's in the app once an ask has shown its tab there)
     const word = /v=(\S+) /.exec((await tab()).title)?.[1]
-    await page.mouse.dblclick(...at(32 / 1280, 0.05))
+    const css = await app.evaluate(({ webContents }, site) => webContents.getAllWebContents().find((w) => w.getURL().startsWith(site))?.executeJavaScript("[innerWidth, innerHeight]"), SITE)
+    const fit = await frame.boundingBox()
+    await page.mouse.dblclick(fit.x + fit.width * 32 / css[0], fit.y + fit.height * 40 / css[1])
     await wait(400)
     await page.locator("[data-web-live-copy]").click()
     const pasted = () => page.evaluate(() => navigator.clipboard.readText()).catch(() => "")

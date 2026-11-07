@@ -340,20 +340,22 @@ await win.locator("[data-web-address]").click()
 await win.keyboard.type("127.0.0.1:" + PORT + "/two")
 await win.keyboard.press("Enter")
 check("an address typed in the bar", await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/two`), 10000), await pages())
-// A middle-click on Back, a ⌘-click on Reload: that page in a new tab behind, as a link's, this one staying shown.
+// A middle-click on Back, a ⌘-click on Reload: that page in a new tab behind, as a link's, this one staying shown. (Its
+// pane is in a split here: a new tab is one of that pane's own, Pane.stack, as a link's would be.)
 const newTabOf = async (url) => (await pages()).some((p) => p.visible && p.url === `${SITE}/two`) && (await pages()).some((p) => !p.visible && p.url === url)
-const tabLabels = () => win.locator("[role=tab]").count()
-const tb0 = await tabLabels()
+const places = () => win.evaluate(() => {
+  const w = JSON.parse(localStorage.getItem("vaultite.tabs")), leaf = (n) => (n.kids ? n.kids.flatMap(leaf) : [n])
+  return w.tabs.flatMap((t) => leaf(t.root).flatMap((p) => [p, ...(p.stack ?? [])])).map((p) => ({ id: p.id, to: p.to }))
+})
+const p0 = await places(), same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const added = async () => (await places()).filter((p) => !p0.some((q) => q.id === p.id)).map((p) => p.to)
 await win.locator("[data-web-page] button[aria-label=Back]").click({ button: "middle" })
-check("a middle-click on Back: the page before in a new tab behind", await until(() => newTabOf(`${SITE}/article`), 10000) && await tabLabels() === tb0 + 1, await pages())
+check("a middle-click on Back: the page before in a new tab behind", await until(async () => await newTabOf(`${SITE}/article`) && same(await added(), [`view:web/${SITE}/article`]), 10000), { pages: await pages(), added: await added() })
 await win.locator("[data-web-page] button[aria-label=Reload]").click({ modifiers: ["ControlOrMeta"] })
-check("a ⌘-click on Reload: a copy in a new tab behind", await until(async () => (await pages()).filter((p) => p.url === `${SITE}/two`).length === 2, 10000) && await tabLabels() === tb0 + 2, await pages())
-// (the two behind it, closed from their tab menu: Close other tabs would take the note's too)
-for (const url of [`${SITE}/two`, `${SITE}/article`]) {
-  const id = await win.evaluate((u) => { const w = JSON.parse(localStorage.getItem("vaultite.tabs")); const leaf = (n) => (n.kids ? n.kids.flatMap(leaf) : [n]); const t = w.tabs.filter((x) => leaf(x.root).some((p) => p.to === `view:web/${u}`)); return t.at(-1)?.id }, url)
-  await win.locator(`[data-tab-strip] [data-tab-id="${id}"] [role=tab]`).first().click({ button: "middle" }).catch(() => {})
-}
-await until(async () => await tabLabels() === tb0, 5000)
+check("a ⌘-click on Reload: a copy in a new tab behind", await until(async () => (await pages()).filter((p) => p.url === `${SITE}/two`).length === 2 && (await added()).length === 2, 10000), { pages: await pages(), added: await added() })
+// (the two behind it, closed from their pane's strip: Close other tabs would take the note's too)
+for (const p of (await places()).filter((p) => !p0.some((q) => q.id === p.id))) await win.locator(`[data-place-close="${p.id}"]`).first().click({ force: true }).catch(() => {})
+check("…closed, both gone", await until(async () => (await added()).length === 0, 5000), await added())
 await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/two`), 10000)
 await win.locator("[data-web-page] button[aria-label=Back]").click()
 await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/article`), 10000)
@@ -369,7 +371,8 @@ check("back to it: the same page, in place", await until(async () => (await page
 await win.mouse.move(5, 400) // (off the bar, its tooltips gone)
 await clickInPage("#blank")
 check("a link to a new tab opens a web tab", await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/three`), 10000), await pages())
-await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()
+// (its pane in a split: the new tab is that pane's own, in front, the article behind it; ⌘W closes just it)
+await menuClick("Close tab")
 await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/article`), 10000)
 // (⌘ on a Mac, Ctrl elsewhere: the app's Mod)
 await app.evaluate(({ BaseWindow }, mod) => {
@@ -409,7 +412,7 @@ if (process.env.SHOW) {
   await win.waitForSelector("[role=option]:has-text('Reading list')")
   await win.keyboard.press("ControlOrMeta+Enter")
   check("a note picked in ⌘O from the page: the keyboard is in its editor", await until(() => appHasKeyboard(".cm-content"), 4000))
-  await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()
+  await menuClick("Close tab") // (the note: its pane's own tab, in front of the page)
 } else await win.keyboard.press("Escape")
 await until(shown, 10000)
 
@@ -443,7 +446,7 @@ await app.evaluate(async ({ BaseWindow }) => {
   globalThis.__menu = null
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
-  const [x, y] = (await v.webContents.executeJavaScript(`(() => { const r = document.querySelector("#pic").getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] })()`)).map(Math.round)
+  const [x, y] = (await v.webContents.executeJavaScript(`(() => { const i = document.querySelector("#pic"); i.scrollIntoView({ block: "center" }); const r = i.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] })()`)).map(Math.round)
   v.webContents.sendInputEvent({ type: "mouseDown", x, y, button: "right", clickCount: 1 })
   v.webContents.sendInputEvent({ type: "mouseUp", x, y, button: "right", clickCount: 1 })
 })
@@ -535,9 +538,11 @@ check("… Enter opens it in a new tab", await until(async () => (await pages())
 await menuClick("Close tab")
 await until(async () => await tabCount() === t1, 5000)
 await opensAs("view:web")
+// (a new tab, or its pane's own when it's a split's: Pane.stack)
+const p1 = (await places()).length
 await menuClick("New tab")
 check("opens view:web: ⌘T is a web tab, its address to type", await until(() => win.evaluate(() => document.activeElement?.matches("[data-web-address]") && !!document.querySelector("[data-web-start]")), 8000) &&
-  await tabCount() === t1 + 1)
+  (await places()).length === p1 + 1 && (await places()).filter((p) => p.to === "view:web").length === 1, await places())
 await menuClick("Close tab")
 await opensAs("page")
 
@@ -545,6 +550,8 @@ await opensAs("page")
 const count = (await pages()).length
 await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()
 await until(shown, 10000)
+// (its pane focused: in a split ⌘W closes the focused pane's tab, and the note saved beside it may have the focus)
+await win.locator(`[data-pane-half="${await win.evaluate(() => document.querySelector("[data-pane-area] > section[data-pane-frame]:not([data-away]):has([data-web-box])")?.dataset.paneFrame)}"]`).first().click()
 await menuClick("Close tab")
 check("closing a web tab ends its page", await until(async () => (await pages()).length === count - 1, 10000), await pages())
 

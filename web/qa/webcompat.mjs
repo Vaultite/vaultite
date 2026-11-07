@@ -65,9 +65,11 @@ fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.e
 // ---------- the app ----------
 const DOWNLOADS = path.join(TMP, "Downloads")
 fs.mkdirSync(DOWNLOADS)
+// (VAULTITE_SOUND: a driven app's --mute-audio silences a shared tab's sound for the call too; the shared tab is muted
+// itself, below, so nothing reaches the speakers)
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
-  env: { ...process.env, VAULTITE_QUIET: "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
+  env: { ...process.env, VAULTITE_QUIET: "1", VAULTITE_SOUND: "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
 })
 // (Electron answers the pages' own dialogs: Playwright mustn't try to as well)
 const quietDialogs = (pg) => pg.on("dialog", () => {})
@@ -215,9 +217,9 @@ await app.evaluate(() => { globalThis.__menu = null })
 await clickInPage("#share")
 check("a call's share offers the other tabs", await until(async () => (await shareMenu()).includes("Tone") && (await shareMenu())[1] === "A tab, with its sound", 5000), await shareMenu())
 await pickInMenu("Tone")
-// (its tone starts once it's shared, when a test's shared tab is silent here, and ends before the share does: nothing
-// reaches the speakers even with VAULTITE_SOUND)
-await app.evaluate(({ webContents }) => webContents.getAllWebContents().find((w) => w.getTitle() === "Tone")?.executeJavaScript("tone()"))
+// (its tone starts once it's shared, in a tab muted (a call still hears a muted tab), and ends before the share does:
+// nothing reaches the speakers)
+await app.evaluate(({ webContents }) => { const w = webContents.getAllWebContents().find((x) => x.getTitle() === "Tone"); w?.setAudioMuted(true); return w?.executeJavaScript("tone()") })
 check("… sharing it: its picture and its sound, while it's hidden behind the call", await until(async () => (await pages()).some((p) => /^shared video 1 sound 1 heard frames$/.test(p.title)), 12000), (await pages()).map((p) => p.title))
 await open("/ask")
 // (Blink marks a misspelling only in a focused window, which a quiet one never is: the menu's told one, as Blink would)
