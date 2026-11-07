@@ -8,6 +8,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Messages sent while Claude works stay where you sent them**: in a chat, what you send mid-turn is read back from
   its transcript in its place, instead of falling to the bottom or going missing once the chat reloads.
+- **The notch island is calm, the menu bar menu short**: at rest the island is one still count of the agents working,
+  orange only when one waits on you; no faces, spinners or countdowns. A hover lists who needs you (Answer), what's
+  ready (Show me), what each one works on and what's done. The menu bar menu has who needs you, one row of how many
+  work, the companion's controls with Mute for an hour, and Settings; Open at login is in Settings, About. Each agent
+  keeps one colour of its own, the same on its cursor, by the notch and in the Agents panel.
 - **Questions over a job's page get a quick answer**: live editing sends only changes ("make this blue") and unclear
   asks to the job; a plain question ("what does this button do?") goes to the companion, which knows what the job did
   there. A job taking a long run of edits starts fresh with a summary instead of slowing down or compacting mid-ask.

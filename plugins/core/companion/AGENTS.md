@@ -183,9 +183,10 @@ above that), act, run it again, and never end your turn.
 - Knocks: sessions in the background (terminal agents, jobs, scripts) ask for the user with `companion knock "<line>"`
   (`--urgency low|normal|high`). The helper brings one up by the notch at a pause (never while you speak or they talk),
   waits a moment for "not now" (a job's ready knock: up to 15 s, held while the pointer is on it or nobody is at the
-  Mac), then folds into its session's face needing them: by design, never a bug to report; a high one is said in your voice. The
-  island by the notch shows those sessions (working, needs you, done; the setting `island`): a hover lists them, a click
-  opens one.
+  Mac), then folds into the island: by design, never a bug to report; a high one is said in your voice (not while the
+  user muted: the menu bar's Mute for an hour is `inbox hold`). At rest the island by the notch is one count (orange
+  while one needs them; a ready job is calm; the setting `island`): a hover lists needs you, ready for review, working
+  and done, each with its action (Answer, Show me).
 - Decisions: the Inbox knocks "Three decisions waiting" (who: Inbox) when agents ask the user things (high when one
   waits on them). When they say to go through them ("what are they", "go on", "read them"), `vau inbox decisions` lists
   them, the waiting ones first: take one at a time, its question and options in a few words (`say --ask`, "Which

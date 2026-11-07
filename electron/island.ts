@@ -1,5 +1,5 @@
-// The island: background sessions as small presences by the notch and a knock's line as it comes, in a window at the
-// top of the user's display (right of the notch and any other island there), click-through but over it. screen.html#island.
+// The island: the agents in the background as one quiet mark by the notch and a knock's line as it comes, in a window at
+// the top of the user's display (right of the notch and any other island there), click-through but over it. screen.html#island.
 import { type BrowserWindow, ipcMain, screen, type Display } from "electron"
 import path from "node:path"
 import { overlayWindow } from "./overlaywin.ts"
@@ -12,13 +12,14 @@ import type { WalkScene } from "../plugins/core/companion/walks.ts"
  *  sits in its window. */
 export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; walk: WalkScene | null; spot: Spot; left: number; width: number }
 /** What the user does there: opens a session (a presence's id), puts a knock off, ignores it (`mute`: its session), a
- *  walk's buttons (scratch, done, cancel). */
-export type IslandActs = { open: (id: string) => void; later: (knock: string) => void; ignore: (knock: string, mute: boolean) => void; walk: (what: string) => void; hover?: (on: boolean) => void }
+ *  walk's buttons (scratch, done, cancel), All agents (`agents`: the view to open). */
+export type IslandActs = { open: (id: string) => void; later: (knock: string) => void; ignore: (knock: string, mute: boolean) => void; walk: (what: string) => void
+  agents: (to: string) => void; hover?: (on: boolean) => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
-/** Its window's size: room for the knock's line and, below the bar, the list a hover opens (about 9 rows; the page
- *  scrolls the rest). Click-through but while hovered, so its height costs nothing. */
-const W = 700, H = 520
+/** Its window's size: room for the knock's line and, below the bar, the list a hover opens (about 9 rows with their
+ *  group headings; the page scrolls the rest). Click-through but while hovered, so its height costs nothing. */
+const W = 700, H = 600
 let win: BrowserWindow | null = null
 let url = ""
 let last: Omit<IslandData, "spot" | "left" | "width"> | null = null
@@ -26,7 +27,7 @@ let spot: Spot | null = null
 let acts: IslandActs | null = null
 /** What its page was sent last: the same again isn't sent (the helper ticks while sessions show). */
 let sent = ""
-/** Where each session shows in it (its face, its row, a knock's line), in the window's points. */
+/** Where each session shows in it (the mark, its row, a knock's line), in the window's points. */
 let faces: (Rect & { id: string })[] = []
 
 /** What the user does on it, heard once. */
@@ -46,6 +47,7 @@ export function islandActs(a: IslandActs) {
     else if (m.act === "later") acts?.later(m.id)
     else if (m.act === "ignore") acts?.ignore(m.id, m.mute === true)
     else if (m.act === "walk") acts?.walk(m.id)
+    else if (m.act === "agents") acts?.agents(m.id)
   })
 }
 

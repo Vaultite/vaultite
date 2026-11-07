@@ -218,6 +218,7 @@ by its path.
 - `html:guest` (html): A page as a shared folder's guest gets it (plugins/core/share), at their path for it, nothing of the user's (name, Claude, what it kept), and the wrapper framing it: the guest's gateway serves both, with its own policies.
 - `html:shared` (html): A shared folder's guest joins a page's shared state (plugins/core/share's gateway: the page in their folder, as them).
 - `inbox:folder` (inbox): Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this plugin is on.
+- `inbox:held` (inbox): Whether the inbox is held now (inbox.hold; the menu bar's Mute for an hour): the companion says nothing on its own.
 - `inbox:needs` (inbox): Whether an agent's session (by its terminal, or its own session id) has a thread that needs the user, unread: Terminal's list says so (its tab's dot, Terminals' first rows).
 - `inbox:state` (inbox): Terminal's stream of its terminals' states.
 - `inbox:session` (inbox): Tell the inbox a session's state (SessionState): the thread it's in, once worked out (a turn's end is judged first).

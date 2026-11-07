@@ -4,6 +4,8 @@ export default async ($: VaultTest) => {
   const { api, check } = $
   const K = await import("../../../plugins/core/companion/knocks.ts")
   const I = await import("../../../electron/islandlogic.ts")
+  const H = await import("../../../electron/helperlogic.ts")
+  const A = await import("../../../core/agenttint.ts")
 
   // The queue: one at a time, at a pause, the most urgent first; "not now" till the next break; ignored, expired, gone.
   {
@@ -77,12 +79,39 @@ export default async ($: VaultTest) => {
     const ps = K.presencesOf(rows, [k], seen, T)
     check("presences: agents at work, needing the user or done show (no shell, no idle agent), those needing them first",
       ps.map((p) => `${p.id}:${p.state}`).join() === "claude-1:needs you,claude-2:needs you,codex-3:done" && ps[0].line === "Ready to look" && ps[0].knock === "k1", ps)
-    check("presences: each keeps its tint", ps.every((p) => p.tint === K.tintFor(p.id)) && K.tintFor("claude-1") === K.tintFor("claude-1"))
+    check("presences: each has its agent's own tint, the same on every machine, never the attention orange",
+      ps.every((p) => p.tint === A.agentTint(p.id)) && A.agentTint("claude-1") === A.agentTint("claude-1@m4") && (A.AGENT_TINTS as readonly string[]).every((t) => t !== "orange" && t !== "red"))
+    const jobs = K.presencesOf([{ id: "claude-6", agent: "claude", state: "done", name: "Tab list fix" }, { id: "claude-7", agent: "claude", state: "working", msg: "Running  npm test" },
+      { id: "claude-8", agent: "claude", state: "working" }], [], new Map(), T, { ready: new Set(["claude-6"]) })
+    check("presences: a job ready for review is ready (calm), not needs you; a working one says what it does now",
+      jobs.map((p) => `${p.id}:${p.state}`).join() === "claude-6:ready,claude-7:working,claude-8:working" && jobs[1].step === "Running npm test" && !jobs[2].step, jobs)
+    const held = { ...K.makeKnock({ id: "k3", from: "claude-8", who: "Fix", line: "Ready to show you", hold: K.READY_HOLD_MS }, T), state: "told" as const, shown: T }
+    const blocked = { ...K.makeKnock({ id: "k4", from: "claude-2", who: "Ask", line: "Ready?", hold: K.READY_HOLD_MS }, T), state: "told" as const, shown: T }
+    const both = K.presencesOf(rows.concat({ id: "claude-8", agent: "claude", state: "working" }), [held, blocked], new Map(), T)
+    check("presences: a ready knock (held) is calm; one on a session blocked on them still needs them",
+      both.find((p) => p.id === "claude-8")?.state === "ready" && both.find((p) => p.id === "claude-2")?.state === "needs you", both)
+    check("presences: in the Agents panel's order and words", K.PRESENCE_GROUPS.map((g) => g.label).join() === "Needs you,Ready for review,Working,Done" &&
+      both.map((p) => p.state).join() === "needs you,ready,working,done", both.map((p) => p.state))
     const later = K.presencesOf(rows, [], seen, T + K.DONE_MS + 1)
     check("presences: a done one goes after a while; a knock gone, its session is as its terminal says",
       !later.some((p) => p.id === "codex-3") && later.find((p) => p.id === "claude-1")?.state === "working", later)
     const alone = K.presencesOf([], [{ ...K.makeKnock({ id: "k2", from: "", who: "Backup", line: "Finished" }, T), state: "showing" as const }], new Map(), T)
     check("presences: a knock from no terminal is a presence of its own", alone.length === 1 && alone[0].who === "Backup" && alone[0].state === "needs you" && !alone[0].terminal)
+
+    // The menu bar's menu says the island's counts: who waits on them (a few), then how many work and are ready.
+    const P = (id: string, state: string, x: Any = {}) => ({ id, who: id, tint: "teal", state, since: T - 120_000, ...x })
+    const m = H.menuNow({ now: T, jobs: [], decisions: [{ question: "Run it on prod?", from: "Lighthouse", created: null }],
+      presences: [P("inbox", "needs you", { open: "view:inbox", line: "A decision waiting" }), P("a", "needs you", { line: "Which branch?" }), P("b", "needs you"), P("c", "needs you"),
+        P("d", "ready"), P("e", "working"), P("f", "working"), P("g", "done")] as Any })
+    check("menu: decisions first, the inbox's own knock not twice, three rows, all counted",
+      m.needs.map((r: Any) => r.label).join("|") === "Run it on prod?|Which branch?|Waiting on you" && m.needCount === 4 && m.needs[1].sub === "a · 2m", m)
+    check("menu: one row of how many work and are ready", m.count === "2 agents working · 1 ready" &&
+      H.menuNow({ now: T, jobs: [], decisions: [], presences: [P("d", "ready")] as Any }).count === "1 ready for review", m.count)
+    const off = H.menuNow({ now: T, decisions: [], presences: [], jobs: [{ id: "j1", title: "Deploy", state: "needs you", link: null, unseen: false, at: T, waits: { question: "Which account?", choices: [] } },
+      { id: "j2", title: "Docs", state: "working", link: null, unseen: false, at: T }] })
+    check("menu: with the island off, the jobs say it", off.needs[0]?.label === "Which account?" && off.needs[0].job === "j1" && off.count === "1 agent working", off)
+    const px = H.cursorBitmap([255, 0, 0], 32)
+    check("menu: an agent's cursor drawn in its colour, clear around it", px.length === 32 * 32 * 4 && px[(10 * 32 + 9) * 4 + 2] === 255 && px[(10 * 32 + 9) * 4 + 3] === 255 && px[(30 * 32 + 30) * 4 + 3] === 0)
   }
 
   // The island's place: joined to the notch; right of another app's island there (Vorssaint's, as read on a 15-inch

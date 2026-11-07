@@ -1,7 +1,7 @@
 // The island by the notch (electron/island.ts, knockhelper.ts) in the desktop app, unseen: a session knocks, its line
-// comes up right of the notch (a 15-inch MacBook Air's, Vorssaint's island over it as read there), waits its grace for
-// Not now, is told and stays as the session's presence; Not now puts it off; another app's island wide moves ours to
-// its right. The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/island.mjs <vault copy> [png]
+// comes up right of the notch (a 15-inch MacBook Air's, Vorssaint's island over it as read there) with Answer and Not now
+// and no countdown, is told and rests as one orange mark; Not now puts it off; a ready one is calm; a hover lists them in
+// the Agents panel's groups; another app's island wide moves ours to its right. The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/island.mjs <vault copy> [png]
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import os from "node:os"
@@ -40,15 +40,17 @@ check("a session knocks", k.state === "waiting", k)
 const island = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html#island")), 10000)
 // (all read at once as it comes: its grace is a few seconds)
 const came = !!island && await until(() => island.evaluate(() => { const k = document.querySelector("[data-island-knock]")
-  return k && { text: k.textContent, later: !!document.querySelector("[data-island-later]"), grace: !!document.querySelector(".island-grace"), card: !!document.querySelector(".island-card [data-island-knock]") } }), 8000, 50)
+  return k && { text: k.textContent, later: !!document.querySelector("[data-island-later]"), answer: !!document.querySelector('[data-island-action="Answer"]'),
+    countdown: !!document.querySelector(".island-grace, [style*='scaleX']"), card: !!document.querySelector(".island-card [data-island-knock]") } }), 8000, 50)
 check("at a pause its line comes up in the island", /Lighthouse.*ready for you/.test(came?.text ?? ""), came ?? await helper((h) => h.island()))
 const bounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds())
 check("…right of the notch, joined to it (its window tucked under it), at the top", bounds?.x === display.x + 646 + 179 - 14 - 330 && bounds?.y === display.y, bounds)
-check("…with Not now, and its grace draining", came?.later && came.grace)
+check("…with Answer and Not now, and no countdown", came?.later && came.answer && !came.countdown, came)
 check("…below the bar, as the status items leave its line no room beside the notch", came?.card)
 if (PNG) { await wait(400); fs.writeFileSync(PNG, (await island.screenshot({ omitBackground: true }))) }
-check("its grace over, it's told: the island shows its session needing them", await until(() => helper((h) => h.island().knocks.find((x) => x.state === "told")), 6000) &&
-  await until(() => island.evaluate(() => document.querySelector("[data-island-face][data-state='needs you']") && !document.querySelector("[data-island-knock]")), 4000))
+check("its time over, it's told: the island rests as one orange mark counting who needs them, no faces or spinners", await until(() => helper((h) => h.island().knocks.find((x) => x.state === "told")), 6000) &&
+  await until(() => island.evaluate(() => { const m = document.querySelector("[data-island-mark]")
+    return m?.dataset.islandMark === "needs you" && m.dataset.count === "1" && !document.querySelector("[data-island-knock]") && !document.querySelector("[data-island-face], .island-spin, .island-ping") }), 4000))
 if (PNG) { await wait(600); fs.writeFileSync(PNG.replace(/\.png$/, "-rest.png"), (await island.screenshot({ omitBackground: true }))) }
 const told = await op("companion.knocks", {})
 check("…and the server has it told", told.knocks.some((x) => x.id === k.id && x.state === "told"), told.knocks)
@@ -75,6 +77,53 @@ await island.evaluate(() => document.querySelector("[data-island-later]").click(
 check("Not now puts it off", await until(async () => (await op("companion.knocks", {})).knocks.find((x) => x.id === k2.id)?.state === "later", 4000))
 check("…and the island lets it go", await until(() => island.evaluate(() => !document.querySelector("[data-island-knock]")), 3000))
 
+// ---------- at rest and in the list: needs you orange, ready calm, working still; a hover lists them as the Agents panel
+const mixed = [{ id: "qa-n", who: "Lighthouse migration", tint: "teal", state: "needs you", since: Date.now() - 120_000, line: "Run it on prod?" },
+  { id: "qa-r", who: "Tab list fix", tint: "purple", state: "ready", since: Date.now() - 300_000, line: "Ready to show you" },
+  { id: "qa-w1", who: "Inbox decisions", tint: "green", state: "working", since: Date.now() - 720_000, step: "Running npm test" },
+  { id: "qa-w2", who: "Kitty images", tint: "pink", state: "working", since: Date.now() - 60_000 },
+  { id: "qa-d", who: "Release notes", tint: "blue", state: "done", since: Date.now() - 60_000 }]
+const restOf = () => island.evaluate(() => { const m = document.querySelector("[data-island-mark]"); return m && { state: m.dataset.islandMark, count: m.dataset.count, dot: !!m.querySelector("[data-island-ready]") } })
+await helper((h, list) => h.knocks({ knocks: [], presences: list }), mixed.slice(1))
+check("ready and working at rest: white, counting who works, a dot for the ready one", await until(async () => { const r = await restOf(); return r?.state === "working" && r.count === "2" && r.dot ? r : null }, 4000), await restOf())
+await helper((h, list) => h.knocks({ knocks: [], presences: list }), mixed.slice(4))
+check("only done: nothing shows at rest", await until(async () => !(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.isVisible())), 4000))
+await helper((h, list) => h.knocks({ knocks: [], presences: list }), mixed)
+check("one needs them: the mark is orange, counting one", await until(async () => { const r = await restOf(); return r?.state === "needs you" && r.count === "1" ? r : null }, 4000), await restOf())
+if (PNG) { await wait(700); fs.writeFileSync(PNG.replace(/\.png$/, "-mark.png"), await island.screenshot({ omitBackground: true })) }
+await island.locator("[data-island]").hover({ position: { x: 30, y: 10 } })
+const listed = await until(() => island.evaluate(() => { const rows = [...document.querySelectorAll("[data-island-row]")]; if (!rows.length) return null
+  return { groups: [...document.querySelectorAll("[data-island-group]")].map((g) => g.textContent), rows: rows.map((r) => `${r.dataset.islandRow}:${r.querySelector("[data-island-action]")?.textContent ?? ""}`),
+    done: document.querySelector("[data-island-done]")?.textContent, agents: !!document.querySelector("[data-island-agents]"), step: document.querySelector('[data-island-row="qa-w1"]')?.textContent } }), 3000)
+check("a hover lists needs you, ready, working, the done folded, as the Agents panel words them",
+  listed?.groups.join("|") === "Needs you · 1|Ready for review · 1|Working · 2" && listed.rows.join() === "qa-n:Answer,qa-r:Show me,qa-w1:,qa-w2:" && listed.done === "1 done›" && listed.agents, listed)
+check("…a working one says what it does now", /Running npm test/.test(listed?.step ?? ""), listed)
+if (PNG) { await wait(400); fs.writeFileSync(PNG.replace(/\.png$/, "-list.png"), await island.screenshot({ omitBackground: true })) }
+await island.locator("[data-island-done]").click()
+check("…the done ones unfold", await until(() => island.evaluate(() => !!document.querySelector('[data-island-row="qa-d"]')), 2000))
+await island.mouse.move(600, 330)
+
+// ---------- the menu bar's menu: the way in, who waits on them, one row of how many work, the companion's few controls
+const menu = () => helper((h) => h.menu().map((i) => ({ label: i.label ?? "", type: i.type ?? "", checked: !!i.checked, sub: i.sublabel ?? "" })))
+const menuRows = await menu(), labels = menuRows.filter((i) => i.type !== "separator").map((i) => i.label)
+check("menu: open, needs you with its rows, all in inbox, one count row, the companion, a QA walk, settings, quit",
+  /^Open /.test(labels[0]) && labels.slice(1, 4).join("|") === "Needs you (1)|Run it on prod?|All in inbox" && labels[4] === "2 agents working · 1 ready" &&
+  labels.slice(6, 10).join("|") === "What it said|Quiet|Pair|Mute for an hour" && labels.slice(-3, -1).join("|") === "Start a QA walk|Settings…" && /^Quit /.test(labels.at(-1)), labels)
+check("menu: no per-job list, no dictation, timeline or open at login (those are in Settings)",
+  !labels.some((l) => /^Jobs|Dictate anywhere|30 s of screen|Open at login/.test(l)) && menuRows.length <= 18, labels)
+check("menu: the row needing them says who and when", menuRows.find((i) => i.label === "Run it on prod?")?.sub === "Lighthouse migration · 2m", menuRows)
+await helper((h) => h.menu().find((i) => i.label === "Mute for an hour").click())
+check("menu: Mute for an hour holds the inbox", await until(async () => (await op("inbox.hold", {})).hold, 4000))
+check("…and says till when", await until(async () => (await menu()).find((i) => /^Muted until /.test(i.label) && i.checked), 3000), await menu())
+await helper((h, list) => h.knocks({ knocks: h.island().knocks, presences: list }), [])
+const quietly = await op("companion.knock", { line: "Muted, so not now", who: "Hush", urgency: "high" })
+await wait(4000)
+check("…while muted, nothing comes up by the notch", (await helper((h) => h.island().knocks)).find((x) => x.id === quietly.id)?.state === "waiting")
+await helper((h) => h.menu().find((i) => /^Muted until /.test(i.label)).click())
+check("…a click unmutes; what waited comes up then", await until(async () => !(await op("inbox.hold", {})).hold, 4000) &&
+  await until(() => helper((h, id) => ["showing", "told"].includes(h.island().knocks.find((x) => x.id === id)?.state), quietly.id), 8000))
+await op("companion.knocks", { ignore: quietly.id }).catch(() => {})
+
 // ---------- many sessions: the list a hover opens fits the window, rounds its bottom and scrolls the rest
 const before = await helper((h) => h.island().presences)
 const H = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds().height)
@@ -85,7 +134,7 @@ const card = () => island.evaluate(() => { const c = document.querySelector(".is
   return { bottom: r.bottom, inner: innerHeight, radius, rows: l.querySelectorAll("[data-island-row]").length, scroll: l.scrollTop, room: l.clientHeight, full: l.scrollHeight, more: l.dataset.more ?? "" } })
 for (const n of [1, 8, 30]) {
   await helper((h, list) => h.knocks({ knocks: [], presences: list }), fake(n))
-  await until(() => island.evaluate(() => !!document.querySelector('[data-island-face="qa-0"]')), 4000)
+  await until(() => island.evaluate(() => !!document.querySelector("[data-island-mark]")), 4000)
   await island.locator("[data-island]").hover({ position: { x: 30, y: 10 } })
   const c = await until(async () => { const c = await card(); return c?.rows === n ? c : null }, 3000) ?? await card()
   check(`${n} sessions: the list holds them all`, c?.rows === n, c)

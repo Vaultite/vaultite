@@ -4,6 +4,7 @@ import { useMemo, useSyncExternalStore } from "react"
 import type { AgentRun } from "@vaultite"
 import { cloudListed, getCloud, hasCloud, openSession, settings, shownAccounts, statusOf, subscribeCloud } from "./cloud"
 import { sessionMenu } from "./CloudPanel"
+import { agentTint } from "../../../core/agenttint.ts"
 
 export function useCloudRuns(): AgentRun[] | null {
   const s = useSyncExternalStore(subscribeCloud, getCloud)
@@ -18,7 +19,7 @@ export function useCloudRuns(): AgentRun[] | null {
         id: `cloud:${c.id}`, kind: "cloud", title: c.title, step: c.summary,
         // (ready for review is at rest with something to look at: an unread answer's dot, not Needs you)
         state: st === "needs" ? "needs" : st === "working" ? "working" : "done", unread: c.unread || st === "review",
-        where: c.remote ? "Remote Control" : "Cloud", agent: "Claude Code", tint: "var(--orange)", at: c.updated,
+        where: c.remote ? "Remote Control" : "Cloud", agent: "Claude Code", tint: `var(--${agentTint(c.id)})`, at: c.updated,
         open: (newTab) => openSession(c, newTab), menu: () => sessionMenu(c, false),
       }
     })

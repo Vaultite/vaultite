@@ -2,6 +2,7 @@
 // asked every few seconds while the panel shows). A session a terminal took over shows as that terminal.
 import { useMemo } from "react"
 import { splitMachine, stem, useLive, type AgentRun } from "@vaultite"
+import { agentTint } from "../../../core/agenttint.ts"
 
 /** A session as the route lists it (chathost.ts' Summary, with its title); <id>@<machine> for another machine's. */
 type Chat = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; cwd: string; by: string; started: number; at: number
@@ -23,7 +24,7 @@ export function useChatRuns(): AgentRun[] | null {
         id: `chat:${c.id}`, kind: "chat", title: c.title || firstLine(c.turn?.prompt) || stem(c.cwd) || "Chat",
         step: needs ? "Waiting for your answer" : failed ? firstLine(c.error ?? c.turn?.error) : c.state === "working" ? c.progress || firstLine(c.turn?.prompt) : firstLine(c.turn?.text),
         state: needs ? "needs" : c.state === "working" || c.state === "starting" ? "working" : "done", failed,
-        machine, agent: "Claude Code", tint: "var(--orange)", session: id, at: c.at || c.started, to: `view:claude-session/${c.id}`,
+        machine, agent: "Claude Code", tint: `var(--${agentTint(id)})`, session: id, at: c.at || c.started, to: `view:claude-session/${c.id}`,
       }
     })
   }, [data, error])

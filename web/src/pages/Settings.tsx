@@ -72,6 +72,19 @@ function PluginUpdatesRow() {
   )
 }
 
+/** Whether this computer opens the app at login (kept by the app, not the vault). */
+function LoginRow() {
+  const [on, setOn] = useState<boolean | null>(null)
+  useEffect(() => { void desktopApp?.login?.get().then((r) => setOn(r.on), () => {}) }, [])
+  if (on === null) return null
+  const set = (v: boolean) => { setOn(v); desktopApp!.login!.set(v).catch((e) => { setOn(!v); notifyError(e, "Couldn't change it") }) }
+  return (
+    <SettingRow label="Open at login" sub="On this computer" data-settings-row="login">
+      <Switch on={on} onChange={set} label="Open at login" />
+    </SettingRow>
+  )
+}
+
 /** The app's version and how it updates (the desktop app's; its plugins' is Plugins'). The vault is the sidebar's: its
  *  menu manages vaults. */
 function Updates() {
@@ -85,6 +98,7 @@ function Updates() {
         </div>
       </div>
       <UpdatesRow />
+      {desktopApp?.login && <LoginRow />}
     </Group>
   )
 }
@@ -285,6 +299,7 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     ...(desktopApp?.permission ? [{ id: "permissions", label: "Permissions", sub: "What macOS lets Vaultite do", where: "Settings", run: () => show("permissions"),
       words: "privacy security macos microphone camera location accessibility screen recording input monitoring automation files folders desktop documents downloads full disk access icloud vault signed signature" }] : []),
     ...(desktopApp?.updates ? [{ ...row("updates", "App updates", "About", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
+    ...(desktopApp?.login ? [{ ...row("login", "Open at login", "About", '[data-settings-row="login"]', "On this computer"), words: "startup start launch login boot menu bar" }] : []),
     { ...row("plugin-updates", "Plugin updates", "Plugins", '[data-settings-row="plugin-updates"]', "Vaultite's, all or none"), words: "update automatically plugins" },
   ]
   const plugins = PLUGINS.filter((p) => hasSettings(p, store.pluginSettings ?? [])).sort((a, b) => byName.compare(a.name, b.name)).flatMap((p) => {

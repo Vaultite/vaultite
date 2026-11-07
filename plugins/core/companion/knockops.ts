@@ -36,9 +36,10 @@ export function knockOps(plugin: Plugin, d: Deps) {
   /** What the helpers have: the knocks still to come or telling, and the presences. */
   function tell(force = false) {
     const now = Date.now(), ks = tidy(now)
-    const titles = new Map(d.jobs().map((j) => [terminalOf(j), j.title]))
+    const jobs = d.jobs(), titles = new Map(jobs.map((j) => [local(terminalOf(j)), j.title]))
+    const ready = new Set(jobs.filter((j) => j.state === "ready for review").map((j) => local(terminalOf(j))))
     const none = d.off() || d.hidden()
-    presences = none ? [] : presencesOf(rows, ks.map(named), seen, now, { titles })
+    presences = none ? [] : presencesOf(rows, ks.map(named), seen, now, { titles, ready })
     const m = { t: "knocks", knocks: none ? [] : ks.filter((k) => !over(k)), presences }
     const text = JSON.stringify(m)
     if (text === sent && !force) return
@@ -62,7 +63,7 @@ export function knockOps(plugin: Plugin, d: Deps) {
     reading = true
     try {
       const r = await plugin.runOp("terminal.list", { machine: "all" })
-      rows = ((r.result as { sessions?: TermRow[] })?.sessions ?? []).map((s) => ({ id: s.id, agent: s.agent, state: s.state, needs: s.needs, name: s.name, title: s.title }))
+      rows = ((r.result as { sessions?: TermRow[] })?.sessions ?? []).map((s) => ({ id: s.id, agent: s.agent, state: s.state, needs: s.needs, name: s.name, title: s.title, msg: s.msg }))
     } catch { /* this machine's terminals as last read */ } finally { reading = false }
     tell()
     if (again) { again = false; return readTerminals() }

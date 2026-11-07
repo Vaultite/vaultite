@@ -3,6 +3,7 @@ import { useMemo, useSyncExternalStore } from "react"
 import { useAgents, type AgentRun } from "@vaultite"
 import { agentIn, getSessions, labelOf, needsYou, subscribeSessions } from "./sessions"
 import { menuOf } from "./SessionsPanel"
+import { agentTint } from "../../../core/agenttint.ts"
 
 export function useTerminalRuns(): AgentRun[] | null {
   const { list, refused } = useSyncExternalStore(subscribeSessions, getSessions)
@@ -18,7 +19,7 @@ export function useTerminalRuns(): AgentRun[] | null {
       return [{
         id: `terminal:${s.id}`, kind: "terminal", title: labelOf(s, a), step: s.progress || s.msg || undefined,
         state: needs ? "needs" : s.state === "working" || s.starting ? "working" : "done", failed: s.state === "error", unread: !!s.needs && s.state !== "blocked",
-        machine: s.machine, where: s.machineLabel, agent: a.label, tint: a.tint, session: s.session, at: s.started, started: true,
+        machine: s.machine, where: s.machineLabel, agent: a.label, tint: `var(--${agentTint(s.id)})`, session: s.session, at: s.started, started: true,
         to: `view:terminal/${s.id}`, menu: () => menuOf(s, a),
       }]
     })

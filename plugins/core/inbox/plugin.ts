@@ -120,6 +120,8 @@ const asResults = (items: Item[]) => items.map((r): Listed => ({ ...r, id: str(r
 /** Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this
  *  plugin is on. */
 plugin.provide("inbox:folder", () => plugin.vault.home("inbox") ?? FOLDER)
+/** Whether the inbox is held now (inbox.hold; the menu bar's Mute for an hour): the companion says nothing on its own. */
+plugin.provide("inbox:held", () => !!holdNow())
 
 // ---------- events, kept on this machine
 

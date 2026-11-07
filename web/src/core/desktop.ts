@@ -42,6 +42,8 @@ export type DesktopApi = {
   /** How this Mac takes updates (automatic, notify, off; `available`: this build updates at all), and, automatic, this
    *  page saying whether a restart would lose nothing now. Older builds don't have it. */
   updates?: { get: () => Promise<{ mode: UpdateMode; available: boolean }>; set: (mode: UpdateMode) => Promise<unknown>; safe: (safe: boolean) => Promise<unknown> }
+  /** Whether this computer opens the app at login (a Mac's, Windows'). Older builds don't have it. */
+  login?: { get: () => Promise<{ on: boolean }>; set: (on: boolean) => Promise<unknown> }
   /** The interface size (core/zoom.ts): the whole app's zoom, every window's, kept for this computer (vaults.json
    *  `zoom`). `step` answers the size it came to; `on` hears every change. Older builds don't have it. */
   interfaceSize?: { get: () => Promise<number>; step: (step: -1 | 0 | 1) => Promise<number>; on: (fn: (zoom: number) => void) => void }

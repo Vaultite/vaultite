@@ -21,11 +21,11 @@ import { macAddon } from "./macaddons.ts"
 import { type Call, callFrom, callSaid, type MicUser } from "./calllogic.ts"
 import { hideFromShares, overlayNumbers } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
-import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordFor, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
-import { islandNow, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence, walkShown } from "./knockhelper.ts"
+import { islandNow, knockHost, knockSaid, knocksHeard, openFromMenu, presencesNow, stopKnocks, toPresence, walkShown } from "./knockhelper.ts"
 import type { Presence } from "../plugins/core/companion/knocks.ts"
 import { closePanel, cue as playCue, drawingActs, drawingUp, dropDrawings, endDrawing, followPointer, onPanel, openPanel, overlayActs, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, penSounds, showDrawing, showOverlay, watchLayers, type PanelData } from "./overlay.ts"
 import { type Area, followed as thingFollowed, makeWatch, type On, SAMPLE_MS, sampleFrom, sampleSize, watchedAreas } from "./markwatch.ts"
@@ -154,7 +154,7 @@ export async function startHelper(h: HelperHost) {
     base: () => (live.state.mode === "off" && !walkOn() && !watching() ? null : based || null), ask: (o, r) => screenAsk(o, r ?? {}), cue: (n) => cue(n),
     walk: (what) => (watching() ? lessonAct(what) : walkAct(what)),
     speak: (text) => { if (prefs.voice.mode !== "off" && !quietForCall()) void voiceCall("voice:sample", [{ text, after: true }]).catch(() => {}) },
-    open: (p) => void openPresence(p), hint,
+    open: (p) => void openPresence(p), hint, view: (to) => void openIn(to), muted: () => mutedUntil > Date.now(),
     send: (id, text) => op("terminal.send", { id, text }).then(() => true, () => false), ...(QUIET ? { still: () => Number(process.env.VAULTITE_QA_STILL ?? 2000) } : {}) })
   onPanel({ send: (name, text) => void askFrom(name, text), mic: () => act(session || starting ? "stop" : "start"), more: panelMenu, play: playQuiet,
     // (Esc in its box ends the exchange; the box closed otherwise (clicked away, its close) leaves what it says going on)
@@ -222,40 +222,67 @@ function panelMenu(_name: string, at: { window: BrowserWindow; x: number; y: num
 
 // ---------- the menu bar
 
+/** The menu bar's menu: the way in, what waits on the user, how many work, the companion's few controls, Settings. The
+ *  island has the rest at a glance, the Agents view all of it. */
 function menuItems(): Electron.MenuItemConstructorOptions[] {
   const h = host!, home = h.home()
   const setting = (name: string, values: Record<string, unknown>) => () => void op("settings.set", { name, values }).then(refresh)
-  const name = live.state.name, unread = unreadSays().length
-  const jobs = jobsShown(live.state.jobs ?? [])
+  const name = live.state.name, unread = unreadSays().length, mode = live.state.mode
+  const m = menuNow({ presences: presencesNow(), decisions, jobs: live.state.jobs ?? [], now: Date.now() })
+  const muted = mutedUntil > Date.now()
+  const needs: Electron.MenuItemConstructorOptions[] = m.needs.map((r) => ({ label: r.label, sublabel: r.sub, icon: cursorIcon(r.tint), enabled: !!home,
+    click: () => { const j = r.job ? live.state.jobs?.find((x) => x.id === r.job) : undefined; if (r.presence) openFromMenu(r.presence); else if (j) void openJob(j); else void openIn("view:inbox") } }))
   return [
-    { label: home ? `Open ${home.name}` : `Open ${app.getName()}`, icon: icon("stone"), click: () => h.openHome() },
+    { label: home ? `Open ${home.name}` : `Open ${app.getName()}`, click: () => h.openHome() },
+    ...(m.needCount ? [{ type: "separator" as const }, { label: `Needs you (${m.needCount})`, type: "header" as const }, ...needs,
+      { label: "All in inbox", icon: icon("inbox"), enabled: !!home, click: () => void openIn("view:inbox") }] : []),
+    ...(m.count ? [{ type: "separator" as const }, { label: m.count, icon: icon("mouse-pointer-2"), enabled: !!home, click: () => void openIn("view:agents") }] : []),
     { type: "separator" },
-    { label: "Dictate anywhere", icon: icon("mic"), sublabel: keysSaid(prefs.keys), type: "checkbox", checked: prefs.fn, enabled: !!home, click: setting("plugin/dictation", { fn: !prefs.fn }) },
-    { type: "separator" },
-    { label: name || "Companion", type: "header", sublabel: prefs.talk.length ? `Hold ${keysSaid(prefs.talk)} to talk to it` : undefined },
+    { label: name || "Companion", type: "header", sublabel: prefs.talk.length ? `Hold ${keysSaid(prefs.talk)} to talk` : undefined },
     // (what it said that wasn't seen: the menu bar icon's badge)
     { label: unread ? `What it said (${unread} new)` : "What it said", icon: icon("message-circle"), enabled: !!name && live.state.said.some((n) => n.agent === name && n.kind === "say"),
       click: () => openChat(name, screen.getCursorScreenPoint()) },
-    // (the screen kept in memory for "that, just now": said while it is, and turned off here)
-    { label: timelineOn() ? "Keeping the last 30 s of screen" : "Keep the last 30 s of screen", icon: icon("history"), sublabel: timelineOn() ? "In memory only, till you send it" : undefined,
-      type: "checkbox", checked: prefs.timeline, enabled: !!home, click: setting("plugin/companion", { timeline: !prefs.timeline }) },
+    { label: "Quiet", type: "checkbox", checked: mode === "quiet", enabled: !!home, click: setting("plugin/companion", { mode: "quiet" }) },
+    { label: "Pair", type: "checkbox", checked: mode === "pair", enabled: !!home, click: setting("plugin/companion", { mode: "pair" }) },
+    // (the inbox's hold, on every machine: nothing comes up by the notch, is said or notified till then)
+    { label: muted ? `Muted until ${new Date(mutedUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Mute for an hour", icon: icon("bell-off"), type: "checkbox", checked: muted, enabled: !!home,
+      click: () => void op("inbox.hold", muted ? { until: "off" } : { until: "1h", label: "Muted from the menu bar" }).then((r) => { mutedUntil = heldUntil(r.hold) }, () => {}) },
+    { type: "separator" },
     // (a QA walk: started and ended here too, as by voice)
     walkOn() ? { label: "End the QA walk", icon: icon("footprints"), sublabel: walkScene()?.state === "sending" ? "Sending…" : `${countText(walkScene()?.count ?? 0)}: sent as a job per project`, enabled: walkScene()?.state !== "sending", click: () => void endWalk(true) }
-      : { label: "Start a QA walk", icon: icon("footprints"), sublabel: "Talk as you go; say done to send", enabled: !!home && !!name, click: () => void startWalk() },
-    // (what it handed off: a click opens its tab in Vaultite)
-    ...(jobs.length ? [{ type: "separator" as const }, { label: jobsHeader(jobs), type: "header" as const },
-      ...jobs.map((j) => ({ label: j.title || "A job", sublabel: jobSublabel(j), icon: jobIcon(j.state), enabled: !!j.link, click: () => void openJob(j) }))] : []),
+      : { label: "Start a QA walk", icon: icon("footprints"), enabled: !!home && !!name, click: () => void startWalk() },
     { type: "separator" },
-    { label: "Open at login", icon: icon("power"), type: "checkbox", checked: app.getLoginItemSettings().openAtLogin, click: (i) => { login(i.checked); h.setPrefs({ login: i.checked }) } },
+    { label: "Settings…", icon: icon("settings"), accelerator: "Command+,", enabled: !!home, click: () => void openIn("settings") },
     { label: `Quit ${app.getName()}`, accelerator: "Command+Q", click: () => h.quit() },
   ]
 }
 
-const jobIcon = (state: string) => (state === "starting" || state === "working" ? icon("clock") : state === "needs you" ? icon("circle-alert") : state === "ready for review" ? icon("eye")
-  : state === "failed" || state === "stopped" ? icon("circle-x") : icon("circle-check"))
-/** The Jobs header: how many work, and how many need the user. */
-const jobsHeader = (jobs: HelperJob[]) => { const n = (s: string[]) => jobs.filter((j) => s.includes(j.state)).length, w = n(["starting", "working"]), y = n(["needs you"])
-  return `Jobs${w || y ? ` (${[w ? `${w} working` : "", y ? `${y} need${y > 1 ? "" : "s"} you` : ""].filter(Boolean).join(", ")})` : ""}` }
+/** The decisions an agent waits on (inbox.decisions' blocking ones), read with the settings. */
+let decisions: { question: string; from: string | null; created: string | null }[] = []
+/** Till when the user muted (the inbox's hold), in ms; 0: not. */
+let mutedUntil = 0
+const heldUntil = (h: unknown) => { const u = (h as { until?: unknown } | null)?.until; const t = typeof u === "string" ? Date.parse(u.replace(" ", "T")) : NaN; return Number.isFinite(t) ? t : 0 }
+const cursors = new Map<string, Electron.NativeImage>()
+/** An agent's cursor in its colour, as the island draws it (not a template: it keeps its colour). */
+function cursorIcon(tint: string) {
+  if (!cursors.has(tint)) {
+    const img = nativeImage.createEmpty()
+    for (const scale of [1, 2]) img.addRepresentation({ scaleFactor: scale, width: 16 * scale, height: 16 * scale, buffer: cursorBitmap(TINT_RGB[tint] ?? TINT_RGB.blue, 16 * scale) })
+    cursors.set(tint, img)
+  }
+  return cursors.get(tint)
+}
+/** Open `to` in the home vault's window (opened first if need be). */
+async function openIn(to: string) {
+  if (!host) return
+  host.openHome()
+  // (a window just opening has no page to open it in yet)
+  for (let i = 0; i < 20; i++) {
+    if (await op("ui.open", { path: to }).then(() => true, () => false)) return
+    await new Promise((r) => setTimeout(r, 500))
+  }
+}
+
 /** A job opened: its tab in the home vault's window (opened first if need be; one closed once done resumes), and it's
  *  no longer news. */
 async function openJob(j: HelperJob) {
@@ -284,6 +311,7 @@ async function openPresence(p: Presence) {
 }
 /** A job ended or needs them: a notification, whose click opens it; what it waits on, its buttons answer there. */
 function jobNotice(j: HelperJob) {
+  if (mutedUntil > Date.now()) return
   const note = jobNote(j)
   if (QUIET) return void asked.push({ notice: "job", id: j.id, state: j.state, body: note.body, choices: note.choices })
   if (!Notification.isSupported()) return
@@ -336,6 +364,10 @@ async function refresh() {
   const get = (name: string) => op("settings.get", { name }).catch(() => ({}))
   const [d, c, s] = await Promise.all([get("plugin/dictation"), get("plugin/companion"), get("plugin/screen")])
   prefs = prefsOf(d, c, s, DEFAULTS)
+  // (for the menu: the decisions an agent waits on, and whether the user muted; a vault without the inbox has neither)
+  const [ds, held] = await Promise.all([op("inbox.decisions", {}).catch(() => null), op("inbox.hold", {}).catch(() => null)])
+  decisions = ((ds?.decisions ?? []) as { question: string; from: string | null; created: string | null; blocking?: boolean }[]).filter((x) => x.blocking)
+  mutedUntil = heldUntil(held?.hold)
   penHeard()
   hideFromShares(prefs.hideFromShares)
   followCalls()

@@ -2774,6 +2774,7 @@ const talks = talkOps(plugin, {
     keepSaid(putNote({ kind: "say", agent: name, text, ...(m ? placeOf(m) as Partial<Note> : {}), ...(m?.summoned ? { answers: answersOf(m) } : {}) }, sayMs(text)))
     setAgent(name, { state: "watching" })
   },
+  tint: (name, tint) => { agentOf(name).tint = tint },
   show: (name, m) => void setAgent(name, m ? { state: "thinking", ...placeOf(m) } : { state: "watching" }),
   gone: (name) => {
     for (const n of [...notes.values()]) if (n.agent === name && !n.by) dropNote(n.id)
@@ -2828,7 +2829,7 @@ const proofs = proofOps(plugin, {
   },
   urgency: async () => {
     if (setting("job_news") === "off") return "off"
-    if (setting("job_news") !== "spoken" || setting("voice") === "off") return "normal"
+    if (setting("job_news") !== "spoken" || setting("voice") === "off" || await held()) return "normal"
     const block = await plugin.host.call("block.status", {}).then((r) => r.result as { now?: unknown } | null).catch(() => null)
     return block?.now ? "normal" : "high"
   },
@@ -2854,13 +2855,15 @@ plugin.provide("agents-used:companion", (): AgentUse[] => [
   ...(mode() === "off" ? [] : [{ agent: agentSetting(), as: "Companion chat" }]),
   { agent: jobs.jobsAgent(), as: "Jobs" },
 ])
+/** Muted (the inbox held: the menu bar's Mute for an hour): nothing said on its own. */
+const held = () => plugin.ask<boolean>("inbox:held", false).catch(() => false)
 /** How recent their last Talk key ask must be for a job's news to be said aloud. */
 const AROUND_MS = 15 * 60_000
 /** A job's news said in its voice, one line, only while they're at this Mac (a Talk key ask to its helper lately: never
  *  aloud at home from a phone's ask) and not in a focus block; else the menu bar's notification waits for them, silent. */
 async function jobNews(title: string, state: string, from: string) {
   const text = jobSpoken({ title, state: state as JobState }, from), last = moments.findLast((m) => m.summoned)?.t ?? 0
-  if (!text || setting("job_news") !== "spoken" || !jobTold(state, "spoken") || mode() === "off" || setting("voice") === "off" || Date.now() - last > AROUND_MS) return
+  if (!text || setting("job_news") !== "spoken" || !jobTold(state, "spoken") || mode() === "off" || setting("voice") === "off" || Date.now() - last > AROUND_MS || await held()) return
   const block = await plugin.host.call("block.status", {}).then((r) => r.result as { now?: unknown } | null).catch(() => null)
   if (block?.now) return
   await plugin.desktop("voice:sample", { text, after: true })

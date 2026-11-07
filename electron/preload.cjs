@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   ready: call("app:ready"),
   restartToUpdate: call("app:update-restart"),
   updates: { get: call("app:updates"), set: call("app:updates-set"), safe: call("app:update-safe") },
+  login: MAC || WIN ? { get: call("app:login"), set: call("app:login-set") } : undefined,
   printToPDF: call("print:pdf"),
   revealPdf: call("print:reveal"),
   microphone: call("media:microphone"),

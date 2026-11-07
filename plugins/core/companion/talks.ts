@@ -5,6 +5,7 @@ import { type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
 import { followTask, type Job, live } from "./jobs.ts"
 import type { Moment } from "./plugin.ts"
 import { parseTags, type Tag } from "./tags.ts"
+import { agentTint } from "../../../core/agenttint.ts"
 
 type Jobs = { list: () => Job[]; find: (id: string) => Job; tell: (ctx: OpCtx, id: string, text: string, shown?: string) => Promise<void> }
 export type TalkDeps = {
@@ -15,6 +16,8 @@ export type TalkDeps = {
   askOf: (name: string) => Moment | undefined
   /** `name`'s words by its cursor, answering `m` (said aloud when `m` was spoken). */
   say: (name: string, text: string, m?: Moment) => Promise<unknown>
+  /** `name`'s cursor in `tint`: a job's own colour, as the island and the Agents panel show it (core/agenttint.ts). */
+  tint: (name: string, tint: string) => void
   /** `name`'s cursor thinking by `m`'s place; none: done, there. */
   show: (name: string, m: Moment | null) => void
   /** `name` gone once its talk is over: its cursor and words (no session of its own brings it back). */
@@ -95,6 +98,7 @@ export function talkOps(plugin: Plugin, d: TalkDeps) {
     const name = talkName(j.title)
     if (name.toLowerCase() === d.main().toLowerCase()) throw new OpError(`${j.id} would talk by your own name: rename it first (handoff --job --title)`, 409)
     floor = { job: j.id, name, at: Date.now() }
+    d.tint(name, agentTint(j.terminal))
     await send(ctx, j, name, m, true)
     return { job: j.id, title: j.title, name }
   }

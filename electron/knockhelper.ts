@@ -5,6 +5,7 @@ import { actOn, graceOver, graceWaits, HEARD_MS, holdOf, type Knock, type KnockA
 import { islandActs, islandReady, presenceAt, showIsland, spotNow } from "./island.ts"
 import type { OtherWindow, Rect, Spot } from "./islandlogic.ts"
 import type { WalkScene } from "../plugins/core/companion/walks.ts"
+import { agentTint } from "../core/agenttint.ts"
 
 export type KnockHost = {
   /** Tell the server (the companion's socket). */
@@ -28,6 +29,10 @@ export type KnockHost = {
   still?: () => number
   /** A QA walk's or a lesson's button pressed on the island: scratch, done, cancel. */
   walk: (what: string) => void
+  /** Open a view in Vaultite (All agents: view:agents). */
+  view: (to: string) => void
+  /** Muted (the menu's Mute for an hour, the inbox's hold): nothing comes up or is said; the island still counts. */
+  muted?: () => boolean
 }
 
 let host: KnockHost | null = null
@@ -58,6 +63,7 @@ export function knockHost(h: KnockHost) {
     later: (id) => act(id, "later"),
     ignore: (id, mute) => act(id, "ignore", mute),
     walk: (what) => host?.walk(what),
+    agents: (to) => host?.view(to),
     hover: (on) => {
       const k = knocks.find((x) => x.state === "showing")
       // (the grace left as it was when they came over it)
@@ -111,7 +117,8 @@ function tick() {
   if (!host) return
   const now = Date.now()
   const talking = host.talking()
-  const k = pick(knocks, { now, talking, still: stillNow() })
+  // (muted: one showing goes on; none new comes up)
+  const k = host.muted?.() && !knocks.some((x) => x.state === "showing") ? null : pick(knocks, { now, talking, still: stillNow() })
   // (its window loading still, or its place not known yet: it shows once it can be seen)
   if (k && k.state !== "showing" && (!islandReady(host.base()) || !spot)) { void place(); timer = setTimeout(tick, 150); return }
   if (k && k.state !== "showing") { act(k.id, "show"); host.cue("knock"); lastTick = now; return }
@@ -120,17 +127,17 @@ function tick() {
   lastTick = now
   if (k && !hovering && graceOver(k, now)) {
     act(k.id, "told")
-    if (k.urgency === "high") host.speak(`${k.who}: ${k.line}`)
+    if (k.urgency === "high" && !host.muted?.()) host.speak(`${k.who}: ${k.line}`)
     return
   }
   const showing = k?.state === "showing" ? k : null
-  // (nobody at the Mac a while: the presences go till they're back; a walk or lesson stays)
+  // (nobody at the Mac a while: the presences go till they're back; a walk or lesson stays; done ones never show at rest)
   const away = !showing && stillNow() > AWAY_MS
-  const live = !!walk || (!away && (presences.length > 0 || !!showing))
+  const live = !!walk || (!away && (presences.some((p) => p.state !== "done") || !!showing))
   if (live) void place()
   const hold = showing ? holdOf(showing) : 0
   const left = showing ? (hovering ? hold - (hovering - (showing.shown ?? hovering)) : hold - (now - (showing.shown ?? now))) : 0
-  const tint = showing ? presences.find((p) => p.knock === showing.id)?.tint ?? "orange" : "orange"
+  const tint = showing ? presences.find((p) => p.knock === showing.id)?.tint ?? agentTint(showing.from || showing.who) : ""
   showIsland(host.base(), live ? { presences, knock: showing ? { ...showing, tint, left: Math.max(0, left) } : null, walk } : null, spot)
   // (quick while one shows, its grace counting; else at a walk while any wait or show)
   const waiting = knocks.some((x) => !over(x) && x.state !== "told")
@@ -164,7 +171,7 @@ export function knockSaid(text: string) {
     knocks.filter((x) => x.state === "told" && now - (x.shown ?? 0) < HEARD_MS).sort((a, b) => (b.shown ?? 0) - (a.shown ?? 0))[0]
   if (!k) return false
   if (reply === "open") {
-    const p = presences.find((x) => x.knock === k.id) ?? { id: k.from || k.id, who: k.who, tint: "orange", state: "needs you" as const, since: now, ...(k.from && !k.from.includes(":") ? { terminal: k.from } : {}), ...(k.open ? { open: k.open } : {}) }
+    const p = presences.find((x) => x.knock === k.id) ?? { id: k.from || k.id, who: k.who, tint: agentTint(k.from || k.who), state: "needs you" as const, since: now, ...(k.from && !k.from.includes(":") ? { terminal: k.from } : {}), ...(k.open ? { open: k.open } : {}) }
     act(k.id, "open")
     host.open(p)
   } else act(k.id, reply === "mute" ? "ignore" : reply, reply === "mute")
@@ -182,6 +189,14 @@ export function toPresence(text: string, at: { x: number; y: number }) {
     if (ok && p.knock) act(p.knock, "open")
   })
   return true
+}
+
+/** The presences as the island has them: the menu bar's menu says the same. */
+export const presencesNow = () => presences
+/** A session needing the user, picked in the menu bar's menu: opened as from the island (its knock answered). */
+export function openFromMenu(p: Presence) {
+  if (p.knock) act(p.knock, "open")
+  host?.open(p)
 }
 
 /** What a scripted copy's island shows (web/qa/helper.mjs). */

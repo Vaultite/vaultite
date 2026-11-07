@@ -1,5 +1,6 @@
 // Knocks: a background session asking for the user in one line, without interrupting: the helper brings each up at a
 // pause, one at a time, by the notch with the sessions' presences. Plain functions: knockops.ts keeps them.
+import { agentTint } from "../../../core/agenttint.ts"
 
 export const URGENCIES = ["low", "normal", "high"] as const
 export type Urgency = typeof URGENCIES[number]
@@ -122,46 +123,47 @@ export const graceWaits = (k: Knock, p: { talking: boolean; still: number; locke
 
 // ---------- presences: the background sessions, small by the notch
 
-export type PresenceState = "working" | "needs you" | "done"
-/** One session as the notch shows it: who, in what state, a knock's line when it knocked; `terminal`: what a click opens
- *  and a Talk key held over it talks to. */
-export type Presence = { id: string; who: string; tint: string; state: PresenceState; since: number; line?: string; knock?: string; urgency?: Urgency; terminal?: string; open?: string }
-/** A terminal as terminal.list gives it, the fields read here. */
-export type TermRow = { id: string; agent?: string | null; state?: string; needs?: boolean; name?: string; title?: string; machineLabel?: string }
+/** needs you: waits on the user (blocked, or a knock); ready: a job ready for review, its ready knock (calm); working;
+ *  done: at rest a while, listed only. */
+export type PresenceState = "needs you" | "ready" | "working" | "done"
+/** One session as the notch shows it: who, in what state, what it does now (`step`) or a knock's line; `terminal`: what
+ *  a click opens and a Talk key held over it talks to. */
+export type Presence = { id: string; who: string; tint: string; state: PresenceState; since: number; step?: string; line?: string; knock?: string; urgency?: Urgency; terminal?: string; open?: string }
+/** A terminal as terminal.list gives it, the fields read here (`msg`: its agent's last step, in its own words). */
+export type TermRow = { id: string; agent?: string | null; state?: string; needs?: boolean; name?: string; title?: string; machineLabel?: string; msg?: string }
 /** A done session stays a while, then goes. */
 export const DONE_MS = 15 * 60_000
-export const MOST = 6
-const TINTS = ["orange", "teal", "purple", "green", "pink", "indigo", "yellow", "blue"]
-/** A session's own tint, the same each time. */
-export function tintFor(id: string) {
-  let h = 0
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0
-  return TINTS[h % TINTS.length]
-}
-const RANKED: Record<PresenceState, number> = { "needs you": 0, working: 1, done: 2 }
+/** The groups as the island lists them, in order, in the Agents panel's words. */
+export const PRESENCE_GROUPS: { state: PresenceState; label: string }[] = [
+  { state: "needs you", label: "Needs you" }, { state: "ready", label: "Ready for review" }, { state: "working", label: "Working" }, { state: "done", label: "Done" },
+]
+const RANKED: Record<PresenceState, number> = { "needs you": 0, ready: 1, working: 2, done: 3 }
 const stateOf = (r: TermRow): PresenceState | null =>
   r.state === "blocked" || r.needs ? "needs you" : r.state === "working" ? "working" : r.state === "done" || r.state === "error" ? "done" : null
 
-/** Each agent's terminal at work, needing the user or just done (`since`: as first seen; `titles`: jobs'), and each live
- *  knock on its session's or its own; `skip`: the companion's. Needing them first, then working, then done, newest first. */
+/** Each agent's terminal (`titles`: jobs'; `ready`: jobs' ready for review; `skip`: the companion's) and each live knock
+ *  (a held one is ready, calm), in the Agents panel's order: needs you, ready, working oldest first, done newest first. */
 export function presencesOf(rows: TermRow[], knocks: Knock[], seen: Map<string, { state: PresenceState; since: number }>, now: number,
-  { titles = new Map<string, string>(), skip = new Set<string>() }: { titles?: Map<string, string>; skip?: Set<string> } = {}): Presence[] {
+  { titles = new Map<string, string>(), ready = new Set<string>(), skip = new Set<string>() }: { titles?: Map<string, string>; ready?: Set<string>; skip?: Set<string> } = {}): Presence[] {
   const out = new Map<string, Presence>()
   for (const r of rows) {
-    const state = r.agent ? stateOf(r) : null
+    let state = r.agent ? stateOf(r) : null
     if (!state || skip.has(r.id)) continue
+    if (ready.has(r.id) && state !== "needs you") state = "ready"
     const was = seen.get(r.id), since = was?.state === state ? was.since : now
     seen.set(r.id, { state, since })
     if (state === "done" && now - since > DONE_MS) continue
-    out.set(r.id, { id: r.id, who: titles.get(r.id) || r.name || r.title || r.agent || "A session", tint: tintFor(r.id), state, since, terminal: r.id })
+    out.set(r.id, { id: r.id, who: titles.get(r.id) || r.name || r.title || r.agent || "A session", tint: agentTint(r.id), state, since, terminal: r.id,
+      ...(r.msg?.trim() ? { step: r.msg.replace(/\s+/g, " ").trim() } : {}) })
   }
   for (const id of [...seen.keys()]) if (!rows.some((r) => r.id === id)) seen.delete(id)
   for (const k of knocks) {
     if (k.state !== "showing" && k.state !== "told") continue
     const p = out.get(k.from)
-    const knocked = { state: "needs you" as const, line: k.line, knock: k.id, urgency: k.urgency, since: k.shown ?? k.at, ...(k.open ? { open: k.open } : {}) }
+    const state: PresenceState = k.hold && p?.state !== "needs you" ? "ready" : "needs you"
+    const knocked = { state, line: k.line, knock: k.id, urgency: k.urgency, since: k.shown ?? k.at, ...(k.open ? { open: k.open } : {}) }
     if (p) Object.assign(p, knocked)
-    else out.set(k.from || `knock:${k.id}`, { id: k.from || `knock:${k.id}`, who: k.who, tint: tintFor(k.from || k.who), ...knocked, ...(k.from && !k.from.includes(":") ? { terminal: k.from } : {}) })
+    else out.set(k.from || `knock:${k.id}`, { id: k.from || `knock:${k.id}`, who: k.who, tint: agentTint(k.from || k.who), ...knocked, ...(k.from && !k.from.includes(":") ? { terminal: k.from } : {}) })
   }
-  return [...out.values()].sort((a, b) => RANKED[a.state] - RANKED[b.state] || b.since - a.since)
+  return [...out.values()].sort((a, b) => RANKED[a.state] - RANKED[b.state] || (a.state === "done" ? b.since - a.since : a.since - b.since))
 }

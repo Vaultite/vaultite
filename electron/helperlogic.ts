@@ -2,6 +2,8 @@
 import { arrowBox, boxAt, flagBox } from "../plugins/core/companion/boxes.ts"
 import { jobTold } from "../plugins/core/companion/jobs.ts"
 import type { RegionScene } from "../plugins/core/companion/clips.ts"
+import type { Presence } from "../plugins/core/companion/knocks.ts"
+import { agentTint } from "../core/agenttint.ts"
 
 export type Rect = { x: number; y: number; width: number; height: number }
 type Decls = Record<string, { default?: unknown }>
@@ -264,12 +266,49 @@ export const atOffset = (frame: Rect, o: { dx: number; dy: number }) =>
 export type HelperJob = { id: string; title: string; state: string; link: string | null; unseen: boolean; at: number; where?: string; now?: string; took?: string; result?: string
   /** What it waits on while it needs the user: its notification's buttons answer it. */
   waits?: { question: string; choices: string[] } }
-const ACTIVE = new Set(["starting", "working", "needs you"])
-const RANK: Record<string, number> = { "needs you": 0, "ready for review": 1, working: 2, starting: 2 }
-/** The Jobs in the menu: those needing the user, to review or at work first, then the latest ended ones of the last day; a few. */
-export function jobsShown(jobs: HelperJob[], now = Date.now()) {
-  return jobs.filter((j) => ACTIVE.has(j.state) || (j.state !== "stopped" && (j.unseen || now - j.at < 86_400_000)))
-    .sort((a, b) => (RANK[a.state] ?? 3) - (RANK[b.state] ?? 3) || b.at - a.at).slice(0, 6)
+/** The menu bar's agents: who waits on the user (decisions first; a few, `needCount` all) and one row of how many work
+ *  and are ready. From the island's presences, or the jobs when it has none (it's off). */
+export function menuNow({ presences, decisions, jobs, now }: { presences: Presence[]; decisions: { question: string; from: string | null; created: string | null }[]; jobs: HelperJob[]; now: number }) {
+  const ago = (t: number) => { const m = Math.round((now - t) / 60_000); return !Number.isFinite(m) ? "" : m < 1 ? "now" : m < 60 ? `${m}m` : `${Math.round(m / 60)}h` }
+  const at = (s: string | null) => (s ? Date.parse(s.replace(" ", "T")) : NaN)
+  const sub = (...p: string[]) => p.filter(Boolean).join(" · ")
+  type Need = { label: string; sub: string; tint: string; presence?: Presence; job?: string }
+  const own = presences.length > 0
+  const all: Need[] = [
+    ...decisions.map((d) => ({ label: d.question, sub: sub(d.from ?? "", ago(at(d.created))), tint: agentTint(d.from || d.question) })),
+    // (the inbox's own knock stands for the decisions listed above it)
+    ...presences.filter((p) => p.state === "needs you" && !(decisions.length && p.open === "view:inbox"))
+      .map((p) => ({ label: p.line ?? p.step ?? "Waiting on you", sub: sub(p.who, ago(p.since)), tint: p.tint, presence: p })),
+    ...(own ? [] : jobs.filter((j) => j.state === "needs you").map((j) => ({ label: j.waits?.question ?? "Waiting on you", sub: sub(j.title, ago(j.at)), tint: agentTint(j.id), job: j.id }))),
+  ]
+  const n = (states: string[]) => own ? presences.filter((p) => states.includes(p.state)).length : jobs.filter((j) => states.includes(j.state)).length
+  const working = n(["working", "starting"]), ready = n(["ready", "ready for review"])
+  const count = [working && `${working} agent${working === 1 ? "" : "s"} working`, ready && (working ? `${ready} ready` : `${ready} ready for review`)].filter(Boolean).join(" · ")
+  return { needs: all.slice(0, 3), needCount: all.length, count }
+}
+
+/** The tints' colours (the app's dark palette, bright enough on either menu). */
+export const TINT_RGB: Record<string, [number, number, number]> = {
+  teal: [64, 200, 224], purple: [191, 90, 242], green: [48, 209, 88], pink: [255, 55, 95], indigo: [94, 92, 230], blue: [10, 132, 255], yellow: [255, 214, 10],
+  orange: [255, 159, 10], red: [255, 69, 58],
+}
+/** An agent's cursor (the overlay's arrow) filled with `rgb`, `px` square: BGRA, premultiplied, for a native image. */
+export function cursorBitmap(rgb: [number, number, number], px: number) {
+  const P = [[3, 2.5], [16.5, 9.2], [10.3, 10.9], [7.6, 16.8]].map(([x, y]) => [x * px / 20, y * px / 20])
+  const inside = (x: number, y: number) => {
+    let c = false
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++)
+      if ((P[i][1] > y) !== (P[j][1] > y) && x < (P[j][0] - P[i][0]) * (y - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c
+    return c
+  }
+  const out = Buffer.alloc(px * px * 4), S = 4
+  for (let y = 0; y < px; y++) for (let x = 0; x < px; x++) {
+    let hit = 0
+    for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) if (inside(x + (sx + 0.5) / S, y + (sy + 0.5) / S)) hit++
+    const a = hit / (S * S), o = (y * px + x) * 4
+    out[o] = Math.round(rgb[2] * a); out[o + 1] = Math.round(rgb[1] * a); out[o + 2] = Math.round(rgb[0] * a); out[o + 3] = Math.round(255 * a)
+  }
+  return out
 }
 /** Jobs whose news is told (`news`: job_news) that came to need the user (or wait on another prompt), or ended (ready
  *  for review, done, failed), since `before` (null: the first list heard, no news): a notification each. */
@@ -286,10 +325,6 @@ export function jobNote(j: HelperJob) {
   return { title: j.state === "needs you" ? "A job needs you" : j.state === "failed" ? "A job failed" : j.state === "ready for review" ? "A job is ready for review" : "A job is done",
     body: [j.title, waits?.question ?? j.result].filter(Boolean).join("\n"), choices: (waits?.choices ?? []).slice(0, 4) }
 }
-/** A job's line under its title in the menu: its state, where, and what it does now or ended with. */
-export const jobSublabel = (j: HelperJob) => [`${JOB_SAID[j.state] ?? j.state}${j.unseen ? ", new" : ""}${j.took ? ` · ${j.took}` : ""}`, j.where, ACTIVE.has(j.state) ? j.now : j.result]
-  .filter(Boolean).join("\n")
-export const JOB_SAID: Record<string, string> = { starting: "Starting", working: "Working", "needs you": "Needs you", "ready for review": "Ready for review", done: "Done", failed: "Failed", stopped: "Stopped" }
 /** The menu bar icon's badge: its words not seen, and jobs ended that weren't opened. */
 export const badgeOf = (unread: number, jobs: HelperJob[]) => { const n = unread + jobs.filter((j) => j.unseen).length; return n ? String(n) : "" }
 

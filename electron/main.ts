@@ -1051,6 +1051,14 @@ handle("app:updates-set", (_w, mode: UpdateMode) => {
   for (const w of wins.values()) tell(w)
   if (mode !== "off" && !ready) checkForUpdate(false)
 })
+// (Open at login, Settings > About: this Mac's, kept with the helper's prefs so the helper doesn't turn it back)
+handle("app:login", () => ({ on: app.getLoginItemSettings().openAtLogin }))
+handle("app:login-set", (_w, on: boolean) => {
+  if (typeof on !== "boolean") return
+  if (app.getLoginItemSettings().openAtLogin !== on) app.setLoginItemSettings({ openAtLogin: on })
+  helperPrefs = { ...helperPrefs, login: on }
+  save()
+})
 ipcMain.handle("app:update-safe", (e, safe: boolean) => {
   if (!who(e)) return
   if (safe === true) safeNow.add(e.sender); else safeNow.delete(e.sender)
