@@ -3,7 +3,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
-import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentModels, type AgentUse, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
@@ -17,6 +16,7 @@ import { partialArgs } from "./partial.ts"
 import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
 import { type Change, changeAt, type Hunk, isPrivate, nearest, privateOf } from "./text.ts"
 import { hostOf, type Pane, paneSource, PLACE_KEYS, placeText, siteIn, type Target } from "./places.ts"
+import { NEVER_READ, readableDirs } from "./reach.ts"
 import { screenDrawings } from "./drawings.ts"
 import { bestFound, byLabel, checkMarks, type Found, type Rect as ScreenRect, rectOf, spots, VOCABULARY } from "./screenmarks.ts"
 import { anchorsOf, inPicture, inSummoned, type Lane, screenNear, SUMMONED_PROMPT, summonedLane } from "./summoned.ts"
@@ -904,7 +904,7 @@ const OWN_SHOT = /[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+)\.png$/
 function screenPlace(m: Record<string, unknown>) {
   const shot = str(m.shot), down = str(m.shotDown), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
   const rect = (r: unknown): Rect | null => { const o = (r ?? {}) as Record<string, unknown>, v = [o.x, o.y, o.width, o.height].map(Number); return v.every(Number.isFinite) ? { x: Math.round(v[0]), y: Math.round(v[1]), width: Math.round(v[2]), height: Math.round(v[3]) } : null }
-  const near = Array.isArray(m.near) ? m.near.slice(0, 40).flatMap((e: Record<string, unknown>) => { const f = rect(e?.frame); return f && str(e.id) ? [{ id: str(e.id).slice(0, 8), role: str(e.role).slice(0, 40), label: str(e.label).slice(0, 120), frame: f }] : [] }) : []
+  const near = Array.isArray(m.near) ? m.near.slice(0, 40).flatMap((e: Record<string, unknown>) => { const f = rect(e?.frame); return f && str(e.id) ? [{ id: str(e.id).slice(0, 8), role: str(e.role).slice(0, 80), label: str(e.label).slice(0, 120), frame: f }] : [] }) : []
   const ink = Array.isArray(m.ink) ? m.ink.slice(0, 12).flatMap((k: Record<string, unknown>) => { const b = rect(k?.box); return b ? [{ shape: str(k.shape).slice(0, 20), box: b,
     points: (Array.isArray(k.points) ? k.points : []).slice(0, 40).map((p: unknown) => (Array.isArray(p) ? [Math.round(Number(p[0])), Math.round(Number(p[1]))] : [0, 0]) as [number, number]) }] : [] }) : []
   const at = rect(m.shotAt), displays = Array.isArray(m.displays) ? m.displays.slice(0, 8).map(rect).filter((d): d is Rect => !!d && d.width > 0 && d.height > 0) : []
@@ -1796,10 +1796,10 @@ const SUMMONED_BUILTINS = ["Bash"]
  *  while they talk): the long session's commands, showing things in their window, and looking around (READ_ONLY). */
 const SUMMONED_ALLOWED = [...ALLOWED, "Bash(vau --help)", "Bash(vau open:*)", "Bash(vau commands:*)", "Bash(vau command companion:session:*)", "Bash(vau screen:*)",
   "Bash(tailscale serve status:*)", "Bash(tailscale status:*)", "Bash(lsof:*)", "Bash(git -C * log *)", "Bash(git -C * show *)"]
-/** Where its read-only commands (ls, cat, grep...: Claude Code tells them from writes, redirects too) may look unasked:
- *  code and documents, never home's dotfiles or Library (keys, cookies, mail); git's -c could run a pager, so it's refused. */
-const READ_ONLY = { dirs: ["Projects", "Documents"].map((d) => path.join(os.homedir(), d)),
-  denied: [`/${path.resolve(LOCAL)}`].map((d) => `Read(${d}/**)`).concat("Read(**/.env*)", "Bash(git * --output*)", "Bash(git * -c *)", "Bash(git * --config-env*)", "Bash(git * --exec-path*)") }
+/** Where its read-only commands (ls, cat, grep...: Claude Code tells them from writes, redirects too) may look unasked
+ *  (reach.ts), never home's dotfiles or Library (keys, cookies, mail); git's -c could run a pager, so it's refused. */
+const READ_ONLY = { dirs: readableDirs().dirs,
+  denied: [`/${path.resolve(LOCAL)}`].map((d) => `Read(${d}/**)`).concat(NEVER_READ, "Bash(git * --output*)", "Bash(git * -c *)", "Bash(git * --config-env*)", "Bash(git * --exec-path*)") }
 /** An ask's window text it's given at most (chars), the lines by what's at their pointer first: the rest is in its
  *  picture, and every ask's text stays in its history. */
 const SCREEN_CHARS = 4000
@@ -2906,15 +2906,22 @@ const SNAPSHOT = 12_000
 plugin.op({
   id: "companion.see",
   cli: "companion see",
-  summary: "What a pane of the user's window shows now: a terminal's screen, a web page as its accessibility tree (refs to point at and act on), a note's text.",
+  summary: "What a pane of the user's window shows now (a terminal's screen, a web page as its accessibility tree with refs to point at and act on, a note's text), or a part of the app's own UI (a sidebar panel's rows).",
   help: `For an ask or a point about a pane (the look: a snapshot only then, not to keep an eye on it: that's follow). A
 private page or note is never shown.
 
-  vau companion see --pane t5x1`,
+  vau companion see --pane t5x1
+  vau companion see --ui panel:files:files`,
   kind: "read",
   lock: false,
-  params: { pane: { ...PANE, description: "the pane (its id: vau tabs; default: the one the user is in)" }, as: AS },
-  run: async (p) => {
+  params: { pane: { ...PANE, description: "the pane (its id: vau tabs; default: the one the user is in)" },
+    ui: { ...UI, description: "instead of a pane: the app's own UI by its id (panel:files:files, tab:<id>): what it shows now" }, as: AS },
+  run: async (p, ctx) => {
+    if (str(p.ui)) {
+      const ui = str(p.ui), r = await ctx.ui({ action: "companion:read", ui }).catch(() => null) as { found: boolean; label?: string; folded?: boolean; text?: string } | null
+      if (!r?.found) throw new OpError(`${ui} isn't on the user's screen${/^panel:/.test(ui) ? " (act --ui opens a panel)" : ""}`, 404)
+      return { ui, title: r.label || ui, kind: "ui", text: r.folded ? "(folded: only its heading shows; act --ui opens it)" : r.text ?? "" }
+    }
     const id = str(p.pane) || paneFocus()?.id, pn = paneById(id)
     if (!pn) throw new OpError(id ? `no pane ${id} in the user's window (vau tabs lists them)` : "give `pane`: the user isn't in one", 404)
     if (privatePane(pn)) throw new OpError("that pane is private: the companion never sees it", 403)
@@ -2926,7 +2933,7 @@ private page or note is never shown.
     const r = await plugin.desktop("agent:snapshot", t.tab).catch((e) => { throw new OpError((e as Error).message, 409) }) as { url: string; title: string; snapshot: string }
     return { pane: pn.id, title: r.title || pn.title, kind: "site", url: r.url, access: t.access, text: cut(r.snapshot, SNAPSHOT) }
   },
-  text: (r) => `"${r.title}" (pane ${r.pane}${r.url ? `, ${r.url}` : ""}${r.access === "read" ? "; you may only read here" : ""}):\n${r.text || "(nothing to read)"}`,
+  text: (r) => `"${r.title}" (${"ui" in r ? r.ui : `pane ${r.pane}`}${"url" in r && r.url ? `, ${r.url}` : ""}${"access" in r && r.access === "read" ? "; you may only read here" : ""}):\n${r.text || "(nothing to read)"}`,
 })
 
 type Acted = { url: string; title: string; navigated: boolean; opened?: { tab: number; url: string; title: string }[]; diff?: { page: boolean; lines: string[]; more: number } }
@@ -2937,22 +2944,24 @@ function actText(r: Acted, action: string) {
   const none = lines || opened ? "" : action === "scroll" ? "\nScrolled; the page's text is the same (see shows what's in view)." : "\nIts text didn't change (a change only its picture shows isn't in it: see, or look at the screen)."
   return `${r.navigated ? "Went to another page: " : ""}${r.title || r.url}${opened}${lines}${none}`
 }
-type InApp = { ui: string; clicked: string; notices?: { text: string; kind?: string }[] }
-const actInAppText = (r: InApp) => `Clicked ${r.clicked ? JSON.stringify(r.clicked) : r.ui} in the app.${r.notices?.length ? ` It then showed: ${r.notices.map((n) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}`
+type InApp = { ui: string; clicked: string; opened?: boolean; shows?: string; notices?: { text: string; kind?: string }[] }
+const actInAppText = (r: InApp) => `${r.opened ? `Opened the ${r.clicked ? JSON.stringify(r.clicked) : r.ui} panel` : `Clicked ${r.clicked ? JSON.stringify(r.clicked) : r.ui}`} in the app.${r.notices?.length ? ` It then showed: ${r.notices.map((n) => `${JSON.stringify(n.text)}${n.kind === "error" ? " (an error)" : ""}`).join(", ")}.` : ""}${r.shows ? `\n${r.ui ? `${r.ui} shows now` : "It shows now"} (point at a row by its words, [point "<words>"]):\n${r.shows}` : ""}`
 /** How long its cursor flies before it clicks, so they see where. */
 const LAND_MS = 450
 /** A click on the app's own UI, its cursor there first (index.tsx' answers.click): only what's on screen. */
 async function actInApp(ctx: OpCtx, name: string, ui: string, find: string, action: string): Promise<InApp> {
   if (action !== "click" && action !== "dblclick") throw new OpError("in the app's own UI it clicks (click, dblclick): to write in a note, edit; in a page, give its pane", 400)
   did(name, "act")
-  setAgent(name, { ui, ...(find ? { find } : {}), state: "writing", pointed: Date.now() })
+  // (words anywhere in the window: no place to fly to first, as find alone would mean their note's words)
+  setAgent(name, { ...(ui ? { ui, ...(find ? { find } : {}) } : {}), state: "writing", pointed: Date.now() })
   await new Promise((done) => setTimeout(done, LAND_MS))
   try {
     const r = await ctx.ui({ action: "companion:click", ui, find, how: action }).catch((e) => {
       throw e instanceof OpError && e.status === 409 ? new OpError("no app window is open on this server: open the app first", 409) : e
-    }) as { found: boolean; label?: string; notices?: InApp["notices"] } | null
-    if (r?.found) return { ui, clicked: r.label ?? "", notices: r.notices ?? [] }
-    throw new OpError(find ? `no "${find}" in ${ui} on the user's screen (use its words as shown)` : `${ui} isn't on the user's screen (vau tabs lists tabs and panes)`, 404)
+    }) as { found: boolean; label?: string; opened?: boolean; shows?: string; notices?: InApp["notices"] } | null
+    if (r?.found) return { ui, clicked: r.label ?? "", ...(r.opened ? { opened: true } : {}), ...(r.shows ? { shows: r.shows } : {}), notices: r.notices ?? [] }
+    throw new OpError(find ? `no "${find}" in ${ui || "the app's window"} on the user's screen (use its words as shown)`
+      : /^panel:/.test(ui) ? `no ${ui} panel to open: it's hidden or its plugin is off` : `${ui} isn't on the user's screen (vau tabs lists tabs and panes)`, 404)
   } finally { setAgent(name, { state: acting(name) }) }
 }
 
@@ -2997,8 +3006,8 @@ send, post or delete is asked each time. Moving the mouse or a key stops it. Ans
   vau companion act press --key cmd+s`,
   kind: "write",
   lock: false,
-  params: { pane: PANE, ui: { ...UI, description: "instead of a page: the app's own UI, by its id (as in look), to click" },
-    find: { type: "string", description: "with ui: the words of what to click in it (a pinned page's name in panel:pages:pages)" },
+  params: { pane: PANE, ui: { ...UI, description: "instead of a page: the app's own UI, by its id (as in look), to click; a sidebar panel (panel:files:files) opens, its sidebar shown and it unfolded, and its rows come back" },
+    find: { type: "string", description: "the words of what to click in the app's UI (a pinned page's name in panel:pages:pages); alone, anywhere in the app's window" },
     action: { type: "string", required: true, enum: ACTS, description: "what to do" }, el: EL,
     ax: PLACE.ax, sx: PLACE.sx, sy: PLACE.sy, ask: { type: "string", description: "in another app: the line offering it, when they haven't said yes yet (Want me to...?)" },
     value: { type: "string", description: "the text to fill or type, or the option to select (scroll: up or down)" }, key: { type: "string", description: "the key to press (Enter, Tab, Escape; in another app with modifiers: cmd+s)" },
@@ -3008,6 +3017,8 @@ send, post or delete is asked each time. Moving the mouse or a key stops it. Ans
     const name = who(p)
     if (str(p.ui)) return actInApp(ctx, name, str(p.ui), str(p.find), str(p.action))
     if (onScreen(p, name)) return screenAct(p, name)
+    // (words alone, in a note or a view: a button or row of the app's window saying them)
+    if (str(p.find) && !str(p.pane) && !str(p.el) && paneSource(paneFocus()?.to ?? "").kind !== "site") return actInApp(ctx, name, "", str(p.find), str(p.action))
     if (p.action === "rightclick" || p.action === "focus") throw new OpError(`${String(p.action)} is for another app (--ax, --sx --sy)`)
     const id = str(p.pane) || paneFocus()?.id
     if (!id) throw new OpError("give `pane` (a web page) or `ui` (the app's own UI): the user isn't in a web page")

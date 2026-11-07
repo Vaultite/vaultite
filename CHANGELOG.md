@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion opens a sidebar panel when asked**: "open files" unfolds the Files panel (its sidebar shown if
+  closed), and it's told the panel's rows so it can point at them; a click there used to land on nothing. Its summoned
+  session may also look in your Desktop, Downloads, Pictures and screenshots folder, and when it can't look somewhere it
+  says which folder, never that a mode blocks it.
 - **The companion's frames fit what they name**: over Vaultite it knows the window's regions (the sidebar's panels, panes,
   the status bar), so a frame round one is exact; frames side by side keep a hairline apart, and each label is a small
   tag snug at its frame, never on another. Its answer box is never cut off by a screen's edge, shows only its name, and

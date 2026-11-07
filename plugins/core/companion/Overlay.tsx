@@ -376,7 +376,8 @@ function landmarks(x: number, y: number, seen: Set<string>) {
     const ui = el.dataset.ui, label = (el.getAttribute("aria-label") || el.querySelector<HTMLElement>("[data-heading]")?.dataset.heading || (el.innerText || "").trim().split("\n")[0] || "").trim().slice(0, 120)
     if (!label) continue
     seen.add(k)
-    out.push({ role: `${ui ? ui.split(":")[0] : el.matches("[data-status-bar]") ? "status" : "area"}${ui ? ` ui:${ui}` : ""}`, label, frame,
+    // (a folded panel says so: clicking it opens it, and only its heading shows)
+    out.push({ role: `${ui ? ui.split(":")[0] : el.matches("[data-status-bar]") ? "status" : "area"}${el.hasAttribute("data-collapsed") ? " (folded)" : ""}${ui ? ` ui:${ui}` : ""}`, label, frame,
       d: Math.hypot(Math.max(r.left - x, 0, x - r.left - r.width), Math.max(r.top - y, 0, y - r.top - r.height)) })
   }
   return out.sort((a, b) => a.d - b.d).slice(0, 10).map(({ d: _, ...e }) => e)

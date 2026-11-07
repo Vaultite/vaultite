@@ -3,6 +3,7 @@
 import assert from "node:assert"
 import fs from "node:fs"
 import { registerHooks } from "node:module"
+import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { check, cpuMs, exit, section, summary, tempDir } from "./test/lib.ts"
@@ -3286,6 +3287,19 @@ await section("pagers", async () => {
     [stopFor(stops, -150, 0), stopFor(stops, -230, 0), stopFor(stops, -20, -0.5), stopFor(stops, -300, 0.5), stopFor([0, w], -40, -2)])
   const rest = spring(0.34, 1), fast = spring(0.34, 1, 10)
   check("pagers: a spring started at a flick's speed is further along early, and still lands without overshooting", fast.at(0.05) > rest.at(0.05) && Array.from({ length: 60 }, (_, i) => fast.at(i / 100)).every((x) => x <= 1.0001), [rest.at(0.05), fast.at(0.05)])
+})
+
+await section("companion reach", async () => {
+  const r: Any = await import(pathToFileURL(path.join(ROOT, "plugins/core/companion/reach.ts")).href)
+  const home = os.homedir(), at = (v: string) => r.screenshotDir(() => v), none = r.screenshotDir(() => { throw new Error("not set") })
+  const mac = process.platform === "darwin"
+  check("companion reach: screenshots where the Mac saves them (~ read), else the Desktop; never home itself, Library or a dotfolder",
+    (!mac || (at("~/Pictures/Screenshots\n") === path.join(home, "Pictures/Screenshots") && at(home) === path.join(home, "Desktop") && at("~/Library/Shots") === path.join(home, "Desktop") && at("~/.secret") === path.join(home, "Desktop")))
+      && none === path.join(home, "Desktop"), [at("~/Pictures/Screenshots"), at("~/Library/Shots"), none])
+  const inside = r.readableDirs(path.join(home, "Pictures/Screenshots")), outside = r.readableDirs(path.join(home, "Shots"))
+  check("companion reach: the desktop, downloads and pictures besides code and documents; a screenshots folder elsewhere joins them",
+    ["Projects", "Documents", "Desktop", "Downloads", "Pictures"].every((d) => inside.dirs.includes(path.join(home, d))) && inside.dirs.length === 5 && outside.dirs.at(-1) === path.join(home, "Shots"), [inside, outside])
+  check("companion reach: its prompt names the folders, screenshots' too", /~\/Desktop/.test(r.readableText(inside)) && /screenshots are saved to ~\/Pictures\/Screenshots/.test(r.readableText(inside)), r.readableText(inside))
 })
 
 await section("screen drawings", async () => {

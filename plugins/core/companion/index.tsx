@@ -9,7 +9,7 @@ import { presence } from "./look"
 import { Arrow, follow, Overlay, placeAt, showSaid } from "./Overlay"
 import { Presence } from "./Presence"
 import { followItems, modeItem, MODES, setMode, showSession } from "./session"
-import { clickUi, watchPanes } from "./panes"
+import { clickUi, readUi, watchPanes } from "./panes"
 import { doTask } from "./doit"
 import { ConversationBlock, UsageBlock } from "./Page"
 import { privateNote } from "./private"
@@ -135,7 +135,7 @@ export default definePlugin({
   editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? [(await load()).companionExtension(ctx), ...(share ? [] : (await load()).doItEditor(ctx.path))] : []),
   doTask: share ? undefined : doTask,
   background: () => <Background />,
-  answers: share ? undefined : { click: clickUi },
+  answers: share ? undefined : { click: clickUi, read: readUi },
   blocks: { "companion-conversation": () => <ConversationBlock />, "companion-usage": () => <UsageBlock /> },
   ambient: share ? undefined : { status: { title: "Companion", sort: 25, left: true, render: () => <Status /> } },
   fileBar: { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },

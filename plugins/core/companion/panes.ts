@@ -1,7 +1,7 @@
 // The window's panes for the companion (live.ts' `where`): each pane's tab, title and tab group, and the focused one;
 // and the parts of the app's UI it follows, watched here (their text, as it settles).
 import { Eye } from "lucide-react"
-import { focusedPane, getStore, getTabLayout, noticesSince, notifyError, onTabLayoutChange, op, panesOf, setUiMarks, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
+import { focusedPane, getStore, getTabLayout, noticesSince, notifyError, onTabLayoutChange, op, panelSide, panesOf, revealPanel, setSidebarMode, setUiMarks, sidebarMode, shownTab, tabLabel, tabOfPane, type UiMark } from "@vaultite"
 import { getState, sayWhereSoon, setPanes, subscribe, tintOf, uiChanged, type Follow } from "./live"
 
 /** The most a window tells: a vault's tabs, rarely this many. */
@@ -31,21 +31,52 @@ export function shown(root: HTMLElement, find: string): HTMLElement | null {
   const best = hits.sort((a, b) => Number(exact(b)) - Number(exact(a)) || (a.innerText || "").length - (b.innerText || "").length)[0]
   return best ? (best.closest<HTMLElement>(CLICKABLE) && root.contains(best.closest(CLICKABLE)) ? best.closest<HTMLElement>(CLICKABLE)! : best) : null
 }
-/** An agent's click on the app's own UI (companion act --ui): the element with data-ui `ui`, or the one showing `find`
- *  in it, pressed as a pointer would; what it was, and the toasts it showed. */
+/** What a part of the app's UI shows now, as lines (a panel's rows, a tab's title): what an agent is told after its
+ *  click, so it can name and point at what came into sight. */
+export function uiText(el: HTMLElement, most = 60) {
+  const lines = [...new Set((el.innerText || "").split("\n").map((l) => l.trim()).filter(Boolean))]
+  return lines.slice(0, most).map((l) => l.slice(0, 120)).join("\n") + (lines.length > most ? `\n… ${lines.length - most} more` : "")
+}
+const settle = () => new Promise((done) => setTimeout(done, 400))
+/** An agent's click on the app's own UI (companion act --ui): `ui`'s element (none: the window) or what shows `find` in
+ *  it, pressed; what it was, shows then, and its toasts. A whole panel opens (its container has no click of its own). */
 export async function clickUi(m: Record<string, unknown>) {
-  const root = uiElement(String(m.ui ?? "")), find = String(m.find ?? "").trim()
+  const id = String(m.ui ?? ""), find = String(m.find ?? "").trim(), from = Date.now()
+  const panel = /^panel:(.+)$/.exec(id)?.[1]
+  if (panel && !find) {
+    // (the left sidebar showing one panel alone: this one, shown again; another, its panels again, this one among them)
+    const mode = sidebarMode()
+    if (mode === panel) setSidebarMode(panel)
+    else {
+      if (mode && panelSide(panel) === "left") setSidebarMode(null)
+      if (!revealPanel(panel)) return { found: false }
+    }
+    await settle()
+    const el = uiElement(id) ?? document.querySelector<HTMLElement>(`[data-sidebar-mode="${CSS.escape(panel)}"]`)
+    return { found: !!el, opened: true, label: el?.querySelector<HTMLElement>("[data-heading]")?.dataset.heading ?? "", shows: el ? uiText(el) : "",
+      notices: noticesSince(from).map((n) => ({ text: n.text, kind: n.kind })) }
+  }
+  const root = id ? uiElement(id) : document.body
   if (!root) return { found: false }
   const el = find ? shown(root, find) : root
   if (!el) return { found: false }
   el.scrollIntoView({ block: "nearest" })
   const r = el.getBoundingClientRect(), at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 }
-  const from = Date.now(), dbl = m.action === "dblclick"
+  const dbl = m.action === "dblclick"
   for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup"]) el.dispatchEvent(t.startsWith("pointer") ? new PointerEvent(t, { ...at, pointerId: 1, isPrimary: true, pointerType: "mouse" }) : new MouseEvent(t, at))
   el.click()
   if (dbl) el.dispatchEvent(new MouseEvent("dblclick", at))
-  await new Promise((done) => setTimeout(done, 400))
-  return { found: true, label: (el.getAttribute("aria-label") || el.innerText || "").trim().slice(0, 120), notices: noticesSince(from).map((n) => ({ text: n.text, kind: n.kind })) }
+  await settle()
+  // (what holds it now: a panel's rows after a heading's click, the element itself else)
+  const holder = (el.isConnected ? el : null)?.closest<HTMLElement>("[data-ui^='panel:']") ?? (id && uiElement(id)) ?? null
+  return { found: true, label: (el.getAttribute("aria-label") || el.innerText || "").trim().slice(0, 120), ...(holder ? { shows: uiText(holder) } : {}),
+    notices: noticesSince(from).map((n) => ({ text: n.text, kind: n.kind })) }
+}
+/** What the app's UI part `ui` shows now (companion see --ui), or null when it isn't on screen. */
+export function readUi(m: Record<string, unknown>) {
+  const id = String(m.ui ?? ""), alone = /^panel:(.+)$/.exec(id)?.[1]
+  const el = uiElement(id) ?? (alone ? document.querySelector<HTMLElement>(`[data-sidebar-mode="${CSS.escape(alone)}"]`) : null)
+  return el ? { found: true, label: el.querySelector<HTMLElement>("[data-heading]")?.dataset.heading ?? el.getAttribute("aria-label") ?? "", folded: el.hasAttribute("data-collapsed"), text: uiText(el, 200) } : { found: false }
 }
 
 const TEXT_GAP = 5000
