@@ -234,7 +234,9 @@ const WIDTH = 300, PAD = 16
  *  `held`: till when it holds for the pointer reaching for it). */
 let panel: { w: BrowserWindow; name: string; at: Point; data: PanelData; height: number; menu: boolean; focus: boolean; travels: boolean; goal?: Point; pos?: Point; held: number
   /** Closed by Esc in it: its exchange ends, its voice with it. */
-  esc?: boolean } | null = null
+  esc?: boolean
+  /** Dragged by its head: it stays where they put it (its top left), riding with the companion no more. */
+  moved?: boolean } | null = null
 let panelActs: PanelActs | null = null
 /** What the box keeps clear of besides its cursor (what it points at, its marks). */
 let avoid: Rect[] = []
@@ -244,7 +246,7 @@ export function panelAvoid(rects: Rect[]) { avoid = rects }
  *  (an answer's box), it takes the keyboard only once clicked; `travels`: it goes with the companion (an exchange). */
 export function openPanel(base: string, at: Point, data: PanelData, focus = true, travels = false) {
   if (panel && !panel.w.isDestroyed()) {
-    Object.assign(panel, { at, name: data.name, data, focus, travels })
+    Object.assign(panel, { at, name: data.name, data, focus, travels: travels && !panel.moved })
     place()
     panel.w.webContents.send("vaultite:panel", data)
     if (focus) panel.w.focus()
@@ -253,7 +255,8 @@ export function openPanel(base: string, at: Point, data: PanelData, focus = true
   // (a panel: on a Mac one that takes the keyboard without bringing the app forward, so the app in front stays so)
   const w = overlayWindow({ width: WIDTH + PAD * 2, height: 160,
     // (a click in it goes straight to its field: no first click spent bringing it forward)
-    acceptFirstMouse: true, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } }, 1)
+    // (movable: its head drags it, Chat.tsx)
+    acceptFirstMouse: true, movable: true, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true } }, 1)
   const mine: NonNullable<typeof panel> = { w, name: data.name, at, data, height: 0, menu: false, focus, travels, held: 0 }
   panel = mine
   // (a link in its words opens in the browser, never in this window)
@@ -261,6 +264,8 @@ export function openPanel(base: string, at: Point, data: PanelData, focus = true
   w.webContents.on("will-navigate", (e, url) => { e.preventDefault(); if (/^https?:/i.test(url)) void shell.openExternal(url) })
   w.webContents.on("did-finish-load", () => { if (panel === mine) w.webContents.send("vaultite:panel", mine.data) })
   w.on("blur", () => { if (panel === mine && !mine.menu) closePanel() })
+  // (only a move by hand: the box's own (setBounds) never asks)
+  w.on("will-move", () => { mine.moved = true; mine.travels = false })
   w.on("closed", () => { if (panel === mine) { panel = null; panelActs?.closed(mine.name, mine.esc ? "esc" : undefined) } })
   void w.loadURL(`${base}/screen.html#panel`).catch(() => {})
 }
@@ -292,6 +297,12 @@ const marked = (): Rect[] => [...layers.values()].filter((l) => !l.hidden).flatM
 /** By its cursor, clear of its arrow and name, inside the screen; shown once its page knows its height. */
 function place() {
   if (!panel || !panel.height) return
+  if (panel.moved) {
+    // (where they put it, grown or shrunk by its foot, kept on screen)
+    const b = panel.w.getBounds(), area = screen.getDisplayMatching(b).workArea, height = panel.height + PAD * 2
+    panel.w.setBounds({ x: b.x, y: Math.max(area.y - PAD, Math.min(b.y, area.y + area.height + PAD - height)), width: WIDTH + PAD * 2, height })
+    return
+  }
   const p = panel.travels ? screen.getCursorScreenPoint() : undefined, at = spotFor(panel.at, p)
   if (panel.travels && panel.w.isVisible() && panel.pos) {
     // (grown as its words stream in: it keeps the edge by its cursor (its foot, when it's above it) and grows away from

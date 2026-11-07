@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's box over the screen moves and closes**: drag it by its name to put it where you like (it stays
+  there), or close it with its X. Two quick bounces of ⌃⌥ just after letting go no longer open it listening
+  hands-free, and while it does listen hands-free, holding ⌃⌥ and letting go sends what you said, where before only
+  a double tap did.
+- **Every handoff says so**: the companion answers each job it hands off with one short line, "Handed that off to
+  a background agent." (a follow-up: "Passed that on to its job."), where a routine one used to be silent.
 - **A split's count of other tabs no longer sits under its close button**: in vertical tabs, hovering a pane of a
   split showed its +1 under the X; the count now steps aside while the X shows.
 - **Proof, not claims**: a job that's done knocks by the notch, "Ready to show you the blue save button". Say "show

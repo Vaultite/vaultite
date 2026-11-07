@@ -111,27 +111,39 @@ export function modKeys(keys: readonly string[]) {
 }
 
 // The Talk keys' gesture (HeyClicky's): held, it listens and sends when let go; a tap opens a box to type in; a double
-// tap listens hands-free until the next double tap. A key pressed with it (a shortcut) cancels what its press started.
+// tap listens hands-free till a hold or double tap sends. A key pressed with it (a shortcut) cancels what it started.
 export const TAP_MS = 250
 /** listen: its cursor at the pointer, hearing; send: what was said (and drawn) goes; type: a box to type in, nothing
  *  heard; free: hands-free, into that box; cancel: nothing goes. */
 export type TalkAction = "listen" | "send" | "type" | "free" | "cancel" | null
 
 export function talkGesture(tap = TAP_MS, gap = DOUBLE_MS) {
-  let s: "idle" | "held" | "typed" | "freeing" | "free" | "freeDown" = "idle", at = 0, lastTap = -Infinity, quick = false
+  let s: "idle" | "held" | "typed" | "freeing" | "free" | "freeDown" | "bounce" = "idle", at = 0, lastTap = -Infinity, quick = false
+  /** When a press last sent: a press within `gap` of it is a finger's bounce on the chord till it's held (`held`). */
+  let sent = -Infinity
+  const send = (now: number): TalkAction => { s = "idle"; sent = now; return "send" }
   return {
     get state() { return s },
     down(now: number): TalkAction {
       if (s === "typed" && now - lastTap <= gap) { s = "freeing"; return "free" }
       if (s === "free") { s = "freeDown"; at = now; quick = now - lastTap <= gap; return null }
       if (s !== "idle" && s !== "typed") return null
-      s = "held"
       at = now
+      // (let go and pressed again at once (a 50 ms tap and another): its cursor and box wait till it's held)
+      if (now - sent <= gap) { s = "bounce"; return null }
+      s = "held"
+      return "listen"
+    },
+    /** Still down `tap` ms on (the helper's timer): a press that began as a bounce is held after all, and listens. */
+    held(): TalkAction {
+      if (s !== "bounce") return null
+      s = "held"
       return "listen"
     },
     up(now: number): TalkAction {
+      if (s === "bounce") { s = "idle"; sent = now; return null }
       if (s === "held") {
-        if (now - at >= tap) { s = "idle"; return "send" }
+        if (now - at >= tap) return send(now)
         s = "typed"
         lastTap = now
         return "type"
@@ -139,14 +151,16 @@ export function talkGesture(tap = TAP_MS, gap = DOUBLE_MS) {
       if (s === "freeing") { s = "free"; lastTap = -Infinity; return null }
       if (s === "freeDown") {
         const short = now - at < tap
-        if (short && quick) { s = "idle"; return "send" }
+        // (a double tap, or held: what it heard goes, as a hold's would)
+        if (!short || quick) return send(now)
         s = "free"
-        lastTap = short ? now : -Infinity
+        lastTap = now
       }
       return null
     },
     /** Another key with it: a shortcut, not for the companion. */
     other(): TalkAction {
+      if (s === "bounce") { s = "idle"; return null }
       if (s !== "held") return null
       s = "idle"
       return "cancel"

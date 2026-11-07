@@ -447,8 +447,9 @@ runs where the ask was over, derived on the spot: a preview's address (localhost
 serving it, its repo, on its machine), a GitHub page (its checkout here), an editor's window (its project), a note (the
 vault); cwd and machine say it instead. A job is in the menu bar's Jobs (starting, working, needs you, ready for
 review, done, failed, stopped) with where it runs; opening it opens its terminal, where the user can type. A coding job
-ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they say so. A routine
-handoff says nothing (its card in Jobs shows it); say only what they need to hear (a question, an unexpected place). End your turn. job: a follow-up or a correction to one of yours (companion
+ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they say so. Every
+handoff announces itself in one short line ("Handed that off to a background agent."; a follow-up, "Passed that on to its job.");
+say replaces it, still one short line, only when they need more (a question, an unexpected place). End your turn. job: a follow-up or a correction to one of yours (companion
 jobs), typed into its terminal. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
 
   vau companion handoff "Make the header blue on this page"
@@ -456,7 +457,7 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
     kind: "write",
     lock: false,
     params: { task: { type: "string", required: true, description: "what to do, standing alone: the goal, where, what to end with (the ask's words, place and picture go with it); with job, a short note of what it's for: their words, place and picture go with it too" },
-      say: { type: "string", description: "only what they need to hear now, in a few words (a question, an unexpected place it runs); none for a routine handoff" },
+      say: { type: "string", description: "one short line instead of the default announcement (Handed that off to a background agent.), only when they need more (a question, an unexpected place it runs)" },
       agent: { type: "string", enum: ["claude", "codex", "opencode"], default: "claude", description: "who does it: Claude Code (on Opus, high, unless model says), Codex or OpenCode" },
       model: { type: "string", description: "its model (default: the setting jobs_model for Claude Code, the agent's own else)" },
       effort: { type: "string", description: "how hard it thinks (default: the setting jobs_effort for Claude Code)" },
@@ -479,12 +480,13 @@ jobs), typed into its terminal. A folder the jobs may never run in (the setting 
         if (fresh) j.asked = fresh.t
         if (str(p.title).trim()) await retitle(ctx, j, str(p.title))
         d.did(name, "handoff")
-        if (str(p.say).trim()) await d.say(ctx, name, str(p.say))
+        await d.say(ctx, name, str(p.say).trim() || "Passed that on to its job.")
         return cardOf(j)
       }
       const j = await begin(ctx, task, d.askOf(name), p)
       d.did(name, "handoff")
-      if (str(p.say).trim()) await d.say(ctx, name, str(p.say))
+      // (every handoff says so in a line, a routine one too: else it looked like nothing happened)
+      await d.say(ctx, name, str(p.say).trim() || "Handed that off to a background agent.")
       return { ...cardOf(j), why: j.where.why }
     },
     text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`,

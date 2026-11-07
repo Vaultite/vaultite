@@ -582,7 +582,7 @@ function Panel() {
   const tint = `var(--${d.tint})`
   return (
     <div ref={box} className="w-fit p-4">
-      <Chat name={d.name} tint={tint} items={d.items} draft={text} setDraft={listening ? () => {} : setDraft} focus placeholder={d.hint}
+      <Chat name={d.name} tint={tint} items={d.items} draft={text} setDraft={listening ? () => {} : setDraft} focus placeholder={d.hint} windowed
         send={() => { if (text.trim()) { api?.panel.send(text); setDraft("") } }} busy={d.busy} close={() => api?.panel.close()} more={(e) => api?.panel.more(e.clientX, e.clientY)}
         words={(n) => <div className="note-prose compact companion-md" dangerouslySetInnerHTML={{ __html: html(n.text ?? "") }} />}
         time={(t) => TIME.format(t)}

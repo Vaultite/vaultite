@@ -7,7 +7,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
-import { HOLD_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
+import { HOLD_MS, TAP_MS, fnActsToo, fnKey, isChord, keyCodes, modKeys, talkGesture, type FnAction, type FnEvent, type ModEvent, type TalkAction } from "../core/fnkey.ts"
 import { joinText } from "../core/dictationtext.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { dictate, dictating, stopFor, dictationEngines, expectedWords, freeFor, handOver, onAudioDevices, onDictating, onRoam, releaseMic, type DictationSink, type Roam } from "./dictation.ts"
@@ -677,9 +677,18 @@ let exchange: Exchange | null = null
 function talkHeard(m: FnEvent) {
   // (Control's double tap: no Talk key is Control)
   if (!host?.home() || "double" in m) return
-  // (pressed again: its voice stops at once, and gets ready for the next answer)
-  if ("down" in m && m.down) { hushedBefore = takeoverOffering() ? hushed : null; stopVoice(); live.say({ t: "interrupt" }); speaker.warm(); voiceFront.warm(); lastAsk = null }
-  const now = "t" in m && m.t ? m.t : Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
+  const now = "t" in m && m.t ? m.t : Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up"
+  // (hands-free that ended by itself (its box closed, silence): the next press is a press again, not half a double tap)
+  if (kind === "down" && gesture.state === "free" && session?.into !== "panel" && !freeStarting) gesture.reset()
+  const a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
+  if (kind === "down" && gesture.state === "bounce") {
+    // (pressed again just after a send: a bounce of the chord unless still held a tap's time on; nothing stops meanwhile)
+    const p = bounced = presses.start("talk", "down", { front: front?.bundle ?? "", bounce: true })
+    setTimeout(() => { if (bounced === p && gesture.held() === "listen") { bounced = null; press = p; p.step("held"); pressed(); talkAct("listen") } }, TAP_MS)
+    return
+  }
+  if (kind !== "down" && bounced) { const p = bounced; bounced = null; if (gesture.state === "idle") return void p.end("ignored", { gesture: "bounce" }) }
+  if (kind === "down") pressed()
   // (each press logged, what it did or that it did nothing: presses that go nowhere can be traced)
   if (a === "listen") press = presses.start("talk", "down", { front: front?.bundle ?? "" })
   else if (kind === "down" && !a) presses.start("talk", "down", { front: front?.bundle ?? "" }).end("ignored", { gesture: gesture.state })
@@ -687,6 +696,10 @@ function talkHeard(m: FnEvent) {
   if (!a) return
   talkAct(a)
 }
+/** A press that may still turn out a bounce (core/fnkey.ts talkGesture), logged as one. */
+let bounced: Press | null = null
+/** Pressed again: its voice stops at once, and gets ready for the next answer. */
+function pressed() { hushedBefore = takeoverOffering() ? hushed : null; stopVoice(); live.say({ t: "interrupt" }); speaker.warm(); voiceFront.warm(); lastAsk = null }
 
 function talkAct(a: NonNullable<TalkAction>) {
   if (a === "listen") return act("start", true)
@@ -868,9 +881,14 @@ function openTyping() {
 /** A double tap: hands-free, into its box, till the next double tap. */
 async function freeTalk() {
   if (panelOpen() !== live.state.name) openTyping()
-  for (let i = 0; i < 20 && dictating(); i++) await new Promise((r) => setTimeout(r, 50))
-  if (panelOpen()) await listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true })
+  freeStarting = true
+  try {
+    for (let i = 0; i < 20 && dictating(); i++) await new Promise((r) => setTimeout(r, 50))
+    if (panelOpen()) await listenFor({ into: "panel", focus: { bundle: "", name: "", pid: 0, window: 0, title: "", field: true }, talk: true })
+  } finally { freeStarting = false }
 }
+/** Hands-free on its way (its box opening, the recognizer starting). */
+let freeStarting = false
 
 /** Its answer's box, by where it was asked, unfocused till clicked (spoken: none, its voice says it): typing there, or
  *  holding the key again, goes on; Esc ends it, a click elsewhere or another app moves on (moveOn). */

@@ -82,11 +82,17 @@ export default async ($: VaultTest) => {
       isChord("control_option") && isChord("fn_control") && !isChord("fn"))
 
     // The Talk keys' gesture (HeyClicky's): hold, tap, double tap.
-    const run = (steps: [string, number][]) => { const g = talkGesture(250, 350); return steps.map(([e, t]) => (e === "d" ? g.down(t) : e === "u" ? g.up(t) : g.other())).filter(Boolean).join() }
+    const run = (steps: [string, number][]) => { const g = talkGesture(250, 350); return steps.map(([e, t]) => (e === "d" ? g.down(t) : e === "u" ? g.up(t) : e === "h" ? g.held() : g.other())).filter(Boolean).join() }
     check("talk: held, it listens and sends when let go", run([["d", 0], ["u", 900]]) === "listen,send")
     check("talk: a tap opens its box to type in, nothing heard", run([["d", 0], ["u", 120]]) === "listen,type")
     check("talk: a double tap listens hands-free, and the next double tap sends", run([["d", 0], ["u", 100], ["d", 250], ["u", 330], ["d", 5000], ["u", 5080], ["d", 5200], ["u", 5280]]) === "listen,type,free,send")
-    check("talk: hands-free, a single tap or a hold doesn't send", run([["d", 0], ["u", 100], ["d", 250], ["u", 330], ["d", 5000], ["u", 5080], ["d", 9000], ["u", 9900]]) === "listen,type,free")
+    check("talk: hands-free, a single tap doesn't send, a hold does", run([["d", 0], ["u", 100], ["d", 250], ["u", 330], ["d", 5000], ["u", 5080]]) === "listen,type,free" &&
+      run([["d", 0], ["u", 100], ["d", 250], ["u", 330], ["d", 9000], ["u", 9900]]) === "listen,type,free,send")
+    // (2026-11-07, as logged: let go of a hold, then two 50 ms taps of the chord within a third of a second)
+    check("talk: taps bouncing just after a send open nothing, and go hands-free never", run([["d", 0], ["u", 5367], ["d", 5629], ["u", 5682], ["d", 5743], ["u", 5788]]) === "listen,send")
+    check("talk: pressed again just after a send and held, it listens once held", run([["d", 0], ["u", 900], ["d", 1100], ["h", 1350], ["u", 3000]]) === "listen,send,listen,send" &&
+      run([["d", 0], ["u", 900], ["d", 1100], ["o", 1200], ["h", 1350], ["u", 1500]]) === "listen,send")
+    check("talk: a tap a moment after a send opens its box", run([["d", 0], ["u", 900], ["d", 1400], ["u", 1480]]) === "listen,send,listen,type")
     check("talk: a key with it (⌃⌥→, a shortcut) cancels, and its release does nothing", run([["d", 0], ["o", 50], ["u", 900]]) === "listen,cancel")
     check("talk: two taps far apart are two boxes, not hands-free", run([["d", 0], ["u", 100], ["d", 2000], ["u", 2100]]) === "listen,type,listen,type")
   }

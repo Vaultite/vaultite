@@ -210,9 +210,10 @@ export default async ($: VaultTest) => {
       sc.emit("message", Buffer.from(JSON.stringify({ t: "job-seen", ids: [card.id] })))
       check("jobs: opened from the menu bar, it's no longer new", !!(await waitFor(async () => (await api("POST", "ops/companion.job", { id: card.id }))[1].seen === true, 3000, 50)))
       turn = null
-      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Use the darker blue", say: "Telling it.", job: card.id }, agent)
+      ;[st, b] = await api("POST", "ops/companion.handoff", { task: "Use the darker blue", job: card.id }, agent)
       const told = await waitFor(() => fs.existsSync(path.join(repo, "told.txt")) && fs.readFileSync(path.join(repo, "told.txt"), "utf8").trim(), 10000, 100)
-      check("handoff --job: typed into its worker's terminal, which goes on", st === 200 && told === "Use the darker blue", [st, b, told])
+      check("handoff --job: typed into its worker's terminal, which goes on; with no say, it still says so in a line", st === 200 && told === "Use the darker blue" &&
+        (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Passed that on to its job."), [st, b, told])
       check("handoff --job: a follow-up carries the user's own words and screen once, one line",
         J.followTask("Darker", { t: 1, seq: 1, kind: "ask", text: "make it darker", voice: true, app: "com.example.browser", title: "Site", shot: "/s.png" } as Any) ===
           'Darker (The user, through their companion: They said (dictated, so it may hold slips: go by the task): "make it darker" · Where: on their screen, in "Site" (com.example.browser) · Their screen then (a picture): /s.png)' &&
@@ -443,9 +444,11 @@ setTimeout(draw, 300)
     const agent = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code" } } as unknown as IncomingMessage
     let job: Any = null
     try {
-      let [st, b] = await api("POST", "ops/companion.handoff", { task: "Fix the header", say: "On it, on the studio.", machine: "studio", cwd: "~/Projects/site" }, agent)
+      let [st, b] = await api("POST", "ops/companion.handoff", { task: "Fix the header", machine: "studio", cwd: "~/Projects/site" }, agent)
       job = b
       const start = calls.find((c) => c.op === "terminal.start")
+      check("handoff: a routine one (no say) still announces itself in one short line",
+        (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Handed that off to a background agent."))
       check("handoff on another machine: its where asked there, its terminal started there in that folder, the card says so",
         st === 200 && b.link === "view:terminal/claude-remote1@studio" && b.where.startsWith("Studio, site") && !!calls.find((c) => c.op === "companion.where")?.client?.startsWith("machine/") &&
         start?.p.cwd === "/home/alice/Projects/site" && /Fix the header/.test(start?.p.prompt ?? ""), [st, b, calls])
