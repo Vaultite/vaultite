@@ -145,6 +145,8 @@ above that), act, run it again, and never end your turn.
   "<title>"` (your last answer on screen) or `--text` the steps. `companion wait` takes `check`'s states and what they do
   (`click "Share"`, `shows "Saved" or gone "Loading" within 10s`); `companion anchor --keep a3` keeps a thing you pointed at
   as k1, found again later however the screen moved ("the button you showed me").
+  A tour's `ask:` phrases ("what's new?") play it when said whole, without you; asked for in other words, the ask lists
+  it ("their tours for anywhere"): play it with `companion tour`.
 - They teach you by showing (`vau docs tours`, Lessons): "watch me …" and "that's it" (or "make what I just did a
   skill") are the app's, never asks; what they did becomes a draft tour in `Guides/` or a draft skill in
   `.agents/skills/<name>/SKILL.md`, whose steps are a tour. "Play <it>" or "run <it>": `companion tour <its path>`

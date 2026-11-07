@@ -3,7 +3,7 @@
 import { anchorOf, keepAnchor, refind, type Seen } from "../plugins/core/companion/anchor.ts"
 import { check as checkOnce, conditionText, durationOf, type Env, type Input, parseCondition, watch } from "../plugins/core/companion/condition.ts"
 import type { Condition as Check } from "../plugins/core/companion/uimodel.ts"
-import { type Aim, type Fx, parseTour, play, plan, tourFromAnswer, tourText } from "../plugins/core/companion/tour.ts"
+import { type Aim, askWords, type Fx, parseTour, play, plan, tourAsked, tourFromAnswer, tourText } from "../plugins/core/companion/tour.ts"
 
 let failed = 0, passed = 0
 function check(name: string, ok: unknown, info?: unknown) {
@@ -214,6 +214,21 @@ Some words before the steps.
   check("proof: nothing to show: its own words' gist and its diff, plainly", said === "Made the save button blue in the toolbar. 2 files changed, +8 -3: a.tsx, b.css." &&
     P.summaryOf({ title: "Fix it" }) === `It didn't say what changed for "Fix it".`, said)
   check("proof: a step's before draws on its agent's own before layer", P.layerOwner(P.beforeLayer("Claude")) === "Claude" && P.layerOwner("Claude") === "Claude" && P.beforeLayer("Ada") !== "Ada")
+}
+
+// ---------- Tours asked for by name, and a step's own drawing
+{
+  const [t, problems] = parseTour({ ask: ["What's new?", "show me what you built"] }, `1. Here's your latest screenshot. (draw: {"type": "image", "src": "screenshot", "at": "top-right"})
+2. And a sketch. (draw: [{"type": "paper", "w": 120, "h": 80, "items": [{"type": "text", "x": 10, "y": 10, "text": "hi (there)"}]}])`, "What's new")
+  check("tour: draw notes parse as companion draw's marks, out of the words", !problems.length && t.steps[0].said === "Here's your latest screenshot." && t.steps[0].draw?.[0].src === "screenshot" &&
+    t.steps[1].draw?.length === 1 && t.steps[1].said === "And a sketch.", { problems, steps: t.steps })
+  const again = parseTour({ ask: t.ask }, tourText(t).replace(/^---[\s\S]*?---\n/, ""), "What's new")[0]
+  check("tour: its file says its ask phrases and draws, read back the same", /^ask: \["What's new\?","show me what you built"\]$/m.test(tourText(t)) && JSON.stringify(again.steps.map((x) => x.draw)) === JSON.stringify(t.steps.map((x) => x.draw)), tourText(t))
+  check("tour: a draw that isn't marks is said", /draw: marks as companion draw takes them/.test(parseTour({}, "1. Look. (draw: a card)", "x")[1].join()) && /its type/.test(parseTour({}, "1. Look. (draw: [{}])", "x")[1].join()))
+  const all: { id: string; ask?: string[] }[] = [{ id: "a", ask: ["What's new?", "show me what you built"] }, { id: "b" }]
+  check("tour: asked by its phrase, said whole, politely or not", tourAsked(all, "what's new")?.id === "a" && tourAsked(all, "Hey Claude, what's new?")?.id === "a" &&
+    tourAsked(all, "Show me what you built, please.")?.id === "a" && askWords("Okay, so what’s new?") === "whats new")
+  check("tour: a question that only has the phrase in it is the model's", !tourAsked(all, "what's new in this email?") && !tourAsked(all, "new") && !tourAsked(all, "") && !tourAsked(all.slice(1), "what's new"))
 }
 
 console.log(`${passed} passed, ${failed} failed`)

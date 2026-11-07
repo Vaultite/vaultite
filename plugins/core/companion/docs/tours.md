@@ -5,6 +5,7 @@ moved things. Only a step whose target can't be found goes to the model.
 ```yaml
 type: tour
 site: claude.ai              # or app: com.figma.Desktop (vaultite: the app itself), as guides say it
+ask: ["show me how to chat"] # optional: said whole with the Talk key anywhere, it plays (no model); else listed to it
 anchors:                     # optional, written by tour-save: what tells a target apart beyond its words
   "New chat": {"role": "button", "inside": ["Sidebar"]}
 ```
@@ -16,6 +17,8 @@ anchors:                     # optional, written by tour-save: what tells a targ
 ```
 - A step is a numbered line (later lines indented under it): words said in the companion's voice, tags at what they
   name (`[point "…"]`, `[ring "…"]`, `[frame "…"]`, any mark of `draw`), by its words as the screen shows them.
+- `(draw: {…})` marks of `companion draw` shown with the step's words (a card, a pad, an svg: `{"type": "image", "src":
+  "screenshot"}`, or a list), taken down as the next step comes; its cards stay till their next ask.
 - `(wait: …)` a condition (below); `(do: …)` `click "…"`, `type "…"` (`in "…"`), `press <key>`, `scroll up|down`, `;` between.
 - Modes: `show` plays straight through; `guide` (the default) waits at each wait, and for him to do what a `do:` would;
   `do` does the `do:` steps and the clicks guide would wait for, through take-over (his yes first, as act asks).

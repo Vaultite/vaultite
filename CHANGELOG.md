@@ -79,7 +79,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   fast without the model (`vau companion tour`): show me, guide me (it waits for your click or typing), or do it. Each
   step finds its target again where it is now, asks you to scroll when it's off screen, and asks the model only when it's
   gone. The same language waits and checks (`vau companion wait 'click "Share"'`, `companion check`), and things it
-  pointed at stay findable (`companion anchor`).
+  pointed at stay findable (`companion anchor`). A tour can name what you'd say for it (`ask:` "what's new?"): said
+  with the Talk key anywhere, it plays at once, and its steps can show cards and drawings of their own (`(draw: …)`).
 - **The companion opens a sidebar panel when asked**: "open files" unfolds the Files panel (its sidebar shown if
   closed), and it's told the panel's rows so it can point at them; a click there used to land on nothing. Its summoned
   session may also look in your Desktop, Downloads, Pictures and screenshots folder, and when it can't look somewhere it

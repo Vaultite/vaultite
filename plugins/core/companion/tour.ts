@@ -11,8 +11,12 @@ export const MODES: readonly Mode[] = ["show", "guide", "do"]
 export type Do = { action: "click" | "type" | "press" | "scroll"; text?: string; value?: string; key?: string; dir?: "up" | "down" }
 export type Step = { n: number; text: string; said: string; tags: Tag[]; wait?: Condition; do?: Do[]
   /** A picture of its first target before a change (a job's proof): laid over it and flipped with how it is now. */
-  before?: string }
+  before?: string
+  /** Marks of `companion draw` it shows with its words (a card, a sketch: `(draw: [...])`), cleared as the next step comes. */
+  draw?: Record<string, unknown>[] }
 export type Tour = { title: string; app: string[]; site: string[]; steps: Step[]
+  /** What they say to have it played, wherever they are ("what's new?"): matched whole, so it's never their real question. */
+  ask?: string[]
   /** The job it's the proof of (its change shown, `companion job-show`). */
   job?: string
   /** What its targets are beyond their words (role, container, place), by their words: found again by these. */
@@ -39,19 +43,36 @@ export function parseDo(src: string): Do[] {
 export const doText = (d: Do) => d.action === "click" ? `click ${JSON.stringify(d.text)}` : d.action === "type" ? `type ${JSON.stringify(d.value)}${d.text ? ` in ${JSON.stringify(d.text)}` : ""}`
   : d.action === "press" ? `press ${d.key}` : `scroll ${d.dir ?? "down"}${d.text ? ` ${JSON.stringify(d.text)}` : ""}`
 
-const NOTE = /\(\s*(wait|do|before)\s*:\s*((?:[^()"“”]|"[^"]*"|“[^”]*”)*)\)/gi
+const NOTE = /\(\s*(wait|do|before|draw)\s*:\s*((?:[^()"“”]|"[^"]*"|“[^”]*”)*)\)/gi
 /** One step's line (its number gone): its words and tags, its wait and its do. */
 export function parseStep(n: number, line: string): Step {
-  let wait: Condition | undefined, does: Do[] | undefined, before: string | undefined
+  let wait: Condition | undefined, does: Do[] | undefined, before: string | undefined, draw: Record<string, unknown>[] | undefined
   const text = line.replace(NOTE, (_m, k: string, body: string) => {
     if (k.toLowerCase() === "wait") wait = parseCondition(body)
+    else if (k.toLowerCase() === "draw") draw = [...(draw ?? []), ...parseDraw(body)]
     else if (k.toLowerCase() === "before") before = body.trim().replace(/^["“]|["”]$/g, "").trim() || undefined
     else does = [...(does ?? []), ...parseDo(body)]
     return ""
   }).replace(/\s{2,}/g, " ").trim()
   const { said, tags } = parseTags(text)
   if (before && !tags.length) throw new Error("before: needs a tag on the thing it was a picture of ([ring \"Save\"])")
-  return { n, text, said, tags, ...(wait ? { wait } : {}), ...(does ? { do: does } : {}), ...(before ? { before } : {}) }
+  return { n, text, said, tags, ...(wait ? { wait } : {}), ...(does ? { do: does } : {}), ...(before ? { before } : {}), ...(draw ? { draw } : {}) }
+}
+/** `(draw: {"type": "image", "src": "screenshot"})`: one mark of companion draw's, or a list of them. */
+function parseDraw(src: string): Record<string, unknown>[] {
+  let v: unknown
+  try { v = JSON.parse(src) } catch { throw new Error(`draw: marks as companion draw takes them, in JSON ({"type": "image", "src": "screenshot"}), not ${src.trim().slice(0, 60)}`) }
+  const marks = Array.isArray(v) ? v : [v]
+  if (!marks.length || marks.some((m) => !m || typeof m !== "object" || Array.isArray(m) || typeof (m as { type?: unknown }).type !== "string")) throw new Error("draw: each mark is an object with its type")
+  return marks as Record<string, unknown>[]
+}
+/** Words as an ask is matched against a tour's ask phrases: lower case, without punctuation, "hey Claude", "please". */
+export const askWords = (s: string) => s.toLowerCase().replace(/[’']/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+  .replace(/^(?:(?:hey|ok|okay|so|um|uh|claude|companion|please|can you|could you)\s+)+/, "").replace(/(?:\s+(?:please|claude|then))+$/, "").trim()
+/** The tour `ask` (what they said) is for: one whose ask phrase it is, said whole. */
+export const tourAsked = <T extends Pick<Tour, "ask">>(tours: readonly T[], ask: string) => {
+  const w = askWords(ask)
+  return w ? tours.find((t) => (t.ask ?? []).some((a) => askWords(a) === w)) ?? null : null
 }
 
 /** A tour's file (type: tour): its app bundle ids or sites, its steps the body's numbered list (a step's later lines
@@ -78,17 +99,17 @@ export function parseTour(fm: Record<string, unknown>, body: string, stem: strin
   }
   if (!steps.length && !problems.length) problems.push("a tour's steps are a numbered list: 1. Your chats are down the left [frame \"Chats\"].")
   const job = typeof fm.job === "string" && fm.job.trim() ? fm.job.trim() : ""
-  return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, steps, anchors, ...(job ? { job } : {}) }, problems]
+  return [{ title: typeof fm.title === "string" && fm.title.trim() ? fm.title.trim() : stem, app, site, ...(list(fm.ask).length ? { ask: list(fm.ask) } : {}), steps, anchors, ...(job ? { job } : {}) }, problems]
 }
 
 /** A step's line in a tour's file: `n. words [tags] (wait: …) (do: …)`. */
 export const stepLine = (s: Step, n: number) => `${n}. ${[s.text, s.wait ? `(wait: ${conditionText(s.wait)})` : "", s.do?.length ? `(do: ${s.do.map(doText).join("; ")})` : "",
-  s.before ? `(before: ${JSON.stringify(s.before)})` : ""].filter(Boolean).join(" ")}`
+  s.before ? `(before: ${JSON.stringify(s.before)})` : "", s.draw ? `(draw: ${JSON.stringify(s.draw.length === 1 ? s.draw[0] : s.draw)})` : ""].filter(Boolean).join(" ")}`
 /** A tour as its file says it (`extra`: more frontmatter, first). */
 export function tourText(t: Tour, extra: Record<string, string> = {}) {
   const yaml = (v: unknown) => JSON.stringify(v)
   const plain = (v: string) => (/^[\w./@ -]+$/.test(v) && !/^\s|\s$|: /.test(v) ? v : yaml(v))
-  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.job ? [`job: ${t.job}`] : []), ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : [])]
+  const fm = ["---", ...Object.entries(extra).map(([k, v]) => `${k}: ${plain(v)}`), "type: tour", ...(t.job ? [`job: ${t.job}`] : []), ...(t.app.length ? [`app: ${t.app.length === 1 ? t.app[0] : yaml(t.app)}`] : []), ...(t.site.length ? [`site: ${t.site.length === 1 ? t.site[0] : yaml(t.site)}`] : []), ...(t.ask?.length ? [`ask: ${yaml(t.ask)}`] : [])]
   const anchors = Object.entries(t.anchors).filter(([, a]) => Object.keys(a).length)
   if (anchors.length) fm.push("anchors:", ...anchors.map(([k, a]) => `  ${yaml(k)}: ${yaml(a)}`))
   fm.push("---")

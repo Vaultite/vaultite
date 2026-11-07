@@ -9,7 +9,7 @@ import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type 
 import { type Condition, conditionText, type Input, parseCondition, watch } from "./condition.ts"
 import { playedThrough, promoted, skillName } from "./teach.ts"
 import { noteText, writeNote } from "./teachops.ts"
-import { type Aim, type Do, type Fx, type Mode, MODES, parseTour, play, type Result, type Step, type Tour, tourFromAnswer, tourText } from "./tour.ts"
+import { type Aim, type Do, type Fx, type Mode, MODES, parseTour, play, type Result, type Step, type Tour, tourAsked, tourFromAnswer, tourText } from "./tour.ts"
 import type { Condition as Check, Rect } from "./uimodel.ts"
 import { fileTitle } from "./names.ts"
 import { saveFiles } from "./vaultfiles.ts"
@@ -23,7 +23,7 @@ export type Screen = {
   snapshot: () => Promise<string>
   /** Say a step's words with its marks at the places found; `before`: a picture of its first target before a change,
    *  laid over it and flipped with how it is now. */
-  show: (said: string, marks: { kind: string; at: Seen | null; to?: Seen | null; label?: string; n?: number; dir?: string }[], before?: string) => Promise<void>
+  show: (said: string, marks: { kind: string; at: Seen | null; to?: Seen | null; label?: string; n?: number; dir?: string }[], before?: string, draw?: Record<string, unknown>[]) => Promise<void>
   /** Draw a shown step's marks again where their things are now, unsaid (null: off screen); none: they stay put. */
   follow?: (marks: Parameters<Screen["show"]>[1]) => Promise<void>
   say: (text: string) => Promise<void>
@@ -50,15 +50,16 @@ type Kept = { id: string; anchor: Anchor; t: number }
 
 export function toursOf(plugin: Plugin, o: {
   /** The screen agent `name` is on now (its last ask's), or null. */
-  screen: (name: string) => Screen | null
+  screen: (name: string, tour?: Tour) => Screen | null
   /** The agent the call is for. */
   who: (p: Record<string, unknown>) => string
 }) {
   // (tours beside guides: type: tour notes in Guides/, read whole when played)
   plugin.kind(new Kind({
     type: "tour", collection: "tours", folder: "Guides", label: "Tours",
-    parse: (fm, body, stem) => { const [t, problems] = parseTour(fm, body, stem); return [{ title: t.title, app: t.app, site: t.site, steps: t.steps.length, ...(fm.anchors ? { anchors: fm.anchors } : {}), ...(t.job ? { job: t.job } : {}), body }, problems] },
-    render: (t) => [{ ...(t.job ? { job: t.job } : {}), app: (t.app as string[] | undefined)?.length ? t.app : null, site: (t.site as string[] | undefined)?.length ? t.site : null }, String(t.body ?? "")],
+    parse: (fm, body, stem) => { const [t, problems] = parseTour(fm, body, stem); return [{ title: t.title, app: t.app, site: t.site, ...(t.ask?.length ? { ask: t.ask } : {}), steps: t.steps.length, ...(fm.anchors ? { anchors: fm.anchors } : {}), ...(t.job ? { job: t.job } : {}), body }, problems] },
+    render: (t) => [{ ...(t.job ? { job: t.job } : {}), app: (t.app as string[] | undefined)?.length ? t.app : null, site: (t.site as string[] | undefined)?.length ? t.site : null,
+      ask: (t.ask as string[] | undefined)?.length ? t.ask : null }, String(t.body ?? "")],
     filename: (t, at) => joinPath(at.folder, safeName(String(t.title || "Tour"))),
   }))
   const playing = new Map<string, { title: string; mode: Mode; ctl: AbortController; done: Promise<Result>; step: number }>()
@@ -117,7 +118,7 @@ export function toursOf(plugin: Plugin, o: {
       show: async (step, at) => {
         const p = playing.get(name)
         if (p) p.step = step.n
-        await s.show(step.said, marksOf(step, at), step.before)
+        await s.show(step.said, marksOf(step, at), step.before, step.draw)
       },
       ...(s.follow ? { follow: (step: Step, at: (Aim | null)[]) => s.follow!(marksOf(step, at)) } : {}),
       say: (text) => s.say(text),
@@ -160,7 +161,7 @@ export function toursOf(plugin: Plugin, o: {
     if (problems.length) throw new OpError(`${at}: ${problems.join("; ")}`)
     return { tour: /^(?:.*\/)?SKILL\.md$/i.test(at) ? { ...tour, title: body.match(/^#\s+(.+)$/m)?.[1]?.trim() || tour.title } : tour, path: at }
   }
-  type Row = { id: string; title: string; body: string; app?: string[]; site?: string[]; anchors?: unknown; job?: string }
+  type Row = { id: string; title: string; body: string; app?: string[]; site?: string[]; ask?: string[]; anchors?: unknown; job?: string }
   const rows = () => plugin.vault.shared("tours") as unknown as readonly Row[]
   /** A tour as its note reads, or its problems. */
   const parsed = (t: Row) => parseTour(t as unknown as Record<string, unknown>, t.body, t.title)
@@ -176,8 +177,8 @@ export function toursOf(plugin: Plugin, o: {
     const lines = r.steps.map((s) => `  ${s.n}. ${s.how}${s.waited ? ` (waited ${Math.round(s.waited.ms / 100) / 10} s: ${s.waited.why}${s.waited.by ? `, ${s.waited.by}` : ""})` : ""}${s.why ? `: ${s.why}` : ""}`)
     return `${t}: ${r.ended === "done" ? "played to the end" : r.ended === "stopped" ? "stopped" : "stopped at a step it couldn't play"}.\n${lines.join("\n")}`
   }
-  const screenFor = (name: string) => {
-    const s = o.screen(name)
+  const screenFor = (name: string, tour?: Tour) => {
+    const s = o.screen(name, tour)
     if (!s) throw new OpError("no screen to play on: the user's window isn't open, or (another app) the Mac's helper isn't connected", 409)
     return s
   }
@@ -213,7 +214,7 @@ Its format: vau docs tours.`,
         return { playing: x ? { title: x.title, mode: x.mode, step: x.step } : null }
       }
       const { tour, path } = await tourAt(p.path.trim(), ctx), mode = (MODES as readonly string[]).includes(String(p.mode)) ? p.mode as Mode : "guide"
-      const done = start(name, screenFor(name), tour, mode, Number(p.from) || 1, { path, ctx })
+      const done = start(name, screenFor(name, tour), tour, mode, Number(p.from) || 1, { path, ctx })
       if (!p.wait) return { title: tour.title, mode, steps: tour.steps.length }
       return { title: tour.title, mode, steps: tour.steps.length, result: await done }
     },
@@ -345,6 +346,18 @@ scroll, a move or a relabel; gone, it says so. Kept ones (k1, k2: what you point
     answered: (name: string, text: string, ctx: Parameters<typeof tourFromAnswer>[2] & {}) => { if (/\[\s*[a-z]+[\s\]]/i.test(text)) lastAnswer.set(name, { text, ctx }) },
     playing: (name: string) => playing.get(name) ?? null,
     proofOf,
+    /** Their ask `text`, when it's a tour's ask phrase ("what's new?"): that tour played for `name` where they asked,
+     *  its title; null: it's an ask for the model. */
+    asked: (name: string, text: string) => {
+      const row = tourAsked(rows(), text)
+      if (!row) return null
+      const [tour, problems] = parsed(row), s = problems.length ? null : o.screen(name, tour)
+      if (problems.length || !s) { console.log(`companion tour "${row.title}": asked for, but ${problems.length ? problems.join("; ") : "there's no screen to play it on"}`); return null }
+      void start(name, s, tour, "guide").catch((e) => console.log(`companion tour "${tour.title}": ${(e as Error).message}`))
+      return tour.title
+    },
+    /** The tours anyone may ask for by name, wherever they are: their paths and phrases. */
+    askable: () => rows().filter((r) => r.ask?.length).map((r) => ({ path: /\.md$/i.test(r.id) ? r.id : `${r.id}.md`, ask: r.ask! })),
     /** Play `tour` (a proof) for `name` on screen `s` straight through: how it went. */
     show: (name: string, s: Screen, tour: Tour) => start(name, s, tour, "show"),
     escapedAt: () => escaped,

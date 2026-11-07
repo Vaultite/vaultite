@@ -36,6 +36,7 @@ import { jobOps } from "./workers.ts"
 import { type Exchange, exchanges, type PressLine, type Spent, spent, talkSoFar } from "./conversation.ts"
 import { type Guide, guideFor, guideLines, parseGuide, sitesOf } from "./guides.ts"
 import { type Screen, toursOf } from "./tours.ts"
+import type { Tour } from "./tour.ts"
 import type { Seen } from "./anchor.ts"
 import { markOf, type Spot, type Tag } from "./tags.ts"
 import { doneText, effectOf, isBrowser, macOpen, nearText, stepOf, takeovers } from "./takeover.ts"
@@ -374,6 +375,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   // (a new ask: what the last answer pointed with goes, a Talk key's too, so a mark it corrects is replaced, not
   // stacked; its cards stay, for a follow-up to change in place; a tour playing for it stops too: they moved on)
   if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.settle(full.for); tours.interrupt(full.for); if (isMain(full.for)) proofs.stop() }
+  // (a tour's ask phrase, "what's new?": the tour plays, without the model)
+  if (full.summoned && full.for && isMain(full.for) && m.kind === "ask" && !m.tour && full.text && tours.asked(full.for, full.text)) { touredAsk.set(key(full.for), full); return full }
   // (a Talk key's ask over a page a job works on: straight to that job, live editing)
   if (full.summoned && full.for && isMain(full.for) && liveEditing.take(full, from)) return full
   handOut(full, from)
@@ -896,7 +899,8 @@ const screenDrawing = screenDrawings(plugin, {
 })
 // ---------- tours (tours.ts): played on the screen of each agent's last ask, without the model
 
-const tours = toursOf(plugin, { screen: (name) => screenOf(name), who: (p) => who(p) })
+// (a tour of Vaultite's own plays on its window, wherever the last ask was, as a proof does)
+const tours = toursOf(plugin, { screen: (name, t) => screenOf(name, { vaultite: !!t && ownTour(t) }), who: (p) => who(p) })
 /** The window used last: where a tour over Vaultite plays. */
 const lastWindow = () => [...windows.entries()].sort((a, b) => b[1].at - a[1].at)[0]?.[0]
 /** A thing as Vaultite's window lists it (tourwindow.ts): `within`, the data-ui around one that has none. */
@@ -943,6 +947,8 @@ async function flip(name: string, src: string, at: { x: number; y: number; width
   mine.timers = FLIPS.map(([ms, on]) => setTimeout(() => { if (flipping === mine) screenDrawing.toggle(layer, on) }, ms))
   flipping = mine
 }
+/** A tour of Vaultite's own (its app, or none named): it plays on Vaultite's window. */
+const ownTour = (t: Pick<Tour, "app" | "site">) => !t.site.length && (!t.app.length || t.app.includes("vaultite"))
 /** Agent `name`'s screen for a tour: the app its last ask was over (the Mac's helper reads it), else Vaultite's window
  *  (`vaultite`: that window whatever the ask was over, as a proof of Vaultite's own). */
 function screenOf(name: string, o: { vaultite?: boolean } = {}): Screen | null {
@@ -958,9 +964,18 @@ function screenOf(name: string, o: { vaultite?: boolean } = {}): Screen | null {
     return x ? [x] : []
   })
   const overScreen = () => screens.size > 0 && displaysOf(name).length > 0
-  async function show(text: string, marks: Parameters<Screen["show"]>[1], before?: string) {
+  let drewCard = false
+  async function show(text: string, marks: Parameters<Screen["show"]>[1], before?: string, draw?: Record<string, unknown>[]) {
     stopFlips()
+    // (a step's own drawing goes as the next step comes; its cards, unless they say, stay till their next ask)
+    if (drewCard) { drewCard = false; screenDrawing.clear({ agent: name }) }
     const placed = marks.filter((m) => m.at)
+    if (draw?.length) {
+      drewCard = true
+      const at = drawnOf(placed), point = placed.find((m) => m.kind === "point")
+      if (point) await call("companion.look", mid(point.at!))
+      return void await call("companion.draw", { marks: [...at, ...draw.map((d) => ({ life: "ask", ...d }))], ...(text ? { say: text } : {}) })
+    }
     // (its picture before over its first thing, as it is now, while its words are said)
     if (before && overScreen() && placed[0]) void flip(name, before, placed[0].at!.frame)
     if (overScreen() && placed.length) {
@@ -988,8 +1003,8 @@ function screenOf(name: string, o: { vaultite?: boolean } = {}): Screen | null {
       if (d.action !== "click") return { ok: false, why: `in Vaultite's own UI it only clicks: ${d.action} isn't something it can do there, so the user does it` }
       const s = at as Shown | null
       if (!s) return { ok: false, why: "nothing to click: name it by its words" }
-      await call("companion.act", { action: "click", ...(s.ui ? { ui: s.ui } : { ...(s.within ? { ui: s.within } : {}), find: s.label }) })
-      return { ok: true }
+      const r = (await call("companion.act", { action: "click", ...(s.ui ? { ui: s.ui } : { ...(s.within ? { ui: s.within } : {}), find: s.label }) })).result as { ok?: boolean; saw?: string }
+      return r?.ok === false ? { ok: false, why: r.saw ?? "it didn't work" } : { ok: true }
     } catch (e) { return { ok: false, why: (e as Error).message } }
   }
   /** The step as an ask of its model's (the summoned session's, else its own), where the last ask was: whether it said or showed something. */
@@ -1568,10 +1583,15 @@ const toolUse = new AsyncLocalStorage<string | undefined>()
 const STREAM_MS = 5 * 60_000
 const ANCHORS = ["find", "after", "line", "append"]
 
+/** The ask a tour asked for by name plays for (tours.asked), by agent: its words answer it, said as it was asked. */
+const touredAsk = new Map<string, Moment>()
 /** The Talk key's ask a say of `name`'s answers, if it's one: when it came, said or typed, its language (voice.ts). */
 function answering(name: string): Note["answers"] {
   const from = inSummoned.getStore() ? lane().last() : moments.filter((m) => meantFor(m, name) && Date.now() - m.t < 180_000).slice(-5)
   const m = from.findLast((x) => x.kind === "ask" || x.kind === "point")
+  const toured = touredAsk.get(key(name))
+  if (toured && !tours.playing(name)) touredAsk.delete(key(name))
+  else if (toured && toured.t > (m?.t ?? 0)) return answersOf(toured)
   // (a job's proof showing since: its narration, said as Show me was)
   if (shown && isMain(name) && shown.t > (m?.t ?? 0)) return { t: shown.t, ...(shown.voice ? { voice: true as const } : {}) }
   return m?.summoned ? answersOf(m) : undefined
@@ -2600,6 +2620,8 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     if (m.summoned && !m.tour && (m.kind === "ask" || m.kind === "point") && m.app !== "private" && !guided.has("tours")) {
       const here = toursHere(m)
       if (here.length) { guided.add("tours"); out.push(`  their tours here (companion tour): ${here.join(", ")}`) }
+      const asked = tours.askable().filter((t) => !here.includes(t.path)).slice(0, 8)
+      if (asked.length) { guided.add("tours"); out.push(`  their tours for anywhere (companion tour, when they ask for one in other words): ${asked.map((t) => `${t.path} (${t.ask.map((a) => JSON.stringify(a)).join(", ")})`).join("; ")}`) }
     }
   }
   // (what its last answer left on their screen: a follow-up changes it in place)
@@ -2717,7 +2739,7 @@ const proofs = proofOps(plugin, {
   jobs, knocks, tours,
   name: () => ownName(),
   screen: (name, t) => {
-    const s = screenOf(name, { vaultite: !t.site.length && (!t.app.length || t.app.includes("vaultite")) })
+    const s = screenOf(name, { vaultite: ownTour(t) })
     // (a thing it names that's gone is said plainly, never played by the model instead)
     return s && { ...s, fallback: async () => false }
   },
