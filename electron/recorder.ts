@@ -40,11 +40,16 @@ export const onVideoStopped = (fn: () => void) => { stopped = fn }
 /** `from` to `to` (ms since 1970) as a clip in a folder of its own under userData/captures, cropped to the box as it
  *  moved, its frames at each change beside it. */
 export async function saveClip(from: number, to: number, boxes: BoxAt[]): Promise<Clip | { why: string }> {
-  const dir = path.join(app.getPath("userData"), "captures", new Date(from).toISOString().replace(/[:.]/g, "-"))
-  fs.mkdirSync(dir, { recursive: true })
+  const dir = captureDir(from)
   const r = await ask<{ ok?: boolean; why?: string } & Partial<Clip>>({ op: "save", from, to, boxes, file: path.join(dir, "clip.mp4"), frames: path.join(dir, "frames") }, 120_000)
   prune()
   return r.ok && r.file ? { file: r.file, ms: r.ms ?? to - from, width: r.width ?? 0, height: r.height ?? 0, frames: r.frames ?? [] } : { why: r.why ?? "no video" }
+}
+/** A folder of its own under userData/captures for what's kept from `t` on (a clip, a QA walk item's frame). */
+export function captureDir(t: number) {
+  const dir = path.join(app.getPath("userData"), "captures", new Date(t).toISOString().replace(/[:.]/g, "-"))
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
 }
 /** Clips made on this Mac stay a day (the vault keeps what was sent). */
 function prune() {

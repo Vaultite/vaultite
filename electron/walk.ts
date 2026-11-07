@@ -1,11 +1,11 @@
 /** A QA walk (walks.ts' rules): hands-free, each sentence an item tied to the thing the pointer rested on (an Anchor),
  *  with a frame and clip from the timeline if screen recording is allowed (never asked); done sends them (walk-send). */
-import { app, screen } from "electron"
-import fs from "node:fs"
+import { screen } from "electron"
 import path from "node:path"
 import { anchorOf, anchorText } from "../plugins/core/companion/anchor.ts"
 import type { Rect, Thing } from "../plugins/core/companion/uimodel.ts"
 import { countText, dwellAt, type Point, sentences, thingAt, walkCommand, type WalkItem, type WalkPlace, type WalkScene } from "../plugins/core/companion/walks.ts"
+import { captureDir } from "./recorder.ts"
 import { happened, queryTimeline, timelineFilmed } from "./timeline.ts"
 
 /** What helper.ts lends it. */
@@ -206,9 +206,7 @@ async function fill(it: Item, clips: boolean) {
     }
   }
   // (no video kept, or it made no frame: a picture of the window now)
-  const dir = path.join(app.getPath("userData"), "captures", new Date(it.from).toISOString().replace(/[:.]/g, "-"))
-  fs.mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, "frame.png")
+  const file = path.join(captureDir(it.from), "frame.png")
   if (await host!.still(it.at, box, file)) it.frame = file
 }
 function clipTo(r: Rect, d: Rect): Rect {

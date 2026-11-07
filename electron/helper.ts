@@ -334,7 +334,7 @@ function ringFollows() {
   const here = (LIVE && !QUIET) || (QUIET && captureReal), on = !!live.state.name && live.state.mode !== "off", was = timelineOn()
   keepTimeline(on && ((here && (prefs.timeline || walkOn())) || ((here || QUIET) && watching())), here && (prefs.timeline || walkFilms()))
   // (just on: the app in front as it began)
-  if (!was && timelineOn() && front) happened({ t: Date.now(), kind: "app", ...(hidden(front) ? { app: "", name: "", private: true } : { app: front.bundle, name: front.name, title: front.title }) })
+  if (!was && timelineOn()) frontHappened()
   const keys = keepsActs()
   if (keys !== keysTold) { keysTold = keys; void screenAsk("keys", { on: keys }).catch(() => { keysTold = !keys }) }
 }
@@ -427,6 +427,8 @@ const live = (() => {
 
 let front: AppWindowInfo | null = null
 const hidden = (a: { bundle?: string; name?: string } | null) => !!a && privateApp(a, prefs.privateApps)
+/** The app in front, on the timeline (a private one only as that). */
+const frontHappened = () => { if (front) happened({ t: Date.now(), kind: "app", ...(hidden(front) ? { app: "", name: "", private: true } : { app: front.bundle, name: front.name, title: front.title }) }) }
 
 function heard(m: Record<string, unknown>) {
   if (m.event === "fn") return prefs.talk.includes("fn") ? talkHeard(m as FnEvent) : prefs.keys.includes("fn") ? fnHeard(m) : undefined
@@ -446,7 +448,7 @@ function heard(m: Record<string, unknown>) {
     // (another app in front: they moved on)
     if (exchange && !m.vaultite && front && m.bundle !== front.bundle && !takeoverDriving() && Date.now() > openedUntil) moveOn()
     front = m as unknown as AppWindowInfo
-    happened({ t: Date.now(), kind: "app", ...(hidden(front) ? { app: "", name: "", private: true } : { app: front.bundle, name: front.name, title: front.title }) })
+    frontHappened()
     timelineRefollow()
     // (another app in front may cover or uncover what the cursors point at: looked at again)
     for (const e of placed.values()) e.at = 0
