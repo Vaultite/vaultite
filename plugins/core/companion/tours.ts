@@ -346,14 +346,14 @@ scroll, a move or a relabel; gone, it says so. Kept ones (k1, k2: what you point
     answered: (name: string, text: string, ctx: Parameters<typeof tourFromAnswer>[2] & {}) => { if (/\[\s*[a-z]+[\s\]]/i.test(text)) lastAnswer.set(name, { text, ctx }) },
     playing: (name: string) => playing.get(name) ?? null,
     proofOf,
-    /** Their ask `text`, when it's a tour's ask phrase ("what's new?"): that tour played for `name` where they asked,
-     *  its title; null: it's an ask for the model. */
-    asked: (name: string, text: string) => {
+    /** Their ask `text`, when it's a tour's ask phrase ("what's new?"): that tour played for `name` where they asked
+     *  (`ended` once it stops), its title; null: it's an ask for the model. */
+    asked: (name: string, text: string, ended?: () => void) => {
       const row = tourAsked(rows(), text)
       if (!row) return null
       const [tour, problems] = parsed(row), s = problems.length ? null : o.screen(name, tour)
       if (problems.length || !s) { console.log(`companion tour "${row.title}": asked for, but ${problems.length ? problems.join("; ") : "there's no screen to play it on"}`); return null }
-      void start(name, s, tour, "guide").catch((e) => console.log(`companion tour "${tour.title}": ${(e as Error).message}`))
+      void start(name, s, tour, "guide").catch((e) => console.log(`companion tour "${tour.title}": ${(e as Error).message}`)).finally(ended)
       return tour.title
     },
     /** The tours anyone may ask for by name, wherever they are: their paths and phrases. */

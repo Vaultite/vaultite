@@ -271,7 +271,8 @@ const did = (as: string, op: string, seqs?: number[], text?: string) => {
   else handed.delete(key(as))
 }
 /** An agent's state once it acted: still thinking while busy on an ask (until its next `next`), else watching. */
-const acting = (name: string): Agent["state"] => ((inSummoned.getStore() ? lane().asking() : asking.has(key(name))) ? "thinking" : "watching")
+// (a tour asked for by name answers as a turn would: at work till it ends, so the press it answers ends with it)
+const acting = (name: string): Agent["state"] => ((inSummoned.getStore() ? lane().asking() : asking.has(key(name)) || touredAsk.has(key(name))) ? "thinking" : "watching")
 
 /** The app's windows: which files each has open (`shown`: on screen, where an edit can be typed in), where its user is,
  *  when they last did anything. */
@@ -376,7 +377,10 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   // stacked; its cards stay, for a follow-up to change in place; a tour playing for it stops too: they moved on)
   if (full.for && (m.kind === "ask" || m.kind === "point") && !m.tour) { screenDrawing.settle(full.for); tours.interrupt(full.for); if (isMain(full.for)) proofs.stop() }
   // (a tour's ask phrase, "what's new?": the tour plays, without the model)
-  if (full.summoned && full.for && isMain(full.for) && m.kind === "ask" && !m.tour && full.text && tours.asked(full.for, full.text)) { touredAsk.set(key(full.for), full); return full }
+  if (full.summoned && full.for && isMain(full.for) && m.kind === "ask" && !m.tour && full.text) {
+    const name = full.for, ended = () => { if (touredAsk.get(key(name)) === full) touredAsk.delete(key(name)); setAgent(name, { state: acting(name) }) }
+    if (tours.asked(name, full.text, ended)) { touredAsk.set(key(name), full); setAgent(name, { state: "thinking" }); return full }
+  }
   // (a Talk key's ask over a page a job works on: straight to that job, live editing)
   if (full.summoned && full.for && isMain(full.for) && liveEditing.take(full, from)) return full
   handOut(full, from)
@@ -1592,8 +1596,7 @@ function answering(name: string): Note["answers"] {
   const from = inSummoned.getStore() ? lane().last() : moments.filter((m) => meantFor(m, name) && Date.now() - m.t < 180_000).slice(-5)
   const m = from.findLast((x) => x.kind === "ask" || x.kind === "point")
   const toured = touredAsk.get(key(name))
-  if (toured && !tours.playing(name)) touredAsk.delete(key(name))
-  else if (toured && toured.t > (m?.t ?? 0)) return answersOf(toured)
+  if (toured && toured.t > (m?.t ?? 0)) return answersOf(toured)
   // (a job's proof showing since: its narration, said as Show me was)
   if (shown && isMain(name) && shown.t > (m?.t ?? 0)) return { t: shown.t, ...(shown.voice ? { voice: true as const } : {}) }
   return m?.summoned ? answersOf(m) : undefined
