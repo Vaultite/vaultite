@@ -22,6 +22,13 @@ export function knockOps(plugin: Plugin, d: Deps) {
   const muted = () => plugin.kept<Record<string, number>>("knocks-muted", {})
   const isMuted = (from: string) => (muted()[from] ?? 0) > Date.now()
 
+  // (a knock's session by its machine, `<terminal>@<machine>`, as every machine's list names it; this one's own bare)
+  let self = ""
+  void plugin.ask<string | null>("machines:self", null).then((id) => { self = id ?? "" }, () => {})
+  const qualified = (from: string) => (!from || from.includes("@") || !self ? from : `${from}@${self}`)
+  const local = (from: string) => (self && from.endsWith(`@${self}`) ? from.slice(0, -self.length - 1) : from)
+  const named = (k: Knock) => (k.from ? { ...k, from: local(k.from) } : k)
+
   let rows: TermRow[] = []
   const seen = new Map<string, { state: PresenceState; since: number }>()
   let presences: Presence[] = []
@@ -31,7 +38,7 @@ export function knockOps(plugin: Plugin, d: Deps) {
     const now = Date.now(), ks = tidy(now)
     const titles = new Map(d.jobs().map((j) => [`${j.terminal}${j.where.machine ? `@${j.where.machine}` : ""}`, j.title]))
     const none = d.off() || d.hidden()
-    presences = none ? [] : presencesOf(rows, ks, seen, now, { titles })
+    presences = none ? [] : presencesOf(rows, ks.map(named), seen, now, { titles })
     const m = { t: "knocks", knocks: none ? [] : ks.filter((k) => !over(k)), presences }
     const text = JSON.stringify(m)
     if (text === sent && !force) return
@@ -63,7 +70,8 @@ export function knockOps(plugin: Plugin, d: Deps) {
   plugin.onEvent({ types: ["terminal.state", "terminal.ended"] }, () => void readTerminals())
 
   /** A knock's session named as the user knows it: its job's title, its terminal's name or title. */
-  function whoIs(from: string, ctx: OpCtx) {
+  function whoIs(at: string, ctx: OpCtx) {
+    const from = local(at)
     const job = d.jobs().find((j) => j.terminal === from || `${j.terminal}@${j.where.machine}` === from)
     const row = rows.find((r) => r.id === from)
     return job?.title || row?.name || row?.title || ctx.who.agent || "A session"
@@ -72,11 +80,11 @@ export function knockOps(plugin: Plugin, d: Deps) {
   /** A knock added (one before from its session replaced), kept and told; throws (400) on a bad one. */
   function knock(p: { from: string; who: string; line: string; urgency?: string; life?: number; open?: string }) {
     let k: Knock
-    try { k = makeKnock({ id: `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, ...p }, Date.now()) } catch (e) { throw new OpError((e as Error).message, 400) }
-    const ks = addKnock(all(), k, isMuted)
-    for (const x of ks) if (x.id === k.id || x.state !== all().find((y) => y.id === x.id)?.state) put(x)
+    try { k = makeKnock({ id: `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, ...p, from: qualified(p.from) }, Date.now()) } catch (e) { throw new OpError((e as Error).message, 400) }
+    const before = new Map(all().map((x) => [x.id, x.state])), ks = addKnock(all(), k, isMuted)
+    for (const x of ks) if (x.id === k.id || x.state !== before.get(x.id)) put(x)
     tell()
-    return ks.find((x) => x.id === k.id)!
+    return named(ks.find((x) => x.id === k.id)!)
   }
 
   /** The user (or the helper for them) did `act` to knock `id`; `mute`: its session's knocks too, a while. */
@@ -90,7 +98,7 @@ export function knockOps(plugin: Plugin, d: Deps) {
       for (const x of all()) if (x.from === k.from && !over(x)) put(actOn(x, "ignore", now))
     }
     tell()
-    return next
+    return named(next)
   }
 
   plugin.op({
@@ -121,7 +129,7 @@ replaces its last. Urgency: low comes at a longer pause, high at any pause in th
       if (d.off()) throw new OpError("the companion is off: nothing comes up by the notch", 409)
       const life = str(p.for) ? duration(str(p.for)) : undefined
       if (life !== undefined && !(life > 0)) throw new OpError(`for is a duration (90s, 30m, 2h), not ${str(p.for)}`, 400)
-      const from = str(p.terminal).trim()
+      const from = qualified(str(p.terminal).trim())
       if (!rows.length) await readTerminals()
       return knock({ from, who: str(p.who) || whoIs(from, ctx), line: str(p.line), urgency: str(p.urgency) || undefined, life, open: str(p.open) || undefined })
     },
@@ -151,7 +159,7 @@ break), ignore (that one), or mute (every knock from its session, for 12 hours).
     },
     run: (p) => {
       const did = str(p.later) ? act(str(p.later), "later") : str(p.ignore) ? act(str(p.ignore), "ignore") : str(p.mute) ? act(str(p.mute), "ignore", true) : str(p.opened) ? act(str(p.opened), "open") : null
-      return { ...(did ? { did } : {}), knocks: tidy(Date.now()).sort((a, b) => b.at - a.at).slice(0, 20), presences }
+      return { ...(did ? { did } : {}), knocks: tidy(Date.now()).sort((a, b) => b.at - a.at).slice(0, 20).map(named), presences }
     },
     text: (r: { did?: Knock; knocks: Knock[]; presences: Presence[] }) => {
       const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60_000); return m < 1 ? "now" : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago` }
@@ -174,6 +182,6 @@ break), ignore (that one), or mute (every knock from its session, for 12 hours).
     knocks: () => all().filter((k) => !over(k)),
     knock,
     /** Knocks from `from` still to come or telling, ended (its job reviewed elsewhere, say). */
-    settle: (from: string) => { for (const x of all()) if (x.from === from && !over(x)) put(actOn(x, "open", Date.now())); tell() },
+    settle: (from: string) => { for (const x of all()) if (x.from === qualified(from) && !over(x)) put(actOn(x, "open", Date.now())); tell() },
   }
 }
