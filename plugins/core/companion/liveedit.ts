@@ -6,6 +6,7 @@ import path from "node:path"
 import { type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import type { Box } from "./framediff.ts"
 import { followTask, gist, type Job, live } from "./jobs.ts"
+import { isBrowser } from "./takeover.ts"
 import { surfaceOf } from "./where.ts"
 import type { Moment } from "./plugin.ts"
 import { type FileEdit, unedit } from "./unedit.ts"
@@ -68,6 +69,17 @@ export function liveText(tag: string, m: Moment, notes: string[]) {
     ...notes].join(" "), m)
 }
 
+/** A line of a window's text that is an address alone, or labelled as one (a browser's address bar). */
+const ADDRESS_LINE = /^\s*(?:(?:address(?: and search)? bar|url|location)\b[^:]{0,20}:\s*)?\S+\s*$/i
+/** The page `m` is over, as live editing takes it: a note, a web pane's page or a browser's address, never a terminal
+ *  or an editor whose text only mentions one (a dev server's "Local: http://localhost:5173"). */
+export function pageOf(m: Moment) {
+  if (m.path || m.url) return surfaceOf(m)
+  if (m.pane) return ""
+  const address = (m.screen ?? "").split("\n").slice(0, 60).filter((l) => ADDRESS_LINE.test(l)).join("\n")
+  return address || (m.app && isBrowser(m.app)) ? surfaceOf({ title: m.title, screen: address }) : ""
+}
+
 export function liveEdits(plugin: Plugin, d: LiveDeps) {
   // (held here, kept on each change: kept.ts gives copies, and two asks' flows must see one state)
   let held: { vault: string; s: { jobs: Record<string, Live> } } | null = null
@@ -93,7 +105,7 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
 
   /** The job working on what `m` is over: the latest one asked there (a preview's own by its address), not stopped. */
   function jobOn(m: Moment, now = Date.now()): Job | undefined {
-    const on = surfaceOf(m)
+    const on = pageOf(m)
     if (!on) return undefined
     const site = on.startsWith("site:") ? on.slice(5) : ""
     const origin = (u?: string) => { try { return u ? new URL(u).origin : "" } catch { return "" } }
@@ -115,7 +127,7 @@ export function liveEdits(plugin: Plugin, d: LiveDeps) {
     if (!j) return false
     if (isUndo(m.text)) {
       m.live = j.id
-      void undoNow(d.ctx(from), j, m).catch((e) => d.say(name, (e as Error).message, m))
+      void undoNow(d.ctx(from), j, m).catch((e) => d.say(name, (e as Error).message, m)).catch(() => {})
       return true
     }
     // (one waiting on a prompt answers that first: the companion tells them, and answers it on their word)

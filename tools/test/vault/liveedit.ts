@@ -93,6 +93,12 @@ export default async ($: VaultTest) => {
   check("live edit: what an ask is over: a note, else a preview's site from its address, never GitHub",
     W.surfaceOf({ path: "Notes/A.md", url: "http://localhost:5173/x" }) === "note:Notes/A.md" && W.surfaceOf({ title: "Site", screen: "Address and search bar: localhost:5173/about" }) === "site:http://localhost:5173" &&
     W.surfaceOf({ screen: "github.com/lighthouse/site" }) === "" && W.surfaceOf(undefined) === "")
+  check("live edit: only the page itself goes live: a browser's address or a web pane's, never a terminal or editor mentioning it",
+    L.pageOf({ app: "com.google.Chrome", title: "Site", screen: "Address and search bar: localhost:5173/about\nHello" } as Any) === "site:http://localhost:5173" &&
+    L.pageOf({ url: "http://localhost:5173/x", pane: "t1" } as Any) === "site:http://localhost:5173" && L.pageOf({ path: "Notes/A.md" } as Any) === "note:Notes/A.md" &&
+    L.pageOf({ app: "com.mitchellh.ghostty", title: "npm run dev", screen: "VITE ready\n  Local:   http://localhost:5173/\n" } as Any) === "" &&
+    L.pageOf({ pane: "t2", screen: "  Local:   http://localhost:5173/" } as Any) === "" &&
+    L.pageOf({ app: "com.todesktop.230313mzl4w4u92", screen: 'const site = "http://localhost:5173"' } as Any) === "")
   check("live edit: what its worker is told: tagged, change it now, a question answered, another's handed back",
     /^Live edit L3: [^]*make this change now[^]*\(not for me\)[^]*they undid[^]*\(The user, through their companion: They said: "make it red"/.test(L.liveText("L3", { t: 1, seq: 1, kind: "ask", text: "make it red" } as Any, ["(they undid L2)"])))
 
