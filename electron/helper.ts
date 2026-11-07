@@ -2098,18 +2098,21 @@ async function changedCall(a: unknown) {
   if (!w.window || !w.frame) return { ok: false, why: "no-window" }
   if (hidden(w)) return { ok: false, why: "private" }
   const bitmap = (f: string) => { const i = nativeImage.createFromPath(f), z = i.getSize(); return { px: new Uint8Array(i.toBitmap()), ...z } }
-  const end = Date.now() + Math.min(Number(o.settle) || 4000, 10_000)
+  // (read first: the pictures taken meanwhile go in the same folder, which keeps only the last 20)
+  const was = bitmap(before), end = Date.now() + Math.min(Number(o.settle) || 4000, 10_000)
   let last: ReturnType<typeof bitmap> | null = null
   for (;;) {
     const f = await windowShot(w.window, SHOTS())
     if (!f) return { ok: false, why: "no picture: Vaultite needs screen recording (System Settings, Privacy & Security)" }
     const now = bitmap(f)
+    // (read: the folder keeps others' pictures, not these)
+    fs.rmSync(f, { force: true })
     const still = !!last && last.width === now.width && last.height === now.height && !changedBoxes(last.px, now.px, now.width, now.height).boxes.length
     last = now
     if (still || Date.now() > end) break
     await new Promise((r) => setTimeout(r, 350))
   }
-  const was = bitmap(before), scale = last.width / w.frame.width
+  const scale = last.width / w.frame.width
   if (was.width !== last.width || was.height !== last.height) return { ok: true, boxes: [], whole: true }
   const c = changedBoxes(was.px, last.px, last.width, last.height)
   return { ok: true, whole: c.whole, boxes: c.boxes.map((b) => ({ x: Math.round(w.frame!.x + b.x / scale), y: Math.round(w.frame!.y + b.y / scale), w: Math.round(b.w / scale), h: Math.round(b.h / scale) })) }
