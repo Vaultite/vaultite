@@ -15,6 +15,8 @@ const api = (window as unknown as { vaultiteScreen?: { island?: Bridge } }).vaul
 /** How far the black runs in under the notch (islandlogic.ts' TUCK). */
 const TUCK = 14
 const SHOWN = 5
+/** Room kept under the card in its window (electron/island.ts' H), for its shadow: past that it scrolls. */
+const FOOT = 14
 const SAID: Record<Presence["state"], string> = { working: "Working", "needs you": "Needs you", done: "Done" }
 const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60_000); return m < 1 ? "now" : m < 60 ? `${m}m` : `${Math.round(m / 60)}h` }
 
@@ -90,13 +92,22 @@ export function Island() {
   const inner = useRef<HTMLDivElement>(null), [fit, setFit] = useState(0)
   useLayoutEffect(() => { const w = inner.current?.offsetWidth ?? 0; if (w && w !== fit) setFit(w) })
   // (where each session shows, told after each change: a Talk key held over one talks to it)
-  const told = useRef("")
-  useLayoutEffect(() => {
-    const list = [...document.querySelectorAll<HTMLElement>("[data-island-at]")].map((el) => { const r = el.getBoundingClientRect()
-      return { id: el.dataset.islandAt!, x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) } })
-    const text = JSON.stringify(list)
-    if (text !== told.current) { told.current = text; api?.faces?.(list) }
-  })
+  // (a row scrolled out of the list isn't there: each is clipped to what the list shows, and told again as it scrolls)
+  const told = useRef(""), list = useRef<HTMLDivElement>(null), [ends, setEnds] = useState("")
+  const tell = () => {
+    const view = list.current?.getBoundingClientRect()
+    const rects = [...document.querySelectorAll<HTMLElement>("[data-island-at]")].flatMap((el) => {
+      const r = el.getBoundingClientRect(), v = view && list.current!.contains(el) ? view : null
+      const top = v ? Math.max(r.top, v.top) : r.top, bottom = v ? Math.min(r.bottom, v.bottom) : r.bottom
+      return bottom - top < 4 ? [] : [{ id: el.dataset.islandAt!, x: Math.round(r.x), y: Math.round(top), width: Math.round(r.width), height: Math.round(bottom - top) }]
+    })
+    const text = JSON.stringify(rects)
+    if (text !== told.current) { told.current = text; api?.faces?.(rects) }
+    // (which ends have more past them: the list fades there)
+    const l = list.current, more = l ? `${l.scrollTop > 1 ? "top " : ""}${l.scrollTop + l.clientHeight < l.scrollHeight - 1 ? "bottom" : ""}`.trim() : ""
+    if (more !== ends) setEnds(more)
+  }
+  useLayoutEffect(tell)
   useEffect(() => () => { clearTimeout(hold.current); if (over.current) api?.grab(false) }, [])
   // (the list's "2m ago"s, kept true while it's open)
   const [, tick] = useState(0)
@@ -158,10 +169,10 @@ export function Island() {
         {knock && !drop && grace}
       </div>
       {card && (
-        <div className={cn("island-card text-white", centre && "island-card-centre")} style={{ top: spot.bar + 6, ...(centre ? {} : back ? { right: 0 } : { left: attached ? TUCK : 0 }) }}>
-          {drop && <div className="flex items-center gap-1.5 px-2.5 py-2.5">{line}</div>}
+        <div className={cn("island-card text-white", centre && "island-card-centre")} style={{ top: spot.bar + 6, maxHeight: `calc(100vh - ${spot.bar + 6 + FOOT}px)`, ...(centre ? {} : back ? { right: 0 } : { left: attached ? TUCK : 0 }) }}>
+          {drop && <div className="flex shrink-0 items-center gap-1.5 px-2.5 py-2.5">{line}</div>}
           {open && rows && (
-            <div className={cn("island-rows px-1.5 pb-1.5", !drop && "pt-1.5")} role="list">
+            <div ref={list} className={cn("island-rows mb-1.5 px-1.5", !drop && "mt-1.5")} role="list" onScroll={tell} data-more={ends || undefined}>
               {walk && <WalkRow w={walk} />}
               {presences.map((p) => (
                 <div key={p.id} role="listitem" className="island-row" data-island-row={p.id} data-island-at={p.id}>
@@ -195,7 +206,7 @@ export const ISLAND_STYLE = `
 html, body { background: transparent !important; overflow: hidden }
 .island { background: #000; max-width: 440px; overflow: hidden; position: relative;
   transition: width 420ms cubic-bezier(.3, 1.25, .45, 1), border-radius 260ms ease, box-shadow 260ms ease; font-family: -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased }
-.island-card { position: absolute; width: 340px; background: #000; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 30px rgb(0 0 0 / .35);
+.island-card { position: absolute; width: 340px; display: flex; flex-direction: column; background: #000; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 30px rgb(0 0 0 / .35);
   animation: island-in 240ms cubic-bezier(.2, .9, .3, 1); font-family: -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased }
 .island-card-centre { left: 50%; translate: -50% 0 }
 .island-line { max-width: 300px; white-space: pre }
@@ -206,7 +217,12 @@ html, body { background: transparent !important; overflow: hidden }
 .island-icon { display: grid; place-items: center; width: 24px; padding: 4px 0 }
 .island-fade { animation: island-fade 200ms ease-out }
 .island-grace { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; transform-origin: left; transition: transform 220ms linear; opacity: .9 }
-.island-rows { display: flex; flex-direction: column; gap: 2px }
+.island-rows { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .28) transparent; --fade: 22px }
+.island-rows > * { flex-shrink: 0 }
+.island-rows[data-more="bottom"] { mask-image: linear-gradient(#000 calc(100% - var(--fade)), transparent) }
+.island-rows[data-more="top"] { mask-image: linear-gradient(transparent, #000 var(--fade)) }
+.island-rows[data-more="top bottom"] { mask-image: linear-gradient(transparent, #000 var(--fade) calc(100% - var(--fade)), transparent) }
 .island-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 12px }
 .island-row:hover { background: rgb(255 255 255 / .09) }
 .island-spin { background: conic-gradient(from 0deg, transparent 0 55%, var(--tint) 100%); -webkit-mask: radial-gradient(circle, transparent calc(50% - 1.6px), #000 calc(50% - 1.5px));

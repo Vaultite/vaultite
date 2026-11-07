@@ -16,8 +16,9 @@ export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string
 export type IslandActs = { open: (id: string) => void; later: (knock: string) => void; ignore: (knock: string, mute: boolean) => void; walk: (what: string) => void; hover?: (on: boolean) => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
-/** Its window's size: room for the knock's line and, below the bar, the list a hover opens. */
-const W = 700, H = 340
+/** Its window's size: room for the knock's line and, below the bar, the list a hover opens (about 9 rows; the page
+ *  scrolls the rest). Click-through but while hovered, so its height costs nothing. */
+const W = 700, H = 520
 let win: BrowserWindow | null = null
 let url = ""
 let last: Omit<IslandData, "spot" | "left" | "width"> | null = null

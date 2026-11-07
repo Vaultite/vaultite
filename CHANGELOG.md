@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **The menu bar menu's headings are bold**: Companion and Jobs read as titles at the menu's text size, where macOS
   drew them small and semibold.
+- **The list of sessions by the notch holds any number**: with many background sessions the list a hover opens no
+  longer runs off the bottom, cut square: it shows about nine, keeps its rounded edge and scrolls the rest.
 - **The companion's box over the screen moves and closes**: drag it by its name to put it where you like (it stays
   there), or close it with its X. Two quick bounces of ⌃⌥ just after letting go no longer open it listening
   hands-free, and while it does listen hands-free, holding ⌃⌥ and letting go sends what you said, where before only

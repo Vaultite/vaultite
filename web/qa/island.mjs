@@ -75,6 +75,43 @@ await island.evaluate(() => document.querySelector("[data-island-later]").click(
 check("Not now puts it off", await until(async () => (await op("companion.knocks", {})).knocks.find((x) => x.id === k2.id)?.state === "later", 4000))
 check("…and the island lets it go", await until(() => island.evaluate(() => !document.querySelector("[data-island-knock]")), 3000))
 
+// ---------- many sessions: the list a hover opens fits the window, rounds its bottom and scrolls the rest
+const before = await helper((h) => h.island().presences)
+const H = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds().height)
+const fake = (n) => Array.from({ length: n }, (_, i) => ({ id: `qa-${i}`, who: `Session ${i + 1}`, tint: ["orange", "teal", "purple", "green"][i % 4], state: i % 3 ? "working" : "needs you",
+  since: Date.now() - i * 60_000, line: `Step ${i + 1} of the plan`, ...(i % 5 === 0 ? { knock: `qk-${i}` } : {}) }))
+const card = () => island.evaluate(() => { const c = document.querySelector(".island-card"), l = c?.querySelector(".island-rows"); if (!c || !l) return null
+  const r = c.getBoundingClientRect(), radius = getComputedStyle(c).borderBottomLeftRadius
+  return { bottom: r.bottom, inner: innerHeight, radius, rows: l.querySelectorAll("[data-island-row]").length, scroll: l.scrollTop, room: l.clientHeight, full: l.scrollHeight, more: l.dataset.more ?? "" } })
+for (const n of [1, 8, 30]) {
+  await helper((h, list) => h.knocks({ knocks: [], presences: list }), fake(n))
+  await until(() => island.evaluate(() => !!document.querySelector('[data-island-face="qa-0"]')), 4000)
+  await island.locator("[data-island]").hover({ position: { x: 30, y: 10 } })
+  const c = await until(async () => { const c = await card(); return c?.rows === n ? c : null }, 3000) ?? await card()
+  check(`${n} sessions: the list holds them all`, c?.rows === n, c)
+  check(`…ends inside its window, its bottom rounded`, !!c && c.bottom <= H - 8 && c.inner === H && parseFloat(c.radius) >= 16, { c, H })
+  const over = !!c && c.full > c.room + 1
+  check(n === 30 ? "…too many to fit: it scrolls, fading below" : "…no scroll it doesn't need", n === 30 ? over && c.more === "bottom" : !over && !c.more, c)
+  if (PNG && n === 30) fs.writeFileSync(PNG.replace(/\.png$/, "-many.png"), await island.screenshot({ omitBackground: true }))
+  if (n !== 30) continue
+  // (the wheel and a trackpad's swipe are both wheel events, over the list while hovered)
+  const box = await island.locator(".island-rows").boundingBox()
+  const first = await island.evaluate(() => { const r = document.querySelector('[data-island-row="qa-0"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })
+  await island.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  for (let i = 0; i < 40; i++) await island.mouse.wheel(0, 120)
+  const end = await until(async () => { const c = await card(); return c && c.scroll + c.room >= c.full - 1 ? c : null }, 3000) ?? await card()
+  check("…the wheel scrolls it to the last", !!end && end.scroll > 0 && end.scroll + end.room >= end.full - 1 && end.more === "top", end)
+  check("…the last row shown whole", await island.evaluate(() => { const l = document.querySelector(".island-rows").getBoundingClientRect(), r = document.querySelector('[data-island-row="qa-29"]').getBoundingClientRect()
+    return r.bottom <= l.bottom + 1 && r.top >= l.top }))
+  const wb2 = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds())
+  const there = await until(() => helper((h, p) => h.island(p).at, { x: wb2.x + first.x, y: wb2.y + first.y }), 2000)
+  check("…a row scrolled out isn't where it was: what's shown there is", !!there && there !== "qa-0", there)
+  check("…still open, still hovered", await island.evaluate(() => !!document.querySelector("[data-island][data-open]")))
+  if (PNG) fs.writeFileSync(PNG.replace(/\.png$/, "-scrolled.png"), await island.screenshot({ omitBackground: true }))
+  await island.mouse.move(600, 330)
+}
+await helper((h, a) => h.knocks({ knocks: h.island().knocks, presences: a }), before)
+
 // ---------- another app's island wide over the notch: ours to its right, apart
 await helper((h, a) => h.stub("windows", { windows: [a] }), { ...vors(display.x + 560, 350) })
 const islandBounds = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds())

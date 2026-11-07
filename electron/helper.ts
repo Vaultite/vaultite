@@ -113,7 +113,7 @@ export async function startHelper(h: HelperHost) {
   host = h
   app.on("will-quit", stopHelper)
   if (QUIET) Object.assign(globalThis, { vaultiteHelper: { heard: (m: Record<string, unknown>) => heard(m), stub: (op: string, v?: Record<string, unknown> | null) => (v == null ? stubs.delete(op) : stubs.set(op, v)), presses: () => presses.read(),
-    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
+    asked: () => [...asked], screenAsked: () => [...screenAsked], spoken: () => [...spoken], scene: () => lastScene, island: islandNow, knocks: (m: Record<string, unknown>) => knocksHeard(m), islandSaid: (text: string, x: number, y: number) => knockSaid(text) || toPresence(text, { x, y }), badge: () => badged, menu: () => menuItems(),
     walk: (what: string) => walkCall(what), talkSaid: (text: string) => walkHeard(text), walkSaid: (text: string) => { walkPending(text); walkFinal(text) },
     teach: (text: string) => teachHeard(text, Date.now()), teachSaid: (text: string) => { teachPending(text); teachFinal(text) }, lesson: lessonScene,
     layers: () => layersUp, watched: () => areas, near: (x: number, y: number) => nearAt({ x, y }) } })
