@@ -43,7 +43,7 @@
   (the companion's voice out: it never plays under VAULTITE_QUIET, and VOICE_OUT writes a file instead). Each Swift helper
   is built by swiftbuild.ts and run by linehelper.ts; screen.swift and takeover.swift share ax.swift, so they name an element alike.
   Only the app the user runs (packaged, not VAULTITE_QUIET; VAULTITE_HELPER_TAP=1 by hand) hears their keys and takes the
-  one lock; a scripted copy hears a file, never the microphone, and where that lock is held (the user's app runs) its QA
+  one lock; a scripted copy hears a file, never the microphone (or, where no recognizer is, as on macOS 15, VAULTITE_DICTATION_TEXT's words), and where that lock is held (the user's app runs) its QA
   (web/qa/helper.mjs) is skipped unless VAULTITE_QA_LIVE=1. Each Talk-key press is logged (presslog.ts:
   userData/talk/talk-<day>.jsonl, a missed press's audio beside it): a press that went nowhere can be traced, and one
   that went shows its answer's first sound (`sound`: whose voice, ms after let-go), a voice failing over and one saying nothing (`voice-silent`: a notice says so once, and the answer shows in its box), one kept quiet for a call (`quiet`: calllogic.ts); `stt` names

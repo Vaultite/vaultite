@@ -37,7 +37,7 @@ import { realtimeFront } from "./realtimefront.ts"
 import { countText, type WalkPlace } from "../plugins/core/companion/walks.ts"
 import { clickedAt, keepsActs, keyHeard, lessonAct, lessonScene, stopTeach, teachDeaf, teachFinal, teachHeard, teachHost, teachListening, teachListens, teachPending, typedHeard, watching } from "./teach.ts"
 import { endWalk, startWalk, stopWalk, walkAct, walkCall, walkFilms, walkFinal, walkHeard, walkHost, walkListening, walkListens, walkOn, walkPending, walkScene } from "./walk.ts"
-import { stopTakeover, takeoverBehind, takeoverCaption, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard } from "./takeover.ts"
+import { stopTakeover, takeoverBehind, takeoverCaption, takeoverClick, takeoverDriving, takeoverEnded, takeoverHeard, takeoverOffering } from "./takeover.ts"
 
 /** The vault the helper serves: its server's port, and how it's called. */
 export type Home = { port: number; path: string; name: string }
@@ -394,7 +394,7 @@ const live = (() => {
       // (its answer stopped in the app: Esc, its box closed)
       else if (m.t === "hush") return stopVoice()
       // (a step in another app, or their spoken answer to its offer: takeover.ts')
-      else if (m.t === "takeover" || m.t === "takeover-answer" || m.t === "confirm") return takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt, redraw: draw })
+      else if (m.t === "takeover" || m.t === "takeover-answer" || m.t === "confirm") return void (offerAnswered(m), takeoverHeard(m, { reply: (r) => live.say(r), isPrivate: hidden, near: nearAt, redraw: draw }))
       // (what the companion opens on this Mac: an app, a file, a page in their browser, a System Settings pane)
       else if (m.t === "open") return void openOn(m)
       // (words a mark names, found in the window asked about)
@@ -678,7 +678,7 @@ function talkHeard(m: FnEvent) {
   // (Control's double tap: no Talk key is Control)
   if (!host?.home() || "double" in m) return
   // (pressed again: its voice stops at once, and gets ready for the next answer)
-  if ("down" in m && m.down) { stopVoice(); live.say({ t: "interrupt" }); speaker.warm(); voiceFront.warm(); lastAsk = null }
+  if ("down" in m && m.down) { hushedBefore = takeoverOffering() ? hushed : null; stopVoice(); live.say({ t: "interrupt" }); speaker.warm(); voiceFront.warm(); lastAsk = null }
   const now = "t" in m && m.t ? m.t : Date.now(), kind = "other" in m ? "other" : m.down ? "down" : "up", a = "other" in m ? gesture.other() : m.down ? gesture.down(now) : gesture.up(now)
   // (each press logged, what it did or that it did nothing: presses that go nowhere can be traced)
   if (a === "listen") press = presses.start("talk", "down", { front: front?.bundle ?? "" })
@@ -926,11 +926,12 @@ function endExchange(stop = true) {
   if (panelOpen()) closePanel()
   draw()
 }
-/** Its spoken answer still going: being said (or still to be), or its turn still at work on it. */
+/** Its spoken answer still going: being said (or still to be), its turn still at work on it, or an offer of it up
+ *  (the turn waits on their answer: settling then took the card away under their hand). */
 function going(x: Exchange) {
   if (!x.spoken) return false
   const a = live.state.agents.get(x.name), s = summon?.name === x.name ? summon : null
-  return !!speakingNow || speaker.saying() || (!!a && BUSY.has(a.state)) || (!!s && waiting(s))
+  return !!speakingNow || speaker.saying() || (!!a && BUSY.has(a.state)) || (!!s && waiting(s)) || takeoverOffering()
 }
 /** They clicked elsewhere, went to another app, or its box closed: the box goes, but a spoken answer goes on to its end
  *  (only the Talk key, Esc or a new ask stop it), its cursor leaving once it's said (settle). */
@@ -1538,6 +1539,14 @@ let voiced: { name: string; asked: number; notes: string[]; quiet: ReturnType<ty
   /** The press the realtime voice spoke first for: told this answer once it's whole. */
   fronted?: Summon } | null = null
 let hushed = 0
+/** Where hushing stood before a press made while an offer was up: said to be its answer (the server tells), the turn
+ *  it lets go on is heard, not hushed with the press. */
+let hushedBefore: number | null = null
+function offerAnswered(m: Record<string, unknown>) {
+  if (m.t !== "takeover-answer") return
+  if (m.asked !== true && hushedBefore !== null) hushed = hushedBefore
+  hushedBefore = null
+}
 /** When words were last said into a cursor's box: the ask they make is a spoken one. */
 let saidInBox = 0
 let speakingNow: Scene["speaking"] = null

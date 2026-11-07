@@ -2,6 +2,7 @@
  *  one session at a time, through Soniox or this Mac's engine; it stays a while after, Parakeet loaded, then goes. */
 import { app, systemPreferences } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
+import fs from "node:fs"
 import path from "node:path"
 import type { AppWindow } from "./appwindow.ts"
 import { dictationSwift, parakeetModel } from "./dictation-build.ts"
@@ -64,7 +65,18 @@ function start(): Promise<ChildProcess> {
   return starting
 }
 
-function send(cmd: Record<string, unknown>) { helper?.stdin?.write(JSON.stringify(cmd) + "\n") }
+function send(cmd: Record<string, unknown>) { if (TEXT) return typed(cmd); helper?.stdin?.write(JSON.stringify(cmd) + "\n") }
+
+/** A script on a Mac with no recognizer here (macOS 15, Linux): the words "heard" at each start, read from this file
+ *  then (web/qa/helper-offer.mjs), no helper; its session ends when stopped, as a file's does. */
+const TEXT = process.env.VAULTITE_QUIET ? process.env.VAULTITE_DICTATION_TEXT : undefined
+function typed(cmd: Record<string, unknown>) {
+  const id = sid, words = () => { try { return fs.readFileSync(TEXT!, "utf8").trim() } catch { return "" } }
+  if (cmd.cmd === "start") return void setTimeout(() => { if (sid === id) heard({ type: "pending", id, text: words() }) }, 300)
+  if (cmd.cmd !== "stop" && cmd.cmd !== "cancel") return
+  if (cmd.cmd === "stop") { heard({ type: "final", id, text: words() }); heard({ type: "pending", id, text: "" }) }
+  heard({ type: "end", id, reason: cmd.cmd })
+}
 
 /** The session's replacements (the dictionary's "said: written", the server's), applied to what it hears. */
 let swap: [RegExp, string][] = []
@@ -109,6 +121,7 @@ function heard(m: Record<string, unknown>) {
 
 /** What dictates here: Apple's engine (macOS 26, in `language`), and Parakeet (with its model found). */
 async function engines(language: string) {
+  if (TEXT) return { apple: true, locale: language || "en-US", parakeet: false }
   try { await start() } catch (e) { return { apple: false, parakeet: false, why: (e as Error).message } }
   const r = await new Promise<Record<string, unknown>>((done) => {
     checked.push(done)
@@ -170,8 +183,8 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
   let engine = opts.engine === "parakeet" ? "parakeet" : "apple"
   const language = typeof opts.language === "string" ? opts.language : ""
   // (a copy a script drives hears a file, never the microphone: it can't take the user's)
-  if (process.env.VAULTITE_QUIET && !process.env.VAULTITE_DICTATION_FILE) return { ok: false, code: "quiet" }
-  const [allowed, { cloud, why, terms, replacements }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
+  if (process.env.VAULTITE_QUIET && !process.env.VAULTITE_DICTATION_FILE && !TEXT) return { ok: false, code: "quiet" }
+  const [allowed, { cloud, why, terms, replacements }] = await Promise.all([process.env.VAULTITE_DICTATION_FILE || TEXT ? true : systemPreferences.askForMediaAccess("microphone"), cloudFor(sink, language)])
   if (!allowed) return { ok: false, code: "permission" }
   for (const fn of starts) fn()
   let model = engine === "parakeet" ? parakeetModel() : null
@@ -180,9 +193,9 @@ export async function dictate(sink: DictationSink, opts: DictateOptions): Promis
     engine = "apple"
     model = null
   }
-  try { await start() } catch (e) { return { ok: false, code: "helper", message: (e as Error).message } }
+  try { if (!TEXT) await start() } catch (e) { return { ok: false, code: "helper", message: (e as Error).message } }
   if (idle) { clearTimeout(idle); idle = null }
-  const file = !!(process.env.VAULTITE_QUIET && process.env.VAULTITE_DICTATION_FILE)
+  const file = !!(process.env.VAULTITE_QUIET && (process.env.VAULTITE_DICTATION_FILE || TEXT))
   const mic = file ? undefined : pickMic(opts.microphone, await listedDevices())
   if (owner && owner !== sink) tell({ type: "end", reason: "elsewhere" })
   owner = sink

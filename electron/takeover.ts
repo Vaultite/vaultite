@@ -6,6 +6,7 @@ import { HEX } from "../plugins/core/companion/screenmarks.ts"
 import { takeoverSwift } from "./swiftbuild.ts"
 import { lineHelper } from "./linehelper.ts"
 import { overlayWindow } from "./overlaywin.ts"
+import { quiet } from "./quiet.ts"
 import { privateApp } from "../core/privateapps.ts"
 import { hostOf, siteIn } from "../plugins/core/companion/places.ts"
 import { aimedAt, type Answer, type Call, cardSpot, declined, handGrace, intentOf, keepsYes, kindOf, OFFER_MS, outward, PAUSED_MS, pausedLine, plan, type Probe, type Rect, refusal, REST_MS,
@@ -100,7 +101,7 @@ let stepOffer: string | null = null
 type Card = { line: string; sub: string; yes: string; name: string; tint: string; at: Point }
 /** Offer `c` (their yes: a click on its yes, or said with the pointer by it) as `id`; `sent` once it's up. */
 function offer(id: string, c: Card, sent: () => void): Promise<Answer> {
-  if (!QUIET) show(id, c)
+  show(id, c)
   sent()
   return new Promise((done) => {
     const late = setTimeout(() => answered(id, "forgotten"), OFFER_MS)
@@ -113,6 +114,8 @@ function show(id: string, c: Card) {
   const others = () => [...shown.entries()].filter(([k, w]) => k !== id && !w.isDestroyed()).map(([, w]) => w.getBounds())
   const place = (h: number) => ({ width: W, height: h, ...cardSpot(c.at, { width: W, height: h }, d, others()) })
   const w = floating(place(118), true, true)
+  // (a scripted copy's is drawn but unseen: its Run is clicked through the page)
+  quiet(w, w.webContents)
   shown.set(id, w)
   w.webContents.on("preferred-size-changed", (_e, size) => { if (!w.isDestroyed() && size.height > 0) w.setBounds({ ...w.getBounds(), height: Math.ceil(size.height) }) })
   w.webContents.on("will-navigate", (e, url) => {
@@ -136,6 +139,8 @@ function answered(id: string | null, how: Answer) {
     if (stepOffer === k) stepOffer = null
     done?.(how)
   }
+  // (the exchange may settle now: it waited on this)
+  redraw()
 }
 /** Their spoken answer: for the offer by their pointer, when several are up. */
 function spoken(how: Answer) {
@@ -227,6 +232,8 @@ export function takeoverClick(x: number, y: number) {
   answered(null, "no")
   return false
 }
+/** An offer waits for their answer: the exchange goes on till it's given (its turn waits on it). */
+export const takeoverOffering = () => cards.size > 0
 /** The exchange is over (Esc, they moved on): no more steps on its yes, and no offer left waiting. */
 export const takeoverEnded = () => { answered(null, "no"); stop("ended") }
 
@@ -483,12 +490,12 @@ async function runBehind(m: Ask, host: TakeoverHost): Promise<Record<string, unk
 
 /** The server's take-over messages: a step to do (`takeover`), their spoken answer to an offer (`takeover-answer`). */
 export function takeoverHeard(m: Record<string, unknown>, host: TakeoverHost) {
+  redraw = host.redraw
   if (m.t === "takeover-answer") return void (cards.size && spoken(m.yes === true ? "yes" : m.asked === true ? "asked" : "no"))
   if (m.t === "confirm" && typeof m.id === "string") return void confirm(m, host)
   if (m.t !== "takeover" || typeof m.id !== "string" || !m.step || typeof m.step !== "object") return
   const list = (x: unknown) => (Array.isArray(x) ? x.map(String) : [])
   const req = { id: m.id, agent: String(m.agent ?? ""), tint: String(m.tint ?? "orange"), step: m.step as Step, ...(typeof m.ask === "string" ? { ask: m.ask } : {}), apps: list(m.apps), sites: list(m.sites) }
-  redraw = host.redraw
   queue = queue.then(() => run(req, host).catch((e: Error) => ({ ok: false, why: "failed", text: e.message })).then((r) => host.reply({ t: "takeover-done", id: req.id, ...r })))
 }
 
