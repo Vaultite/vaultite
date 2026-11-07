@@ -43,6 +43,8 @@ let spot: Spot | null = null
 let lastTick = 0
 /** A QA walk or lesson on (walk.ts, teach.ts): it leads the island while it lasts. */
 let walk: WalkScene | null = null, walkSaid = ""
+/** Still this long, the user's away. */
+const AWAY_MS = 5 * 60_000
 
 export function knockHost(h: KnockHost) {
   host = h
@@ -121,14 +123,16 @@ function tick() {
     return
   }
   const showing = k?.state === "showing" ? k : null
-  const live = presences.length > 0 || !!showing || !!walk
+  // (nobody at the Mac a while: the presences go till they're back; a walk or lesson stays)
+  const away = !showing && stillNow() > AWAY_MS
+  const live = !!walk || (!away && (presences.length > 0 || !!showing))
   if (live) void place()
   const left = showing ? (hovering ? GRACE_MS - (hovering - (showing.shown ?? hovering)) : GRACE_MS - (now - (showing.shown ?? now))) : 0
   const tint = showing ? presences.find((p) => p.knock === showing.id)?.tint ?? "orange" : "orange"
   showIsland(host.base(), live ? { presences, knock: showing ? { ...showing, tint, left: Math.max(0, left) } : null, walk } : null, spot)
   // (quick while one shows, its grace counting; else at a walk while any wait or show)
   const waiting = knocks.some((x) => !over(x) && x.state !== "told")
-  if (showing || waiting || live) timer = setTimeout(tick, showing ? 200 : 1000)
+  if (showing || waiting || live || presences.length) timer = setTimeout(tick, showing ? 200 : 1000)
 }
 
 /** Where the island goes now: the pointer's display, its notch and the islands of other apps there; other apps' windows

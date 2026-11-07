@@ -64,8 +64,9 @@ function send() {
   const b = windowAt(spot, screen.getDisplayMatching({ x: spot.x, y: spot.y, width: 1, height: 1 }), W, H)
   const at = win.getBounds()
   if (at.x !== b.x || at.y !== b.y) win.setBounds(b)
-  const d = { ...last, spot, left: spot.x - b.x, width: W } satisfies IslandData, text = JSON.stringify(d)
-  if (text !== sent) { sent = text; win.webContents.send("vaultite:island", d) }
+  // (each second while sessions show: the page draws again only when something changed, or a minute on for its "5m")
+  const data = { ...last, spot, left: spot.x - b.x, width: W } satisfies IslandData, said = `${Math.floor(Date.now() / 60_000)}${JSON.stringify(data)}`
+  if (said !== sent) { sent = said; win.webContents.send("vaultite:island", data) }
 }
 
 /** Whether its page is up (made now, unseen, if it isn't): a knock's grace starts only once it can be drawn. */
@@ -106,6 +107,3 @@ export function presenceAt(p: { x: number; y: number }) {
   const b = win.getBounds(), x = p.x - b.x, y = p.y - b.y
   return faces.find((f) => x >= f.x - 3 && x <= f.x + f.width + 3 && y >= f.y - 3 && y <= f.y + f.height + 3)?.id ?? null
 }
-
-/** Its window, for a display's picture to leave out. */
-export const islandWindow = () => (win && !win.isDestroyed() && win.isVisible() ? win : null)
