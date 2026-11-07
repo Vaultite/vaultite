@@ -15,7 +15,7 @@ import { land, landedSaid } from "./dictationroam.ts"
 import type { AppWindow } from "./appwindow.ts"
 import { micSaid, pickMic } from "./miclogic.ts"
 import { type Call, callFrom, callSaid, type MicUser } from "./calllogic.ts"
-import { hideFromShares } from "./overlaywin.ts"
+import { hideFromShares, overlayNumbers } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
 import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, jobsShown, jobSublabel, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordFor, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
@@ -23,7 +23,7 @@ import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
 import { islandNow, knockHost, knockSaid, knocksHeard, stopKnocks, toPresence, walkShown } from "./knockhelper.ts"
 import type { Presence } from "../plugins/core/companion/knocks.ts"
-import { closePanel, cue as playCue, drawingActs, drawingUp, dropDrawings, endDrawing, followPointer, onPanel, openPanel, overlayActs, ownWindows, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, penSounds, showDrawing, showOverlay, watchLayers, type PanelData } from "./overlay.ts"
+import { closePanel, cue as playCue, drawingActs, drawingUp, dropDrawings, endDrawing, followPointer, onPanel, openPanel, overlayActs, panelAvoid, panelBounds, panelData, panelFocused, panelMenuClosed, panelOpen, penSounds, showDrawing, showOverlay, watchLayers, type PanelData } from "./overlay.ts"
 import { type Area, followed as thingFollowed, makeWatch, type On, SAMPLE_MS, sampleFrom, sampleSize, watchedAreas } from "./markwatch.ts"
 import { displayShot as shootDisplay, fnUsage, onScreenEvent, screenAsk as askHelper, startScreen, stopScreen, windowShot as shoot, type AppWindowInfo, type Focus, type Rect } from "./screen.ts"
 import { type Drawing, elementPlaces } from "./drawing.ts"
@@ -1103,16 +1103,14 @@ async function underAt(p: Point): Promise<{ text: string; bundle: string; name: 
   return { text: `${u.name || u.bundle}: ${what}${u.in && u.in !== u.label ? `, in ${JSON.stringify(u.in)}` : ""}`, bundle: u.bundle ?? "", name: u.name ?? "" }
 }
 
-/** The display under `p` as a picture, without our windows nor a private app's; and other apps' panels floating on it. */
+const screenWindows = async () => (await screenAsk<{ windows?: ScreenWindow[] }>("windows").catch(() => null))?.windows ?? []
+/** What a picture or a recording leaves out: our windows and a private app's (capture.swift leaves out their whole app too). */
+const leftOut = (all: ScreenWindow[]) => [...overlayNumbers(), ...all.filter((w) => hidden(w)).map((w) => w.window)]
+const excluded = async () => leftOut(await screenWindows())
+/** The display under `p` as a picture, without what's left out; and other apps' panels floating on it. */
 async function shotAt(p: Point) {
-  const all = await screenAsk<{ windows?: ScreenWindow[] }>("windows").catch(() => ({ windows: [] as ScreenWindow[] }))
-  const shot = await displayShot(p, [...ownWindows(), ...(all.windows ?? []).filter((w) => hidden(w)).map((w) => w.window)])
-  return { shot, floating: floatingOver(all.windows ?? [], screen.getDisplayNearestPoint(p).bounds, hidden) }
-}
-/** What a recording leaves out: our windows and a private app's (capture.swift leaves out their whole app too). */
-async function excluded() {
-  const all = await screenAsk<{ windows?: { window: number; bundle: string; name: string }[] }>("windows").catch(() => ({ windows: [] }))
-  return [...ownWindows(), ...(all.windows ?? []).filter((w) => hidden(w)).map((w) => w.window)]
+  const all = await screenWindows()
+  return { shot: await displayShot(p, leftOut(all)), floating: floatingOver(all, screen.getDisplayNearestPoint(p).bounds, hidden) }
 }
 /** A thing near the pointer, in the UI model's shape; `ax`: its Accessibility role, to find it again by. */
 type Near = Thing & { ax?: string }
@@ -1584,7 +1582,7 @@ async function sampleMarks() {
   sampleBusy = true
   try {
     const now = areas
-    const r = await screenAsk<{ ok?: boolean; samples?: unknown[] }>("sample", { areas: now.map((a) => ({ x: a.rect.x, y: a.rect.y, width: a.rect.w, height: a.rect.h, ...sampleSize(a.rect) })), exclude: ownWindows() })
+    const r = await screenAsk<{ ok?: boolean; samples?: unknown[] }>("sample", { areas: now.map((a) => ({ x: a.rect.x, y: a.rect.y, width: a.rect.w, height: a.rect.h, ...sampleSize(a.rect) })), exclude: overlayNumbers() })
     // (no screen recording: nothing to watch with, till the marks change)
     if (r.ok === false) { areas = []; if (sampling) clearInterval(sampling); sampling = null; return }
     const gone = new Map<string, string[]>(), moves = new Map<string, { mark: string; dx: number; dy: number }[]>(), told = new Set<string>()

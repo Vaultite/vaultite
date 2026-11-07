@@ -30,3 +30,6 @@ export function hideFromShares(on: boolean) {
   for (const w of made) if (!w.isDestroyed()) w.setContentProtection(on)
 }
 export const hiddenFromShares = () => hidden
+/** Every one there now (its cursors, cards, box, the island, take-over's border), by window number: what the
+ *  companion's own pictures and recordings leave out, whether or not they're hidden from shares. */
+export const overlayNumbers = () => [...made].filter((w) => !w.isDestroyed()).map((w) => Number(/^window:(\d+)/.exec(w.getMediaSourceId())?.[1] ?? 0)).filter((n) => n > 0)
