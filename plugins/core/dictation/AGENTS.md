@@ -35,6 +35,8 @@ helper (Vaultite Dev), leaving the window stops it. Each session's way is in `ta
   held open after a Talk key's press until the companion's answer is said, a second on. Its device gone or changed
   mid-press, the next one takes over and the press goes on. The press log has the mic and why (`stt`'s `mic`, `mic-change`,
   `mic-release`); `vau companion status`' Voice here line says which it hears with.
+  In Settings, the desktop app lists this Mac's mics, live (mics.ts); a mic is saved by its name. A browser or a phone,
+  which can't list them, offers auto, default, builtin or a name typed in.
 - Soniox (cloud, real time, any language, switching on its own) is `auto`'s pick once this machine has its key:
   `vau secret "Soniox API key" | vau dictation key` (kept in data/config.json, never the vault). The same key gives the companion its voice (Soniox's TTS). The socket is open only
   while listening; offline, refused or dropped, this Mac's recognizer finishes from the last settled word.

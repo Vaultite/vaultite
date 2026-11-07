@@ -18,6 +18,8 @@ import type { EditorSettings } from "@/core/editorPrefs"
 import type { Disclosures } from "../../../core/pluginmeta.ts"
 import type { OwnHistory } from "@/core/workspace"
 
+/** One of the choices a setting offers: what's saved, and what the form shows for it. */
+export type SettingChoice = { value: string; label: string }
 export type Manifest = {
   id: string; name: string; description: string
   /** Its icon, wherever it's listed (and in the directory before it's installed): a Lucide name ("heart-pulse"), one a
@@ -802,6 +804,9 @@ export type PluginDef = {
   /** Declared settings its settingsPanel draws its own way (Editing's keys over the keyboard, as they'll show), left out
    *  of the form; still found by search, the palette and agents as declared. */
   settingsPanelDraws?: string[]
+  /** Choices for declared text settings that only the app can list (this Mac's microphones), by key: a hook answering
+   *  them, live, or null where it can't (a browser, a phone): the form then offers the manifest's `values` and Custom. */
+  settingChoices?: Record<string, () => SettingChoice[] | null>
   /** What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves). */
   settingsSearch?: SettingsSearchEntry[]
   /** Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile). */

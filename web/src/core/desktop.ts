@@ -80,6 +80,9 @@ export type DesktopApi = {
   /** A dragged tab's card (its box in CSS px, where the pointer holds it, its corners) shown following the pointer past
    *  the window's edge, as it looks now; null hides it. Answers whether it shows. Builds from before it don't have it. */
   dragGhost?: (look: { x: number; y: number; width: number; height: number; grab: { x: number; y: number }; radius: number } | null) => Promise<boolean>
+  /** Bring another of this vault's windows to the front (`popout`: its id; null: the vault's window), the keyboard
+   *  left here unless `focus`. Answers whether it did. Builds from before it don't have it. */
+  raiseWindow?: (popout: string | null, focus?: boolean) => Promise<boolean>
   /** Show a Mac window's traffic lights at `at` (CSS px: `x` right of where they sit, centred on the line `mid` down),
    *  or hide them (null); answers how they're drawn. Older builds lack it, show them in place, or answer nothing. */
   lights?: (at: Lights | null) => Promise<LightsFrame | undefined>
@@ -381,6 +384,9 @@ export const systemNotify = (title: string, body = ""): Promise<boolean> | null 
 /** The window as a PNG (base64), or null: a browser, or a build without it. */
 /** A dragged tab's card going on past the window's edge, over the screen (electron/dragghost.ts): the desktop app's. */
 export const floatGhost = desktop?.dragGhost ? (look: Parameters<NonNullable<DesktopApi["dragGhost"]>>[0]) => desktop!.dragGhost!(look).catch(() => false) : null
+
+/** Another of this vault's windows to the front (`popout`: its id; null: the vault's window): the desktop app's. */
+export const raiseWindow = desktop?.raiseWindow ? (popout: string | null, focus = false) => desktop!.raiseWindow!(popout, focus).catch(() => false) : null
 
 export const captureWindow = (): Promise<{ png: string; width: number; height: number } | null> =>
   desktop?.capture ? desktop.capture().catch(() => null) : Promise.resolve(null)

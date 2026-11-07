@@ -26,7 +26,7 @@ export { definePlugin, detailPath } from "@/core/define"
 export { API_VERSION, APP_VERSION } from "../../core/version.ts"
 /** What a pinned entry is: a file, a heading in a note ("Notes/Idea.md#Plan"), a search ("search:<query>"). */
 export { pinKind, placePin, SEARCH as PIN_SEARCH, VIEW as PIN_VIEW } from "../../core/pins.ts"
-export type { AgentDef, AgentRun, AmbientItem, BlockCtx, DoTask, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, ReadingBlock, ReadingBlocks, ReadingDrawn, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TabButton, TimelineKind, ViewCtx, ViewDef, WebContainer, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
+export type { AgentDef, AgentRun, AmbientItem, BlockCtx, DoTask, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, ReadingBlock, ReadingBlocks, ReadingDrawn, SearchDoc, SettingChoice, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TabButton, TimelineKind, ViewCtx, ViewDef, WebContainer, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
@@ -303,7 +303,7 @@ export { openPermissions } from "@/core/desktop"
 export { CURSOR_SPRING, glide as springStep, stiffness, type Glide } from "@/core/spring"
 /** Dictation: the session (into a note's editor or a field), its events for plugins (`onDictation`) and its source. */
 export { joinText } from "../../core/dictationtext.ts"
-export { answerPlaceAt, dictation, dictationSource, fnDictation, hintDictation, landDictation, listening, onDictation, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"
+export { answerPlaceAt, dictation, dictationSource, fnDictation, hintDictation, landDictation, listening, onDictation, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget, type MicList } from "@/core/dictation"
 // The Dock's icon (the desktop app; null in a browser): the Dock icon plugin.
 export { dockIcon } from "@/core/desktop"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.

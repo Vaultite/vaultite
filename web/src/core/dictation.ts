@@ -30,6 +30,9 @@ export type DictationEvent =
   | { type: "end"; reason: "stop" | "silence" | "cancel" | "error" | "elsewhere"; settled?: number }
   | { type: "error"; code: "permission" | "mic" | "model" | "language" | "unsupported" | "engine" | "helper" | string; message: string }
 
+/** The Mac's microphones (electron/dictation.ts): the system's input first (`input`, its uid), and the one the setting
+ *  Microphone's `auto` takes now (its name). */
+export type MicList = { inputs: { uid: string; name: string; transport: string }[]; input: string; auto: string }
 export type DictationEngine = "apple" | "parakeet"
 /** What dictates here: Apple's on-device recognizer (macOS 26, `locale`), Parakeet (its model found on this Mac). */
 export type DictationEngines = { apple: boolean; parakeet: boolean; locale?: string; why?: string }
@@ -51,6 +54,10 @@ export type DictationSource = {
   /** The fn key (or another dictation key), as the desktop app's menu-bar helper hears it while this window has the
    *  keyboard (`other`: a key pressed with it). The Talk key never comes here: the helper's companion takes it. */
   onKey?: (fn: (k: { down?: boolean; other?: boolean; shortcut?: boolean; held?: boolean; double?: boolean }) => void) => () => void
+  /** This Mac's microphones (null: they can't be listed now), and told them again as they come and go. Builds from
+   *  before the Microphone setting's choices don't have them. */
+  microphones?: () => Promise<MicList | null>
+  onMicrophones?: (fn: (list: MicList) => void) => () => void
   /** The helper asking what's at x, y of this window (a Talk key's ask over it): the answer goes with the ask. */
   placeAt?: (fn: (x: number, y: number) => Record<string, unknown> | null) => () => void
 }

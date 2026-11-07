@@ -18,6 +18,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Dictation learns from fixes in other apps too**: fix a word just dictated into Slack, Mail or a browser's field
   and it's added to your dictionary, said where the dictation box was. Only that field is read, only while its window
   is in front, for a minute; never a password field or a private app's, and nothing is kept but the word.
+- **Dictation's Microphone setting lists your Mac's mics**: Automatic and System default (each saying which mic that
+  is now), then every input by name, kept up to date as mics come and go; one chosen and unplugged stays chosen. In a
+  browser or on the phone, where mics can't be listed: Automatic, System default, Built-in mic or a name typed in.
+- **The tab on screen stands out in every colour scheme**: in dark ones (Paper, Amethyst and the rest) it's lifted
+  clearly off the tab bar, not a shade apart.
+- **Tabs go into pop-out windows by dragging**: a main window's tab held over a pop-out shows there where it would
+  land and lands there. In the desktop app, a window a tab is held over comes to the front after a moment, so the
+  place to drop it is in sight.
+
 - **Vault plugins import a set list of npm packages** (plugin API 10): React, Lucide, CodeMirror's, Excalidraw, YAML
   and the others `vau docs plugin-api` lists, at the versions the app ships: what an app update keeps for them. One
   importing another package is told to copy that library into its own folder.

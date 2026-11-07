@@ -381,6 +381,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `merge3`
 - `mergeIntoFile(path, base, text, who)`: Merge `text`, another device's version of `path` (iCloud's, from `who`), into its open editor from `base` (autosave's mergeIn), answering once it's saved; "closed" when no editor has the file open.
 - `mergeTabsSeen(other)`: Another copy of these tabs (the workspace's file, from another device): where it saw a pane later, that's taken.
+- `MicList`: The Mac's microphones (electron/dictation.ts): the system's input first (`input`, its uid), and the one the setting Microphone's `auto` takes now (its name).
 - `mintedHere(id)`: Whether this page made terminal `id` ("claude-k3j2h1g0@studio" too) just now, so its tab may start it: a tab put back (a reload, the app reopened, another device) only attaches, and never starts…
 - `modifiedSteps()`: The first steps of the commands' keys that hold ⌘, ⌃ or ⌥: what a widget keeping the keyboard outside the page (the desktop Browser) hands back as keydowns for `runShortcut`.
 - `modKey`: The app's Mod key in words, for "⌘-click" / "Ctrl-click".
@@ -613,9 +614,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `setSidebarMode(key)`: Show panel `key` alone in the left sidebar, the sidebar open (null: its panels again).
 - `setTabLayout(next, opts?)`: Put a whole other workspace in place (Workspaces switching): what it takes away is reopenable as closed unless `kept` elsewhere (a switch, a move).
 - `setTextSize(kind, percent)`: Set a kind's size, in percent (kept within STEPS' range).
+- `SettingChoice`: One of the choices a setting offers: what's saved, and what the form shows for it.
 - `SettingDecl`: A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip it).
 - `SettingDecls`
-- `SettingField({ k, d, value, set })`: One setting as a form row, by its declaration: what the sheet draws for each declared key, and a plugin's panel can use for settings kept elsewhere (File explorer's, in .vaultite/files.json).
+- `SettingField({ k, d, value, set, offer })`: One setting as a form row, by its declaration: what the sheet draws for each declared key, and a plugin's panel can use for settings kept elsewhere (File explorer's, in .vaultite/files.json).
 - `SettingRow({ label, sub, stack, below, value, onClick, chevron, preview, children, className, … })`: A setting: name and line on the left, control on the right (`stack`: under it on phones; `below`: always, a chip list); `onClick`: a button with `value` and a chevron; `preview`: pictures of what…
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.

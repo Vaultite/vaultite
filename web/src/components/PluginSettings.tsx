@@ -4,7 +4,7 @@ import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
 import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
 import { type Store, useLive, useStore } from "@/core/data"
 import { patch, put } from "@/core/http"
-import type { Plugin } from "@/core/define"
+import type { Plugin, SettingChoice } from "@/core/define"
 import { folderList, openFile, readFile } from "@/core/files"
 import { useVaultChange } from "@/core/live"
 import { afterSheets } from "@/core/nav"
@@ -62,7 +62,7 @@ export function PluginSettings({ store, plugin, embedded = false }: { store: Sto
       )}
       <div className="space-y-5">
         {panel && plugin.settingsPanelFirst && panel}
-        {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!panel && !embedded} />}
+        {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!panel && !embedded} offers={plugin.settingChoices} />}
         {panel && !plugin.settingsPanelFirst && panel}
         <Homes store={store} plugin={plugin.id} />
         <Writes store={store} plugin={plugin.id} />
@@ -94,7 +94,7 @@ export function Where({ path, lead, icon: Icon = FileJson, open }: { path: strin
 
 // ---------- the form of declared settings
 
-function SettingsForm({ id, decls, titled }: { id: string; decls: SettingDecls; titled: boolean }) {
+function SettingsForm({ id, decls, titled, offers }: { id: string; decls: SettingDecls; titled: boolean; offers?: Record<string, Offer> }) {
   const [data, save] = usePluginSettings(id)
   // (another app's settings make some defaults: .obsidian/templates.json's folder)
   const seeds = useStore().store?.settingDefaults?.[`plugins/${id}/data`]
@@ -108,7 +108,7 @@ function SettingsForm({ id, decls, titled }: { id: string; decls: SettingDecls; 
   }
   const form = (
     <Group>
-      {Object.keys(decls).map((k) => <Field key={k} k={k} d={declOf(k)} value={data[k]} set={(v) => set(k, v)} />)}
+      {Object.keys(decls).map((k) => <Field key={k} k={k} d={declOf(k)} value={data[k]} set={(v) => set(k, v)} offer={offers?.[k]} />)}
     </Group>
   )
   return titled ? <Section title="Options">{form}</Section> : form
@@ -155,8 +155,9 @@ const field = "h-8 min-w-0 rounded-[7px] border-[0.5px] border-border bg-backgro
 
 /** One setting as a form row, by its declaration: what the sheet draws for each declared key, and a plugin's panel can
  *  use for settings kept elsewhere (File explorer's, in .vaultite/files.json). `set(undefined)` puts the default back. */
-export function Field({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
+export function Field({ k, d, value, set, offer }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void; offer?: Offer }) {
   const ts = types(d)
+  if (offer && ts.length === 1 && ts[0] === "string") return <OfferedChoice k={k} d={d} value={value} set={set} offer={offer} />
   const shown = value ?? d.default
   const sub = capitalize(d.description)
   const attrs = { "data-setting": k }
@@ -181,6 +182,18 @@ export function Field({ k, d, value, set }: { k: string; d: SettingDecl; value: 
   return <SettingRow label={d.label} sub={`${sub}. Edit it in the file below`} {...attrs} />
 }
 
+
+type Offer = () => SettingChoice[] | null
+/** A text whose choices the app lists (a plugin's `settingChoices`: this Mac's microphones), live: the one set stays
+ *  among them while it isn't there (a mic unplugged); where they can't be listed, the form it has without them. */
+function OfferedChoice({ k, d, value, set, offer }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void; offer: Offer }) {
+  const list = offer()
+  if (!list) return <Field k={k} d={d} value={value} set={set} />
+  const shown = typeof value === "string" && value ? value : String(d.default ?? "")
+  const all = list.some((c) => c.value === shown) || !shown ? list : [...list, { value: shown, label: d.labels?.[shown] ?? `${shown} (not connected)` }]
+  const enumOf: SettingDecl = { ...d, type: "enum", values: all.map((c) => c.value), labels: Object.fromEntries(all.map((c) => [c.value, c.label])) }
+  return <Choice k={k} d={enumOf} value={shown} set={set} />
+}
 
 /** A text the server offers choices for (`choices`: its route): as an enum of them once they come, "" the default. */
 function ServerChoice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {

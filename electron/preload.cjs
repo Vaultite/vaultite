@@ -110,6 +110,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   learnWord: call("text:learn"),
   capture: call("page:capture"),
   dragGhost: call("drag:ghost"),
+  raiseWindow: call("window:raise"),
   lights: call("window:lights"),
   bare: call("window:bare"),
   onTop: call("window:on-top"),
@@ -162,6 +163,14 @@ contextBridge.exposeInMainWorld("vaultite", {
     cancel: call("dictation:cancel"),
     roam: call("dictation:roam"),
     free: call("dictation:free"),
+    // (this Mac's microphones, for the setting Microphone: listed, then told again as they come and go)
+    microphones: call("dictation:microphones"),
+    onMicrophones: (fn) => {
+      const h = (_e, list) => fn(list)
+      ipcRenderer.on("vaultite:microphones", h)
+      void ipcRenderer.invoke("dictation:microphones", true).catch(() => {})
+      return () => { ipcRenderer.removeListener("vaultite:microphones", h); void ipcRenderer.invoke("dictation:microphones", false).catch(() => {}) }
+    },
     // (where a session that left this window lands its words: the helper asks, the page answers)
     onLand: (fn) => {
       const h = async (_e, q) => {

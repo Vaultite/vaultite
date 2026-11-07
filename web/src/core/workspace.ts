@@ -588,6 +588,8 @@ export function hideBars(on: boolean) {
 
 /** The pop-outs this device opened, open now. */
 const opened = new Map<string, globalThis.Window>()
+/** The pop-outs this window opened that are still open, by id (core/windows.ts moves tabs between them all). */
+export const openedWindows = () => [...opened].filter(([, w]) => !w.closed)
 /** Open tabs `ids` in a window of their own (a pop-out: POPOUT), panes, history and all; `move`: and take them out of
  *  this one (not closed: a terminal's shell goes on there). `at`: the screen point to open it under (dragged out). */
 export function popOut(ids: string | string[], move = false, at?: { x: number; y: number }) {

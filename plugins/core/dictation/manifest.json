@@ -61,8 +61,10 @@
       "local": true,
       "type": "string",
       "default": "auto",
+      "values": ["auto", "default", "builtin"],
+      "labels": { "auto": "Automatic", "default": "System default", "builtin": "Built-in mic" },
       "label": "Microphone",
-      "description": "auto: the system's input, but with Bluetooth headphones out the built-in (or a wired) mic, so they keep their full sound (their own mic drops them to call quality); default: always the system's input; builtin: the Mac's own; or a device's name. A Bluetooth mic used anyway stays open until the companion's answer is said"
+      "description": "auto: the system's input, but the built-in (or a wired) mic while Bluetooth headphones play, as their own mic would drop them to call quality; default: always the system's input; builtin: the Mac's own; or a mic's name (the desktop app lists this Mac's)"
     },
     "keep_audio": {
       "local": true,

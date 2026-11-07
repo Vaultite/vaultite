@@ -7,7 +7,7 @@ import {
   ArrowLeftRight, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareArrowOutUpRight, SquareDashed, Undo2, UnfoldHorizontal, Ungroup, X, type LucideIcon, PencilLine,
 } from "lucide-react"
 import type { Store } from "@/core/data"
-import { edgeScroller, getDrag, laidOut, onDrag, onDragEnd, startDrag, useDrag, useDragItem, useDropHit, type Drag, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, laidOut, onDrag, onDragEnd, pastEdge, startDrag, useDrag, useDragItem, useDropHit, type Drag, type DragItem } from "@/core/drag"
 import { slideFrom, timing } from "@/core/animation"
 import { landFrom } from "@/core/panemotion"
 import { snapshot } from "@/core/snapshot"
@@ -53,6 +53,9 @@ export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClas
 const withVariant = (it: MenuItem, other: MenuItem): MenuItem => (other.disabled ? it : { ...it, split: true, items: [it, other] })
 /** `items` with a line before the first. */
 const after = (items: MenuItem[]) => items.map((it, i) => (i ? it : { ...it, sep: true }))
+/** The tab on screen: a card on the bar; in a dark scheme, where a card is barely lighter than the bar, lifted toward the
+ *  text's colour (the same step in every scheme, its text still clear), with an edge of the text's colour. */
+const ON_TAB = "bg-card shadow-[0_1px_3px_rgb(0_0_0/0.14)] ring-[0.5px] ring-foreground/15 dark:bg-[color-mix(in_srgb,var(--foreground)_14%,var(--card))] dark:ring-foreground/20"
 
 /** Whether the window's tabs are drawn in a bar above its panes: the tab bar on (appearance `tabBar`), or a pop-out's
  *  when they'd be in a sidebar, which it hasn't got; never in a pop-out with its bars hidden. */
@@ -490,7 +493,7 @@ export function DragGhost({ info }: { info: (t: Tab | Pane) => TabInfo }) {
     const check = () => {
       const d = getDrag()
       if (!d) return // (ended: the cleanup's)
-      const out = !d.finger && (d.x < 0 || d.y < 0 || d.x >= innerWidth || d.y >= innerHeight)
+      const out = pastEdge(d.x, d.y, d.finger)
       if (!out && state !== "in") { if (state !== "failed") void float(null); state = "in"; restore() }
       if (!out || state !== "in") return
       state = "asking"
@@ -700,7 +703,7 @@ function TabChip({ tab, info, active, icons, menu, width, settling, close, line,
       }}
       onPointerDown={(e) => dragTab(e, tab)} onClick={click}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-control transition-colors",
-        split ? "max-w-[320px]" : "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : lit ? "bg-foreground/[0.08] ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]",
+        split ? "max-w-[320px]" : "max-w-[220px]", active ? ON_TAB : lit ? "bg-foreground/[0.08] ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]",
         dragging && (hole ? "bg-foreground/[0.06] shadow-none ring-[0.5px] ring-border [&>button]:invisible" : away ? "[&>[data-tab-close]]:invisible [&>[data-tab-pin]]:invisible [&>[role=tab]]:opacity-40" : "opacity-40"))}
       style={{ ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : {}), ...(buttons.length ? { "--tab-buttons": `${buttons.length * 22}px` } : {}) } as React.CSSProperties}>
       <button type="button" role="tab" aria-selected={active} aria-label={split ? tip : undefined}
@@ -1124,7 +1127,7 @@ function PlaceChip({ p, shown, focused, info }: { p: Pane; shown: boolean; focus
       onPointerDown={(e) => startDrag(e, { from: "pane", pane: p.id, to: p.to, label: i.label, place: true })} onClick={() => selectPane(p.id)}
       onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); closePane(p.id) } }} data-tip={item ? undefined : i.label} data-tip-trunc
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 max-w-[200px] flex-1 basis-0 cursor-pointer items-center gap-1.5 rounded-control pr-6 pl-2 text-[13px] transition-colors",
-        shown ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]", item?.pane === p.id && item.place && "opacity-40")}>
+        shown ? ON_TAB : "hover:bg-foreground/[0.05]", item?.pane === p.id && item.place && "opacity-40")}>
       <ChipLabel i={i} icons={fileIcons} strong={shown && focused} muted={!shown} />
       <button type="button" data-place-close={p.id} data-no-drag tabIndex={-1} aria-label={`Close ${i.label}`} onClick={(e) => { e.stopPropagation(); closePane(p.id) }}
         className={cn("absolute right-1 grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground", shown ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100")}>

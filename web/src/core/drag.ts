@@ -292,6 +292,12 @@ function lift(item: DragItem, finger = false) {
  *  where on the screen; true if it took it. */
 let outside: ((item: DragItem, screen: { x: number; y: number }) => boolean) | null = null
 export const setOutsideDrop = (fn: typeof outside) => { outside = fn }
+/** Whether a point of this page (client px) is under another of the app's windows, one a drag brought in front of
+ *  this one (core/windows.ts): there the drag is that window's, as past this one's edge. */
+let covered: ((x: number, y: number) => boolean) | null = null
+export const setCovered = (fn: typeof covered) => { covered = fn }
+/** Whether a drag at (x, y) is somewhere other than this window: past its edge, or under another window in front. */
+export const pastEdge = (x: number, y: number, finger = false) => !finger && (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight || !!covered?.(x, y))
 
 /** Press on something draggable: a mouse or pen, or a finger where `touch` says a phone has somewhere to drop it (else
  *  a finger scrolls or taps). `data-no-drag` children stay plain buttons. */
@@ -311,7 +317,7 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
       origin = { x: x0, y: y0, rect: el.getBoundingClientRect() }
       end = lift(item)
     }
-    setDrag({ item, x: ev.clientX, y: ev.clientY, hit: hitAt(item, ev.clientX, ev.clientY), origin })
+    setDrag({ item, x: ev.clientX, y: ev.clientY, hit: covered?.(ev.clientX, ev.clientY) ? null : hitAt(item, ev.clientX, ev.clientY), origin })
   }
   // A link or an image inside would start the browser's own drag.
   const native = (ev: DragEvent) => ev.preventDefault()
@@ -322,7 +328,7 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
     const hit = drag?.hit?.stay ? null : drag?.hit
     setDrag(null)
     for (const t of targets.values()) t.end?.()
-    const out = !!last && (last.clientX < 0 || last.clientY < 0 || last.clientX >= innerWidth || last.clientY >= innerHeight)
+    const out = !!last && pastEdge(last.clientX, last.clientY)
     const told = (dropped: boolean, away: boolean) => { if (end && last) for (const f of ends) f({ item, x: last.clientX, y: last.clientY, origin, dropped, away }) }
     // (told of a drop just before it's done: what lands says where from before the layout changes)
     if (drop && hit) told(true, false)

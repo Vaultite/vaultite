@@ -115,7 +115,7 @@ function heard(m: Record<string, unknown>) {
   if (m.type === "end") {
     owner = null
     if (idle) clearTimeout(idle)
-    idle = setTimeout(() => { if (!owner) stopDictation() }, IDLE_MS)
+    rest()
   }
 }
 
@@ -172,10 +172,20 @@ export type DictateOptions = { engine?: unknown; language?: unknown; silence?: u
   /** The setting `microphone` (miclogic.ts); `hold`: a Bluetooth mic stays open after, till releaseMic (a Talk key's). */
   microphone?: unknown; hold?: boolean }
 /** The devices: as told, else the first list a fresh helper tells (a moment at most). */
-async function listedDevices() {
+async function listedDevices(ms = 400) {
   if (devices || !helper) return devices
-  await new Promise<void>((done) => { listed.push(done); setTimeout(done, 400) })
+  await new Promise<void>((done) => { listed.push(done); setTimeout(done, ms) })
   return devices
+}
+/** Idle, it goes in a while, unless kept (mics.ts). */
+const rest = () => { idle = setTimeout(() => { idle = null; if (!owner && !keeps.size) stopDictation() }, IDLE_MS) }
+export const keeps = new Set<unknown>()
+/** The devices, the helper started for them; null where it can't. */
+export async function helperDevices() {
+  if (TEXT) return null
+  try { await start() } catch { return null }
+  if (!owner && !idle) rest()
+  return listedDevices(3000)
 }
 /** Listen for `sink` (another's session ends, "elsewhere"): through Soniox when its key is set, this Mac's engine
  *  (`engine`) taking over should it fail. Says which hears (`engine`), and `why` not Soniox when it was asked for. */
@@ -237,6 +247,7 @@ export const dictationHandlers: Record<string, (win: AppWindow, ...args: unknown
   "dictation:free": (win) => freeFor(sinkOf(win)),
   "dictation:stop": (win) => stopFor(sinkOf(win)),
   "dictation:cancel": (win) => stopFor(sinkOf(win), true),
+  "dictation:microphones": (win, watch) => import("./mics.ts").then((m) => m.microphones(win, watch)),
 }
 
 export function stopDictation() {

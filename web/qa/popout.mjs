@@ -1,5 +1,5 @@
-// Pop-out windows (core/workspace.ts popOut): tabs moved out and back, dragged between windows, with the tabs in the
-// sidebar too. Writes appearance.json and sidebars.json (then back).
+// Pop-out windows (core/workspace.ts popOut): tabs moved out and back, dragged between windows (either way), with the
+// tabs in the sidebar too. Writes appearance.json and sidebars.json (then back).
 //   node web/qa/popout.mjs <base url> <vault path>
 import { readdirSync } from "node:fs"
 import path from "node:path"
@@ -154,6 +154,51 @@ const gone5 = pop5.waitForEvent("close", { timeout: 5000 }).then(() => true, () 
 check("…whose menu has Move to main window", await menuItem(pop5, "Move to main window"))
 check("…which brings it back", await gone5 && await until(async () => (await tabsOf(page, "main"))?.includes(b)), await tabsOf(page, "main"))
 check("Show tabs on top", await command(page, "Show tabs on top"))
+
+// The other way: a main window's tab held over a pop-out shows there where it would land, as within a window, and
+// lands there (the pop-out torn off past the main window's right edge, so a point can be on it and off the main one).
+await page.bringToFront(); await wait(300)
+await command(page, "Close all other tabs"); await hash(page, a); await wait(400)
+await command(page, "Open new tab"); await hash(page, b); await wait(400)
+await command(page, "Open new tab"); await hash(page, c); await wait(400)
+const tb7 = await page.locator("[data-tab-id]").nth(1).boundingBox()
+const torn7 = page.waitForEvent("popup")
+await page.mouse.move(tb7.x + 20, tb7.y + tb7.height / 2); await page.mouse.down()
+await page.mouse.move(tb7.x + 40, tb7.y + tb7.height / 2, { steps: 3 })
+await page.mouse.move(1280 + 200, 300, { steps: 6 }); await page.mouse.up()
+const pop7 = watch(await torn7, { label: "popout (a main window's tab held over it)" })
+await pop7.waitForSelector("[data-tab-strip] [data-tab-id]", { timeout: 15000 })
+await until(async () => JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a, c]))
+// (headless Chrome opens it where it likes: it's put right of the main window)
+{
+  const cdp = await ctx.newCDPSession(pop7), { windowId } = await cdp.send("Browser.getWindowForTarget")
+  const m = await page.evaluate(() => ({ x: screenX, w: outerWidth, y: screenY }))
+  await cdp.send("Browser.setWindowBounds", { windowId, bounds: { left: m.x + m.w + 40, top: m.y + 60 } }); await wait(300)
+}
+// Where the pop-out's page is on the screen, from its own pointer events, and the main page's.
+await pop7.evaluate(() => addEventListener("pointermove", (e) => { window.__off = { x: e.screenX - e.clientX, y: e.screenY - e.clientY } }, true))
+await pop7.mouse.move(50, 50); await pop7.mouse.move(60, 60)
+const off7 = await pop7.evaluate(() => window.__off)
+await page.evaluate(() => addEventListener("pointermove", (e) => { window.__off = { x: e.screenX - e.clientX, y: e.screenY - e.clientY } }, true))
+const body7 = await pop7.locator("[data-pane-body]:visible").first().boundingBox()
+const tc = await page.locator("[data-tab-id]").nth(1).boundingBox()
+await page.mouse.move(tc.x + 20, tc.y + tc.height / 2); await page.mouse.down()
+await page.mouse.move(tc.x + 40, tc.y + tc.height / 2, { steps: 3 })
+const offM = await page.evaluate(() => window.__off)
+// (the right edge of the pop-out's pane, as a point in the main window's page)
+const rx = off7.x + body7.x + body7.width - 20 - offM.x, ry = off7.y + body7.y + body7.height / 2 - offM.y
+check("(the point held is outside the main window, on the pop-out's pane's right edge)", rx >= 1280 || ry >= 800, { rx, ry, off7, offM, body7 })
+await page.mouse.move(rx, ry, { steps: 6 })
+check("held there, the pop-out shows where it would land: a split on the right", await until(async () => (await pop7.locator("[data-drop-zone='right']").count()) === 1))
+check("…and draws no picture of its own of it (the main window's)", (await pop7.locator("[data-drag-ghost]").count()) === 0)
+await page.mouse.up()
+check("let go, it lands there: the pop-out's tab split, it on the right", await until(async () => {
+  const l = await listOf(pop7, "pop")
+  return l?.tabs.length === 1 && leaves(l.tabs[0].root).map((p) => p.to).join() === [`file:${b}`, `file:${c}`].join()
+}), await listOf(pop7, "pop"))
+check("…and it left the main window", await until(async () => JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a])), await tabsOf(page, "main"))
+check("…the pop-out's drop zone gone", (await pop7.locator("[data-drop-zone]").count()) === 0)
+await pop7.close()
 
 // Held over the main window, a pop-out's tab shows there where it would land, as a drag of its own would (a pane's
 // edge: a split), and lands there.

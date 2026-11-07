@@ -6,6 +6,7 @@ import { createFile, definePlugin, dictation, dictationSource, fnDictation, Grou
   pressDictation, SettingRow, startDictation, typingIn, useStore, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
 import { fieldTarget } from "./field"
 import { terminalTarget, type TerminalInput } from "./terminal"
+import { useMicChoices } from "./mics"
 
 /** Where the words go: the editor, terminal or field with the keyboard; with none, nowhere here. */
 async function targetHere(): Promise<DictationTarget | null> {
@@ -89,6 +90,7 @@ export default definePlugin({
   settingsPanel: () => <DictionarySettings />,
   settingsPanelFirst: true,
   settingsSearch: [{ label: "Dictionary", key: "dictionary" }],
+  settingChoices: { microphone: useMicChoices },
   commands: [
     { id: "dictation:start", name: "Dictate", nameWhenOn: "Stop dictating", keys: ["Mod+J"], on: listening, when: () => !!dictationSource,
       run: () => void pressDictation(begin), icon: Mic, label: "Dictate", words: "voice speech microphone talk" },

@@ -1178,6 +1178,11 @@ ipcMain.handle("window:on-top", async (e, on: unknown) => {
   if (w && typeof on === "boolean") (await import("./ontop.ts")).setOnTop(w, on)
   return !!w?.isAlwaysOnTop()
 })
+// A drag held over a vault's window or pop-out brings it forward (raise.ts).
+ipcMain.handle("window:raise", (e, popout: unknown, focus: unknown) => {
+  const w = who(e), pages = w ? [w.win.webContents, ...[...popouts].filter(([, of]) => of === w).map(([wc]) => wc)] : []
+  return import("./raise.ts").then((m) => m.raise(pages, popout, focus === true))
+})
 // The page's appearance `translucent` (electron/translucency.ts): what the window can do of it, now.
 ipcMain.handle("window:translucent", (e, on: unknown) => {
   who(e)
