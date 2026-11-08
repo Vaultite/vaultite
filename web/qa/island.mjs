@@ -1,6 +1,7 @@
 // The island by the notch (electron/island.ts, knockhelper.ts) in the desktop app, unseen: a session knocks, its line
-// comes up right of the notch (a 15-inch MacBook Air's, Vorssaint's island over it as read there) with Answer and Not now
-// and no countdown, is told and rests as one orange mark; Not now puts it off; a ready one is calm; a hover lists them in
+// comes up right of the notch (a 15-inch MacBook Air's, Vorssaint's island over it as read there) with Answer and a close
+// and no countdown, is told and rests as one orange mark; its × closes a ready one's card at once; Not now in the list puts
+// one off; a ready one is calm; a hover lists them in
 // the Agents panel's groups; another app's island wide moves ours to its right. The screen helper is stood in for. WRITES: throwaway vault only.   node web/qa/island.mjs <vault copy> [png]
 import { _electron } from "playwright-core"
 import fs from "node:fs"
@@ -40,17 +41,17 @@ check("a session knocks", k.state === "waiting", k)
 const island = await until(() => app.windows().find((p) => p.url().endsWith("/screen.html#island")), 10000)
 // (all read at once as it comes: its grace is a few seconds)
 const came = !!island && await until(() => island.evaluate(() => { const k = document.querySelector("[data-island-knock]")
-  return k && { text: k.textContent, later: !!document.querySelector("[data-island-later]"), answer: !!document.querySelector('[data-island-action="Answer"]'),
+  return k && { text: k.textContent, close: !!document.querySelector("[data-island-dismiss]"), answer: !!document.querySelector('[data-island-action="Answer"]'),
     countdown: !!document.querySelector(".island-grace, [style*='scaleX']"), card: !!document.querySelector(".island-card [data-island-knock]") } }), 8000, 50)
 check("at a pause its line comes up in the island", /Lighthouse.*ready for you/.test(came?.text ?? ""), came ?? await helper((h) => h.island()))
 const bounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#island"))?.getBounds())
 check("…right of the notch, joined to it (its window tucked under it), at the top", bounds?.x === display.x + 646 + 179 - 14 - 330 && bounds?.y === display.y, bounds)
-check("…with Answer and Not now, and no countdown", came?.later && came.answer && !came.countdown, came)
+check("…with Answer and a close, and no countdown", came?.close && came.answer && !came.countdown, came)
 check("…below the bar, as the status items leave its line no room beside the notch", came?.card)
 if (PNG) { await wait(400); fs.writeFileSync(PNG, (await island.screenshot({ omitBackground: true }))) }
 check("its time over, it's told: the island rests as one orange mark counting who needs them, no faces or spinners", await until(() => helper((h) => h.island().knocks.find((x) => x.state === "told")), 6000) &&
   await until(() => island.evaluate(() => { const m = document.querySelector("[data-island-mark]")
-    return m?.dataset.islandMark === "needs you" && m.dataset.count === "1" && !document.querySelector("[data-island-knock]") && !document.querySelector("[data-island-face], .island-spin, .island-ping") }), 4000))
+    return m?.dataset.islandMark === "needs you" && m.dataset.count === "1" && !document.querySelector("[data-island-knock]") && !document.querySelector(".island-spin, .island-ping") }), 4000))
 if (PNG) { await wait(600); fs.writeFileSync(PNG.replace(/\.png$/, "-rest.png"), (await island.screenshot({ omitBackground: true }))) }
 const told = await op("companion.knocks", {})
 check("…and the server has it told", told.knocks.some((x) => x.id === k.id && x.state === "told"), told.knocks)
@@ -70,12 +71,26 @@ check("…typed into its terminal", await until(async () => /use main/.test(JSON
 check("…and its knock is answered", await until(async () => (await op("companion.knocks", {})).knocks.find((x) => x.who === "Cat")?.state === "opened", 4000))
 await op("terminal.end", { id: tid })
 
-// ---------- Not now: off till their next break
+// ---------- ×: a ready one's card (up 15 s) closed at once, resting in the island, not put off
+const k3 = await op("companion.knock", { line: "Ready to show you the new tab list", who: "Tab list", hold: "15s" })
+await until(() => island.evaluate(() => document.querySelector("[data-island-knock]")?.textContent?.includes("Tab list")), 8000)
+check("a ready one's card is calm: Show me and a close", await island.evaluate(() => !!document.querySelector('[data-island-action="Show me"]') && !!document.querySelector("[data-island-dismiss]")))
+await island.locator("[data-island-dismiss]").click()
+check("× closes it at once", await until(() => island.evaluate(() => !document.querySelector("[data-island-knock]")), 1500))
+check("…told, not put off: it rests in the island", await until(async () => (await op("companion.knocks", {})).knocks.find((x) => x.id === k3.id)?.state === "told", 4000) &&
+  await until(() => helper((h, id) => h.island().presences.find((p) => p.knock === id)?.state === "ready", k3.id), 3000))
+await op("companion.knocks", { ignore: k3.id })
+
+// ---------- Not now, in the list: off till their next break
 const k2 = await op("companion.knock", { line: "Which account should the deploy use?", who: "Deploy", urgency: "high" })
-await until(() => island.evaluate(() => document.querySelector("[data-island-knock]")?.textContent?.includes("Deploy")), 8000)
-await island.evaluate(() => document.querySelector("[data-island-later]").click())
+await until(() => helper((h, id) => h.island().knocks.find((x) => x.id === id && x.state === "told"), k2.id), 10000)
+await island.locator("[data-island]").hover({ position: { x: 30, y: 10 } })
+const notNow = island.locator("[data-island-row]", { hasText: "Deploy" }).locator('button:text-is("Not now")')
+await until(() => notNow.count(), 3000)
+await notNow.click()
 check("Not now puts it off", await until(async () => (await op("companion.knocks", {})).knocks.find((x) => x.id === k2.id)?.state === "later", 4000))
-check("…and the island lets it go", await until(() => island.evaluate(() => !document.querySelector("[data-island-knock]")), 3000))
+check("…and the island lets it go", await until(async () => !(await island.locator("[data-island-row]", { hasText: "Deploy" }).count()), 3000))
+await island.mouse.move(600, 330)
 
 // ---------- at rest and in the list: needs you orange, ready calm, working still; a hover lists them as the Agents panel
 const mixed = [{ id: "qa-n", who: "Lighthouse migration", tint: "teal", state: "needs you", since: Date.now() - 120_000, line: "Run it on prod?" },

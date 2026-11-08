@@ -112,6 +112,10 @@ export default async ($: VaultTest) => {
     check("menu: with the island off, the jobs say it", off.needs[0]?.label === "Which account?" && off.needs[0].job === "j1" && off.count === "1 agent working", off)
     const px = H.cursorBitmap([255, 0, 0], 32)
     check("menu: an agent's cursor drawn in its colour, clear around it", px.length === 32 * 32 * 4 && px[(10 * 32 + 9) * 4 + 2] === 255 && px[(10 * 32 + 9) * 4 + 3] === 255 && px[(30 * 32 + 30) * 4 + 3] === 0)
+    // (a full square stands in for the stone: the dot at its top right, a clear ring around it, the rest untouched)
+    const dotted = H.dottedBitmap(Buffer.alloc(36 * 36 * 4, 255), 36), a = (x: number, y: number) => dotted[(y * 36 + x) * 4 + 3]
+    check("menu bar badge: a dot cut out of the icon's top right, no number", a(29, 6) === 255 && a(29, 12) < 60 && a(23, 6) < 60 && a(18, 18) === 255 && a(2, 2) === 255,
+      [a(29, 6), a(29, 12), a(23, 6), a(18, 18), a(2, 2)])
   }
 
   // The island's place: joined to the notch; right of another app's island there (Vorssaint's, as read on a 15-inch

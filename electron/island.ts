@@ -11,9 +11,9 @@ import type { WalkScene } from "../plugins/core/companion/walks.ts"
 /** What the page draws: the presences, the knock showing (`left`: ms of its grace left), a QA walk or lesson on, where it
  *  sits in its window. */
 export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; walk: WalkScene | null; spot: Spot; left: number; width: number }
-/** What the user does there: opens a session (a presence's id), puts a knock off, ignores it (`mute`: its session), a
- *  walk's buttons (scratch, done, cancel), All agents (`agents`: the view to open). */
-export type IslandActs = { open: (id: string) => void; later: (knock: string) => void; ignore: (knock: string, mute: boolean) => void; walk: (what: string) => void
+/** What the user does there: opens a session (a presence's id), puts a knock off, closes its card (`dismiss`: it rests in
+ *  the island), ignores it (`mute`: its session), a walk's buttons (scratch, done, cancel), All agents (`agents`: the view to open). */
+export type IslandActs = { open: (id: string) => void; later: (knock: string) => void; dismiss: (knock: string) => void; ignore: (knock: string, mute: boolean) => void; walk: (what: string) => void
   agents: (to: string) => void; hover?: (on: boolean) => void }
 
 const PRELOAD = path.join(import.meta.dirname, "screen-preload.cjs")
@@ -45,6 +45,7 @@ export function islandActs(a: IslandActs) {
     if (!mine(e) || typeof m?.id !== "string") return
     if (m.act === "open") acts?.open(m.id)
     else if (m.act === "later") acts?.later(m.id)
+    else if (m.act === "dismiss") acts?.dismiss(m.id)
     else if (m.act === "ignore") acts?.ignore(m.id, m.mute === true)
     else if (m.act === "walk") acts?.walk(m.id)
     else if (m.act === "agents") acts?.agents(m.id)

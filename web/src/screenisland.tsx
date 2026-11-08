@@ -1,5 +1,5 @@
 // The island by the notch (electron/island.ts): at rest one still count (orange only while one waits on the user), a
-// knock's line as it comes, a QA walk or lesson while on; a hover lists them in the Agents panel's groups and words.
+// knock's line as it comes (its × closes it into the island), a QA walk or lesson while on; a hover lists them in the Agents panel's groups and words.
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Undo2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -188,7 +188,8 @@ export function Island() {
         <span className={cn("island-line min-w-0 text-[12.5px] leading-none", drop ? "island-wrap" : "truncate")}><b className="font-semibold">{knock.who}</b><span className="text-white/75">{`  ${knock.line}`}</span></span>
       </button>
       <button type="button" className={cn("island-chip ml-1 shrink-0", !calm && "island-chip-main")} onClick={() => api?.act("open", of?.id ?? knock.id)} data-island-action={calm ? "Show me" : "Answer"}>{calm ? "Show me" : "Answer"}</button>
-      {!calm && <button type="button" className="island-chip shrink-0" onClick={() => api?.act("later", knock.id)} data-island-later>Not now</button>}
+      {/* (closes the card at once, as its time running out would: it rests in the island, listed there; Not now is the list's) */}
+      <button type="button" className="island-chip island-icon shrink-0" onClick={() => { setOpen(false); api?.act("dismiss", knock.id) }} aria-label="Close" data-island-dismiss><X className="size-3.5" /></button>
     </>
   ) : said ? (
     <span key={said} className={cn("island-fade island-line min-w-0 text-[12.5px] leading-none text-white/80", drop ? "island-wrap" : "truncate")} data-walk-note role="status">{said}</span>

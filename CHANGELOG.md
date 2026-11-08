@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The notch card closes, and the menu bar shows a dot, not a number**: a card by the notch has a close button that
+  folds it into the island at once (still listed there, Not now in its list); the menu bar icon marks what's new with a
+  dot on the stone, its count in the tooltip and menu.
 - **The companion's video and choice cards answer to you**: a video card shows its speaker, plays muted until you ask
   for sound ("unmute it", or its speaker), and pauses or plays on a press or your word, the companion changing that card
   rather than opening another player; hidden or dismissed, it stops. A choice comes as one card by your pointer, its

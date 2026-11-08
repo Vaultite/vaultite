@@ -310,6 +310,22 @@ export function cursorBitmap(rgb: [number, number, number], px: number) {
   }
   return out
 }
+/** The menu bar icon with its badge: a dot in its top right corner, set apart from the stone by a gap cut out of it, as
+ *  macOS badges a template icon (one colour; the count is in its tooltip and menu). `bgra`: the icon, `px` square. */
+export function dottedBitmap(bgra: Buffer, px: number) {
+  const out = Buffer.from(bgra), cx = px * 0.82, cy = px * 0.18, r = px * 0.14, cut = r + px * 0.08, S = 4
+  for (let y = Math.max(0, Math.floor(cy - cut)); y < Math.min(px, Math.ceil(cy + cut)); y++) for (let x = Math.max(0, Math.floor(cx - cut)); x < Math.min(px, Math.ceil(cx + cut)); x++) {
+    let dot = 0, hole = 0
+    for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
+      const d = Math.hypot(x + (sx + 0.5) / S - cx, y + (sy + 0.5) / S - cy)
+      if (d < r) dot++
+      if (d < cut) hole++
+    }
+    const o = (y * px + x) * 4, a = Math.max(out[o + 3] * (1 - hole / (S * S)), 255 * dot / (S * S))
+    out[o] = out[o + 1] = out[o + 2] = 0; out[o + 3] = Math.round(a)
+  }
+  return out
+}
 /** Jobs whose news is told (`news`: job_news) that came to need the user (or wait on another prompt), or ended (ready
  *  for review, done, failed), since `before` (null: the first list heard, no news): a notification each. */
 export function jobNews(before: HelperJob[] | null, after: HelperJob[], news: string) {
@@ -325,7 +341,7 @@ export function jobNote(j: HelperJob) {
   return { title: j.state === "needs you" ? "A job needs you" : j.state === "failed" ? "A job failed" : j.state === "ready for review" ? "A job is ready for review" : "A job is done",
     body: [j.title, waits?.question ?? j.result].filter(Boolean).join("\n"), choices: (waits?.choices ?? []).slice(0, 4) }
 }
-/** The menu bar icon's badge: its words not seen, and jobs ended that weren't opened. */
+/** The menu bar icon's badge, how many: its words not seen, and jobs ended that weren't opened. */
 export const badgeOf = (unread: number, jobs: HelperJob[]) => { const n = unread + jobs.filter((j) => j.unseen).length; return n ? String(n) : "" }
 
 /** Whether this copy may hear the user's keys (the global tap) and take the one lock: their app, never one a script

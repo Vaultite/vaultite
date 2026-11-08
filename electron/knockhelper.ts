@@ -61,6 +61,8 @@ export function knockHost(h: KnockHost) {
       host?.open(p)
     },
     later: (id) => act(id, "later"),
+    // (as if its time ran out: told, its presence still in the island; dismissing isn't answering)
+    dismiss: (id) => { if (knocks.find((x) => x.id === id)?.state === "showing") act(id, "told") },
     ignore: (id, mute) => act(id, "ignore", mute),
     walk: (what) => host?.walk(what),
     agents: (to) => host?.view(to),

@@ -21,7 +21,7 @@ import { macAddon } from "./macaddons.ts"
 import { type Call, callFrom, callSaid, type MicUser } from "./calllogic.ts"
 import { hideFromShares, overlayNumbers } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
-import { openArgs, openedBundle, atOffset, badgeOf, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { openArgs, openedBundle, atOffset, badgeOf, dottedBitmap, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordFor, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
@@ -92,6 +92,8 @@ const windowShot = (window: number, dir: string) => (QUIET ? Promise.resolve(nul
 const displayShot = (p: Point, exclude: number[]) => (QUIET ? Promise.resolve(null) : shootDisplay(p, exclude, SHOTS(), shotCrop(screen.getDisplayNearestPoint(p).bounds, p)))
 let lock: net.Server | null = null
 let tray: Tray | null = null
+/** The tray's icon, and with its badge's dot (made once it's first needed). */
+let plainIcon: Electron.NativeImage | null = null, dottedIcon: Electron.NativeImage | null = null
 const SHOTS = () => path.join(app.getPath("userData"), "screens")
 
 export const helperOn = () => !!host
@@ -165,6 +167,7 @@ export async function startHelper(h: HelperHost) {
     void listen()
     const icon = nativeImage.createFromPath(h.icon)
     icon.setTemplateImage(true)
+    plainIcon = icon
     tray = new Tray(icon)
     tray.setToolTip(app.getName())
     // (its section headers, Companion and Jobs, read as bold titles: menus.m)
@@ -2180,12 +2183,24 @@ function rides() {
   if (now === ridingSaid) return
   if (live.say({ t: "riding", agent: now })) ridingSaid = now
 }
-/** The menu bar icon's badge: how many of its words weren't seen, and jobs ended that weren't opened. */
+/** The menu bar icon's badge: a dot on it while some of its words weren't seen or jobs ended that weren't opened, how
+ *  many in its tooltip. Never a number beside it: the menu bar is for glances, the menu says what they are. */
 function badge() {
   const b = live.state.mode === "off" ? "" : badgeOf(unreadSays().length, live.state.jobs ?? [])
   if (b === badged) return
   badged = b
-  tray?.setTitle(b, { fontType: "monospacedDigit" })
+  if (!tray || !plainIcon) return
+  if (b && !dottedIcon) {
+    const img = nativeImage.createEmpty()
+    for (const scale of [1, 2]) {
+      const bgra = plainIcon.toBitmap({ scaleFactor: scale }), px = Math.round(Math.sqrt(bgra.length / 4))
+      if (px) img.addRepresentation({ scaleFactor: scale, width: px, height: px, buffer: dottedBitmap(bgra, px) })
+    }
+    img.setTemplateImage(true)
+    dottedIcon = img
+  }
+  tray.setImage(b ? dottedIcon! : plainIcon)
+  tray.setToolTip(b ? `${app.getName()}: ${b} new` : app.getName())
 }
 /** Its cursor shows on screen only while it works, answers or points: idle a while there after, its words gone and its
  *  exchange over, it leaves. */
