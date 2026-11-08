@@ -71,7 +71,9 @@ export type Where = { machine: string; label: string; cwd: string; repo: string;
   moved?: string
   /** A coding job's own git worktree and branch (worktreeOf), beside its checkout `cwd`, which it never edits; `live`:
    *  that checkout is the running server's own. */
-  tree?: string; branch?: string; live?: boolean }
+  tree?: string; branch?: string; live?: boolean
+  /** It edits the checkout serving the preview they asked over (inPlace): they watch it reload, so no worktree. */
+  watched?: boolean }
 /** What a turn ended with: its last message, the files it changed, the diff since `base` (one line), a PR, a link to try. */
 export type Result = { text?: string; files?: string[]; diff?: string; pr?: string; link?: string }
 export type Transition = { t: number; ev: JobEvent; from: JobState; to: JobState }
@@ -81,6 +83,10 @@ export type Last = { text: string; at: number; told?: string; asks?: string[]; b
 /** What its worker waits on, answerable where the user is (its notification's buttons, their word to the companion): the
  *  prompt's question and its choices (a permission's: approve's, then deny's; none: it takes more, in its terminal), since when. */
 export type Waits = { kind: "permission" | "question"; question: string; choices: string[]; at: number }
+/** Whether a coding job placed at `w` edits the checkout serving the preview they asked over: one on screen (not moved
+ *  to another machine) and not the running server's own checkout. Live editing needs the page to reload as it edits. */
+export const inPlace = (w: Pick<Where, "repo" | "preview" | "live" | "moved">) => !!w.repo && !!w.preview && !w.live && !w.moved
+
 /** A job's change as git tells it apart, the same however it lands (rebased or squashed without conflicts): the patch-id
  *  of all of it, and of each of its commits. Read while its branch exists, kept with the job for after. */
 export type Marks = { whole: string; each: string[] }
@@ -275,12 +281,14 @@ export function proofTask(id: string) {
 }
 /** What a worker is told: the task, the ask it came from (its words, where, under the pointer, the screen), where to
  *  work (a coding job: its own worktree), how to end (theirs to review, nothing outward unasked), and its proof. */
-export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved">, id?: string) {
-  const asked = askLines(m), coding = !!w?.repo
+export function jobTask(task: string, m: Moment | undefined, w?: Pick<Where, "cwd" | "repo" | "base" | "tree" | "branch" | "live" | "label" | "moved" | "preview" | "watched">, id?: string) {
+  const asked = askLines(m), coding = !!w?.repo, watching = coding && !!w.watched
   return [task.trim(), asked.length ? `The user asked for this through their companion in Vaultite:\n${asked.join("\n")}` : "",
     coding && w.tree ? worktreeLine(w) : "",
+    watching ? `They watch ${w.preview} reload as you change ${w.cwd}, the checkout serving it: edit it right there (no worktree, no branch), the smallest change that does it, fast, with no checks or summaries unless they ask. Commit only on their word.` : "",
     `You're a job they handed off, in a terminal of Vaultite they can open and type in. ${coding ? "Change the code freely, but don't push, merge, deploy, publish, post or message anyone unless they say so: it ends in their review (their Keep and merge lands it). End" : "End"} with a few lines: what you found or did, the files you changed, and how to try it (a preview's link if there is one).`,
-    id ? proofTask(id) : ""]
+    // (they watched it change: no demo to record)
+    id && !watching ? proofTask(id) : ""]
     .filter(Boolean).join("\n\n")
 }
 

@@ -81,6 +81,11 @@ export default async ($: VaultTest) => {
         jt.includes("git -C /Users/alice/Projects/site worktree add /Users/alice/Projects/site-j3k9x2a -b job-j3k9x2a 0123456789ab") && /never in \/Users\/alice\/Projects\/site itself/.test(jt) &&
         /install them there/.test(jt) && /Keep and merge lands it/.test(jt) && /running server's own checkout/.test(live) && !/worktree/.test(note) && !/They asked over/.test(jt), jt)
       const moved = J.jobTask("Fix the footer", undefined, { ...site, moved: "the preview http://localhost:5173 on M4" }, "j3k9x2a")
+      const over = { cwd: site.cwd, repo: "site", label: "M4", preview: "http://localhost:5173" }
+      const watching = J.jobTask("Make the heading blue", undefined, { ...over, watched: true }, "j3k9x2a")
+      check("jobs: one over a preview they watch edits the checkout serving it, fast, no worktree, no demo; the live server's own or one moved elsewhere isn't",
+        J.inPlace(over) && !J.inPlace({ ...over, live: true }) && !J.inPlace({ ...over, moved: "the preview on M4" }) && !J.inPlace({ ...over, preview: undefined }) && !J.inPlace({ ...over, repo: "" }) &&
+        /They watch http:\/\/localhost:5173 reload as you change \/Users\/alice\/Projects\/site[^]*no worktree/.test(watching) && !/worktree add/.test(watching) && !watching.includes("tour-save"), watching)
       check("jobs: one moved to another machine works in its worktree there too, previewed there", /worktree add/.test(moved) && /fetch that commit first/.test(moved) && /They asked over the preview http:\/\/localhost:5173 on M4\. You run on M1/.test(moved), moved)
       const land = J.landTask(site), liveLand = J.landTask({ ...site, live: true }), old = J.landTask({ cwd: "/r" })
       check("jobs: Keep and merge lands it from its worktree (pushed to main, nothing merged in the checkout), then removes the worktree and its branch; one line",

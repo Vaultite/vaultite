@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, HANDED, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Queued, queuedLine, picturesIn, type Result, resumeOf,
+import { cardOf, choiceIn, commitsIn, endEvent, HANDED, inPlace, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Queued, queuedLine, picturesIn, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
@@ -764,7 +764,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const on = typeof p.on === "string" ? p.on : surfaceOf(m)
     if (on) j.on = on
     // (a coding job's own worktree, beside the checkout it was asked over: it lands only by their Keep and merge)
-    if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id))
+    // (one over a preview they watch edits what serves it, so the page reloads as it goes)
+    if (inPlace(where)) where.watched = true
+    else if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id))
     j.now = `starting in ${tilde(where.cwd)}`
     try {
       const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, jobTask(told, m, where, j.id)) : jobTask(told, m, where, j.id), name: j.title, cwd: where.cwd,
@@ -792,7 +794,7 @@ serving it, its repo, on its machine), a GitHub page (its checkout here), an edi
 vault); cwd and machine say it instead. A job is in the menu bar's Jobs (starting, working, needs you, ready for
 review, done, failed, stopped) with where it runs; opening it opens its terminal, where the user can type. A coding job
 works in its own git worktree and branch beside the checkout (repo-<job id>, branch job-<job id>), never in the
-checkout itself, and ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they
+checkout itself (one over a preview they watch edits what serves it, live), and ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they
 say so; Keep and merge (or land) lands it from that worktree and removes it. Every
 handoff announces itself in one short line ("Handed that off to a background agent."; a follow-up, "Passed that on to its job.";
 several in one turn, one line naming their jobs);

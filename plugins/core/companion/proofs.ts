@@ -74,6 +74,8 @@ export function proofOps(plugin: Plugin, d: ProofDeps) {
    *  what they kept went; one path for its news. A knock with nothing to show opens its terminal. */
   async function moved(j: Job, from: string) {
     if (!readyNow(j, from) || !j.terminal) return false
+    // (they watched its page change as it went: nothing to show them)
+    if (j.where.watched && !j.land) return false
     const proof = d.tours.proofOf(j.id), merging = j.land?.at !== undefined
     const change = proof && !proof.problems.length && !merging ? proof.tour.title : undefined
     const urgency = await d.urgency()

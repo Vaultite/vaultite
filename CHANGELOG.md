@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Live editing shows each change as you ask**: a job asked over a preview you're watching edits the checkout
+  serving it, so the page reloads as it goes, with no worktree, demo or ready knock in the way.
 - **Work handed to a machine that's offline waits for it**: a companion job or follow-up for a machine that's away is
   kept, shown waiting in Jobs, and sent by itself once that machine is back, instead of failing for you to retry. A
   busy machine that misses one check (a load of test runs) no longer reads as offline.
