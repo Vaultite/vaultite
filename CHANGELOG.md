@@ -16,6 +16,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Dark pages stay dark after every load**: a page that loaded in a fresh process (often a link to another site, or
   a site like LinkedIn opening its next page) could come out light and tinted, a pale beige, until Dark pages was
   turned off and on again.
+- **Tags and graph filters complete as you type**: # in a note suggests the vault's tags, most used first, and the
+- **Tags, properties and graph filters complete as you type**: # in a note suggests the vault's tags, most used first;
+  Properties suggest the vault's property names, the values a property has in other notes, and tags in a tags list; the
+  graph's filter box and groups suggest tag:, type:, folder: and the other operators, then the vault's tags, types and
+  folders for them. Each with how many files have it.
 - **Sync's conflicts list holds while a note's history is still arriving**: a device that had a version but not
   yet its parent (made on a third device) failed listing conflicts, and could stop syncing.
 - **The companion's chat writes notes no window shows**: an edit its Claude Code chat session makes to a note that

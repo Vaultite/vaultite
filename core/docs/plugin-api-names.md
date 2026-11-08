@@ -784,6 +784,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
 - `usePortalHost(id)`: The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the same frame (a view transition's picture takes it at once); one more render if it…
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
+- `useQuerySuggest(value, set, own?)`: A search query's field (core/searchquery.ts): its operators, then the vault's tags, types and folders.
 - `useReflow(box, l)`: The window's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not opened or closed (grouped, ungrouped, moved by a menu or a drop) slide from where…
 - `useRewrap(box, on)`: Rows that wrap (tiles) in a box resized (a sidebar's edge dragged): items changing rows glide there, and the panels after its own by as much as it grew.
 - `useRowsNear(total, step?)`: How many of `total` rows to draw: a first `step`, then `step` more whenever the mark (`ref` it: an element after the last row drawn) comes within a few screens of what scrolls it.
@@ -799,6 +800,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useSlide(box, order, axis)`: Slide `box`'s `[data-slide]` items (its children, `box` positioned) into `order`, their keys; those left out fade.
 - `useStore()`: The store and the last error loading it, redrawn when either changes.
 - `useStoreWith(pick)`: What `pick` reads of the store (null till it loads), redrawn only when that changes: a slice the store didn't change keeps its object, so pick one (or a value), never a new array or object made…
+- `useSuggest(value, set, find, o?)`: Spread `input` on the field (with its own handlers given here) and draw `list` anywhere.
 - `useTabLabels(store)`: What each tab or pane shows (its label and icon), as the bar does: for plugins (the Tabs panel).
 - `useTabLayout()`: The whole workspace, live.
 - `useTabList()`: This window's tabs, live.

@@ -2,7 +2,7 @@
 // block draw at launch): it loads with its first tab.
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { ChevronRight, Filter, Maximize, Search, X } from "lucide-react"
-import { cn, menuFor, useFocusedFile, type MenuItem } from "@vaultite"
+import { cn, menuFor, useFocusedFile, useQuerySuggest, type MenuItem } from "@vaultite"
 import { BODY, filterGraph, grouping, linkTypes, localGraph, nameOf, PALETTE, tokenOf, withoutLinks, withTags, type ColorBy, type ColorGroup, type LegendRow } from "./graph"
 import { colourItems, GraphPanel, Swatch } from "./GraphPanel"
 import { dirOf, GraphCanvas, graphSettings, Loading, lookOf, openNode, trimmed, useGraph, useGroups, useLinkStyle, type Settings } from "./GraphView"
@@ -41,6 +41,8 @@ export function GraphView({ arg }: { arg: string }) {
   // (set elsewhere: by an agent, another device)
   useEffect(() => { if (!arg && (settings.search ?? "") !== asked.trim()) { setQ(settings.search ?? ""); setAsked(settings.search ?? "") } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.search])
+  // (tag:, type:, folder: and their values suggested as they're typed)
+  const suggest = useQuerySuggest(q, setQ, { onKeyDown: (e) => { if (e.key === "Escape") setQ("") } })
   const { groups, first: [found], found: inGroups } = useGroups(settings, [asked])
   const [panel, setPanel] = useState(false)
   const [refit, setRefit] = useState(0)
@@ -113,9 +115,10 @@ export function GraphView({ arg }: { arg: string }) {
         <div className="glass pointer-events-auto flex h-10 min-w-0 flex-1 items-center gap-1 rounded-[12px] pr-1 pl-2.5 md:max-w-[340px] max-md:h-11">
           <Search className="size-4 shrink-0 text-muted-foreground" strokeWidth={2.25} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={arg ? `Around ${nameOf(arg)}` : "Filter the graph"} aria-label="Filter the graph"
-            onKeyDown={(e) => { if (e.key === "Escape") setQ("") }} data-graph-search aria-invalid={!!found.error || undefined} spellCheck={false} autoComplete="off"
+            {...suggest.input} data-graph-search aria-invalid={!!found.error || undefined} spellCheck={false} autoComplete="off"
             className="h-full min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-muted-foreground max-md:text-[16px]" />
           {q && <button type="button" className={tool} onClick={() => setQ("")} aria-label="Clear"><X className="size-4" strokeWidth={2.25} /></button>}
+          {suggest.list}
         </div>
         <div className="glass pointer-events-auto flex h-10 shrink-0 items-center gap-0.5 rounded-[12px] px-1 max-md:h-11">
           <button type="button" className={cn(tool, panel && "bg-foreground/[0.08] text-foreground")} onClick={() => setPanel(!panel)} aria-label="Filters" aria-expanded={panel}

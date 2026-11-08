@@ -2668,6 +2668,85 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     [pick("A ==|"), pick("A ==|word")])
 }
 
+// ---------- Suggestions: #tags in the editor, and a search query's operators and values (editor/tags.ts, QuerySuggest) ----------
+{
+  const { EditorState } = await import("@codemirror/state")
+  const { markdown } = await import("@codemirror/lang-markdown")
+  type Pairs = [string, number][]
+  type TagCount = { tag: string; count: number; only?: string }
+  type Found = { from: number; to: number; items: { text: string }[] } | null
+  const { vocabOf }: { vocabOf(files: never[]): { tagFiles: TagCount[]; tags: Pairs; types: Pairs; folders: Pairs } } = await web("core/vocab.ts")
+  const { tagSource }: { tagSource(tags: () => TagCount[]): (ctx: never) => { from: number; options: import("@codemirror/autocomplete").Completion[] } | null } = await web("editor/tags.ts")
+  const sq = await import("../core/searchquery.ts")
+  const file = (p: string, tags: string[], type: string | null = null) => ({ path: p, tags, type }) as never
+  const files = [file("Notes/Idea.md", ["work", "Ideas"], "note"), file("Notes/Deep/Plan.md", ["work", "project/lighthouse"], "project"),
+    file("People/Alice Park.md", ["work"], "person"), file("Draft.md", ["wor"]), file("Notes/Gone.md", ["secret"], "note")]
+  ;(files[4] as { excluded?: boolean }).excluded = true
+  const v = vocabOf(files)
+  check("suggest vocab: tags by how many files have them, with the one file a tag is only in", JSON.stringify(v.tagFiles.slice(0, 2)) === '[{"tag":"work","count":3},{"tag":"Ideas","count":1,"only":"Notes/Idea.md"}]'
+    && !v.tags.some(([t]) => t === "secret") && vocabOf(files) === v, v.tagFiles)
+  check("suggest vocab: types, and folders counting the files under them", JSON.stringify(v.types) === '[["note",1],["project",1],["person",1]]'
+    && JSON.stringify(v.folders) === '[["Notes",2],["Notes/Deep",1],["People",1]]', [v.types, v.folders])
+
+  // Properties' names and values.
+  const { fieldSuggestions, valuesOf } = await web("core/vocab.ts") as { fieldSuggestions(list: Pairs, typed: string, has?: string[]): Found
+    valuesOf(rows: { path: string; value: unknown }[], except: string, near?: (path: string) => boolean): Pairs }
+  const names: [string, number][] = [["status", 9], ["tags", 7], ["project", 3], ["start", 2]]
+  const labels = (r: ReturnType<typeof fieldSuggestions>) => r?.items.map((i) => i.text).join() ?? null
+  check("property suggest: every name for an empty field, but the file's own", labels(fieldSuggestions(names, "", ["tags"])) === "status,project,start")
+  check("property suggest: the ones starting with what's typed first, then the most used", labels(fieldSuggestions(names, "st")) === "status,start" && labels(fieldSuggestions(names, "ta")) === "tags,status,start",
+    [labels(fieldSuggestions(names, "st")), labels(fieldSuggestions(names, "ta"))])
+  check("property suggest: none once what's typed is one of them (Enter keeps it), or nothing has it", fieldSuggestions(names, "Status") === null && fieldSuggestions(names, "zz") === null)
+  const rows = [{ path: "a.md", value: "Draft" }, { path: "b.md", value: "draft" }, { path: "c.md", value: ["x", "y"] }, { path: "d.md", value: { a: 1 } },
+    { path: "e.md", value: true }, { path: "f.md", value: 3 }, { path: "me.md", value: "mine" }, { path: "g.md", value: "a\nb" }]
+  check("property suggest: a key's values elsewhere, each once without case, list items each, short text and numbers only",
+    JSON.stringify(valuesOf(rows, "me.md")) === '[["Draft",2],["x",1],["y",1],["3",1]]', valuesOf(rows, "me.md"))
+  check("property suggest: the values files of its type have first", JSON.stringify(valuesOf(rows, "me.md", (p) => p === "f.md").slice(0, 2)) === '[["3",1],["Draft",2]]'
+    && labels(fieldSuggestions(valuesOf(rows, "me.md", (p) => p === "c.md"), "")) === "x,y,Draft,3", valuesOf(rows, "me.md", (p) => p === "f.md"))
+
+  // The editor's # list ("|" is the cursor; CodeMirror's CompletionContext needs a page, so a made-up one).
+  const tags = (doc: string, explicit = false) => {
+    const pos = doc.indexOf("|"), text = doc.replace("|", "")
+    const state = EditorState.create({ doc: text, extensions: [markdown()] })
+    const ctx = { state, pos, explicit, matchBefore(re: RegExp) {
+      const l = state.doc.lineAt(pos), t = l.text.slice(0, pos - l.from), m = new RegExp(`(?:${re.source})$`, re.flags).exec(t)
+      return m ? { from: l.from + m.index, to: pos, text: m[0] } : null
+    } } as never
+    const r = tagSource(() => v.tagFiles.filter((t) => t.only !== "Draft.md"))(ctx)
+    return r && { from: r.from, labels: r.options.map((o) => o.label), r, state }
+  }
+  const after = tags("Some text #|")
+  check("editor tags: # after a space lists the vault's tags, most used first", after?.labels.join() === "#work,#Ideas,#project/lighthouse" && after.from === 10, after?.labels)
+  check("editor tags: as the tag is typed it's still asked for (the list narrows it)", tags("a #wo|")?.from === 2 && tags("#wo|")?.from === 0)
+  check("editor tags: not for a heading's #, a word's #, code, a link or the frontmatter",
+    tags("#|") === null && tags("a#|") === null && tags("`a #|`") === null && tags("```\n#|\n```") === null && tags("[[Note #|") === null && tags("---\ntags: #|\n---\n") === null,
+    [tags("#|")?.labels, tags("a#|")?.labels, tags("`a #|`")?.labels])
+  check("editor tags: a tag only the note itself has isn't offered (it's the one being typed)", !after?.labels.includes("#wor"))
+  const put = (doc: string, label: string) => {
+    const t = tags(doc)!, o = t.r.options.find((x) => x.label === label)!
+    const view = { state: EditorState.create({ doc: doc.replace("|", ""), selection: { anchor: doc.indexOf("|") } }), dispatch(tr: import("@codemirror/state").TransactionSpec) { this.state = this.state.update(tr).state } }
+    ;(o.apply as (v: never, c: unknown, from: number, to: number) => void)(view as never, o, t.from, doc.indexOf("|"))
+    const s = view.state, h = s.selection.main.head
+    return s.doc.toString().slice(0, h) + "|" + s.doc.toString().slice(h)
+  }
+  check("editor tags: a pick goes in with a space after it, unless one's there", put("a #wo|", "#work") === "a #work |" && put("a #pro| b", "#project/lighthouse") === "a #project/lighthouse| b",
+    [put("a #wo|", "#work"), put("a #pro| b", "#project/lighthouse")])
+
+  // A query's operators and values.
+  const ask = (q: string) => { const at = q.indexOf("|"), text = q.replace("|", ""); const r = sq.suggestQuery(text, at, v); return r && { ...r, labels: r.items.map((i) => i.label), texts: r.items.map((i) => i.text) } }
+  check("query suggest: an empty box offers every operator, operators then their values",
+    ask("|")?.labels[0] === "tag:" && ask("|")?.items.every((i) => i.more) && ask("|")!.items.length === sq.QUERY_OPTIONS.length, ask("|")?.labels)
+  check("query suggest: an operator by its start", ask("ty|")?.labels.join() === "type:" && ask("work ta|")?.labels.join() === "tag:,task:,task-todo:,task-done:" && ask("work ta|")?.from === 5, ask("work ta|"))
+  check("query suggest: tag:'s values, with or without #, the ones starting with it first", ask("tag:|")?.labels.join() === "#work,#Ideas,#project/lighthouse,#wor"
+    && ask("tag:#li|")?.texts.join() === "tag:#project/lighthouse" && ask("tag:i|")?.texts[0] === "tag:#Ideas", [ask("tag:|")?.labels, ask("tag:i|")?.texts])
+  check("query suggest: type: and folder:, quoted when they have a space; - and ( kept", ask("type:pe|")?.texts.join() === "type:person" && ask("-folder:Pe|")?.texts.join() === 'folder:People'
+    && ask("-folder:Pe|")?.from === 1 && ask("(folder:Notes/D|")?.texts.join() === "folder:Notes/Deep", [ask("type:pe|"), ask("-folder:Pe|")])
+  check("query suggest: a value with a space quoted", sq.suggestQuery("folder:My", 9, { ...v, folders: [["My notes", 2]] })?.items[0].text === 'folder:"My notes"')
+  check("query suggest: #wo is a tag, as tag:#work", ask("#wo|")?.texts.join() === "tag:#work,tag:#wor", ask("#wo|")?.texts)
+  check("query suggest: nothing inside a word, after a space, for a whole value typed, or other operators' values",
+    ask("ta|g") === null && ask("work |") === null && ask("type:person|") === null && ask("path:No|") === null && ask("zz|") === null, [ask("type:person|"), ask("work |")])
+}
+
 // ---------- A vault's icon is the stone, never lucide's Vault (a safe; CLAUDE.md, UI) ----------
 {
   const { execFileSync } = await import("node:child_process"), { gitEnv } = await import("../core/gitenv.ts")

@@ -412,3 +412,60 @@ export function excerpt(text: string, ranges: [number, number][], max = 160, bef
     ranges: ranges.filter(([a, b]) => b > from && a < to).map(([a, b]) => [Math.max(a, from) + shift, Math.min(b, to) + shift]),
   }
 }
+
+// ---------- suggesting while typing ----------
+
+/** What a query is completed with: the vault's tags, types and folders, each with how many files have it, most first. */
+export type QueryVocab = { tags: [string, number][]; types: [string, number][]; folders: [string, number][] }
+/** `text` goes in place of the word being typed; `more`: an operator, whose values come next (no space after it). */
+export type QuerySuggestion = { label: string; detail?: string; text: string; more?: boolean }
+
+/** The operators as the empty box offers them, in Obsidian's order of use, each with what it finds. */
+export const QUERY_OPTIONS: [string, string][] = [
+  ["tag", "Tagged"], ["type", "Of a type"], ["folder", "In a folder"], ["file", "Its name has"], ["path", "Its path has"],
+  ["content", "Its text has"], ["line", "A line has"], ["block", "A paragraph has"], ["section", "A section has"],
+  ["task", "A task has"], ["task-todo", "An open task has"], ["task-done", "A done task has"],
+  ["match-case", "Case matters"], ["ignore-case", "Case doesn't matter"],
+]
+
+const quoteValue = (v: string) => (/[\s()"]/.test(v) ? `"${v.replace(/"/g, "")}"` : v)
+
+/** Values that have `typed` (without case), the ones starting with it (or a /part of them) first, then in the list's
+ *  order (most used first, as the vocabularies come). */
+export function ranked(list: [string, number][], typed: string, max: number): [string, number][] {
+  const t = typed.toLowerCase()
+  const hits = list.filter(([v]) => v.toLowerCase().includes(t))
+  const starts = (v: string) => (v.toLowerCase().startsWith(t) || v.toLowerCase().includes(`/${t}`) ? 0 : 1)
+  return hits.sort((a, b) => starts(a[0]) - starts(b[0])).slice(0, max)
+}
+
+/** What to suggest for the word ending at `caret` in a query: operators while one is typed (all of them in an empty
+ *  box), then a tag:, type: or folder:'s values. Null when the caret is inside a word, or there's nothing to offer. */
+export function suggestQuery(q: string, caret: number, v: QueryVocab, max = 8): { from: number; to: number; items: QuerySuggestion[] } | null {
+  if (caret < q.length && !/[\s)]/.test(q[caret])) return null
+  // (the word starts after the last space or "(" outside quotes: folder:"My notes is one word)
+  let start = 0, quoted = false
+  for (let i = 0; i < caret; i++) {
+    if (q[i] === '"') quoted = !quoted
+    else if (!quoted && /[\s(]/.test(q[i])) start = i + 1
+  }
+  if (q[start] === "-") start++
+  const word = q.slice(start, caret)
+  const out = (items: QuerySuggestion[]) => (items.length && !(items.length === 1 && items[0].text === word) ? { from: start, to: caret, items } : null)
+  if (!word) return q.trim() ? null : out(QUERY_OPTIONS.map(([op, detail]) => ({ label: `${op}:`, detail, text: `${op}:`, more: true })))
+  const colon = word.indexOf(":")
+  if (colon < 0) {
+    // #wo: a tag, as tag:#work
+    if (word.startsWith("#")) return out(ranked(v.tags, word.slice(1), max).map(([t, n]) => ({ label: `#${t}`, detail: String(n), text: `tag:#${t}` })))
+    if (!/^[a-z-]+$/i.test(word)) return null
+    const low = word.toLowerCase()
+    return out(QUERY_OPTIONS.filter(([op]) => op.startsWith(low)).map(([op, detail]) => ({ label: `${op}:`, detail, text: `${op}:`, more: true })))
+  }
+  const op = word.slice(0, colon).toLowerCase(), typed = word.slice(colon + 1).replace(/^"/, "")
+  const values = (list: [string, number][], typedPart: string, show: (x: string) => string, put: (x: string) => string) =>
+    out(ranked(list, typedPart, max).map(([x, n]) => ({ label: show(x), detail: String(n), text: `${op}:${put(x)}` })))
+  if (op === "tag") return values(v.tags, typed.replace(/^#/, ""), (t) => `#${t}`, (t) => `#${t}`)
+  if (op === "type") return values(v.types, typed, (x) => x, quoteValue)
+  if (op === "folder") return values(v.folders, typed, (x) => x, quoteValue)
+  return null
+}

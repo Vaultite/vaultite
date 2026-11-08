@@ -20,6 +20,7 @@ import { followReader, sightMargins } from "./sight"
 import { blockOptionSource } from "./blockOptions"
 import { highlightSource, optionDot } from "./highlights"
 import { optionGlyph, optionTrail, pickLink, pluginSuggest, quiet, suggestKeys } from "./suggest"
+import { tagSource } from "./tags"
 import { numberGutter } from "./numbers"
 import { keepState, keptKey, keptState } from "./kept"
 import { blockFor } from "@/core/plugins"
@@ -77,6 +78,8 @@ type Props = {
   /** Names to suggest after [[ (file names, people), with the file's path when it's one and what picking it writes; an
    *  alias with the link to what it stands for (`link`), put in as [[link|alias]]. */
   names: () => { label: string; detail?: string; path?: string; insert?: string; link?: string }[]
+  /** Tags to suggest after # (the vault's, most used first). */
+  tags?: () => { tag: string; count: number }[]
   /** Headings to suggest after [[Name# (a note's; "" is this file's). */
   headings?: (name: string) => Promise<string[]>
   /** Write links as Markdown, [name](Folder/Name.md), instead of [[name]] (.obsidian/app.json's useMarkdownLinks). */
@@ -248,7 +251,7 @@ function traceUpdate(u: ViewUpdate, path: string) {
 }
 const callers = () => (new Error().stack ?? "").split("\n").slice(3, 12).map((l) => l.trim().replace(/^at /, "")).join(" < ")
 
-export default function Editor({ doc, editable, config, onChange, onOpen, names, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, code, language, markdownLinks, onPasteFiles, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
+export default function Editor({ doc, editable, config, onChange, onOpen, names, tags, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, code, language, markdownLinks, onPasteFiles, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const cfg = useRef(new Compartment())
@@ -263,8 +266,8 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   const { tab } = usePane()
   const showNumbers = !!numbered && numbersOn && language === undefined
   // Callbacks change every render; the editor reads the latest through refs.
-  const cb = useRef({ onChange, onOpen, names, headings, slash, markdownLinks, onPasteFiles, onEscape, onBlur, onUndoFrontmatter })
-  cb.current = { onChange, onOpen, names, headings, slash, markdownLinks, onPasteFiles, onEscape, onBlur, onUndoFrontmatter }
+  const cb = useRef({ onChange, onOpen, names, tags, headings, slash, markdownLinks, onPasteFiles, onEscape, onBlur, onUndoFrontmatter })
+  cb.current = { onChange, onOpen, names, tags, headings, slash, markdownLinks, onPasteFiles, onEscape, onBlur, onUndoFrontmatter }
   // (its frontmatter hidden: the body always has a line, even in a file that ends with its closing ---)
   const fill = (text: string) => (hides ? withBodyLine(text) : text)
 
@@ -385,7 +388,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           }),
           suggestKeys,
           autocompletion({
-            override: [complete, slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource, pluginSuggest].map(quiet),
+            override: [complete, tagSource(() => cb.current.tags?.() ?? []), slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource, pluginSuggest].map(quiet),
             icons: false, addToOptions: [{ render: optionDot, position: 20 }, { render: optionGlyph, position: 20 }, { render: optionTrail, position: 90 }],
           }),
           keymap.of([

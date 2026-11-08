@@ -209,6 +209,7 @@ export { Banner } from "@/components/Banner"
 export { Badged, Bar, Bars, Editable, IconAction, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Slider, Stat, Switch, type Dot } from "@/components/kit"
 // A place in the app's chrome a view draws into (a portal's host: #phone-actions, #phone-subtitle), once it's there.
 export { usePortalHost } from "@/components/kit"
+export { useQuerySuggest, useSuggest } from "@/components/Suggest"
 // A page with no name yet hides the phone header's name meanwhile (a chat while it loads).
 export { useNoPhoneTitle } from "@/components/FileTitle"
 export { switchPreview, type Preview, type PreviewOption } from "@/components/SettingPreview"

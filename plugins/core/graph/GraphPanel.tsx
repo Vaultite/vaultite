@@ -2,7 +2,7 @@
 // Every control is a setting in .vaultite/plugins/graph/data.json; leaving one at its default removes the key.
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { GripVertical, Plus, X, type LucideIcon } from "lucide-react"
-import { capitalize, CHIP_TINTS, cn, Foldable, menuBelow, Segmented, SortableList, Switch, type MenuItem } from "@vaultite"
+import { capitalize, CHIP_TINTS, cn, Foldable, menuBelow, Segmented, SortableList, Switch, useQuerySuggest, type MenuItem } from "@vaultite"
 import { PALETTE, tokenOf, type ColorGroup } from "./graph"
 import type { Save, Settings } from "./GraphView"
 
@@ -51,10 +51,16 @@ const field = "h-7 min-w-0 flex-1 rounded-[6px] border-[0.5px] border-border bg-
 function QueryField({ value, set, auto }: { value: string; set: (q: string) => void; auto?: boolean }) {
   const [v, setV] = useState(value)
   useEffect(() => setV(value), [value])
+  const suggest = useQuerySuggest(v, setV, {
+    onBlur: () => { if (v.trim() !== value) set(v.trim()) },
+    onKeyDown: (e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setV(value); e.currentTarget.blur() } },
+  })
   return (
-    <input value={v} onChange={(e) => setV(e.target.value)} onBlur={() => { if (v.trim() !== value) set(v.trim()) }} autoFocus={auto}
-      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setV(value); e.currentTarget.blur() } }}
-      placeholder="tag:#work, type:person, folder:Notes…" aria-label="Group's search" spellCheck={false} autoComplete="off" className={field} data-graph-group-query />
+    <>
+      <input value={v} onChange={(e) => setV(e.target.value)} autoFocus={auto} {...suggest.input}
+        placeholder="tag:#work, type:person, folder:Notes…" aria-label="Group's search" spellCheck={false} autoComplete="off" className={field} data-graph-group-query />
+      {suggest.list}
+    </>
   )
 }
 

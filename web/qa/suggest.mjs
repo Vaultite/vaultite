@@ -1,5 +1,6 @@
-// The editor's suggestion lists ([[links, ![[embeds, #headings, the slash menu): picking puts the cursor after what went
-// in, with auto-pair on and off; Escape. WRITES "Qa suggest/" and .vaultite/editor.json (put back): throwaway only.
+// The editor's suggestion lists ([[links, ![[embeds, #headings, #tags, the slash menu): picking puts the cursor after what
+// went in, with auto-pair on and off; Escape. The graph's query fields' and Properties' too. WRITES "Qa suggest/", .vaultite/editor.json and
+// the graph's settings (put back): throwaway only.
 //   node web/qa/suggest.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { SHOTS, qa, wait } from "./lib/qa.mjs"
@@ -123,6 +124,98 @@ await ctx.close()
   await menuOf(page).locator("li", { hasText: "Kick-off plan" }).tap()
   await page.keyboard.type(" tapped")
   check("phone: a tap picks, typing on goes after the link", await saved((t) => t.includes("\n[[Kick-off plan]] tapped")), line(read(NOTE), "[[Kick"))
+  await ctx.close()
+}
+
+// #tags: the vault's, most used first; a whole tag typed leaves Enter to end the line.
+await put(`${DIR}/Harbor plan.md`, "---\ntype: project\n---\n\nThe plan. #qaharbor #qaharbor/launch\n")
+await put(`${DIR}/Harbor notes.md`, "Notes. #qaharbor\n")
+await put(`${DIR}/Reading.md`, "Books. #qareading\n")
+await wait(800)
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 1 })
+  const page = await open(ctx), menu = menuOf(page)
+  await page.keyboard.type("About #qa"); await ready(page, "#qaharbor")
+  const labels = await menu.locator("li .cm-completionLabel").allTextContents()
+  check("#tags: the vault's, most used first", labels[0] === "#qaharbor" && labels.includes("#qareading") && labels.includes("#qaharbor/launch"), labels)
+  await page.screenshot({ path: `${OUT}suggest-tags.png` })
+  await page.keyboard.type("re"); await ready(page, "#qareading"); await page.keyboard.press("Enter")
+  await page.keyboard.type("done")
+  check("#tags: a pick goes in with a space after it", await saved((t) => t.includes("About #qareading done")), line(read(NOTE), "About"))
+  await page.keyboard.press("Enter"); await page.keyboard.type("Whole #qaharbor"); await wait(400)
+  check("#tags: a whole tag typed shows no list", !(await menu.isVisible()))
+  await page.keyboard.press("Enter"); await page.keyboard.type("next")
+  check("…so Enter ends the line", await saved((t) => t.includes("Whole #qaharbor\nnext")), line(read(NOTE), "Whole"))
+
+  // The graph's filter box: operators, then a type: or tag:'s values.
+  const GRAPH_JSON = `${VAULT}/.vaultite/plugins/graph/data.json`
+  const graphBefore = existsSync(GRAPH_JSON) ? readFileSync(GRAPH_JSON, "utf8") : null
+  await page.goto("about:blank"); await page.goto(`${B}#view/graph`)
+  const box = page.locator("[data-graph-search]"), sugg = page.locator("[data-suggestions] [role=option]")
+  await box.waitFor(); await box.click(); await box.fill("")
+  await sugg.first().waitFor({ timeout: 5000 }).catch(() => {})
+  const ops = await sugg.allTextContents()
+  check("graph: the empty filter box offers the operators", ops[0]?.startsWith("tag:") && ops.some((o) => o.startsWith("type:")), ops)
+  await page.keyboard.type("ty"); await page.keyboard.press("Enter"); await wait(300)
+  const types = await sugg.allTextContents()
+  check("graph: picking type: lists the vault's types", await box.inputValue() === "type:" && types.some((t) => t.startsWith("project")), [await box.inputValue(), types])
+  await page.keyboard.type("proj"); await wait(200)
+  await page.screenshot({ path: `${OUT}suggest-graph.png` })
+  await page.keyboard.press("Enter"); await wait(300)
+  check("graph: a picked type goes in, the list gone", await box.inputValue() === "type:project " && !(await sugg.count()), await box.inputValue())
+  await box.fill(""); await page.keyboard.type("-tag:#qah"); await wait(300)
+  const tagged = await sugg.allTextContents()
+  check("graph: tag: lists tags with how many files have them, after a -", /^#qaharbor\d+$/.test(tagged[0] ?? ""), tagged)
+  await page.keyboard.press("Escape"); await wait(200)
+  check("graph: Escape closes the list, keeping the text", !(await sugg.count()) && await box.inputValue() === "-tag:#qah", await box.inputValue())
+  await box.fill(""); await wait(800)
+  // A group's search, its list over the panel.
+  await page.locator("[data-graph-filters]").click(); await page.locator("[data-graph-add-group]").click()
+  const field = page.locator("[data-graph-group-query]").last()
+  await field.waitFor(); await page.keyboard.type("folder:Qa"); await wait(300)
+  const folders = await sugg.allTextContents()
+  check("graph group: its search suggests folders", folders[0]?.startsWith("Qa suggest"), folders)
+  await page.keyboard.press("Enter"); await wait(200)
+  check("graph group: the pick quoted for its space", await field.inputValue() === 'folder:"Qa suggest" ', await field.inputValue())
+  await page.keyboard.press("Enter"); await wait(800)
+  const groups = (() => { try { return JSON.parse(readFileSync(GRAPH_JSON, "utf8")).groups } catch { return null } })()
+  check("graph group: Enter saves it", groups?.some((g) => g.query === 'folder:"Qa suggest"'), groups)
+  if (graphBefore === null) rmSync(GRAPH_JSON, { force: true }); else writeFileSync(GRAPH_JSON, graphBefore)
+
+  // Properties: a new property's name, then its values elsewhere; a tags list's chips from the vault's tags.
+  const PROPS = `${DIR}/Props.md`
+  await put(`${DIR}/Stage one.md`, "---\nqastage: shaping\n---\n\nOne.\n")
+  await put(`${DIR}/Stage two.md`, "---\nqastage: shaping\n---\n\nTwo.\n")
+  await put(`${DIR}/Stage three.md`, "---\nqastage: done\n---\n\nThree.\n")
+  await put(PROPS, "---\ntype: note\n---\n\nBody.\n"); await wait(800)
+  await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(PROPS)}`)
+  await page.locator("[aria-label=Properties]").first().waitFor()
+  const section = page.locator("[aria-label=Properties]").first()
+  if (!(await section.locator("[role=table]").count())) await section.getByRole("button", { name: /Properties/ }).click()
+  await section.getByRole("button", { name: "Add property" }).click()
+  await page.keyboard.type("qast"); await wait(300)
+  const keys = await sugg.allTextContents()
+  check("properties: a new name suggests the vault's names", keys[0] === "qastage3", keys)
+  await page.keyboard.press("Enter")
+  await sugg.first().waitFor({ timeout: 5000 }).catch(() => {})
+  const vals = await sugg.allTextContents()
+  check("properties: its value field, focused, lists the values it has elsewhere", vals.join() === "shaping2,done1", vals)
+  await page.screenshot({ path: `${OUT}suggest-properties.png` })
+  await page.keyboard.type("sh"); await wait(200); await page.keyboard.press("Enter")
+  check("properties: Enter picks the value it completes", await saved((t) => /\nqastage: shaping\n/.test(t), PROPS), read(PROPS))
+  const inputs = section.locator("input")
+  for (let i = 0; i < await inputs.count(); i++) if (await inputs.nth(i).inputValue() === "shaping") { await inputs.nth(i).click(); break }
+  await page.keyboard.press("ControlOrMeta+a"); await page.keyboard.type("one"); await wait(300)
+  check("properties: a value that only has what's typed in it is listed, not picked", (await sugg.allTextContents()).join() === "done1" && await sugg.first().getAttribute("aria-selected") === "false")
+  await page.keyboard.press("Enter")
+  check("…so Enter keeps the new value", await saved((t) => /\nqastage: one\n/.test(t), PROPS), read(PROPS))
+  await section.getByRole("button", { name: "Add property" }).click()
+  await page.keyboard.type("tags"); await page.keyboard.press("Enter"); await wait(400)
+  await section.locator("[aria-label='Add an item']").click(); await page.keyboard.type("qah"); await wait(300)
+  const chips = await sugg.allTextContents()
+  check("properties: a tags list suggests the vault's tags", chips[0]?.startsWith("qaharbor"), chips)
+  await page.keyboard.press("Enter")
+  check("…and a pick is its new item", await saved((t) => /tags:[\s\S]*qaharbor[\s\S]*---/.test(t), PROPS), read(PROPS))
   await ctx.close()
 }
 

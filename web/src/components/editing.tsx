@@ -1,5 +1,5 @@
 // What the Markdown editor draws with React and asks the vault for, wherever it edits: blocks and embeds as islands
-// (each its own root), images, [[ suggestions.
+// (each its own root), images, [[ and # suggestions.
 import { useCallback, useMemo, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 import type { Store } from "@/core/data"
@@ -8,6 +8,7 @@ import { followLink, resolver, shortestLink, type LinkClick, type Target } from 
 import { markdownLinks, pasteAttachments } from "@/core/conventions"
 import { notifyError } from "@/core/notify"
 import { slashItems } from "@/core/slash"
+import { vocabOf } from "@/core/vocab"
 import { assetPath, openEmbedMenu } from "@/components/EmbedMenu"
 import { rawUrl } from "@/components/FileViewers"
 import { Catch } from "@/components/Guard"
@@ -78,6 +79,8 @@ export function useVaultEditing(store: Store, from: string, own: () => string) {
   const resolve = useMemo(() => { let r: ReturnType<typeof resolver> | null = null; return (t: string) => (r ??= resolver(store))(t, from) }, [store, from])
   // (worked out when [[ is first typed, then kept while the files are the same)
   const names = useMemo(() => { let list: ReturnType<typeof linkNames> | null = null; return () => (list ??= linkNames(store, from)) }, [store, from])
+  // (# suggests the vault's tags, but not one only this file has: it's the one being typed)
+  const tags = useCallback(() => vocabOf(store.files.files).tagFiles.filter((t) => t.only !== from), [store, from])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const headings = useCallback((name: string) => headingsIn(resolve, name, from, own), [resolve, from])
   const onOpen = useCallback((link: { wiki?: string; url?: string; tag?: string }, how: boolean | LinkClick) => followLink(store, link, how, from), [store, from])
@@ -86,7 +89,7 @@ export function useVaultEditing(store: Store, from: string, own: () => string) {
   const paste = useCallback(async (files: File[]) => {
     try { return await pasteAttachments(store, from, files) } catch (e) { notifyError(e, "Couldn't save the pasted file"); return null }
   }, [store, from])
-  return { resolve, names, headings, onOpen, markdownLinks: mdLinks, slash, paste }
+  return { resolve, names, tags, headings, onOpen, markdownLinks: mdLinks, slash, paste }
 }
 
 /** [[Note#: that note's headings ("" is the text being edited, `own`, as typed so far; so is the file it's in, `from`). */
