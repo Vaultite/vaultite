@@ -68,7 +68,10 @@ async function listenerDir(port: number) {
 }
 
 /** The folders checkouts are looked for in: `roots` (~ for home), two levels down. */
-const ROOTS = ["~/Projects", "~/Documents/personal/Projects", "~/Documents/Projects", "~/code", "~/src", "~/dev", "~/Developer", "~/Work", "~/repos", "~/git"]
+const DEFAULT_ROOTS = ["~/Projects", "~/Documents/personal/Projects", "~/Documents/Projects", "~/code", "~/src", "~/dev", "~/Developer", "~/Work", "~/repos", "~/git"]
+let ROOTS = DEFAULT_ROOTS
+/** Other folders to look for checkouts in (the tests'), or the usual ones again (none). */
+export const checkoutsIn = (roots?: string[]) => { ROOTS = roots ?? DEFAULT_ROOTS }
 let scanned: { at: number; key: string; repos: string[] } | null = null
 function checkouts(roots: string[]) {
   const key = roots.join("\n")
@@ -97,6 +100,17 @@ export function checkoutOf(slug: string, roots = ROOTS) {
 }
 /** A checkout here named `name` (a folder's name), or "". */
 const namedCheckout = (name: string, roots = ROOTS) => { const n = name.trim().toLowerCase(); return n ? checkouts(roots).find((d) => path.basename(d).toLowerCase() === n) ?? "" : "" }
+/** This machine's own checkout of a repo another names: by GitHub's `owner/repo` (or its address), by a folder's name,
+ *  or by another machine's path to it (its folder's name): each machine keeps its repos in its own place. */
+export function checkoutNamed(repo: string, roots: string[] = ROOTS) {
+  const r = repo.trim().replace(/\/+$/, ""), slug = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?$/i.exec(r)?.[1] ?? (/^[\w.-]+\/[\w.-]+$/.test(r) ? r : "")
+  if (slug) return checkoutOf(slug, roots) || namedCheckout(slug.split("/")[1], roots)
+  return namedCheckout(path.basename(r), roots)
+}
+/** The checkouts this machine has, by their folders' names (~ for home), at most `n`: what's there when a repo isn't. */
+export const checkoutsLine = (n = 30, roots: string[] = ROOTS) => { const all = checkouts(roots).map((d) => tilde(d)); return all.length ? `${all.slice(0, n).join(", ")}${all.length > n ? `, and ${all.length - n} more` : ""}` : "none" }
+/** Where checkouts are looked for, in words ("~/Projects, ~/Documents/personal/Projects..."). */
+export const rootsLine = (roots: string[] = ROOTS) => roots.filter((r) => fs.existsSync(untilde(r))).join(", ") || "none of its usual project folders exist"
 
 /** Editors whose window title names the project (VS Code, Cursor, Zed, Xcode...: "file.ts — project"). */
 const EDITORS = /vscode|VSCode|cursor|zed|xcode|sublime|jetbrains|intellij|webstorm|nova|windsurf/i

@@ -92,6 +92,7 @@ export function talkOps(plugin: Plugin, d: TalkDeps) {
   /** The floor to job `j`, their ask `m` (that asked for it) its first words; another's talk ends first. */
   async function begin(ctx: OpCtx, j: Job, m: Moment | undefined) {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
+    if (j.state === "waiting") throw new OpError(`${j.id} waits for its machine to come back: there's no one to talk to yet`, 409)
     if (j.state === "needs you") throw new OpError(`${j.id} waits on ${j.waits ? `"${j.waits.question}"` : "a prompt"} first: tell them, and answer it on their word (job-answer)`, 409)
     const was = now()
     if (was && was.job !== j.id) await end(ctx)

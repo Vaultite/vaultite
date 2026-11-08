@@ -6,6 +6,18 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Work handed to a machine that's offline waits for it**: a companion job or follow-up for a machine that's away is
+  kept, shown waiting in Jobs, and sent by itself once that machine is back, instead of failing for you to retry. A
+  busy machine that misses one check (a load of test runs) no longer reads as offline.
+- **The companion answers questions about itself**: asked what it can do while also asking for more work for a job, it
+  answers you and passes on only the work, without your question. It can start a job in any Claude Code account on
+  that machine, and opens Claude Code on the web with your prompt ready to send for a cloud session.
+- **Companion jobs find each machine's own copy of a repo**: a repo named by another Mac's folder (or by its name) runs
+  in this Mac's own checkout of it, wherever it keeps it, and the companion says where it looked and what that Mac has
+  instead of guessing.
+- **The companion says several handoffs in one line**: passing one message on to three jobs says "Passed that on to
+  three jobs: ..." once, not the same line three times. Asked to merge it all, it lands every job ready for review,
+  and what it says about jobs comes from their list, never memory.
 - **Files dropped on a note go into it**: a screenshot's thumbnail, files from Finder or an image from a browser,
   dropped anywhere on a note (its margins and the space below a short note too, being read as well), are saved as its
   attachments and embedded on a line of their own where they land, a line showing where while you drag. Dropped where

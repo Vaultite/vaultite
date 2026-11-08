@@ -1,7 +1,7 @@
 // The Companion page's blocks (pages/Companion.md): its talk a day at a time (asks, answers, jobs, a press's Details;
 // compact in the Conversations panel) and what its services used. Data: companion conversation, usage, press-media.
 import { useEffect, useState, useSyncExternalStore } from "react"
-import { AudioLines, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleDashed, CircleDot, CirclePause, CircleStop, Columns2, ExternalLink, Image, Mic, Rows2, SquareArrowOutUpRight } from "lucide-react"
+import { AudioLines, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CircleDashed, Clock, CircleDot, CirclePause, CircleStop, Columns2, ExternalLink, Image, Mic, Rows2, SquareArrowOutUpRight } from "lucide-react"
 import { addDays, Button, cn, Empty, HeadingButton, fmtLongDay, fmtStamp, isDesktop, Loading, menuFor, type MenuItem, notifyError, op, openInSplit, openTab, Panel, today, useTick } from "@vaultite"
 import type { Exchange, PressLine, Spent } from "./conversation"
 import { getState, subscribe } from "./live"
@@ -47,6 +47,7 @@ const nameOf = (s: string) => SERVICE[s] ?? s.charAt(0).toUpperCase() + s.slice(
 
 /** A job's state as a mark and a word, the same everywhere (jobs.ts' lifecycle). */
 const STATES: Record<string, { icon: typeof CircleDot; tint: string; word: string }> = {
+  waiting: { icon: Clock, tint: "var(--muted-foreground)", word: "Waiting for its machine" },
   starting: { icon: CircleDashed, tint: "var(--muted-foreground)", word: "Starting" },
   working: { icon: CircleDot, tint: "var(--blue)", word: "Working" },
   "needs you": { icon: CirclePause, tint: "var(--orange)", word: "Needs you" },

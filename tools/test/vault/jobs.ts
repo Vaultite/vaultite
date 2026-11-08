@@ -19,6 +19,12 @@ export default async ($: VaultTest) => {
     const job = (): Any => ({ id: "j1", title: "t", state: "starting", where: { machine: "", label: "M", cwd: "/r", repo: "r", agent: "claude", account: "", harness: "Claude Code", model: "", effort: "", why: "" },
       terminal: "claude-x", now: "", started: 0, turn: 0, at: 0, seen: true, log: [] })
     const run = (evs: string[]) => { const j = job(); for (const e of evs) J.step(j, e as Any, 1); return j }
+    {
+      // (what each summoned ask is told of its jobs: the newest few, and every one waiting on them however old)
+      const now = 10 * 3600_000, at = (id: string, state: string, h: number) => ({ ...job(), id, title: id, state, at: now - h * 3600_000, started: now - h * 3600_000 })
+      const line = J.jobsLine([at("ja", "working", 0), at("jb", "done", 0.1), at("jc", "done", 0.2), at("jd", "done", 0.3), at("je", "done", 0.4), at("jold", "ready for review", 8), at("jgone", "done", 9)], now)
+      check("jobs line: a job ready for review is always listed, past the newest few", /jold "jold" \(ready for review/.test(line) && !/je "je"/.test(line) && !/jgone/.test(line), line)
+    }
     const a = run(["working", "asks", "working", "changed"]), b = run(["working", "stop", "working", "told"]), c = run(["working", "answered", "told", "changed", "stop"])
     check("jobs: the lifecycle moves by its table, each move logged (starting, working, needs you, ready for review), new once it needs the user",
       a.state === "ready for review" && a.log.map((x: Any) => x.to).join() === "working,needs you,working,ready for review" && a.seen === false && J.unseen(a), a.log)
@@ -104,6 +110,19 @@ export default async ($: VaultTest) => {
       JSON.stringify({ pr: "https://github.com/lighthouse/site/pull/12", link: "http://localhost:5173/about" }) && J.linksIn("nothing", "https://m1.tail1.ts.net:8450").link === "https://m1.tail1.ts.net:8450")
   }
 
+  // A turn's handoffs, said: one's own line (or its say); several, one line naming them, a sentence each kind.
+  {
+    const Wk = await import("../../../plugins/core/companion/workers.ts")
+    const T = (kind: Any, title: string, line = "", say = "") => ({ kind, title, line, say })
+    check("handoffs said: one keeps its own line, or its say", Wk.toldLine([T("follow", "Card", "Passed that on to its job.")]) === "Passed that on to its job." &&
+      Wk.toldLine([T("new", "x", "Handed that off to a background agent.", "On it.")]) === "On it." && Wk.toldLine([]) === "")
+    check("handoffs said: several, one line naming them by their titles' first words",
+      Wk.toldLine([T("land", "Fix the video card overlap", "Told its job to merge it."), T("land", "Dictation drops words after a pause", "x"), T("land", "Screenshots in the chat", "x")]) ===
+        "Told three jobs, Fix the video card, Dictation drops words after and Screenshots in the chat, to merge." &&
+      Wk.toldLine([T("new", "Research Hexagon", "x"), T("follow", "Card fix", "x"), T("kept", "Notes", "Studio is offline: the job starts there once it's back.")]) ===
+        "Handed off one job to background agents: Research Hexagon. Passed that on to Card fix. Studio is offline: the job starts there once it's back.", Wk.toldLine([T("land", "Fix the video card overlap", "")]))
+  }
+
   // Where: the addresses on screen, Tailscale Serve's ports, the rules, another machine's name.
   {
     const urls = W.urlsIn({ title: "Site", screen: "Address and search bar: localhost:5173/about\nhttps://github.com/lighthouse/site/pull/3" }).map((u) => u.href)
@@ -179,6 +198,23 @@ export default async ($: VaultTest) => {
     check("where: a GitHub page is its checkout here; a note is the vault", fs.realpathSync(gh.cwd) === real && note.cwd === VAULT && gh.from === "github" && note.from === "note", [gh, note])
     const editor = await W.resolveHere({ app: "com.microsoft.VSCode", title: "index.html — site" }, VAULT, [], roots)
     check("where: an editor's window is its project's checkout", fs.realpathSync(editor.cwd) === real && editor.from === "editor", editor)
+    // Each machine keeps its repos in its own place: another machine's path, a folder's name or GitHub's name is this one's own checkout.
+    const named = (x: string) => { const d = W.checkoutNamed(x, roots); return d ? fs.realpathSync(d) : d }
+    check("where: a repo another machine names (its path, its folder's name, GitHub's owner/name) is this machine's own checkout of it",
+      named("/Users/alice/Projects/site") === real && named("~/Documents/personal/Projects/site") === real && named("site") === real && named("lighthouse/site") === real &&
+      named("https://github.com/lighthouse/site.git") === real && named("~/Projects/elsewhere") === "" && named("lighthouse/nope") === "")
+    W.checkoutsIn(roots)
+    try {
+      let [st, b] = await api("POST", "ops/companion.where", { cwd: "/Users/alice/Projects/site" })
+      check("companion where: a folder another machine has its repo in finds this one's checkout, saying so", st === 200 && fs.realpathSync(b.cwd) === real && b.repo === "site" &&
+        /^\/Users\/alice\/Projects\/site is .*\/site here$/.test(b.why), [st, b])
+      ;[st, b] = await api("POST", "ops/companion.where", { repo: "lighthouse/site" })
+      check("companion where --repo: by GitHub's name", st === 200 && fs.realpathSync(b.cwd) === real && b.base.length === 40, [st, b])
+      ;[st, b] = await api("POST", "ops/companion.where", { repo: "nowhere" })
+      const [, text] = await api("POST", "ops/companion.where?as=text", { repo: "nowhere" })
+      check("companion where: a repo with no checkout here says so, and where it looked: never a guess", st === 200 && b.missing === true &&
+        new RegExp(`no checkout of nowhere \\(looked in ${roots[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)\\. Its checkouts: [^.]*\\/site`).test(String(text.text ?? text)) && /\/site/.test(b.have), [b, text])
+    } finally { W.checkoutsIn() }
     if (process.platform !== "win32") {
       const server = spawn(process.execPath, ["-e", "const s=require('http').createServer(()=>{}).listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { cwd: path.join(repo), stdio: ["ignore", "pipe", "ignore"] })
       const port = await new Promise<string>((ok) => server.stdout!.once("data", (d) => ok(String(d).trim())))
@@ -221,7 +257,7 @@ export default async ($: VaultTest) => {
         st === 200 && b.state === "starting" && /^view:terminal\/claude_personal-/.test(b.link) && b.where.includes("site") && b.where.includes("Personal") && b.where.includes("Claude Code Opus") &&
         said[0]?.profile === "personal" && said[0]?.model === "opus" && said[0]?.effort === "high" && said[0]?.mode === "auto" &&
         /Make the heading blue[^]*They said: "make the heading blue"[^]*don't push/.test(said[0]?.prompt ?? "") &&
-        (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "On it: a session in site."), [st, b, said[0]])
+        !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "On it: a session in site."), 3000, 50)), [st, b, said[0]])
       const working = await waitFor(() => heard.findLast((m) => m.t === "jobs" && m.jobs.some((j: Any) => j.id === card.id && j.state === "working")), 10000, 50)
       check("jobs: its terminal working moves it to working, what it does now from its agent", !!working && working.jobs.find((j: Any) => j.id === card.id).now === "Editing index.html", heard.at(-1))
       // (its worker saves its proof before it ends, as it's told)
@@ -337,7 +373,7 @@ export default async ($: VaultTest) => {
       ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Use the darker blue", job: card.id }, agent))
       const told = await waitFor(() => fs.existsSync(path.join(repo, "told.txt")) && fs.readFileSync(path.join(repo, "told.txt"), "utf8").trim(), 10000, 100)
       check("handoff --job: typed into its worker's terminal, which goes on; with no say, it still says so in a line", st === 200 && told === "Use the darker blue" &&
-        (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Passed that on to its job."), [st, b, told])
+        !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Passed that on to its job."), 3000, 50)), [st, b, told])
       check("handoff --job: a follow-up carries the user's own words and screen once, one line",
         J.followTask("Darker", { t: 1, seq: 1, kind: "ask", text: "make it darker", voice: true, app: "com.example.browser", title: "Site", shot: "/s.png" } as Any) ===
           'Darker (The user, through their companion: They said (dictated, so it may hold slips: go by the task): "make it darker" · Where: on their screen, in "Site" (com.example.browser) · Their screen then (a picture): /s.png)' &&
@@ -354,6 +390,8 @@ export default async ($: VaultTest) => {
         const script = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "cli" } } as unknown as IncomingMessage
         const says = async () => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").length
         c.screenMoment({ kind: "ask", agent: "Claude", text: "download this video please", app: "com.example.browser", title: "Clips", sx: 10, sy: 20 })
+        // (a handoff's line is held a moment for the turn's next one: an earlier one's said first)
+        await new Promise((r) => setTimeout(r, 700))
         const was = await says(), ended: string[] = []
         for (const [by, task] of [[agent, "Skip the pointer when unwatched"], [script, "Sync the design hub"]] as const) {
           const [st, b] = await api("POST", "ops/companion.handoff", { task, say: "Handed that off.", cwd: repo }, by)
@@ -374,7 +412,7 @@ export default async ($: VaultTest) => {
           const [st, b] = await api("POST", "ops/companion.handoff", { task: "Fix the footer", as: "Ada", cwd: repo }, fromIts)
           ended.push(b.id)
           check("handoff from a terminal companion's own session: it says so, and its ask goes with it", st === 200 && /fix the footer/.test(said.at(-1)?.prompt ?? "") &&
-            (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.agent === "Ada" && n.text === "Handed that off to a background agent."), [st, b, said.at(-1)?.prompt])
+            !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.agent === "Ada" && n.text === "Handed that off to a background agent."), 3000, 50)), [st, b, said.at(-1)?.prompt])
         } finally { fs.rmSync(sess, { force: true }) }
         for (const id of ended.filter(Boolean)) await asItsTool(() => api("POST", "ops/companion.job-stop", { id }, agent)).catch(() => {})
       }
@@ -384,7 +422,7 @@ export default async ($: VaultTest) => {
       const before = (await api("POST", "ops/companion.jobs", {}))[1].jobs.length
       ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix it", cwd: "~/no-such-repo-here" }, agent))
       check("handoff: a folder that isn't here (nor on a machine jobs prefer) is refused at once, no job left failed",
-        st === 404 && /there's no folder ~\/no-such-repo-here/.test(b.error) && /Leave cwd out/.test(b.error) && (await api("POST", "ops/companion.jobs", {}))[1].jobs.length === before, [st, b])
+        st === 404 && /no folder ~\/no-such-repo-here, nor a checkout of no-such-repo-here \(looked in /.test(b.error) && /Leave cwd out/.test(b.error) && (await api("POST", "ops/companion.jobs", {}))[1].jobs.length === before, [st, b])
       // Do it: a task line handed over, in progress; a line that isn't an open task; one that moved; only words.
       const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
       const ends: string[] = [], linkEnd = (b: Any) => { const id = String(b.link ?? "").split("/").pop()!; ends.push(id); return id }
@@ -677,10 +715,11 @@ setTimeout(draw, 300)
             : stage === "gone" ? { running: false, exit: { code: 0, signal: 1 }, ...(p.turn ? { turn: { text: "Shipped the header.", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: false, session: "rs1" }, diff: "1 file changed, +2 -1" } : {}) }
             : stage === "landed" ? (p.cwd ? { running: false, onMain: landed, marks: { whole: "a".repeat(40), each: ["b".repeat(40)] } } : null)
             : { running: true, state: "idle", ...(p.turn ? { turn: { text: "Header done. Try https://studio.tail1.ts.net:8450", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: true }, diff: "1 file changed, +2 -1" } : {}) })
-          : op === "terminal.end" ? { id: "claude-remote1" } : {}
+          : op === "terminal.end" ? { id: "claude-remote1" } : op === "terminal.send" ? { submitted: true } : {}
         // (its machine failing to read its terminal)
         if (out === null) return void res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "no such terminal" }))
-        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(out))
+        const none = op === "claude-code.limits" && p.account === "nope"
+        res.writeHead(none ? 404 : 200, { "Content-Type": "application/json" }).end(JSON.stringify(none ? { error: "no Claude Code account 'nope' (default, personal)" } : out))
       })
     }).listen(0, "127.0.0.1")
     await new Promise((r) => server.once("listening", r))
@@ -696,7 +735,7 @@ setTimeout(draw, 300)
       job = b
       const start = calls.find((c) => c.op === "terminal.start")
       check("handoff: a routine one (no say) still announces itself in one short line",
-        (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Handed that off to a background agent."))
+        !!(await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.kind === "say" && n.text === "Handed that off to a background agent."), 3000, 50)))
       check("handoff on another machine: its where asked there, its terminal started there in that folder, the card says so",
         st === 200 && b.link === "view:terminal/claude-remote1@studio" && b.where.startsWith("Studio, site") && !!calls.find((c) => c.op === "companion.where")?.client?.startsWith("machine/") &&
         start?.p.cwd === "/home/alice/Projects/site" && /Fix the header/.test(start?.p.prompt ?? ""), [st, b, calls])
@@ -708,6 +747,63 @@ setTimeout(draw, 300)
         review.result.link === "https://studio.tail1.ts.net:8450" && calls.some((c) => c.op === "companion.worker" && c.p.turn && c.p.base === "abc123"), review)
       ;[st, b] = await api("POST", "ops/companion.job-stop", { id: job.id })
       check("job-stop on another machine: its terminal ended there; reviewed, it's done", st === 200 && b.state === "done" && calls.some((c) => c.op === "terminal.end" && c.p.id === "claude-remote1"), [st, b, calls.at(-1)])
+      // Its machine offline: a new job waits for it (shown so), a follow-up waits on its job, each sent once it's back.
+      {
+        const Wk = await import("../../../plugins/core/companion/workers.ts")
+        Wk.flushEvery(1)
+        await api("PATCH", "config/plugin/companion", { mode: "quiet" })
+        await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].mode !== "off", 5000, 50)
+        const says = async () => (await api("POST", "ops/companion.status", {}))[1].notes.filter((n: Any) => n.kind === "say").map((n: Any) => n.text)
+        const card = async (id: string) => (await api("POST", "ops/companion.jobs", {}))[1].jobs.find((x: Any) => x.id === id)
+        ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Say hi", machine: "studio", cwd: "~/Projects/site", account: "nope" }, agent))
+        check("handoff --account: an account that machine hasn't is refused, saying which there are", st === 404 && /nope/.test(b.error) && /personal/.test(b.error), [st, b])
+        studio.online = false
+        calls.length = 0
+        ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Fix the footer", machine: "studio", cwd: "~/Projects/site", account: "personal" }, agent))
+        const waiting = b
+        check("handoff to a machine that's offline: kept as a job waiting for it, in that account, said so; nothing started",
+          st === 200 && b.state === "waiting" && b.queued === true && /Waiting for Studio to come back/.test(b.now) && /Personal/.test(b.where) && !calls.some((c) => c.op === "terminal.start") &&
+          !!(await waitFor(async () => (await says()).includes("Studio is offline: the job starts there once it's back."), 3000, 50)), [st, b, calls])
+        ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "and make it red. Also, can you run things on my personal account?", app: "com.example.browser", title: "Site", sx: 10, sy: 20 })
+        ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make it red", job: waiting.id, ask: false }, agent))
+        check("handoff --job to a job still waiting for its machine: added to its task, said so", st === 200 && b.state === "waiting" && !!(await waitFor(async () => (await says()).at(-1) === "Studio is still offline: that goes to its job once it's back.", 3000, 50)), [st, b])
+        ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Make it red", job: waiting.id }, agent))
+        check("handoff --job: the same follow-up again isn't kept twice", st === 200 && !!(await waitFor(async () => (await says()).at(-1) === "That's already waiting for Studio.", 3000, 50)), [st, b])
+        studio.online = true
+        const begun = await waitFor(() => calls.find((c) => c.op === "terminal.start"), 15000, 200)
+        check("a job waiting for its machine starts there once it's back: in its account and folder, told its follow-up, never their words a follow-up left out",
+          begun?.p.agent === "claude_personal" && begun.p.cwd === "/home/alice/Projects/site" && /Fix the footer/.test(begun.p.prompt) && /Also: Make it red/.test(begun.p.prompt) &&
+          !/personal account\?/.test(begun.p.prompt), begun?.p)
+        const started = await waitFor(async () => { const r = await card(waiting.id); return r && r.state !== "waiting" && r }, 10000, 200)
+        check("a job started once its machine is back is no longer waiting", !!started && started.terminal === "claude-remote1" && !started.queued, started)
+        studio.online = false
+        ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Use bigger text", job: waiting.id }, agent))
+        check("handoff --job to a job whose machine went offline: kept, its card waiting, said so",
+          st === 200 && b.state === "waiting" && /to pass on a follow-up/.test(b.now) && !!(await waitFor(async () => (await says()).at(-1) === "Studio is offline: I'll pass that on to its job once it's back.", 3000, 50)) &&
+          !calls.some((c) => c.op === "terminal.send"), [st, b])
+        studio.online = true
+        const sent = await waitFor(() => calls.find((c) => c.op === "terminal.send"), 15000, 200)
+        check("a follow-up kept for its machine is typed in once it's back, and its card no longer waits",
+          sent?.p.id === "claude-remote1" && /^Use bigger text/.test(sent.p.text) && !!(await waitFor(async () => !(await card(waiting.id))?.queued, 5000, 200)), sent?.p)
+        Wk.flushEvery(5)
+        // Several handoffs in one turn (one tool call each, at once): one line naming the jobs, never the default line per call.
+        const more: string[] = []
+        for (const task of ["Ship the video card", "Fix dictation dropping words"]) {
+          const was = (await says()).at(-1)
+          ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task, say: `On it: ${task}.`, machine: "studio", cwd: "~/Projects/site" }, agent))
+          more.push(b.id)
+          await waitFor(async () => (await says()).at(-1) !== was, 3000, 50)
+        }
+        const was = (await says()).at(-1)
+        const all = await asItsTool(() => Promise.all([waiting.id, ...more].map((job) => api("POST", "ops/companion.handoff", { task: "They can merge on their own", job, ask: false }, agent))))
+        await waitFor(async () => (await says()).at(-1) !== was, 3000, 50)
+        await new Promise((r) => setTimeout(r, 700))
+        const tail = (await says()).slice(-2), last = tail[1] ?? ""
+        check("handoffs in one turn: one line naming the jobs, said once", all.every(([st]) => st === 200) && tail[0] === was &&
+          /^Passed that on to three jobs: [^.]+\.$/.test(last) && ["Fix the footer", "Ship the video card", "Fix dictation dropping words"].every((x) => last.includes(x)), [all.map(([st, b]) => [st, b.error]), tail])
+        for (const id of more) await asItsTool(() => api("POST", "ops/companion.job-stop", { id }, agent)).catch(() => {})
+        await asItsTool(() => api("POST", "ops/companion.job-stop", { id: waiting.id }, agent)).catch(() => {})
+      }
       // Nothing tying it here (no machine, no folder, no preview or editor): to the always-on machine with this vault.
       Object.assign(studio, { standalone: true, vault: "v1" })
       ms["machines"] = async () => [{ id: "lap", label: "Lap", url: "http://127.0.0.1:1", online: true, self: true, plugins: ["terminal", "companion"], vault: "v1" }, studio]

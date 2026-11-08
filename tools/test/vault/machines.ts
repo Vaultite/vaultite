@@ -100,6 +100,33 @@ export default async ($: VaultTest) => {
     }
   }
 
+  // A loaded peer (a load of test runs): one probe too slow to answer doesn't make it offline, as it answered just before;
+  // one that never answered in time is.
+  {
+    let slow = false
+    const peer = (await import("node:http")).createServer((req, res) => {
+      if (req.url !== "/api/machines/self") { res.writeHead(404); return res.end("{}") }
+      const send = () => { if (!res.writableEnded) { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ instance: "peer-slow", host: "busy", platform: "darwin", version: "0.1.0", plugins: ["terminal"] })) } }
+      if (slow) setTimeout(send, 3800); else send()
+    })
+    await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
+    const url = `http://127.0.0.1:${(peer.address() as { port: number }).port}`
+    const list = (label: string, more: Any[] = []) => write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "busy", label, url }, ...more] }))
+    list("Busy")
+    let [, ms] = await api("GET", "machines")
+    check("machines: a peer answering in time is online", ms.find((m: Any) => m.id === "busy")?.online === true && !ms.find((m: Any) => m.id === "busy")?.slow, ms)
+    slow = true
+    list("Busy one", [{ id: "never", label: "Never", url: url.replace("127.0.0.1", "localhost") }])
+    ;[, ms] = await api("GET", "machines")
+    const busy = ms.find((m: Any) => m.id === "busy"), never = ms.find((m: Any) => m.id === "never")
+    check("machines: a peer too slow to answer once, that answered a moment ago, is still online (slow), as it said then",
+      busy?.online === true && busy.slow === true && busy.label === "Busy one" && busy.host === "busy", busy)
+    check("machines: one too slow that never answered in time is offline", never && never.online === false && never.error === "no answer", never)
+    peer.closeAllConnections()
+    peer.close()
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"))
+  }
+
   // Machine health (health.ts): ps and memory read as each platform writes them, what held the machine over the
   // samples and since when, and an alert once a hog has lasted.
   {

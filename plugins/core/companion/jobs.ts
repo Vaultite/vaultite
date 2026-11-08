@@ -1,16 +1,19 @@
 // Jobs: long work the companion hands to a worker in one of the app's terminals. One lifecycle (JOB_NEXT) everywhere:
 // menu bar, `companion jobs`, the summoned session, ops; each move logged. Plain functions: workers.ts runs them.
+import type { Who } from "../../../core/ops.ts"
 import { parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 import type { Moment } from "./plugin.ts"
 
-export const JOB_STATES = ["starting", "working", "needs you", "ready for review", "done", "failed", "stopped"] as const
+export const JOB_STATES = ["waiting", "starting", "working", "needs you", "ready for review", "done", "failed", "stopped"] as const
 export type JobState = typeof JOB_STATES[number]
-/** What moves a job: its worker as read (working, asks, error), its turn's end (changed: to review; answered: none;
+/** What moves a job: its machine back (start: one waiting for it starts), its worker as read (working, asks, error), its turn's end (changed: to review; answered: none;
  *  landed: what they kept, merged), its terminal's end with nothing to show (endEvent), their steer (told) and stop. */
-export type JobEvent = "working" | "asks" | "changed" | "answered" | "landed" | "error" | "ended" | "told" | "stop"
+export type JobEvent = "start" | "working" | "asks" | "changed" | "answered" | "landed" | "error" | "ended" | "told" | "stop"
 
 /** The lifecycle: from each state, where each event goes; an event not listed changes nothing. */
 export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
+  // (handed to a machine that's offline: it starts once that machine is back)
+  waiting: { start: "starting", error: "failed", stop: "stopped" },
   starting: { working: "working", asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
   working: { asks: "needs you", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
   "needs you": { working: "working", told: "working", changed: "ready for review", answered: "done", landed: "done", error: "failed", ended: "failed", stop: "stopped" },
@@ -22,7 +25,7 @@ export const JOB_NEXT: Record<JobState, Partial<Record<JobEvent, JobState>>> = {
 }
 /** States the user hears about, a badge until they open the job. */
 const NEWS = new Set<JobState>(["needs you", "ready for review", "done", "failed"])
-export const live = (s: JobState) => s === "starting" || s === "working" || s === "needs you"
+export const live = (s: JobState) => s === "waiting" || s === "starting" || s === "working" || s === "needs you"
 /** Whether job `j`'s change is already on main: merged when they kept it, or its last move its own landing (its commit
  *  or branch found on main, or its words saying it pushed there). */
 export const onMain = (j: Pick<Job, "land"> & Partial<Pick<Job, "log">>) => !!j.land?.merged || j.log?.at(-1)?.ev === "landed"
@@ -81,8 +84,13 @@ export type Waits = { kind: "permission" | "question"; question: string; choices
 /** A job's change as git tells it apart, the same however it lands (rebased or squashed without conflicts): the patch-id
  *  of all of it, and of each of its commits. Read while its branch exists, kept with the job for after. */
 export type Marks = { whole: string; each: string[] }
+/** A handoff kept while its machine is offline, sent once it's back: a follow-up (`land`: to merge), or with `start` the
+ *  job's own start (its handoff's params, `ask` its ask). `note`: the task as given (never kept twice); `by`: who handed it. */
+export type Queued = { note: string; text: string; at: number; shown?: string; land?: boolean; title?: string; start?: Record<string, unknown>; ask?: Moment; by?: Who }
 export type Job = {
   id: string; title: string; state: JobState; where: Where
+  /** What waits for its machine to come back, in order. */
+  queued?: Queued[]
   /** Its worker's terminal id, on where.machine. */
   terminal: string
   /** Its worker's session (its transcript, read after its terminal ends), when that end was read, and when its terminal
@@ -186,6 +194,14 @@ export function nowOf(j: Pick<Job, "title" | "turn" | "last" | "now">, s: { kind
   return s.msg || (title && title !== j.title ? title : "") || j.now
 }
 
+/** What waits for its machine, one line ("" when nothing): its start, or the follow-ups kept for it. */
+export function queuedLine(j: Pick<Job, "queued" | "where" | "state">) {
+  const q = j.queued ?? [], ups = q.filter((x) => !x.start).length
+  if (!q.length) return ""
+  const back = `Waiting for ${j.where.label || "its machine"} to come back`
+  return q.some((x) => x.start) ? `${back} to start${ups ? `, with ${ups} more for it` : ""}` : `${back} to pass on ${ups === 1 ? "a follow-up" : `${ups} follow-ups`}`
+}
+
 /** Its results in one line: the diff, a PR, a link. */
 export const resultLine = (r?: Result) => (r ? [r.diff, r.pr, r.link].filter(Boolean).join(" · ") : "")
 /** What it said last: its latest words read, else its result's. */
@@ -194,9 +210,9 @@ const saidOf = (j: Job) => (j.last?.text ? j.last : j.result?.text ? { text: j.r
 /** A job as the menu bar and the app list it (`waits`: what it waits on, while it needs the user). */
 export type JobCard = { id: string; title: string; state: JobState; link: string; unseen: boolean; at: number; started: number; ended?: number; where: string; now: string; took: string; result: string
   waits?: { question: string; choices: string[] } }
-export const cardOf = (j: Job, now = Date.now()): JobCard => ({ id: j.id, title: j.title, state: j.state, link: linkOf(j), unseen: unseen(j), at: j.at, started: j.started,
+export const cardOf = (j: Job, now = Date.now()): JobCard => ({ id: j.id, title: j.title, state: j.queued?.length ? "waiting" : j.state, link: j.terminal ? linkOf(j) : "", unseen: unseen(j), at: j.at, started: j.started,
   ...(live(j.state) ? {} : { ended: j.at }), ...(j.state === "needs you" && j.waits ? { waits: { question: j.waits.question, choices: j.waits.choices } } : {}),
-  where: whereLine(j.where), now: j.now, took: took(j, now),
+  where: whereLine(j.where), now: queuedLine(j) || j.now, took: took(j, now),
   result: resultLine(j.result) || cut((j.result?.text ?? "").replace(/\s+/g, " ").trim(), 200) })
 
 const YES = /^(yes|y|yeah|yep|approve|allow|ok|okay|trust|accept|sure)$/i, NO = /^(no|n|nope|deny|reject|refuse|exit|disable|don't|cancel)$/i
@@ -281,6 +297,7 @@ export function jobText(j: Job, now = Date.now()) {
   return [`${j.id} · ${j.state}${unseen(j) ? " (new)" : ""} · "${j.title}" · ${whereLine(j.where)} · ${took(j, now)}`,
     live(j.state) && j.now && !(said && j.now === gist(said.text)) ? `now: ${j.now}` : "",
     j.state === "needs you" && j.waits ? `waits on: ${waitsLine(j.waits)}${j.waits.choices.length ? ": companion job-answer with the user's choice, only on their words" : ""}` : "",
+    j.queued?.length ? `${queuedLine(j)} (sent by itself then: nothing to retry): ${j.queued.map((q) => cut(plain(q.note), 120)).join(" | ")}` : "",
     l?.background ? `in the background: ${l.background} task${l.background > 1 ? "s" : ""} of its still running (a command, a subagent)` : "",
     l?.told ? `told last: ${l.told}` : "",
     said ? `it said (${ago(said.at, now)}): ${cut(said.text.trim(), 1500)}` : "", l?.asks?.length ? `asks: ${l.asks.join(" | ")}` : "",
@@ -296,16 +313,18 @@ export function jobText(j: Job, now = Date.now()) {
 export function jobsText(jobs: Job[], now = Date.now()) {
   if (!jobs.length) return "No jobs: companion handoff starts one."
   return jobs.map((j) => `- ${j.id} · ${j.state}${unseen(j) ? " (new)" : ""} · ${j.title} · ${whereLine(j.where)} · ${took(j, now)}` +
-    (j.now && live(j.state) ? `\n  now: ${cut(j.now, 120)}` : "") + (j.state === "needs you" && j.waits ? `\n  waits on: ${waitsLine(j.waits)}` : "") + (j.last?.asks?.length ? `\n  asks: ${cut(j.last.asks.join(" | "), 200)}` : "") +
+    (j.queued?.length ? `\n  ${queuedLine(j)}` : j.now && live(j.state) ? `\n  now: ${cut(j.now, 120)}` : "") + (j.state === "needs you" && j.waits ? `\n  waits on: ${waitsLine(j.waits)}` : "") + (j.last?.asks?.length ? `\n  asks: ${cut(j.last.asks.join(" | "), 200)}` : "") +
     (resultLine(j.result) ? `\n  ${resultLine(j.result)}` : "") +
     (j.result?.text && !live(j.state) ? `\n  ${cut(j.result.text.replace(/\s+/g, " "), 200)}` : "")).join("\n")
 }
 
 /** The recent jobs a summoned ask is told of, so it can steer one, stop it, or say how it's going. */
 export function jobsLine(jobs: Job[], now = Date.now()) {
-  const recent = jobs.filter((j) => live(j.state) || (now - j.at < 6 * 3600_000 && j.state !== "stopped")).slice(0, 4)
+  // (the newest few, and every one that waits on them, however old: "merge it all" means those too)
+  const newest = jobs.filter((j) => live(j.state) || (now - j.at < 6 * 3600_000 && j.state !== "stopped")).slice(0, 4)
+  const recent = jobs.filter((j) => newest.includes(j) || j.state === "ready for review" || j.state === "needs you")
   return recent.length ? `Your jobs (to tell one more or correct it, and anything about one's result (merge it, try X too): handoff with its job, land for their word to merge it; to stop one: job-stop; how one goes: job; to show them one that's ready, on their screen: job-show; what one waits on, with the choice their words name: job-answer): ${recent.map((j) =>
-    `${j.id} "${cut(j.title, 60)}" (${j.state}${j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)})`).join(", ")}.` : ""
+    `${j.id} "${cut(j.title, 60)}" (${j.state}${j.queued?.length ? `: ${queuedLine(j).toLowerCase()}, sent by itself then` : j.state === "needs you" && j.waits ? `: waits on ${waitsLine(j.waits)}` : j.now && live(j.state) ? `: ${cut(j.now.replace(/\.$/, ""), 80)}` : ""}${j.last?.asks?.length && !j.waits ? `; asks: ${cut(j.last.asks[0], 80)}` : ""}; ${whereLine(j.where)}; ${took(j, now)})`).join(", ")}.` : ""
 }
 
 /** How fast jobs got going (ms): from the ask to their card, and to their worker's first step. */

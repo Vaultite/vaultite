@@ -21,6 +21,8 @@ export type Machine = {
   desktop?: boolean
   /** Its server runs on its own, not in the desktop app: an always-on one, whose browser answers other machines too. */
   standalone?: boolean
+  /** Its last probe timed out, but it answered within the last two minutes: online, as it said then (a loaded server). */
+  slow?: boolean
 }
 
 const INSTANCE = crypto.randomUUID()
@@ -102,6 +104,10 @@ const isOwn = (url: string, own: string) => LOOPBACK.test(url) || (!!own && url 
 const dial = dialIn(plugin, listed, selfId)
 
 type Probed = { machine: Machine; dialed?: Record<string, Item> }
+/** Each address's last answer, and when: a peer busy enough to miss one probe (a load of test runs) is still up. */
+const answered = new Map<string, { at: number; probed: Probed }>()
+/** How long a peer that stops answering in time still reads as online, as it last answered (`slow`). */
+const SLOW_GRACE_MS = 2 * 60_000
 
 /** A machine with its own address: this server, else its /api/machines/self. */
 async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
@@ -115,10 +121,16 @@ async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
     if (!r.ok) return { machine: { ...m, online: false, self: false, error: `answered ${r.status}` } }
     const s = await r.json() as Item
     if (s.instance === INSTANCE) knownOwn.add(m.url)
-    return { machine: { ...m, online: true, self: s.instance === INSTANCE, host: s.host, platform: s.platform, version: s.version,
+    const probed: Probed = { machine: { ...m, online: true, self: s.instance === INSTANCE, host: s.host, platform: s.platform, version: s.version,
       commit: s.commit || undefined, plugins: Array.isArray(s.plugins) ? s.plugins : [], vault: typeof s.vault === "string" && s.vault ? s.vault : undefined,
       desktop: s.desktop === true, standalone: s.standalone === true }, dialed: s.dialed && typeof s.dialed === "object" ? s.dialed as Record<string, Item> : undefined }
+    answered.set(m.url, { at: Date.now(), probed })
+    return probed
   } catch (e) {
+    // (only too slow, and it answered a moment ago: loaded, not gone; refused or not found is offline at once)
+    const last = answered.get(m.url)
+    if ((e as Error).name === "TimeoutError" && last && Date.now() - last.at < SLOW_GRACE_MS) return { ...last.probed, machine: { ...last.probed.machine, ...m, slow: true } }
+    answered.delete(m.url)
     return { machine: { ...m, online: false, self: false, error: unreachable(e) } }
   }
 }

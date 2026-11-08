@@ -6,11 +6,11 @@ import os from "node:os"
 import path from "node:path"
 import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, HANDED, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, picturesIn, type Result, resumeOf,
+import { cardOf, choiceIn, commitsIn, endEvent, HANDED, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Queued, queuedLine, picturesIn, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
-import { branchOf, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
+import { branchOf, checkoutNamed, type Found, githubOf, headOf, machineOfUrl, onlyHere, type Over, preferredMachine, refusal, repoOf, resolveHere, checkoutsLine, rootsLine, surfaceOf, tilde, urlsIn, watched } from "./where.ts"
 
 /** What the plugin gives the jobs: the ask a handoff came from, whose a call is, its say, its action log, who an `as` names. */
 export type JobDeps = {
@@ -58,6 +58,9 @@ const ANSWERING_MS = 10 * 60_000
 let grace = 120_000
 /** Another grace (the tests'). */
 export const tidyAfter = (ms: number) => { grace = ms }
+/** How often (in the jobs' 3 s ticks) what waits for a machine is looked at; another (the tests'). */
+let flushTicks = 5
+export const flushEvery = (ticks: number) => { flushTicks = ticks }
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const git = (cwd: string, args: string[]) => new Promise<string>((ok) => execFile("git", args, { cwd, timeout: 5000, maxBuffer: 4 << 20, env: gitEnv() }, (e, out) => ok(e ? "" : String(out))))
 /** The changes since `base` in one line: files changed, lines in and out, new files, commits ("" when none). */
@@ -133,6 +136,37 @@ const marksIn = (v: unknown): Marks | null => {
   const o = v && typeof v === "object" ? v as Record<string, unknown> : null, hex = (x: unknown) => typeof x === "string" && /^[0-9a-f]{40,64}$/.test(x)
   return o ? { whole: hex(o.whole) ? String(o.whole) : "", each: Array.isArray(o.each) ? o.each.filter(hex).map(String).slice(0, 40) : [] } : null
 }
+/** One handoff's announcement: its own line, what it did (a new job, a follow-up, their word to merge, kept for its
+ *  machine) and to which job, and the companion's say instead, if it gave one. */
+export type Told = { kind: "new" | "follow" | "land" | "kept"; title: string; line: string; say?: string }
+/** How long a handoff's line waits for the turn's next handoff, said together. */
+const TELL_MS = 400
+const NUMBER = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]
+/** A job's name said aloud: its title's first words, not ending on a small word. */
+export function jobName(title: string) {
+  const words = title.replace(/[.:,;…]+$/, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 4)
+  while (words.length > 1 && /^(the|a|an|on|of|to|in|for|and|with|at|by|from)$/i.test(words.at(-1)!)) words.pop()
+  return words.join(" ").replace(/[.:,;]+$/, "")
+}
+/** What a turn's handoffs say, one line: one's own line (or its say); several, a sentence each kind naming its jobs
+ *  ("Passed that on to three jobs: Card fix, Dictation and Screenshots."), says given first. */
+export function toldLine(items: Told[]) {
+  if (!items.length) return ""
+  if (items.length === 1) return items[0].say || items[0].line
+  const says = [...new Set(items.map((x) => x.say).filter(Boolean))] as string[]
+  const rest = items.filter((x) => !x.say)
+  const names = (xs: Told[]) => { const n = [...new Set(xs.map((x) => jobName(x.title)))]; return n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n.at(-1)}` : n[0] ?? "" }
+  const count = (n: number, one: string) => `${NUMBER[n] ?? n} ${one}${n === 1 ? "" : "s"}`
+  const of = (k: Told["kind"]) => rest.filter((x) => x.kind === k)
+  const lines = [
+    of("new").length ? `Handed off ${count(of("new").length, "job")} to background agents: ${names(of("new"))}.` : "",
+    of("follow").length ? `Passed that on to ${of("follow").length === 1 ? names(of("follow")) : `${count(of("follow").length, "job")}: ${names(of("follow"))}`}.` : "",
+    of("land").length ? `Told ${of("land").length === 1 ? names(of("land")) : `${count(of("land").length, "job")}, ${names(of("land"))},`} to merge.` : "",
+    // (kept for an offline machine: each one's own line says which machine)
+    ...[...new Set(of("kept").map((x) => x.line))],
+  ].filter(Boolean)
+  return [...says, ...lines].join(" ")
+}
 const NOT_THEIRS = "only on the user's own words: answer it while answering their ask (Talk key) or their message to you that names the choice (made after it began waiting), with said quoting them; else ask them which"
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
@@ -197,6 +231,20 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     }))
     return here.reduce((t, f, i) => t.split(f).join(there[i]), text)
   }
+  /** Whether `e`, from asking `machine`, was it being offline (it reads offline now): a handoff for it then waits. A
+   *  machine that answered too slowly, maybe having done it, isn't. */
+  async function away(machine: string, e: unknown) {
+    if (!machine || !(e instanceof OpError) || e.status !== 502) return false
+    const m = await plugin.ask<Machine | null>("machines:machine", null, machine).catch(() => null)
+    return !!m && !m.self && !m.online
+  }
+  /** The account a job asked for, there on its machine (vau limits' ids), else a 404 saying which there are. */
+  async function accountThere(ctx: OpCtx, machine: string, p: Record<string, unknown>) {
+    const account = str(p.account).trim().toLowerCase()
+    if (!account || account === "default") return
+    if (machine) await atMachine(machine, "claude-code.limits", { account }, 10)
+    else await ctx.op("claude-code.limits", { account })
+  }
   const hostOf = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
   async function labelOf(machine: string) {
     const id = machine || await plugin.ask<string>("machines:self", "")
@@ -206,12 +254,21 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   // ---------- where it runs
 
-  /** Where an ask over `o` (or `cwd`, as given) runs here: its folder, repo and base, or why it never runs here. */
-  async function placeHere(o: Over, cwd: string): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; live?: boolean }> {
+  /** Where an ask over `o` (or `cwd`, or `repo`, as given) runs here: its folder, repo and base, or why it never runs
+   *  here. A folder or repo another machine names is this machine's own checkout of it (each keeps its repos in its place). */
+  async function placeHere(o: Over, cwd: string, repo = ""): Promise<Found & { repo: string; base: string; refused: string; missing?: boolean; looked?: string; have?: string; live?: boolean }> {
     const self = (await machines()).filter((m) => m.self).map((m) => hostOf(m.url)).filter(Boolean)
-    const found: Found = cwd ? { cwd: cwd.replace(/^~(?=$|\/)/, os.homedir()), why: "as asked" } : await resolveHere(o, plugin.vault.path, self)
-    // (a folder asked for that isn't here: said, so it's looked for elsewhere, never a job that fails to start)
-    if (cwd && !fs.statSync(found.cwd, { throwIfNoEntry: false })?.isDirectory()) return { ...found, repo: "", base: "", refused: "", missing: true }
+    const isDir = (d: string) => !!fs.statSync(d, { throwIfNoEntry: false })?.isDirectory()
+    const asked = cwd.replace(/^~(?=$|\/)/, os.homedir())
+    let found: Found
+    if (cwd && isDir(asked)) found = { cwd: asked, why: "as asked" }
+    else if (cwd || repo) {
+      const own = checkoutNamed(repo || asked), what = repo || path.basename(asked)
+      // (a folder asked for that isn't here, nor a checkout of it: said, so it's looked for elsewhere, never a job that fails to start)
+      if (!own) return { cwd: cwd ? asked : what, why: cwd ? `no folder ${tilde(asked)}, nor a checkout of ${what}` : `no checkout of ${what}`, repo: "", base: "", refused: "", missing: true,
+        looked: rootsLine(), have: checkoutsLine() }
+      found = { cwd: own, why: cwd ? `${tilde(asked)} is ${tilde(own)} here` : `${repo} is ${tilde(own)} here` }
+    } else found = await resolveHere(o, plugin.vault.path, self)
     const top = found.cwd === plugin.vault.path ? "" : await repoOf(found.cwd)
     const at = top || found.cwd
     return { ...found, cwd: at, repo: top ? at.split("/").pop()! : "", base: top ? await headOf(top) : "", refused: refusal(at, lines("jobs_never")) || refusal(found.cwd, lines("jobs_never")),
@@ -219,13 +276,15 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** A folder asked for with no machine, not here: on the machine jobs prefer (where the user's repos often are), else
    *  refused with where it was looked for. */
-  async function elsewhere(cwd: string, here: Placed): Promise<{ machine: string; there: Placed }> {
+  async function elsewhere(cwd: string, repo: string, here: Placed): Promise<{ machine: string; there: Placed }> {
     const all = await machines(), self = all.find((x) => x.self)
     const pick = preferredMachine(all, setting("jobs_machine"), await plugin.ask<string>("machines:vault", ""), self ? !!self.standalone : !inDesktop())
-    const far = pick.machine ? await atMachine(pick.machine.id, "companion.where", { cwd }, 6).catch(() => null) as Placed | null : null
-    if (pick.machine && far && !far.missing) return { machine: pick.machine.id, there: { ...far, why: `${far.why}, on ${pick.machine.label} (no such folder on ${await labelOf("")})` } }
-    throw new OpError(`there's no folder ${tilde(here.cwd)} on ${await labelOf("")}${pick.machine ? ` nor on ${pick.machine.label}` : ""}. Leave cwd out (it runs where the ask was), or give the folder as it is on a machine with machine`, 404)
+    const far = pick.machine ? await atMachine(pick.machine.id, "companion.where", { ...(cwd ? { cwd } : {}), ...(repo ? { repo } : {}) }, 6).catch(() => null) as Placed | null : null
+    if (pick.machine && far && !far.missing) return { machine: pick.machine.id, there: { ...far, why: `${far.why}, on ${pick.machine.label} (none on ${await labelOf("")})` } }
+    throw new OpError(`${await missingLine(here, "")}${pick.machine ? `, nor on ${pick.machine.label}${far ? "" : ` (it doesn't answer)`}` : ""}. Leave cwd out (it runs where the ask was), or name the repo (repo: each machine finds its own checkout) with machine`, 404)
   }
+  /** Why a folder or repo asked for isn't on `machine`, from what it looked at: never a guess. */
+  const missingLine = async (there: Placed, machine: string) => `on ${await labelOf(machine)}, ${there.why}${there.looked ? ` (looked in ${there.looked}; its checkouts: ${there.have || "none"})` : ""}`
   type Placed = Awaited<ReturnType<typeof placeHere>>
   /** Where a handoff runs: as asked (machine, cwd), else from the ask: an address another machine serves goes there; what
    *  nothing ties here (a note, research, a GitHub page or a pushed preview checked out there) goes to the machine jobs prefer. */
@@ -233,17 +292,17 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const o: Over = m ? { url: m.url, app: m.app, title: m.title, path: m.path, screen: m.screen, under: m.under } : {}
     let machine = str(p.machine).trim()
     if (machine && (await plugin.ask<Machine | null>("machines:machine", null, machine))?.self) machine = ""
-    const asked = !!machine || !!str(p.cwd)
+    const repo = str(p.repo).trim(), asked = !!machine || !!str(p.cwd) || !!repo
     if (!asked) {
       const hosts = Object.fromEntries((await machines()).filter((x) => !x.self && x.online).map((x) => [x.id, hostOf(x.url)]).filter(([, h]) => h))
       machine = machineOfUrl(o, hosts)?.machine ?? ""
     }
     let there = machine
-      ? await atMachine(machine, "companion.where", { ...(str(p.cwd) ? { cwd: str(p.cwd) } : {}), ...(o.url ? { url: o.url } : urlsIn(o)[0] ? { url: urlsIn(o)[0].href } : {}),
+      ? await atMachine(machine, "companion.where", { ...(str(p.cwd) ? { cwd: str(p.cwd) } : {}), ...(repo ? { repo } : {}), ...(o.url ? { url: o.url } : urlsIn(o)[0] ? { url: urlsIn(o)[0].href } : {}),
         ...(o.app ? { app: o.app } : {}), ...(o.title ? { title: o.title } : {}), ...(o.path ? { path: o.path } : {}) }) as unknown as Placed
-      : await placeHere(o, str(p.cwd))
-    if (there.missing && machine) throw new OpError(`there's no folder ${str(p.cwd)} on ${await labelOf(machine)}`, 404)
-    if (there.missing) ({ machine, there } = await elsewhere(str(p.cwd), there))
+      : await placeHere(o, str(p.cwd), repo)
+    if (there.missing && machine) throw new OpError(await missingLine(there, machine), 404)
+    if (there.missing) ({ machine, there } = await elsewhere(str(p.cwd), repo, there))
     let moved = ""
     if (!asked && !machine) ({ machine, there, moved } = await preferred(o, there))
     if (there.refused) throw new OpError(`it can't run there: ${there.refused}. Say so (where it would have run: ${tilde(there.cwd)})`, 403)
@@ -276,10 +335,12 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
   /** The Claude Code a job runs as when the handoff names none: the setting, with its account (claude_personal). */
   const jobsAgent = () => { const own = setting("jobs_agent") || "claude"; return own.split("_")[0] === "claude" ? own : "claude" }
-  /** Who works on it: the harness asked (Claude Code in the jobs' account by default), its model and effort. */
+  /** Who works on it: the harness asked (Claude Code in the jobs' account by default, else the account asked), its model and effort. */
   function harnessOf(p: Record<string, unknown>) {
-    const asked = str(p.agent) || "claude"
-    const agent = asked === "claude" ? jobsAgent() : asked
+    const asked = str(p.agent) || "claude", account = str(p.account).trim().toLowerCase()
+    if (account && asked !== "claude") throw new OpError("account is Claude Code's: leave agent out (or claude) to pick one of its accounts")
+    if (account && !/^[a-z0-9][\w.-]{0,40}$/.test(account)) throw new OpError(`'${account}' isn't an account's id: vau limits lists them (personal, agent...)`)
+    const agent = account ? (account === "default" ? "claude" : `claude_${account}`) : asked === "claude" ? jobsAgent() : asked
     const claude = agent.split("_")[0] === "claude"
     const model = str(p.model) || (claude ? setting("jobs_model") : ""), effort = str(p.effort) || (claude ? setting("jobs_effort") : "")
     const profile = parseTerminal(`${agent}-x`)?.profile ?? ""
@@ -539,9 +600,65 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       // (its change landed by anyone, however long ago it went ready: never only through its terminal's read)
       if (j.state === "ready for review" && j.where.repo && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) void ship(j).catch(() => {})
     }
+    // (what waits for a machine: looked at every 15 s, sent once it's back)
+    if (ticks % flushTicks === 0) void flush().catch((e) => console.error("companion: jobs:", e))
   }, 3000)
   timer.unref?.()
   plugin.onUnload(() => clearInterval(timer))
+
+  /** Follow-up `q` kept for job `j`'s machine (or added to its start, while it waits to start); false when that one
+   *  waits already. */
+  function keep(j: Job, q: Queued) {
+    const same = (a: string) => a.replace(/\s+/g, " ").trim().toLowerCase()
+    if (j.queued?.some((x) => x.note.split("\n").some((n) => same(n) === same(q.note)))) return false
+    const start = j.queued?.find((x) => x.start)
+    // (a job not started yet is told it with its task: typed into an agent still starting, it could be lost)
+    if (start && !q.land) start.text = `${start.text}\n\nAlso: ${q.text}`
+    if (start && !q.land) start.note = `${start.note}\n${q.note}`
+    else (j.queued ??= []).push(q)
+    if (q.title && start) j.title = q.title.replace(/\s+/g, " ").trim().slice(0, 80)
+    changed()
+    return true
+  }
+  /** What waits for a machine, sent once it's back, in order (as whoever handed it): a waiting job started, follow-ups
+   *  typed in. One that fails for another reason is dropped, said on its card. */
+  let flushing = false
+  async function flush() {
+    const waiting = all().filter((j) => j.queued?.length && j.state !== "stopped")
+    if (flushing || !waiting.length) return
+    flushing = true
+    try {
+      for (const j of waiting) {
+        const m = await plugin.ask<Machine | null>("machines:machine", null, j.where.machine).catch(() => null)
+        if (!m?.online) continue
+        while (j.queued?.length) {
+          const q = j.queued[0], by = q.by ?? whoOf("app/companion", null)
+          const ctx = { who: by, op: async (id: string, ps?: Record<string, unknown>) => (await plugin.runOp(id, ps ?? {}, by)).result } as unknown as OpCtx
+          try {
+            if (q.start) await startWaiting(ctx, j, q)
+            else if (q.land) await land(ctx, j, q.text, q.shown)
+            else await steer(ctx, j, q.text, q.shown)
+            if (q.title && !q.start) await retitle(ctx, j, q.title)
+            j.queued.shift()
+          } catch (e) {
+            if (await away(j.where.machine, e)) break
+            j.queued.shift()
+            const why = (e as Error).message
+            if (q.start) { j.now = why; move(j, "error") } else j.now = `Couldn't pass on "${cut(q.note, 60)}": ${why}`
+          }
+          changed()
+        }
+        if (!j.queued?.length) { delete j.queued; changed() }
+      }
+    } finally { flushing = false }
+  }
+  /** Job `j`, waiting for its machine, placed there and started now that it's back (its ask `q.ask`, its handoff `q.start`). */
+  async function startWaiting(ctx: OpCtx, j: Job, q: Queued) {
+    const p = q.start ?? {}
+    j.where = { ...await route(q.ask, p), ...harnessOf(p) }
+    await accountThere(ctx, j.where.machine, p)
+    await launch(ctx, j, q.text, q.ask, p)
+  }
 
   const jobOf = (id: string) => {
     const want = id.trim(), j = all().find((x) => x.id === want) ?? all().find((x) => want.length >= 3 && x.id.endsWith(want))
@@ -587,6 +704,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   async function close(ctx: OpCtx, j: Job) {
     // (the user's own stop: nothing new to tell them)
     if (move(j, "stop")) { j.seen = true; changed() }
+    // (one still waiting for its machine has no terminal yet)
+    if (!j.terminal) return
     await ctx.op("terminal.end", { id: terminalOf(j) }).catch((e: unknown) => { if (!(e instanceof OpError && (e.status === 404 || e.status === 502))) throw e })
   }
   /** The job whose terminal ask `m` was over (the pane they held the Talk key on), if any. */
@@ -605,27 +724,59 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   /** A new job doing `task` (told where it runs: what it's given may depend on it), placed by the ask it came from (`m`)
  *  unless `p` says where; started in its terminal. */
   async function begin(ctx: OpCtx, task: string | ((w: Where) => Promise<string>), m: Moment | undefined, p: Record<string, unknown>) {
-    const where: Where = { ...await route(m, p), ...harnessOf(p) }
+    const titleOf = (told: string) => (str(p.title).trim() || told.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
+    // (a machine asked for that's offline: the job waits for it, shown so in Jobs, never a retry left to them)
+    const asked = str(p.machine).trim()
+    let where: Where
+    try {
+      where = { ...await route(m, p), ...harnessOf(p) }
+      await accountThere(ctx, where.machine, p)
+    } catch (e) {
+      if (typeof task === "string" && await away(asked, e)) return await waitFor(ctx, task, titleOf(task), m, p, asked)
+      throw e
+    }
     const told = typeof task === "string" ? task : await task(where)
-    const now = Date.now(), title = (str(p.title).trim() || told.replace(/\s+/g, " ")).slice(0, 80).replace(/^(.{60,}?)\s.*$/, "$1…")
+    const now = Date.now()
+    const j: Job = { id: newId(), title: titleOf(told), state: "starting", where, terminal: "", now: "", ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now, seen: false, log: [] }
+    all().unshift(j)
+    try { await launch(ctx, j, told, m, p) } catch (e) {
+      if (typeof task !== "string" || !await away(where.machine, e)) throw e
+      all().splice(all().indexOf(j), 1)
+      return await waitFor(ctx, task, j.title, m, p, where.machine)
+    }
+    return j
+  }
+  /** A job handed to `machine` while it's offline: kept, waiting (Jobs shows it), started once it's back (flush). */
+  async function waitFor(ctx: OpCtx, task: string, title: string, m: Moment | undefined, p: Record<string, unknown>, machine: string) {
+    const now = Date.now(), label = await labelOf(machine), { say: _, ...start } = p
+    const where: Where = { machine, label, cwd: str(p.cwd), repo: "", why: `${label} is offline: it starts once it's back`, ...harnessOf(p) }
+    const j: Job = { id: newId(), title, state: "waiting", where, terminal: "", now: `Waiting for ${label} to come back`, ...(m ? { asked: m.t } : {}), started: now, turn: now, at: now,
+      seen: false, log: [], queued: [{ note: task, text: task, at: now, start: { ...start, machine }, ...(m ? { ask: m } : {}), by: ctx.who }] }
+    all().unshift(j)
+    j.carded = now
+    changed()
+    return j
+  }
+  /** Job `j`, placed (`j.where`), started in its terminal doing `told`, for ask `m`. */
+  async function launch(ctx: OpCtx, j: Job, told: string, m: Moment | undefined, p: Record<string, unknown>) {
+    const where = j.where
     // (`p.on` "": a job no page's asks go to live, as a QA walk's: it works through a list)
     const on = typeof p.on === "string" ? p.on : surfaceOf(m)
-    const id = newId()
+    if (on) j.on = on
     // (a coding job's own worktree, beside the checkout it was asked over: it lands only by their Keep and merge)
-    if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, id))
-    const j: Job = { id, title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), ...(on ? { on } : {}), started: now, turn: now, at: now, seen: false, log: [] }
-    all().unshift(j)
+    if (where.repo) Object.assign(where, worktreeOf(where.cwd, where.repo, j.id))
+    j.now = `starting in ${tilde(where.cwd)}`
     try {
-      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, jobTask(told, m, where, j.id)) : jobTask(told, m, where, j.id), name: title, cwd: where.cwd,
+      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, jobTask(told, m, where, j.id)) : jobTask(told, m, where, j.id), name: j.title, cwd: where.cwd,
         ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
         ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
       j.terminal = r.id.split("@")[0]
     } catch (e) {
-      j.now = (e as Error).message
-      move(j, "error")
-      changed()
+      // (its machine gone offline: it waits for it, so no failure)
+      if (!await away(where.machine, e)) { j.now = (e as Error).message; move(j, "error"); changed() }
       throw e
     }
+    move(j, "start")
     j.carded = Date.now()
     changed()
     return j
@@ -643,28 +794,37 @@ review, done, failed, stopped) with where it runs; opening it opens its terminal
 works in its own git worktree and branch beside the checkout (repo-<job id>, branch job-<job id>), never in the
 checkout itself, and ends ready for review (its diff, a preview's link): nothing ships, deploys or goes out unless they
 say so; Keep and merge (or land) lands it from that worktree and removes it. Every
-handoff announces itself in one short line ("Handed that off to a background agent."; a follow-up, "Passed that on to its job.");
-say replaces it, still one short line, only when they need more (a question, an unexpected place). End your turn. From
+handoff announces itself in one short line ("Handed that off to a background agent."; a follow-up, "Passed that on to its job.";
+several in one turn, one line naming their jobs);
+say replaces it, still one short line, only when they need more (a question, an unexpected place), or when their ask
+also asked you something (about you, Vaultite, what you can do): then say answers that too, in two short sentences at
+most. End your turn. account: a Claude Code account (vau limits lists them: personal, agent...), for a new job only.
+A machine that's offline keeps what's handed to it (a new job waits, shown so in Jobs; a follow-up waits on its job)
+and gets it once it's back, by itself: never ask them to retry. From
 another agent or a script (not the companion), nothing is said and no ask of the user's goes with it: task is all it has
 (nor from the companion, an ask long past: only the one it answers). job: a follow-up or a correction to one of yours (companion
 jobs), typed into its terminal; anything about its result ("merge it", "try X too") goes to it too, done or closed (it
-resumes), with land for their word to merge it. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
+resumes), with land for their word to merge it, and ask false when their ask isn't about its work. A folder the jobs may never run in (the setting jobs_never) is refused: say why.
 
   vau companion handoff "Make the header blue on this page"
   vau companion handoff "Use the darker blue instead" --job jd3k2h1g
-  vau companion handoff "They said merge it" --job jd3k2h1g --land`,
+  vau companion handoff "They said merge it" --job jd3k2h1g --land
+  vau companion handoff "Say hi" --account personal --machine m1`,
     kind: "write",
     lock: false,
     params: { task: { type: "string", required: true, description: "what to do, standing alone: the goal, where, what to end with (the ask's words, place and picture go with it); with job, a short note of what it's for: their words, place and picture go with it too" },
       say: { type: "string", description: "one short line instead of the default announcement (Handed that off to a background agent.), only when they need more (a question, an unexpected place it runs)" },
       agent: { type: "string", enum: ["claude", "codex", "opencode"], default: "claude", description: "who does it: Claude Code (on Opus, high, unless model says), Codex or OpenCode" },
+      account: { type: "string", description: "the Claude Code account it runs in, by its id as vau limits lists them on that machine (personal, agent, default...); default: the setting jobs_agent's" },
       model: { type: "string", description: "its model (default: the setting jobs_model for Claude Code, the agent's own else)" },
       effort: { type: "string", description: "how hard it thinks (default: the setting jobs_effort for Claude Code)" },
       title: { type: "string", description: "its name in the menu bar's Jobs (default: the task's first words); with job, its new name, when the follow-up changes what it's about" },
-      cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over" },
+      cwd: { type: "string", description: "the folder it works in (~ for home), instead of the one the ask was over; one not on that machine is its own checkout of that repo there" },
+      repo: { type: "string", description: "the repo it works in, by GitHub's owner/name or its folder's name (vaultite): each machine's own checkout of it (with machine: that one's)" },
       machine: { type: "string", description: "another of the Machines to run it on, by id (with cwd: that machine's folder)" },
       job: { type: "string", description: "a follow-up to this job of yours (its id): typed into its terminal" },
       land: { type: "boolean", description: "with job: their word to merge what it made (merge it, ship it): it's told to land it as its repo's rules say, and closes once merged" },
+      ask: { type: "boolean", default: true, description: "with job: false when their ask isn't about that job's work (questions to you, another errand, sending on what they asked before): only task goes, never their words" },
       which: { type: "string", description: "with job: their words naming that job, when their ask was over another job's terminal" }, as: d.as },
     args: ["task"],
     run: async (p, ctx) => {
@@ -673,31 +833,73 @@ resumes), with land for their word to merge it. A folder the jobs may never run 
       // (another agent's vau or a script, as the companion by its `who`: not its words, nor its user's ask)
       // (and only the ask its turn answers: one long past isn't what it hands off now)
       const own = d.own(name, ctx), latest = own ? d.askOf(name) : undefined, ask = latest && Date.now() - latest.t <= ANSWERING_MS ? latest : undefined
-      const told = async (line: string) => { if (own) { d.did(name, "handoff"); await d.say(ctx, name, str(p.say).trim() || line) } }
+      if (!own) return await handoff(p, ctx, task, ask, async () => {})
+      holding(name, ctx)
+      try { return await handoff(p, ctx, task, ask, async (t: Told) => { d.did(name, "handoff"); heldTold(name, { ...t, say: str(p.say).trim() }) }) }
+      finally { release(name) }
+    },
+    text: (r) => r.queued ? `Kept for later (${r.id}): "${r.title}". ${r.now}: it's sent by itself then, shown waiting in Jobs; nothing for them to retry. End your turn.`
+      : `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`,
+    did: (p) => ({ action: "run", text: p.job ? `Told the job ${p.job} ${quoted(p.task, 60)}` : `Handed off ${quoted(p.task, 60)}`, by: d.who(p) }),
+  })
+
+  // A turn's handoffs said in one line: each one's line held a moment (several come at once, one tool call each), then
+  // one line naming the jobs, never the default line per call.
+  const told = new Map<string, { ctx: OpCtx; calls: number; items: Told[]; timer?: ReturnType<typeof setTimeout> }>()
+  function holding(name: string, ctx: OpCtx) {
+    const t = told.get(name) ?? { ctx, calls: 0, items: [] }
+    clearTimeout(t.timer)
+    t.calls++
+    t.ctx = ctx
+    told.set(name, t)
+  }
+  const heldTold = (name: string, item: Told) => told.get(name)?.items.push(item)
+  function release(name: string) {
+    const t = told.get(name)
+    if (!t || --t.calls > 0) return
+    t.timer = setTimeout(() => {
+      told.delete(name)
+      const line = toldLine(t.items)
+      if (line) void d.say(t.ctx, name, line).catch((e) => console.error("companion: jobs:", e))
+    }, TELL_MS)
+    t.timer.unref?.()
+  }
+
+  async function handoff(p: Record<string, unknown>, ctx: OpCtx, task: string, ask: Moment | undefined, told: (t: Told) => Promise<void>) {
       // (an ask live editing sent straight to the job on its page: it has it already)
       const sent = ask?.live
       if (sent) throw new OpError(`this ask already went straight to the job ${sent} working on that page (live editing), which does it: end your turn`, 409)
       if (str(p.job)) {
         const j = jobOf(str(p.job))
-        // (their ask goes with it once: one the job was already given isn't told again)
-        const m = ask, fresh = m && m.t > (j.asked ?? 0) ? m : undefined
+        // (their ask goes with it once: one the job was already given isn't told again; none when it isn't about its work)
+        const m = ask, fresh = m && p.ask !== false && m.t > (j.asked ?? 0) ? m : undefined
         const unsureWhy = ctx.who.agent ? unsure(j, m, str(p.which)) : ""
         if (unsureWhy) throw new OpError(unsureWhy, 409)
-        if (p.land === true) await land(ctx, j, followTask(task, fresh), task)
-        else await steer(ctx, j, followTask(task, fresh))
+        if (str(p.account)) throw new OpError("account is a new job's: a job keeps the account it runs in")
+        const text = followTask(task, fresh), title = str(p.title).trim()
+        const q: Queued = { note: task, text, at: Date.now(), ...(p.land === true ? { land: true, shown: task } : {}), ...(title ? { title } : {}), by: ctx.who }
+        // (its machine offline, or one it waits for already: kept and passed on once it's back)
+        if (j.queued?.length) { const kept = keep(j, q); if (kept && fresh) j.asked = fresh.t; await told({ kind: "kept", title: j.title, line: kept ? `${j.where.label} is still offline: that goes to its job once it's back.` : `That's already waiting for ${j.where.label}.` }); return { ...cardOf(j), queued: true } }
+        try {
+          if (p.land === true) await land(ctx, j, text, task)
+          else await steer(ctx, j, text)
+        } catch (e) {
+          if (!await away(j.where.machine, e)) throw e
+          keep(j, q)
+          if (fresh) j.asked = fresh.t
+          await told({ kind: "kept", title: j.title, line: `${j.where.label} is offline: I'll pass that on to its job once it's back.` })
+          return { ...cardOf(j), queued: true }
+        }
         if (fresh) j.asked = fresh.t
-        if (str(p.title).trim()) await retitle(ctx, j, str(p.title))
-        await told(p.land === true ? "Told its job to merge it." : "Passed that on to its job.")
+        if (title) await retitle(ctx, j, title)
+        await told(p.land === true ? { kind: "land", title: j.title, line: "Told its job to merge it." } : { kind: "follow", title: j.title, line: "Passed that on to its job." })
         return cardOf(j)
       }
       const j = await begin(ctx, task, ask, p)
       // (every handoff of its own says so in a line, a routine one too: else it looked like nothing happened)
-      await told("Handed that off to a background agent.")
-      return { ...cardOf(j), why: j.where.why }
-    },
-    text: (r) => `Handed off (${r.id}): "${r.title}", ${r.state}, on ${r.where}${r.why ? ` (${r.why})` : ""}. The user sees it in Jobs: end your turn.`,
-    did: (p) => ({ action: "run", text: p.job ? `Told the job ${p.job} ${quoted(p.task, 60)}` : `Handed off ${quoted(p.task, 60)}`, by: d.who(p) }),
-  })
+      await told(j.state === "waiting" ? { kind: "kept", title: j.title, line: `${j.where.label} is offline: the job starts there once it's back.` } : { kind: "new", title: j.title, line: "Handed that off to a background agent." })
+      return { ...cardOf(j), why: j.where.why, ...(j.state === "waiting" ? { queued: true } : {}) }
+  }
 
   /** Words that close a job, said by them. */
   const CLOSES = /\b(close|stop|drop|cancel|discard|scrap|abandon|kill|end|forget|done with|don'?t need|throw)\b/
@@ -842,6 +1044,7 @@ its terminal (companion job-open).
     args: ["id"],
     run: async (p, ctx) => {
       const j = jobOf(str(p.id))
+      if (j.state === "waiting") throw new OpError(`"${j.title}" ${queuedLine(j).toLowerCase()}: it has no terminal yet`, 409)
       if (j.state !== "stopped" && await wake(ctx, j)) changed()
       opened.set(j.id, Date.now())
       seen([j.id])
@@ -895,13 +1098,26 @@ in one short line, merge it or close it as it is (each a button).
     cli: "companion where",
     owner: "the companion's jobs",
     summary: "Where a job asked over a page, an app's window or a note would run on this machine: the folder, its repo, why (another machine's companion asks it too).",
-    help: `  vau companion where --url http://localhost:5173
-  vau companion where --url https://github.com/lighthouse/site`,
+    help: `Where a repo is on each machine, read there (each keeps its repos in its own folders): say what it answers, never
+a guess from a look at one machine's folders.
+
+  vau companion where --url http://localhost:5173
+  vau companion where --url https://github.com/lighthouse/site
+  vau companion where --repo site --machine studio`,
     kind: "read",
     params: { url: { type: "string", description: "the page's address" }, app: { type: "string", description: "the app (its bundle id)" }, title: { type: "string", description: "its window's title" },
-      path: { type: "string", description: "a note's path" }, cwd: { type: "string", description: "a folder, as given" } },
-    run: async (p) => placeHere({ url: str(p.url) || undefined, app: str(p.app) || undefined, title: str(p.title) || undefined, path: str(p.path) || undefined }, str(p.cwd)),
-    text: (r) => `${tilde(r.cwd)}${r.repo ? ` (${r.repo})` : ""}: ${r.why}${r.refused ? `. Refused: ${r.refused}` : ""}`,
+      path: { type: "string", description: "a note's path" }, cwd: { type: "string", description: "a folder, as given (another machine's path to a repo finds this one's own checkout of it)" },
+      repo: { type: "string", description: "a repo, by GitHub's owner/name or its folder's name (vaultite): this machine's own checkout of it" },
+      machine: { type: "string", description: "ask that machine instead (its id, as Machines lists them)" } },
+    run: async (p) => {
+      const machine = str(p.machine).trim(), self = machine ? (await plugin.ask<Machine | null>("machines:machine", null, machine))?.self : true
+      const { machine: _, ...rest } = p
+      const r = self ? await placeHere({ url: str(p.url) || undefined, app: str(p.app) || undefined, title: str(p.title) || undefined, path: str(p.path) || undefined }, str(p.cwd), str(p.repo))
+        : await atMachine(machine, "companion.where", rest, 8) as unknown as Placed
+      return { ...r, label: await labelOf(self ? "" : machine) }
+    },
+    text: (r) => r.missing ? `On ${r.label}: ${r.why} (looked in ${r.looked ?? "its project folders"}). Its checkouts: ${r.have || "none"}.`
+      : `On ${r.label}: ${tilde(r.cwd)}${r.repo ? ` (${r.repo})` : ""}: ${r.why}${r.refused ? `. Refused: ${r.refused}` : ""}`,
   })
 
   plugin.op({

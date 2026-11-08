@@ -1782,7 +1782,7 @@ const lineText = (p: string, n: number) => { try { return readText(plugin.vault.
 // ---------- the always-on session
 
 /** What its session runs unasked: its own commands, reading the vault, and keeping what it learns of the user. */
-const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview", "vau remember", "vau dictation add", "vau watches", "vau tabs", "vau browser"]
+const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview", "vau remember", "vau dictation add", "vau watches", "vau tabs", "vau browser", "vau limits"]
 // The companion's session is session.json; another agent started by name (start --as Ada) is session-ada.json.
 const sessionFile = (name?: string | null) => `${plugin.localDir()}/${name && !isMain(name) ? `session-${key(name)}` : "session"}.json`
 /** A session as kept: its terminal, its model, and how many moments it was handed (a fresh one takes over past
@@ -2054,7 +2054,7 @@ function chatOptions(name: string, how: { runs?: string; agent?: string; model?:
 
 /** What the summoned session has besides its words (said, its tags pointing and marking): drawing more than a mark,
  *  reading or acting on a page, following, handing off. */
-const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "live-undo", "conversation", "tour", "tour-save"]
+const SUMMONED_TOOLS = ["pass", "open", "page", "draw", "layer", "see", "act", "check", "follow", "clear", "handoff", "where", "jobs", "job", "job-open", "job-stop", "job-answer", "job-show", "talk", "live-undo", "conversation", "tour", "tour-save"]
 /** What its words and tags become. */
 const SUMMONED_ACTS = ["say", "look", "draw"]
 /** Of Claude Code's own tools, the one it has: vau, to read the vault (ALLOWED's commands). */
