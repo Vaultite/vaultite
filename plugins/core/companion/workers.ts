@@ -431,16 +431,9 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   }
 
   // Its terminal here tells its changes (its hooks, OSC 7501, its end); one on another machine is asked now and then.
-  // (its own gone, it follows any terminal resuming its conversation: another account's id, a pin's)
   plugin.onEvent({ types: ["terminal.state", "terminal.ended"] }, (ev) => {
-    const id = str(ev.id), t = parseTerminal(id), here = all().filter((x) => !x.where.machine && x.state !== "stopped")
-    // (its own running first; else the latest job on that conversation, as an older one may still name this id)
-    const j = here.find((x) => x.terminal === id && !x.exited)
-      ?? (t?.resume && !t.machine ? here.filter((x) => x.exited && x.session === t.resume && x.where.agent.split("_")[0] === t.agent).sort((a, b) => b.turn - a.turn)[0] : undefined)
-      ?? here.find((x) => x.terminal === id)
-    if (!j) return
-    if (j.terminal !== id) { j.terminal = id; delete j.exited; delete j.closed }
-    void refresh(j).catch((e) => console.error("companion: jobs:", e))
+    const j = all().find((x) => !x.where.machine && x.terminal === str(ev.id))
+    if (j) void refresh(j).catch((e) => console.error("companion: jobs:", e))
   })
   let ticks = 0
   const timer = setInterval(() => {

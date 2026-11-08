@@ -14,8 +14,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   review (read from that agent's own conversation, not words another agent typed into it), and a refusal says why. A
   job the companion hands off long after your last ask no longer carries that ask.
 - **Jobs that landed their change close by themselves**: a job whose commit is on main is done, not left ready for
-  review; a job follows its conversation resumed in any terminal (another account's, a pinned tab's), so ending that
-  closes it, and one whose terminal is gone counts as ended. Pinned agent tabs keep their account.
+  review, and one whose terminal is gone counts as ended. Pinned agent tabs keep their account, so a job's pinned tab
+  is its own terminal and ending it closes the job.
 - **Device sync**: machines keep one vault without iCloud moving the notes: each trades its files' versions with the
   others over your network (the hub, any peer, or an iCloud mailbox), merges them by line or key, and keeps a real
   clash in the note to settle. Try it beside iCloud first with `vau sync shadow` (`vau sync`, `vau sync compare`).
