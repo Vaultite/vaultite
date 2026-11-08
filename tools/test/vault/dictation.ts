@@ -130,7 +130,7 @@ async function helper($: VaultTest, tmp: string) {
   const audio = path.join(tmp, "two.aiff")
   // (`say -o` writes a file, nothing is played)
   execFileSync("say", ["-o", audio, "Remember to buy milk and bread. [[slnc 1500]] Then call Alice Park about the lighthouse project."])
-  type Seen = { config: Any; auth: string; ctl: string[]; closed: boolean }
+  type Seen = { config: Any; auth: string; ctl: string[]; closed: boolean; bytes: number }
   const seen: Seen[] = []
   const srv = http.createServer()
   const wss = new WebSocketServer({ noServer: true })
@@ -138,7 +138,7 @@ async function helper($: VaultTest, tmp: string) {
     if (req.headers.authorization !== "Bearer test-key") return sock.end("HTTP/1.1 401 Unauthorized\r\n\r\n")
     const mode = req.url!.slice(1)
     wss.handleUpgrade(req, sock, head, (ws) => {
-      const s: Seen = { config: null, auth: req.headers.authorization!, ctl: [], closed: false }
+      const s: Seen = { config: null, auth: req.headers.authorization!, ctl: [], closed: false, bytes: 0 }
       seen.push(s)
       let bytes = 0, segs = 0, gone = false
       ws.on("error", () => {})
@@ -146,6 +146,7 @@ async function helper($: VaultTest, tmp: string) {
         if (gone) return
         if (binary) {
           bytes += d.length
+          s.bytes += d.length
           return ws.send(JSON.stringify({ tokens: [{ text: " pend", is_final: false }] }))
         }
         if (!s.config) {
@@ -172,8 +173,8 @@ async function helper($: VaultTest, tmp: string) {
   })
   await new Promise<void>((done) => srv.listen(0, "127.0.0.1", done))
   const port = (srv.address() as Any).port
-  const run = (mode: string, key = "test-key", more: string[] = []) => new Promise<Any[]>((done) => {
-    const c = spawn(bin, ["--file", audio, "--fast", ...more, "--engine", "apple", "--language", "en-US", "--words", "Alice Park,at Claude",
+  const run = (mode: string, key = "test-key", more: string[] = [], file = audio) => new Promise<Any[]>((done) => {
+    const c = spawn(bin, ["--file", file, "--fast", ...more, "--engine", "apple", "--language", "en-US", "--words", "Alice Park,at Claude",
       "--cloud", JSON.stringify({ url: `ws://127.0.0.1:${port}/${mode}`, key, languages: ["en", "pt"] })], { stdio: ["ignore", "pipe", "ignore"] })
     let out = ""
     c.stdout.on("data", (d) => (out += d))
@@ -197,6 +198,11 @@ async function helper($: VaultTest, tmp: string) {
     const bytes = tapped.filter((e) => e.type === "audio").reduce((n, e) => n + Buffer.from(e.data, "base64").length, 0)
     const secs = Number(/estimated duration: ([\d.]+)/.exec(execFileSync("/usr/bin/afinfo", [audio], { encoding: "utf8" }))?.[1])
     check("dictation helper: tapped, the mic's audio is told as it's heard (16-bit, 16 kHz), and words still come", Math.abs(bytes / 32_000 - secs - 2.5) < 0.3 && finals(tapped).length === 3 && !es.some((e) => e.type === "audio"), { bytes, secs })
+    // (far from the mic in a noisy room, speech is under 3x the noise: the pause detector hears none of it)
+    const noisy = path.join(tmp, "noisy.wav"), noisySecs = farInNoise(audio, noisy)
+    await run("ok", "test-key", [], noisy)
+    const got = seen.at(-1)!.bytes / 32_000
+    check("dictation helper: speech far off in a noisy room still all reaches Soniox", Math.abs(got - noisySecs - 2.5) < 0.3, { got, noisySecs })
     es = await run("drop")
     const fb = es.findIndex((e) => e.type === "fallback"), local = finals(es.slice(fb + 1)).join(" ")
     check("dictation helper: dropped mid-stream, what Soniox settled stays and this Mac hears the rest", fb > 0 && finals(es.slice(0, fb)).join() === "Segment 1." &&
@@ -216,4 +222,25 @@ async function helper($: VaultTest, tmp: string) {
     srv.close()
     wss.close()
   }
+}
+
+/** `speech` quiet, as from across the room, over a steady hum louder than its pauses (16 kHz float WAV): its seconds. */
+function farInNoise(speech: string, out: string) {
+  const raw = path.join(path.dirname(out), "raw.wav")
+  execFileSync("/usr/bin/afconvert", ["-f", "WAVE", "-d", "LEF32@16000", "-c", "1", speech, raw])
+  const b = fs.readFileSync(raw)
+  let i = 12
+  while (b.toString("latin1", i, i + 4) !== "data") i += 8 + b.readUInt32LE(i + 4)
+  const n = b.readUInt32LE(i + 4) / 4, x = new Float32Array(n)
+  let peak = 0
+  for (let k = 0; k < n; k++) peak = Math.max(peak, Math.abs(b.readFloatLE(i + 8 + k * 4)))
+  // (a seeded hum at ~0.03 RMS, speech peaking at 0.08: the room the user dictated in, recorded)
+  let seed = 7
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648) * 2 - 1
+  for (let k = 0; k < n; k++) x[k] = b.readFloatLE(i + 8 + k * 4) / peak * 0.08 + rnd() * 0.052
+  const h = Buffer.alloc(44)
+  h.write("RIFF", 0); h.writeUInt32LE(36 + n * 4, 4); h.write("WAVEfmt ", 8); h.writeUInt32LE(16, 16); h.writeUInt16LE(3, 20); h.writeUInt16LE(1, 22)
+  h.writeUInt32LE(16000, 24); h.writeUInt32LE(64000, 28); h.writeUInt16LE(4, 32); h.writeUInt16LE(32, 34); h.write("data", 36); h.writeUInt32LE(n * 4, 40)
+  fs.writeFileSync(out, Buffer.concat([h, Buffer.from(x.buffer)]))
+  return n / 16000
 }

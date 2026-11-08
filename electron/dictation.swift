@@ -351,7 +351,7 @@ final class FileSource: Source {
 // MARK: - Engines
 
 protocol Engine: AnyObject {
-    /// 16 kHz mono audio, in order: only while the user speaks and a moment around it (silence makes words up).
+    /// 16 kHz mono audio, in order: only while the user speaks and a moment around it (silence makes words up), unless it `hearsAll`.
     func feed(_ pcm: [Float])
     /// The user started speaking after a pause (the audio from a moment before comes next).
     func speech()
@@ -361,8 +361,11 @@ protocol Engine: AnyObject {
     func finish(_ done: @escaping () -> Void)
     /// Dropped unfinished (cancelled): let go of what it holds.
     func cancel()
+    /// Fed every sample, not only speech: one that noise doesn't make words up for (Soniox), so speech the pause
+    /// detector misses (far from the mic, in a noisy room) still reaches it.
+    var hearsAll: Bool { get }
 }
-extension Engine { func cancel() {} }
+extension Engine { func cancel() {}; var hearsAll: Bool { false } }
 
 /// Apple's DictationTranscriber (macOS 26): volatile results are the pending words, final ones the text.
 @available(macOS 26.0, *)
@@ -572,6 +575,10 @@ final class Soniox: NSObject, Engine, URLSessionWebSocketDelegate, @unchecked Se
     var asked = 0, fins = 0
     var finishing: (() -> Void)?
     var fallback: Engine?, falling = false
+    /// Gone to this Mac's engine: from then on it hears only speech, as that engine does (read on the session's queue).
+    let fellLock = NSLock()
+    var fellBack = false
+    var hearsAll: Bool { fellLock.lock(); defer { fellLock.unlock() }; return !fellBack }
     var timer: DispatchSourceTimer?, lastSent = Date()
 
     init(url: URL, key: String, model: String, languages: [String], words: [String], local: @escaping () async throws -> Engine) {
@@ -735,6 +742,7 @@ final class Soniox: NSObject, Engine, URLSessionWebSocketDelegate, @unchecked Se
     /// The cloud is gone: what it settled stays, this Mac's engine hears the rest again and goes on.
     func fail(_ why: String) {
         guard !closed, fallback == nil, !falling else { return }
+        fellLock.lock(); fellBack = true; fellLock.unlock()
         close()
         settle()
         falling = true
@@ -864,7 +872,7 @@ final class Session: @unchecked Sendable {
 
     func process(_ pcm: [Float]) {
         var i = 0
-        let frame = Int(RATE * 0.02)
+        let frame = Int(RATE * 0.02), all = engine?.hearsAll == true
         while i < pcm.count {
             let n = min(frame, pcm.count - i)
             let f = pcm[i..<(i + n)]
@@ -885,7 +893,7 @@ final class Session: @unchecked Sendable {
                     engine?.speech()
                     if !open {
                         open = true
-                        feeding = preroll
+                        feeding.append(contentsOf: preroll)
                         preroll = []
                     }
                 }
@@ -895,7 +903,7 @@ final class Session: @unchecked Sendable {
                 // (a breath inside a word isn't a pause)
                 if speaking && quietMs >= 250 { speaking = false }
             }
-            if open { feeding.append(contentsOf: f) } else {
+            if open || all { feeding.append(contentsOf: f) } else {
                 preroll.append(contentsOf: f)
                 if preroll.count > Session.PREROLL { preroll.removeFirst(preroll.count - Session.PREROLL) }
             }

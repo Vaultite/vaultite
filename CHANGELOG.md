@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Dictation keeps your words when you're far from the Mac**: with Soniox, all of the mic's audio reaches it, not
+  only what the pause detector took for speech; in a noisy room, words said away from the mic were dropped after the first few.
 - **A job on another machine sees what you pointed at**: when the companion hands an ask to a job on another of your
   Macs, the ask's picture of your screen and its close-up are copied there, so the job can look at them.
 - **Dark pages stay dark after every load**: a page that loaded in a fresh process (often a link to another site, or
