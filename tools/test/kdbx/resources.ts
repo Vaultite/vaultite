@@ -1,13 +1,7 @@
-// Upstream's test resources (tools/fixtures/kdbx) and the Argon2 the app uses (keepass.ts: noble's), in place of
-// upstream's asm.js build.
-import { argon2dAsync, argon2idAsync } from "@noble/hashes/argon2.js"
-import type { Argon2Fn } from "../../../electron/browser/kdbx/crypto-engine.ts"
+// Upstream's test resources (tools/fixtures/kdbx) and the Argon2 the app uses (argon2.ts), in place of upstream's asm.js
+// build.
 import { fixture } from "./mocha.ts"
-
-export const argon2: Argon2Fn = async (password, salt, memory, iterations, length, parallelism, type, version) => {
-  const fn = type === 2 ? argon2idAsync : argon2dAsync
-  return fn(new Uint8Array(password), new Uint8Array(salt), { m: memory, t: iterations, p: parallelism, dkLen: length, version })
-}
+export { argon2 } from "../../../electron/browser/argon2.ts"
 
 export const TestResources = {
   demoKdbx: fixture("demo.kdbx"), demoKey: fixture("demo.key"), demoXml: fixture("demo.xml"),

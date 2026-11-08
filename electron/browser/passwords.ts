@@ -209,13 +209,15 @@ handle("passwords:set", async (_win, file, password) => {
   const tmp = `${CONFIG()}.${process.pid}.tmp`
   fs.writeFileSync(tmp, JSON.stringify({ file, key: kept ? safeStorage.encryptString(password).toString("base64") : null }), { mode: 0o600 })
   fs.renameSync(tmp, CONFIG())
+  ;(await import("./argon2.ts")).forgetKeys()
   held = kept ? null : { file, password }
   openUntil = Date.now() + OPEN_MS
   changed()
   return { file, locked: false, touchId: touchId(), ...(kept ? {} : { held: true }) }
 })
-handle("passwords:forget", () => {
+handle("passwords:forget", async () => {
   fs.rmSync(CONFIG(), { force: true })
+  ;(await import("./argon2.ts")).forgetKeys()
   held = null
   lock()
   changed()

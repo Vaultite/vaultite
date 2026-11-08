@@ -1,16 +1,11 @@
 // The agents' KeePass file (agents.kdbx, the user's KeeShare export), read for logins.ts: which entries name a page's site
 // and, only as the app fills them, an entry's secrets. Node only (no Electron), so its tests run without the app.
-import { argon2dAsync, argon2idAsync } from "@noble/hashes/argon2.js"
 import crypto from "node:crypto"
+import { argon2 } from "./argon2.ts"
 import { CryptoEngine, Credentials, Kdbx, KdbxError, ProtectedValue, type KdbxEntry, type KdbxGroup } from "./kdbx/index.ts"
 import { getDomain } from "tldts-experimental"
 
-// Argon2, which KDBX 4 files are keyed with: Electron's crypto has none, so noble's (plain JS), yielding as it goes so
-// the app's main process never stalls.
-CryptoEngine.setArgon2Impl(async (password, salt, memory, iterations, length, parallelism, type, version) => {
-  const fn = type === 2 ? argon2idAsync : argon2dAsync
-  return fn(new Uint8Array(password), new Uint8Array(salt), { m: memory, t: iterations, p: parallelism, dkLen: length, version, asyncTick: 10 })
-})
+CryptoEngine.setArgon2Impl(argon2)
 
 /** The tag (KeePassXC's Tags field) that lets agents use an entry without asking the user each time. */
 export const FREE_TAG = "agent-free"

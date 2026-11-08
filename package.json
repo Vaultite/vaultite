@@ -78,6 +78,7 @@
     "electron-updater": "^6.8.9",
     "foliate-js": "1.0.1",
     "gemoji": "^8.1.0",
+    "hash-wasm": "~4.12.0",
     "ical.js": "^2.2.1",
     "katex": "^0.19.0",
     "linkedom": "^0.18.13",
@@ -147,7 +148,10 @@
       "output": "dist-app"
     },
     "asar": false,
-    "electronLanguages": ["en", "en-US"],
+    "electronLanguages": [
+      "en",
+      "en-US"
+    ],
     "npmRebuild": false,
     "afterPack": "electron/sign.cjs",
     "artifactBuildCompleted": "electron/dmg.cjs",
@@ -191,19 +195,51 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ],
       "hardenedRuntime": false,
       "fileAssociations": [
-        { "ext": ["md", "markdown"], "name": "Markdown", "role": "Editor", "rank": "Default" },
-        { "ext": "csv", "name": "CSV table", "role": "Editor", "rank": "Alternate" },
-        { "ext": ["html", "htm"], "name": "HTML page", "role": "Editor", "rank": "Alternate" },
-        { "ext": "txt", "name": "Plain text", "role": "Editor", "rank": "Alternate" }
+        {
+          "ext": [
+            "md",
+            "markdown"
+          ],
+          "name": "Markdown",
+          "role": "Editor",
+          "rank": "Default"
+        },
+        {
+          "ext": "csv",
+          "name": "CSV table",
+          "role": "Editor",
+          "rank": "Alternate"
+        },
+        {
+          "ext": [
+            "html",
+            "htm"
+          ],
+          "name": "HTML page",
+          "role": "Editor",
+          "rank": "Alternate"
+        },
+        {
+          "ext": "txt",
+          "name": "Plain text",
+          "role": "Editor",
+          "rank": "Alternate"
+        }
       ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Vaultite records audio into your notes when you ask it to, and web pages you allow use the microphone.",
@@ -216,8 +252,18 @@
           {
             "UTTypeIdentifier": "net.daringfireball.markdown",
             "UTTypeDescription": "Markdown",
-            "UTTypeConformsTo": ["public.plain-text"],
-            "UTTypeTagSpecification": { "public.filename-extension": ["md", "markdown"], "public.mime-type": ["text/markdown"] }
+            "UTTypeConformsTo": [
+              "public.plain-text"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md",
+                "markdown"
+              ],
+              "public.mime-type": [
+                "text/markdown"
+              ]
+            }
           }
         ]
       }
@@ -226,12 +272,24 @@
       "artifactName": "${productName}-${arch}.${ext}",
       "title": "${productName}",
       "background": "electron/mac/dmg-background.png",
-      "window": { "width": 660, "height": 400 },
+      "window": {
+        "width": 660,
+        "height": 400
+      },
       "iconSize": 128,
       "iconTextSize": 13,
       "contents": [
-        { "x": 170, "y": 180, "type": "file" },
-        { "x": 490, "y": 180, "type": "link", "path": "/Applications" }
+        {
+          "x": 170,
+          "y": 180,
+          "type": "file"
+        },
+        {
+          "x": 490,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        }
       ],
       "writeUpdateInfo": false
     },
@@ -253,10 +311,32 @@
       },
       "syncDesktopName": true,
       "fileAssociations": [
-        { "ext": ["md", "markdown"], "name": "Markdown", "mimeType": "text/markdown" },
-        { "ext": "csv", "name": "CSV table", "mimeType": "text/csv" },
-        { "ext": ["html", "htm"], "name": "HTML page", "mimeType": "text/html" },
-        { "ext": "txt", "name": "Plain text", "mimeType": "text/plain" }
+        {
+          "ext": [
+            "md",
+            "markdown"
+          ],
+          "name": "Markdown",
+          "mimeType": "text/markdown"
+        },
+        {
+          "ext": "csv",
+          "name": "CSV table",
+          "mimeType": "text/csv"
+        },
+        {
+          "ext": [
+            "html",
+            "htm"
+          ],
+          "name": "HTML page",
+          "mimeType": "text/html"
+        },
+        {
+          "ext": "txt",
+          "name": "Plain text",
+          "mimeType": "text/plain"
+        }
       ]
     },
     "appImage": {
@@ -267,10 +347,19 @@
       "packageCategory": "editors"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "electron/win/icon.ico",
       "fileAssociations": [
-        { "ext": ["md", "markdown"], "name": "Vaultite.Markdown", "description": "Markdown" }
+        {
+          "ext": [
+            "md",
+            "markdown"
+          ],
+          "name": "Vaultite.Markdown",
+          "description": "Markdown"
+        }
       ]
     },
     "nsis": {
@@ -283,11 +372,16 @@
     "protocols": [
       {
         "name": "Vaultite",
-        "schemes": ["vaultite"]
+        "schemes": [
+          "vaultite"
+        ]
       },
       {
         "name": "Web page",
-        "schemes": ["http", "https"],
+        "schemes": [
+          "http",
+          "https"
+        ],
         "role": "Viewer"
       }
     ],
@@ -301,7 +395,13 @@
     "node-pty": false
   },
   "overrides": {
-    "@excalidraw/excalidraw": { "nanoid": "^3.3.20", "@excalidraw/mermaid-to-excalidraw": { "nanoid": "^5.1.16", "katex": "^0.18.10" } },
+    "@excalidraw/excalidraw": {
+      "nanoid": "^3.3.20",
+      "@excalidraw/mermaid-to-excalidraw": {
+        "nanoid": "^5.1.16",
+        "katex": "^0.18.10"
+      }
+    },
     "lodash-es": "^4.18.1"
   }
 }

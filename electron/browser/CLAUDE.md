@@ -68,6 +68,8 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   Electron has no back/forward cache, not even with Chromium's BackForwardCache feature on: web/qa/agentlogins.mjs).
 - KeePass files are kdbx/ (kdbxweb, ours now: PROVENANCE.md says what we changed from upstream; a change there goes in
   it too). Node's crypto in Electron is BoringSSL, without ChaCha20 or Argon2: test a crypto change in the app too.
+  Argon2 is argon2.ts (hash-wasm in a worker, each key kept): passwords.ts reads the file for every call, so a
+  derivation per read would cost seconds each.
 - A login its entry's tag doesn't free waits for the user's passkey, verified here (presence.ts), never for a yes an
   agent could give. A passkey is added only by a code the app shows, then Touch ID: agents have computer use, so a
   click proves nothing. The list is encrypted with the Keychain's key.

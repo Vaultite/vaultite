@@ -82,6 +82,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   someone sees the page (its tab or the agents card on a Mac someone is at, or a live view from another device).
 - **Passwords' KeePass files are read and written by Vaultite's own code** (kdbxweb, brought in and hardened): damaged
   or hostile files are refused clearly, tabs in notes are kept, and KDBX 4.1 files save with dates KeePass accepts.
+  Unlocking, locking and listing are near instant: a file's key is derived once per save, five times faster, and
+  never stalls the app.
 - **The inbox is for decisions**: each question an agent asks is its own item, its options as buttons and the default
   it takes if you don't answer. The ones it waits on come first, with a toast and a push to your phone; the ones where
   it went with the default already wait quietly, with Accept all defaults. The same question from two agents is one

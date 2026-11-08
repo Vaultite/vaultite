@@ -7,6 +7,8 @@ import os from "node:os"
 import path from "node:path"
 import * as k from "../../../electron/browser/kdbx/index.ts"
 import { gunzip, gzip } from "../../../electron/browser/kdbx/gzip.ts"
+import { argon2dAsync, argon2idAsync } from "@noble/hashes/argon2.js"
+import { argon2, forgetKeys } from "../../../electron/browser/argon2.ts"
 import { MaxArgon2Memory } from "../../../electron/browser/kdbx/key-encryptor-kdf.ts"
 import { MaxDepth, parseXml, serializeXml } from "../../../electron/browser/kdbx/xml.ts"
 import { check, section, skip } from "../lib.ts"
@@ -240,6 +242,26 @@ await section("kdbx hostile headers", async () => {
   let lie = "?"
   try { k.VarDictionary.read(new k.BinaryStream(k.ByteUtils.arrayToBuffer(k.ByteUtils.hexToBytes("0001420100000041ffff0000")))) } catch (e) { lie = (e as k.KdbxError).code }
   check("hostile: a KDF parameter longer than its dictionary is refused", lie === "FileCorrupt", lie)
+})
+
+await section("kdbx argon2", async () => {
+  const hex = (b: ArrayBuffer | Uint8Array) => Buffer.from(new Uint8Array(b)).toString("hex")
+  for (const [name, type, version] of [["Argon2d 1.3", 0, 0x13], ["Argon2id 1.3", 2, 0x13], ["Argon2d 1.0", 0, 0x10], ["Argon2id 1.0", 2, 0x10]] as const) {
+    const pw = crypto.randomBytes(32), salt = crypto.randomBytes(32)
+    const want = hex(await (type === 2 ? argon2idAsync : argon2dAsync)(pw, salt, { m: 1024, t: 3, p: 2, dkLen: 32, version }))
+    check(`argon2: ${name} is noble's (the reference)`, hex(await argon2(pw.buffer.slice(pw.byteOffset, pw.byteOffset + 32), salt.buffer.slice(salt.byteOffset, salt.byteOffset + 32), 1024, 3, 32, 2, type, version)) === want)
+  }
+  const pw = crypto.randomBytes(32).buffer, salt = crypto.randomBytes(32).buffer
+  const first = new Uint8Array(await argon2(pw, salt, 8192, 4, 32, 2, 0, 0x13)), want = hex(first)
+  first.fill(0)
+  let t = Date.now()
+  const again = await argon2(pw, salt, 8192, 4, 32, 2, 0, 0x13)
+  check("argon2: the same inputs again come kept, unharmed by the caller zeroing the first", hex(again) === want && Date.now() - t < 20, Date.now() - t)
+  check("argon2: another salt derives anew", hex(await argon2(pw, crypto.randomBytes(32).buffer, 8192, 4, 32, 2, 0, 0x13)) !== want)
+  forgetKeys()
+  check("argon2: forgotten keys derive again, the same", hex(await argon2(pw, salt, 8192, 4, 32, 2, 0, 0x13)) === want)
+  const both = await Promise.all([argon2(pw, salt, 1024, 1, 32, 1, 2, 0x13), argon2(pw, salt, 1024, 1, 32, 1, 2, 0x13)])
+  check("argon2: two asks at once share one derivation", hex(both[0]) === hex(both[1]))
 })
 
 await section("kdbx decompression", async () => {
