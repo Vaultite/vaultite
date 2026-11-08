@@ -237,6 +237,9 @@ function askLines(m: Moment | undefined) {
   ].filter(Boolean) : []
   return asked
 }
+/** The helper's pictures of the screen `text` names (a path in a screens folder, by the names it gives them), each once:
+ *  what a job on another machine is given copies of. */
+export const picturesIn = (text: string) => [...new Set(text.match(/\/[^\n"·:()]*?\/screens\/(?:window|display|close)-\d+-\d+\.png/g) ?? [])]
 /** The worktree and branch job `id` works in, beside checkout `cwd` of `repo`: "~/Projects/site" → "~/Projects/site-<id>". */
 export function worktreeOf(cwd: string, repo: string, id: string) {
   const parent = cwd.replace(/\/+$/, "").replace(/\/[^/]+$/, "") || "/"

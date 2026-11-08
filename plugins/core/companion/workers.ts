@@ -3,9 +3,10 @@
 import { execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
+import path from "node:path"
 import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, HANDED, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Result, resumeOf,
+import { cardOf, choiceIn, commitsIn, endEvent, HANDED, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, picturesIn, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
@@ -49,6 +50,8 @@ const KEEP = 40, KEEP_DAYS = 7
 let SHIP_READ = 5 * 60_000
 /** Another interval (the tests'). */
 export const shipEvery = (ms: number) => { SHIP_READ = ms }
+/** A picture of the screen handed on by another machine (a Retina display's PNG is a few MB), at most; its first bytes. */
+const PICTURE_MAX = 40 << 20, PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 /** How long after the user's ask the companion's handoff is still its answer (its words and place go with it). */
 const ANSWERING_MS = 10 * 60_000
 /** How long a job done keeps its terminal: follow-ups mostly come within a minute or two, and still find it running. */
@@ -178,6 +181,21 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const out = await r.json().catch(() => ({})) as Record<string, unknown>
     if (!r.ok) throw new OpError(`${m.label}: ${str(out.error) || `answered ${r.status}`}`, r.status)
     return out
+  }
+  /** `text` with the pictures of the user's screen it names copied to `machine` (its worker can't read this one's files),
+   *  named by their paths there; one that couldn't be copied keeps its path here. */
+  async function carry(machine: string, text: string) {
+    const here = picturesIn(text).filter((f) => fs.existsSync(f))
+    const m = here.length ? await plugin.ask<Machine | null>("machines:machine", null, machine) : null
+    if (!m || m.self || !m.online) return text
+    const there = await Promise.all(here.map(async (f) => {
+      const r = await fetch(`${m.url}/api/ops/companion.picture-take?name=${encodeURIComponent(path.basename(f))}`, { method: "POST",
+        headers: { ...MACHINE_CLIENT, "Content-Type": "image/png" }, body: fs.readFileSync(f), signal: AbortSignal.timeout(15_000) }).catch(() => null)
+      const to = str((r?.ok ? await r.json().catch(() => null) : null)?.path)
+      if (!to) console.error(`companion: jobs: couldn't copy ${path.basename(f)} to ${m.label}${r ? ` (${r.status})` : ""}`)
+      return to || f
+    }))
+    return here.reduce((t, f, i) => t.split(f).join(there[i]), text)
   }
   const hostOf = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
   async function labelOf(machine: string) {
@@ -483,6 +501,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
    *  editing's summary and next ask), then its old terminal ended. Its card shows `shown`. */
   async function fresh(ctx: OpCtx, j: Job, text: string, shown = text) {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
+    if (j.where.machine) text = await carry(j.where.machine, text)
     const old = terminalOf(j), was = await seenOf(j).catch(() => null)
     // (the new one's first: the old one's end then finds no job of its, so it can't move this one or claim its terminal)
     await startIn(ctx, j, text)
@@ -540,6 +559,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
    *  its terminal closed or ended, its conversation resumed with it. */
   async function steer(ctx: OpCtx, j: Job, text: string, shown = text) {
     if (j.state === "stopped") throw new OpError(`${j.id} was stopped: hand it off again`, 409)
+    if (j.where.machine) text = await carry(j.where.machine, text)
     const s = await seenOf(j).catch(() => null)
     if (s && !s.running) {
       if (!j.exited) await ended(j, s)
@@ -596,7 +616,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
     const j: Job = { id, title, state: "starting", where, terminal: "", now: `starting in ${tilde(where.cwd)}`, ...(m ? { asked: m.t } : {}), ...(on ? { on } : {}), started: now, turn: now, at: now, seen: false, log: [] }
     all().unshift(j)
     try {
-      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: jobTask(told, m, where, j.id), name: title, cwd: where.cwd,
+      const r = await ctx.op("terminal.start", { agent: where.agent, prompt: where.machine ? await carry(where.machine, jobTask(told, m, where, j.id)) : jobTask(told, m, where, j.id), name: title, cwd: where.cwd,
         ...(where.model ? { model: where.model } : {}), ...(where.effort ? { effort: where.effort } : {}),
         ...(where.agent.split("_")[0] === "claude" && setting("jobs_mode") ? { mode: setting("jobs_mode") } : {}), ...(where.machine ? { machine: where.machine } : {}) }) as { id: string }
       j.terminal = r.id.split("@")[0]
@@ -899,6 +919,33 @@ in one short line, merge it or close it as it is (each a button).
     args: ["id"],
     run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base), tree: str(p.tree), branch: str(p.branch), said: str(p.said), context: p.context === true,
       ...(marksIn(p.marks) ? { marks: marksIn(p.marks)! } : {}) }),
+  })
+
+  /** A picture of the user's screen another machine's companion hands on with an ask, for a job here: kept a day, out of
+   *  the vault (its worker reads it by the path answered). */
+  plugin.op({
+    id: "companion.picture-take",
+    owner: "the companion's jobs",
+    summary: "Keep a picture of the user's screen on this machine for a job here (another machine's companion hands an ask's pictures on this way): answers its path.",
+    kind: "write",
+    lock: false,
+    input: "the picture (PNG)",
+    params: { name: { type: "string", required: true, description: "its file name, as the helper named it (display-746-1794124886020.png)" } },
+    run: async (p, ctx) => {
+      const name = str(p.name)
+      if (!/^(?:window|display|close)-\d+-\d+\.png$/.test(name)) throw new OpError(`'${name}' isn't a picture of the screen's name (display-<n>-<n>.png)`)
+      if (!ctx.input) throw new OpError("send the picture's bytes as the request's body")
+      const chunks: Buffer[] = []
+      let n = 0
+      for await (const c of ctx.input) { n += c.length; if (n > PICTURE_MAX) throw new OpError("the picture is too large", 413); chunks.push(c) }
+      const bytes = Buffer.concat(chunks)
+      if (!bytes.subarray(0, 8).equals(PNG)) throw new OpError("that isn't a PNG")
+      const dir = path.join(plugin.localDir(), "screens")
+      fs.mkdirSync(dir, { recursive: true })
+      for (const f of fs.readdirSync(dir)) { try { if (Date.now() - fs.statSync(path.join(dir, f)).mtimeMs > 86_400_000) fs.rmSync(path.join(dir, f)) } catch { /* gone */ } }
+      fs.writeFileSync(path.join(dir, name), bytes)
+      return { path: path.join(dir, name) }
+    },
   })
 
   /** Jobs the user opened: no longer news. */

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A job on another machine sees what you pointed at**: when the companion hands an ask to a job on another of your
+  Macs, the ask's picture of your screen and its close-up are copied there, so the job can look at them.
 - **Sync's conflicts list holds while a note's history is still arriving**: a device that had a version but not
   yet its parent (made on a third device) failed listing conflicts, and could stop syncing.
 - **The companion's chat writes notes no window shows**: an edit its Claude Code chat session makes to a note that

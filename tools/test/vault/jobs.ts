@@ -93,6 +93,13 @@ export default async ($: VaultTest) => {
       check("jobs: its conversation resumes in its account's terminal", J.resumeOf({ session: "s-123", where: { agent: "claude_agent" } as Any }) === "resume-claude_agent-s-123" &&
         J.resumeOf({ where: { agent: "claude" } as Any }) === "")
     }
+    {
+      const shot = "/Users/alice/Library/Application Support/Vaultite Main/screens/display-746-1794124886020.png", close = "/Users/alice/Library/Application Support/Vaultite Main/screens/close-746-1794124886021.png"
+      const m: Any = { kind: "ask", t: 1, seq: 1, text: "what's this?", path: "Notes/Ideas.md", under: "a/b c", shot, closeUp: { shot, at: { x: 0, y: 0, width: 9, height: 9 }, scale: 3 } }
+      const followed = J.followTask("Look again", { ...m, closeUp: { ...m.closeUp, shot: close } }), started = J.jobTask("Look", m)
+      check("jobs: the pictures an ask hands a worker are found in what it's told (a path with spaces, on one line with the rest), each once",
+        J.picturesIn(followed).join("|") === `${shot}|${close}` && J.picturesIn(started).join("|") === shot && !J.picturesIn("see /tmp/screens/other.png").length, [J.picturesIn(followed), followed])
+    }
     check("jobs: a PR and a preview's link from the worker's last message", JSON.stringify(J.linksIn("Done. PR: https://github.com/lighthouse/site/pull/12, try http://localhost:5173/about.")) ===
       JSON.stringify({ pr: "https://github.com/lighthouse/site/pull/12", link: "http://localhost:5173/about" }) && J.linksIn("nothing", "https://m1.tail1.ts.net:8450").link === "https://m1.tail1.ts.net:8450")
   }
@@ -639,18 +646,30 @@ setTimeout(draw, 300)
     }
   }
 
+  // A picture another machine's companion hands on for a job here: kept out of the vault, by the helper's name only.
+  {
+    const { Readable } = await import("node:stream")
+    const take = (name: string, bytes: Buffer) => app.runOp("companion.picture-take", { name }, { input: Readable.from([bytes]) }).then((r) => r.result as Any, (e: Error) => e.message)
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(500, 1)])
+    const got = await take("close-3-44.png", png), bad = await take("../x.png", png), notPng = await take("display-1-2.png", Buffer.from("hello"))
+    check("picture-take: a picture handed on is kept on this machine, out of the vault, and its path answered; a name not the helper's, or not a PNG, refused",
+      typeof got?.path === "string" && got.path.endsWith("/screens/close-3-44.png") && !got.path.startsWith(VAULT) && fs.readFileSync(got.path).equals(png) &&
+      /isn't a picture of the screen's name/.test(bad) && /isn't a PNG/.test(notPng), [got, bad, notPng])
+  }
+
   // Another machine's job: where and its worker asked of that machine's companion, its terminal started and ended there.
   {
     const http = await import("node:http")
     const calls: Any[] = []
     let stage = "working", farHas = true, landed = false
     const server = http.createServer((req, res) => {
-      let body = ""
-      req.on("data", (d) => (body += d))
+      const chunks: Buffer[] = []
+      req.on("data", (d) => chunks.push(d))
       req.on("end", () => {
-        const op = req.url!.replace("/api/ops/", ""), p = body ? JSON.parse(body) : {}
+        const [op, qs] = req.url!.replace("/api/ops/", "").split("?"), raw = Buffer.concat(chunks), png = op === "companion.picture-take"
+        const p = png ? { ...Object.fromEntries(new URLSearchParams(qs)), bytes: raw.length } : raw.length ? JSON.parse(String(raw)) : {}
         calls.push({ op, p, client: req.headers["x-vaultite-client"] })
-        const out: Any = op === "companion.where" ? (farHas ? { cwd: "/home/alice/Projects/site", repo: "site", base: "abc123", why: "as asked", refused: "" }
+        const out: Any = png ? { path: `/home/alice/.vaultite/local/companion/screens/${p.name}` } : op === "companion.where" ? (farHas ? { cwd: "/home/alice/Projects/site", repo: "site", base: "abc123", why: "as asked", refused: "" }
             : { cwd: "/home/alice/Vault", repo: "", base: "", why: "nothing on screen named a project: the vault", from: "vault", refused: "" })
           : op === "terminal.start" ? { id: "claude-remote1" }
           : op === "companion.worker" ? (stage === "working" ? { running: true, state: "working", title: "✳ Editing the header", typed: Date.now(), ...(p.turn ? { turn: { text: "", files: [], at: 0, final: false, session: "rs1" } } : {}) }
@@ -697,11 +716,22 @@ setTimeout(draw, 300)
       // (its own ask over the GitHub page: an earlier block's may be no longer the last; heard only while the companion is on)
       await api("PATCH", "config/plugin/companion", { mode: "quiet" })
       await waitFor(async () => (await api("POST", "ops/companion.status", {}))[1].mode !== "off", 5000, 50)
-      ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "research the header", app: "com.example.browser", title: "Site", screen: "https://github.com/lighthouse/site", sx: 10, sy: 20 })
+      // (its pictures in the helper's folder here, under a name with a space as Application Support's)
+      const shots = path.join($.tmp, "Vaultite Main", "screens"), shot = path.join(shots, "display-7-1001.png"), close = path.join(shots, "close-7-1002.png")
+      fs.mkdirSync(shots, { recursive: true })
+      const pngBytes = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(3000, 7)])
+      fs.writeFileSync(shot, pngBytes); fs.writeFileSync(close, pngBytes.subarray(0, 1200))
+      ;(await import("../../../plugins/core/companion/plugin.ts")).screenMoment({ kind: "ask", agent: "Claude", text: "research the header", app: "com.example.browser", title: "Site", screen: "https://github.com/lighthouse/site", sx: 10, sy: 20,
+        shot, shotAt: { x: 0, y: 0, width: 800, height: 600 }, closeUp: { shot: close, at: { x: 0, y: 0, width: 100, height: 60 }, scale: 3, mark: "pointer" } })
       ;[st, b] = await asItsTool(() => api("POST", "ops/companion.handoff", { task: "Research the header", say: "On it." }, agent))
       job = b
       check("handoff with nothing tying it here (the ask's GitHub page): on the always-on machine, only the page passed on", st === 200 && b.where.startsWith("Studio") && /Studio \(always on\)/.test(b.why) &&
         JSON.stringify(calls.find((c) => c.op === "companion.where")?.p) === JSON.stringify({ url: "https://github.com/lighthouse/site" }), [st, b, calls])
+      const told = calls.find((c) => c.op === "terminal.start")?.p.prompt ?? "", took = calls.filter((c) => c.op === "companion.picture-take")
+      check("handoff on another machine: the ask's picture and close-up copied there (machine to machine), the worker told their paths there, never this one's",
+        took.map((c) => `${c.p.name}:${c.p.bytes}`).sort().join() === "close-7-1002.png:1200,display-7-1001.png:3008" && took.every((c) => c.client?.startsWith("machine/")) &&
+        told.includes("Their screen then (a picture): /home/alice/.vaultite/local/companion/screens/display-7-1001.png") &&
+        told.includes("(3× as large): /home/alice/.vaultite/local/companion/screens/close-7-1002.png") && !told.includes(shots), [took, told])
       await waitFor(async () => (await api("POST", "ops/companion.job", { id: job.id }))[1].session === "rs1", 10000, 200)
       stage = "gone"
       const shipped = await waitFor(async () => { const r = (await api("POST", "ops/companion.job", { id: job.id }))[1]; return r.state !== "working" && r }, 15000, 300)
