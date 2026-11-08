@@ -414,7 +414,12 @@ function takeSpare(profile: string) {
 async function readyView(profile: string) {
   const view = takeSpare(profile) ?? newView(profile), wc = view.webContents
   if (!wc.getURL()) void wc.loadURL("about:blank").catch(() => {})
-  if (wc.isLoading()) await new Promise<void>((done) => { const t = setTimeout(done, 2000); wc.once("did-stop-loading", () => { clearTimeout(t); done() }) })
+  // (the 2 s up first: its listener taken off, not left on the view for good)
+  if (wc.isLoading()) await new Promise<void>((done) => {
+    const loaded = () => { clearTimeout(t); done() }
+    const t = setTimeout(() => { wc.removeListener("did-stop-loading", loaded); done() }, 2000)
+    wc.once("did-stop-loading", loaded)
+  })
   return view
 }
 

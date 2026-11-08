@@ -48,9 +48,12 @@ export async function vaultHarness(from?: string) {
   fs.cpSync(path.join(TOOLS, "fixtures", "codex"), CODEX_DIR, { recursive: true })
   Object.assign(process.env, { CLAUDE_CONFIG_DIR: CLAUDE_DIR, CODEX_HOME: CODEX_DIR })
   // Nor this machine's agents (a real one asked for limits writes into the made-up homes): ones that answer nothing,
-  // first on PATH; a test wanting one puts its own before them.
+  // first on PATH; a test wanting one puts its own before them. Each run's arguments are kept (<name>.runs, a JSON line).
   const bin = path.join(tmp, "agents-bin")
-  for (const name of ["claude", "codex"]) standIn(bin, name, "process.exitCode = 1\n")
+  for (const name of ["claude", "codex"]) standIn(bin, name, `import fs from "node:fs"
+fs.appendFileSync(new URL("./${name}.runs", import.meta.url), JSON.stringify(process.argv.slice(2)) + "\\n")
+process.exitCode = 1
+`)
   process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`
   // The app's bundles with their installs pinned to a made-up Vaultite/plugins (tools/test/official.ts), which a test
   // reaches through VAULTITE_GITHUB.

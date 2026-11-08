@@ -227,6 +227,10 @@ export default async ($: VaultTest) => {
     check("vau limits: each account's week left and when it renews, most room first, and what a plugin runs on it",
       lc === 200 && w?.week_left === 62.5 && w.renews && !w.session_full && JSON.stringify(w.uses) === JSON.stringify(["Companion chat"]) &&
       lim.accounts.length === 2 && left.every((x: number, i: number) => !i || left[i - 1] >= x), lim)
+    // (a test run never asks Claude Code itself: a QA server's would ask the user's real logins)
+    const runs = fs.existsSync(path.join($.AGENTS_BIN, "claude.runs")) ? fs.readFileSync(path.join($.AGENTS_BIN, "claude.runs"), "utf8").trim().split("\n").filter(Boolean) : []
+    const probes = runs.filter((r) => r.includes('"--input-format"') && r.includes('"--no-session-persistence"'))
+    check("claude limits: a test run never runs claude to ask its usage", probes.length === 0, probes)
     const [, lt] = await api("POST", "ops/claude-code.limits?as=text", {})
     check("vau limits: as text, one line each", /^Work \(work\): 62\.5% of the week left, renews .+\(in 3 days\)$/m.test(String(lt)) &&
       String(lt).split("\n").length === 2, lt)

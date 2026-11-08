@@ -293,10 +293,10 @@ let askingReal = ""
 let sampleReal = ""
 const isAsking = (cwd: string) => (!!askingReal && cwd === askingReal) || cwd === (sampleReal ||= (() => { try { return fs.realpathSync(SAMPLE_DIR) } catch { return "" } })())
 
-/** Asks Claude Code (stream-json, its SDK's control requests; no prompt, so nothing is sent to a model) what the
- *  account's plan has used: what /usage shows, with the account's own login. Null when it can't say. */
+/** Asks Claude Code (stream-json, no prompt: nothing reaches a model) what the account's plan has used, as /usage
+ *  shows. Null when it can't say, and in a test run (its servers would ask with the user's real logins). */
 function askClaude(dir: string): Promise<Item | null> {
-  const bin = findBin("claude")
+  const bin = process.env.VAULTITE_TEST === "1" ? null : findBin("claude")
   if (!bin) return Promise.resolve(null)
   try { fs.mkdirSync(ASKING_DIR, { recursive: true }); askingReal ||= fs.realpathSync(ASKING_DIR) } catch { return Promise.resolve(null) }
   const env: NodeJS.ProcessEnv = { ...process.env, PATH: [path.dirname(bin), process.env.PATH].filter(Boolean).join(":") }

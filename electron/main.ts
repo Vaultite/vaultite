@@ -1397,9 +1397,9 @@ function buildUpdate(byHand: boolean, want: string) {
   fs.writeSync(log, `\n${new Date().toISOString()} checking (running ${BUILD!.commit.slice(0, 7)}${want ? `, its server ${want.slice(0, 7)}` : ""})\n`)
   let out = ""
   if (byHand) setStatus("Checking for updates…")
-  // On the timer it builds in the background (a Mac's efficiency cores, its disk I/O throttled): its minutes of
-  // compiling and copying never make the user's apps stutter.
-  const low = byHand ? [] : process.platform === "darwin" ? ["/usr/sbin/taskpolicy", "-b"] : ["nice", "-n", "19"]
+  // On the timer it builds at utility QoS: below the user's apps yet on any core (`-b`, background, kept it to the
+  // efficiency cores with its disk I/O throttled: on a busy Mac a 30 s build took 20 minutes).
+  const low = byHand ? [] : process.platform === "darwin" ? ["/usr/sbin/taskpolicy", "-c", "utility"] : ["nice", "-n", "19"]
   const [cmd, ...args] = [...low, SHELL, "-l", path.join(ROOT, "electron", "update.sh"), "build", SOURCE(), BUILD!.repo, BUILD!.commit,
     BRANCH, DEV ? "app:build:dev" : "app:build", ...(want ? [want] : [])]
   const child = checking = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], detached: true })
