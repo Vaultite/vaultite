@@ -1,5 +1,6 @@
 // Dark pages in the desktop app, against made-up sites on this machine (no network): a light site darkened in the
-// theme's colours (pictures and video as they are, canvases with the page), a site dark of itself left alone, a site
+// theme's colours (pictures and video as they are, canvases with the page), also after a load in a new process (a link
+// to another site, a page asking for a process of its own, a new tab), a site dark of itself left alone, a site
 // the vault styles judged as it looks with its style (its styled page left to it, its other pages darkened, again as the
 // style changes), no white first frame, the Shields menu's switch, and the look changing live.
 // Pictures of each case go to web/qa/shots/darkpages-*.png. WRITES: the throwaway vault only.
@@ -28,6 +29,11 @@ const NATIVE = `<!doctype html><title>Dark itself</title><meta name="color-schem
 <main style="padding: 60px 20px"><h1>Dark of itself</h1><img id="pic" width="120" height="60" src="data:image/svg+xml,${PICTURE}"></main>`
 const SLOW_HEAD = `<!doctype html><title>Slow</title><style>body { margin: 0; background: #fff; color: #222; font: 16px sans-serif }</style>`
 const server = http.createServer((req, res) => {
+  // (as a site far away answers: the page left has heard every override before the new one's process takes over)
+  if (req.url.startsWith("/late")) return void setTimeout(() => { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }); res.end(LIGHT) }, 600)
+  // (a page of the same site that asks for a process of its own, as LinkedIn's and X's do: its response swaps it)
+  if (req.url.startsWith("/isolated")) return void (res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
+    "Cross-Origin-Opener-Policy": "same-origin" }), res.end(LIGHT))
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" })
   if (req.url.startsWith("/native")) return res.end(NATIVE)
   if (req.url.startsWith("/editor")) return res.end(`<!doctype html><title>Editor</title><body class="editor" style="margin: 0"><main style="padding: 60px 20px; height: 2000px"><h1>Editor</h1></main>`)
@@ -144,6 +150,50 @@ check("… shows its own dark, untinted", await until(async () => near(await nat
 await nativeBg("native")
 check("… and takes no filter", (await filter()) === "none", await filter())
 
+// ---------- the next loads in a tab, which Chromium's commit can undo auto dark for: told again, never tinted light ----------
+const OTHER = `http://[::1]:${PORT}/late`
+const goes = async (url) => {
+  await inPage(`location.href = ${JSON.stringify(url)}`)
+  return until(async () => (await inPage("location.href").catch(() => "")) === url && (await inPage("document.readyState").catch(() => "")) === "complete", 20000)
+}
+// (the same site's next pages, by a link and by their address)
+await open(SITE)
+for (let i = 0; i < 3; i++) {
+  check(`a link to the same site's next page loads (${i + 1})`, await goes(`${SITE}?next=${i}`))
+  check(`… darkened, not tinted light (${i + 1})`, await until(async () => near((await light())?.bg, GRUVBOX), 5000), await light(i ? "" : "next"))
+  check(`its address typed in loads (${i + 1})`, await open(`${SITE}?typed=${i}`))
+  check(`… darkened, not tinted light (${i + 1})`, await until(async () => near((await light())?.bg, GRUVBOX), 5000), await light())
+}
+// (another site, from one dark of itself and from a light one)
+for (const [from, what] of [[`${SITE}native`, "a site dark of itself"], [SITE, "a light site"]]) {
+  for (let i = 0; i < 3; i++) {
+    await open(from)
+    check(`from ${what}, a link to a light site elsewhere loads (${i + 1})`, await goes(OTHER))
+    check(`… darkened, not tinted light (${i + 1})`, await until(async () => near((await light())?.bg, GRUVBOX), 5000), await light(i ? "" : "crosssite"))
+    check(`… the page says it prefers dark (${i + 1})`, await inPage("matchMedia('(prefers-color-scheme: dark)').matches"))
+  }
+}
+// (a page of the same site in a process of its own: told again there too)
+for (let i = 0; i < 2; i++) {
+  await open(SITE)
+  const url = `${SITE}isolated?${i}`
+  check(`a page of the same site with a process of its own loads (${i + 1})`, await goes(url))
+  check(`… darkened, not tinted light (${i + 1})`, await until(async () => near((await light())?.bg, GRUVBOX), 5000), await light(i ? "" : "isolated"))
+}
+// (a new tab is told as it's made, then loads in another process: told again there)
+for (let i = 0; i < 3; i++) {
+  await open(SITE)
+  const url = `${OTHER}?tab=${i}`
+  await inPage(`{ const a = document.createElement("a"); a.href = ${JSON.stringify(url)}; a.target = "_blank"; a.textContent = "link"
+    a.style.cssText = "position: fixed; z-index: 99; left: 0; top: 0; width: 200px; height: 100px; display: block"; document.body.append(a) }`)
+  await wait(300)
+  // (clicked as a person would: a page opens a tab only on the user's input)
+  await onView((v) => { for (const type of ["mouseDown", "mouseUp"]) v.webContents.sendInputEvent({ type, x: 50, y: 50, button: "left", clickCount: 1 }) })
+  check(`a link opening a light site elsewhere in a new tab loads (${i + 1})`, await until(async () => (await inPage("location.href").catch(() => "")) === url
+    && (await inPage("document.readyState").catch(() => "")) === "complete", 20000), await inPage("location.href").catch(() => ""))
+  check(`… darkened, not tinted light (${i + 1})`, await until(async () => near((await light())?.bg, GRUVBOX), 5000), await light(i ? "" : "newtab"))
+}
+
 // ---------- a site the vault styles, in part ----------
 const styledBg = async (shot) => (await pixels([[900, 300]], shot && shotOf(shot)))?.[0]
 check("a styled site's styled page opens", await open(`${STYLED}editor`))
@@ -159,6 +209,8 @@ fs.writeFileSync(STYLE, EDITOR_ONLY)
 check("… light again as the style goes: darkened again", await until(async () => near(await styledBg(), GRUVBOX) && (await filter()) !== "none", 10000), [await styledBg(), await filter()])
 
 // ---------- no white first frame: a site slow to send its body ----------
+// (from its own site: leaving another's, Chromium drops the left page's auto dark a moment before the new one commits)
+await open(SITE)
 const frames = []
 await ui({ action: "open", path: `view:web/${SITE}slow` })
 const end = Date.now() + 3000
@@ -170,6 +222,7 @@ while (Date.now() < end) {
 }
 const bright = frames.filter((f) => f.some((p) => p[0] + p[1] + p[2] > 600))
 check("a slow site never shows a white frame while it loads", frames.length > 3 && !bright.length, { frames: frames.length, bright: bright.slice(0, 3) })
+check("… and loaded, it's dark", near((await pixels([[600, 300]]))?.[0], GRUVBOX), await pixels([[600, 300]]))
 
 // ---------- the Shields menu's switch ----------
 check("the light site again", await open(SITE))

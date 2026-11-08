@@ -18,8 +18,9 @@ let lastChoice = NONE
 const choiceOf = (win?: EngineWindow | null) => (win && choices.get(win.id)) || lastChoice
 
 /** A page as dark pages see it: where its main frame is (or is going), whether that site is dark itself (its main frame
- *  says), what the DevTools protocol was last told, and its frames of other sites' sessions (auto-attached). */
-type State = { p: EnginePage; url: string; native: boolean; applied: string; frames: Set<string>; attached: boolean }
+ *  says), what the protocol was told (a load since may undo it), its telling now, its other sites' frames (auto-attached). */
+type State = { p: EnginePage; url: string; native: boolean; applied: string; stale: boolean; busy: boolean; again: boolean
+  frames: Set<string>; attached: boolean }
 const states = new Map<number, State>() // by the page's id
 const byContents = new Map<number, State>() // by its contents' id
 
@@ -74,20 +75,31 @@ const commands = (want: string): [string, Record<string, unknown>][] => [
 ]
 const AUTO_ATTACH = { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }
 
+/** Tells page `s` what it wants, one telling at a time: two at once could end with the older's last command (auto dark
+ *  off after the newer turned it on, the tint left over a light page). */
 async function apply(s: State) {
-  const want = wanted(s)
-  if (want === s.applied || s.p.wc.isDestroyed()) return
-  // (never attaching to a page that was never darkened: the protocol costs nothing there)
-  if (!want && !s.applied) return
-  s.applied = want
+  if (s.busy) { s.again = true; return }
+  s.busy = true
   try {
-    for (const [m, params] of commands(want)) await cdp(s.p.wc, m, params)
-    if (want && !s.attached) { s.attached = true; await cdp(s.p.wc, "Target.setAutoAttach", AUTO_ATTACH) }
-    for (const id of s.frames) void toFrame(s, id, want)
-  } catch {
-    // (its DevTools open, or a load swapping its process: tried again as the load commits, or at the next)
-    if (s.applied === want) s.applied = "?"
-  }
+    do {
+      s.again = false
+      if (s.p.wc.isDestroyed()) return
+      const want = wanted(s), stale = s.stale
+      // (never attaching to a page that was never darkened: the protocol costs nothing there)
+      if (want === s.applied && (!want || !stale)) continue
+      s.stale = false
+      try {
+        for (const [m, params] of commands(want)) await cdp(s.p.wc, m, params)
+        if (want && !s.attached) { s.attached = true; await cdp(s.p.wc, "Target.setAutoAttach", AUTO_ATTACH) }
+        s.applied = want
+        for (const id of s.frames) void toFrame(s, id, want)
+      } catch {
+        // (its DevTools open: tried again as the next load commits, or the choice changes)
+        s.applied = "?"
+        return
+      }
+    } while (s.again)
+  } finally { s.busy = false }
 }
 /** A frame of another site (its own process: the page's overrides don't reach it). */
 async function toFrame(s: State, session: string, want: string) {
@@ -125,7 +137,7 @@ function tellFrames(s: State) {
 }
 
 eachPage((p) => {
-  const s: State = { p, url: p.url, native: false, applied: "", frames: new Set(), attached: false }
+  const s: State = { p, url: p.url, native: false, applied: "", stale: false, busy: false, again: false, frames: new Set(), attached: false }
   const wcId = p.wc.id
   states.set(p.id, s)
   byContents.set(wcId, s)
@@ -135,8 +147,6 @@ eachPage((p) => {
   // darkened a moment shows little, a light one not darkened would flash)
   const going = (url: string) => {
     if (!hostOf(url)) return
-    // (another site is another process, which the overrides told the last one don't reach: told again)
-    if (hostOf(s.url) !== hostOf(url) && s.applied) s.applied = "?"
     s.url = url
     s.native = false
     void apply(s)
@@ -144,7 +154,9 @@ eachPage((p) => {
   }
   p.wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) going(d.url) })
   p.wc.on("did-redirect-navigation", (d) => { if (d.isMainFrame) going(d.url) })
-  p.wc.on("did-navigate", () => { if (s.applied === "?") void apply(s) })
+  // (told again as each load commits: a commit can undo Chromium's auto dark override, in the same frame host too, and a
+  // new one (another site's process) never had it. Told only as it starts, the page came out light, tinted)
+  p.wc.on("did-navigate", () => { s.stale = true; void apply(s) })
   going(p.url)
 })
 
