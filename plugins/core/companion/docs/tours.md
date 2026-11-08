@@ -24,7 +24,9 @@ anchors:                     # optional, written by tour-save: what tells a targ
   `do` does the `do:` steps and the clicks guide would wait for, through take-over (his yes first, as act asks).
 - While a step is up its marks follow their things (a scroll, a moved window), hiding while one is off screen.
 - A target off screen: "scroll down a bit", and the step plays once it shows. One not found: the model plays that
-  step (an ask for it), and the tour goes on. A new ask, Esc, or `companion tour --stop` stops it.
+  step (an ask for it) where it shows now, and the tour goes on; not there at all, the tour stops and says so in one
+  line. Nothing of its first step there (the tour isn't on their screen): it stops at once with that line, no model.
+  A new ask, Esc, or `companion tour --stop` stops it, the model's ask for a step with it.
 - `(before: <png>)` on a step: a picture of its first target before a change (a vault path, or a file here that
   tour-save copies in), laid over the thing and flipped with how it is now while its words are said: a job's proof.
   `(after: <png>)`: a still of the thing after the change where no browser reaches (the Mac's menu bar, the notch,

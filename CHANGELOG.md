@@ -8,6 +8,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Live editing shows each change as you ask**: a job asked over a preview you're watching edits the checkout
   serving it, so the page reloads as it goes, with no worktree, demo or ready knock in the way.
+- **Companion tours stop cleanly when they can't play**: a tour whose things aren't on your screen says so once and
+  stops, instead of the companion apologizing at every step, and anything you ask stops it, its step's answer
+  included, so that answer never mixes into the reply to you. A name you say that the companion doesn't know (a
+  company, a person) is searched in your vault before it guesses what you mean.
 - **Work handed to a machine that's offline waits for it**: a companion job or follow-up for a machine that's away is
   kept, shown waiting in Jobs, and sent by itself once that machine is back, instead of failing for you to retry. A
   busy machine that misses one check (a load of test runs) no longer reads as offline.

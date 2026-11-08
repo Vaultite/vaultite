@@ -5,7 +5,7 @@ import { anchorOf, keepAnchor, refind, type Seen } from "../plugins/core/compani
 import { check as checkOnce, conditionText, durationOf, type Env, type Input, parseCondition, watch } from "../plugins/core/companion/condition.ts"
 import type { Condition as Check } from "../plugins/core/companion/uimodel.ts"
 import type { Job } from "../plugins/core/companion/jobs.ts"
-import { type Aim, askWords, type Fx, parseTour, play, plan, tourAsked, tourFromAnswer, tourText } from "../plugins/core/companion/tour.ts"
+import { type Aim, askWords, type Fx, lostLine, parseTour, play, plan, tourAsked, tourFromAnswer, tourText } from "../plugins/core/companion/tour.ts"
 
 let failed = 0, passed = 0
 function check(name: string, ok: unknown, info?: unknown) {
@@ -161,6 +161,19 @@ Some words before the steps.
   check("player: a target not found goes to the model, and the tour goes on", healed.ended === "done" && healed.steps[1].how === "model" && log.includes("model 2 New chat") && log.includes("show 3 300"), log)
   const lost = await play(t, "show", fx({ aim: async (a) => renamed[a.label] ?? { ok: false, why: "gone" }, fallback: async () => false }))
   check("player: and when the model can't either, it stops there, saying what", lost.ended === "lost" && lost.steps.length === 2 && /New chat/.test(lost.steps[1].why ?? ""), lost)
+  check("player: and says so once, plainly: what isn't on their screen, and that the tour stops", lostLine(t.title, lost) === `"New chat" isn't on your screen now, so "Start a chat" stops here.` && lostLine(t.title, healed) === "", lostLine(t.title, lost))
+  // (nothing of the tour on their screen: one plain line, never the model asked step by step, each one an apology)
+  log.length = 0
+  const away = await play(t, "show", fx({ aim: async () => ({ ok: false, why: "gone" }) }))
+  check("player: nothing of its first step on screen: it stops there without the model, said once plainly",
+    away.ended === "lost" && away.steps.length === 1 && !log.some((x) => /^(model|show) /.test(x)) && lostLine(t.title, away) === `I can't show "Start a chat" here: "Chats" isn't on your screen.`, [log, away, lostLine(t.title, away)])
+  // (they spoke while the model played a step: the tour stops there, the model's ask for it handed the stop)
+  const ctl2 = new AbortController()
+  let given: AbortSignal | undefined
+  log.length = 0
+  const cut = await play(t, "show", fx({ aim: async (a) => renamed[a.label] ?? { ok: false, why: "gone" }, fallback: async (_s, _m, signal) => { given = signal; ctl2.abort(); return true } }), ctl2.signal)
+  check("player: a new ask while the model plays a step stops the tour at that step, the stop handed to its ask", cut.ended === "stopped" && given === ctl2.signal &&
+    cut.steps.at(-1)?.how === "stopped" && cut.steps.at(-1)?.n === 2 && !log.includes("show 3 300") && lostLine(t.title, cut) === "", [cut, log])
   // (scrolled off: asked to scroll, played once it shows)
   log.length = 0
   let looks = 0
@@ -186,6 +199,43 @@ Some words before the steps.
   await tick(20)
   check("player: a mark follows its target: moved, gone off screen, back; a few points' wobble isn't a move", tracked.ended === "done" && followed.join(";") === "180;-;180", followed)
   check("player: and stops following once its step ends", looked === after, { looked, after })
+}
+
+// ---------- A tour's step asked of the summoned session: withdrawn once the tour stops, never answered with their ask
+{
+  const { summonedLane } = await import("../plugins/core/companion/summoned.ts")
+  type St = { id: string; state: "working" | "idle" }
+  const sent: string[] = [], interrupted: string[] = [], states = new Map<string, St>()
+  let hear: (id: string, s: St | null) => void = () => {}
+  const chat = {
+    start: async (o: { prompt?: string }) => { sent.push(o.prompt ?? ""); const s: St = { id: "s1", state: "working" }; states.set(s.id, s); return s },
+    send: async (id: string, text: string) => { sent.push(text); states.set(id, { id, state: "working" }) },
+    stop: async () => {}, interrupt: async (id: string) => { interrupted.push(id); return true }, list: () => [...states.values()],
+    touch() {}, serve() {}, on: (fn: typeof hear) => { hear = fn; return () => {} }, asking: () => [],
+  }
+  const tool = { name: "say", description: "", schema: {}, run: async () => ({}) }
+  const dir = (await import("node:fs")).mkdtempSync((await import("node:path")).join((await import("node:os")).tmpdir(), "vaultite-lane-"))
+  const lane = summonedLane({ file: () => `${dir}/kept.json`, chat: () => chat as never, name: () => "Claude", model: () => "sonnet", options: () => ({}) as never,
+    text: async (ms) => ({ text: ms.map((m) => m.text).join("\n"), images: [] }), acts: () => ({ say: tool, look: tool, draw: tool }) as never, found: async () => null,
+    caption() {}, agent: () => undefined, setAgent() {}, did() {}, say() {}, talk: () => ({ me: "", said: "" }) })
+  const moment = (seq: number, text: string, tour = false) => ({ kind: "ask", for: "Claude", summoned: true, text, t: Date.now(), seq, ...(tour ? { tour: true } : {}) }) as never as Parameters<typeof lane.take>[0]
+  const settle = () => new Promise((ok) => setTimeout(ok, 10))
+  const idle = async () => { states.set("s1", { id: "s1", state: "idle" }); hear("s1", states.get("s1")!); await settle() }
+  const step = moment(1, "(A step of their tour)", true), theirs = moment(2, "No, I meant Lighthouse in my inbox")
+  lane.take(step)
+  await settle()
+  const dropped = lane.drop(step)
+  lane.take(theirs)
+  await settle()
+  check("lane: a tour's step being answered when the tour stops: its turn interrupted, their ask waits for it", dropped && interrupted.join() === "s1" && sent.length === 1 && /step of their tour/.test(sent[0]), { sent, interrupted })
+  await idle()
+  check("lane: then their ask goes alone, the step's words never in its answer", sent.length === 2 && sent[1].includes("Lighthouse") && !sent[1].includes("step of their tour"), sent)
+  check("lane: and their own ask, being answered, is never withdrawn as a tour's", !lane.drop(theirs) && interrupted.length === 1, interrupted)
+  const later = moment(3, "(Another step of their tour)", true)
+  lane.take(later)
+  check("lane: a tour's step still waiting is just dropped, never sent", lane.drop(later) && !lane.drop(later), sent)
+  await idle()
+  check("lane: nothing more went to the session", sent.length === 2, sent)
 }
 
 // ---------- Proofs: a job's change shown, its befores flipped, then Keep and merge, Needs changes or Not yet

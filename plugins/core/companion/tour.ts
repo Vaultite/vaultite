@@ -177,13 +177,14 @@ export type Fx = {
   say: (text: string) => Promise<void>
   wait: (c: Condition, signal?: AbortSignal) => Promise<Watched>
   act: (d: Do, at: Aim | null) => Promise<{ ok: boolean; why?: string }>
-  /** Ask the model to play this step, its targets `missing` not found: whether it did. */
-  fallback: (step: Step, missing: string[]) => Promise<boolean>
+  /** Ask the model to play this step, its targets `missing` not found: whether it showed them (words alone don't).
+   *  Stopped (`signal`): its ask goes, unanswered. */
+  fallback: (step: Step, missing: string[], signal?: AbortSignal) => Promise<boolean>
   sleep: (ms: number) => Promise<void>
   /** A shown step's marks again, its targets moved (null: off screen or gone now); none: they stay where shown. */
   follow?: (step: Step, at: (Aim | null)[]) => Promise<void> | void
 }
-export type Played = { n: number; how: "played" | "model" | "lost" | "stopped"; ms: number; waited?: Watched; why?: string }
+export type Played = { n: number; how: "played" | "model" | "lost" | "stopped"; ms: number; waited?: Watched; why?: string; missing?: string[] }
 export type Result = { ended: "done" | "stopped" | "lost"; steps: Played[] }
 
 /** The anchor a tag's spot stands for in tour `t` (its words, with what the tour knows of them), or null (a pixel, a
@@ -220,8 +221,8 @@ export function plan(step: Step, mode: Mode): { wait?: Condition; does: Do[] } {
   return { does: [], wait: step.wait ?? parseCondition(theirs.join(" and ")) }
 }
 
-/** Play tour `t` in `mode`: each step's targets found fresh, said with its marks, then its do and its wait. A target
- *  that's off screen is waited for (he scrolls; do mode scrolls); one not found goes to the model, else the tour stops. */
+/** Play tour `t` in `mode`: each step's targets found fresh, said with its marks, then its do and its wait. One off
+ *  screen is waited for; one not found goes to the model (not on a first step with nothing there), else it stops. */
 export async function play(t: Tour, mode: Mode, fx: Fx, signal?: AbortSignal, from = 1): Promise<Result> {
   const out: Played[] = []
   for (const step of t.steps.filter((s) => s.n >= from)) {
@@ -243,7 +244,11 @@ export async function play(t: Tour, mode: Mode, fx: Fx, signal?: AbortSignal, fr
       }
       let how: Played["how"] = "played"
       if (missing.length) {
-        if (!(await fx.fallback(step, missing).catch(() => false))) { out.push({ n: step.n, how: "lost", ms: Date.now() - t0, why: `not found: ${missing.join(", ")}` }); return { ended: "lost", steps: out } }
+        if (signal?.aborted) return { ended: "stopped", steps: out }
+        const none = !out.length && aims.every((a) => !a?.ok)
+        const healed = !none && await fx.fallback(step, missing, signal).catch(() => false)
+        if (signal?.aborted) return { ended: "stopped", steps: [...out, { n: step.n, how: "stopped", ms: Date.now() - t0 }] }
+        if (!healed) { out.push({ n: step.n, how: "lost", ms: Date.now() - t0, why: `not found: ${missing.join(", ")}`, missing }); return { ended: "lost", steps: out } }
         how = "model"
       } else {
         const hidden = aims.find((a): a is Extract<Aim, { ok: true }> => !!a?.ok && !a.shown)
@@ -271,6 +276,16 @@ export async function play(t: Tour, mode: Mode, fx: Fx, signal?: AbortSignal, fr
     } finally { unfollow() }
   }
   return { ended: "done", steps: out }
+}
+
+/** What the user is told once tour `title` stopped at a step it couldn't play (`r`, ended lost): one plain line, never
+ *  an apology per step. Its first step: the tour isn't on their screen. */
+export function lostLine(title: string, r: Result): string {
+  const last = r.steps.at(-1)
+  if (!last || last.how !== "lost") return ""
+  if (!last.missing?.length) return `"${title}" stopped at step ${last.n}: ${last.why ?? "it couldn't go on"}.`
+  const what = `${last.missing.map((m) => JSON.stringify(m)).join(" or ")} ${last.missing.length > 1 ? "aren't" : "isn't"} on your screen`
+  return r.steps.length === 1 ? `I can't show "${title}" here: ${what}.` : `${what} now, so "${title}" stops here.`
 }
 
 /** How long a step with a before stays up: its picture over the thing, then how it is now, twice. */

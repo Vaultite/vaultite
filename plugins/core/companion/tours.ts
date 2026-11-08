@@ -9,7 +9,7 @@ import { type Anchor, anchorOf, anchorText, keepAnchor, refind, type Seen, type 
 import { type Condition, conditionText, type Input, parseCondition, watch } from "./condition.ts"
 import { playedThrough, promoted, skillName } from "./teach.ts"
 import { noteText, writeNote } from "./teachops.ts"
-import { type Aim, type Do, type Fx, type Mode, MODES, nativeSteps, parseTour, play, type Result, type Step, type Tour, tourAsked, tourFromAnswer, tourText } from "./tour.ts"
+import { type Aim, type Do, type Fx, lostLine, type Mode, MODES, nativeSteps, parseTour, play, type Result, type Step, type Tour, tourAsked, tourFromAnswer, tourText } from "./tour.ts"
 import type { Condition as Check, Rect } from "./uimodel.ts"
 import { fileTitle } from "./names.ts"
 import { saveFiles } from "./vaultfiles.ts"
@@ -43,7 +43,7 @@ export type Screen = {
   say: (text: string) => Promise<void>
   act: (d: Do, at: Seen | null) => Promise<{ ok: boolean; why?: string }>
   /** Ask the model to play a step whose targets weren't found: whether it did. */
-  fallback: (tour: Tour, step: Step, missing: string[]) => Promise<boolean>
+  fallback: (tour: Tour, step: Step, missing: string[], signal?: AbortSignal) => Promise<boolean>
   /** Start or stop hearing what the user does there (clicks, that a key was typed). */
   inputs: (on: boolean) => void
 }
@@ -118,7 +118,7 @@ export function toursOf(plugin: Plugin, o: {
 
   /** Play `tour` for agent `name` on its screen in `mode`, from step `from`; a draft (`file`) that plays through is
    *  promoted (teach.ts). */
-  function start(name: string, s: Screen, tour: Tour, mode: Mode, from = 1, file?: { path: string; ctx: OpCtx }) {
+  function start(name: string, s: Screen, tour: Tour, mode: Mode, from = 1, file?: { path: string; ctx: OpCtx }, o2: { quiet?: boolean } = {}) {
     playing.get(name)?.ctl.abort()
     const ctl = new AbortController(), began = Date.now()
     const found = new Map<Rect, Seen>()
@@ -139,11 +139,14 @@ export function toursOf(plugin: Plugin, o: {
       say: (text) => s.say(text),
       wait: (c, signal) => waitOn(s, c, { signal }),
       act: (d, at) => s.act(d, at?.ok ? found.get(at.at) ?? null : null),
-      fallback: (step, missing) => s.fallback(tour, step, missing),
+      fallback: (step, missing, signal) => s.fallback(tour, step, missing, signal),
       sleep: (ms) => rest(ms, ctl.signal),
     }
     const done = play(tour, mode, fx, ctl.signal, from).then((r) => {
       console.log(`companion tour "${tour.title}" (${mode}): ${r.ended} after ${r.steps.length} steps in ${Math.round((Date.now() - began) / 1000)} s${r.steps.some((x) => x.how === "model") ? `, the model played ${r.steps.filter((x) => x.how === "model").map((x) => x.n).join(", ")}` : ""}`)
+      // (a step it couldn't play: said once, plainly; a proof says it its own way)
+      const lost = o2.quiet ? "" : lostLine(tour.title, r)
+      if (lost) void s.say(lost).catch(() => {})
       if (file && from === 1 && playedThrough(r)) void promote(file.ctx, file.path).catch((e) => console.log(`companion tour: ${file.path} played through but stays a draft: ${(e as Error).message}`))
       return r
     }).finally(() => { if (playing.get(name)?.ctl === ctl) playing.delete(name) })
@@ -190,7 +193,8 @@ export function toursOf(plugin: Plugin, o: {
   }
   const resultText = (t: string, r: Result) => {
     const lines = r.steps.map((s) => `  ${s.n}. ${s.how}${s.waited ? ` (waited ${Math.round(s.waited.ms / 100) / 10} s: ${s.waited.why}${s.waited.by ? `, ${s.waited.by}` : ""})` : ""}${s.why ? `: ${s.why}` : ""}`)
-    return `${t}: ${r.ended === "done" ? "played to the end" : r.ended === "stopped" ? "stopped" : "stopped at a step it couldn't play"}.\n${lines.join("\n")}`
+    const told = r.ended === "lost" ? lostLine(t, r) : ""
+    return `${t}: ${r.ended === "done" ? "played to the end" : r.ended === "stopped" ? "stopped" : "stopped at a step it couldn't play"}.\n${lines.join("\n")}${told ? `\nThey were told: ${told}` : ""}`
   }
   const screenFor = (name: string, tour?: Tour) => {
     const s = o.screen(name, tour)
@@ -418,7 +422,7 @@ scroll, a move or a relabel; gone, it says so. Kept ones (k1, k2: what you point
     /** The tours anyone may ask for by name, wherever they are: their paths and phrases. */
     askable: () => rows().filter((r) => r.ask?.length).map((r) => ({ path: /\.md$/i.test(r.id) ? r.id : `${r.id}.md`, ask: r.ask! })),
     /** Play `tour` (a proof) for `name` on screen `s` straight through: how it went. */
-    show: (name: string, s: Screen, tour: Tour) => start(name, s, tour, "show"),
+    show: (name: string, s: Screen, tour: Tour) => start(name, s, tour, "show", 1, undefined, { quiet: true }),
     escapedAt: () => escaped,
   }
 }

@@ -268,9 +268,15 @@ const log = plugin.dayLog<Moment>("moments")
 const acts = plugin.dayLog<Act>("actions")
 /** What's logged that isn't acting: its turn's bookkeeping. */
 const BOOKKEEPING = new Set(["next", "handed", "sent", "done", "again", "result", "withdrawn", "talked", "shown"])
+/** When each agent last showed something (its cursor there, a mark) or let a moment pass: a tour's step the model
+ *  played is one it showed, words alone (an apology) aren't. */
+const showedAt = new Map<string, number>(), passedAt = new Map<string, number>()
+const SHOWING = new Set(["look", "draw", "highlight", "act"])
 /** `text`: what it said (a say's words), kept for the conversation's page. */
 const did = (as: string, op: string, seqs?: number[], text?: string) => {
   const t = Date.now(), quick = inSummoned.getStore() === true
+  if (SHOWING.has(op)) showedAt.set(key(as), t)
+  else if (op === "pass") passedAt.set(key(as), t)
   acts.append(t, [{ t, as: quick ? lane().as(as) : as, op, ...(seqs ? { seqs } : {}), ...(text ? { text: text.slice(0, 2000) } : {}) }])
   if (BOOKKEEPING.has(op)) return
   if (quick) lane().acted(op)
@@ -1021,22 +1027,29 @@ function screenOf(name: string, o: { vaultite?: boolean } = {}): Screen | null {
       return r?.ok === false ? { ok: false, why: r.saw ?? "it didn't work" } : { ok: true }
     } catch (e) { return { ok: false, why: (e as Error).message } }
   }
-  /** The step as an ask of its model's (the summoned session's, else its own), where the last ask was: whether it said or showed something. */
-  async function fallback(tour: Parameters<Screen["fallback"]>[0], step: Parameters<Screen["fallback"]>[1], missing: string[]) {
+  /** The step as an ask of its model's where the last ask was: whether it showed that thing (one not there it lets
+   *  pass). Stopped (their new ask, Esc): its ask is withdrawn, so it never runs into their answer. */
+  async function fallback(tour: Parameters<Screen["fallback"]>[0], step: Parameters<Screen["fallback"]>[1], missing: string[], signal?: AbortSignal) {
     const t0 = Date.now(), last = askOf(name)
     const place = Object.fromEntries((["app", "window", "title", "sx", "sy", "path", "line", "pane", "ui", "url", "displays"] as const).flatMap((k) => (last?.[k] !== undefined ? [[k, last[k]]] : [])))
-    const text = `(A step of their tour "${tour.title}", played for them, not their words. Step ${step.n}: ${step.text}\nNot found on their screen now: ${missing.map((x) => JSON.stringify(x)).join(", ")}. Say this step yourself, its tag on that thing as it shows now; if it isn't there, tell them so in a few words.)`
+    const text = `(A step of their tour "${tour.title}", played for them, not their words. Step ${step.n}: ${step.text}\nNot found on their screen now: ${missing.map((x) => JSON.stringify(x)).join(", ")}. If it shows there under other words or moved, say this step yourself, its tag on it as it shows now. If it isn't on their screen, say nothing: let it pass (mcp__vaultite-app__pass "not there"); the tour tells them itself.)`
+    if (signal?.aborted) return false
     const m = addMoment({ kind: "ask", for: name, summoned: true, tour: true, text, ...place })
     if (!m) return false
-    const spoke = () => [...notes.values(), ...said].some((n) => n.kind === "say" && key(n.agent) === key(name) && n.t >= t0) || (agents.get(key(name))?.pointed ?? 0) >= t0
-    const busy = () => (lane().takes(m) ? lane().busy() : turning.has(key(name)))
-    let began = false
-    for (const end = t0 + 90_000; Date.now() < end;) {
-      await new Promise((ok) => setTimeout(ok, 300))
-      if (busy()) began = true
-      else if (began || spoke()) break
-    }
-    return spoke()
+    const k = key(name), showed = () => !((passedAt.get(k) ?? 0) >= t0) && ((showedAt.get(k) ?? 0) >= t0 || (agents.get(k)?.pointed ?? 0) >= t0)
+    const answered = () => (passedAt.get(k) ?? 0) >= t0 || [...notes.values(), ...said].some((n) => n.kind === "say" && key(n.agent) === k && n.t >= t0) || showed()
+    const busy = () => (lane().takes(m) ? lane().busy() : turning.has(k))
+    const withdraw = () => { if (lane().takes(m)) lane().drop(m) }
+    signal?.addEventListener("abort", withdraw, { once: true })
+    try {
+      let began = false
+      for (const end = t0 + 90_000; Date.now() < end && !signal?.aborted;) {
+        await new Promise((ok) => setTimeout(ok, 300))
+        if (busy()) began = true
+        else if (began || answered()) break
+      }
+      return !signal?.aborted && showed()
+    } finally { signal?.removeEventListener("abort", withdraw) }
   }
   const inputs = (on: boolean) => { for (const ws of [...windows.keys(), ...screens]) send(ws, { t: "inputs", on }) }
   /** Its marks drawn again where their things are now, unsaid; one off screen left out till it's back. In Vaultite's
