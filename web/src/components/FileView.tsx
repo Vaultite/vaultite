@@ -1,6 +1,6 @@
 // A file, opened: title (rename), properties and the live-preview editor; saves as you type and
 // merges changes made on disk meanwhile. Pages, plugin formats, media and outside-the-vault files each have their view.
-import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react"
+import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { BookOpen, Folder, FolderInput, Smile, Trash2, type LucideIcon } from "lucide-react"
 import { Banner } from "@/components/Banner"
@@ -12,6 +12,7 @@ import { dropActiveFile, setActiveFile, type ActiveFile } from "@/core/active"
 import { askMove } from "@/components/FileTree"
 import { fmtAgo, type Store } from "@/core/data"
 import { isOutside } from "@/core/desktop"
+import { addDropSink } from "@/core/filedrop"
 import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
 import { openLinkMenu } from "@/components/LinkMenu"
@@ -762,7 +763,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // (read when a block is drawn again: a block keeps the function that first drew it)
   const editingRef = useRef(shown === "live")
   editingRef.current = shown === "live"
-  const { resolve, paste, ...wiring } = useVaultEditing(store, path, full)
+  const { resolve, attach, ...wiring } = useVaultEditing(store, path, full)
 
   // What the editor draws itself (each with React, into the editor): blocks, its kind's sections (a person's
   // `## Timeline`), tables, [[links]].
@@ -916,25 +917,38 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     {!!problems.length && <Banner tone="info"><Markdown inline text={problems.length === 1 ? sentence(problems[0])
       : `${problems.length} things in this file couldn't be read: ${problems.slice(0, 3).join("; ")}`} /></Banner>}
   </>
+  // Files and a browser's images dropped anywhere on the note's place (its margins, the space below it): attachments
+  // embedded where they land (core/filedrop.ts), being read too, not a tab outside the vault.
+  const droppable = isMd(path) && !ro && !outside && !format && !board && !isProtected(path) && !inTrash(path)
+  const drops = useRef({ attach, insertText })
+  drops.current = { attach, insertText }
+  useEffect(() => {
+    const el = article.current
+    if (!droppable || !el) return
+    const host = () => editor.current?.api.view.dom.parentElement
+    return addDropSink({
+      el,
+      owns: (o) => o === host(),
+      over: (x, y) => editor.current?.api.dropMark({ x, y }),
+      leave: () => editor.current?.api.dropMark(null),
+      drop: (d, x, y) => {
+        const { attach, insertText } = drops.current
+        editor.current?.api.dropMark(null)
+        if (editor.current?.api.drop(d, { x, y })) return
+        void attach(d).then((text) => { if (text) insertText(text) })
+      },
+    })
+  }, [droppable])
   // A file from outside the vault: right-click it (around its text, on an image) to copy it in.
   const outsideMenu = outside ? (e: MouseEvent) => {
     if (!(e.target as Element).closest(".cm-content, input, textarea")) menuFor(() => [copyToVaultItem(path), ...revealItem(path, true)])(e)
   } : undefined
   if (fills && drawing) return <PaneFile path={path} kind={kind} bar={pathBar("mb-0")} toggle={phoneToggle} notices={notices} onContextMenu={outsideMenu}>{drawing}</PaneFile>
-  // Files dropped on the note where the editor doesn't take them (around the text, the reading view): attachments
-  // too, not a tab outside the vault (core/desktop.ts opens what lands elsewhere).
-  const droppable = isMd(path) && !ro && !outside && !format && !board && !isProtected(path) && !inTrash(path)
-  const onDrop = (e: DragEvent) => {
-    const files = [...e.dataTransfer.files]
-    if (!files.length || (e.target as Element).closest("[data-file-drop]") !== e.currentTarget) return
-    e.preventDefault()
-    paste(files).then((text) => { if (text) insertText(text) })
-  }
 
   const fileArticle = (
     <article ref={article} className={cn("file-view", pane && "pb-24", column && "mx-auto", column && (wide || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
       data-grid={editGrid ? "" : undefined}
-      onContextMenu={outsideMenu} data-file-drop={droppable ? "" : undefined} onDragOver={droppable ? (e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault() } : undefined} onDrop={droppable ? onDrop : undefined}
+      onContextMenu={outsideMenu}
       style={zoom && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>
       {pathBar()}
       {phoneToggle}
@@ -964,7 +978,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
                 onChange={(text) => { cur.current = { fm: "", body: text }; redraw(); changed() }} />
             ) : (
               <Editor key={source ? `${path}:source` : `${path}:text${fmText ? ":fm" : ""}`} doc={full()} keep={path} config={config} {...wiring} label={stem(path)}
-                docPath={isMd(path) ? path : undefined} onPasteFiles={outside ? undefined : paste}
+                docPath={isMd(path) ? path : undefined} onAttach={outside ? undefined : attach}
                 {...(source ? { editable: !ro, source: true, numbered: true, code: strict ? "json" : format?.code, language: code ? path : format?.source ? `source.${format.source}` : undefined }
                   : { frontmatter: !fmText, editable: shown === "live" && !ro, placeholderText: shown === "read" ? "" : "Start writing", numbered: shown !== "read",
                     onUndoFrontmatter: () => revealProps(article.current) })}

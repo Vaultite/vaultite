@@ -54,8 +54,8 @@
 - Panes are drawn flat, so splitting never remounts others. A pane keeps its last tabs drawn but hidden (`data-kept`):
   find the scroller as `[data-pane]`, and take down what a file shows outside itself when its tab hides.
 - Selecting several is `core/select.ts` (Finder's way); several at once is one toast with one Undo.
-- Dragging is `core/drag.ts` (pointer events, not dnd-kit or HTML5; files from the computer are HTML5 drops). A finger
-  drags only with `{ touch: true }`.
+- Dragging is `core/drag.ts` (pointer events, not dnd-kit or HTML5; files from the computer are HTML5 drops, which a
+  note takes anywhere in its place: `core/filedrop.ts`). A finger drags only with `{ touch: true }`.
 - A list reordered by dragging makes way, as browser tabs do (`core/slide.ts`: `slotAt`, `reorder`, `useSlide`), never a
   drop line. A line only where a drop isn't a place in one list: a dashboard's grid (beside or below), table columns.
 - Text sizes: a plugin declares `textSizes` and uses `useTextSize` (`core/textsize.ts`), never a setting of its own.

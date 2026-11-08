@@ -5,7 +5,8 @@ import { createRoot } from "react-dom/client"
 import type { Store } from "@/core/data"
 import { findEmbed, folderOf, isMd, openFile, readFile, stem } from "@/core/files"
 import { followLink, resolver, shortestLink, type LinkClick, type Target } from "@/core/links"
-import { markdownLinks, pasteAttachments } from "@/core/conventions"
+import { attachDropped, markdownLinks } from "@/core/conventions"
+import type { Dropped } from "@/core/filedrop"
 import { notifyError } from "@/core/notify"
 import { slashItems } from "@/core/slash"
 import { vocabOf } from "@/core/vocab"
@@ -73,7 +74,7 @@ function linkNames(store: Store, from: string) {
 }
 
 /** What an editor of `from` asks the vault for (the Editor's props): links to suggest and follow, the slash menu, pasted
- *  files saved as attachments. `own` is the text as typed, for [[# headings. */
+ *  files and dropped ones saved as attachments. `own` is the text as typed, for [[# headings. */
 export function useVaultEditing(store: Store, from: string, own: () => string) {
   // (links as written in `from`: the closest file of a name wins; the index made at the first link, not per store)
   const resolve = useMemo(() => { let r: ReturnType<typeof resolver> | null = null; return (t: string) => (r ??= resolver(store))(t, from) }, [store, from])
@@ -86,10 +87,11 @@ export function useVaultEditing(store: Store, from: string, own: () => string) {
   const onOpen = useCallback((link: { wiki?: string; url?: string; tag?: string }, how: boolean | LinkClick) => followLink(store, link, how, from), [store, from])
   const mdLinks = useCallback(() => markdownLinks(store), [store])
   const slash = useCallback(() => slashItems(store), [store])
-  const paste = useCallback(async (files: File[]) => {
-    try { return await pasteAttachments(store, from, files) } catch (e) { notifyError(e, "Couldn't save the pasted file"); return null }
+  const attach = useCallback(async (d: Dropped) => {
+    const n = d.files.length + d.images.length
+    try { return await attachDropped(store, from, d) } catch (e) { notifyError(e, n > 1 ? "Couldn't save the files" : "Couldn't save the file"); return null }
   }, [store, from])
-  return { resolve, names, tags, headings, onOpen, markdownLinks: mdLinks, slash, paste }
+  return { resolve, names, tags, headings, onOpen, markdownLinks: mdLinks, slash, attach }
 }
 
 /** [[Note#: that note's headings ("" is the text being edited, `own`, as typed so far; so is the file it's in, `from`). */

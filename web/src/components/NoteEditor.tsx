@@ -85,7 +85,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
   whole?: boolean
   onReady: (api: EditorApi) => void; onChange: (text: string, start: number) => void }) {
   const { disabled } = usePrefs()
-  const { resolve, paste, ...wiring } = useVaultEditing(store, from, text)
+  const { resolve, attach, ...wiring } = useVaultEditing(store, from, text)
   // Blocks and sections draw again when what they show changes (the store reloaded, the fields, plugins on or off).
   const [version, setVersion] = useState(0)
   const plugins = usePluginsVersion() // (a plugin's fences arriving)
@@ -114,7 +114,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
   return (
     <div className={cn("note-editor", className)}>
       <Suspense fallback={<div className="min-h-6" />}>
-        <Editor doc={doc} frontmatter={whole} editable={editable} config={config} {...wiring} onPasteFiles={editable ? paste : undefined} placeholderText={editable ? placeholder ?? "Start writing" : ""}
+        <Editor doc={doc} frontmatter={whole} editable={editable} config={config} {...wiring} onAttach={editable ? attach : undefined} placeholderText={editable ? placeholder ?? "Start writing" : ""}
           onEscape={onEscape} onBlur={blur} floatingTooltips
           onReady={(a) => { onReady(a); if (autoFocus && editable) a.focus("end") }} onChange={onChange} />
       </Suspense>

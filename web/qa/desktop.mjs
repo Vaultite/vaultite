@@ -353,6 +353,17 @@ check("an HTML page dropped from outside runs", await until(async () => (await h
 check("and can't read the vault", await until(async () => (await htmlText()) === "script ran, vault refused", 10000), await htmlText())
 await win.screenshot({ path: path.join(OUT, "outside-html.png") })
 
+// A screenshot's thumbnail (any file from Finder) dropped on a vault note, the empty space below its text too: saved as
+// its attachment and embedded there, not opened beside the vault (core/filedrop.ts).
+const dropNote = path.join(VAULT, "Notes/Qa drop.md")
+fs.writeFileSync(dropNote, "Dropped onto.\n")
+await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent("Notes/Qa drop.md")}`)
+await until(async () => (await win.locator("#main-scroll .cm-line", { hasText: "Dropped onto." }).count()) > 0, 10000)
+const notePane = await win.locator("#main-scroll").boundingBox(), noteUrl = win.url()
+await drop([shot], notePane.x + notePane.width / 2, notePane.y + notePane.height - 80)
+check("a screenshot dropped below a note's text goes into the note", await until(() => /Dropped onto\.\n!\[\[Screenshot( \d+)?\.png\]\]/.test(fs.readFileSync(dropNote, "utf8")), 10000), fs.readFileSync(dropNote, "utf8"))
+check("…not opened in a tab", win.url() === noteUrl, win.url())
+
 // Finder's Open with (the open-file event): a .txt opens as its text in the vault window.
 const txt = path.join(TMP, "Plain.txt")
 fs.writeFileSync(txt, "Just text.\n")

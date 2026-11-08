@@ -6,6 +6,7 @@ import { onSwitches } from "@/core/switches"
 import { getStore, onStore } from "@/core/data"
 import { get, post, upload as uploadFile } from "@/core/http"
 import { openFile } from "@/core/files"
+import { startFileDrops } from "@/core/filedrop"
 import { dismissNotice, notify } from "@/core/notify"
 import { recentFiles, subscribeScoped, workspacePins } from "@/core/scope"
 import { safeToRestart } from "@/core/unsaved"
@@ -78,8 +79,9 @@ export function startDesktop() {
   const app = desktop
   whenIdle(refresh)
   addEventListener("focus", refresh)
-  // Files dropped where nothing takes them: a browser would replace the app with the file, so it's refused there; the
-  // desktop app opens it in a tab.
+  // Files dropped on a note's place go into the note (core/filedrop.ts, heard first). Dropped where nothing takes them:
+  // a browser would replace the app with the file, so it's refused there; the desktop app opens it in a tab.
+  startFileDrops()
   const outside = (e: DragEvent) => hasFiles(e.dataTransfer) && !(e.target as Element | null)?.closest?.("[data-file-drop]")
   if (!app) {
     addEventListener("dragover", (e) => { if (outside(e) && !e.defaultPrevented) { e.preventDefault(); e.dataTransfer!.dropEffect = "none" } })

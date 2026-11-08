@@ -35,6 +35,8 @@ import { runShortcut } from "@/core/commands"
 import { textChanges, type Clash } from "@/core/merge"
 import { conflicts, leaveConflicts, revealConflict, showConflicts, type Open } from "./conflicts"
 import { pastedFiles } from "@/core/files"
+import { droppedFrom, fromOutside, type Dropped } from "@/core/filedrop"
+import { dropInto, fileDrops, markDrop, spotAt } from "./filedrop"
 import { pasteTable } from "./tables"
 import { editorExtensions, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
@@ -61,6 +63,11 @@ export type EditorApi = {
   conflict: (text: string, clashes: Clash[], who: string | undefined, open: Open, note?: string) => boolean
   /** Scroll to the first conflict left. */
   revealConflict: () => void
+  /** Something dragged from outside is over (x, y) on the page: show where in the text it would go (null: nowhere). */
+  dropMark: (at: { x: number; y: number } | null) => void
+  /** Dropped at (x, y): saved (`onAttach`) and put in between the lines nearest it, being read too. False if it takes
+   *  no files. */
+  drop: (d: Dropped, at: { x: number; y: number }) => boolean
   /** It came back as its tab's editor was left (editor/kept.ts), selection included: that's where its cursor goes. */
   restored: boolean
   view: EditorView
@@ -84,8 +91,9 @@ type Props = {
   headings?: (name: string) => Promise<string[]>
   /** Write links as Markdown, [name](Folder/Name.md), instead of [[name]] (.obsidian/app.json's useMarkdownLinks). */
   markdownLinks?: () => boolean
-  /** Files pasted into it (an image): saved somewhere, and what to type for them (an embed), or null. */
-  onPasteFiles?: (files: File[]) => Promise<string | null>
+  /** Files pasted or dropped into it (a screenshot), or a browser's image or link dropped: saved somewhere, and what to
+   *  type for them (an embed), or null. */
+  onAttach?: (d: Dropped) => Promise<string | null>
   /** The file it shows (Markdown), so links to a heading or a block in it scroll there (core/anchors.ts). */
   docPath?: string
   /** What the slash menu offers (Markdown only). */
@@ -222,15 +230,18 @@ function scrollToLine(v: EditorView, line: number) {
 }
 
 
-/** Files saved as attachments through `paste` and the embeds it answers put in at `at` (a drop's: focused). */
-function attach(e: Event, view: EditorView, files: File[], at: { from: number; to: number }, userEvent: string, paste?: (files: File[]) => Promise<string | null>) {
-  if (!files.length || !paste || !view.state.facet(EditorView.editable)) return false
+/** Whether drops from outside go into it: a Markdown editor being edited that saves files (its host says so). */
+const takesDrops = (view: EditorView) => view.state.facet(EditorView.editable) && !!view.dom.parentElement?.hasAttribute("data-file-drop")
+
+/** Pasted files saved as attachments through `attach` and the embeds it answers put in where the selection was. */
+function pasteFiles(e: Event, view: EditorView, files: File[], attach?: (d: Dropped) => Promise<string | null>) {
+  if (!files.length || !attach || !view.state.facet(EditorView.editable)) return false
   e.preventDefault()
-  paste(files).then((text) => {
+  const at = view.state.selection.main
+  attach({ files, images: [], links: [] }).then((text) => {
     if (!text) return
     const from = Math.min(at.from, view.state.doc.length), to = Math.min(at.to, view.state.doc.length)
-    view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, userEvent })
-    if (userEvent === "input.drop") view.focus()
+    view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, userEvent: "input.paste" })
   })
   return true
 }
@@ -251,7 +262,7 @@ function traceUpdate(u: ViewUpdate, path: string) {
 }
 const callers = () => (new Error().stack ?? "").split("\n").slice(3, 12).map((l) => l.trim().replace(/^at /, "")).join(" < ")
 
-export default function Editor({ doc, editable, config, onChange, onOpen, names, tags, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, code, language, markdownLinks, onPasteFiles, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
+export default function Editor({ doc, editable, config, onChange, onOpen, names, tags, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, code, language, markdownLinks, onAttach, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const cfg = useRef(new Compartment())
@@ -266,8 +277,8 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   const { tab } = usePane()
   const showNumbers = !!numbered && numbersOn && language === undefined
   // Callbacks change every render; the editor reads the latest through refs.
-  const cb = useRef({ onChange, onOpen, names, tags, headings, slash, markdownLinks, onPasteFiles, onEscape, onBlur, onUndoFrontmatter })
-  cb.current = { onChange, onOpen, names, tags, headings, slash, markdownLinks, onPasteFiles, onEscape, onBlur, onUndoFrontmatter }
+  const cb = useRef({ onChange, onOpen, names, tags, headings, slash, markdownLinks, onAttach, onEscape, onBlur, onUndoFrontmatter })
+  cb.current = { onChange, onOpen, names, tags, headings, slash, markdownLinks, onAttach, onEscape, onBlur, onUndoFrontmatter }
   // (its frontmatter hidden: the body always has a line, even in a file that ends with its closing ---)
   const fill = (text: string) => (hides ? withBodyLine(text) : text)
 
@@ -377,13 +388,25 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
           livePreview,
           linkHandler((l, t) => cb.current.onOpen(l, t)),
-          // Files pasted (a screenshot) or dropped from the computer: saved as attachments, embedded where they went
-          // (not read into the note as text, which is what the editor would do with dropped ones).
+          // Files pasted or dropped from outside: saved as attachments, embedded where they went, not read in as text (a
+          // note in its tab or sheet takes drops around it too: core/filedrop.ts, through `api.drop`).
+          fileDrops,
           EditorView.domEventHandlers({
-            paste: (e, view) => attach(e, view, pastedFiles(e.clipboardData), view.state.selection.main, "input.paste", cb.current.onPasteFiles) || pasteTable(e, view),
+            paste: (e, view) => pasteFiles(e, view, pastedFiles(e.clipboardData), cb.current.onAttach) || pasteTable(e, view),
+            dragover(e, view) {
+              if (!takesDrops(view) || !fromOutside(e.dataTransfer)) return false
+              e.preventDefault()
+              e.dataTransfer!.dropEffect = "copy"
+              markDrop(view, spotAt(view, { x: e.clientX, y: e.clientY }))
+              return true
+            },
             drop(e, view) {
-              const at = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head
-              return attach(e, view, [...(e.dataTransfer?.files ?? [])], { from: at, to: at }, "input.drop", cb.current.onPasteFiles)
+              if (!takesDrops(view) || !fromOutside(e.dataTransfer)) return false
+              e.preventDefault()
+              markDrop(view, null)
+              const d = droppedFrom(e.dataTransfer)
+              if (d) void dropInto(view, spotAt(view, { x: e.clientX, y: e.clientY }), cb.current.onAttach!(d))
+              return true
             },
           }),
           suggestKeys,
@@ -436,6 +459,13 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         return showConflicts(v, clashes, who, open, note)
       },
       revealConflict: () => revealConflict(v),
+      dropMark: (at) => markDrop(v, at && spotAt(v, at)),
+      drop: (d, at) => {
+        if (!cb.current.onAttach) return false
+        markDrop(v, null)
+        void dropInto(v, spotAt(v, at), cb.current.onAttach!(d))
+        return true
+      },
       reveal: (line) => {
         const n = Math.min(Math.max(line + 1, 1), v.state.doc.lines)
         v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.line(n).from, { y: "start", yMargin: 0 }) })
@@ -505,6 +535,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   }, [editable])
 
   // (the desktop app opens files dropped elsewhere; here they're attachments)
-  return <div ref={host} data-file-drop={editable && onPasteFiles && language === undefined && !code ? "" : undefined}
+  return <div ref={host} data-file-drop={editable && onAttach && language === undefined && !code ? "" : undefined}
     className={language !== undefined ? "vau-editor is-source is-code" : cn("vau-editor", source && "is-source", showNumbers && "has-numbers")} />
 }

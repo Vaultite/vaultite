@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Files dropped on a note go into it**: a screenshot's thumbnail, files from Finder or an image from a browser,
+  dropped anywhere on a note (its margins and the space below a short note too, being read as well), are saved as its
+  attachments and embedded on a line of their own where they land, a line showing where while you drag. Dropped where
+  no note is, a file still opens in a tab.
 - **Dictation keeps your words when you're far from the Mac**: with Soniox, all of the mic's audio reaches it, not
   only what the pause detector took for speech; in a noisy room, words said away from the mic were dropped after the first few.
 - **Show me's video stays put, and its choice keeps off Clear**: a job's demo video no longer blinks out and back while

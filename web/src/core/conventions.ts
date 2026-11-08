@@ -2,7 +2,9 @@
 // otherwise (`conventions`: a vault's .obsidian/app.json; first answer wins); pasted files where the settings say.
 import type { Conventions } from "@/core/define"
 import { mutate, type Store } from "@/core/data"
-import { post, upload } from "@/core/http"
+import { op, post, upload } from "@/core/http"
+import type { Dropped } from "@/core/filedrop"
+import { notify } from "@/core/notify"
 import { keepLocal } from "@/core/justsaved"
 import { isEnabled, PLUGINS } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
@@ -90,7 +92,37 @@ export async function saveAttachments(s: Store, from: string, files: File[], fol
  *  `![](path)` with Markdown links), one per line. */
 export async function pasteAttachments(s: Store, from: string, files: File[]): Promise<string> {
   const paths = await saveAttachments(s, from, files)
-  return paths.map((path) => markdownLinks(s)
-    ? `![](${path.replace(/%/g, "%25").replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")})`
-    : `![[${path.split("/").pop()!}]]`).join("\n")
+  return paths.map((path) => embedOf(s, path)).join("\n")
+}
+
+/** What to type to embed the vault file `path`. */
+const embedOf = (s: Store, path: string) => markdownLinks(s)
+  ? `![](${path.replace(/%/g, "%25").replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")})`
+  : `![[${path.split("/").pop()!}]]`
+
+/** Save what was dropped on `from` as its attachments, as pasted files are, and answer what to type, one per line:
+ *  files and images embedded (one the server can't download: from the web), links as they are. */
+export async function attachDropped(s: Store, from: string, d: Dropped): Promise<string> {
+  const lines = d.files.length ? [await pasteAttachments(s, from, d.files)] : []
+  for (const url of d.images) lines.push(await imageFrom(s, from, url))
+  return [...lines, ...d.links].join("\n")
+}
+
+/** An image by its address saved as an attachment of `from`: one in the page (data:) as it is, one on the web
+ *  downloaded by the server (file.upload: public addresses only). */
+async function imageFrom(s: Store, from: string, url: string): Promise<string> {
+  if (/^data:/i.test(url)) {
+    const blob = await (await fetch(url)).blob()
+    return pasteAttachments(s, from, [new File([blob], `image.${blob.type.split("/")[1]?.replace(/\+.*/, "") || "png"}`, { type: blob.type })])
+  }
+  try {
+    const { path, bytes } = await op<{ path: string; bytes: number }>("file.upload", { url, folder: attachmentFolder(s, from) })
+    const now = Date.now()
+    mutate((st) => st.files.others.some((o) => o.path === path) ? st
+      : { ...st, files: { ...st.files, others: [...st.files.others, { path, mtime: now, ctime: now, size: bytes }] } })
+    return embedOf(s, path)
+  } catch {
+    notify("Couldn't download the image into the vault, so the note shows it from the web", { id: "drop-image" })
+    return `![](${url.replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")})`
+  }
 }

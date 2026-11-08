@@ -724,6 +724,9 @@ body[data-resizing] [data-status-bar] { transition: none; }
 .note-editor .vau-editor .cm-content { padding-bottom: 0; }
 .vau-editor .cm-line { padding: 0; overflow-wrap: anywhere; }
 .vau-editor .cm-cursor, .vau-editor .cm-dropCursor { border-left: 2px solid var(--primary); }
+/* Where files dragged in from outside will go (editor/filedrop.ts): a line between the lines. */
+.vau-editor .cm-file-drop-layer { pointer-events: none; z-index: 3; }
+.vau-editor .cm-file-drop { background: var(--primary); border-radius: 1px; }
 .vau-editor .cm-selectionBackground, .vau-editor .cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
   background: color-mix(in srgb, var(--primary) 22%, transparent); }
 .vau-editor .cm-content ::selection { background: color-mix(in srgb, var(--primary) 22%, transparent); }
