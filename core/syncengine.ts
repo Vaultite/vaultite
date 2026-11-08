@@ -107,6 +107,8 @@ export type Guard = { files: number; max: number }
 export type Status = {
   device: string; vector: Vector; files: number; heads: number; merging: number; waiting: number; missingBlobs: number
   held: { deletes: number; since: number } | null; conflicts: number
+  /** Deletes the last look found, waiting for the next to see whether more are coming. */
+  deleting: number
 }
 
 export class Replica {
@@ -135,6 +137,9 @@ export class Replica {
   /** Deletes held for the user's yes: too many at once (an unmounted folder looks like that). */
   held: { deletes: string[]; since: number } | null = null
   release = false
+  /** Deletes the last look found, not recorded yet (scan), and whether they're waiting for the next one. */
+  private going = new Set<string>()
+  deleting = 0
   /** What the device keeps with the replica's state (the mailbox's place, the copy's files). */
   extra: Record<string, unknown> = {}
   now: () => number
@@ -445,7 +450,7 @@ export class Replica {
 
   /** Look at the input's files (these paths, or all of them) and record what changed as new versions. `seed`: the first
    *  look, where a file nobody has a version of yet becomes one every device makes alike. */
-  scan(paths?: string[], { from }: { from?: string } = {}): { changed: number; held: number } {
+  scan(paths?: string[], { from }: { from?: string } = {}): { changed: number; held: number; waiting: number } {
     const all = !paths
     const list = paths ? paths.map(norm).filter((p) => !unsynced(p)) : this.input.list().map((s) => norm(s.path)).filter((p) => !unsynced(p))
     const now = new Map<string, FileStat | null>()
@@ -485,7 +490,8 @@ export class Replica {
         const there = this.fileAt(a.path)
         const known = there && [...this.byFile.get(there.file)!].map((id) => this.nodes.get(id)!).filter((n) => n.blob === a.hash && keyOf(n.path) === keyOf(a.path)).sort(order).pop()
         if (there && there.head.blob === a.hash) node = there.head
-        else if (known) node = known // (a version it had before: what came after stays, and is written here)
+        // (a version it had before: what came after stays, and is written here; but a file it deleted, put back, is back)
+        else if (known && (joining || there.head.blob !== null)) node = known
         // (a file made here at a name another device's file has, unseen here: begun apart, so both are kept when merged)
         else if (there && joining && this.likest(there.file, a.hash)) node = this.record(this.fresh({ file: there.file, path: a.path, blob: a.hash, size: a.st.size, parents: [this.likest(there.file, a.hash)!.id], from }))
         else if (there && !this.tracks(there.file)) node = this.record(this.fresh({ file: there.file, path: a.path, blob: a.hash, size: a.st.size, parents: there.head.blob === null ? this.heads(there.file).map((h) => h.id) : [], from }))
@@ -503,12 +509,18 @@ export class Replica {
       this.seen.set(a.path, { hash: a.hash, node: node.id, size: a.st.size, mtime: a.st.mtime })
       changed++
     }
-    // Deletes: many at once wait for the user (a folder that went missing looks like everything deleted).
-    let heldN = 0
-    if (gone.length) {
+    // Deletes: many at once wait for the user (a folder that went missing looks like everything deleted). They wait a
+    // look first, till one finds no more: a burst seen mid-way is judged whole, never let through in parts under the guard.
+    let heldN = 0, waitingN = 0
+    const more = gone.some((g) => !this.going.has(g))
+    this.going = new Set(gone)
+    if (gone.length && more && !this.release) waitingN = gone.length
+    else if (gone.length) {
+      this.going = new Set()
       const total = Math.max(this.seen.size, 1)
       if (!this.release && gone.length > this.guard.files && gone.length / total > this.guard.max) {
         this.held = { deletes: gone, since: this.now() }
+        this.going = new Set(gone) // (still there to see: held again, not waited for again)
         heldN = gone.length
         this.onLog(`held ${gone.length} deletes for your yes (sync.release)`)
       } else {
@@ -525,8 +537,9 @@ export class Replica {
         if (this.release) { this.release = false; this.held = null }
       }
     }
+    this.deleting = waitingN
     this.save()
-    return { changed, held: heldN }
+    return { changed, held: heldN, waiting: waitingN }
   }
 
   /** The known version of a file most like these bytes (at least half their lines alike), for a file whose own history
@@ -716,7 +729,7 @@ export class Replica {
     const w = this.materialize()
     if (DEBUG) this.audit("materialize")
     // (writing may have shown a file changed here meanwhile: looked at again next step)
-    return { changed: s.changed, merged: m, wrote: w.wrote, held: s.held + w.held }
+    return { changed: s.changed, merged: m, wrote: w.wrote, held: s.held + w.held, waiting: s.waiting }
   }
 
   /** Let held deletes through (the user said yes), or forget them (`no`: the files are written back). */
@@ -744,7 +757,7 @@ export class Replica {
     let waiting = 0
     for (const w of this.waiting.values()) waiting += w.size
     return { device: this.device, vector: this.vector(), files, heads, merging, waiting, missingBlobs: this.missingBlobs().length,
-      held: this.held ? { deletes: this.held.deletes.length, since: this.held.since } : null, conflicts: this.conflicts().length }
+      held: this.held ? { deletes: this.held.deletes.length, since: this.held.since } : null, conflicts: this.conflicts().length, deleting: this.deleting }
   }
 
   /** Each live file's path and blob, as its versions say now (to compare devices, or a copy with the vault). */

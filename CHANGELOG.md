@@ -40,6 +40,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A bookmarks bar in the Browser**, as Chrome's: under the page bar on a new tab, always with ⇧⌘B or its right-click
   menu; folders open as menus, bookmarks drag along it or into a folder, and a tab dropped on it is bookmarked. Bookmark
   folders can be made (New folder… in the star's card and the bar), renamed and deleted (`vau bookmark folder`).
+- **Sync holds a mass delete however it's seen, and a note put back comes back**: many files going missing are held
+  for your yes even when sync looks while they're still going (it let them through in parts before), and a note
+  deleted and then put back with the same text, by you or an undo, is back on every device instead of deleted again.
 - **Sync's conflicts list holds while a note's history is still arriving**: a device that had a version but not
   yet its parent (made on a third device) failed listing conflicts, and could stop syncing.
 - **The companion's chat writes notes no window shows**: an edit its Claude Code chat session makes to a note that

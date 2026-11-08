@@ -104,12 +104,20 @@ try {
   })
 
   await section("many deletes at once are held", async () => {
+    const bulk = (dir: string) => { try { return fs.readdirSync(path.join(dir, "Bulk")).length } catch { return 0 } }
+    const t = Date.now()
     for (let i = 0; i < 70; i++) fs.rmSync(path.join(V.b, `Bulk/File ${i}.md`))
-    check("held on b", await until(async () => (await op("b", "sync.status"))[1]?.[0]?.held?.deletes === 70))
-    await new Promise((r) => setTimeout(r, 2500))
-    check("a still has them", fs.readdirSync(path.join(V.a, "Bulk")).length === 70)
+    const sets = async () => (await op("b", "sync.status"))[1] ?? []
+    check("held on b", await until(async () => (await sets())[0]?.held?.deletes === 70), await sets())
+    check("and in its shadow copy", await until(async () => (await sets())[1]?.held?.deletes === 70) && bulk(shadow) === 70, await sets())
+    // (a trade since, and a look on a after it: whatever b let through would be on a by now)
+    await until(async () => ((await sets())[0]?.peers ?? []).find((p: Any) => p.id === "a")?.ok > t)
+    const traded = Date.now()
+    await until(async () => (await op("a", "sync.status"))[1]?.[0]?.lastStep > traded)
+    check("a still has them", bulk(V.a) === 70, bulk(V.a))
     await op("b", "sync.release", { no: true })
-    check("written back on b when the answer is no", await until(() => fs.existsSync(path.join(V.b, "Bulk/File 3.md"))))
+    check("written back on b when the answer is no", await until(() => bulk(V.b) === 70), bulk(V.b))
+    check("nothing held any more", await until(async () => (await sets()).every((s: Any) => !s.held)), await sets())
   })
 
   await section("the hub's git snapshot", async () => {

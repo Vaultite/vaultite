@@ -196,7 +196,7 @@ async function once(s: PhoneSync, post: (route: string, body: unknown) => Promis
   await s.folder.q.done()
   await s.folder.refresh()
   await s.folder.prepare((p) => s.replica.seen.get(p))
-  s.replica.scan()
+  const looked = s.replica.scan()
   let theirs: Vector | null = null
   for (let round = 0; round < 30; round++) {
     const send = theirs ? s.replica.missing(theirs, 2000) : []
@@ -225,6 +225,7 @@ async function once(s: PhoneSync, post: (route: string, body: unknown) => Promis
   await Promise.all([s.folder.q.done(), s.store.q.done()])
   s.last = Date.now(); s.error = ""
   dispatchEvent(new Event("vaultite:phone-sync"))
+  if (looked.waiting) setTimeout(() => void s.step(), 1000) // (deletes wait a look: the next one, soon)
 }
 
 function headWith(r: Replica, blob: string) {

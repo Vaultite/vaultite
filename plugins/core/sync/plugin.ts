@@ -185,6 +185,7 @@ export class SyncSet {
     this.lastStep = Date.now()
     if (r.held && !this.heldTold) { this.heldTold = true; void tell(`Sync held ${r.held} deletes`, `Many files went missing at once from ${this.input.root}. Nothing is deleted on the other devices until you say so: vau sync release (or --no to put them back).`, "error") }
     if (r.wrote || r.merged) this.after()
+    if (r.waiting) this.later() // (deletes wait a look: the next one, soon)
     return r
   }
   heldTold = false
@@ -353,7 +354,7 @@ export class SyncSet {
     if (!this.mirror) return
     const notices = this.mirror.check(this.replica)
     if (notices.length) {
-      this.replica.step()
+      if (this.replica.step().waiting) this.later()
       const imported = notices.filter((n) => n.what === "imported").map((n) => n.path)
       if (imported.length) void tell(`Imported ${imported.length} write${imported.length > 1 ? "s" : ""} into the iCloud copy`,
         `Something wrote into the hub's one-way copy (${this.mirror.target}): kept as a change from "iCloud copy", merged with the vault.\n${imported.slice(0, 20).map((p) => `- ${p}`).join("\n")}`, "info")
