@@ -89,6 +89,13 @@ check("clash: later wins, other is an open conflict on every device, settled onc
   a.r.settle(ca[0].file, [ca[0].conflict.id]); settle([a, b])
   assert.equal(b.r.conflicts().length, 0)
 })
+check("conflicts: a version whose parent hasn't arrived yet lists none, without throwing", () => {
+  const a = device("a"), b = device("b"), c = device("c")
+  a.f.put("P.md", "one\n"); settle([a, b])
+  b.f.put("P.md", "one\ntwo\n"); b.r.step()
+  c.r.receive(b.r.missing(c.r.vector()).filter((e) => e.device === "b"))
+  assert.deepEqual(c.r.conflicts(), [])
+})
 check("delete vs edit: the edit wins", () => {
   const a = device("a"), b = device("b")
   a.f.put("D.md", "keep me\n"); settle([a, b])

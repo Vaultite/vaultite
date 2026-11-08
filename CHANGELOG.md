@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Sync's conflicts list holds while a note's history is still arriving**: a device that had a version but not
+  yet its parent (made on a third device) failed listing conflicts, and could stop syncing.
 - **The companion's chat writes notes no window shows**: an edit its Claude Code chat session makes to a note that
   isn't on screen is saved to the file, where it was sometimes refused as the plugin writing on its own.
 - **`vau limits`**: each Claude Code account's plan limits, how much of its week is left and when it renews, most

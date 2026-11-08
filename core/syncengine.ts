@@ -616,7 +616,8 @@ export class Replica {
       const h = this.head(file)
       if (!h) continue
       const settled = new Set<string>(), seenOther = new Set<string>()
-      const anc = [...this.ancestors(h.id)].map((id) => this.nodes.get(id)!).sort((a, b) => order(b, a))
+      // (a parent not fetched yet is in its ancestors, with no version to read)
+      const anc = [...this.ancestors(h.id)].flatMap((id) => this.nodes.get(id) ?? []).sort((a, b) => order(b, a))
       for (const n of anc) for (const s of n.settles ?? []) settled.add(s)
       for (const n of anc) {
         const c = n.conflict
