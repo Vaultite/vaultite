@@ -653,7 +653,7 @@ setTimeout(draw, 300)
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(500, 1)])
     const got = await take("close-3-44.png", png), bad = await take("../x.png", png), notPng = await take("display-1-2.png", Buffer.from("hello"))
     check("picture-take: a picture handed on is kept on this machine, out of the vault, and its path answered; a name not the helper's, or not a PNG, refused",
-      typeof got?.path === "string" && got.path.endsWith("/screens/close-3-44.png") && !got.path.startsWith(VAULT) && fs.readFileSync(got.path).equals(png) &&
+      typeof got?.path === "string" && got.path.endsWith(path.join("screens", "close-3-44.png")) && !got.path.startsWith(VAULT) && fs.readFileSync(got.path).equals(png) &&
       /isn't a picture of the screen's name/.test(bad) && /isn't a PNG/.test(notPng), [got, bad, notPng])
   }
 
