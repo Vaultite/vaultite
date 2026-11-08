@@ -447,6 +447,15 @@ export default async ($: VaultTest) => {
       const withDown = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
       check("summoned: the screen changed as they spoke, the key-down's picture comes too (a toast gone by the let-go), and Vaultite's toasts in words",
         both === "Read it (1 asks, 2 images)" && /as the key went down, attached before it/.test(withDown) && !withDown.includes(down) && /toasts of the last minute.*Claude isn't running/.test(withDown), [both, withDown.slice(0, 600)])
+      const close = path.join($.tmp, "screens", "close-1-3.png")
+      fs.copyFileSync(shot, close)
+      c.screenMoment({ kind: "ask", agent: "Claude", text: "what is this one?", app: "com.example.mail", window: 9, sx: 450, sy: 280, shot, shotAt: { x: 100, y: 50, width: 1329, height: 864 },
+        closeUp: { shot: close, at: { x: 400, y: 250, width: 100, height: 60 }, scale: 3.2, mark: "pointer" } })
+      const closer = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Read it \(1 asks, 2 images/.test(e.text))?.text, 15_000, 50)
+      const withClose = (await said(quick!)).filter((e) => e.k === "user").at(-1)?.text ?? ""
+      check("summoned: a closer look at what they pointed at comes with its picture, placed in that picture's pixels (small logos read off it)",
+        closer === "Read it (1 asks, 2 images)" && /a closer look at what they pointed at, attached after its picture \(3\.2× its picture's size, of its x 300-400, y 200-260; their pointer's arrow is drawn on it, its tip on the thing they mean/.test(withClose) && !withClose.includes(close), [closer, withClose.slice(0, 900)])
+      await idle(quick!)
       const sent = (await api("POST", "ops/claude-code.chat-read", { id: quick, limit: 100 }))[1].entries.filter((e: Any) => e.k === "text").map((e: Any) => e.text)
       c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: "list", summoned: true })
       const qtools = await waitFor(async () => (await said(quick!)).findLast((e) => e.k === "text" && /^Tools:/.test(e.text))?.text, 15_000, 50)

@@ -21,7 +21,7 @@ import { macAddon } from "./macaddons.ts"
 import { type Call, callFrom, callSaid, type MicUser } from "./calllogic.ts"
 import { hideFromShares, overlayNumbers } from "./overlaywin.ts"
 import { icon } from "./menu.ts"
-import { openArgs, openedBundle, atOffset, badgeOf, dottedBitmap, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
+import { openArgs, openedBundle, atOffset, badgeOf, dottedBitmap, beatsWait, besidePointer, bitmapsDiffer, dictationKeys, drawingHold, drawnShapes, floatingOver, type HeldClick, type HelperJob, THUMB, inkOf, jobNews, jobNote, menuNow, cursorBitmap, TINT_RGB, offsetIn, pointIn, prefsOf, type Point, type Prefs, type Scene, type ScreenAgent, type ScreenWindow, liveInput, closeCrop, shotCrop, tappedKeys, trailStrokes } from "./helperlogic.ts"
 import { REAL as captureReal, captureHeard, captureHost, recordFor, recordingNow, regionAct, regionDrag, regionMoved, regionRect, regionScene, stopCapture } from "./capture.ts"
 import { quitRecorder } from "./recorder.ts"
 import { happened, keepTimeline, queryTimeline, timelineHost, timelineOn, timelineRefollow } from "./timeline.ts"
@@ -90,6 +90,13 @@ const screenAsk = <T = Record<string, unknown>>(op: string, req: Record<string, 
 }
 const windowShot = (window: number, dir: string) => (QUIET ? Promise.resolve(null) : shoot(window, dir))
 const displayShot = (p: Point, exclude: number[]) => (QUIET ? Promise.resolve(null) : shootDisplay(p, exclude, SHOTS(), shotCrop(screen.getDisplayNearestPoint(p).bounds, p)))
+/** A closer look at what an ask points at (helperlogic.ts closeCrop): what they drew round, else by the pointer, at more
+ *  pixels a point than its picture, for what's too small to read there (a logo, an icon); their rings or pointer on it. */
+async function closeShot(p: Point, drawn: Rect[]) {
+  const c = QUIET ? null : closeCrop(screen.getDisplayNearestPoint(p).bounds, p, drawn)
+  const r = c ? await shootDisplay(p, await excluded(), SHOTS(), c.crop, c.scale, drawn.length ? { rings: drawn } : { pointer: p }).catch(() => null) : null
+  return r && c ? { shot: r.file, at: r.frame, scale: c.scale, mark: drawn.length ? "ring" : "pointer" } : null
+}
 let lock: net.Server | null = null
 let tray: Tray | null = null
 /** The tray's icon, and with its badge's dot (made once it's first needed). */
@@ -887,7 +894,10 @@ function captured(s: Summon, text: string) {
 /** The window at the point let go at and what's there (pointedAt), its cursor left there only once it's asked. */
 async function gather(s: Summon) {
   const w = s.w ?? await screenAsk<AppWindowInfo>("at", { x: s.p.x, y: s.p.y }).catch(() => null)
-  const place = await pointedAt(s.name, s.p, w?.window ? w : null, false), down = await s.down
+  // (its closer look taken with its picture, not after: the ask waits for neither)
+  const drawn = drawnShapes(inkOf(trailStrokes(s.trail, s.released ?? Date.now()))).map((k) => k.box)
+  const [place, close] = await Promise.all([pointedAt(s.name, s.p, w?.window ? w : null, false), closeShot(s.p, drawn)]), down = await s.down
+  if (close && place.shot && place.app !== "private") place.closeUp = close
   // (the screen changed as they spoke: the picture from the key-down too, what they meant may be only there)
   if (down && place.shot && place.app !== "private" && shotChanged(down, { file: String(place.shot), frame: place.shotAt as Rect })) Object.assign(place, { shotDown: down.file, shotDownAt: down.frame })
   return { w, place }

@@ -574,9 +574,10 @@ func near(_ x: Double, _ y: Double, _ r: Double, _ most: Int, in id: Int = 0) ->
   return ["ok": true, "elements": found.sorted { $0.0 < $1.0 }.prefix(most).map { $0.1 }]
 }
 
-/** The display under a point (or `crop` of it, screen points), as a PNG at a pixel a point, without the windows asked
- *  (ours: the overlay, the conversation); ScreenCaptureKit's, macOS 14 on. Answers when it's written. */
-func shootDisplay(_ x: Double, _ y: Double, _ exclude: [Int], _ file: String, _ crop: CGRect?, _ done: @escaping ([String: Any]) -> Void) {
+/** The display under a point (or `crop` of it, screen points), as a PNG at `scale` pixels a point (1; a closer look's
+ *  more, with `mark` drawn on it), without the windows asked (ours: the overlay, the conversation); ScreenCaptureKit's,
+ *  macOS 14 on. Answers when it's written. */
+func shootDisplay(_ x: Double, _ y: Double, _ exclude: [Int], _ file: String, _ crop: CGRect?, _ scale: Double = 1, _ mark: [String: Any]? = nil, _ done: @escaping ([String: Any]) -> Void) {
   guard #available(macOS 14.0, *) else { return done(["ok": false, "why": "macos"]) }
   SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, err in
     guard let content else { return done(["ok": false, "why": err?.localizedDescription ?? "no screen recording"]) }
@@ -589,15 +590,41 @@ func shootDisplay(_ x: Double, _ y: Double, _ exclude: [Int], _ file: String, _ 
     let filter = SCContentFilter(display: d, excludingWindows: content.windows.filter { exclude.contains(Int($0.windowID)) })
     let conf = SCStreamConfiguration()
     if b != whole { conf.sourceRect = CGRect(x: b.minX - whole.minX, y: b.minY - whole.minY, width: b.width, height: b.height) }
-    conf.width = Int(b.width); conf.height = Int(b.height); conf.showsCursor = false
+    let k = max(0.25, min(4, scale))
+    conf.width = Int((b.width * k).rounded()); conf.height = Int((b.height * k).rounded()); conf.showsCursor = false
     SCScreenshotManager.captureImage(contentFilter: filter, configuration: conf) { img, err in
       guard let img else { return done(["ok": false, "why": err?.localizedDescription ?? "no-image"]) }
       let url = URL(fileURLWithPath: file) as CFURL
       guard let dest = CGImageDestinationCreateWithURL(url, "public.png" as CFString, 1, nil) else { return done(["ok": false, "why": "write"]) }
-      CGImageDestinationAddImage(dest, img, nil)
+      CGImageDestinationAddImage(dest, marked(img, mark, b, k), nil)
       done(CGImageDestinationFinalize(dest) ? ["ok": true, "file": file, "frame": rectJSON(b)] : ["ok": false, "why": "write"])
     }
   }
+}
+
+/** A closer look's spot drawn on it (screen points, `b` its part of the screen at `k` pixels a point): the rings they
+ *  drew (red, round each box), else their pointer's arrow. A model told only where, in words or pixels, named a neighbour. */
+func marked(_ img: CGImage, _ mark: [String: Any]?, _ b: CGRect, _ k: Double) -> CGImage {
+  guard let mark, let space = CGColorSpace(name: CGColorSpace.sRGB),
+        let ctx = CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return img }
+  let h = Double(img.height)
+  ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+  let at = { (x: Double, y: Double) in CGPoint(x: (x - b.minX) * k, y: h - (y - b.minY) * k) }
+  let rings = (mark["rings"] as? [[String: Double]] ?? []).compactMap { r -> CGRect? in
+    guard let x = r["x"], let y = r["y"], let w = r["width"], let hh = r["height"] else { return nil }
+    let a = at(x - 3, y + hh + 3), z = at(x + w + 3, y - 3)
+    return CGRect(x: a.x, y: a.y, width: z.x - a.x, height: z.y - a.y)
+  }
+  if !rings.isEmpty {
+    ctx.setStrokeColor(red: 1, green: 0.18, blue: 0.33, alpha: 1); ctx.setLineWidth(max(3, 2.5 * k))
+    for r in rings { ctx.strokeEllipse(in: r) }
+  } else if let p = mark["pointer"] as? [String: Double], let x = p["x"], let y = p["y"] {
+    let arrow: [(Double, Double)] = [(0, 0), (0, 17), (4, 13), (7, 20), (10, 19), (7, 12), (12, 12)]
+    ctx.beginPath(); ctx.addLines(between: arrow.map { at(x + $0.0, y + $0.1) }); ctx.closePath()
+    ctx.setFillColor(gray: 0, alpha: 1); ctx.setStrokeColor(gray: 1, alpha: 1); ctx.setLineWidth(max(2, 1.2 * k)); ctx.setLineJoin(.round)
+    ctx.drawPath(using: .fillStroke)
+  }
+  return ctx.makeImage() ?? img
 }
 
 /** What's on screen now (ScreenCaptureKit's content), kept a few seconds: a mark's area sampled twice a second asks for it
@@ -762,7 +789,7 @@ Thread {
     if req["op"] as? String == "display" {
       let c = req["crop"] as? [String: Double]
       let crop = c.flatMap { c in [c["x"], c["y"], c["width"], c["height"]].allSatisfy { $0 != nil } ? CGRect(x: c["x"]!, y: c["y"]!, width: c["width"]!, height: c["height"]!) : nil }
-      shootDisplay(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["exclude"] as? [Int] ?? [], req["file"] as? String ?? "", crop) { r in var res = r; res["id"] = req["id"]; send(res) }
+      shootDisplay(req["x"] as? Double ?? 0, req["y"] as? Double ?? 0, req["exclude"] as? [Int] ?? [], req["file"] as? String ?? "", crop, req["scale"] as? Double ?? 1, req["mark"] as? [String: Any]) { r in var res = r; res["id"] = req["id"]; send(res) }
       continue
     }
     if req["op"] as? String == "sample" {

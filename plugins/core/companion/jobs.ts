@@ -228,6 +228,7 @@ function askLines(m: Moment | undefined) {
     m.selection ? `Their selection: ${JSON.stringify(cut(m.selection, 2000))}` : "",
     m.under ? `Under their pointer: ${cut(m.under, 600)}` : "",
     m.shot ? `Their screen then (a picture): ${m.shot}` : "",
+    m.closeUp ? `A closer look at what they pointed at (${m.closeUp.scale}× as large): ${m.closeUp.shot}` : "",
   ].filter(Boolean) : []
   return asked
 }

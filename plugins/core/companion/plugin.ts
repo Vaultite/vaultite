@@ -106,6 +106,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** The display's picture as the key went down too, when the screen changed while they spoke (a toast gone); over
    *  Vaultite, its toasts of the last minute (`notices`, in words). */
   shotDown?: string; shotDownAt?: Rect; notices?: string
+  /** A closer look at what they pointed at, for what's too small in the picture (a logo): its picture, where on screen,
+   *  its pixels a point and what's drawn on it to show the spot (their ring, else their pointer's arrow). */
+  closeUp?: { shot: string; at: Rect; scale: number; mark?: "ring" | "pointer" }
   /** On screen, its displays' bounds (screen points): where a mark can show. */
   displays?: Rect[]
   /** In a pane (a terminal, a web page: today's tab id) or the app's UI (a data-ui id), by its title; a terminal's row, a
@@ -1120,7 +1123,7 @@ let lastScreen: WebSocket | null = null
 const toScreens = (m: object) => { const text = JSON.stringify(m); for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text) }
 /** A screen moment's place, from what the helper sent: an app's window, never a path. */
 /** Only the helper's own pictures: an agent reads what's named here. */
-const OWN_SHOT = /[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+)\.png$/
+const OWN_SHOT = /[/\\]screens[/\\](window-\d+-\d+|display-\d+-\d+|close-\d+-\d+)\.png$/
 function screenPlace(m: Record<string, unknown>) {
   const shot = str(m.shot), down = str(m.shotDown), window = Number(m.window), sx = Number(m.sx), sy = Number(m.sy)
   const rect = (r: unknown): Rect | null => { const o = (r ?? {}) as Record<string, unknown>, v = [o.x, o.y, o.width, o.height].map(Number); return v.every(Number.isFinite) ? { x: Math.round(v[0]), y: Math.round(v[1]), width: Math.round(v[2]), height: Math.round(v[3]) } : null }
@@ -1131,13 +1134,15 @@ function screenPlace(m: Record<string, unknown>) {
     return f && str(w.app) ? [{ app: str(w.app).slice(0, 200), name: str(w.name).slice(0, 120), frame: f }] : [] }) : []
   const clicks = Array.isArray(m.clicks) ? m.clicks.slice(0, 8).flatMap((c: Record<string, unknown>) => { const x = Number(c?.sx), y = Number(c?.sy)
     return Number.isFinite(x) && Number.isFinite(y) ? [{ sx: Math.round(x), sy: Math.round(y), ...(str(c.under) ? { under: str(c.under).slice(0, 300) } : {}) }] : [] }) : []
+  const c = (m.closeUp ?? {}) as Record<string, unknown>, cAt = rect(c.at), scale = Number(c.scale), mark = c.mark === "ring" ? "ring" as const : c.mark === "pointer" ? "pointer" as const : null
+  const close = OWN_SHOT.test(shot) && OWN_SHOT.test(str(c.shot)) && cAt && Number.isFinite(scale) && scale >= 1 && scale <= 4 ? { shot: str(c.shot), at: cAt, scale, ...(mark ? { mark } : {}) } : null
   const at = rect(m.shotAt), displays = Array.isArray(m.displays) ? m.displays.slice(0, 8).map(rect).filter((d): d is Rect => !!d && d.width > 0 && d.height > 0) : []
   return { ...(str(m.app) ? { app: str(m.app).slice(0, 200), ...(str(m.appName) ? { appName: str(m.appName).slice(0, 120) } : {}) } : {}), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(Number.isInteger(Number(m.shotWindow)) && Number(m.shotWindow) > 0 ? { shotWindow: Number(m.shotWindow) } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
     ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}), ...(str(m.under) ? { under: str(m.under).slice(0, 700) } : {}),
     ...(Number.isFinite(sx) && Number.isFinite(sy) && m.sx !== undefined && m.sy !== undefined ? { sx: Math.round(sx), sy: Math.round(sy) } : {}),
     ...(OWN_SHOT.test(shot) ? { shot, ...(at ? { shotAt: at } : {}) } : {}),
     ...(OWN_SHOT.test(down) && OWN_SHOT.test(shot) ? { shotDown: down, ...(rect(m.shotDownAt) ? { shotDownAt: rect(m.shotDownAt)! } : {}) } : {}),
-    ...(str(m.notices) ? { notices: str(m.notices).slice(0, 1200) } : {}),
+    ...(str(m.notices) ? { notices: str(m.notices).slice(0, 1200) } : {}), ...(close ? { closeUp: close } : {}),
     ...(near.length ? { near } : {}), ...(ink.length ? { ink } : {}), ...(floating.length ? { floating } : {}), ...(displays.length ? { displays } : {}), ...(rect(m.region) ? { region: rect(m.region)! } : {}),
     ...(clicks.length ? { clicks } : {}) }
 }
@@ -2086,7 +2091,7 @@ const SCREEN_CHARS = 4000
 /** The model summoned asks run on; "" (the setting's companion, or an agent not Claude Code's): the long session takes them. */
 const summonedModel = () => { const m = setting("summoned_model"); return onChat(agentSetting()) && m !== "companion" ? m : "" }
 /** The pictures an ask's text names, attached to its message (no Read call before its first word). */
-const shotsOf = (ms: Moment[]) => [...new Set(ms.flatMap((m) => [m.shotDown, m.shot].filter((f): f is string => !!f && fs.existsSync(f))))].slice(-3)
+const shotsOf = (ms: Moment[]) => [...new Set(ms.flatMap((m) => [m.shotDown, m.shot, m.closeUp?.shot].filter((f): f is string => !!f && fs.existsSync(f))))].slice(-3)
 let laneOf: { vault: Vault; lane: Lane } | null = null
 const lane = (): Lane => {
   if (laneOf?.vault === plugin.vault) return laneOf.lane
@@ -2117,7 +2122,8 @@ const lane = (): Lane => {
       const text = [`(now: ${now})`, momentsText(slim, mode(), focus(), await excerpts(apiCtx, slim)), jobs.line()].filter(Boolean).join("\n")
       // (its picture attached, not a path: given one, it spent a turn reading it before its first word)
       const images = shotsOf(ms), named = images.reduce((t, f) => t.split(`its picture: ${f}`).join("its picture, attached to this message")
-        .split(`as the key went down: ${f}`).join("as the key went down, attached before it"), text)
+        .split(`as the key went down: ${f}`).join("as the key went down, attached before it")
+        .split(`at what they pointed at: ${f}`).join("at what they pointed at, attached after its picture"), text)
       return { text: named.replace(/\(point at one: --ax <id>\)/g, "(tag one by id: [point a1], [ring a1])"), images }
     },
     agent: (name) => agents.get(key(name)), setAgent, did,
@@ -2129,6 +2135,18 @@ const lane = (): Lane => {
   return l
 }
 
+/** An ask's closer look in words: where it is in its picture, and what they pointed at, drawn on it (told only where in
+ *  the picture, or even in its own pixels, the model named a neighbour). */
+function closeUpText(m: Moment) {
+  const c = m.closeUp!, o = m.shotAt ?? { x: 0, y: 0 }, k = c.scale
+  const px = (x: number, y: number) => `${Math.round((x - c.at.x) * k)}, ${Math.round((y - c.at.y) * k)}`
+  const ins = (x: number, y: number) => x >= c.at.x && y >= c.at.y && x <= c.at.x + c.at.width && y <= c.at.y + c.at.height
+  const drawn = (m.ink ?? []).filter((d) => ins(d.box.x + d.box.width / 2, d.box.y + d.box.height / 2))
+  const what = c.mark === "ring" ? "their ring is drawn on it in red, round the thing they mean" : c.mark === "pointer" ? "their pointer's arrow is drawn on it, its tip on the thing they mean"
+    : drawn.length ? `what they drew round is at ${drawn.map((d) => `${px(d.box.x, d.box.y)} to ${px(d.box.x + d.box.width, d.box.y + d.box.height)}`).join(" and ")} in it`
+    : m.sx !== undefined && m.sy !== undefined && ins(m.sx, m.sy) ? `their pointer is at ${px(m.sx, m.sy)} in it` : ""
+  return `a closer look at what they pointed at: ${c.shot} (${k}× its picture's size, of its x ${c.at.x - o.x}-${c.at.x - o.x + c.at.width}, y ${c.at.y - o.y}-${c.at.y - o.y + c.at.height}${what ? `; ${what}, the thing they mean` : ""}: name it off this one, it shows what's too small in the picture, a logo, an icon, fine print; tags and points still go by the picture's pixels)`
+}
 /** What a fresh summoned session is told first: their ME.md (its start) and the talk before `t`, its last day. */
 function talkBefore(t: number) {
   const days = [...new Set([localDate(t - 86_400_000), localDate(t)])]
@@ -2630,6 +2648,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
     if (m.shot) out.push(`  its picture: ${m.shot}${m.shotAt ? ` (the screen around their pointer, cropped: what its edges cut is whole on their screen; a pixel a point: its top left is sx ${m.shotAt.x}, sy ${m.shotAt.y}, so its pixel x, y is sx ${m.shotAt.x} + x, sy ${m.shotAt.y} + y${m.sx !== undefined ? `; their pointer at ${m.sx - m.shotAt.x}, ${m.sy! - m.shotAt.y} in it` : ""})` : ""}`)
     if (m.shotDown) out.push(`  its picture as the key went down: ${m.shotDown} (the screen changed while they spoke: what they meant may be only in this one${m.shotDownAt ? `; its top left is sx ${m.shotDownAt.x}, sy ${m.shotDownAt.y}` : ""})`)
+    if (m.closeUp) out.push(`  ${closeUpText(m)}`)
     if (m.notices) out.push(`  Vaultite's toasts of the last minute (gone from the picture, maybe): ${m.notices}`)
     if (m.pageJob) out.push(pageJobLine(m.pageJob))
     if (m.front === "realtime") out.push(`  asked through the realtime voice: it already told them you're looking, so answer at once, no "let me look"${m.talk?.length ? `; said before: ${m.talk.map((x) => JSON.stringify(x)).join(", ")}` : ""}`)

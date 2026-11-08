@@ -10,6 +10,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   yet its parent (made on a third device) failed listing conflicts, and could stop syncing.
 - **The companion's chat writes notes no window shows**: an edit its Claude Code chat session makes to a note that
   isn't on screen is saved to the file, where it was sometimes refused as the plugin writing on its own.
+- **The companion sees small things you point at**: a Talk key ask comes with a sharp close-up, at the screen's full
+  resolution, of what you ring or point at, your ring or pointer drawn on it, so it can name a small logo or icon there
+  instead of guessing.
 - **`vau limits`**: each Claude Code account's plan limits, how much of its week is left and when it renews, most
   room first, so an agent can pick the account a new session runs on (also MCP `claude_limits`).
 - **Clicks under the notch island and the companion land again**: their see-through windows take the pointer only while

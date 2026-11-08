@@ -38,12 +38,14 @@ function prune(dir: string) {
   const old = fs.readdirSync(dir).filter((f) => f.endsWith(".png")).sort((a, b) => when(b) - when(a))
   for (const f of old.slice(20)) fs.rmSync(path.join(dir, f), { force: true })
 }
-/** The display under `p` (or `crop` of it: helperlogic.ts shotCrop) as a PNG in `dir`, a pixel a point, without windows
+/** What a closer look shows its spot by, drawn on it (screen points): the rings they drew, else their pointer. */
+export type ShotMark = { rings: Rect[] } | { pointer: { x: number; y: number } }
+/** The display under `p` (or `crop` of it) as a PNG in `dir` at `scale` pixels a point, `mark` on it, without windows
  *  `exclude` (ours, a private app's), and where it is on screen. Null when macOS gave none (no recording, macOS < 14). */
-export async function displayShot(p: { x: number; y: number }, exclude: number[], dir: string, crop?: Rect): Promise<{ file: string; frame: Rect } | null> {
+export async function displayShot(p: { x: number; y: number }, exclude: number[], dir: string, crop?: Rect, scale = 1, mark?: ShotMark): Promise<{ file: string; frame: Rect } | null> {
   fs.mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, `display-${Math.round(p.x)}-${Date.now()}.png`)
-  const r = await screenAsk<{ ok?: boolean; file?: string; frame?: Rect }>("display", { x: p.x, y: p.y, exclude, file, ...(crop ? { crop } : {}) }, 8000)
+  const file = path.join(dir, `${scale === 1 ? "display" : "close"}-${Math.round(p.x)}-${Date.now()}.png`)
+  const r = await screenAsk<{ ok?: boolean; file?: string; frame?: Rect }>("display", { x: p.x, y: p.y, exclude, file, ...(crop ? { crop } : {}), ...(scale === 1 ? {} : { scale }), ...(mark ? { mark } : {}) }, 8000)
   prune(dir)
   return r.ok && r.frame && fs.existsSync(file) && fs.statSync(file).size > 0 ? { file, frame: r.frame } : null
 }

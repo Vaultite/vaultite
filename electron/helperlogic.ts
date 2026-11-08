@@ -249,6 +249,29 @@ export function shotCrop(d: Rect, p: Point): Rect {
   return { x: at(p.x, w, d.x, d.width), y: at(p.y, h, d.y, d.height), width: w, height: h }
 }
 
+/** A closer look where an ask points: what they drew round (all of it, with some room), else this much around the
+ *  pointer; pictured at up to `most` pixels a point, `side` on its long side (small logos and text read off it). */
+export const CLOSE = { around: { width: 300, height: 200 }, least: { width: 160, height: 110 }, side: 960, pixels: 1_000_000, most: 4 }
+/** The part of display `d` its closer look shows, in points, and its pixels a point; null when it would be no closer
+ *  than the ask's picture (a pixel a point). */
+export function closeCrop(d: Rect, p: Point, drawn: Rect[]): { crop: Rect; scale: number } | null {
+  let x0: number, y0: number, x1: number, y1: number
+  if (drawn.length) {
+    x0 = Math.min(...drawn.map((b) => b.x)); y0 = Math.min(...drawn.map((b) => b.y))
+    x1 = Math.max(...drawn.map((b) => b.x + b.width)); y1 = Math.max(...drawn.map((b) => b.y + b.height))
+    const pad = Math.max(24, 0.3 * Math.max(x1 - x0, y1 - y0))
+    x0 -= pad; y0 -= pad; x1 += pad; y1 += pad
+  } else { x0 = p.x - CLOSE.around.width / 2; y0 = p.y - CLOSE.around.height / 2; x1 = x0 + CLOSE.around.width; y1 = y0 + CLOSE.around.height }
+  const grow = (a: number, b: number, least: number) => (b - a >= least ? [a, b] : [(a + b - least) / 2, (a + b + least) / 2])
+  ;[x0, x1] = grow(x0, x1, CLOSE.least.width); [y0, y1] = grow(y0, y1, CLOSE.least.height)
+  // (kept inside the display: moved in whole where it fits, else cut to it)
+  const fit = (a: number, b: number, from: number, span: number) => { const size = Math.min(b - a, span), at = Math.max(from, Math.min(from + span - size, a)); return [Math.round(at), Math.round(size)] }
+  const [x, width] = fit(x0, x1, d.x, d.width), [y, height] = fit(y0, y1, d.y, d.height)
+  if (width < 8 || height < 8) return null
+  const scale = Math.min(CLOSE.most, CLOSE.side / Math.max(width, height), Math.sqrt(CLOSE.pixels / (width * height)))
+  return scale < 1.5 ? null : { crop: { x, y, width, height }, scale: Math.round(scale * 100) / 100 }
+}
+
 /** How long a drawing that came with `beats` beats (its last mark's, from 0) is held up for the user to see it, before a
  *  spoken exchange that ends by itself takes it down: its pen's work, then a look at it (its words say longer). */
 export const drawingHold = (beats: number) => 3500 + Math.min(10, beats) * 1200
