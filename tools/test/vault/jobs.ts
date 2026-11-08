@@ -206,14 +206,14 @@ export default async ($: VaultTest) => {
     W.checkoutsIn(roots)
     try {
       let [st, b] = await api("POST", "ops/companion.where", { cwd: "/Users/alice/Projects/site" })
-      check("companion where: a folder another machine has its repo in finds this one's checkout, saying so", st === 200 && fs.realpathSync(b.cwd) === real && b.repo === "site" &&
-        /^\/Users\/alice\/Projects\/site is .*\/site here$/.test(b.why), [st, b])
+      check("companion where: a folder another machine has its repo in finds this one's checkout, saying so", st === 200 && fs.realpathSync.native(b.cwd) === fs.realpathSync.native(repo) && b.repo === "site" &&
+        /^\/Users\/alice\/Projects\/site is .*[\\/]site here$/.test(b.why), [st, b])
       ;[st, b] = await api("POST", "ops/companion.where", { repo: "lighthouse/site" })
-      check("companion where --repo: by GitHub's name", st === 200 && fs.realpathSync(b.cwd) === real && b.base.length === 40, [st, b])
+      check("companion where --repo: by GitHub's name", st === 200 && fs.realpathSync.native(b.cwd) === fs.realpathSync.native(repo) && b.base.length === 40, [st, b])
       ;[st, b] = await api("POST", "ops/companion.where", { repo: "nowhere" })
       const [, text] = await api("POST", "ops/companion.where?as=text", { repo: "nowhere" })
       check("companion where: a repo with no checkout here says so, and where it looked: never a guess", st === 200 && b.missing === true &&
-        new RegExp(`no checkout of nowhere \\(looked in ${roots[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)\\. Its checkouts: [^.]*\\/site`).test(String(text.text ?? text)) && /\/site/.test(b.have), [b, text])
+        new RegExp(`no checkout of nowhere \\(looked in ${roots[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)\\. Its checkouts: [^.]*[\\\\/]site`).test(String(text.text ?? text)) && /[\\/]site/.test(b.have), [b, text])
     } finally { W.checkoutsIn() }
     if (process.platform !== "win32") {
       const server = spawn(process.execPath, ["-e", "const s=require('http').createServer(()=>{}).listen(0,'127.0.0.1',()=>console.log(s.address().port))"], { cwd: path.join(repo), stdio: ["ignore", "pipe", "ignore"] })
