@@ -2,7 +2,7 @@
 // the top of the user's display (right of the notch and any other island there), click-through but over it. screen.html#island.
 import { type BrowserWindow, ipcMain, screen, type Display } from "electron"
 import path from "node:path"
-import { overlayWindow } from "./overlaywin.ts"
+import { overlayWindow, takesPointer } from "./overlaywin.ts"
 import { quiet } from "./quiet.ts"
 import { islandSpot, islandsOn, type OtherWindow, type Rect, roomAt, type Spot, windowAt } from "./islandlogic.ts"
 import type { Knock, Presence } from "../plugins/core/companion/knocks.ts"
@@ -35,7 +35,6 @@ export function islandActs(a: IslandActs) {
   if (acts) { acts = a; return }
   acts = a
   const mine = (e: Electron.IpcMainEvent) => !!win && !win.isDestroyed() && e.sender === win.webContents
-  ipcMain.on("island:grab", (e, on: unknown) => { if (mine(e)) { win!.setIgnoreMouseEvents(!on, { forward: true }); acts?.hover?.(!!on) } })
   ipcMain.on("island:faces", (e, list: unknown) => {
     if (!mine(e) || !Array.isArray(list)) return
     faces = list.flatMap((f: { id?: unknown; x?: unknown; y?: unknown; width?: unknown; height?: unknown }) =>
@@ -55,7 +54,8 @@ export function islandActs(a: IslandActs) {
 function make() {
   const w = overlayWindow({ width: W, height: H, focusable: false, enableLargerThanScreen: true, acceptFirstMouse: true,
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false } }, 2)
-  w.setIgnoreMouseEvents(true, { forward: true })
+  // (over its bar or card it takes the pointer, and a knock's time waits meanwhile)
+  takesPointer(w, (on) => acts?.hover?.(on))
   quiet(w)
   w.webContents.on("did-finish-load", () => { sent = ""; send() })
   w.on("closed", () => { if (win === w) win = null })
@@ -88,7 +88,7 @@ export function showIsland(base: string | null, d: Omit<IslandData, "spot" | "le
   const next = `${base}/screen.html#island`
   if (next !== url) { url = next; if (win && !win.isDestroyed()) void win.loadURL(url).catch(() => {}) }
   const shown = !!d && !!s && !s.hidden && (d.presences.length > 0 || !!d.knock || !!d.walk)
-  if (!shown) { if (win && !win.isDestroyed() && win.isVisible()) { win.hide(); win.setIgnoreMouseEvents(true, { forward: true }) } return }
+  if (!shown) { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); return }
   last = d; spot = s
   if (!win || win.isDestroyed()) win = make()
   send()

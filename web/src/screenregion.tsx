@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { History, X } from "lucide-react"
 import { clock, type Rect, type RegionScene } from "../../plugins/core/companion/clips"
+import { HOLD } from "./screendraw/hold"
 
 type Edge = "move" | "nw" | "ne" | "sw" | "se"
 const BAND = 8, LEAST = 24
@@ -16,16 +17,12 @@ function dragged(r0: Rect, edge: Edge, dx: number, dy: number): Rect {
   return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) }
 }
 
-export function Region({ r, top, grab, moved, act }: { r: RegionScene; top: number; grab: (on: boolean) => void; moved: (rect: Rect) => void; act: (what: string) => void }) {
+export function Region({ r, top, moved, act }: { r: RegionScene; top: number; moved: (rect: Rect) => void; act: (what: string) => void }) {
   const [held, setHeld] = useState<Rect | null>(null)
   const drag = useRef<{ edge: Edge; x: number; y: number; r0: Rect } | null>(null)
-  const over = useRef(0)
   const [, tick] = useState(0)
   useEffect(() => { if (!r.recording) return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t) }, [r.recording])
-  // (the window takes the pointer over the edges and the pill, and through a drag that leaves them)
-  const enter = () => { if (over.current++ === 0 && !drag.current) grab(true) }
-  const leave = () => { if (--over.current === 0 && !drag.current) grab(false) }
-  useEffect(() => () => { if (over.current || drag.current) grab(false) }, [])
+  // (the window takes the pointer over the edges and the pill (`HOLD`), and through a drag begun on them)
   const rect = held ?? r.rect, tint = r.recording ? "var(--red)" : `var(--${r.tint})`
   const down = (edge: Edge) => (e: React.PointerEvent) => {
     if (e.button !== 0) return
@@ -44,9 +41,8 @@ export function Region({ r, top, grab, moved, act }: { r: RegionScene; top: numb
     if (!drag.current) return
     drag.current = null
     setHeld(null)
-    if (!over.current) grab(false)
   }
-  const handlers = (edge: Edge) => ({ onPointerDown: down(edge), onPointerMove: move, onPointerUp: up, onPointerCancel: up, onPointerEnter: enter, onPointerLeave: leave })
+  const handlers = (edge: Edge) => ({ onPointerDown: down(edge), onPointerMove: move, onPointerUp: up, onPointerCancel: up, ...HOLD })
   const band = (style: React.CSSProperties) => <div className="pointer-events-auto absolute cursor-move" style={style} {...handlers("move")} />
   const corner = (edge: Exclude<Edge, "move">, style: React.CSSProperties) =>
     <div className="pointer-events-auto absolute size-3 rounded-[3px] border-2 bg-white" style={{ borderColor: tint, cursor: edge === "nw" || edge === "se" ? "nwse-resize" : "nesw-resize", ...style }} {...handlers(edge)} />
@@ -63,7 +59,7 @@ export function Region({ r, top, grab, moved, act }: { r: RegionScene; top: numb
         {corner("nw", { left: -6, top: -6 })}{corner("ne", { right: -6, top: -6 })}{corner("sw", { left: -6, bottom: -6 })}{corner("se", { right: -6, bottom: -6 })}
       </>}
       <div className="pointer-events-auto absolute left-0 flex items-center gap-0.5 rounded-full border border-black/10 bg-background/95 p-0.5 text-[12px] font-medium shadow-md backdrop-blur"
-        style={pillAbove ? { bottom: "calc(100% + 8px)" } : { top: 8, left: 8 }} onPointerEnter={enter} onPointerLeave={leave}>
+        style={pillAbove ? { bottom: "calc(100% + 8px)" } : { top: 8, left: 8 }} {...HOLD}>
         {r.saving ? <span className="px-2.5 py-1 text-muted-foreground">Saving…</span>
           : r.recording ? (
             <button type="button" className="flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 hover:bg-foreground/[0.07]" onClick={() => act("stop")} aria-label="Stop recording and send">

@@ -39,8 +39,8 @@ async function open(dark = false) {
     r.fulfill({ body: fs.readFileSync(f), contentType: types[path.extname(f)] ?? "application/octet-stream" })
   })
   await page.addInitScript(([screen, dark]) => {
-    window.__acts = []; window.__grabs = []
-    window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt() { return () => {} }, grab(on) { window.__grabs.push(on) }, drop() {}, open() {}, home() {}, menu() {}, stop() {},
+    window.__acts = []
+    window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt() { return () => {} }, holds(m) { window.__holds = m }, near() {}, drop() {}, open() {}, home() {}, menu() {}, stop() {},
       draw: { on(fn) { window.__draw = fn; return () => {} }, act(a) { window.__acts.push(a) } },
       panel: { on() { return () => {} }, size() {}, send() {}, close() {}, mic() {}, more() {} } }
     addEventListener("DOMContentLoaded", () => {
@@ -128,7 +128,12 @@ await light.click("text=Copy Bob's address")
 await light.click("text=Share it for me")
 const acts = await light.evaluate(() => window.__acts)
 check("a copy chip copies its text; a next-step button asks its follow-up", acts.some((a) => a.kind === "copy" && a.text === "bob@lighthouse.test" && a.id === "d1") && acts.some((a) => a.kind === "ask" && a.text === "Share it with Bob"), acts)
-check("a chip takes the pointer while it's under it (the overlay lets it through elsewhere)", await light.evaluate(() => window.__grabs.includes(true)))
+// (the main process takes the pointer over the boxes the page tells, electron/overlaywin.ts)
+check("a chip takes the pointer over itself, the overlay lets it through elsewhere", await until(() => light.evaluate(() => {
+  const r = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("Share it for me"))?.getBoundingClientRect()
+  const told = (x, y) => (window.__holds?.boxes ?? []).some((b) => x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height)
+  return !!r && told(r.x + r.width / 2, r.y + r.height / 2) && !told(2, innerHeight / 2)
+}), 2000), await light.evaluate(() => window.__holds))
 const tools = await light.evaluate(() => [...document.querySelectorAll(".sd-tool")].map((e) => e.textContent))
 check("while it's up: Keep (it has words worth keeping) and Clear", tools.join() === "Keep,Clear", tools)
 await light.click("text=Keep")

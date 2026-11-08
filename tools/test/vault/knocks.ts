@@ -6,6 +6,18 @@ export default async ($: VaultTest) => {
   const I = await import("../../../electron/islandlogic.ts")
   const H = await import("../../../electron/helperlogic.ts")
   const A = await import("../../../core/agenttint.ts")
+  const O = await import("../../../electron/overlayhold.ts")
+
+  // An overlay window (the island, the companion's) takes the pointer only over what its page marks, or through a press
+  // begun on one; never over its see-through rest, nor off the window.
+  {
+    const win = { x: 400, y: 0, width: 700, height: 600 }, bar = { x: 300, y: 0, width: 120, height: 32 }
+    check("overlay: takes the pointer over a box it was told", O.holding(win, [bar], { x: 760, y: 10 }))
+    check("overlay: lets it through over its see-through rest, with or without boxes",
+      !O.holding(win, [bar], { x: 700, y: 400 }) && !O.holding(win, [], { x: 760, y: 10 }))
+    check("overlay: a press begun on one keeps it over the window, never off it",
+      O.holding(win, [], { x: 700, y: 400 }, true) && !O.holding(win, [bar], { x: 1200, y: 10 }, true) && !O.holding(win, [bar], { x: 760, y: 700 }, true))
+  }
 
   // The queue: one at a time, at a pause, the most urgent first; "not now" till the next break; ignored, expired, gone.
   {

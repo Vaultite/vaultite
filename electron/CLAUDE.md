@@ -64,6 +64,9 @@
   dictation.swift lists the devices and opens the pick, the next one should it go); one used anyway is held open after
   a Talk key's press till its answer is said and a second on (`releaseMic`, at most 60 s). voice.swift follows its output device all the same (an engine started before a switch
   plays into nothing): a new engine, said again from the pause before (`voice-reroute`; `sound` says where it plays).
+- An overlay window lets the pointer through but over what its page marks `data-hold` (web screendraw/hold.ts tells
+  their boxes): overlaywin.ts `takesPointer` decides by where the pointer is, never a page's enters and leaves (a node
+  gone under a still pointer, a reload, a crash or a hide left one taking every click under it: web/qa/overlayholds.mjs).
 - The overlay (overlay.ts) is BrowserWindows, never `AppWindow`s: those count as the app's windows (the Dock, menus).
   Each is made by overlaywin.ts (a new one too): over every Space, and kept out of screen shares and recordings
   (content protection; the setting `hide_from_shares`). The companion's own pictures leave them out by number all the same.

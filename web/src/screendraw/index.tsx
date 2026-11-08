@@ -33,7 +33,7 @@ const subscribe = (l: () => void) => { listeners.add(l); return () => { listener
 
 /** This display's layers, and those fading as they go; `pen`: the companion's cursor draws the one it's answering with,
  *  told its strokes. */
-export function ScreenDrawings({ grab, pen }: { grab: (on: boolean) => void; pen?: (s: PenScript | null) => void }) {
+export function ScreenDrawings({ pen }: { pen?: (s: PenScript | null) => void }) {
   const { up, gone } = useSyncExternalStore(subscribe, () => view)
   if (!up.length && !gone.length) return null
   // (the pen follows the newest layer still being drawn: an earlier exchange's is drawn already)
@@ -43,7 +43,7 @@ export function ScreenDrawings({ grab, pen }: { grab: (on: boolean) => void; pen
       // (each layer's Keep and Clear on its own row, named when there are several)
       const shown = up.filter((x) => !x.hidden), slot = shown.indexOf(d)
       // (its pen from the display with its cards: the others' cursors are told it, screen.tsx)
-      return <Draw key={d.id} d={d} leaving={!up.includes(d)} act={(a) => bridge?.act(a)} grab={grab} pen={d.id === lead && d.here.home ? pen : undefined} slot={Math.max(0, slot)} named={shown.length > 1} />
+      return <Draw key={d.id} d={d} leaving={!up.includes(d)} act={(a) => bridge?.act(a)} pen={d.id === lead && d.here.home ? pen : undefined} slot={Math.max(0, slot)} named={shown.length > 1} />
     })}
   </Suspense>
 }

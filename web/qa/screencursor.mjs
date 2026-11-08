@@ -22,7 +22,7 @@ await page.addInitScript(() => {
   window.requestAnimationFrame = (fn) => { window.__frames++; return raf(fn) }
   window.__calls = []
   const call = (name) => (...a) => window.__calls.push([name, ...a])
-  window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt(fn) { window.__at = fn; return () => {} }, grab() {},
+  window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt(fn) { window.__at = fn; return () => {} }, holds() {},
     open: call("open"), stop() {},
     panel: { on(fn) { window.__panel = fn; return () => {} }, size: call("size"), send: call("send"), close: call("close"), mic: call("mic"), more: call("more") } }
 })
@@ -171,7 +171,7 @@ await panel.route("http://screen.test/**", (r) => {
 await panel.addInitScript(() => {
   window.__calls = []
   const call = (name) => (...a) => window.__calls.push([name, ...a])
-  window.vaultiteScreen = { on: () => () => {}, onAt: () => () => {}, grab() {}, panel: { on(fn) { window.__panel = fn; return () => {} }, size: call("size"), send: call("send"), close: call("close"), mic: call("mic"), more: call("more") } }
+  window.vaultiteScreen = { on: () => () => {}, onAt: () => () => {}, holds() {}, panel: { on(fn) { window.__panel = fn; return () => {} }, size: call("size"), send: call("send"), close: call("close"), mic: call("mic"), more: call("more") } }
 })
 await panel.goto("http://screen.test/screen.html#panel")
 await panel.waitForFunction(() => !!window.__panel)

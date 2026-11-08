@@ -25,7 +25,7 @@ async function open(reduced = false, hash = "") {
     window.requestAnimationFrame = (fn) => { window.__frames++; return raf(fn) }
     window.__calls = []
     const call = (name) => (...a) => window.__calls.push([name, ...a])
-    window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt(fn) { window.__at = fn; return () => {} }, onPointer(fn) { window.__pointer = fn; return () => {} }, pilot: call("pilot"), grab() {},
+    window.vaultiteScreen = { on(fn) { window.__scene = fn; return () => {} }, onAt(fn) { window.__at = fn; return () => {} }, onPointer(fn) { window.__pointer = fn; return () => {} }, pilot: call("pilot"), holds() {},
       pen: call("pen"), onPen(fn) { window.__pen = fn; return () => {} },
       open() {}, stop() {}, draw: { on(fn) { window.__draw = fn; return () => {} }, act() {} },
       panel: { on(fn) { window.__panel = fn; return () => {} }, size() {}, send: call("send"), close() {}, mic() {}, more() {} } }

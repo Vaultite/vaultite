@@ -3,12 +3,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Undo2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { HOLD } from "./screendraw/hold"
 import { type Knock, type Presence, PRESENCE_GROUPS } from "../../plugins/core/companion/knocks"
 import { countText, type WalkScene } from "../../plugins/core/companion/walks"
 
 type Spot = { x: number; y: number; bar: number; align: "left" | "centre"; attached: boolean; room?: number }
 export type IslandData = { presences: Presence[]; knock: (Knock & { tint: string; left: number }) | null; walk: WalkScene | null; spot: Spot; left: number; width: number }
-type Bridge = { on: (fn: (d: IslandData) => void) => () => void; grab: (on: boolean) => void; act: (act: string, id: string, mute?: boolean) => void
+type Bridge = { on: (fn: (d: IslandData) => void) => () => void; act: (act: string, id: string, mute?: boolean) => void
   faces?: (list: { id: string; x: number; y: number; width: number; height: number }[]) => void }
 const api = (window as unknown as { vaultiteScreen?: { island?: Bridge } }).vaultiteScreen?.island
 
@@ -131,7 +132,7 @@ export function Island() {
   const [d, setD] = useState<IslandData | null>(null)
   const [open, setOpen] = useState(false)
   const [done, setDone] = useState(false)
-  const over = useRef(false), hold = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const hold = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => api?.on(setD), [])
   // (its width follows what it holds, on a spring: the mark, a knock's line)
   const inner = useRef<HTMLDivElement>(null), [fit, setFit] = useState(0)
@@ -153,7 +154,7 @@ export function Island() {
     if (more !== ends) setEnds(more)
   }
   useLayoutEffect(tell)
-  useEffect(() => () => { clearTimeout(hold.current); if (over.current) api?.grab(false) }, [])
+  useEffect(() => () => clearTimeout(hold.current), [])
   // (the list's "2m"s, kept true while it's open; the done ones fold again once it closes)
   const [, tick] = useState(0)
   useEffect(() => { if (!open) { setDone(false); return } const t = setInterval(() => tick((n) => n + 1), 30_000); return () => clearInterval(t) }, [open])
@@ -162,12 +163,10 @@ export function Island() {
   // (a word from the walk: as an item is noted, or where it went once it's over)
   const said = !knock && d.walk?.note ? d.walk.note : null
   const enter = () => {
-    if (!over.current) { over.current = true; api?.grab(true) }
     clearTimeout(hold.current)
     hold.current = setTimeout(() => setOpen(true), knock ? 0 : 120)
   }
   const leave = () => {
-    if (over.current) { over.current = false; api?.grab(false) }
     clearTimeout(hold.current)
     hold.current = setTimeout(() => setOpen(false), 220)
   }
@@ -198,7 +197,8 @@ export function Island() {
   return (
     <div className="island-root" onPointerEnter={enter} onPointerLeave={leave} data-island data-open={open || undefined}
       style={{ position: "absolute", top: 0, left: d.left - (attached ? TUCK : 0), ...(centre ? { transform: "translateX(-50%)" } : {}) }}>
-      <div className="island text-white"
+      {/* (the bar and its card take the pointer, `HOLD`: the rest of the window lets it through) */}
+      <div className="island text-white" {...HOLD}
         style={{ borderRadius: attached ? `0 0 ${radius}px 0` : `0 0 ${radius}px ${radius}px`, paddingLeft: attached ? TUCK : 0, width: fit ? fit + (attached ? TUCK : 0) : undefined }}>
         <div ref={inner} className="flex w-max items-center gap-1.5 px-2.5" style={{ height: spot.bar }}>
           {walk && <WalkMark w={walk} />}
@@ -211,7 +211,7 @@ export function Island() {
         </div>
       </div>
       {card && (
-        <div className={cn("island-card text-white", centre && "island-card-centre")} style={{ top: spot.bar + 6, maxHeight: `calc(100vh - ${spot.bar + 6 + FOOT}px)`, ...(centre ? {} : back ? { right: 0 } : { left: attached ? TUCK : 0 }) }}>
+        <div {...HOLD} className={cn("island-card text-white", centre && "island-card-centre")} style={{ top: spot.bar + 6, maxHeight: `calc(100vh - ${spot.bar + 6 + FOOT}px)`, ...(centre ? {} : back ? { right: 0 } : { left: attached ? TUCK : 0 }) }}>
           {drop && <div className="flex shrink-0 items-center gap-1.5 px-2.5 py-2.5">{line}</div>}
           {open && rows && (
             <>

@@ -20,7 +20,7 @@ import { presence, type Mark as MarkKind } from "../../plugins/core/companion/lo
 import { arrowBox, boxAt, flagBox } from "../../plugins/core/companion/boxes"
 import { Chat, type ChatItem } from "../../plugins/core/companion/Chat"
 import { type DrawBridge, ScreenDrawings } from "./screendraw"
-import { useHold } from "./screendraw/hold"
+import { type Box, HOLD, tellHolds } from "./screendraw/hold"
 import { Region, REGION_STYLE } from "./screenregion"
 import { Island, ISLAND_STYLE } from "./screenisland"
 import type { RegionScene } from "../../plugins/core/companion/clips"
@@ -52,7 +52,8 @@ type PanelData = { name: string; tint: string; items: ChatItem[]; busy?: boolean
   hint?: string
   /** Its answer was kept quiet for a call: a play button says it. */
   play?: boolean }
-type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void; grab: (on: boolean) => void
+type Bridge = { on: (fn: (s: Shown) => void) => () => void; onAt: (fn: (a: At) => void) => () => void
+  holds?: (m: { boxes: Box[]; pressing: boolean }) => void; near?: () => void
   onPointer?: (fn: (p: [number, number, number, number]) => void) => () => void; pilot?: (to: [number, number] | null) => void
   pen?: (s: PenScript | null) => void; onPen?: (fn: (s: PenScript | null) => void) => () => void
   onCue?: (fn: (name: Cue) => void) => () => void
@@ -348,9 +349,7 @@ function onAt(at: At) {
 }
 
 // ---------- the pointer: what it's over takes it (a bubble, the pill, to click); off them, it goes through again
-
-let grabbed = 0
-const grab = (on: boolean) => { grabbed = Math.max(0, grabbed + (on ? 1 : -1)); api?.grab(grabbed > 0) }
+// (`data-hold`: the window takes it where the pointer is over one, electron/overlaywin.ts)
 
 function Arrow({ tint }: { tint: string }) {
   return (
@@ -367,9 +366,8 @@ function open(name: string, key: string) {
 }
 
 function Hold({ children, onHover, ...rest }: React.HTMLAttributes<HTMLDivElement> & { onHover?: (on: boolean) => void } & Record<`data-${string}`, unknown>) {
-  const hold = useHold(grab)
   return (
-    <div {...rest} onPointerEnter={() => { if (hold(true)) onHover?.(true) }} onPointerLeave={() => { if (hold(false)) onHover?.(false) }}>
+    <div {...rest} {...HOLD} onPointerEnter={() => onHover?.(true)} onPointerLeave={() => onHover?.(false)}>
       {children}
     </div>
   )
@@ -613,11 +611,11 @@ function Screen() {
   return (
     <>
       {/* (the agents' drawings, under their cursors) */}
-      <ScreenDrawings grab={grab} pen={s.summon?.follow ? penFor : undefined} />
+      <ScreenDrawings pen={s.summon?.follow ? penFor : undefined} />
       {s.agents.map((a) => <Cursor key={a.name} a={a} speaking={s.speaking?.name === a.name} />)}
       {gone.map((a) => <Cursor key={a.name} a={a} gone />)}
       {(s.summon ?? summonGone) && <Summon c={(s.summon ?? summonGone)!} gone={!s.summon} speaking={!!s.summon && s.speaking?.name === s.summon.name} />}
-      {s.region && <Region r={s.region} top={s.top} grab={grab} moved={(r) => api?.region?.(r)} act={(w) => api?.regionAct?.(w)} />}
+      {s.region && <Region r={s.region} top={s.top} moved={(r) => api?.region?.(r)} act={(w) => api?.regionAct?.(w)} />}
       {(s.behind ?? behindGone) && <BehindCard b={(s.behind ?? behindGone)!} gone={!s.behind} />}
       {s.pill && (s.pill.hint ? <Hint text={s.pill.text} top={s.top} /> : <Pill p={s.pill} top={s.top} />)}
     </>
@@ -665,4 +663,6 @@ const STYLE = `
 `
 document.head.append(Object.assign(document.createElement("style"), { textContent: location.hash === "#island" ? ISLAND_STYLE : STYLE + REGION_STYLE }))
 document.documentElement.style.background = "transparent"
+// (the overlay and the island take the pointer only over what's marked to: a cursor's conversation is a window of its own)
+if (location.hash !== "#panel") tellHolds(api)
 createRoot(document.getElementById("root")!).render(<StrictMode>{location.hash === "#panel" ? <Panel /> : location.hash === "#island" ? <Island /> : <Screen />}</StrictMode>)

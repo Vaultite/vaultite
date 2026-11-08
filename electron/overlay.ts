@@ -4,7 +4,7 @@ import { BrowserWindow, clipboard, ipcMain, screen, shell, type Display, type Ip
 import path from "node:path"
 import { besidePointer, grownAt, panelAt, pointerBox, type Point, reaching, type Rect, type Scene, sceneFor, splitScene } from "./helperlogic.ts"
 import { drawingFor, type Drawing, type DrawAct, offered } from "./drawing.ts"
-import { overlayWindow } from "./overlaywin.ts"
+import { overlayWindow, takesPointer } from "./overlaywin.ts"
 import { rectOf, spots } from "../plugins/core/companion/screenmarks.ts"
 
 /** What the user does to it: clicks a bubble (its conversation opens by its cursor, `at`: the screen's), stops dictating. */
@@ -35,7 +35,7 @@ function make(d: Display) {
   const w = overlayWindow({ ...d.bounds, focusable: false, enableLargerThanScreen: true,
     // (its soft cues play with no click on it: nothing ever clicks the overlay to allow them)
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, backgroundThrottling: false, autoplayPolicy: "no-user-gesture-required" } })
-  w.setIgnoreMouseEvents(true, { forward: true })
+  takesPointer(w)
   w.webContents.on("did-finish-load", () => { sent.delete(w); push(); if (layers.size) sendDrawing(); if (feed) feedPointer(true) })
   if (url) void w.loadURL(url).catch(() => {})
   wins.set(d.id, w)
@@ -169,8 +169,6 @@ export function drawingActs(fn: (a: DrawAct) => void) { onDrawAct = fn }
 const mine = (e: IpcMainEvent) => [...wins.values()].find((w) => w.webContents === e.sender)
 export function overlayActs(a: OverlayActs) {
   acts = a
-  // (over a bubble or the pill the window takes the pointer, so it can be clicked; elsewhere it goes through)
-  ipcMain.on("screen:grab", (e, on: unknown) => { const w = mine(e); if (w) w.setIgnoreMouseEvents(!on, { forward: true }) })
   ipcMain.on("screen:open", (e, m: { name?: unknown; x?: unknown; y?: unknown }) => {
     const w = mine(e)
     if (!w || typeof m?.name !== "string" || typeof m.x !== "number" || typeof m.y !== "number") return

@@ -35,7 +35,9 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
     ipcRenderer.on("vaultite:pen", h)
     return () => { ipcRenderer.removeListener("vaultite:pen", h) }
   },
-  grab: (on) => ipcRenderer.send("screen:grab", !!on),
+  // (where what can be pressed is, and a press begun on one: the window takes the pointer over them, overlaywin.ts)
+  holds: (m) => ipcRenderer.send("overlay:holds", m),
+  near: () => ipcRenderer.send("overlay:near"),
   open: (name, x, y) => ipcRenderer.send("screen:open", { name, x, y }),
   stop: () => ipcRenderer.send("screen:stop"),
   // (the user's box: moved or resized here, in this display's points; a button on it pressed)
@@ -57,7 +59,6 @@ contextBridge.exposeInMainWorld("vaultiteScreen", {
       ipcRenderer.on("vaultite:island", h)
       return () => { ipcRenderer.removeListener("vaultite:island", h) }
     },
-    grab: (on) => ipcRenderer.send("island:grab", !!on),
     act: (act, id, mute) => ipcRenderer.send("island:act", { act, id, mute: mute === true }),
     // (where each session shows in it, in its points: a Talk key held over one talks to it)
     faces: (list) => ipcRenderer.send("island:faces", list),

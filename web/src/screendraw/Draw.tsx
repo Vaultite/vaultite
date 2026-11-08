@@ -9,7 +9,7 @@ import { CAPTION_H, clampInto, inflate, place, type Placed, type Pt, ringShape, 
 import { hash, headLines, inkPath, type Line, linePath, sketch, type Sketched } from "./ink"
 import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER, waitForPen } from "./pen"
 import type { Act, Shown } from "./index"
-import { useHold } from "./hold"
+import { HOLD } from "./hold"
 
 const PILL_H = 24, PILL_PX = 13, TAB_H = 20, TAB_PX = 12
 
@@ -33,7 +33,7 @@ const born = new Map<string, { t0: number; shown: Map<number, number>; at: numbe
 
 /** `pen`: the companion's cursor is here to draw it (its first beat waits for it to fly there), told its strokes. */
 /** `slot`, `named`: its Keep and Clear's row among the layers up, and whether they say whose. */
-export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = false }: { d: Shown; act: (a: Act) => void; grab: (on: boolean) => void; leaving?: boolean; pen?: (s: PenScript | null) => void; slot?: number; named?: boolean }) {
+export default function Draw({ d, act, leaving, pen, slot = 0, named = false }: { d: Shown; act: (a: Act) => void; leaving?: boolean; pen?: (s: PenScript | null) => void; slot?: number; named?: boolean }) {
   if (!born.has(d.id)) { const penned = !!pen && !!d.here.home && !still(); born.set(d.id, { t0: Date.now() + (penned ? PEN_LEAD : 0), shown: new Map(), at: Date.now(), penned }); if (born.size > 20) born.delete(born.keys().next().value!) }
   const { t0, shown: showedAt, penned } = born.get(d.id)!
   // (each beat while its sentence is heard, when the voice says it; else in the time to read it)
@@ -110,7 +110,7 @@ export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = fal
     // (a choice's card is all its answers: dismissed, they all go)
     const ids = p.answers ? p.answers.map((a, i) => a.id ?? `${p.i + i}`) : [id]
     const away = !!leaving || !!d.hidden || !!p.mark.gone || ids.some((x) => hidden.has(x))
-    return { off, bounds, grab, move: (o) => setMoved((m) => ({ ...m, [id]: o })), open: setFull, agent: d.agent, question: d.question, away,
+    return { off, bounds, move: (o) => setMoved((m) => ({ ...m, [id]: o })), open: setFull, agent: d.agent, question: d.question, away,
       natural: (px) => setNaturals((n) => (n[id]?.[0] === px[0] && n[id]?.[1] === px[1] ? n : { ...n, [id]: px })),
       media: (state) => act({ kind: "media", id: d.id, mark: id, ...state }),
       dismiss: () => { setHidden((h) => new Set([...h, ...ids])); for (const mark of ids) act({ kind: "dismiss", id: d.id, mark }) } }
@@ -123,8 +123,8 @@ export default function Draw({ d, act, grab, leaving, pen, slot = 0, named = fal
         {shown.map((p) => <g key={p.i} className={`sd-move ${pastOf(p) ?? ""}`} style={glide(p)}><Strokes p={geometry(p)} id={`sd${seed}-${p.i}`} seed={seed + p.i * 97} delay={order.get(p.i)!} /></g>)}
       </svg>
       {shown.map((p) => <div key={p.mark.id ?? p.i} className={`${p.card ? "" : "sd-move absolute left-0 top-0"} ${pastOf(p) ?? ""}`} style={p.card ? undefined : glide(p)}><Parts p={p.card ? p : geometry(p)} delay={order.get(p.i)!} act={(a) => act({ ...a, id: d.id })} card={p.card ? card(p) : undefined} seed={seed + p.i * 131} id={`sd${seed}-${p.mark.id ?? p.i}`} /></div>)}
-      {d.here.home && shown.length > 0 && !leaving && !d.hidden && !shown.every((p) => isOver(p.mark)) && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} grab={grab} slot={slot} who={named ? d.agent : undefined} />}
-      {full && <Lightbox m={full} close={() => setFull(null)} grab={grab} />}
+      {d.here.home && shown.length > 0 && !leaving && !d.hidden && !shown.every((p) => isOver(p.mark)) && <Toolbar kept={d.kept} keepable={keepable} keep={() => act({ kind: "keep", id: d.id, places: d.places })} clear={() => act({ kind: "clear", id: d.id })} slot={slot} who={named ? d.agent : undefined} />}
+      {full && <Lightbox m={full} close={() => setFull(null)} />}
     </div>
   )
 }
@@ -259,18 +259,16 @@ function Typed({ text, delay }: { text: string; delay: number }) {
 }
 
 /** Chrome a person can press: it takes the pointer while it's under it (the overlay lets it through elsewhere). */
-function Press({ children, className, style, onClick, grab, label }: { children: React.ReactNode; className: string; style?: React.CSSProperties; onClick: () => void; grab: (on: boolean) => void; label?: string }) {
-  const hold = useHold(grab)
+function Press({ children, className, style, onClick, label }: { children: React.ReactNode; className: string; style?: React.CSSProperties; onClick: () => void; label?: string }) {
   return (
-    <button type="button" aria-label={label} className={`pointer-events-auto ${className}`} style={style} onClick={onClick}
-      onPointerEnter={() => hold(true)} onPointerLeave={() => hold(false)}>
+    <button type="button" aria-label={label} className={`pointer-events-auto ${className}`} style={style} onClick={onClick} {...HOLD}>
       {children}
     </button>
   )
 }
 
 /** What a card gets from its drawing: where the user dragged it, the screen it stays on, and its hands. */
-type CardCtx = { off: Pt; bounds: Rect; grab: (on: boolean) => void; move: (off: Pt) => void; dismiss: () => void; open: (m: Media) => void; natural: (px: [number, number]) => void
+type CardCtx = { off: Pt; bounds: Rect; move: (off: Pt) => void; dismiss: () => void; open: (m: Media) => void; natural: (px: [number, number]) => void
   /** A video as the user left it (its speaker, its play), told the server so what's up says so. */
   media: (state: { sound?: boolean; paused?: boolean }) => void
   /** Whose drawing, and the question its answers came with. */
@@ -281,7 +279,7 @@ type CardCtx = { off: Pt; bounds: Rect; grab: (on: boolean) => void; move: (off:
 /** A card's place on the screen: the user can drag it anywhere on it (by any part that isn't a control) or dismiss it
  *  (its × on hover). It takes the pointer while it's under it, and through a drag. */
 function Shell({ p, ctx, children }: { p: Placed; ctx: CardCtx; children: React.ReactNode }) {
-  const c = p.card!, hold = useHold(ctx.grab), drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null), dragged = useRef(false)
+  const c = p.card!, drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null), dragged = useRef(false)
   const clampOff = (o: Pt) => {
     const r = clampInto({ x: c.x + o.x, y: c.y + o.y, w: c.w, h: c.h }, ctx.bounds)
     return { x: r.x - c.x, y: r.y - c.y }
@@ -289,7 +287,7 @@ function Shell({ p, ctx, children }: { p: Placed; ctx: CardCtx; children: React.
   const off = clampOff(ctx.off)
   return (
     <div data-card={p.mark.id ?? p.i} className="sd-shell pointer-events-auto absolute" style={{ left: c.x + off.x, top: c.y + off.y, width: c.w }}
-      onPointerEnter={() => hold(true)} onPointerLeave={() => { if (!drag.current?.moved) hold(false) }}
+      {...HOLD}
       onPointerDown={(e) => { if (e.button !== 0 || (e.target as HTMLElement).closest("[data-nodrag]")) return; drag.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y, moved: false } }}
       onPointerMove={(e) => {
         const g = drag.current
@@ -299,14 +297,12 @@ function Shell({ p, ctx, children }: { p: Placed; ctx: CardCtx; children: React.
         if (!g.moved) { g.moved = true; e.currentTarget.setPointerCapture(e.pointerId) }
         ctx.move(clampOff({ x: g.ox + dx, y: g.oy + dy }))
       }}
-      onPointerUp={(e) => {
+      onPointerUp={() => {
         const g = drag.current
         drag.current = null
         if (!g?.moved) return
         dragged.current = true
         setTimeout(() => { dragged.current = false })
-        const r = e.currentTarget.getBoundingClientRect()
-        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) hold(false)
       }}
       // (a drag isn't a press: what's under it isn't clicked)
       onClickCapture={(e) => { if (dragged.current) { e.stopPropagation(); e.preventDefault() } }}>
@@ -347,7 +343,7 @@ function Card({ p, delay, act, ctx, seed, id }: { p: Placed; delay: number; act:
   const text = m.type === "copy" ? (done ? "Copied" : m.label ?? "Copy") : m.type === "open" ? m.label ?? "Open" : m.type === "button" ? m.label : ""
   const Icon = m.type === "copy" ? (done ? Check : Copy) : m.type === "open" ? ExternalLink : m.type === "button" && "copy" in m.do ? Copy : m.type === "button" && "open" in m.do ? ExternalLink : ArrowRight
   return (
-    <Press className="sd-chip sd-pop" style={{ "--delay": ms(delay), maxWidth: c.w } as React.CSSProperties} onClick={run} grab={ctx.grab}>
+    <Press className="sd-chip sd-pop" style={{ "--delay": ms(delay), maxWidth: c.w } as React.CSSProperties} onClick={run}>
       <Icon className="size-3.5 shrink-0" strokeWidth={2.2} /><span className="truncate">{text}</span>
     </Press>
   )
@@ -462,10 +458,9 @@ function Choices({ answers, c, delay, ctx, act }: { answers: Extract<Mark, { typ
 const LOAD_MS = 15_000, ROUNDS = 3
 
 /** A picture full size over the screen: pressed anywhere, it goes. */
-function Lightbox({ m, close, grab }: { m: Media; close: () => void; grab: (on: boolean) => void }) {
-  useEffect(() => { grab(true); return () => grab(false) }, [grab])
+function Lightbox({ m, close }: { m: Media; close: () => void }) {
   return (
-    <button type="button" aria-label="Close the picture" data-lightbox className="sd-lightbox pointer-events-auto fixed inset-0 grid cursor-zoom-out place-items-center" onClick={close}>
+    <button type="button" aria-label="Close the picture" data-lightbox {...HOLD} className="sd-lightbox pointer-events-auto fixed inset-0 grid cursor-zoom-out place-items-center" onClick={close}>
       <img src={m.url} alt={m.caption ?? m.name ?? ""} draggable={false} className="max-h-[88vh] max-w-[92vw] rounded-lg object-contain shadow-2xl" />
       {m.caption && <span className="sd-lightbox-caption">{m.caption}</span>}
     </button>
@@ -579,14 +574,14 @@ function ItemText({ it, items, delay }: { it: PaperItem; items: PaperItem[]; del
   return null
 }
 
-function Toolbar({ kept, keepable, keep, clear, grab, slot, who }: { kept?: string; keepable: boolean; keep: () => void; clear: () => void; grab: (on: boolean) => void; slot: number; who?: string }) {
+function Toolbar({ kept, keepable, keep, clear, slot, who }: { kept?: string; keepable: boolean; keep: () => void; clear: () => void; slot: number; who?: string }) {
   return (
     <div className="sd-tools sd-pop absolute left-1/2 flex -translate-x-1/2 items-center gap-1" style={{ bottom: 20 + slot * 40, "--delay": "500ms" } as React.CSSProperties}>
       {who && <span className="sd-tool sd-who">{who}</span>}
       {keepable && (kept
         ? <span data-kept className="sd-tool"><Check className="size-3.5" strokeWidth={2.4} /><span className="max-w-[260px] truncate">Kept in {kept.replace(/\.excalidraw$/, "")}</span></span>
-        : <Press className="sd-tool" onClick={keep} grab={grab}>Keep</Press>)}
-      <Press className="sd-tool" onClick={clear} grab={grab} label="Clear the drawing"><X className="size-3.5" strokeWidth={2.4} />Clear</Press>
+        : <Press className="sd-tool" onClick={keep}>Keep</Press>)}
+      <Press className="sd-tool" onClick={clear} label="Clear the drawing"><X className="size-3.5" strokeWidth={2.4} />Clear</Press>
     </div>
   )
 }
