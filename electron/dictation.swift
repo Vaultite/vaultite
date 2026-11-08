@@ -580,6 +580,8 @@ final class Soniox: NSObject, Engine, URLSessionWebSocketDelegate, @unchecked Se
     var fellBack = false
     var hearsAll: Bool { fellLock.lock(); defer { fellLock.unlock() }; return !fellBack }
     var timer: DispatchSourceTimer?, lastSent = Date()
+    /// The most a fallback hears again (the last final word on), in samples.
+    static let KEPT = Int(RATE * 120)
 
     init(url: URL, key: String, model: String, languages: [String], words: [String], local: @escaping () async throws -> Engine) {
         var start: [String: Any] = ["model": model, "audio_format": "pcm_s16le", "sample_rate": Int(RATE), "num_channels": 1]
@@ -698,6 +700,8 @@ final class Soniox: NSObject, Engine, URLSessionWebSocketDelegate, @unchecked Se
             if let f = fallback { return f.feed(pcm) }
             guard !dead else { return }
             kept.append(contentsOf: pcm)
+            // (fed silence too now: a long quiet with no words to settle it is kept 2 min at most, trimmed in steps)
+            if kept.count > Soniox.KEPT + Int(RATE * 10) { let drop = kept.count - Soniox.KEPT; kept.removeFirst(drop); keptAt += drop }
             if falling { return }
             sent += pcm.count
             unasked += pcm.count
