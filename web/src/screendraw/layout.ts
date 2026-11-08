@@ -191,9 +191,18 @@ const rough = (text: string, px: number, bold = false) => text.length * px * (bo
 const lines = (text: string, w: number, px: number, measure: (t: string, px: number) => number) =>
   text.split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(measure(l, px) / Math.max(40, w - 24))), 0)
 
-/** Each mark of `d` drawn here, where its parts go: its target box, its card's place, its label's. */
+/** Where a layer's Keep and Clear sit (its `slot`: its row among the layers up) on a display `W` by `H`, and the room
+ *  kept for them, down to the screen's edge: cards and labels never land on it. */
+export const TOOLS = { bottom: 20, row: 40, h: 32, w: 360 }
+export const toolsRoom = (W: number, H: number, slot = 0): Rect => {
+  const top = H - TOOLS.bottom - slot * TOOLS.row - TOOLS.h - 8
+  return { x: (W - TOOLS.w) / 2, y: top, w: TOOLS.w, h: H - top }
+}
+
+/** Each mark of `d` drawn here, where its parts go: its target box, its card's place, its label's; `reserved`, room
+ *  nothing goes on (its Keep and Clear). */
 export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | null, measure?: (text: string, px: number, bold?: boolean) => number,
-  naturals: Record<string, [number, number]> = {}): Placed[] {
+  naturals: Record<string, [number, number]> = {}, reserved: Rect[] = []): Placed[] {
   const bounds: Rect = { x: 0, y: here.top ?? 0, w: here.width, h: here.height - (here.top ?? 0) }
   const local = (s: Spot | undefined): Rect | null => {
     const r = s && rectOf(s, d.places)
@@ -225,7 +234,7 @@ export function place(d: Drawing, here: Here, labelSize: (m: Mark) => Size | nul
     inks.push(p.ink)
   }
   // (cards first; then labels, clear of the marks, the cards and each other)
-  const avoid = [...marked, ...inks], taken: Rect[] = []
+  const avoid = [...marked, ...inks], taken: Rect[] = [...reserved]
   const near = here.pointer ? { x: here.pointer.x - here.origin.x, y: here.pointer.y - here.origin.y } : marked.length ? centre(marked[0]) : { x: here.width * 0.7, y: here.height * 0.35 }
   let at = near
   // (a choice's answers: one card, by the pointer, where its question is asked)

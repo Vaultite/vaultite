@@ -284,9 +284,10 @@ export default async ($: VaultTest) => {
         const flipped = await waitFor(() => layers().some((m) => m.agent === "Claude (before)" && m.drawing?.hidden) && layers().some((m, i, all) => m.agent === "Claude (before)" && m.drawing && !m.drawing.hidden && all.slice(0, i).some((x) => x.drawing?.hidden)), 8000, 50)
         const buttons = await waitFor(() => layers().find((m) => m.agent === "Claude" && m.drawing?.marks.filter((k: Any) => k.type === "button").length === 3), 12000, 50)
         const r = ring?.drawing.marks.find((k: Any) => k.type === "ring")?.at, o = over?.drawing.marks[0]?.at
-        check("proof: played on the window, its ring on the thing, its before laid over it on its own layer and flipped (hidden, shown again), then Keep and merge, Needs changes, Not yet",
+        check("proof: played on the window, its ring on the thing, its before laid over it on its own layer and flipped (hidden, shown again), then Keep and merge, Needs changes, Not yet: one choice card, its question atop (answers with no place of their own)",
           pst === 200 && r?.x === 200 && r?.w === 320 && JSON.stringify(o) === JSON.stringify({ x: 200, y: 120, w: 320, h: 40 }) && over?.drawing.marks[0].caption === "Before" && !!flipped &&
-          buttons?.drawing.marks.filter((k: Any) => k.type === "button").map((k: Any) => k.label).join() === "Keep and merge,Needs changes,Not yet", { pst, pb, ring, over, buttons: buttons?.drawing.marks })
+          buttons?.drawing.marks.filter((k: Any) => k.type === "button").map((k: Any) => k.label).join() === "Keep and merge,Needs changes,Not yet" &&
+          buttons.drawing.question === "Keep it and merge it in, or does it need changes?" && buttons.drawing.marks.every((k: Any) => k.type !== "button" || !k.at), { pst, pb, ring, over, buttons: buttons?.drawing })
         const narrated = (await api("POST", "ops/companion.status", {}))[1].notes.find((n: Any) => n.kind === "say" && n.text === "The heading is blue now.")
         check("proof: its words are said (aloud, as Show me was)", narrated?.answers?.voice === true, narrated)
         sc.emit("message", Buffer.from(JSON.stringify({ t: "drawing-act", id: buttons?.drawing.id, kind: "ask", text: "Keep and merge" })))

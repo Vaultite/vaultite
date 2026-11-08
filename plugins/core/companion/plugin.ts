@@ -2835,8 +2835,8 @@ const proofs = proofOps(plugin, {
   },
   choices: async (_j, c) => {
     if (!screens.size || !displaysOf(ownName()).length) return false
-    const at = { area: "bottom" }
-    await plugin.host.call("companion.draw", { say: c.say, marks: c.buttons.map((label) => ({ type: "button", label, do: { ask: label }, at })) }, AS_TOOL, { report: "companion job-show" })
+    // (answers, no place of their own: one card, its question atop, by the pointer; placed, each was a loose chip on Clear)
+    await plugin.host.call("companion.draw", { say: c.say, marks: c.buttons.map((label) => ({ type: "button", label, do: { ask: label } })) }, AS_TOOL, { report: "companion job-show" })
     return true
   },
   clear: () => { stopFlips(); screenDrawing.clear({ agent: ownName() }) },

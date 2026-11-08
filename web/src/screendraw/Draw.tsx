@@ -5,7 +5,7 @@ import { ArrowRight, Check, Copy, ExternalLink, ImageOff, Pause, Play, Volume2, 
 import { edgeOf, type Media, type Mark, pacedBeats, PALETTE, type PaperItem, type Rect, svgFit } from "../../../plugins/core/companion/screenmarks"
 import { flatten } from "../../../plugins/core/companion/svgpath"
 import { PEN_LEAD, type PenScript } from "../core/pilot"
-import { CAPTION_H, clampInto, inflate, place, type Placed, type Pt, ringShape, type Size } from "./layout"
+import { CAPTION_H, clampInto, inflate, place, type Placed, type Pt, ringShape, type Size, TOOLS, toolsRoom } from "./layout"
 import { hash, headLines, inkPath, type Line, linePath, sketch, type Sketched } from "./ink"
 import { durOf, FRAME_MS, lineStarts, markInk, penStrokes, STAGGER, waitForPen } from "./pen"
 import type { Act, Shown } from "./index"
@@ -28,13 +28,15 @@ const labelSize = (m: Mark): Size | null => { const l = labelOf(m); return !l ? 
 /** When each drawing was first seen (`t0`: its first beat, after the pen's lead), and when each mark first showed: every
  *  part's delay counts from the drawing's clock, whatever comes again (kept, a new place, more marks). */
 const born = new Map<string, { t0: number; shown: Map<number, number>; at: number; committed?: boolean; beat?: number
+  /** Each mark's start (`at`) and delay as last drawn: once begun it keeps them, re-paced or not. */
+  began: Map<number, { at: number; delay: number }>
   /** Its cursor draws it: each mark waits for it to get there. */
   penned: boolean }>()
 
 /** `pen`: the companion's cursor is here to draw it (its first beat waits for it to fly there), told its strokes. */
 /** `slot`, `named`: its Keep and Clear's row among the layers up, and whether they say whose. */
 export default function Draw({ d, act, leaving, pen, slot = 0, named = false }: { d: Shown; act: (a: Act) => void; leaving?: boolean; pen?: (s: PenScript | null) => void; slot?: number; named?: boolean }) {
-  if (!born.has(d.id)) { const penned = !!pen && !!d.here.home && !still(); born.set(d.id, { t0: Date.now() + (penned ? PEN_LEAD : 0), shown: new Map(), at: Date.now(), penned }); if (born.size > 20) born.delete(born.keys().next().value!) }
+  if (!born.has(d.id)) { const penned = !!pen && !!d.here.home && !still(); born.set(d.id, { t0: Date.now() + (penned ? PEN_LEAD : 0), shown: new Map(), began: new Map(), at: Date.now(), penned }); if (born.size > 20) born.delete(born.keys().next().value!) }
   const { t0, shown: showedAt, penned } = born.get(d.id)!
   // (each beat while its sentence is heard, when the voice says it; else in the time to read it)
   const last = Math.max(0, ...d.marks.map((m) => m.beat ?? 0)), { times, spread } = useMemo(() => pacedBeats(d.caption ?? "", last, d.spoken, t0, d.waits), [d.caption, last, d.spoken, t0, d.waits])
@@ -54,7 +56,11 @@ export default function Draw({ d, act, leaving, pen, slot = 0, named = false }: 
   const spots = useRef(new Map<string, { at: string; card: Rect }>())
   // (a mark whose thing moved keeps the geometry it was drawn with and glides to the new place: `drawn`, by mark)
   const drawnAs = useRef(new Map<string, Placed>())
-  const placed = useMemo(() => steady(place(d, d.here, labelSize, measure, naturals), spots.current, d.here).map((p) => asDrawn(p, drawnAs.current)), [d, naturals])
+  // (clear of its Keep and Clear, where they show, and of the cards held where they were: a new one never lands on them)
+  const placed = useMemo(() => {
+    const room = [...(d.here.home ? [toolsRoom(d.here.width, d.here.height, slot)] : []), ...held(d.marks, spots.current)]
+    return steady(place(d, d.here, labelSize, measure, naturals, room), spots.current, d.here).map((p) => asDrawn(p, drawnAs.current))
+  }, [d, naturals, slot])
   const W = d.here.width, H = d.here.height, seed = hash(d.id)
   // (in each beat, one after another, on the drawing's clock: when each starts, and its delay from when it showed)
   const startAt = useMemo(() => {
@@ -67,7 +73,15 @@ export default function Draw({ d, act, leaving, pen, slot = 0, named = false }: 
   }, [placed, times, spread, t0, penned, seed])
   const shown = placed.filter((p) => (p.mark.beat ?? 0) <= beat)
   for (const p of shown) if (!showedAt.has(p.i)) showedAt.set(p.i, Date.now())
-  const order = new Map(shown.map((p) => [p.i, startAt.get(p.i)! - showedAt.get(p.i)!]))
+  // (a mark once begun keeps its delay: the voice re-pacing its layer (a beat waiting for its sentence, heard later) would
+  // send a drawn card back before its start, gone till then: a proof's video blinked out as its words were said)
+  const order = new Map(shown.map((p) => {
+    const was = b0.began.get(p.i), at = startAt.get(p.i)!
+    if (was && was.at <= Date.now()) return [p.i, was.delay]
+    const delay = at - showedAt.get(p.i)!
+    b0.began.set(p.i, { at, delay })
+    return [p.i, delay]
+  }))
   // (the cursor's pen: the strokes of the marks here, as the ink draws them; those still waiting for their words, once timed)
   const script = useMemo(() => (pen && d.here.home ? { id: d.id, strokes: penStrokes(placed.filter((p) => !p.mark.gone && Number.isFinite(startAt.get(p.i))).map(geometry), (i) => seed + i * 97, (i) => startAt.get(i)!), ...(d.here.sound ? { sound: true } : {}) } : null), [pen, d.id, d.here.home, d.here.sound, placed, seed, startAt])
   // (its ink starts when the browser starts its animations, which may be later than it was drawn (React holds a suspended
@@ -154,13 +168,17 @@ function glide(p: Moved): React.CSSProperties {
 /** What Keep has something of. */
 const KEEPS = new Set<Mark["type"]>(["paper", "sticky", "list", "write", "image", "video"])
 const isOver = (m: Mark) => (m.type === "image" || m.type === "video") && !!m.over
+const atKey = (m: Mark) => JSON.stringify(("at" in m && m.at) || null)
+/** Where the cards up are held (steady's), so what's placed anew keeps clear of them. */
+const held = (marks: Mark[], was: Map<string, { at: string; card: Rect }>) =>
+  marks.flatMap((m) => { const w = !m.gone && m.id ? was.get(m.id) : undefined; return w && w.at === atKey(m) ? [w.card] : [] })
 /** Cards where they were: a card keeps its spot while its `at` stays (a drawing changed, more marks, a new ask), so
  *  nothing jumps; one resized stays by its top left. */
 function steady(placed: Placed[], was: Map<string, { at: string; card: Rect }>, here: { width: number; height: number; top?: number }) {
   const bounds = { x: 0, y: here.top ?? 0, w: here.width, h: here.height - (here.top ?? 0) }
   for (const p of placed) {
     if (!p.card || !p.mark.id) continue
-    const at = JSON.stringify(("at" in p.mark && p.mark.at) || null), w = was.get(p.mark.id)
+    const at = atKey(p.mark), w = was.get(p.mark.id)
     if (w && w.at === at) p.card = clampInto({ x: w.card.x, y: w.card.y, w: p.card.w, h: p.card.h }, bounds)
     was.set(p.mark.id, { at, card: p.card })
   }
@@ -168,7 +186,8 @@ function steady(placed: Placed[], was: Map<string, { at: string; card: Rect }>, 
 }
 /** An earlier beat's marks, once a later one is drawn: what only pointed goes, what showed a thing dims. */
 const GONE = new Set<Mark["type"]>(["point", "spotlight"]), STEP_BACK = new Set<Mark["type"]>(["ring", "frame", "underline", "strike", "connect", "scroll"])
-const ms = (n: number) => `${Math.round(n)}ms`
+// (one waiting for its words has no start yet: far off, never an invalid delay, which would drop its animation)
+const ms = (n: number) => `${Number.isFinite(n) ? Math.round(n) : 86_400_000}ms`
 /** Reduced motion: everything drawn at once, no pen to wait for. */
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
@@ -576,7 +595,7 @@ function ItemText({ it, items, delay }: { it: PaperItem; items: PaperItem[]; del
 
 function Toolbar({ kept, keepable, keep, clear, slot, who }: { kept?: string; keepable: boolean; keep: () => void; clear: () => void; slot: number; who?: string }) {
   return (
-    <div className="sd-tools sd-pop absolute left-1/2 flex -translate-x-1/2 items-center gap-1" style={{ bottom: 20 + slot * 40, "--delay": "500ms" } as React.CSSProperties}>
+    <div className="sd-tools sd-pop absolute left-1/2 flex -translate-x-1/2 items-center gap-1" style={{ bottom: TOOLS.bottom + slot * TOOLS.row, "--delay": "500ms" } as React.CSSProperties}>
       {who && <span className="sd-tool sd-who">{who}</span>}
       {keepable && (kept
         ? <span data-kept className="sd-tool"><Check className="size-3.5" strokeWidth={2.4} /><span className="max-w-[260px] truncate">Kept in {kept.replace(/\.excalidraw$/, "")}</span></span>

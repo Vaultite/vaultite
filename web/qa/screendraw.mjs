@@ -472,6 +472,47 @@ for (const dark of [false, true]) {
   await page.close()
 }
 
+// ---- a job's proof video (Show me): it stays up while its words are said (the helper re-paces the layer to the voice,
+// a beat waiting for its sentence), then the choice's card keeps clear of Keep and Clear
+for (const pointer of [{ x: 640, y: 740 }, null]) {
+  const page = await open(true)
+  const proof = { id: "dpv", agent: "Claude", tint: "orange", t: Date.now(), places: ELEMENTS, caption: "Keep it and merge it in, or does it need changes?",
+    marks: [{ type: "video", id: "video1", src: "Guides/Proofs/x.mp4", url: "http://screen.test/qa-media/clip.webm", at: { area: "top" }, size: "l", caption: "The blue heading" }] }
+  const at = pointer ? { pointer } : {}
+  await show(page, proof, at)
+  await page.waitForSelector("[data-mark=video][data-state=ok]")
+  await page.waitForTimeout(600)
+  // (its lowest opacity while the voice says the narration: waiting for a sentence, heard later, waiting again)
+  const lowest = async (fn) => {
+    await page.evaluate(() => { window.__low = 1; const tick = () => { const e = document.querySelector("[data-mark=video]"); window.__low = Math.min(window.__low, e ? Number(getComputedStyle(e).opacity) : 0); window.__lowId = requestAnimationFrame(tick) }; tick() })
+    await fn()
+    return page.evaluate(() => { cancelAnimationFrame(window.__lowId); return window.__low })
+  }
+  const low = await lowest(async () => {
+    for (const s of [{ waits: true, spoken: [null] }, { spoken: [null] }, { waits: true, spoken: [{ at: Date.now() + 2500, dur: 1500 }] }, { waits: true, spoken: [null] }, {}]) {
+      await show(page, { ...proof, ...s }, at)
+      await page.waitForTimeout(350)
+    }
+  })
+  if (pointer) check("proof video: it stays up, never blinking out, while the layer is paced to the narration said with it", low > 0.99, low)
+  // (as the server draws its choice: answers, one card with its question)
+  await show(page, { ...proof, question: "Keep it and merge it in, or does it need changes?", marks: [...proof.marks,
+    ...["Keep and merge", "Needs changes", "Not yet"].map((label, i) => ({ type: "button", id: `m${i}`, label, do: { ask: label } }))] }, at)
+  await page.waitForSelector("[data-choices]")
+  await page.waitForTimeout(900)
+  const choice = (await rects(page, "[data-choices]"))[0], tools = (await rects(page, ".sd-tools"))[0], video = (await rects(page, "[data-mark=video]"))[0]
+  const rows = await page.evaluate(() => [...document.querySelectorAll("[data-answer]")].map((b) => b.textContent).join())
+  check(`proof video: its choice is one card, Keep and merge, Needs changes, Not yet, clear of Keep and Clear and of the video${pointer ? ", the pointer by them" : ""}`,
+    !!choice && !!tools && !hit(choice, tools) && !hit(choice, video) && onScreen(choice) && rows === "Keep and merge,Needs changes,Not yet", { choice, tools, video, rows })
+  if (pointer) await page.screenshot({ path: path.join(SHOTS, "screendraw-proof-choice.png") })
+  // (a button placed at the bottom, as any agent may: it keeps off the toolbar too)
+  await show(page, { ...proof, id: "dpv2", marks: [...proof.marks, ...["Keep and merge", "Needs changes"].map((label, i) => ({ type: "button", id: `c${i}`, label, do: { ask: label }, at: { area: "bottom" } }))] }, at)
+  await page.waitForTimeout(900)
+  const chips = await rects(page, ".sd-chip"), tools2 = (await rects(page, ".sd-tools"))[0]
+  check(`proof video: buttons put at the bottom keep clear of Keep and Clear${pointer ? ", the pointer by them" : ""}`, chips.length === 2 && !!tools2 && chips.every((c) => !hit(c, tools2) && onScreen(c)), { chips, tools2 })
+  await page.close()
+}
+
 // ---- choreography: rings shaped to their thing; a mark whose thing moved glides there, not drawn again; frames kept
 {
   const page = await open()
