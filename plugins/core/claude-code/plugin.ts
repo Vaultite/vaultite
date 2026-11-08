@@ -10,6 +10,7 @@ import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, ty
   type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, usedFirst, when } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
+import { inTestRun } from "../../../core/testrun.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
 import { userSaid } from "./chatlog.ts"
 import { chats } from "./chat.ts"
@@ -294,9 +295,10 @@ let sampleReal = ""
 const isAsking = (cwd: string) => (!!askingReal && cwd === askingReal) || cwd === (sampleReal ||= (() => { try { return fs.realpathSync(SAMPLE_DIR) } catch { return "" } })())
 
 /** Asks Claude Code (stream-json, its SDK's control requests; no prompt, so nothing is sent to a model) what the
- *  account's plan has used: what /usage shows, with the account's own login. Null when it can't say. */
+ *  account's plan has used: what /usage shows, with the account's own login. Null when it can't say, and in a test run
+ *  (a QA server's accounts are the user's real logins, and every server it starts would run one per account). */
 function askClaude(dir: string): Promise<Item | null> {
-  const bin = findBin("claude")
+  const bin = inTestRun() ? null : findBin("claude")
   if (!bin) return Promise.resolve(null)
   try { fs.mkdirSync(ASKING_DIR, { recursive: true }); askingReal ||= fs.realpathSync(ASKING_DIR) } catch { return Promise.resolve(null) }
   const env: NodeJS.ProcessEnv = { ...process.env, PATH: [path.dirname(bin), process.env.PATH].filter(Boolean).join(":") }
