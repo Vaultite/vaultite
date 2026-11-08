@@ -98,17 +98,18 @@ const H = (globalThis as unknown as { vaultiteHelper: { heard: (m: object) => vo
 let fails = 0
 const check = (name: string, ok: boolean, info?: unknown) => { if (!ok) fails++; console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : ` ${JSON.stringify(info)}`}`) }
 async function until(fn: () => boolean, ms = 3000) {
+  anchor = true
   for (const end = Date.now() + ms; Date.now() < end;) { if (fn()) return true; await new Promise((r) => setTimeout(r, 10)) }
   return fn()
 }
-// (a key's moves carry when they happened, as the native tap's do: held is the waits since it went down, so a slow
-// runner's late timer never turns a tap into a hold)
-let downAt = 0, heldMs = 0
+// (a key's moves carry when they happened, as the native tap's do: the scripted waits, so a stalled runner never turns a
+// tap into a hold nor spreads presses apart; real time is caught up with only after an until)
+let downAt = 0, heldMs = 0, anchor = true
 const wait = (ms: number) => { heldMs += ms; return new Promise((r) => setTimeout(r, ms)) }
 const claude = () => scenes.map((s) => s.agents.find((a) => a.name === "Claude")).filter((a): a is Item => !!a)
 const front = (vaultite: boolean, bundle = "com.example.mail") => H.heard({ event: "front", bundle: vaultite ? "app.vaultite" : bundle, name: "x", title: "t", window: 5, vaultite })
 const chord = (on: boolean) => {
-  if (on) { downAt = Math.max(Date.now(), downAt + heldMs); heldMs = 0 }
+  if (on) { downAt = anchor ? Math.max(Date.now(), downAt + heldMs) : downAt + heldMs; heldMs = 0; anchor = false }
   H.heard({ event: "chord", name: "control_option", on, t: on ? downAt : downAt + heldMs })
 }
 const asks = () => H.asked().filter((m) => m.kind === "ask" || m.kind === "point")
