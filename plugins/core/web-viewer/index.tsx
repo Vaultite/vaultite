@@ -24,7 +24,7 @@ import { editStyle, useDarkPages, useLookBackground, useSiteStyles } from "./sty
 import { Playing } from "./Playing"
 import { muteItem, pauseItems, pauseSound, watchSoundMarks } from "./soundmarks"
 import { SoundCard, watchSoundCard } from "./SoundCard"
-import { barHidden, pageBarItem, setBarHidden } from "./pagebar"
+import { barHidden, barItems, marksBarShown, setBarHidden, setMarksBarShown } from "./pagebar"
 import { switcherSearch } from "./switcher"
 import { focusedReplay } from "./replaykeys"
 import { openFromApp } from "./linklogins"
@@ -322,7 +322,7 @@ export default definePlugin({
         void painted().then(() => { if (!allPanes(getTabLayout()).some((p) => p.id === tab)) void webPages?.close(tab, false) })
       },
       // (its pane's top: the strip or title over a hidden page bar, the tab bar's empty space)
-      paneMenu: () => (webPages ? [pageBarItem()] : []),
+      paneMenu: () => (webPages ? barItems() : []),
       tabMenu: (arg, tab) => {
         const { url } = splitArg(arg), sound = soundOf(arg, tab)
         return [
@@ -396,6 +396,8 @@ export default definePlugin({
     { id: "web:lock", name: "Lock containers", desktop: true, when: () => !!webPages?.engine && containers().some((c) => c.lock), run: () => void webPages?.engine?.("lock:lock"), icon: Lock },
     { id: "web:page-bar", name: "Hide page bar", nameWhenOn: "Always show page bar", desktop: true, when: () => !!webPages, on: barHidden,
       run: () => void setBarHidden(!barHidden()), icon: PanelTopClose },
+    { id: "web:bookmarks-bar", name: "Always show bookmarks bar", keys: ["Mod+Shift+B"], desktop: true, when: () => !!webPages, on: marksBarShown,
+      run: () => void setMarksBarShown(!marksBarShown()), icon: Bookmark },
     { id: "web:open-container", name: "New tab in container…", desktop: true, when: () => !!webPages, run: askContainer, icon: Box },
     { id: "web:fill-login", name: "Fill login", desktop: true, when: () => !!webPages?.engine && hasLoginForm(focusedPageId()), run: () => void fillLoginIn(focusedPageId()), icon: KeyRound },
     { id: "web:clip", name: "Clip current web page", when: () => !!focusedPage(), run: () => focusedPage()?.clip(), icon: Scissors },

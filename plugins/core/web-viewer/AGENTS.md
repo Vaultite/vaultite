@@ -174,7 +174,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
 - Bookmarks are a note, `Bookmarks.md` (`type: bookmarks`; one moved keeps working): a heading per folder (`## Reading`,
   `### Later` under it) and a `- [title](url)` line per bookmark, which the address bar suggests. Add with
   `vau bookmark <url> --title ... --folder "Reading/Later"` (bookmarks.add, `links` for many) or the address bar's star (⌘D); rename or move one with
-  `vau bookmark edit <url> --title ... --folder ...`, remove with `vau bookmark remove <url>`.
+  `vau bookmark edit <url> --title ... --folder ... --before <url>`, remove with `vau bookmark remove <url>`; folders with
+  `vau bookmark folder <path>` (`--rename`, `--remove`). The bookmarks bar under the page bar (⇧⌘B, or its right-click
+  menu's Always show bookmarks bar; on a new tab's page anyway) shows the note's top level: its links, then its folders.
 - "Import from Brave…" / "Import from Chrome…" (on the Mac whose browser it is): a profile's history into the Mac's
   history, its bookmarks into `Bookmarks.md` under their folders; nothing twice when imported again, never passwords or
   cookies.

@@ -2092,7 +2092,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Browser: the bookmarks note (plugins/core/web-viewer/bookmarks.ts) ----------
 {
-  const { addBookmarks, editBookmark, matchBookmarks, readBookmarks, removeBookmark } = await import("../plugins/core/web-viewer/bookmarks.ts")
+  const { addBookmarks, addFolder, editBookmark, matchBookmarks, readBookmarks, readFolders, removeBookmark, removeFolder, renameFolder } = await import("../plugins/core/web-viewer/bookmarks.ts")
   const note = "# Links\n\n- [Top](https://top.example.com/)\n\n## Reading\n* <https://bare.example.com/a>\n\n```\n## Not a folder\n- [No](https://no.example.com/)\n```\n\n### Later\n- [x] [Done \\] it](https://later.example.com/)\n"
   const read = readBookmarks(note)
   check("bookmarks: links by their folders (a # title isn't one), a code block's ignored", JSON.stringify(read.map((b) => [b.folder, b.title, b.url])) === JSON.stringify([
@@ -2112,6 +2112,19 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && readBookmarks(moved.body).length === 3, moved.body)
   check("bookmarks: an edit of nothing, or of an address not there, changes nothing", !editBookmark(note, "https://top.example.com/", { title: "Top", folder: "" }).changed
     && !editBookmark(note, "https://none.example.com/", { title: "X" }).changed && removeBookmark(note, "https://none.example.com/").removed === 0)
+  const flat = "- [A](https://a.example.com/)\n- [B](https://b.example.com/)\n- [C](https://c.example.com/)\n\n## Tools\n- [T](https://t.example.com/)\n"
+  check("bookmarks: folders are headings, empty ones too", JSON.stringify(readFolders(note)) === JSON.stringify(["Reading", "Reading/Later"]))
+  check("bookmarks: a folder made at the end, or in its parent; there already, nothing", addFolder(flat, "Work").body === `${flat}\n## Work\n`
+    && addFolder(flat, "Tools/Later").body === `${flat}\n### Later\n` && !addFolder(flat, "tools").added && addFolder("", "Work").body === "## Work\n")
+  check("bookmarks: a folder renamed in its heading; a sibling's name refused", renameFolder(note, "Reading", "Articles").body === note.replace("## Reading", "## Articles")
+    && !!renameFolder(addFolder(note, "Tools").body, "Reading", "tools").taken)
+  const gone2 = removeFolder(flat, "Tools")
+  check("bookmarks: a folder removed with what's in it", gone2.found && gone2.removed === 1 && gone2.body === "- [A](https://a.example.com/)\n- [B](https://b.example.com/)\n- [C](https://c.example.com/)\n", gone2)
+  const order = (b: string) => readBookmarks(b).map((x) => x.title).join("")
+  check("bookmarks: moved before another (a drag), last with \"\", into a folder before its link", order(editBookmark(flat, "https://c.example.com/", { before: "https://a.example.com/" }).body) === "CABT"
+    && order(editBookmark(flat, "https://a.example.com/", { before: "" }).body) === "BCAT"
+    && editBookmark(flat, "https://a.example.com/", { folder: "Tools", before: "https://t.example.com/" }).body.includes("## Tools\n- [A](https://a.example.com/)\n- [T]")
+    && !editBookmark(flat, "https://a.example.com/", { before: "https://b.example.com/" }).changed)
 }
 
 // ---------- Browser: the blocked elements note (plugins/core/web-viewer/elements.ts) ----------

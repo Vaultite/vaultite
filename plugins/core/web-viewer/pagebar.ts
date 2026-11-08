@@ -2,7 +2,7 @@
 // the pointer's at the page's top, its pane's (`paneTopOf`) or the bar, on a click at those tops, the keyboard in it, a new tab.
 import { useEffect, useState, type RefObject } from "react"
 import { PanelTopClose, PanelTopOpen } from "lucide-react"
-import { useBarsHidden, type MenuItem, type WebPages } from "@vaultite"
+import { commandItems, useBarsHidden, type MenuItem, type WebPages } from "@vaultite"
 import { settings } from "./state"
 
 /** How long the pointer rests at the page's top or the pane's before the bar comes (a quick pass doesn't bring it), and
@@ -12,10 +12,20 @@ const REST_MS = 60, LINGER_MS = 350
 export const barHidden = () => settings.get().pageBar === "hidden"
 export const setBarHidden = (hidden: boolean) => settings.set({ pageBar: hidden ? "hidden" : null })
 
+export const marksBarShown = () => settings.get().bookmarksBar === "shown"
+export const setMarksBarShown = (shown: boolean) => settings.set({ bookmarksBar: shown ? "shown" : null })
+
 /** Hide page bar, or Always show page bar: the bar's menus, the pane's top's and the palette's. */
 export const pageBarItem = (sep = false): MenuItem => (barHidden()
   ? { label: "Always show page bar", icon: PanelTopOpen, sep, run: () => void setBarHidden(false) }
   : { label: "Hide page bar", icon: PanelTopClose, sep, run: () => void setBarHidden(true) })
+
+/** The bars' switches, last in every menu that has them: Always show bookmarks bar (a check, ⇧⌘B; not while the page
+ *  bar's hidden, which takes it along), then the page bar's. */
+export const barItems = (sep = false): MenuItem[] => {
+  const marks = barHidden() ? [] : commandItems("web:bookmarks-bar")
+  return [...marks.map((m, i) => (i ? m : { ...m, sep })), pageBarItem(sep && !marks.length)]
+}
 
 /** The pane whose top `el` is in: its bar (Tabs.tsx's strip, title or tabs) or the gap above its card (Workspace.tsx). */
 const paneTopOf = (el: Element | null) => {

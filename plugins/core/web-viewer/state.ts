@@ -35,6 +35,8 @@ export type Settings = {
   playerFullScreen?: boolean
   /** The bar above each page: "shown" (the default), or "hidden" till the pointer reaches the page's top (WebPage.tsx). */
   pageBar?: "shown" | "hidden"
+  /** The bookmarks bar under it: "shown" on every page; otherwise only on a new tab's, as Chrome's (BookmarksBar.tsx). */
+  bookmarksBar?: "shown"
   /** Whether a card in a corner shows pages playing in tabs out of sight (the default), to pause, mute or show them. */
   soundCard?: boolean
 }

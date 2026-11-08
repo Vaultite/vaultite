@@ -6,7 +6,7 @@ import path from "node:path"
 import { marked } from "marked"
 import { OpError, Plugin, vaultPath, type OpCtx } from "../../../core/plugins.ts"
 import { Kind, writeAtomic, type Vault } from "../../../core/vault.ts"
-import { addBookmarks, editBookmark, readBookmarks, removeBookmark, type Bookmark } from "./bookmarks.ts"
+import { addBookmarks, addFolder, editBookmark, folderPath, readBookmarks, readFolders, removeBookmark, removeFolder, renameFolder, type Bookmark } from "./bookmarks.ts"
 import { addRule, BLOCKED, makeRule, readRules, removeRule } from "./elements.ts"
 import { siteName, styleFile, STYLES, template, type SiteStyle } from "./sitestyles.ts"
 import { liveView } from "./liveroutes.ts"
@@ -556,12 +556,12 @@ the site's pages, load the page again (browser go <tab> reload) before logging i
 
 plugin.kind(new Kind({
   type: "bookmarks", collection: "bookmarks", file: "Bookmarks.md",
-  parse: (_fm, body) => [{ body, links: readBookmarks(body) }, []],
+  parse: (_fm, body) => [{ body, links: readBookmarks(body), folders: readFolders(body) }, []],
   render: (b) => [{}, typeof b.body === "string" ? b.body : ""],
 }))
 
 const note = () => plugin.vault.get("bookmarks", "bookmarks")
-plugin.state(() => ({ bookmarks: (note()?.links as Bookmark[] | undefined) ?? [], bookmarksNote: note() ? `${note()!.id}.md` : null, blockedElements: readRules(blockedText(plugin.vault)), siteStyles: siteStyles(plugin.vault) }))
+plugin.state(() => ({ bookmarks: (note()?.links as Bookmark[] | undefined) ?? [], bookmarkFolders: (note()?.folders as string[] | undefined) ?? [], bookmarksNote: note() ? `${note()!.id}.md` : null, blockedElements: readRules(blockedText(plugin.vault)), siteStyles: siteStyles(plugin.vault) }))
 
 const clean = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "")
 
@@ -618,18 +618,24 @@ const urlOf = (p: Record<string, unknown>) => {
 plugin.op({
   id: "bookmarks.edit",
   cli: "bookmark edit",
-  summary: "Rename a bookmark, or move it to another folder (its line goes under that folder's heading).",
+  summary: "Rename a bookmark, or move it to another folder (its line goes under that folder's heading) or before another.",
+  help: `before puts it just before that bookmark (in the folder it goes to), as dragging it in the bookmarks bar does;
+"" puts it last.
+
+  vau bookmark edit https://example.com/a --folder Reading --before https://example.com/b`,
   kind: "write",
   params: {
     url: { type: "string", description: "the bookmark's address" },
     title: { type: "string", description: "its new title" },
     folder: { type: "string", description: "its new folder, a path with / between levels (\"\": the top)" },
+    before: { type: "string", description: "the bookmark it goes just before, in its folder (\"\": last)" },
   },
   args: ["url"],
   run: async (p) => {
     const url = urlOf(p)
-    if (typeof p.title !== "string" && typeof p.folder !== "string") throw new OpError("give a `title` or a `folder`")
-    const change = { ...(typeof p.title === "string" ? { title: clean(p.title, 300) } : {}), ...(typeof p.folder === "string" ? { folder: clean(p.folder, 300) } : {}) }
+    if (typeof p.title !== "string" && typeof p.folder !== "string" && typeof p.before !== "string") throw new OpError("give a `title`, a `folder` or `before`")
+    const change = { ...(typeof p.title === "string" ? { title: clean(p.title, 300) } : {}), ...(typeof p.folder === "string" ? { folder: clean(p.folder, 300) } : {}),
+      ...(typeof p.before === "string" ? { before: clean(p.before, 4000) } : {}) }
     if (!readBookmarks(typeof note()?.body === "string" ? note()!.body as string : "").some((b) => b.url === url)) throw new OpError(`${url} isn't bookmarked`)
     return changeNote((body) => { const r = editBookmark(body, url, change); return { body: r.body, did: r.changed } })
   },
@@ -650,6 +656,52 @@ plugin.op({
   },
   text: (r) => (r.changed ? `Removed the bookmark from ${r.path}.` : "It wasn't bookmarked."),
   did: (p) => ({ action: "edit", text: `Removed the bookmark of ${clean(p.url, 120)}` }),
+})
+
+plugin.op({
+  id: "bookmarks.folder",
+  cli: "bookmark folder",
+  summary: "Make a bookmarks folder (its heading in Bookmarks.md), rename one, or remove one with what's in it.",
+  help: `A folder is a heading of the bookmarks note; an empty one is a heading with nothing under it yet.
+
+  vau bookmark folder "Reading/Later"                 # made, with Reading when it's missing
+  vau bookmark folder Reading --rename Articles
+  vau bookmark folder Reading --remove                # its bookmarks and folders too`,
+  kind: "write",
+  params: {
+    folder: { type: "string", description: "the folder, a path with / between levels (\"Reading/Later\")" },
+    rename: { type: "string", description: "its new name (its last level's)" },
+    remove: { type: "boolean", description: "remove it, and everything in it" },
+  },
+  args: ["folder"],
+  run: async (p) => {
+    const folder = folderPath(clean(p.folder, 300))
+    if (!folder) throw new OpError("give a `folder`")
+    const old = note(), body = typeof old?.body === "string" ? old.body : ""
+    const there = readFolders(body).some((f) => f.toLowerCase() === folder.toLowerCase())
+    if ((p.remove || typeof p.rename === "string") && !there) throw new OpError(`there's no bookmarks folder ${folder}`)
+    if (p.remove) {
+      let removed = 0
+      const r = await changeNote((b) => { const x = removeFolder(b, folder); removed = x.removed; return { body: x.body, did: x.found } })
+      return { ...r, folder, removed, did: "removed" }
+    }
+    if (typeof p.rename === "string") {
+      const name = clean(p.rename, 200)
+      if (!name) throw new OpError("give the folder a name")
+      const r = renameFolder(body, folder, name)
+      if (r.taken) throw new OpError(`there's a folder named ${name} there already`)
+      return { ...(await changeNote(() => ({ body: r.body, did: r.changed }))), folder, did: "renamed", name }
+    }
+    const r = addFolder(body, folder)
+    if (!r.added) return { path: old ? `${old.id}.md` : null, changed: false, folder, did: "made" }
+    const saved = await plugin.vault.save("bookmarks", { body: r.body }, old?.id ?? null)
+    return { path: saved ? `${saved.id}.md` : null, changed: true, folder, did: "made" }
+  },
+  text: (r) => (r.did === "removed" ? `Removed the folder ${r.folder}${r.removed ? ` and its ${r.removed} bookmark${r.removed === 1 ? "" : "s"}` : ""} from ${r.path}.`
+    : r.did === "renamed" ? (r.changed ? `Renamed the folder ${r.folder} to ${r.name} in ${r.path}.` : "The folder was already so named.")
+    : r.changed ? `Made the folder ${r.folder} in ${r.path}.` : `There's a folder ${r.folder} already${r.path ? ` in ${r.path}` : ""}.`),
+  did: (p) => ({ action: "edit", text: p.remove ? `Removed the bookmarks folder ${clean(p.folder, 120)}` : typeof p.rename === "string"
+    ? `Renamed the bookmarks folder ${clean(p.folder, 120)}` : `Made the bookmarks folder ${clean(p.folder, 120)}` }),
 })
 
 // ---------- blocked elements ----------

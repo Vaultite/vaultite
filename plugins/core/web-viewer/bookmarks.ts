@@ -75,6 +75,49 @@ function find(info: Line[], parts: string[], within: Section): Section | null {
   return s
 }
 
+/** A folder's path tidied: its levels trimmed, empty ones dropped, at most 5 deep. */
+export const folderPath = (f: string) => f.split("/").map((x) => x.trim()).filter(Boolean).slice(0, 5).join("/")
+
+/** `items` put in `folder` of `lines` (in place), its headings made when missing; `before`: the line index to put them
+ *  at, when it's one of that folder's own. */
+function insertInto(lines: string[], folder: string, items: string[], before?: number) {
+  const { info } = linesOf(lines.join("\n"))
+  // (the whole note, as a section above every folder: a `# Title` is passed through)
+  const top: Section = { at: -1, end: lines.length, level: 1 }
+  const parts = folder ? folder.split("/") : []
+  // The deepest folder of the path the note has, and the levels still to make under it.
+  let have = 0, under = top
+  for (let n = parts.length; n > 0; n--) { const s = find(info, parts.slice(0, n), top); if (s) { have = n; under = s; break } }
+  const make = parts.slice(have)
+  let at: number, block: string[]
+  if (!make.length) {
+    if (!items.length) return
+    // Its own links: after the last line before its first subfolder, or its end.
+    at = under.at + 1
+    while (at < under.end && !(info[at].heading && info[at].heading!.level > under.level)) at++
+    while (at > under.at + 1 && !lines[at - 1].trim()) at--
+    // (among its links, as one of them: no blank line)
+    if (before !== undefined && before > under.at && before < at) { lines.splice(before, 0, ...items); return }
+    block = [...items]
+  } else {
+    at = under.end
+    while (at > under.at + 1 && !lines[at - 1].trim()) at--
+    block = make.flatMap((name, i) => ["", `${"#".repeat(Math.min(6, under.level + 1 + i))} ${name}`]).concat(items)
+  }
+  // (a blank line between it and a paragraph or a heading, as one would type it)
+  const prose = (l: string | undefined) => !!l?.trim() && !ITEM.test(l)
+  if (block[0] === "" && (at === 0 || !lines[at - 1].trim())) block.shift()
+  else if (block[0] !== "" && prose(lines[at - 1]) && !HEADING.test(lines[at - 1])) block.unshift("")
+  if (prose(lines[at])) block.push("")
+  lines.splice(at, 0, ...block)
+}
+
+const finish = (lines: string[], changed: boolean) => {
+  const l = lines.length === 1 && !lines[0] ? [] : lines
+  const text = l.join("\n")
+  return changed && !text.endsWith("\n") ? `${text}\n` : text
+}
+
 /** `bookmarks` added to a note's body (those it hasn't already), each under its folder's heading, made when missing:
  *  only lines added, nothing of the user's changed. */
 export function addBookmarks(body: string, bookmarks: Bookmark[]): { body: string; added: number } {
@@ -83,44 +126,69 @@ export function addBookmarks(body: string, bookmarks: Bookmark[]): { body: strin
   for (const b of bookmarks) {
     if (!web(b.url) || have.has(b.url)) continue
     have.add(b.url)
-    const f = b.folder.split("/").map((x) => x.trim()).filter(Boolean).slice(0, 5).join("/")
+    const f = folderPath(b.folder)
     groups.set(f, [...(groups.get(f) ?? []), b])
   }
-  let lines = body.split("\n")
+  const lines = body.split("\n")
   let added = 0
-  for (const [folder, list] of groups) {
-    const { info } = linesOf(lines.join("\n"))
-    // (the whole note, as a section above every folder: a `# Title` is passed through)
-    const top: Section = { at: -1, end: lines.length, level: 1 }
-    const parts = folder ? folder.split("/") : []
-    // The deepest folder of the path the note has, and the levels still to make under it.
-    let have = 0, under = top
-    for (let n = parts.length; n > 0; n--) { const s = find(info, parts.slice(0, n), top); if (s) { have = n; under = s; break } }
-    const make = parts.slice(have)
-    const items = list.map(bookmarkLine)
-    let at: number, block: string[]
-    if (!make.length) {
-      // Its own links: after the last line before its first subfolder, or its end.
-      at = under.at + 1
-      while (at < under.end && !(info[at].heading && info[at].heading!.level > under.level)) at++
-      while (at > under.at + 1 && !lines[at - 1].trim()) at--
-      block = [...items]
-    } else {
-      at = under.end
-      while (at > under.at + 1 && !lines[at - 1].trim()) at--
-      block = make.flatMap((name, i) => ["", `${"#".repeat(Math.min(6, under.level + 1 + i))} ${name}`]).concat(items)
-    }
-    // (a blank line between it and a paragraph or a heading, as one would type it)
-    const prose = (l: string | undefined) => !!l?.trim() && !ITEM.test(l)
-    if (block[0] === "" && (at === 0 || !lines[at - 1].trim())) block.shift()
-    else if (block[0] !== "" && prose(lines[at - 1])) block.unshift("")
-    if (prose(lines[at])) block.push("")
-    lines.splice(at, 0, ...block)
-    added += items.length
+  for (const [folder, list] of groups) { insertInto(lines, folder, list.map(bookmarkLine)); added += list.length }
+  return { body: finish(lines, added > 0), added }
+}
+
+/** The note's folders, every heading below its title as a path ("Reading/Later"), in order: empty ones too. */
+export function readFolders(body: string): string[] {
+  const { info } = linesOf(body)
+  const out: string[] = [], path: { level: number; title: string }[] = []
+  for (const l of info) {
+    const h = l.heading
+    if (!h) continue
+    while (path.length && path[path.length - 1].level >= h.level) path.pop()
+    if (h.level === 1) continue
+    path.push(h)
+    out.push(path.map((p) => p.title).join("/"))
   }
-  lines = lines.length === 1 && !lines[0] ? [] : lines
-  const text = lines.join("\n")
-  return { body: added && !text.endsWith("\n") ? `${text}\n` : text, added }
+  return out
+}
+
+/** The note with folder `folder` (made with any missing above it); unchanged when it's there. */
+export function addFolder(body: string, folder: string): { body: string; added: boolean } {
+  const f = folderPath(folder)
+  if (!f || readFolders(body).some((x) => x.toLowerCase() === f.toLowerCase())) return { body, added: false }
+  const lines = body.split("\n")
+  insertInto(lines, f, [])
+  return { body: finish(lines, true), added: true }
+}
+
+const sectionOf = (body: string, folder: string) => {
+  const { text, info } = linesOf(body)
+  const f = folderPath(folder)
+  return { text, s: f ? find(info, f.split("/"), { at: -1, end: text.length, level: 1 }) : null }
+}
+
+/** Folder `folder` renamed `name` (its heading's text; what's in it stays). Null when there's no such folder; refused
+ *  (`taken`) when one beside it has that name. */
+export function renameFolder(body: string, folder: string, name: string): { body: string; changed: boolean; taken?: boolean } {
+  const { text, s } = sectionOf(body, folder)
+  const to = name.replace(/\//g, "-").replace(/\s+/g, " ").trim()
+  if (!s || !to) return { body, changed: false }
+  const parent = folderPath(folder).split("/").slice(0, -1).join("/")
+  const was = folderPath(folder).split("/").pop()!
+  if (to === was) return { body, changed: false }
+  if (to.toLowerCase() !== was.toLowerCase() && readFolders(body).some((x) => x.toLowerCase() === (parent ? `${parent}/${to}` : to).toLowerCase())) return { body, changed: false, taken: true }
+  text[s.at] = `${"#".repeat(s.level)} ${to}`
+  return { body: text.join("\n"), changed: true }
+}
+
+/** The note without folder `folder`: its heading and everything under it (its bookmarks, its folders). */
+export function removeFolder(body: string, folder: string): { body: string; removed: number; found: boolean } {
+  const { text, s } = sectionOf(body, folder)
+  if (!s) return { body, removed: 0, found: false }
+  // (its blank lines go with it, and the one before it when it was last)
+  const removed = readBookmarks(text.slice(s.at, s.end).join("\n")).length
+  let at = s.at
+  if (s.end >= text.length) while (at > 0 && !text[at - 1].trim()) at--
+  text.splice(at, s.end - at)
+  return { body: finish(text, /\n$/.test(body)), removed, found: true }
 }
 
 /** The lines that bookmark `url` (not headings, nor in code). */
@@ -141,15 +209,25 @@ export function removeBookmark(body: string, url: string): { body: string; remov
   return { body: text.filter((_, i) => !gone.has(i)).join("\n"), removed: at.length }
 }
 
-/** Bookmark `url` renamed in its line (its list mark kept), or moved to `folder`: its line goes there. */
-export function editBookmark(body: string, url: string, change: { title?: string; folder?: string }): { body: string; changed: boolean } {
-  const was = readBookmarks(body).find((b) => b.url === url)
+/** Bookmark `url` renamed in its line (its list mark kept), or moved to `folder` (or before bookmark `before` there,
+ *  as a drag puts it): its line goes there. */
+export function editBookmark(body: string, url: string, change: { title?: string; folder?: string; before?: string }): { body: string; changed: boolean } {
+  const all = readBookmarks(body), was = all.find((b) => b.url === url)
   if (!was) return { body, changed: false }
   const title = change.title ?? was.title
-  const folder = change.folder?.split("/").map((x) => x.trim()).filter(Boolean).join("/")
-  if (folder !== undefined && folder !== was.folder) {
-    const out = addBookmarks(removeBookmark(body, url).body, [{ url, title, folder }])
-    return { body: out.body, changed: true }
+  const folder = change.folder === undefined ? undefined : folderPath(change.folder)
+  const into = folder ?? was.folder
+  const next = all.find((b) => b.url === change.before && b.folder === into && b.url !== url)
+  // (already just before it, or last of its folder with nothing to go before: where it is)
+  const list = all.filter((b) => b.folder === into)
+  const placed = change.before !== undefined && (next ? list[list.findIndex((b) => b.url === next.url) - 1]?.url !== url : list[list.length - 1]?.url !== url)
+  if (into !== was.folder || placed) {
+    const { text, at } = linesOfUrl(body, url)
+    const line = title === was.title ? text[at[0]] : bookmarkLine({ url, title })
+    const lines = text.filter((_, i) => !at.includes(i))
+    const before = next ? linesOfUrl(lines.join("\n"), next.url).at[0] : undefined
+    insertInto(lines, into, [line.replace(/^\s+/, "")], before)
+    return { body: finish(lines, true), changed: true }
   }
   if (title === was.title) return { body, changed: false }
   const { text, at } = linesOfUrl(body, url)

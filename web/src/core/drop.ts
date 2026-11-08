@@ -175,6 +175,8 @@ export function placeAt(x: number, y: number, el: Element | null, files = false)
  *  `held`: the tab whose chip it's held on (springTabAt), which holds still. */
 export function dropAt(item: DragItem, x: number, y: number, el: Element | null, held?: string | null): Drop | null {
   if (!item.to && !item.pane && !item.group && !item.tab) return null  // a folder, a sidebar panel
+  // (a strip in a pane with drops of its own, as the Browser's bookmarks bar: not a place in the pane)
+  if (el?.closest("[data-own-drops]")) return null
   const d: Drop | null = held ? (el?.closest("[data-tab-strip]") ? { kind: "list", ...slotBeside(here(), item, held) } : null)
     : placeAt(x, y, el, !item.tab && !item.pane && !item.group)
   if (d?.kind === "list") return listDrop(item, item.group ? { ...d, group: null } : d)  // (a tab group joins none)

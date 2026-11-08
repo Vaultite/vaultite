@@ -23,10 +23,11 @@ import { LoginButton } from "./LoginFill"
 import { Start } from "./Start"
 import { openBookmark, StarButton, starOf } from "./Star"
 import { Passkey } from "./Passkey"
-import { forgetUnheard, hasKeyboard, passkeyAsks, setFocusedPage, setOnScreen, setPlayer, settingsRead, setTitle, shown, takeUnheard, type FindAsk } from "./state"
+import { forgetUnheard, hasKeyboard, passkeyAsks, setFocusedPage, setOnScreen, setPlayer, settings, settingsRead, setTitle, shown, takeUnheard, type FindAsk } from "./state"
 import { FindBar, findOpen, setFindOpen, type Found } from "./FindBar"
 import { siteIcon } from "./icons"
-import { pageBarItem, usePageBar } from "./pagebar"
+import { barItems, usePageBar } from "./pagebar"
+import { BookmarksBar } from "./BookmarksBar"
 import { agentPages, doneAsk, pauseAgents, takeOver, toBackground, working, WORKING_MS } from "./agentpages"
 import { AgentWatch } from "./AgentWatch"
 import { framing } from "./framed"
@@ -477,6 +478,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     return { text: `${z.host.replace(/^www\./, "")} ${Math.round(z.zoom * 100)}%`, actual: Math.abs(z.zoom - 1) < 0.001 }
   } : null)
   const bookmarked = useStore().store?.bookmarks?.some((b) => b.url === state.url) ?? false
+  // The bookmarks bar: always (⇧⌘B), else on a new tab's page once there are bookmarks, as Chrome's; hidden with the page bar.
+  const store = useStore().store, always = settings.use().bookmarksBar === "shown"
+  const marks = !barHid && (always || (blank && !!(store?.bookmarks?.length || store?.bookmarkFolders?.length)))
   const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []
   // Back and Forward walk the page's history, then the tab's (Back from a page opened from another tab goes back to it).
   const me = allPanes(getTabLayout()).find((t) => t.id === tab)
@@ -495,7 +499,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     ])
   }
   // (its own buttons and the address have menus of their own)
-  const barMenu = (e: React.MouseEvent) => { if (!(e.target as Element).closest("button, input, [role=listbox]")) menuFor(() => [pageBarItem()])(e) }
+  const barMenu = (e: React.MouseEvent) => { if (!(e.target as Element).closest("button, input, [role=listbox]")) menuFor(() => barItems())(e) }
   return (
     <div className={cn("relative flex h-full min-h-0 flex-col", barHid && "overflow-hidden")} data-web-page={id || ""}>
       {/* (a container: as it narrows, the address gives way first, then labels, pinned extensions and Forward go) */}
@@ -509,7 +513,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           onMenu={id && state.forward ? (el) => void places(el, 1) : undefined} className="@max-xs/bar:hidden" />
         <BarButton icon={state.loading ? X : RotateCw} label={state.loading ? "Stop" : "Reload"} disabled={!id} onClick={() => void web.go(id, state.loading ? "stop" : "reload")}
           onNewTab={state.loading ? undefined : () => inNewTab(state.url)} />
-        <AddressBar url={state.url} tab={tab} more={() => [pageBarItem()]} blank={blank} draft={draft} setDraft={setDraft} inputRef={address} onGo={go} onTurn={turn} onTarget={setTarget}
+        <AddressBar url={state.url} tab={tab} more={() => barItems()} blank={blank} draft={draft} setDraft={setDraft} inputRef={address} onGo={go} onTurn={turn} onTarget={setTarget}
           onLeave={() => { if (id) void web.go(id, "focus") }}
           lead={<ContainerButton container={into.container} url={drafting ? target ?? "" : state.url || arg} why={into.why} pick={pickContainer} manage={manageContainers} />}
           trail={id > 0 && onWeb ? <>{state.zoom && <ZoomButton zoom={state.zoom} reset={() => void web.go(id, "zoom-reset")} />}<LoginButton id={id} url={state.url} /><ShieldsButton id={id} url={state.url} loading={state.loading} /><StarButton url={state.url} title={state.title} /></> : null} />
@@ -533,13 +537,14 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           ...(id ? [{ label: "Picture in picture", icon: PictureInPicture2, run: () => void pictureInPicture(web, id) }] : []),
           ...withSep(actionItems(actions.filter((a) => a.kind !== "save"))),
           ...withSep(extensionItems(ext, at)),
-          pageBarItem(true),
+          ...barItems(true),
         ]} />
         <PaneControls />
         <Progress loading={id > 0 && state.loading && !state.error} />
       </div>
-      {/* (over the page's top right, under its bar: the bar hidden, it slides out over it) */}
-      {ask && id > 0 && <FindBar web={web} id={id} tab={tab} ask={ask} found={found} className={barHid ? "top-2" : "top-12"}
+      {marks && <BookmarksBar page={{ url: state.url, title: state.title }} open={(to, place) => go(to, "bookmark", place)} />}
+      {/* (over the page's top right, under its bars: the bar hidden, it slides out over it) */}
+      {ask && id > 0 && <FindBar web={web} id={id} tab={tab} ask={ask} found={found} className={barHid ? "top-2" : marks ? "top-20" : "top-12"}
         close={() => { setFindOpen(tab, false); setAsk(null); setFound(null); void web.go(id, "focus") }} />}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
         {/* The window drags wherever its page has a drag region, even under this page (Electron): cut out here, after
