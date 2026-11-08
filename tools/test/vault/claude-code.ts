@@ -217,6 +217,19 @@ export default async ($: VaultTest) => {
     const [, plainU] = await api("GET", "claude-code/limits?for=nobody")
     check("claude accounts: without for, or for a plugin that runs none, they're as they were",
       ids(u.accounts) === JSON.stringify([["default", null], ["work", null]]) && ids(plainU.accounts) === ids(u.accounts), [u.accounts, plainU.accounts])
+    // vau limits: each account's week left, most room first, from what its status line last said.
+    const soon = Math.floor(fixtureNow() / 1000) + 3 * 86400
+    fs.mkdirSync(path.join(WORK, "usage-snapshots"), { recursive: true })
+    fs.writeFileSync(path.join(WORK, "usage-snapshots", `${sid}.json`), JSON.stringify({ rate_limits: {
+      five_hour: { used_percentage: 12, resets_at: soon - 3 * 86400 + 3600 }, seven_day: { used_percentage: 37.5, resets_at: soon } } }))
+    const [lc, lim] = await api("POST", "ops/claude-code.limits", { for: "companion" })
+    const w = lim?.accounts?.find((a: Any) => a.id === "work"), left = (lim?.accounts ?? []).map((a: Any) => a.week_left ?? -1)
+    check("vau limits: each account's week left and when it renews, most room first, and what a plugin runs on it",
+      lc === 200 && w?.week_left === 62.5 && w.renews && !w.session_full && JSON.stringify(w.uses) === JSON.stringify(["Companion chat"]) &&
+      lim.accounts.length === 2 && left.every((x: number, i: number) => !i || left[i - 1] >= x), lim)
+    const [, lt] = await api("POST", "ops/claude-code.limits?as=text", {})
+    check("vau limits: as text, one line each", /^Work \(work\): 62\.5% of the week left, renews .+\(in 3 days\)$/m.test(String(lt)) &&
+      String(lt).split("\n").length === 2, lt)
     write("Dashboards/Limits for.md", "```block-agent-limits\nagent: claude-code\nfor: companion\n```\n")
     const [, lr] = await api("GET", "render?path=Dashboards/Limits for.md")
     check("claude accounts: as text, for a plugin, its accounts first, saying for what",

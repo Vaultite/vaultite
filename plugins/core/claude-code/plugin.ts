@@ -7,7 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, agentRefusal, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
-  type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, usedFirst } from "../../../core/agents.ts"
+  type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode, usedFirst, when } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
@@ -817,6 +817,39 @@ plugin.block("agent-limits", async (ctx) => {
     if (!lim) return [head, "_No limits read yet: they come from Claude Code (signed in), its status line or the Claude app._"]
     return [head, limitRows(lim.windows), `_From the ${lim.source}, ${ago(lim.observed)}._`]
   }))
+})
+
+/** How much of an account's week is left (null: not read), and whether its 5-hour session is spent. */
+function room(lim: Awaited<ReturnType<typeof limits>>) {
+  const week = lim?.windows.find((w) => w.id === "week"), session = lim?.windows.find((w) => w.id === "session")
+  return { week_left: week ? Math.max(0, Math.round((100 - week.used) * 10) / 10) : null, renews: week?.resets_at ?? null,
+    session_full: !!session && session.used >= 100, session_renews: session?.resets_at ?? null }
+}
+
+plugin.op({
+  id: "claude-code.limits", cli: "limits", mcp: "claude_limits", owner: "Claude Code on this machine", kind: "read", lock: false,
+  summary: "Each Claude Code account's plan limits: how much of its week is left and when it renews, most room first, to pick the account a new session runs on.",
+  help: `Every account on this machine (its config folders), the one with the most of its week left first; one whose 5-hour
+session is spent goes last until it renews. for (a plugin) says what that plugin runs on each account.
+
+  vau limits
+  vau limits --account agent`,
+  params: {
+    account: { type: "string", description: "one account, by its id (default, agent...)" },
+    for: { type: "string", description: "a plugin (companion): says which accounts it runs on, and for what" },
+  },
+  run: async (p) => {
+    const accts = agent.accountsFor(p.account)
+    const used = accts.length > 1 ? await agent.usedBy(p.for) : new Map<string, string[]>()
+    const each = await Promise.all(usedFirst(accts, used).map(async (a) => {
+      const lim = await limits(a)
+      return { id: a.id, label: a.label, ...(a.uses ? { uses: a.uses } : {}), ...room(lim), windows: lim?.windows ?? [], source: lim?.source ?? null, observed: lim?.observed ?? null }
+    }))
+    return { accounts: sortBy(each, (a) => [a.session_full ? 1 : 0, a.week_left === null ? 1 : 0, -(a.week_left ?? 0)]) }
+  },
+  text: (r) => r.accounts.map((a: Item) => `${a.label} (${a.id})${a.uses ? `, ${a.uses.join(", ")}` : ""}: ` +
+    (a.week_left === null ? "no limits read yet" : `${a.week_left}% of the week left` + (a.renews ? `, renews ${when(a.renews)}` : "") +
+      (a.session_full ? `; its 5-hour session is spent${a.session_renews ? ` until ${when(a.session_renews)}` : ""}` : ""))).join("\n") || "No Claude Code accounts here.",
 })
 
 const agent = codingAgent(plugin, {

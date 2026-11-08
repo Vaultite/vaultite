@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **`vau limits`**: each Claude Code account's plan limits, how much of its week is left and when it renews, most
+  room first, so an agent can pick the account a new session runs on (also MCP `claude_limits`).
 - **The notch card closes, and the menu bar shows a dot, not a number**: a card by the notch has a close button that
   folds it into the island at once (still listed there, Not now in its list); the menu bar icon marks what's new with a
   dot on the stone, its count in the tooltip and menu.

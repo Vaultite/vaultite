@@ -859,7 +859,7 @@ const tokens = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
 /** ISO time -> "Thu 09:00 (in 2 h 10 min)". */
-function when(s: string) {
+export function when(s: string) {
   const t = new Date(s)
   const left = (+t - Date.now()) / 60000
   const soon = left < 48 * 60 ? fmtMin(Math.max(left, 1)) : `${Math.round(left / 1440)} days`
