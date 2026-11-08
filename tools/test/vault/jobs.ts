@@ -132,15 +132,39 @@ export default async ($: VaultTest) => {
     // A job's own change on main: a commit its words name, or its branch, after its base; nothing before it, nothing unpushed.
     const { onMainSince } = await import("../../../plugins/core/companion/workers.ts")
     const base = g("rev-parse", "HEAD").trim()
-    fs.writeFileSync(path.join(repo, "a.txt"), "a\n"); g("add", "."); g("commit", "-qm", "landed"); const landed = g("rev-parse", "--short", "HEAD").trim()
+    fs.writeFileSync(path.join(repo, "a.txt"), "a\n"); g("add", "."); g("commit", "-qm", "landed"); const landed = g("rev-parse", "HEAD").trim()
     g("update-ref", "refs/remotes/origin/main", "HEAD")
     g("checkout", "-qb", "job-x"); fs.writeFileSync(path.join(repo, "b.txt"), "b\n"); g("add", "."); g("commit", "-qm", "unpushed"); const local = g("rev-parse", "--short", "HEAD").trim()
-    check("jobs: a job's change is on main when a commit it names (or its branch) is on origin/main after its base",
-      await onMainSince(repo, base, `Pushed as ${landed}.`) && !await onMainSince(repo, base, `Committed as ${local}, not pushed.`) && !await onMainSince(repo, base, `Based on ${base.slice(0, 8)}.`) &&
-      !await onMainSince(repo, base, "Done.", "job-x") && !await onMainSince(repo, landed, `Pushed as ${landed}.`), { landed, local })
+    const on = [await onMainSince(repo, base, `Pushed as ${landed}.`), await onMainSince(repo, base, `Committed as ${local}, not pushed.`), await onMainSince(repo, base, `Based on ${base.slice(0, 8)}.`),
+      await onMainSince(repo, base, "Done.", "job-x"), await onMainSince(repo, landed, `Pushed as ${landed}.`)]
+    check("jobs: a job's change is on main when a commit it names (or its branch) is on origin/main after its base", on.join() === "true,false,false,false,false", { landed, local, on })
     g("update-ref", "refs/remotes/origin/main", "job-x")
     check("jobs: its branch landed on main counts too", await onMainSince(repo, base, "Done.", "job-x"))
     g("checkout", "-q", "-"); g("branch", "-qD", "job-x"); g("update-ref", "-d", "refs/remotes/origin/main"); g("reset", "-q", "--hard", base)
+  }
+  {
+    // Landed by someone else (rebased or squashed: a new sha), its branch removed: found by its change's patch-ids, read
+    // while the branch existed; never another job's with the same words, nor main's commits a branch was rebased onto.
+    const { onMainSince, marksOf } = await import("../../../plugins/core/companion/workers.ts")
+    const base = g("rev-parse", "HEAD").trim(), on = g("symbolic-ref", "--short", "HEAD").trim(), put = (f: string, t: string, msg: string) => { fs.writeFileSync(path.join(repo, f), t); g("add", "."); g("commit", "-qm", msg) }
+    g("update-ref", "refs/remotes/origin/main", base)
+    g("checkout", "-qb", "job-y"); put("c.txt", "c\n", "feat: the header"); put("d.txt", "d\n", "feat: its footer")
+    g("checkout", "-qb", "job-z", base); put("c.txt", "z\n", "feat: the header")
+    g("checkout", "-q", "--detach", base); put("o.txt", "o\n", "chore: someone else's"); g("update-ref", "refs/remotes/origin/main", "HEAD")
+    g("rebase", "-q", "origin/main", "job-z")
+    const y = await marksOf(repo, "job-y"), z = await marksOf(repo, "job-z")
+    check("jobs: a branch's marks are its own commits' patch-ids, not main's it was rebased onto; none on main yet",
+      y?.each.length === 2 && !!y.whole && z?.each.length === 1 && !await onMainSince(repo, base, "Done.", "job-y", y) && !await onMainSince(repo, base, "Done.", "job-z", z), { y, z })
+    g("checkout", "-q", "--detach", "origin/main"); g("merge", "-q", "--squash", "job-y"); g("commit", "-qm", "feat: header and footer"); g("update-ref", "refs/remotes/origin/main", "HEAD")
+    g("branch", "-qD", "job-y")
+    check("jobs: squashed onto main by someone else with its branch removed, a job's change is found by its marks; a rival's same words aren't",
+      await marksOf(repo, "job-y") === null && await onMainSince(repo, base, "Done.", "job-y", y) && !await onMainSince(repo, base, "Done.", "job-z", z) &&
+      !await onMainSince(repo, base, "Done.", "job-y", null) && !await onMainSince(repo, "origin/main", "Done.", "job-y", y), { y, z })
+    const main = g("rev-parse", "HEAD").trim()
+    g("checkout", "-qb", "job-w", base); put("w.txt", "w\n", "fix: one"); put("w.txt", "w\nx\n", "fix: two")
+    g("checkout", "-q", "--detach", main); g("cherry-pick", "job-w~1", "job-w"); g("update-ref", "refs/remotes/origin/main", "HEAD")
+    check("jobs: rebased onto main commit by commit, its branch still there, it's on main by its marks", await onMainSince(repo, base, "Done.", "job-w", await marksOf(repo, "job-w")))
+    g("checkout", "-q", "-f", on); g("branch", "-qD", "job-z", "job-w"); g("update-ref", "-d", "refs/remotes/origin/main"); g("reset", "-q", "--hard", base)
   }
   {
     const gh = await W.resolveHere({ url: "https://github.com/lighthouse/site/issues/4" }, VAULT, [], roots)
@@ -619,7 +643,7 @@ setTimeout(draw, 300)
   {
     const http = await import("node:http")
     const calls: Any[] = []
-    let stage = "working", farHas = true
+    let stage = "working", farHas = true, landed = false
     const server = http.createServer((req, res) => {
       let body = ""
       req.on("data", (d) => (body += d))
@@ -631,8 +655,11 @@ setTimeout(draw, 300)
           : op === "terminal.start" ? { id: "claude-remote1" }
           : op === "companion.worker" ? (stage === "working" ? { running: true, state: "working", title: "✳ Editing the header", typed: Date.now(), ...(p.turn ? { turn: { text: "", files: [], at: 0, final: false, session: "rs1" } } : {}) }
             : stage === "gone" ? { running: false, exit: { code: 0, signal: 1 }, ...(p.turn ? { turn: { text: "Shipped the header.", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: false, session: "rs1" }, diff: "1 file changed, +2 -1" } : {}) }
+            : stage === "landed" ? (p.cwd ? { running: false, onMain: landed, marks: { whole: "a".repeat(40), each: ["b".repeat(40)] } } : null)
             : { running: true, state: "idle", ...(p.turn ? { turn: { text: "Header done. Try https://studio.tail1.ts.net:8450", files: ["/home/alice/Projects/site/a.ts"], at: Date.now(), final: true }, diff: "1 file changed, +2 -1" } : {}) })
           : op === "terminal.end" ? { id: "claude-remote1" } : {}
+        // (its machine failing to read its terminal)
+        if (out === null) return void res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "no such terminal" }))
         res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(out))
       })
     }).listen(0, "127.0.0.1")
@@ -682,6 +709,21 @@ setTimeout(draw, 300)
       check("jobs on another machine: a worker that closed itself after its changes is ready for review, read from its session, and stays so",
         shipped?.state === "ready for review" && /Shipped the header/.test(shipped.result?.text ?? "") && again.state === "ready for review" &&
         calls.some((c) => c.op === "companion.worker" && c.p.turn && c.p.session === "rs1"), [shipped, again.state])
+      // Its terminal unreadable there now, its change landed later by anyone: looked for on main all the same (its marks
+      // kept from its branch and passed back), and closed as done.
+      const Wk = await import("../../../plugins/core/companion/workers.ts")
+      stage = "landed"
+      calls.length = 0
+      Wk.shipEvery(300)
+      try {
+        const jobs = async () => (await api("POST", "ops/companion.jobs", {}))[1].jobs.find((x: Any) => x.id === job.id)
+        const kept = await waitFor(async () => calls.some((c) => c.op === "companion.worker" && c.p.marks?.whole === "a".repeat(40)) && await jobs(), 10000, 100)
+        check("jobs: one ready for review whose terminal can't be read stays so until its change is on main, its marks kept", kept?.state === "ready for review" && kept.marks?.each?.[0] === "b".repeat(40), kept)
+        landed = true
+        const closed = await waitFor(async () => { const r = await jobs(); return r?.state === "done" && r }, 10000, 100)
+        check("jobs: one ready for review is done once its change is on main, its terminal unreadable on its machine", !!closed && closed.log.at(-1).ev === "landed" &&
+          calls.some((c) => c.op === "companion.worker" && c.p.branch === `job-${job.id}` && c.p.cwd === "/home/alice/Projects/site"), [closed, calls.map((c) => c.p)])
+      } finally { Wk.shipEvery(5 * 60_000) }
       // A preview served here: to the always-on machine when it has the repo and all of it is pushed, else here, saying why.
       if (process.platform !== "win32") {
         const cc = app.plugins.find((p) => p.id === "claude-code")!.services, wasC = { ...cc }, ours: string[] = []

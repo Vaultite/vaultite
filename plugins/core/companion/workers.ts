@@ -1,11 +1,11 @@
 // Jobs' workers: coding agents in the app's terminals (any harness, here or on another machine), read from what's tracked
 // already (their terminal's state, their transcript), moving jobs.ts' lifecycle. Ops: handoff, jobs, job, job-stop, where, worker.
-import { execFile } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { gitEnv, inDesktop, type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted, ROOT, userSurface, whoOf } from "../../../core/plugins.ts"
-import { cardOf, choiceIn, commitsIn, endEvent, HANDED, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, nowOf, type Result, resumeOf,
+import { cardOf, choiceIn, commitsIn, endEvent, HANDED, landedSaid, landTask, mergedSaid, followTask, gist, type Job, type JobCard, type JobEvent, jobsLine, jobsText, jobTask, jobText, jobTimings, lastOf, linkOf, linksIn, live, type Marks, nowOf, type Result, resumeOf,
   step, terminalOf, type Waits, type Where, worktreeOf } from "./jobs.ts"
 import { requestWriter } from "../../../core/vault.ts"
 import type { Moment } from "./plugin.ts"
@@ -39,10 +39,16 @@ export type Seen = { running: boolean; state?: string; kind?: string; msg?: stri
   exit?: { code: number; signal: number; lost?: boolean }
   /** How full its agent's context is (its last request's tokens, its window), when asked and its agent says. */
   context?: { tokens: number; window: number }
-  /** Whether a commit its words name (or its branch) is on its repo's main since base: it landed its change itself. */
-  onMain?: boolean }
+  /** Whether a commit its words name (or its branch, or its change by its marks) is on its repo's main since base. */
+  onMain?: boolean
+  /** Its branch's marks, read while it exists (kept with the job: its change found on main once the branch is gone). */
+  marks?: Marks }
 
 const KEEP = 40, KEEP_DAYS = 7
+/** How often a job ready for review is looked for on main. */
+let SHIP_READ = 5 * 60_000
+/** Another interval (the tests'). */
+export const shipEvery = (ms: number) => { SHIP_READ = ms }
 /** How long after the user's ask the companion's handoff is still its answer (its words and place go with it). */
 const ANSWERING_MS = 10 * 60_000
 /** How long a job done keeps its terminal: follow-ups mostly come within a minute or two, and still find it running. */
@@ -61,14 +67,68 @@ export async function diffSince(cwd: string, base: string) {
 }
 /** Whether a commit `text` names, or branch `branch`, came after `base` and is on `cwd`'s remote main: a job that landed
  *  its own change (pushing from a worktree moves the checkout's origin/main too). */
-export async function onMainSince(cwd: string, base: string, text: string, branch = "") {
-  const ok = (args: string[]) => new Promise<boolean>((r) => execFile("git", args, { cwd, timeout: 5000, env: gitEnv() }, (e) => r(!e)))
-  const main = (await ok(["rev-parse", "--verify", "-q", "origin/main"])) ? "origin/main" : (await ok(["rev-parse", "--verify", "-q", "origin/master"])) ? "origin/master" : ""
+export async function onMainSince(cwd: string, base: string, text: string, branch = "", marks?: Marks | null) {
+  const main = await mainOf(cwd)
   if (!main || !base) return false
   for (const h of [...commitsIn(text), ...(branch ? [branch] : [])]) {
-    if (await ok(["merge-base", "--is-ancestor", h, main]) && !(await ok(["merge-base", "--is-ancestor", h, base]))) return true
+    if (await gitOk(cwd, ["merge-base", "--is-ancestor", h, main]) && !(await gitOk(cwd, ["merge-base", "--is-ancestor", h, base]))) return true
   }
-  return false
+  // (rebased or squashed by someone else, its branch maybe gone: its change itself on main, by patch-id)
+  if (!marks?.whole && !marks?.each.length) return false
+  const on = await mainPatches(cwd, base, main)
+  return (!!marks.whole && on.has(marks.whole)) || (!!marks.each.length && marks.each.every((x) => on.has(x)))
+}
+const gitOk = (cwd: string, args: string[]) => new Promise<boolean>((r) => execFile("git", args, { cwd, timeout: 5000, env: gitEnv() }, (e) => r(!e)))
+const mainOf = async (cwd: string) => (await gitOk(cwd, ["rev-parse", "--verify", "-q", "origin/main"])) ? "origin/main" : (await gitOk(cwd, ["rev-parse", "--verify", "-q", "origin/master"])) ? "origin/master" : ""
+/** The patch-ids (`git patch-id --stable`) of what `args` prints: commit → patch-id ("-" for a diff not from `git log`). */
+function patchIds(cwd: string, args: string[]) {
+  return new Promise<Map<string, string>>((ok) => {
+    const out = new Map<string, string>()
+    const a = spawn("git", args, { cwd, env: gitEnv(), stdio: ["ignore", "pipe", "ignore"] }), b = spawn("git", ["patch-id", "--stable"], { cwd, env: gitEnv(), stdio: ["pipe", "pipe", "ignore"] })
+    const kill = setTimeout(() => { a.kill(); b.kill() }, 20_000)
+    a.stdout.pipe(b.stdin)
+    b.stdin.on("error", () => {})
+    let text = ""
+    b.stdout.on("data", (d) => (text += d))
+    b.on("close", () => {
+      clearTimeout(kill)
+      for (const l of text.split("\n")) { const [p, c] = l.trim().split(/\s+/); if (p && c) out.set(/^0+$/.test(c) ? "-" : c, p) }
+      ok(out)
+    })
+    b.on("error", () => { clearTimeout(kill); ok(out) })
+  })
+}
+/** Job branch `branch`'s marks: its own commits (not main's, though it was rebased onto it), null when it's gone or
+ *  all on main already (its branch on main says it). */
+export async function marksOf(cwd: string, branch: string): Promise<Marks | null> {
+  const main = await mainOf(cwd)
+  if (!main || !branch || !(await gitOk(cwd, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`]))) return null
+  const own = (await git(cwd, ["rev-list", "--no-merges", "-n", "40", `${main}..refs/heads/${branch}`])).split("\n").filter(Boolean)
+  if (!own.length) return null
+  const from = (await git(cwd, ["merge-base", main, `refs/heads/${branch}`])).trim()
+  const [each, whole] = await Promise.all([patchIds(cwd, ["log", "-p", "--no-merges", "--no-color", "--no-ext-diff", "--no-walk=unsorted", ...own]),
+    from ? patchIds(cwd, ["diff", "--no-color", "--no-ext-diff", from, `refs/heads/${branch}`]) : new Map<string, string>()])
+  const m: Marks = { whole: whole.get("-") ?? "", each: own.map((c) => each.get(c) ?? "").filter(Boolean) }
+  return m.whole || m.each.length ? m : null
+}
+/** Each commit's patch-id, read once (a commit never changes). */
+const patchOf = new Map<string, string>()
+/** The patch-ids of `cwd`'s main since `base`. */
+async function mainPatches(cwd: string, base: string, main: string) {
+  const since = (await git(cwd, ["rev-list", "--no-merges", "-n", "3000", `${base}..${main}`])).split("\n").filter(Boolean)
+  const fresh = since.filter((c) => !patchOf.has(c))
+  for (let i = 0; i < fresh.length; i += 200) {
+    const got = await patchIds(cwd, ["log", "-p", "--no-merges", "--no-color", "--no-ext-diff", "--no-walk=unsorted", ...fresh.slice(i, i + 200)])
+    if (patchOf.size > 50_000) patchOf.clear()
+    // (one with no diff has no patch-id: kept as none)
+    for (const c of fresh.slice(i, i + 200)) patchOf.set(c, got.get(c) ?? "")
+  }
+  return new Set(since.map((c) => patchOf.get(c)).filter(Boolean))
+}
+/** Marks as given (another machine's call): patch-ids only. */
+const marksIn = (v: unknown): Marks | null => {
+  const o = v && typeof v === "object" ? v as Record<string, unknown> : null, hex = (x: unknown) => typeof x === "string" && /^[0-9a-f]{40,64}$/.test(x)
+  return o ? { whole: hex(o.whole) ? String(o.whole) : "", each: Array.isArray(o.each) ? o.each.filter(hex).map(String).slice(0, 40) : [] } : null
 }
 const NOT_THEIRS = "only on the user's own words: answer it while answering their ask (Talk key) or their message to you that names the choice (made after it began waiting), with said quoting them; else ask them which"
 const newId = () => `j${Array.from({ length: 7 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")}`
@@ -212,7 +272,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
 
   /** Its terminal here as it is: running (else how it ended), its state, title, and with `turn` its last turn (its
    *  `session`'s, which outlives the terminal) and the diff since `base`. */
-  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string; branch?: string; said?: string; context?: boolean } = {}): Promise<Seen> {
+  async function seenHere(id: string, o: { turn?: boolean; session?: string; cwd?: string; base?: string; tree?: string; branch?: string; said?: string; context?: boolean; marks?: Marks } = {}): Promise<Seen> {
     const running = await plugin.ask<boolean>("terminal:runs", false, id)
     const st = await plugin.ask<{ state?: string; kind?: string; msg?: string } | null>("terminal:state", null, id)
     const info = running ? await plugin.ask<{ title?: string; typed?: number } | null>("terminal:info", null, id) : null
@@ -233,7 +293,12 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
         ...(turn.prompt ? { prompt: turn.prompt } : {}), ...(turn.background ? { background: turn.background } : {}) } : null } : {}),
       // (a coding job's changes are in its worktree once it made one, else wherever it worked)
       ...(o.turn && o.cwd && o.base ? { diff: await diffSince(o.tree && fs.existsSync(o.tree) ? o.tree : o.cwd, o.base) } : {}),
-      ...(o.cwd && o.base && (o.turn || o.said) ? { onMain: await onMainSince(o.cwd, o.base, [turn?.text, o.said].filter(Boolean).join("\n"), o.branch) } : {}) }
+      ...(o.cwd && o.base && (o.turn || o.said || o.branch) ? await landing(o.cwd, o.base, [turn?.text, o.said].filter(Boolean).join("\n"), o.branch ?? "", o.marks) : {}) }
+  }
+  /** Whether its change is on main (onMainSince), and its branch's marks while it exists (else the ones it was given). */
+  async function landing(cwd: string, base: string, text: string, branch: string, kept?: Marks) {
+    const marks = branch ? await marksOf(cwd, branch) : null
+    return { onMain: await onMainSince(cwd, base, text, branch, marks ?? kept), ...(marks ? { marks } : {}) }
   }
   /** The prompt terminal `id` is blocked on (`st`): a permission (one its screen shows: its words and choices), else its
    *  one question with its options; a question in several parts or picks has no choices (answered in its terminal). */
@@ -252,9 +317,14 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   const seenOf = (j: Job, turn = false, diff = turn) => {
     const said = [j.result?.text, j.last?.text].filter(Boolean).join("\n").slice(0, 8000)
     const o = { ...(turn ? { turn, ...(j.session ? { session: j.session } : {}) } : {}), ...(diff ? { cwd: j.where.cwd, ...(j.where.base ? { base: j.where.base } : {}), ...(j.where.tree ? { tree: j.where.tree } : {}),
-      ...(j.where.branch ? { branch: j.where.branch } : {}), ...(said ? { said } : {}) } : {}) }
-    return j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, ...o }, 10) as Promise<Seen> : seenHere(j.terminal, o)
+      ...(j.where.branch ? { branch: j.where.branch } : {}), ...(said ? { said } : {}), ...(j.marks ? { marks: j.marks } : {}) } : {}) }
+    return (j.where.machine ? atMachine(j.where.machine, "companion.worker", { id: j.terminal, ...o }, 10) as Promise<Seen> : seenHere(j.terminal, o)).then((s) => {
+      if (s.marks && JSON.stringify(s.marks) !== JSON.stringify(j.marks)) { j.marks = s.marks; marked.add(j.id) }
+      return s
+    })
   }
+  /** Jobs whose marks changed since they were last kept. */
+  const marked = new Set<string>()
 
   /** When each job's worker was first seen at rest (its turn may be over once that holds). */
   const resting = new Map<string, number>()
@@ -299,7 +369,7 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
         else if (Date.now() - since >= HOLD) moved = await finish(j)
       } else if (j.state === "done") moved = await tidy(j, s)
       if (j.state === "ready for review" && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) moved = await shippedSince(j) || moved
-      if (moved || waited || j.now !== was || j.last?.at !== said) changed()
+      if (moved || waited || j.now !== was || j.last?.at !== said || marked.delete(j.id)) changed()
     } finally {
       busy.delete(j.id)
       const next = again.get(j.id)
@@ -339,11 +409,15 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
   const shipped = (j: Job, s: Seen, text: string) => !!j.where.repo && !(j.land && j.land.at === undefined) && (s.onMain === true || (!commitsIn(text).length && landedSaid(text)))
   /** When each job ready for review was last looked for on main (its change landed by itself, or by anyone later). */
   const shipRead = new Map<string, number>()
-  const SHIP_READ = 5 * 60_000
   async function shippedSince(j: Job) {
     shipRead.set(j.id, Date.now())
     const s = await seenOf(j, false, true).catch(() => null)
     return !!s && shipped(j, s, [j.result?.text, j.last?.text].filter(Boolean).join("\n")) && move(j, "landed")
+  }
+  /** Job `j` ready for review looked for on main on its own, its terminal read or not (gone, on a machine away). */
+  async function ship(j: Job) {
+    if (busy.has(j.id)) return
+    if (await shippedSince(j) || marked.delete(j.id)) changed()
   }
   /** Its turn over while it merged what they kept (`text`: its words): whether it says it merged, read once. */
   function landed(j: Job, text: string) {
@@ -443,6 +517,8 @@ export function jobOps(plugin: Plugin, d: JobDeps) {
       // (one done whose terminal runs: looked at for tidy; one ready for review: its terminal gone is its end, its change on main)
       const later = (j.where.machine && j.state !== "stopped" && recent) || (j.state === "done" && !j.exited) || (j.state === "ready for review" && recent)
       if (live(j.state) ? (j.where.machine || ticks % 2 === 0) : later && ticks % 10 === 0) void refresh(j).catch(() => {})
+      // (its change landed by anyone, however long ago it went ready: never only through its terminal's read)
+      if (j.state === "ready for review" && j.where.repo && Date.now() - (shipRead.get(j.id) ?? 0) >= SHIP_READ) void ship(j).catch(() => {})
     }
   }, 3000)
   timer.unref?.()
@@ -818,9 +894,11 @@ in one short line, merge it or close it as it is (each a button).
       session: { type: "string", description: "its agent's session (its turn read from it, the terminal ended or not)" },
       cwd: { type: "string", description: "its folder (the diff's)" }, base: { type: "string", description: "the commit the diff counts from" },
       tree: { type: "string", description: "its own worktree: the diff's once it exists" }, branch: { type: "string", description: "its own branch (whether it's on main)" },
-      said: { type: "string", description: "its words (whether a commit they name is on main)" }, context: { type: "boolean", description: "how full its agent's context is too" } },
+      said: { type: "string", description: "its words (whether a commit they name is on main)" }, context: { type: "boolean", description: "how full its agent's context is too" },
+      marks: { type: "object", description: "its change's marks read before ({whole, each}: patch-ids), for once its branch is gone" } },
     args: ["id"],
-    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base), tree: str(p.tree), branch: str(p.branch), said: str(p.said), context: p.context === true }),
+    run: async (p) => seenHere(str(p.id), { turn: p.turn === true, session: str(p.session), cwd: str(p.cwd), base: str(p.base), tree: str(p.tree), branch: str(p.branch), said: str(p.said), context: p.context === true,
+      ...(marksIn(p.marks) ? { marks: marksIn(p.marks)! } : {}) }),
   })
 
   /** Jobs the user opened: no longer news. */

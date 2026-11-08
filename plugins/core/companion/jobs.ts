@@ -78,6 +78,9 @@ export type Last = { text: string; at: number; told?: string; asks?: string[]; b
 /** What its worker waits on, answerable where the user is (its notification's buttons, their word to the companion): the
  *  prompt's question and its choices (a permission's: approve's, then deny's; none: it takes more, in its terminal), since when. */
 export type Waits = { kind: "permission" | "question"; question: string; choices: string[]; at: number }
+/** A job's change as git tells it apart, the same however it lands (rebased or squashed without conflicts): the patch-id
+ *  of all of it, and of each of its commits. Read while its branch exists, kept with the job for after. */
+export type Marks = { whole: string; each: string[] }
 export type Job = {
   id: string; title: string; state: JobState; where: Where
   /** Its worker's terminal id, on where.machine. */
@@ -99,6 +102,8 @@ export type Job = {
   /** Kept, to be merged (Keep and merge, or their word to land it): when they said so, and once its turn ended, whether
    *  it said it merged (its last message starting "Merged:"). It closes as done only once merged. */
   land?: { asked: number; at?: number; merged?: boolean }
+  /** Its change's patch-ids, read from its branch while it existed: found on main, it landed (rebased, squashed). */
+  marks?: Marks
   /** Opened since its last news. */
   seen: boolean
   log: Transition[]
