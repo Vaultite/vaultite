@@ -105,6 +105,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   agent's progress shows on its own row, and what agents work on is the Agents panel's, no longer listed in the inbox. The companion knocks "three decisions waiting" and walks you through them.
 - **Terminals show pictures**: Claude Code shows the PNGs it reads and the ones you paste, and whatever else draws
   with the kitty graphics protocol (`kitten icat`, yazi) shows too, on the phone as well, after a reload or elsewhere.
+  A terminal server from before pictures leaves them off rather than blank gaps where they'd be, and big screenshots
+  are kept at the size they show, so a long session's older ones don't go blank.
 - **A damaged workbook no longer hangs Vaultite**: one that's cut short or corrupt says it couldn't be read, where it
   could freeze the app or take the server down while search read it, and a big one opens without freezing the app.
   SheetJS, which reads them, now ships inside Vaultite instead of coming from its own server at install.

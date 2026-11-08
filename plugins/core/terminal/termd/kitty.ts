@@ -163,8 +163,10 @@ export class KittyFeed {
     for (const k of ["t", "S", "O", "m"]) out.delete(k)
     if ((keys.get("f") ?? "32") === "100") {
       if (keys.get("o") === "z") try { data = zlib.inflateSync(data, { maxOutputLength: PICTURE_MAX }) } catch { return raw }
-      const px = decodePng(data, PICTURE_MAX)
+      let px = decodePng(data, PICTURE_MAX)
       if (!px) { this.o.log?.("kitty", isPng(data) ? "PNG not decoded" : "not a PNG"); return raw }
+      const k = keptScale(keys, px.width, px.height)
+      if (k > 1) px = { ...shrink(px.data, px.width, px.height, px.channels, px.channels, k), channels: px.channels }
       out.set("f", String(px.channels * 8)); out.set("s", String(px.width)); out.set("v", String(px.height)); out.set("o", "z")
       data = zlib.deflateSync(px.data, { level: 1 })
     } else if (t === "d") return raw
@@ -197,21 +199,38 @@ function sendable(p: Picture) {
   const ch = p.format === "rgba" ? 4 : p.format === "rgb" ? 3 : p.format === "gray_alpha" ? 2 : 1, out = ch === 2 || ch === 4 ? 4 : 3
   const k = Math.max(1, Math.ceil(Math.sqrt((p.width * p.height) / REPLAY_PIXELS)))
   if (k === 1 && ch === out) return { width: p.width, height: p.height, scale: 1, format: out * 8, data: Buffer.from(p.data.buffer, p.data.byteOffset, p.data.length) }
-  const w = Math.max(1, Math.floor(p.width / k)), h = Math.max(1, Math.floor(p.height / k))
+  const s = shrink(p.data, p.width, p.height, ch, out, k)
+  return { ...s, scale: s.width / p.width, format: out * 8 }
+}
+
+/** Pixels of `ch` channels made `k` times smaller each way (area-averaged), as `out` channels (3 or 4: gray widened). */
+function shrink(src: Uint8Array, width: number, height: number, ch: number, out: number, k: number) {
+  const w = Math.max(1, Math.floor(width / k)), h = Math.max(1, Math.floor(height / k))
   const data = Buffer.alloc(w * h * out), sum = new Float64Array(4)
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     sum.fill(0)
     let n = 0
-    for (let yy = y * k; yy < Math.min(p.height, (y + 1) * k); yy++) for (let xx = x * k; xx < Math.min(p.width, (x + 1) * k); xx++) {
-      const i = (yy * p.width + xx) * ch
-      if (ch <= 2) { sum[0] += p.data[i]; sum[1] += p.data[i]; sum[2] += p.data[i]; sum[3] += ch === 2 ? p.data[i + 1] : 255 }
-      else { sum[0] += p.data[i]; sum[1] += p.data[i + 1]; sum[2] += p.data[i + 2]; sum[3] += ch === 4 ? p.data[i + 3] : 255 }
+    for (let yy = y * k; yy < Math.min(height, (y + 1) * k); yy++) for (let xx = x * k; xx < Math.min(width, (x + 1) * k); xx++) {
+      const i = (yy * width + xx) * ch
+      if (ch <= 2) { sum[0] += src[i]; sum[1] += src[i]; sum[2] += src[i]; sum[3] += ch === 2 ? src[i + 1] : 255 }
+      else { sum[0] += src[i]; sum[1] += src[i + 1]; sum[2] += src[i + 2]; sum[3] += ch === 4 ? src[i + 3] : 255 }
       n++
     }
     const o = (y * w + x) * out
     for (let c = 0; c < out; c++) data[o + c] = Math.round(sum[c] / n)
   }
-  return { width: w, height: h, scale: w / p.width, format: out * 8, data }
+  return { width: w, height: h, data }
+}
+
+/** A cell's size in pixels on the densest screen a picture is drawn for: what a picture placed in cells needs at most. */
+const CELL_PX = { width: 24, height: 48 }
+
+/** How many times smaller a picture shown whole in `c` × `r` cells (a=T, U=1: Claude Code's) can be kept and look the
+ *  same: pixels past what its cells show only fill KITTY_STORAGE, whose oldest pictures go (their rows left blank). */
+export function keptScale(keys: Map<string, string>, width: number, height: number) {
+  const cols = Number(keys.get("c")) || 0, rows = Number(keys.get("r")) || 0
+  if (keys.get("a") !== "T" || keys.get("U") !== "1" || !cols || !rows || ["x", "y", "w", "h"].some((k) => keys.has(k))) return 1
+  return Math.max(1, Math.floor(Math.max(width / (cols * CELL_PX.width), height / (rows * CELL_PX.height))))
 }
 
 /** A terminal's snapshot (vt.ts serialize) with its placed pictures sent first, then put back: one in history after

@@ -6,6 +6,8 @@ import type { ImageSource, Register } from 'claude-code'
 const MAX_COLUMNS = 48, MAX_ROWS = 16
 /** Bytes an Image carries itself at most (decoded); a bigger PNG is named by its file. */
 const BYTES_MAX = 2 << 20
+/** Pixels' bytes a terminal decodes at most (termd/kitty.ts PICTURE_MAX): a bigger picture would leave its rows blank. */
+const PIXELS_MAX = 64 << 20
 /** Pasted pictures, by the prompt's text they came with (the row draws only its text): the last few. */
 const pasted = new Map<string, string[]>()
 
@@ -30,7 +32,7 @@ function cells(width: number, height: number) {
 /** What draws a PNG: its bytes, or its file when they're too many to carry. */
 function picture(b64: string, file?: string): { source: ImageSource; columns: number; rows: number } | null {
   const size = pngSize(b64)
-  if (!size) return null
+  if (!size || size.width * size.height * 4 > PIXELS_MAX) return null
   const source: ImageSource = (b64.length * 3) / 4 <= BYTES_MAX ? { png: b64 } : file ? { file, format: 'png' } : null!
   return source ? { source, ...cells(size.width, size.height) } : null
 }

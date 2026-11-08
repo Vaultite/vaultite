@@ -369,6 +369,7 @@ export default async ($: VaultTest) => {
     const b = localBackend()
     const evs: { type: string; id: string; [k: string]: unknown }[] = []
     b.events!((ev) => evs.push(ev as never))
+    check("terminal server: it says it draws pictures (an older one running on doesn't, so its Claude Code isn't told to)", (await b.pictures!()) === true)
     const spec = { shell: "/bin/sh", run: { command: "printf 'one\\n\\033[31mred\\033[0m\\n'; read x; echo \"got $x\"; exit 4" }, only: true, cwd: tmp,
       env: { PATH: "/usr/bin:/bin", HOME: tmp }, ctx: {}, cols: 40, rows: 6, scrollback: 50 }
     await b.create("cap1", spec, { command: "the test", meta: { name: "Capture test" } })

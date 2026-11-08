@@ -9,7 +9,7 @@ import zlib from "node:zlib"
 import { newVt } from "../plugins/core/terminal/vt/load.ts"
 import { KITTY_STORAGE, LAYOUT, wasiImports } from "../plugins/core/terminal/vt/vt.ts"
 import { Screen } from "../plugins/core/terminal/vt/screen.ts"
-import { KittyFeed, readPicture, REPLAY_MAX, withPictures } from "../plugins/core/terminal/termd/kitty.ts"
+import { keptScale, KittyFeed, readPicture, REPLAY_MAX, withPictures } from "../plugins/core/terminal/termd/kitty.ts"
 import { decodePng } from "../plugins/core/terminal/termd/png.ts"
 import { about, minisignOk } from "./ghostty_update.ts"
 import { inkFrames, seq, streaming } from "./perf/vtcorpus.ts"
@@ -223,6 +223,18 @@ await section("kitty graphics", async () => {
   for (let i = 0; i < seqPng.length; i += 37) feed.feed(seqPng.slice(i, i + 37))
   const px = decodePng(png, 1 << 20)!
   check("termd's PNGs: decoded, sent on as pixels (zlib)", /^\x1b_Ga=T,U=1,q=2,f=24,i=9,c=6,r=2,s=8,v=6,o=z,t=d;/.test(fed), fed.slice(0, 80))
+  // A tall screenshot shown in a few cells: kept at the pixels those cells can show, so a terminal's storage holds many.
+  const tall = tinyPng(400, 6000), tallB64 = tall.toString("base64")
+  let tallFed = ""
+  new KittyFeed({ emit: (d) => { tallFed += d }, remote: () => false }).feed(`\x1b_Ga=T,U=1,q=2,f=100,i=11,c=4,r=16;${tallB64}\x1b\\`)
+  const tallVt = newVt({ cols: 40, rows: 10, scrollback: 100 })
+  tallVt.write(tallFed)
+  const kept = tallVt.picture(11)
+  check("a big picture shown in a few cells is kept smaller, its shape kept", !!kept && kept.width === 57 && kept.height === 857 && keptScale(new Map([["a", "T"], ["U", "1"], ["c", "4"], ["r", "16"]]), 400, 6000) === 7,
+    [kept?.width, kept?.height])
+  check("… not one placed otherwise (transmitted alone, or a part of it shown)", keptScale(new Map([["a", "t"], ["c", "4"], ["r", "16"]]), 400, 6000) === 1
+    && keptScale(new Map([["a", "T"], ["U", "1"], ["c", "4"], ["r", "16"], ["h", "100"]]), 400, 6000) === 1)
+  tallVt.dispose()
   // Unicode placeholders (U+10EEEE, row and column diacritics, the image id as the colour) draw the virtual placement.
   const s = new Screen(wasmModule, { cols: 40, rows: 10, scrollback: 100 })
   const D = ["̅", "̍", "̎", "̐", "̒", "̽"]
@@ -304,10 +316,10 @@ await section("kitty graphics", async () => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
-/** An 8×6 RGB PNG of four colours. */
-function tinyPng() {
-  const W = 8, H = 6, raw = Buffer.alloc((W * 3 + 1) * H)
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) raw.set([[230, 40, 40], [40, 180, 60], [40, 80, 230], [240, 200, 30]][(x < 4 ? 0 : 1) + (y < 3 ? 0 : 2)], y * (W * 3 + 1) + 1 + x * 3)
+/** A W×H RGB PNG of four colours (8×6). */
+function tinyPng(W = 8, H = 6) {
+  const raw = Buffer.alloc((W * 3 + 1) * H)
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) raw.set([[230, 40, 40], [40, 180, 60], [40, 80, 230], [240, 200, 30]][(x < W / 2 ? 0 : 1) + (y < H / 2 ? 0 : 2)], y * (W * 3 + 1) + 1 + x * 3)
   const crcT = new Int32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c })
   const crc = (b: Buffer) => { let c = -1; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0 }
   const chunk = (t: string, d: Buffer) => { const l = Buffer.alloc(4), c = Buffer.alloc(4), td = Buffer.concat([Buffer.from(t), d]); l.writeUInt32BE(d.length); c.writeUInt32BE(crc(td)); return Buffer.concat([l, td, c]) }

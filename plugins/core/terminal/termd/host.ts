@@ -333,7 +333,9 @@ export function host(o: HostOptions) {
       return s
     }
     switch (m.op) {
-      case "hello": return { v: PROTOCOL, pid: o.pid, file: o.file, stale: !!o.stale?.() }
+      // (pictures: kitty graphics made whole here, kitty.ts; one running on from before them says nothing, and its
+      // terminals aren't told to draw any: Claude Code's would leave their rows blank)
+      case "hello": return { v: PROTOCOL, pid: o.pid, file: o.file, stale: !!o.stale?.(), pictures: true }
       // This connection hears every terminal's changes ({t: "event", type, id, ...}: protocol.ts).
       case "subscribe": {
         c.events = true

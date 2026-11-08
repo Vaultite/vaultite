@@ -284,7 +284,15 @@ function env(): Record<string, string> {
     // (Windows' variables have any case, and a shell given Path and PATH would take either: one, Path)
     out[WIN && k.toUpperCase() === "PATH" ? PATH : k] = v
   }
-  return { ...out, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Vaultite", LANG: out.LANG || (process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8"), // (a server may not have en_US generated)
+  return { ...out, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Vaultite", LANG: out.LANG || (process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8") } // (a server may not have en_US generated)
+}
+
+/** env() for a new terminal of backend `b`, with Claude Code's pictures on when `b` draws them (Backend.pictures): an
+ *  older terminal server still running, or another plugin's backend, would show the rows they take blank. */
+async function termEnv(b: Backend): Promise<Record<string, string>> {
+  const out = env()
+  if (!(await b.pictures?.().catch(() => false))) return out
+  return { ...out,
     // (Claude Code draws pictures only for a terminal whose XTVERSION names kitty or Ghostty, which ours answers as
     // xterm.js did; this tells it ours draws them, and that it reads their files: termd's kitty.ts)
     CLAUDE_CODE_FORCE_TERMINAL_IMAGES: "1",
@@ -799,7 +807,7 @@ function makeSpare(from: From) {
     if (!b.spares || !sameShell(sh) || spares.has(key)) return
     const name = `${SPARE}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
     // (its id comes when it's taken)
-    const ready = dropped.then(() => b.create(name, { shell: sh, run: null, cwd: vaultDir(), env: env(), ctx: context(null, from, sh), cols: 120, rows: 40, scrollback: scrollback() },
+    const ready = dropped.then(async () => b.create(name, { shell: sh, run: null, cwd: vaultDir(), env: await termEnv(b), ctx: context(null, from, sh), cols: 120, rows: 40, scrollback: scrollback() },
       { spare: true })).then(() => true, () => false)
     spares.set(key, { b, name, ready })
   })()
@@ -840,7 +848,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     const sh = shell(), command = o.command ? { command: o.command, cwd: how.cwd || null } : null
     const run = command ?? await agentRun(id, prompt, dark, how, sh)
     if (agent) timing.mark("agent")
-    const spec: Spec = { shell: sh, run, only: !!command, cwd: how.cwd || vaultDir(), env: env(), ctx: context(id, from, sh), cols, rows, scrollback: scrollback() }
+    const spec: Spec = { shell: sh, run, only: !!command, cwd: how.cwd || vaultDir(), env: await termEnv(b), ctx: context(id, from, sh), cols, rows, scrollback: scrollback() }
     if (run) cwd = run.cwd || spec.cwd
     // (what its list says it runs, and the name it's given)
     const made: Made = { command: o.command ?? agent?.name ?? progName(sh), ...(o.name ? { meta: { name: o.name } } : {}) }

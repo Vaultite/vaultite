@@ -116,6 +116,9 @@ export interface Backend {
   events?(fn: (ev: BackendEvent) => void): void
   /** Its program ended (the app saw its shell at the prompt again): the working and blocked OSC 7501 records go. */
   dropStatus?(id: string): Promise<void>
+  /** Whether its terminals draw kitty graphics a program sends as Claude Code does (by file, or PNG: termd/kitty.ts makes
+   *  them pixels). Without it, none: pages can't read files or decode a PNG in time. */
+  pictures?(): Promise<boolean>
 }
 
 /** A long or multi-line text goes as a paste: typed, an agent reads it in the pty's ~1 KB pieces, each a paste of its
@@ -458,9 +461,17 @@ function listed(x: Info): Listed {
 function termdClient(o: { name: string; label: string; control: () => Promise<Wire>; running: () => Promise<Wire | null>; open: () => Promise<Wire> }) {
   const heard = new Set<(ev: BackendEvent) => void>()
   const ask = async (op: string, params: Msg = {}, ms?: number) => (await o.control()).request(op, params, ms)
+  const hellos = new WeakMap<Wire, Promise<boolean>>()
   const backend = {
     name: o.name, label: o.label, spares: true,
     ready: async () => !!(await o.control().catch(() => null)),
+    /** As the server running now says (one from before pictures says nothing): asked once per connection. */
+    async pictures() {
+      const w = await o.control().catch(() => null)
+      if (!w) return false
+      if (!hellos.has(w)) hellos.set(w, w.request("hello", {}, 5000).then((r) => r.pictures === true, () => { hellos.delete(w); return false }))
+      return hellos.get(w)!
+    },
     async list(q?: { ended?: boolean }): Promise<Listed[]> {
       const w = await o.running()
       if (!w) return []
