@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion's chat writes notes no window shows**: an edit its Claude Code chat session makes to a note that
+  isn't on screen is saved to the file, where it was sometimes refused as the plugin writing on its own.
 - **`vau limits`**: each Claude Code account's plan limits, how much of its week is left and when it renews, most
   room first, so an agent can pick the account a new session runs on (also MCP `claude_limits`).
 - **The notch card closes, and the menu bar shows a dot, not a number**: a card by the notch has a close button that

@@ -9,6 +9,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
+import { onItsOwn } from "../../../core/writegate.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..")
 const CHATD = path.join(ROOT, "plugins/core/claude-code/chatd.ts")
@@ -114,6 +115,9 @@ export default async ($: VaultTest) => {
   const idle = (id: string) => waitFor(async () => (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === id)?.state === "idle", 15_000, 50)
   let k = await keeper(CHAT_SOCKET)
   try {
+    // (followed first by the plugin acting on its own, as its timer does when a server starts: the calls it relays are
+    // still the session's, which writes notes like any agent)
+    await onItsOwn("claude-code", () => api("POST", "ops/claude-code.chat-list", {}))
     // (its Talk key's asks the long session's, as before: the summoned one has its own test below)
     await api("PATCH", "config/plugin/companion", { mode: "quiet", agent: "claude", model: "haiku", summoned_model: "companion" })
     write("Notes/Chat.md", "# Chat\n\nCall Alice friday\n")

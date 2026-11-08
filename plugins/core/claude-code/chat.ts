@@ -11,6 +11,7 @@ import type { WebSocket } from "ws"
 import { type AgentChatNew, type Asking, type Choice, choiceOf, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
 import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_THE_USER, type Op, type OpCtx, OpError, type Param, outliving, pipeSockets, type Plugin, runtimeDir,
   splitMachine, Text, userSurface } from "../../../core/plugins.ts"
+import { byUser as asUser } from "../../../core/writegate.ts"
 import { type Entry, IMAGE_MAX, IMAGE_TYPES, IMAGES_MAX, type ImageType, imageType, Reader } from "./chatlog.ts"
 import { type Answer, codeOf, eachMessage, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
 
@@ -307,9 +308,11 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       asking.delete(e.id)
       toTabs(e.id, { t: "state", s: null })
       inform(e.id, null)
-    } else if (e.t === "tool") void runTool(e.id, e.call, e.name, e.args, e.use)
+    // (its calls are the session's, as an agent's request: never this plugin acting on its own, as a socket its timer
+    // opened would have them, so the write gate doesn't refuse a session's edit of a note)
+    } else if (e.t === "tool") void asUser(() => runTool(e.id, e.call, e.name, e.args, e.use))
     else if (e.t === "partial") {
-      try { if (e.name) toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end === "tool" ? undefined : e.end); else owned.get(e.id)?.onText?.(e.use, e.json, e.end) } catch (err) { console.error("chat: stream:", err) }
+      try { asUser(() => { if (e.name) toolOf(e.id, e.name)?.stream?.(e.use, e.json, e.end === "tool" ? undefined : e.end); else owned.get(e.id)?.onText?.(e.use, e.json, e.end) }) } catch (err) { console.error("chat: stream:", err) }
     }
     else if (e.t === "did") {
       // (Activity's intake for agents' hooks, the session named by its title)
