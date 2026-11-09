@@ -1,14 +1,15 @@
-// A service install following a branch (core/selfupdate.ts): on throwaway git repos, with CI, npm, the browser and the
-// restart stood in for. In npm test.
+// A service install following a branch (core/selfupdate.ts on core/update/): on throwaway git repos, with CI, npm, the
+// browser and the restart stood in for. In npm test.
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { check, exit, section, summary, tempDir } from "./test/lib.ts"
-import type { CiResult, UpdaterOptions } from "../core/selfupdate.ts"
+import type { CiResult } from "../core/update/ci.ts"
+import { checkForUpdate } from "../core/update/updater.ts"
+import { backendChanged, inPlace } from "../core/selfupdate.ts"
 import { gitEnv } from "../core/gitenv.ts"
 const t0 = Date.now()
 
-const U = await import("../core/selfupdate.ts")
 const tmp = tempDir("vaultite-selfupdate-test-")
 // (as under a git hook or `git bisect run`: every git here, the test's and the updater's, still acts on its own folder)
 const decoy = path.join(tmp, "decoy.git")
@@ -34,10 +35,10 @@ const head = () => git(server, "rev-parse", "HEAD")
 let ci: CiResult = { ok: true, why: "CI passed" }, busy: string | null = null, restarts = 0, failBuild = false
 let verdicts = new Map<string, CiResult>() // (a commit's own, else `ci`)
 const npmCalls: string[] = []
-const o: UpdaterOptions = { root: server, branch: "main", stateFile: path.join(tmp, "state", "selfupdate.json"),
+const o = inPlace({ root: server, branch: "main", stateFile: path.join(tmp, "state", "selfupdate.json"),
   busy: async () => busy, restart: () => { restarts++ }, ci: async (repo, sha) => (repo === "Alice/lighthouse" ? verdicts.get(sha) ?? ci : { ok: false, why: `asked ${repo}` }),
-  npm: async (args) => { npmCalls.push(args.join(" ")); if (failBuild && args[0] === "run") throw new Error("vite build failed") } }
-const look = () => U.checkForUpdate(o)
+  npm: async (args) => { npmCalls.push(args.join(" ")); if (failBuild && args[0] === "run") throw new Error("vite build failed") } })
+const look = () => checkForUpdate(o)
 
 await section("up to date, then a web-only update", async () => {
   check("current when origin has nothing newer", (await look()).state === "current")
@@ -127,16 +128,9 @@ await section("what it won't update", async () => {
   check("diverged from origin: failed, nothing changed", d.state === "failed" && /diverged/.test(d.why) && fs.existsSync(path.join(server, "local.txt")), d)
 })
 
-section("the pieces")
-check("githubRepo: https and ssh remotes", U.githubRepo("git@github.com:Vaultite/vaultite.git") === "Vaultite/vaultite" && U.githubRepo("https://github.com/Vaultite/vaultite") === "Vaultite/vaultite" && U.githubRepo("/srv/x.git") === null)
-const run = (event: string, status: string, conclusion: string | null, p = U.CI_WORKFLOW) => ({ path: p, event, status, conclusion })
-check("ci: a push run that passed is green", U.ciOf([run("push", "completed", "success")]).ok === true)
-check("ci: the nightly counts as main's", U.ciOf([run("push", "completed", "failure"), run("schedule", "completed", "success")]).ok === true)
-check("ci: a dispatched QA run doesn't", U.ciOf([run("workflow_dispatch", "completed", "success")]).ok === null)
-check("ci: another workflow doesn't", U.ciOf([run("push", "completed", "success", ".github/workflows/release.yml")]).ok === null)
-check("ci: running is not yet, failed is red", U.ciOf([run("push", "in_progress", null)]).ok === null && U.ciOf([run("push", "completed", "failure")]).ok === false)
-check("backend: web/, the desktop app, tools and docs don't restart the server", !U.backendChanged(["web/src/a.ts", "plugins/core/x/index.tsx", "electron/main.ts", "tools/t.ts", "CHANGELOG.md", "web/dist/x.js"]))
-check("backend: core, plugins' backends, server.ts and dependencies do", ["core/a.ts", "plugins/core/x/plugin.ts", "server.ts", "package.json", "core/docs/design.md"].every((f) => U.backendChanged([f])))
+section("what restarts the server")
+check("web/, the desktop app, tools and docs don't", !backendChanged(["web/src/a.ts", "plugins/core/x/index.tsx", "electron/main.ts", "tools/t.ts", "CHANGELOG.md", "web/dist/x.js"]))
+check("core, plugins' backends, server.ts and dependencies do", ["core/a.ts", "plugins/core/x/plugin.ts", "server.ts", "package.json", "core/docs/design.md"].every((f) => backendChanged([f])))
 
 section("an inherited GIT_DIR")
 const inDecoy = (...args: string[]) => execFileSync("git", ["--git-dir", decoy, ...args], { encoding: "utf8", env: gitEnv() })

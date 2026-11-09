@@ -684,8 +684,8 @@ server.listen(PORT, HOST, () => {
 
 // A service install following a branch updates itself (core/selfupdate.ts); the service manager starts it again.
 if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".git"))) {
-  const { startUpdater } = await import("./core/selfupdate.ts")
-  startUpdater({ root: ROOT, branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
+  const [{ startUpdater }, { inPlace }] = await Promise.all([import("./core/update/updater.ts"), import("./core/selfupdate.ts")])
+  startUpdater(inPlace({ root: ROOT, branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
     // (as a stop does; Windows' SIGTERM would end it at once, its plugins never told)
     restart: () => bye(143),
     // (any plugin asks the same desktop app; none reachable, or one too old to say, can't be cut short)
@@ -693,5 +693,5 @@ if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".
       await ready
       const r = await LOADED[0]?.desktop("agent:busy", "server").catch(() => null) as { busy?: boolean; why?: string } | null
       return r?.busy ? String(r.why || "the browser is busy") : null
-    } })
+    } }))
 }
