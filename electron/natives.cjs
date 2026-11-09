@@ -95,8 +95,7 @@ function prebuilds(root, platform, arch) {
   }
 }
 
-/** A Windows app, built on its own architecture (a package for another fails the build): its prebuilds, and its id,
- *  which main.ts gives Windows as its AppUserModelID (so its notifications are the app's). */
+/** A Windows app, built on its own architecture (a package for another fails the build): its prebuilds. */
 exports.windows = function windows(context) {
   const arch = require("builder-util").Arch[context.arch]
   const root = path.join(context.appOutDir, "resources", "app")
@@ -108,6 +107,4 @@ exports.windows = function windows(context) {
   // 7-Zip packs arm64 .exe and .dll files with its ARM64 filter, which the installer's older extractor can't undo: it
   // installed everything but them. BCJ (x86's) is one it knows, and only costs a little size.
   if (arch === "arm64") process.env.ELECTRON_BUILDER_7Z_FILTER ||= "BCJ"
-  const file = path.join(root, "package.json")
-  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf8")), appId: context.packager.appInfo.id }, null, 2) + "\n")
 }

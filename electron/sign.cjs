@@ -119,7 +119,20 @@ async function fuses(context) {
     [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false, [FuseV1Options.EnableNodeCliInspectArguments]: false })
 }
 
+/** The name and id it's packaged as, into the shell.json stamp.ts wrote (electron/identity.ts): its userData and, on
+ *  Windows, its AppUserModelID. */
+function stampShell(context) {
+  const { id, productFilename, productName } = context.packager.appInfo
+  const res = context.electronPlatformName === "darwin" ? path.join(context.appOutDir, `${productFilename}.app`, "Contents", "Resources", "app")
+    : path.join(context.appOutDir, "resources", "app")
+  const file = path.join(res, "electron", "shell.json")
+  let stamped = {}
+  try { stamped = JSON.parse(fs.readFileSync(file, "utf8")) } catch { /* not stamped: a name and id still */ }
+  fs.writeFileSync(file, JSON.stringify({ ...stamped, appId: id, productName }, null, 2) + "\n")
+}
+
 exports.default = async function sign(context) {
+  stampShell(context)
   await fuses(context)
   if (context.electronPlatformName === "win32") return require("./natives.cjs").windows(context)
   if (context.electronPlatformName !== "darwin") return
@@ -162,5 +175,6 @@ function sealed(app, appex, args) {
 }
 
 exports.identity = identity
+exports.stampShell = stampShell
 exports.macho = macho
 exports.notarize = notarize

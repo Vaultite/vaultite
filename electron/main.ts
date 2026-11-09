@@ -16,6 +16,7 @@ import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/en
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { talkCall } from "./talklog.ts"
 import { afterUpdate, installedCommit } from "./installed.ts"
+import { APP_ID, BRANCH, CODE, DEV, NAME, SHELL } from "./identity.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { dictationHandlers, setDictationServer, stopDictation } from "./dictation.ts"
 import type { HelperPrefs } from "./helper.ts"
@@ -52,11 +53,8 @@ const chrome = (): BaseWindowConstructorOptions => WIN
   ? { titleBarStyle: "hidden", titleBarOverlay: { color: background(), symbolColor: nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000", height: CONTROLS_HEIGHT } }
   : { titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS }
 
-// A build named otherwise (electron-builder's extraMetadata.productName: a test release) keeps a userData of its own.
-const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
-app.setName(PKG.productName ?? "Vaultite")
-// Windows: the id its Start menu shortcut carries (natives.cjs writes it into a packaged app), so notifications are its.
-if (WIN && typeof PKG.appId === "string") app.setAppUserModelId(PKG.appId)
+app.setName(NAME)
+if (WIN && APP_ID) app.setAppUserModelId(APP_ID)
 if (process.env.VAULTITE_USER_DATA) app.setPath("userData", path.resolve(process.env.VAULTITE_USER_DATA))
 // Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes keep Electron's sandboxed
 // renderer, which runs service-worker preloads; not as root, where Chromium sandboxes nothing and each would die.
@@ -117,7 +115,7 @@ function uncaught(kind: "uncaught" | "rejection", e: unknown) {
   const err = e instanceof Error ? e : new Error(String(e))
   console.error(`main process, ${kind}:`, err)
   try {
-    const body = JSON.stringify({ device: "desktop", errors: [{ kind, t: Date.now(), message: `Main process: ${err.message}`, stack: err.stack ?? "", build: BUILD?.commit ?? "" }] })
+    const body = JSON.stringify({ device: "desktop", errors: [{ kind, t: Date.now(), message: `Main process: ${err.message}`, stack: err.stack ?? "", build: CODE?.commit ?? "" }] })
     for (const w of wins.values()) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {})
   } catch { /* before the windows exist */ }
 }
@@ -1279,22 +1277,10 @@ async function pickOutside(w: Win | null) {
 }
 
 // ---------- updates ----------
-/** Which commit of which repo this app was built from (electron/stamp.ts, part of npm run app:build). */
-const BUILD = (() => {
-  try {
-    const b = JSON.parse(fs.readFileSync(path.join(ROOT, "electron", "build.json"), "utf8"))
-    return typeof b.commit === "string" && typeof b.repo === "string" ? b as { commit: string; repo: string; release?: boolean; channel?: "dev" | "nightly" | "main"; branch?: string } : null
-  } catch {
-    return null
-  }
-})()
 // (Windows updates only from releases: a build from source has no update.sh there)
-const updatable = () => app.isPackaged && !!BUILD && (BUILD.release === true || !WIN)
+const updatable = () => app.isPackaged && !!CODE && (SHELL.release === true || !WIN)
 /** A release build updates from the release feed (electron-updater), not by building from git. */
-const RELEASE = app.isPackaged && BUILD?.release === true
-/** Vaultite Dev (see the head of this file); the branch it updates from. */
-const DEV = BUILD?.channel === "dev"
-const BRANCH = (DEV && BUILD?.branch) || "main"
+const RELEASE = app.isPackaged && !!CODE && SHELL.release === true
 /** The clone update.sh builds in, and the finished build it leaves next to it (Vaultite Main.app, and its commit).
  *  .noindex: Spotlight skips them (a .metadata_never_index file no longer works), else it indexed every build's files. */
 const SOURCE = () => path.join(app.getPath("userData"), "source.noindex")
@@ -1311,7 +1297,7 @@ const BUNDLE = MAC ? path.resolve(app.getPath("exe"), "..", "..", "..") : path.d
 /** What update.sh build leaves in NEXT: the .app, or (Linux) the unpacked app's folder. */
 const BUILT = () => path.join(NEXT(), MAC ? `${app.getName()}.app` : app.getName())
 /** update.sh runs in a login shell, so git, node and npm are on the PATH as in the user's terminal. */
-const SHELL = MAC ? "/bin/zsh" : "/bin/bash"
+const LOGIN_SHELL = MAC ? "/bin/zsh" : "/bin/bash"
 /** An update can replace this app where it is: a .app, or an unpacked Linux app (not an AppImage, read-only). */
 const replaceable = () => MAC ? BUNDLE.endsWith(".app") : !process.env.APPIMAGE && fs.existsSync(app.getPath("exe"))
 /** update.sh build while it runs (its own process group, so quitting ends npm and the rest with it). */
@@ -1376,11 +1362,11 @@ function checkInstalled(w: Win) {
     const p = w.vault.path
     if (wins.get(p) !== w || !w.server || w.server.exitCode !== null) return
     const installed = installedCommit(ROOT), server = (await serverCommit(w.port)) || null
-    const { stale, restart } = afterUpdate({ installed, app: BUILD?.commit ?? null, server, restarted: restartedOnto.has(p) })
+    const { stale, restart } = afterUpdate({ installed, app: CODE?.commit ?? null, server, restarted: restartedOnto.has(p) })
     if (!stale && !restart) return
     const log = updateLog(), at = new Date().toISOString()
     if (stale) {
-      fs.writeSync(log, `${at} this app runs ${BUILD!.commit}, but ${installed} is installed: it started from the app an update replaced\n`)
+      fs.writeSync(log, `${at} this app runs ${CODE!.commit}, but ${installed} is installed: it started from the app an update replaced\n`)
       if (!RELEASE && built() === installed && ready !== installed) { ready = installed; for (const x of wins.values()) tell(x); buildMenu() }
     }
     if (restart && w.server?.exitCode === null) {
@@ -1394,13 +1380,13 @@ function checkInstalled(w: Win) {
 
 function buildUpdate(byHand: boolean, want: string) {
   const log = updateLog()
-  fs.writeSync(log, `\n${new Date().toISOString()} checking (running ${BUILD!.commit.slice(0, 7)}${want ? `, its server ${want.slice(0, 7)}` : ""})\n`)
+  fs.writeSync(log, `\n${new Date().toISOString()} checking (running ${CODE!.commit.slice(0, 7)}${want ? `, its server ${want.slice(0, 7)}` : ""})\n`)
   let out = ""
   if (byHand) setStatus("Checking for updates…")
   // On the timer it builds at utility QoS: below the user's apps yet on any core (`-b`, background, kept it to the
   // efficiency cores with its disk I/O throttled: on a busy Mac a 30 s build took 20 minutes).
   const low = byHand ? [] : process.platform === "darwin" ? ["/usr/sbin/taskpolicy", "-c", "utility"] : ["nice", "-n", "19"]
-  const [cmd, ...args] = [...low, SHELL, "-l", path.join(ROOT, "electron", "update.sh"), "build", SOURCE(), BUILD!.repo, BUILD!.commit,
+  const [cmd, ...args] = [...low, LOGIN_SHELL, "-l", path.join(ROOT, "electron", "update.sh"), "build", SOURCE(), CODE!.repo, CODE!.commit,
     BRANCH, DEV ? "app:build:dev" : "app:build", ...(want ? [want] : [])]
   const child = checking = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], detached: true })
   buildMenu()
@@ -1427,7 +1413,7 @@ function buildUpdate(byHand: boolean, want: string) {
     if (code === 0 && commit === built()) {
       if (ready !== commit || byHand) { ready = commit; for (const w of wins.values()) tell(w) }
     } else if (byHand && code === 3) {
-      dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${BUILD!.commit.slice(0, 7)}, ${want ? "the version its server runs" : `the newest on ${BRANCH}`}.` })
+      dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${CODE!.commit.slice(0, 7)}, ${want ? "the version its server runs" : `the newest on ${BRANCH}`}.` })
     } else if (byHand && !quitting) {
       updateFailed(/^boot: \d+ failed/m.test(out) ? "The new version didn't pass its startup check."
         : /no code signing identity in the keychain: not building/.test(out) ? "This Mac has no code signing identity, and an update signed without one would sign you out of every site: add one (a self-signed code signing certificate will do)."
@@ -1540,7 +1526,7 @@ function install(reopen: boolean): Promise<boolean> | null {
   const log = updateLog()
   fs.writeSync(log, `${new Date().toISOString()} installing ${ready} into ${BUNDLE}${reopen ? "" : " as the app quits"}\n`)
   // (fd 3: where it says it's staged; quitting, nobody waits)
-  const child = spawn(SHELL, [path.join(ROOT, "electron", "update.sh"), "install", String(process.pid), BUILT(), BUNDLE, path.basename(app.getPath("exe")), ...(reopen ? [] : ["stay"])],
+  const child = spawn(LOGIN_SHELL, [path.join(ROOT, "electron", "update.sh"), "install", String(process.pid), BUILT(), BUNDLE, path.basename(app.getPath("exe")), ...(reopen ? [] : ["stay"])],
     { detached: true, stdio: ["ignore", log, log, reopen ? "pipe" : "ignore"] })
   child.unref()
   fs.closeSync(log)
@@ -1618,7 +1604,7 @@ async function checkRelease(byHand: boolean) {
       setStatus(`Downloading ${app.getName()} ${r.updateInfo.version}…`)
       if (r.downloadPromise) await within(r.downloadPromise, 30 * 60_000, "The download stalled")
     }
-    else if (byHand) dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${app.getVersion()}, the newest ${BUILD?.channel === "nightly" ? "nightly" : "release"}.` })
+    else if (byHand) dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${app.getVersion()}, the newest ${SHELL.channel === "nightly" ? "nightly" : "release"}.` })
   } catch (e) {
     if (byHand && !quitting) updateFailed(sentence(plainError(e).reason ?? "something went wrong while getting it"))
   } finally {
@@ -1670,7 +1656,7 @@ async function openDoc(name: string) {
 
 /** The repo's issues page (its GitHub address: the build's, else the checkout's origin), or null. */
 const issues = (() => {
-  let repo = BUILD?.repo ?? ""
+  let repo = CODE?.repo ?? ""
   if (!repo) try { repo = execFileSync("git", ["-C", ROOT, "remote", "get-url", "origin"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitEnv() }).trim() } catch { /* not a checkout */ }
   const m = /github\.com[/:]([^/]+\/[^/]+?)(\.git)?$/.exec(repo)
   return m ? `https://github.com/${m[1]}/issues` : null

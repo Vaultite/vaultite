@@ -9,6 +9,7 @@ plugins/core/audio-recorder/bin/
 plugins/core/sync-conflicts/bin/
 electron/bin/
 electron/build.json
+electron/shell.json
 electron/cli.json
 .obsidian/
 CLAUDE.local.md

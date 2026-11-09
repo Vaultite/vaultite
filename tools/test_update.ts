@@ -22,7 +22,8 @@ const bundle = (dir: string) => path.join(dir, MAC ? `${NAME}.app` : NAME)
 function makeBuild(at: string, commit: string, o: { omit?: string } = {}) {
   fs.rmSync(at, { recursive: true, force: true })
   const files: Record<string, string> = {
-    [`${RES}/electron/build.json`]: JSON.stringify({ commit, repo: "https://github.com/Alice/lighthouse.git", channel: "main" }, null, 2),
+    [`${RES}/electron/build.json`]: JSON.stringify({ commit, repo: "https://github.com/Alice/lighthouse.git" }, null, 2),
+    [`${RES}/electron/shell.json`]: JSON.stringify({ channel: "main", commit, appId: "app.lighthouse.main", productName: NAME }, null, 2),
     [`${RES}/server.ts`]: `// ${commit}`, [`${RES}/package.json`]: `{ "main": "electron/boot.ts" }`,
     [`${RES}/electron/boot.ts`]: "", [`${RES}/electron/main.ts`]: "", [`${RES}/plugins/core/lighthouse/plugin.ts`]: `// ${commit}`,
     // (the terminal keeper and the CLI, which the app's binary runs as Node: they hold on, as theirs do)
